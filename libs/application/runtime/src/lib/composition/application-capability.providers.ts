@@ -23,6 +23,7 @@ import {
   OidcClientService,
   type AuthenticationHomeserverDiscovery,
 } from '@trinity/data-access/auth';
+import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
 import { HomeserverDiscoveryService } from '@trinity/data-access/discovery';
 import { provideGifConfigEntries } from '@trinity/data-access/gif';
 import { AvatarService, MediaService } from '@trinity/data-access/media';
@@ -183,6 +184,7 @@ export function applicationCapabilityProviders(
         const handoff = inject(PushHandoffService);
         const drafts = inject(DraftStoreService);
         const oidc = inject(OidcClientService);
+        const diagnosticLog = inject(DiagnosticLogService);
         return {
           forgetPushHandoff: (accountId) => handoff.forget(accountId),
           registerNotifications: () => push.register(),
@@ -194,6 +196,7 @@ export function applicationCapabilityProviders(
                   refreshToken: session.refreshToken,
                 })
               : of(void 0),
+          stopDiagnosticLog: () => diagnosticLog.discard(),
           releaseSharedCaches: () => {
             avatars.releaseAll();
             media.releaseAll();

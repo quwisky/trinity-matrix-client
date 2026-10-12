@@ -297,6 +297,24 @@ export class DiagnosticLogService {
     );
   }
 
+  /**
+   * Stop recording for the rest of this session and delete the stored log, without saving
+   * the setting: for a factory reset, which wipes the setting itself and must not find a
+   * pending write recreating the database it deletes. Turning the log on in Advanced starts
+   * a fresh one. Settles once any write already under way has finished and the log is gone;
+   * errors when the log could be neither deleted nor emptied. Cold.
+   */
+  discard(): Observable<void> {
+    return defer(() => {
+      // First, as when the log is turned off: no SDK logger may stay at debug level.
+      this.sdkCapture?.setEnabled(false);
+      this.early = null;
+      this._keepLog.set(false);
+      this.resolveSettled();
+      return from(this.recorder.discard());
+    });
+  }
+
   /** Wait for the stored setting before anything reaches the recorder (or is dropped). */
   private readSetting(): void {
     this.preferences

@@ -12,6 +12,12 @@ export interface AccountLifecyclePort {
   registerNotifications(): Observable<void>;
   unregisterNotifications(accountId?: string): Observable<void>;
   revokeProviderSession(session: MatrixSession): Observable<void>;
+  /**
+   * Stop the on-device diagnostic log for the rest of the session and delete it, ahead of
+   * the installation reset's database wipe, so no pending write recreates it afterwards.
+   * Settles once no write is under way.
+   */
+  stopDiagnosticLog(): Observable<void>;
   releaseSharedCaches(): void;
   clearDrafts(): void;
 }
@@ -21,6 +27,7 @@ const NOOP_ACCOUNT_LIFECYCLE_PORT: AccountLifecyclePort = {
   registerNotifications: () => of(void 0),
   unregisterNotifications: () => of(void 0),
   revokeProviderSession: () => of(void 0),
+  stopDiagnosticLog: () => of(void 0),
   releaseSharedCaches: () => undefined,
   clearDrafts: () => undefined,
 };

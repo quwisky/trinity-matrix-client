@@ -489,6 +489,67 @@ describe('DiagnosticLogService', () => {
     });
   });
 
+  describe('factory reset', () => {
+    it('stops for the session, drops the batch and deletes the log, leaving the setting to the reset', async () => {
+      const service = setup();
+      expect(await stored()).not.toEqual([]);
+      service.record({
+        level: 'info',
+        source: 'app',
+        logger: 'test',
+        message: 'pending',
+      });
+
+      const discarded = firstValueFrom(service.discard());
+      expect(setSdkCapture.mock.calls).toEqual([[false]]);
+      await discarded;
+      console.warn('[trinity] after the reset');
+      window.dispatchEvent(new Event('pagehide'));
+
+      expect(service.keepLog()).toBe(false);
+      expect(await stored()).toEqual([]);
+      expect(remove).toHaveBeenCalledOnce();
+      expect(storedSetting).toBeNull();
+    });
+
+    it('settles only after a write already under way, so nothing lands after the delete', async () => {
+      let open: (store: DiagnosticLogStore) => void = () => undefined;
+      const opened = new Promise<DiagnosticLogStore>((resolve) => {
+        open = resolve;
+      });
+      const service = setup(() => opened);
+      await vi.advanceTimersByTimeAsync(FLUSH_DELAY_MS);
+      let settled = false;
+
+      const discarded = firstValueFrom(service.discard()).then(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false);
+      open(store);
+      await discarded;
+
+      expect((await store.read()).entries).toEqual([]);
+      expect(remove).toHaveBeenCalledOnce();
+    });
+
+    it('stays stopped when the stored setting arrives afterwards', async () => {
+      const reads = new Subject<PreferenceStorageReadOutcome>();
+      const service = setup(undefined, pendingAdapter(reads));
+
+      await firstValueFrom(service.discard());
+      reads.next({
+        kind: 'found',
+        payload: JSON.stringify({ version: 1, value: true }),
+      });
+      reads.complete();
+      console.warn('[trinity] after the reset');
+
+      expect(service.keepLog()).toBe(false);
+      expect(await stored()).toEqual([]);
+    });
+  });
+
   describe('export', () => {
     const ALICE_ACCOUNT = {
       userId: '@alice:example.org',

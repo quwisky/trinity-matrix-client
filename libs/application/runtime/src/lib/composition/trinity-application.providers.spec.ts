@@ -22,7 +22,8 @@ import {
 } from '@trinity/data-access/matrix-client';
 import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { NEVER, firstValueFrom, of } from 'rxjs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { ACCOUNT_LIFECYCLE_PORT } from '@trinity/data-access/accounts';
 import { applicationCapabilityProviders } from './application-capability.providers';
 import { provideTrinityApplication } from './trinity-application.providers';
 
@@ -176,5 +177,24 @@ describe('Trinity application provider composition', () => {
       TestBed.resetTestingModule();
       configureMatrixSdkLogging('debug');
     }
+  });
+
+  it('stops the diagnostic log for a factory reset through the account lifecycle port', async () => {
+    const discard = vi.fn(() => of(undefined));
+    TestBed.configureTestingModule({
+      providers: [
+        ...applicationCapabilityProviders({
+          buildInfo: {} as BuildInfo,
+          pushConfig: null,
+        }),
+        { provide: DiagnosticLogService, useValue: { discard } },
+      ],
+    });
+
+    await firstValueFrom(
+      TestBed.inject(ACCOUNT_LIFECYCLE_PORT).stopDiagnosticLog(),
+    );
+
+    expect(discard).toHaveBeenCalledOnce();
   });
 });

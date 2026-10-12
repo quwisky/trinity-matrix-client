@@ -10,12 +10,15 @@ import {
   Observable,
   catchError,
   concatMap,
+  defaultIfEmpty,
   defer,
   forkJoin,
   from,
   map,
   of,
   reduce,
+  take,
+  timeout,
 } from 'rxjs';
 import {
   AccountCleanupAttempt,
@@ -94,6 +97,9 @@ export class InstallationResetWorkflow {
                     ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
                   )
                   .pipe(map(() => records)),
+              ),
+              concatMap((records) =>
+                this.stopDiagnosticLog().pipe(map(() => records)),
               ),
               concatMap((records) => this.wipeIndexedDb(attempt, records)),
               concatMap(() =>
@@ -258,6 +264,24 @@ export class InstallationResetWorkflow {
         ),
     ];
     return forkJoin(operations);
+  }
+
+  /**
+   * Stop the diagnostic log before its database is wiped, or a pending write would recreate
+   * it. Bounded and never an issue of its own: the wipe that follows deletes that database
+   * and reports any residue.
+   */
+  private stopDiagnosticLog(): Observable<void> {
+    return defer(() => this.lifecycle.stopDiagnosticLog()).pipe(
+      take(1),
+      timeout({
+        first: ACCOUNT_CLEANUP_STEP_BUDGET_MS.diagnosticLogStop,
+        with: () => of(void 0),
+      }),
+      catchError(() => of(void 0)),
+      defaultIfEmpty(void 0),
+      map(() => void 0),
+    );
   }
 
   private wipeIndexedDb(
