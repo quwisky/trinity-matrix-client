@@ -94,6 +94,21 @@ describe('TrnButton', () => {
     expect(row).not.toContain('whitespace-nowrap');
   });
 
+  it('lines an inline shape up with the text column by dropping its inline padding', () => {
+    for (const size of ['xs', 'sm', 'md', 'lg'] as const) {
+      const inline = trnButtonRecipe({
+        presentation: 'link',
+        shape: 'inline',
+        size,
+        variant: 'primary',
+      }).split(' ');
+
+      expect(inline).toContain('px-0');
+      expect(inline).not.toContain('px-2');
+      expect(inline).not.toContain('px-2.5');
+    }
+  });
+
   it('renders a solid danger action as a filled danger button, not a tint', () => {
     const solidDanger = trnButtonRecipe({
       presentation: 'solid',

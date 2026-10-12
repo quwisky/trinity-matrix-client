@@ -8,7 +8,7 @@ export type TrnButtonVariant = Extract<
 >;
 export type TrnButtonSize = Extract<TrnSize, 'xs' | 'sm' | 'md' | 'lg'>;
 export type TrnButtonPresentation = 'solid' | 'outline' | 'ghost' | 'link';
-export type TrnButtonShape = 'label' | 'icon' | 'row';
+export type TrnButtonShape = 'label' | 'icon' | 'row' | 'inline';
 
 interface TrnButtonRecipeOptions {
   presentation: TrnButtonPresentation;
@@ -117,6 +117,20 @@ const focusRing =
 const rowShape = 'h-auto w-full justify-start text-start whitespace-normal';
 
 /**
+ * A link-style action in a column of text, such as a Preview toggle under a description:
+ * no inline padding, so its label lines up with the text above and below it.
+ */
+const inlineShape =
+  'px-0 has-data-[icon=inline-end]:pe-0 has-data-[icon=inline-start]:ps-0';
+
+const shapeClasses: Record<TrnButtonShape, string> = {
+  label: '',
+  icon: '',
+  row: rowShape,
+  inline: inlineShape,
+};
+
+/**
  * A private adapter from Trinity concepts to the current Helm class substrate.
  *
  * No Helm or CVA type crosses the public Controls entrypoint. When the substrate changes,
@@ -136,7 +150,7 @@ export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
 
   return hlm(
     buttonVariants({ variant, size }),
-    options.shape === 'row' ? rowShape : '',
+    shapeClasses[options.shape],
     tone,
     focusRing,
   );
