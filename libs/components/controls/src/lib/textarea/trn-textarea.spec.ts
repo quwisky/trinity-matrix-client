@@ -46,4 +46,17 @@ describe('TrnTextarea', () => {
     expect(recipe).toContain('min-h-20');
     expect(recipe).toContain('border-danger');
   });
+
+  it('shares the text field’s attention-surface roles', () => {
+    const attention = 'in-data-[trn-surface=attention]:';
+    const recipe = trnTextareaRecipe('md').split(' ');
+
+    expect(recipe).toEqual(
+      expect.arrayContaining([
+        `${attention}border-[var(--trinity-state-attention-control-border)]`,
+        `${attention}text-[var(--trinity-state-attention-control-foreground)]`,
+        `${attention}placeholder:text-[var(--trinity-state-attention-control-placeholder)]`,
+      ]),
+    );
+  });
 });

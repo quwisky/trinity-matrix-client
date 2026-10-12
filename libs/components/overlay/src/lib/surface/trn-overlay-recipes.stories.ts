@@ -4,7 +4,14 @@ import {
   moduleMetadata,
   type StoryObj,
 } from '@storybook/angular-vite';
-import { TrnButton, TrnInput } from '@trinity/components/controls';
+import {
+  TrnButton,
+  TrnInput,
+  TrnRadioGroupComponent,
+  TrnSelectComponent,
+  type TrnRadioOption,
+  type TrnSelectOption,
+} from '@trinity/components/controls';
 import { provideTrnOverlayDefaults } from '../provide-overlay-defaults';
 import { DialogOverlayStoryComponent } from './stories/dialog-overlay-story/dialog-overlay-story.component';
 import { DropdownOverlayStoryComponent } from './stories/dropdown-overlay-story/dropdown-overlay-story.component';
@@ -44,6 +51,15 @@ const SURFACE_LAYOUTS = completeCatalog<TrnOverlaySurfaceLayout>()([
   'fullscreen',
 ]);
 
+const VERIFY_METHODS: readonly TrnRadioOption<string>[] = [
+  { value: 'device', label: 'Another device' },
+  { value: 'key', label: 'Recovery key' },
+];
+const REMINDERS: readonly TrnSelectOption<string>[] = [
+  { value: 'tomorrow', label: 'Tomorrow' },
+  { value: 'week', label: 'Next week' },
+];
+
 const meta: Meta = {
   title: 'Components/Overlay recipes',
   decorators: [
@@ -57,6 +73,8 @@ const meta: Meta = {
         TrnButton,
         TrnInput,
         TrnOverlaySurfaceDirective,
+        TrnRadioGroupComponent,
+        TrnSelectComponent,
       ],
     }),
   ],
@@ -94,9 +112,17 @@ export const Feedback: Story = {
  * marks itself as an attention surface, so the solid actions invert to the on-attention roles
  * instead of an accent fill that would vanish on the accent ground. Every focusable inside,
  * the transparent text field included, sits on the accent and uses the on-attention ring.
+ * The field, the segmented choice and the select use the attention control roles for their
+ * value, placeholder, resting border and track.
  */
 export const AccentSurface: Story = {
   render: () => ({
+    props: {
+      methods: VERIFY_METHODS,
+      method: 'device',
+      reminders: REMINDERS,
+      reminder: null,
+    },
     template: `
       <div class="p-6">
         <section
@@ -111,6 +137,21 @@ export const AccentSurface: Story = {
           <h2 id="accent-surface-title" class="text-lg font-semibold">Verify this device</h2>
           <p class="text-sm">Verify this device to read your encrypted messages.</p>
           <input trnInput aria-label="Recovery key" placeholder="Recovery key" />
+          <trn-radio-group
+            layout="segmented"
+            aria-label="Verify with"
+            [options]="methods"
+            [value]="method"
+            (valueChange)="method = $event"
+          />
+          <span id="accent-surface-reminder" class="sr-only">Remind me</span>
+          <trn-select
+            aria-labelledby="accent-surface-reminder"
+            placeholder="Remind me later"
+            [options]="reminders"
+            [value]="reminder"
+            (valueChange)="reminder = $event"
+          />
           <div class="flex flex-wrap justify-end gap-2">
             <button trnBtn presentation="ghost" size="sm" type="button">Not now</button>
             <a trnBtn size="sm" href="#">Learn more</a>

@@ -39,6 +39,17 @@ A component that paints the attention surface (`--trinity-state-attention-surfac
 
 Inside that element, a solid primary `trnBtn` inverts to the `--trinity-state-attention-action-*` roles, because its normal accent fill would vanish on the accent ground. In an accent overlay this includes the overlay's own primary action, which is the button that needs it. The surface also switches every focusable inside it, including buttons of any presentation, fields and links, to `--trinity-focus-ring-on-attention`, because they all sit on the accent and the default ring fails against it. Menus and tooltips opened from inside render in a portal outside the surface and keep their normal look.
 
+Form controls are supported there too. A `trnInput` or `trnTextarea` field, a segmented `trn-radio-group` and a `trn-select` trigger sit on the accent, so they switch to the `--trinity-state-attention-control-*` roles:
+
+| Role                                              | Used for                                                      | Floor against the attention surface |
+| ------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------- |
+| `--trinity-state-attention-control-foreground`    | A typed value, the select's value and chevron, segment labels | 4.5:1                               |
+| `--trinity-state-attention-control-placeholder`   | Field and select placeholders                                 | 4.5:1                               |
+| `--trinity-state-attention-control-border`        | The resting border of a field, select or segmented track      | 3:1                                 |
+| `--trinity-state-attention-control-track-surface` | The segmented track fill, and the gap around its focus ring   | Matches the surface                 |
+
+The segmented track keeps the surface colour instead of nesting a neutral fill. Its selected option inverts to the `--trinity-state-attention-action-*` roles like a solid action, and its on-attention ring sits on a gap in the track colour, so both clear 3:1 against the track. The accent leaves little room between 4.5:1 and the attention foreground in light modes, so the placeholder is only a little dimmer than a typed value there. Checkboxes, switches, list radio groups and invalid states have no attention roles yet; keep them off attention surfaces. `scripts/contrast-matrix.spec.mjs` measures these roles in every theme, and the Storybook foundation-states suite measures them in the accent page header and overlay.
+
 Both effects apply to every descendant, so neutral content placed directly inside an attention surface, such as a neutral card or banner, is unsupported: its buttons would invert, and its focus ring would be tuned against the wrong background.
 
 Density has three options: cosy, compact, and spacious. Density changes spacing and sizing only and never sets colors; touch targets keep their 44px floor.

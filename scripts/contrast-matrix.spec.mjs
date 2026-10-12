@@ -191,6 +191,19 @@ const ROLES = [
       '--trinity-state-attention-action-hover-surface',
     ],
   },
+  // A form control on an attention surface (#1241): its typed value and its placeholder sit on
+  // the accent directly, or on the segmented track, never on a nested neutral fill.
+  {
+    text: '--trinity-state-attention-control-foreground',
+    on: [
+      '--trinity-state-attention-surface',
+      '--trinity-state-attention-control-track-surface',
+    ],
+  },
+  {
+    text: '--trinity-state-attention-control-placeholder',
+    on: ['--trinity-state-attention-surface'],
+  },
   {
     text: '--trinity-tooltip-foreground',
     on: ['--trinity-tooltip-surface'],
@@ -249,6 +262,23 @@ const NON_TEXT_ROLES = [
   {
     foreground: '--trinity-state-attention-action-hover-surface',
     on: ['--trinity-state-attention-surface'],
+  },
+  // A control's resting boundary on an attention surface (#1241), and the segmented track
+  // inside it: the selected option's inverted fill and the focus ring both sit on the track.
+  {
+    foreground: '--trinity-state-attention-control-border',
+    on: [
+      '--trinity-state-attention-surface',
+      '--trinity-state-attention-control-track-surface',
+    ],
+  },
+  {
+    foreground: '--trinity-state-attention-action-surface',
+    on: ['--trinity-state-attention-control-track-surface'],
+  },
+  {
+    foreground: '--trinity-focus-ring-on-attention',
+    on: ['--trinity-state-attention-control-track-surface'],
   },
   ...[
     '--trinity-state-attention-surface',
