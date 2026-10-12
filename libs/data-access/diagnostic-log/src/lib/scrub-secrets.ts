@@ -74,31 +74,75 @@ const SECRET_KEYS = [
   'formatted_body',
 ];
 
-/** Keys that are secret in a field but ordinary as a parameter (`username=alice`). */
-const NOT_SECRET_PARAMS: ReadonlySet<string> = new Set(['username']);
-
 /** OAuth/OIDC callback names: masked as parameters; as fields unless a known short shape. */
 const OAUTH_KEYS = ['code', 'state', 'sso_state'];
 
-const SECRET_PARAMS = [
-  ...SECRET_KEYS.filter((key) => !NOT_SECRET_PARAMS.has(key)),
-  ...OAUTH_KEYS,
+/** A name with its case and separators removed, so `api_key`, `api-key` and `apiKey` agree. */
+function normalizeName(name: string): string {
+  return name.toLowerCase().replace(/[_.-]/g, '');
+}
+
+/** Words that make any name containing them secret: `userPassword`, `db_passwd`, `authToken`. */
+const SECRET_WORDS = [
+  'password',
+  'passwd',
+  'passphrase',
+  'secret',
+  'token',
+  'credential',
+  'apikey',
+  'authkey',
+  'privatekey',
+  'recoverykey',
 ];
 
-/**
- * A field name, quoted (`"k"`, `'k'`, `\"k\"` inside an escaped JSON string) or bare, then
- * a colon. Case-insensitive. The name cannot continue an identifier (`M_UNKNOWN_TOKEN:`,
- * `Set-Cookie:`).
- */
-function fieldPattern(keys: readonly string[]): RegExp {
-  return new RegExp(
-    String.raw`(?<![\w$-])(\\*["']?)(?:${keys.join('|')})\1\s*:\s*`,
-    'gi',
+const EXACT_SECRET_NAMES: ReadonlySet<string> = new Set(
+  SECRET_KEYS.map(normalizeName),
+);
+
+/** Names that contain a secret word but carry no secret. */
+const PUBLIC_NAMES: ReadonlySet<string> = new Set([
+  'tokentype',
+  'tokenendpoint',
+  'tokenexpiresat',
+  'tokenexpiresin',
+  'accesstokenexpiresat',
+  'refreshtokenexpiresat',
+]);
+
+/** Matrix error codes (`M_UNKNOWN_TOKEN`) name no secret. */
+const ERROR_CODE_NAME = /^M_[A-Z_]+$/;
+
+function isSecretName(name: string): boolean {
+  if (ERROR_CODE_NAME.test(name)) {
+    return false;
+  }
+  const normalized = normalizeName(name);
+  return (
+    !PUBLIC_NAMES.has(normalized) &&
+    (EXACT_SECRET_NAMES.has(normalized) ||
+      SECRET_WORDS.some((word) => normalized.includes(word)))
   );
 }
 
-const SECRET_FIELD = fieldPattern(SECRET_KEYS);
-const OAUTH_FIELD = fieldPattern(OAUTH_KEYS);
+/** A secret parameter: a secret name (`username=alice` is ordinary), or an OAuth callback value. */
+function isSecretParam(name: string): boolean {
+  const normalized = normalizeName(name);
+  return (
+    OAUTH_KEYS.some((key) => normalizeName(key) === normalized) ||
+    (normalized !== 'username' && isSecretName(name))
+  );
+}
+
+/**
+ * A field name, quoted (`"k"`, `'k'`, `\"k\"` inside an escaped JSON string) or bare, then
+ * a colon. The name cannot continue an identifier (`M_UNKNOWN_TOKEN:`, `Set-Cookie:`). Every
+ * quantifier is bounded, so no input costs more than a fixed multiple of its length.
+ */
+const FIELD_NAME = String.raw`(?<![\w$-])(\\{0,8}["']?)([A-Za-z_][\w.-]{0,63})\1\s*:\s*`;
+
+/** A parameter name and its value; the name may start after any non-alphanumeric character. */
+const PARAM = /(?<![A-Za-z0-9])([A-Za-z_][\w.-]{0,63})=([^&#\s"']*)/g;
 
 /** `code` and `state` values that are diagnostics, not OAuth secrets. */
 const KEPT_OAUTH_VALUE =
@@ -109,7 +153,7 @@ const KEPT_OAUTH_VALUE =
  * deliberately left alone: the on-device log keeps them, and the export redactor replaces
  * them (spec §2). Each rule is covered by `scrub-secrets.spec.ts`.
  */
-const SECRET_RULES: readonly (readonly [RegExp, string])[] = [
+const HEADER_RULES: readonly (readonly [RegExp, string])[] = [
   // Bearer credentials, then whatever an Authorization header or field still carries, under
   // any scheme (Bearer, Basic, …), then cookies.
   [/\b(Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, `$1 ${REDACTED}`],
@@ -118,16 +162,10 @@ const SECRET_RULES: readonly (readonly [RegExp, string])[] = [
     `$1${REDACTED}`,
   ],
   [/("?\b(?:set-)?cookie"?\s*[:=]\s*"?)[^"\r\n}]+/gi, `$1${REDACTED}`],
-  // Credential query, fragment and form parameters, after any non-alphanumeric character.
-  // matrix-js-sdk masks its own request URLs (`sanitizeUrlForLogs`); URLs in errors,
-  // callbacks, widgets and form bodies are not masked.
-  [
-    new RegExp(
-      String.raw`(?<![A-Za-z0-9])((?:${SECRET_PARAMS.join('|')})=)[^&#\s"']*`,
-      'gi',
-    ),
-    `$1${REDACTED}`,
-  ],
+];
+
+/** Patterns for token-shaped values, applied after the header and name-based rules. */
+const SECRET_RULES: readonly (readonly [RegExp, string])[] = [
   // Synapse (syt_/syr_) and MAS (mat_/mar_/mct_) tokens, and JWTs.
   [/\b(?:syt|syr|mat|mar|mct)_[A-Za-z0-9_-]{8,}/g, REDACTED],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g, REDACTED],
@@ -162,11 +200,19 @@ const SECRET_RULES: readonly (readonly [RegExp, string])[] = [
  */
 export function scrubSecrets(text: string): string {
   let scrubbed = text;
+  for (const [pattern, replacement] of HEADER_RULES) {
+    scrubbed = scrubbed.replace(pattern, replacement);
+  }
+  // Credential query, fragment and form parameters. matrix-js-sdk masks its own request URLs
+  // (`sanitizeUrlForLogs`); URLs in errors, callbacks, widgets and form bodies are not masked.
+  scrubbed = scrubbed.replace(PARAM, (whole, name: string) =>
+    isSecretParam(name) ? `${name}=${REDACTED}` : whole,
+  );
   for (const [pattern, replacement] of SECRET_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
   }
-  scrubbed = maskFields(scrubbed, SECRET_FIELD);
-  return maskFields(scrubbed, OAUTH_FIELD, true);
+  scrubbed = maskFields(scrubbed, isSecretName, false);
+  return maskFields(scrubbed, isOAuthName, true);
 }
 
 /**
@@ -211,8 +257,12 @@ interface FieldValue {
  * array, masked through its balanced end. `oauth` keeps the short diagnostic shapes of
  * `code` and `state`. Fields inside a masked value are skipped.
  */
-function maskFields(text: string, pattern: RegExp, oauth = false): string {
-  pattern.lastIndex = 0;
+function maskFields(
+  text: string,
+  isTarget: (name: string) => boolean,
+  oauth: boolean,
+): string {
+  const pattern = new RegExp(FIELD_NAME, 'g');
   let out = '';
   let position = 0;
   for (
@@ -220,6 +270,9 @@ function maskFields(text: string, pattern: RegExp, oauth = false): string {
     match !== null;
     match = pattern.exec(text)
   ) {
+    if (!isTarget(match[2])) {
+      continue;
+    }
     const start = match.index + match[0].length;
     const value = readValue(text, start, oauth);
     if (value === null) {
@@ -238,6 +291,10 @@ function maskFields(text: string, pattern: RegExp, oauth = false): string {
     position = value.end;
   }
   return out + text.slice(position);
+}
+
+function isOAuthName(name: string): boolean {
+  return OAUTH_KEYS.includes(name.toLowerCase());
 }
 
 function readValue(

@@ -357,6 +357,76 @@ describe('scrubSecrets', () => {
     expect(scrubSecrets(line)).toBe(line);
   });
 
+  it.each([
+    'userPassword',
+    'authToken',
+    'apiKey',
+    'api_key',
+    'api-key',
+    'authKey',
+    'userSecret',
+    'db_password',
+    'DB_PASSWD',
+    'recoveryKey',
+    'privateKey',
+    'someCredentials',
+    'myPassphrase',
+  ])('masks the compound or camelCase secret name %s in every form', (name) => {
+    expect(scrubSecrets(`?${name}=zz9&x=1`)).toBe(`?${name}=${REDACTED}&x=1`);
+    expect(scrubSecrets(`{"${name}":"zz9","x":1}`)).toBe(
+      `{"${name}":"${REDACTED}","x":1}`,
+    );
+    expect(scrubSecrets(`{ ${name}: 'zz9', x: 1 }`)).not.toContain('zz9');
+    expect(scrubSecrets(`${name}: zz9`)).not.toContain('zz9');
+    expect(
+      scrubSecrets(String.raw`{"m":"{\"${name}\":\"zz9\"}"}`),
+    ).not.toContain('zz9');
+  });
+
+  it.each([
+    ['token_type', 'Bearer'],
+    ['tokenType', 'Bearer'],
+    ['token_endpoint', 'https://auth.example.org/oauth2/token'],
+    ['expires_in', '3600'],
+    ['next_batch', 's72594_4483_1934'],
+    ['accessTokenExpiresAt', '1760000000000'],
+  ])('keeps the non-secret name %s readable', (name, value) => {
+    expect(scrubSecrets(`{"${name}":"${value}"}`)).toBe(
+      `{"${name}":"${value}"}`,
+    );
+    expect(scrubSecrets(`?${name}=${value}`)).toBe(`?${name}=${value}`);
+  });
+
+  it('keeps M_ error codes readable in messages', () => {
+    const line =
+      'M_UNKNOWN_TOKEN: Invalid access token passed. M_MISSING_TOKEN: Missing access token';
+
+    expect(scrubSecrets(line)).toBe(line);
+  });
+
+  it('scrubs pathological inputs quickly', () => {
+    const inputs = [
+      `x ${'\\'.repeat(65000)}`,
+      '\\"'.repeat(30000),
+      'a.'.repeat(32000),
+      '_'.repeat(65000),
+      'a_'.repeat(32000),
+      'password:'.repeat(7000),
+      '{"auth":'.repeat(8000),
+      '"auth":['.repeat(8000),
+      "'".repeat(65000),
+      'aB1'.repeat(21000),
+    ];
+
+    for (const input of inputs) {
+      const started = performance.now();
+
+      scrubMessage(input);
+
+      expect(performance.now() - started).toBeLessThan(200);
+    }
+  });
+
   it.each(CAPTURED_SHAPES.map((shape) => [shape.name, shape] as const))(
     'never keeps a secret from the shapes Trinity and the SDK produce: %s',
     (_name, shape) => {
