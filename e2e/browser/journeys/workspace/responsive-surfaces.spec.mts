@@ -215,6 +215,13 @@ test.describe('Responsive auth, crypto, and overlay surfaces', () => {
     await page.setViewportSize({ width: 320, height: 568 });
     await emojiTrigger.click();
     await expect(picker).toBeVisible({ timeout: 20_000 });
+    // A phone gets the panel as a bottom sheet, which slides in: measure where it lands.
+    await expect(page.locator('trn-sheet-frame')).toBeVisible();
+    await page.waitForFunction(() =>
+      document
+        .getAnimations()
+        .every((animation) => animation.playState !== 'running'),
+    );
     await expectInsideViewport(page, picker, 'phone emoji picker');
     await expectNoHorizontalDocumentScroll(page);
     await page.keyboard.press('Escape');

@@ -272,7 +272,10 @@ test.describe('GIF picker', () => {
     // renders.
     await page.getByTestId('composer-expressions').click();
     await page.getByTestId('expression-tab-gif').click();
-    await expect(page.getByTestId('gif-search')).toBeVisible();
+    await expect(page.getByTestId('gif-search')).toBeFocused();
+    // Shift+Tab from the search returns to the selected tab, the row's only tab stop.
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.getByTestId('expression-tab-gif')).toBeFocused();
     const firstResult = page.getByTestId('gif-result').first();
     await expect(firstResult).toBeVisible({ timeout: 15_000 });
 
@@ -287,6 +290,70 @@ test.describe('GIF picker', () => {
       undefined,
       { timeout: 60_000, polling: 250 },
     );
+  });
+
+  test('opens as a bottom sheet on a 390×844 phone and sends a GIF from it', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}p`;
+    const { reader, roomName } = await seedRoom(request, hs, runId);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedPreference(
+      page,
+      GIF_CONFIG_KEY,
+      JSON.stringify({ provider: 'klipy', apiKey: 'e2e-key' }),
+    );
+    await stubKlipy(page);
+    await login(page, reader);
+    await openSeededRoom(page, roomName);
+
+    const trigger = page.getByTestId('composer-expressions');
+    await trigger.click();
+    const sheet = page.locator('trn-sheet-frame');
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByTestId('sheet-handle')).toBeVisible();
+    await expect(sheet.getByTestId('expression-picker')).toHaveAttribute(
+      'data-presentation',
+      'sheet',
+    );
+    // Full width, once its entrance has finished.
+    await page.waitForFunction(() =>
+      document
+        .getAnimations()
+        .every((animation) => animation.playState !== 'running'),
+    );
+    const box = await sheet.boundingBox();
+    expect(box?.x).toBe(0);
+    expect(box?.width).toBe(390);
+    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(844);
+
+    // The same tabs; the GIF tab moves focus into its search.
+    await sheet.getByTestId('expression-tab-gif').click();
+    await expect(sheet.getByTestId('gif-search')).toBeFocused();
+    const firstResult = sheet.getByTestId('gif-result').first();
+    await expect(firstResult).toBeVisible({ timeout: 15_000 });
+    await firstResult.click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+    await page.waitForFunction(
+      () =>
+        !!document.querySelector(
+          '[data-testid="media-bubble"][data-media-state="ready"]',
+        ),
+      undefined,
+      { timeout: 60_000, polling: 250 },
+    );
+
+    // It reopens on the tab used last, and closing it hands focus back to the trigger.
+    await trigger.click();
+    await expect(
+      page.locator('trn-sheet-frame').getByTestId('expression-tab-gif'),
+    ).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('trn-sheet-frame')).toBeHidden();
+    await expect(trigger).toBeFocused();
   });
 
   test('sends a GIF as the active account after an account switch', async ({
