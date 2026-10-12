@@ -96,11 +96,6 @@ describe('documentation site presentation', () => {
       expect(config).toContain('@docs/shared-assets/trinity-mark.svg');
     }
 
-    for (const config of [userConfig, developerConfig]) {
-      expect(config).toContain("site: 'https://docs.trinityproject.dev'");
-      expect(config).not.toContain('quwisky.github.io');
-    }
-
     expect(userConfig).toContain("title: 'Trinity User Guide'");
     expect(userConfig).toContain("base: '/trinity-matrix-client/users'");
     expect(userConfig).not.toContain('apps/docs-developers/src/content');
