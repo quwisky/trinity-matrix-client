@@ -5,6 +5,7 @@ import {
   syncStoreIndexedDbName,
 } from '@trinity/util/matrix';
 import { WRAPPING_KEY_DB_NAME } from './crypto-store-wrapping-keys';
+import { DIAGNOSTIC_LOG_DB_NAME } from './diagnostic-log-db-name';
 import { beginDatabaseDeletion, listDatabaseNames } from './indexed-db-wipe';
 import { SecureStorageService } from './secure-storage.service';
 import type { AccountRecord } from './session-storage.service';
@@ -109,6 +110,8 @@ export class LocalDataWipeService {
     // The web wrapping keys of the crypto store keys; deleting them alone already makes
     // any surviving encrypted store unreadable.
     names.add(WRAPPING_KEY_DB_NAME);
+    // The on-device diagnostic log keeps the removed accounts' identifiers until export.
+    names.add(DIAGNOSTIC_LOG_DB_NAME);
 
     // Everything else on this origin. This is a factory reset of our own storage, so an
     // unrecognised database is residue from a version or an account we no longer track —

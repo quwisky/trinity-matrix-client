@@ -129,6 +129,17 @@ describe('LocalDataWipeService', () => {
       expect(deleted).toContain('trinity-crypto-store-keys');
     });
 
+    it('deletes the diagnostic log even where the browser cannot enumerate', async () => {
+      // The log holds identifiers of the accounts this reset removes. Firefox has no
+      // indexedDB.databases(), so only an explicit name reaches it there.
+      const { factory, deleted } = fakeIdb(); // no `databases` member
+      vi.stubGlobal('indexedDB', factory);
+
+      await setup().wipeIndexedDb([ALICE]);
+
+      expect(deleted).toContain('trinity-diagnostic-log');
+    });
+
     it('deletes an orphan no account record names, when enumeration is available', async () => {
       const { factory, deleted } = fakeIdb([
         'matrix-js-sdk:trinity-sync:@ghost:hs',
