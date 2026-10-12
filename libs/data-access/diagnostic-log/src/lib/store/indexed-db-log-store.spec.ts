@@ -249,8 +249,13 @@ describe('IndexedDbLogStore with an open that never settles', () => {
     await vi.advanceTimersByTimeAsync(IDB_CONNECT_TIMEOUT_MS);
     await expect(discarded).resolves.toBe('reported');
 
-    const cleared = recorder.clear();
-    await vi.advanceTimersByTimeAsync(IDB_CONNECT_TIMEOUT_MS);
-    await expect(cleared).resolves.toBeUndefined();
+    // Clear opens the database, then tries again to empty it once deleting fails: two
+    // bounded opens, and an error, since the log may still be on disk.
+    const cleared = recorder.clear().then(
+      () => 'emptied',
+      () => 'reported',
+    );
+    await vi.advanceTimersByTimeAsync(2 * IDB_CONNECT_TIMEOUT_MS);
+    await expect(cleared).resolves.toBe('reported');
   });
 });

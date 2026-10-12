@@ -42,6 +42,8 @@ export class DiagnosticLogRecorder {
   private pendingBytes = 0;
   private droppedUnflushed = false;
   private store: DiagnosticLogStore | null = null;
+  /** The store is this recorder's memory fallback, not the one `openStore` gave. */
+  private fallenBack = false;
   private opening: Promise<DiagnosticLogStore> | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private queue: Promise<unknown> = Promise.resolve();
@@ -89,17 +91,28 @@ export class DiagnosticLogRecorder {
     });
   }
 
+  /**
+   * Empty the log: the unflushed batch, and the stored log on disk. Where the database can't
+   * be opened or emptied it is deleted instead; a memory fallback is emptied too but never
+   * counts as the stored log. Rejects when the stored log may still be on disk.
+   */
   clear(): Promise<void> {
     return this.enqueue(async () => {
       this.pending = [];
       this.pendingBytes = 0;
       this.droppedUnflushed = false;
       const store = await this.currentStore();
-      try {
+      if (!this.fallenBack) {
+        try {
+          await store.clear();
+          return;
+        } catch {
+          // Delete the database below instead.
+        }
+      } else {
         await store.clear();
-      } catch {
-        await (await this.fallBack([])).clear();
       }
+      await this.removeStoredLog(this.fallenBack ? null : store);
     });
   }
 
@@ -109,8 +122,8 @@ export class DiagnosticLogRecorder {
    * before queueing means nothing recorded after this call is lost to the removal: it goes
    * to a fresh store, opened by the next write. Where the store cannot be removed, it is
    * emptied instead, opening it first if this session never did (an earlier session's log
-   * can still be on disk). Rejects only when the log could be neither removed nor emptied,
-   * so the caller can tell the user it is still there.
+   * can still be on disk); the memory fallback never counts. Rejects only when the log could
+   * be neither removed nor emptied, so the caller can tell the user it is still there.
    */
   discard(): Promise<void> {
     if (this.timer !== null) {
@@ -121,24 +134,35 @@ export class DiagnosticLogRecorder {
     this.pendingBytes = 0;
     this.droppedUnflushed = false;
     return this.enqueue(async () => {
-      const store = this.store;
+      const disk = this.fallenBack ? null : this.store;
       this.store = null;
       this.opening = null;
-      let removal: unknown = new Error('Diagnostic log cannot be removed');
-      if (this.options.removeStore) {
-        try {
-          await this.options.removeStore();
-          return;
-        } catch (error) {
-          removal = error;
-        }
-      }
-      try {
-        await (store ?? (await this.options.openStore())).clear();
-      } catch {
-        throw removal;
-      }
+      this.fallenBack = false;
+      await this.removeStoredLog(disk);
     });
+  }
+
+  /**
+   * Delete the database, or else empty it: through `disk` when it is open, otherwise by
+   * opening it. Rejects with the removal's error when neither works.
+   */
+  private async removeStoredLog(
+    disk: DiagnosticLogStore | null,
+  ): Promise<void> {
+    let removal: unknown = new Error('Diagnostic log cannot be removed');
+    if (this.options.removeStore) {
+      try {
+        await this.options.removeStore();
+        return;
+      } catch (error) {
+        removal = error;
+      }
+    }
+    try {
+      await (disk ?? (await this.options.openStore())).clear();
+    } catch {
+      throw removal;
+    }
   }
 
   private enqueue<T>(work: () => Promise<T>): Promise<T> {
@@ -170,12 +194,15 @@ export class DiagnosticLogRecorder {
     if (this.store) {
       return this.store;
     }
-    this.opening ??= this.options
-      .openStore()
-      .catch((): DiagnosticLogStore => new MemoryLogStore(this.limits));
+    let fallenBack = false;
+    this.opening ??= this.options.openStore().catch((): DiagnosticLogStore => {
+      fallenBack = true;
+      return new MemoryLogStore(this.limits);
+    });
     const store = await this.opening;
     if (!this.store) {
       this.store = store;
+      this.fallenBack = fallenBack;
       this.options.onStorage?.(store.kind);
     }
     return this.store;
@@ -186,7 +213,7 @@ export class DiagnosticLogRecorder {
     batch: readonly DiagnosticEntry[],
   ): Promise<DiagnosticLogStore> {
     const failed = this.store;
-    if (failed?.kind === 'memory') {
+    if (failed && this.fallenBack) {
       await failed.append(batch, this.now());
       return failed;
     }
@@ -199,6 +226,7 @@ export class DiagnosticLogRecorder {
     const memory = new MemoryLogStore(this.limits);
     await memory.append([...carried, ...batch], this.now());
     this.store = memory;
+    this.fallenBack = true;
     this.options.onStorage?.('memory');
     return memory;
   }

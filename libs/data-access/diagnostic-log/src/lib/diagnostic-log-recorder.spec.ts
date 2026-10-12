@@ -137,6 +137,67 @@ describe('DiagnosticLogRecorder', () => {
     expect((await recorder.snapshot()).entries).toEqual([]);
   });
 
+  it('clear deletes the database when it cannot be opened, rather than only the memory copy', async () => {
+    const removeStore = vi.fn(() => Promise.resolve());
+    const recorder = new DiagnosticLogRecorder({
+      openStore: () => Promise.reject(new Error('IndexedDB open timed out')),
+      removeStore,
+    });
+    recorder.record(entry('in memory'));
+    await recorder.flush();
+
+    await recorder.clear();
+
+    expect(removeStore).toHaveBeenCalledOnce();
+    expect((await recorder.snapshot()).entries).toEqual([]);
+  });
+
+  it('clear fails when the database can neither be opened nor deleted', async () => {
+    const recorder = new DiagnosticLogRecorder({
+      openStore: () => Promise.reject(new Error('IndexedDB open timed out')),
+      removeStore: () => Promise.reject(new Error('delete blocked')),
+    });
+    recorder.record(entry('in memory'));
+    await recorder.flush();
+
+    await expect(recorder.clear()).rejects.toThrow('delete blocked');
+  });
+
+  it('clear deletes the database when emptying it fails', async () => {
+    const disk = new MemoryLogStore();
+    vi.spyOn(disk, 'clear').mockRejectedValue(new Error('read-only'));
+    const removeStore = vi.fn(() => Promise.resolve());
+    const recorder = new DiagnosticLogRecorder({
+      openStore: () => Promise.resolve(disk),
+      removeStore,
+    });
+    recorder.record(entry('flushed'));
+    await recorder.flush();
+
+    await recorder.clear();
+
+    expect(removeStore).toHaveBeenCalledOnce();
+  });
+
+  it('discard does not count the memory fallback as the stored log', async () => {
+    // Writes failed, so capture moved to memory; the database still holds the old log.
+    const disk: DiagnosticLogStore = {
+      kind: 'indexeddb',
+      append: vi.fn(() => Promise.reject(new Error('QuotaExceededError'))),
+      read: vi.fn(() => Promise.resolve({ entries: [], dropped: false })),
+      clear: vi.fn(() => Promise.reject(new Error('read-only'))),
+    };
+    const recorder = new DiagnosticLogRecorder({
+      openStore: () => Promise.resolve(disk),
+      removeStore: () => Promise.reject(new Error('delete blocked')),
+    });
+    recorder.record(entry('refused'));
+    await recorder.flush();
+
+    await expect(recorder.discard()).rejects.toThrow('delete blocked');
+    expect(disk.clear).toHaveBeenCalled();
+  });
+
   it('discard drops the batch, removes the store and opens a fresh one next time', async () => {
     const first = new MemoryLogStore();
     const second = new MemoryLogStore();

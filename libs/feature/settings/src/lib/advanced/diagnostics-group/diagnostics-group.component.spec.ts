@@ -81,7 +81,14 @@ async function setup(options: SetupOptions = {}) {
  * The group over the real service, started as the app starts it, with installation
  * preferences answering `read` and a log store that is never opened unless written to.
  */
-async function setupWithService(read: PreferenceStorageReadOutcome) {
+async function setupWithService(
+  read: PreferenceStorageReadOutcome,
+  storage: {
+    readonly openStore?: () => Promise<MemoryLogStore>;
+    readonly removeStore?: () => Promise<void>;
+  } = {},
+) {
+  const show = vi.fn();
   const rendered = await render(DiagnosticsGroupComponent, {
     providers: [
       {
@@ -93,20 +100,21 @@ async function setupWithService(read: PreferenceStorageReadOutcome) {
       },
       {
         provide: DIAGNOSTIC_LOG_STORE_FACTORY,
-        useValue: () => Promise.resolve(new MemoryLogStore()),
+        useValue:
+          storage.openStore ?? (() => Promise.resolve(new MemoryLogStore())),
       },
       {
         provide: DIAGNOSTIC_LOG_STORE_REMOVER,
-        useValue: () => Promise.resolve(),
+        useValue: storage.removeStore ?? (() => Promise.resolve()),
       },
       provideDiagnosticLog(),
       MockProvider(TrnSurfaceService, { open: vi.fn() }),
-      MockProvider(TrnToastService, { show: vi.fn() }),
+      MockProvider(TrnToastService, { show }),
     ],
   });
   await rendered.fixture.whenStable();
   rendered.fixture.detectChanges();
-  return rendered;
+  return { ...rendered, show };
 }
 
 function keepLogSwitch(
@@ -197,6 +205,50 @@ describe('DiagnosticsGroupComponent', () => {
       'Couldn’t clear the diagnostic logs. Try again.',
       { duration: 4000, variant: 'danger' },
     );
+  });
+
+  describe('Clear diagnostic logs while the database cannot be opened', () => {
+    const LOG_ON = { kind: 'missing' } as const;
+    const unopenable = () =>
+      Promise.reject(new Error('IndexedDB open timed out'));
+
+    it('deletes the database and says the logs were cleared', async () => {
+      const removeStore = vi.fn(() => Promise.resolve());
+      const { show } = await setupWithService(LOG_ON, {
+        openStore: unopenable,
+        removeStore,
+      });
+
+      screen.getByRole('button', { name: 'Clear diagnostic logs' }).click();
+
+      await vi.waitFor(() =>
+        expect(show).toHaveBeenCalledWith('Diagnostic logs cleared.', {
+          duration: 3000,
+          variant: 'success',
+        }),
+      );
+      expect(removeStore).toHaveBeenCalled();
+    });
+
+    it('says clearing failed when the database cannot be deleted either', async () => {
+      const { show } = await setupWithService(LOG_ON, {
+        openStore: unopenable,
+        removeStore: () => Promise.reject(new Error('delete blocked')),
+      });
+
+      screen.getByRole('button', { name: 'Clear diagnostic logs' }).click();
+
+      await vi.waitFor(() =>
+        expect(show).toHaveBeenCalledWith(
+          'Couldn’t clear the diagnostic logs. Try again.',
+          { duration: 4000, variant: 'danger' },
+        ),
+      );
+      expect(show).not.toHaveBeenCalledWith(
+        'Diagnostic logs cleared.',
+        expect.anything(),
+      );
+    });
   });
 
   it('says when logs last for this session only', async () => {
