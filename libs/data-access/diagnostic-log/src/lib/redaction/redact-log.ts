@@ -50,7 +50,9 @@ const ALIAS = new RegExp(
 const EVENT_V1 = new RegExp(String.raw`\$${OPAQUE}:${SERVER}`, 'gu');
 const EVENT = /\$[A-Za-z0-9+/_-]{43,44}(?![A-Za-z0-9+/_=-])/g;
 // "device", "devices", "deviceId", "device_id", "device id": the words that introduce an ID.
-const DEVICE_KEYWORD = /device(?:s|[_ ]?ids?)?(?![A-Za-z0-9_])/gi;
+const DEVICE_KEYWORD = /device(?:s|[_ -]?ids?)?(?![A-Za-z0-9_])/gi;
+// "device:", "device=", optionally closed and opened by quotes.
+const DEVICE_ASSIGNMENT = /^["']?\s*[:=]/;
 const DEVICE_TOKEN = /[^A-Za-z0-9_\n-]{0,6}([A-Za-z0-9_-]{1,64})/y;
 const DEVICE_AFTER_USER =
   /(@(?:me\d*|user\d+):server\d+(?::| \(|\|))([A-Za-z0-9_-]{6,})/g;
@@ -268,6 +270,13 @@ class IdentifierRedactor implements LogRedactor {
     ) {
       const standalone = !/[A-Za-z0-9]/.test(text[keyword.index - 1] ?? ' ');
       let position = keyword.index + keyword[0].length;
+      // A field form (`deviceId`, `device_id`, `devices`) or a standalone "device:" or
+      // "device=" holds an ID whatever its shape; plain prose needs the strict shape rule.
+      const plural = /^devices$/i.test(keyword[0]);
+      const field =
+        keyword[0].length > 'device'.length ||
+        (standalone &&
+          DEVICE_ASSIGNMENT.test(text.slice(position, position + 4)));
       let words = 0;
       // Keywords skipped below count as steps, so a run of them cannot make this quadratic.
       for (
@@ -284,7 +293,7 @@ class IdentifierRedactor implements LogRedactor {
         const word = token[1];
         const start = position + token[0].length - word.length;
         position += token[0].length;
-        if (/^devices?$|^device[_ ]?ids?$/i.test(word)) {
+        if (/^devices?$|^device[_-]?ids?$/i.test(word)) {
           continue;
         }
         words += 1;
@@ -292,7 +301,8 @@ class IdentifierRedactor implements LogRedactor {
           word.length >= 6 &&
           word.length <= 32 &&
           !ALREADY_PLACEHOLDER.test(word) &&
-          ((standalone && words === 1 && isFirstWordDeviceId(word)) ||
+          ((field && (words === 1 || plural)) ||
+            (standalone && words === 1 && isFirstWordDeviceId(word)) ||
             /\d/.test(word) ||
             /^[A-Z_-]+$/.test(word));
         if (idLike && start >= editedUntil) {
