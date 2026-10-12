@@ -310,24 +310,79 @@ test.describe('GIF picker', () => {
     await login(page, reader);
     await openSeededRoom(page, roomName);
 
+    // Chromium cannot raise an on-screen keyboard here, so stand in for the visual viewport
+    // the way iOS reports one: the layout viewport keeps its 844px and the visible part
+    // shrinks above the keyboard. The sheet reads it when it opens.
+    await page.evaluate(() => {
+      class KeyboardViewport extends EventTarget {
+        height = window.innerHeight;
+        width = window.innerWidth;
+        offsetTop = 0;
+        offsetLeft = 0;
+        pageTop = 0;
+        pageLeft = 0;
+        scale = 1;
+      }
+      const viewport = new KeyboardViewport();
+      Object.defineProperty(window, 'visualViewport', {
+        configurable: true,
+        value: viewport,
+      });
+      Object.assign(window, {
+        e2eKeyboard: (covered: number) => {
+          viewport.height = window.innerHeight - covered;
+          viewport.dispatchEvent(new Event('resize'));
+        },
+      });
+    });
+    const keyboard = (covered: number) =>
+      page.evaluate(
+        (height) =>
+          (
+            window as unknown as { e2eKeyboard: (h: number) => void }
+          ).e2eKeyboard(height),
+        covered,
+      );
+    const settle = () =>
+      page.waitForFunction(() =>
+        document
+          .getAnimations()
+          .every((animation) => animation.playState !== 'running'),
+      );
+
     const trigger = page.getByTestId('composer-expressions');
     await trigger.click();
     const sheet = page.locator('trn-sheet-frame');
     await expect(sheet).toBeVisible();
     await expect(sheet.getByTestId('sheet-handle')).toBeVisible();
+    // It opens on Emoji, and focus goes on into the emoji search once the grid loads.
+    const emojiSearch = sheet.locator('.emoji-mart-search input');
+    await expect(emojiSearch).toBeFocused({ timeout: 20_000 });
+
+    // A 334px keyboard: the sheet lifts above it and the search stays visible.
+    await keyboard(334);
+    await settle();
+    const lifted = await sheet.boundingBox();
+    expect((lifted?.y ?? 0) + (lifted?.height ?? 0)).toBeLessThanOrEqual(
+      844 - 334 + 1,
+    );
+    expect(lifted?.y).toBeGreaterThanOrEqual(0);
+    const search = await emojiSearch.boundingBox();
+    expect(search?.y).toBeGreaterThanOrEqual(lifted?.y ?? 0);
+    expect((search?.y ?? 0) + (search?.height ?? 0)).toBeLessThanOrEqual(
+      844 - 334,
+    );
+    await keyboard(0);
     await expect(sheet.getByTestId('expression-picker')).toHaveAttribute(
       'data-presentation',
       'sheet',
     );
-    // Full width, once its entrance has finished.
-    await page.waitForFunction(() =>
-      document
-        .getAnimations()
-        .every((animation) => animation.playState !== 'running'),
-    );
+    // Full width and back at the bottom, once settled.
+    await settle();
     const box = await sheet.boundingBox();
     expect(box?.x).toBe(0);
     expect(box?.width).toBe(390);
+    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeGreaterThan(844 - 2);
     expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(844);
 
     // The same tabs; the GIF tab moves focus into its search.
