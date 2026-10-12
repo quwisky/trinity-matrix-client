@@ -212,7 +212,8 @@ export class ReportBugDialogComponent {
           this.saving.set(false);
           if (outcome.kind === 'completed') {
             this.saved.set(true);
-          } else {
+          } else if (outcome.kind !== 'cancelled') {
+            // A dismissed share sheet may have saved nothing, so it is neither.
             this.failSave();
           }
         },
