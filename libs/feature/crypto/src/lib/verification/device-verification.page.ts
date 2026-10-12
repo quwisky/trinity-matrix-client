@@ -3,6 +3,7 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  computed,
   effect,
   inject,
   input,
@@ -17,7 +18,12 @@ import {
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
 import { Observable } from 'rxjs';
-import { TrustVerificationService } from '@trinity/data-access/trust';
+import {
+  MANAGE_IDENTITY,
+  TrustService,
+  TrustVerificationService,
+  type TrustDialogResult,
+} from '@trinity/data-access/trust';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import {
   PageHeaderComponent,
@@ -33,8 +39,9 @@ import { SasCompareComponent } from './sas-compare.component';
  * Drives an interactive device verification (emoji SAS) against
  * {@link TrustVerificationService}. Renders all stages — request/accept, the SAS emoji
  * comparison, and the done/cancelled outcomes. Used in two chromes: a routed page
- * (`/encryption/verify`, self-initiated) and the content of a modal (an incoming
- * request); `asModal` flips the close/finish behaviour.
+ * (`/encryption/verify`) and the content of a modal, opened either by the application
+ * presenter (a self-initiated flow on a wide layout) or by the verification host (an
+ * incoming or cross-user request); `asModal` flips the close/finish behaviour.
  */
 @Component({
   selector: 'trn-device-verification',
@@ -54,13 +61,16 @@ import { SasCompareComponent } from './sas-compare.component';
 })
 export class DeviceVerificationPage {
   private readonly verification = inject(TrustVerificationService);
+  private readonly trust = inject(TrustService);
   private readonly qrCode = inject(QrCodeService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-  // Present only when opened as a dialog (incoming request); null on the routed page.
-  private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef, {
-    optional: true,
-  });
+  // Present only when opened as a dialog (by the presenter or the verification host);
+  // null on the routed page.
+  private readonly dialogRef = inject<TrnDialogRef<TrustDialogResult>>(
+    TrnDialogRef,
+    { optional: true },
+  );
   private readonly destroyRef = inject(DestroyRef);
 
   /** The active verification view (null until one starts). */
@@ -86,6 +96,29 @@ export class DeviceVerificationPage {
   readonly qrCodeUrl = signal<string | null>(null);
   private qrRequest = 0;
 
+  /**
+   * An identity set up elsewhere without recovery can only be verified from a device that
+   * holds it. Before this device sends a request, while its own request is unanswered, or
+   * once it has stopped, point someone without that device to Security settings, where the confirmed reset lives;
+   * this dialog never offers the reset itself. A modal offers it only when its opener said
+   * closing can land there.
+   */
+  readonly offerSecuritySettings = computed(() => {
+    if (
+      this.trust.status() !== 'needs-verification' ||
+      (this.asModal() && !this.canOpenSecuritySettings())
+    ) {
+      return false;
+    }
+    const active = this.active();
+    return (
+      !active ||
+      (active.isSelfVerification &&
+        !active.incoming &&
+        (active.stage === 'requested' || active.stage === 'cancelled'))
+    );
+  });
+
   private readonly synchronizeQrUi = effect(() => {
     if (this.active()?.stage !== 'qr-shown') {
       this.clearQr();
@@ -106,8 +139,14 @@ export class DeviceVerificationPage {
     });
   });
 
-  /** When true the page is modal content (incoming); else a routed page. */
+  /** When true the page is dialog content (an incoming request, or one this device opened); else a routed page. */
   readonly asModal = input(false);
+  /**
+   * Set by the application presenter when closing this modal with `MANAGE_IDENTITY` lands
+   * in Security settings: it opens Settings there, or Security is already beneath. Not set
+   * over another Settings section, where the button's label would not be true.
+   */
+  readonly canOpenSecuritySettings = input(false);
   /** Asks the host modal to dismiss. */
   readonly closed = output<void>();
 
@@ -193,11 +232,38 @@ export class DeviceVerificationPage {
 
   /** Cancel any in-flight verification, then leave. */
   cancelAndLeave(): void {
-    if (this.active() && this.active()?.stage !== 'done') {
+    this.cancelInFlight();
+    this.leave();
+  }
+
+  /**
+   * Drop the unanswered request and go to Security settings: navigate on the routed page,
+   * or close the modal asking its opener to present Settings there.
+   */
+  openSecuritySettings(): void {
+    // The other device may have answered since the button was last rendered.
+    if (!this.offerSecuritySettings()) {
+      return;
+    }
+    if (this.asModal()) {
+      // Close with the result before dismissing, so the result is set however the dialog's
+      // host reacts to `active()` clearing.
+      this.closed.emit();
+      this.dialogRef?.close(MANAGE_IDENTITY);
+      this.cancelInFlight();
+      return;
+    }
+    this.cancelInFlight();
+    void this.router.navigateByUrl('/settings/security', { replaceUrl: true });
+  }
+
+  /** Cancel a verification still running (not one already finished), then drop it. */
+  private cancelInFlight(): void {
+    const stage = this.active()?.stage;
+    if (stage && stage !== 'done' && stage !== 'cancelled') {
       this.verification.cancel().subscribe();
     }
     this.verification.dismiss();
-    this.leave();
   }
 
   private leave(): void {

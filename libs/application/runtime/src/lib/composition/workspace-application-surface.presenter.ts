@@ -20,6 +20,7 @@ import {
   TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
+import { isTrustDialogResult } from '@trinity/data-access/trust';
 import { MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import {
   Observable,
@@ -155,6 +156,9 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
         inputs: {
           asModal: true,
           ...(context?.offerReset ? { offerReset: true } : {}),
+          ...(surface.flow === 'verify' && this.canOpenSecuritySettings(request)
+            ? { canOpenSecuritySettings: true }
+            : {}),
         },
         disableClose: true,
       });
@@ -211,8 +215,17 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
             )
             .subscribe();
           ref.closed
-            .pipe(take(1), takeUntil(this.navigationStarts))
-            .subscribe(() => this.restoreOwner(request));
+            .pipe(
+              take(1),
+              takeUntil(this.navigationStarts),
+              switchMap((result) => {
+                const next = this.followUp(request, result);
+                return next ? this.present(next) : of(null);
+              }),
+            )
+            .subscribe((outcome) => {
+              if (outcome?.kind !== 'presented') this.restoreOwner(request);
+            });
           return of({ kind: 'presented', surface: request.surface } as const);
         }),
       ),
@@ -297,6 +310,54 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     flow: EncryptionDialogKind,
   ): (() => Observable<Type<unknown>>) | undefined {
     return this.encryptionLoaders?.[flow];
+  }
+
+  /**
+   * Settings beneath a trust dialog: the Settings dialog it is nested over, or the routed
+   * Settings page it returns to at desktop width.
+   */
+  private settingsOwner(
+    request: WorkspaceApplicationSurfaceRequest,
+  ): { readonly section: string | null } | null {
+    const returnTo = request.context?.returnTo;
+    if (returnTo?.kind === 'settings') return returnTo;
+    return request.context?.placement === 'nested' ? { section: null } : null;
+  }
+
+  /**
+   * Whether closing a trust dialog can land in Security settings: it opens Settings there
+   * from the top level, and returns there when Security is already beneath. Over another
+   * Settings section closing would land there instead, so the dialog must not offer it.
+   */
+  private canOpenSecuritySettings(
+    request: WorkspaceApplicationSurfaceRequest,
+  ): boolean {
+    const owner = this.settingsOwner(request);
+    return owner === null || owner.section === 'security';
+  }
+
+  /**
+   * The surface a trust dialog's close result asks for next. Trust pages cannot open
+   * Settings themselves (the capability does not depend on Workspace), so they close with
+   * a `TrustDialogResult` and this maps it. With Settings beneath, closing already
+   * returns there.
+   */
+  private followUp(
+    request: WorkspaceApplicationSurfaceRequest,
+    result: unknown,
+  ): WorkspaceApplicationSurfaceRequest | null {
+    if (
+      request.surface.kind !== 'trust' ||
+      !isTrustDialogResult(result) ||
+      this.settingsOwner(request) !== null
+    ) {
+      return null;
+    }
+    const restoreFocus = request.context?.restoreFocus;
+    return {
+      surface: { kind: 'settings', section: 'security' },
+      ...(restoreFocus ? { context: { restoreFocus } } : {}),
+    };
   }
 
   private ownerIsActive(request: WorkspaceApplicationSurfaceRequest): boolean {

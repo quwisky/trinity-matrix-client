@@ -8,8 +8,11 @@ import { DateTimeFormatService, QrCodeService } from '@trinity/platform-native';
 import { fireEvent, render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {
+  TrustService,
   TrustVerificationService,
+  MANAGE_IDENTITY,
   type NewSessionDetails,
+  type TrustStatus,
   type VerificationView,
 } from '@trinity/data-access/trust';
 import { of, Subject } from 'rxjs';
@@ -36,14 +39,30 @@ function view(partial: Partial<VerificationView>): VerificationView {
 
 async function renderPage(
   active: WritableSignal<VerificationView | null>,
-  options: { returnTo?: string | null; asModal?: boolean } = {},
+  options: {
+    returnTo?: string | null;
+    asModal?: boolean;
+    status?: TrustStatus;
+    canOpenSecuritySettings?: boolean;
+  } = {},
 ) {
-  const { returnTo = null, asModal = false } = options;
+  const {
+    returnTo = null,
+    asModal = false,
+    status = 'ready',
+    canOpenSecuritySettings,
+  } = options;
   const close = vi.fn();
   const result = await render(DeviceVerificationPage, {
-    inputs: { asModal },
+    inputs: {
+      asModal,
+      ...(canOpenSecuritySettings === undefined
+        ? {}
+        : { canOpenSecuritySettings }),
+    },
     providers: [
       MockProvider(TrustVerificationService, { active }),
+      MockProvider(TrustService, { status: signal(status) }),
       MockProvider(QrCodeService, {
         cameraSupported: true,
         createDataUrl: vi.fn(() =>
@@ -464,6 +483,177 @@ describe('DeviceVerificationPage', () => {
     fireEvent.click(button(container, 'Done'));
 
     expect(close).not.toHaveBeenCalled();
+  });
+
+  // #1223: an identity set up on another device, with no recovery, can only be verified
+  // from that device. Someone who no longer has it must find the way on (the confirmed
+  // reset in Security settings) from here; the dialog itself never offers the reset.
+  describe('without another device to verify with', () => {
+    const openButton = () =>
+      screen.getByRole('button', { name: 'Open Security settings' });
+    const noButton = () =>
+      expect(
+        screen.queryByRole('button', { name: 'Open Security settings' }),
+      ).toBeNull();
+
+    it('routes the idle flow to Security settings', async () => {
+      const { svc, router } = await renderPage(signal(null), {
+        status: 'needs-verification',
+      });
+
+      expect(screen.getByText('Can’t use your other device?')).toBeTruthy();
+      fireEvent.click(openButton());
+
+      expect(svc.dismiss).toHaveBeenCalledOnce();
+      expect(svc.cancel).not.toHaveBeenCalled();
+      expect(router.navigateByUrl).toHaveBeenCalledWith('/settings/security', {
+        replaceUrl: true,
+      });
+    });
+
+    it('cancels the waiting request and asks the opener to manage the identity', async () => {
+      const { svc, router, close } = await renderPage(
+        signal(view({ stage: 'requested' })),
+        {
+          asModal: true,
+          status: 'needs-verification',
+          canOpenSecuritySettings: true,
+        },
+      );
+
+      fireEvent.click(openButton());
+
+      expect(svc.cancel).toHaveBeenCalledOnce();
+      expect(svc.dismiss).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledWith(MANAGE_IDENTITY);
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    // Dismissing clears `active()`, and a host that closes its dialog when that happens
+    // would close it without the result. Closing first keeps the result; later closes are
+    // no-ops.
+    it('closes with its result before it clears the verification', async () => {
+      const { svc, close } = await renderPage(
+        signal(view({ stage: 'requested' })),
+        {
+          asModal: true,
+          status: 'needs-verification',
+          canOpenSecuritySettings: true,
+        },
+      );
+
+      fireEvent.click(openButton());
+
+      const closedAt = close.mock.invocationCallOrder[0] ?? Infinity;
+      expect(closedAt).toBeLessThan(
+        vi.mocked(svc.cancel).mock.invocationCallOrder[0] ?? -Infinity,
+      );
+      expect(closedAt).toBeLessThan(
+        vi.mocked(svc.dismiss).mock.invocationCallOrder[0] ?? -Infinity,
+      );
+    });
+
+    it('offers the way on once the request has stopped, without cancelling it again', async () => {
+      const { svc } = await renderPage(
+        signal(view({ stage: 'cancelled', cancelReason: 'Timed out.' })),
+        { status: 'needs-verification' },
+      );
+
+      fireEvent.click(openButton());
+
+      expect(svc.cancel).not.toHaveBeenCalled();
+      expect(svc.dismiss).toHaveBeenCalledOnce();
+    });
+
+    it('cannot run while the request is still being sent', async () => {
+      const { svc, fixture } = await renderPage(signal(null), {
+        status: 'needs-verification',
+      });
+      vi.mocked(svc.startSelfVerification).mockReturnValue(new Subject());
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Start verification' }),
+      );
+      await fixture.whenStable();
+
+      expect((openButton() as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('does nothing once the other device has answered in the same tick', async () => {
+      const active = signal<VerificationView | null>(
+        view({ stage: 'requested' }),
+      );
+      const { svc, fixture, close } = await renderPage(active, {
+        asModal: true,
+        status: 'needs-verification',
+        canOpenSecuritySettings: true,
+      });
+
+      active.set(view({ stage: 'ready' }));
+      fixture.componentInstance.openSecuritySettings();
+
+      expect(svc.cancel).not.toHaveBeenCalled();
+      expect(svc.dismiss).not.toHaveBeenCalled();
+      expect(close).not.toHaveBeenCalled();
+    });
+
+    it('describes the button with the question it answers', async () => {
+      await renderPage(signal(null), { status: 'needs-verification' });
+
+      const describedBy = openButton().getAttribute('aria-describedby');
+      expect(document.getElementById(describedBy ?? '')?.textContent).toContain(
+        'Can’t use your other device?',
+      );
+    });
+
+    it('never offers a reset itself', async () => {
+      await renderPage(signal(view({ stage: 'requested' })), {
+        status: 'needs-verification',
+      });
+
+      expect(screen.queryByRole('button', { name: /reset/i })).toBeNull();
+    });
+
+    // From Settings → Devices, closing returns to Devices: the label would not be true.
+    it('stays out of a modal whose opener cannot show Security settings', async () => {
+      await renderPage(signal(view({ stage: 'requested' })), {
+        asModal: true,
+        status: 'needs-verification',
+      });
+
+      noButton();
+    });
+
+    it('stays out of the way once the other device answered', async () => {
+      await renderPage(signal(view({ stage: 'ready' })), {
+        status: 'needs-verification',
+      });
+
+      noButton();
+    });
+
+    it('stays out of an incoming request', async () => {
+      await renderPage(signal(view({ stage: 'requested', incoming: true })), {
+        status: 'needs-verification',
+      });
+
+      noButton();
+    });
+
+    it('stays out of a verification with another user', async () => {
+      await renderPage(
+        signal(view({ stage: 'requested', isSelfVerification: false })),
+        { status: 'needs-verification' },
+      );
+
+      noButton();
+    });
+
+    it('stays out of the way when a recovery key can unlock the device', async () => {
+      await renderPage(signal(null), { status: 'needs-recovery' });
+
+      noButton();
+    });
   });
 
   describe('a request from a new session', () => {
