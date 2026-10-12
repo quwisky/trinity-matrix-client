@@ -158,6 +158,11 @@ function safeName(filename: string): string {
  * The rejection @capacitor/share 8 gives a dismissed sheet, with no error code, on both
  * platforms: iOS when `UIActivityViewController` completes with `completed == false`,
  * Android when the chooser returns `RESULT_CANCELED` while Trinity's activity never stopped.
+ *
+ * Re-check this exact match whenever @capacitor/share is upgraded: 8.0.3 rejects with it in
+ * `ios/Sources/SharePlugin/SharePlugin.swift:63` and
+ * `android/src/main/java/com/capacitorjs/plugins/share/SharePlugin.java:79`. If the message
+ * changes, a dismissal becomes a reported failure.
  */
 const SHARE_CANCELED = 'Share canceled';
 

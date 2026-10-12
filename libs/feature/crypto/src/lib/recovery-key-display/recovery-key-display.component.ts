@@ -83,8 +83,12 @@ export class RecoveryKeyDisplayComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (outcome) => {
-          // A dismissed share sheet saved nothing, so never announce "downloaded" for it.
-          if (outcome.kind === 'cancelled') return;
+          // A dismissed share sheet may have saved nothing: never announce "downloaded"
+          // for it, and clear an earlier message so it doesn't linger.
+          if (outcome.kind === 'cancelled') {
+            this.announcement.set('');
+            return;
+          }
           this.announcement.set(
             outcome.kind === 'completed'
               ? 'Recovery key downloaded.'

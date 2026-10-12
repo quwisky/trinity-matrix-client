@@ -20,7 +20,7 @@ Unsupported and disabled behavior is an expected state. Do not infer support fro
 
 Each operation has its own interface and Observable outcome. This prevents one broad bridge from exposing platform internals to product code and lets a host support only the operations it implements.
 
-An outcome is `completed`, `unavailable` or `rejected`. File export adds `cancelled`: the user dismissed the native share sheet, so nothing was saved and nothing failed. Consumers report neither success nor failure for it. Browser and desktop downloads cannot observe a cancel, so they never return it.
+An outcome is `completed`, `unavailable` or `rejected`. File export adds `cancelled`: the host reported the native share sheet as dismissed, so it may not have saved anything. On Android this also covers a share target that kept Trinity in the foreground, such as Copy. Consumers report neither success nor failure for it. Browser and desktop downloads cannot observe a cancel, so they never return it.
 
 Electron renderer code crosses a validated preload bridge. Capacitor adapters wrap native plugins. The Web adapter supplies browser behavior or an explicit unavailable result. Application Runtime combines these results into startup and recovery state without leaking raw host errors.
 

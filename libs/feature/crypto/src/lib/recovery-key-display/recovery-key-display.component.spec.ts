@@ -90,6 +90,20 @@ describe('RecoveryKeyDisplayComponent', () => {
     expect(fixture.componentInstance.announcement()).toBe('');
   });
 
+  // A stale "downloaded" from an earlier save must not stay in the live region either.
+  it('clears an earlier announcement when the user cancels a later save', async () => {
+    const { fixture } = await renderKey();
+    fixture.componentInstance.download();
+    expect(fixture.componentInstance.announcement()).toBe(
+      'Recovery key downloaded.',
+    );
+
+    save.mockReturnValueOnce(of({ kind: 'cancelled' }));
+    fixture.componentInstance.download();
+
+    expect(fixture.componentInstance.announcement()).toBe('');
+  });
+
   it('surfaces a manual-copy hint when the clipboard write fails', async () => {
     const writeText = vi.fn().mockRejectedValue(new Error('denied'));
     Object.defineProperty(navigator, 'clipboard', {

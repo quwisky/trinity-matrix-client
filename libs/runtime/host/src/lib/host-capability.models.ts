@@ -68,8 +68,9 @@ export interface HostBackOperation {
 }
 
 /**
- * `cancelled`: the user dismissed the host's save UI (the native share sheet), so nothing
- * was saved and nothing failed. Consumers report neither success nor failure for it.
+ * `cancelled`: the host reported its save UI (the native share sheet) as dismissed, so it
+ * may not have saved anything. On Android this also covers a share target that kept Trinity
+ * in the foreground, such as Copy. Consumers report neither success nor failure for it.
  * Browser and desktop downloads cannot observe a cancel and never produce it.
  */
 export type HostFileExportOutcome =
