@@ -94,19 +94,102 @@ describe('TrnButton', () => {
     expect(row).not.toContain('whitespace-nowrap');
   });
 
-  it('lines an inline shape up with the text column by dropping its inline padding', () => {
-    for (const size of ['xs', 'sm', 'md', 'lg'] as const) {
-      const inline = trnButtonRecipe({
-        presentation: 'link',
-        shape: 'inline',
+  describe('inline shape', () => {
+    const SIZES = ['xs', 'sm', 'md', 'lg'] as const;
+    const SIZE_PADDING = {
+      xs: 'px-2',
+      sm: 'px-2.5',
+      md: 'px-2.5',
+      lg: 'px-2.5',
+    };
+    const INLINE_CLASSES = [
+      'px-0',
+      'has-data-[icon=inline-end]:pe-0',
+      'has-data-[icon=inline-start]:ps-0',
+    ];
+
+    function recipe(
+      shape: TrnButtonShape,
+      size: TrnButtonSize,
+      presentation: TrnButtonPresentation = 'link',
+    ): string[] {
+      return trnButtonRecipe({
+        presentation,
+        shape,
         size,
         variant: 'primary',
       }).split(' ');
-
-      expect(inline).toContain('px-0');
-      expect(inline).not.toContain('px-2');
-      expect(inline).not.toContain('px-2.5');
     }
+
+    it('drops all inline padding, icons included, so the label lines up with the text column', () => {
+      for (const size of SIZES) {
+        const inline = recipe('inline', size);
+
+        expect(inline).toEqual(expect.arrayContaining(INLINE_CLASSES));
+        expect(inline).not.toContain(SIZE_PADDING[size]);
+      }
+    });
+
+    it('keeps its height and width: it is not a full-width row', () => {
+      for (const size of SIZES) {
+        const inline = recipe('inline', size);
+
+        expect(inline).not.toContain('h-auto');
+        expect(inline).not.toContain('w-full');
+        expect(inline).not.toContain('whitespace-normal');
+      }
+    });
+
+    it('keeps the shared focus ring', () => {
+      for (const presentation of ['link', 'ghost'] as const) {
+        expect(recipe('inline', 'sm', presentation)).toEqual(
+          expect.arrayContaining([
+            'focus-visible:border-[color:var(--trinity-focus-ring)]',
+            'focus-visible:ring-[color:var(--trinity-focus-ring)]',
+            'dark:focus-visible:ring-[color:var(--trinity-focus-ring)]',
+          ]),
+        );
+      }
+    });
+
+    it('leaves the label shape as it was', () => {
+      for (const size of SIZES) {
+        const label = recipe('label', size);
+        const inline = recipe('inline', size);
+
+        expect(label).toContain(SIZE_PADDING[size]);
+        for (const added of INLINE_CLASSES) {
+          expect(label).not.toContain(added);
+        }
+        // Only the inline padding, plain and beside an icon, differs between the shapes.
+        const inlinePadding =
+          /^(?:px-|has-data-\[icon=inline-(?:end|start)\]:p[es]-)/u;
+        expect(label.filter((name) => !inlinePadding.test(name))).toEqual(
+          inline.filter((name) => !inlinePadding.test(name)),
+        );
+      }
+    });
+
+    it('applies through the directive', async () => {
+      @Component({
+        imports: [TrnButton],
+        template: `<button trnBtn presentation="link" shape="inline" size="sm">
+          Preview
+        </button>`,
+      })
+      class InlineHostComponent {}
+
+      const { fixture } = await render(InlineHostComponent);
+      const button = (fixture.nativeElement as HTMLElement).querySelector(
+        'button',
+      ) as HTMLButtonElement;
+
+      expect([...button.classList]).toEqual(
+        expect.arrayContaining(INLINE_CLASSES),
+      );
+      expect(button.classList).not.toContain('px-2.5');
+      expect(button.hasAttribute('data-trn-icon-button')).toBe(false);
+    });
   });
 
   it('renders a solid danger action as a filled danger button, not a tint', () => {
