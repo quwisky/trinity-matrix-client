@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "data-access-diagnostic-log",
+  "projectType": "library",
+  "sourceRoot": "libs/data-access/diagnostic-log/src",
+  "prefix": "trn",
+  "tags": [
+    "type:data-access",
+    "scope:shared",
+    "role:capability",
+    "capability:diagnostics"
+  ],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

@@ -33,6 +33,9 @@
         "./libs/data-access/matrix-client/src/index.ts"
       ],
       "@trinity/data-access/auth": ["./libs/data-access/auth/src/index.ts"],
+      "@trinity/data-access/diagnostic-log": [
+        "./libs/data-access/diagnostic-log/src/index.ts"
+      ],
       "@trinity/data-access/notifications": [
         "./libs/data-access/notifications/src/index.ts"
       ],

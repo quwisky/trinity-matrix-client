@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **70 Nx projects** and **275 dependencies**. No project cycles detected.
+This snapshot contains **71 Nx projects** and **275 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -33,7 +33,7 @@ Capability-to-capability dependencies are valid only inside the same named capab
 | -------------------- | -------: | ------------------------------------------------------------------------------------------------------ |
 | `role:app`           |        5 | `role:app`, `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system` |
 | `role:application`   |        7 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
-| `role:capability`    |       14 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
+| `role:capability`    |       15 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
 | `role:kernel`        |        5 | `role:kernel`                                                                                          |
 | `role:adapter`       |        6 | `role:adapter`, `role:kernel`                                                                          |
 | `role:design-system` |       19 | `role:design-system`, `role:kernel`, `role:adapter`                                                    |
@@ -71,6 +71,7 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `components-overlay`              | `@trinity/components/overlay`              | `./libs/components/overlay/src/index.ts`              |
 | `data-access-accounts`            | `@trinity/data-access/accounts`            | `./libs/data-access/accounts/src/index.ts`            |
 | `data-access-auth`                | `@trinity/data-access/auth`                | `./libs/data-access/auth/src/index.ts`                |
+| `data-access-diagnostic-log`      | `@trinity/data-access/diagnostic-log`      | `./libs/data-access/diagnostic-log/src/index.ts`      |
 | `data-access-discovery`           | `@trinity/data-access/discovery`           | `./libs/data-access/discovery/src/index.ts`           |
 | `data-access-gif`                 | `@trinity/data-access/gif`                 | `./libs/data-access/gif/src/index.ts`                 |
 | `data-access-homeserver`          | `@trinity/data-access/homeserver`          | `./libs/data-access/homeserver/src/index.ts`          |
@@ -134,6 +135,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `components-storybook-host`       | `libs/components/storybook-host`       | role:design-system; capability:design-system    |                   1 |
 | `data-access-accounts`            | `libs/data-access/accounts`            | role:capability; capability:accounts            |                   4 |
 | `data-access-auth`                | `libs/data-access/auth`                | role:capability; capability:accounts            |                   7 |
+| `data-access-diagnostic-log`      | `libs/data-access/diagnostic-log`      | role:capability; capability:diagnostics         |                   0 |
 | `data-access-discovery`           | `libs/data-access/discovery`           | role:capability; capability:discovery           |                   3 |
 | `data-access-gif`                 | `libs/data-access/gif`                 | role:capability; capability:conversations       |                   2 |
 | `data-access-homeserver`          | `libs/data-access/homeserver`          | role:capability; capability:discovery           |                   1 |
