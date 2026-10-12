@@ -1216,6 +1216,8 @@ describe('MessageRowComponent', () => {
     expect(button?.textContent?.trim()).toBe('Verify this device');
     expect(button?.getAttribute('aria-label')).toBeNull();
     expect(button?.type).toBe('button');
+    // A link in the message's text column: no inline padding, so it lines up with the text.
+    expect(button?.classList).toContain('px-0');
     fireEvent.click(button as HTMLElement);
     expect(action).toHaveBeenCalledOnce();
     expect(action).toHaveBeenCalledWith({ type: 'fix-undecryptable' });
