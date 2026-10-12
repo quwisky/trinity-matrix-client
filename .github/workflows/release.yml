@@ -526,7 +526,7 @@ jobs:
                 --draft $prerelease \
                 --verify-tag \
                 --title "Trinity $TAG" \
-                --notes "Desktop and web builds for $TAG. Artifacts are unsigned unless signing secrets were configured — see https://quwisky.github.io/trinity-matrix-client/developers/platforms/electron/"
+                --notes "Desktop and web builds for $TAG. Artifacts are unsigned unless signing secrets were configured — see https://docs.trinityproject.dev/trinity-matrix-client/developers/platforms/electron/"
               ;;
           esac
 
