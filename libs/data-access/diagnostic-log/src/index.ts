@@ -1,18 +1,33 @@
 // @trinity/data-access/diagnostic-log — the on-device diagnostic log: capture, storage,
 // redaction and export. Consumers go through DiagnosticLogService; nothing reads the store.
-export * from './lib/diagnostic-entry.model';
-export * from './lib/scrub-secrets';
-export * from './lib/store/diagnostic-log-store';
-export * from './lib/store/indexed-db-log-store';
-export * from './lib/diagnostic-log-recorder';
-export * from './lib/capture/format-log-args';
-export * from './lib/capture/console-capture';
-export * from './lib/platform-description';
-export * from './lib/build-label';
+// Capture, scrubbing, redaction and the IndexedDB store stay internal to the library.
+export {
+  DiagnosticLogNotDeletedError,
+  DiagnosticLogService,
+  type DiagnosticAvailability,
+  type DiagnosticRecord,
+  type DiagnosticSdkCall,
+} from './lib/diagnostic-log.service';
 export * from './lib/diagnostic-log.tokens';
-export * from './lib/keep-diagnostic-log.preference';
-export * from './lib/diagnostic-log.service';
-export * from './lib/provide-diagnostic-log';
-export * from './lib/redaction/redact-log';
-export * from './lib/diagnostic-bundle';
-export * from './lib/bug-report-url';
+export { provideDiagnosticLog } from './lib/provide-diagnostic-log';
+export type {
+  DiagnosticAccount,
+  DiagnosticBundle,
+  DiagnosticReportFacts,
+} from './lib/diagnostic-bundle';
+export {
+  GITHUB_ISSUE_URL_LIMIT,
+  buildBugReportUrl,
+  type BugReportDraft,
+} from './lib/bug-report-url';
+export type {
+  DiagnosticEntry,
+  DiagnosticLevel,
+  DiagnosticSource,
+} from './lib/diagnostic-entry.model';
+// The store contract and its memory implementation, for specs that stand a memory store in
+// for the database through DIAGNOSTIC_LOG_STORE_FACTORY.
+export {
+  MemoryLogStore,
+  type DiagnosticLogStore,
+} from './lib/store/diagnostic-log-store';
