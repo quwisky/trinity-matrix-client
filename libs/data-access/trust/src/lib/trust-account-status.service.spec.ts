@@ -121,6 +121,50 @@ describe('TrustAccountStatusService', () => {
     subscription.unsubscribe();
   });
 
+  it('reads an account once for a burst of crypto events', async () => {
+    const b = fakeAccount({ defaultKeyId: 'k', verified: false });
+    const { service, subscription } = setup({ '@b:hs': b });
+    await vi.waitFor(() =>
+      expect(service.summaries().get('@b:hs')).toBe('unverified'),
+    );
+    expect(b.crypto.isCrossSigningReady).toHaveBeenCalledOnce();
+
+    for (let event = 0; event < 5; event++) {
+      b.emit(CryptoEvent.UserTrustStatusChanged);
+    }
+
+    await vi.waitFor(() =>
+      expect(b.crypto.isCrossSigningReady).toHaveBeenCalledTimes(2),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(b.crypto.isCrossSigningReady).toHaveBeenCalledTimes(2);
+    subscription.unsubscribe();
+  });
+
+  it('summarises an account added to a running list and keeps the others', async () => {
+    const accounts: Record<string, FakeAccount> = {
+      '@a:hs': fakeAccount({ defaultKeyId: 'k', verified: true }),
+    };
+    const { service, liveAccountIds, subscription } = setup(accounts);
+    await vi.waitFor(() =>
+      expect(service.summaries()).toEqual(new Map([['@a:hs', 'verified']])),
+    );
+
+    accounts['@b:hs'] = fakeAccount({ defaultKeyId: 'k', verified: false });
+    liveAccountIds.set(['@a:hs', '@b:hs']);
+    TestBed.tick();
+
+    await vi.waitFor(() =>
+      expect(service.summaries()).toEqual(
+        new Map([
+          ['@a:hs', 'verified'],
+          ['@b:hs', 'unverified'],
+        ]),
+      ),
+    );
+    subscription.unsubscribe();
+  });
+
   it('keeps the newest read when an older one resolves later', async () => {
     const b = fakeAccount({ defaultKeyId: 'k', verified: false });
     let releaseFirst!: () => void;

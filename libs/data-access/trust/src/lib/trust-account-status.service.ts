@@ -3,7 +3,9 @@ import { toObservable } from '@angular/core/rxjs-interop';
 import {
   EMPTY,
   Observable,
+  asapScheduler,
   catchError,
+  debounceTime,
   defer,
   finalize,
   from,
@@ -83,7 +85,10 @@ export class TrustAccountStatusService {
     );
   }
 
-  /** Re-read one Account on each of its crypto events; a newer read cancels an older one. */
+  /**
+   * Re-read one Account after its crypto events. A burst within one microtask starts one
+   * read; a read that a newer one overtakes still runs, but its result is dropped.
+   */
   private watch(accountId: string): Observable<void> {
     return defer(() => {
       const context = this.cryptoPort.forAccount(accountId);
@@ -91,6 +96,7 @@ export class TrustAccountStatusService {
       const { client, crypto } = context;
       return changesOf(client).pipe(
         startWith(undefined),
+        debounceTime(0, asapScheduler),
         switchMap(() =>
           crypto
             ? from(readTrustSnapshot(client, crypto)).pipe(
