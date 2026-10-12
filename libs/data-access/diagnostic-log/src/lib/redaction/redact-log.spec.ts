@@ -127,6 +127,9 @@ describe('createLogRedactor', () => {
         'devices: DEVICE1, DEVICE2 in a list',
       ],
       ['Device abcdefghijklmnop removed', 'Device DEVICE2 removed'],
+      ['new device Phone_Pixel7 added', 'new device DEVICE2 added'],
+      ['device AB3DE9XYZ1', 'device DEVICE2'],
+      ['device abcdefghijklmnop', 'device DEVICE2'],
       ['{"device_id":"AB3DE9XYZ1"}', '{"device_id":"DEVICE2"}'],
       ['session for deviceId=Zx9Kq2Lm4P ok', 'session for deviceId=DEVICE2 ok'],
     ])('redacts the ID in %s', (line, expected) => {
@@ -137,6 +140,16 @@ describe('createLogRedactor', () => {
       'CONNECTING ENCRYPTION KEYBACKUP started',
       'sendToDevice: sending m.room_key_request',
       'the device is fine',
+      'device verification requested',
+      'device tracking enabled',
+      'device signing keys uploaded',
+      'device information not available',
+      'Upload device signatures failed',
+      'device announcement received',
+      'device deleted',
+      'Ignoring unknown device initialising',
+      'device notifications muted',
+      'device registrations pending',
     ])('leaves ordinary words alone in %s', (line) => {
       expect(redact(line)).toBe(line);
     });

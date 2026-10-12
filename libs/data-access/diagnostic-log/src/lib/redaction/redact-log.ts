@@ -62,6 +62,47 @@ const WORD = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]+(?![A-Za-z0-9_-])/g;
 // Longest bare name tried against known servers (a DNS name is at most 253 characters).
 const MAX_NAME = 253;
 const DEVICE_WORDS_AFTER_KEYWORD = 4;
+// Ordinary words that follow "device" in crypto log lines and are long enough to look opaque.
+const DEVICE_STOPWORDS = new Set([
+  'verification',
+  'verifications',
+  'information',
+  'announcement',
+  'announcements',
+  'tracking',
+  'signing',
+  'signatures',
+  'initialising',
+  'initializing',
+  'deleted',
+  'upload',
+  'uploaded',
+  'management',
+  'notification',
+  'notifications',
+  'registration',
+  'authentication',
+  'configuration',
+  'synchronisation',
+  'synchronization',
+]);
+const ENGLISH_SUFFIX = /(?:ing|tions?|ments?|ed|ures?|ity|ies|al|ness)$/;
+
+/**
+ * The first word after a standalone "device" is an ID when it has a digit, is all capitals
+ * or has an interior capital (6+ characters, the caller checks), or is a long lowercase run
+ * that is neither a known log word nor shaped like an English word.
+ */
+function isFirstWordDeviceId(word: string): boolean {
+  if (/\d/.test(word) || /^[A-Z_-]+$/.test(word) || /[a-z].*[A-Z]/.test(word)) {
+    return true;
+  }
+  return (
+    /^[a-z]{12,}$/.test(word) &&
+    !DEVICE_STOPWORDS.has(word) &&
+    !ENGLISH_SUFFIX.test(word)
+  );
+}
 const ALREADY_PLACEHOLDER = /^(?:DEVICE|server)\d+$/;
 
 /** A redactor for one exported file. */
@@ -251,7 +292,7 @@ class IdentifierRedactor implements LogRedactor {
           word.length >= 6 &&
           word.length <= 32 &&
           !ALREADY_PLACEHOLDER.test(word) &&
-          ((standalone && words === 1) ||
+          ((standalone && words === 1 && isFirstWordDeviceId(word)) ||
             /\d/.test(word) ||
             /^[A-Z_-]+$/.test(word));
         if (idLike && start >= editedUntil) {
