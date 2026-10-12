@@ -13,3 +13,4 @@ export * from './lib/diagnostic-log.tokens';
 export * from './lib/keep-diagnostic-log.preference';
 export * from './lib/diagnostic-log.service';
 export * from './lib/provide-diagnostic-log';
+export * from './lib/redaction/redact-log';
