@@ -58,37 +58,26 @@
   class="composer"
   [class.composer--recording]="attachments.recordingVoice()"
 >
-  <!-- Both pickers render in the CDK overlay container, anchored to the input row. They were
-       `position: absolute` children pinned at `bottom: calc(100% + 4px)`, which is what made
-       `.composer` have to stay `position: relative` and what would have let any
-       `overflow: hidden` ancestor cut one in half. `[(open)]` because these two are opened
-       and closed by the person using them, so an outside press is theirs to answer. -->
+  <!-- The expression panel (GIFs, stickers and emoji) renders in the CDK overlay container,
+       anchored to the input row, so no `overflow: hidden` ancestor can cut it in half.
+       `[(open)]` because it is opened and closed by the person using it, so an outside press
+       is theirs to answer. -->
   <ng-template
     [trnAnchoredOverlay]="composerField"
     [(open)]="pickerOpen"
     side="top"
     align="end"
   >
-    <trn-emoji-picker [pickerId]="pickerId" (picked)="onPickerSelect($event)" />
-  </ng-template>
-  <ng-template
-    [trnAnchoredOverlay]="composerField"
-    [(open)]="attachments.gifPickerOpen"
-    side="top"
-    align="end"
-  >
-    <trn-gif-picker (gifSelect)="onGifSelect($event)" />
-  </ng-template>
-  <ng-template
-    [trnAnchoredOverlay]="composerField"
-    [(open)]="stickerPickerOpen"
-    side="top"
-    align="start"
-  >
-    <trn-sticker-picker
-      [packs]="stickerPacks()"
-      (selected)="onStickerSelect($event)"
-      (dismiss)="closeStickerPicker()"
+    <trn-expression-picker
+      [panelId]="pickerId"
+      [gifEnabled]="attachments.gifEnabled()"
+      [gifBusy]="attachments.gifDownloading()"
+      [stickerEnabled]="stickerEnabled()"
+      [stickerPacks]="stickerPacks()"
+      (emojiPick)="onPickerSelect($event)"
+      (gifSelect)="onGifSelect($event)"
+      (stickerSelect)="onStickerSelect($event)"
+      (dismiss)="closePicker()"
       (manage)="manageImagePacks()"
     />
   </ng-template>
@@ -166,21 +155,16 @@
       [hasMenu]="hasInsertMenu()"
       [editing]="editing()"
       [uploading]="contextUploadProgress() !== null"
-      [gifEnabled]="attachments.gifEnabled()"
-      [gifDownloading]="attachments.gifDownloading()"
       [richActions]="richActions()"
       [voiceSupported]="attachments.voiceSupported"
       [recording]="attachments.recordingVoice()"
       [locationSharing]="attachments.locationSharing()"
-      [stickerEnabled]="stickerEnabled()"
       [sendBlocked]="sendBlocked()"
       [captureMode]="attachments.captureMode"
       (attachFile)="onAttach()"
-      (pickGif)="toggleGifPicker()"
       (createPoll)="openPollDialog()"
       (shareLocation)="shareLocation()"
       (recordVoice)="startVoiceRecording()"
-      (pickSticker)="toggleStickerPicker()"
       (takePhoto)="onTakePhoto()"
       (recordVideo)="onRecordVideo()"
     />
@@ -249,13 +233,20 @@
       type="button"
       trnIconButton
       class="composer__emoji"
-      trnTooltip="Emoji"
-      aria-label="Insert emoji"
+      trnTooltip="Emoji, GIFs and stickers"
+      aria-label="Emoji, GIFs and stickers"
+      data-testid="composer-expressions"
       [attr.aria-expanded]="pickerOpen()"
       [attr.aria-controls]="pickerOpen() ? pickerId : null"
-      (click)="toggleEmojiPicker()"
+      (click)="togglePicker()"
     >
-      <trn-icon name="smile" motion="pop" />
+      <!-- A chosen GIF is fetched before its upload starts, and the panel closes once it
+           arrives. The trigger shows the wait meanwhile, as the `+` used to. -->
+      @if (attachments.gifDownloading()) {
+        <trn-spinner size="md" />
+      } @else {
+        <trn-icon name="smile" motion="pop" />
+      }
     </button>
     <!-- Shown at every width and pointer type: touch has no reliable Enter-to-send, and on
        a pointer device it is still the discoverable way to send when Enter is ambiguous

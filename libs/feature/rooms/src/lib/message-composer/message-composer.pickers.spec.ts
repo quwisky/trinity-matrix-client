@@ -7,7 +7,7 @@ import {
 } from './message-composer.spec-harness';
 import { ApplicationRef, signal, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -20,7 +20,7 @@ import {
 import { type BatchItem } from '../shared/send-media-batch';
 import { MockProvider } from 'ng-mocks';
 import { VoiceRecorderService } from '@trinity/platform-native';
-import { GifService, GifSettingsService } from '@trinity/data-access/gif';
+import { GifSettingsService } from '@trinity/data-access/gif';
 import {
   TrnSurfaceService,
   TrnToastService,
@@ -89,59 +89,6 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     await fixture.whenStable();
 
     expect(document.querySelector('[data-testid=poll-question]')).toBe(
-      document.activeElement,
-    );
-  });
-
-  it('hands mobile GIF focus to the real GIF search', async () => {
-    setMobilePlatform(true);
-    const { fixture, container } = await renderComposer({}, [
-      ...gifProviders(),
-      MockProvider(GifService, {
-        search: vi.fn(() => of([])),
-        download: vi.fn(),
-      }),
-    ]);
-
-    container
-      .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
-      ?.click();
-    await fixture.whenStable();
-    document
-      .querySelector<HTMLButtonElement>('[data-testid=insert-gif]')
-      ?.click();
-    TestBed.inject(ApplicationRef).tick();
-    await fixture.whenStable();
-
-    expect(document.querySelector('[data-testid=gif-search]')).toBe(
-      document.activeElement,
-    );
-  });
-
-  it('hands mobile Sticker focus to the real sticker search', async () => {
-    setMobilePlatform(true);
-    const { fixture, container } = await renderComposer(
-      { stickerPacks: [stickerPack] },
-      [
-        MockProvider(MediaService, {
-          resolveMedia: vi.fn(() => of('blob:sticker')),
-          pin: vi.fn(),
-          unpin: vi.fn(),
-        }),
-      ],
-    );
-
-    container
-      .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
-      ?.click();
-    await fixture.whenStable();
-    document
-      .querySelector<HTMLButtonElement>('[data-testid=insert-sticker]')
-      ?.click();
-    TestBed.inject(ApplicationRef).tick();
-    await fixture.whenStable();
-
-    expect(document.querySelector('[data-testid=sticker-search]')).toBe(
       document.activeElement,
     );
   });
@@ -258,36 +205,100 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     expect(document.querySelector(`#${controls}`)).not.toBeNull();
   });
 
-  it('omits GIF from the tray when no provider is configured', async () => {
+  it('names the trigger for everything the panel holds', async () => {
+    const { container } = await renderComposer();
+    const trigger = container.querySelector<HTMLElement>('.composer__emoji');
+
+    expect(trigger?.getAttribute('aria-label')).toBe(
+      'Emoji, GIFs and stickers',
+    );
+    expect(trigger?.getAttribute('trnTooltip')).toBe(
+      'Emoji, GIFs and stickers',
+    );
+  });
+
+  it('offers no GIFs tab, and no tab bar, when no provider is configured', async () => {
     const { fixture } = await renderComposer();
-    (fixture.nativeElement as HTMLElement)
-      .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
-      ?.click();
+    fixture.componentInstance.pickerOpen.set(true);
     await fixture.whenStable();
-    expect(document.querySelector('[data-testid=insert-gif]')).toBeNull();
+
+    expect(
+      document.querySelector('[data-testid=expression-picker]'),
+    ).not.toBeNull();
+    expect(document.querySelector('[role=tablist]')).toBeNull();
   });
 
-  it('offers GIF in the tray when a provider + key are configured', async () => {
+  it('offers a GIFs tab in the panel when a provider + key are configured', async () => {
     const { fixture } = await renderComposer({}, gifProviders());
-    (fixture.nativeElement as HTMLElement)
-      .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
-      ?.click();
+    fixture.componentInstance.pickerOpen.set(true);
     await fixture.whenStable();
-    expect(document.querySelector('[data-testid=insert-gif]')).not.toBeNull();
+
+    expect(
+      document.querySelector('[data-testid=expression-tab-gif]'),
+    ).not.toBeNull();
   });
 
-  it('opening the GIF picker closes the emoji picker and vice versa', async () => {
-    const { fixture } = await renderComposer({}, gifProviders());
+  it('offers a Stickers tab only where the room has stickers', async () => {
+    const { fixture } = await renderComposer({ stickerPacks: [stickerPack] });
+    fixture.componentInstance.pickerOpen.set(true);
+    await fixture.whenStable();
+
+    expect(
+      document.querySelector('[data-testid=expression-tab-sticker]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector('[data-testid=expression-tab-gif]'),
+    ).toBeNull();
+  });
+
+  it('sends a sticker chosen in the panel and closes it', async () => {
+    const { fixture } = await renderComposer({ stickerPacks: [stickerPack] }, [
+      MockProvider(MediaService, {
+        resolveMedia: vi.fn(() => of('blob:sticker')),
+        pin: vi.fn(),
+        unpin: vi.fn(),
+      }),
+    ]);
     const cmp = fixture.componentInstance;
-
+    const sent = vi.fn();
+    cmp.stickerSelect.subscribe(sent);
     cmp.pickerOpen.set(true);
-    cmp.toggleGifPicker();
-    expect(cmp['attachments'].gifPickerOpen()).toBe(true);
-    expect(cmp.pickerOpen()).toBe(false);
+    await fixture.whenStable();
 
-    cmp.toggleEmojiPicker();
-    expect(cmp.pickerOpen()).toBe(true);
-    expect(cmp['attachments'].gifPickerOpen()).toBe(false);
+    document
+      .querySelector<HTMLButtonElement>('[data-testid=expression-tab-sticker]')
+      ?.click();
+    await fixture.whenStable();
+    document
+      .querySelector<HTMLButtonElement>('[data-testid=sticker-party]')
+      ?.click();
+    await fixture.whenStable();
+
+    expect(sent).toHaveBeenCalledWith(
+      expect.objectContaining({ shortcode: 'party' }),
+    );
+    expect(cmp.pickerOpen()).toBe(false);
+    expect(
+      document.querySelector('[data-testid=expression-picker]'),
+    ).toBeNull();
+  });
+
+  it('closes the panel when it asks to be dismissed, and returns the caret to the input', async () => {
+    const { fixture, container } = await renderComposer({}, gifProviders());
+    const cmp = fixture.componentInstance;
+    cmp.pickerOpen.set(true);
+    await fixture.whenStable();
+
+    document
+      .querySelector('[data-testid=expression-tab-gif]')
+      ?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    await fixture.whenStable();
+    await Promise.resolve();
+
+    expect(cmp.pickerOpen()).toBe(false);
+    expect(document.activeElement).toBe(container.querySelector('textarea'));
   });
 
   it('opens image-pack settings with the active room as context', async () => {
@@ -297,11 +308,11 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     const { fixture } = await renderComposer({ roomId: '!room:hs' }, [
       MockProvider(WorkspaceApplicationSurfaceService, { open }),
     ]);
-    fixture.componentInstance.stickerPickerOpen.set(true);
+    fixture.componentInstance.pickerOpen.set(true);
 
     fixture.componentInstance.manageImagePacks();
 
-    expect(fixture.componentInstance.stickerPickerOpen()).toBe(false);
+    expect(fixture.componentInstance.pickerOpen()).toBe(false);
     expect(open).toHaveBeenCalledWith(
       expect.objectContaining({
         surface: { kind: 'settings', section: 'stickers' },
@@ -321,7 +332,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     );
     const { fixture } = await renderComposer({}, gifProviders(download));
     const cmp = fixture.componentInstance;
-    cmp['attachments'].gifPickerOpen.set(true);
+    cmp.pickerOpen.set(true);
 
     let emitted: { items: readonly BatchItem[]; caption: string } | undefined;
     cmp.submitMedia.subscribe((e) => {
@@ -334,8 +345,41 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     expect(download).toHaveBeenCalledWith(gifResult);
     expect(emitted?.items[0]?.file.type).toBe('image/gif');
     expect(emitted?.caption).toBe('');
-    expect(cmp['attachments'].gifPickerOpen()).toBe(false);
+    expect(cmp.pickerOpen()).toBe(false);
     expect(cmp['attachments'].gifDownloading()).toBe(false);
+  });
+
+  it('refuses a GIF while the Conversation cannot send, keeping the panel open', async () => {
+    const download = vi.fn();
+    const { fixture } = await renderComposer(
+      { sendBlocked: true },
+      gifProviders(download),
+    );
+    const cmp = fixture.componentInstance;
+    cmp.pickerOpen.set(true);
+
+    cmp.onGifSelect(gifResult);
+
+    expect(download).not.toHaveBeenCalled();
+    expect(cmp.pickerOpen()).toBe(true);
+  });
+
+  it('shows a spinner on the panel trigger while a chosen GIF downloads', async () => {
+    const { fixture, container } = await renderComposer(
+      {},
+      gifProviders(() => NEVER),
+    );
+    const cmp = fixture.componentInstance;
+    cmp.pickerOpen.set(true);
+
+    cmp.onGifSelect(gifResult);
+    await fixture.whenStable();
+
+    expect(
+      container.querySelector('.composer__emoji trn-spinner'),
+    ).not.toBeNull();
+    // Still open: it closes once the GIF has arrived and is on its way.
+    expect(cmp.pickerOpen()).toBe(true);
   });
 
   it('ends an active reply when a GIF is sent (media carries no reply relation)', async () => {
@@ -387,8 +431,8 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     });
 
     it('falls back to a plain attach button when the tray would hold one item', async () => {
-      // Thread composer with no GIF provider: attach is the only insert action left,
-      // so a one-item menu would be pure friction.
+      // Thread composer: attach is the only insert action left, so a one-item menu would
+      // be pure friction.
       const { container } = await renderComposer({ richActions: false }, [
         MockProvider(GifSettingsService, { configured: signal(false) }),
       ]);
@@ -401,29 +445,20 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       ).not.toBeNull();
     });
 
-    it('omits the room-only actions from the opened tray when richActions is off', async () => {
-      // The thread composer routes poll/location/voice to the room, not the thread, so
-      // they must not appear in its tray. Asserting it needs the menu opened — CDK only
-      // instantiates the ng-template on open, at the document root.
-      const { fixture } = await renderComposer({ richActions: false }, [
-        MockProvider(GifSettingsService, { configured: signal(true) }),
+    it("keeps the thread composer's + a plain attach button even with a GIF provider", async () => {
+      // GIFs live in the expression panel now, so a configured provider no longer turns the
+      // thread composer's lone attach action into a one-item tray.
+      const { container } = await renderComposer({ richActions: false }, [
+        ...gifProviders(),
         MockProvider(VoiceRecorderService, { supported: true }),
       ]);
 
-      (fixture.nativeElement as HTMLElement)
-
-        .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
-        ?.click();
-      await fixture.whenStable();
-
-      for (const id of ['insert-poll', 'insert-location', 'insert-voice']) {
-        expect(document.querySelector(`[data-testid=${id}]`)).toBeNull();
-      }
-      // ...while the actions that *are* thread-safe still appear.
       expect(
-        document.querySelector('[data-testid=insert-attach]'),
+        container.querySelector('[data-testid=composer-insert]'),
+      ).toBeNull();
+      expect(
+        container.querySelector('[data-testid=composer-insert-attach]'),
       ).not.toBeNull();
-      expect(document.querySelector('[data-testid=insert-gif]')).not.toBeNull();
     });
 
     it('offers every insert action in the tray with full config', async () => {
@@ -440,13 +475,15 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
 
       for (const id of [
         'insert-attach',
-        'insert-gif',
         'insert-poll',
         'insert-location',
         'insert-voice',
       ]) {
         expect(document.querySelector(`[data-testid=${id}]`)).not.toBeNull();
       }
+      // GIFs and stickers live in the expression panel, not in the tray.
+      expect(document.querySelector('[data-testid=insert-gif]')).toBeNull();
+      expect(document.querySelector('[data-testid=insert-sticker]')).toBeNull();
     });
 
     it('wires each tray item to its handler', async () => {
@@ -465,7 +502,6 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       const appRef = TestBed.inject(ApplicationRef);
       const wiring: [string, ReturnType<typeof vi.spyOn>][] = [
         ['insert-attach', vi.spyOn(cmp, 'onAttach').mockReturnValue()],
-        ['insert-gif', vi.spyOn(cmp, 'toggleGifPicker').mockReturnValue()],
         ['insert-poll', vi.spyOn(cmp, 'openPollDialog').mockReturnValue()],
         ['insert-location', vi.spyOn(cmp, 'shareLocation').mockReturnValue()],
         [
@@ -549,13 +585,13 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     });
   });
 
-  it('dismisses a picker on Escape from anywhere in the composer, not just the textarea', async () => {
-    // The binding lives on the host: the GIF picker can be opened from the insert tray,
-    // after which focus sits on the `+` trigger and never enters the textarea. Dispatch
-    // from a non-textarea element to prove the handler is not textarea-scoped.
+  it('dismisses the panel on Escape from anywhere in the composer, not just the textarea', async () => {
+    // The binding lives on the host: the panel can be open while focus sits on a composer
+    // button and never enters the textarea. Dispatch from a non-textarea element to prove
+    // the handler is not textarea-scoped.
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
-    cmp['attachments'].gifPickerOpen.set(true);
+    cmp.pickerOpen.set(true);
 
     fixture.nativeElement
       .querySelector('[data-testid=composer-insert]')
@@ -563,7 +599,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
         new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
       );
 
-    expect(cmp['attachments'].gifPickerOpen()).toBe(false);
+    expect(cmp.pickerOpen()).toBe(false);
   });
 
   it('always renders the send button, at every width and pointer type', async () => {
@@ -587,8 +623,8 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       }),
     ]);
 
-    // The `+` trigger swaps its icon for a spinner while a share (or GIF fetch) runs;
-    // the tray's own Location item carries the disabled state.
+    // The `+` trigger swaps its icon for a spinner while a share runs; the tray's own
+    // Location item carries the disabled state.
     const trigger = container.querySelector('[data-testid=composer-insert]');
     expect(trigger?.querySelector('trn-spinner')).not.toBeNull();
   });

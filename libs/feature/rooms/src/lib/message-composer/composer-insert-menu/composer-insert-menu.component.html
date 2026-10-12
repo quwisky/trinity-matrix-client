@@ -16,7 +16,7 @@
       [disabled]="editing()"
       (click)="openMobileSheet()"
     >
-      @if (locationSharing() || gifDownloading()) {
+      @if (locationSharing()) {
         <trn-spinner size="md" />
       } @else {
         <trn-icon name="plus" motion="rotate" />
@@ -33,7 +33,7 @@
       data-testid="composer-insert"
       [disabled]="editing()"
     >
-      @if (locationSharing() || gifDownloading()) {
+      @if (locationSharing()) {
         <trn-spinner size="md" />
       } @else {
         <trn-icon name="plus" motion="rotate" />
@@ -58,8 +58,8 @@
     </ng-template>
   }
 } @else {
-  <!-- Nothing to collect in a tray (thread composer, no GIF provider), so the `+`
-     stays a plain attach button. -->
+  <!-- Nothing to collect in a tray (thread composer), so the `+` stays a plain attach
+     button. -->
   <button
     #plainTrigger
     type="button"

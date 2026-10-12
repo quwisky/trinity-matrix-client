@@ -54,3 +54,4 @@ export * from './lib/conversation-search.service';
 export * from './lib/message-presentation';
 export * from './lib/privacy-preferences';
 export * from './lib/appearance-preferences';
+export * from './lib/composer-expression-tab.preference';

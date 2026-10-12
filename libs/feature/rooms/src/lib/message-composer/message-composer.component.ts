@@ -19,6 +19,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnButton, TrnIconButton } from '@trinity/components/controls';
 import {
   BannerComponent,
+  TrnSpinnerComponent,
   TrnTooltip,
 } from '@trinity/components/generic-content';
 import {
@@ -36,7 +37,6 @@ import { ComposerSuggestionsComponent } from './composer-suggestions/composer-su
 import { ComposerBannerComponent } from './composer-banner/composer-banner.component';
 import { ComposerVoiceBarComponent } from './composer-voice-bar/composer-voice-bar.component';
 import { MatrixHtmlDirective } from '../message-presentation/matrix-html.directive';
-import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { ComposerAttachmentsService } from './composer-attachments.service';
 import {
   type BatchItem,
@@ -51,13 +51,10 @@ import { ComposerFormatting } from './composer-formatting';
 import { composerPreview } from './composer-preview';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnAnchoredOverlayDirective } from '@trinity/components/overlay';
-import {
-  TrnEmojiIndex,
-  TrnEmojiPickerComponent,
-  type TrnEmojiPick,
-} from '@trinity/components/controls';
+import { TrnEmojiIndex, type TrnEmojiPick } from '@trinity/components/controls';
 import { type MentionMember } from './mention-autocomplete';
-import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
+import { ExpressionPickerComponent } from '../expression-picker/expression-picker.component';
+import { ComposerExpressionTabPreference } from '@trinity/data-access/timeline';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 
 /**
@@ -77,8 +74,8 @@ let nextPickerId = 0;
 
 /**
  * Discord-style composer: Enter sends, Shift+Enter inserts a newline. In edit mode
- * it is prefilled with the message draft and Esc cancels. An emoji button opens a
- * picker that inserts at the cursor.
+ * it is prefilled with the message draft and Esc cancels. The emoji button opens one
+ * panel for GIFs, stickers and emoji; an emoji inserts at the cursor.
  *
  * What it owns is the textarea: its value, its caret, the draft behind it and what a submit
  * makes of them. The two autocompletes ({@link EmojiAutocomplete}, {@link MentionAutocomplete})
@@ -97,9 +94,8 @@ let nextPickerId = 0;
     TrnIconButton,
     TrnIconComponent,
     TrnTooltip,
-    TrnEmojiPickerComponent,
-    GifPickerComponent,
-    StickerPickerComponent,
+    TrnSpinnerComponent,
+    ExpressionPickerComponent,
     ComposerFormatMenuComponent,
     ComposerAttachmentStripComponent,
     ComposerInsertMenuComponent,
@@ -109,12 +105,11 @@ let nextPickerId = 0;
   // Per composer instance, not per app: the room composer and the thread composer are alive
   // at once and each needs its own staged file, GIF grid and recording.
   providers: [ComposerAttachmentsService],
-  // Escape is handled at the host, not on the textarea, because the pickers it
-  // dismisses can be opened without the textarea ever holding focus — pick GIF from the
-  // insert tray on a narrow layout and CDK restores focus to the `+` trigger. The
-  // pickers render inside this component, so the keystroke reaches here from anywhere in
-  // the composer. Bound once: a second binding on the textarea would double-fire and
-  // close two things per press.
+  // Escape is handled at the host, not on the textarea, because what it dismisses can be
+  // open without the textarea ever holding focus — the expression panel's own trigger, for
+  // one. The panel itself renders in the overlay container, outside this host, and asks to
+  // be dismissed through its own output. Bound once: a second binding on the textarea would
+  // double-fire and close two things per press.
   host: { '(keydown.escape)': 'onEscape()' },
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
@@ -124,14 +119,15 @@ export class MessageComposerComponent {
     WorkspaceApplicationSurfaceService,
   );
   private readonly destroyRef = inject(DestroyRef);
+  private readonly expressionTab = inject(ComposerExpressionTabPreference);
   /**
-   * Unique per instance, because two composers are routinely alive at once: the room's own
-   * and the thread panel's. A shared literal put the same `id` on both open panels and left
+   * The expression panel's id. Unique per instance, because two composers are routinely
+   * alive at once: the room's own and the thread panel's. A shared literal put the same `id` on both open panels and left
    * the trigger's `aria-controls` resolving to whichever the document reached first — the
    * failure ARIA is least able to report, since the attribute is present and points at a
    * real element either way.
    */
-  protected readonly pickerId = `composer-emoji-picker-${nextPickerId++}`;
+  protected readonly pickerId = `composer-expressions-${nextPickerId++}`;
 
   readonly roomName = input('');
   /** Idle placeholder override (e.g. the thread composer); defaults to "Message #room". */
@@ -236,27 +232,22 @@ export class MessageComposerComponent {
    */
   protected readonly attachments = inject(ComposerAttachmentsService);
 
+  /** Whether the expression panel (GIFs, stickers and emoji) is open. */
   readonly pickerOpen = signal(false);
-  readonly stickerPickerOpen = signal(false);
   readonly stickerEnabled = computed(() =>
     this.stickerPacks().some((pack) =>
       pack.images.some((image) => image.usage.includes('sticker')),
     ),
   );
   /**
-   * Whether the narrow-layout `+` opens the insert tray rather than the file picker
-   * directly. With only one insert action left to offer — the thread composer with no
-   * GIF provider configured — a one-item menu is pure friction, so `+` stays a plain
-   * attach button there; it becomes a tray when a GIF provider or sticker is available,
-   * or when this host can capture, which is what gives the thread composer the tray on
-   * phones. See the media query in the SCSS for where the tray applies.
+   * Whether the `+` opens the insert tray rather than the file picker directly. With only
+   * one insert action left to offer — the thread composer — a one-item menu is pure
+   * friction, so `+` stays a plain attach button there; it becomes a tray when this host can
+   * capture, which is what gives the thread composer the tray on phones. GIFs and stickers
+   * live in the expression panel, not here.
    */
   readonly hasInsertMenu = computed(
-    () =>
-      this.richActions() ||
-      this.attachments.gifEnabled() ||
-      this.stickerEnabled() ||
-      this.attachments.captureMode !== 'none',
+    () => this.richActions() || this.attachments.captureMode !== 'none',
   );
   /**
    * The three autocomplete menus: `:shortcode`, `@mention` and `/command`.
@@ -355,6 +346,12 @@ export class MessageComposerComponent {
   constructor() {
     // Warm the lazy emoji index so a quickly typed `:shortcode:` still converts.
     void this.emojiIndex.load();
+    // Read the panel's last-used tab before anyone can open it, so it opens there rather
+    // than switching under the pointer. A failed read leaves Emoji, which is the default.
+    this.expressionTab
+      .restore()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
     this.field = new ComposerTextField(this.textarea, this.text, this.injector);
     this.menus = new ComposerAutocompletes(this.emojiIndex, this.members, {
       text: this.text,
@@ -408,6 +405,7 @@ export class MessageComposerComponent {
       },
       focusInput: () => queueMicrotask(() => this.field.focus()),
       leavePreview: () => this.previewing.set(false),
+      closePicker: () => this.pickerOpen.set(false),
       openFileDialog: () => this.fileInput()?.nativeElement.click(),
       openCaptureInput: (kind) =>
         (kind === 'photo'
@@ -626,11 +624,11 @@ export class MessageComposerComponent {
   /** Close both autocomplete menus and forget the tracked mentions. */
   private resetMenus(): void {
     this.menus.reset();
-    // A grid left open across a send is the one remaining route to two uploads at once: its
-    // items call `sendMedia` directly, and unlike the input button they are not disabled
-    // while an upload runs. `dispatchMedia` refuses it either way; closing the grid means the
+    // A GIF grid left open across a send is the one remaining route to two uploads at once:
+    // its items call `sendMedia` directly, and unlike the input button they are not disabled
+    // while an upload runs. `dispatchMedia` refuses it either way; closing the panel means the
     // user does not lose a chosen GIF to that refusal.
-    this.attachments.gifPickerOpen.set(false);
+    this.pickerOpen.set(false);
     // Leaving the preview on is a trap rather than a preference: it hides the textarea, so a
     // composer that lands in preview mode after a send or a room switch looks broken — an
     // empty box that swallows typing until you notice the eye button.
@@ -680,40 +678,26 @@ export class MessageComposerComponent {
     this.field.focus();
   }
 
-  /** Toggle the emoji picker, closing the other overlays (only one at a time). */
-  toggleEmojiPicker(): void {
-    this.attachments.gifPickerOpen.set(false);
-    this.stickerPickerOpen.set(false);
-    this.pickerOpen.set(!this.pickerOpen());
-  }
-
-  /** Toggle the GIF grid, closing the other overlays (only one at a time). */
-  toggleGifPicker(): void {
-    this.pickerOpen.set(false);
-    this.stickerPickerOpen.set(false);
-    this.attachments.toggleGifPicker();
-  }
-
-  toggleStickerPicker(): void {
-    this.pickerOpen.set(false);
-    this.attachments.gifPickerOpen.set(false);
-    this.stickerPickerOpen.update((open) => !open);
+  /** Open or close the expression panel (GIFs, stickers and emoji). */
+  togglePicker(): void {
+    this.pickerOpen.update((open) => !open);
   }
 
   onStickerSelect(sticker: ImagePackImage): void {
     if (this.sendBlocked()) return;
-    this.stickerPickerOpen.set(false);
+    this.pickerOpen.set(false);
     this.stickerSelect.emit(sticker);
     queueMicrotask(() => this.field.focus());
   }
 
-  closeStickerPicker(): void {
-    this.stickerPickerOpen.set(false);
+  /** The panel asked to be dismissed (Escape inside it); the caret goes back to the input. */
+  closePicker(): void {
+    this.pickerOpen.set(false);
     queueMicrotask(() => this.field.focus());
   }
 
   manageImagePacks(): void {
-    this.stickerPickerOpen.set(false);
+    this.pickerOpen.set(false);
     this.applicationSurfaces
       .open({
         surface: { kind: 'settings', section: 'stickers' },
@@ -755,8 +739,13 @@ export class MessageComposerComponent {
     }
   }
 
-  /** A GIF was chosen → download it and send it through the media path. */
+  /**
+   * A GIF was chosen → download it and send it through the media path; the panel closes
+   * once it arrives. Refused while the Conversation cannot send or another upload runs,
+   * which is when the `+` tray used to disable its GIF item.
+   */
   onGifSelect(gif: GifResult): void {
+    if (this.sendBlocked() || this.contextUploadProgress() !== null) return;
     this.attachments.gifSelected(gif);
   }
 
@@ -870,14 +859,6 @@ export class MessageComposerComponent {
     }
     if (this.pickerOpen()) {
       this.pickerOpen.set(false);
-      return;
-    }
-    if (this.attachments.gifPickerOpen()) {
-      this.attachments.gifPickerOpen.set(false);
-      return;
-    }
-    if (this.stickerPickerOpen()) {
-      this.stickerPickerOpen.set(false);
       return;
     }
     // Not while a batch is going out: those rows are what its outcomes will report on, and

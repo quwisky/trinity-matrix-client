@@ -255,7 +255,7 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       const { fixture, container } = await renderComposer();
       const cmp = fixture.componentInstance;
       const ta = container.querySelector('textarea') as HTMLTextAreaElement;
-      cmp.toggleEmojiPicker();
+      cmp.togglePicker();
       expect(cmp.pickerOpen()).toBe(true);
 
       typeSlash(cmp, ta, '/sh');
