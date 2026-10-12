@@ -1,0 +1,67 @@
+<trn-settings-group
+  title="Diagnostics"
+  description="Report a problem to the developers, with a log from this device if you choose."
+>
+  <trn-settings-row
+    label="Keep a diagnostic log"
+    description="Trinity keeps up to two days of Trinity and Matrix logs on this device so you can attach them to a bug report. Tokens, keys and messages are never stored. Turning this off deletes the log."
+    for="advanced-keep-diagnostic-log-switch"
+    [attr.aria-busy]="pending() ? 'true' : null"
+    data-testid="advanced-keep-diagnostic-log"
+  >
+    <trn-switch
+      inputId="advanced-keep-diagnostic-log-switch"
+      aria-describedby="advanced-keep-diagnostic-log-switch-description"
+      [checked]="keepLog()"
+      [disabled]="pending() || saving()"
+      (checkedChange)="setKeepLog($event)"
+    />
+  </trn-settings-row>
+  <div class="flex flex-wrap items-center gap-2 py-3">
+    <button
+      trnBtn
+      size="sm"
+      (click)="openReport()"
+      data-testid="advanced-report-bug"
+    >
+      Report a bug
+    </button>
+    @if (canClear()) {
+      <button
+        trnBtn
+        presentation="outline"
+        size="sm"
+        [disabled]="clearing()"
+        (click)="clear()"
+        data-testid="advanced-clear-diagnostic-logs"
+      >
+        Clear diagnostic logs
+      </button>
+    }
+  </div>
+  @if (notDeleted()) {
+    <p
+      class="m-0 py-3 text-13 text-danger"
+      role="alert"
+      data-testid="advanced-diagnostics-not-deleted"
+    >
+      The log is turned off, but Trinity couldn’t delete it from this device.
+      Try again.
+    </p>
+  }
+  @if (memoryOnly()) {
+    <p
+      class="m-0 py-3 text-13 text-muted-foreground"
+      data-testid="advanced-diagnostics-memory-only"
+    >
+      This device isn't letting Trinity store logs, so they cover this session
+      only.
+    </p>
+  }
+  @if (keepLog()) {
+    <p class="m-0 py-3 text-13 text-muted-foreground">
+      Logs never leave this device unless you save them. A saved log replaces
+      Matrix IDs and server names with placeholders.
+    </p>
+  }
+</trn-settings-group>
