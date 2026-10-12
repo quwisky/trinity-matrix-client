@@ -139,6 +139,12 @@ describe('createLogRedactor', () => {
       ['device AB3DE9XYZ1', 'device DEVICE2'],
       ['device abcdefghijklmnop', 'device DEVICE2'],
       ['{"device_id":"AB3DE9XYZ1"}', '{"device_id":"DEVICE2"}'],
+      ['devices: [abcdefghij, ZXCVBNMASD]', 'devices: [DEVICE2, DEVICE3]'],
+      [
+        '"devices":["ABCDEFGHIJ","abcdefghij"]',
+        '"devices":["DEVICE2","DEVICE3"]',
+      ],
+      ['devices: [ABCDEFGHIJ] updated', 'devices: [DEVICE2] updated'],
       ['session for deviceId=Zx9Kq2Lm4P ok', 'session for deviceId=DEVICE2 ok'],
     ])('redacts the ID in %s', (line, expected) => {
       expect(redact(line)).toBe(expected);
@@ -158,8 +164,18 @@ describe('createLogRedactor', () => {
       'Ignoring unknown device initialising',
       'device notifications muted',
       'device registrations pending',
+      'device list changes',
+      'Got devices list from server',
+      'devices: 3 updated',
+      'devices tracked: 5, outdated: 2',
     ])('leaves ordinary words alone in %s', (line) => {
       expect(redact(line)).toBe(line);
+    });
+
+    it('keeps prose after a plural keyword and redacts only the user', () => {
+      expect(redact('devices changed for @bob:x.org')).toBe(
+        'devices changed for @user1:server3',
+      );
     });
 
     it('keeps known own device IDs redacted anywhere', () => {
@@ -273,6 +289,8 @@ describe('createLogRedactor', () => {
       ['dollar runs', '$a'.repeat(SIZE / 2)],
       ['hyphenated words', 'ab-'.repeat(SIZE / 3)],
       ['device fields', 'deviceId:'.repeat(SIZE / 9)],
+      ['quoted device lists', '"devices",'.repeat(SIZE / 10)],
+      ['long device list', 'devices: [' + 'abcdefgh, '.repeat(SIZE / 10)],
       ['urls', 'https://a.'.repeat(SIZE / 10)],
       ['mxc', 'mxc://a/'.repeat(SIZE / 8)],
       ['userinfo', 'https://' + 'a:'.repeat(SIZE / 2)],

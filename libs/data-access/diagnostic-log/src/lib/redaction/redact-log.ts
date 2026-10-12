@@ -53,6 +53,8 @@ const EVENT = /\$[A-Za-z0-9+/_-]{43,44}(?![A-Za-z0-9+/_=-])/g;
 const DEVICE_KEYWORD = /device(?:s|[_ -]?ids?)?(?![A-Za-z0-9_])/gi;
 // "device:", "device=", optionally closed and opened by quotes.
 const DEVICE_ASSIGNMENT = /^["']?\s*[:=]/;
+// Between two items of a device list: a comma, or quotes, with optional spaces.
+const DEVICE_LIST_SEPARATOR = /^\s*(?:["']?\s*,\s*["']?|["']\s*["'])\s*$/;
 const DEVICE_TOKEN = /[^A-Za-z0-9_\n-]{0,6}([A-Za-z0-9_-]{1,64})/y;
 const DEVICE_AFTER_USER =
   /(@(?:me\d*|user\d+):server\d+(?::| \(|\|))([A-Za-z0-9_-]{6,})/g;
@@ -106,6 +108,37 @@ function isFirstWordDeviceId(word: string): boolean {
   );
 }
 const ALREADY_PLACEHOLDER = /^(?:DEVICE|server)\d+$/;
+
+/**
+ * How the words after a device keyword are read:
+ * - `field`: `deviceId`, `device_id`, `device:` hold one ID of any shape;
+ * - `list`: `devices:`, `devices=` or a quoted "devices" hold a list of IDs of any shape;
+ * - `prose`: `device <word>` or `devices <word>`, whose first word needs an ID's shape;
+ * - `embedded`: a keyword inside a name such as `sendToDevice`, a digit or capitals only.
+ */
+type DeviceKeywordContext = 'field' | 'list' | 'prose' | 'embedded';
+
+function classifyDeviceKeyword(
+  text: string,
+  index: number,
+  keyword: string,
+): DeviceKeywordContext {
+  const before = text[index - 1] ?? ' ';
+  const after = text.slice(index + keyword.length, index + keyword.length + 4);
+  if (/ids?$/i.test(keyword)) {
+    return 'field';
+  }
+  if (/[A-Za-z0-9]/.test(before)) {
+    return 'embedded';
+  }
+  const assignment = DEVICE_ASSIGNMENT.test(after);
+  if (/^devices$/i.test(keyword)) {
+    const quoted =
+      (before === '"' || before === "'") && after.startsWith(before);
+    return assignment || quoted ? 'list' : 'prose';
+  }
+  return assignment ? 'field' : 'prose';
+}
 
 /** A redactor for one exported file. */
 export function createLogRedactor(context: RedactionContext): LogRedactor {
@@ -254,9 +287,10 @@ class IdentifierRedactor implements LogRedactor {
   }
 
   /**
-   * An ID-like token (6-32 letters, digits, "_" or "-") within a few words after the word
-   * "device" is a device ID. The first word after a standalone "device" may have any shape;
-   * later words, and words after an embedded keyword such as `sendToDevice`, need a digit or
+   * An ID-like token (6-32 letters, digits, "_" or "-") within a few words after a device
+   * keyword is a device ID when its keyword context says so (see `classifyDeviceKeyword`).
+   * Every item of a device list is an ID; the list ends at the first gap that is not a
+   * comma or quotes, and the words after it are prose. Any other word needs a digit or
    * capitals so that ordinary prose is left alone.
    */
   private redactDeviceContext(text: string): string {
@@ -268,21 +302,17 @@ class IdentifierRedactor implements LogRedactor {
       keyword;
       keyword = DEVICE_KEYWORD.exec(text)
     ) {
-      const standalone = !/[A-Za-z0-9]/.test(text[keyword.index - 1] ?? ' ');
+      const context = classifyDeviceKeyword(text, keyword.index, keyword[0]);
       let position = keyword.index + keyword[0].length;
-      // A field form (`deviceId`, `device_id`, `devices`) or a standalone "device:" or
-      // "device=" holds an ID whatever its shape; plain prose needs the strict shape rule.
-      const plural = /^devices$/i.test(keyword[0]);
-      const field =
-        keyword[0].length > 'device'.length ||
-        (standalone &&
-          DEVICE_ASSIGNMENT.test(text.slice(position, position + 4)));
+      let inList = context === 'list';
       let words = 0;
-      // Keywords skipped below count as steps, so a run of them cannot make this quadratic.
+      // A list is read to its end, but keywords inside it are not read again (see below);
+      // elsewhere, skipped keywords count as steps, so a run of them stays linear.
       for (
         let steps = 0;
-        words < DEVICE_WORDS_AFTER_KEYWORD &&
-        steps < 2 * DEVICE_WORDS_AFTER_KEYWORD;
+        inList ||
+        (words < DEVICE_WORDS_AFTER_KEYWORD &&
+          steps < 2 * DEVICE_WORDS_AFTER_KEYWORD);
         steps += 1
       ) {
         DEVICE_TOKEN.lastIndex = position;
@@ -291,24 +321,36 @@ class IdentifierRedactor implements LogRedactor {
           break;
         }
         const word = token[1];
-        const start = position + token[0].length - word.length;
+        const gap = token[0].slice(0, token[0].length - word.length);
+        const start = position + gap.length;
+        if (inList && steps > 0 && !DEVICE_LIST_SEPARATOR.test(gap)) {
+          inList = false;
+          DEVICE_KEYWORD.lastIndex = Math.max(
+            DEVICE_KEYWORD.lastIndex,
+            position,
+          );
+        }
         position += token[0].length;
         if (/^devices?$|^device[_-]?ids?$/i.test(word)) {
           continue;
         }
         words += 1;
+        const anyShape = inList || (context === 'field' && words === 1);
         const idLike =
           word.length >= 6 &&
           word.length <= 32 &&
           !ALREADY_PLACEHOLDER.test(word) &&
-          ((field && (words === 1 || plural)) ||
-            (standalone && words === 1 && isFirstWordDeviceId(word)) ||
+          (anyShape ||
+            (context === 'prose' && words === 1 && isFirstWordDeviceId(word)) ||
             /\d/.test(word) ||
             /^[A-Z_-]+$/.test(word));
         if (idLike && start >= editedUntil) {
           edits.push({ start, end: start + word.length, id: word });
           editedUntil = start + word.length;
         }
+      }
+      if (inList) {
+        DEVICE_KEYWORD.lastIndex = Math.max(DEVICE_KEYWORD.lastIndex, position);
       }
     }
     let output = '';
