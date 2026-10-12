@@ -392,7 +392,11 @@ export class DiagnosticLogService {
           // deleted at the next start, which reads the same stored "off".
           this.applySetting(stored !== false).catch(() => undefined);
         },
-        error: () => this.offUnconfirmed(),
+        error: () => {
+          if (this.early !== null) {
+            this.offUnconfirmed(); // unless the user chose while the read was in flight
+          }
+        },
       });
   }
 

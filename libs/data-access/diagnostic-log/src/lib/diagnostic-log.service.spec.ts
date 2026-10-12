@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { BUILD_INFO, type BuildInfo } from '@trinity/platform-native';
 import {
   PREFERENCE_STORAGE_ADAPTER,
+  PreferenceStoreService,
   type PreferenceStorageAdapter,
   type PreferenceStorageReadOutcome,
 } from '@trinity/runtime/preferences';
@@ -487,6 +488,25 @@ describe('DiagnosticLogService', () => {
 
       expect(service.keepLog()).toBe(false);
       expect(await stored()).toEqual([]);
+    });
+
+    it('keeps a choice made while the setting is being read, when that read then fails', async () => {
+      const hydration = new Subject<never>();
+      vi.spyOn(
+        PreferenceStoreService.prototype,
+        'hydrateDescriptors',
+      ).mockReturnValue(hydration);
+      const service = setup();
+
+      await firstValueFrom(service.setKeepLog(true));
+      hydration.error(new Error('preference storage failed'));
+      console.warn('[trinity] after choosing on');
+
+      expect(service.keepLog()).toBe(true);
+      expect(setSdkCapture).not.toHaveBeenCalledWith(false);
+      expect((await stored()).map((entry) => entry.message)).toContain(
+        '[trinity] after choosing on',
+      );
     });
 
     it('saves the choice and stops recording, but reports a log it could not delete', async () => {
