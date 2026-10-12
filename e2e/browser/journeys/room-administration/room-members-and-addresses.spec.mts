@@ -15,6 +15,7 @@ import { registerUser } from '../../../support/account.mts';
 import type { TouchPlatform } from '../../../support/platform-contracts.mts';
 import {
   configureRoomSettingsSuite,
+  expectSettingsSheet,
   openRoom,
   session,
   tokenFor,
@@ -645,6 +646,8 @@ test.describe('Space member and address settings on a phone', () => {
       'Members',
     );
     await expect(page.getByTestId('members-settings')).toBeVisible();
+    // The sheet slides in; a mid-entrance translateY can round the box a hair under 44px.
+    await expectSettingsSheet(page, 'space-settings');
 
     const invite = page.getByTestId('members-settings-invite');
     expect((await invite.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
