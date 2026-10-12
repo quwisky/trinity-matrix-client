@@ -41,9 +41,12 @@ describe('AccountPickerComponent', () => {
     close = vi.fn();
   });
 
-  function renderPicker(activeUserId: string | null = '@alice:hs') {
+  function renderPicker(
+    activeUserId: string | null = '@alice:hs',
+    accounts: AccountSummary[] = ACCOUNTS,
+  ) {
     return render(AccountPickerComponent, {
-      inputs: { accounts: ACCOUNTS, activeUserId },
+      inputs: { accounts, activeUserId },
       providers: [
         MockProvider(SelectedRoomLibraryService, {
           view: computed(() => ({
@@ -113,6 +116,22 @@ describe('AccountPickerComponent', () => {
     expect(row(container, '@alice:hs').textContent).toContain(
       'Always included',
     );
+  });
+
+  it('names an unverified account in its option, and only that one', async () => {
+    const { container } = await renderPicker('@alice:hs', [
+      { ...ACCOUNTS[0], trust: 'verified' },
+      { ...ACCOUNTS[1], trust: 'unverified' },
+      { ...ACCOUNTS[2], trust: 'not-set-up' },
+    ]);
+
+    expect(
+      container.querySelectorAll('[data-testid="account-pick-unverified"]'),
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole('checkbox', { name: /Bob.*Unverified/ }),
+    ).toBeTruthy();
+    expect(row(container, '@carol:hs').textContent).not.toContain('Unverified');
   });
 
   it('toggles an account without closing — this is a multi-select', async () => {

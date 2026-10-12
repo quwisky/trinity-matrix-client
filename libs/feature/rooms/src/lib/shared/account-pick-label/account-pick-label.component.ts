@@ -4,7 +4,7 @@ import {
   computed,
   input,
 } from '@angular/core';
-import { AvatarComponent } from '@trinity/components/generic-content';
+import { AvatarComponent, TrnBadge } from '@trinity/components/generic-content';
 import { type IdentityProfile } from '@trinity/data-access/identity';
 import { initialOf } from '@trinity/util/matrix';
 
@@ -15,7 +15,7 @@ import { initialOf } from '@trinity/util/matrix';
 @Component({
   selector: 'trn-account-pick-label',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent],
+  imports: [AvatarComponent, TrnBadge],
   templateUrl: './account-pick-label.component.html',
   styleUrl: './account-pick-label.component.scss',
 })
@@ -23,5 +23,7 @@ export class AccountPickLabelComponent {
   readonly account = input.required<IdentityProfile>();
   /** The account is always included, so the row says so. */
   readonly locked = input(false);
+  /** This account's device here is unverified, so the option says so. */
+  readonly unverified = input(false);
   readonly initial = computed(() => initialOf(this.account().displayName));
 }

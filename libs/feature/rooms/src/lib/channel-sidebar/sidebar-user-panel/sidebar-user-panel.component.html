@@ -96,6 +96,16 @@
           <span class="account-row__name">{{ account.displayName }}</span>
           <span class="account-row__handle">{{ account.userId }}</span>
         </div>
+        @if (account.trust === 'unverified') {
+          <span
+            trnBadge
+            class="account-row__trust"
+            variant="warning"
+            size="xs"
+            data-testid="account-row-unverified"
+            >Unverified</span
+          >
+        }
         @if (account.unread > 0) {
           <span
             trnBadge
@@ -205,7 +215,11 @@
           <span class="account-pick__indicator" aria-hidden="true">
             <trn-dropdown-menu-checkbox-indicator />
           </span>
-          <trn-account-pick-label [account]="account" [locked]="isActive" />
+          <trn-account-pick-label
+            [account]="account"
+            [locked]="isActive"
+            [unverified]="account.trust === 'unverified'"
+          />
         </button>
       }
     </div>

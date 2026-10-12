@@ -24,6 +24,10 @@ import {
   type SelectedRoomLibraryView,
   type UnreadRoom,
 } from '@trinity/data-access/room-library';
+import {
+  TrustAccountStatusService,
+  type AccountTrustSummary,
+} from '@trinity/data-access/trust';
 import { type AccountBadge } from '@trinity/components/generic-content';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
@@ -68,6 +72,9 @@ function build(
   const profiles = signal<ReadonlyMap<string, AccountIdentity>>(new Map());
   const activeUserId = signal<string | null>('@me:hs');
   const accountIds = signal<readonly string[]>(['@me:hs']);
+  const trustSummaries = signal<ReadonlyMap<string, AccountTrustSummary>>(
+    new Map(),
+  );
   const rosters = new Map(
     Object.entries(opts.members ?? {}).map(([roomId, list]) => [
       roomId,
@@ -168,6 +175,9 @@ function build(
         identityOf: (userId: string) =>
           profiles().get(userId) ?? profile(userId, userId),
       }),
+      MockProvider(TrustAccountStatusService, {
+        summaries: trustSummaries.asReadonly(),
+      }),
     ],
   });
 
@@ -181,6 +191,7 @@ function build(
     profiles,
     activeUserId,
     accountIds,
+    trustSummaries,
     rosters,
     membersFor,
     selectedView,
@@ -341,6 +352,17 @@ describe('RoomShellViewModel account profile', () => {
     profiles.set(new Map([['@alt:hs', profile('@alt:hs', '')]]));
 
     expect(vm.accounts()[0].displayName).toBe('@alt:hs');
+  });
+
+  it('marks each account with its device trust, unknown until Trust has read it', () => {
+    const { vm, accountIds, trustSummaries } = build();
+    accountIds.set(['@me:hs', '@alt:hs']);
+    trustSummaries.set(new Map([['@alt:hs', 'unverified']]));
+
+    expect(vm.accounts().map((account) => account.trust)).toEqual([
+      'unknown',
+      'unverified',
+    ]);
   });
 });
 

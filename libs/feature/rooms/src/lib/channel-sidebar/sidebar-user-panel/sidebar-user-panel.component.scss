@@ -168,7 +168,8 @@
     color: var(--trinity-text-muted);
   }
 
-  .account-row__badge {
+  .account-row__badge,
+  .account-row__trust {
     flex: 0 0 auto;
   }
 
@@ -182,7 +183,8 @@
     color: var(--trinity-text-bright);
   }
 
-  .account-row__badge + .account-row__check {
+  .account-row__badge + .account-row__check,
+  .account-row__trust + .account-row__check {
     margin-left: 2px;
   }
 

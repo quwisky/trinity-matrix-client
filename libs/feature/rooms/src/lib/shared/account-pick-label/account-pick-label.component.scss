@@ -39,4 +39,8 @@
     font-weight: var(--trinity-type-control-weight);
     color: var(--trinity-text-muted);
   }
+
+  .account-pick__trust {
+    flex: 0 0 auto;
+  }
 }

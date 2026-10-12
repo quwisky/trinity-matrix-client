@@ -1092,12 +1092,14 @@ describe('RoomsPage account switcher summary', () => {
         displayName: 'Me',
         avatarMxc: meAvatar,
         unread: 4,
+        trust: 'unknown',
       },
       {
         userId: '@alt:hs',
         displayName: '@alt:hs',
         avatarMxc: null,
         unread: 0,
+        trust: 'unknown',
       },
     ]);
   });

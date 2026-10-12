@@ -28,7 +28,11 @@
               <trn-icon name="check" size="sm" />
             }
           </span>
-          <trn-account-pick-label [account]="account" [locked]="locked" />
+          <trn-account-pick-label
+            [account]="account"
+            [locked]="locked"
+            [unverified]="account.trust === 'unverified'"
+          />
         </button>
       </li>
     }
