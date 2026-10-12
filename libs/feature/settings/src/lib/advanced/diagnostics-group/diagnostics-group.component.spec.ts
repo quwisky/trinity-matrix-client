@@ -202,7 +202,9 @@ describe('DiagnosticsGroupComponent', () => {
   it('says when logs last for this session only', async () => {
     await setup({ available: 'memory-only' });
 
-    expect(screen.getByTestId('advanced-diagnostics-memory-only')).toBeTruthy();
+    expect(
+      screen.getByTestId('advanced-diagnostics-memory-only').textContent,
+    ).toContain('This device isn’t letting Trinity store logs');
   });
 
   it('keeps the switch off and says the log was not deleted, when deleting fails', async () => {
@@ -218,7 +220,7 @@ describe('DiagnosticsGroupComponent', () => {
     expect(
       screen.getByTestId('advanced-diagnostics-not-deleted').textContent,
     ).toContain(
-      'The log is turned off, but Trinity couldn’t delete it from this device. Try again.',
+      'The log is turned off, but Trinity couldn’t delete it from this device. Use Clear diagnostic logs to try again.',
     );
     expect(screen.getByTestId('advanced-clear-diagnostic-logs')).toBeTruthy();
     expect(show).not.toHaveBeenCalled();
