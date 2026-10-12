@@ -124,6 +124,11 @@ describe('TrnCheckboxComponent', () => {
         'data-[invalid=true]:border-danger',
         'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)]',
         'in-data-[trn-surface=attention]:data-[invalid=true]:border-[var(--trinity-state-attention-control-danger)]',
+        // The danger border survives the checked fill, and the ring does not rely on hue.
+        'in-data-[trn-surface=attention]:data-[invalid=true]:data-checked:border-[var(--trinity-state-attention-control-danger)]',
+        'in-data-[trn-surface=attention]:data-[invalid=true]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-state-attention-control-danger)]',
+        // Focus replaces the danger ring, which would otherwise out-rank the focus ring.
+        'in-data-[trn-surface=attention]:data-[invalid=true]:peer-focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-offset)_var(--trinity-state-attention-surface),0_0_0_calc(var(--trinity-focus-ring-offset)+var(--trinity-focus-ring-width))_var(--trinity-focus-ring)]',
         'in-data-[trn-surface=attention]:data-checked:border-[var(--trinity-state-attention-action-surface)]',
         'in-data-[trn-surface=attention]:data-checked:bg-[var(--trinity-state-attention-action-surface)]',
         'in-data-[trn-surface=attention]:data-checked:text-[var(--trinity-state-attention-action-foreground)]',

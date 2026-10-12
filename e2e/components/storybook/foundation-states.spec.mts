@@ -417,6 +417,34 @@ async function pseudoColour(
   );
 }
 
+/** The colours of every opaque box-shadow ring of 2px or more an element paints. */
+async function paintedShadowRings(element: Locator): Promise<Srgb[]> {
+  return (await boxShadowLayers(element))
+    .filter((layer) => layer.alpha === 255 && layer.spread >= 2)
+    .map((layer) => layer.colour);
+}
+
+/**
+ * A focused invalid control must show focus, not only its invalid state: its painted rings
+ * switch from the danger ring to the on-attention ring.
+ */
+async function expectFocusOverInvalid(
+  page: Page,
+  focusable: Locator,
+  painted: Locator,
+  danger: Srgb,
+  onAttentionRing: Srgb,
+): Promise<Srgb> {
+  await page.keyboard.press('Tab');
+  await focusable.focus();
+  await expect(focusable).toBeFocused();
+  const rings = await paintedShadowRings(painted);
+  expect(rings).toContainEqual(onAttentionRing);
+  expect(rings).not.toContainEqual(danger);
+  await focusable.evaluate((element: HTMLElement) => element.blur());
+  return onAttentionRing;
+}
+
 /**
  * A measured control must be painted on the surface, not wrapped or overflowed past its edge
  * onto the canvas: the contrast helpers walk DOM ancestors, which would still report the
@@ -503,14 +531,16 @@ async function expectAttentionChoices(
   surface: Locator,
   controls: {
     outline: Locator;
+    expanded: Locator;
     checkbox: Locator;
     switch: Locator;
     file: Locator;
   },
 ): Promise<Record<string, number>> {
-  const { outline, checkbox, file } = controls;
+  const { outline, expanded, checkbox, file } = controls;
   await expectInsideSurface(surface, [
     outline,
+    expanded,
     checkbox,
     controls.switch,
     file,
@@ -550,6 +580,9 @@ async function expectAttentionChoices(
   await outline.focus();
   await expect(outline).toBeFocused();
   const outlineRing = await expectPaintedRing(outline, onAttentionRing);
+  expect(await computedColour(outline, 'border-top-color')).toEqual(
+    onAttentionRing,
+  );
   await outline.evaluate((element: HTMLElement) => element.blur());
 
   // Checkbox: unchecked border, then the inverted fill and check mark once checked.
@@ -599,8 +632,18 @@ async function expectAttentionChoices(
   const fileLabel = await pseudoColour(file, '::file-selector-button', 'color');
   expect(fileLabel).toEqual(controlForeground);
 
+  // An outline trigger holding an open menu stays transparent, not Helm's grey chip.
+  await expect(expanded).toHaveAttribute('aria-expanded', 'true');
+  const expandedLabel = await measureLocatorContrast(expanded);
+  expect(expandedLabel.background).toEqual(attentionSurface);
+  expect(await computedColour(expanded, 'color')).toEqual(controlForeground);
+  expect(await computedColour(expanded, 'border-top-color')).toEqual(
+    controlBorder,
+  );
+
   const ratios = {
     fileButtonLabel: contrastRatio(fileLabel, attentionSurface),
+    expandedLabel: expandedLabel.ratio,
     outlineBorder: contrastRatio(outlineBorder, attentionSurface),
     outlineLabel: outlineLabel.ratio,
     outlineHoverFill: contrastRatio(actionHover, attentionSurface),
@@ -622,9 +665,10 @@ async function expectAttentionChoices(
 
 /**
  * #1244: invalid fields, an invalid select and an invalid checkbox on an attention surface
- * take the attention danger role, which clears 3:1 against the accent. A field and the select
- * also paint an opaque danger ring of 2px or more, so the state does not rely on hue alone,
- * and their error messages stay readable.
+ * take the attention danger role, which clears 3:1 against the accent. Each also paints an
+ * opaque danger ring of 2px or more, so the state does not rely on hue alone, and the error
+ * messages stay readable. Focus replaces the danger ring with the on-attention ring, and a
+ * checked invalid checkbox keeps its danger border and ring.
  */
 async function expectAttentionFieldStates(
   page: Page,
@@ -643,6 +687,7 @@ async function expectAttentionFieldStates(
   ]);
   for (const field of fields) {
     const messageId = await field.getAttribute('aria-describedby');
+    expect(messageId).not.toBeNull();
     await expectInsideSurface(surface, [page.locator(`[id="${messageId}"]`)]);
   }
   const token = await attentionTokens(page, fields[0], 'attention-state-probe');
@@ -651,6 +696,7 @@ async function expectAttentionFieldStates(
     await token('--trinity-state-attention-surface'),
   );
   const danger = await token('--trinity-state-attention-control-danger');
+  const onAttentionRing = await token('--trinity-focus-ring-on-attention');
   const ratios: Record<string, number> = {};
 
   for (const [index, field] of fields.entries()) {
@@ -667,6 +713,10 @@ async function expectAttentionFieldStates(
     ratios[`field${index}Message`] = (
       await measureLocatorContrast(message)
     ).ratio;
+    ratios[`field${index}FocusRing`] = contrastRatio(
+      await expectFocusOverInvalid(page, field, field, danger, onAttentionRing),
+      attentionSurface,
+    );
   }
 
   if (select) {
@@ -677,17 +727,45 @@ async function expectAttentionFieldStates(
     const selectRing = await expectPaintedRing(trigger, danger);
     ratios['selectBorder'] = contrastRatio(selectBorder, attentionSurface);
     ratios['selectRing'] = contrastRatio(selectRing, attentionSurface);
+    ratios['selectFocusRing'] = contrastRatio(
+      await expectFocusOverInvalid(
+        page,
+        trigger,
+        trigger,
+        danger,
+        onAttentionRing,
+      ),
+      attentionSurface,
+    );
   }
 
   if (checkbox) {
     const box = checkbox.locator('span[aria-hidden="true"]');
-    await expect(checkbox.getByRole('checkbox')).toHaveAttribute(
-      'aria-invalid',
-      'true',
-    );
+    const native = checkbox.getByRole('checkbox');
+    await expect(native).toHaveAttribute('aria-invalid', 'true');
     const checkboxBorder = await computedColour(box, 'border-top-color');
     expect(checkboxBorder).toEqual(danger);
     ratios['checkboxBorder'] = contrastRatio(checkboxBorder, attentionSurface);
+    ratios['checkboxRing'] = contrastRatio(
+      await expectPaintedRing(box, danger),
+      attentionSurface,
+    );
+    // Checked, the danger border and ring survive the inverted fill.
+    await native.check();
+    await expect(box).toHaveAttribute('data-checked', '');
+    expect(await computedColour(box, 'border-top-color')).toEqual(danger);
+    await expectPaintedRing(box, danger);
+    ratios['checkedCheckboxBorder'] = contrastRatio(danger, attentionSurface);
+    ratios['checkboxFocusRing'] = contrastRatio(
+      await expectRingOnSurfaceGap(
+        page,
+        native,
+        box,
+        attentionSurface,
+        onAttentionRing,
+      ),
+      attentionSurface,
+    );
   }
 
   expectRatioFloors(ratios);
@@ -699,14 +777,20 @@ async function expectAttentionFieldStates(
  * idle ring uses the attention control border, the checked dot and the labels the attention
  * foreground, and the focused ring the on-attention ring. A segmented description follows its
  * option's foreground, so it stays readable on the track and on the inverted selected fill.
+ * When given, an invalid list group's rings take the attention danger border and an opaque
+ * danger ring, and focus replaces that ring with the on-attention ring.
  */
 async function expectAttentionStackedChoices(
   page: Page,
   surface: Locator,
-  controls: { list: Locator; segmented: Locator },
+  controls: { list: Locator; segmented: Locator; invalidList?: Locator },
 ): Promise<Record<string, number>> {
-  const { list, segmented } = controls;
-  await expectInsideSurface(surface, [list, segmented]);
+  const { list, segmented, invalidList } = controls;
+  await expectInsideSurface(surface, [
+    list,
+    segmented,
+    ...(invalidList ? [invalidList] : []),
+  ]);
   const token = await attentionTokens(page, list, 'attention-stacked-probe');
   const attentionSurface = await computedColour(surface, 'background-color');
   expect(attentionSurface).toEqual(
@@ -746,6 +830,37 @@ async function expectAttentionStackedChoices(
   );
   ratios['radioRing'] = contrastRatio(radioRing, attentionSurface);
   await selectedRadio.evaluate((element: HTMLElement) => element.blur());
+
+  if (invalidList) {
+    const danger = await token('--trinity-state-attention-control-danger');
+    const radios = invalidList.getByRole('radio');
+    expect(await radios.count()).toBeGreaterThan(0);
+    for (const radio of await radios.all()) {
+      await expect(radio).toHaveAttribute('aria-invalid', 'true');
+    }
+    const firstOption = invalidList.locator('label').first();
+    const invalidRing = firstOption.locator('span[aria-hidden="true"]');
+    const invalidBorder = await computedColour(invalidRing, 'border-top-color');
+    expect(invalidBorder).toEqual(danger);
+    ratios['invalidRadioBorder'] = contrastRatio(
+      invalidBorder,
+      attentionSurface,
+    );
+    ratios['invalidRadioRing'] = contrastRatio(
+      await expectPaintedRing(invalidRing, danger),
+      attentionSurface,
+    );
+    ratios['invalidRadioFocusRing'] = contrastRatio(
+      await expectFocusOverInvalid(
+        page,
+        firstOption.getByRole('radio'),
+        invalidRing,
+        danger,
+        onAttentionRing,
+      ),
+      attentionSurface,
+    );
+  }
 
   const descriptions = segmented.locator('small');
   expect(await descriptions.count()).toBeGreaterThan(1);
@@ -994,6 +1109,7 @@ test.describe('semantic design foundations', () => {
             checkbox: page.locator('trn-checkbox'),
             switch: page.locator('trn-switch'),
             file: page.getByLabel('Import members'),
+            expanded: page.getByRole('button', { name: 'Filters' }),
           },
         );
 
@@ -1029,8 +1145,13 @@ test.describe('semantic design foundations', () => {
         page,
         header,
         {
-          list: page.locator('trn-radio-group[data-layout="list"]'),
+          list: page.locator(
+            'trn-radio-group[data-layout="list"]:not([data-invalid])',
+          ),
           segmented: page.locator('trn-radio-group[data-layout="segmented"]'),
+          invalidList: page.locator(
+            'trn-radio-group[data-layout="list"][data-invalid="true"]',
+          ),
         },
       );
       evidence['header page textarea'] = await expectAttentionFieldStates(
@@ -1057,6 +1178,7 @@ test.describe('semantic design foundations', () => {
             .locator('trn-checkbox'),
           switch: page.locator('trn-switch'),
           file: page.getByLabel('Key file'),
+          expanded: page.getByRole('button', { name: 'More options' }),
         },
       );
       evidence['overlay states'] = await expectAttentionFieldStates(

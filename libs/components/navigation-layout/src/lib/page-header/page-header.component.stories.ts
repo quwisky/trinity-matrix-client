@@ -124,8 +124,8 @@ export const AccentControls: Story = {
  * A checkbox, a switch, a file input and an outline button on the accent header. The
  * resting checkbox border and switch track use the attention control border, and once
  * checked both invert like a solid action. The file input's button label takes the attention
- * foreground, and the outline button stays transparent with the attention border and label.
- * Both layouts paint the accent; pass `layout:toolbar`. The toolbar layout is a fixed 48px
+ * foreground, and the outline button stays transparent with the attention border and label,
+ * also while it holds an open menu (`aria-expanded="true"`). Both layouts paint the accent; pass `layout:toolbar`. The toolbar layout is a fixed 48px
  * bar with room for these only on wider screens.
  */
 export const AccentChoiceControls: Story = {
@@ -150,6 +150,16 @@ export const AccentChoiceControls: Story = {
           </label>
           <input trnInput type="file" size="sm" class="w-48" aria-label="Import members" />
           <button trnBtn presentation="outline" size="sm" type="button">Export</button>
+          <button
+            trnBtn
+            presentation="outline"
+            size="sm"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded="true"
+          >
+            Filters
+          </button>
         </span>
       </trn-page-header>`,
   }),
@@ -175,7 +185,7 @@ export const AccentFieldStates: Story = {
     }),
   ],
   render: (args) => ({
-    props: { ...args, roles: MEMBER_ROLES, role: null },
+    props: { ...args, roles: MEMBER_ROLES, role: null, agreed: false },
     template: `
       <trn-page-header [title]="title" [variant]="variant" [layout]="layout">
         <span trnHeaderActions class="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
@@ -201,7 +211,7 @@ export const AccentFieldStates: Story = {
             (valueChange)="role = $event"
           />
           <label class="flex items-center gap-1 text-sm">
-            <trn-checkbox invalid />
+            <trn-checkbox invalid [checked]="agreed" (checkedChange)="agreed = $event" />
             I agree
           </label>
         </span>
@@ -213,16 +223,21 @@ const NOTIFY_LEVELS: readonly TrnRadioOption<string>[] = [
   { value: 'all', label: 'All messages', description: 'Every new message' },
   { value: 'mentions', label: 'Mentions', description: 'Only when named' },
 ];
+const JOIN_RULES: readonly TrnRadioOption<string>[] = [
+  { value: 'invite', label: 'Invite only', description: 'You add each person' },
+  { value: 'public', label: 'Public', description: 'Anyone can join' },
+];
 const HISTORY_SCOPES: readonly TrnRadioOption<string>[] = [
   { value: 'members', label: 'Members', description: 'Since they joined' },
   { value: 'anyone', label: 'Anyone', description: 'All history' },
 ];
 
 /**
- * Controls that stack more than one line on the accent header: a list radio group, a
- * segmented group with option descriptions and an invalid textarea. The radio ring, the
- * checked dot, the labels and the descriptions use the attention control roles. Only the page
- * layout grows to fit them; the toolbar layout is a fixed 48px bar.
+ * Controls that stack more than one line on the accent header: a list radio group, an invalid
+ * list radio group with nothing chosen, a segmented group with option descriptions and an
+ * invalid textarea. The radio ring, the checked dot, the labels and the descriptions use the
+ * attention control roles; the invalid group's rings take the attention danger border and
+ * ring. Only the page layout grows to fit them; the toolbar layout is a fixed 48px bar.
  */
 export const AccentStackedControls: Story = {
   args: { title: 'Room defaults', variant: 'accent', layout: 'page' },
@@ -236,6 +251,8 @@ export const AccentStackedControls: Story = {
       ...args,
       levels: NOTIFY_LEVELS,
       level: 'all',
+      joinRules: JOIN_RULES,
+      joinRule: null,
       scopes: HISTORY_SCOPES,
       scope: 'members',
     },
@@ -248,6 +265,16 @@ export const AccentStackedControls: Story = {
             [value]="level"
             (valueChange)="level = $event"
           />
+          <span class="grid gap-1">
+            <trn-radio-group
+              invalid
+              aria-label="Who can join"
+              [options]="joinRules"
+              [value]="joinRule"
+              (valueChange)="joinRule = $event"
+            />
+            <span id="accent-header-join-error" class="text-sm">Choose who can join</span>
+          </span>
           <trn-radio-group
             layout="segmented"
             aria-label="History visible to"

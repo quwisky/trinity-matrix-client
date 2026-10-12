@@ -246,13 +246,16 @@ describe('TrnRadioGroupComponent', () => {
       expect.arrayContaining([
         'border-[var(--trinity-border-control)]',
         'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)]',
-        'in-data-[trn-surface=attention]:peer-focus-visible:border-[var(--trinity-focus-ring)]',
+        // The neutral focus border and ring already out-rank the attention border.
+        'peer-focus-visible:border-[var(--trinity-focus-ring)]',
       ]),
     );
     expect(invalidRing).toEqual(
       expect.arrayContaining([
         'border-danger',
         'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-danger)]',
+        // The ring is the invalid cue that does not rely on hue.
+        'in-data-[trn-surface=attention]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-state-attention-control-danger)]',
       ]),
     );
     expect(invalidRing).not.toContain(

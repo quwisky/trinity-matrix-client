@@ -178,10 +178,10 @@ export const AccentSurface: Story = {
 };
 
 /**
- * The remaining controls on an accent dialog: an outline action, a checkbox and a switch
- * (their checked fills invert like a solid action), a list radio group and a segmented group
- * with option descriptions, a file input, and invalid field, textarea, select and checkbox
- * states. Each uses the attention control roles. The invalid states take the attention danger
+ * The remaining controls on an accent dialog: outline actions (one holding an open menu), a
+ * checkbox and a switch (their checked fills invert like a solid action), a list radio group
+ * and a segmented group with option descriptions, a file input, and invalid field, textarea,
+ * select and checkbox states. Each uses the attention control roles. The invalid states take the attention danger
  * role, which keeps 3:1 against the accent, plus a 2px ring that does not rely on hue; their
  * messages inherit the surface's foreground.
  */
@@ -195,6 +195,7 @@ export const AccentSurfaceControls: Story = {
       reminders: REMINDERS,
       reminder: null,
       remember: false,
+      saved: false,
       sync: false,
     },
     template: `
@@ -257,7 +258,7 @@ export const AccentSurfaceControls: Story = {
               Remember this device
             </label>
             <label class="flex items-center gap-1 text-sm">
-              <trn-checkbox invalid />
+              <trn-checkbox invalid [checked]="saved" (checkedChange)="saved = $event" />
               I saved my key
             </label>
             <label class="flex items-center gap-1 text-sm">
@@ -266,6 +267,16 @@ export const AccentSurfaceControls: Story = {
             </label>
           </div>
           <div class="flex flex-wrap justify-end gap-2">
+            <button
+              trnBtn
+              presentation="outline"
+              size="sm"
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded="true"
+            >
+              More options
+            </button>
             <button trnBtn presentation="outline" size="sm" type="button">Export key</button>
             <button trnBtn size="sm" type="button">Continue</button>
           </div>

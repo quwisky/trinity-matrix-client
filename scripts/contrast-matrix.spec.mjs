@@ -280,6 +280,12 @@ const NON_TEXT_ROLES = [
     foreground: '--trinity-focus-ring-on-attention',
     on: ['--trinity-state-attention-control-track-surface'],
   },
+  // An unchecked switch thumb on its attention track (#1244). The track is the control
+  // border role, so the pair is measured by role rather than by today's shared tint.
+  {
+    foreground: '--trinity-state-attention-action-foreground',
+    on: ['--trinity-state-attention-control-border'],
+  },
   // An invalid control's border and ring on an attention surface (#1244); the neutral danger
   // falls to 1.25-1.43:1 there.
   {

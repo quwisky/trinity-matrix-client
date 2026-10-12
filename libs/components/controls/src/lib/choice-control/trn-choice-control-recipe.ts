@@ -7,13 +7,20 @@ import { hlm } from '@trinity/helm/utils';
  * the resting border and unchecked track take the attention control border, and the checked
  * fill inverts like a solid action: the attention action surface with the attention action
  * foreground for the check mark and thumb. The focus ring shares the checked fill's colour,
- * so it sits on a gap in the surface colour. An invalid box takes the attention danger role.
+ * so it sits on a gap in the surface colour. An invalid box takes the attention danger role
+ * for its border, also once checked, and the same opaque 2px danger ring as an invalid field:
+ * the danger colour sits close to the resting border in lightness, so the ring is the cue
+ * that does not rely on hue. Focus replaces that ring with the gapped focus ring.
  */
 const ringOnAttention =
   'in-data-[trn-surface=attention]:peer-focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-offset)_var(--trinity-state-attention-surface),0_0_0_calc(var(--trinity-focus-ring-offset)+var(--trinity-focus-ring-width))_var(--trinity-focus-ring)]';
 
+/** The same gapped ring on an invalid box, where the danger ring would otherwise out-rank it. */
+const invalidRingOnAttention =
+  'in-data-[trn-surface=attention]:data-[invalid=true]:peer-focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-offset)_var(--trinity-state-attention-surface),0_0_0_calc(var(--trinity-focus-ring-offset)+var(--trinity-focus-ring-width))_var(--trinity-focus-ring)]';
+
 const checkboxOnAttention =
-  'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:data-[invalid=true]:border-[var(--trinity-state-attention-control-danger)] in-data-[trn-surface=attention]:data-checked:border-[var(--trinity-state-attention-action-surface)] in-data-[trn-surface=attention]:data-checked:bg-[var(--trinity-state-attention-action-surface)] in-data-[trn-surface=attention]:data-checked:text-[var(--trinity-state-attention-action-foreground)]';
+  'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:data-[invalid=true]:border-[var(--trinity-state-attention-control-danger)] in-data-[trn-surface=attention]:data-[invalid=true]:data-checked:border-[var(--trinity-state-attention-control-danger)] in-data-[trn-surface=attention]:data-[invalid=true]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-state-attention-control-danger)] in-data-[trn-surface=attention]:data-checked:border-[var(--trinity-state-attention-action-surface)] in-data-[trn-surface=attention]:data-checked:bg-[var(--trinity-state-attention-action-surface)] in-data-[trn-surface=attention]:data-checked:text-[var(--trinity-state-attention-action-foreground)]';
 
 const switchOnAttention =
   'in-data-[trn-surface=attention]:bg-[var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:data-[checked=true]:bg-[var(--trinity-state-attention-action-surface)]';
@@ -27,6 +34,7 @@ export function trnCheckboxRecipe(): string {
     'data-checked:border-[var(--trinity-accent)] data-checked:bg-[var(--trinity-accent)] data-checked:text-[var(--trinity-accent-foreground)]',
     checkboxOnAttention,
     ringOnAttention,
+    invalidRingOnAttention,
   );
 }
 

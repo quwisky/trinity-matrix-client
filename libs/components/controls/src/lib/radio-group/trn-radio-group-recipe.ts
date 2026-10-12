@@ -21,21 +21,20 @@ const segmentedOptionOnAttention =
 
 /**
  * A list option on an attention surface (#1244). Its label takes the attention foreground,
- * the indicator ring the attention control border (or the attention danger role when the
- * group is invalid), the checked dot the attention foreground, and the focused ring keeps
- * the on-attention ring the surface sets.
+ * the indicator ring the attention control border, and the checked dot the attention
+ * foreground. In an invalid group the indicator takes the attention danger border and the
+ * same opaque 2px danger ring as an invalid field, the cue that does not rely on hue. The
+ * focused indicator's border and ring keep the on-attention ring the surface sets, because
+ * the neutral `peer-focus-visible:` classes already out-rank these.
  */
 const listOptionOnAttention =
   'in-data-[trn-surface=attention]:text-[var(--trinity-state-attention-control-foreground)]';
-
-const indicatorOnAttention =
-  'in-data-[trn-surface=attention]:peer-focus-visible:border-[var(--trinity-focus-ring)]';
 
 const indicatorBorderOnAttention = {
   valid:
     'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)]',
   invalid:
-    'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-danger)]',
+    'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-danger)] in-data-[trn-surface=attention]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-state-attention-control-danger)]',
 } as const;
 
 const dotOnAttention =
@@ -85,7 +84,6 @@ export function trnRadioIndicatorRecipe(
     invalid
       ? indicatorBorderOnAttention.invalid
       : indicatorBorderOnAttention.valid,
-    indicatorOnAttention,
   );
 }
 

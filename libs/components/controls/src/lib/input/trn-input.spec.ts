@@ -112,6 +112,8 @@ describe('TrnInput', () => {
         'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:border-[var(--trinity-state-attention-control-danger)]',
         'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-state-attention-control-danger)]',
         'in-data-[trn-surface=attention]:file:text-[var(--trinity-state-attention-control-foreground)]',
+        // Focused, the danger ring would otherwise out-rank the focus ring.
+        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)]',
       ]),
     );
     expect(recipe.filter((token) => token.includes('attention'))).toEqual(

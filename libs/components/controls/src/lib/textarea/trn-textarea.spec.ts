@@ -70,6 +70,7 @@ describe('TrnTextarea', () => {
       expect.arrayContaining([
         'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:border-[var(--trinity-state-attention-control-danger)]',
         'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-state-attention-control-danger)]',
+        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)]',
       ]),
     );
   });
