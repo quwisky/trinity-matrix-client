@@ -9,7 +9,7 @@ import {
 import { defer, filter, from, map, of, switchMap, type Observable } from 'rxjs';
 import { buildLabel } from './build-label';
 import {
-  buildDiagnosticBundle,
+  buildDiagnosticBundleInSlices,
   type DiagnosticBundle,
 } from './diagnostic-bundle';
 import { formatLogArgs, truncateMessage } from './capture/format-log-args';
@@ -253,7 +253,7 @@ export class DiagnosticLogService {
             : of(LOG_OFF_SNAPSHOT),
         ),
       ),
-      bundle: (input) => of(buildDiagnosticBundle(input)),
+      bundle: (input) => buildDiagnosticBundleInSlices(input),
     });
   }
 

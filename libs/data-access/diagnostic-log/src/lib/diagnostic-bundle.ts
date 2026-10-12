@@ -1,4 +1,5 @@
 import type { BuildInfo } from '@trinity/platform-native';
+import type { Observable } from 'rxjs';
 import type { DiagnosticEntry } from './diagnostic-entry.model';
 import { createLogRedactor, type LogRedactor } from './redaction/redact-log';
 import {
@@ -8,6 +9,11 @@ import {
   type DiagnosticAccount,
   type DiagnosticReportFacts,
 } from './report-facts';
+import {
+  runInSlices,
+  runToEnd,
+  type SliceOptions,
+} from './report/run-in-slices';
 import type { DiagnosticSnapshot } from './store/diagnostic-log-store';
 
 /** The redacted file plus what the report flow needs alongside it. */
@@ -33,11 +39,31 @@ const PLACEHOLDER_NOTE =
 /**
  * Build the exported file: `# ` header lines, then one redacted line per entry, oldest
  * first. Header and body share one redactor, so a placeholder means the same thing
- * throughout the file, and the preview shows exactly this text.
+ * throughout the file, and the preview shows exactly this text. All at once; see
+ * {@link buildDiagnosticBundleInSlices} for the main thread.
  */
 export function buildDiagnosticBundle(
   input: DiagnosticBundleInput,
 ): DiagnosticBundle {
+  return runToEnd(diagnosticBundleSteps(input));
+}
+
+/**
+ * {@link buildDiagnosticBundle} a few milliseconds at a time, yielding between slices so a
+ * full log never freezes the UI. The same steps, so the same file byte for byte. Cold;
+ * unsubscribing stops the work.
+ */
+export function buildDiagnosticBundleInSlices(
+  input: DiagnosticBundleInput,
+  options?: SliceOptions,
+): Observable<DiagnosticBundle> {
+  return runInSlices(() => diagnosticBundleSteps(input), options);
+}
+
+/** The build, pausable after every line it learns or writes. */
+function* diagnosticBundleSteps(
+  input: DiagnosticBundleInput,
+): Generator<void, DiagnosticBundle> {
   const { accounts, snapshot } = input;
   const redactor = createLogRedactor({
     selfUserIds: accounts.map((account) => account.userId),
@@ -47,8 +73,12 @@ export function buildDiagnosticBundle(
     homeserverUrls: accounts.map((account) => account.homeserverUrl),
   });
   // Learn every identifier and server in the file before writing a line, so a bare server
-  // name is replaced even where it appears before the first ID or URL that names it.
-  redactor.learn(snapshot.entries.map(entryText).join('\n'));
+  // name is replaced even where it appears before the first ID or URL that names it. Entry
+  // by entry is the same as the whole file at once: `learn` reads line by line.
+  for (const entry of snapshot.entries) {
+    redactor.learn(entryText(entry));
+    yield;
+  }
   const facts = diagnosticReportFacts(input.build, input.platform, accounts);
   const dependencies = input.build?.dependencies;
   const header = [
@@ -71,7 +101,11 @@ export function buildDiagnosticBundle(
       : 'Dropped entries: none',
     PLACEHOLDER_NOTE,
   ].map((line) => `# ${line}`);
-  const body = snapshot.entries.map((entry) => formatEntry(entry, redactor));
+  const body: string[] = [];
+  for (const entry of snapshot.entries) {
+    body.push(formatEntry(entry, redactor));
+    yield;
+  }
   return {
     filename: diagnosticLogFileName(input.now),
     text: `${[...header, ...body].join('\n')}\n`,

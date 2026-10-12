@@ -17,7 +17,7 @@ import { ExternalBrowserService } from '@trinity/platform-native';
 import { HostFileExportService } from '@trinity/runtime/host';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, concat, map, of, throwError, type Observable } from 'rxjs';
+import { NEVER, Observable, concat, map, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ReportBugDialogComponent } from './report-bug-dialog.component';
 
@@ -255,6 +255,20 @@ describe('ReportBugDialogComponent', () => {
       homeserver: 'Synapse 1.140.0',
     });
     expect(issueFields(open)).not.toHaveProperty('logs');
+  });
+
+  it('says the log is being prepared, and stops preparing it when closed', async () => {
+    const stopped = vi.fn();
+    const { fixture } = await setup({
+      exported: new Observable<DiagnosticBundle>(() => stopped),
+    });
+
+    expect(screen.getByRole('status').textContent).toContain(
+      'Preparing the log…',
+    );
+    fixture.destroy();
+
+    expect(stopped).toHaveBeenCalledOnce();
   });
 
   it('waits for the facts before offering GitHub', async () => {
