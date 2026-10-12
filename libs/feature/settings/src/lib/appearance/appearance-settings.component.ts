@@ -32,7 +32,6 @@ import {
 import { AppearanceSettingsController } from './appearance-settings.controller';
 import { MessageGesturesBlockComponent } from './message-gestures-block.component';
 import { SystemTitleBarBlockComponent } from './system-title-bar-block.component';
-import { AppearancePreviewComponent } from './appearance-preview.component';
 import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
@@ -64,7 +63,6 @@ import { PreferenceCatalogSectionComponent } from '../shared/preference-catalog-
     AppearancePreferenceFieldComponent,
     MessageGesturesBlockComponent,
     SystemTitleBarBlockComponent,
-    AppearancePreviewComponent,
     TrnSettingsGroupComponent,
     TrnSettingsRowComponent,
   ],
@@ -122,15 +120,13 @@ export class AppearanceSettingsComponent {
       this.appearance.resolved()?.mode ??
       (this.appearance.axes.mode.value() === 'light' ? 'light' : 'dark'),
   );
-  readonly themeLabel = computed(() => this.labelFor('theme'));
-  readonly densityLabel = computed(() => this.labelFor('density'));
 
   /** Persist the chosen Mode; projection observes it only after the command commits. */
   onModeChange(value: string): void {
     this.appearance.update('mode', value);
   }
   /**
-   * `computed`, not a field initializer, because the preview text is not static.
+   * `computed`, not a field initializer, because the format sample text is not static.
    *
    * `sample` is a fixed instant on purpose, but `sampleTime` formats it through
    * `format.prefs()` — whose locales come from a `languagechange` listener. Android keeps
@@ -189,14 +185,5 @@ export class AppearanceSettingsComponent {
             console.error('Could not save the room ordering preference', err),
         });
     }
-  }
-
-  private labelFor(axis: 'theme' | 'density'): string {
-    const model = this.appearance.axes[axis];
-    const value = model.value();
-    return (
-      model.editor.options.find((option) => option.value === value)?.label ??
-      value
-    );
   }
 }

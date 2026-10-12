@@ -91,12 +91,6 @@ describe('mobile Appearance', () => {
       containing: true,
     });
     await expect($('html')).toHaveAttribute('data-theme', 'amethyst');
-    await expect(
-      $('[data-testid="appearance-preview-state"]'),
-    ).toHaveElementProperty(
-      'textContent',
-      expect.stringContaining('light · Amethyst · Cosy'),
-    );
     await browser.waitUntil(
       async () => (await readNativeStatusBar()).style === 'LIGHT',
       { timeout: 10_000, timeoutMsg: 'native status bar style never LIGHT' },
@@ -117,12 +111,6 @@ describe('mobile Appearance', () => {
     expect(await $('html').getCSSProperty('font-size')).toMatchObject({
       value: '20px',
     });
-    await expect(
-      $('[data-testid="appearance-preview-state"]'),
-    ).toHaveElementProperty(
-      'textContent',
-      expect.stringContaining('dark · Midnight · Compact'),
-    );
     await browser.waitUntil(
       async () => (await readNativeStatusBar()).style === 'DARK',
       { timeout: 10_000, timeoutMsg: 'native status bar style never DARK' },

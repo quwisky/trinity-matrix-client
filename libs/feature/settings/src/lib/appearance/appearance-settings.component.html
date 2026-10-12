@@ -1,17 +1,8 @@
-<trn-settings-group
-  description="Tune theme, type and spacing together, with a live preview of the result."
->
-  <trn-appearance-preview
-    [modeLabel]="resolvedMode()"
-    [themeLabel]="themeLabel()"
-    [densityLabel]="densityLabel()"
-    [timeLabel]="format.sampleTime(sample, format.timeFormat())"
-  />
-
-  @if (appearance.hydrationWarning()) {
+@if (appearance.hydrationWarning()) {
+  <trn-settings-group>
     <div
       role="alert"
-      class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--trinity-shape-control-radius)] border border-danger p-[var(--trinity-space-4)] text-13 text-danger"
+      class="flex flex-wrap items-center justify-between gap-3 rounded-[var(--trinity-shape-control-radius)] border border-danger p-[var(--trinity-space-4)] text-13 text-danger"
       data-testid="appearance-hydration-warning"
     >
       <span
@@ -30,8 +21,8 @@
         Restore affected defaults
       </button>
     </div>
-  }
-</trn-settings-group>
+  </trn-settings-group>
+}
 
 <trn-settings-group
   title="Mode and theme"

@@ -142,14 +142,7 @@ test.describe('Text size', () => {
     ).toBe('');
 
     await openSettingsSection(page, 'appearance');
-    const previewBody = page.locator('.preview__body');
-    await expect(previewBody).toBeVisible();
-    expect(await px(previewBody)).toBe(before);
-    expect(await lineHeightPx(previewBody)).toBe(lineHeightBefore);
     await choose(page, 'text-scale-select', 'text-scale-larger');
-
-    expect(await px(previewBody)).toBe(20);
-    expect(await lineHeightPx(previewBody)).toBe(30);
 
     expect(
       await page.evaluate(() => document.documentElement.style.fontSize),
@@ -160,7 +153,8 @@ test.describe('Text size', () => {
     await backToRoom(page);
     const scaled = page.locator('.msg__text', { hasText: body }).first();
     await expect(scaled).toBeVisible({ timeout: 20_000 });
-    expect(await px(scaled)).toBeGreaterThan(before);
+    expect(await px(scaled)).toBe(20);
+    expect(await lineHeightPx(scaled)).toBe(30);
 
     // Sidebar chrome is rem-sized too (#928, WCAG 1.4.4), so the room list grows with the
     // setting instead of staying at its px size while the conversation scales.
