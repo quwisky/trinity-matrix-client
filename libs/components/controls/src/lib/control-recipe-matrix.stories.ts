@@ -64,7 +64,27 @@ const BUTTON_PRESENTATIONS = completeCatalog<TrnButtonPresentation>()([
   'ghost',
   'link',
 ]);
-const BUTTON_SHAPES = completeCatalog<TrnButtonShape>()(['label', 'icon']);
+const BUTTON_SHAPES = completeCatalog<TrnButtonShape>()([
+  'label',
+  'icon',
+  'row',
+  'inline',
+]);
+
+/** Each shape with the presentation it is meant for: rows are ghost, inline links are links. */
+const SHAPE_PRESENTATION: Record<TrnButtonShape, TrnButtonPresentation> = {
+  label: 'solid',
+  icon: 'solid',
+  row: 'ghost',
+  inline: 'link',
+};
+
+const SHAPE_LABEL: Record<TrnButtonShape, string> = {
+  label: 'Label button',
+  icon: '',
+  row: 'Row button with a label that wraps instead of clipping',
+  inline: 'Inline link',
+};
 const RADIO_LAYOUTS = completeCatalog<TrnRadioGroupLayout>()([
   'list',
   'segmented',
@@ -192,6 +212,8 @@ export const CompleteCatalog: Story = {
     props: {
       buttonPresentations: BUTTON_PRESENTATIONS,
       buttonShapes: BUTTON_SHAPES,
+      shapePresentation: SHAPE_PRESENTATION,
+      shapeLabel: SHAPE_LABEL,
       buttonSizes: BUTTON_SIZES,
       buttonVariants: BUTTON_VARIANTS,
       fieldLabelEmphases: FIELD_LABEL_EMPHASES,
@@ -236,12 +258,13 @@ export const CompleteCatalog: Story = {
                 data-catalog-touch
                 trnBtn
                 [shape]="shape"
+                [presentation]="shapePresentation[shape]"
                 [attr.aria-label]="shape === 'icon' ? 'Search rooms' : null"
               >
                 @if (shape === 'icon') {
                   <trn-icon name="search" motion="pop" />
                 } @else {
-                  Label button
+                  {{ shapeLabel[shape] }}
                 }
               </button>
             }
