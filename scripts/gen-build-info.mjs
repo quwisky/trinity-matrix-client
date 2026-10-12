@@ -11,7 +11,13 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'apps/trinity/src/app/build-info.ts');
 
 /** Render the build-info.ts source for the given values (pure). */
-export function renderBuildInfo({ version, commit, builtAt }) {
+export function renderBuildInfo({
+  version,
+  commit,
+  builtAt,
+  matrixJsSdk = 'unknown',
+  cryptoWasm = 'unknown',
+}) {
   return `import { type BuildInfo } from '@trinity/platform-native';
 
 // Generated (and git-ignored) by scripts/gen-build-info.mjs from package.json + git.
@@ -21,8 +27,25 @@ export const BUILD_INFO_VALUE: BuildInfo = {
   version: '${version}',
   commit: '${commit}',
   builtAt: '${builtAt}',
+  dependencies: {
+    matrixJsSdk: '${matrixJsSdk}',
+    cryptoWasm: '${cryptoWasm}',
+  },
 };
 `;
+}
+
+/** The installed version of a dependency under `root`, or `unknown`. */
+export function installedVersion(root, name) {
+  try {
+    return (
+      JSON.parse(
+        readFileSync(join(root, 'node_modules', name, 'package.json'), 'utf8'),
+      ).version ?? 'unknown'
+    );
+  } catch {
+    return 'unknown';
+  }
 }
 
 /** Blank out the timestamp so an unchanged version/commit doesn't count as a change. */
@@ -64,7 +87,13 @@ export function generate({
     git(root, 'git rev-parse --short HEAD'),
     git(root, 'git status --porcelain'),
   );
-  const contents = renderBuildInfo({ version, commit, builtAt: now() });
+  const contents = renderBuildInfo({
+    version,
+    commit,
+    builtAt: now(),
+    matrixJsSdk: installedVersion(root, 'matrix-js-sdk'),
+    cryptoWasm: installedVersion(root, '@matrix-org/matrix-sdk-crypto-wasm'),
+  });
 
   let current = '';
   try {

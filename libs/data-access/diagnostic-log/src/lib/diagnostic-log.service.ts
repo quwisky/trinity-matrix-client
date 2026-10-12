@@ -7,8 +7,23 @@ import {
   PreferenceStoreService,
   type PreferenceCommandOutcome,
 } from '@trinity/runtime/preferences';
-import { defer, from, map, switchMap, type Observable } from 'rxjs';
+import {
+  catchError,
+  defaultIfEmpty,
+  defer,
+  from,
+  map,
+  of,
+  switchMap,
+  take,
+  type Observable,
+} from 'rxjs';
 import { buildLabel } from './build-label';
+import {
+  buildDiagnosticBundle,
+  type DiagnosticAccount,
+  type DiagnosticBundle,
+} from './diagnostic-bundle';
 import { formatLogArgs, truncateMessage } from './capture/format-log-args';
 import {
   installConsoleCapture,
@@ -22,6 +37,7 @@ import type {
 } from './diagnostic-entry.model';
 import { DiagnosticLogRecorder } from './diagnostic-log-recorder';
 import {
+  DIAGNOSTIC_ACCOUNT_SOURCE,
   DIAGNOSTIC_LOG_STORE_FACTORY,
   DIAGNOSTIC_LOG_STORE_REMOVER,
   DIAGNOSTIC_SDK_CAPTURE,
@@ -29,6 +45,7 @@ import {
 import { KEEP_DIAGNOSTIC_LOG_PREFERENCE } from './keep-diagnostic-log.preference';
 import { describePlatform, readPlatformFacts } from './platform-description';
 import { scrubMessage } from './scrub-secrets';
+import type { DiagnosticSnapshot } from './store/diagnostic-log-store';
 
 /** Whether the log survives a reload: not yet known, on disk, or in memory only. */
 export type DiagnosticAvailability = 'pending' | 'persistent' | 'memory-only';
@@ -63,6 +80,13 @@ export class DiagnosticLogNotDeletedError extends Error {
 
 const noop = (): void => undefined;
 
+/** What an export reads while "Keep a diagnostic log" is off: nothing, and no store opened. */
+const LOG_OFF_SNAPSHOT: DiagnosticSnapshot = {
+  entries: [],
+  dropped: false,
+  storage: 'memory',
+};
+
 /**
  * The on-device diagnostic log. {@link start} runs from `provideDiagnosticLog()` before any
  * Matrix client exists; from then on Trinity's console warnings and errors, uncaught errors,
@@ -75,6 +99,9 @@ export class DiagnosticLogService {
   private readonly document = inject(DOCUMENT);
   private readonly destroyRef = inject(DestroyRef);
   private readonly build = inject(BUILD_INFO, { optional: true });
+  private readonly accountSource = inject(DIAGNOSTIC_ACCOUNT_SOURCE, {
+    optional: true,
+  });
   private readonly preferences = inject(PreferenceStoreService);
   private readonly openStore = inject(DIAGNOSTIC_LOG_STORE_FACTORY);
   private readonly sdkCapture = inject(DIAGNOSTIC_SDK_CAPTURE, {
@@ -92,6 +119,11 @@ export class DiagnosticLogService {
   });
   /** Entries recorded before the setting is known; null once it is. */
   private early: DiagnosticEntry[] | null = [];
+  private resolveSettled: () => void = noop;
+  /** Resolves once "Keep a diagnostic log" is known; `start()` begins reading it. */
+  private readonly settled = new Promise<void>((resolve) => {
+    this.resolveSettled = resolve;
+  });
   private started = false;
   private recording = false;
   private consoleCaptureSuspended = 0;
@@ -198,6 +230,39 @@ export class DiagnosticLogService {
   }
 
   /**
+   * The redacted file and the facts for the issue form, from everything stored plus the
+   * last unflushed seconds. Waits until the setting is known (`start()` must have run, as
+   * `provideDiagnosticLog()` ensures); with the log off it carries no entries and never
+   * opens the store. Cold; the account source failing leaves the accounts out rather than
+   * failing the export.
+   */
+  export(): Observable<DiagnosticBundle> {
+    return defer(() => from(this.settled)).pipe(
+      switchMap(() =>
+        this._keepLog() ? from(this.recorder.snapshot()) : of(LOG_OFF_SNAPSHOT),
+      ),
+      switchMap((snapshot) =>
+        (
+          this.accountSource?.accounts() ?? of<readonly DiagnosticAccount[]>([])
+        ).pipe(
+          take(1),
+          defaultIfEmpty([] as readonly DiagnosticAccount[]),
+          catchError(() => of<readonly DiagnosticAccount[]>([])),
+          map((accounts) =>
+            buildDiagnosticBundle({
+              now: new Date(),
+              build: this.build,
+              platform: describePlatform(readPlatformFacts()),
+              accounts,
+              snapshot,
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /**
    * Turn the log on or off for this installation. Off stops recording at once, drops the
    * unflushed batch and deletes the stored log; on starts a fresh log. The change applies to
    * this session as soon as this is subscribed, even if saving the setting then fails; the
@@ -269,6 +334,7 @@ export class DiagnosticLogService {
     const early = this.early ?? [];
     this.early = null;
     this._keepLog.set(keep);
+    this.resolveSettled();
     if (!keep) {
       return this.recorder.discard();
     }
@@ -286,6 +352,7 @@ export class DiagnosticLogService {
     this.sdkCapture?.setEnabled(false);
     this.early = null;
     this._keepLog.set(false);
+    this.resolveSettled();
   }
 
   /** The user's choice from Advanced, which also settles a setting still being read. */

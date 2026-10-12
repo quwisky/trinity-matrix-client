@@ -5,7 +5,7 @@ import {
   type PreferenceStorageAdapter,
   type PreferenceStorageReadOutcome,
 } from '@trinity/runtime/preferences';
-import { Subject, firstValueFrom, of } from 'rxjs';
+import { Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MAX_MESSAGE_LENGTH,
@@ -13,6 +13,7 @@ import {
 } from './diagnostic-entry.model';
 import { FLUSH_DELAY_MS } from './diagnostic-log-recorder';
 import {
+  DIAGNOSTIC_ACCOUNT_SOURCE,
   DIAGNOSTIC_LOG_STORE_FACTORY,
   DIAGNOSTIC_LOG_STORE_REMOVER,
   DIAGNOSTIC_SDK_CAPTURE,
@@ -485,6 +486,155 @@ describe('DiagnosticLogService', () => {
       } finally {
         process.off('unhandledRejection', unhandled);
       }
+    });
+  });
+
+  describe('export', () => {
+    const ALICE_ACCOUNT = {
+      userId: '@alice:example.org',
+      deviceId: 'QWERTYUIOP',
+      homeserverUrl: 'https://matrix.example.org',
+      software: { name: 'Synapse', version: '1.140.0' },
+    };
+
+    it('exports flushed and unflushed lines with the accounts the app reports', async () => {
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: BUILD_INFO, useValue: BUILD },
+          {
+            provide: DIAGNOSTIC_LOG_STORE_FACTORY,
+            useValue: () => Promise.resolve(store),
+          },
+          { provide: DIAGNOSTIC_LOG_STORE_REMOVER, useValue: remove },
+          {
+            provide: PREFERENCE_STORAGE_ADAPTER,
+            useValue: preferenceAdapter(),
+          },
+          {
+            provide: DIAGNOSTIC_ACCOUNT_SOURCE,
+            useValue: { accounts: () => of([ALICE_ACCOUNT]) },
+          },
+        ],
+      });
+      const service = TestBed.inject(DiagnosticLogService);
+      service.start();
+      await vi.advanceTimersByTimeAsync(FLUSH_DELAY_MS);
+      service.record({
+        level: 'warn',
+        source: 'console',
+        logger: 'trinity',
+        message: 'sync stalled for @alice:example.org',
+      });
+
+      const bundle = await firstValueFrom(service.export());
+
+      expect(bundle.entryCount).toBe(2);
+      expect(bundle.text).toContain('# Account 1 (active): @me:server1');
+      expect(bundle.text).toContain(
+        'WARN console/trinity sync stalled for @me:server1',
+      );
+      expect(bundle.text).not.toContain('alice');
+      expect(bundle.facts.homeservers).toEqual(['Synapse 1.140.0']);
+    });
+
+    it('exports without accounts when the app provides no account source', async () => {
+      const service = setup();
+
+      const bundle = await firstValueFrom(service.export());
+
+      expect(bundle.text).toContain('# Accounts signed in: 0');
+    });
+
+    it('still exports when the account source fails', async () => {
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: DIAGNOSTIC_LOG_STORE_FACTORY,
+            useValue: () => Promise.resolve(store),
+          },
+          {
+            provide: PREFERENCE_STORAGE_ADAPTER,
+            useValue: preferenceAdapter(),
+          },
+          {
+            provide: DIAGNOSTIC_ACCOUNT_SOURCE,
+            useValue: {
+              accounts: () =>
+                throwError(() => new Error('registry unreadable')),
+            },
+          },
+        ],
+      });
+      const service = TestBed.inject(DiagnosticLogService);
+      service.start();
+
+      const bundle = await firstValueFrom(service.export());
+
+      expect(bundle.text).toContain('# Accounts signed in: 0');
+    });
+
+    it('exports no entries, and never opens the store, while the log is off', async () => {
+      storedSetting = KEEP_LOG_OFF;
+      const openStore = vi.fn(() => Promise.resolve(store));
+      const service = setup(openStore);
+
+      const bundle = await firstValueFrom(service.export());
+
+      expect(bundle.entryCount).toBe(0);
+      expect(bundle.facts.version).toBe('Trinity v1.2.3 · abc1234');
+      expect(openStore).not.toHaveBeenCalled();
+    });
+
+    it('exports facts only, without waiting, when the setting cannot be read', async () => {
+      // Off for the session: the report dialog must still get its facts and offer GitHub.
+      const openStore = vi.fn(() => Promise.resolve(store));
+      const service = setup(openStore, {
+        read: () =>
+          of({
+            kind: 'unavailable',
+            diagnostic: { code: 'storage-down' },
+          } as const),
+        write: () => of({ kind: 'completed' } as const),
+      });
+
+      const bundle = await firstValueFrom(service.export());
+
+      expect(service.keepLog()).toBe(false);
+      expect(bundle.entryCount).toBe(0);
+      expect(bundle.facts.version).toBe('Trinity v1.2.3 · abc1234');
+      expect(openStore).not.toHaveBeenCalled();
+    });
+
+    it('waits for the setting to be read before exporting', async () => {
+      const setting = new Subject<PreferenceStorageReadOutcome>();
+      const service = setup(undefined, {
+        read: () => setting,
+        write: () => of({ kind: 'completed' } as const),
+      });
+      let entryCount: number | null = null;
+      service.export().subscribe((bundle) => (entryCount = bundle.entryCount));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(entryCount).toBeNull();
+
+      setting.next({ kind: 'found', payload: KEEP_LOG_OFF });
+      setting.complete();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(entryCount).toBe(0);
+    });
+
+    it('exports when the user chooses while the setting is still being read', async () => {
+      const reads = new Subject<PreferenceStorageReadOutcome>();
+      const service = setup(undefined, pendingAdapter(reads));
+      let entryCount: number | null = null;
+      service.export().subscribe((bundle) => (entryCount = bundle.entryCount));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(entryCount).toBeNull();
+
+      await firstValueFrom(service.setKeepLog(false));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(entryCount).toBe(0);
     });
   });
 });

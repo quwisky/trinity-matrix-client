@@ -1,4 +1,6 @@
 import { InjectionToken } from '@angular/core';
+import type { Observable } from 'rxjs';
+import type { DiagnosticAccount } from './diagnostic-bundle';
 import type { DiagnosticLogStore } from './store/diagnostic-log-store';
 import {
   IndexedDbLogStore,
@@ -37,3 +39,23 @@ export interface DiagnosticSdkCapture {
 export const DIAGNOSTIC_SDK_CAPTURE = new InjectionToken<DiagnosticSdkCapture>(
   'DIAGNOSTIC_SDK_CAPTURE',
 );
+
+/** Supplies the signed-in accounts for the export header; implemented by the app. */
+export interface DiagnosticAccountSource {
+  /** Active account first. Must complete. */
+  accounts(): Observable<readonly DiagnosticAccount[]>;
+}
+
+export const DIAGNOSTIC_ACCOUNT_SOURCE =
+  new InjectionToken<DiagnosticAccountSource>('DIAGNOSTIC_ACCOUNT_SOURCE');
+
+/** Where "Open bug report on GitHub" goes; null leaves the GitHub step out. */
+export interface DiagnosticReportConfig {
+  readonly issueRepositoryUrl: string | null;
+}
+
+export const DIAGNOSTIC_REPORT_CONFIG =
+  new InjectionToken<DiagnosticReportConfig>('DIAGNOSTIC_REPORT_CONFIG', {
+    providedIn: 'root',
+    factory: () => ({ issueRepositoryUrl: null }),
+  });

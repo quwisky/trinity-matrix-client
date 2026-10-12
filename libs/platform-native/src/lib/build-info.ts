@@ -8,6 +8,14 @@ export interface BuildInfo {
   commit: string;
   /** ISO timestamp the build was generated at, or `''` when unknown. */
   builtAt: string;
+  /**
+   * Installed matrix-js-sdk and crypto WASM versions, for the diagnostic log header.
+   * Optional: hand-written BuildInfo values in specs and stories omit it.
+   */
+  dependencies?: {
+    readonly matrixJsSdk: string;
+    readonly cryptoWasm: string;
+  };
 }
 
 /**
