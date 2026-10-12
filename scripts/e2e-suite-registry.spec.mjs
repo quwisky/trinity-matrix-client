@@ -134,7 +134,7 @@ describe('E2E suite registry', () => {
     snapshot.ciEntrypoints.push(
       {
         ...changed,
-        command: 'pnpm e2e:every-probe',
+        command: 'pnpm e2e:pr-suite-probe',
         suiteIds: [pullRequest.id],
       },
       { ...changed, command: 'pnpm e2e:scheduled-probe', tier: 'scheduled' },

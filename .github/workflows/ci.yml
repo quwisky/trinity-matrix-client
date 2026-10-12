@@ -76,9 +76,11 @@ jobs:
       # or runs on, so `scrollbars-e2e` runs it before merge. The paths are the suite's own
       # imports and rendered surfaces, not a guess: the Settings feature, overlay and layout
       # primitives it opens, the theme tokens and shared scrollbar and code-block styles it
-      # measures, the code highlighter, and its spec, config, target, registry entry and the
-      # fixtures and harness files it loads. Pushes answer false, as for `mas`: the weekly
-      # scheduled run covers main.
+      # measures, the Markdown renderer and sanitizer that emit the code block's language
+      # class and attribute, the code highlighter, and its spec, config, target, registry entry
+      # and the fixtures and harness files it loads. A version bump of Playwright, Tailwind or
+      # Shiki, which render or measure what it checks, counts too. Pushes answer false, as for
+      # `mas`: the weekly scheduled run covers main.
       - id: scrollbars
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
@@ -91,6 +93,7 @@ jobs:
               'libs/components/(overlay|navigation-layout)/'
               'libs/theme-foundation/'
               'apps/trinity/src/(global|rendered-markdown)\.scss$'
+              'libs/util/matrix/src/lib/(message-view|message-content)\.ts$'
               'libs/feature/rooms/src/lib/message-presentation/'
               'libs/feature/rooms/src/lib/message-row/message-row\.component\.(html|scss)$'
               'e2e/components/(scrollbars/|playwright\.scrollbars\.config\.mts$|project\.json$)'
@@ -103,7 +106,10 @@ jobs:
             )
             pattern="^($(IFS='|'; echo "${paths[*]}"))"
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
-            if grep -qE "$pattern" <<< "$changed"; then
+            # A version bump rewrites these packages' entries in the manifests.
+            manifests=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json pnpm-lock.yaml pnpm-workspace.yaml)
+            packages="(@playwright/test|playwright(-core)?|tailwindcss|@tailwindcss/[a-z0-9-]+|shiki|@shikijs/[a-z0-9-]+)"
+            if grep -qE "$pattern" <<< "$changed" || grep -qE "^[+-][[:space:]]*['\"]?${packages}(['\"]?:|@)" <<< "$manifests"; then
               run=true
             fi
           fi
