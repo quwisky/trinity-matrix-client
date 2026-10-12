@@ -1,60 +1,59 @@
 import { liveRoomState } from '@trinity/util/matrix';
-import { EventType, type MatrixClient } from 'matrix-js-sdk';
+import { EventType, type MatrixClient, type RoomState } from 'matrix-js-sdk';
 
-/** The names one account knows: what a diagnostic file must replace. */
-export interface AccountKnownNames {
+/** Names one source knows: the account itself, or one room. */
+export interface AccountNameGroup {
   readonly roomNames: readonly string[];
   readonly roomTopics: readonly string[];
-  readonly displayNames: readonly string[];
+  /** Read lazily, so a large room is read a few names at a time. */
+  readonly displayNames: Iterable<string>;
 }
 
 /**
- * Room names, room topics and joined members' display names, the user's own included, read
- * from one client's memory at the moment of the call. Nothing is fetched or kept.
+ * The account's own display name, then each room's name, topic and members' display names
+ * (joined, invited, left and banned), read from the client's memory as they are iterated.
+ * Nothing is fetched or kept.
  */
-export function accountKnownNames(
+export function* accountKnownNames(
   client: Pick<MatrixClient, 'getRooms' | 'getUserId' | 'getUser'>,
-): AccountKnownNames {
-  const roomNames = new Set<string>();
-  const roomTopics = new Set<string>();
-  const displayNames = new Set<string>();
+): Generator<AccountNameGroup, void> {
   const ownId = client.getUserId();
   const ownName = ownId ? client.getUser(ownId)?.displayName : undefined;
-  if (ownName) {
-    displayNames.add(ownName);
-  }
-  for (const room of client.getRooms()) {
-    addString(roomNames, stateContent(room, EventType.RoomName, 'name'));
-    addString(roomTopics, stateContent(room, EventType.RoomTopic, 'topic'));
-    for (const member of room.getJoinedMembers()) {
-      // Without a display name, the SDK reports the user ID, which is redacted as an ID.
-      if (member.rawDisplayName !== member.userId) {
-        addString(displayNames, member.rawDisplayName);
-      }
-    }
-  }
-  return {
-    roomNames: [...roomNames],
-    roomTopics: [...roomTopics],
-    displayNames: [...displayNames],
+  yield {
+    roomNames: [],
+    roomTopics: [],
+    displayNames: ownName ? [ownName] : [],
   };
+  for (const room of client.getRooms()) {
+    const state = liveRoomState(room);
+    yield {
+      roomNames: strings(stateContent(state, EventType.RoomName, 'name')),
+      roomTopics: strings(stateContent(state, EventType.RoomTopic, 'topic')),
+      displayNames: memberNames(state),
+    };
+  }
 }
 
-type ClientRoom = ReturnType<MatrixClient['getRooms']>[number];
+function* memberNames(state: RoomState | undefined): Generator<string, void> {
+  for (const member of state?.getMembers() ?? []) {
+    // Without a display name, the SDK reports the user ID, which is redacted as an ID.
+    if (member.rawDisplayName && member.rawDisplayName !== member.userId) {
+      yield member.rawDisplayName;
+    }
+  }
+}
 
 function stateContent(
-  room: ClientRoom,
+  state: RoomState | undefined,
   type: EventType.RoomName | EventType.RoomTopic,
   field: string,
 ): unknown {
-  const content: Record<string, unknown> | undefined = liveRoomState(room)
+  const content: Record<string, unknown> | undefined = state
     ?.getStateEvents(type, '')
     ?.getContent();
   return content?.[field];
 }
 
-function addString(names: Set<string>, value: unknown): void {
-  if (typeof value === 'string' && value.length > 0) {
-    names.add(value);
-  }
+function strings(value: unknown): readonly string[] {
+  return typeof value === 'string' && value.length > 0 ? [value] : [];
 }

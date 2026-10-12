@@ -688,12 +688,13 @@ describe('DiagnosticLogService', () => {
             provide: DIAGNOSTIC_ACCOUNT_SOURCE,
             useValue: {
               accounts: () => of([ALICE_ACCOUNT]),
-              knownNames: () =>
-                of({
+              knownNames: () => [
+                {
                   roomNames: ['Garden Club'],
                   roomTopics: [],
                   displayNames: ['Alice Liddell'],
-                }),
+                },
+              ],
             },
           },
         ],
@@ -730,7 +731,7 @@ describe('DiagnosticLogService', () => {
       expect(bundle.text).toContain('# Accounts signed in: 0');
     });
 
-    it('still exports, without names, when the name source fails', async () => {
+    it('keeps the names read before the name source failed', async () => {
       TestBed.configureTestingModule({
         providers: [
           {
@@ -745,17 +746,31 @@ describe('DiagnosticLogService', () => {
             provide: DIAGNOSTIC_ACCOUNT_SOURCE,
             useValue: {
               accounts: () => of([ALICE_ACCOUNT]),
-              knownNames: () => throwError(() => new Error('client stopped')),
+              *knownNames() {
+                yield {
+                  roomNames: ['Garden Club'],
+                  roomTopics: [],
+                  displayNames: [],
+                };
+                throw new Error('client stopped');
+              },
             },
           },
         ],
       });
       const service = TestBed.inject(DiagnosticLogService);
       service.start();
+      service.record({
+        level: 'warn',
+        source: 'console',
+        logger: 'trinity',
+        message: 'sync stalled in Garden Club',
+      });
 
       const bundle = await firstValueFrom(service.export());
 
       expect(bundle.text).toContain('# Accounts signed in: 1');
+      expect(bundle.text).toContain('sync stalled in Room 1');
     });
 
     it('still exports when the account source fails', async () => {

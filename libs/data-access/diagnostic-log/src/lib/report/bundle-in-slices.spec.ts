@@ -8,7 +8,7 @@ import {
 } from '../diagnostic-bundle';
 import { runInSlices } from './run-in-slices';
 import type { DiagnosticEntry } from '../diagnostic-entry.model';
-import { NO_KNOWN_NAMES } from '../report-facts';
+import type { DiagnosticNameGroup } from '../report-facts';
 import {
   ALICE,
   CORPUS_CONTEXT,
@@ -62,15 +62,14 @@ function largeLog(): DiagnosticEntry[] {
 }
 
 /** Names that occur in {@link largeLog}, so the sliced build replaces them too. */
-const LARGE_LOG_NAMES = {
-  roomNames: ['second line'],
-  roomTopics: [],
-  displayNames: ['FetchHttpApi'],
-};
+const LARGE_LOG_NAMES: readonly DiagnosticNameGroup[] = [
+  { roomNames: ['second line'], roomTopics: [], displayNames: [] },
+  { roomNames: [], roomTopics: [], displayNames: ['FetchHttpApi'] },
+];
 
 function input(
   entries: readonly DiagnosticEntry[],
-  knownNames: DiagnosticBundleInput['knownNames'] = NO_KNOWN_NAMES,
+  knownNames: DiagnosticBundleInput['knownNames'] = [],
 ): DiagnosticBundleInput {
   return {
     now: new Date(2026, 9, 11, 9, 30),

@@ -1,16 +1,13 @@
 import type { BuildInfo } from '@trinity/platform-native';
 import type { Observable } from 'rxjs';
 import type { DiagnosticEntry } from './diagnostic-entry.model';
-import {
-  createLogRedactorInSteps,
-  type LogRedactor,
-} from './redaction/redact-log';
+import { createLogRedactor, type LogRedactor } from './redaction/redact-log';
 import {
   diagnosticLogFileName,
   diagnosticReportFacts,
   softwareLabel,
   type DiagnosticAccount,
-  type DiagnosticKnownNames,
+  type DiagnosticNameGroup,
   type DiagnosticReportFacts,
 } from './report-facts';
 import {
@@ -34,8 +31,8 @@ export interface DiagnosticBundleInput {
   readonly platform: string;
   /** Active account first. */
   readonly accounts: readonly DiagnosticAccount[];
-  /** Names of every signed-in account, replaced throughout; held only while building. */
-  readonly knownNames: DiagnosticKnownNames;
+  /** Names of every signed-in account, read once the file is learned; never kept. */
+  readonly knownNames: Iterable<DiagnosticNameGroup>;
   readonly snapshot: DiagnosticSnapshot;
 }
 
@@ -71,13 +68,12 @@ function* diagnosticBundleSteps(
   input: DiagnosticBundleInput,
 ): Generator<void, DiagnosticBundle> {
   const { accounts, snapshot } = input;
-  const redactor = yield* createLogRedactorInSteps({
+  const redactor = createLogRedactor({
     selfUserIds: accounts.map((account) => account.userId),
     selfDeviceIds: accounts.flatMap((account) =>
       account.deviceId ? [account.deviceId] : [],
     ),
     homeserverUrls: accounts.map((account) => account.homeserverUrl),
-    knownNames: input.knownNames,
   });
   // Learn every identifier and server in the file before writing a line, so a bare server
   // name is replaced even where it appears before the first ID or URL that names it. Entry
@@ -86,6 +82,8 @@ function* diagnosticBundleSteps(
     redactor.learn(entryText(entry));
     yield;
   }
+  // Then the names, kept only where they occur in the file just learned.
+  yield* redactor.learnNames(input.knownNames);
   const facts = diagnosticReportFacts(input.build, input.platform, accounts);
   const dependencies = input.build?.dependencies;
   const header = [

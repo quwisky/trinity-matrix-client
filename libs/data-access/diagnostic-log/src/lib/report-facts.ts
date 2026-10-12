@@ -20,20 +20,15 @@ export interface DiagnosticAccount {
 }
 
 /**
- * Room names, room topics and display names known to the signed-in accounts, gathered when a
- * report is prepared and replaced wherever they appear in the file. Never stored.
+ * Names one source knows, usually one room's: its name and topic and its members' display
+ * names, read lazily so a large room is read a few names at a time. The export reads them
+ * once, while it builds the file, and keeps only those that occur in the log. Never stored.
  */
-export interface DiagnosticKnownNames {
+export interface DiagnosticNameGroup {
   readonly roomNames: readonly string[];
   readonly roomTopics: readonly string[];
-  readonly displayNames: readonly string[];
+  readonly displayNames: Iterable<string>;
 }
-
-export const NO_KNOWN_NAMES: DiagnosticKnownNames = {
-  roomNames: [],
-  roomTopics: [],
-  displayNames: [],
-};
 
 /** What the GitHub form is pre-filled with. Never carries a server name. */
 export interface DiagnosticReportFacts {
@@ -91,17 +86,15 @@ export function readAccounts(
 }
 
 /**
- * The names to replace in the file, read once when the file is built: none when the app has
- * no source, or when it fails or completes empty. Never errors. Cold.
+ * The names to replace in the file, read from the app's source only when iterated: none
+ * when there is no source. The redactor keeps what it read if the source fails part-way.
  */
 export function readKnownNames(
   source: DiagnosticAccountSource | null,
-): Observable<DiagnosticKnownNames> {
-  return defer(() => source?.knownNames() ?? of(NO_KNOWN_NAMES)).pipe(
-    take(1),
-    defaultIfEmpty(NO_KNOWN_NAMES),
-    catchError(() => of(NO_KNOWN_NAMES)),
-  );
+): Iterable<DiagnosticNameGroup> {
+  return {
+    [Symbol.iterator]: () => (source?.knownNames() ?? [])[Symbol.iterator](),
+  };
 }
 
 function pad(value: number): string {

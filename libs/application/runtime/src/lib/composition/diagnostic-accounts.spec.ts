@@ -109,65 +109,57 @@ describe('diagnosticAccounts', () => {
 });
 
 describe('diagnosticKnownNames', () => {
-  const names = {
-    alice: {
-      roomNames: ['Garden Club', 'Shared Room'],
-      roomTopics: ['Roses and tulips'],
-      displayNames: ['Alice Liddell', 'Bob Builder'],
-    },
-    bob: {
-      roomNames: ['Shared Room', 'Workshop'],
-      roomTopics: [],
-      displayNames: ['Bob Builder', 'Wendy'],
-    },
+  const groups = {
+    alice: [
+      {
+        roomNames: ['Garden Club'],
+        roomTopics: ['Roses and tulips'],
+        displayNames: ['Alice Liddell'],
+      },
+    ],
+    bob: [{ roomNames: ['Workshop'], roomTopics: [], displayNames: ['Wendy'] }],
   } as const;
 
-  it('gathers the names of every signed-in account, each once', async () => {
+  it('reads the names of every signed-in account, group by group', () => {
     const clients = {
       all: () => [{ client: 'alice' as const }, { client: 'bob' as const }],
     };
 
-    const known = await firstValueFrom(
-      diagnosticKnownNames(clients, (client) => names[client]),
-    );
-
-    expect(known).toEqual({
-      roomNames: ['Garden Club', 'Shared Room', 'Workshop'],
-      roomTopics: ['Roses and tulips'],
-      displayNames: ['Alice Liddell', 'Bob Builder', 'Wendy'],
-    });
+    expect([
+      ...diagnosticKnownNames(clients, (client) => groups[client]),
+    ]).toEqual([...groups.alice, ...groups.bob]);
   });
 
-  it('reads the clients only when subscribed, at export time', async () => {
+  it('reads the clients only when iterated, at export time', () => {
     const all = vi.fn(() => [{ client: 'alice' as const }]);
-    const read = vi.fn((client: 'alice') => names[client]);
+    const read = vi.fn((client: 'alice') => groups[client]);
 
-    const known = diagnosticKnownNames({ all }, read);
+    const names = diagnosticKnownNames({ all }, read);
     expect(all).not.toHaveBeenCalled();
 
-    await firstValueFrom(known);
-    await firstValueFrom(known);
-    expect(read).toHaveBeenCalledTimes(2);
+    expect([...names]).toHaveLength(1);
+    expect(read).toHaveBeenCalledTimes(1);
   });
 
-  it('skips an account whose client cannot be read', async () => {
+  it('skips the rest of an account whose client fails, and goes on', () => {
     const clients = {
       all: () => [{ client: 'alice' as const }, { client: 'bob' as const }],
     };
 
-    const known = await firstValueFrom(
-      diagnosticKnownNames(clients, (client) => {
-        if (client === 'alice') throw new Error('client stopped');
-        return names[client];
-      }),
-    );
+    const read = function* (client: 'alice' | 'bob') {
+      yield* groups[client];
+      if (client === 'alice') {
+        throw new Error('client stopped');
+      }
+    };
 
-    expect(known.roomNames).toEqual(['Shared Room', 'Workshop']);
+    expect([...diagnosticKnownNames(clients, read)]).toEqual([
+      ...groups.alice,
+      ...groups.bob,
+    ]);
   });
 
-  it('completes with no names when no account is signed in', async () => {
-    expect(
-      await firstValueFrom(diagnosticKnownNames({ all: () => [] }, vi.fn())),
-    ).toEqual({ roomNames: [], roomTopics: [], displayNames: [] });
+  it('reads nothing when no account is signed in', () => {
+    expect([...diagnosticKnownNames({ all: () => [] }, vi.fn())]).toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
 import { InjectionToken } from '@angular/core';
 import type { Observable } from 'rxjs';
-import type { DiagnosticAccount, DiagnosticKnownNames } from './report-facts';
+import type { DiagnosticAccount, DiagnosticNameGroup } from './report-facts';
 import type { DiagnosticLogStore } from './store/diagnostic-log-store';
 import {
   IndexedDbLogStore,
@@ -48,11 +48,12 @@ export interface DiagnosticAccountSource {
   /** Active account first. Must complete. */
   accounts(): Observable<readonly DiagnosticAccount[]>;
   /**
-   * Room names, room topics and joined members' display names (the user's own included)
-   * of every signed-in account, read when subscribed. Must complete. The export holds them
-   * only while it builds the file; nothing stores them.
+   * Room names, room topics and members' display names (the user's own included) of every
+   * signed-in account, a group per room, read lazily as the export iterates them while it
+   * builds the file. The export keeps only the names that occur in the log, and nothing
+   * stores them.
    */
-  knownNames(): Observable<DiagnosticKnownNames>;
+  knownNames(): Iterable<DiagnosticNameGroup>;
 }
 
 export const DIAGNOSTIC_ACCOUNT_SOURCE =

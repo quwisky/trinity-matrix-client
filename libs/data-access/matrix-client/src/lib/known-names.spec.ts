@@ -4,83 +4,137 @@ import {
   type Direction,
   type MatrixClient,
 } from 'matrix-js-sdk';
-import { describe, expect, it } from 'vitest';
-import { accountKnownNames } from './known-names';
+import { describe, expect, it, vi } from 'vitest';
+import { accountKnownNames, type AccountNameGroup } from './known-names';
+
+interface FakeMember {
+  readonly userId: string;
+  readonly rawDisplayName: string;
+  readonly membership: string;
+}
 
 interface FakeRoom {
   readonly name?: unknown;
   readonly topic?: unknown;
-  readonly members: readonly { userId: string; rawDisplayName: string }[];
+  readonly members: readonly FakeMember[];
 }
 
-/** A client whose rooms answer the state and member reads `accountKnownNames` makes. */
+/** A client whose rooms answer the state reads `accountKnownNames` makes. */
 function fakeClient(
   rooms: readonly FakeRoom[],
   own: { userId: string; displayName?: string } | null = null,
-): MatrixClient {
-  const state = (content: Record<string, unknown> | null) =>
-    content ? { getContent: () => content } : null;
-  return {
-    getRooms: () =>
-      rooms.map((room) => {
-        const getStateEvents = (type: string, stateKey: string) => {
+) {
+  const content = (value: Record<string, unknown> | null) =>
+    value ? { getContent: () => value } : null;
+  const getRooms = vi.fn(() =>
+    rooms.map((room) => {
+      const state = {
+        getStateEvents: (type: string, stateKey: string) => {
           expect(stateKey).toBe('');
           if (type === EventType.RoomName) {
-            return state(room.name === undefined ? null : { name: room.name });
+            return content(
+              room.name === undefined ? null : { name: room.name },
+            );
           }
           if (type === EventType.RoomTopic) {
-            return state(
+            return content(
               room.topic === undefined ? null : { topic: room.topic },
             );
           }
           return null;
-        };
-        return {
-          // The live timeline's forward state is the room's current state.
-          getLiveTimeline: () => ({
-            getState: (direction: Direction) =>
-              direction === EventTimeline.FORWARDS ? { getStateEvents } : null,
-          }),
-          getJoinedMembers: () => room.members,
-        };
-      }),
+        },
+        getMembers: () => room.members,
+      };
+      return {
+        // The live timeline's forward state is the room's current state.
+        getLiveTimeline: () => ({
+          getState: (direction: Direction) =>
+            direction === EventTimeline.FORWARDS ? state : null,
+        }),
+      };
+    }),
+  );
+  const client = {
+    getRooms,
     getUserId: () => own?.userId ?? null,
     getUser: (userId: string) =>
       own && userId === own.userId ? { displayName: own.displayName } : null,
   } as unknown as MatrixClient;
+  return { client, getRooms };
+}
+
+/** Every group read in full, display names included. */
+function readAll(groups: Iterable<AccountNameGroup>) {
+  return [...groups].map((group) => ({
+    roomNames: group.roomNames,
+    roomTopics: group.roomTopics,
+    displayNames: [...group.displayNames],
+  }));
 }
 
 describe('accountKnownNames', () => {
-  it('reads room names, topics and joined members’ display names', () => {
-    const client = fakeClient(
+  it('reads the own name, then each room’s name, topic and members', () => {
+    const { client } = fakeClient(
       [
         {
           name: 'Garden Club',
           topic: 'Roses and tulips',
           members: [
-            { userId: '@alice:example.org', rawDisplayName: 'Alice Liddell' },
-            { userId: '@bob:other.net', rawDisplayName: 'Bob Builder' },
+            {
+              userId: '@alice:example.org',
+              rawDisplayName: 'Alice Liddell',
+              membership: 'join',
+            },
+            {
+              userId: '@bob:other.net',
+              rawDisplayName: 'Bob Builder',
+              membership: 'invite',
+            },
+            {
+              userId: '@carol:other.net',
+              rawDisplayName: 'Carol Gone',
+              membership: 'leave',
+            },
+            {
+              userId: '@dave:other.net',
+              rawDisplayName: 'Dave Banned',
+              membership: 'ban',
+            },
           ],
         },
-        {
-          name: 'Workshop',
-          members: [
-            { userId: '@bob:other.net', rawDisplayName: 'Bob Builder' },
-          ],
-        },
+        { name: 'Workshop', members: [] },
       ],
       { userId: '@alice:example.org', displayName: 'Alice L.' },
     );
 
-    expect(accountKnownNames(client)).toEqual({
-      roomNames: ['Garden Club', 'Workshop'],
-      roomTopics: ['Roses and tulips'],
-      displayNames: ['Alice L.', 'Alice Liddell', 'Bob Builder'],
-    });
+    expect(readAll(accountKnownNames(client))).toEqual([
+      { roomNames: [], roomTopics: [], displayNames: ['Alice L.'] },
+      {
+        roomNames: ['Garden Club'],
+        roomTopics: ['Roses and tulips'],
+        displayNames: [
+          'Alice Liddell',
+          'Bob Builder',
+          'Carol Gone',
+          'Dave Banned',
+        ],
+      },
+      { roomNames: ['Workshop'], roomTopics: [], displayNames: [] },
+    ]);
+  });
+
+  it('reads the rooms only when iterated', () => {
+    const { client, getRooms } = fakeClient([{ name: 'Lazy', members: [] }]);
+
+    const groups = accountKnownNames(client);
+    expect(getRooms).not.toHaveBeenCalled();
+
+    expect(readAll(groups)).toHaveLength(2);
+    expect(getRooms).toHaveBeenCalledTimes(1);
   });
 
   it('ignores members without a display name and malformed state', () => {
-    const client = fakeClient([
+    const { client } = fakeClient([
       {
         name: 42,
         topic: { text: 'not a string' },
@@ -88,16 +142,15 @@ describe('accountKnownNames', () => {
           {
             userId: '@carol:example.org',
             rawDisplayName: '@carol:example.org',
+            membership: 'join',
           },
         ],
       },
-      { members: [] },
     ]);
 
-    expect(accountKnownNames(client)).toEqual({
-      roomNames: [],
-      roomTopics: [],
-      displayNames: [],
-    });
+    expect(readAll(accountKnownNames(client))).toEqual([
+      { roomNames: [], roomTopics: [], displayNames: [] },
+      { roomNames: [], roomTopics: [], displayNames: [] },
+    ]);
   });
 });

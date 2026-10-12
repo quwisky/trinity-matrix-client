@@ -2,7 +2,6 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   DIAGNOSTIC_ACCOUNT_SOURCE,
-  NO_KNOWN_NAMES,
   DIAGNOSTIC_LOG_STORE_FACTORY,
   DIAGNOSTIC_REPORT_CONFIG,
   DiagnosticLogService,
@@ -428,7 +427,7 @@ describe('ReportBugDialogComponent', () => {
       document.getElementById('report-bug-include-logs-description')
         ?.textContent ?? '';
     expect(description).toContain(
-      'IDs, names and email addresses are replaced',
+      'Matrix IDs, email addresses, and the room names, topics and display names this device knows are replaced',
     );
     expect(description).toContain(
       'Check the preview before you attach the log: it may still contain file names or other details.',
@@ -597,7 +596,7 @@ describe('ReportBugDialogComponent', () => {
           provide: DIAGNOSTIC_ACCOUNT_SOURCE,
           useValue: {
             accounts: () => of([]),
-            knownNames: () => of(NO_KNOWN_NAMES),
+            knownNames: () => [],
           },
         },
         { provide: TrnDialogRef, useValue: { close: vi.fn() } },

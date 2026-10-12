@@ -2,10 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { DiagnosticEntry } from './diagnostic-entry.model';
 import { buildDiagnosticBundle } from './diagnostic-bundle';
 import {
-  NO_KNOWN_NAMES,
   diagnosticLogFileName,
   type DiagnosticAccount,
-  type DiagnosticKnownNames,
+  type DiagnosticNameGroup,
 } from './report-facts';
 import type { DiagnosticSnapshot } from './store/diagnostic-log-store';
 
@@ -45,7 +44,7 @@ const ENTRIES: readonly DiagnosticEntry[] = [
 function bundle(
   snapshot: Partial<DiagnosticSnapshot> = {},
   accounts = [ALICE],
-  knownNames: DiagnosticKnownNames = NO_KNOWN_NAMES,
+  knownNames: Iterable<DiagnosticNameGroup> = [],
 ) {
   return buildDiagnosticBundle({
     now: new Date(2026, 9, 11, 9, 30),
@@ -175,11 +174,14 @@ describe('buildDiagnosticBundle', () => {
         ],
       },
       [ALICE],
-      {
-        roomNames: ['Launch Plans'],
-        roomTopics: ['Ship it on Friday'],
-        displayNames: ['Mallory Quinn'],
-      },
+      [
+        { roomNames: ['Launch Plans'], roomTopics: [], displayNames: [] },
+        {
+          roomNames: [],
+          roomTopics: ['Ship it on Friday'],
+          displayNames: ['Mallory Quinn', 'Never Logged'],
+        },
+      ],
     );
 
     expect(result.text.trimEnd().split('\n').slice(10)).toEqual([
@@ -187,7 +189,13 @@ describe('buildDiagnosticBundle', () => {
       '2026-10-11T08:00:01.000Z WARN console/trinity Person 1 wrote to email1@example.invalid',
       '2026-10-11T08:00:02.000Z WARN console/trinity Room 1 topic: Topic 1\\nby Person 1',
     ]);
-    for (const known of ['Launch', 'Mallory', 'Friday', 'mallory@']) {
+    for (const known of [
+      'Launch',
+      'Mallory',
+      'Friday',
+      'mallory@',
+      'Person 2',
+    ]) {
       expect(result.text).not.toContain(known);
     }
   });

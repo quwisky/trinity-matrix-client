@@ -13,10 +13,9 @@ export { provideDiagnosticLog } from './lib/provide-diagnostic-log';
 export type { DiagnosticBundle } from './lib/diagnostic-bundle';
 export type { DiagnosticReportProgress } from './lib/report/prepare-report';
 export {
-  NO_KNOWN_NAMES,
   diagnosticLogFileName,
   type DiagnosticAccount,
-  type DiagnosticKnownNames,
+  type DiagnosticNameGroup,
   type DiagnosticReportFacts,
 } from './lib/report-facts';
 // Eager (about 1 KB), so GitHub works with facts alone even when the export chunk fails.

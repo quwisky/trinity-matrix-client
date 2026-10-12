@@ -280,6 +280,9 @@ test.describe('Report a bug', () => {
       { label: 'room topic', value: roomTopic },
       { label: 'display name', value: displayName },
       { label: 'email address', value: email },
+      // Fragments too: a name must be replaced whole, never only partly.
+      { label: 'display name fragment', value: 'Quillfeather' },
+      { label: 'room topic fragment', value: 'Quarterly launch' },
     ];
     for (const { label, value } of secrets) {
       expect(value.length, `${label} is known`).toBeGreaterThan(0);

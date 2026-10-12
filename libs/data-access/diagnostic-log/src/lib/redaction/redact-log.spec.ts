@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { DiagnosticNameGroup } from '../report-facts';
+import { runToEnd } from '../report/run-in-slices';
+import { MAX_DISPLAY_NAMES_PER_GROUP } from './known-names';
 import { createLogRedactor } from './redact-log';
 import {
   ALICE,
@@ -307,88 +310,253 @@ describe('createLogRedactor', () => {
   });
 
   describe('known names', () => {
-    const NAMES = {
+    const NAMES: DiagnosticNameGroup = {
       roomNames: ['Team Alpha Ops', 'Alpha', 'sync', 'Qa', 'Error'],
       roomTopics: ['Where the alpha team plans releases'],
       displayNames: ['Alice Liddell', 'Bob', 'alice', 'Charlie'],
     };
 
-    function namedRedactor() {
-      return createLogRedactor({ ...CORPUS_CONTEXT, knownNames: NAMES });
+    /** A redactor that has learned `log`, then the names, as the bundle builder does. */
+    function namedRedactor(
+      log: readonly string[],
+      groups: readonly DiagnosticNameGroup[] = [NAMES],
+    ) {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+      for (const line of log) {
+        redactor.learn(line);
+      }
+      runToEnd(redactor.learnNames(groups));
+      return redactor;
     }
 
-    it('replaces room names, topics and display names with stable placeholders', () => {
-      const redactor = namedRedactor();
+    function redactLog(
+      log: readonly string[],
+      groups: readonly DiagnosticNameGroup[] = [NAMES],
+    ): string[] {
+      const redactor = namedRedactor(log, groups);
+      return log.map((line) => redactor.redact(line));
+    }
 
+    const rooms = (...roomNames: string[]): DiagnosticNameGroup => ({
+      roomNames,
+      roomTopics: [],
+      displayNames: [],
+    });
+    const people = (...displayNames: string[]): DiagnosticNameGroup => ({
+      roomNames: [],
+      roomTopics: [],
+      displayNames,
+    });
+
+    it('replaces room names, topics and display names with stable placeholders', () => {
       expect(
-        redactor.redact(
+        redactLog([
           'Room "Alpha" topic "Where the alpha team plans releases" member Alice Liddell',
-        ),
-      ).toBe('Room "Room 1" topic "Topic 1" member Person 1');
-      expect(redactor.redact('Alice Liddell left Alpha; Bob stayed')).toBe(
+          'Alice Liddell left Alpha; Bob stayed',
+        ]),
+      ).toEqual([
+        'Room "Room 1" topic "Topic 1" member Person 1',
         'Person 1 left Room 1; Person 2 stayed',
-      );
+      ]);
     });
 
     it('prefers the longest name at a position', () => {
-      expect(namedRedactor().redact('in Team Alpha Ops and in Alpha')).toBe(
+      expect(redactLog(['in Team Alpha Ops and in Alpha'])).toEqual([
         'in Room 1 and in Room 2',
-      );
+      ]);
     });
 
     it('takes the leftmost of overlapping names', () => {
-      const redactor = createLogRedactor({
-        ...CORPUS_CONTEXT,
-        knownNames: {
-          roomNames: ['Night Shift'],
-          roomTopics: [],
-          displayNames: ['Shift Lead'],
-        },
-      });
-
-      expect(redactor.redact('Night Shift Lead; Shift Lead')).toBe(
-        'Room 1 Lead; Person 1',
-      );
+      expect(
+        redactLog(
+          ['Night Shift Lead; Shift Lead'],
+          [rooms('Night Shift'), people('Shift Lead')],
+        ),
+      ).toEqual(['Room 1 Lead; Person 1']);
     });
 
     it('skips short names and names that are log vocabulary', () => {
-      expect(namedRedactor().redact('sync Error Qa: retrying')).toBe(
+      expect(redactLog(['sync Error Qa: retrying'])).toEqual([
         'sync Error Qa: retrying',
-      );
+      ]);
     });
 
     it('runs after the identifier rules, so a name equal to a localpart keeps the ID', () => {
-      expect(namedRedactor().redact(`${ALICE} is alice`)).toBe(
+      expect(redactLog([`${ALICE} is alice`])).toEqual([
         '@me:server1 is Person 1',
-      );
+      ]);
     });
 
     it('numbers names by first appearance, the same way for every redactor', () => {
-      const lines = [
+      const log = [
         'Charlie joined Team Alpha Ops',
         'Bob and Charlie',
         'contact charlie@example.org',
       ];
-      const first = namedRedactor();
-      const second = namedRedactor();
 
-      const output = lines.map((line) => first.redact(line));
+      const output = redactLog(log);
 
       expect(output).toEqual([
         'Person 1 joined Room 1',
         'Person 2 and Person 1',
         'contact email1@example.invalid',
       ]);
-      expect(lines.map((line) => second.redact(line))).toEqual(output);
+      expect(redactLog(log)).toEqual(output);
     });
 
-    it('numbers names learned before the first line is written', () => {
-      const redactor = namedRedactor();
-      redactor.learn('Bob\nCharlie');
+    it('registers only the names that occur in the learned log', () => {
+      const redactor = namedRedactor(['Alice Liddell was here']);
 
-      expect(redactor.redact('Charlie, then Bob')).toBe(
-        'Person 2, then Person 1',
+      expect(redactor.redact('Bob and Alice Liddell')).toBe('Bob and Person 1');
+    });
+
+    it('pauses while it reads many names', () => {
+      const names = Array.from({ length: 2_000 }, (_, n) => `Member ${n}`);
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+      redactor.learn(names.join(', '));
+      const steps = redactor.learnNames(
+        [0, 1, 2, 3].map((group) =>
+          people(...names.slice(group * 500, group * 500 + 500)),
+        ),
       );
+      let pauses = 0;
+      while (!steps.next().done) {
+        pauses += 1;
+      }
+
+      expect(pauses).toBeGreaterThan(10);
+      expect(redactor.redact('Member 1999 left')).toBe('Person 1 left');
+    });
+
+    it('takes at most a capped number of display names from one room', () => {
+      const names = Array.from(
+        { length: MAX_DISPLAY_NAMES_PER_GROUP + 50 },
+        (_, n) => `Member ${n}`,
+      );
+      const line = names.join(', ');
+
+      const [redacted] = redactLog([line], [people(...names)]);
+
+      expect(redacted.match(/Person \d+/g)).toHaveLength(
+        MAX_DISPLAY_NAMES_PER_GROUP,
+      );
+    });
+
+    describe('names that contain identifiers', () => {
+      it.each([
+        ['Ops at example.org', 'joined Ops at example.org today'],
+        ['matrix.example.org Admins', 'matrix.example.org Admins changed'],
+        [`Chat with ${BOB}`, `opened Chat with ${BOB} now`],
+        ['Device ABCDEFGHIJ room', 'Device ABCDEFGHIJ room is quiet'],
+      ])('replaces %s whole', (name, line) => {
+        const [redacted] = redactLog([line], [rooms(name)]);
+
+        expect(redacted).toMatch(/^\w* ?Room 1/);
+        for (const word of name.split(/[\s@:.]+/)) {
+          if (word.length > 2) {
+            expect(redacted).not.toContain(word);
+          }
+        }
+      });
+    });
+
+    describe('long topics', () => {
+      it('replaces a topic longer than one chunk whole', () => {
+        const topic = `Long topic ${'with many words '.repeat(60)}and a tail end`;
+
+        expect(
+          redactLog(
+            [`topic: ${topic}.`],
+            [{ ...people(), roomTopics: [topic] }],
+          ),
+        ).toEqual(['topic: Topic 1.']);
+      });
+
+      it('never splits a character that takes two code units', () => {
+        const topic = `${'x'.repeat(511)}🌱${'y'.repeat(600)}`;
+
+        const [redacted] = redactLog(
+          [`[${topic}]`],
+          [{ ...people(), roomTopics: [topic] }],
+        );
+
+        expect(redacted).toBe('[Topic 1]');
+      });
+
+      it('maps every line of a multi-line topic to one placeholder', () => {
+        const topic = 'Planning for spring\nBring your notes along';
+
+        expect(
+          redactLog(
+            [
+              'a: Planning for spring',
+              'b: Bring your notes along',
+              `c: ${topic}`,
+            ],
+            [{ ...people(), roomTopics: [topic] }],
+          ),
+        ).toEqual(['a: Topic 1', 'b: Topic 1', 'c: Topic 1']);
+      });
+    });
+
+    describe('word boundaries', () => {
+      it('matches a name only as whole words', () => {
+        expect(
+          redactLog(
+            ['DevTools Timeline brother; Dev met Tim'],
+            [rooms('Dev'), people('Tim', 'other')],
+          ),
+        ).toEqual(['DevTools Timeline brother; Room 1 met Person 1']);
+      });
+
+      it('falls back to a shorter name when the longer one ends inside a word', () => {
+        expect(
+          redactLog(
+            ['Alpha Better', 'Alpha Bet.'],
+            [rooms('Alpha', 'Alpha Bet')],
+          ),
+        ).toEqual(['Room 1 Better', 'Room 2.']);
+      });
+
+      it('matches names in scripts written without spaces inside text', () => {
+        expect(redactLog(['进入开发团队了'], [rooms('开发团队')])).toEqual([
+          '进入Room 1了',
+        ]);
+      });
+
+      it('never matches inside a placeholder already written', () => {
+        expect(
+          redactLog(
+            [`${ALICE} wrote to a@b.org; erver and example agreed`],
+            [people('erver', 'example', 'invalid')],
+          ),
+        ).toEqual([
+          '@me:server1 wrote to email1@example.invalid; Person 1 and Person 2 agreed',
+        ]);
+      });
+    });
+
+    describe('escaped and normalised forms', () => {
+      it('replaces a name escaped inside JSON', () => {
+        expect(
+          redactLog(['{"name":"Café \\"Noir\\""}'], [rooms('Café "Noir"')]),
+        ).toEqual(['{"name":"Room 1"}']);
+      });
+
+      it('replaces a name encoded in a URL', () => {
+        expect(
+          redactLog(['GET /search?q=Team%20Bravo&x=1'], [rooms('Team Bravo')]),
+        ).toEqual(['GET /search?q=Room 1&x=1']);
+      });
+
+      it('replaces composed and decomposed spellings alike', () => {
+        const composed = 'Zoë Night';
+        const decomposed = composed.normalize('NFD');
+
+        expect(
+          redactLog([`${composed} and ${decomposed}`], [people(decomposed)]),
+        ).toEqual(['Person 1 and Person 1']);
+      });
     });
   });
 
@@ -442,37 +610,47 @@ describe('createLogRedactor', () => {
     });
 
     describe('with thousands of known names', () => {
-      // Nested names ("aaab", "aaaab", ...) are the worst case for a naive scan: every
-      // position of a run of "a" starts a long partial match.
-      const nested = Array.from(
-        { length: 2_000 },
-        (_, n) => `${'a'.repeat(n + 3)}b`,
+      // Nested names of single-letter words ("a a a", "a a a a", ...) give every position of
+      // "a a a ..." a long chain of shorter names to fall back through.
+      const nested = Array.from({ length: 300 }, (_, n) =>
+        Array.from({ length: n + 3 }, () => 'a').join(' '),
       );
       const words = Array.from(
         { length: 5_000 },
         (_, n) => `Person ${n.toString(36)} Example`,
       );
-      const knownNames = {
-        roomNames: nested,
-        roomTopics: words.slice(0, 1_000),
-        displayNames: words,
-      };
+      const groups: DiagnosticNameGroup[] = [
+        {
+          roomNames: nested,
+          roomTopics: words.slice(0, 1_000),
+          displayNames: [],
+        },
+        ...Array.from({ length: 10 }, (_, n) => ({
+          roomNames: [],
+          roomTopics: [],
+          displayNames: words.slice(n * 500, n * 500 + 500),
+        })),
+      ];
       const named: readonly (readonly [string, string])[] = [
+        ['single-letter words', 'a '.repeat(SIZE / 2)],
         ['a run of one letter', 'a'.repeat(SIZE)],
-        ['near misses', 'aaaaab'.repeat(SIZE / 6)],
+        ['near misses', 'aaaaab '.repeat(SIZE / 7)],
         ['real names', words.slice(0, 3_000).join(' ').slice(0, SIZE)],
         ['spaces', ' '.repeat(SIZE)],
       ];
 
-      it('builds its matcher in under 500 ms', () => {
+      it.each(named)('learns names for %s in under 500 ms', (_name, input) => {
+        const redactor = createLogRedactor(CORPUS_CONTEXT);
+        redactor.learn(input);
         const start = performance.now();
-        createLogRedactor({ ...CORPUS_CONTEXT, knownNames }).redact('x');
+        runToEnd(redactor.learnNames(groups));
         expect(performance.now() - start).toBeLessThan(500);
       });
 
       it.each(named)('redacts %s in under 500 ms', (_name, input) => {
-        const redactor = createLogRedactor({ ...CORPUS_CONTEXT, knownNames });
-        redactor.redact('warm-up');
+        const redactor = createLogRedactor(CORPUS_CONTEXT);
+        redactor.learn(input);
+        runToEnd(redactor.learnNames(groups));
         const start = performance.now();
         redactor.redact(input);
         expect(performance.now() - start).toBeLessThan(500);

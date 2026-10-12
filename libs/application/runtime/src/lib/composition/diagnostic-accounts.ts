@@ -1,13 +1,12 @@
 import type {
   DiagnosticAccount,
-  DiagnosticKnownNames,
+  DiagnosticNameGroup,
 } from '@trinity/data-access/diagnostic-log';
 import type { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import type { SessionStorageService } from '@trinity/platform-native';
 import {
   EMPTY,
   catchError,
-  defer,
   endWith,
   forkJoin,
   ignoreElements,
@@ -72,33 +71,19 @@ export function diagnosticAccounts(
 }
 
 /**
- * The names a diagnostic file must replace, from every signed-in account's client, read when
- * subscribed (the export builds its file then) and kept nowhere. An account whose client
- * can't be read is left out; its IDs are still redacted. Completes once.
+ * The names a diagnostic file must replace, a group per room, from every signed-in account's
+ * client, read only as the export iterates them and kept nowhere. An account whose client
+ * fails part-way is left there; its IDs are still redacted.
  */
-export function diagnosticKnownNames<Client>(
+export function* diagnosticKnownNames<Client>(
   clients: { all(): readonly { readonly client: Client }[] },
-  read: (client: Client) => DiagnosticKnownNames,
-): Observable<DiagnosticKnownNames> {
-  return defer(() => {
-    const roomNames = new Set<string>();
-    const roomTopics = new Set<string>();
-    const displayNames = new Set<string>();
-    for (const { client } of clients.all()) {
-      let names: DiagnosticKnownNames;
-      try {
-        names = read(client);
-      } catch {
-        continue;
-      }
-      names.roomNames.forEach((name) => roomNames.add(name));
-      names.roomTopics.forEach((topic) => roomTopics.add(topic));
-      names.displayNames.forEach((name) => displayNames.add(name));
+  read: (client: Client) => Iterable<DiagnosticNameGroup>,
+): Generator<DiagnosticNameGroup, void> {
+  for (const { client } of clients.all()) {
+    try {
+      yield* read(client);
+    } catch {
+      // Go on with the next account.
     }
-    return of<DiagnosticKnownNames>({
-      roomNames: [...roomNames],
-      roomTopics: [...roomTopics],
-      displayNames: [...displayNames],
-    });
-  });
+  }
 }

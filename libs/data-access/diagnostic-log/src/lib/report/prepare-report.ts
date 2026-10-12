@@ -16,7 +16,7 @@ import type {
 import {
   diagnosticReportFacts,
   type DiagnosticAccount,
-  type DiagnosticKnownNames,
+  type DiagnosticNameGroup,
   type DiagnosticReportFacts,
 } from '../report-facts';
 import type { DiagnosticSnapshot } from '../store/diagnostic-log-store';
@@ -37,8 +37,8 @@ export interface DiagnosticReportSources {
   readonly platform: () => string;
   /** The signed-in accounts: read once, complete, never error. */
   readonly accounts: Observable<readonly DiagnosticAccount[]>;
-  /** The names to replace in the file: read only for the file, complete, never error. */
-  readonly knownNames: Observable<DiagnosticKnownNames>;
+  /** The names to replace in the file, read only while the file is built. */
+  readonly knownNames: () => Iterable<DiagnosticNameGroup>;
   /** Everything stored plus the unflushed lines, once the setting is known. */
   readonly snapshot: Observable<DiagnosticSnapshot>;
   /** Builds the redacted file. */
@@ -73,18 +73,14 @@ export function prepareDiagnosticReport(
         signedIn: signedIn.length > 0,
       })),
     );
-    const bundle = forkJoin([
-      sources.snapshot,
-      accounts,
-      sources.knownNames,
-    ]).pipe(
-      switchMap(([snapshot, signedIn, knownNames]) =>
+    const bundle = forkJoin([sources.snapshot, accounts]).pipe(
+      switchMap(([snapshot, signedIn]) =>
         sources.bundle({
           now: new Date(),
           build: sources.build,
           platform,
           accounts: signedIn,
-          knownNames,
+          knownNames: sources.knownNames(),
           snapshot,
         }),
       ),

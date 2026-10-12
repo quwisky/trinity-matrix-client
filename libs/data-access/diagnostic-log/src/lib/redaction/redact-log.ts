@@ -1,7 +1,7 @@
-import type { DiagnosticKnownNames } from '../report-facts';
-import { runToEnd } from '../report/run-in-slices';
+import type { DiagnosticNameGroup } from '../report-facts';
 import { scrubSecrets } from '../scrub-secrets';
 import { KnownNameRedactor } from './known-names';
+import { LogWords } from './log-words';
 
 /** What the redactor knows about this installation before it reads a line. */
 export interface RedactionContext {
@@ -11,8 +11,6 @@ export interface RedactionContext {
   readonly selfDeviceIds: readonly string[];
   /** Homeserver base URLs of the signed-in accounts. */
   readonly homeserverUrls: readonly string[];
-  /** Room names, topics and display names, replaced by exact substring; none by default. */
-  readonly knownNames?: DiagnosticKnownNames;
 }
 
 /** Replaces identifiers with placeholders that stay the same for the life of one redactor. */
@@ -25,6 +23,12 @@ export interface LogRedactor {
    * before any user, room or URL carrying it would survive.
    */
   learn(text: string): void;
+  /**
+   * Once the whole file is learned, reads room names, topics and display names and replaces
+   * from then on those that occur in it, whole words only and after the identifier rules.
+   * Pauses (`yield`) every few names, so a sliced build never holds the main thread long.
+   */
+  learnNames(groups: Iterable<DiagnosticNameGroup>): Generator<void, void>;
 }
 
 // A server name: DNS name or IP literal, optional port (Matrix spec, "Server name").
@@ -152,20 +156,7 @@ function classifyDeviceKeyword(
 
 /** A redactor for one exported file. */
 export function createLogRedactor(context: RedactionContext): LogRedactor {
-  return runToEnd(createLogRedactorInSteps(context));
-}
-
-/**
- * {@link createLogRedactor}, pausing (`yield`) while it indexes the known names, so a file
- * built in slices never holds the main thread for a whole large set of names.
- */
-export function* createLogRedactorInSteps(
-  context: RedactionContext,
-): Generator<void, LogRedactor> {
-  const names = context.knownNames
-    ? yield* KnownNameRedactor.build(context.knownNames)
-    : null;
-  return new IdentifierRedactor(context, names);
+  return new IdentifierRedactor(context);
 }
 
 class IdentifierRedactor implements LogRedactor {
@@ -177,12 +168,12 @@ class IdentifierRedactor implements LogRedactor {
   private readonly devices = new Map<string, string>();
   private readonly media = new Map<string, string>();
   private readonly emails = new Map<string, string>();
+  /** The words of the learned file, until the names are read; never the text itself. */
+  private words: LogWords | null = new LogWords();
+  private names: KnownNameRedactor | null = null;
   private otherUsers = 0;
 
-  constructor(
-    context: RedactionContext,
-    private readonly names: KnownNameRedactor | null,
-  ) {
+  constructor(context: RedactionContext) {
     context.selfUserIds.forEach((userId, index) => {
       const server = this.server(userId.slice(userId.indexOf(':') + 1));
       this.users.set(
@@ -204,11 +195,28 @@ class IdentifierRedactor implements LogRedactor {
   learn(text: string): void {
     // Line by line, as the capture path stores them: scrubSecrets bounds its input.
     for (const line of text.split('\n')) {
-      this.redact(line);
+      this.words?.add(line);
+      this.redactAllButNames(line);
     }
   }
 
+  *learnNames(groups: Iterable<DiagnosticNameGroup>): Generator<void, void> {
+    const words = this.words ?? new LogWords();
+    this.names = yield* KnownNameRedactor.build(groups, {
+      mayOccur: (name) => words.mayContain(name),
+      redactIdentifiers: (text) => this.redactAllButNames(text),
+    });
+    this.words = null;
+  }
+
   redact(input: string): string {
+    const text = this.redactAllButNames(input);
+    // Last, so a display name equal to a localpart cannot break the ID that carries it.
+    return this.names ? this.names.redact(text) : text;
+  }
+
+  /** Every rule but the names. */
+  private redactAllButNames(input: string): string {
     let text = scrubSecrets(input);
     text = text.replace(
       URL_HOST,
@@ -234,9 +242,7 @@ class IdentifierRedactor implements LogRedactor {
     text = text.replace(ENCODED_ID, (match) => this.redactEncoded(match));
     text = this.redactIdentifiers(text);
     text = this.redactServerNames(text);
-    text = this.redactDevices(text);
-    // Last, so a display name equal to a localpart cannot break the ID that carries it.
-    return this.names ? this.names.redact(text) : text;
+    return this.redactDevices(text);
   }
 
   private redactEncoded(match: string): string {
