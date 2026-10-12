@@ -686,7 +686,16 @@ describe('DiagnosticLogService', () => {
           },
           {
             provide: DIAGNOSTIC_ACCOUNT_SOURCE,
-            useValue: { accounts: () => of([ALICE_ACCOUNT]) },
+            useValue: {
+              accounts: () => of([ALICE_ACCOUNT]),
+              knownNames: () => [
+                {
+                  roomNames: ['Garden Club'],
+                  roomTopics: [],
+                  displayNames: ['Alice Liddell'],
+                },
+              ],
+            },
           },
         ],
       });
@@ -697,7 +706,8 @@ describe('DiagnosticLogService', () => {
         level: 'warn',
         source: 'console',
         logger: 'trinity',
-        message: 'sync stalled for @alice:example.org',
+        message:
+          'sync stalled for @alice:example.org (Alice Liddell) in Garden Club',
       });
 
       const bundle = await firstValueFrom(service.export());
@@ -705,9 +715,11 @@ describe('DiagnosticLogService', () => {
       expect(bundle.entryCount).toBe(2);
       expect(bundle.text).toContain('# Account 1 (active): @me:server1');
       expect(bundle.text).toContain(
-        'WARN console/trinity sync stalled for @me:server1',
+        'WARN console/trinity sync stalled for @me:server1 (Person 1) in Room 1',
       );
       expect(bundle.text).not.toContain('alice');
+      expect(bundle.text).not.toContain('Alice');
+      expect(bundle.text).not.toContain('Garden');
       expect(bundle.facts.homeservers).toEqual(['Synapse 1.140.0']);
     });
 
@@ -717,6 +729,49 @@ describe('DiagnosticLogService', () => {
       const bundle = await firstValueFrom(service.export());
 
       expect(bundle.text).toContain('# Accounts signed in: 0');
+    });
+
+    it('keeps the names read before the name source failed', async () => {
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: DIAGNOSTIC_LOG_STORE_FACTORY,
+            useValue: () => Promise.resolve(store),
+          },
+          {
+            provide: PREFERENCE_STORAGE_ADAPTER,
+            useValue: preferenceAdapter(),
+          },
+          {
+            provide: DIAGNOSTIC_ACCOUNT_SOURCE,
+            useValue: {
+              accounts: () => of([ALICE_ACCOUNT]),
+              *knownNames() {
+                yield {
+                  roomNames: ['Garden Club'],
+                  roomTopics: [],
+                  displayNames: [],
+                };
+                throw new Error('client stopped');
+              },
+            },
+          },
+        ],
+      });
+      const service = TestBed.inject(DiagnosticLogService);
+      service.start();
+      service.record({
+        level: 'warn',
+        source: 'console',
+        logger: 'trinity',
+        message: 'sync stalled in Garden Club',
+      });
+
+      const bundle = await firstValueFrom(service.export());
+
+      expect(bundle.text).toContain('# Accounts signed in: 1');
+      expect(bundle.text).toContain('sync stalled in Room 1');
+      expect(bundle.text).toContain('# Some names were not replaced');
     });
 
     it('still exports when the account source fails', async () => {

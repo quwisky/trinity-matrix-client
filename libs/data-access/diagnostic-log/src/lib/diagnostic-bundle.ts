@@ -7,6 +7,7 @@ import {
   diagnosticReportFacts,
   softwareLabel,
   type DiagnosticAccount,
+  type DiagnosticNameGroup,
   type DiagnosticReportFacts,
 } from './report-facts';
 import {
@@ -30,11 +31,16 @@ export interface DiagnosticBundleInput {
   readonly platform: string;
   /** Active account first. */
   readonly accounts: readonly DiagnosticAccount[];
+  /** Names of every signed-in account, read once the file is learned; never kept. */
+  readonly knownNames: Iterable<DiagnosticNameGroup>;
   readonly snapshot: DiagnosticSnapshot;
 }
 
 const PLACEHOLDER_NOTE =
-  'Matrix IDs and server names are replaced with placeholders such as @user1:server1; tokens, keys and messages are never stored.';
+  'Matrix IDs, server names, email addresses and known room names, topics and display names are replaced with placeholders such as @user1:server1 and Room 1; tokens, keys and messages are never stored.';
+
+const NAMES_INCOMPLETE_NOTE =
+  'Some names were not replaced: there were too many, or they could not be read. Check the file before attaching it.';
 
 /**
  * Build the exported file: `# ` header lines, then one redacted line per entry, oldest
@@ -79,6 +85,8 @@ function* diagnosticBundleSteps(
     redactor.learn(entryText(entry));
     yield;
   }
+  // Then the names, kept only where they occur in the file just learned.
+  const names = yield* redactor.learnNames(input.knownNames);
   const facts = diagnosticReportFacts(input.build, input.platform, accounts);
   const dependencies = input.build?.dependencies;
   const header = [
@@ -100,6 +108,7 @@ function* diagnosticBundleSteps(
       ? 'Dropped entries: older entries were removed to stay within 5 MB and 48 hours'
       : 'Dropped entries: none',
     PLACEHOLDER_NOTE,
+    ...(names.complete ? [] : [NAMES_INCOMPLETE_NOTE]),
   ].map((line) => `# ${line}`);
   const body: string[] = [];
   for (const entry of snapshot.entries) {

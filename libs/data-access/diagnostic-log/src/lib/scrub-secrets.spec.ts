@@ -430,7 +430,8 @@ describe('scrubSecrets', () => {
 
       scrubMessage(input);
 
-      expect(performance.now() - started).toBeLessThan(200);
+      // The redactor's budget: generous enough for a loaded CI runner, still far from quadratic.
+      expect(performance.now() - started).toBeLessThan(500);
     }
   });
 

@@ -1,4 +1,7 @@
+import type { DiagnosticNameGroup } from '../report-facts';
 import { scrubSecrets } from '../scrub-secrets';
+import { KnownNameRedactor, type NameReading } from './known-names';
+import { LogWords } from './log-words';
 
 /** What the redactor knows about this installation before it reads a line. */
 export interface RedactionContext {
@@ -20,6 +23,14 @@ export interface LogRedactor {
    * before any user, room or URL carrying it would survive.
    */
   learn(text: string): void;
+  /**
+   * Once the whole file is learned, reads room names, topics and display names and replaces
+   * from then on those that occur in it, whole words only and after the identifier rules.
+   * Pauses (`yield`) every few names, so a sliced build never holds the main thread long.
+   */
+  learnNames(
+    groups: Iterable<DiagnosticNameGroup>,
+  ): Generator<void, NameReading>;
 }
 
 // A server name: DNS name or IP literal, optional port (Matrix spec, "Server name").
@@ -30,6 +41,11 @@ const OPAQUE = String.raw`[A-Za-z0-9._~+/=-]+`;
 // The optional userinfo is bounded, so a long run of "@" or ":" cannot make the scan quadratic.
 const URL_HOST =
   /\b(https?|wss?):\/\/(?:[^\s/@?#]{1,256}@)?(\[[0-9A-Fa-f:.]+\]|[\p{L}\p{N}.-]+)(?::\d{1,5})?/giu;
+// An email address. The local part starts a run (no ID or URL character before it) and every
+// part is bounded, so a long run of address characters cannot make the scan quadratic. A
+// Matrix ID has nothing before its "@"; a URL's userinfo is already gone when this runs.
+const EMAIL =
+  /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,63}(?![A-Za-z0-9-])/g;
 const MXC = /\bmxc:\/\/([\p{L}\p{N}.-]+(?::\d{1,5})?)\/([A-Za-z0-9_-]+)/gu;
 // An identifier inside a request path. matrix-js-sdk builds paths with encodeURIComponent
 // (`encodeUri` in utils.js), which escapes "@", "#", "$" and ":" but leaves "!" alone, so a
@@ -61,6 +77,10 @@ const DEVICE_AFTER_USER =
 // A bare server name: dot-separated labels. Labels and dots cannot overlap, so matching is linear.
 const NAME_TOKEN =
   /(?<![\p{L}\p{N}.-])[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*(?![\p{L}\p{N}-])/gu;
+// Characters every ID, URL, address and secret assignment is written with, and words that
+// open a device ID or a secret in prose.
+const MAY_CARRY_IDENTIFIER =
+  /[@:.!#$%=/]|device|bearer|token|key|secret|password|passphrase/i;
 // A run of device-ID characters, looked up in the known devices.
 const WORD = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]+(?![A-Za-z0-9_-])/g;
 // Longest bare name tried against known servers (a DNS name is at most 253 characters).
@@ -107,7 +127,9 @@ function isFirstWordDeviceId(word: string): boolean {
     !ENGLISH_SUFFIX.test(word)
   );
 }
-const ALREADY_PLACEHOLDER = /^(?:DEVICE|server)\d+$/;
+// Placeholders written by earlier rules; `email1` and `media1` sit next to device lists too.
+const ALREADY_PLACEHOLDER =
+  /^(?:DEVICE|server|email|media|user|room|alias|event|me)\d+$/;
 
 /**
  * How the words after a device keyword are read:
@@ -153,6 +175,10 @@ class IdentifierRedactor implements LogRedactor {
   private readonly events = new Map<string, string>();
   private readonly devices = new Map<string, string>();
   private readonly media = new Map<string, string>();
+  private readonly emails = new Map<string, string>();
+  /** The words of the learned file, until the names are read; never the text itself. */
+  private words: LogWords | null = new LogWords();
+  private names: KnownNameRedactor | null = null;
   private otherUsers = 0;
 
   constructor(context: RedactionContext) {
@@ -176,17 +202,65 @@ class IdentifierRedactor implements LogRedactor {
 
   learn(text: string): void {
     // Line by line, as the capture path stores them: scrubSecrets bounds its input.
+    // The words are taken from the redacted line, which is what names are matched in: a
+    // localpart alone, gone once its ID is replaced, does not make a name worth keeping.
     for (const line of text.split('\n')) {
-      this.redact(line);
+      const redacted = this.redactAllButNames(line);
+      this.words?.add(redacted);
     }
   }
 
+  *learnNames(
+    groups: Iterable<DiagnosticNameGroup>,
+  ): Generator<void, NameReading> {
+    const words = this.words ?? new LogWords();
+    const names = yield* KnownNameRedactor.build(groups, {
+      mayOccur: (literal, cutEnd) => words.mayContain(literal, cutEnd),
+      redactIdentifiers: (text) => this.redactAllButNames(text),
+      mayCarryIdentifier: (text) => this.mayCarryIdentifier(text),
+    });
+    this.names = names;
+    this.words = null;
+    return names.reading;
+  }
+
   redact(input: string): string {
+    const text = this.redactAllButNames(input);
+    // Last, so a display name equal to a localpart cannot break the ID that carries it.
+    return this.names ? this.names.redact(text) : text;
+  }
+
+  /**
+   * A cheap test that `redactAllButNames` would change nothing: no character an ID, URL,
+   * address or secret is written with, no device keyword or secret word, and no word that
+   * is a known device ID or server name.
+   */
+  private mayCarryIdentifier(text: string): boolean {
+    if (MAY_CARRY_IDENTIFIER.test(text)) {
+      return true;
+    }
+    for (const [word] of text.matchAll(WORD)) {
+      if (this.devices.has(word) || this.servers.has(word.toLowerCase())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Every rule but the names. */
+  private redactAllButNames(input: string): string {
     let text = scrubSecrets(input);
     text = text.replace(
       URL_HOST,
       (match, scheme: string, host: string) =>
         `${scheme}://${match.includes('@') ? '<redacted>@' : ''}${this.server(host)}`,
+    );
+    text = text.replace(EMAIL, (match) =>
+      this.placeholder(
+        this.emails,
+        match.toLowerCase(),
+        (n) => `email${n}@example.invalid`,
+      ),
     );
     text = text.replace(
       MXC,

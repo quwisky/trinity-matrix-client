@@ -16,6 +16,7 @@ import type {
 import {
   diagnosticReportFacts,
   type DiagnosticAccount,
+  type DiagnosticNameGroup,
   type DiagnosticReportFacts,
 } from '../report-facts';
 import type { DiagnosticSnapshot } from '../store/diagnostic-log-store';
@@ -36,6 +37,8 @@ export interface DiagnosticReportSources {
   readonly platform: () => string;
   /** The signed-in accounts: read once, complete, never error. */
   readonly accounts: Observable<readonly DiagnosticAccount[]>;
+  /** The names to replace in the file, read only while the file is built. */
+  readonly knownNames: () => Iterable<DiagnosticNameGroup>;
   /** Everything stored plus the unflushed lines, once the setting is known. */
   readonly snapshot: Observable<DiagnosticSnapshot>;
   /** Builds the redacted file. */
@@ -77,6 +80,7 @@ export function prepareDiagnosticReport(
           build: sources.build,
           platform,
           accounts: signedIn,
+          knownNames: sources.knownNames(),
           snapshot,
         }),
       ),

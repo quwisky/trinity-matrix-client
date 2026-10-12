@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { DiagnosticEntry } from './diagnostic-entry.model';
 import { buildDiagnosticBundle } from './diagnostic-bundle';
-import { diagnosticLogFileName, type DiagnosticAccount } from './report-facts';
+import { MAX_DISPLAY_NAMES_PER_GROUP } from './redaction/known-names';
+import {
+  diagnosticLogFileName,
+  type DiagnosticAccount,
+  type DiagnosticNameGroup,
+} from './report-facts';
 import type { DiagnosticSnapshot } from './store/diagnostic-log-store';
 
 const T0 = Date.UTC(2026, 9, 11, 8);
@@ -40,6 +45,7 @@ const ENTRIES: readonly DiagnosticEntry[] = [
 function bundle(
   snapshot: Partial<DiagnosticSnapshot> = {},
   accounts = [ALICE],
+  knownNames: Iterable<DiagnosticNameGroup> = [],
 ) {
   return buildDiagnosticBundle({
     now: new Date(2026, 9, 11, 9, 30),
@@ -51,6 +57,7 @@ function bundle(
     },
     platform: 'Web, Chrome 141 on macOS',
     accounts,
+    knownNames,
     snapshot: {
       entries: ENTRIES,
       dropped: false,
@@ -83,7 +90,7 @@ describe('buildDiagnosticBundle', () => {
       '# Capture window: 2026-10-11T08:00:00.000Z to 2026-10-11T08:00:02.000Z (3 entries)',
       '# Storage: on this device (IndexedDB)',
       '# Dropped entries: none',
-      '# Matrix IDs and server names are replaced with placeholders such as @user1:server1; tokens, keys and messages are never stored.',
+      '# Matrix IDs, server names, email addresses and known room names, topics and display names are replaced with placeholders such as @user1:server1 and Room 1; tokens, keys and messages are never stored.',
     ]);
   });
 
@@ -146,6 +153,79 @@ describe('buildDiagnosticBundle', () => {
       'DEBUG sdk/matrix Invite from @user1:server1',
     );
     expect(result.text).not.toContain('other.net');
+  });
+
+  it('replaces known names and email addresses, numbered across the whole file', () => {
+    const entry = (offset: number, message: string): DiagnosticEntry => ({
+      ts: T0 + offset,
+      level: 'warn',
+      source: 'console',
+      logger: 'trinity',
+      message,
+    });
+    const result = bundle(
+      {
+        entries: [
+          entry(0, 'opened Launch Plans'),
+          entry(1000, 'Mallory Quinn wrote to mallory@example.net'),
+          entry(
+            2000,
+            'Launch Plans topic: Ship it on Friday\nby Mallory Quinn',
+          ),
+        ],
+      },
+      [ALICE],
+      [
+        { roomNames: ['Launch Plans'], roomTopics: [], displayNames: [] },
+        {
+          roomNames: [],
+          roomTopics: ['Ship it on Friday'],
+          displayNames: ['Mallory Quinn', 'Never Logged'],
+        },
+      ],
+    );
+
+    expect(result.text.trimEnd().split('\n').slice(10)).toEqual([
+      '2026-10-11T08:00:00.000Z WARN console/trinity opened Room 1',
+      '2026-10-11T08:00:01.000Z WARN console/trinity Person 1 wrote to email1@example.invalid',
+      '2026-10-11T08:00:02.000Z WARN console/trinity Room 1 topic: Topic 1\\nby Person 1',
+    ]);
+    for (const known of [
+      'Launch',
+      'Mallory',
+      'Friday',
+      'mallory@',
+      'Person 2',
+    ]) {
+      expect(result.text).not.toContain(known);
+    }
+  });
+
+  it('says in the header when some names were not replaced', () => {
+    const names = Array.from(
+      { length: MAX_DISPLAY_NAMES_PER_GROUP + 1 },
+      (_, n) => `Member ${n}`,
+    );
+    const result = bundle(
+      {
+        entries: [
+          {
+            ts: T0,
+            level: 'warn',
+            source: 'console',
+            logger: 'trinity',
+            message: names.join(', '),
+          },
+        ],
+      },
+      [ALICE],
+      [{ roomNames: [], roomTopics: [], displayNames: names }],
+    );
+
+    expect(result.text.split('\n')).toContain(
+      '# Some names were not replaced: there were too many, or they could not be read. Check the file before attaching it.',
+    );
+    expect(bundle().text).not.toContain('Some names were not replaced');
   });
 
   it('reports facts for the issue without any server name', () => {

@@ -2,7 +2,10 @@ import { signal } from '@angular/core';
 import type { HomeserverInfo } from '@trinity/data-access/homeserver';
 import { NEVER, firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { diagnosticAccounts } from './diagnostic-accounts';
+import {
+  diagnosticAccounts,
+  diagnosticKnownNames,
+} from './diagnostic-accounts';
 
 const ALICE = {
   userId: '@alice:example.org',
@@ -102,5 +105,63 @@ describe('diagnosticAccounts', () => {
       await firstValueFrom(diagnosticAccounts(sessions, homeservers)),
     ).toEqual([]);
     expect(homeservers.load).not.toHaveBeenCalled();
+  });
+});
+
+describe('diagnosticKnownNames', () => {
+  const groups = {
+    alice: [
+      {
+        roomNames: ['Garden Club'],
+        roomTopics: ['Roses and tulips'],
+        displayNames: ['Alice Liddell'],
+      },
+    ],
+    bob: [{ roomNames: ['Workshop'], roomTopics: [], displayNames: ['Wendy'] }],
+  } as const;
+
+  it('reads the names of every signed-in account, group by group', () => {
+    const clients = {
+      all: () => [{ client: 'alice' as const }, { client: 'bob' as const }],
+    };
+
+    expect([
+      ...diagnosticKnownNames(clients, (client) => groups[client]),
+    ]).toEqual([...groups.alice, ...groups.bob]);
+  });
+
+  it('reads the clients only when iterated, at export time', () => {
+    const all = vi.fn(() => [{ client: 'alice' as const }]);
+    const read = vi.fn((client: 'alice') => groups[client]);
+
+    const names = diagnosticKnownNames({ all }, read);
+    expect(all).not.toHaveBeenCalled();
+
+    expect([...names]).toHaveLength(1);
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads every other account when one fails, then reports the failure', () => {
+    const clients = {
+      all: () => [{ client: 'alice' as const }, { client: 'bob' as const }],
+    };
+    const read = function* (client: 'alice' | 'bob') {
+      yield* groups[client];
+      if (client === 'alice') {
+        throw new Error('client stopped');
+      }
+    };
+    const seen: unknown[] = [];
+
+    expect(() => {
+      for (const group of diagnosticKnownNames(clients, read)) {
+        seen.push(group);
+      }
+    }).toThrow('could not be read');
+    expect(seen).toEqual([...groups.alice, ...groups.bob]);
+  });
+
+  it('reads nothing when no account is signed in', () => {
+    expect([...diagnosticKnownNames({ all: () => [] }, vi.fn())]).toEqual([]);
   });
 });

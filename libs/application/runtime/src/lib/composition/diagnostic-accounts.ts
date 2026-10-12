@@ -1,4 +1,7 @@
-import type { DiagnosticAccount } from '@trinity/data-access/diagnostic-log';
+import type {
+  DiagnosticAccount,
+  DiagnosticNameGroup,
+} from '@trinity/data-access/diagnostic-log';
 import type { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import type { SessionStorageService } from '@trinity/platform-native';
 import {
@@ -65,4 +68,30 @@ export function diagnosticAccounts(
       );
     }),
   );
+}
+
+/**
+ * The names a diagnostic file must replace, a group per room, from every signed-in account's
+ * client, read only as the export iterates them and kept nowhere. An account whose client
+ * fails part-way is left there and the other accounts are still read; then the failure is
+ * thrown, so the export can say that some names were not replaced. IDs are redacted
+ * regardless.
+ */
+export function* diagnosticKnownNames<Client>(
+  clients: { all(): readonly { readonly client: Client }[] },
+  read: (client: Client) => Iterable<DiagnosticNameGroup>,
+): Generator<DiagnosticNameGroup, void> {
+  let failed: unknown = null;
+  for (const { client } of clients.all()) {
+    try {
+      yield* read(client);
+    } catch (error) {
+      failed ??= error;
+    }
+  }
+  if (failed !== null) {
+    throw new Error('The names of some accounts could not be read.', {
+      cause: failed,
+    });
+  }
 }

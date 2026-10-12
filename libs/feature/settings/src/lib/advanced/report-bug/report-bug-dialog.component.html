@@ -51,7 +51,7 @@
       } @else {
         <trn-settings-row
           label="Include diagnostic logs"
-          description="Up to two days of Trinity and Matrix logs from this device. Matrix IDs and server names are replaced, and tokens, keys and messages are never included."
+          description="Up to two days of Trinity and Matrix logs from this device. Matrix IDs, email addresses, and the room names, topics and display names this device knows are replaced, and tokens, keys and messages are never included. Check the preview before you attach the log: it may still contain file names or other details."
           for="report-bug-include-logs"
           [divider]="false"
         >
@@ -141,7 +141,7 @@
           data-testid="report-bug-public-note"
         >
           GitHub issues are public. Don’t put Matrix IDs, room names or other
-          private details in your description; only the log is redacted.
+          private details in your description.
           @if (showSave()) {
             After the issue opens, attach the saved log file under “Other
             observations”.

@@ -417,6 +417,21 @@ describe('ReportBugDialogComponent', () => {
     );
     expect(note).toContain('GitHub issues are public');
     expect(note).toContain('Matrix IDs, room names');
+    expect(note).not.toContain('only the log is redacted');
+  });
+
+  it('says what the log replaces and asks for a check of the preview', async () => {
+    await setup();
+
+    const description =
+      document.getElementById('report-bug-include-logs-description')
+        ?.textContent ?? '';
+    expect(description).toContain(
+      'Matrix IDs, email addresses, and the room names, topics and display names this device knows are replaced',
+    );
+    expect(description).toContain(
+      'Check the preview before you attach the log: it may still contain file names or other details.',
+    );
   });
 
   it('keeps the public warning when logging is off', async () => {
@@ -600,7 +615,10 @@ describe('ReportBugDialogComponent', () => {
         },
         {
           provide: DIAGNOSTIC_ACCOUNT_SOURCE,
-          useValue: { accounts: () => of([]) },
+          useValue: {
+            accounts: () => of([]),
+            knownNames: () => [],
+          },
         },
         { provide: TrnDialogRef, useValue: { close: vi.fn() } },
         // Starts the log at app start-up, as the application does.

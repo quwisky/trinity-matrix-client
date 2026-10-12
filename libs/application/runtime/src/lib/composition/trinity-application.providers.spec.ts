@@ -190,7 +190,10 @@ describe('Trinity application provider composition', () => {
         },
         {
           provide: DIAGNOSTIC_ACCOUNT_SOURCE,
-          useValue: { accounts: () => of([]) },
+          useValue: {
+            accounts: () => of([]),
+            knownNames: () => [],
+          },
         },
         {
           provide: PREFERENCE_STORAGE_ADAPTER,

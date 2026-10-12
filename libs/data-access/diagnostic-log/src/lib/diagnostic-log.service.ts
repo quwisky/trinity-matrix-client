@@ -33,7 +33,7 @@ import {
   saveKeepLogSetting,
 } from './keep-diagnostic-log.preference';
 import { describePlatform, readPlatformFacts } from './platform-description';
-import { readAccounts } from './report-facts';
+import { readAccounts, readKnownNames } from './report-facts';
 import { loadReportExport } from './report/load-report-export';
 import {
   prepareDiagnosticReport,
@@ -244,6 +244,7 @@ export class DiagnosticLogService {
       build: this.build,
       platform: () => describePlatform(readPlatformFacts()),
       accounts: readAccounts(this.accountSource),
+      knownNames: () => readKnownNames(this.accountSource),
       snapshot: defer(() => from(this.settled)).pipe(
         switchMap(() =>
           this._keepLog()
