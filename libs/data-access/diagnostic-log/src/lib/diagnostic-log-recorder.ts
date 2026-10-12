@@ -16,6 +16,15 @@ import {
 /** How long entries wait in memory before a batch is written (spec §1). */
 export const FLUSH_DELAY_MS = 5_000;
 
+/**
+ * When the database could not be opened (a slow cold start can exceed the open's time
+ * limit), how long to wait before each further try, at the next write after it. Bounded, so
+ * a broken store costs at most this many more opens per session.
+ */
+export const STORE_RETRY_DELAYS_MS: readonly number[] = [
+  30_000, 120_000, 600_000,
+];
+
 export interface DiagnosticLogRecorderOptions {
   /** Opens the persistent store. A rejection moves capture to memory. */
   readonly openStore: () => Promise<DiagnosticLogStore>;
@@ -44,6 +53,9 @@ export class DiagnosticLogRecorder {
   private store: DiagnosticLogStore | null = null;
   /** The store is this recorder's memory fallback, not the one `openStore` gave. */
   private fallenBack = false;
+  /** Tries of the database made since it failed to open; all used up after a write failure. */
+  private storeRetries = 0;
+  private nextStoreRetryAt = 0;
   private opening: Promise<DiagnosticLogStore> | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private queue: Promise<unknown> = Promise.resolve();
@@ -138,6 +150,7 @@ export class DiagnosticLogRecorder {
       this.store = null;
       this.opening = null;
       this.fallenBack = false;
+      this.storeRetries = 0;
       await this.removeStoredLog(disk);
     });
   }
@@ -182,6 +195,7 @@ export class DiagnosticLogRecorder {
     const batch = this.pending;
     this.pending = [];
     this.pendingBytes = 0;
+    await this.retryStore();
     const store = await this.currentStore();
     try {
       await store.append(batch, this.now());
@@ -203,9 +217,46 @@ export class DiagnosticLogRecorder {
     if (!this.store) {
       this.store = store;
       this.fallenBack = fallenBack;
+      if (fallenBack) {
+        this.scheduleStoreRetry();
+      }
       this.options.onStorage?.(store.kind);
     }
     return this.store;
+  }
+
+  private scheduleStoreRetry(): void {
+    this.nextStoreRetryAt =
+      this.now() + (STORE_RETRY_DELAYS_MS[this.storeRetries] ?? 0);
+  }
+
+  /**
+   * Once the back-off has passed, try to open the database again and move what memory holds
+   * onto it. Only after a failed open: after a failed write, memory already holds the old
+   * stored log, which would then be stored twice.
+   */
+  private async retryStore(): Promise<void> {
+    const memory = this.store;
+    if (
+      !memory ||
+      !this.fallenBack ||
+      this.storeRetries >= STORE_RETRY_DELAYS_MS.length ||
+      this.now() < this.nextStoreRetryAt
+    ) {
+      return;
+    }
+    this.storeRetries += 1;
+    let disk: DiagnosticLogStore;
+    try {
+      disk = await this.options.openStore();
+      await disk.append((await memory.read()).entries, this.now());
+    } catch {
+      this.scheduleStoreRetry();
+      return;
+    }
+    this.store = disk;
+    this.fallenBack = false;
+    this.options.onStorage?.(disk.kind);
   }
 
   /** Carry on in memory with what the failed store still returns, plus the batch it refused. */
@@ -227,6 +278,7 @@ export class DiagnosticLogRecorder {
     await memory.append([...carried, ...batch], this.now());
     this.store = memory;
     this.fallenBack = true;
+    this.storeRetries = STORE_RETRY_DELAYS_MS.length;
     this.options.onStorage?.('memory');
     return memory;
   }

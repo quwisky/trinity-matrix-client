@@ -3,6 +3,7 @@ import type { DiagnosticEntry } from './diagnostic-entry.model';
 import {
   DiagnosticLogRecorder,
   FLUSH_DELAY_MS,
+  STORE_RETRY_DELAYS_MS,
 } from './diagnostic-log-recorder';
 import {
   MemoryLogStore,
@@ -80,6 +81,80 @@ describe('DiagnosticLogRecorder', () => {
     expect(snapshot.storage).toBe('memory');
     expect(snapshot.entries.map((e) => e.message)).toEqual(['kept anyway']);
     expect(onStorage).toHaveBeenCalledWith('memory');
+  });
+
+  it('tries the database again after a back-off, moving the session so far onto it', async () => {
+    const backing = new MemoryLogStore();
+    const disk: DiagnosticLogStore = {
+      kind: 'indexeddb',
+      append: (entries, now) => backing.append(entries, now),
+      read: () => backing.read(),
+      clear: () => backing.clear(),
+    };
+    const openStore = vi
+      .fn<() => Promise<DiagnosticLogStore>>()
+      .mockRejectedValueOnce(new Error('IndexedDB open timed out'))
+      .mockResolvedValue(disk);
+    const onStorage = vi.fn();
+    const recorder = new DiagnosticLogRecorder({ openStore, onStorage });
+    recorder.record(entry('during a slow start'));
+    await recorder.flush();
+    expect(onStorage).toHaveBeenLastCalledWith('memory');
+
+    await vi.advanceTimersByTimeAsync(STORE_RETRY_DELAYS_MS[0] - 1);
+    recorder.record(entry('too soon'));
+    await recorder.flush();
+    expect(openStore).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(1);
+    recorder.record(entry('after the back-off'));
+    await recorder.flush();
+
+    expect(openStore).toHaveBeenCalledTimes(2);
+    expect(onStorage).toHaveBeenLastCalledWith('indexeddb');
+    expect((await disk.read()).entries.map((e) => e.message)).toEqual([
+      'during a slow start',
+      'too soon',
+      'after the back-off',
+    ]);
+    expect((await recorder.snapshot()).storage).toBe('indexeddb');
+  });
+
+  it('gives up on the database after a bounded number of retries', async () => {
+    const openStore = vi.fn(() =>
+      Promise.reject<DiagnosticLogStore>(new Error('broken profile')),
+    );
+    const recorder = new DiagnosticLogRecorder({ openStore });
+
+    for (let hour = 0; hour < 24; hour += 1) {
+      recorder.record(entry(`hour ${hour}`));
+      await recorder.flush();
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    }
+
+    expect(openStore).toHaveBeenCalledTimes(1 + STORE_RETRY_DELAYS_MS.length);
+    expect((await recorder.snapshot()).storage).toBe('memory');
+  });
+
+  it('does not retry after a write failure, which would store the old log twice', async () => {
+    const failing: DiagnosticLogStore = {
+      kind: 'indexeddb',
+      append: vi.fn(() => Promise.reject(new Error('QuotaExceededError'))),
+      read: vi.fn(() =>
+        Promise.resolve({ entries: [entry('stored earlier')], dropped: false }),
+      ),
+      clear: vi.fn(() => Promise.resolve()),
+    };
+    const openStore = vi.fn(() => Promise.resolve(failing));
+    const recorder = new DiagnosticLogRecorder({ openStore });
+    recorder.record(entry('refused'));
+    await recorder.flush();
+
+    await vi.advanceTimersByTimeAsync(STORE_RETRY_DELAYS_MS.at(-1) ?? 0);
+    recorder.record(entry('later'));
+    await recorder.flush();
+
+    expect(openStore).toHaveBeenCalledOnce();
   });
 
   it('falls back to memory when a write fails, keeping what was stored and the batch', async () => {
