@@ -7,11 +7,19 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
+  DIAGNOSTIC_LOG_STORE_FACTORY,
+  DIAGNOSTIC_LOG_STORE_REMOVER,
   DiagnosticLogNotDeletedError,
   DiagnosticLogService,
+  MemoryLogStore,
+  provideDiagnosticLog,
   type DiagnosticAvailability,
 } from '@trinity/data-access/diagnostic-log';
-import type { PreferenceCommandOutcome } from '@trinity/runtime/preferences';
+import {
+  PREFERENCE_STORAGE_ADAPTER,
+  type PreferenceCommandOutcome,
+  type PreferenceStorageReadOutcome,
+} from '@trinity/runtime/preferences';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError, type Observable } from 'rxjs';
@@ -23,6 +31,8 @@ interface SetupOptions {
   readonly cleared?: Observable<void>;
   readonly available?: DiagnosticAvailability;
   readonly keepLog?: boolean;
+  /** Whether the stored setting has been read; it has unless a test says otherwise. */
+  readonly settingKnown?: boolean;
   readonly saved?: PreferenceCommandOutcome;
   readonly setKeepLogResult?: () => Observable<PreferenceCommandOutcome>;
 }
@@ -40,6 +50,7 @@ async function setup(options: SetupOptions = {}) {
     );
   });
   const available = signal(options.available ?? 'persistent');
+  const settingKnown = signal(options.settingKnown ?? true);
   const rendered = await render(DiagnosticsGroupComponent, {
     providers: [
       MockProvider(DiagnosticLogService, {
@@ -47,6 +58,7 @@ async function setup(options: SetupOptions = {}) {
         setKeepLog,
         keepLog: keepLog.asReadonly(),
         available: available.asReadonly(),
+        settingKnown: settingKnown.asReadonly(),
       }),
       MockProvider(TrnSurfaceService, { open }),
       MockProvider(TrnToastService, { show }),
@@ -54,7 +66,47 @@ async function setup(options: SetupOptions = {}) {
   });
   await rendered.fixture.whenStable();
   rendered.fixture.detectChanges();
-  return { ...rendered, available, open, show, clear, setKeepLog };
+  return {
+    ...rendered,
+    available,
+    settingKnown,
+    open,
+    show,
+    clear,
+    setKeepLog,
+  };
+}
+
+/**
+ * The group over the real service, started as the app starts it, with installation
+ * preferences answering `read` and a log store that is never opened unless written to.
+ */
+async function setupWithService(read: PreferenceStorageReadOutcome) {
+  const rendered = await render(DiagnosticsGroupComponent, {
+    providers: [
+      {
+        provide: PREFERENCE_STORAGE_ADAPTER,
+        useValue: {
+          read: () => of(read),
+          write: () => of({ kind: 'completed' } as const),
+        },
+      },
+      {
+        provide: DIAGNOSTIC_LOG_STORE_FACTORY,
+        useValue: () => Promise.resolve(new MemoryLogStore()),
+      },
+      {
+        provide: DIAGNOSTIC_LOG_STORE_REMOVER,
+        useValue: () => Promise.resolve(),
+      },
+      provideDiagnosticLog(),
+      MockProvider(TrnSurfaceService, { open: vi.fn() }),
+      MockProvider(TrnToastService, { show: vi.fn() }),
+    ],
+  });
+  await rendered.fixture.whenStable();
+  rendered.fixture.detectChanges();
+  return rendered;
 }
 
 function keepLogSwitch(
@@ -204,7 +256,10 @@ describe('DiagnosticsGroupComponent', () => {
   });
 
   it('disables the switch until the stored setting is known', async () => {
-    const { fixture, available } = await setup({ available: 'pending' });
+    const { fixture, settingKnown } = await setup({
+      settingKnown: false,
+      available: 'pending',
+    });
 
     expect(keepLogSwitch(fixture).disabled()).toBe(true);
     expect(
@@ -213,14 +268,40 @@ describe('DiagnosticsGroupComponent', () => {
         .getAttribute('aria-busy'),
     ).toBe('true');
 
-    available.set('persistent');
+    settingKnown.set(true);
     fixture.detectChanges();
 
     expect(keepLogSwitch(fixture).disabled()).toBe(false);
   });
 
+  it('enables the switch once the setting is known, before any log is stored', async () => {
+    const { fixture } = await setup({ available: 'pending' });
+
+    expect(keepLogSwitch(fixture).disabled()).toBe(false);
+  });
+
+  it('leaves the switch enabled and off when the stored setting is off', async () => {
+    const { fixture } = await setupWithService({
+      kind: 'found',
+      payload: JSON.stringify({ version: 1, value: false }),
+    });
+
+    expect(keepLogSwitch(fixture).disabled()).toBe(false);
+    expect(keepLogSwitch(fixture).checked()).toBe(false);
+  });
+
+  it('leaves the switch enabled and off when the setting cannot be read', async () => {
+    const { fixture } = await setupWithService({
+      kind: 'unavailable',
+      diagnostic: { code: 'storage-down' },
+    });
+
+    expect(keepLogSwitch(fixture).disabled()).toBe(false);
+    expect(keepLogSwitch(fixture).checked()).toBe(false);
+  });
+
   it('does not offer Clear or the memory-only note while the setting is pending', async () => {
-    await setup({ available: 'pending' });
+    await setup({ settingKnown: false, available: 'memory-only' });
 
     expect(screen.queryByTestId('advanced-clear-diagnostic-logs')).toBeNull();
     expect(screen.queryByTestId('advanced-diagnostics-memory-only')).toBeNull();

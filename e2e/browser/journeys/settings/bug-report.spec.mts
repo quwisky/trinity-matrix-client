@@ -22,7 +22,8 @@ import {
 // trinity-<date>.log are the same redacted text, and neither contains the app's access token,
 // its device ID, a room ID, the user ID, the server name or a message body received, sent,
 // encrypted or decrypted. Turning "Keep a diagnostic log" off deletes the log and the report
-// then says logging is off. Report a bug also opens over System status and, signed out, from
+// then says logging is off; after a reload it can be turned on again and stores a fresh
+// log. Report a bug also opens over System status and, signed out, from
 // the sign-in page. The homeserver tests self-skip without one.
 const session = homeserverSession();
 const DB_NAME = 'trinity-diagnostic-log';
@@ -379,6 +380,21 @@ test.describe('Report a bug', () => {
     await dialog.getByRole('button', { name: 'Close Report a bug' }).click();
     await reloadIntoRoom(page);
     expect(await storedMessages(page)).toEqual([]);
+
+    // After the reload the stored "off" is read and no store is opened, yet the switch can
+    // still be turned back on, and a fresh log is stored again.
+    await openSettingsSection(page, 'advanced');
+    const keepLog = page.getByRole('switch', { name: 'Keep a diagnostic log' });
+    await expect(keepLog).toBeEnabled();
+    await expect(keepLog).not.toBeChecked();
+    await keepLog.click();
+    await expect(keepLog).toBeChecked();
+    await storeMarker(page, `[bug-report-e2e] turned on again ${runId}`);
+    expect(
+      (await storedMessages(page)).some((message) =>
+        message.startsWith('diagnostic log turned on: '),
+      ),
+    ).toBe(true);
   });
 
   test('opens Report a bug over System status', async ({ page, request }) => {

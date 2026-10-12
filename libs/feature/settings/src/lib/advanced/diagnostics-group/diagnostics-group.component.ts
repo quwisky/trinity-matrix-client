@@ -45,8 +45,11 @@ export class DiagnosticsGroupComponent {
   readonly keepLog = this.log.keepLog;
   readonly clearing = signal(false);
 
-  /** True while the stored setting is still being read; `keepLog()` is not yet authoritative. */
-  readonly pending = computed(() => this.log.available() === 'pending');
+  /**
+   * True while the stored setting is still being read; `keepLog()` is not yet authoritative.
+   * Not the storage state: with the log off no store is ever opened.
+   */
+  readonly pending = computed(() => !this.log.settingKnown());
 
   /** True while a change to the switch is being saved. */
   readonly saving = signal(false);

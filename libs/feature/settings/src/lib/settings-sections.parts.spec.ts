@@ -144,6 +144,7 @@ const SETUPS: Record<string, () => Setup> = {
       MockProvider(DiagnosticLogService, {
         available: signal('persistent' as const).asReadonly(),
         keepLog: signal(true).asReadonly(),
+        settingKnown: signal(true).asReadonly(),
       }),
       FILE_EXPORT,
     ],

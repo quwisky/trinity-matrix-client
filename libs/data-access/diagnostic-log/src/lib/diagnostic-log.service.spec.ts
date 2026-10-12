@@ -437,6 +437,42 @@ describe('DiagnosticLogService', () => {
       ]);
     });
 
+    it('knows the setting once a stored "off" is read, though no store is ever opened', async () => {
+      storedSetting = KEEP_LOG_OFF;
+      const service = setup();
+      await vi.advanceTimersByTimeAsync(FLUSH_DELAY_MS);
+
+      expect(service.settingKnown()).toBe(true);
+      expect(service.keepLog()).toBe(false);
+      expect(service.available()).toBe('pending');
+    });
+
+    it('knows the setting, as off, when it cannot be read', async () => {
+      const service = setup(undefined, {
+        read: () =>
+          of({
+            kind: 'unavailable',
+            diagnostic: { code: 'storage-down' },
+          } as const),
+        write: () => of({ kind: 'completed' } as const),
+      });
+      await vi.advanceTimersByTimeAsync(FLUSH_DELAY_MS);
+
+      expect(service.settingKnown()).toBe(true);
+      expect(service.keepLog()).toBe(false);
+      expect(service.available()).toBe('pending');
+    });
+
+    it('does not know the setting while it is still being read, until the user chooses', async () => {
+      const reads = new Subject<PreferenceStorageReadOutcome>();
+      const service = setup(undefined, pendingAdapter(reads));
+
+      expect(service.settingKnown()).toBe(false);
+      await firstValueFrom(service.setKeepLog(true));
+
+      expect(service.settingKnown()).toBe(true);
+    });
+
     it('keeps a choice made while the setting is still being read', async () => {
       const reads = new Subject<PreferenceStorageReadOutcome>();
       const service = setup(undefined, pendingAdapter(reads));

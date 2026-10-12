@@ -111,6 +111,7 @@ export class DiagnosticLogService {
   private readonly _keepLog = signal(
     KEEP_DIAGNOSTIC_LOG_PREFERENCE.defaultValue,
   );
+  private readonly _settingKnown = signal(false);
   private readonly recorder = new DiagnosticLogRecorder({
     openStore: () => this.openStore(),
     removeStore: inject(DIAGNOSTIC_LOG_STORE_REMOVER),
@@ -131,6 +132,13 @@ export class DiagnosticLogService {
   readonly available = this._available.asReadonly();
   /** Settings › Advanced › Keep a diagnostic log; `true` until the stored value is read. */
   readonly keepLog = this._keepLog.asReadonly();
+  /**
+   * Whether `keepLog()` is settled for this session: the stored value was read (or could not
+   * be, which means off), the user chose, or a factory reset stopped the log. Independent of
+   * {@link available}, which stays `'pending'` until a store is opened, and with the log off
+   * one never is.
+   */
+  readonly settingKnown = this._settingKnown.asReadonly();
 
   /** Install capture and read the setting. Idempotent; undone when the root injector is destroyed. */
   start(): void {
@@ -310,6 +318,7 @@ export class DiagnosticLogService {
       this.sdkCapture?.setEnabled(false);
       this.early = null;
       this._keepLog.set(false);
+      this._settingKnown.set(true);
       this.resolveSettled();
       return from(this.recorder.discard());
     });
@@ -352,6 +361,7 @@ export class DiagnosticLogService {
     const early = this.early ?? [];
     this.early = null;
     this._keepLog.set(keep);
+    this._settingKnown.set(true);
     this.resolveSettled();
     if (!keep) {
       return this.recorder.discard();
@@ -370,6 +380,7 @@ export class DiagnosticLogService {
     this.sdkCapture?.setEnabled(false);
     this.early = null;
     this._keepLog.set(false);
+    this._settingKnown.set(true);
     this.resolveSettled();
   }
 
