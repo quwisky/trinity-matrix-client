@@ -10,6 +10,38 @@ import {
   signal,
 } from '@angular/core';
 
+/**
+ * The smallest covered height read as a keyboard, in px. Below it the gap is browser chrome:
+ * iOS Safari's collapsing toolbar and rubber-band scrolling open gaps of tens of px with no
+ * keyboard, and the smallest phone keyboards are well over this.
+ */
+export const SHEET_KEYBOARD_MIN_HEIGHT = 120;
+
+/** Whether `element` takes typed text, which is the only time a keyboard can be ours. */
+function isEditable(element: Element | null): boolean {
+  if (element instanceof HTMLTextAreaElement) {
+    return !element.readOnly && !element.disabled;
+  }
+  if (element instanceof HTMLInputElement) {
+    const nonText = [
+      'button',
+      'checkbox',
+      'color',
+      'file',
+      'hidden',
+      'image',
+      'radio',
+      'range',
+      'reset',
+      'submit',
+    ];
+    return (
+      !nonText.includes(element.type) && !element.readOnly && !element.disabled
+    );
+  }
+  return element instanceof HTMLElement && element.isContentEditable;
+}
+
 /** The parts of the (Chromium-only) VirtualKeyboard API this reads. */
 interface VirtualKeyboardLike extends EventTarget {
   readonly boundingRect: { readonly height: number };
@@ -26,8 +58,12 @@ interface VirtualKeyboardLike extends EventTarget {
  * view inside its scrolling body.
  *
  * The keyboard height is read from `visualViewport` (the layout viewport's height less the
- * visible one), and from `navigator.virtualKeyboard` where Chromium reports it. A pinch zoom
- * also shrinks the visual viewport, so a zoomed page is left alone.
+ * visible one and its offset), and from `navigator.virtualKeyboard` where Chromium reports
+ * it. A gap counts as a keyboard only when it is at least {@link SHEET_KEYBOARD_MIN_HEIGHT}
+ * and an editable element inside this sheet has focus; anything else (browser chrome, a
+ * pinch zoom, a keyboard some other field raised) binds nothing. The focused field is
+ * scrolled into view once per change of the covered height, not on every viewport scroll,
+ * so scrolling inside the sheet is not snapped back.
  *
  * A host directive of `TrnSheetFrameComponent`, so every sheet gets it.
  */
@@ -36,6 +72,9 @@ interface VirtualKeyboardLike extends EventTarget {
   host: {
     '[style.translate]': 'lift()',
     '[style.max-height]': 'maxHeight()',
+    // Focus moving in or out of a field changes whether a keyboard is this sheet's.
+    '(focusin)': 'update()',
+    '(focusout)': 'update()',
   },
 })
 export class TrnSheetKeyboardAvoidance {
@@ -57,6 +96,9 @@ export class TrnSheetKeyboardAvoidance {
       : null,
   );
 
+  /** Re-measures; bound by the constructor once the viewport sources are known. */
+  protected update: () => void = () => undefined;
+
   constructor() {
     const win = this.document.defaultView;
     const viewport = win?.visualViewport ?? null;
@@ -66,22 +108,28 @@ export class TrnSheetKeyboardAvoidance {
     if (!win || (!viewport && !keyboard)) {
       return;
     }
-    const update = (): void => {
+    this.update = () => {
       const zoomed = (viewport?.scale ?? 1) > 1.01;
-      const visibleHeight = viewport?.height ?? win.innerHeight;
       const fromViewport = viewport
         ? win.innerHeight - (viewport.height + viewport.offsetTop)
         : 0;
       const fromKeyboard = keyboard?.boundingRect.height ?? 0;
-      const covered = zoomed
-        ? 0
-        : Math.max(0, Math.round(Math.max(fromViewport, fromKeyboard)));
-      this.visible.set(Math.round(visibleHeight));
+      const gap = Math.round(Math.max(fromViewport, fromKeyboard));
+      const typing = this.host.contains(this.document.activeElement)
+        ? isEditable(this.document.activeElement)
+        : false;
+      const covered =
+        !zoomed && typing && gap >= SHEET_KEYBOARD_MIN_HEIGHT ? gap : 0;
+      this.visible.set(
+        Math.round(viewport?.height ?? win.innerHeight - fromKeyboard),
+      );
+      const changed = covered !== this.covered();
       this.covered.set(covered);
-      if (covered > 0) {
+      if (changed && covered > 0) {
         afterNextRender(() => this.revealFocus(), { injector: this.injector });
       }
     };
+    const update = (): void => this.update();
     viewport?.addEventListener('resize', update);
     viewport?.addEventListener('scroll', update);
     keyboard?.addEventListener('geometrychange', update);
@@ -90,7 +138,7 @@ export class TrnSheetKeyboardAvoidance {
       viewport?.removeEventListener('scroll', update);
       keyboard?.removeEventListener('geometrychange', update);
     });
-    update();
+    this.update();
   }
 
   /** The field being typed into stays visible inside the sheet's scrolling body. */
