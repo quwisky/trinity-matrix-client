@@ -1,5 +1,4 @@
 import type { DiagnosticNameGroup } from '../report-facts';
-import { SPACED_WORD, wordUnitClass } from './word-units';
 import {
   LiteralMatcher,
   type ProtectedSpan,
@@ -449,26 +448,34 @@ function unicodeEscape(unit: string, upper: boolean): string {
 
 /**
  * Whether a long name repeated only up to `end` was cut there, rather than the line going on
- * with other words: the line ends, or a mark such as "…", a quote or a bracket follows. A
- * space or a letter means the line merely begins like the name, as "Failed to decrypt
- * event" begins like a topic "Failed to decrypt? …" or "synchroniser" like
- * "synchronisation", and the line is left alone. Scripts written without spaces give no
- * such clue, so a cut before one of their letters is taken as a cut.
+ * with other text: the line ends, or a cut mark follows: "…" (which the capture's
+ * "… [N characters truncated]" begins with), a quote or a closing bracket. Anything else,
+ * a space, a letter or other punctuation, means the line merely begins like the name, as
+ * "Failed to decrypt: OlmError" begins like a topic "Failed to decrypt? …", and the line is
+ * left alone.
  */
 function endsAtCut(text: string, end: number): boolean {
-  if (end >= text.length) {
-    return true;
-  }
-  const unit = text.charCodeAt(end);
-  if (unit === 0x0a || unit === 0x0d) {
-    return true;
-  }
-  return (
-    wordUnitClass(unit) !== SPACED_WORD && !WHITESPACE.test(text.charAt(end))
-  );
+  return end >= text.length || CUT_MARKS.has(text.charAt(end));
 }
 
-const WHITESPACE = /\s/;
+const CUT_MARKS = new Set([
+  '\n',
+  '\r',
+  '…',
+  '"',
+  "'",
+  '`',
+  '“',
+  '”',
+  '‘',
+  '’',
+  '«',
+  '»',
+  ')',
+  ']',
+  '}',
+  '>',
+]);
 
 /** How many units of `spelling` the text repeats from `start`, ending between code points. */
 function sharedLength(text: string, start: number, spelling: string): number {

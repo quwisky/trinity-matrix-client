@@ -589,6 +589,14 @@ describe('createLogRedactor', () => {
           'Starting the synchronisation of all rooms',
           'Starting the synchroniser now',
         ],
+        [
+          'Failed to decrypt? Verify this session first',
+          'Failed to decrypt: OlmError',
+        ],
+        [
+          'Failed to decrypt? Verify this session first',
+          'Failed to decrypt, retrying',
+        ],
       ])(
         'leaves a line that only begins like the topic %j alone',
         (topic, line) => {
@@ -610,6 +618,27 @@ describe('createLogRedactor', () => {
             [{ ...people('Alice Liddell'), roomTopics: [topic] }],
           ),
         ).toEqual(['full: Topic 1', 'Meeting with Person 1 today']);
+      });
+
+      it.each([
+        [
+          'a quote',
+          'topic: "Starting the synchronisation"',
+          'topic: "Topic 1"',
+        ],
+        ['a bracket', '[Starting the synchronisation]', '[Topic 1]'],
+        ['an ellipsis', 'Starting the synchronisation…', 'Topic 1…'],
+        [
+          'the end of the line',
+          'was: Starting the synchronisation',
+          'was: Topic 1',
+        ],
+      ])('replaces a topic cut before %s', (_mark, line, expected) => {
+        const topic = 'Starting the synchronisation of all rooms';
+
+        expect(
+          redactLog([line], [{ ...people(), roomTopics: [topic] }]),
+        ).toEqual([expected]);
       });
 
       it('replaces a topic that the capture cut short', () => {
