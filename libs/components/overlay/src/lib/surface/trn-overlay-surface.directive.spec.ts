@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
@@ -22,6 +22,20 @@ import { TrnOverlaySurfaceDirective } from './trn-overlay-surface.directive';
   `,
 })
 class HostComponent {}
+
+@Component({
+  imports: [TrnOverlaySurfaceDirective],
+  template: `
+    <section
+      trnOverlaySurface
+      [variant]="variant()"
+      data-testid="variant-surface"
+    ></section>
+  `,
+})
+class VariantHostComponent {
+  readonly variant = signal<TrnOverlaySurfaceVariant>('neutral');
+}
 
 describe('Trinity overlay surface recipe', () => {
   it('keeps semantic treatment independent from size and layout', () => {
@@ -84,5 +98,30 @@ describe('Trinity overlay surface recipe', () => {
     expect(surface.getAttribute('data-trn-variant')).toBe('accent');
     expect(surface.getAttribute('data-trn-size')).toBe('lg');
     expect(surface.getAttribute('data-trn-layout')).toBe('panel');
+  });
+
+  it('declares the attention surface for its content only in the accent variant', async () => {
+    const { fixture, getByTestId } = await render(VariantHostComponent);
+    const surface = getByTestId('variant-surface');
+    // Neutral paints the raised surface; a solid button keeps its accent fill there.
+    expect(surface.hasAttribute('data-trn-surface')).toBe(false);
+    expect(surface.className).not.toContain('focus-ring-on-attention');
+
+    // Accent paints the attention surface, the same colour as a solid primary fill, so it
+    // tells trnBtn to use the on-attention action roles instead, including for the
+    // surface's own primary action (#1224).
+    fixture.componentInstance.variant.set('accent');
+    await fixture.whenStable();
+    expect(surface.getAttribute('data-trn-surface')).toBe('attention');
+    // Every focusable inside sits on the accent, so it gets the on-attention ring.
+    expect(surface.className).toContain(
+      '[--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]',
+    );
+
+    // Back to neutral, the surface stops declaring the attention context.
+    fixture.componentInstance.variant.set('neutral');
+    await fixture.whenStable();
+    expect(surface.hasAttribute('data-trn-surface')).toBe(false);
+    expect(surface.className).not.toContain('focus-ring-on-attention');
   });
 });

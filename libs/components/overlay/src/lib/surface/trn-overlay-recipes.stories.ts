@@ -4,6 +4,7 @@ import {
   moduleMetadata,
   type StoryObj,
 } from '@storybook/angular-vite';
+import { TrnButton, TrnInput } from '@trinity/components/controls';
 import { provideTrnOverlayDefaults } from '../provide-overlay-defaults';
 import { DialogOverlayStoryComponent } from './stories/dialog-overlay-story/dialog-overlay-story.component';
 import { DropdownOverlayStoryComponent } from './stories/dropdown-overlay-story/dropdown-overlay-story.component';
@@ -53,6 +54,8 @@ const meta: Meta = {
         DropdownOverlayStoryComponent,
         FeedbackOverlayStoryComponent,
         LayeredOverlayStoryComponent,
+        TrnButton,
+        TrnInput,
         TrnOverlaySurfaceDirective,
       ],
     }),
@@ -84,6 +87,39 @@ export const Dialogs: Story = {
 
 export const Feedback: Story = {
   render: () => ({ template: '<trn-feedback-overlay-story />' }),
+};
+
+/**
+ * An accent dialog with its own primary action, an anchor and a ghost action. The surface
+ * marks itself as an attention surface, so the solid actions invert to the on-attention roles
+ * instead of an accent fill that would vanish on the accent ground. Every focusable inside,
+ * the transparent text field included, sits on the accent and uses the on-attention ring.
+ */
+export const AccentSurface: Story = {
+  render: () => ({
+    template: `
+      <div class="p-6">
+        <section
+          trnOverlaySurface
+          variant="accent"
+          size="md"
+          layout="dialog"
+          class="grid gap-4 p-6"
+          aria-labelledby="accent-surface-title"
+          data-testid="accent-overlay-surface"
+        >
+          <h2 id="accent-surface-title" class="text-lg font-semibold">Verify this device</h2>
+          <p class="text-sm">Verify this device to read your encrypted messages.</p>
+          <input trnInput aria-label="Recovery key" placeholder="Recovery key" />
+          <div class="flex flex-wrap justify-end gap-2">
+            <button trnBtn presentation="ghost" size="sm" type="button">Not now</button>
+            <a trnBtn size="sm" href="#">Learn more</a>
+            <button trnBtn size="sm" type="button">Verify now</button>
+          </div>
+        </section>
+      </div>
+    `,
+  }),
 };
 
 /** Every public overlay surface axis plus the interactive lifecycle stories. */

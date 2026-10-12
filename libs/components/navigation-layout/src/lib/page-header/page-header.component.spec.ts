@@ -107,6 +107,46 @@ describe('PageHeaderComponent', () => {
     expect(header.className).toContain('safe-top');
   });
 
+  it('declares the attention surface for its actions only in the accent variant', async () => {
+    const { fixture, container } = await render(PageHeaderComponent, {
+      inputs: { title: 'Attention', variant: 'neutral', layout: 'page' },
+    });
+    const header = () => container.querySelector('header')!;
+    // Neutral paints no attention surface; a solid button keeps its accent fill there.
+    expect(header().hasAttribute('data-trn-surface')).toBe(false);
+
+    // Accent paints the attention surface, the same colour as a solid primary fill, so it
+    // tells trnBtn to use the on-attention action roles instead (#1224).
+    fixture.componentRef.setInput('variant', 'accent');
+    await fixture.whenStable();
+    expect(header().getAttribute('data-trn-surface')).toBe('attention');
+    // Every focusable in the header sits on the accent, so it gets the on-attention ring.
+    expect(header().className).toContain(
+      '[--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]',
+    );
+
+    // The accent fill outranks the toolbar's workspace background, so the toolbar layout
+    // paints the attention surface too and needs the same opt-in.
+    fixture.componentRef.setInput('layout', 'toolbar');
+    await fixture.whenStable();
+    expect(header().className).toContain(
+      'bg-[var(--trinity-state-attention-surface)]',
+    );
+    expect(header().className).not.toContain(
+      'bg-[var(--trinity-surface-workspace)]',
+    );
+    expect(header().getAttribute('data-trn-surface')).toBe('attention');
+    expect(header().className).toContain(
+      '[--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]',
+    );
+
+    // Back to neutral, the header stops declaring the attention context and its ring.
+    fixture.componentRef.setInput('variant', 'neutral');
+    await fixture.whenStable();
+    expect(header().hasAttribute('data-trn-surface')).toBe(false);
+    expect(header().className).not.toContain('focus-ring-on-attention');
+  });
+
   it('does not reflect the title input onto a native title attribute (no whole-bar tooltip)', async () => {
     const { container } = await render(TitleHostComponent);
     const host = container.querySelector('trn-page-header')!;

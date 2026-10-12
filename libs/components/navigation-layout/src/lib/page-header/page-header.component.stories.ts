@@ -1,4 +1,9 @@
-import { type Meta, type StoryObj } from '@storybook/angular-vite';
+import {
+  moduleMetadata,
+  type Meta,
+  type StoryObj,
+} from '@storybook/angular-vite';
+import { TrnButton } from '@trinity/components/controls';
 import { PageHeaderComponent } from './page-header.component';
 
 const meta: Meta<PageHeaderComponent> = {
@@ -27,4 +32,23 @@ export const Toolbar: Story = {
 
 export const Accent: Story = {
   args: { title: 'Security attention', variant: 'accent', layout: 'page' },
+};
+
+/**
+ * A solid action on the accent header. The header marks itself as an attention surface, so
+ * the action inverts to the on-attention roles instead of an accent fill that would vanish
+ * on the accent ground. The toolbar layout paints the accent too; pass `layout:toolbar`.
+ */
+export const AccentAction: Story = {
+  args: { title: 'Security attention', variant: 'accent', layout: 'page' },
+  decorators: [moduleMetadata({ imports: [TrnButton] })],
+  render: (args) => ({
+    props: args,
+    template: `
+      <trn-page-header [title]="title" [variant]="variant" [layout]="layout">
+        <span trnHeaderActions>
+          <button trnBtn size="sm">Verify</button>
+        </span>
+      </trn-page-header>`,
+  }),
 };

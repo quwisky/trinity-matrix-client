@@ -12,11 +12,15 @@ export type TrnOverlaySurfaceSize = Extract<
 export type TrnOverlaySurfaceLayout =
   'dialog' | 'sheet' | 'popover' | 'panel' | 'workspace' | 'fullscreen';
 
+/**
+ * Every focusable inside the accent surface sits on the accent, so the surface switches them
+ * to the on-attention ring; the default ring (the link colour) fails 3:1 against the accent.
+ */
 const variantRecipe = {
   neutral:
     'border-[var(--trinity-border-subtle)] bg-[var(--trinity-surface-raised)] text-[var(--trinity-text-bright)]',
   accent:
-    'border-[var(--trinity-state-attention-surface)] bg-[var(--trinity-state-attention-surface)] text-[var(--trinity-state-attention-foreground)]',
+    'border-[var(--trinity-state-attention-surface)] bg-[var(--trinity-state-attention-surface)] text-[var(--trinity-state-attention-foreground)] [--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]',
 } as const;
 
 const sizeRecipe = {

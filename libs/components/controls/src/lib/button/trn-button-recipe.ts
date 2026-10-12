@@ -46,12 +46,13 @@ const solidDangerTone =
   'bg-[color:var(--trinity-danger-solid)] dark:bg-[color:var(--trinity-danger-solid)] text-[color:var(--trinity-danger-solid-foreground)] hover:bg-[color:var(--trinity-danger-solid-hover)] dark:hover:bg-[color:var(--trinity-danger-solid-hover)]';
 
 /**
- * A solid primary action on an attention surface (an accent `trn-banner`, which marks itself
- * `data-trn-surface="attention"`). Its own fill is the accent, the same colour as that
- * surface, so it would read as plain text with no visible hover (#1217). There it inverts to
- * the attention action roles, and its focus ring gains an offset in the surface colour so the
- * ring, which shares the fill's colour, stays distinct from the button. Outside such a surface
- * none of these classes match, so every other solid primary button is unchanged.
+ * A solid primary action on an attention surface (an accent `trn-banner`, `trn-page-header` or
+ * `trnOverlaySurface`, which mark themselves `data-trn-surface="attention"`). Its own fill is
+ * the accent, the same colour as that surface, so it would read as plain text with no visible
+ * hover (#1217). There it inverts to the attention action roles, and its focus ring gains an
+ * offset in the surface colour so the ring, which shares the fill's colour, stays distinct
+ * from the button. Outside such a surface none of these classes match, so every other solid
+ * primary button is unchanged.
  *
  * Anchors need their own hover class: Helm's `[a]:hover:bg-primary/80` compiles to
  * `.cls:is(a):hover`, which outranks the plain attention hover. The `[a]:` copy has equal
