@@ -192,8 +192,15 @@ describe('split E2E jobs', () => {
       'browser-e2e',
       'storybook',
       'mas-e2e',
+      'scrollbars-e2e',
     ]);
-    for (const id of ['e2e', 'browser-e2e', 'storybook', 'mas-e2e']) {
+    for (const id of [
+      'e2e',
+      'browser-e2e',
+      'storybook',
+      'mas-e2e',
+      'scrollbars-e2e',
+    ]) {
       expect(jobs[id].name).not.toBe('E2E (Playwright + homeserver)');
     }
   });
@@ -315,8 +322,12 @@ describe('MAS sign-in journeys', () => {
       expect(run({ 'mas-e2e': result }).status).not.toBe(0);
     });
 
-    it('fails when any other job did not succeed', () => {
-      for (const id of gate.needs.filter((need) => need !== 'mas-e2e')) {
+    it('fails when any job that always runs did not succeed', () => {
+      // `scrollbars-e2e` is skipped by design too, when a pull request leaves its paths alone.
+      const pathFiltered = ['mas-e2e', 'scrollbars-e2e'];
+      for (const id of gate.needs.filter(
+        (need) => !pathFiltered.includes(need),
+      )) {
         for (const result of ['skipped', 'failure', 'cancelled']) {
           expect(run({ [id]: result }).status, `${id} ${result}`).not.toBe(0);
         }

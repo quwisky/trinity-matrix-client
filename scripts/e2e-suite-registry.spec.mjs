@@ -107,6 +107,44 @@ describe('E2E suite registry', () => {
     ]);
   });
 
+  it('lets a pull request run a later-tier suite only when its paths change', () => {
+    const snapshot = registrySnapshot();
+    const scheduled = snapshot.suites.find(
+      ({ ciTier }) => ciTier === 'scheduled',
+    );
+    const pullRequest = snapshot.suites.find(
+      ({ ciTier }) => ciTier === 'pull-request',
+    );
+    snapshot.ciEntrypoints = snapshot.ciEntrypoints.filter(
+      ({ changedPathsOnly }) => !changedPathsOnly,
+    );
+    const changed = {
+      command: 'pnpm e2e:changed-probe',
+      tier: 'pull-request',
+      suiteIds: [scheduled.id],
+      changedPathsOnly: true,
+    };
+    snapshot.ciEntrypoints.push(changed);
+    expect(validateRegistry(snapshot)).toEqual([]);
+
+    const errors = [];
+    validateCiReportPaths(errors, 'steps: []', snapshot, [changed]);
+    expect(errors).toEqual([`CI report path is missing suite ${scheduled.id}`]);
+
+    snapshot.ciEntrypoints.push(
+      {
+        ...changed,
+        command: 'pnpm e2e:every-probe',
+        suiteIds: [pullRequest.id],
+      },
+      { ...changed, command: 'pnpm e2e:scheduled-probe', tier: 'scheduled' },
+    );
+    expect(validateRegistry(snapshot)).toEqual([
+      `${pullRequest.id} runs on changed paths but is classified pull-request`,
+      'pnpm e2e:scheduled-probe runs on changed paths outside the pull-request tier',
+    ]);
+  });
+
   it('owns the iOS environment by the mobile lifecycle project', () => {
     const snapshot = registrySnapshot();
     const android = snapshot.suites.find(({ id }) => id === 'mobile.android');

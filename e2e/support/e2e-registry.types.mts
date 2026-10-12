@@ -99,6 +99,11 @@ export interface E2ECiEntrypoint {
   readonly command: string;
   readonly tier: Exclude<E2ECiTier, 'local-only'>;
   readonly suiteIds: readonly string[];
+  /**
+   * An extra pull-request run of suites that keep their own later-tier entrypoint. Its job
+   * runs only when the pull request changes the paths those suites check.
+   */
+  readonly changedPathsOnly?: true;
 }
 
 export interface E2EQuarantineEntry {
