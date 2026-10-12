@@ -8,6 +8,7 @@ import {
   output,
 } from '@angular/core';
 import {
+  trnRadioDescriptionRecipe,
   trnRadioGroupRecipe,
   trnRadioIndicatorDotRecipe,
   trnRadioIndicatorRecipe,
@@ -111,9 +112,7 @@ export interface TrnRadioOption<T> {
           <span class="flex min-w-0 flex-col items-start gap-0.5">
             <span>{{ option.label }}</span>
             @if (option.description) {
-              <small
-                class="text-xs leading-snug font-normal text-[var(--trinity-text-muted)]"
-              >
+              <small [class]="descriptionClass">
                 {{ option.description }}
               </small>
             }
@@ -132,6 +131,7 @@ export class TrnRadioGroupComponent<T> {
   protected readonly indicatorClass = computed(() =>
     trnRadioIndicatorRecipe(this.layout(), this.invalid()),
   );
+  protected readonly descriptionClass = trnRadioDescriptionRecipe();
 
   protected optionClass(): string {
     return trnRadioOptionRecipe(this.layout());

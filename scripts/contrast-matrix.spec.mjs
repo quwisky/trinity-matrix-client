@@ -280,6 +280,12 @@ const NON_TEXT_ROLES = [
     foreground: '--trinity-focus-ring-on-attention',
     on: ['--trinity-state-attention-control-track-surface'],
   },
+  // An invalid control's border and ring on an attention surface (#1244); the neutral danger
+  // falls to 1.25-1.43:1 there.
+  {
+    foreground: '--trinity-state-attention-control-danger',
+    on: ['--trinity-state-attention-surface'],
+  },
   ...[
     '--trinity-state-attention-surface',
     '--trinity-status-danger-surface',

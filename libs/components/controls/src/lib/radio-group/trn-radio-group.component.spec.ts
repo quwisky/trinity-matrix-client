@@ -2,7 +2,10 @@ import { Component, signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
+  trnRadioDescriptionRecipe,
   trnRadioGroupRecipe,
+  trnRadioIndicatorDotRecipe,
+  trnRadioIndicatorRecipe,
   trnRadioOptionRecipe,
 } from './trn-radio-group-recipe';
 import {
@@ -225,6 +228,69 @@ describe('TrnRadioGroupComponent', () => {
       );
     }
     expect(trnRadioGroupRecipe('list')).not.toContain(attention);
-    expect(trnRadioOptionRecipe('list')).not.toContain(attention);
+  });
+
+  it('gives a list option its attention ring, dot and label only inside an attention surface', () => {
+    const option = trnRadioOptionRecipe('list').split(' ');
+    const ring = trnRadioIndicatorRecipe('list', false).split(' ');
+    const invalidRing = trnRadioIndicatorRecipe('list', true).split(' ');
+    const dot = trnRadioIndicatorDotRecipe(true).split(' ');
+
+    expect(option).toEqual(
+      expect.arrayContaining([
+        'text-[var(--trinity-text-muted)]',
+        'in-data-[trn-surface=attention]:text-[var(--trinity-state-attention-control-foreground)]',
+      ]),
+    );
+    expect(ring).toEqual(
+      expect.arrayContaining([
+        'border-[var(--trinity-border-control)]',
+        'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)]',
+        'in-data-[trn-surface=attention]:peer-focus-visible:border-[var(--trinity-focus-ring)]',
+      ]),
+    );
+    expect(invalidRing).toEqual(
+      expect.arrayContaining([
+        'border-danger',
+        'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-danger)]',
+      ]),
+    );
+    expect(invalidRing).not.toContain(
+      'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)]',
+    );
+    expect(dot).toEqual(
+      expect.arrayContaining([
+        'bg-[var(--trinity-state-selected-foreground)]',
+        'in-data-[trn-surface=attention]:bg-[var(--trinity-state-attention-control-foreground)]',
+      ]),
+    );
+    expect(trnRadioIndicatorDotRecipe(false)).not.toContain(
+      'in-data-[trn-surface=attention]:',
+    );
+    for (const classes of [option, ring, invalidRing, dot]) {
+      expect(classes.filter((token) => token.includes('attention'))).toEqual(
+        classes.filter((token) =>
+          token.startsWith('in-data-[trn-surface=attention]:'),
+        ),
+      );
+    }
+  });
+
+  it('lets an option description follow its option’s foreground only inside an attention surface', async () => {
+    expect(trnRadioDescriptionRecipe().split(' ')).toEqual(
+      expect.arrayContaining([
+        'text-[var(--trinity-text-muted)]',
+        'in-data-[trn-surface=attention]:text-current',
+      ]),
+    );
+
+    const { container } = await render(HostComponent);
+    const descriptions = [...container.querySelectorAll('small')];
+    expect(descriptions.length).toBeGreaterThan(0);
+    for (const description of descriptions) {
+      expect([...description.classList].sort()).toEqual(
+        trnRadioDescriptionRecipe().split(' ').sort(),
+      );
+    }
   });
 });

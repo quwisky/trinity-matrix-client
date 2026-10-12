@@ -18,9 +18,12 @@ export function trnSelectHelmSize(size: TrnSelectSize): 'sm' | 'default' {
  * roles, and drops Helm's translucent dark fill and hover, which would tint the accent ground.
  * Helm keeps `outline-none` and draws focus as a border and a half-transparent `--ring` halo,
  * which falls below 3:1 on the dark accents. There both take the surface's on-attention ring.
+ * An invalid trigger's border and ring take the attention danger role (#1244) instead of
+ * Helm's destructive border and translucent halo, which fall near 1:1 there; the opaque ring
+ * is the cue that does not rely on hue.
  */
 const triggerOnAttention =
-  'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:text-[var(--trinity-state-attention-control-foreground)] in-data-[trn-surface=attention]:data-placeholder:text-[var(--trinity-state-attention-control-placeholder)] in-data-[trn-surface=attention]:[&_ng-icon]:text-[var(--trinity-state-attention-control-foreground)] in-data-[trn-surface=attention]:dark:bg-transparent in-data-[trn-surface=attention]:dark:hover:bg-transparent in-data-[trn-surface=attention]:focus-visible:border-[var(--trinity-focus-ring)] in-data-[trn-surface=attention]:focus-visible:ring-[color:var(--trinity-focus-ring)]';
+  'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:text-[var(--trinity-state-attention-control-foreground)] in-data-[trn-surface=attention]:data-placeholder:text-[var(--trinity-state-attention-control-placeholder)] in-data-[trn-surface=attention]:[&_ng-icon]:text-[var(--trinity-state-attention-control-foreground)] in-data-[trn-surface=attention]:dark:bg-transparent in-data-[trn-surface=attention]:dark:hover:bg-transparent in-data-[trn-surface=attention]:focus-visible:border-[var(--trinity-focus-ring)] in-data-[trn-surface=attention]:focus-visible:ring-[color:var(--trinity-focus-ring)] in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:border-[var(--trinity-state-attention-control-danger)] in-data-[trn-surface=attention]:dark:data-[matches-spartan-invalid=true]:border-[var(--trinity-state-attention-control-danger)] in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:ring-[color:var(--trinity-state-attention-control-danger)] in-data-[trn-surface=attention]:dark:data-[matches-spartan-invalid=true]:ring-[color:var(--trinity-state-attention-control-danger)]';
 
 /** The focusable trigger fills the public select host without a caller class escape. */
 export function trnSelectTriggerRecipe(): string {
