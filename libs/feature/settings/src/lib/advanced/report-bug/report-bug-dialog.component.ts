@@ -30,11 +30,11 @@ import {
   DIAGNOSTIC_REPORT_CONFIG,
   DiagnosticLogService,
   diagnosticLogFileName,
-  loadBugReportUrlBuilder,
+  buildBugReportUrl,
   type DiagnosticBundle,
   type DiagnosticReportFacts,
 } from '@trinity/data-access/diagnostic-log';
-import { EMPTY, catchError, finalize, from } from 'rxjs';
+import { finalize } from 'rxjs';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { HostFileExportService } from '@trinity/runtime/host';
 
@@ -96,13 +96,6 @@ export class ReportBugDialogComponent {
   private readonly facts = signal<DiagnosticReportFacts | null>(null);
   /** Whether anyone is signed in on this device; null until the facts say. */
   private readonly signedIn = signal<boolean | null>(null);
-  /**
-   * The issue URL builder, loaded with the export code when the dialog opens, so the click
-   * on GitHub can open the issue at once.
-   */
-  private readonly issueUrl = toSignal(
-    from(loadBugReportUrlBuilder()).pipe(catchError(() => EMPTY)),
-  );
   /** GitHub needs only the facts: from the export once it is ready, or read on their own. */
   private readonly reportFacts = computed(
     () => this.bundle()?.facts ?? this.facts() ?? null,
@@ -147,10 +140,7 @@ export class ReportBugDialogComponent {
   readonly showSave = computed(() => this.offersLog() && this.canSaveFile());
   readonly showGitHub = this.config.issueRepositoryUrl !== null;
   readonly canOpenGitHub = computed(
-    () =>
-      this.reportFacts() !== null &&
-      this.issueUrl() !== undefined &&
-      !this.reportForm().invalid(),
+    () => this.reportFacts() !== null && !this.reportForm().invalid(),
   );
   readonly descriptionError = computed(
     () => this.reportForm.description().errors()[0]?.message ?? null,
@@ -234,17 +224,10 @@ export class ReportBugDialogComponent {
   openGitHub(): void {
     const repository = this.config.issueRepositoryUrl;
     const facts = this.reportFacts();
-    const buildUrl = this.issueUrl();
-    if (
-      !repository ||
-      !facts ||
-      !buildUrl ||
-      this.opening() ||
-      !this.canOpenGitHub()
-    ) {
+    if (!repository || !facts || this.opening() || !this.canOpenGitHub()) {
       return;
     }
-    const url = buildUrl(repository, {
+    const url = buildBugReportUrl(repository, {
       description: this.model().description,
       facts,
       logFileName: this.issueLogFileName(),

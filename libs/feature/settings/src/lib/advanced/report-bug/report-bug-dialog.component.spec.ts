@@ -5,7 +5,6 @@ import {
   DIAGNOSTIC_LOG_STORE_FACTORY,
   DIAGNOSTIC_REPORT_CONFIG,
   DiagnosticLogService,
-  loadBugReportUrlBuilder,
   MemoryLogStore,
   provideDiagnosticLog,
   type DiagnosticBundle,
@@ -53,8 +52,6 @@ async function setup(options: SetupOptions = {}) {
   const save = vi.fn(() => options.saved ?? of({ kind: 'completed' }));
   const open = vi.fn(() => of(true));
   const close = vi.fn();
-  // The dialog loads the issue URL builder lazily; have it loaded before the dialog asks.
-  await loadBugReportUrlBuilder();
   const rendered = await render(ReportBugDialogComponent, {
     inputs:
       options.fromSettings === undefined
@@ -106,8 +103,6 @@ async function setup(options: SetupOptions = {}) {
     ],
   });
   await rendered.fixture.whenStable();
-  // The URL builder arrives on a promise, outside what whenStable waits for.
-  await new Promise((resolve) => setTimeout(resolve, 0));
   rendered.fixture.detectChanges();
   return { ...rendered, save, open, close };
 }
@@ -364,6 +359,25 @@ describe('ReportBugDialogComponent', () => {
       'To include one, close this and turn on Keep a diagnostic log.',
     );
     expect(hint).not.toContain('Settings › Advanced');
+  });
+
+  it('keeps GitHub working, with the facts and no log, when the export code fails to load', async () => {
+    const { open } = await setup({
+      exported: throwError(
+        () => new TypeError('Failed to fetch dynamically imported module'),
+      ),
+    });
+
+    expect(screen.getByTestId('report-bug-no-logs')).toBeTruthy();
+    const github = screen.getByTestId('report-bug-github') as HTMLButtonElement;
+    expect(github.disabled).toBe(false);
+    github.click();
+
+    expect(open).toHaveBeenCalledOnce();
+    expect(issueFields(open)).toMatchObject({
+      version: 'Trinity v0.4.0 · abc1234',
+    });
+    expect(issueFields(open)).not.toHaveProperty('logs');
   });
 
   it('treats a failed export as no logs, and still files the facts', async () => {

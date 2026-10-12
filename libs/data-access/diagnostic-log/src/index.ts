@@ -17,11 +17,12 @@ export {
   type DiagnosticAccount,
   type DiagnosticReportFacts,
 } from './lib/report-facts';
-export type { BugReportDraft } from './lib/bug-report-url';
+// Eager (about 1 KB), so GitHub works with facts alone even when the export chunk fails.
 export {
-  loadBugReportUrlBuilder,
-  type BugReportUrlBuilder,
-} from './lib/report/load-report-export';
+  GITHUB_ISSUE_URL_LIMIT,
+  buildBugReportUrl,
+  type BugReportDraft,
+} from './lib/bug-report-url';
 export type {
   DiagnosticEntry,
   DiagnosticLevel,

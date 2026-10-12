@@ -1,18 +1,10 @@
-/** The export code: the bundle builder, the redactor and the issue URL builder. */
+/** The export code: the bundle builder and the redactor. */
 export type ReportExportModule = typeof import('./report-export');
 
-/** Builds the pre-filled GitHub issue URL; null when it can't be built. */
-export type BugReportUrlBuilder = ReportExportModule['buildBugReportUrl'];
-
-/** Load the export code, in its own chunk outside the initial bundle. */
+/**
+ * Load the export code, in its own chunk outside the initial bundle. Rejects when the chunk
+ * can't be fetched (offline, or a stale chunk after a deploy); the report then has facts only.
+ */
 export function loadReportExport(): Promise<ReportExportModule> {
   return import('./report-export');
-}
-
-/**
- * Load the issue URL builder. The report dialog loads it when it opens, so opening GitHub
- * stays synchronous in the click that asks for it (a browser blocks a later window open).
- */
-export function loadBugReportUrlBuilder(): Promise<BugReportUrlBuilder> {
-  return loadReportExport().then((module) => module.buildBugReportUrl);
 }
