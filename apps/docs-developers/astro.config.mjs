@@ -11,7 +11,7 @@ const docsRoot = fileURLToPath(new URL('../../tools/docs/', import.meta.url));
 const workspaceRoot = fileURLToPath(new URL('../../', import.meta.url));
 
 export default defineConfig({
-  site: 'https://quwisky.github.io',
+  site: 'https://docs.trinityproject.dev',
   base: '/trinity-matrix-client/developers',
   outDir: fileURLToPath(
     new URL('../../dist/docs/developers/', import.meta.url),
