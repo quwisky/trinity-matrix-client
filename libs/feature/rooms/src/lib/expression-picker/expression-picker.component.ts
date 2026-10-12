@@ -54,7 +54,9 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
   ],
   templateUrl: './expression-picker.component.html',
   host: {
-    class: 'flex flex-col items-stretch gap-2',
+    // The emoji picker's own fixed width in px (it does not scale with the text size), so
+    // switching tabs does not resize the panel; the GIF and sticker surfaces stretch to it.
+    class: 'flex w-[302px] max-w-full flex-col items-stretch gap-2',
     '[attr.id]': 'panelId()',
     'data-testid': 'expression-picker',
     '(keydown.escape)': 'onEscape($event)',
