@@ -27,6 +27,7 @@
         @if (descriptionError(); as error) {
           <p
             id="report-bug-description-error"
+            role="alert"
             class="m-0 pt-1 text-13 text-danger"
             data-testid="report-bug-description-error"
           >
@@ -90,7 +91,9 @@
                 presentation="link"
                 size="sm"
                 [attr.aria-expanded]="previewOpen()"
-                aria-controls="report-bug-preview"
+                [attr.aria-controls]="
+                  previewOpen() ? 'report-bug-preview' : null
+                "
                 (click)="togglePreview()"
                 data-testid="report-bug-preview-toggle"
               >
@@ -107,12 +110,12 @@
                   >{{ bundle()?.text }}</pre>
               }
             </div>
-            @if (!canSaveFile()) {
+            @if (saveUnavailable()) {
               <p
                 class="m-0 text-13 text-muted-foreground"
                 data-testid="report-bug-save-unavailable"
               >
-                Saving a file isn't available here. Open the preview, select the
+                Saving a file isn’t available here. Open the preview, select the
                 text and copy it instead.
               </p>
             }
@@ -138,11 +141,12 @@
       @if (showGitHub) {
         <p
           class="m-0 text-13 text-muted-foreground"
+          id="report-bug-public-note"
           data-testid="report-bug-public-note"
         >
           GitHub issues are public. Don’t put Matrix IDs, room names or other
           private details in your description; only the log is redacted.
-          @if (offersLog()) {
+          @if (showSave()) {
             After the issue opens, attach the saved log file under “Other
             observations”.
           }

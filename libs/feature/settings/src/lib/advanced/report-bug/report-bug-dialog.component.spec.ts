@@ -28,7 +28,7 @@ const REPOSITORY = 'https://github.com/quwisky/trinity-matrix-client';
 interface SetupOptions {
   readonly exported?: Observable<DiagnosticBundle>;
   readonly saved?: Observable<unknown>;
-  readonly fileExport?: boolean;
+  readonly fileExport?: boolean | 'pending';
   readonly repository?: string | null;
   /** Settings › Advanced › Keep a diagnostic log; on unless a test says otherwise. */
   readonly keepLog?: boolean;
@@ -46,11 +46,16 @@ async function setup(options: SetupOptions = {}) {
       }),
       MockProvider(HostFileExportService, {
         support: () =>
-          of(
-            options.fileExport === false
-              ? ({ kind: 'unavailable', reason: 'not-implemented' } as const)
-              : ({ kind: 'supported' } as const),
-          ),
+          options.fileExport === 'pending'
+            ? NEVER
+            : of(
+                options.fileExport === false
+                  ? ({
+                      kind: 'unavailable',
+                      reason: 'not-implemented',
+                    } as const)
+                  : ({ kind: 'supported' } as const),
+              ),
         save,
       } as never),
       MockProvider(ExternalBrowserService, { open }),
@@ -190,7 +195,7 @@ describe('ReportBugDialogComponent', () => {
       screen.getByTestId('report-bug-description-error').textContent,
     ).toContain('2,000 characters');
     expect(description.getAttribute('aria-describedby')).toBe(
-      'report-bug-description-hint report-bug-description-error',
+      'report-bug-description-hint report-bug-public-note report-bug-description-error',
     );
     expect(
       (screen.getByTestId('report-bug-github') as HTMLButtonElement).disabled,
@@ -255,6 +260,9 @@ describe('ReportBugDialogComponent', () => {
     await setup();
 
     const note = screen.getByTestId('report-bug-public-note').textContent ?? '';
+    expect(screen.getByTestId('report-bug-public-note').id).toBe(
+      'report-bug-public-note',
+    );
     expect(note).toContain('GitHub issues are public');
     expect(note).toContain('Matrix IDs, room names');
   });
@@ -268,5 +276,136 @@ describe('ReportBugDialogComponent', () => {
     expect(screen.getByTestId('report-bug-public-note').textContent).toContain(
       'GitHub issues are public',
     );
+  });
+
+  it('caps typing at the limit natively; the error covers values set another way', async () => {
+    await setup();
+
+    expect(
+      screen.getByLabelText('What went wrong?').getAttribute('maxlength'),
+    ).toBe('2000');
+  });
+
+  it('announces the description error', async () => {
+    const { fixture } = await setup();
+    const description = screen.getByLabelText(
+      'What went wrong?',
+    ) as HTMLTextAreaElement;
+
+    description.value = 'x'.repeat(2001);
+    description.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(
+      screen.getByTestId('report-bug-description-error').getAttribute('role'),
+    ).toBe('alert');
+  });
+
+  it('shows an error when the host rejects the save, and opens the preview', async () => {
+    const { fixture } = await setup({
+      saved: of({ kind: 'rejected', diagnostic: { code: 'denied' } }),
+    });
+
+    screen.getByTestId('report-bug-save').click();
+    fixture.detectChanges();
+
+    expect(screen.getByTestId('report-bug-save-error').textContent).toContain(
+      'Try again.',
+    );
+    expect(screen.queryByTestId('report-bug-saved')).toBeNull();
+    expect(
+      screen.getByRole('region', { name: 'Diagnostic log preview' }),
+    ).toBeTruthy();
+  });
+
+  it('shows an error when saving throws', async () => {
+    const { fixture } = await setup({
+      saved: throwError(() => new Error('disk full')),
+    });
+
+    screen.getByTestId('report-bug-save').click();
+    fixture.detectChanges();
+
+    expect(screen.getByTestId('report-bug-save-error')).toBeTruthy();
+    expect(
+      (screen.getByTestId('report-bug-save') as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it('does not show a past success next to a later failure', async () => {
+    const { fixture, save } = await setup();
+
+    screen.getByTestId('report-bug-save').click();
+    fixture.detectChanges();
+    expect(screen.getByTestId('report-bug-saved')).toBeTruthy();
+
+    save.mockReturnValueOnce(
+      of({ kind: 'rejected', diagnostic: { code: 'denied' } }),
+    );
+    screen.getByTestId('report-bug-save').click();
+    fixture.detectChanges();
+
+    expect(screen.queryByTestId('report-bug-saved')).toBeNull();
+    expect(screen.getByTestId('report-bug-save-error')).toBeTruthy();
+  });
+
+  it('forgets a saved file when the logs are switched off', async () => {
+    const { fixture } = await setup();
+
+    screen.getByTestId('report-bug-save').click();
+    fixture.detectChanges();
+    (
+      screen.getByLabelText('Include diagnostic logs') as HTMLInputElement
+    ).click();
+    fixture.detectChanges();
+
+    expect(screen.queryByTestId('report-bug-saved')).toBeNull();
+  });
+
+  it('says so when GitHub could not be opened', async () => {
+    const { fixture, open } = await setup();
+    open.mockReturnValue(of(false));
+
+    screen.getByTestId('report-bug-github').click();
+    fixture.detectChanges();
+
+    expect(screen.getByTestId('report-bug-open-error').textContent).toContain(
+      'Try again.',
+    );
+  });
+
+  it('opens one tab however many times GitHub is clicked', async () => {
+    const { open } = await setup();
+    open.mockReturnValue(NEVER);
+
+    screen.getByTestId('report-bug-github').click();
+    screen.getByTestId('report-bug-github').click();
+
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not claim saving is unavailable before the host has answered', async () => {
+    await setup({ fileExport: 'pending' });
+
+    expect(screen.queryByTestId('report-bug-save-unavailable')).toBeNull();
+  });
+
+  it('does not tell the user to attach a saved file when saving is unavailable', async () => {
+    await setup({ fileExport: false });
+
+    expect(
+      screen.getByTestId('report-bug-public-note').textContent,
+    ).not.toContain('attach the saved log file');
+  });
+
+  it('only points aria-controls at the preview while it exists', async () => {
+    const { fixture } = await setup();
+    const toggle = screen.getByTestId('report-bug-preview-toggle');
+    expect(toggle.hasAttribute('aria-controls')).toBe(false);
+
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(toggle.getAttribute('aria-controls')).toBe('report-bug-preview');
   });
 });

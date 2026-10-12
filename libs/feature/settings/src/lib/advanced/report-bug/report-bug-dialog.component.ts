@@ -31,6 +31,7 @@ import {
   buildBugReportUrl,
   type DiagnosticBundle,
 } from '@trinity/data-access/diagnostic-log';
+import { finalize } from 'rxjs';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { HostFileExportService } from '@trinity/runtime/host';
 
@@ -49,7 +50,7 @@ type ReportLog =
 
 const reportSchema = schema<ReportModel>((path) => {
   maxLength(path.description, REPORT_DESCRIPTION_MAX_LENGTH, {
-    message: `Keep this under 2,000 characters; you can add more on GitHub.`,
+    message: `Keep this under ${REPORT_DESCRIPTION_MAX_LENGTH.toLocaleString('en-US')} characters; you can add more on GitHub.`,
   });
 });
 
@@ -86,9 +87,8 @@ export class ReportBugDialogComponent {
     includeLogs: true,
   });
   private readonly logState = signal<ReportLog>({ kind: 'loading' });
-  private readonly fileSupport = toSignal(this.files.support(), {
-    initialValue: { kind: 'unavailable', reason: 'not-implemented' } as const,
-  });
+  /** Undefined until the host answers, so "not available" never flashes before then. */
+  private readonly fileSupport = toSignal(this.files.support());
 
   readonly reportForm = form(this.model, reportSchema);
   /** Settings › Advanced › Keep a diagnostic log is off: there is no log to offer. */
@@ -105,8 +105,12 @@ export class ReportBugDialogComponent {
     () => !this.loggingOff() && this.includeLogs() && this.hasLogs(),
   );
   readonly canSaveFile = computed(
-    () => this.fileSupport().kind === 'supported',
+    () => this.fileSupport()?.kind === 'supported',
   );
+  readonly saveUnavailable = computed(() => {
+    const support = this.fileSupport();
+    return support !== undefined && support.kind !== 'supported';
+  });
   readonly showSave = computed(() => this.offersLog() && this.canSaveFile());
   readonly showGitHub = this.config.issueRepositoryUrl !== null;
   readonly descriptionError = computed(
@@ -114,15 +118,20 @@ export class ReportBugDialogComponent {
   );
   /** The hint, plus the error while there is one, so a screen reader hears why. */
   readonly descriptionDescribedBy = computed(() =>
-    this.descriptionError()
-      ? 'report-bug-description-hint report-bug-description-error'
-      : 'report-bug-description-hint',
+    [
+      'report-bug-description-hint',
+      this.showGitHub ? 'report-bug-public-note' : null,
+      this.descriptionError() ? 'report-bug-description-error' : null,
+    ]
+      .filter((id) => id !== null)
+      .join(' '),
   );
   readonly previewOpen = signal(false);
   readonly saving = signal(false);
   readonly saved = signal(false);
   readonly saveFailed = signal(false);
   readonly openFailed = signal(false);
+  readonly opening = signal(false);
 
   constructor() {
     this.log
@@ -138,6 +147,7 @@ export class ReportBugDialogComponent {
     this.model.update((model) => ({ ...model, includeLogs: include }));
     if (!include) {
       this.previewOpen.set(false);
+      this.saved.set(false);
     }
   }
 
@@ -152,6 +162,7 @@ export class ReportBugDialogComponent {
     }
     this.saving.set(true);
     this.saveFailed.set(false);
+    this.saved.set(false);
     this.files
       .save({
         bytes: new Blob([bundle.text], { type: 'text/plain;charset=utf-8' }),
@@ -176,7 +187,12 @@ export class ReportBugDialogComponent {
 
   openGitHub(): void {
     const repository = this.config.issueRepositoryUrl;
-    if (!repository || this.loading() || this.reportForm().invalid()) {
+    if (
+      !repository ||
+      this.opening() ||
+      this.loading() ||
+      this.reportForm().invalid()
+    ) {
       return;
     }
     const bundle = this.bundle();
@@ -190,10 +206,17 @@ export class ReportBugDialogComponent {
       return;
     }
     this.openFailed.set(false);
+    this.opening.set(true);
     this.browser
       .open(url)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((opened) => this.openFailed.set(!opened));
+      .pipe(
+        finalize(() => this.opening.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (opened) => this.openFailed.set(!opened),
+        error: () => this.openFailed.set(true),
+      });
   }
 
   close(): void {
