@@ -107,7 +107,19 @@ describe('HomeserverBlockComponent', () => {
     );
 
     expect(text(container, 'hs-account-unverified')).toBe('Unverified');
-    expect(text(container, 'hs-account')).toBe('Me');
+    // Inside the heading, so heading navigation and the block's name both say it.
+    const heading = container.querySelector('[data-testid="hs-account"]');
+    expect(
+      heading?.querySelector('[data-testid="hs-account-unverified"]'),
+    ).not.toBeNull();
+    expect(heading?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Me Unverified',
+    );
+    const block = container.querySelector('[data-testid="server-block"]');
+    expect(block?.getAttribute('aria-label')).toBe(
+      'Homeserver for Me, unverified',
+    );
+    expect(block?.getAttribute('data-trust')).toBe('unverified');
   });
 
   it.each(['verified', 'not-set-up', 'unknown'] as const)(
@@ -118,6 +130,10 @@ describe('HomeserverBlockComponent', () => {
       expect(
         container.querySelector('[data-testid="hs-account-unverified"]'),
       ).toBeNull();
+      const block = container.querySelector('[data-testid="server-block"]');
+      expect(block?.getAttribute('aria-label')).toBe('Homeserver for Me');
+      // A positive anchor, so a journey can wait for the status before asserting no mark.
+      expect(block?.getAttribute('data-trust')).toBe(trust);
     },
   );
 

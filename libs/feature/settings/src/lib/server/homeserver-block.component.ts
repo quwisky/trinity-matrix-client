@@ -57,9 +57,18 @@ export class HomeserverBlockComponent implements OnInit {
     () => this.identities.identityOf(this.userId()).displayName,
   );
 
+  /** This account's trust summary, or null before Trust has read it. */
+  protected readonly trust = computed(
+    () => this.accountTrust.summaries().get(this.userId()) ?? null,
+  );
+
   /** This account's device here is unverified (its identity exists, the device is not signed). */
-  protected readonly unverified = computed(
-    () => this.accountTrust.summaries().get(this.userId()) === 'unverified',
+  protected readonly unverified = computed(() => this.trust() === 'unverified');
+
+  /** The block's name, which says "unverified" as its heading does. */
+  protected readonly regionLabel = computed(
+    () =>
+      `Homeserver for ${this.displayName()}${this.unverified() ? ', unverified' : ''}`,
   );
 
   /** Null until the first probe finishes — which is what the loading line reads. */
