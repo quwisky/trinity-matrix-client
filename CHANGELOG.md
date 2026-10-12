@@ -4,6 +4,73 @@ All notable changes to this project are documented here. release-please writes e
 entry from Conventional Commit subjects when a stable release is cut, and this project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0](https://github.com/quwisky/trinity-matrix-client/compare/v0.3.0...v0.4.0) (2026-10-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **app:** Trinity is a new app to the stores and operating systems: existing installs don't update into it, desktop users sign in again, links and SSO callbacks on the eu.qwky.trinity:// scheme no longer open Trinity, and push gateways must list dev.trinityproject.trinity.ios and dev.trinityproject.trinity.android.
+
+### Added
+
+* **app:** move Trinity's identifiers to dev.trinityproject ([#1147](https://github.com/quwisky/trinity-matrix-client/issues/1147)) ([145069f](https://github.com/quwisky/trinity-matrix-client/commit/145069f31bd34af69cf2a2c3320cd2e7709c7d67))
+* **composer:** take photos and record videos from the composer ([#1142](https://github.com/quwisky/trinity-matrix-client/issues/1142)) ([9db3b67](https://github.com/quwisky/trinity-matrix-client/commit/9db3b67604cad5fefab23497ee148d7386eefea7))
+* **diagnostics:** report a bug with a redacted diagnostic log ([#1248](https://github.com/quwisky/trinity-matrix-client/issues/1248)) ([37242f2](https://github.com/quwisky/trinity-matrix-client/commit/37242f240d454776b3b0249e86104bd609fb3e8d))
+* **media:** cap uploads when the homeserver states no size limit ([#1169](https://github.com/quwisky/trinity-matrix-client/issues/1169)) ([0a75a90](https://github.com/quwisky/trinity-matrix-client/commit/0a75a9054c9f17768e273e5c88857a93d8abef47))
+* **media:** check a gallery photo's size before reading it ([#1190](https://github.com/quwisky/trinity-matrix-client/issues/1190)) ([ec0b7b3](https://github.com/quwisky/trinity-matrix-client/commit/ec0b7b3ab9f53f3ff50a0bdc907588fefa65d787)), refs [#1177](https://github.com/quwisky/trinity-matrix-client/issues/1177)
+* **media:** remove location and camera metadata from uploaded photos ([#1170](https://github.com/quwisky/trinity-matrix-client/issues/1170)) ([1d35560](https://github.com/quwisky/trinity-matrix-client/commit/1d35560c2422b1535fbd270f4f2a47e56df3f802))
+* **media:** strip location metadata from uploaded videos ([#1192](https://github.com/quwisky/trinity-matrix-client/issues/1192)) ([f9ba2a9](https://github.com/quwisky/trinity-matrix-client/commit/f9ba2a9705c07e992a69ae1ff8d60fb71e4a3dff))
+* **media:** strip metadata from gif, tiff and svg uploads ([#1193](https://github.com/quwisky/trinity-matrix-client/issues/1193)) ([6596fbc](https://github.com/quwisky/trinity-matrix-client/commit/6596fbc1a63f6af2f797a4b5ead5d7ef2ac477bd))
+* **notifications:** render mobile push on the device ([#1157](https://github.com/quwisky/trinity-matrix-client/issues/1157)) ([d80f5dd](https://github.com/quwisky/trinity-matrix-client/commit/d80f5dd88d92f11516bac5345e375d718629cebc))
+* **push:** show why a closed-app push has no preview ([#1206](https://github.com/quwisky/trinity-matrix-client/issues/1206)) ([fbb7ac1](https://github.com/quwisky/trinity-matrix-client/commit/fbb7ac15ba4be667b148da79eda8470742c155d3))
+* **rooms:** list the rail's overflow unread chats from +N ([#1137](https://github.com/quwisky/trinity-matrix-client/issues/1137)) ([66c4675](https://github.com/quwisky/trinity-matrix-client/commit/66c46751860b4b6ca2bf8c58c3081fac6d86320c))
+* **rooms:** open a rail unread chat in a list that shows it ([#1135](https://github.com/quwisky/trinity-matrix-client/issues/1135)) ([a2f9032](https://github.com/quwisky/trinity-matrix-client/commit/a2f903227295b31d785fa5b2e81f179724fc90c4)), refs [#1126](https://github.com/quwisky/trinity-matrix-client/issues/1126)
+* **rooms:** open member info as a dialog or a sheet over the list ([#1171](https://github.com/quwisky/trinity-matrix-client/issues/1171)) ([037b7f7](https://github.com/quwisky/trinity-matrix-client/commit/037b7f7f7198428f9bababfb26ba76ac364a140f))
+* **rooms:** show unread chats from every account in the space rail ([#1125](https://github.com/quwisky/trinity-matrix-client/issues/1125)) ([588d179](https://github.com/quwisky/trinity-matrix-client/commit/588d179366439c2bd4b3449fc0955c2face5eb72))
+* **runtime:** report a bug from the desktop title bar ([#1253](https://github.com/quwisky/trinity-matrix-client/issues/1253)) ([dbde134](https://github.com/quwisky/trinity-matrix-client/commit/dbde1343a82ce8b9c1c885f56768095d7761da62))
+* **settings:** add a privacy setting to keep photo metadata ([#1191](https://github.com/quwisky/trinity-matrix-client/issues/1191)) ([14edd27](https://github.com/quwisky/trinity-matrix-client/commit/14edd278708637578c35fc2021dfc2085ece229a))
+* **trust:** lead verification without another device to Security ([#1240](https://github.com/quwisky/trinity-matrix-client/issues/1240)) ([c1fc1fc](https://github.com/quwisky/trinity-matrix-client/commit/c1fc1fce63f9cd1aa862ee370a6b5ceb56c76762))
+* **ui:** invert solid actions on accent page headers and overlays ([#1239](https://github.com/quwisky/trinity-matrix-client/issues/1239)) ([5bf9391](https://github.com/quwisky/trinity-matrix-client/commit/5bf9391048cc1ad24796ea74546e4ab2f59c048d))
+* **ui:** support form controls on accent attention surfaces ([#1243](https://github.com/quwisky/trinity-matrix-client/issues/1243)) ([a33b70b](https://github.com/quwisky/trinity-matrix-client/commit/a33b70bf1b5f064e67a13ac7c0f12afaa0cf0dad))
+* **ui:** support the remaining controls on accent attention surfaces ([#1245](https://github.com/quwisky/trinity-matrix-client/issues/1245)) ([a6d3724](https://github.com/quwisky/trinity-matrix-client/commit/a6d3724d77f3f0f58025fd6ca98740fc5dbc158e))
+
+
+### Fixed
+
+* **accounts:** ignore token refreshes from a replaced client ([#1233](https://github.com/quwisky/trinity-matrix-client/issues/1233)) ([58ff248](https://github.com/quwisky/trinity-matrix-client/commit/58ff2483cf10e379ead332ad938bc80be93d728e))
+* **composer:** keep a selection made right after a Format menu action ([#1148](https://github.com/quwisky/trinity-matrix-client/issues/1148)) ([1ab990c](https://github.com/quwisky/trinity-matrix-client/commit/1ab990ca7fb6634fe65b3669390d99ec5b7c5d72))
+* **deps:** update Capacitor to 8.5.3 and its plugins to their latest patches ([#1119](https://github.com/quwisky/trinity-matrix-client/issues/1119)) ([7a48b41](https://github.com/quwisky/trinity-matrix-client/commit/7a48b41d62211d99662462a55f619c29f8b941ff))
+* **desktop:** stop timeline areas going blank under the pointer ([#1212](https://github.com/quwisky/trinity-matrix-client/issues/1212)) ([c351291](https://github.com/quwisky/trinity-matrix-client/commit/c3512916aeb2c70ce088fde343a58bcd37a13b61))
+* **diagnostics:** replace names and email addresses in bug-report logs ([#1255](https://github.com/quwisky/trinity-matrix-client/issues/1255)) ([1165495](https://github.com/quwisky/trinity-matrix-client/commit/116549591516425d54086f70c7efdb23482d1e60))
+* **logging:** keep matrix-js-sdk debug output out of production ([#1234](https://github.com/quwisky/trinity-matrix-client/issues/1234)) ([261efbe](https://github.com/quwisky/trinity-matrix-client/commit/261efbe948062eb2ca77248f8bb9b7c5590bbf85))
+* **media:** keep a room's stickers current after an image-pack change ([#1197](https://github.com/quwisky/trinity-matrix-client/issues/1197)) ([3059d11](https://github.com/quwisky/trinity-matrix-client/commit/3059d11e5a74138e8593c3a19e941db94d55092c)), refs [#1194](https://github.com/quwisky/trinity-matrix-client/issues/1194)
+* **media:** stop reporting a dismissed share sheet as a saved file ([#1249](https://github.com/quwisky/trinity-matrix-client/issues/1249)) ([a502ce7](https://github.com/quwisky/trinity-matrix-client/commit/a502ce760fbec1fb726be80a0ae9a95a733bb36a))
+* **mobile:** allow the iOS swipe-back gesture on routed pages ([#1114](https://github.com/quwisky/trinity-matrix-client/issues/1114)) ([d719638](https://github.com/quwisky/trinity-matrix-client/commit/d71963863396b9f3a546bf14c2374055dbaf0253)), refs [#971](https://github.com/quwisky/trinity-matrix-client/issues/971)
+* **mobile:** launch on iOS 27 by adopting the scene lifecycle ([#1106](https://github.com/quwisky/trinity-matrix-client/issues/1106)) ([e34fd98](https://github.com/quwisky/trinity-matrix-client/commit/e34fd98085673ebd82111262e6aa9d8ff0cdeb92))
+* **mobile:** swipe back from a phone conversation to the room list ([#1121](https://github.com/quwisky/trinity-matrix-client/issues/1121)) ([8043b96](https://github.com/quwisky/trinity-matrix-client/commit/8043b96ece3e73ab28a78c0dcd2b21e2df5f08e1))
+* **native:** drop a picked photo the device can't read instead of sending an error page ([#1144](https://github.com/quwisky/trinity-matrix-client/issues/1144)) ([3d273a0](https://github.com/quwisky/trinity-matrix-client/commit/3d273a0afa27d497d8956a0dafc48462ffb05cda)), refs [#1141](https://github.com/quwisky/trinity-matrix-client/issues/1141)
+* **native:** keep plugin arguments out of debug device logs ([#1164](https://github.com/quwisky/trinity-matrix-client/issues/1164)) ([25a62b5](https://github.com/quwisky/trinity-matrix-client/commit/25a62b54afec4a08e4b92aa4ee29d891369b9d1c))
+* **native:** strip xml comments until none are left in the host contract ([#1200](https://github.com/quwisky/trinity-matrix-client/issues/1200)) ([a9f58e1](https://github.com/quwisky/trinity-matrix-client/commit/a9f58e1aa1e8ea46dc5a217d7aaeffbe0cef6c8e))
+* **push:** keep ios push handoff tokens on this device ([#1203](https://github.com/quwisky/trinity-matrix-client/issues/1203)) ([69d482f](https://github.com/quwisky/trinity-matrix-client/commit/69d482f93391b7631c419ea7041e4075eb91a8b4))
+* **rooms:** keep a just-added address when an older list read answers ([#1228](https://github.com/quwisky/trinity-matrix-client/issues/1228)) ([36e3b2a](https://github.com/quwisky/trinity-matrix-client/commit/36e3b2a1962265f44fac494a3113f376b21bf822))
+* **rooms:** keep quick reactions open while the pointer reaches them ([#1232](https://github.com/quwisky/trinity-matrix-client/issues/1232)) ([2a9d69b](https://github.com/quwisky/trinity-matrix-client/commit/2a9d69bdcad947158eede01be4e43a5050059a2c))
+* **rooms:** move a room up the list when a thread gets a reply ([#1237](https://github.com/quwisky/trinity-matrix-client/issues/1237)) ([d14fdf6](https://github.com/quwisky/trinity-matrix-client/commit/d14fdf6fcab67beafb6fe76bb31f08e148aa6bc0))
+* **settings:** show the stored value again after a failed save ([#1132](https://github.com/quwisky/trinity-matrix-client/issues/1132)) ([1581c6a](https://github.com/quwisky/trinity-matrix-client/commit/1581c6a6c29eb38934a75319b55f876b0039e058))
+* **trust:** never replace an existing encryption identity from setup ([#1214](https://github.com/quwisky/trinity-matrix-client/issues/1214)) ([1f9ad0d](https://github.com/quwisky/trinity-matrix-client/commit/1f9ad0d4f41e9f3d7e67405aaea9ca8edd7e1d80))
+* **trust:** publish the identity when a first setup is retried ([#1231](https://github.com/quwisky/trinity-matrix-client/issues/1231)) ([01a99c1](https://github.com/quwisky/trinity-matrix-client/commit/01a99c18b17c207f7222275d69cdbce3466d572a))
+* **ui:** keep tooltips closed when focus returns after a touch ([#1226](https://github.com/quwisky/trinity-matrix-client/issues/1226)) ([2ed6677](https://github.com/quwisky/trinity-matrix-client/commit/2ed6677fac77bcd1fd0bdd08130ac3483abd3b72))
+* **ui:** make buttons in an accent banner visible as buttons ([#1220](https://github.com/quwisky/trinity-matrix-client/issues/1220)) ([d6e3177](https://github.com/quwisky/trinity-matrix-client/commit/d6e31773ee78731712ceeb87f9d49f3033a521d6))
+* **ui:** return focus to the control that opened a dialog on iOS ([#1111](https://github.com/quwisky/trinity-matrix-client/issues/1111)) ([62ed20f](https://github.com/quwisky/trinity-matrix-client/commit/62ed20f4a019796f04fdbe7ae28adadf7fb049d6)), refs [#1109](https://github.com/quwisky/trinity-matrix-client/issues/1109)
+* **ui:** wrap banner actions below the message on narrow screens ([#1222](https://github.com/quwisky/trinity-matrix-client/issues/1222)) ([7bd02ca](https://github.com/quwisky/trinity-matrix-client/commit/7bd02ca2b6f8d465e36aed07cdf9ea984189f5f5))
+* **widgets:** time out a hung widget runtime load ([#1186](https://github.com/quwisky/trinity-matrix-client/issues/1186)) ([1284ac6](https://github.com/quwisky/trinity-matrix-client/commit/1284ac62de193d25e05bb39ecf0b15941bec72f3))
+
+
+### Changed
+
+* **composer:** open the camera without waiting for the upload limit ([#1149](https://github.com/quwisky/trinity-matrix-client/issues/1149)) ([412e6b9](https://github.com/quwisky/trinity-matrix-client/commit/412e6b9420b8903a095a6ea5675339640658deed))
+* **desktop:** cap compositor tile memory ([#1057](https://github.com/quwisky/trinity-matrix-client/issues/1057)) ([3ac5d58](https://github.com/quwisky/trinity-matrix-client/commit/3ac5d581b825524767f6cbb3b4b5e75406215fff))
+* **widgets:** load matrix-widget-api only when a widget opens ([#1172](https://github.com/quwisky/trinity-matrix-client/issues/1172)) ([63b012d](https://github.com/quwisky/trinity-matrix-client/commit/63b012d0bf10c8e6d9364379a4f49ce6a95ec752)), refs [#1034](https://github.com/quwisky/trinity-matrix-client/issues/1034)
+
 ## [0.3.0](https://github.com/quwisky/trinity-matrix-client/compare/v0.2.0...v0.3.0) (2026-10-09)
 
 
