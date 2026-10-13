@@ -4,15 +4,15 @@ import {
   HOMESERVER_HTTP,
   SERVER_NAME,
 } from '../../support/homeserver/start.mjs';
+import { describeFailure, urlPath } from '../../support/http-failure.mts';
 
 export function uniqueId(prefix: string): string {
   return `${prefix}-${randomUUID().slice(0, 8)}`;
 }
 
 async function json(res: Response): Promise<Record<string, unknown>> {
-  const text = await res.text();
-  if (!res.ok) throw new Error(`${res.url} → ${res.status} ${text}`);
-  return JSON.parse(text) as Record<string, unknown>;
+  if (!res.ok) throw new Error(await describeFailure(urlPath(res.url), res));
+  return (await res.json()) as Record<string, unknown>;
 }
 
 export async function registerUser(

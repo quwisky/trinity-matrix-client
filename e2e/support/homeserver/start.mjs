@@ -67,6 +67,7 @@ import {
   startNativeServices,
 } from './native.mts';
 import { acquireHomeserverLease, releaseHomeserverLease } from './lease.mts';
+import { formatFailure } from '../http-failure.mts';
 import { masMountedConfig, prepareMas } from './mas/adapter.mjs';
 import { synapse } from './synapse/adapter.mjs';
 import { tuwunel } from './tuwunel/adapter.mjs';
@@ -263,7 +264,9 @@ async function registerUser() {
   if (/already.*exists|taken|M_USER_IN_USE/i.test(text)) {
     return log('user already exists — reusing');
   }
-  throw new Error(`registering the test user failed: ${res.status} ${text}`);
+  throw new Error(
+    formatFailure('registering the test user failed', res.status, text),
+  );
 }
 
 /** Seed the MAS account through MAS's own CLI; MAS provisions it on its homeserver. */

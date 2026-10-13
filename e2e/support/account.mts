@@ -4,6 +4,7 @@ import {
   REGISTRATION_SHARED_SECRET,
   HOMESERVER_HTTP,
 } from './homeserver/start.mjs';
+import { describeFailure, formatFailure } from './http-failure.mts';
 
 // The server-side view of a harness account: how to create one, and the three pieces of
 // crypto state the recovery-reset specs assert on.
@@ -57,7 +58,9 @@ export async function registerUser(
     // Synapse says "User ID already taken"; Tuwunel only "User ID is not available". Both
     // send the spec's M_USER_IN_USE.
     if (!/already.*exists|user.*taken|M_USER_IN_USE/i.test(text)) {
-      throw new Error(`register ${username} → ${res.status()} ${text}`);
+      throw new Error(
+        formatFailure(`register ${username}`, res.status(), text),
+      );
     }
   }
 }
@@ -77,7 +80,7 @@ export async function passwordLogin(
     },
   });
   if (!res.ok()) {
-    throw new Error(`login ${username} → ${res.status()} ${await res.text()}`);
+    throw new Error(await describeFailure(`login ${username}`, res));
   }
   const body = await res.json();
   return {
