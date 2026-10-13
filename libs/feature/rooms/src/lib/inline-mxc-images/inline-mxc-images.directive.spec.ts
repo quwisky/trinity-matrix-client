@@ -108,3 +108,40 @@ describe('InlineMxcImagesDirective without custom emoji', () => {
     }
   });
 });
+
+describe('InlineMxcImagesDirective with the same emoji twice', () => {
+  it('releases each of its pins, since pins are counted per view', async () => {
+    const sanitizerWarn = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    const resolved = new Subject<string>();
+    const media = {
+      resolveMedia: vi.fn(() => resolved),
+      pin: vi.fn(),
+      unpin: vi.fn(),
+    };
+    await TestBed.configureTestingModule({
+      imports: [HostComponent],
+      providers: [{ provide: MediaService, useValue: media }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(HostComponent);
+    const wave =
+      '<img class="mx-emoticon" data-mx-emoticon src="mxc://hs/wave" alt=":wave:">';
+    fixture.componentInstance.html.set(`${wave} and ${wave}`);
+    fixture.detectChanges();
+    await Promise.resolve();
+    resolved.next('blob:wave'); // both images share the one cached URL
+
+    // One image fails to decode, then the message goes.
+    fixture.nativeElement
+      .querySelector('img')
+      .dispatchEvent(new Event('error'));
+    fixture.destroy();
+
+    const count = (spy: typeof media.pin) =>
+      spy.mock.calls.filter(([url]) => url === 'blob:wave').length;
+    expect(count(media.pin)).toBe(2);
+    expect(count(media.unpin)).toBe(2);
+    sanitizerWarn.mockRestore();
+  });
+});

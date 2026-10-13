@@ -20,7 +20,8 @@ export class InlineMxcImagesDirective implements OnDestroy {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly media = inject(MediaService);
   private subscriptions = new Subscription();
-  private readonly pinned = new Set<string>();
+  /** One entry per pin taken: the same emoji twice in a body pins its shared URL twice. */
+  private pinned: string[] = [];
   private readonly reveal = latestGuard();
 
   constructor() {
@@ -81,12 +82,16 @@ export class InlineMxcImagesDirective implements OnDestroy {
         this.media.resolveMedia(payload, 'thumbnail').subscribe({
           next: (url) => {
             this.media.pin(url);
-            this.pinned.add(url);
+            this.pinned.push(url);
             this.subscriptions.add(
               fromEvent(target, 'error')
                 .pipe(take(1))
                 .subscribe(() => {
-                  if (this.pinned.delete(url)) this.media.unpin(url);
+                  const at = this.pinned.indexOf(url);
+                  if (at >= 0) {
+                    this.pinned.splice(at, 1);
+                    this.media.unpin(url);
+                  }
                   target.replaceWith(document.createTextNode(declaration.alt));
                 }),
             );
@@ -103,6 +108,6 @@ export class InlineMxcImagesDirective implements OnDestroy {
     this.subscriptions.unsubscribe();
     this.subscriptions = new Subscription();
     for (const url of this.pinned) this.media.unpin(url);
-    this.pinned.clear();
+    this.pinned = [];
   }
 }
