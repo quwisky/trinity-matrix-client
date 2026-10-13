@@ -594,6 +594,7 @@ jobs:
               ./specs/attachments.e2e.mts,
               ./specs/composer-format-native.e2e.mts,
               ./specs/deep-link.e2e.mts,
+              ./specs/message-links.e2e.mts,
               ./specs/native-capabilities.e2e.mts,
               ./specs/push-render-ios.e2e.mts,
               ./specs/session.e2e.mts,
