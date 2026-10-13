@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '../../../fixtures.mts';
 import {
+  confirmErase,
   databaseNames,
   login,
   preferenceKeys,
@@ -57,16 +58,6 @@ async function waitForEmptyStorage(page: Page): Promise<void> {
       timeout: 30_000,
     })
     .toBe(0);
-}
-
-/** Type a word into the erase confirmation and press its confirm button. */
-async function confirmErase(page: Page, word: string): Promise<void> {
-  const dialog = page.locator('trn-alert-dialog', {
-    hasText: 'Erase all Trinity data',
-  });
-  await dialog.waitFor({ state: 'visible', timeout: 20_000 });
-  await dialog.locator('input').fill(word);
-  await dialog.getByTestId('alert-confirm').click();
 }
 
 test.describe('Clear all data', () => {
