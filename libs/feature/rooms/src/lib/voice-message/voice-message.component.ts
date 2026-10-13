@@ -80,13 +80,22 @@ export class VoiceMessageComponent {
     Math.max(0, this.samples().length * (BAR_PX + BAR_GAP_PX) - BAR_GAP_PX),
   );
 
-  /** The bars drawn: the waveform, sampled down to as many bars as fit the wave. */
-  readonly bars = computed(() => {
+  /**
+   * How many bars fit the measured wave (all of them until it is measured). A number, so a
+   * resize that fits the same count changes nothing downstream.
+   */
+  private readonly barCount = computed(() => {
+    const total = this.samples().length;
     const width = this.waveWidth();
-    if (width === null || width <= 0) return this.samples();
+    if (width === null || width <= 0) return total;
     const fit = Math.floor((width + BAR_GAP_PX) / (BAR_PX + BAR_GAP_PX));
-    return resampleWaveform(this.samples(), Math.max(1, fit));
+    return Math.min(total, Math.max(1, fit));
   });
+
+  /** The bars drawn: the waveform, sampled down to as many bars as fit the wave. */
+  readonly bars = computed(() =>
+    resampleWaveform(this.samples(), this.barCount()),
+  );
 
   /** Total clip length in seconds (from the event's declared duration). */
   private readonly durationSec = computed(() =>

@@ -371,6 +371,55 @@ describe('VoiceMessageComponent', () => {
       expect(played(container)).toBe(6);
     });
 
+    it('keeps the same bars while a resize fits the same number of them', async () => {
+      const { container, fixture } = await build(
+        voiceMedia({ waveform: samples }),
+      );
+      resizeWave(container, 14);
+      const before = fixture.componentInstance.bars();
+      const nodes = bars(container);
+
+      // Wider, but still room for only four bars.
+      resizeWave(container, 17);
+
+      expect(fixture.componentInstance.bars()).toBe(before);
+      expect(bars(container)).toEqual(nodes);
+    });
+
+    it('stops measuring when destroyed', async () => {
+      const { container, fixture } = await build(
+        voiceMedia({ waveform: samples }),
+      );
+      const wave = container.querySelector('.voice__wave')!;
+      const observer = observers().find((o) => o.observed.has(wave))!;
+
+      fixture.destroy();
+
+      expect(observer.observed.size).toBe(0);
+    });
+
+    it('measures the new wave once a failed load recovers', async () => {
+      let fail = true;
+      const { container, press } = await build(
+        voiceMedia({ waveform: samples }),
+        () => (fail ? throwError(() => new Error('offline')) : of('blob:clip')),
+      );
+      const first = observers().find((o) =>
+        o.observed.has(container.querySelector('.voice__wave')!),
+      )!;
+
+      press();
+      expect(container.querySelector('.voice__wave')).toBeNull();
+      expect(first.observed.size).toBe(0);
+
+      fail = false;
+      press();
+      TestBed.tick();
+
+      resizeWave(container, 14);
+      expect(bars(container)).toHaveLength(4);
+    });
+
     it('never samples below one bar', async () => {
       const { container } = await build(voiceMedia({ waveform: samples }));
 

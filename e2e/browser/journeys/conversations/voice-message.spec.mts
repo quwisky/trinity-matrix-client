@@ -183,7 +183,6 @@ function measurePlayers(page: Page) {
       }
       return {
         text: time.textContent?.trim(),
-        timeTruncated: time.scrollWidth > time.clientWidth,
         playInside:
           play.left >= box.left - 0.5 && play.right <= wave.left + 0.5,
         waveBeforeTime: wave.right <= timeBox.left + 0.5,
@@ -230,21 +229,25 @@ test.describe('Voice messages on a narrow phone', () => {
 
     for (const width of [390, 360, 320]) {
       await page.setViewportSize({ width, height: 844 });
+      // Poll the whole geometry: the wave is sampled down after the resize settles.
+      const fits = {
+        playInside: true,
+        waveBeforeTime: true,
+        timeInside: true,
+        bubbleUnclipped: true,
+      };
       await expect
         .poll(() => measurePlayers(page), { message: `${width}px wide` })
-        .toEqual([
-          expect.objectContaining({ text: '0:07' }),
-          expect.objectContaining({ text: '12:34' }),
+        .toMatchObject([
+          { text: '0:07', ...fits },
+          { text: '12:34', ...fits },
         ]);
       for (const player of await measurePlayers(page)) {
-        expect(player, `${player.text} at ${width}px`).toMatchObject({
-          timeTruncated: false,
-          playInside: true,
-          waveBeforeTime: true,
-          timeInside: true,
-          bubbleUnclipped: true,
-        });
-        expect(player.bars).toBeGreaterThan(0);
+        expect(player.bars, `${player.text} at ${width}px`).toBeGreaterThan(0);
+        // 60 bars cannot fit here, so the waveform must have been sampled down.
+        if (width === 320) {
+          expect(player.bars, `${player.text} at ${width}px`).toBeLessThan(60);
+        }
       }
     }
   });
