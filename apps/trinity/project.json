@@ -25,7 +25,6 @@
         },
         "index": "apps/trinity/src/index.html",
         "browser": "apps/trinity/src/main.ts",
-        "polyfills": ["apps/trinity/src/polyfills.ts"],
         "tsConfig": "apps/trinity/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
         "assets": [
