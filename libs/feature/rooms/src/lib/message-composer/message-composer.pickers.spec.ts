@@ -523,6 +523,41 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     ).not.toBeNull();
   }, 20_000);
 
+  it('ends the sheet with one visually hidden Close button for screen readers', async () => {
+    const { fixture, container } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    vi.spyOn(TestBed.inject(TrnSurfaceService), 'prefersSheet').mockReturnValue(
+      true,
+    );
+    container.querySelector<HTMLElement>('.composer__emoji')!.click();
+    TestBed.tick();
+    const sheet = document.querySelector<HTMLElement>('trn-sheet-frame')!;
+
+    // Its name comes from its own text; the handle is aria-hidden and the backdrop cannot
+    // take focus, so this is the sheet's one reachable dismiss control.
+    const closes = Array.from(sheet.querySelectorAll('button')).filter(
+      (button) => button.textContent?.trim() === 'Close',
+    );
+    expect(closes).toHaveLength(1);
+    const close = closes[0]!;
+    expect(close).toHaveAttribute('type', 'button');
+    expect(close).toHaveAttribute('data-testid', 'expression-sheet-close');
+    expect(close).toHaveClass('sr-only');
+
+    // Last in the sheet, after the picker content, and not where focus starts.
+    const focusable = Array.from(
+      sheet.querySelectorAll<HTMLElement>('button, input, [tabindex]'),
+    ).filter((el) => el.tabIndex >= 0);
+    expect(focusable.at(-1)).toBe(close);
+    expect(document.activeElement).not.toBe(close);
+
+    close.click();
+    TestBed.tick();
+
+    expect(document.querySelector('trn-sheet-frame')).toBeNull();
+    expect(cmp.pickerOpen()).toBe(false);
+  });
+
   it('reports a sheet the person closed as closed', async () => {
     const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;
