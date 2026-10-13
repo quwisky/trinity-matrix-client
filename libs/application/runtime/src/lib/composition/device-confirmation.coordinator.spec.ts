@@ -235,14 +235,39 @@ describe('DeviceConfirmationCoordinator', () => {
     '/encryption/verify?returnTo=%2Fencryption%2Fconfirm',
     '/encryption/confirm',
     '/settings/security',
-  ])('leaves %s alone', (url) => {
-    const { gate, closeAll, navigateByUrl, subscription } = setup(url);
+  ])('leaves %s alone, without reading the account', (url) => {
+    const { gate, closeAll, confirmRequired, navigateByUrl, subscription } =
+      setup(url);
 
     gate.set({ kind: 'required', status: 'needs-recovery' });
     TestBed.tick();
 
+    expect(confirmRequired).not.toHaveBeenCalled();
     expect(closeAll).not.toHaveBeenCalled();
     expect(navigateByUrl).not.toHaveBeenCalled();
+    subscription.unsubscribe();
+  });
+
+  it('acts only on the newest read when the gate changes while one is in flight', () => {
+    const { gate, confirmRequired, navigateByUrl, subscription } = setup();
+    const reads: Subject<boolean>[] = [];
+    confirmRequired.mockImplementation(() => {
+      const read = new Subject<boolean>();
+      reads.push(read);
+      return read;
+    });
+
+    gate.set({ kind: 'required', status: 'needs-recovery' });
+    TestBed.tick();
+    gate.set({ kind: 'required', status: 'needs-verification' });
+    TestBed.tick();
+    expect(reads).toHaveLength(2);
+    expect(reads[0]!.observed).toBe(false);
+
+    reads[0]!.next(true);
+    reads[1]!.next(true);
+
+    expect(navigateByUrl).toHaveBeenCalledOnce();
     subscription.unsubscribe();
   });
 

@@ -59,6 +59,7 @@ export class DeviceConfirmationCoordinator {
   run(): Observable<never> {
     return new Observable<never>(() => {
       const work = new Subscription();
+      let redirectRead: Subscription | null = null;
       work.add(
         this.accounts.newDevices
           .pipe(
@@ -108,28 +109,42 @@ export class DeviceConfirmationCoordinator {
         ),
         effect(
           () => {
-            if (this.confirmation.gate().kind !== 'required') return;
-            // Owner decision 2026-10-12 (2): let a trust flow finish; this effect runs
-            // again when it ends, and redirects only if the check is still required.
-            if (this.trustFlowOpen()) return;
-            untracked(() =>
-              work.add(
-                // Just after an Account switch the gate can still reflect the previous
-                // Account's status: act only on a fresh read of this exact Account.
-                this.confirmation
-                  .confirmRequired()
-                  .pipe(catchError(() => of(false)))
-                  .subscribe((required) => {
-                    if (
-                      required &&
-                      this.confirmation.gate().kind === 'required' &&
-                      !this.trustFlowOpen()
-                    ) {
-                      this.sendToCheck();
-                    }
-                  }),
-              ),
-            );
+            const required = this.confirmation.gate().kind === 'required';
+            const flowOpen = required && this.trustFlowOpen();
+            untracked(() => {
+              // Whatever changed, a read started for the previous run is stale.
+              if (redirectRead) {
+                work.remove(redirectRead);
+                redirectRead.unsubscribe();
+                redirectRead = null;
+              }
+              // Owner decision 2026-10-12 (2): let a trust flow finish; this effect runs
+              // again when it ends, and redirects only if the check is still required.
+              // Away from Rooms and Settings there is nothing to redirect; the guard
+              // checks again on the way back.
+              if (
+                !required ||
+                flowOpen ||
+                !showsAccountContent(this.router.url)
+              ) {
+                return;
+              }
+              // Just after an Account switch the gate can still reflect the previous
+              // Account's status: act only on a fresh read of this exact Account.
+              redirectRead = this.confirmation
+                .confirmRequired()
+                .pipe(catchError(() => of(false)))
+                .subscribe((stillRequired) => {
+                  if (
+                    stillRequired &&
+                    this.confirmation.gate().kind === 'required' &&
+                    !this.trustFlowOpen()
+                  ) {
+                    this.sendToCheck();
+                  }
+                });
+              work.add(redirectRead);
+            });
           },
           { injector: this.injector },
         ),
