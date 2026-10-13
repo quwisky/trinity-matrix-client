@@ -684,7 +684,14 @@ describe('ApplicationRuntimeService', () => {
     granted.next();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(runtime.state()).toMatchObject({ phase: 'ready', attempt: 2 });
+    // Waiting is not a retry: the attempt that waited is the one that starts.
+    expect(runtime.state()).toMatchObject({
+      phase: 'ready',
+      attempt: 1,
+      settlements: expect.arrayContaining([
+        expect.objectContaining({ producer: 'session-lock', status: 'ready' }),
+      ]),
+    });
     expect(order).toEqual([
       'host-negotiation',
       'session-lock',
@@ -698,9 +705,9 @@ describe('ApplicationRuntimeService', () => {
       'readiness',
       'session-ready',
     ]);
-    expect(outcomes.map((outcome) => outcome.kind)).toEqual([
-      'waiting',
-      'ready',
+    expect(outcomes.map((outcome) => [outcome.kind, outcome.attempt])).toEqual([
+      ['waiting', 1],
+      ['ready', 1],
     ]);
     expect(adapter.negotiateHost).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
@@ -752,6 +759,75 @@ describe('ApplicationRuntimeService', () => {
 
     expect(runtime.state().phase).toBe('stopped');
     expect(granted.observed).toBe(false);
+    lifetime.unsubscribe();
+  });
+
+  it('counts a retry after a wait as the second attempt, and recovers it', async () => {
+    vi.mocked(adapter.acquireSessionLock).mockReturnValueOnce(
+      of({ kind: 'waiting' as const }),
+    );
+    vi.mocked(adapter.awaitSessionLock).mockReturnValueOnce(of(undefined));
+    vi.mocked(adapter.restoreAccounts).mockReturnValueOnce(
+      of({
+        kind: 'blocked',
+        recovery: 'retry-startup',
+        diagnostic: { code: 'account-restoration-failed' },
+      }),
+    );
+    const lifetime = runtime.run().subscribe();
+    await vi.waitFor(() =>
+      expect(runtime.state()).toMatchObject({ phase: 'blocked', attempt: 1 }),
+    );
+
+    await expect(firstValueFrom(runtime.recover())).resolves.toEqual({
+      kind: 'accepted',
+    });
+    await vi.waitFor(() =>
+      expect(runtime.state()).toMatchObject({ phase: 'ready', attempt: 2 }),
+    );
+    expect(adapter.restoreAccounts).toHaveBeenCalledTimes(2);
+    lifetime.unsubscribe();
+  });
+
+  it('blames the session lock when the wait for another tab fails', async () => {
+    const granted = new Subject<void>();
+    vi.mocked(adapter.acquireSessionLock).mockReturnValueOnce(
+      of({ kind: 'waiting' as const }),
+    );
+    vi.mocked(adapter.awaitSessionLock).mockReturnValueOnce(granted);
+    const lifetime = runtime.run().subscribe();
+    await vi.waitFor(() =>
+      expect(runtime.state().phase).toBe('waiting-for-session'),
+    );
+
+    granted.error(new Error('lock request failed'));
+
+    await vi.waitFor(() => expect(runtime.state().phase).toBe('blocked'));
+    const state = runtime.state();
+    expect(state).toMatchObject({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'session-lock',
+        diagnostic: { code: 'application-adapter-failed' },
+      },
+    });
+    expect(
+      'settlements' in state
+        ? state.settlements.map(({ producer, status }) => [producer, status])
+        : [],
+    ).toEqual([
+      ['host-contract', 'ready'],
+      ['session-lock', 'blocked'],
+      ['preference-hydration', 'dependency-skipped'],
+      ['account-registry', 'dependency-skipped'],
+      ['room-library', 'dependency-skipped'],
+      ['room-order', 'dependency-skipped'],
+      ['browser-storage-persistence', 'dependency-skipped'],
+      ['workspace', 'dependency-skipped'],
+      ['readiness', 'dependency-skipped'],
+    ]);
+    expect(adapter.hydratePreferences).not.toHaveBeenCalled();
     lifetime.unsubscribe();
   });
 });

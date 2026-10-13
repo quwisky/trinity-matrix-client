@@ -198,8 +198,14 @@ export class ApplicationRuntimeService {
     onPreferencesHydrated: () => void,
     startIndex: number,
     settlements: readonly ApplicationStartupProducerSettlement[],
+    resumedAttempt?: number,
   ): Observable<ApplicationStartOutcome> {
-    return this.runAttempt(onPreferencesHydrated, startIndex, settlements).pipe(
+    return this.runAttempt(
+      onPreferencesHydrated,
+      startIndex,
+      settlements,
+      resumedAttempt,
+    ).pipe(
       switchMap((outcome) => {
         switch (outcome.kind) {
           case 'ready':
@@ -209,17 +215,17 @@ export class ApplicationRuntimeService {
             // watchdog, and resumes at the session lock, which then finds the lock held.
             return concat(
               of(outcome),
-              this.stageWorkflow
-                .sessionLockGranted()
-                .pipe(
-                  switchMap(() =>
-                    this.attemptUntilReady(
-                      onPreferencesHydrated,
-                      APPLICATION_STARTUP_STAGES.indexOf('session-lock'),
-                      outcome.settlements,
-                    ),
+              this.stageWorkflow.sessionLockGranted().pipe(
+                switchMap(() =>
+                  this.attemptUntilReady(
+                    onPreferencesHydrated,
+                    APPLICATION_STARTUP_STAGES.indexOf('session-lock'),
+                    outcome.settlements,
+                    // Waiting is not a retry: the attempt that waited goes on.
+                    outcome.attempt,
                   ),
                 ),
+              ),
             );
           case 'blocked':
             return concat(
@@ -252,9 +258,10 @@ export class ApplicationRuntimeService {
     onPreferencesHydrated: () => void,
     startIndex: number,
     settlements: readonly ApplicationStartupProducerSettlement[],
+    resumedAttempt?: number,
   ): Observable<ApplicationStartOutcome> {
     return defer(() => {
-      const attempt = ++this.attempt;
+      const attempt = resumedAttempt ?? ++this.attempt;
       return defer(() =>
         this.runStage(attempt, startIndex, settlements, onPreferencesHydrated),
       ).pipe(
