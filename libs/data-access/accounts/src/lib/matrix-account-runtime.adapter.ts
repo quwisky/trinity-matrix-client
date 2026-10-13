@@ -44,6 +44,9 @@ import type {
   InstallationResetOutcome,
 } from './account-runtime.models';
 
+/** What the saved record says about a sign-in's device; `unknown` is never reported as new. */
+type DeviceNovelty = 'new' | 'existing' | 'unknown';
+
 @Injectable({ providedIn: 'root' })
 export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   private readonly matrix = inject(MatrixClientService);
@@ -121,14 +124,20 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
       }
       const pending = this.pendingNewAccounts.get(session.userId);
       let replaced: MatrixSession | null = null;
+      let novelty: DeviceNovelty = 'unknown';
       const persisted$ =
         intent.accountRecord === 'new' &&
         pending &&
         sameAuthenticatedAccountGrant(pending.grant, grant)
-          ? of(pending.stored)
-          : this.replacedDevice(session).pipe(
-              tap((device) => {
-                replaced = device;
+          ? defer(() => {
+              // A retried first establishment: no record existed for this Account.
+              novelty = 'new';
+              return of(pending.stored);
+            })
+          : this.priorDevice(session).pipe(
+              tap((prior) => {
+                replaced = prior.replaced;
+                novelty = prior.novelty;
               }),
               switchMap(() =>
                 this.storage.persistForEstablishment(
@@ -138,6 +147,8 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
               ),
               tap((stored) => {
                 if (intent.accountRecord === 'new') {
+                  // Saving a new record refuses an Account that already has one.
+                  novelty = 'new';
                   this.pendingNewAccounts.set(session.userId, {
                     grant,
                     stored,
@@ -220,6 +231,11 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
           intent.liveAccounts === 'keep'
             ? this.lifecycle.registerNotifications().pipe(map(() => outcome))
             : of(outcome),
+        ),
+        map((outcome): AdapterAccountEstablishmentOutcome =>
+          outcome.kind === 'ready' && novelty === 'new'
+            ? { kind: 'ready', newDevice: { deviceId: session.deviceId } }
+            : outcome,
         ),
       );
     });
@@ -349,25 +365,32 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   }
 
   /**
-   * The stored device a sign-in is about to replace, read before saving the new session
-   * overwrites its token, or null when there is none. Saving reclaims its local store, so
-   * nothing could reach that device afterwards; the typical case is a lost store key, where
-   * re-authentication signs in as a new device. A device saved through another server is
-   * not replaced: saving refuses that sign-in (`AccountHomeserverMismatchError`) and keeps
-   * the saved account as it is.
+   * What the saved record says about this sign-in's device, read before saving the new
+   * session overwrites it. A different device on the same homeserver is replaced (and
+   * signed out once the new session starts; saving reclaims its local store, so nothing
+   * could reach it afterwards); a device saved through another server is not replaced,
+   * because saving refuses that sign-in (`AccountHomeserverMismatchError`). The same device
+   * id is a re-authentication; no record is a first sign-in here. A failed read is
+   * `unknown`: it proves nothing, so it is never reported as a new device.
    */
-  private replacedDevice(
-    session: MatrixSession,
-  ): Observable<MatrixSession | null> {
+  private priorDevice(session: MatrixSession): Observable<{
+    readonly replaced: MatrixSession | null;
+    readonly novelty: DeviceNovelty;
+  }> {
     return defer(() => this.storage.load(session.userId)).pipe(
-      map((stored) =>
-        stored &&
-        stored.deviceId !== session.deviceId &&
-        sameHomeserver(stored.baseUrl, session.baseUrl)
-          ? stored
-          : null,
-      ),
-      catchError(() => of(null)),
+      map((stored) => {
+        if (!stored) return { replaced: null, novelty: 'new' as const };
+        if (stored.deviceId === session.deviceId) {
+          return { replaced: null, novelty: 'existing' as const };
+        }
+        return {
+          replaced: sameHomeserver(stored.baseUrl, session.baseUrl)
+            ? stored
+            : null,
+          novelty: 'new' as const,
+        };
+      }),
+      catchError(() => of({ replaced: null, novelty: 'unknown' as const })),
     );
   }
 

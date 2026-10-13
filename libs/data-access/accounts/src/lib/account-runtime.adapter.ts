@@ -27,7 +27,11 @@ export type AdapterAccountRestoreOutcome =
   | { readonly kind: 'failed'; readonly failure: AccountRestoreFailure };
 
 export type AdapterAccountEstablishmentOutcome =
-  | { readonly kind: 'ready' }
+  | {
+      readonly kind: 'ready';
+      /** Present only when this installation had no record of this device for the Account. */
+      readonly newDevice?: { readonly deviceId: string };
+    }
   | (AccountEstablishmentFailureDetail & { readonly kind: 'failed' });
 
 export type AdapterAccountSwitchOutcome =

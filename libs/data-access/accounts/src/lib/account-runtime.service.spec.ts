@@ -26,6 +26,7 @@ import type {
   AccountRestoreRole,
   AccountSignOutOutcome,
   InstallationResetOutcome,
+  NewDeviceEstablishment,
 } from './account-runtime.models';
 import { AccountRuntimeService } from './account-runtime.service';
 
@@ -758,6 +759,65 @@ describe('AccountRuntimeService', () => {
       failure: 'homeserver-mismatch',
       storedBaseUrl: 'https://stored.example',
     });
+  });
+
+  it('publishes a new-device sign-in before its outcome reaches the caller', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: null,
+      accountIds: [],
+    });
+    test.establishAccount.mockReturnValue(
+      of({ kind: 'ready', newDevice: { deviceId: 'DEVICE' } }),
+    );
+    const runtime = setup(test);
+    const order: string[] = [];
+    const published: NewDeviceEstablishment[] = [];
+    const subscription = runtime.newDevices.subscribe((fact) => {
+      order.push('new-device');
+      published.push(fact);
+    });
+
+    const outcome = await firstValueFrom(
+      runtime
+        .establishAuthenticatedAccount(grant(), activeIntent)
+        .pipe(tap(() => order.push('outcome'))),
+    );
+    subscription.unsubscribe();
+
+    expect(published).toEqual([{ accountId: '@new:hs', deviceId: 'DEVICE' }]);
+    expect(order).toEqual(['new-device', 'outcome']);
+    expect(outcome).toEqual({
+      kind: 'ready',
+      accountId: '@new:hs',
+      placement: 'active',
+    });
+  });
+
+  it('publishes nothing for a device the account already used, or a failed sign-in', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: null,
+      accountIds: [],
+    });
+    const runtime = setup(test);
+    const published: NewDeviceEstablishment[] = [];
+    const subscription = runtime.newDevices.subscribe((fact) =>
+      published.push(fact),
+    );
+
+    await firstValueFrom(
+      runtime.establishAuthenticatedAccount(grant(), activeIntent),
+    );
+    test.establishAccount.mockReturnValue(
+      of({ kind: 'failed', failure: 'local-state-unavailable' }),
+    );
+    await firstValueFrom(
+      runtime.establishAuthenticatedAccount(grant('other'), activeIntent),
+    );
+    subscription.unsubscribe();
+
+    expect(published).toEqual([]);
   });
 
   it('joins repeated identical Account establishment while it is in flight', async () => {

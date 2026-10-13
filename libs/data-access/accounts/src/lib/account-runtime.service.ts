@@ -1,6 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   Observable,
+  Subject,
   catchError,
   defer,
   finalize,
@@ -49,6 +50,7 @@ import type {
   AccountSwitchOutcome,
   InstallationResetOutcome,
   InactiveAccountRestoreRetryOutcome,
+  NewDeviceEstablishment,
 } from './account-runtime.models';
 
 interface InFlightAccountEstablishment {
@@ -68,11 +70,18 @@ export class AccountRuntimeService {
     phase: 'idle',
   });
   private establishment: InFlightAccountEstablishment | null = null;
+  private readonly _newDevices = new Subject<NewDeviceEstablishment>();
 
   readonly state = this.runtimeState.asReadonly();
   /** Value-free destructive cleanup progress retained independently of UI observers. */
   readonly lifecycle = this.lifecycleWorkflow.state;
   readonly activeAccountId = this.adapter.activeAccountId;
+  /**
+   * Each sign-in that created a new device for an Account, published before its
+   * establishment outcome reaches the caller. Hot; never replays.
+   */
+  readonly newDevices: Observable<NewDeviceEstablishment> =
+    this._newDevices.asObservable();
   readonly hasActiveAccount = computed(() => this.activeAccountId() !== null);
 
   restoreSavedAccounts(): Observable<AccountRestoreResult> {
@@ -190,6 +199,14 @@ export class AccountRuntimeService {
         throwIfEmpty(
           () => new Error('Account Runtime adapter emitted no outcome.'),
         ),
+        tap((adapterOutcome) => {
+          if (adapterOutcome.kind === 'ready' && adapterOutcome.newDevice) {
+            this._newDevices.next({
+              accountId: session.userId,
+              deviceId: adapterOutcome.newDevice.deviceId,
+            });
+          }
+        }),
         map((adapterOutcome) =>
           this.toEstablishmentOutcome(session.userId, intent, adapterOutcome),
         ),

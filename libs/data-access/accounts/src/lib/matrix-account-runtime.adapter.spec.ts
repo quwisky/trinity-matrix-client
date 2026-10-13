@@ -1579,6 +1579,94 @@ describe('MatrixAccountRuntimeAdapter', () => {
       );
     }
 
+    it('marks a first sign-in on this installation as a new device', async () => {
+      const test = setup();
+      vi.mocked(test.storage.load).mockReturnValue(of(null));
+
+      await expect(establish(test)).resolves.toEqual({
+        kind: 'ready',
+        newDevice: { deviceId: 'DEVICE' },
+      });
+    });
+
+    it('marks an OIDC sign-in that created a new device id as a new device', async () => {
+      const test = setup();
+      const oidc: MatrixSession = {
+        ...session,
+        refreshToken: 'refresh',
+        oidc: {
+          issuer: 'https://issuer',
+          clientId: 'client',
+          redirectUri: 'https://app/sso-callback',
+        },
+      };
+      vi.mocked(test.storage.load).mockReturnValue(
+        of({ ...oidc, deviceId: 'OLDDEVICE' }),
+      );
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(of(oidc));
+      vi.mocked(test.matrix.restorePersisted).mockReturnValue(
+        of({ kind: 'ready' as const }),
+      );
+      vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
+        of(void 0),
+      );
+      vi.mocked(test.matrix.detachedClient).mockReturnValue({
+        logout: vi.fn(() => Promise.resolve()),
+      } as never);
+
+      await expect(
+        firstValueFrom(
+          test.adapter.establishAccount(
+            AuthenticatedAccountGrant.issue(oidc),
+            activeIntent,
+          ),
+        ),
+      ).resolves.toEqual({ kind: 'ready', newDevice: { deviceId: 'DEVICE' } });
+    });
+
+    it('does not guess when the saved record cannot be read', async () => {
+      const test = setup();
+      vi.mocked(test.storage.load).mockReturnValue(
+        throwError(() => new Error('storage locked')),
+      );
+
+      await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+    });
+
+    it('still reports a new device when the first establishment of an account is retried', async () => {
+      const test = setup();
+      const newRecord = {
+        ...activeIntent,
+        accountRecord: 'new',
+      } satisfies AccountEstablishmentIntent;
+      const grant = AuthenticatedAccountGrant.issue(session);
+      vi.mocked(test.storage.load).mockReturnValue(
+        throwError(() => new Error('storage locked')),
+      );
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+        of(session),
+      );
+      vi.mocked(test.matrix.restorePersisted)
+        .mockReturnValueOnce(
+          of({
+            kind: 'failed' as const,
+            failure: 'transient-network' as const,
+          }),
+        )
+        .mockReturnValueOnce(of({ kind: 'ready' as const }));
+      vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
+        of(void 0),
+      );
+
+      await expect(
+        firstValueFrom(test.adapter.establishAccount(grant, newRecord)),
+      ).resolves.toEqual({ kind: 'failed', failure: 'transient-network' });
+      await expect(
+        firstValueFrom(test.adapter.establishAccount(grant, newRecord)),
+      ).resolves.toEqual({ kind: 'ready', newDevice: { deviceId: 'DEVICE' } });
+      expect(test.storage.persistForEstablishment).toHaveBeenCalledOnce();
+    });
+
     it('signs the replaced device out with its old token once the new session has started', async () => {
       const test = setup();
       const order: string[] = [];
@@ -1591,7 +1679,10 @@ describe('MatrixAccountRuntimeAdapter', () => {
         logout,
       } as never);
 
-      await expect(establish(test, order)).resolves.toEqual({ kind: 'ready' });
+      await expect(establish(test, order)).resolves.toEqual({
+        kind: 'ready',
+        newDevice: { deviceId: 'DEVICE' },
+      });
 
       expect(test.storage.load).toHaveBeenCalledWith('@new:hs');
       // Its token refreshes must never be saved over the new device's tokens.
@@ -1656,7 +1747,10 @@ describe('MatrixAccountRuntimeAdapter', () => {
         logout: vi.fn(logout),
       } as never);
 
-      await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+      await expect(establish(test)).resolves.toEqual({
+        kind: 'ready',
+        newDevice: { deviceId: 'DEVICE' },
+      });
     });
 
     it('leaves a device saved through another server signed in when the sign-in is refused', async () => {
@@ -1696,7 +1790,10 @@ describe('MatrixAccountRuntimeAdapter', () => {
         throw new Error('bad base URL');
       });
 
-      await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+      await expect(establish(test)).resolves.toEqual({
+        kind: 'ready',
+        newDevice: { deviceId: 'DEVICE' },
+      });
     });
 
     it('leaves the device alone on a same-device re-login', async () => {
