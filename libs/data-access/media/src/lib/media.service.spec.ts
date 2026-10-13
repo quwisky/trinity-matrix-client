@@ -12,6 +12,7 @@ import {
   type Mock,
 } from 'vitest';
 import { MediaService } from './media.service';
+import { DEVICE_PIXEL_RATIO } from './thumbnail-size';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import type { MediaPayload } from '@trinity/util/matrix';
 import { decryptAttachment, encryptAttachment } from '@trinity/util/matrix';
@@ -141,12 +142,16 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** The screen's devicePixelRatio as the service reads it; tests set it before resolving. */
+let devicePixelRatio = 1;
+
 function setup(clientOverrides: Record<string, unknown> = {}) {
   const client = fakeClient(clientOverrides);
 
   TestBed.configureTestingModule({
     providers: [
       MediaService,
+      { provide: DEVICE_PIXEL_RATIO, useValue: () => devicePixelRatio },
       MockProvider(MatrixClientService, {
         isInitialized: true,
         instance: client as unknown as MatrixClientService['instance'],
@@ -166,6 +171,7 @@ describe('MediaService', () => {
 
   beforeEach(() => {
     let counter = 0;
+    devicePixelRatio = 1;
     fetchMock = vi.fn().mockResolvedValue(okResponse());
     createObjectURL = vi.fn(() => `blob:obj-${++counter}`);
     revokeObjectURL = vi.fn();
@@ -413,6 +419,11 @@ describe('MediaService', () => {
         },
       );
     }
+
+    // A 2x screen: the display bucket is 640 px, which these expectations assume.
+    beforeEach(() => {
+      devicePixelRatio = 2;
+    });
 
     afterEach(() => vi.restoreAllMocks());
 
@@ -848,9 +859,134 @@ describe('MediaService', () => {
         ),
       );
 
-      expect(fetchMock.mock.calls[0][0]).toContain('w=480');
+      expect(fetchMock.mock.calls[0][0]).toContain('w=640');
       expect(bitmapMock).not.toHaveBeenCalled();
       expect(storedBlob().size).toBe(8);
+    });
+
+    it.each([
+      [1, 320, 213],
+      [2, 640, 427],
+      [3, 960, 640],
+    ])(
+      'downscales a decrypted original on a %sx screen to a %i px edge',
+      async (dpr, w, h) => {
+        devicePixelRatio = dpr;
+        stubBrowserImage(3000, 2000);
+        const { svc } = setup();
+
+        await firstValueFrom(
+          svc.resolveMedia(encryptedImage('image/jpeg'), 'thumbnail'),
+        );
+
+        expect(canvasSizes).toEqual([{ width: w, height: h }]);
+      },
+    );
+
+    it('keeps an image the event says fits a 3x screen as is', async () => {
+      devicePixelRatio = 3;
+      stubBrowserImage(3000, 2000);
+      const { svc } = setup();
+      const media = {
+        ...encryptedImage('image/jpeg'),
+        width: 960,
+        height: 640,
+      };
+
+      const thumb = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
+      const full = await firstValueFrom(svc.resolveMedia(media, 'full'));
+
+      expect(full).toBe(thumb);
+      expect(bitmapMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps a downscaled thumbnail per bucket and reuses it within one', async () => {
+      stubBrowserImage(3000, 2000);
+      const { svc } = setup();
+      const media = encryptedImage('image/jpeg');
+
+      const at2x = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
+      devicePixelRatio = 1.5; // still the 640 px bucket
+      const again = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
+      devicePixelRatio = 1;
+      const at1x = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
+
+      expect(again).toBe(at2x);
+      expect(at1x).not.toBe(at2x);
+      expect(canvasSizes).toEqual([
+        { width: 640, height: 427 },
+        { width: 320, height: 213 },
+      ]);
+    });
+  });
+
+  describe('display thumbnail size', () => {
+    it.each([
+      [1, 320],
+      [1.25, 640],
+      [2, 640],
+      [2.5, 960],
+      [3, 960],
+      [4, 960],
+    ])(
+      'asks the server for a %sx screen thumbnail at %i px',
+      async (dpr, edge) => {
+        devicePixelRatio = dpr;
+        const { svc, client } = setup();
+
+        await firstValueFrom(
+          svc.resolveMedia(plainMedia('mxc://hs/plain'), 'thumbnail'),
+        );
+
+        expect(client.mxcUrlToHttp).toHaveBeenCalledWith(
+          'mxc://hs/plain',
+          edge,
+          edge,
+          'scale',
+          false,
+          true,
+          true,
+        );
+      },
+    );
+
+    it('keeps a server thumbnail per bucket and reuses it within one', async () => {
+      const { svc } = setup();
+      const media = plainMedia('mxc://hs/plain');
+
+      const at1x = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
+      devicePixelRatio = 2;
+      const at2x = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
+      devicePixelRatio = 1.75; // the same 640 px bucket
+      const again = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
+
+      expect(at2x).not.toBe(at1x);
+      expect(again).toBe(at2x);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[0][0]).toContain('w=320');
+      expect(fetchMock.mock.calls[1][0]).toContain('w=640');
+    });
+
+    it('keys a bundled thumbnail and the full rendition without a bucket', async () => {
+      const { svc } = setup();
+      const media = {
+        ...plainMedia('mxc://hs/plain'),
+        thumbnailMxc: 'mxc://hs/thumb',
+      };
+
+      const thumb1x = await firstValueFrom(
+        svc.resolveMedia(media, 'thumbnail'),
+      );
+      const full1x = await firstValueFrom(svc.resolveMedia(media, 'full'));
+      devicePixelRatio = 3;
+      const thumb3x = await firstValueFrom(
+        svc.resolveMedia(media, 'thumbnail'),
+      );
+      const full3x = await firstValueFrom(svc.resolveMedia(media, 'full'));
+
+      expect(thumb3x).toBe(thumb1x);
+      expect(full3x).toBe(full1x);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -1592,10 +1728,27 @@ describe('MediaService', () => {
       expect(res.info.h).toBe(500);
       expect(res.info.thumbnail_url).toBe('mxc://hs/thumb');
       expect(res.info.thumbnail_info?.mimetype).toBe('image/jpeg');
-      // 1000×500 scaled to fit a 480px edge → 480×240.
-      expect(res.info.thumbnail_info?.w).toBe(480);
-      expect(res.info.thumbnail_info?.h).toBe(240);
+      // 1000×500 scaled to fit a 640px edge → 640×320.
+      expect(res.info.thumbnail_info?.w).toBe(640);
+      expect(res.info.thumbnail_info?.h).toBe(320);
     });
+
+    it.each([1, 3])(
+      'renders a 640 px upload thumbnail whatever the sender screen (%sx)',
+      async (dpr) => {
+        devicePixelRatio = dpr;
+        const { svc, client } = setup();
+        client.uploadContent
+          .mockResolvedValueOnce({ content_uri: 'mxc://hs/thumb' })
+          .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+        stubBitmap(3000, 2000);
+
+        const res = await firstValueFrom(svc.uploadMedia(imageFile(), false));
+
+        expect(res.info.thumbnail_info?.w).toBe(640);
+        expect(res.info.thumbnail_info?.h).toBe(427);
+      },
+    );
 
     it('encrypts the thumbnail for an E2EE image and sets thumbnail_file (not _url)', async () => {
       const { svc, client } = setup();
@@ -1640,7 +1793,7 @@ describe('MediaService', () => {
 
     it('does not generate a thumbnail for an already-small image', async () => {
       const { svc, client } = setup();
-      stubBitmap(320, 200); // within the 480px bound → original is its own thumbnail
+      stubBitmap(320, 200); // within the 640px bound → original is its own thumbnail
 
       const res = await firstValueFrom(svc.uploadMedia(imageFile(), false));
 
@@ -1684,7 +1837,8 @@ describe('MediaService', () => {
       client.uploadContent
         .mockResolvedValueOnce({ content_uri: 'mxc://hs/poster' }) // poster first
         .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' }); // then the video
-      videoMeta = { duration: 12.5, videoWidth: 640, videoHeight: 480 };
+      videoMeta = { duration: 12.5, videoWidth: 1280, videoHeight: 960 };
+      devicePixelRatio = 3; // the poster ignores the sender's screen
 
       const res = await firstValueFrom(
         svc.uploadMedia(mediaFile('clip.mp4', 'video/mp4'), false),
@@ -1692,15 +1846,15 @@ describe('MediaService', () => {
 
       expect(res.msgtype).toBe('m.video');
       expect(res.info.duration).toBe(12500);
-      expect(res.info.w).toBe(640);
-      expect(res.info.h).toBe(480);
+      expect(res.info.w).toBe(1280);
+      expect(res.info.h).toBe(960);
       expect(client.uploadContent).toHaveBeenCalledTimes(2);
       expect(res.mxc).toBe('mxc://hs/full');
-      // 640×480 scaled to a 480px edge → 480×360.
+      // 1280×960 scaled to the fixed 640px upload edge → 640×480.
       expect(res.info.thumbnail_url).toBe('mxc://hs/poster');
       expect(res.info.thumbnail_info?.mimetype).toBe('image/jpeg');
-      expect(res.info.thumbnail_info?.w).toBe(480);
-      expect(res.info.thumbnail_info?.h).toBe(360);
+      expect(res.info.thumbnail_info?.w).toBe(640);
+      expect(res.info.thumbnail_info?.h).toBe(480);
     });
 
     it('encrypts the video poster thumbnail for an E2EE room', async () => {
@@ -1782,7 +1936,7 @@ describe('MediaService', () => {
       expect(res.info.duration).toBeUndefined();
       expect(client.uploadContent).toHaveBeenCalledTimes(2); // poster + main
       expect(res.info.thumbnail_url).toBeDefined();
-      // 320×240 already within the 480px bound → kept as-is.
+      // 320×240 already within the 640px bound → kept as-is.
       expect(res.info.thumbnail_info?.w).toBe(320);
       expect(res.info.thumbnail_info?.h).toBe(240);
     });
@@ -1883,7 +2037,7 @@ describe('MediaService', () => {
         expect(res.info.h).toBe(1080);
         expect(res.info.duration).toBe(8000);
         expect(res.info.thumbnail_url).toBe('mxc://hs/poster');
-        expect(res.info.thumbnail_info).toMatchObject({ w: 480, h: 360 });
+        expect(res.info.thumbnail_info).toMatchObject({ w: 640, h: 480 });
       });
 
       it('renders its own thumbnail when the hinted one exceeds the thumbnail bound', async () => {
@@ -1910,7 +2064,33 @@ describe('MediaService', () => {
         );
 
         expect(res.info.duration).toBe(12_500); // the hint still wins
-        expect(res.info.thumbnail_info).toMatchObject({ w: 480, h: 360 });
+        expect(res.info.thumbnail_info).toMatchObject({ w: 640, h: 480 });
+      });
+
+      it('keeps a hinted thumbnail as large as the 640 px upload bound', async () => {
+        const { svc, client } = setup();
+        client.uploadContent
+          .mockResolvedValueOnce({ content_uri: 'mxc://hs/hinted-poster' })
+          .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+
+        const res = await firstValueFrom(
+          svc.uploadMedia(
+            mediaFile('video.mov', 'video/quicktime'),
+            false,
+            undefined,
+            undefined,
+            undefined,
+            {
+              width: 1920,
+              height: 1080,
+              durationMs: 12_500,
+              thumbnail: hintedThumbnail(640, 360),
+            },
+          ),
+        );
+
+        expect(res.info.thumbnail_url).toBe('mxc://hs/hinted-poster');
+        expect(res.info.thumbnail_info).toMatchObject({ w: 640, h: 360 });
       });
 
       it('lets complete photo hints skip decoding the image', async () => {
