@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal, untracked } from '@angular/core';
 import {
   ClientEvent,
   EventType,
@@ -128,6 +128,46 @@ export interface RoomSummary {
 }
 
 const EMPTY_TYPING: readonly string[] = Object.freeze([]);
+
+/**
+ * `next`, or `previous` when it describes the room identically.
+ *
+ * Every sync rebuilds every joined room's summary (#1292). Handing back the previous object
+ * for a room the sync didn't change keeps its OnPush sidebar row from re-rendering, and
+ * lets {@link sameRooms} keep the whole list when no room changed at all.
+ */
+function reuseUnchanged(
+  previous: RoomSummary | undefined,
+  next: RoomSummary,
+): RoomSummary {
+  if (!previous) return next;
+  for (const key of Object.keys(next) as (keyof RoomSummary)[]) {
+    const a = previous[key];
+    const b = next[key];
+    if (a === b) continue;
+    if (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, i) => item === b[i])
+    ) {
+      continue;
+    }
+    return next;
+  }
+  // A key the previous summary had and this one dropped (an optional field cleared).
+  return Object.keys(previous).length === Object.keys(next).length
+    ? previous
+    : next;
+}
+
+/** Same rooms, in the same order, as the same objects: nothing for a consumer to redo. */
+function sameRooms(
+  a: readonly RoomSummary[],
+  b: readonly RoomSummary[],
+): boolean {
+  return a.length === b.length && a.every((room, i) => room === b[i]);
+}
 
 /** Whether two typing-name lists say the same thing, in order. */
 function sameNames(a: readonly string[], b: readonly string[]): boolean {
@@ -291,7 +331,7 @@ export class RoomLibraryService {
     this.typingFlusher.schedule();
   };
 
-  private readonly _rooms = signal<RoomSummary[]>([]);
+  private readonly _rooms = signal<RoomSummary[]>([], { equal: sameRooms });
   readonly rooms = this._rooms.asReadonly();
 
   /**
@@ -807,14 +847,20 @@ export class RoomLibraryService {
     const accountId = this.matrix.activeUserId() ?? client.getUserId?.() ?? '';
     const { ids: direct, userByRoom } = directMapOf(client);
 
+    const previous = new Map(
+      untracked(this._rooms).map((room) => [room.id, room] as const),
+    );
     this._rooms.set(
       client
         .getRooms()
         // Spaces are rendered in the server rail, not as channels in the room list.
         .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join')
         .map((r) =>
-          this.applyPendingUnread(
-            buildRoomSummary(r, accountId, userByRoom.get(r.roomId)),
+          reuseUnchanged(
+            previous.get(r.roomId),
+            this.applyPendingUnread(
+              buildRoomSummary(r, accountId, userByRoom.get(r.roomId)),
+            ),
           ),
         )
         .sort(compareRoomSummaries),

@@ -297,6 +297,56 @@ describe('RoomLibraryService', () => {
     expect(svc.rooms()[0].avatarMxc).toBe('mxc://hs/bob');
   });
 
+  describe('per-sync identity (#1292)', () => {
+    function setupLive() {
+      const unread: Record<string, number> = { '!a:hs': 0, '!b:hs': 0 };
+      const handlers = new Map<string, (...args: unknown[]) => void>();
+      const client = {
+        baseUrl: 'https://hs.example',
+        getRooms: () => [
+          fakeRoom({ roomId: '!a:hs', name: 'A', unread: unread['!a:hs'] }),
+          fakeRoom({ roomId: '!b:hs', name: 'B', unread: unread['!b:hs'] }),
+        ],
+        on: (event: string, handler: (...args: unknown[]) => void) => {
+          handlers.set(event, handler);
+        },
+      };
+      const { svc } = provideRooms(client);
+      svc.runProjection().subscribe();
+      const sync = async () => {
+        handlers.get(ClientEvent.Sync)?.();
+        await Promise.resolve(); // the rebuild is coalesced into a microtask
+      };
+      return { svc, unread, sync };
+    }
+    const byId = (svc: RoomLibraryService, id: string) =>
+      svc.rooms().find((r) => r.id === id);
+
+    it('keeps the same list when a sync changes no room', async () => {
+      const { svc, sync } = setupLive();
+      const before = svc.rooms();
+
+      await sync();
+
+      // Every sidebar row and every computed over the list would otherwise redo its work.
+      expect(svc.rooms()).toBe(before);
+    });
+
+    it('replaces only the summary of the room a sync changed', async () => {
+      const { svc, unread, sync } = setupLive();
+      const a = byId(svc, '!a:hs');
+      const b = byId(svc, '!b:hs');
+
+      unread['!a:hs'] = 2;
+      await sync();
+
+      expect(byId(svc, '!a:hs')).not.toBe(a);
+      expect(byId(svc, '!a:hs')?.unreadCount).toBe(2);
+      // The untouched room keeps its object, so its OnPush row skips the update.
+      expect(byId(svc, '!b:hs')).toBe(b);
+    });
+  });
+
   describe('marked unread', () => {
     it('reads the flag as unread even with nothing new in the room', () => {
       // The whole point: the read receipt does not move, so the server's counts stay at

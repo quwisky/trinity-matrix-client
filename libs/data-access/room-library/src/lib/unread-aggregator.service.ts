@@ -59,8 +59,11 @@ export interface UnreadRoom {
 export class UnreadAggregatorService {
   private readonly matrix = inject(MatrixClientService);
 
+  // Equal by content: every sync rebuilds the map, and an unchanged one must not ripple
+  // through every badge that reads it (#1292).
   private readonly _unreadByAccount = signal<ReadonlyMap<string, number>>(
     new Map(),
+    { equal: sameCounts },
   );
   /** Unread notification total per account user id (absent = not yet synced). */
   readonly unreadByAccount = this._unreadByAccount.asReadonly();
@@ -218,6 +221,18 @@ export class UnreadAggregatorService {
     client.off(RoomEvent.AccountData, handler);
     client.off(MatrixEventEvent.Decrypted, handler);
   }
+}
+
+/** Same accounts with the same counts. */
+function sameCounts(
+  a: ReadonlyMap<string, number>,
+  b: ReadonlyMap<string, number>,
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const [key, value] of a) {
+    if (b.get(key) !== value) return false;
+  }
+  return true;
 }
 
 function sameUnreadRooms(
