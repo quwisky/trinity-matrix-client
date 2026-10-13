@@ -340,7 +340,9 @@ export class TrustDeviceConfirmationService {
             this.hydrate(accountId).pipe(ignoreElements()),
             // Read now: a computed is fresh on read, while `gate$` re-emits only after its
             // effect runs, so it could still hold a value from before the record loaded.
-            defer(() => concat(of(this.gate()), gate$)),
+            // `gate$` only signals a change: it replays its last value, which can predate
+            // the record or the Account, so every emission re-reads the computed.
+            concat(of(undefined), gate$).pipe(map(() => this.gate())),
           ),
         ),
         filter((gate) => gate.kind !== 'pending'),
@@ -361,6 +363,7 @@ export class TrustDeviceConfirmationService {
       injector: this.injector,
     });
     return this.activeAccount$.pipe(
+      map(() => this.cryptoPort.activeAccountId()),
       filter((id): id is string => id !== null),
       take(1),
     );
@@ -386,13 +389,18 @@ export class TrustDeviceConfirmationService {
               map((key): ServerIdentity => (key ? 'present' : 'absent')),
               catchError(() => of<ServerIdentity>('unknown')),
             );
+        // An answer that lands after `require()` recorded a newer sign-in is stale.
+        const isCurrent = () => this.serverChecks.get(accountId) === check;
         check = answer.pipe(
           switchMap((identity) =>
-            this.keepOnlyWithIdentity(accountId, identity).pipe(
-              map(() => identity),
-            ),
+            isCurrent()
+              ? this.keepOnlyWithIdentity(accountId, identity).pipe(
+                  map(() => identity),
+                )
+              : of(null),
           ),
           map((identity) => {
+            if (identity === null || !isCurrent()) return;
             this.serverIdentity.update((known) =>
               new Map(known).set(accountId, identity),
             );

@@ -73,6 +73,8 @@ interface Options {
   /** What this device's own fresh read says while it is unverified. */
   local?: 'needs-recovery' | 'needs-verification' | 'needs-setup';
   readFails?: boolean;
+  /** This device's own status read throws. */
+  localReadFails?: boolean;
   writeFails?: boolean;
 }
 
@@ -114,20 +116,25 @@ function setup(options: Options = {}) {
   const downloadKeysForUsers = vi.fn(options.server ?? (async () => PUBLISHED));
   const crypto = {
     isCrossSigningReady: vi.fn(async () => verifiedNow.value),
-    isSecretStorageReady: vi.fn(async () => defaultKeyId !== null),
+    isSecretStorageReady: vi.fn(async () => {
+      if (options.localReadFails) throw new Error('read failed');
+      return defaultKeyId !== null;
+    }),
     getActiveSessionBackupVersion: vi.fn(async () => null),
     getDeviceVerificationStatus: vi.fn(async () => ({
       crossSigningVerified: verifiedNow.value,
     })),
-    getCrossSigningStatus: vi.fn(async () => ({
-      publicKeysOnDevice: local !== 'needs-setup',
-      privateKeysInSecretStorage: defaultKeyId !== null,
-      privateKeysCachedLocally: {
-        masterKey: false,
-        selfSigningKey: false,
-        userSigningKey: false,
-      },
-    })),
+    getCrossSigningStatus: vi.fn(async () => {
+      return {
+        publicKeysOnDevice: local !== 'needs-setup',
+        privateKeysInSecretStorage: defaultKeyId !== null,
+        privateKeysCachedLocally: {
+          masterKey: false,
+          selfSigningKey: false,
+          userSigningKey: false,
+        },
+      };
+    }),
   };
   const client = {
     getDeviceId: () => options.deviceId ?? 'DEVICE',
@@ -140,7 +147,8 @@ function setup(options: Options = {}) {
       TrustDeviceConfirmationService,
       MockProvider(TrustCryptoPort, {
         activeAccountId: activeAccountId.asReadonly(),
-        forAccount: () => ({ client, crypto }) as never,
+        forAccount: (id: string) =>
+          id === '@a:hs' ? ({ client, crypto } as never) : null,
       }),
       MockProvider(TrustHealthService, { health: health.asReadonly() }),
       { provide: PREFERENCE_STORAGE_ADAPTER, useValue: adapter },
@@ -470,6 +478,79 @@ describe('TrustDeviceConfirmationService', () => {
     await expect(firstValueFrom(service.confirmRequired())).resolves.toBe(
       false,
     );
+  });
+
+  it('does not replay a stale settled gate once a new device is recorded', async () => {
+    const { service } = setup();
+    await firstValueFrom(service.hydrate('@a:hs'));
+    await firstValueFrom(service.settledGate());
+    TestBed.tick();
+    await firstValueFrom(service.require('@a:hs', 'DEVICE'));
+    const emitted: DeviceConfirmationGate[] = [];
+
+    service
+      .settledGate()
+      .subscribe((gate) => emitted.push(gate))
+      .unsubscribe();
+
+    expect(emitted).toEqual([]);
+  });
+
+  it('answers false when there is nothing to confirm or the read fails', async () => {
+    const none = setup();
+    await expect(firstValueFrom(none.service.confirmRequired())).resolves.toBe(
+      false,
+    );
+    TestBed.resetTestingModule();
+
+    const other = setup();
+    await firstValueFrom(other.service.require('@a:hs', 'OTHER'));
+    await expect(firstValueFrom(other.service.confirmRequired())).resolves.toBe(
+      false,
+    );
+    TestBed.resetTestingModule();
+
+    const failing = setup({ localReadFails: true });
+    await firstValueFrom(failing.service.require('@a:hs', 'DEVICE'));
+    await expect(
+      firstValueFrom(failing.service.confirmRequired()),
+    ).resolves.toBe(false);
+  });
+
+  it('reads the active account, not the one that was recorded', async () => {
+    const { service } = setup({ active: '@b:hs' });
+    await firstValueFrom(service.require('@a:hs', 'DEVICE'));
+
+    await expect(firstValueFrom(service.confirmRequired())).resolves.toBe(
+      false,
+    );
+  });
+
+  it('ignores an older server answer that lands after a newer sign-in', async () => {
+    let calls = 0;
+    let answerOld!: (value: unknown) => void;
+    const { service, health, store } = setup({
+      server: () =>
+        ++calls === 1
+          ? new Promise((resolve) => {
+              answerOld = resolve;
+            })
+          : Promise.resolve(PUBLISHED),
+    });
+    const older = firstValueFrom(service.require('@a:hs', 'DEVICE'), {
+      defaultValue: undefined,
+    });
+    await firstValueFrom(service.require('@a:hs', 'DEVICE'));
+
+    answerOld({ master_keys: {} });
+    await older;
+    health.set(coherent({ status: 'needs-setup' }));
+
+    expect([...store.values()].join()).toContain('DEVICE');
+    expect(service.gate()).toEqual({
+      kind: 'required',
+      status: 'needs-verification',
+    });
   });
 
   it('lets navigation through when trust status never arrives', async () => {
