@@ -10,14 +10,17 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { finalize } from 'rxjs';
+import { finalize, timer, type Subscription } from 'rxjs';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
   PageHeaderComponent,
   TrnCardImports,
 } from '@trinity/components/navigation-layout';
-import { TrustDeviceConfirmationService } from '@trinity/data-access/trust';
+import {
+  DEVICE_CONFIRMATION_SETTLE_MS,
+  TrustDeviceConfirmationService,
+} from '@trinity/data-access/trust';
 import {
   ACCOUNT_REMOVAL_LAUNCHER,
   type AccountRemovalOutcome,
@@ -56,12 +59,14 @@ export class DeviceConfirmationPage {
   private readonly destroyRef = inject(DestroyRef);
   /** A removal ended with a move away from the check; nothing else navigates then. */
   private leaving = false;
+  private stallTimer: Subscription | null = null;
+  private readonly pending = computed(() => this.gate().kind === 'pending');
 
   readonly gate = this.confirmation.gate;
   readonly canSkip = this.confirmation.canSkip;
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
-  /** The status could not be read within the settle time; offer Try again. */
+  /** The status could not be read within the settle time; offer the ways out. */
   readonly stalled = signal(false);
   /** Only an identity with recovery has a recovery key to offer. */
   readonly hasRecoveryKey = computed(() => {
@@ -72,6 +77,12 @@ export class DeviceConfirmationPage {
   constructor() {
     // A direct visit (reload, bookmark) still loads the active Account's record.
     this.settle();
+    // The guard lets a route through once the status has not arrived within the settle
+    // time; mirror that whenever the gate is loading, including after it was settled.
+    effect(() => {
+      const pending = this.pending();
+      untracked(() => (pending ? this.armStall() : this.disarmStall()));
+    });
     // Leave as soon as nothing is asked: verified, reset, skipped or never required. A
     // removal in flight ends the check itself (the sign-out repoints the active account
     // first), so wait for its outcome: `afterRemoval` decides where to go.
@@ -114,6 +125,12 @@ export class DeviceConfirmationPage {
   /** Read the status again after the check could not settle. */
   retry(): void {
     this.settle();
+    if (this.pending()) this.armStall();
+  }
+
+  /** Open Rooms unchecked, as the guard does once the settle time has passed. */
+  continueWithoutCheck(): void {
+    void this.router.navigateByUrl('/rooms', { replaceUrl: true });
   }
 
   removeAccount(): void {
@@ -143,6 +160,22 @@ export class DeviceConfirmationPage {
       .subscribe(() => {
         if (this.gate().kind === 'pending') this.stalled.set(true);
       });
+  }
+
+  /** After the settle time, a gate still loading means the status cannot be read now. */
+  private armStall(): void {
+    this.stallTimer?.unsubscribe();
+    this.stallTimer = timer(DEVICE_CONFIRMATION_SETTLE_MS)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        if (this.pending()) this.stalled.set(true);
+      });
+  }
+
+  private disarmStall(): void {
+    this.stallTimer?.unsubscribe();
+    this.stallTimer = null;
+    this.stalled.set(false);
   }
 
   private afterRemoval(outcome: AccountRemovalOutcome): void {

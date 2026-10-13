@@ -4,8 +4,9 @@ import { Router } from '@angular/router';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, Subject, of, throwError, type Observable } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  DEVICE_CONFIRMATION_SETTLE_MS,
   TrustDeviceConfirmationService,
   type DeviceConfirmationGate,
 } from '@trinity/data-access/trust';
@@ -58,6 +59,15 @@ async function renderPage(
 function byTestId(container: Element, id: string): HTMLElement | null {
   return container.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 }
+
+/** RxJS timers run on `setInterval`, so fake it along with `setTimeout`. */
+function useFakeTimers(): void {
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+  });
+}
+
+afterEach(() => vi.useRealTimers());
 
 describe('DeviceConfirmationPage', () => {
   it('leads with the recovery key when the account has recovery', async () => {
@@ -304,5 +314,90 @@ describe('DeviceConfirmationPage', () => {
     TestBed.tick();
 
     expect(navigateByUrl).not.toHaveBeenCalled();
+  });
+
+  it('offers the ways out when the check goes back to loading and stays there', async () => {
+    const { container, fixture, gate } = await renderPage();
+    useFakeTimers();
+
+    gate.set({ kind: 'pending' });
+    TestBed.tick();
+    expect(screen.getByText('Checking this device…')).toBeTruthy();
+
+    vi.advanceTimersByTime(DEVICE_CONFIRMATION_SETTLE_MS);
+    fixture.detectChanges();
+
+    expect(screen.getByRole('alert').textContent?.trim()).toBe(
+      'Checking this device is taking longer than expected. Try again.',
+    );
+    const actions = [
+      ...container.querySelectorAll<HTMLElement>('button[data-testid]'),
+    ].map((button) => button.textContent?.trim());
+    expect(actions).toEqual([
+      'Try again',
+      'Continue',
+      'Remove account from this device',
+    ]);
+  });
+
+  it('keeps checking while the loading is within the settle time', async () => {
+    const { container, fixture, gate } = await renderPage();
+    useFakeTimers();
+
+    gate.set({ kind: 'pending' });
+    TestBed.tick();
+    vi.advanceTimersByTime(DEVICE_CONFIRMATION_SETTLE_MS - 1);
+    fixture.detectChanges();
+
+    expect(screen.getByText('Checking this device…')).toBeTruthy();
+    expect(byTestId(container, 'device-confirmation-continue')).toBeNull();
+  });
+
+  it('drops the stalled state once the status arrives', async () => {
+    const { container, fixture, gate } = await renderPage();
+    useFakeTimers();
+    gate.set({ kind: 'pending' });
+    TestBed.tick();
+    vi.advanceTimersByTime(DEVICE_CONFIRMATION_SETTLE_MS);
+    fixture.detectChanges();
+    expect(byTestId(container, 'device-confirmation-continue')).not.toBeNull();
+
+    gate.set({ kind: 'required', status: 'needs-verification' });
+    TestBed.tick();
+    fixture.detectChanges();
+    expect(
+      byTestId(container, 'device-confirmation-other-device'),
+    ).not.toBeNull();
+
+    // Loading again starts a fresh wait rather than stalling at once.
+    gate.set({ kind: 'pending' });
+    TestBed.tick();
+    fixture.detectChanges();
+    expect(screen.getByText('Checking this device…')).toBeTruthy();
+    expect(byTestId(container, 'device-confirmation-continue')).toBeNull();
+  });
+
+  it('lets the person continue to Rooms when the check cannot settle', async () => {
+    const { container, fixture, navigateByUrl } = await renderPage({
+      gate: { kind: 'pending' },
+      settled: () => of({ kind: 'not-required' }),
+    });
+    fixture.detectChanges();
+
+    byTestId(container, 'device-confirmation-continue')!.click();
+
+    expect(navigateByUrl).toHaveBeenCalledWith('/rooms', { replaceUrl: true });
+  });
+
+  it('removes the account from the stalled check too', async () => {
+    const { container, fixture, remove } = await renderPage({
+      gate: { kind: 'pending' },
+      settled: () => of({ kind: 'not-required' }),
+    });
+    fixture.detectChanges();
+
+    byTestId(container, 'device-confirmation-remove')!.click();
+
+    expect(remove).toHaveBeenCalledWith('@me:hs');
   });
 });

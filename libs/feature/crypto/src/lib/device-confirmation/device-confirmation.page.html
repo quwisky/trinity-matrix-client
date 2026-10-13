@@ -113,9 +113,36 @@
                 type="button"
                 class="w-full"
                 data-testid="device-confirmation-retry"
+                [disabled]="busy()"
                 (click)="retry()"
               >
                 Try again
+              </button>
+              <button
+                trnBtn
+                type="button"
+                presentation="outline"
+                class="w-full"
+                data-testid="device-confirmation-continue"
+                [disabled]="busy()"
+                (click)="continueWithoutCheck()"
+              >
+                Continue
+              </button>
+            </div>
+            <div class="ways-out">
+              <button
+                trnBtn
+                type="button"
+                variant="secondary"
+                presentation="ghost"
+                size="sm"
+                class="w-full"
+                data-testid="device-confirmation-remove"
+                [disabled]="busy()"
+                (click)="removeAccount()"
+              >
+                Remove account from this device
               </button>
             </div>
           } @else {
