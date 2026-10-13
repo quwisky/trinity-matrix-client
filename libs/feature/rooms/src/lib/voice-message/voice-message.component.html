@@ -19,7 +19,11 @@
     />
   </button>
 
-  @if (bars().length) {
+  @if (failed()) {
+    <span class="voice__error" role="status" data-testid="voice-error"
+      >Couldn’t load this voice message. Try again.</span
+    >
+  } @else if (bars().length) {
     <div class="voice__wave" aria-hidden="true">
       @for (bar of bars(); track $index) {
         <span

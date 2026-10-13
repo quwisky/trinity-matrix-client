@@ -57,6 +57,8 @@ export class VoiceMessageComponent {
   readonly src = signal<string | null>(null);
   /** The clip is being fetched after a press of play. */
   readonly loading = signal(false);
+  /** The last attempt to fetch the clip failed; Play tries again. */
+  readonly failed = signal(false);
   readonly playing = signal(false);
   /** Elapsed playback in seconds (drives the timer + waveform fill). */
   private readonly elapsed = signal(0);
@@ -95,7 +97,10 @@ export class VoiceMessageComponent {
     effect(() => {
       this.media();
       // A reused row shows another message: the previous one's clip goes.
-      untracked(() => this.dropClip());
+      untracked(() => {
+        this.dropClip();
+        this.failed.set(false);
+      });
     });
     inject(DestroyRef).onDestroy(() => this.dropClip());
   }
@@ -112,7 +117,7 @@ export class VoiceMessageComponent {
     if (!el) {
       this.load();
     } else if (el.paused) {
-      void el.play();
+      this.start(el);
     } else {
       el.pause();
     }
@@ -120,7 +125,8 @@ export class VoiceMessageComponent {
 
   /** The fetched clip can play: start it, as the press that fetched it asked. */
   onLoaded(): void {
-    void this.audio()?.nativeElement.play();
+    const el = this.audio()?.nativeElement;
+    if (el) this.start(el);
   }
 
   onPlay(): void {
@@ -142,6 +148,14 @@ export class VoiceMessageComponent {
     this.dropClip();
   }
 
+  /**
+   * Start playback. A host may refuse (autoplay policy after a long fetch); the reader then
+   * presses Play again, so the refusal is not an error.
+   */
+  private start(el: HTMLAudioElement): void {
+    el.play().catch(() => undefined);
+  }
+
   /** Fetch the clip on the first press of play; it starts once loaded ({@link onLoaded}). */
   private load(): void {
     const clip: OpenClip = {
@@ -151,6 +165,7 @@ export class VoiceMessageComponent {
     };
     this.clip = clip;
     this.loading.set(true);
+    this.failed.set(false);
     clip.sub = this.mediaPipeline
       .resolveMedia(clip.media, 'full')
       .pipe(finalize(() => this.loading.set(false)))
@@ -164,7 +179,9 @@ export class VoiceMessageComponent {
         },
         // A failed fetch leaves nothing to keep, so the next press tries again.
         error: () => {
-          if (this.clip === clip) this.clip = null;
+          if (this.clip !== clip) return;
+          this.clip = null;
+          this.failed.set(true);
         },
       });
   }

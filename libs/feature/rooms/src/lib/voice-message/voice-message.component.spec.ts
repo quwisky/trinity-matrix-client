@@ -118,6 +118,57 @@ describe('VoiceMessageComponent', () => {
     expect(button().getAttribute('aria-label')).toBe('Play voice message');
   });
 
+  it('says the clip could not be loaded, and lets Play try again', async () => {
+    let fail = true;
+    const { container, pipeline, button, press } = await build(
+      voiceMedia(),
+      () => (fail ? throwError(() => new Error('offline')) : of('blob:clip')),
+    );
+    const error = () => container.querySelector('[data-testid=voice-error]');
+
+    press();
+
+    expect(error()?.textContent?.trim()).toBe(
+      'Couldn’t load this voice message. Try again.',
+    );
+    expect(error()?.getAttribute('role')).toBe('status');
+    expect(button().disabled).toBe(false);
+
+    fail = false;
+    press();
+
+    expect(pipeline.resolveMedia).toHaveBeenCalledTimes(2);
+    expect(error()).toBeNull();
+  });
+
+  it('does not leave a rejected play unhandled when the host refuses to start', async () => {
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      // A plain function, not vi.fn: a mock observes the promises it returns, which would
+      // count as handling the rejection.
+      let starts = 0;
+      HTMLMediaElement.prototype.play = () => {
+        starts++;
+        return Promise.reject(new DOMException('autoplay', 'NotAllowedError'));
+      };
+      const { audio, press } = await build();
+      press(); // fetches, then starts once loaded
+      audio()!.dispatchEvent(new Event('loadedmetadata'));
+      Object.defineProperty(audio()!, 'paused', {
+        value: true,
+        configurable: true,
+      });
+      press(); // the reader tries again by hand
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(starts).toBe(2);
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+
   it('pauses and resumes a loaded clip without fetching it again', async () => {
     const { pipeline, audio, press } = await build();
     press();
