@@ -8,9 +8,11 @@ import {
   input,
   signal,
 } from '@angular/core';
+import { TrnBadge } from '@trinity/components/generic-content';
 import { TrnSettingsRowComponent } from '@trinity/components/overlay';
 import { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import { TrustAccountStatusService } from '@trinity/data-access/trust';
 import { runWithBusy } from '@trinity/util/ui';
 
 /**
@@ -30,11 +32,12 @@ import { runWithBusy } from '@trinity/util/ui';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './homeserver-block.component.html',
   host: { class: 'block' },
-  imports: [TrnSettingsRowComponent],
+  imports: [TrnSettingsRowComponent, TrnBadge],
 })
 export class HomeserverBlockComponent implements OnInit {
   private readonly homeservers = inject(HomeserverInfoService);
   private readonly identities = inject(AccountIdentitiesService);
+  private readonly accountTrust = inject(TrustAccountStatusService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly userId = input.required<string>();
@@ -52,6 +55,20 @@ export class HomeserverBlockComponent implements OnInit {
   /** This account's name for the block heading, falling back to its mxid. */
   protected readonly displayName = computed(
     () => this.identities.identityOf(this.userId()).displayName,
+  );
+
+  /** This account's trust summary, or null before Trust has read it. */
+  protected readonly trust = computed(
+    () => this.accountTrust.summaries().get(this.userId()) ?? null,
+  );
+
+  /** This account's device here is unverified (its identity exists, the device is not signed). */
+  protected readonly unverified = computed(() => this.trust() === 'unverified');
+
+  /** The block's name, which says "unverified" as its heading does. */
+  protected readonly regionLabel = computed(
+    () =>
+      `Homeserver for ${this.displayName()}${this.unverified() ? ', unverified' : ''}`,
   );
 
   /** Null until the first probe finishes — which is what the loading line reads. */

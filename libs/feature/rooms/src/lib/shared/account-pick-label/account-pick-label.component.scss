@@ -39,4 +39,10 @@
     font-weight: var(--trinity-type-control-weight);
     color: var(--trinity-text-muted);
   }
+
+  // Its own line under the handle, as wide as its text, so it never squeezes the id.
+  .account-pick__trust {
+    align-self: flex-start;
+    margin-top: var(--trinity-space-1);
+  }
 }

@@ -10,3 +10,4 @@ export {
   type TrustProviderManagement,
   type TrustProviderRecoveryPort,
 } from './lib/trust-provider-recovery.port';
+export * from './lib/trust-account-status.service';

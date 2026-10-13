@@ -101,6 +101,12 @@ export class TrustCryptoPort {
   /** Account identity is observable without exposing Matrix Runtime's writable lifecycle. */
   readonly activeAccountId: Signal<string | null> = this.matrix.activeUserId;
 
+  /**
+   * Every Account with a live client, for per-Account Trust summaries. Read-only. A
+   * soft-logged-out Account has no live client, so it is absent.
+   */
+  readonly liveAccountIds: Signal<readonly string[]> = this.matrix.accountIds;
+
   /** Whether an already-started active Account is available. */
   isAvailable(): boolean {
     return this.matrix.isInitialized;
@@ -113,6 +119,20 @@ export class TrustCryptoPort {
       client: client as TrustMatrixClient,
       crypto: client.getCrypto() ?? null,
     };
+  }
+
+  /**
+   * One live Account's already-started crypto objects, or null when it has no live client.
+   * Read access only: like {@link active}, it cannot start, stop or switch Accounts.
+   */
+  forAccount(accountId: string): ActiveTrustCrypto | null {
+    const client = this.matrix.clientFor(accountId);
+    return client
+      ? {
+          client: client as TrustMatrixClient,
+          crypto: client.getCrypto() ?? null,
+        }
+      : null;
   }
 
   /** Capture the active Account's ephemeral 4S key holder only when recovery needs it. */

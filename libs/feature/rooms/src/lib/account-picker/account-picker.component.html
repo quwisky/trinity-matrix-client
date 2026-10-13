@@ -21,6 +21,7 @@
             account.userId === firstFocusableAccountId() ? '' : null
           "
           [attr.data-testid]="'show-account-' + account.userId"
+          [attr.data-trust]="account.trust"
           (click)="toggle(account.userId)"
         >
           <span class="account-pick__indicator" aria-hidden="true">
@@ -28,7 +29,11 @@
               <trn-icon name="check" size="sm" />
             }
           </span>
-          <trn-account-pick-label [account]="account" [locked]="locked" />
+          <trn-account-pick-label
+            [account]="account"
+            [locked]="locked"
+            [unverified]="account.trust === 'unverified'"
+          />
         </button>
       </li>
     }

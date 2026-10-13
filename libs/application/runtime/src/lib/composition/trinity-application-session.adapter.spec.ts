@@ -45,6 +45,7 @@ import {
   type RoomAdministrationLifetimeEvent,
 } from '@trinity/data-access/room-administration';
 import {
+  TrustAccountStatusService,
   TrustLifetime,
   type TrustCapabilityHealth,
   type TrustLifetimeEvent,
@@ -202,6 +203,7 @@ function setup(
         run: () => trustSession,
         recover: recoverTrust,
       }),
+      MockProvider(TrustAccountStatusService, { run: () => EMPTY }),
       MockProvider(IdentityLifetime, { run: () => identitySession }),
       MockProvider(NotificationLifetime, {
         run: () => notificationSession,
@@ -544,6 +546,24 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(identity.observed).toBe(false);
     expect(notifications.observed).toBe(false);
     expect(roomAdministration.observed).toBe(false);
+  });
+
+  it('owns the per-account trust summaries for the whole session', () => {
+    const test = setup();
+    const accountTrust = new Subject<never>();
+    vi.spyOn(TestBed.inject(TrustAccountStatusService), 'run').mockReturnValue(
+      accountTrust,
+    );
+    const readiness = new Subject<void>();
+
+    const lifetime = test.adapter.run(readiness).subscribe();
+    expect(accountTrust.observed).toBe(true);
+
+    readiness.next();
+    expect(accountTrust.observed).toBe(true);
+
+    lifetime.unsubscribe();
+    expect(accountTrust.observed).toBe(false);
   });
 
   it('does not let an unsettled optional lifetime hold required preparation open', () => {

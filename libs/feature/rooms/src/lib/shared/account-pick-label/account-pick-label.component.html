@@ -13,4 +13,14 @@
   @if (locked()) {
     <span class="account-pick__active">Always included</span>
   }
+  @if (unverified()) {
+    <span
+      trnBadge
+      class="account-pick__trust"
+      variant="warning"
+      size="xs"
+      data-testid="account-pick-unverified"
+      >Unverified</span
+    >
+  }
 </span>

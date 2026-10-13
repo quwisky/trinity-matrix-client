@@ -8,6 +8,10 @@ import {
   type HomeserverInfo,
 } from '@trinity/data-access/homeserver';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import {
+  TrustAccountStatusService,
+  type AccountTrustSummary,
+} from '@trinity/data-access/trust';
 import { HomeserverBlockComponent } from './homeserver-block.component';
 
 const USER_ID = '@me:example.org';
@@ -39,9 +43,13 @@ function info(overrides: Partial<HomeserverInfo> = {}): HomeserverInfo {
 function renderBlock(
   record: HomeserverInfo | null,
   load: Observable<void> = of(undefined),
+  trust: AccountTrustSummary | null = null,
 ) {
   const infos = signal<ReadonlyMap<string, HomeserverInfo>>(
     record ? new Map([[USER_ID, record]]) : new Map(),
+  );
+  const summaries = signal<ReadonlyMap<string, AccountTrustSummary>>(
+    trust ? new Map([[USER_ID, trust]]) : new Map(),
   );
   return render(HomeserverBlockComponent, {
     inputs: { userId: USER_ID },
@@ -56,6 +64,9 @@ function renderBlock(
           displayName: 'Me',
           avatarMxc: null,
         }),
+      }),
+      MockProvider(TrustAccountStatusService, {
+        summaries: summaries.asReadonly(),
       }),
     ],
   });
@@ -87,6 +98,44 @@ describe('HomeserverBlockComponent', () => {
 
     expect(text(container, 'hs-account')).toBe('Me');
   });
+
+  it('marks the account when its device here is unverified, beside the heading', async () => {
+    const { container } = await renderBlock(
+      info(),
+      of(undefined),
+      'unverified',
+    );
+
+    expect(text(container, 'hs-account-unverified')).toBe('Unverified');
+    // Inside the heading, so heading navigation and the block's name both say it.
+    const heading = container.querySelector('[data-testid="hs-account"]');
+    expect(
+      heading?.querySelector('[data-testid="hs-account-unverified"]'),
+    ).not.toBeNull();
+    expect(heading?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Me Unverified',
+    );
+    const block = container.querySelector('[data-testid="server-block"]');
+    expect(block?.getAttribute('aria-label')).toBe(
+      'Homeserver for Me, unverified',
+    );
+    expect(block?.getAttribute('data-trust')).toBe('unverified');
+  });
+
+  it.each(['verified', 'not-set-up', 'unknown'] as const)(
+    'shows no mark for an account that is %s',
+    async (trust) => {
+      const { container } = await renderBlock(info(), of(undefined), trust);
+
+      expect(
+        container.querySelector('[data-testid="hs-account-unverified"]'),
+      ).toBeNull();
+      const block = container.querySelector('[data-testid="server-block"]');
+      expect(block?.getAttribute('aria-label')).toBe('Homeserver for Me');
+      // A positive anchor, so a journey can wait for the status before asserting no mark.
+      expect(block?.getAttribute('data-trust')).toBe(trust);
+    },
+  );
 
   it('skips no heading level under the page heading', async () => {
     const { container } = await renderBlock(info());

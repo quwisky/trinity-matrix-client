@@ -29,6 +29,7 @@ import {
   buildRailUnreadChats,
   type RailUnreadChats,
 } from '../server-rail/rail-unread-chats';
+import { TrustAccountStatusService } from '@trinity/data-access/trust';
 import { type RailUnread } from '../server-rail/server-rail.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
@@ -56,6 +57,7 @@ export class RoomShellViewModel {
   private readonly railUnreadPreference = inject(RailUnreadChatsPreference);
   private readonly matrix = inject(MatrixClientService);
   private readonly identities = inject(AccountIdentitiesService);
+  private readonly accountTrust = inject(TrustAccountStatusService);
 
   /** Whether a row is filed under one of its selected owner's spaces. A shared Room uses
    * the hierarchy of the Account that won the selected-view row, just as its actions do. */
@@ -380,10 +382,11 @@ export class RoomShellViewModel {
     avatarMxc: this.userAvatarMxc(),
   }));
 
-  /** Every signed-in account, for the user-panel switcher (profile + unread total). */
+  /** Every signed-in account, for the user-panel switcher (profile, unread total, trust). */
   readonly accounts = computed<AccountSummary[]>(() => {
     const unread = this.unreadAgg.unreadByAccount();
     const profiles = this.identities.identities();
+    const trust = this.accountTrust.summaries();
     return this.matrix.accountIds().map((userId) => {
       const profile = profiles.get(userId);
       return {
@@ -391,6 +394,7 @@ export class RoomShellViewModel {
         displayName: profile?.displayName || userId,
         avatarMxc: profile?.avatarMxc ?? null,
         unread: unread.get(userId) ?? 0,
+        trust: trust.get(userId) ?? 'unknown',
       };
     });
   });

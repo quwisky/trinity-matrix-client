@@ -83,6 +83,7 @@
         trnDropdownMenuItem
         (triggered)="switchAccount.emit(account.userId)"
         data-testid="account-row"
+        [attr.data-trust]="account.trust"
         [attr.aria-current]="account.userId === activeUserId()"
       >
         <trn-avatar
@@ -95,6 +96,16 @@
         <div class="account-row__id">
           <span class="account-row__name">{{ account.displayName }}</span>
           <span class="account-row__handle">{{ account.userId }}</span>
+          @if (account.trust === 'unverified') {
+            <span
+              trnBadge
+              class="account-row__trust"
+              variant="warning"
+              size="xs"
+              data-testid="account-row-unverified"
+              >Unverified</span
+            >
+          }
         </div>
         @if (account.unread > 0) {
           <span
@@ -201,11 +212,16 @@
           [lockedSelection]="isActive"
           (triggered)="toggleAccountShown.emit(account.userId)"
           [attr.data-testid]="'show-account-' + account.userId"
+          [attr.data-trust]="account.trust"
         >
           <span class="account-pick__indicator" aria-hidden="true">
             <trn-dropdown-menu-checkbox-indicator />
           </span>
-          <trn-account-pick-label [account]="account" [locked]="isActive" />
+          <trn-account-pick-label
+            [account]="account"
+            [locked]="isActive"
+            [unverified]="account.trust === 'unverified'"
+          />
         </button>
       }
     </div>

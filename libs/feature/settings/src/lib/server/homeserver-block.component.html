@@ -2,13 +2,24 @@
   class="pt-4"
   data-testid="server-block"
   [attr.data-account]="userId()"
-  [attr.aria-label]="'Homeserver for ' + displayName()"
+  [attr.data-trust]="trust()"
+  [attr.aria-label]="regionLabel()"
 >
+  <!-- The mark sits inside the heading, so heading navigation says it too. -->
   <h2
-    class="m-0 text-sm font-semibold [overflow-wrap:anywhere] text-[var(--trinity-text-bright)]"
+    class="m-0 flex flex-wrap items-center gap-2 text-sm font-semibold [overflow-wrap:anywhere] text-[var(--trinity-text-bright)]"
     data-testid="hs-account"
   >
     {{ displayName() }}
+    @if (unverified()) {
+      <span
+        trnBadge
+        variant="warning"
+        size="xs"
+        data-testid="hs-account-unverified"
+        >Unverified</span
+      >
+    }
   </h2>
 
   <!--

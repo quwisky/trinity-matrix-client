@@ -31,7 +31,10 @@ import {
   RoomAdministrationLifetime,
   type RoomAdministrationLifetimeEvent,
 } from '@trinity/data-access/room-administration';
-import { TrustLifetime } from '@trinity/data-access/trust';
+import {
+  TrustAccountStatusService,
+  TrustLifetime,
+} from '@trinity/data-access/trust';
 import { NativeNavigationService } from '@trinity/platform-native';
 import {
   HostBackService,
@@ -103,6 +106,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly roomOrderHealth = inject(RoomOrderHealthService);
   private readonly roomLibrary = inject(RoomLibraryLifetime);
   private readonly trust = inject(TrustLifetime);
+  private readonly accountTrust = inject(TrustAccountStatusService);
   private readonly identity = inject(IdentityLifetime);
   private readonly health = inject(CapabilityHealthService);
   private readonly accounts = inject(AccountRuntimeService);
@@ -191,6 +195,7 @@ export class TrinityApplicationSessionAdapter {
           map(() => null),
         ),
       );
+      observeOptional(this.accountTrust.run());
       observeOptional(
         this.identity.run(this.routedSurfaces.roomProjectionDemand).pipe(
           tap((event) => {

@@ -110,6 +110,39 @@ describe('SidebarUserPanelComponent', () => {
     expect(reauthRow?.querySelector('trn-avatar')?.textContent).toContain('D');
   });
 
+  it('marks an account whose device here is unverified, and only that one', async () => {
+    const { fixture, container } = await render(SidebarUserPanelComponent, {
+      inputs: {
+        user: USER,
+        accounts: [
+          { ...ACCOUNTS[0], trust: 'verified' as const },
+          { ...ACCOUNTS[1], trust: 'unverified' as const },
+          { ...ACCOUNTS[2], trust: 'not-set-up' as const },
+        ],
+        activeUserId: '@alice:hs',
+      },
+    });
+
+    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
+    fixture.detectChanges();
+
+    const marks = document.querySelectorAll<HTMLElement>(
+      '[data-testid="account-row-unverified"]',
+    );
+    expect(marks).toHaveLength(1);
+    expect(marks[0].textContent?.trim()).toBe('Unverified');
+    const row = marks[0].closest<HTMLElement>('[data-testid="account-row"]');
+    expect(row?.textContent).toContain('@bob:hs');
+    // The visible text is the row's name; nothing generic overrides it.
+    expect(row?.getAttribute('aria-label')).toBeNull();
+    // Its own line in the id column, so it never squeezes the name or the handle.
+    expect(marks[0].parentElement?.classList).toContain('account-row__id');
+    const trust = [
+      ...document.querySelectorAll<HTMLElement>('[data-testid="account-row"]'),
+    ].map((each) => each.getAttribute('data-trust'));
+    expect(trust).toEqual(['verified', 'unverified', 'not-set-up']);
+  });
+
   it('shows ? for an account whose display name is only a sigil', async () => {
     const { fixture, container } = await render(SidebarUserPanelComponent, {
       inputs: {

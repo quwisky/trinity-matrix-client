@@ -11,6 +11,7 @@ import { AvatarComponent, TrnBadge } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { type IdentityProfile } from '@trinity/data-access/identity';
+import { type AccountTrustSummary } from '@trinity/data-access/trust';
 import {
   TrnDropdownMenu,
   TrnDropdownMenuCheckbox,
@@ -28,10 +29,12 @@ import { AccountPickLabelComponent } from '../../shared/account-pick-label/accou
 import { unreadBadgeLabel } from '../../shared/unread-badge';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
-/** One signed-in account in the user-panel switcher: the profile plus its unread total. */
+/** One signed-in account in the user-panel switcher: profile, unread total and trust. */
 export interface AccountSummary extends IdentityProfile {
   /** Unread notification total for this account (drives the switcher badge). */
   unread: number;
+  /** Whether this account's device here is verified; absent until Trust has read it. */
+  trust?: AccountTrustSummary;
 }
 
 /** The navigation shell's bottom user panel: the signed-in user plus account switcher. */
