@@ -38,6 +38,48 @@ async function waitForStage(
     .toMatch(new RegExp(`^(${stages.join('|')})$`));
 }
 
+interface TrustReading {
+  /** The encryption group's text says messages are secured: the banner has nothing to offer. */
+  readonly ready: boolean;
+  readonly backup: 'on' | 'off' | 'unavailable';
+}
+
+/**
+ * The device's settled trust state, read from Security settings, which projects the same
+ * `TrustService.status` as the encryption banner (it renders only for the `needs-*`
+ * statuses, so `ready` means no banner). A count of zero on the banner is not evidence:
+ * it is also what an unresolved `unknown` status renders. Security settings shows an
+ * explicit "unavailable" while the status is unresolved, so wait for that to clear, then
+ * give the key-backup row a bounded time to report, since the backup key can arrive after
+ * verification finishes.
+ */
+async function settledTrust(page: Page): Promise<TrustReading> {
+  await page.goto('/settings/security', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('security-settings')).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId('security-encryption-unavailable')).toHaveCount(
+    0,
+    { timeout: 30_000 },
+  );
+  const ready = await page
+    .getByText('Your messages are secured with end-to-end encryption')
+    .isVisible();
+  const backup = page.getByTestId('security-backup');
+  const reachedOn = await expect(backup)
+    .toContainText('Your message keys are backed up', { timeout: 20_000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  if (reachedOn) return { ready, backup: 'on' };
+  const text = (await backup.innerText()).toLowerCase();
+  return {
+    ready,
+    backup: text.includes('unavailable') ? 'unavailable' : 'off',
+  };
+}
+
 test.describe('The new-device check', () => {
   test.skip(!session.available, 'needs a homeserver');
 
@@ -70,14 +112,21 @@ test.describe('The new-device check', () => {
     // Rooms stay closed while the check is open.
     await deviceB.goto('/rooms', { waitUntil: 'domcontentloaded' });
     await deviceB.waitForURL(onDeviceCheck, { timeout: 30_000 });
+    await expect(
+      deviceB.getByRole('heading', { name: 'Verify it’s you' }),
+    ).toBeVisible({ timeout: 30_000 });
+    // Still the check once the redirect has settled.
+    await expect
+      .poll(() => onDeviceCheck(new URL(deviceB.url())), { timeout: 5_000 })
+      .toBe(true);
 
     await deviceB.getByTestId('device-confirmation-recovery-key').click();
     await deviceB.getByTestId('recovery-key-input').fill(recoveryKey);
     await deviceB.getByTestId('unlock-submit').click();
     await waitForRooms(deviceB, 60_000);
-    await expect(
-      deviceB.locator('trn-encryption-banner trn-banner'),
-    ).toHaveCount(0, { timeout: 30_000 });
+    // Entering the key restores the backup key too: wait for the settled state, not an
+    // empty banner count.
+    expect(await settledTrust(deviceB)).toEqual({ ready: true, backup: 'on' });
   });
 
   test('a new device opens after another signed-in device verifies it', async ({
@@ -138,16 +187,15 @@ test.describe('The new-device check', () => {
       .click();
     await waitForRooms(deviceB, 60_000);
 
-    // Spec risk 2: either outcome is acceptable, so record it rather than assert it.
-    const banner = await deviceB
-      .locator('trn-encryption-banner trn-banner')
-      .count();
+    // Spec risk 2: either outcome is acceptable, so record the settled reading rather
+    // than assert it.
+    const trust = await settledTrust(deviceB);
     test.info().annotations.push({
       type: 'msc4153-risk-2',
       description:
-        banner === 0
-          ? 'verifying delivered the backup key: no banner'
-          : 'verifying did not deliver the backup key: the banner still offers the recovery key',
+        trust.ready && trust.backup === 'on'
+          ? 'verifying delivered the backup key: no banner, key backup on'
+          : `verifying did not deliver everything: encryption ${trust.ready ? 'ready' : 'still needs recovery (banner offers it)'}, key backup ${trust.backup}`,
     });
   });
 
@@ -235,6 +283,11 @@ test.describe('The new-device check', () => {
     await keyStep.getByTestId('alert-confirm').click();
     await deviceB.waitForURL((url) => url.pathname === '/login', {
       timeout: 60_000,
+    });
+    // The removal persists: a reload still lands on the sign-in page.
+    await deviceB.reload({ waitUntil: 'domcontentloaded' });
+    await deviceB.waitForURL((url) => url.pathname === '/login', {
+      timeout: 30_000,
     });
   });
 
