@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
+import { DecryptionFailureCode } from 'matrix-js-sdk/lib/crypto-api';
 import { normalizeTimelineEvent } from './normalize-timeline-event';
 
 const client = {
@@ -41,6 +42,62 @@ function event(over: Record<string, unknown> = {}): MatrixEvent {
 }
 
 describe('normalizeTimelineEvent', () => {
+  it('keeps why a message could not be decrypted', () => {
+    const normalized = normalizeTimelineEvent(
+      client,
+      room,
+      event({
+        isDecryptionFailure: () => true,
+        decryptionFailureReason:
+          DecryptionFailureCode.MEGOLM_KEY_WITHHELD_FOR_UNVERIFIED_DEVICE,
+      }),
+      null,
+    );
+
+    expect(normalized).toMatchObject({
+      type: 'unsupported',
+      fallback: 'undecryptable-message',
+      decryptionFailed: true,
+      undecryptableReason: 'device-unverified',
+    });
+  });
+
+  it('records an unknown reason when the SDK gave none', () => {
+    const normalized = normalizeTimelineEvent(
+      client,
+      room,
+      event({
+        isDecryptionFailure: () => true,
+        decryptionFailureReason: null,
+      }),
+      null,
+    );
+
+    expect(normalized).toMatchObject({ undecryptableReason: 'missing-key' });
+  });
+
+  // The SDK's makeRedacted clears the clear event but keeps the failure reason, so a
+  // message redacted after it failed to decrypt still reports a decryption failure.
+  it('shows a redacted message as redacted even when it could not be decrypted', () => {
+    const normalized = normalizeTimelineEvent(
+      client,
+      room,
+      event({
+        isRedacted: () => true,
+        isDecryptionFailure: () => true,
+        decryptionFailureReason:
+          DecryptionFailureCode.HISTORICAL_MESSAGE_BACKUP_UNCONFIGURED,
+      }),
+      null,
+    );
+
+    expect(normalized).toMatchObject({
+      type: 'unsupported',
+      fallback: 'redacted-message',
+      decryptionFailed: false,
+      undecryptableReason: null,
+    });
+  });
   it('turns an SDK text event into a frozen plain record', () => {
     const normalized = normalizeTimelineEvent(client, room, event(), null);
 

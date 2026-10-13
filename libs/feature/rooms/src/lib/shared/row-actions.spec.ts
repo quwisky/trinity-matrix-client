@@ -31,6 +31,7 @@ function setup(overrides: Partial<SharedRowActionContext> = {}) {
     react: vi.fn(),
     quote: vi.fn(),
     mediaSave: { save: vi.fn() },
+    undecryptableFix: { open: vi.fn(() => of(undefined)) },
     ...overrides,
   };
   return ctx as typeof ctx & SharedRowActionContext;
@@ -38,6 +39,15 @@ function setup(overrides: Partial<SharedRowActionContext> = {}) {
 
 describe('dispatchSharedRowAction', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('opens the fix for a message this device could not decrypt', () => {
+    const ctx = setup();
+
+    expect(
+      dispatchSharedRowAction({ type: 'fix-undecryptable' }, row, ctx),
+    ).toBe(true);
+    expect(ctx.undecryptableFix.open).toHaveBeenCalledOnce();
+  });
 
   it('saves the row media through the shared save service', () => {
     const media = { id: 'm', kind: 'image' } as MessageRow['media'];

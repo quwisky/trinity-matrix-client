@@ -130,3 +130,21 @@ export async function masterKey(
   const keys = (await res.json()).master_keys?.[account.userId]?.keys;
   return keys ? Object.keys(keys)[0] : undefined;
 }
+
+/** Whether the account's current key backup holds at least one session for `roomId`. */
+export async function roomKeysBackedUp(
+  request: APIRequestContext,
+  hs: string,
+  account: AccountSession,
+  roomId: string,
+): Promise<boolean> {
+  const version = await keyBackupVersion(request, hs, account);
+  if (!version) return false;
+  const res = await request.get(
+    `${hs}/_matrix/client/v3/room_keys/keys/${encodeURIComponent(roomId)}?version=${encodeURIComponent(version)}`,
+    { headers: bearer(account) },
+  );
+  if (!res.ok()) return false;
+  const body = (await res.json()) as { sessions?: Record<string, unknown> };
+  return Object.keys(body.sessions ?? {}).length > 0;
+}

@@ -24,7 +24,9 @@ import type {
   ReactionView,
   ReceiptView,
   ReplyPreview,
+  UndecryptableReason,
 } from './message-presentation';
+import { undecryptableReasonOf } from './undecryptable-reason';
 
 const SYSTEM_EVENT_TYPES = new Set<string>([
   EventType.RoomMember,
@@ -247,6 +249,7 @@ function unsupported(
     'unsupported-message' | 'undecryptable-message' | 'redacted-message',
   decryptionFailed: boolean,
   body = '',
+  undecryptableReason: UndecryptableReason | null = null,
 ): NormalizedTimelineEvent {
   return Object.freeze({
     ...normalizeCommon(client, room, event, shield),
@@ -255,6 +258,7 @@ function unsupported(
     decryptionFailed,
     body,
     replyFallback: read(() => Boolean(event.replyEventId), false),
+    undecryptableReason,
   });
 }
 
@@ -373,8 +377,12 @@ export function normalizeTimelineEvent(
   shield: MessageShield | null,
 ): NormalizedTimelineEvent | null {
   const type = read(() => event.getType(), '');
-  const decryptionFailed = read(() => event.isDecryptionFailure(), false);
-  if (decryptionFailed) {
+  // Redaction first: the SDK keeps the failure reason on an event it redacts after a
+  // failed decryption, and a removed message has nothing left to read or fix.
+  if (read(() => event.isRedacted(), false)) {
+    return unsupported(client, room, event, shield, 'redacted-message', false);
+  }
+  if (read(() => event.isDecryptionFailure(), false)) {
     return unsupported(
       client,
       room,
@@ -382,10 +390,9 @@ export function normalizeTimelineEvent(
       shield,
       'undecryptable-message',
       true,
+      '',
+      undecryptableReasonOf(read(() => event.decryptionFailureReason, null)),
     );
-  }
-  if (read(() => event.isRedacted(), false)) {
-    return unsupported(client, room, event, shield, 'redacted-message', false);
   }
 
   if (read(() => isPollStart(event), false)) {

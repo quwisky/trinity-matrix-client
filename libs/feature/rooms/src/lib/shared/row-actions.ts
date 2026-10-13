@@ -23,6 +23,7 @@ import { MessageSourceComponent } from '../message-source/message-source.compone
 import { ReactionPickerComponent } from '../reaction-picker/reaction-picker.component';
 import { type ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import { type ReportService } from '../report/report.service';
+import { type UndecryptableFixService } from './undecryptable-fix.service';
 
 /** What the message list and the thread panel hand the shared row-action dispatcher. */
 export interface SharedRowActionContext {
@@ -35,6 +36,8 @@ export interface SharedRowActionContext {
   readonly report: Pick<ReportService, 'report$'>;
   readonly reactions: Pick<ReactionsDialogService, 'open$'>;
   readonly editHistory: Pick<EditHistoryDialogService, 'openHistory$'>;
+  /** Open the fix for a message this device could not decrypt. */
+  readonly undecryptableFix: Pick<UndecryptableFixService, 'open'>;
   /** Toggle a reaction; each host sends it its own way. */
   readonly react: (id: string, key: string) => void;
   /** Quote a row into the composer; hosts differ in what quoting cancels. */
@@ -122,7 +125,8 @@ type SharedRowAction = Extract<
       | 'forward'
       | 'report'
       | 'reactors'
-      | 'edit-history';
+      | 'edit-history'
+      | 'fix-undecryptable';
   }
 >;
 
@@ -202,6 +206,12 @@ export function dispatchSharedRowAction(
         .subscribe((followed) => {
           if (followed) ctx.onHistoryLink?.(followed);
         });
+      return true;
+    case 'fix-undecryptable':
+      ctx.undecryptableFix
+        .open()
+        .pipe(takeUntilDestroyed(ctx.destroyRef))
+        .subscribe({ error: () => undefined });
       return true;
     default:
       return false;
