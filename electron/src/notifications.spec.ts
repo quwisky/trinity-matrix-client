@@ -74,7 +74,6 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('electron', () => ({
   Notification: mocks.FakeNotification,
-  nativeImage: { createFromPath: () => ({ isEmpty: () => false }) },
   ipcMain: {
     handle: (
       channel: string,
@@ -82,10 +81,9 @@ vi.mock('electron', () => ({
     ) => mocks.handlers.set(channel, handler),
   },
 }));
-vi.mock('node:fs', () => ({
-  existsSync: (path: string) => mocks.iconPaths.includes(path),
+vi.mock('./icons', () => ({
+  appIconImage: () => (mocks.iconPaths.length ? { icon: true } : undefined),
 }));
-vi.mock('./icons', () => ({ iconCandidatePaths: () => mocks.iconPaths }));
 vi.mock('./window', () => ({
   focusMainWindow: mocks.focusMainWindow,
   getMainWindow: () => mocks.mainWindow.current,

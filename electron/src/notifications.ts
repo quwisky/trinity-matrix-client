@@ -1,10 +1,9 @@
-import { ipcMain, nativeImage, Notification } from 'electron';
-import * as fs from 'node:fs';
+import { ipcMain, Notification } from 'electron';
 import {
   coerceNotificationPayload,
   type NotificationRequest,
 } from './notification-payload';
-import { iconCandidatePaths } from './icons';
+import { appIconImage } from './icons';
 import { focusMainWindow, getMainWindow } from './window';
 
 // Native notifications.
@@ -25,38 +24,15 @@ const activeNotifications = new Map<string, Electron.Notification>();
 // Settles a still-pending notification as completed when a newer one for the same
 // room replaces it: it never shows, but nothing failed.
 const supersede = new Map<Electron.Notification, () => void>();
-// Lazily resolved 256 px app icon for notifications. `undefined` => not yet
-// resolved; `null` => none found. Linux only (see resolveNotificationIcon).
-let notificationIconCache: Electron.NativeImage | null | undefined;
-
 /**
  * Colored app icon for Linux notifications, whose daemons show no app icon unless the
  * desktop-entry hint matches an installed .desktop file. macOS and Windows already show
- * the app icon (themed on macOS) and would add `icon` as a second image. Resolved once,
- * lazily; returns `undefined` when the asset can't be found so we omit the option rather
- * than pass a blank image.
+ * the app icon (themed on macOS) and would add `icon` as a second image. Uses the shared
+ * app icon image (decoded once with the window icon); `undefined` when the asset can't
+ * be found so we omit the option rather than pass a blank image.
  */
 function resolveNotificationIcon(): Electron.NativeImage | undefined {
-  if (process.platform !== 'linux') return undefined;
-  if (notificationIconCache === undefined) {
-    let found: Electron.NativeImage | null = null;
-    for (const candidate of iconCandidatePaths('notificationIcon.png')) {
-      try {
-        if (!fs.existsSync(candidate)) {
-          continue;
-        }
-        const image = nativeImage.createFromPath(candidate);
-        if (!image.isEmpty()) {
-          found = image;
-          break;
-        }
-      } catch {
-        // try next candidate
-      }
-    }
-    notificationIconCache = found;
-  }
-  return notificationIconCache ?? undefined;
+  return process.platform === 'linux' ? appIconImage() : undefined;
 }
 
 /**
