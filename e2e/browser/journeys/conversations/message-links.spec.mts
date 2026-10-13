@@ -15,6 +15,12 @@ import {
 import { registerUser } from '../../../support/account.mts';
 import { AA_NORMAL_TEXT, measureContrast } from '../../support/contrast.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
+import {
+  addRoom,
+  seedFormattedRoom,
+  sendMessage,
+  signInAndOpen,
+} from '../../support/formatted-message-journey.mts';
 
 // End-to-end for matrix.to link navigation: a message linking to another room routes
 // in-app (switches rooms) rather than leaving to matrix.to. Needs Synapse (Docker).
@@ -592,5 +598,55 @@ test.describe('Matrix room links', () => {
       'placeholder',
       new RegExp(roomName),
     );
+  });
+});
+
+test.describe('External message links', () => {
+  test.skip(!session.available, 'needs a homeserver');
+
+  test('opens an external link in a new tab with no opener and keeps a permalink in Trinity', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'ext-link');
+    const targetId = await addRoom(
+      request,
+      hs,
+      room,
+      `Link target ${testResourceId('target')}`,
+    );
+    // An http(s) page on the harness itself, so the popup needs no internet.
+    const external = `${hs}/_matrix/client/versions`;
+    await sendMessage(request, hs, room, {
+      body: 'links',
+      html: `<p><a href="${external}">the external page</a> and <a href="https://matrix.to/#/${targetId}">the target room</a></p>`,
+    });
+    await signInAndOpen(page, room);
+
+    const externalLink = page
+      .locator('.scroll a', { hasText: 'the external page' })
+      .first();
+    await expect(externalLink).toHaveAttribute('target', '_blank', {
+      timeout: 20_000,
+    });
+    await expect(externalLink).toHaveAttribute('rel', 'noopener noreferrer');
+    const popupEvent = page.waitForEvent('popup');
+    await externalLink.click();
+    const popup = await popupEvent;
+    await popup.waitForLoadState('domcontentloaded');
+    expect(await popup.evaluate(() => window.opener)).toBeNull();
+    await popup.close();
+
+    const permalink = page
+      .locator('.scroll a', { hasText: 'the target room' })
+      .first();
+    await expect(permalink).not.toHaveAttribute('target');
+    await expect(permalink).not.toHaveAttribute('rel');
+    await permalink.click();
+    await expect(page.getByTestId('room-link-preview')).toBeVisible({
+      timeout: 20_000,
+    });
+    expect(page.context().pages()).toHaveLength(1);
   });
 });
