@@ -17,7 +17,7 @@ import type {
   ApplicationStartupProducerSettlement,
   ApplicationStartupStageOutcome,
 } from './application-runtime.models';
-import { requiredStartupPolicyForStage } from './application-startup.policy';
+import { APPLICATION_STARTUP_PRODUCER_POLICIES } from './application-startup.policy';
 import { optionalSessionSettlements } from './application-startup-settlements';
 
 export type ApplicationSessionStartupEvent =
@@ -39,7 +39,8 @@ export class ApplicationSessionStartupWorkflow {
   private readonly adapter = inject(APPLICATION_RUNTIME_ADAPTER);
 
   run(readiness: Observable<void>): Observable<ApplicationSessionStartupEvent> {
-    const policy = requiredStartupPolicyForStage('session-capabilities')!;
+    // Room Library is the stage's one required producer; its budget bounds preparation.
+    const policy = APPLICATION_STARTUP_PRODUCER_POLICIES['room-library'];
     const session = this.adapter.runSession(readiness).pipe(
       timeout({
         first: policy.budgetMs,

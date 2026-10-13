@@ -5,6 +5,7 @@ import type {
 
 export const APPLICATION_STARTUP_STAGES = [
   'host-negotiation',
+  'session-lock',
   'preference-hydration',
   'account-restoration',
   'session-capabilities',
@@ -17,6 +18,7 @@ export type ApplicationStartupStage =
 
 export const APPLICATION_STARTUP_PRODUCERS = [
   'host-contract',
+  'session-lock',
   'preference-hydration',
   'account-registry',
   'room-library',
@@ -77,6 +79,21 @@ export type ApplicationStartupStageOutcome =
       readonly settlements?: readonly ApplicationStartupProducerSettlement[];
     };
 
+/** The diagnostic of a tab that cannot take the session lock: no Web Locks (an insecure context). */
+export const SESSION_LOCK_UNAVAILABLE_CODE = 'session-lock-unavailable';
+
+/** The secure-connection copy (owner decision 1), shared by the notice and System status. */
+export const SESSION_LOCK_UNAVAILABLE_COPY = {
+  heading: 'Trinity needs a secure connection',
+  body: 'Open Trinity over HTTPS to use it in this browser.',
+} as const;
+
+/** How the session-lock stage found this tab's claim on the installation's one running session. */
+export type ApplicationSessionLockOutcome =
+  | { readonly kind: 'held' }
+  | { readonly kind: 'waiting' }
+  | { readonly kind: 'unavailable' };
+
 export type ApplicationStartOutcome =
   | {
       readonly kind: 'ready';
@@ -87,6 +104,12 @@ export type ApplicationStartOutcome =
       readonly kind: 'blocked';
       readonly attempt: number;
       readonly failure: ApplicationStartupFailure;
+      readonly settlements: readonly ApplicationStartupProducerSettlement[];
+    }
+  | {
+      /** Another tab runs Trinity; startup resumes at the session lock once this tab holds it. */
+      readonly kind: 'waiting';
+      readonly attempt: number;
       readonly settlements: readonly ApplicationStartupProducerSettlement[];
     };
 
@@ -106,6 +129,11 @@ export type ApplicationRuntimeState =
     }
   | {
       readonly phase: 'ready';
+      readonly attempt: number;
+      readonly settlements: readonly ApplicationStartupProducerSettlement[];
+    }
+  | {
+      readonly phase: 'waiting-for-session';
       readonly attempt: number;
       readonly settlements: readonly ApplicationStartupProducerSettlement[];
     }

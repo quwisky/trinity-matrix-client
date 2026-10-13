@@ -10,6 +10,7 @@ import type { ApplicationRuntimeAdapter } from '../application-runtime.adapter';
 import type {
   ApplicationRecoveryAdapterOutcome,
   ApplicationSessionEvent,
+  ApplicationSessionLockOutcome,
   ApplicationStartupProducerSettlement,
   ApplicationStartupRecovery,
   ApplicationStartupStageOutcome,
@@ -23,6 +24,7 @@ import { RetiredPushGatewayCleanup } from '@trinity/data-access/notifications';
 import {
   AppConfigService,
   DraftStoreService,
+  SessionLockService,
   StoragePersistenceService,
 } from '@trinity/platform-native';
 import {
@@ -95,6 +97,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly preferenceSources = inject(TrinityPreferenceStartupSources);
   private readonly hostHealth = inject(HostSessionHealthService);
   private readonly health = inject(CapabilityHealthService);
+  private readonly sessionLock = inject(SessionLockService);
   private readonly healthContexts = new Map<string, CapabilityContext>();
   // Version stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard (#927).
   private readonly healthGenerations = new Map<string, number>();
@@ -126,6 +129,33 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
         } as const),
       ),
     );
+  }
+
+  acquireSessionLock(): Observable<ApplicationSessionLockOutcome> {
+    return this.sessionLock.acquire().pipe(
+      map((acquisition): ApplicationSessionLockOutcome => {
+        switch (acquisition) {
+          case 'held':
+          case 'not-required':
+            return { kind: 'held' };
+          case 'waiting':
+            return { kind: 'waiting' };
+          case 'unavailable':
+            return { kind: 'unavailable' };
+          default: {
+            const unhandled: never = acquisition;
+            void unhandled;
+            return { kind: 'unavailable' };
+          }
+        }
+      }),
+      // Never start without the lock (owner decision 1).
+      catchError(() => of({ kind: 'unavailable' } as const)),
+    );
+  }
+
+  awaitSessionLock(): Observable<void> {
+    return this.sessionLock.granted();
   }
 
   hydratePreferences(): Observable<ApplicationStartupStageOutcome> {

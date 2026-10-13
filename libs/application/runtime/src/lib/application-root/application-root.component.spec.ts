@@ -21,7 +21,7 @@ import { BUG_REPORT_LAUNCHER, BUILD_INFO } from '@trinity/platform-native';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, firstValueFrom, of, type Observable } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   ApplicationRecoveryOutcome,
   ApplicationRuntimeState,
@@ -48,6 +48,8 @@ function settle(fixture: { detectChanges(): void }): void {
 }
 
 describe('ApplicationRootComponent', () => {
+  afterEach(() => vi.useRealTimers());
+
   async function setup(initial: ApplicationRuntimeState, routes: Routes = []) {
     const state = signal(initial);
     const trust = signal<TrustStatus>('ready');
@@ -612,5 +614,22 @@ describe('ApplicationRootComponent', () => {
     expect(
       document.querySelector('.system-status__entry')?.textContent,
     ).not.toContain('safe-unknown-code');
+  });
+
+  it('never renders the routes while another tab runs Trinity', async () => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
+    const { fixture, queryByTestId } = await setup({
+      phase: 'waiting-for-session',
+      attempt: 1,
+      settlements: [],
+    });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('router-outlet')).toBeNull();
+    expect(queryByTestId('app-startup-blocked')).toBeNull();
   });
 });

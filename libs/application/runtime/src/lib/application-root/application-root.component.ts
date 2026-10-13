@@ -77,7 +77,13 @@ export class ApplicationRootComponent {
   readonly state = this.runtime.state;
   readonly booting = computed(() => {
     const phase = this.state().phase;
-    return phase === 'stopped' || phase === 'starting' || phase === 'stopping';
+    return (
+      phase === 'stopped' ||
+      phase === 'starting' ||
+      phase === 'stopping' ||
+      // Never the routes while another tab runs Trinity.
+      phase === 'waiting-for-session'
+    );
   });
   readonly startupStep = computed(() => {
     const state = this.state();
@@ -163,6 +169,8 @@ function startupStep(stage: ApplicationStartupStage): string {
   switch (stage) {
     case 'host-negotiation':
       return 'Checking this device…';
+    case 'session-lock':
+      return 'Checking for other tabs…';
     case 'preference-hydration':
       return 'Restoring your preferences…';
     case 'account-restoration':
@@ -173,6 +181,11 @@ function startupStep(stage: ApplicationStartupStage): string {
       return 'Opening your Workspace…';
     case 'readiness':
       return 'Finishing startup…';
+    default: {
+      const unhandled: never = stage;
+      void unhandled;
+      return 'Finishing startup…';
+    }
   }
 }
 

@@ -300,6 +300,20 @@ describe('CapabilityStatusService', () => {
     expect(details).not.toContain('private');
   });
 
+  it('labels the support details of a tab waiting for another tab as startup', () => {
+    runtimeState.set({
+      phase: 'waiting-for-session',
+      attempt: 3,
+      settlements: [],
+    });
+    report('@a:hs', 'accounts', 'restore');
+
+    const details = status.supportDetails();
+
+    expect(details).toContain('"stage": "startup"');
+    expect(details).toContain('"attempt": 3');
+  });
+
   it('announces genuine recovery but not duplicates or expected-state retirement', () => {
     const context = report('@a:hs', 'accounts', 'restore');
     const problem = status.entries()[0]!.problem;

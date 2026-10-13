@@ -34,6 +34,7 @@ import { startupFailureOutcome } from './application-startup-failure';
 import { ApplicationStartupStageWorkflow } from './application-startup-stage.workflow';
 import {
   APPLICATION_STARTUP_STAGES,
+  SESSION_LOCK_UNAVAILABLE_CODE,
   type ApplicationRecoveryOutcome,
   type ApplicationRuntimeState,
   type ApplicationStartOutcome,
@@ -199,10 +200,29 @@ export class ApplicationRuntimeService {
     settlements: readonly ApplicationStartupProducerSettlement[],
   ): Observable<ApplicationStartOutcome> {
     return this.runAttempt(onPreferencesHydrated, startIndex, settlements).pipe(
-      switchMap((outcome) =>
-        outcome.kind === 'ready'
-          ? of(outcome)
-          : concat(
+      switchMap((outcome) => {
+        switch (outcome.kind) {
+          case 'ready':
+            return of(outcome);
+          case 'waiting':
+            // Not an attempt in progress: this tab waits for another tab, outside the
+            // watchdog, and resumes at the session lock, which then finds the lock held.
+            return concat(
+              of(outcome),
+              this.stageWorkflow
+                .sessionLockGranted()
+                .pipe(
+                  switchMap(() =>
+                    this.attemptUntilReady(
+                      onPreferencesHydrated,
+                      APPLICATION_STARTUP_STAGES.indexOf('session-lock'),
+                      outcome.settlements,
+                    ),
+                  ),
+                ),
+            );
+          case 'blocked':
+            return concat(
               of(outcome),
               this.retries.pipe(
                 take(1),
@@ -215,8 +235,16 @@ export class ApplicationRuntimeService {
                   );
                 }),
               ),
-            ),
-      ),
+            );
+          default: {
+            const unhandled: never = outcome;
+            void unhandled;
+            return throwError(
+              () => new Error('Unknown Application Runtime start outcome.'),
+            );
+          }
+        }
+      }),
     );
   }
 
@@ -293,6 +321,14 @@ export class ApplicationRuntimeService {
       stage,
       settlements,
     });
+    if (stage === 'session-lock') {
+      return this.runSessionLockStage(
+        attempt,
+        index,
+        settlements,
+        onPreferencesHydrated,
+      );
+    }
     if (stage === 'session-capabilities') {
       return this.runSessionStage(
         attempt,
@@ -316,6 +352,56 @@ export class ApplicationRuntimeService {
           ),
         ),
       );
+  }
+
+  private runSessionLockStage(
+    attempt: number,
+    index: number,
+    settlements: readonly ApplicationStartupProducerSettlement[],
+    onPreferencesHydrated: () => void,
+  ): Observable<ApplicationStartOutcome> {
+    return this.stageWorkflow.sessionLock().pipe(
+      switchMap((lock) => {
+        switch (lock.kind) {
+          case 'held':
+            return this.advanceStage(
+              attempt,
+              index,
+              'session-lock',
+              settlements,
+              { kind: 'ready' },
+              onPreferencesHydrated,
+            );
+          case 'unavailable':
+            // Owner decision 1: never start without the lock. The root shows the
+            // secure-connection notice for this code instead of the recovery page.
+            return this.advanceStage(
+              attempt,
+              index,
+              'session-lock',
+              settlements,
+              {
+                kind: 'blocked',
+                recovery: 'retry-startup',
+                diagnostic: { code: SESSION_LOCK_UNAVAILABLE_CODE },
+              },
+              onPreferencesHydrated,
+            );
+          case 'waiting':
+            this.runtimeState.set({
+              phase: 'waiting-for-session',
+              attempt,
+              settlements,
+            });
+            return of({ kind: 'waiting', attempt, settlements } as const);
+          default: {
+            const unhandled: never = lock;
+            void unhandled;
+            return throwError(() => new Error('Unknown session lock outcome.'));
+          }
+        }
+      }),
+    );
   }
 
   private runSessionStage(

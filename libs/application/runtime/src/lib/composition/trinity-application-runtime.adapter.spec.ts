@@ -62,6 +62,7 @@ import {
   MessageGestureSettingsService,
   NativeNavigationService,
   PrivacySettingsService,
+  SessionLockService,
   ShellLayoutService,
   StoragePersistenceService,
   SystemLineSettingsService,
@@ -83,6 +84,7 @@ import {
   Subject,
   firstValueFrom,
   of,
+  throwError,
   toArray,
 } from 'rxjs';
 import {
@@ -135,6 +137,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let updateCheck: Mock<HostUpdatesService['check']>;
   let hydrateOrder: Mock<() => Observable<RoomOrderHydrationOutcome>>;
   let requestPersistence: Mock<StoragePersistenceService['requestPersistence']>;
+  let acquireLock: Mock<SessionLockService['acquire']>;
+  let lockGranted: Subject<void>;
   let health: CapabilityHealthService;
   let adapter: TrinityApplicationRuntimeAdapter;
 
@@ -203,6 +207,10 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     requestPersistence = vi.fn<StoragePersistenceService['requestPersistence']>(
       () => of(true),
     );
+    acquireLock = vi.fn<SessionLockService['acquire']>(() =>
+      of('held' as const),
+    );
+    lockGranted = new Subject<void>();
     const promiseInit = () => ({ init: vi.fn().mockResolvedValue(undefined) });
     TestBed.configureTestingModule({
       providers: [
@@ -326,6 +334,10 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         }),
         MockProvider(StoragePersistenceService, {
           requestPersistence,
+        }),
+        MockProvider(SessionLockService, {
+          acquire: acquireLock,
+          granted: () => lockGranted,
         }),
       ],
     });
@@ -479,6 +491,38 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       recovery: 'retry-startup',
       diagnostic: { code: 'host-negotiation-failed' },
     });
+  });
+
+  it.each([
+    ['held', { kind: 'held' }],
+    ['not-required', { kind: 'held' }],
+    ['waiting', { kind: 'waiting' }],
+    ['unavailable', { kind: 'unavailable' }],
+  ] as const)(
+    'reports a %s session lock to startup',
+    async (acquisition, outcome) => {
+      acquireLock.mockReturnValueOnce(of(acquisition));
+
+      await expect(
+        firstValueFrom(adapter.acquireSessionLock()),
+      ).resolves.toEqual(outcome);
+    },
+  );
+
+  it('reports a failing session lock as unavailable, never as held', async () => {
+    acquireLock.mockReturnValueOnce(throwError(() => new Error('locks broke')));
+
+    await expect(firstValueFrom(adapter.acquireSessionLock())).resolves.toEqual(
+      { kind: 'unavailable' },
+    );
+  });
+
+  it('continues startup when the waiting tab is granted the session lock', async () => {
+    const granted = firstValueFrom(adapter.awaitSessionLock());
+
+    lockGranted.next();
+
+    await expect(granted).resolves.toBeUndefined();
   });
 
   it('settles ordering health and persistence independently', async () => {
