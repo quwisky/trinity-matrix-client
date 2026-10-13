@@ -5,6 +5,7 @@ import {
   ConnectionError,
   EventStatus,
   HttpApiEvent,
+  MsgType,
   MemoryStore,
   SyncState,
   TokenRefreshError,
@@ -2843,19 +2844,29 @@ describe('MatrixClientService session handover', () => {
     events: Echo[] = [],
     threadEvents: Echo[] = [],
     uploads: unknown[] = [],
+    { inFlightMap = true }: { readonly inFlightMap?: boolean } = {},
   ) {
     const timeline = (list: Echo[]) => ({ getEvents: () => list });
+    // As in the SDK with `chronological` ordering: a thread reply's echo is in no timeline, and
+    // `txnToEvent` lists every echo in send order.
+    const room = {
+      roomId: '!room:hs',
+      getLiveTimeline: () => timeline(events),
+      getThreads: () => [{ liveTimeline: timeline([]) }],
+      get txnToEvent() {
+        return new Map(
+          [...events, ...threadEvents]
+            .filter((event) => event.status !== null)
+            .map((event) => [event.getId(), event] as const),
+        );
+      },
+    };
+    if (!inFlightMap) delete (room as { txnToEvent?: unknown }).txnToEvent;
     return {
       ...fakeClient(),
       syncApi: { stop: vi.fn() },
       getCurrentUploads: vi.fn(() => uploads),
-      getRooms: vi.fn(() => [
-        {
-          roomId: '!room:hs',
-          getLiveTimeline: () => timeline(events),
-          getThreads: () => [{ liveTimeline: timeline(threadEvents) }],
-        },
-      ]),
+      getRooms: vi.fn(() => [room]),
     };
   }
 
@@ -3032,6 +3043,40 @@ describe('MatrixClientService session handover', () => {
     ]);
   });
 
+  it('does not take a message that merely mentions a spoiler for one', async () => {
+    const svc = await liveService(
+      handoverClient([
+        echo(EventStatus.NOT_SENT, {
+          msgtype: 'm.text',
+          body: 'read **this**',
+          format: 'org.matrix.custom.html',
+          formatted_body:
+            'read <b>this</b> <span data-mx-spoiler>not hidden by me</span>',
+        }),
+      ]),
+    );
+
+    expect(svc.pendingTextMessages().map((message) => message.text)).toEqual([
+      'read **this**',
+    ]);
+  });
+
+  it('still finds the main timeline echoes if the SDK drops its in-flight map', async () => {
+    const svc = await liveService(
+      handoverClient(
+        [echo(EventStatus.SENDING, { msgtype: 'm.text', body: 'kept' })],
+        [],
+        [],
+        { inFlightMap: false },
+      ),
+    );
+
+    expect(svc.hasOutgoingWork()).toBe(true);
+    expect(svc.pendingTextMessages().map((message) => message.text)).toEqual([
+      'kept',
+    ]);
+  });
+
   it('drops uploads, media, edits, blank bodies and other event types, and counts an echo once', async () => {
     const shared = echo(EventStatus.SENDING, {
       msgtype: 'm.text',
@@ -3059,5 +3104,154 @@ describe('MatrixClientService session handover', () => {
     expect(svc.pendingTextMessages().map((message) => message.text)).toEqual([
       'once',
     ]);
+  });
+});
+
+describe('MatrixClientService session handover with a real MatrixClient', () => {
+  // The client, its rooms, threads and local echoes are matrix-js-sdk 43's own, started with
+  // its default `chronological` pending-event ordering. Only the network is fake.
+  const ROOM_ID = '!room:hs';
+  const ROOT_ID = '$root';
+
+  type SendFate = 'hang' | 'fail';
+
+  async function startWithRoom(fate: SendFate) {
+    const actual =
+      await vi.importActual<typeof import('matrix-js-sdk')>('matrix-js-sdk');
+    vi.mocked(createClient).mockReset();
+    vi.mocked(createClient).mockImplementation((opts) => {
+      const client = actual.createClient(opts);
+      vi.spyOn(client, 'initRustCrypto').mockResolvedValue(undefined);
+      vi.spyOn(client, 'clearStores').mockResolvedValue(undefined);
+      // Threads need server support, which a real startClient() would discover.
+      vi.spyOn(client, 'supportsThreads').mockReturnValue(true);
+      actual.Thread.setServerSideSupport(actual.FeatureSupport.Stable);
+      return client;
+    });
+    vi.stubGlobal('indexedDB', undefined);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        );
+        if (url.pathname.endsWith('/whoami')) {
+          return new Response(
+            JSON.stringify({ user_id: '@me:hs', device_id: 'DEV' }),
+            { headers: { 'content-type': 'application/json' } },
+          );
+        }
+        if (init.method === 'PUT' && url.pathname.includes('/send/')) {
+          if (fate === 'hang') return new Promise<Response>(() => undefined);
+          return new Response(
+            JSON.stringify({ errcode: 'M_FORBIDDEN', error: 'no' }),
+            { status: 403, headers: { 'content-type': 'application/json' } },
+          );
+        }
+        throw new TypeError('Failed to fetch');
+      }),
+    );
+    storeMock.startup.mockReset().mockResolvedValue(undefined);
+    storeMock.destroy.mockReset().mockResolvedValue(undefined);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(SESSION));
+    const client = svc.instance;
+    const room = new actual.Room(ROOM_ID, client, '@me:hs', {});
+    client.store.storeRoom(room);
+    const root = new actual.MatrixEvent({
+      event_id: ROOT_ID,
+      type: 'm.room.message',
+      sender: '@alice:hs',
+      room_id: ROOM_ID,
+      origin_server_ts: 1,
+      content: { msgtype: MsgType.Text, body: 'root' },
+    });
+    room.addLiveEvents([root], { addToState: false });
+    room.createThread(ROOT_ID, root, [], false);
+    return { svc, client };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each<SendFate>(['hang', 'fail'])(
+    'finds a thread reply whose send will %s',
+    async (fate) => {
+      const { svc, client } = await startWithRoom(fate);
+
+      void client
+        .sendMessage(ROOM_ID, ROOT_ID, {
+          msgtype: MsgType.Text,
+          body: 'in thread',
+        })
+        .catch(() => undefined);
+      await vi.waitFor(() => expect(svc.pendingTextMessages()).toHaveLength(1));
+
+      expect(svc.pendingTextMessages()).toEqual([
+        {
+          accountId: '@me:hs',
+          roomId: ROOM_ID,
+          threadRootId: ROOT_ID,
+          text: 'in thread',
+        },
+      ]);
+      // A failed send is no longer on its way; a hanging one is.
+      await vi.waitFor(() =>
+        expect(svc.hasOutgoingWork()).toBe(fate === 'hang'),
+      );
+    },
+  );
+
+  it.each<SendFate>(['hang', 'fail'])(
+    'finds a room message whose send will %s, in the order sent',
+    async (fate) => {
+      const { svc, client } = await startWithRoom(fate);
+
+      for (const body of ['first', 'second']) {
+        void client
+          .sendMessage(ROOM_ID, null, { msgtype: MsgType.Text, body })
+          .catch(() => undefined);
+      }
+      await vi.waitFor(() => expect(svc.pendingTextMessages()).toHaveLength(2));
+
+      expect(
+        svc.pendingTextMessages().map((m) => [m.threadRootId, m.text]),
+      ).toEqual([
+        [null, 'first'],
+        [null, 'second'],
+      ]);
+      await vi.waitFor(() =>
+        expect(svc.hasOutgoingWork()).toBe(fate === 'hang'),
+      );
+    },
+  );
+
+  it('has a sync loop to pause once the client has started', async () => {
+    const actual =
+      await vi.importActual<typeof import('matrix-js-sdk')>('matrix-js-sdk');
+    vi.stubGlobal('indexedDB', undefined);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch');
+      }),
+    );
+    const client = actual.createClient({
+      baseUrl: 'https://hs.example',
+      userId: '@me:hs',
+      accessToken: 'tok',
+    });
+    vi.spyOn(client, 'initRustCrypto').mockResolvedValue(undefined);
+
+    await client.startClient({ initialSyncLimit: 1 });
+    try {
+      // `pauseSync()` relies on this protected member; a rename in the SDK fails here.
+      const loop = (client as unknown as { syncApi?: { stop?: unknown } })
+        .syncApi;
+      expect(typeof loop?.stop).toBe('function');
+    } finally {
+      client.stopClient();
+    }
   });
 });

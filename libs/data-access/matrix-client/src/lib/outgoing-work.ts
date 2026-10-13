@@ -40,10 +40,20 @@ interface SyncLoopOwner {
 }
 
 /**
+ * matrix-js-sdk keeps every in-flight local echo of a room in the private `Room.txnToEvent`.
+ * With the default `chronological` ordering a thread reply's echo is in no live timeline, so
+ * this map is the only place that lists it.
+ */
+interface PendingEchoOwner {
+  readonly txnToEvent?: ReadonlyMap<string, MatrixEvent>;
+}
+
+/**
  * Stop a client's sync loop and nothing else. `stopClient()` stops the loop the same way
  * (`this.syncApi?.stop()`), but it stops the crypto engine first, which a message still being
  * encrypted needs. There is no public sync-only stop. Should a later SDK rename the member,
- * this does nothing, and sync stops with `stopClient()` at most five seconds later.
+ * this does nothing, and sync stops with `stopClient()` at most five seconds later. It also does
+ * nothing while the client is still starting, before `startClient()` has created the member.
  */
 export function pauseClientSync(client: MatrixClient): void {
   const loop = (client as unknown as SyncLoopOwner).syncApi;
@@ -61,12 +71,8 @@ export function clientHasOutgoingWork(client: MatrixClient): boolean {
     client
       .getRooms()
       .some((room) =>
-        liveTimelines(room).some((timeline) =>
-          timeline
-            .getEvents()
-            .some(
-              (event) => event.status !== null && ON_ITS_WAY.has(event.status),
-            ),
+        localEchoes(room).some(
+          (event) => event.status !== null && ON_ITS_WAY.has(event.status),
         ),
       )
   );
@@ -84,29 +90,41 @@ export function clientPendingTexts(
   const seen = new Set<string>();
   const messages: PendingTextMessage[] = [];
   for (const room of client.getRooms()) {
-    for (const timeline of liveTimelines(room)) {
-      for (const event of timeline.getEvents()) {
-        const id = event.getId();
-        const text = unsentText(event);
-        if (!id || text === null || seen.has(id)) continue;
-        seen.add(id);
-        messages.push({
-          accountId,
-          roomId: room.roomId,
-          threadRootId: threadOf(event, id),
-          text,
-        });
-      }
+    for (const event of localEchoes(room)) {
+      const id = event.getId();
+      const text = unsentText(event);
+      if (!id || text === null || seen.has(id)) continue;
+      seen.add(id);
+      messages.push({
+        accountId,
+        roomId: room.roomId,
+        threadRootId: threadOf(event, id),
+        text,
+      });
     }
   }
   return messages;
 }
 
-function liveTimelines(room: Room): EventTimeline[] {
-  return [
+/**
+ * The events of a room that may be local echoes, each at most once, in send order where the SDK
+ * knows it: the room's in-flight map first, then whatever its live timelines hold. The map is a
+ * private member; should a later SDK rename it, the timelines alone still cover the main one.
+ */
+function localEchoes(room: Room): MatrixEvent[] {
+  const events = new Set<MatrixEvent>();
+  const inFlight = (room as unknown as PendingEchoOwner).txnToEvent;
+  if (inFlight instanceof Map) {
+    for (const event of inFlight.values()) events.add(event);
+  }
+  const timelines: EventTimeline[] = [
     room.getLiveTimeline(),
     ...room.getThreads().map((thread) => thread.liveTimeline),
   ];
+  for (const timeline of timelines) {
+    for (const event of timeline.getEvents()) events.add(event);
+  }
+  return [...events];
 }
 
 /**
@@ -145,10 +163,16 @@ function isRichReply(content: IContent): boolean {
   );
 }
 
-/** `/spoiler` sends its text hidden in a `<span data-mx-spoiler>` formatted body. */
+/**
+ * `/spoiler` sends its text as a formatted body that opens with `<span data-mx-spoiler`; a
+ * message that only contains such a span somewhere is not one.
+ */
 function isSpoiler(content: IContent): boolean {
   const formatted: unknown = content['formatted_body'];
-  return typeof formatted === 'string' && formatted.includes('data-mx-spoiler');
+  return (
+    typeof formatted === 'string' &&
+    formatted.trimStart().startsWith('<span data-mx-spoiler')
+  );
 }
 
 function threadOf(event: MatrixEvent, id: string): string | null {
