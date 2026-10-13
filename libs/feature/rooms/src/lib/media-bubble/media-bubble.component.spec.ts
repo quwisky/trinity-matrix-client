@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import {
   MediaBubbleComponent,
@@ -121,6 +122,63 @@ describe('MediaBubbleComponent', () => {
       expect(ended).toBe(1);
     },
   );
+
+  describe('focus when a clip ends', () => {
+    const clips = [
+      ['video', 'video/mp4', 'Play video clip'],
+      ['audio', 'audio/ogg', 'Play audio clip'],
+    ] as const;
+
+    /** Play a clip to its end, the wrapper then taking its src away as it does. */
+    async function endClip(
+      kind: 'video' | 'audio',
+      mimeType: string,
+      focused: boolean,
+    ) {
+      const { fixture, container } = await render(MediaBubbleComponent, {
+        inputs: {
+          item: item({ kind, mimeType, filename: 'clip' }),
+          src: 'blob:clip',
+        },
+      });
+      // The wrapper resets the player in response, as MediaAttachmentComponent does.
+      fixture.componentInstance.playbackEnded.subscribe(() =>
+        fixture.componentRef.setInput('src', null),
+      );
+      const media = container.querySelector<HTMLMediaElement>(kind)!;
+      // jsdom treats only explicitly focusable media as focusable; a browser focuses controls.
+      media.tabIndex = 0;
+      if (focused) media.focus();
+      media.dispatchEvent(new Event('ended'));
+      TestBed.tick();
+      return container;
+    }
+
+    it.each(clips)(
+      'returns focus to the play control when a focused %s ends',
+      async (kind, mimeType, label) => {
+        const container = await endClip(kind, mimeType, true);
+
+        expect(document.activeElement).toBe(
+          container.querySelector(`button[aria-label="${label}"]`),
+        );
+      },
+    );
+
+    it.each(clips)(
+      'leaves focus alone when a %s ends without it',
+      async (kind, mimeType) => {
+        const elsewhere = document.createElement('button');
+        document.body.append(elsewhere);
+        elsewhere.focus();
+
+        await endClip(kind, mimeType, false);
+
+        expect(document.activeElement).toBe(elsewhere);
+        elsewhere.remove();
+      },
+    );
+  });
 
   it('emits download when the file-card is clicked', async () => {
     const { fixture, container } = await render(MediaBubbleComponent, {

@@ -2,11 +2,16 @@ import { TrnIconComponent } from '@trinity/components/foundations';
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
+  Injector,
+  afterNextRender,
   computed,
   effect,
+  inject,
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import { formatMediaDuration } from '../shared/format-media-duration';
 
@@ -73,6 +78,11 @@ export class MediaBubbleComponent {
   readonly playRequested = output<void>();
   /** A clip played to its end; the wrapper may take its `src` away to free the bytes. */
   readonly playbackEnded = output<void>();
+
+  private readonly injector = inject(Injector);
+  /** A clip's play control (video poster or audio row), present while it has no `src`. */
+  private readonly playButton =
+    viewChild<ElementRef<HTMLButtonElement>>('playButton');
 
   /** Terse accessors so the template needn't unwrap `item()` repeatedly. */
   readonly kind = computed(() => this.item().kind);
@@ -166,6 +176,21 @@ export class MediaBubbleComponent {
   requestPlay(): void {
     if (!this.loading()) {
       this.playRequested.emit();
+    }
+  }
+
+  /**
+   * A clip played to its end. The wrapper may take its `src` away, which removes the player;
+   * if the reader's focus was on it, it moves to the play control that replaces it rather
+   * than falling back to the page.
+   */
+  onEnded(media: HTMLMediaElement): void {
+    const hadFocus = media.ownerDocument.activeElement === media;
+    this.playbackEnded.emit();
+    if (hadFocus) {
+      afterNextRender(() => this.playButton()?.nativeElement.focus(), {
+        injector: this.injector,
+      });
     }
   }
 
