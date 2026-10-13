@@ -51,16 +51,13 @@ import { ThreadsService } from './threads.service';
 import { ConversationPinsController } from './conversation-pins.controller';
 import { createConversationThreadChildren } from './conversation-thread-children';
 import { ConversationSearchController } from './conversation-search.service';
+import { conversationDraftKey } from './conversation-draft-key';
 
 export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 export type {
   ConversationTextSendRequest,
   ConversationTextSender,
 } from './conversation-compose';
-
-function composeDraftKey(key: ConversationKey): string {
-  return `conversation:${JSON.stringify([key.accountId, key.roomId])}`;
-}
 
 const MAX_RETAINED_COMPOSE_INTENTS = 200;
 
@@ -400,7 +397,7 @@ export class ConversationRuntime {
 
   private create(key: ConversationKey): ConversationEntry {
     const immutableKey = Object.freeze({ ...key });
-    const draftKey = composeDraftKey(immutableKey);
+    const draftKey = conversationDraftKey(immutableKey);
     const startedAt = performance.now();
     const controller = this.factory.create(immutableKey);
     this.lastAttachDurationMs.set(performance.now() - startedAt);

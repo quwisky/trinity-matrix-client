@@ -164,4 +164,26 @@ describe('DraftStoreService', () => {
       });
     });
   });
+
+  it('writes the drafts at once on flush, without a second write after the debounce', async () => {
+    const svc = service();
+    svc.set('!a:hs', 'unsent');
+
+    await svc.flush();
+
+    expect(set).toHaveBeenCalledExactlyOnceWith({
+      key: KEY,
+      value: JSON.stringify({ '!a:hs': 'unsent' }),
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(set).toHaveBeenCalledOnce();
+  });
+
+  it('resolves flush even when storage refuses the write', async () => {
+    set.mockRejectedValueOnce(new Error('quota'));
+    const svc = service();
+    svc.set('!a:hs', 'unsent');
+
+    await expect(svc.flush()).resolves.toBeUndefined();
+  });
 });
