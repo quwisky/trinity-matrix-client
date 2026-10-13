@@ -18,57 +18,40 @@
 }
 
 <ng-template #panel>
-  <!-- With Emoji alone there is nothing to choose between, so the popover holds the emoji grid
-     alone. -->
-  @if (tabs().length > 1 || presentation() === 'sheet') {
-    <!-- In a sheet the close button shares the tab row instead of taking a row of its own;
-       it comes first, where the sheet header put it. -->
-    <div class="flex items-center gap-2 pt-2" [style.padding-inline]="inset()">
-      @if (presentation() === 'sheet') {
-        <button
-          trnBtn
-          presentation="ghost"
-          shape="icon"
-          size="sm"
-          type="button"
-          aria-label="Close"
-          data-testid="dialog-close"
-          (click)="dismiss.emit()"
-        >
-          <trn-icon name="x" motion="rotate" />
-        </button>
-      }
-      @if (tabs().length > 1) {
-        <!-- Plain tabs on the surface: the row has no track of its own, and only the selected
+  <!-- The tab row, and nothing else: a sheet closes by its handle, its backdrop, Escape or a
+       pick, so it has no close button. With Emoji alone there is nothing to choose between,
+       so there is no row at all and the panel starts with the emoji grid. -->
+  @if (tabs().length > 1) {
+    <div class="flex items-center pt-2" [style.padding-inline]="inset()">
+      <!-- Plain tabs on the surface: the row has no track of its own, and only the selected
            tab is marked, with the selected-surface pill. -->
-        <div
-          role="tablist"
-          aria-label="Picker type"
-          class="grid flex-1 auto-cols-fr grid-flow-col gap-1"
-          data-testid="expression-tabs"
-          (keydown)="onTabKeydown($event)"
-          (focusout)="onTabFocusOut($event)"
-        >
-          @for (tab of tabs(); track tab) {
-            <!-- Plain buttons rather than `trnBtn`: the button recipe has no selected-tab state,
+      <div
+        role="tablist"
+        aria-label="Picker type"
+        class="grid flex-1 auto-cols-fr grid-flow-col gap-1"
+        data-testid="expression-tabs"
+        (keydown)="onTabKeydown($event)"
+        (focusout)="onTabFocusOut($event)"
+      >
+        @for (tab of tabs(); track tab) {
+          <!-- Plain buttons rather than `trnBtn`: the button recipe has no selected-tab state,
                and a shared tabs recipe is tracked in #1269. -->
-            <button
-              #tab
-              type="button"
-              role="tab"
-              class="min-h-9 rounded-[var(--trinity-shape-control-radius)] px-3 text-sm font-semibold text-[var(--trinity-text-muted)] hover:bg-[var(--trinity-state-hover-surface)] hover:text-[var(--trinity-state-hover-foreground)] aria-selected:bg-[var(--trinity-state-selected-surface)] aria-selected:text-[var(--trinity-state-selected-foreground)] pointer-coarse:min-h-11"
-              [id]="tabId(tab)"
-              [attr.aria-selected]="tab === active()"
-              [attr.aria-controls]="tab === active() ? tabPanelId() : null"
-              [attr.tabindex]="tab === tabStop() ? 0 : -1"
-              [attr.data-testid]="'expression-tab-' + tab"
-              (click)="select(tab)"
-            >
-              {{ labels[tab] }}
-            </button>
-          }
-        </div>
-      }
+          <button
+            #tab
+            type="button"
+            role="tab"
+            class="min-h-9 rounded-[var(--trinity-shape-control-radius)] px-3 text-sm font-semibold text-[var(--trinity-text-muted)] hover:bg-[var(--trinity-state-hover-surface)] hover:text-[var(--trinity-state-hover-foreground)] aria-selected:bg-[var(--trinity-state-selected-surface)] aria-selected:text-[var(--trinity-state-selected-foreground)] pointer-coarse:min-h-11"
+            [id]="tabId(tab)"
+            [attr.aria-selected]="tab === active()"
+            [attr.aria-controls]="tab === active() ? tabPanelId() : null"
+            [attr.tabindex]="tab === tabStop() ? 0 : -1"
+            [attr.data-testid]="'expression-tab-' + tab"
+            (click)="select(tab)"
+          >
+            {{ labels[tab] }}
+          </button>
+        }
+      </div>
     </div>
   }
   <!-- Focusable so a sheet can put focus on the content when it opens; the pickers then move

@@ -15,8 +15,7 @@ import {
   ComposerExpressionTabPreference,
   type ComposerExpressionTab,
 } from '@trinity/data-access/timeline';
-import { TrnButton, type TrnEmojiPick } from '@trinity/components/controls';
-import { TrnIconComponent } from '@trinity/components/foundations';
+import { type TrnEmojiPick } from '@trinity/components/controls';
 import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
@@ -107,8 +106,6 @@ async function renderPanel(options: Options = {}) {
         NgTemplateOutlet,
         StickerPickerComponent,
         EmojiPickerStubComponent,
-        TrnButton,
-        TrnIconComponent,
         TrnOverlaySurfaceDirective,
       ],
     },
@@ -415,21 +412,21 @@ describe('ExpressionPickerComponent', () => {
     expect(handlers.dismiss).not.toHaveBeenCalled();
   });
 
-  it("puts the sheet's close button at the start of the tab row", async () => {
-    const { handlers } = await renderPanel({ presentation: 'sheet' });
-    const close = view.getByRole('button', { name: 'Close' });
+  it('has no close button in a sheet: the tab row holds only the tabs', async () => {
+    await renderPanel({ presentation: 'sheet' });
     const tablist = view.getByRole('tablist');
 
-    expect(close.parentElement).toBe(tablist.parentElement);
-    // First in focus order, as it was in the sheet's own header.
+    // The sheet closes by its handle, its backdrop, Escape or a pick.
+    expect(view.queryByRole('button', { name: 'Close' })).toBeNull();
     expect(
-      close.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    close.click();
-    expect(handlers.dismiss).toHaveBeenCalledTimes(1);
+      view.container.querySelector('[data-testid=dialog-close]'),
+    ).toBeNull();
+    expect(Array.from(tablist.parentElement?.children ?? [])).toEqual([
+      tablist,
+    ]);
   });
 
-  it("keeps the sheet's close button when Emoji is the only tab", async () => {
+  it('goes straight to the emoji grid in a sheet when Emoji is the only tab', async () => {
     await renderPanel({
       presentation: 'sheet',
       gifEnabled: false,
@@ -437,7 +434,11 @@ describe('ExpressionPickerComponent', () => {
     });
 
     expect(view.queryByRole('tablist')).toBeNull();
-    expect(view.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+    expect(view.queryByRole('button', { name: 'Close' })).toBeNull();
+    // No empty top row: the content is the panel's first element.
+    expect(view.fixture.nativeElement.firstElementChild).toHaveAttribute(
+      'data-expression-content',
+    );
   });
 
   it('has no close button of its own as a popover', async () => {

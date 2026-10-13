@@ -15,11 +15,9 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
-  TrnButton,
   TrnEmojiPickerComponent,
   type TrnEmojiPick,
 } from '@trinity/components/controls';
-import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
 import { type GifResult } from '@trinity/data-access/gif';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
@@ -61,9 +59,7 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
     GifPickerComponent,
     NgTemplateOutlet,
     StickerPickerComponent,
-    TrnButton,
     TrnEmojiPickerComponent,
-    TrnIconComponent,
     TrnOverlaySurfaceDirective,
   ],
   templateUrl: './expression-picker.component.html',
@@ -113,7 +109,7 @@ export class ExpressionPickerComponent {
   readonly gifSelect = output<GifResult>();
   readonly stickerSelect = output<ImagePackImage>();
   readonly manage = output<void>();
-  /** Escape inside the panel, the sticker picker's own dismiss, or the sheet's close button. */
+  /** Escape inside the anchored panel, or the sticker picker's own dismiss. */
   readonly dismiss = output<void>();
 
   protected readonly tabs = computed<readonly ComposerExpressionTab[]>(() =>

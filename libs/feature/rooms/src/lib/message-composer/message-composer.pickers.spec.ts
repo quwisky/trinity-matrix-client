@@ -532,9 +532,9 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     container.querySelector<HTMLElement>('.composer__emoji')!.click();
     TestBed.tick();
 
-    document
-      .querySelector<HTMLButtonElement>('[data-testid=dialog-close]')
-      ?.click();
+    // No close button: the person taps the backdrop (or swipes, or presses Escape).
+    expect(document.querySelector('[data-testid=dialog-close]')).toBeNull();
+    document.querySelector<HTMLElement>('.cdk-overlay-backdrop')!.click();
     TestBed.tick();
 
     expect(document.querySelector('trn-sheet-frame')).toBeNull();

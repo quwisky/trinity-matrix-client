@@ -747,7 +747,7 @@ export class MessageComposerComponent {
     this.pickerSheetRef = ref;
     ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       if (this.pickerSheetRef === ref) {
-        // Closed by the person (handle, backdrop, Escape, close button): the panel is shut.
+        // Closed by the person (handle, backdrop or Escape): the panel is shut.
         this.pickerSheetRef = null;
         this.pickerOpen.set(false);
       }
