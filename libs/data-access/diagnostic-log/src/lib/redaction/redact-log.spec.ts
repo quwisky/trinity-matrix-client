@@ -8,9 +8,11 @@ import {
   BOB,
   CORPUS_CONTEXT,
   EVENT,
+  EVENT_2,
   OWN_DEVICE,
   REDACTION_CORPUS,
   ROOM,
+  ROOM_V12,
 } from './redaction-corpus';
 
 /** Any Matrix-ID shape left after redaction that is not a placeholder. */
@@ -22,6 +24,21 @@ const PLACEHOLDER = /^(?:@me\d*|@user\d+|!room\d+|#alias\d+):server\d+$/;
 function decodeEscapes(text: string): string {
   return text.replace(/%[0-9A-Fa-f]{2}/g, (escape) =>
     String.fromCharCode(Number.parseInt(escape.slice(1), 16)),
+  );
+}
+
+/** Every three-character run of an ID: none may survive, whatever replaced it. */
+function fragments(id: string): string[] {
+  return Array.from({ length: id.length - 2 }, (_, start) =>
+    id.slice(start, start + 3),
+  );
+}
+
+/** The three-character runs of `id` left in `redacted`, read raw and with escapes decoded. */
+function survivingFragments(redacted: string, id: string): string[] {
+  const decoded = decodeEscapes(redacted);
+  return fragments(id).filter(
+    (fragment) => redacted.includes(fragment) || decoded.includes(fragment),
   );
 }
 
@@ -112,6 +129,23 @@ describe('createLogRedactor', () => {
     );
   });
 
+  it('redacts a plain event ID followed by a path', () => {
+    const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+    expect(redactor.redact(`GET /rooms/${ROOM}/event/${EVENT}/context`)).toBe(
+      'GET /rooms/!room1:server1/event/$event1/context',
+    );
+    expect(redactor.redact(`relations of ${EVENT_2}/m.thread`)).toBe(
+      'relations of $event2/m.thread',
+    );
+  });
+
+  it('leaves a longer base64 run after "$" alone, even before a path', () => {
+    const run = `$${'A'.repeat(45)}/x`;
+
+    expect(createLogRedactor(CORPUS_CONTEXT).redact(run)).toBe(run);
+  });
+
   it('also redacts an event ID printed in a request path', () => {
     expect(
       createLogRedactor(CORPUS_CONTEXT).redact(
@@ -182,6 +216,31 @@ describe('createLogRedactor', () => {
       );
     });
 
+    it.each([
+      ['x%3AQWERTYUIOP', 'x%3ADEVICE1'],
+      ['%22QWERTYUIOP%22', '%22DEVICE1%22'],
+      ['ids=%5B%22QWERTYUIOP%22%5D', 'ids=%5B%22DEVICE1%22%5D'],
+      ['device_id=ab.cd%2Fef%2Bgh%3D', 'device_id=DEVICE2'],
+      ['device_id=ab.cd%2fef%2bgh%3d&x=1', 'device_id=DEVICE2&x=1'],
+      ['q=%22ab.cd%2Fef%2Bgh%3D%22', 'q=%22DEVICE2%22'],
+    ])(
+      'redacts a known device ID next to an escape in %s',
+      (line, expected) => {
+        const redactor = createLogRedactor({
+          ...CORPUS_CONTEXT,
+          selfDeviceIds: [OWN_DEVICE, 'ab.cd/ef+gh='],
+        });
+
+        expect(redactor.redact(line)).toBe(expected);
+      },
+    );
+
+    it('leaves escaped text without a known device ID as it was written', () => {
+      const line = 'q=%22abcdefghij%22&r=x%3ay%2F';
+
+      expect(redact(line)).toBe(line);
+    });
+
     it('keeps known own device IDs redacted anywhere', () => {
       expect(redact(`session ${OWN_DEVICE} started`)).toBe(
         'session DEVICE1 started',
@@ -201,12 +260,6 @@ describe('createLogRedactor', () => {
     });
     const storeLine = (userId: string, deviceId: string): string =>
       `IndexedDbCryptoStore: opening main store trinity-crypto:${userId}:${deviceId}::matrix-sdk-crypto`;
-    /** Every three-character run of an ID: none may survive, whatever replaced it. */
-    const fragments = (id: string): string[] =>
-      Array.from({ length: id.length - 2 }, (_, start) =>
-        id.slice(start, start + 3),
-      );
-
     it('redacts the whole digit-led device ID in a crypto store name', () => {
       const deviceId = '1GncS3LIxD';
       const redactor = createLogRedactor(context([deviceId]));
@@ -277,6 +330,24 @@ describe('createLogRedactor', () => {
       );
     });
 
+    it('keeps the request path after a user ID with a port', () => {
+      const redactor = createLogRedactor(context([]));
+
+      expect(
+        redactor.redact('GET /profile/@bob:other.net:8448/displayname'),
+      ).toBe('GET /profile/@user1:server2/displayname');
+      expect(
+        redactor.redact(
+          `GET http://localhost:8008/_matrix/client/v3/profile/${SELF}:8008/avatar_url`,
+        ),
+      ).toBe(
+        'GET http://server1/_matrix/client/v3/profile/@me:server1/avatar_url',
+      );
+      expect(redactor.redact(storeLine('@bob:other.net', 'ab.cd/ef+gh='))).toBe(
+        'IndexedDbCryptoStore: opening main store trinity-crypto:@user1:server2:DEVICE1::matrix-sdk-crypto',
+      );
+    });
+
     it('keeps a URL port that runs into a word apart from the host', () => {
       const deviceId = '1GncS3LIxD';
       const redactor = createLogRedactor(context([deviceId]));
@@ -314,6 +385,208 @@ describe('createLogRedactor', () => {
       expect(redactor.redact(`device ${deviceId} verified by ${SELF}`)).toBe(
         'device DEVICE1 verified by @me:server1',
       );
+    });
+  });
+
+  describe('device IDs with punctuation after a user ID', () => {
+    const SELF = '@bugreport-run:localhost';
+    const context = (deviceIds: readonly string[]) => ({
+      selfUserIds: [SELF],
+      selfDeviceIds: deviceIds,
+      homeserverUrls: ['http://localhost:8008'],
+    });
+    const PUNCTUATED = [
+      'ab.cd/ef+gh=',
+      'Dev.ice/1+x=',
+      '12.34/abcd',
+      '/abc+def',
+      'abcdef==',
+      'a.b.c.d.e.f',
+    ];
+
+    it.each(PUNCTUATED)('redacts all of %s in a store name', (deviceId) => {
+      for (const deviceIds of [[deviceId], []]) {
+        const redacted = createLogRedactor(context(deviceIds)).redact(
+          `IndexedDbCryptoStore: opening main store trinity-crypto:${SELF}:${deviceId}::matrix-sdk-crypto`,
+        );
+
+        expect(redacted).toBe(
+          'IndexedDbCryptoStore: opening main store trinity-crypto:@me:server1:DEVICE1::matrix-sdk-crypto',
+        );
+        expect(survivingFragments(redacted, deviceId)).toEqual([]);
+      }
+    });
+
+    it.each(PUNCTUATED)('redacts all of %s after another user', (deviceId) => {
+      const redacted = createLogRedactor(context([])).redact(
+        `keys sent to @bob:other.net:${deviceId} and ${SELF}`,
+      );
+
+      expect(redacted).toBe(
+        'keys sent to @user1:server2:DEVICE1 and @me:server1',
+      );
+      expect(survivingFragments(redacted, deviceId)).toEqual([]);
+    });
+
+    it.each([
+      '@bob:other.net (device ZQ7MXK2PLB)',
+      '@bob:other.net (devices: ZQ7MXK2PLB, HW4RTN8JVC)',
+      '@bob:other.net (device_id ZQ7MXK2PLB)',
+      '@bob:other.net|deviceId ZQ7MXK2PLB',
+      '@bob:other.net|devices=[ZQ7MXK2PLB,HW4RTN8JVC]',
+      '@bob:other.net:device ZQ7MXK2PLB',
+    ])('reads a device keyword after a user ID as a keyword in %s', (line) => {
+      const redacted = createLogRedactor(context([])).redact(line);
+
+      for (const id of ['ZQ7MXK2PLB', 'HW4RTN8JVC']) {
+        expect(survivingFragments(redacted, id)).toEqual([]);
+      }
+      expect(redacted).toMatch(/device/i);
+    });
+
+    it('keeps the full stop that ends a sentence', () => {
+      expect(
+        createLogRedactor(context([])).redact(
+          'keys sent to @bob:other.net:ab.cd/ef+gh=.',
+        ),
+      ).toBe('keys sent to @user1:server2:DEVICE1.');
+    });
+
+    it('keeps a known device ID with punctuation redacted anywhere', () => {
+      const redactor = createLogRedactor(context(['ab.cd/ef+gh=']));
+
+      expect(redactor.redact('session ab.cd/ef+gh= started')).toBe(
+        'session DEVICE1 started',
+      );
+      expect(redactor.redact(`${SELF} (ab.cd/ef+gh=) signed in.`)).toBe(
+        '@me:server1 (DEVICE1) signed in.',
+      );
+    });
+  });
+
+  describe('percent-encoded identifiers', () => {
+    const IDS = [
+      ['user', BOB],
+      ['own user', ALICE],
+      ['user with a port', '@bob:other.net:8448'],
+      ['room', ROOM],
+      ['room v12', ROOM_V12],
+      ['alias', '#general:example.org'],
+      ['event v1', '$Ab3cD9xQ:example.org'],
+      ['event', EVENT],
+    ] as const;
+    /** How a log writer may have escaped an ID inside a path or query. */
+    const ENCODINGS = [
+      ['encodeURIComponent', (id: string) => encodeURIComponent(id)],
+      [
+        'every separator escaped',
+        (id: string) => encodeURIComponent(id).replace(/!/g, '%21'),
+      ],
+      [
+        'lower-case escapes',
+        (id: string) =>
+          encodeURIComponent(id)
+            .replace(/!/g, '%21')
+            .replace(/%[0-9A-F]{2}/g, (escape) => escape.toLowerCase()),
+      ],
+      ['only the colons escaped', (id: string) => id.replace(/:/g, '%3A')],
+      [
+        'only the sigil escaped',
+        (id: string) =>
+          encodeURIComponent(id[0]).replace(/!/g, '%21') + id.slice(1),
+      ],
+    ] as const;
+    // An encoding that leaves an ID as it was (no colon to escape) is the plain form.
+    const cases = IDS.flatMap(([kind, id]) =>
+      ENCODINGS.filter(([, encode]) => encode(id) !== id).map(
+        ([encoding, encode]) => [kind, encoding, id, encode] as const,
+      ),
+    );
+
+    it.each(cases)(
+      'leaves no part of a %s written with %s',
+      (_kind, _encoding, id, encode) => {
+        const redacted = createLogRedactor(CORPUS_CONTEXT).redact(
+          `GET /x/${encode(id)}/y?z=1`,
+        );
+
+        expect(survivingFragments(redacted, id)).toEqual([]);
+        expect(redacted).toMatch(/^GET \/x\/.+\/y\?z=1$/);
+      },
+    );
+
+    it.each(cases)(
+      'gives a %s written with %s the placeholder of its plain form',
+      (_kind, _encoding, id, encode) => {
+        const redactor = createLogRedactor(CORPUS_CONTEXT);
+        const plain = redactor.redact(`sent ${id} now`);
+
+        expect(decodeEscapes(redactor.redact(`GET /x/${encode(id)}/y`))).toBe(
+          `GET /x/${plain.slice('sent '.length, -' now'.length)}/y`,
+        );
+      },
+    );
+
+    describe('the device ID after an encoded user ID', () => {
+      const SELF = '@bugreport-run:localhost';
+      const context = (deviceIds: readonly string[]) => ({
+        selfUserIds: [SELF],
+        selfDeviceIds: deviceIds,
+        homeserverUrls: ['http://localhost:8008'],
+      });
+
+      it.each([
+        'ABCDEFGHIJ',
+        '1GncS3LIxD',
+        '1234567890',
+        'ab.cd/ef+gh=',
+        '12.34/abcd',
+      ])('redacts all of %s, known or not', (deviceId) => {
+        for (const deviceIds of [[deviceId], []]) {
+          const redactor = createLogRedactor(context(deviceIds));
+          const plain = redactor.redact(`store ${SELF}:${deviceId} opened`);
+          const encoded = redactor.redact(
+            `store ${encodeURIComponent(`${SELF}:${deviceId}`)} opened`,
+          );
+
+          expect(plain).toBe('store @me:server1:DEVICE1 opened');
+          expect(encoded).toBe('store %40me%3Aserver1%3ADEVICE1 opened');
+          expect(survivingFragments(encoded, deviceId)).toEqual([]);
+        }
+      });
+
+      it('removes a short all-digit device ID after an encoded user ID, like the plain form', () => {
+        const redactor = createLogRedactor(context(['42']));
+
+        expect(redactor.redact(`store ${SELF}:42 opened`)).toBe(
+          'store @me:server1 opened',
+        );
+        expect(
+          redactor.redact(`store ${encodeURIComponent(`${SELF}:42`)} opened`),
+        ).toBe('store %40me%3Aserver1 opened');
+      });
+
+      it('redacts the device ID after an encoded user in another writer’s escapes', () => {
+        const redacted = createLogRedactor(context([])).redact(
+          'GET /keys/%40bob%3aother.net%3aAbCdEf.1%2fx/claim',
+        );
+
+        expect(redacted).toBe('GET /keys/%40user1%3Aserver2%3ADEVICE1/claim');
+      });
+    });
+
+    it('keeps a malformed escape from shielding the ID before it', () => {
+      const redacted = createLogRedactor(CORPUS_CONTEXT).redact(
+        'GET /profile/%40bob%3Aother.net%ZZ/x',
+      );
+
+      expect(survivingFragments(redacted, BOB)).toEqual([]);
+    });
+
+    it('leaves text without an encoded ID as it was written', () => {
+      const line = 'GET /x/%40%3A/y?q=a%3Ab&r=%21%21 50%3A50';
+
+      expect(createLogRedactor(CORPUS_CONTEXT).redact(line)).toBe(line);
     });
   });
 
@@ -886,6 +1159,21 @@ describe('createLogRedactor', () => {
       ['bang runs', '!a:'.repeat(SIZE / 3)],
       ['bang opaque', '!' + 'a.'.repeat(SIZE / 2)],
       ['encoded bangs', '!a%3A'.repeat(SIZE / 5)],
+      ['encoded users', '%40a%3Ab%3A'.repeat(SIZE / 11)],
+      ['encoded sigils with colons', '%40a:'.repeat(SIZE / 5)],
+      [
+        'literal sigils before encoded colons',
+        '@a%3A#a%3A$a%3A'.repeat(SIZE / 15),
+      ],
+      ['encoded user then dots', '%40a%3Ab%3A' + '.'.repeat(SIZE)],
+      ['encoded user then escapes', '%40a%3Ab%3A' + '%2F'.repeat(SIZE / 3)],
+      ['malformed escapes', '%40a%3Ab%ZZ'.repeat(SIZE / 11)],
+      ['escapes between words', 'ab%2F'.repeat(SIZE / 5)],
+      ['stray percent signs', 'a%'.repeat(SIZE / 2)],
+      ['events before paths', ('$' + 'A'.repeat(44) + '/').repeat(SIZE / 46)],
+      ['invalid UTF-8 escapes', '%40a%3A' + '%FF'.repeat(SIZE / 3)],
+      ['user then device punctuation', '@a:b:' + './+='.repeat(SIZE / 4)],
+      ['user then full stops', '@a:b:' + '.'.repeat(SIZE) + 'a'],
       ['alias runs', '#a:'.repeat(SIZE / 3)],
       ['dollar runs', '$a'.repeat(SIZE / 2)],
       ['hyphenated words', 'ab-'.repeat(SIZE / 3)],
@@ -973,6 +1261,25 @@ describe('createLogRedactor', () => {
         expect(performance.now() - start).toBeLessThan(500);
       });
     });
+
+    it.each([
+      ['device punctuation', './+='.repeat(SIZE / 4)],
+      ['full stops', '.'.repeat(SIZE) + 'a'],
+      ['near misses', 'ab.cd/ef+gh '.repeat(SIZE / 12)],
+      ['escaped near misses', 'ab.cd%2Fef%2Bgh%3'.repeat(SIZE / 17)],
+      ['one escaped run', 'a%2F'.repeat(SIZE / 4)],
+    ])(
+      'redacts %s in under 500 ms with a known device ID with punctuation',
+      (_name, input) => {
+        const redactor = createLogRedactor({
+          ...CORPUS_CONTEXT,
+          selfDeviceIds: ['ab.cd/ef+gh='],
+        });
+        const start = performance.now();
+        redactor.redact(input);
+        expect(performance.now() - start).toBeLessThan(500);
+      },
+    );
 
     it.each(inputs)('redacts %s in under 500 ms', (_name, input) => {
       const redactor = createLogRedactor(CORPUS_CONTEXT);
