@@ -16,6 +16,7 @@ import type {
   ApplicationStartupStageOutcome,
 } from '../application-runtime.models';
 import { APPLICATION_STARTUP_PRODUCER_POLICIES } from '../application-startup.policy';
+import { AppearanceEffects } from '@trinity/application/appearance';
 import {
   AccountRuntimeService,
   type AccountRestoreResult,
@@ -24,6 +25,7 @@ import { RetiredPushGatewayCleanup } from '@trinity/data-access/notifications';
 import {
   AppConfigService,
   DraftStoreService,
+  SESSION_LOCK_REQUIRED,
   SessionLockService,
   StoragePersistenceService,
 } from '@trinity/platform-native';
@@ -39,12 +41,15 @@ import {
   Observable,
   Subject,
   TimeoutError,
+  EMPTY,
   catchError,
+  concat,
   defaultIfEmpty,
   defer,
   filter,
   forkJoin,
   from,
+  ignoreElements,
   map,
   of,
   switchMap,
@@ -72,6 +77,12 @@ const ready = (
   ...(settlements.length > 0 ? { settlements } : {}),
 });
 
+/**
+ * How long the session-lock stage waits for the saved Appearance (local reads) before it asks
+ * for the lock anyway: the stage has no deadline, so a stuck read must not hold startup.
+ */
+const SAVED_APPEARANCE_BUDGET_MS = 500;
+
 const navigationFailed = {
   kind: 'blocked',
   recovery: 'retry-startup',
@@ -98,6 +109,9 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly hostHealth = inject(HostSessionHealthService);
   private readonly health = inject(CapabilityHealthService);
   private readonly sessionLock = inject(SessionLockService);
+  private readonly sessionLockRequired = inject(SESSION_LOCK_REQUIRED);
+  private readonly appearance = inject(AppearanceEffects);
+  private savedAppearanceApplied = false;
   private readonly healthContexts = new Map<string, CapabilityContext>();
   // Version stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard (#927).
   private readonly healthGenerations = new Map<string, number>();
@@ -132,6 +146,32 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   }
 
   acquireSessionLock(): Observable<ApplicationSessionLockOutcome> {
+    return concat(
+      this.applySavedAppearance(),
+      defer(() => this.acquireLock()),
+    );
+  }
+
+  /**
+   * A browser tab may stop on a notice (another tab, or no secure connection) before
+   * preferences hydrate, so it shows the user's saved Appearance first. Read-only and once;
+   * Electron and native apps take no lock and keep their usual startup.
+   */
+  private applySavedAppearance(): Observable<never> {
+    return defer(() => {
+      if (!this.sessionLockRequired || this.savedAppearanceApplied) {
+        return EMPTY;
+      }
+      this.savedAppearanceApplied = true;
+      return this.appearance.applySaved().pipe(
+        timeout({ first: SAVED_APPEARANCE_BUDGET_MS, with: () => EMPTY }),
+        ignoreElements(),
+        catchError(() => EMPTY),
+      );
+    });
+  }
+
+  private acquireLock(): Observable<ApplicationSessionLockOutcome> {
     return this.sessionLock.acquire().pipe(
       map((acquisition): ApplicationSessionLockOutcome => {
         switch (acquisition) {

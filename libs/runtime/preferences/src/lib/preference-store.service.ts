@@ -21,7 +21,7 @@ import {
   type PreferenceState,
   type PreferenceValue,
 } from './preference.models';
-import { hydratePreference } from './preference-hydration';
+import { hydratePreference, readSavedPreference } from './preference-hydration';
 import {
   encodeStoredPreference,
   preferenceContextKey,
@@ -79,6 +79,21 @@ export class PreferenceStoreService {
     return this.cell(descriptor, context).asReadonly() as Signal<
       PreferenceState<T>
     >;
+  }
+
+  /**
+   * The saved value, read without hydrating: no cell changes, no migration written back and
+   * no storage write. Missing, unreadable or invalid values answer the descriptor's default.
+   */
+  readSaved<T extends PreferenceValue>(
+    descriptor: PreferenceDescriptor<T>,
+    context: PreferenceContext,
+  ): Observable<T> {
+    return defer(() =>
+      this.adapter
+        ? readSavedPreference(this.adapter, descriptor, context)
+        : of(descriptor.defaultValue),
+    );
   }
 
   entries(
