@@ -274,6 +274,112 @@ describe('VoiceMessageComponent', () => {
     expect(pipeline.resolveMedia).toHaveBeenCalledTimes(1);
   });
 
+  describe('fitting the waveform to the space it has', () => {
+    interface TestObserver {
+      readonly observed: Set<Element>;
+      emit(entries: ResizeObserverEntry[]): void;
+    }
+    const observers = () =>
+      (ResizeObserver as unknown as { instances: TestObserver[] }).instances;
+    // Eight samples whose peaks, two at a time, are 100, 1024, 60 and 512.
+    const samples = [0, 100, 1024, 200, 50, 60, 512, 10];
+
+    beforeEach(() => {
+      observers().length = 0;
+    });
+
+    /** Report the wave's measured width, as the browser would after layout. */
+    function resizeWave(container: Element, width: number): void {
+      const wave = container.querySelector('.voice__wave')!;
+      const observer = observers().find((o) => o.observed.has(wave));
+      expect(observer).toBeDefined();
+      observer!.emit([{ contentRect: { width } } as ResizeObserverEntry]);
+      TestBed.tick();
+    }
+    const bars = (container: Element) => [
+      ...container.querySelectorAll<HTMLElement>('.voice__bar'),
+    ];
+    const played = (container: Element) =>
+      container.querySelectorAll('.voice__bar--played').length;
+    /** Play the clip and report `seconds` of playback. */
+    function playTo(
+      audio: () => HTMLAudioElement | null,
+      press: () => void,
+      seconds: number,
+    ): void {
+      press();
+      const el = audio()!;
+      el.dispatchEvent(new Event('play'));
+      Object.defineProperty(el, 'currentTime', {
+        value: seconds,
+        configurable: true,
+      });
+      el.dispatchEvent(new Event('timeupdate'));
+      TestBed.tick();
+    }
+
+    it('sizes the wave for its whole waveform, so a wide bubble keeps its width', async () => {
+      const { container } = await build(voiceMedia({ waveform: samples }));
+      // 2px bars with 2px gaps: 8 × 2 + 7 × 2.
+      expect(
+        container.querySelector<HTMLElement>('.voice__wave')?.style.width,
+      ).toBe('30px');
+    });
+
+    it('keeps every bar while they all fit', async () => {
+      const { container } = await build(voiceMedia({ waveform: samples }));
+      expect(bars(container)).toHaveLength(8);
+
+      resizeWave(container, 30);
+
+      expect(bars(container)).toHaveLength(8);
+    });
+
+    it('samples the waveform down to the bars that fit, keeping each span’s peak', async () => {
+      const { container } = await build(voiceMedia({ waveform: samples }));
+
+      // Room for four 2px bars and their gaps, not five.
+      resizeWave(container, 17);
+
+      expect(bars(container).map((bar) => bar.style.height)).toEqual([
+        '12%', // 100/1024 is under the minimum bar height
+        '100%',
+        '12%',
+        '50%',
+      ]);
+
+      // Wider again: the full waveform comes back.
+      resizeWave(container, 200);
+      expect(bars(container)).toHaveLength(8);
+    });
+
+    it('fills the played share of the sampled bars in step with playback', async () => {
+      const { container, audio, press } = await build(
+        voiceMedia({ waveform: samples, durationMs: 8_000 }),
+      );
+      resizeWave(container, 14);
+
+      playTo(audio, press, 2);
+      expect(bars(container)).toHaveLength(4);
+      // A quarter of the clip played: one of four bars, as two of eight would have been.
+      expect(played(container)).toBe(1);
+
+      playTo(audio, press, 6);
+      expect(played(container)).toBe(3);
+
+      resizeWave(container, 200);
+      expect(played(container)).toBe(6);
+    });
+
+    it('never samples below one bar', async () => {
+      const { container } = await build(voiceMedia({ waveform: samples }));
+
+      resizeWave(container, 1);
+
+      expect(bars(container).map((bar) => bar.style.height)).toEqual(['100%']);
+    });
+  });
+
   it('renders a flat placeholder when there is no waveform', async () => {
     const { container } = await build(voiceMedia({ waveform: [] }));
     expect(container.querySelector('.voice__bar')).toBeNull();

@@ -1,4 +1,11 @@
-import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  devices,
+  type APIRequestContext,
+  type Page,
+} from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
@@ -6,6 +13,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { isBlobAlive, playToEnd } from '../../support/media-playback.mts';
+import { apiLogin } from '../../support/multi-account-journey.mts';
 
 // Covers recording + sending a voice message (+ tray → Voice message → record → send →
 // m.audio with the MSC3245 voice marker), rendered in the timeline as a voice player
@@ -106,5 +114,138 @@ test.describe('Voice messages', () => {
     await expect(play).toBeVisible();
     await expect(player.locator('audio')).toHaveCount(0);
     expect(await isBlobAlive(page, clip, 'audio')).toBe(false);
+  });
+});
+
+// Dropped from the profile: `use({ defaultBrowserType })` inside a describe forces a new worker.
+const { defaultBrowserType: _browser, ...pixel5 } = devices['Pixel 5'];
+
+/** A voice message as another client sends it: MSC3245 marker, MSC1767 waveform. */
+async function sendVoice(
+  request: APIRequestContext,
+  hs: string,
+  headers: Record<string, string>,
+  roomId: string,
+  txnId: string,
+  durationMs: number,
+): Promise<void> {
+  // Never fetched: the player reads its length and waveform from the event alone.
+  const { content_uri } = await request
+    .post(`${hs}/_matrix/media/v3/upload?filename=voice.ogg`, {
+      headers: { ...headers, 'Content-Type': 'audio/ogg' },
+      data: Buffer.from('OggS'),
+    })
+    .then((r) => r.json());
+  const waveform = Array.from({ length: 60 }, (_, i) =>
+    Math.round(512 + 480 * Math.sin(i / 3)),
+  );
+  const res = await request.put(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txnId}`,
+    {
+      headers,
+      data: {
+        msgtype: 'm.audio',
+        body: 'Voice message',
+        url: content_uri,
+        info: { mimetype: 'audio/ogg', size: 4, duration: durationMs },
+        'org.matrix.msc1767.audio': { duration: durationMs, waveform },
+        'org.matrix.msc3245.voice': {},
+      },
+    },
+  );
+  expect(res.ok()).toBe(true);
+}
+
+/**
+ * Where each voice player's parts sit, and whether anything clips them: the bubble, every
+ * ancestor that hides overflow, and the viewport.
+ */
+function measurePlayers(page: Page) {
+  return page.getByTestId('voice-message').evaluateAll((players) =>
+    players.map((player) => {
+      const box = player.getBoundingClientRect();
+      const time = player.querySelector<HTMLElement>('.voice__time')!;
+      const play = player
+        .querySelector('.voice__play')!
+        .getBoundingClientRect();
+      const wave = player
+        .querySelector('.voice__wave')!
+        .getBoundingClientRect();
+      const timeBox = time.getBoundingClientRect();
+      // The nearest edge of the bubble or of a clipping ancestor, whichever is tighter.
+      let clipLeft = 0;
+      let clipRight = document.documentElement.clientWidth;
+      for (let el = player.parentElement; el; el = el.parentElement) {
+        if (getComputedStyle(el).overflowX === 'visible') continue;
+        const r = el.getBoundingClientRect();
+        clipLeft = Math.max(clipLeft, r.left);
+        clipRight = Math.min(clipRight, r.right);
+      }
+      return {
+        text: time.textContent?.trim(),
+        timeTruncated: time.scrollWidth > time.clientWidth,
+        playInside:
+          play.left >= box.left - 0.5 && play.right <= wave.left + 0.5,
+        waveBeforeTime: wave.right <= timeBox.left + 0.5,
+        timeInside: timeBox.right <= box.right + 0.5,
+        bubbleUnclipped:
+          box.left >= clipLeft - 0.5 && box.right <= clipRight + 0.5,
+        bars: player.querySelectorAll('.voice__bar').length,
+      };
+    }),
+  );
+}
+
+test.describe('Voice messages on a narrow phone', () => {
+  test.use(pixel5);
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  test('keeps the play button and the full duration inside the bubble', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}voxn`;
+    const user = `voxn-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Voice narrow ${runId}`;
+
+    await registerUser(request, user, pass);
+    const me = await apiLogin(request, hs, user, pass);
+    const { room_id } = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: me.headers,
+        data: { name: roomName, preset: 'private_chat' },
+      })
+      .then((r) => r.json());
+    await sendVoice(request, hs, me.headers, room_id, `${runId}-short`, 7_000);
+    await sendVoice(request, hs, me.headers, room_id, `${runId}-long`, 754_000);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
+    await openRoom(page, roomName);
+    await expect(page.getByTestId('voice-message')).toHaveCount(2, {
+      timeout: 30_000,
+    });
+
+    for (const width of [390, 360, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect
+        .poll(() => measurePlayers(page), { message: `${width}px wide` })
+        .toEqual([
+          expect.objectContaining({ text: '0:07' }),
+          expect.objectContaining({ text: '12:34' }),
+        ]);
+      for (const player of await measurePlayers(page)) {
+        expect(player, `${player.text} at ${width}px`).toMatchObject({
+          timeTruncated: false,
+          playInside: true,
+          waveBeforeTime: true,
+          timeInside: true,
+          bubbleUnclipped: true,
+        });
+        expect(player.bars).toBeGreaterThan(0);
+      }
+    }
   });
 });
