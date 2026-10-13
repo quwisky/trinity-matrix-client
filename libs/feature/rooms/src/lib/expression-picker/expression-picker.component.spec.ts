@@ -525,11 +525,13 @@ describe('ExpressionPickerComponent', () => {
     expect(picker.size()).toBe('lg');
   });
 
-  it("keeps the emoji grid's fixed width in the desktop card", async () => {
+  it('fills the desktop card with the emoji grid too, at the desktop glyph size', async () => {
+    // The card keeps one width across tabs; the grid's columns follow from it, so a real
+    // scrollbar can never push the grid past the card.
     const { fixture } = await renderPanel();
     const picker = emojiPicker(fixture);
 
-    expect(picker.layout()).toBe('fixed');
+    expect(picker.layout()).toBe('fill');
     expect(picker.size()).toBe('md');
   });
 
@@ -546,17 +548,40 @@ describe('ExpressionPickerComponent', () => {
     }
   });
 
-  it('keeps the desktop insets: 8px around GIFs and stickers, none around the fixed emoji grid', async () => {
+  it('insets every tab by the same 8px in the desktop card', async () => {
     await renderPanel();
     const content = view.getByRole('tabpanel');
 
-    expect(content.style.paddingInline).toBe('');
-    for (const name of ['GIFs', 'Stickers']) {
+    for (const name of ['GIFs', 'Stickers', 'Emoji']) {
       view.getByRole('tab', { name }).click();
       view.fixture.detectChanges();
       await view.fixture.whenStable();
 
       expect(content.style.paddingInline).toBe('var(--trinity-space-3)');
     }
+  });
+
+  it('lines the tab row up with the content in the card', async () => {
+    await renderPanel();
+
+    expect(view.getByRole('tablist').parentElement?.style.paddingInline).toBe(
+      'var(--trinity-space-3)',
+    );
+  });
+
+  it('lines the tab row up with the content in a sheet', async () => {
+    await renderPanel({ presentation: 'sheet' });
+
+    expect(view.getByRole('tablist').parentElement?.style.paddingInline).toBe(
+      'var(--trinity-space-4)',
+    );
+  });
+
+  it('scrolls its content inside the card rather than cutting it off on a short window', async () => {
+    await renderPanel();
+    const content = view.getByRole('tabpanel');
+
+    expect(content).toHaveClass('min-h-0');
+    expect(content).toHaveClass('overflow-y-auto');
   });
 });

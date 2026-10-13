@@ -71,8 +71,8 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
     class: 'flex flex-col items-stretch',
     // As a popover: the emoji picker's 302px expressed in rem, so it follows the text size
     // and stays one width across tabs, clamped to the viewport less the overlay's 8px
-    // margins. The vendor emoji grid itself is fixed in px and is centred inside. As a
-    // sheet: the sheet's full width.
+    // margins. The emoji grid fills the card inside it, its columns following from that
+    // width and the real scrollbar. As a sheet: the sheet's full width.
     '[style.width]':
       "presentation() === 'sheet' ? '100%' : 'calc(302rem / 16)'",
     '[style.max-width]':
@@ -136,16 +136,14 @@ export class ExpressionPickerComponent {
   });
 
   /**
-   * The content's side inset, one for every tab: the sheet's 12px, edge to edge of it, and in
-   * the card 8px around GIFs and stickers. The card's emoji grid keeps the vendor's fixed
-   * width and insets, so it takes none.
+   * One side inset for the tab row and every tab's content, so the selected tab and the
+   * search line up: the sheet's 12px, and 8px inside the desktop card.
    */
-  protected readonly contentInset = computed(() => {
-    if (this.presentation() === 'sheet') {
-      return 'var(--trinity-space-4)';
-    }
-    return this.active() === 'emoji' ? null : 'var(--trinity-space-3)';
-  });
+  protected readonly inset = computed(() =>
+    this.presentation() === 'sheet'
+      ? 'var(--trinity-space-4)'
+      : 'var(--trinity-space-3)',
+  );
 
   protected readonly tabStop = computed(() => {
     const target = this.focusTarget();

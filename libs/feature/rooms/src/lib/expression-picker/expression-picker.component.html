@@ -23,7 +23,7 @@
   @if (tabs().length > 1 || presentation() === 'sheet') {
     <!-- In a sheet the close button shares the tab row instead of taking a row of its own;
        it comes first, where the sheet header put it. -->
-    <div class="flex items-center gap-2 px-2 pt-2">
+    <div class="flex items-center gap-2 pt-2" [style.padding-inline]="inset()">
       @if (presentation() === 'sheet') {
         <button
           trnBtn
@@ -76,9 +76,11 @@
   <div
     #content
     class="grid outline-none"
+    [class.min-h-0]="presentation() === 'popover'"
+    [class.overflow-y-auto]="presentation() === 'popover'"
     tabindex="-1"
     data-expression-content
-    [style.padding-inline]="contentInset()"
+    [style.padding-inline]="inset()"
     [attr.role]="tabs().length > 1 ? 'tabpanel' : null"
     [attr.id]="tabs().length > 1 ? tabPanelId() : null"
     [attr.aria-labelledby]="tabs().length > 1 ? tabId(active()) : null"
@@ -97,13 +99,14 @@
         />
       }
       @case ('emoji') {
-        <!-- In the card the vendor grid keeps its fixed px width, centred so it sits evenly in
-             a wider panel. In a sheet it fills the width, with 44px touch cells and the larger
-             glyph. -->
+        <!-- The grid fills the content's width in the card and in a sheet, its columns
+             following from that width (and its real scrollbar); a sheet's touch cells are
+             44px with the larger glyph. -->
+        <!-- `min-w-0`: the grid's track is the content's width; the grid must not size it. -->
         <trn-emoji-picker
-          [class.justify-self-center]="presentation() === 'popover'"
+          class="min-w-0"
           [framed]="false"
-          [layout]="presentation() === 'sheet' ? 'fill' : 'fixed'"
+          layout="fill"
           [size]="presentation() === 'sheet' ? 'lg' : 'md'"
           [autoFocusSearch]="presentation() === 'sheet'"
           (picked)="emojiPick.emit($event)"
