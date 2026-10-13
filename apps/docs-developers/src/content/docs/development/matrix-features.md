@@ -22,6 +22,14 @@ Attach only the SDK events that invalidate the read model and reconcile from the
 
 Commands remain cold and finite. Preserve local echo only where the product explicitly needs it; otherwise allow SDK events to publish the accepted result.
 
+## Render formatted messages {#formatted-messages}
+
+`formatted_body` is sender-controlled HTML. `sanitizeMatrixHtml` in `@trinity/util/matrix` scrubs it once against the Matrix allowlist and then runs render-only passes whose output is memoized per body, so nothing that depends on the viewer, the theme or the platform may enter that string. `MatrixHtmlDirective` in the Rooms feature binds the result with `[innerHTML]`, where Angular's sanitizer runs again, and composes the leaf directives that need the live DOM. Data Angular strips at that leaf (`data-*`, `style`) travels as a class token or an inert attribute Angular keeps, or is re-read from the sanitized string by parsing it once and pairing marked elements in document order. `sanitizeOutgoingHtml` shares the allowlist but none of the render-only passes.
+
+### Links {#message-links}
+
+The render pass gives `http(s)` links `target="_blank"` and `rel="noopener noreferrer"`, and so does the linkified plain-text body, so a middle-click, a modifier-click or a context-menu open behaves like a plain click. `matrix.to` and `matrix:` links get neither and stay routed in Trinity by `MatrixLinkDirective`, and a sender's own `target` and `rel` never survive the allowlist. A plain click still goes through `window.open(…, 'noopener,noreferrer')`, which Electron hands to the system browser. On Capacitor, `e2e/mobile/specs/message-links.e2e.mts` checks that a message link leaves the WebView. On iOS it hands the link to the system browser. Android is checked in CI.
+
 ## Prove protocol and presentation {#prove-feature}
 
 Unit-test normalization, permissions, account isolation, cancellation, errors, and cleanup. Add a disposable-homeserver journey when interoperability, federation-independent server state, encryption, multiple clients, or event ordering is part of the claim. Add browser evidence for the user-visible flow.
