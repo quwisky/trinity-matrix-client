@@ -28,7 +28,7 @@ Commands remain cold and finite. Preserve local echo only where the product expl
 
 ### Links {#message-links}
 
-The render pass gives `http(s)` links `target="_blank"` and `rel="noopener noreferrer"`, and so does the linkified plain-text body, so a middle-click, a modifier-click or a context-menu open behaves like a plain click. `matrix.to` and `matrix:` links get neither and stay routed in Trinity by `MatrixLinkDirective`, and a sender's own `target` and `rel` never survive the allowlist. A plain click still goes through `window.open(…, 'noopener,noreferrer')`, which Electron hands to the system browser. On Capacitor, `e2e/mobile/specs/message-links.e2e.mts` checks that a message link leaves the WebView. On iOS it hands the link to the system browser. Android is checked in CI.
+The render pass gives `http(s)` links `target="_blank"` and `rel="noopener noreferrer"`, and so does the linkified plain-text body, so a middle-click, a modifier-click or a context-menu open behaves like a plain click. `matrix.to` and `matrix:` links get neither and stay routed in Trinity by `MatrixLinkDirective`, and a sender's own `target` and `rel` never survive the allowlist. A plain click still goes through `window.open(…, 'noopener,noreferrer')`, which Electron hands to the system browser. On Capacitor, `e2e/mobile/specs/message-links.e2e.mts` checks that a message link leaves the WebView. On iOS it hands the link to the system browser. Android hands it to the system browser too.
 
 ## Prove protocol and presentation {#prove-feature}
 
