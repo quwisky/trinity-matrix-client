@@ -12,6 +12,9 @@ import { APP_PACKAGE, native, resetApp, webview } from '../support/session.mts';
 /** XCUITest and UiAutomator2 both report 4 for an app in the foreground. */
 const RUNNING_IN_FOREGROUND = 4;
 
+/** The settle wait's timeout message: the app never left the foreground. */
+const STAYED_IN_FOREGROUND = 'the app stayed in the foreground';
+
 const pathname = async (): Promise<string> =>
   new URL(await browser.getUrl()).pathname;
 
@@ -55,18 +58,28 @@ describe('message links on a phone', () => {
     // Settle: give the OS up to 10 s to bring the system browser to the front. Keep the
     // result: a no-op window.open (or an Android launch with no browser to handle it) leaves
     // the app in the foreground, and must fail rather than pass as "left the WebView".
+    // Only the timeout means "stayed in the foreground"; a failing queryAppState (a driver or
+    // capability error) is rethrown, so it can't pass for "the link opened nothing".
     const left = await browser
       .waitUntil(async () => (await appState()) !== RUNNING_IN_FOREGROUND, {
         timeout: 10_000,
+        timeoutMsg: STAYED_IN_FOREGROUND,
       })
       .then(
         () => true,
-        () => false,
+        (error: unknown) => {
+          if (error instanceof Error && error.message === STAYED_IN_FOREGROUND)
+            return false;
+          throw error;
+        },
       );
     await browser.activateApp(APP_PACKAGE);
+    // On iOS, webview() only accepts a WKWebView showing capacitor://localhost, so a WebView
+    // that navigated away fails here ("no WKWebView context loaded capacitor://localhost"),
+    // not at the pathname check below: read that error as "the link stayed in the WebView".
     await webview();
 
-    // The WebView itself never navigated: Trinity's room is still its document.
+    // The WebView is back on the room it showed before the tap.
     expect(await pathname()).toBe(roomPath);
     // And the link really went to the system browser (spec part D, decision 8).
     expect(left).toBe(true);
