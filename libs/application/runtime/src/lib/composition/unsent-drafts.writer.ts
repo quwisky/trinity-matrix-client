@@ -27,9 +27,12 @@ export function unsentDraftKey(message: PendingTextMessage): string {
 export class UnsentDraftsWriter {
   private readonly drafts = inject(DraftStoreService);
 
-  /** Put each text after the draft it lands in, then write the drafts to storage. Never rejects. */
+  /**
+   * Put each text after the draft it lands in, then write the drafts to storage. Never rejects.
+   * Writes even with nothing to add: a draft typed just before the handover may still be
+   * waiting for the store's debounce.
+   */
   writeBack(messages: readonly PendingTextMessage[]): Promise<void> {
-    if (messages.length === 0) return Promise.resolve();
     for (const message of messages) {
       const key = unsentDraftKey(message);
       const existing = this.drafts.get(key).trimEnd();

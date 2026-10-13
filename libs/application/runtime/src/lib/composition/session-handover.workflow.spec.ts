@@ -36,6 +36,8 @@ const UNSENT: PendingTextMessage = {
 function setup(
   options: {
     readonly outgoing?: () => boolean;
+    readonly pauseFails?: boolean;
+    readonly readFails?: boolean;
     readonly stopFails?: boolean;
     readonly closeFails?: boolean;
     readonly unsent?: () => readonly PendingTextMessage[];
@@ -46,10 +48,12 @@ function setup(
   const matrix = {
     pauseSync: vi.fn(() => {
       steps.push('pause-sync');
+      if (options.pauseFails) throw new Error('the sync loop would not stop');
     }),
     hasOutgoingWork: vi.fn(options.outgoing ?? (() => false)),
     pendingTextMessages: vi.fn(() => {
       steps.push('read-unsent');
+      if (options.readFails) throw new Error('a room could not be read');
       return options.unsent?.() ?? [];
     }),
     stop: vi.fn(() =>
@@ -141,7 +145,9 @@ describe('SessionHandoverWorkflow', () => {
   });
 
   it('stops the clients after five seconds even if a send never settles', async () => {
-    const { steps, requests, lifetime } = setup({ outgoing: () => true });
+    const { steps, requests, matrix, lifetime } = setup({
+      outgoing: () => true,
+    });
 
     requests.next();
     await vi.advanceTimersByTimeAsync(SESSION_HANDOVER_DRAIN_MS - 100);
@@ -149,6 +155,8 @@ describe('SessionHandoverWorkflow', () => {
     await vi.advanceTimersByTimeAsync(200);
 
     expect(steps).toEqual(HANDED_OVER);
+    // It polls at a fixed interval rather than busy-waiting: once at the start, then every 250 ms.
+    expect(matrix.hasOutgoingWork.mock.calls.length).toBeLessThanOrEqual(21);
     lifetime.unsubscribe();
   });
 
@@ -216,12 +224,15 @@ describe('SessionHandoverWorkflow', () => {
     const { steps, requests, writeBack, lifetime } = setup({
       unsent: () => [UNSENT],
     });
-    writeBack.mockImplementationOnce(() => Promise.reject(new Error('quota')));
+    writeBack.mockImplementationOnce(() => {
+      steps.push('write-drafts');
+      return Promise.reject(new Error('quota'));
+    });
 
     requests.next();
     await vi.advanceTimersByTimeAsync(100);
 
-    expect(steps.at(-1)).toBe('reload');
+    expect(steps).toEqual(HANDED_OVER);
     lifetime.unsubscribe();
   });
 
@@ -238,6 +249,49 @@ describe('SessionHandoverWorkflow', () => {
     await vi.advanceTimersByTimeAsync(100);
 
     expect(steps).toEqual(HANDED_OVER);
+    lifetime.unsubscribe();
+  });
+
+  it('still reads the unsent text, stops the clients and reloads when sync will not pause', async () => {
+    const { steps, requests, writeBack, lifetime } = setup({
+      pauseFails: true,
+      unsent: () => [UNSENT],
+    });
+
+    requests.next();
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(steps).toEqual(HANDED_OVER);
+    expect(writeBack).toHaveBeenCalledExactlyOnceWith([UNSENT]);
+    lifetime.unsubscribe();
+  });
+
+  it('still stops the clients and reloads when the unsent text cannot be read', async () => {
+    const { steps, requests, writeBack, lifetime } = setup({
+      readFails: true,
+    });
+
+    requests.next();
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(steps).toEqual(HANDED_OVER);
+    expect(writeBack).toHaveBeenCalledExactlyOnceWith([]);
+    lifetime.unsubscribe();
+  });
+
+  it('ends the drain and hands over when the outgoing work cannot be read', async () => {
+    const { steps, requests, writeBack, lifetime } = setup({
+      outgoing: () => {
+        throw new Error('a room could not be read');
+      },
+      unsent: () => [UNSENT],
+    });
+
+    requests.next();
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(steps).toEqual(HANDED_OVER);
+    expect(writeBack).toHaveBeenCalledExactlyOnceWith([UNSENT]);
     lifetime.unsubscribe();
   });
 

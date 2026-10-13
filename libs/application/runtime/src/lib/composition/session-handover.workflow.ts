@@ -1,11 +1,13 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnSurfaceService } from '@trinity/components/overlay';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  type PendingTextMessage,
+} from '@trinity/data-access/matrix-client';
 import {
   AppRestartService,
   SessionLockService,
 } from '@trinity/platform-native';
-import type { PendingTextMessage } from '@trinity/data-access/matrix-client';
 import {
   Observable,
   catchError,
@@ -60,7 +62,7 @@ export class SessionHandoverWorkflow {
   private handOver(): Observable<void> {
     let unsent: readonly PendingTextMessage[] = [];
     return defer(() => {
-      this.matrix.pauseSync();
+      this.pauseSync();
       return this.drain();
     }).pipe(
       switchMap(() => {
@@ -82,6 +84,15 @@ export class SessionHandoverWorkflow {
         this.appRestart.reload();
       }),
     );
+  }
+
+  /** A sync loop that will not pause must not cost the unsent text: the stop still ends it. */
+  private pauseSync(): void {
+    try {
+      this.matrix.pauseSync();
+    } catch {
+      // stop() tears every client down a moment later.
+    }
   }
 
   /** A dialog that fails to close must not stop the handover; the reload discards it. */

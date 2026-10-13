@@ -93,11 +93,12 @@ describe('UnsentDraftsWriter', () => {
     expect(drafts.get(ROOM_DRAFT)).toBe('looks ok to me\n\nsee you\n\nok');
   });
 
-  it('writes nothing when every message reached the server', async () => {
+  it('still writes the drafts to storage when every message reached the server', async () => {
+    // A draft typed in the last moments before a handover is still waiting for its debounce.
     const { writer, steps } = setup();
 
     await writer.writeBack([]);
 
-    expect(steps).toEqual([]);
+    expect(steps).toEqual(['flush']);
   });
 });
