@@ -1255,7 +1255,10 @@ function stripReplyFallbackHtml(html: string): string {
   return html.replace(/<mx-reply>[\s\S]*?<\/mx-reply>/i, '');
 }
 
-/** Sentence punctuation that is left outside a URL when it ends the match. */
+/**
+ * Sentence punctuation that is left outside a URL when it ends the match. `>` can never
+ * be captured by the URL pattern's `[^\s<>"']+`; it stays to keep the original set.
+ */
 const TRAILING_URL_PUNCTUATION = '.,;:!?)]}>';
 
 /** `url` without trailing sentence punctuation, in time linear in the URL length. */

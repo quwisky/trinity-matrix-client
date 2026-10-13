@@ -1,4 +1,5 @@
 export * from './lib/message-view';
+export * from './lib/trim-trailing';
 export * from './lib/day-separator';
 export * from './lib/date-format';
 export * from './lib/edit-history';

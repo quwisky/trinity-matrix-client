@@ -10,6 +10,7 @@ import {
   shareReplay,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { trimTrailing } from '@trinity/util/matrix';
 import type { HomeserverInfo } from './homeserver-info.model';
 import {
   fetchCapabilities,
@@ -117,7 +118,7 @@ export class HomeserverInfoService {
       }
       // Trailing slash stripped before it is shown: `AuthService` normalises what it
       // stores, but a stray slash would still reach the URL row.
-      const baseUrl = client.baseUrl.replace(/\/+$/, '');
+      const baseUrl = trimTrailing(client.baseUrl, '/');
       const serverName = client.getDomain() ?? serverNameOf(userId);
       const token = client.getAccessToken();
 

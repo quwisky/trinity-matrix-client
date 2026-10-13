@@ -7,6 +7,7 @@ import {
   isSyncStoreDbName,
   rustCryptoStoreDbNames,
   syncStoreIndexedDbName,
+  trimTrailing,
 } from '@trinity/util/matrix';
 import { SecureStorageService } from './secure-storage.service';
 import { CryptoStoreKeyService } from './crypto-store-key.service';
@@ -690,7 +691,7 @@ export function sameHomeserver(a: string, b: string): boolean {
   const key = (raw: string): string => {
     try {
       const { protocol, host, pathname } = new URL(raw);
-      return `${protocol}//${host}${pathname.replace(/\/+$/, '')}`;
+      return `${protocol}//${host}${trimTrailing(pathname, '/')}`;
     } catch {
       return raw;
     }
