@@ -33,20 +33,28 @@ export interface LogRedactor {
   ): Generator<void, NameReading>;
 }
 
+// A port ends where an ID could not go on: in `trinity-crypto:@user:host:1GncS3LIxD` the
+// leading digits belong to the device ID, not to the server.
+const PORT = String.raw`(?::\d{1,5}(?![\p{L}\p{N}_-]))`;
 // A server name: DNS name or IP literal, optional port (Matrix spec, "Server name").
-const SERVER = String.raw`(?:\[[0-9A-Fa-f:.]+\]|[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*)(?::\d{1,5})?`;
+const SERVER = String.raw`(?:\[[0-9A-Fa-f:.]+\]|[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*)${PORT}?`;
 const USER_LOCALPART = String.raw`[A-Za-z0-9._=\-/+]+`;
 const OPAQUE = String.raw`[A-Za-z0-9._~+/=-]+`;
 
 // The optional userinfo is bounded, so a long run of "@" or ":" cannot make the scan quadratic.
-const URL_HOST =
-  /\b(https?|wss?):\/\/(?:[^\s/@?#]{1,256}@)?(\[[0-9A-Fa-f:.]+\]|[\p{L}\p{N}.-]+)(?::\d{1,5})?/giu;
+const URL_HOST = new RegExp(
+  String.raw`\b(https?|wss?):\/\/(?:[^\s/@?#]{1,256}@)?(\[[0-9A-Fa-f:.]+\]|[\p{L}\p{N}.-]+)${PORT}?`,
+  'giu',
+);
 // An email address. The local part starts a run (no ID or URL character before it) and every
 // part is bounded, so a long run of address characters cannot make the scan quadratic. A
 // Matrix ID has nothing before its "@"; a URL's userinfo is already gone when this runs.
 const EMAIL =
   /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,63}(?![A-Za-z0-9-])/g;
-const MXC = /\bmxc:\/\/([\p{L}\p{N}.-]+(?::\d{1,5})?)\/([A-Za-z0-9_-]+)/gu;
+const MXC = new RegExp(
+  String.raw`\bmxc:\/\/([\p{L}\p{N}.-]+${PORT}?)\/([A-Za-z0-9_-]+)`,
+  'gu',
+);
 // An identifier inside a request path. matrix-js-sdk builds paths with encodeURIComponent
 // (`encodeUri` in utils.js), which escapes "@", "#", "$" and ":" but leaves "!" alone, so a
 // room ID arrives as `!opaque%3Aserver`; other writers escape "!" as %21.
