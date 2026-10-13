@@ -4,6 +4,7 @@ import { RAIL_UNREAD_CHATS_PREFERENCE } from '@trinity/data-access/room-library'
 import {
   AppConfigService,
   ACCOUNT_REMOVAL_LAUNCHER,
+  ACCOUNT_SWITCH_LAUNCHER,
   BUG_REPORT_LAUNCHER,
   CONFIG_EXPORT_VERSION,
   ExternalBrowserService,
@@ -40,6 +41,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ACCOUNT_LIFECYCLE_PORT } from '@trinity/data-access/accounts';
 import { DEVICE_CONFIRMATION_POLICY } from '@trinity/data-access/trust';
 import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
+import { AccountSwitchLauncherAdapter } from './account-switch-launcher.adapter';
 import { applicationCapabilityProviders } from './application-capability.providers';
 import { ReportBugLauncherAdapter } from './report-bug-launcher.adapter';
 import { provideTrinityApplication } from './trinity-application.providers';
@@ -305,6 +307,34 @@ describe('Trinity application provider composition', () => {
     try {
       expect(TestBed.inject(ACCOUNT_REMOVAL_LAUNCHER)).toBe(
         TestBed.inject(AccountRemovalLauncherAdapter),
+      );
+    } finally {
+      TestBed.resetTestingModule();
+      configureMatrixSdkLogging('debug');
+    }
+  });
+
+  it('offers the new-device check a way to another signed-in account', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideTrinityApplication({
+          routes: [],
+          pushConfig: null,
+          matrixSdkLogLevel: 'warn',
+          issueRepositoryUrl: null,
+          buildInfo: {} as BuildInfo,
+          dialogLoaders: {
+            settings: () => NEVER,
+            encryption: { unlock: () => NEVER, verify: () => NEVER },
+            reportBug: () => NEVER,
+          },
+        }),
+      ],
+    });
+
+    try {
+      expect(TestBed.inject(ACCOUNT_SWITCH_LAUNCHER)).toBe(
+        TestBed.inject(AccountSwitchLauncherAdapter),
       );
     } finally {
       TestBed.resetTestingModule();

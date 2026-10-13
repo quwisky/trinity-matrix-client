@@ -23,6 +23,7 @@ import {
 } from '@trinity/data-access/trust';
 import {
   ACCOUNT_REMOVAL_LAUNCHER,
+  ACCOUNT_SWITCH_LAUNCHER,
   type AccountRemovalOutcome,
 } from '@trinity/platform-native';
 
@@ -30,11 +31,14 @@ import {
 const CHECK_URL = '/encryption/confirm';
 const REMOVAL_FAILED = 'This account couldn’t be removed right now. Try again.';
 const SKIP_FAILED = 'Skipping the check didn’t work. Try again.';
+const SWITCH_FAILED =
+  'Couldn’t switch to another account right now. Try again.';
 
 /**
  * MSC4153 decision 2: a new device of an Account that has an identity is verified before
  * the app opens, with the recovery key or another device, or the identity is reset.
  * Removing the account from this device is the other way out; debug builds can skip.
+ * Another signed-in account stays reachable, so this check never blocks it.
  *
  * The screen owns no flow: it routes to the existing unlock and verify pages, which come
  * back here, runs the shared account-removal flow, and leaves for Rooms as soon as
@@ -55,15 +59,18 @@ const SKIP_FAILED = 'Skipping the check didn’t work. Try again.';
 export class DeviceConfirmationPage {
   private readonly confirmation = inject(TrustDeviceConfirmationService);
   private readonly accountRemoval = inject(ACCOUNT_REMOVAL_LAUNCHER);
+  private readonly accountSwitch = inject(ACCOUNT_SWITCH_LAUNCHER);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
-  /** A removal ended with a move away from the check; nothing else navigates then. */
+  /** A removal or switch ended with a move away from the check; nothing else navigates then. */
   private leaving = false;
   private stallTimer: Subscription | null = null;
   private readonly pending = computed(() => this.gate().kind === 'pending');
 
   readonly gate = this.confirmation.gate;
   readonly canSkip = this.confirmation.canSkip;
+  /** Another signed-in account to open instead (spec: a pending check never blocks it). */
+  readonly hasOtherAccount = this.accountSwitch.hasOtherAccount;
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
   /** The status could not be read within the settle time; offer the ways out. */
@@ -85,7 +92,7 @@ export class DeviceConfirmationPage {
     });
     // Leave as soon as nothing is asked: verified, reset, skipped or never required. A
     // removal in flight ends the check itself (the sign-out repoints the active account
-    // first), so wait for its outcome: `afterRemoval` decides where to go.
+    // first), as does a switch, so wait for its outcome, which decides where to go.
     effect(() => {
       if (this.gate().kind !== 'not-required' || this.busy()) return;
       untracked(() => {
@@ -145,6 +152,27 @@ export class DeviceConfirmationPage {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((outcome) => this.afterRemoval(outcome));
+  }
+
+  /** Switch to another signed-in account and open Rooms for it. */
+  useAnotherAccount(): void {
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.error.set(null);
+    this.accountSwitch
+      .switchToOther()
+      .pipe(
+        finalize(() => this.busy.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((switched) => {
+        if (!switched) {
+          this.error.set(SWITCH_FAILED);
+          return;
+        }
+        this.leaving = true;
+        void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+      });
   }
 
   /**

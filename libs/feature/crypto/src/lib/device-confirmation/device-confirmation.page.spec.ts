@@ -12,6 +12,7 @@ import {
 } from '@trinity/data-access/trust';
 import {
   ACCOUNT_REMOVAL_LAUNCHER,
+  ACCOUNT_SWITCH_LAUNCHER,
   type AccountRemovalOutcome,
 } from '@trinity/platform-native';
 import { DeviceConfirmationPage } from './device-confirmation.page';
@@ -26,6 +27,10 @@ async function renderPage(
     removal$?: Observable<AccountRemovalOutcome>;
     /** `settledGate()`; by default it answers with the gate as it is now. */
     settled?: () => Observable<DeviceConfirmationGate>;
+    /** Another signed-in account to switch to; none by default. */
+    otherAccount?: boolean;
+    /** What switching to it answers; true by default. */
+    switched?: Observable<boolean>;
   } = {},
 ) {
   const gate = signal<DeviceConfirmationGate>(
@@ -40,6 +45,7 @@ async function renderPage(
     () => options.removal$ ?? of(options.removal ?? { kind: 'kept' }),
   );
   const settledGate = options.settled ?? vi.fn(() => of(gate()));
+  const switchToOther = vi.fn(() => options.switched ?? of(true));
   const result = await render(DeviceConfirmationPage, {
     providers: [
       MockProvider(TrustDeviceConfirmationService, {
@@ -50,10 +56,25 @@ async function renderPage(
         settledGate,
       }),
       { provide: ACCOUNT_REMOVAL_LAUNCHER, useValue: { remove } },
+      {
+        provide: ACCOUNT_SWITCH_LAUNCHER,
+        useValue: {
+          hasOtherAccount: signal(options.otherAccount ?? false).asReadonly(),
+          switchToOther,
+        },
+      },
       MockProvider(Router, { navigate, navigateByUrl }),
     ],
   });
-  return { ...result, gate, navigate, navigateByUrl, skip, remove };
+  return {
+    ...result,
+    gate,
+    navigate,
+    navigateByUrl,
+    skip,
+    remove,
+    switchToOther,
+  };
 }
 
 function byTestId(container: Element, id: string): HTMLElement | null {
@@ -399,5 +420,70 @@ describe('DeviceConfirmationPage', () => {
     byTestId(container, 'device-confirmation-remove')!.click();
 
     expect(remove).toHaveBeenCalledWith('@me:hs');
+  });
+
+  it('offers another signed-in account after removal, so this check never blocks it', async () => {
+    const { container } = await renderPage({ otherAccount: true });
+
+    const actions = [
+      ...container.querySelectorAll<HTMLElement>('button[data-testid]'),
+    ].map((button) => button.textContent?.trim());
+    expect(actions).toEqual([
+      'Use recovery key',
+      'Verify with another device',
+      'Reset my identity',
+      'Remove account from this device',
+      'Use another account',
+    ]);
+    const button = byTestId(container, 'device-confirmation-other-account');
+    const remove = byTestId(container, 'device-confirmation-remove');
+    for (const attribute of ['variant', 'presentation', 'size', 'class']) {
+      expect(button?.getAttribute(attribute)).toBe(
+        remove?.getAttribute(attribute),
+      );
+    }
+  });
+
+  it('offers it on a check that cannot settle too', async () => {
+    const { container, fixture } = await renderPage({
+      gate: { kind: 'pending' },
+      settled: () => of({ kind: 'not-required' }),
+      otherAccount: true,
+    });
+    fixture.detectChanges();
+
+    expect(
+      byTestId(container, 'device-confirmation-other-account'),
+    ).not.toBeNull();
+  });
+
+  it('switches to the other account and opens Rooms', async () => {
+    const { container, gate, navigateByUrl, switchToOther } = await renderPage({
+      otherAccount: true,
+    });
+
+    byTestId(container, 'device-confirmation-other-account')!.click();
+    // The other account needs no check: leave once, from the switch.
+    gate.set({ kind: 'not-required' });
+    TestBed.tick();
+
+    expect(switchToOther).toHaveBeenCalledOnce();
+    expect(navigateByUrl).toHaveBeenCalledOnce();
+    expect(navigateByUrl).toHaveBeenCalledWith('/rooms', { replaceUrl: true });
+  });
+
+  it('stays and says so when the switch did not happen', async () => {
+    const { container, fixture, navigateByUrl } = await renderPage({
+      otherAccount: true,
+      switched: of(false),
+    });
+
+    byTestId(container, 'device-confirmation-other-account')!.click();
+    fixture.detectChanges();
+
+    expect(navigateByUrl).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent?.trim()).toBe(
+      'Couldn’t switch to another account right now. Try again.',
+    );
   });
 });

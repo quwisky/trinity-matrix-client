@@ -33,6 +33,7 @@ import {
 } from '@trinity/data-access/trust';
 import {
   ACCOUNT_REMOVAL_LAUNCHER,
+  ACCOUNT_SWITCH_LAUNCHER,
   BUG_REPORT_LAUNCHER,
   TrinityErrorHandler,
   type BuildInfo,
@@ -50,6 +51,7 @@ import {
 import { applicationCapabilityProviders } from './application-capability.providers';
 import { trinityDiagnosticProviders } from './diagnostic-log.providers';
 import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
+import { AccountSwitchLauncherAdapter } from './account-switch-launcher.adapter';
 import { ReportBugLauncherAdapter } from './report-bug-launcher.adapter';
 import { TrinityApplicationRuntimeAdapter } from './trinity-application-runtime.adapter';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
@@ -149,6 +151,10 @@ export function provideTrinityApplication(
     {
       provide: ACCOUNT_REMOVAL_LAUNCHER,
       useExisting: AccountRemovalLauncherAdapter,
+    },
+    {
+      provide: ACCOUNT_SWITCH_LAUNCHER,
+      useExisting: AccountSwitchLauncherAdapter,
     },
     {
       provide: DEVICE_CONFIRMATION_POLICY,

@@ -131,7 +131,7 @@ test.describe('The new-device check in the app', () => {
       page.getByTestId('device-confirmation-other-device'),
     ).toBeVisible({ timeout: 30_000 });
 
-    // The check has no account menu; "Add account" in that menu opens this same route.
+    // "Add account" in the account menu opens this same route.
     await page.goto('/login?add=1', { waitUntil: 'domcontentloaded' });
     await fillLabeledInput(page, 'Homeserver', hs);
     await page.getByText('Continue', { exact: true }).click();
@@ -159,6 +159,15 @@ test.describe('The new-device check in the app', () => {
     await expect(
       page.getByTestId('device-confirmation-other-device'),
     ).toBeVisible({ timeout: 30_000 });
+
+    // The check has no account menu (and desktop and mobile have no address bar): its own
+    // way back to the other account opens Rooms as that account.
+    await page.getByTestId('device-confirmation-other-account').click();
+    await waitForRooms(page);
+    await expect(page.locator('.userbar__handle')).toContainText(plain.user, {
+      timeout: 30_000,
+    });
+    expect(new URL(page.url()).pathname).toBe('/rooms');
   });
 
   test('Open Security settings from the verify page reaches Security, and leaving it returns to the check', async ({

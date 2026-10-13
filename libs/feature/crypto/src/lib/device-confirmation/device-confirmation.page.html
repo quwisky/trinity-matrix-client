@@ -85,6 +85,21 @@
             >
               Remove account from this device
             </button>
+            @if (hasOtherAccount()) {
+              <button
+                trnBtn
+                type="button"
+                variant="secondary"
+                presentation="ghost"
+                size="sm"
+                class="w-full"
+                data-testid="device-confirmation-other-account"
+                [disabled]="busy()"
+                (click)="useAnotherAccount()"
+              >
+                Use another account
+              </button>
+            }
             @if (canSkip) {
               <button
                 trnBtn
@@ -144,6 +159,21 @@
               >
                 Remove account from this device
               </button>
+              @if (hasOtherAccount()) {
+                <button
+                  trnBtn
+                  type="button"
+                  variant="secondary"
+                  presentation="ghost"
+                  size="sm"
+                  class="w-full"
+                  data-testid="device-confirmation-other-account"
+                  [disabled]="busy()"
+                  (click)="useAnotherAccount()"
+                >
+                  Use another account
+                </button>
+              }
             </div>
           } @else {
             <div class="status" role="status" aria-live="polite">
