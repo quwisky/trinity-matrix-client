@@ -214,11 +214,61 @@ export async function openSettingsTab(
   });
 }
 
-/** Log in through the UI (homeserver → Continue → credentials → Sign in) → /rooms. */
+/**
+ * What a sign-in helper does when a new device of an account with an encryption identity
+ * opens on the new-device check (`/encryption/confirm`). Browser and protocol journeys run
+ * the development build, whose check offers "Skip for now (debug build)".
+ * - `skip-if-shown` (default): take the skip when the check appears.
+ * - `expect`: stop on the check; fail if Rooms opens instead.
+ * - `forbid`: fail if the check appears.
+ */
+export type DeviceCheckHandling = 'skip-if-shown' | 'expect' | 'forbid';
+
+/** Whether `url` is the new-device check. */
+export const onDeviceCheck = (url: URL): boolean =>
+  url.pathname === '/encryption/confirm';
+
+const onRooms = (url: URL): boolean =>
+  url.pathname === '/rooms' &&
+  (url.searchParams.get('account')?.length ?? 0) > 0;
+
+/**
+ * Wait until a sign-in lands on Rooms or on the new-device check, then handle the check.
+ * The route guard holds navigation for up to ten seconds while the device's status
+ * loads, so the landing waits on the URL, never on a fixed delay.
+ */
+export async function settleSignIn(
+  page: Page,
+  handling: DeviceCheckHandling = 'skip-if-shown',
+  timeout = 30_000,
+): Promise<'rooms' | 'check'> {
+  await page.waitForURL((url) => onRooms(url) || onDeviceCheck(url), {
+    timeout,
+  });
+  const landed = onDeviceCheck(new URL(page.url())) ? 'check' : 'rooms';
+  if (landed === 'rooms') {
+    if (handling === 'expect') {
+      throw new Error(
+        'Expected the new-device check, but the sign-in opened Rooms.',
+      );
+    }
+    return landed;
+  }
+  if (handling === 'forbid') {
+    throw new Error('The sign-in opened the new-device check.');
+  }
+  if (handling === 'expect') return landed;
+  await page.getByTestId('device-confirmation-skip').click({ timeout });
+  await waitForRooms(page, timeout);
+  return landed;
+}
+
+/** Log in through the UI (homeserver → Continue → credentials → Sign in), then settle. */
 export async function login(
   page: Page,
   s: HomeserverSession,
   navigate: Navigate = webNavigate,
+  deviceCheck: DeviceCheckHandling = 'skip-if-shown',
 ): Promise<void> {
   await navigate(page, '/login');
   await fillLabeledInput(page, 'Homeserver', s.hs as string);
@@ -229,7 +279,7 @@ export async function login(
   await fillLabeledInput(page, 'Username', s.user as string);
   await fillLabeledInput(page, 'Password', s.pass as string);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await waitForRooms(page);
+  await settleSignIn(page, deviceCheck);
 }
 
 /** Wait for Application Runtime's stable, Account-qualified Rooms destination. */

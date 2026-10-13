@@ -7,7 +7,8 @@ import {
 import {
   fillLabeledInput,
   homeserverSession,
-  waitForRooms,
+  settleSignIn,
+  type DeviceCheckHandling,
 } from '../../support/app.mts';
 import { registerUser } from '../../support/account.mts';
 import { sendWithRetry } from './cs-api.mts';
@@ -127,6 +128,7 @@ export async function addAccountViaUi(
   hs: string,
   user: string,
   pass: string,
+  deviceCheck: DeviceCheckHandling = 'skip-if-shown',
 ): Promise<void> {
   await page.getByTestId('user-menu-trigger').click();
   await page.getByTestId('add-account').click();
@@ -140,7 +142,7 @@ export async function addAccountViaUi(
   await fillLabeledInput(page, 'Username', user);
   await fillLabeledInput(page, 'Password', pass);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await waitForRooms(page);
+  await settleSignIn(page, deviceCheck);
 }
 
 /**
