@@ -10,8 +10,9 @@ export function waitingNotice(page: Page): Locator {
   return page.getByRole('heading', { name: 'Trinity is open in another tab' });
 }
 
+/** A Matrix client-server /sync request (`/_matrix/client/<version>/sync`), nothing else. */
 function isSyncUrl(url: string): boolean {
-  return new URL(url).pathname.endsWith('/sync');
+  return /^\/_matrix\/client\/[^/]+\/sync$/.test(new URL(url).pathname);
 }
 
 /** A successful Matrix /sync response: one full round trip of the tab that sent it. */

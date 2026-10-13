@@ -67,20 +67,33 @@ test.describe('Session lock', () => {
     await page.waitForURL((url) => url.pathname.startsWith('/rooms/'), {
       timeout: 30_000,
     });
-    const roomUrl = page.url();
+    const room = new URL(page.url());
+    const onRoom = (url: URL): boolean =>
+      url.pathname === room.pathname &&
+      url.searchParams.get('account') === room.searchParams.get('account');
     const second = await openWaitingTab(page);
 
     await second.page.getByRole('button', { name: 'Use here' }).click();
 
     await waitForRooms(second.page, 60_000);
-    // The first tab reloaded in place into a fresh document that now waits for the lock,
-    // still on the room it showed rather than the sign-in page (ruling N12).
+    // The first tab reloaded in place into a fresh document that now waits for the lock, on
+    // the room it showed. This pins the outcome, not the RoomsPage 'releasing' guard: in
+    // Chromium the reload starts before the return-to-login effect can run, so this passes
+    // without the guard; it fails (on /login) only when that redirect wins the race.
     await expect(waitingNotice(page)).toBeVisible({ timeout: 30_000 });
-    expect(page.url()).toBe(roomUrl);
-    expect(new URL(page.url()).pathname).not.toBe('/login');
+    await expect(page).toHaveURL(onRoom, { timeout: 30_000 });
     const firstTabSyncs = countSyncRequests(page);
     await second.page.waitForResponse(isSyncResponse, { timeout: 60_000 });
     expect(firstTabSyncs()).toBe(0);
+
+    // Closing the second tab frees the lock: the reloaded first tab takes it, starts, and
+    // restores the room it showed before the handover rather than the sign-in page (N12).
+    await second.page.close();
+    await expect(waitingNotice(page)).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.getByTestId('composer-input')).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page).toHaveURL(onRoom, { timeout: 60_000 });
   });
 
   test('closing the first tab lets the waiting tab start by itself', async ({
