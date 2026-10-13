@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Readable } from 'node:stream';
 
@@ -18,16 +18,21 @@ const {
   fakeFiles,
   streamFailures,
   statMock,
-  readFileMock,
   createReadStreamMock,
+  realFiles,
+  afterStat,
 } = vi.hoisted(() => {
   const fakeFiles = new Map<string, Buffer>();
   const streamFailures = new Set<string>();
+  const realFiles = new Map<string, string>();
+  const afterStat = new Map<string, () => Promise<void>>();
   const enoent = (filePath: string) =>
     Object.assign(new Error(`ENOENT: ${filePath}`), { code: 'ENOENT' });
   return {
     fakeFiles,
     streamFailures,
+    realFiles,
+    afterStat,
     statMock: vi.fn(async (filePath: string) => {
       const data = fakeFiles.get(filePath);
       if (data === undefined) {
@@ -35,9 +40,6 @@ const {
       }
       return { isFile: () => true, size: data.length };
     }),
-    readFileMock: vi.fn(async (filePath: string) =>
-      Buffer.from(`body of ${filePath}`),
-    ),
     createReadStreamMock: vi.fn((filePath: string) => {
       const data = fakeFiles.get(filePath);
       const stream = new Readable({
@@ -57,11 +59,33 @@ const {
     }),
   };
 });
-vi.mock('node:fs', () => ({
-  promises: { stat: statMock, readFile: readFileMock },
-  createReadStream: createReadStreamMock,
-}));
+// `realFiles` maps a served path to a real temp file: those are stat'ed and read
+// through the real `fs`, so byte identity is proven against `createReadStream`.
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+  return {
+    promises: {
+      stat: async (filePath: string) => {
+        const real = realFiles.get(filePath);
+        if (real === undefined) {
+          return statMock(filePath);
+        }
+        const stats = await actual.promises.stat(real);
+        await afterStat.get(filePath)?.();
+        return stats;
+      },
+    },
+    createReadStream: (filePath: string) => {
+      const real = realFiles.get(filePath);
+      return real === undefined
+        ? createReadStreamMock(filePath)
+        : actual.createReadStream(real);
+    },
+  };
+});
 
+import * as fsReal from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { randomBytes } from 'node:crypto';
 
@@ -135,7 +159,6 @@ describe('registerAppProtocol — SPA fallback', () => {
   beforeEach(() => {
     handleMock.mockClear();
     statMock.mockClear();
-    readFileMock.mockClear();
     createReadStreamMock.mockClear();
     fakeFiles.clear();
     streamFailures.clear();
@@ -177,7 +200,6 @@ describe('registerAppProtocol — SPA fallback', () => {
 
     expect(res.status).toBe(404);
     expect(await res.text()).toBe('Not Found');
-    expect(readFileMock).not.toHaveBeenCalled();
   });
 
   it('serves a file that exists instead of falling back', async () => {
@@ -200,7 +222,6 @@ describe('registerAppProtocol — streaming', () => {
 
   beforeEach(() => {
     handleMock.mockClear();
-    readFileMock.mockClear();
     createReadStreamMock.mockClear();
     fakeFiles.clear();
     streamFailures.clear();
@@ -220,7 +241,6 @@ describe('registerAppProtocol — streaming', () => {
     expect(res.headers.get('content-type')).toBe('application/wasm');
     expect(res.headers.get('content-length')).toBe('4096');
     expect(Buffer.from(await res.arrayBuffer()).equals(bytes)).toBe(true);
-    expect(readFileMock).not.toHaveBeenCalled();
   });
 
   it('keeps the frame protections on a streamed html file', async () => {
@@ -250,6 +270,52 @@ describe('registerAppProtocol — streaming', () => {
     fakeFiles.delete(INDEX_HTML);
 
     const res = await handler({ url: 'trinity://app/rooms' });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('registerAppProtocol — real file system', () => {
+  let handler: (req: { url: string }) => Promise<Response>;
+  let tempDir: string;
+
+  beforeEach(async () => {
+    handleMock.mockClear();
+    realFiles.clear();
+    afterStat.clear();
+    registerAppProtocol();
+    handler = handleMock.mock.calls[0][1];
+    tempDir = await fsReal.mkdtemp(path.join(os.tmpdir(), 'trinity-scheme-'));
+  });
+
+  afterEach(async () => {
+    realFiles.clear();
+    await fsReal.rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('streams a multi-chunk file byte for byte through the real createReadStream', async () => {
+    const bytes = randomBytes(200 * 1024); // several 64 KiB chunks
+    const real = path.join(tempDir, 'big.wasm');
+    await fsReal.writeFile(real, bytes);
+    realFiles.set(path.join(WWW_ROOT, 'big.wasm'), real);
+
+    const res = await handler({ url: 'trinity://app/big.wasm' });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/wasm');
+    expect(res.headers.get('content-length')).toBe(String(bytes.length));
+    expect(Buffer.from(await res.arrayBuffer()).equals(bytes)).toBe(true);
+  });
+
+  it('answers 404 when the real file is deleted after stat', async () => {
+    const real = path.join(tempDir, 'gone.wasm');
+    await fsReal.writeFile(real, randomBytes(1024));
+    const served = path.join(WWW_ROOT, 'gone.wasm');
+    realFiles.set(served, real);
+    // stat succeeds, then the file disappears before the stream opens.
+    afterStat.set(served, () => fsReal.rm(real));
+
+    const res = await handler({ url: 'trinity://app/gone.wasm' });
 
     expect(res.status).toBe(404);
   });

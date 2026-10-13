@@ -94,6 +94,7 @@ async function fileResponse(
   }
   const headers: Record<string, string> = {
     'content-type': contentTypeFor(filePath),
+    // Length comes from `stat`; safe because the packaged files are read-only.
     'content-length': String(size),
   };
   if (path.extname(filePath).toLowerCase() === '.html') {
