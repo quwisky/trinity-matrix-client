@@ -52,6 +52,12 @@ import {
   syncStoreIndexedDbName,
 } from '@trinity/util/matrix';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
+import {
+  clientHasOutgoingWork,
+  clientPendingTexts,
+  pauseClientSync,
+  type PendingTextMessage,
+} from './outgoing-work';
 
 /**
  * Default deadline for ordinary Matrix HTTP requests made by an account client. The
@@ -563,6 +569,34 @@ export class MatrixClientService {
       this.teardownAll();
       return of(void 0);
     });
+  }
+
+  /**
+   * Stop every live client's sync loop, and only that: crypto, and sends and uploads already
+   * on their way, carry on. For a session handover, which waits for them and then calls
+   * {@link stop}.
+   */
+  pauseSync(): void {
+    for (const account of this.clients.values()) {
+      pauseClientSync(account.client);
+    }
+  }
+
+  /** Whether any live client still has a message or an upload on its way. */
+  hasOutgoingWork(): boolean {
+    return [...this.clients.values()].some((account) =>
+      clientHasOutgoingWork(account.client),
+    );
+  }
+
+  /**
+   * Text messages the live clients have not got onto the homeserver. Read before {@link stop}:
+   * the local echoes go with the clients.
+   */
+  pendingTextMessages(): readonly PendingTextMessage[] {
+    return [...this.clients.values()].flatMap((account) =>
+      clientPendingTexts(account.client, account.userId),
+    );
   }
 
   /**

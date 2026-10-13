@@ -3,6 +3,7 @@ import { MockProvider } from 'ng-mocks';
 import {
   ClientEvent,
   ConnectionError,
+  EventStatus,
   HttpApiEvent,
   MemoryStore,
   SyncState,
@@ -2800,5 +2801,263 @@ describe('OAuth tokens through a real MatrixClient', () => {
       'refresh_token',
     ]);
     expect(svc.accountIds()).toEqual([]);
+  });
+});
+
+describe('MatrixClientService session handover', () => {
+  beforeEach(() => {
+    vi.mocked(createClient).mockReset();
+    storeMock.startup.mockReset().mockResolvedValue(undefined);
+    storeMock.destroy.mockReset().mockResolvedValue(undefined);
+  });
+
+  let nextEcho = 0;
+
+  /** A local echo as the SDK keeps it in a live timeline. */
+  function echo(
+    status: EventStatus | null,
+    content: Record<string, unknown> = { msgtype: 'm.text', body: 'hello' },
+    options: {
+      readonly id?: string;
+      readonly type?: string;
+      readonly threadRootId?: string;
+      readonly edit?: boolean;
+    } = {},
+  ) {
+    const id = options.id ?? `~!room:hs:txn${++nextEcho}`;
+    return {
+      status,
+      getId: () => id,
+      getType: () => options.type ?? 'm.room.message',
+      getContent: () => content,
+      isRelation: (relType?: string) =>
+        options.edit === true && relType === 'm.replace',
+      threadRootId: options.threadRootId,
+    };
+  }
+
+  type Echo = ReturnType<typeof echo>;
+
+  /** A live client with a sync loop, room `!room:hs` whose timelines hold the echoes, and `uploads`. */
+  function handoverClient(
+    events: Echo[] = [],
+    threadEvents: Echo[] = [],
+    uploads: unknown[] = [],
+  ) {
+    const timeline = (list: Echo[]) => ({ getEvents: () => list });
+    return {
+      ...fakeClient(),
+      syncApi: { stop: vi.fn() },
+      getCurrentUploads: vi.fn(() => uploads),
+      getRooms: vi.fn(() => [
+        {
+          roomId: '!room:hs',
+          getLiveTimeline: () => timeline(events),
+          getThreads: () => [{ liveTimeline: timeline(threadEvents) }],
+        },
+      ]),
+    };
+  }
+
+  async function liveService(client: ReturnType<typeof handoverClient>) {
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(SESSION));
+    return svc;
+  }
+
+  it('pauses sync on every live client without stopping it', async () => {
+    const client = handoverClient();
+    const svc = await liveService(client);
+
+    svc.pauseSync();
+
+    expect(client.syncApi.stop).toHaveBeenCalledOnce();
+    expect(client.stopClient).not.toHaveBeenCalled();
+    expect(svc.isInitialized).toBe(true);
+  });
+
+  it.each([EventStatus.QUEUED, EventStatus.ENCRYPTING, EventStatus.SENDING])(
+    'counts a message that is %s as outgoing work',
+    async (status) => {
+      const svc = await liveService(handoverClient([echo(null), echo(status)]));
+
+      expect(svc.hasOutgoingWork()).toBe(true);
+    },
+  );
+
+  it('counts a thread reply on its way and an upload as outgoing work', async () => {
+    const threadEvents: Echo[] = [];
+    const uploads: unknown[] = [];
+    const svc = await liveService(handoverClient([], threadEvents, uploads));
+    expect(svc.hasOutgoingWork()).toBe(false);
+
+    threadEvents.push(
+      echo(EventStatus.SENDING, undefined, { threadRootId: '$root' }),
+    );
+    expect(svc.hasOutgoingWork()).toBe(true);
+
+    threadEvents.length = 0;
+    uploads.push({ loaded: 1, total: 2 });
+    expect(svc.hasOutgoingWork()).toBe(true);
+  });
+
+  it('reports no outgoing work once messages are sent, failed or cancelled', async () => {
+    const svc = await liveService(
+      handoverClient([
+        echo(null),
+        echo(EventStatus.SENT),
+        echo(EventStatus.NOT_SENT),
+        echo(EventStatus.CANCELLED),
+      ]),
+    );
+
+    expect(svc.hasOutgoingWork()).toBe(false);
+  });
+
+  it.each([
+    EventStatus.QUEUED,
+    EventStatus.ENCRYPTING,
+    EventStatus.SENDING,
+    EventStatus.NOT_SENT,
+  ])('returns a text message that is %s as unsent', async (status) => {
+    const svc = await liveService(
+      handoverClient([echo(status, { msgtype: 'm.text', body: 'see you' })]),
+    );
+
+    expect(svc.pendingTextMessages()).toEqual([
+      {
+        accountId: '@me:hs',
+        roomId: '!room:hs',
+        threadRootId: null,
+        text: 'see you',
+      },
+    ]);
+  });
+
+  it('never returns a message the server already has', async () => {
+    const svc = await liveService(
+      handoverClient([
+        echo(null, { msgtype: 'm.text', body: 'delivered' }),
+        echo(EventStatus.SENT, { msgtype: 'm.text', body: 'accepted' }),
+        echo(EventStatus.CANCELLED, { msgtype: 'm.text', body: 'withdrawn' }),
+      ]),
+    );
+
+    expect(svc.pendingTextMessages()).toEqual([]);
+  });
+
+  it('keeps the thread of an unsent reply, and makes an emote a /me line again', async () => {
+    const svc = await liveService(
+      handoverClient(
+        [echo(EventStatus.SENDING, { msgtype: 'm.emote', body: 'waves' })],
+        [
+          echo(
+            EventStatus.ENCRYPTING,
+            { msgtype: 'm.text', body: 'in the thread' },
+            { threadRootId: '$root' },
+          ),
+        ],
+      ),
+    );
+
+    expect(svc.pendingTextMessages()).toEqual([
+      {
+        accountId: '@me:hs',
+        roomId: '!room:hs',
+        threadRootId: null,
+        text: '/me waves',
+      },
+      {
+        accountId: '@me:hs',
+        roomId: '!room:hs',
+        threadRootId: '$root',
+        text: 'in the thread',
+      },
+    ]);
+  });
+
+  it('brings a reply back without the quote of the message it answers', async () => {
+    const svc = await liveService(
+      handoverClient(
+        [
+          echo(EventStatus.SENDING, {
+            msgtype: 'm.text',
+            body: '> <@alice:hs> lunch at noon?\n\nsee you there',
+            format: 'org.matrix.custom.html',
+            formatted_body: '<mx-reply>…</mx-reply>see you there',
+            'm.relates_to': { 'm.in_reply_to': { event_id: '$question' } },
+          }),
+        ],
+        [
+          // A thread's fallback reply quotes nothing: a leading `>` is the user's own quote.
+          echo(
+            EventStatus.SENDING,
+            {
+              msgtype: 'm.text',
+              body: '> as the docs say',
+              'm.relates_to': {
+                rel_type: 'm.thread',
+                event_id: '$root',
+                is_falling_back: true,
+                'm.in_reply_to': { event_id: '$latest' },
+              },
+            },
+            { threadRootId: '$root' },
+          ),
+        ],
+      ),
+    );
+
+    expect(svc.pendingTextMessages().map((message) => message.text)).toEqual([
+      'see you there',
+      '> as the docs say',
+    ]);
+  });
+
+  it('keeps a spoiler hidden by bringing it back as a /spoiler command', async () => {
+    const svc = await liveService(
+      handoverClient([
+        echo(EventStatus.NOT_SENT, {
+          msgtype: 'm.text',
+          body: 'the butler did it',
+          format: 'org.matrix.custom.html',
+          formatted_body: '<span data-mx-spoiler>the butler did it</span>',
+        }),
+      ]),
+    );
+
+    expect(svc.pendingTextMessages().map((message) => message.text)).toEqual([
+      '/spoiler the butler did it',
+    ]);
+  });
+
+  it('drops uploads, media, edits, blank bodies and other event types, and counts an echo once', async () => {
+    const shared = echo(EventStatus.SENDING, {
+      msgtype: 'm.text',
+      body: 'once',
+    });
+    const svc = await liveService(
+      handoverClient(
+        [
+          shared,
+          echo(EventStatus.SENDING, { msgtype: 'm.image', body: 'pic.png' }),
+          echo(EventStatus.NOT_SENT, { msgtype: 'm.file', body: 'a.pdf' }),
+          echo(
+            EventStatus.SENDING,
+            { msgtype: 'm.text', body: '* fixed' },
+            { edit: true },
+          ),
+          echo(EventStatus.SENDING, { msgtype: 'm.text', body: '   ' }),
+          echo(EventStatus.SENDING, { key: '👍' }, { type: 'm.reaction' }),
+        ],
+        [shared],
+        [{ loaded: 1, total: 2 }],
+      ),
+    );
+
+    expect(svc.pendingTextMessages().map((message) => message.text)).toEqual([
+      'once',
+    ]);
   });
 });
