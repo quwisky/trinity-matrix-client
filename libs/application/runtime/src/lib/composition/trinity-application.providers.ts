@@ -28,6 +28,10 @@ import {
 } from '@trinity/data-access/matrix-client';
 import type { PushConfig } from '@trinity/data-access/notifications';
 import {
+  DEVICE_CONFIRMATION_POLICY,
+  type DeviceConfirmationPolicy,
+} from '@trinity/data-access/trust';
+import {
   ACCOUNT_REMOVAL_LAUNCHER,
   BUG_REPORT_LAUNCHER,
   TrinityErrorHandler,
@@ -72,6 +76,8 @@ export interface TrinityApplicationProviderOptions {
   readonly issueRepositoryUrl: string | null;
   readonly buildInfo: BuildInfo;
   readonly dialogLoaders: TrinityApplicationDialogLoaders;
+  /** The new-device check's build policy; left out, no build offers the debug skip. */
+  readonly deviceConfirmation?: DeviceConfirmationPolicy;
 }
 
 /**
@@ -143,6 +149,10 @@ export function provideTrinityApplication(
     {
       provide: ACCOUNT_REMOVAL_LAUNCHER,
       useExisting: AccountRemovalLauncherAdapter,
+    },
+    {
+      provide: DEVICE_CONFIRMATION_POLICY,
+      useValue: options.deviceConfirmation ?? { allowSkip: false },
     },
   ]);
 }

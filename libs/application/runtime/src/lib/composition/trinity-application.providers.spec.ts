@@ -38,6 +38,7 @@ import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { NEVER, firstValueFrom, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ACCOUNT_LIFECYCLE_PORT } from '@trinity/data-access/accounts';
+import { DEVICE_CONFIRMATION_POLICY } from '@trinity/data-access/trust';
 import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
 import { applicationCapabilityProviders } from './application-capability.providers';
 import { ReportBugLauncherAdapter } from './report-bug-launcher.adapter';
@@ -308,6 +309,37 @@ describe('Trinity application provider composition', () => {
     } finally {
       TestBed.resetTestingModule();
       configureMatrixSdkLogging('debug');
+    }
+  });
+
+  it('offers the debug skip only where the host asks for it', () => {
+    const base = {
+      routes: [],
+      pushConfig: null,
+      matrixSdkLogLevel: 'warn' as const,
+      issueRepositoryUrl: null,
+      buildInfo: {} as BuildInfo,
+      dialogLoaders: {
+        settings: () => NEVER,
+        encryption: { unlock: () => NEVER, verify: () => NEVER },
+        reportBug: () => NEVER,
+      },
+    };
+    for (const [options, allowSkip] of [
+      [base, false],
+      [{ ...base, deviceConfirmation: { allowSkip: true } }, true],
+    ] as const) {
+      TestBed.configureTestingModule({
+        providers: [provideTrinityApplication(options)],
+      });
+      try {
+        expect(TestBed.inject(DEVICE_CONFIRMATION_POLICY)).toEqual({
+          allowSkip,
+        });
+      } finally {
+        TestBed.resetTestingModule();
+        configureMatrixSdkLogging('debug');
+      }
     }
   });
 

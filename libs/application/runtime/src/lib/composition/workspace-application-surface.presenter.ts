@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, type Type } from '@angular/core';
+import { Injectable, computed, inject, signal, type Type } from '@angular/core';
 import { NavigationStart, Router } from '@angular/router';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
@@ -77,6 +77,11 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
   } | null = null;
   /** Emits on every navigation start and on teardown; releases work begun before it. */
   private readonly navigationStarts = new Subject<void>();
+
+  /** A trust flow (unlock or verify) is open as a dialog; a late redirect waits for it. */
+  readonly trustDialogOpen = computed(() =>
+    this.active().some(({ surface }) => surface.kind === 'trust'),
+  );
 
   /** Application Runtime owns navigation observation and Back registration. */
   run(): Observable<void> {

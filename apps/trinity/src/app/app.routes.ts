@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import {
   authGuard,
+  deviceConfirmationGuard,
   workspaceBrowserBackGuard,
 } from '@trinity/application/runtime';
 // Type-only: a value import here would pull the lazy crypto feature into the initial
@@ -54,7 +55,13 @@ export const routes: Routes = [
       }
       return null;
     },
-    canActivate: [authGuard, workspaceBrowserBackGuard],
+    // The new-device check runs last, so a Back press that only closes a dialog never
+    // waits for it.
+    canActivate: [
+      authGuard,
+      workspaceBrowserBackGuard,
+      deviceConfirmationGuard,
+    ],
     canDeactivate: [workspaceBrowserBackGuard],
     runGuardsAndResolvers: 'always',
     loadComponent: () =>
@@ -63,7 +70,9 @@ export const routes: Routes = [
   {
     path: 'settings',
     canActivate: [authGuard],
-    canActivateChild: [workspaceBrowserBackGuard],
+    // Children re-run the new-device check on every section change; it lets Security
+    // through, which stays reachable from the check.
+    canActivateChild: [workspaceBrowserBackGuard, deviceConfirmationGuard],
     canDeactivate: [workspaceBrowserBackGuard],
     loadChildren: () =>
       import('@trinity/feature/settings').then((m) => m.settingsRoutes),

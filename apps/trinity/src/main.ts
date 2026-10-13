@@ -33,6 +33,8 @@ void bootstrapApplication(ApplicationRootComponent, {
       issueRepositoryUrl: environment.issueTracker?.repositoryUrl ?? null,
       buildInfo: BUILD_INFO_VALUE,
       dialogLoaders: APPLICATION_DIALOG_LOADERS,
+      // Element X parity: only debug builds may skip the new-device check.
+      deviceConfirmation: { allowSkip: !environment.production },
     }),
     provideServiceWorker('ngsw-worker.js', {
       enabled: serviceWorkerEnabled,
