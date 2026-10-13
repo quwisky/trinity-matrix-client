@@ -86,6 +86,8 @@ describe('AccountRemovalLauncherAdapter', () => {
     expect(test.navigateByUrl).toHaveBeenCalledWith('/login', {
       replaceUrl: true,
     });
+    // A clean removal says nothing.
+    expect(test.show).not.toHaveBeenCalled();
   });
 
   it('stays in the app when other accounts remain', async () => {
@@ -97,6 +99,7 @@ describe('AccountRemovalLauncherAdapter', () => {
       firstValueFrom(test.launcher.remove('@me:hs')),
     ).resolves.toEqual({ kind: 'removed', remainingAccountIds: ['@alt:hs'] });
     expect(test.navigateByUrl).not.toHaveBeenCalled();
+    expect(test.show).not.toHaveBeenCalled();
   });
 
   it('keeps the account when the first question is cancelled', async () => {
@@ -214,6 +217,8 @@ describe('AccountRemovalLauncherAdapter', () => {
       'Account removal is still running. Closing this message does not cancel it.',
       { duration: 4000, variant: 'danger' },
     );
+    // Nothing is removed yet: stay where the person is.
+    expect(test.navigateByUrl).not.toHaveBeenCalled();
   });
 
   it.each([
