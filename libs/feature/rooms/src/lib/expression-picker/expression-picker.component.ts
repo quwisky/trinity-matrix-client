@@ -135,6 +135,18 @@ export class ExpressionPickerComponent {
     return this.tabs().includes(wanted) ? wanted : 'emoji';
   });
 
+  /**
+   * The content's side inset, one for every tab: the sheet's 12px, edge to edge of it, and in
+   * the card 8px around GIFs and stickers. The card's emoji grid keeps the vendor's fixed
+   * width and insets, so it takes none.
+   */
+  protected readonly contentInset = computed(() => {
+    if (this.presentation() === 'sheet') {
+      return 'var(--trinity-space-4)';
+    }
+    return this.active() === 'emoji' ? null : 'var(--trinity-space-3)';
+  });
+
   protected readonly tabStop = computed(() => {
     const target = this.focusTarget();
     return target && this.tabs().includes(target) ? target : this.active();

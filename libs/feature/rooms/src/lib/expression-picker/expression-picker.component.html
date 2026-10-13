@@ -78,6 +78,7 @@
     class="grid outline-none"
     tabindex="-1"
     data-expression-content
+    [style.padding-inline]="contentInset()"
     [attr.role]="tabs().length > 1 ? 'tabpanel' : null"
     [attr.id]="tabs().length > 1 ? tabPanelId() : null"
     [attr.aria-labelledby]="tabs().length > 1 ? tabId(active()) : null"
@@ -96,10 +97,14 @@
         />
       }
       @case ('emoji') {
-        <!-- The vendor grid is a fixed px width; centred, it sits evenly in a wider panel. -->
+        <!-- In the card the vendor grid keeps its fixed px width, centred so it sits evenly in
+             a wider panel. In a sheet it fills the width, with 44px touch cells and the larger
+             glyph. -->
         <trn-emoji-picker
-          class="justify-self-center"
+          [class.justify-self-center]="presentation() === 'popover'"
           [framed]="false"
+          [layout]="presentation() === 'sheet' ? 'fill' : 'fixed'"
+          [size]="presentation() === 'sheet' ? 'lg' : 'md'"
           [autoFocusSearch]="presentation() === 'sheet'"
           (picked)="emojiPick.emit($event)"
         />

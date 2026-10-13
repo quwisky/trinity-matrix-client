@@ -35,6 +35,8 @@ class EmojiPickerStubComponent {
   readonly pickerId = input<string | null>(null);
   readonly autoFocusSearch = input(false);
   readonly framed = input(true);
+  readonly layout = input<'fixed' | 'fill'>('fixed');
+  readonly size = input<'sm' | 'md' | 'lg'>('md');
   readonly picked = output<TrnEmojiPick>();
 }
 
@@ -513,5 +515,48 @@ describe('ExpressionPickerComponent', () => {
     const { fixture } = await renderPanel({ presentation: 'sheet' });
 
     expect(emojiPicker(fixture).framed()).toBe(false);
+  });
+
+  it("fills the sheet's width with the emoji grid, at the touch glyph size", async () => {
+    const { fixture } = await renderPanel({ presentation: 'sheet' });
+    const picker = emojiPicker(fixture);
+
+    expect(picker.layout()).toBe('fill');
+    expect(picker.size()).toBe('lg');
+  });
+
+  it("keeps the emoji grid's fixed width in the desktop card", async () => {
+    const { fixture } = await renderPanel();
+    const picker = emojiPicker(fixture);
+
+    expect(picker.layout()).toBe('fixed');
+    expect(picker.size()).toBe('md');
+  });
+
+  it('insets every tab by the same 12px in a sheet', async () => {
+    await renderPanel({ presentation: 'sheet' });
+    const content = view.getByRole('tabpanel');
+
+    for (const name of ['GIFs', 'Stickers', 'Emoji']) {
+      view.getByRole('tab', { name }).click();
+      view.fixture.detectChanges();
+      await view.fixture.whenStable();
+
+      expect(content.style.paddingInline).toBe('var(--trinity-space-4)');
+    }
+  });
+
+  it('keeps the desktop insets: 8px around GIFs and stickers, none around the fixed emoji grid', async () => {
+    await renderPanel();
+    const content = view.getByRole('tabpanel');
+
+    expect(content.style.paddingInline).toBe('');
+    for (const name of ['GIFs', 'Stickers']) {
+      view.getByRole('tab', { name }).click();
+      view.fixture.detectChanges();
+      await view.fixture.whenStable();
+
+      expect(content.style.paddingInline).toBe('var(--trinity-space-3)');
+    }
   });
 });

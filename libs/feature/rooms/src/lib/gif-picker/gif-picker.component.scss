@@ -13,7 +13,9 @@
     // `dvh` shrinks with a mobile browser's toolbars; `vh` is the fallback before it.
     max-height: 60vh;
     max-height: 60dvh;
-    padding: var(--trinity-space-3);
+
+    // Vertical only: the expression panel holding it sets the side inset.
+    padding-block: var(--trinity-space-3);
   }
 
   .gif-picker__search {
