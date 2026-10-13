@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
@@ -5,7 +6,12 @@ import {
   type PendingTextMessage,
 } from '@trinity/data-access/matrix-client';
 import {
+  AccountRuntimeService,
+  type AccountLifecycleState,
+} from '@trinity/data-access/accounts';
+import {
   AppRestartService,
+  SESSION_HANDOVER_TIMEOUT_MS,
   SessionLockService,
 } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
@@ -41,9 +47,12 @@ function setup(
     readonly stopFails?: boolean;
     readonly closeFails?: boolean;
     readonly unsent?: () => readonly PendingTextMessage[];
+    readonly lifecycleBusy?: boolean;
   } = {},
 ) {
   const steps: string[] = [];
+  const lifecycleBusy = signal(options.lifecycleBusy ?? false);
+  const lifecycle = signal<AccountLifecycleState>({ phase: 'idle' });
   const requests = new Subject<void>();
   const matrix = {
     pauseSync: vi.fn(() => {
@@ -92,10 +101,24 @@ function setup(
       MockProvider(TrnSurfaceService, { closeAll }),
       MockProvider(AppRestartService, { reload, restart }),
       MockProvider(UnsentDraftsWriter, { writeBack }),
+      MockProvider(AccountRuntimeService, {
+        lifecycleBusy: lifecycleBusy.asReadonly(),
+        lifecycle: lifecycle.asReadonly(),
+      }),
     ],
   });
   const lifetime = TestBed.inject(SessionHandoverWorkflow).run().subscribe();
-  return { steps, requests, matrix, reload, restart, writeBack, lifetime };
+  return {
+    steps,
+    requests,
+    matrix,
+    reload,
+    restart,
+    writeBack,
+    lifetime,
+    lifecycleBusy,
+    lifecycle,
+  };
 }
 
 describe('SessionHandoverWorkflow', () => {
@@ -309,5 +332,99 @@ describe('SessionHandoverWorkflow', () => {
     expect(matrix.stop).toHaveBeenCalledOnce();
     expect(reload).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
+  });
+
+  describe('while an erase or a sign-out is under way in this tab', () => {
+    it('waits for it to settle, then hands over', async () => {
+      const { steps, requests, lifecycleBusy, lifecycle, lifetime } = setup({
+        lifecycleBusy: true,
+      });
+
+      requests.next();
+      await vi.advanceTimersByTimeAsync(2_000);
+      // Nothing paused, stopped or written while the destructive work runs.
+      expect(steps).toEqual([]);
+
+      lifecycle.set({
+        phase: 'settled',
+        attempt: 1,
+        operation: 'signing-out-account',
+        outcome: {
+          kind: 'ready',
+          accountId: '@me:hs',
+          activeAccountId: null,
+          remainingAccountIds: [],
+        },
+      });
+      lifecycleBusy.set(false);
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(steps).toEqual(HANDED_OVER);
+      lifetime.unsubscribe();
+    });
+
+    it('does not hand over at all when the erase it waited for restarts the app', async () => {
+      const { steps, requests, reload, lifecycleBusy, lifecycle, lifetime } =
+        setup({ lifecycleBusy: true });
+
+      requests.next();
+      await vi.advanceTimersByTimeAsync(1_000);
+      lifecycle.set({
+        phase: 'settled',
+        attempt: 1,
+        operation: 'resetting-installation',
+        outcome: { kind: 'ready' },
+      });
+      lifecycleBusy.set(false);
+      await vi.advanceTimersByTimeAsync(SESSION_HANDOVER_DRAIN_MS + 1_000);
+
+      expect(steps).toEqual([]);
+      expect(reload).not.toHaveBeenCalled();
+      lifetime.unsubscribe();
+    });
+
+    it('hands over after an erase that left residue, which keeps the app running', async () => {
+      const { steps, requests, lifecycleBusy, lifecycle, lifetime } = setup({
+        lifecycleBusy: true,
+      });
+
+      requests.next();
+      await vi.advanceTimersByTimeAsync(1_000);
+      lifecycle.set({
+        phase: 'settled',
+        attempt: 1,
+        operation: 'resetting-installation',
+        outcome: {
+          kind: 'partial-cleanup',
+          issues: [{ scope: 'indexed-db', recovery: 'restart-application' }],
+        },
+      });
+      lifecycleBusy.set(false);
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(steps).toEqual(HANDED_OVER);
+      lifetime.unsubscribe();
+    });
+
+    it('gives up when it is still running after the handover timeout, and answers the next request', async () => {
+      const { steps, requests, lifecycleBusy, lifetime } = setup({
+        lifecycleBusy: true,
+      });
+
+      requests.next();
+      await vi.advanceTimersByTimeAsync(SESSION_HANDOVER_TIMEOUT_MS - 100);
+      expect(steps).toEqual([]);
+      await vi.advanceTimersByTimeAsync(200);
+      // The requester has shown "Try again" by now; this tab never hands over half-wiped.
+      lifecycleBusy.set(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(steps).toEqual([]);
+
+      requests.next();
+      expect(steps).toEqual(['pause-sync']);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(steps).toEqual(HANDED_OVER);
+      lifetime.unsubscribe();
+    });
   });
 });

@@ -14,13 +14,14 @@ function unsent(
   return { accountId: '@me:hs', roomId: '!room:hs', threadRootId, text };
 }
 
-function setup(initial: Record<string, string> = {}) {
+function setup(initial: Record<string, string> = {}, initialised = true) {
   const drafts = new Map(Object.entries(initial));
   const steps: string[] = [];
   TestBed.configureTestingModule({
     providers: [
       UnsentDraftsWriter,
       MockProvider(DraftStoreService, {
+        isInitialised: () => initialised,
         get: (key: string) => drafts.get(key) ?? '',
         set: (key: string, text: string) => {
           steps.push(`set ${key}`);
@@ -46,6 +47,15 @@ describe('UnsentDraftsWriter', () => {
 
     expect(drafts.get(ROOM_DRAFT)).toBe('see you');
     expect(steps).toEqual([`set ${ROOM_DRAFT}`, 'flush']);
+  });
+
+  it('leaves the drafts alone while the store has not loaded them yet', async () => {
+    const { writer, drafts, steps } = setup({}, false);
+
+    await writer.writeBack([unsent('see you')]);
+
+    expect(drafts.size).toBe(0);
+    expect(steps).toEqual([]);
   });
 
   it('joins an unsent text after an existing draft with a blank line, never overwriting it', async () => {

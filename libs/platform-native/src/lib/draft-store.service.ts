@@ -21,6 +21,7 @@ const MAX_DRAFTS = 200;
 export class DraftStoreService implements OnDestroy {
   private drafts = new Map<string, string>();
   private pending: ReturnType<typeof setTimeout> | null = null;
+  private initialised = false;
 
   /**
    * Drop a pending write when the injector goes away.
@@ -52,6 +53,12 @@ export class DraftStoreService implements OnDestroy {
     } catch {
       // Absent or corrupt → start empty.
     }
+    this.initialised = true;
+  }
+
+  /** Whether {@link init} has loaded the stored drafts; before that the map is empty. */
+  isInitialised(): boolean {
+    return this.initialised;
   }
 
   /** The saved draft for a conversation, or '' when none. */
@@ -99,9 +106,11 @@ export class DraftStoreService implements OnDestroy {
 
   /**
    * Write the drafts now instead of after the debounce, for a page about to restart (a session
-   * handover): a debounced write would be lost with the page. Never rejects.
+   * handover): a debounced write would be lost with the page. Never rejects. Before
+   * {@link init} has loaded them it writes nothing: the empty map would erase the stored drafts.
    */
   flush(): Promise<void> {
+    if (!this.initialised) return Promise.resolve();
     this.cancelPending();
     return this.persist();
   }

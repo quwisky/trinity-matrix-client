@@ -30,9 +30,11 @@ export class UnsentDraftsWriter {
   /**
    * Put each text after the draft it lands in, then write the drafts to storage. Never rejects.
    * Writes even with nothing to add: a draft typed just before the handover may still be
-   * waiting for the store's debounce.
+   * waiting for the store's debounce. Does nothing while the store has not loaded the stored
+   * drafts yet (a handover during startup): it would join the text to drafts it cannot see.
    */
   writeBack(messages: readonly PendingTextMessage[]): Promise<void> {
+    if (!this.drafts.isInitialised()) return Promise.resolve();
     for (const message of messages) {
       const key = unsentDraftKey(message);
       const existing = this.drafts.get(key).trimEnd();

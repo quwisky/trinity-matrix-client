@@ -72,6 +72,11 @@ export class AccountRuntimeService {
   readonly state = this.runtimeState.asReadonly();
   /** Value-free destructive cleanup progress retained independently of UI observers. */
   readonly lifecycle = this.lifecycleWorkflow.state;
+  /**
+   * Whether a sign-out, an Account removal or an installation reset is under way in this tab.
+   * Work that must not cut into one, a session handover (#1267), waits for it to clear.
+   */
+  readonly lifecycleBusy = this.lifecycleWorkflow.busy;
   readonly activeAccountId = this.adapter.activeAccountId;
   readonly hasActiveAccount = computed(() => this.activeAccountId() !== null);
 

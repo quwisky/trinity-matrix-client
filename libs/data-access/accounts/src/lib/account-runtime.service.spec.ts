@@ -372,6 +372,34 @@ describe('AccountRuntimeService', () => {
     );
   });
 
+  it('reports a destructive attempt as busy from its start until it settles', () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@outgoing:hs',
+      accountIds: ['@outgoing:hs'],
+    });
+    const reset = new Subject<InstallationResetOutcome>();
+    const signOut = new Subject<AccountSignOutOutcome>();
+    vi.mocked(test.adapter.resetInstallation).mockReturnValue(reset);
+    vi.mocked(test.adapter.signOutAccount).mockReturnValue(signOut);
+    const runtime = setup(test);
+    expect(runtime.lifecycleBusy()).toBe(false);
+
+    runtime.resetInstallation().subscribe().unsubscribe();
+    expect(runtime.lifecycleBusy()).toBe(true);
+    // Still under way: a first, uncertain report settles nothing.
+    reset.next({ kind: 'uncertain-cleanup', issues: [], pending: [] });
+    expect(runtime.lifecycleBusy()).toBe(true);
+    reset.next({ kind: 'partial-cleanup', issues: [] });
+    expect(runtime.lifecycleBusy()).toBe(false);
+    reset.complete();
+
+    runtime.signOutAccount('@outgoing:hs').subscribe().unsubscribe();
+    expect(runtime.lifecycleBusy()).toBe(true);
+    signOut.error(new Error('the registry could not be read'));
+    expect(runtime.lifecycleBusy()).toBe(false);
+  });
+
   it('replays a settled reset instead of dispatching the destructive work again', async () => {
     const test = testAdapter({
       kind: 'available',

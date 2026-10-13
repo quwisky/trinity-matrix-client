@@ -1,14 +1,17 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnSurfaceService } from '@trinity/components/overlay';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   MatrixClientService,
   type PendingTextMessage,
 } from '@trinity/data-access/matrix-client';
 import {
   AppRestartService,
+  SESSION_HANDOVER_TIMEOUT_MS,
   SessionLockService,
 } from '@trinity/platform-native';
 import {
+  EMPTY,
   Observable,
   catchError,
   defer,
@@ -33,7 +36,7 @@ const DRAIN_POLL_MS = 250;
 
 /**
  * Hands this tab's session to another tab that chose "Use here" (#1267, decisions 2 and 5):
- * stop syncing at once, give messages and uploads already on their way up to five seconds,
+ * after any erase or sign-out already running here has settled, stop syncing at once, give messages and uploads already on their way up to five seconds,
  * note the text still not on the server, stop every Matrix client through the ordinary stop
  * path, close dialogs, put that text back in its drafts and reload this page in place, so the
  * fresh document waits for the lock like any other tab and, when it takes the session again,
@@ -50,12 +53,44 @@ export class SessionHandoverWorkflow {
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly appRestart = inject(AppRestartService);
   private readonly unsentDrafts = inject(UnsentDraftsWriter);
+  private readonly accounts = inject(AccountRuntimeService);
 
   /** For the life of the page: a tab still starting up holds the lock too. */
   run(): Observable<never> {
     return this.sessionLock.handoverRequests.pipe(
-      exhaustMap(() => this.handOver()),
+      exhaustMap(() =>
+        this.afterDestructiveWork().pipe(switchMap(() => this.handOver())),
+      ),
       ignoreElements(),
+    );
+  }
+
+  /**
+   * Emits once no sign-out, Account removal or installation reset is running in this tab, so a
+   * handover never cuts into one. At once when none is. Completes without emitting, so this
+   * request goes unanswered and the other tab offers "Try again", when one is still running
+   * after the requester's own timeout, or when the erase it waited for succeeded: that erase
+   * restarts the app itself, and this tab must not stop, write or reload on top of it.
+   */
+  private afterDestructiveWork(): Observable<void> {
+    return defer(() => {
+      if (!this.accounts.lifecycleBusy()) return of(undefined);
+      return timer(DRAIN_POLL_MS, DRAIN_POLL_MS).pipe(
+        filter(() => !this.accounts.lifecycleBusy()),
+        take(1),
+        timeout({ first: SESSION_HANDOVER_TIMEOUT_MS, with: () => EMPTY }),
+        filter(() => !this.erasedInstallation()),
+        map((): void => undefined),
+      );
+    });
+  }
+
+  private erasedInstallation(): boolean {
+    const lifecycle = this.accounts.lifecycle();
+    return (
+      lifecycle.phase === 'settled' &&
+      lifecycle.operation === 'resetting-installation' &&
+      lifecycle.outcome.kind === 'ready'
     );
   }
 

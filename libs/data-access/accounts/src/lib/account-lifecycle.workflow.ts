@@ -53,6 +53,7 @@ export class AccountLifecycleWorkflow {
   private readonly lifecycleState = signal<AccountLifecycleState>({
     phase: 'idle',
   });
+  private readonly busyState = signal(false);
   private attempt: InFlightLifecycle | null = null;
   private nextAttempt = 0;
   private readonly signOutSettlements = new Map<
@@ -65,6 +66,8 @@ export class AccountLifecycleWorkflow {
   > | null = null;
 
   readonly state = this.lifecycleState.asReadonly();
+  /** Whether a sign-out or an installation reset is under way, from its start until it settles. */
+  readonly busy = this.busyState.asReadonly();
 
   get operation(): AccountLifecycleOperation | null {
     if (!this.attempt) return null;
@@ -129,6 +132,7 @@ export class AccountLifecycleWorkflow {
       settled: false,
     };
     this.attempt = attempt;
+    this.busyState.set(true);
     const residue = this.signOutSettlements.get(accountId);
     this.own(
       attempt,
@@ -151,6 +155,7 @@ export class AccountLifecycleWorkflow {
       settled: false,
     };
     this.attempt = attempt;
+    this.busyState.set(true);
     this.own(
       attempt,
       defer(() =>
@@ -199,6 +204,7 @@ export class AccountLifecycleWorkflow {
     attempt.updates.next(outcome);
     if (outcome.kind === 'uncertain-cleanup') return;
     attempt.settled = true;
+    if (this.attempt === attempt) this.busyState.set(false);
     if (attempt.kind === 'reset') {
       if (outcome.kind === 'ready' || outcome.kind === 'partial-cleanup') {
         this.resetSettlement = outcome;
@@ -282,6 +288,7 @@ export class AccountLifecycleWorkflow {
   private release(attempt: OwnedLifecycleBase): void {
     if (this.attempt !== attempt) return;
     this.attempt = null;
+    this.busyState.set(false);
     attempt.owner.unsubscribe();
   }
 

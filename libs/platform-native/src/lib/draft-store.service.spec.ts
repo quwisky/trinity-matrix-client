@@ -167,6 +167,7 @@ describe('DraftStoreService', () => {
 
   it('writes the drafts at once on flush, without a second write after the debounce', async () => {
     const svc = service();
+    await svc.init();
     svc.set('!a:hs', 'unsent');
 
     await svc.flush();
@@ -182,8 +183,34 @@ describe('DraftStoreService', () => {
   it('resolves flush even when storage refuses the write', async () => {
     set.mockRejectedValueOnce(new Error('quota'));
     const svc = service();
+    await svc.init();
     svc.set('!a:hs', 'unsent');
 
     await expect(svc.flush()).resolves.toBeUndefined();
+  });
+
+  // A handover can land while startup is still loading the drafts (#1267).
+  describe('before init has loaded the stored drafts', () => {
+    it('does not write the empty map over them on flush', async () => {
+      get.mockReturnValue(new Promise(() => undefined));
+      const svc = service();
+      void svc.init();
+
+      await svc.flush();
+
+      expect(set).not.toHaveBeenCalled();
+      expect(svc.isInitialised()).toBe(false);
+    });
+
+    it('flushes once init has settled, even when nothing was stored', async () => {
+      const svc = service();
+      expect(svc.isInitialised()).toBe(false);
+
+      await svc.init();
+      await svc.flush();
+
+      expect(svc.isInitialised()).toBe(true);
+      expect(set).toHaveBeenCalledOnce();
+    });
   });
 });

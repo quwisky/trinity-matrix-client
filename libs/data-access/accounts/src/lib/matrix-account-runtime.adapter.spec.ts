@@ -893,6 +893,35 @@ describe('MatrixAccountRuntimeAdapter', () => {
     }
   });
 
+  it('empties the drafts held in memory once the clients have stopped, so no later write restores them', async () => {
+    const test = setup();
+    prepareSuccessfulReset(test);
+
+    await expect(
+      firstValueFrom(test.adapter.resetInstallation()),
+    ).resolves.toEqual({ kind: 'ready' });
+
+    expect(test.lifecycle.clearDrafts).toHaveBeenCalledOnce();
+    expect(
+      vi.mocked(test.lifecycle.clearDrafts).mock.invocationCallOrder[0],
+    ).toBeGreaterThan(vi.mocked(test.matrix.stop).mock.invocationCallOrder[0]);
+  });
+
+  it('asks for a restart when the drafts held in memory cannot be emptied', async () => {
+    const test = setup();
+    prepareSuccessfulReset(test);
+    vi.mocked(test.lifecycle.clearDrafts).mockImplementation(() => {
+      throw new Error('the draft store is gone');
+    });
+
+    await expect(
+      firstValueFrom(test.adapter.resetInstallation()),
+    ).resolves.toEqual({
+      kind: 'partial-cleanup',
+      issues: [{ scope: 'drafts', recovery: 'restart-application' }],
+    });
+  });
+
   it('reports cleanup failures by safe scope without leaking database names', async () => {
     const { adapter, matrix, storage, wipe } = setup();
     vi.mocked(storage.list).mockReturnValue(of([]));

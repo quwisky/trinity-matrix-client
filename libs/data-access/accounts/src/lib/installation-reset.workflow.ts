@@ -98,9 +98,10 @@ export class InstallationResetWorkflow {
                   )
                   .pipe(map(() => records)),
               ),
-              concatMap((records) =>
-                this.stopDiagnosticLog().pipe(map(() => records)),
-              ),
+              concatMap((records) => {
+                this.clearDrafts(attempt);
+                return this.stopDiagnosticLog().pipe(map(() => records));
+              }),
               concatMap((records) => this.wipeIndexedDb(attempt, records)),
               concatMap(() =>
                 attempt.capture(
@@ -269,6 +270,21 @@ export class InstallationResetWorkflow {
         ),
     ];
     return forkJoin(operations);
+  }
+
+  /**
+   * Empty the drafts held in memory as well as on disk: the preferences wipe removes only the
+   * stored copy, and a later write, a session handover's flush included, would put it back.
+   * Once the clients have stopped, so no composer is left to save one again.
+   */
+  private clearDrafts(
+    attempt: AccountCleanupAttempt<InstallationResetOutcome>,
+  ): void {
+    try {
+      this.lifecycle.clearDrafts();
+    } catch {
+      attempt.addIssue('drafts', 'restart-application');
+    }
   }
 
   /**
