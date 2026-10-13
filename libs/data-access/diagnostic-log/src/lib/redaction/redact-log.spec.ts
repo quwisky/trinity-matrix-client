@@ -428,6 +428,22 @@ describe('createLogRedactor', () => {
       expect(survivingFragments(redacted, deviceId)).toEqual([]);
     });
 
+    it.each([
+      '@bob:other.net (device ZQ7MXK2PLB)',
+      '@bob:other.net (devices: ZQ7MXK2PLB, HW4RTN8JVC)',
+      '@bob:other.net (device_id ZQ7MXK2PLB)',
+      '@bob:other.net|deviceId ZQ7MXK2PLB',
+      '@bob:other.net|devices=[ZQ7MXK2PLB,HW4RTN8JVC]',
+      '@bob:other.net:device ZQ7MXK2PLB',
+    ])('reads a device keyword after a user ID as a keyword in %s', (line) => {
+      const redacted = createLogRedactor(context([])).redact(line);
+
+      for (const id of ['ZQ7MXK2PLB', 'HW4RTN8JVC']) {
+        expect(survivingFragments(redacted, id)).toEqual([]);
+      }
+      expect(redacted).toMatch(/device/i);
+    });
+
     it('keeps the full stop that ends a sentence', () => {
       expect(
         createLogRedactor(context([])).redact(

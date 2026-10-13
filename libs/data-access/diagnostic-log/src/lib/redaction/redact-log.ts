@@ -399,11 +399,21 @@ class IdentifierRedactor implements LogRedactor {
   }
 
   private redactDevices(text: string): string {
-    return this.redactDeviceContext(this.redactDevicesAfterUsers(text));
+    // The keyword rule runs before the rule for IDs after a user, so that in
+    // `@user (device ID)` the keyword is read as a keyword, not as the device ID.
+    return this.redactDevicesAfterUsers(text, (known) =>
+      this.redactDeviceContext(known),
+    );
   }
 
-  /** Known device IDs, plain or escaped, then the device ID that follows a user placeholder. */
-  private redactDevicesAfterUsers(text: string): string {
+  /**
+   * Known device IDs, plain or escaped, then `between`, then the device ID that follows a
+   * user placeholder.
+   */
+  private redactDevicesAfterUsers(
+    text: string,
+    between: (known: string) => string = (known) => known,
+  ): string {
     let known = this.redactKnownDevices(text);
     if (known.includes('%')) {
       known = known.replace(ESCAPED_RUN, (run) => {
@@ -415,7 +425,7 @@ class IdentifierRedactor implements LogRedactor {
         return redacted === decoded ? run : encodeLike(redacted, run);
       });
     }
-    return known.replace(
+    return between(known).replace(
       DEVICE_AFTER_USER,
       (
         match: string,
