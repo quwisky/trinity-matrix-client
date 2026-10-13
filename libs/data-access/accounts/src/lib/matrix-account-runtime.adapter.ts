@@ -366,31 +366,46 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
 
   /**
    * What the saved record says about this sign-in's device, read before saving the new
-   * session overwrites it. A different device on the same homeserver is replaced (and
-   * signed out once the new session starts; saving reclaims its local store, so nothing
-   * could reach it afterwards); a device saved through another server is not replaced,
-   * because saving refuses that sign-in (`AccountHomeserverMismatchError`). The same device
-   * id is a re-authentication; no record is a first sign-in here. A failed read is
-   * `unknown`: it proves nothing, so it is never reported as a new device.
+   * session overwrites it. Novelty comes from the token-free record, so re-authenticating
+   * a signed-out Account (whose record keeps its device id but no token) on that device is
+   * not new. The same device id is a re-authentication; no record is a first sign-in
+   * here; a failed read is `unknown`: it proves nothing, so it is never reported as new.
+   * A different device on the same homeserver is replaced: its session is loaded so it
+   * can be signed out once the new session starts (saving reclaims its local store, so
+   * nothing could reach it afterwards). A device saved through another server is not
+   * replaced, because saving refuses that sign-in (`AccountHomeserverMismatchError`).
    */
   private priorDevice(session: MatrixSession): Observable<{
     readonly replaced: MatrixSession | null;
     readonly novelty: DeviceNovelty;
   }> {
-    return defer(() => this.storage.load(session.userId)).pipe(
-      map((stored) => {
-        if (!stored) return { replaced: null, novelty: 'new' as const };
-        if (stored.deviceId === session.deviceId) {
-          return { replaced: null, novelty: 'existing' as const };
+    return defer(() => this.storage.record(session.userId)).pipe(
+      switchMap((record) => {
+        if (!record) return of({ replaced: null, novelty: 'new' as const });
+        if (record.deviceId === session.deviceId) {
+          return of({ replaced: null, novelty: 'existing' as const });
         }
-        return {
-          replaced: sameHomeserver(stored.baseUrl, session.baseUrl)
-            ? stored
-            : null,
-          novelty: 'new' as const,
-        };
+        return this.replacedSession(session).pipe(
+          map((replaced) => ({ replaced, novelty: 'new' as const })),
+        );
       }),
       catchError(() => of({ replaced: null, novelty: 'unknown' as const })),
+    );
+  }
+
+  /** The saved session of a different device on the same homeserver, when it has a token. */
+  private replacedSession(
+    session: MatrixSession,
+  ): Observable<MatrixSession | null> {
+    return defer(() => this.storage.load(session.userId)).pipe(
+      map((stored) =>
+        stored &&
+        stored.deviceId !== session.deviceId &&
+        sameHomeserver(stored.baseUrl, session.baseUrl)
+          ? stored
+          : null,
+      ),
+      catchError(() => of(null)),
     );
   }
 

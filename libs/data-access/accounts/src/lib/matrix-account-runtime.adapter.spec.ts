@@ -1579,9 +1579,34 @@ describe('MatrixAccountRuntimeAdapter', () => {
       );
     }
 
+    /** The saved state: its token-free record, and the session when it has a token. */
+    function saved(test: AdapterTest, stored: MatrixSession | null) {
+      const record = stored && withoutTokens(stored);
+      vi.mocked(test.storage.record).mockReturnValue(of(record));
+      vi.mocked(test.storage.load).mockReturnValue(of(stored));
+    }
+
+    function withoutTokens(stored: MatrixSession): AccountRecord {
+      const {
+        accessToken: _access,
+        refreshToken: _refresh,
+        ...record
+      } = stored;
+      return record;
+    }
+
+    function unreadable(test: AdapterTest) {
+      vi.mocked(test.storage.record).mockReturnValue(
+        throwError(() => new Error('storage locked')),
+      );
+      vi.mocked(test.storage.load).mockReturnValue(
+        throwError(() => new Error('storage locked')),
+      );
+    }
+
     it('marks a first sign-in on this installation as a new device', async () => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(of(null));
+      saved(test, null);
 
       await expect(establish(test)).resolves.toEqual({
         kind: 'ready',
@@ -1600,9 +1625,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
           redirectUri: 'https://app/sso-callback',
         },
       };
-      vi.mocked(test.storage.load).mockReturnValue(
-        of({ ...oidc, deviceId: 'OLDDEVICE' }),
-      );
+      saved(test, { ...oidc, deviceId: 'OLDDEVICE' });
       vi.mocked(test.storage.persistForEstablishment).mockReturnValue(of(oidc));
       vi.mocked(test.matrix.restorePersisted).mockReturnValue(
         of({ kind: 'ready' as const }),
@@ -1626,9 +1649,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
 
     it('does not guess when the saved record cannot be read', async () => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(
-        throwError(() => new Error('storage locked')),
-      );
+      unreadable(test);
 
       await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
     });
@@ -1640,9 +1661,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
         accountRecord: 'new',
       } satisfies AccountEstablishmentIntent;
       const grant = AuthenticatedAccountGrant.issue(session);
-      vi.mocked(test.storage.load).mockReturnValue(
-        throwError(() => new Error('storage locked')),
-      );
+      unreadable(test);
       vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
         of(session),
       );
@@ -1674,7 +1693,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
         order.push('logout');
         return Promise.resolve();
       });
-      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      saved(test, OLD_SESSION);
       vi.mocked(test.matrix.detachedClient).mockReturnValue({
         logout,
       } as never);
@@ -1697,7 +1716,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
 
     it('keeps the replaced device signed in when saving the new session fails', async () => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      saved(test, OLD_SESSION);
       vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
         throwError(() => new DOMException('quota', 'QuotaExceededError')),
       );
@@ -1718,7 +1737,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
 
     it('keeps the replaced device signed in when the new session does not start', async () => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      saved(test, OLD_SESSION);
       vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
         of(session),
       );
@@ -1742,7 +1761,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
       ['never answers', () => new Promise<never>(() => undefined)],
     ])('still signs in when that logout %s', async (_case, logout) => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      saved(test, OLD_SESSION);
       vi.mocked(test.matrix.detachedClient).mockReturnValue({
         logout: vi.fn(logout),
       } as never);
@@ -1755,9 +1774,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
 
     it('leaves a device saved through another server signed in when the sign-in is refused', async () => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(
-        of({ ...OLD_SESSION, baseUrl: 'https://stored.example' }),
-      );
+      saved(test, { ...OLD_SESSION, baseUrl: 'https://stored.example' });
       vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
         throwError(
           () =>
@@ -1785,7 +1802,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
 
     it('still signs in when the detached client cannot be built', async () => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      saved(test, OLD_SESSION);
       vi.mocked(test.matrix.detachedClient).mockImplementation(() => {
         throw new Error('bad base URL');
       });
@@ -1796,9 +1813,23 @@ describe('MatrixAccountRuntimeAdapter', () => {
       });
     });
 
+    it('does not mark a re-login on the device of a signed-out account as new', async () => {
+      const test = setup();
+      // Signing out keeps the record and its device id but drops the token, so the
+      // session cannot be loaded.
+      vi.mocked(test.storage.load).mockReturnValue(of(null));
+      vi.mocked(test.storage.record).mockReturnValue(
+        of({ baseUrl: 'https://hs', userId: '@new:hs', deviceId: 'DEVICE' }),
+      );
+
+      await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+
+      expect(test.matrix.detachedClient).not.toHaveBeenCalled();
+    });
+
     it('leaves the device alone on a same-device re-login', async () => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(of(session));
+      saved(test, session);
 
       await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
 
