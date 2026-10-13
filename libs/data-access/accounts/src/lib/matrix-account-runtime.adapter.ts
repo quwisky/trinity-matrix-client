@@ -58,6 +58,8 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
     {
       readonly grant: AuthenticatedAccountGrant;
       readonly stored: ReturnType<typeof authenticatedAccountGrantPayload>;
+      /** Whether an outcome has already reported this saved device as new. */
+      readonly reported: boolean;
     }
   >();
 
@@ -125,13 +127,17 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
       const pending = this.pendingNewAccounts.get(session.userId);
       let replaced: MatrixSession | null = null;
       let novelty: DeviceNovelty = 'unknown';
+      // A new device is reported once its record is saved, whatever the later outcome:
+      // the next launch restores a saved record without asking whether it was new.
+      let reportNewDevice = false;
       const persisted$ =
         intent.accountRecord === 'new' &&
         pending &&
         sameAuthenticatedAccountGrant(pending.grant, grant)
           ? defer(() => {
-              // A retried first establishment: no record existed for this Account.
-              novelty = 'new';
+              // A retried first establishment: no record existed for this Account. The
+              // attempt that saved it reported the device, unless it never settled.
+              reportNewDevice = !pending.reported;
               return of(pending.stored);
             })
           : this.priorDevice(session).pipe(
@@ -146,12 +152,14 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
                 ),
               ),
               tap((stored) => {
+                // Saving a new record refuses an Account that already has one.
+                reportNewDevice =
+                  intent.accountRecord === 'new' || novelty === 'new';
                 if (intent.accountRecord === 'new') {
-                  // Saving a new record refuses an Account that already has one.
-                  novelty = 'new';
                   this.pendingNewAccounts.set(session.userId, {
                     grant,
                     stored,
+                    reported: false,
                   });
                 }
               }),
@@ -232,11 +240,11 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
             ? this.lifecycle.registerNotifications().pipe(map(() => outcome))
             : of(outcome),
         ),
-        map((outcome): AdapterAccountEstablishmentOutcome =>
-          outcome.kind === 'ready' && novelty === 'new'
-            ? { kind: 'ready', newDevice: { deviceId: session.deviceId } }
-            : outcome,
-        ),
+        map((outcome): AdapterAccountEstablishmentOutcome => {
+          if (!reportNewDevice) return outcome;
+          this.markNewDeviceReported(grant);
+          return { ...outcome, newDevice: { deviceId: session.deviceId } };
+        }),
       );
     });
   }
@@ -362,6 +370,15 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
       ),
       switchMap(() => this.storageFailure(originalError)),
     );
+  }
+
+  /** Keep a retried first establishment from reporting its saved device again. */
+  private markNewDeviceReported(grant: AuthenticatedAccountGrant): void {
+    const { userId } = authenticatedAccountGrantPayload(grant);
+    const pending = this.pendingNewAccounts.get(userId);
+    if (pending && sameAuthenticatedAccountGrant(pending.grant, grant)) {
+      this.pendingNewAccounts.set(userId, { ...pending, reported: true });
+    }
   }
 
   /**

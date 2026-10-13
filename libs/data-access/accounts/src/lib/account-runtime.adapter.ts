@@ -27,12 +27,19 @@ export type AdapterAccountRestoreOutcome =
   | { readonly kind: 'failed'; readonly failure: AccountRestoreFailure };
 
 export type AdapterAccountEstablishmentOutcome =
-  | {
-      readonly kind: 'ready';
-      /** Present only when this installation had no record of this device for the Account. */
-      readonly newDevice?: { readonly deviceId: string };
-    }
-  | (AccountEstablishmentFailureDetail & { readonly kind: 'failed' });
+  | ({ readonly kind: 'ready' } & NewDeviceReport)
+  | (AccountEstablishmentFailureDetail & {
+      readonly kind: 'failed';
+    } & NewDeviceReport);
+
+/**
+ * `newDevice` is present once, on the outcome of the attempt that saved a record for a
+ * device this installation had not used for the Account. A failure can carry it too: the
+ * saved record outlives the failed sign-in and is restored on the next launch.
+ */
+interface NewDeviceReport {
+  readonly newDevice?: { readonly deviceId: string };
+}
 
 export type AdapterAccountSwitchOutcome =
   | { readonly kind: 'ready' }

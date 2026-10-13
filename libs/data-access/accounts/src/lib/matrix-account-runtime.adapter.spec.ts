@@ -1654,7 +1654,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
       await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
     });
 
-    it('still reports a new device when the first establishment of an account is retried', async () => {
+    it('reports a new account’s device once, from the attempt that saved it, when its establishment is retried', async () => {
       const test = setup();
       const newRecord = {
         ...activeIntent,
@@ -1679,11 +1679,76 @@ describe('MatrixAccountRuntimeAdapter', () => {
 
       await expect(
         firstValueFrom(test.adapter.establishAccount(grant, newRecord)),
-      ).resolves.toEqual({ kind: 'failed', failure: 'transient-network' });
+      ).resolves.toEqual({
+        kind: 'failed',
+        failure: 'transient-network',
+        newDevice: { deviceId: 'DEVICE' },
+      });
+      await expect(
+        firstValueFrom(test.adapter.establishAccount(grant, newRecord)),
+      ).resolves.toEqual({ kind: 'ready' });
+      expect(test.storage.persistForEstablishment).toHaveBeenCalledOnce();
+    });
+
+    it('still reports a new account’s device when the attempt that saved it never settled', async () => {
+      const test = setup();
+      const newRecord = {
+        ...activeIntent,
+        accountRecord: 'new',
+      } satisfies AccountEstablishmentIntent;
+      const grant = AuthenticatedAccountGrant.issue(session);
+      unreadable(test);
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+        of(session),
+      );
+      vi.mocked(test.matrix.restorePersisted)
+        .mockReturnValueOnce(NEVER)
+        .mockReturnValueOnce(of({ kind: 'ready' as const }));
+      vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
+        of(void 0),
+      );
+
+      test.adapter.establishAccount(grant, newRecord).subscribe().unsubscribe();
+
       await expect(
         firstValueFrom(test.adapter.establishAccount(grant, newRecord)),
       ).resolves.toEqual({ kind: 'ready', newDevice: { deviceId: 'DEVICE' } });
       expect(test.storage.persistForEstablishment).toHaveBeenCalledOnce();
+    });
+
+    it('reports a saved new device even when its session does not start, and not again on retry', async () => {
+      const test = setup();
+      const grant = AuthenticatedAccountGrant.issue(session);
+      // The failed attempt saved the new device's record; the retry reads it back.
+      vi.mocked(test.storage.record)
+        .mockReturnValueOnce(of(null))
+        .mockReturnValueOnce(of(withoutTokens(session)));
+      vi.mocked(test.storage.load).mockReturnValue(of(session));
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+        of(session),
+      );
+      vi.mocked(test.matrix.restorePersisted)
+        .mockReturnValueOnce(
+          of({
+            kind: 'failed' as const,
+            failure: 'transient-network' as const,
+          }),
+        )
+        .mockReturnValueOnce(of({ kind: 'ready' as const }));
+      vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
+        of(void 0),
+      );
+
+      await expect(
+        firstValueFrom(test.adapter.establishAccount(grant, activeIntent)),
+      ).resolves.toEqual({
+        kind: 'failed',
+        failure: 'transient-network',
+        newDevice: { deviceId: 'DEVICE' },
+      });
+      await expect(
+        firstValueFrom(test.adapter.establishAccount(grant, activeIntent)),
+      ).resolves.toEqual({ kind: 'ready' });
     });
 
     it('signs the replaced device out with its old token once the new session has started', async () => {
@@ -1752,7 +1817,11 @@ describe('MatrixAccountRuntimeAdapter', () => {
             activeIntent,
           ),
         ),
-      ).resolves.toEqual({ kind: 'failed', failure: 'transient-network' });
+      ).resolves.toEqual({
+        kind: 'failed',
+        failure: 'transient-network',
+        newDevice: { deviceId: 'DEVICE' },
+      });
       expect(test.matrix.detachedClient).not.toHaveBeenCalled();
     });
 

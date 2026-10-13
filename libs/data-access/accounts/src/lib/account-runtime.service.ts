@@ -200,7 +200,7 @@ export class AccountRuntimeService {
           () => new Error('Account Runtime adapter emitted no outcome.'),
         ),
         tap((adapterOutcome) => {
-          if (adapterOutcome.kind === 'ready' && adapterOutcome.newDevice) {
+          if (adapterOutcome.newDevice) {
             this._newDevices.next({
               accountId: session.userId,
               deviceId: adapterOutcome.newDevice.deviceId,
@@ -399,9 +399,12 @@ export class AccountRuntimeService {
     intent: AccountEstablishmentIntent,
     outcome: AdapterAccountEstablishmentOutcome,
   ): AccountEstablishmentOutcome {
-    return outcome.kind === 'ready'
-      ? { kind: 'ready', accountId, placement: intent.placement }
-      : { ...outcome, accountId, placement: intent.placement };
+    if (outcome.kind === 'ready') {
+      return { kind: 'ready', accountId, placement: intent.placement };
+    }
+    // The new-device fact is published on `newDevices`, never passed to callers.
+    const { newDevice: _newDevice, ...failure } = outcome;
+    return { ...failure, accountId, placement: intent.placement };
   }
 
   private transitionOutcome(

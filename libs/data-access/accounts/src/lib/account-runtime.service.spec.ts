@@ -794,6 +794,39 @@ describe('AccountRuntimeService', () => {
     });
   });
 
+  it('publishes a saved new device whose sign-in then failed, without passing it to the caller', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: null,
+      accountIds: [],
+    });
+    test.establishAccount.mockReturnValue(
+      of({
+        kind: 'failed',
+        failure: 'transient-network',
+        newDevice: { deviceId: 'DEVICE' },
+      }),
+    );
+    const runtime = setup(test);
+    const published: NewDeviceEstablishment[] = [];
+    const subscription = runtime.newDevices.subscribe((fact) =>
+      published.push(fact),
+    );
+
+    const outcome = await firstValueFrom(
+      runtime.establishAuthenticatedAccount(grant(), activeIntent),
+    );
+    subscription.unsubscribe();
+
+    expect(published).toEqual([{ accountId: '@new:hs', deviceId: 'DEVICE' }]);
+    expect(outcome).toEqual({
+      kind: 'failed',
+      accountId: '@new:hs',
+      placement: 'active',
+      failure: 'transient-network',
+    });
+  });
+
   it('publishes nothing for a device the account already used, or a failed sign-in', async () => {
     const test = testAdapter({
       kind: 'available',
