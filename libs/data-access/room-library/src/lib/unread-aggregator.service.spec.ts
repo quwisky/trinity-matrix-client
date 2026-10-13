@@ -157,6 +157,21 @@ describe('UnreadAggregatorService', () => {
     expect(svc.totalUnread()).toBe(9);
   });
 
+  it('keeps the same totals when a sync changes no count', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    const client = fakeClient([fakeRoom(2)]);
+    clients.set('@a:hs', client);
+    accountIds.set(['@a:hs']);
+    await flush();
+    const before = svc.unreadByAccount();
+
+    client.emit(ClientEvent.Sync);
+    await flush();
+
+    // Every badge reading the totals would otherwise recompute on every sync (#1292).
+    expect(svc.unreadByAccount()).toBe(before);
+  });
+
   it('recomputes when an encrypted message decrypts after its sync', async () => {
     // matrix-js-sdk ignores the server count in encrypted rooms and raises the room's
     // count itself on decryption, after the Sync that carried the ciphertext. The
