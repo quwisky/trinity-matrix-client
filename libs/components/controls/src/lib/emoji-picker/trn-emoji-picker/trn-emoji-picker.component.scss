@@ -116,6 +116,26 @@
       }
     }
 
+    // Filling the host's width (see `layout`): the vendor's 6px side insets go, so the
+    // category bar, the search and the section headers line up with the grid, edge to edge
+    // of the host. Each cell's padding is set from the measured row so whole cells share it.
+    &.trn-emoji-picker--fill {
+      .trn-emoji-picker__placeholder {
+        width: 100%;
+      }
+
+      .emoji-mart-anchors,
+      .emoji-mart-search,
+      .emoji-mart-scroll,
+      .emoji-mart-category-label span {
+        padding-inline: 0;
+      }
+
+      .emoji-mart-category .emoji-mart-emoji {
+        padding: var(--trn-emoji-cell-padding);
+      }
+    }
+
     // The vendor list deliberately keeps `overflow-y: scroll` because its width calculation
     // reserves the scrollbar. The global visible-scrollbar contract supplies its appearance.
   }

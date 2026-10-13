@@ -8,6 +8,7 @@
   <trn-emoji-picker-panel
     [size]="size()"
     [autoFocusSearch]="autoFocusSearch()"
+    [fill]="layout() === 'fill'"
     (emojiSelect)="onSelect($event)"
   />
 } @placeholder {

@@ -13,6 +13,12 @@ import type { TrnEmojiPickerSize } from './trn-emoji-picker-recipe';
 export type { TrnEmojiPickerSize } from './trn-emoji-picker-recipe';
 
 /**
+ * `fixed` is the vendor's own nine-column width. `fill` takes the host's width: the columns
+ * follow from it, at least 44px each on a touch screen, and are recomputed as it changes.
+ */
+export type TrnEmojiPickerLayout = 'fixed' | 'fill';
+
+/**
  * Trinity's emoji picker.
  *
  * Wraps `@ctrl/ngx-emoji-mart` so the two call sites — the composer panel and the reaction
@@ -64,6 +70,7 @@ export type { TrnEmojiPickerSize } from './trn-emoji-picker-recipe';
     '[attr.id]': 'pickerId()',
     '[attr.data-size]': 'size()',
     '[class.trn-emoji-picker--embedded]': '!framed()',
+    '[class.trn-emoji-picker--fill]': "layout() === 'fill'",
     'data-testid': 'emoji-picker',
   },
 })
@@ -87,6 +94,8 @@ export class TrnEmojiPickerComponent {
    * the grid sits in that card rather than a second one inside it.
    */
   readonly framed = input(true);
+  /** The vendor's fixed width, or the host's whole width (a phone's bottom sheet). */
+  readonly layout = input<TrnEmojiPickerLayout>('fixed');
 
   /** A usable pick. Entries without a `native` character never reach here. */
   readonly picked = output<TrnEmojiPick>();

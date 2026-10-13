@@ -15,6 +15,7 @@ export { TrnCheckboxComponent } from './lib/checkbox/trn-checkbox.component';
 export { TrnEmojiIndex } from './lib/emoji-picker/trn-emoji-index.service';
 export {
   TrnEmojiPickerComponent,
+  type TrnEmojiPickerLayout,
   type TrnEmojiPickerSize,
 } from './lib/emoji-picker/trn-emoji-picker/trn-emoji-picker.component';
 export type {

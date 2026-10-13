@@ -16,13 +16,17 @@
   without `!important`, so the token goes in through the vendor's own input instead of
   being fought in CSS. See the component's note on theming.
 -->
-<emoji-mart
-  [isNative]="true"
-  [showPreview]="false"
-  [useButton]="true"
-  [darkMode]="false"
-  [color]="accent"
-  [emojiSize]="vendorEmojiSize()"
-  [autoFocus]="autoFocusSearch()"
-  (emojiSelect)="emojiSelect.emit($event)"
-/>
+@if (ready()) {
+  <emoji-mart
+    [isNative]="true"
+    [showPreview]="false"
+    [useButton]="true"
+    [darkMode]="false"
+    [color]="accent"
+    [emojiSize]="vendorEmojiSize()"
+    [perLine]="perLine()"
+    [style]="vendorStyle()"
+    [autoFocus]="autoFocusSearch()"
+    (emojiSelect)="emojiSelect.emit($event)"
+  />
+}
