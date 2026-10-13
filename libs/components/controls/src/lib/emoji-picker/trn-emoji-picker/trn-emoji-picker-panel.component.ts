@@ -24,6 +24,12 @@ import {
 const FIXED_PER_LINE = 9;
 
 /**
+ * The vendor fills a new user's frequently-used row from sixteen defaults; a longer line
+ * reads past them and empties the row. The columns themselves come from the cells' padding.
+ */
+const MAX_VENDOR_PER_LINE = 16;
+
+/**
  * The vendor `emoji-mart` picker, and nothing else.
  *
  * Internal to {@link TrnEmojiPickerComponent}, which loads it through `@defer` so the
@@ -82,8 +88,12 @@ export class TrnEmojiPickerPanelComponent {
     () => this.fit()?.glyph ?? this.glyph(),
   );
 
-  protected readonly perLine = computed(
-    () => this.fit()?.perLine ?? FIXED_PER_LINE,
+  /**
+   * The vendor's `perLine`. It fills a new user's frequently-used row from it when the grid is
+   * created; the columns themselves follow the width through the cells' padding.
+   */
+  protected readonly perLine = computed(() =>
+    Math.min(this.fit()?.perLine ?? FIXED_PER_LINE, MAX_VENDOR_PER_LINE),
   );
 
   /** Filling, every cell's padding; the vendor's own 6px until a width is measured. */

@@ -100,7 +100,16 @@ async function withObservedWidth<T>(
     resize: (width: number) => void,
     disconnected: () => boolean,
   ) => Promise<T>,
+  initialWidth = 0,
 ): Promise<T> {
+  // The panel's width when it first renders; jsdom has no layout, so 0 unless given.
+  const measured = vi
+    .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    .mockImplementation(function (this: HTMLElement) {
+      return {
+        width: this.localName === 'trn-emoji-picker-panel' ? initialWidth : 0,
+      } as DOMRect;
+    });
   const realObserver = globalThis.ResizeObserver;
   const realMatchMedia = globalThis.matchMedia;
   const observers: {
@@ -149,6 +158,7 @@ async function withObservedWidth<T>(
       () => observers.length > 0 && observers.every((o) => o.disconnected),
     );
   } finally {
+    measured.mockRestore();
     globalThis.ResizeObserver = realObserver;
     globalThis.matchMedia = realMatchMedia;
   }
@@ -426,42 +436,49 @@ describe('TrnEmojiPickerComponent', () => {
   });
 
   it('fills its width with 44px touch cells, recomputing the columns when the width changes', async () => {
-    await withObservedWidth(true, async (resize) => {
-      const { fixture } = await renderFilled(
-        { layout: 'fill', size: 'lg' },
-        () => resize(366),
-      );
-      const host = fixture.nativeElement as HTMLElement;
-      const vendor = fixture.debugElement.query(By.directive(PickerComponent));
+    await withObservedWidth(
+      true,
+      async (resize) => {
+        const { fixture } = await renderFilled(
+          { layout: 'fill', size: 'lg' },
+          () => undefined,
+        );
+        const host = fixture.nativeElement as HTMLElement;
+        const vendor = fixture.debugElement.query(
+          By.directive(PickerComponent),
+        );
 
-      expect(host).toHaveClass('trn-emoji-picker--fill');
-      expect(vendor.componentInstance.style).toEqual({ width: '100%' });
-      expect(vendor.componentInstance.perLine).toBe(8);
-      expect(
-        host
-          .querySelector<HTMLElement>('trn-emoji-picker-panel')
-          ?.style.getPropertyValue('--trn-emoji-cell-padding'),
-      ).toBe('10px');
-      expect(vendor.componentInstance.emojiSize).toBe(25);
+        expect(host).toHaveClass('trn-emoji-picker--fill');
+        expect(vendor.componentInstance.style).toEqual({ width: '100%' });
+        expect(vendor.componentInstance.perLine).toBe(8);
+        expect(
+          host
+            .querySelector<HTMLElement>('trn-emoji-picker-panel')
+            ?.style.getPropertyValue('--trn-emoji-cell-padding'),
+        ).toBe('10px');
+        expect(vendor.componentInstance.emojiSize).toBe(25);
 
-      resize(820);
-      fixture.detectChanges();
-      expect(vendor.componentInstance.perLine).toBe(18);
-    });
+        // Wider, as on rotation: fifteen 46px cells across 700px.
+        resize(700);
+        fixture.detectChanges();
+        expect(
+          host
+            .querySelector<HTMLElement>('trn-emoji-picker-panel')
+            ?.style.getPropertyValue('--trn-emoji-cell-padding'),
+        ).toBe('11px');
+        expect(vendor.componentInstance.emojiSize).toBe(24);
+        expect(vendor.componentInstance.perLine).toBe(15);
+      },
+      366,
+    );
   });
 
   it('creates the vendor grid with the measured line, when filling a host that has a width', async () => {
     // The vendor sizes its frequently-used row from `perLine` once, when it is created, so
     // the grid waits for the host's width rather than starting at nine and changing.
-    const measured = vi
-      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-      .mockImplementation(function (this: HTMLElement) {
-        return {
-          width: this.localName === 'trn-emoji-picker-panel' ? 366 : 0,
-        } as DOMRect;
-      });
-    try {
-      await withObservedWidth(true, async () => {
+    await withObservedWidth(
+      true,
+      async () => {
         const { fixture } = await renderFilled(
           { layout: 'fill' },
           () => undefined,
@@ -471,13 +488,32 @@ describe('TrnEmojiPickerComponent', () => {
         );
 
         expect(vendor.componentInstance.perLine).toBe(8);
-      });
-    } finally {
-      measured.mockRestore();
-    }
+      },
+      366,
+    );
   });
 
-  it('shows the vendor line until a host with no layout yet reports its width', async () => {
+  it('asks the vendor for no more than its sixteen default frequent emoji on a wide row', async () => {
+    // Eighteen 45px cells fit 820px; the vendor fills its frequently-used row from a list of
+    // sixteen defaults, and asking for more empties the row ("No Emoji Found").
+    await withObservedWidth(
+      true,
+      async () => {
+        const { fixture } = await renderFilled(
+          { layout: 'fill', size: 'lg' },
+          () => undefined,
+        );
+        const vendor = fixture.debugElement.query(
+          By.directive(PickerComponent),
+        );
+
+        expect(vendor.componentInstance.perLine).toBe(16);
+      },
+      820,
+    );
+  });
+
+  it('starts at the vendor line on a host with no layout yet, then fits its cells to the width', async () => {
     await withObservedWidth(true, async (resize) => {
       const { fixture } = await renderFilled(
         { layout: 'fill' },
@@ -495,6 +531,10 @@ describe('TrnEmojiPickerComponent', () => {
 
       resize(366);
       fixture.detectChanges();
+      // Eight 45px cells; a 21px glyph pads by a whole 12px.
+      expect(panel?.style.getPropertyValue('--trn-emoji-cell-padding')).toBe(
+        '12px',
+      );
       expect(vendor.componentInstance.perLine).toBe(8);
     });
   });
@@ -527,15 +567,22 @@ describe('TrnEmojiPickerComponent', () => {
   });
 
   it('keeps the vendor cell on a fine pointer when filling', async () => {
-    await withObservedWidth(false, async (resize) => {
-      const { fixture } = await renderFilled({ layout: 'fill' }, () =>
-        resize(366),
-      );
-      const vendor = fixture.debugElement.query(By.directive(PickerComponent));
+    await withObservedWidth(
+      false,
+      async () => {
+        const { fixture } = await renderFilled(
+          { layout: 'fill' },
+          () => undefined,
+        );
+        const vendor = fixture.debugElement.query(
+          By.directive(PickerComponent),
+        );
 
-      // 366 / 32 = 11 columns of the medium picker's 32px cell, widened to 33px.
-      expect(vendor.componentInstance.perLine).toBe(11);
-    });
+        // 366 / 32 = 11 columns of the medium picker's 32px cell, widened to 33px.
+        expect(vendor.componentInstance.perLine).toBe(11);
+      },
+      366,
+    );
   });
 
   it('spans the category bar, search and section headers across the grid width when filling', () => {
