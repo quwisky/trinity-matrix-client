@@ -24,6 +24,7 @@ import { registerUser } from '../../../support/account.mts';
 // failure this spec exists to catch.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 import { expectRowLabelsAlignedWithTitle } from '../../support/room-settings-journey.mts';
+import { describeFailure } from '../../../support/http-failure.mts';
 
 const session = homeserverSession();
 
@@ -64,7 +65,7 @@ async function createSpace(
     },
   });
   if (!res.ok()) {
-    throw new Error(`createRoom(space) → ${res.status()} ${await res.text()}`);
+    throw new Error(await describeFailure('createRoom(space)', res));
   }
   return (await res.json()).room_id as string;
 }
@@ -81,9 +82,7 @@ async function createRoom(
     data: { name, preset: 'private_chat' },
   });
   if (!response.ok()) {
-    throw new Error(
-      `createRoom → ${response.status()} ${await response.text()}`,
-    );
+    throw new Error(await describeFailure('createRoom', response));
   }
   return (await response.json()).room_id as string;
 }
@@ -103,9 +102,7 @@ async function putChildLink(
     },
   );
   if (!response.ok()) {
-    throw new Error(
-      `m.space.child → ${response.status()} ${await response.text()}`,
-    );
+    throw new Error(await describeFailure('m.space.child', response));
   }
 }
 
@@ -170,14 +167,14 @@ async function joinAsMember(
     },
   );
   if (!invite.ok()) {
-    throw new Error(`invite → ${invite.status()} ${await invite.text()}`);
+    throw new Error(await describeFailure('invite', invite));
   }
   const join = await request.post(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/join`,
     { headers: { Authorization: `Bearer ${memberToken}` } },
   );
   if (!join.ok()) {
-    throw new Error(`join → ${join.status()} ${await join.text()}`);
+    throw new Error(await describeFailure('join', join));
   }
 }
 
@@ -824,9 +821,7 @@ test.describe('Space settings', () => {
         },
       );
       if (!response.ok()) {
-        throw new Error(
-          `set member power → ${response.status()} ${await response.text()}`,
-        );
+        throw new Error(await describeFailure('set member power', response));
       }
     };
     await setMemberPower(50);
@@ -978,9 +973,7 @@ test.describe('Space settings', () => {
     // Checked like every other request here: a 403 must fail loudly rather than surface
     // later as a confusing assertion timeout.
     if (!powersRes.ok()) {
-      throw new Error(
-        `set power levels → ${powersRes.status()} ${await powersRes.text()}`,
-      );
+      throw new Error(await describeFailure('set power levels', powersRes));
     }
 
     await login(page, {

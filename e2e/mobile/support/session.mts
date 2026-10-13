@@ -12,7 +12,7 @@ import {
   parseSystemErrorDialogs,
   parseWebviewDevtoolsUnfreeze,
 } from './android-shell.mts';
-import { describeFailure } from '../../support/http-failure.mts';
+import { describeAppiumFailure } from '../../support/http-failure.mts';
 import { appiumLogPath } from './artifacts.mts';
 import {
   chromedriverFromAppiumLog,
@@ -150,7 +150,7 @@ async function executeCdp(
     body: JSON.stringify({ cmd, params }),
   });
   if (!response.ok) {
-    throw new Error(await describeFailure(cmd, response));
+    throw new Error(await describeAppiumFailure(cmd, response));
   }
 }
 

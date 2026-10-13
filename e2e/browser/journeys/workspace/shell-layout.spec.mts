@@ -13,6 +13,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
+import { describeFailure } from '../../../support/http-failure.mts';
 
 /**
  * Rendered Phase 2 shell contract.
@@ -55,9 +56,7 @@ async function putDisplayName(
     { headers: actor.headers, data: { displayname: displayName } },
   );
   if (!response.ok()) {
-    throw new Error(
-      `set display name -> ${response.status()} ${await response.text()}`,
-    );
+    throw new Error(await describeFailure('set display name', response));
   }
 }
 
@@ -72,9 +71,7 @@ async function createRoom(
     data,
   });
   if (!response.ok()) {
-    throw new Error(
-      `create room -> ${response.status()} ${await response.text()}`,
-    );
+    throw new Error(await describeFailure('create room', response));
   }
   return ((await response.json()) as { room_id: string }).room_id;
 }
@@ -90,9 +87,7 @@ async function joinRoom(
     { headers: actor.headers },
   );
   if (!response.ok()) {
-    throw new Error(
-      `join room -> ${response.status()} ${await response.text()}`,
-    );
+    throw new Error(await describeFailure('join room', response));
   }
 }
 
@@ -120,9 +115,7 @@ async function sendMessages(
       },
     );
     if (!response.ok()) {
-      throw new Error(
-        `send message -> ${response.status()} ${await response.text()}`,
-      );
+      throw new Error(await describeFailure('send message', response));
     }
   }
 }

@@ -4,7 +4,11 @@ import {
   HOMESERVER_HTTP,
   SERVER_NAME,
 } from '../../support/homeserver/start.mjs';
-import { describeFailure, urlPath } from '../../support/http-failure.mts';
+import {
+  describeFailure,
+  formatFailure,
+  urlPath,
+} from '../../support/http-failure.mts';
 
 export function uniqueId(prefix: string): string {
   return `${prefix}-${randomUUID().slice(0, 8)}`;
@@ -29,11 +33,10 @@ export async function registerUser(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ nonce, username, password, admin: false, mac }),
   });
-  if (
-    !res.ok &&
-    !/already.*exists|user.*taken|M_USER_IN_USE/i.test(await res.text())
-  ) {
-    throw new Error(`register ${username} → ${res.status}`);
+  if (res.ok) return;
+  const text = await res.text();
+  if (!/already.*exists|user.*taken|M_USER_IN_USE/i.test(text)) {
+    throw new Error(formatFailure(`register ${username}`, res.status, text));
   }
 }
 

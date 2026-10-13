@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { describeFailure, formatFailure, urlPath } from './http-failure.mts';
+import {
+  describeAppiumFailure,
+  describeFailure,
+  formatFailure,
+  urlPath,
+} from './http-failure.mts';
 
 const LEAKY_BODY = JSON.stringify({
   errcode: 'M_FORBIDDEN',
@@ -59,6 +64,16 @@ describe('formatFailure', () => {
         JSON.stringify({ errcode: 'token syt_leaked_token' }),
       ),
     ).toBe('register: HTTP 400');
+    expect(
+      formatFailure('register', 400, '{"errcode":"syt_leaked_token"}'),
+    ).toBe('register: HTTP 400');
+    expect(
+      formatFailure(
+        'register',
+        400,
+        JSON.stringify({ errcode: `M_${'A'.repeat(64)}` }),
+      ),
+    ).toBe('register: HTTP 400');
     expect(formatFailure('register', 400, '{"errcode":42}')).toBe(
       'register: HTTP 400',
     );
@@ -75,6 +90,49 @@ describe('formatFailure', () => {
         '{"errcode":"IO.ELEMENT.M_TOO_LARGE","error":"x"}',
       ),
     ).toBe('upload: HTTP 413 IO.ELEMENT.M_TOO_LARGE');
+  });
+});
+
+describe('describeAppiumFailure', () => {
+  it('keeps the W3C error code and points at appium.log, never the message', async () => {
+    const message = await describeAppiumFailure(
+      'Network.enable',
+      new Response(
+        JSON.stringify({
+          value: {
+            error: 'unknown error',
+            message: 'cannot reach https://localhost/?access_token=syt_x',
+            stacktrace: 'at @alice:localhost',
+          },
+        }),
+        { status: 500 },
+      ),
+    );
+
+    expect(message).toBe(
+      'Network.enable: HTTP 500 unknown error (details in appium.log)',
+    );
+  });
+
+  it('leaves out an error code that is not a W3C error name', async () => {
+    const message = await describeAppiumFailure(
+      'Network.enable',
+      new Response(
+        JSON.stringify({ value: { error: 'token syt_leaked_token' } }),
+        { status: 500 },
+      ),
+    );
+
+    expect(message).toBe('Network.enable: HTTP 500 (details in appium.log)');
+  });
+
+  it('gives the status alone when the body is not a WebDriver error', async () => {
+    const message = await describeAppiumFailure(
+      'Network.enable',
+      new Response('Bad gateway for @bob:localhost', { status: 502 }),
+    );
+
+    expect(message).toBe('Network.enable: HTTP 502 (details in appium.log)');
   });
 });
 

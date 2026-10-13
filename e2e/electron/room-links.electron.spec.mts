@@ -8,6 +8,7 @@ import {
 
 import { login, homeserverSession, type Navigate } from '../support/app.mts';
 import { launchApp } from './support/launch.mts';
+import { describeFailure } from '../support/http-failure.mts';
 
 const session = homeserverSession();
 
@@ -26,7 +27,7 @@ async function loginApi(request: APIRequestContext): Promise<string> {
       password: session.pass,
     },
   });
-  expect(response.ok(), await response.text()).toBe(true);
+  expect(response.ok(), await describeFailure('login', response)).toBe(true);
   return ((await response.json()) as { access_token: string }).access_token;
 }
 
@@ -45,7 +46,9 @@ test.describe('Electron room-link preview', () => {
         `${session.hs}/_matrix/client/v3/createRoom`,
         { headers, data: { name } },
       );
-      expect(response.ok(), await response.text()).toBe(true);
+      expect(response.ok(), await describeFailure('createRoom', response)).toBe(
+        true,
+      );
       return ((await response.json()) as { room_id: string }).room_id;
     };
     const sourceName = `Electron link source ${runId}`;
@@ -64,7 +67,7 @@ test.describe('Electron room-link preview', () => {
         },
       },
     );
-    expect(send.ok(), await send.text()).toBe(true);
+    expect(send.ok(), await describeFailure('send room link', send)).toBe(true);
 
     const app = await launchApp();
     try {

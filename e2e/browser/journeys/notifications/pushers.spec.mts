@@ -6,6 +6,7 @@ import {
 } from '../../../fixtures.mts';
 import { homeserverSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { describeFailure } from '../../../support/http-failure.mts';
 
 // Pins the pusher-table behaviour PushService is built on against a real Synapse, so a
 // homeserver change cannot drift it out from under the unit tests' stateful mock:
@@ -27,7 +28,7 @@ async function apiLogin(
     },
   });
   if (!res.ok()) {
-    throw new Error(`login ${user} → ${res.status()} ${await res.text()}`);
+    throw new Error(await describeFailure(`login ${user}`, res));
   }
   const body = (await res.json()) as { access_token: string; user_id: string };
   return { token: body.access_token, userId: body.user_id };

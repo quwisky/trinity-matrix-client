@@ -14,6 +14,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { focusWithKeyboard } from '../../support/keyboard-focus.mts';
+import { describeFailure } from '../../../support/http-failure.mts';
 
 const { defaultBrowserType: _pixelBrowser, ...pixel5 } = devices['Pixel 5'];
 
@@ -320,7 +321,7 @@ test.describe('Member role sections', () => {
       { headers: them.headers },
     );
     if (!joined.ok()) {
-      throw new Error(`join → ${joined.status()} ${await joined.text()}`);
+      throw new Error(await describeFailure('join', joined));
     }
     await request.put(
       `${hs}/_matrix/client/v3/user/${encodeURIComponent(me.userId)}/account_data/m.direct`,
