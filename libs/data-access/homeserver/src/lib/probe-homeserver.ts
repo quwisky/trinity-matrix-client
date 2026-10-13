@@ -1,4 +1,5 @@
 import { Observable, catchError, defer, from, of, switchMap } from 'rxjs';
+import { trimTrailing } from '@trinity/util/matrix';
 import type {
   HomeserverCapabilities,
   RoomVersionStability,
@@ -246,7 +247,7 @@ function federationOrigin(mServer: string): string | null {
  * origin: the federation API is served at the root, never under the client path.
  */
 function clientApiUrl(baseUrl: string, path: string): URL | null {
-  return safeUrl(`${baseUrl.replace(/\/+$/, '')}${path}`);
+  return safeUrl(`${trimTrailing(baseUrl, '/')}${path}`);
 }
 
 /** `https://` URLs only, and only ones that parse. Anything else is not requested. */

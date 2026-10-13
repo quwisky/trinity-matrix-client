@@ -12,6 +12,7 @@ import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
 import { displaySafeMime, mimeEssence } from './display-mime';
 import { isPollStart } from './poll';
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
+import { trimTrailing } from './trim-trailing';
 import {
   matrixToPermalink,
   parseMatrixLink,
@@ -1255,6 +1256,17 @@ function stripReplyFallbackHtml(html: string): string {
 }
 
 /**
+ * Sentence punctuation that is left outside a URL when it ends the match. `>` can never
+ * be captured by the URL pattern's `[^\s<>"']+`; it stays to keep the original set.
+ */
+const TRAILING_URL_PUNCTUATION = '.,;:!?)]}>';
+
+/** `url` without trailing sentence punctuation, in time linear in the URL length. */
+function trimTrailingUrlPunctuation(url: string): string {
+  return trimTrailing(url, TRAILING_URL_PUNCTUATION);
+}
+
+/**
  * Turn a plain-text body into HTML with clickable links: HTML-escape the text, wrap each
  * http(s) URL in an `<a>`, and keep newlines as `<br>`. Returns `null` when the text has
  * no URL, so a plain message keeps its lighter (pre-wrap) text rendering. Trailing
@@ -1270,7 +1282,7 @@ export function linkifyText(text: string): string | null {
   let match: RegExpExecArray | null;
   while ((match = re.exec(text)) !== null) {
     const whole = match[0];
-    const url = whole.replace(/[.,;:!?)\]}>]+$/, '');
+    const url = trimTrailingUrlPunctuation(whole);
     const trailing = whole.slice(url.length);
     const safeUrl = escapeHtml(url);
     html +=
@@ -1292,7 +1304,7 @@ export function firstUrl(text: string): string | null {
   if (!match) {
     return null;
   }
-  return match[0].replace(/[.,;:!?)\]}>]+$/, '');
+  return trimTrailingUrlPunctuation(match[0]);
 }
 
 /** Escape text for safe interpolation into the `<mx-reply>` HTML fallback. */

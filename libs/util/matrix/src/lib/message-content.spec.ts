@@ -144,6 +144,9 @@ describe('renderMarkdown — plain vs formatted', () => {
     ['several blank lines', 'a\n\n\nb'],
     ['a two-space hard break', 'x  \ny'],
     ['a Windows line ending', 'a\r\nb'],
+    ['trailing blanks before a Windows line ending', 'x \t\r\ny'],
+    ['trailing blanks before a lone carriage return', 'x  \ry'],
+    ['trailing blanks before a line separator', 'x \t\u2028y'],
     ['trailing whitespace', 'hello   '],
     ['a bare URL', 'https://a.test/x'],
     ['characters that merely escape', '5 < 3 & 4 > 2'],
@@ -184,6 +187,21 @@ describe('renderMarkdown — plain vs formatted', () => {
     // under pre-wrap — pinned so it cannot silently widen.
     expect(renderMarkdown('    code').formatted).toBe(false);
     expect(renderMarkdown('x\n\n    code').formatted).toBe(true);
+  });
+
+  it('levels trailing whitespace in linear time across a long blank run', () => {
+    // A long tab run that is not at the end of its line made the anchored trailing-blank
+    // trim retry the run from every start position. Tabs, because marked's own handling
+    // of a long space run is outside this comparison. The bound covers marked and the
+    // DOM parse too, so it is looser than the bare URL trim's; the quadratic trim took
+    // seconds here.
+    const text = `a${'\t'.repeat(60_000)}b`;
+
+    const start = performance.now();
+    renderMarkdown(text);
+    const elapsed = performance.now() - start;
+
+    expect(elapsed).toBeLessThan(250);
   });
 
   it('treats input that sanitizes away to nothing as plain text', () => {
