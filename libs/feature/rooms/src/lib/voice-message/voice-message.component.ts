@@ -1,21 +1,30 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   computed,
   effect,
   inject,
   input,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { TrnIconButton } from '@trinity/components/controls';
-import { Subscription } from 'rxjs';
+import { Subscription, finalize } from 'rxjs';
 import {
   MediaPipeline,
   type PresentedMediaReference,
 } from '@trinity/data-access/media';
 import { TrnIconComponent } from '@trinity/components/foundations';
+
+/** The fetched clip: whose it is, its pinned URL once resolved, and the resolve. */
+interface OpenClip {
+  readonly media: PresentedMediaReference;
+  url: string | null;
+  sub: Subscription;
+}
 
 /** Bars whose height is scaled from a `[0, 1024]` waveform amplitude. */
 const WAVEFORM_FULL = 1024;
@@ -24,9 +33,12 @@ const MIN_BAR_HEIGHT = 12;
 
 /**
  * A compact player for an MSC3245 voice message: a play/pause button, the recorded
- * waveform (bars filled up to the playback position), and a running time. Resolves the
- * clip's bytes through {@link MediaPipeline} (the same authenticated/decrypting path as
- * other media) and plays them via a hidden `<audio>` element.
+ * waveform (bars filled up to the playback position), and a running time. The waveform and
+ * length come from the event, so nothing is downloaded until the reader first presses play;
+ * the clip's bytes are then resolved through {@link MediaPipeline} (the same
+ * authenticated/decrypting path as other media) and played via a hidden `<audio>` element.
+ * Once the clip has played to its end, or the row goes, it is dropped from the media cache;
+ * playing it again fetches it again.
  */
 @Component({
   selector: 'trn-voice-message',
@@ -41,8 +53,10 @@ export class VoiceMessageComponent {
   private readonly mediaPipeline = inject(MediaPipeline);
   private readonly audio = viewChild<ElementRef<HTMLAudioElement>>('audio');
 
-  /** Resolved (blob) URL for the audio, or null while loading. */
+  /** Resolved (blob) URL for the audio; null until the reader plays it, and after it ends. */
   readonly src = signal<string | null>(null);
+  /** The clip is being fetched after a press of play. */
+  readonly loading = signal(false);
   readonly playing = signal(false);
   /** Elapsed playback in seconds (drives the timer + waveform fill). */
   private readonly elapsed = signal(0);
@@ -71,35 +85,19 @@ export class VoiceMessageComponent {
     formatTime(this.playing() ? this.elapsed() : this.durationSec()),
   );
 
-  /** The URL currently pinned in the media cache (so eviction can't revoke it). */
-  private pinnedUrl: string | null = null;
+  /**
+   * The fetched clip: the message it belongs to (rows are reused), its URL once resolved
+   * (pinned while bound to `<audio>`), and the resolve.
+   */
+  private clip: OpenClip | null = null;
 
   constructor() {
-    effect((onCleanup) => {
-      const media = this.media();
-      this.src.set(null);
-      const sub: Subscription = this.mediaPipeline
-        .resolveMedia(media, 'full')
-        .subscribe((url) => {
-          // Pin the clip's object URL while it's bound to <audio> — the shared media
-          // cache would otherwise evict/revoke it under pressure mid-playback.
-          this.repin(url);
-          this.src.set(url);
-        });
-      onCleanup(() => {
-        sub.unsubscribe();
-        this.repin(null);
-      });
+    effect(() => {
+      this.media();
+      // A reused row shows another message: the previous one's clip goes.
+      untracked(() => this.dropClip());
     });
-  }
-
-  private repin(url: string | null): void {
-    if (url === this.pinnedUrl) {
-      return;
-    }
-    this.mediaPipeline.unpin(this.pinnedUrl);
-    this.mediaPipeline.pin(url);
-    this.pinnedUrl = url;
+    inject(DestroyRef).onDestroy(() => this.dropClip());
   }
 
   barHeight(amplitude: number): number {
@@ -107,15 +105,22 @@ export class VoiceMessageComponent {
   }
 
   toggle(): void {
-    const el = this.audio()?.nativeElement;
-    if (!el) {
+    if (this.loading()) {
       return;
     }
-    if (el.paused) {
+    const el = this.audio()?.nativeElement;
+    if (!el) {
+      this.load();
+    } else if (el.paused) {
       void el.play();
     } else {
       el.pause();
     }
+  }
+
+  /** The fetched clip can play: start it, as the press that fetched it asked. */
+  onLoaded(): void {
+    void this.audio()?.nativeElement.play();
   }
 
   onPlay(): void {
@@ -132,6 +137,47 @@ export class VoiceMessageComponent {
   }
 
   onEnded(): void {
+    this.playing.set(false);
+    this.elapsed.set(0);
+    this.dropClip();
+  }
+
+  /** Fetch the clip on the first press of play; it starts once loaded ({@link onLoaded}). */
+  private load(): void {
+    const clip: OpenClip = {
+      media: this.media(),
+      url: null,
+      sub: Subscription.EMPTY,
+    };
+    this.clip = clip;
+    this.loading.set(true);
+    clip.sub = this.mediaPipeline
+      .resolveMedia(clip.media, 'full')
+      .pipe(finalize(() => this.loading.set(false)))
+      .subscribe({
+        next: (url) => {
+          // Pinned while bound to <audio>: the shared media cache would otherwise
+          // evict/revoke it under pressure mid-playback.
+          this.mediaPipeline.pin(url);
+          clip.url = url;
+          this.src.set(url);
+        },
+        // A failed fetch leaves nothing to keep, so the next press tries again.
+        error: () => {
+          if (this.clip === clip) this.clip = null;
+        },
+      });
+  }
+
+  /** Free the clip: cancel its fetch or drop its bytes, and unbind it from `<audio>`. */
+  private dropClip(): void {
+    const clip = this.clip;
+    if (!clip) return;
+    this.clip = null;
+    // Unsubscribe first: a drop cancels a fetch only once nobody waits for it.
+    clip.sub.unsubscribe();
+    this.mediaPipeline.drop(clip.media, 'full', clip.url);
+    this.src.set(null);
     this.playing.set(false);
     this.elapsed.set(0);
   }

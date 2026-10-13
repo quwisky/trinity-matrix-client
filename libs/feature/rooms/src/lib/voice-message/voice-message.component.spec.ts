@@ -1,7 +1,8 @@
+import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Subject, of, throwError, type Observable } from 'rxjs';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   MediaPipeline,
   type PresentedMediaReference,
@@ -23,49 +24,183 @@ function voiceMedia(
   } as PresentedMediaReference;
 }
 
-async function build(media = voiceMedia()) {
-  const resolveMedia = vi.fn(() => of('blob:clip'));
+async function build(
+  media = voiceMedia(),
+  resolved: () => Observable<string> = () => of('blob:clip'),
+) {
+  const pipeline = {
+    resolveMedia: vi.fn(resolved),
+    pin: vi.fn(),
+    unpin: vi.fn(),
+    drop: vi.fn(),
+  };
   const { container, fixture } = await render(VoiceMessageComponent, {
     inputs: { media },
-    providers: [MockProvider(MediaPipeline, { resolveMedia })],
+    providers: [MockProvider(MediaPipeline, pipeline)],
   });
-  return { container, fixture, resolveMedia };
+  const button = () =>
+    container.querySelector('.voice__play') as HTMLButtonElement;
+  const audio = () => container.querySelector('audio');
+  /** Press play/pause and let the view catch up. */
+  const press = () => {
+    button().click();
+    TestBed.tick();
+  };
+  return { container, fixture, pipeline, button, audio, press };
 }
 
 describe('VoiceMessageComponent', () => {
+  let play: Mock;
+
   beforeEach(() => {
-    // jsdom doesn't implement media playback; stub it so toggle() works.
-    HTMLMediaElement.prototype.play = vi.fn(() => Promise.resolve());
+    // jsdom doesn't implement media playback; stub it so the player can drive it.
+    play = vi.fn(() => Promise.resolve());
+    HTMLMediaElement.prototype.play = play;
     HTMLMediaElement.prototype.pause = vi.fn();
   });
 
-  it('resolves the clip and renders the play control, waveform and duration', async () => {
-    const { container, resolveMedia } = await build();
+  it('renders the waveform and duration from the event without fetching the clip', async () => {
+    const { container, pipeline, button, audio } = await build();
 
-    expect(resolveMedia).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'presented-media-voice' }),
-      'full',
-    );
-    expect(
-      container.querySelector('[data-testid=voice-message]'),
-    ).not.toBeNull();
+    // Scrolling past a voice message must not download, decrypt and hold it.
+    expect(pipeline.resolveMedia).not.toHaveBeenCalled();
+    expect(pipeline.pin).not.toHaveBeenCalled();
+    expect(audio()).toBeNull();
     // One bar per waveform sample.
     expect(container.querySelectorAll('.voice__bar')).toHaveLength(4);
     // 65s → "1:05".
     expect(
       container.querySelector('[data-testid=voice-time]')?.textContent?.trim(),
     ).toBe('1:05');
+    expect(button().disabled).toBe(false);
+    expect(button().getAttribute('aria-label')).toBe('Play voice message');
   });
 
-  it('toggles playback when the play button is clicked', async () => {
-    const { container } = await build();
-    const audio = container.querySelector('audio') as HTMLAudioElement;
-    const play = vi.spyOn(audio, 'play');
-    Object.defineProperty(audio, 'paused', { value: true, configurable: true });
+  it('fetches the clip on the first press of play and plays it once it can', async () => {
+    const media = voiceMedia();
+    const { pipeline, audio, press } = await build(media);
 
-    (container.querySelector('.voice__play') as HTMLButtonElement).click();
+    press();
 
-    expect(play).toHaveBeenCalled();
+    expect(pipeline.resolveMedia).toHaveBeenCalledExactlyOnceWith(
+      media,
+      'full',
+    );
+    expect(pipeline.pin).toHaveBeenCalledWith('blob:clip');
+    expect(audio()?.getAttribute('src')).toBe('blob:clip');
+    audio()!.dispatchEvent(new Event('loadedmetadata'));
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows that the clip is loading and ignores presses meanwhile', async () => {
+    const clip = new Subject<string>();
+    const { pipeline, button, press } = await build(voiceMedia(), () =>
+      clip.asObservable(),
+    );
+
+    press();
+    press();
+
+    expect(pipeline.resolveMedia).toHaveBeenCalledTimes(1);
+    expect(button().getAttribute('aria-label')).toBe('Loading voice message');
+    expect(button().getAttribute('aria-busy')).toBe('true');
+  });
+
+  it('lets a later press retry a clip that failed to load', async () => {
+    const { pipeline, button, press } = await build(voiceMedia(), () =>
+      throwError(() => new Error('offline')),
+    );
+
+    press();
+    press();
+
+    expect(pipeline.resolveMedia).toHaveBeenCalledTimes(2);
+    expect(button().getAttribute('aria-label')).toBe('Play voice message');
+  });
+
+  it('pauses and resumes a loaded clip without fetching it again', async () => {
+    const { pipeline, audio, press } = await build();
+    press();
+    const el = audio()!;
+    Object.defineProperty(el, 'paused', { value: false, configurable: true });
+
+    press();
+
+    expect(el.pause).toHaveBeenCalled();
+    Object.defineProperty(el, 'paused', { value: true, configurable: true });
+    play.mockClear();
+    press();
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(pipeline.resolveMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops the clip when it plays to the end, and fetches it again on the next play', async () => {
+    const media = voiceMedia();
+    const { fixture, pipeline, audio, press, container } = await build(media);
+    press();
+
+    audio()!.dispatchEvent(new Event('ended'));
+    TestBed.tick();
+
+    expect(pipeline.drop).toHaveBeenCalledExactlyOnceWith(
+      media,
+      'full',
+      'blob:clip',
+    );
+    expect(audio()).toBeNull();
+    expect(fixture.componentInstance.playing()).toBe(false);
+    expect(
+      container.querySelector('[data-testid=voice-time]')?.textContent?.trim(),
+    ).toBe('1:05');
+
+    press();
+    expect(pipeline.resolveMedia).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops the played clip when destroyed', async () => {
+    const media = voiceMedia();
+    const { fixture, pipeline, press } = await build(media);
+    press();
+
+    fixture.destroy();
+
+    expect(pipeline.drop).toHaveBeenCalledExactlyOnceWith(
+      media,
+      'full',
+      'blob:clip',
+    );
+    expect(pipeline.unpin).not.toHaveBeenCalledWith('blob:clip');
+  });
+
+  it('cancels a clip still loading when destroyed', async () => {
+    const clip = new Subject<string>();
+    const media = voiceMedia();
+    const { fixture, pipeline, press } = await build(media, () =>
+      clip.asObservable(),
+    );
+    press();
+
+    fixture.destroy();
+
+    expect(clip.observed).toBe(false);
+    expect(pipeline.drop).toHaveBeenCalledExactlyOnceWith(media, 'full', null);
+  });
+
+  it('drops the clip of the previous message when the row is reused', async () => {
+    const media = voiceMedia();
+    const { fixture, pipeline, press, audio } = await build(media);
+    press();
+
+    fixture.componentRef.setInput('media', voiceMedia({ id: 'other' }));
+    TestBed.tick();
+
+    expect(pipeline.drop).toHaveBeenCalledExactlyOnceWith(
+      media,
+      'full',
+      'blob:clip',
+    );
+    expect(audio()).toBeNull();
+    expect(pipeline.resolveMedia).toHaveBeenCalledTimes(1);
   });
 
   it('renders a flat placeholder when there is no waveform', async () => {

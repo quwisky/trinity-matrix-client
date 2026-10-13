@@ -3,11 +3,20 @@
     type="button"
     trnIconButton
     class="voice__play"
-    [attr.aria-label]="playing() ? 'Pause voice message' : 'Play voice message'"
-    [disabled]="!src()"
+    [attr.aria-label]="
+      loading()
+        ? 'Loading voice message'
+        : playing()
+          ? 'Pause voice message'
+          : 'Play voice message'
+    "
+    [attr.aria-busy]="loading() ? 'true' : null"
     (click)="toggle()"
   >
-    <trn-icon [name]="playing() ? 'pause' : 'play'" motion="pop" />
+    <trn-icon
+      [name]="loading() ? 'loader-circle' : playing() ? 'pause' : 'play'"
+      motion="pop"
+    />
   </button>
 
   @if (bars().length) {
@@ -26,14 +35,17 @@
 
   <span class="voice__time" data-testid="voice-time">{{ timeLabel() }}</span>
 
-  <audio
-    #audio
-    class="voice__audio"
-    [src]="src()"
-    preload="metadata"
-    (play)="onPlay()"
-    (pause)="onPause()"
-    (timeupdate)="onTimeUpdate()"
-    (ended)="onEnded()"
-  ></audio>
+  @if (src(); as clip) {
+    <audio
+      #audio
+      class="voice__audio"
+      [src]="clip"
+      preload="metadata"
+      (loadedmetadata)="onLoaded()"
+      (play)="onPlay()"
+      (pause)="onPause()"
+      (timeupdate)="onTimeUpdate()"
+      (ended)="onEnded()"
+    ></audio>
+  }
 </div>
