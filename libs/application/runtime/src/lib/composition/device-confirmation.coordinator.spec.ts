@@ -182,15 +182,35 @@ describe('DeviceConfirmationCoordinator', () => {
     subscription.unsubscribe();
   });
 
-  it('waits while a verification is in flight, and redirects once it has stopped', () => {
+  it('waits while a verification of this account’s devices is in flight, and redirects once it has stopped', () => {
     const { gate, verification, order, subscription } = setup();
-    verification.set({ stage: 'sas-shown' } as VerificationView);
+    verification.set({
+      stage: 'sas-shown',
+      isSelfVerification: true,
+    } as VerificationView);
     gate.set({ kind: 'required', status: 'needs-verification' });
     TestBed.tick();
     expect(order).toEqual([]);
 
-    verification.set({ stage: 'cancelled' } as VerificationView);
+    verification.set({
+      stage: 'cancelled',
+      isSelfVerification: true,
+    } as VerificationView);
     TestBed.tick();
+    expect(order).toEqual(['close dialogs', 'navigate /encryption/confirm']);
+    subscription.unsubscribe();
+  });
+
+  it('does not wait for a verification of another person, which cannot verify this device', () => {
+    const { gate, verification, order, subscription } = setup();
+    verification.set({
+      stage: 'sas-shown',
+      isSelfVerification: false,
+    } as VerificationView);
+
+    gate.set({ kind: 'required', status: 'needs-verification' });
+    TestBed.tick();
+
     expect(order).toEqual(['close dialogs', 'navigate /encryption/confirm']);
     subscription.unsubscribe();
   });

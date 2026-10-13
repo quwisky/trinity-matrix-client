@@ -41,13 +41,16 @@ export class DeviceConfirmationCoordinator {
   private readonly verification = inject(TrustVerificationService);
   /**
    * A recovery or verification flow is in progress: a trust dialog is open, or a
-   * verification (whose incoming-request dialog the verification host shows) has not ended.
+   * verification of this account's own devices (whose incoming-request dialog the
+   * verification host shows) has not ended. Verifying another person cannot verify this
+   * device, so it does not hold the check back.
    */
   private readonly trustFlowOpen = computed(() => {
     const active = this.verification.active();
     return (
       this.presenter.trustDialogOpen() ||
       (active !== null &&
+        active.isSelfVerification &&
         active.stage !== 'done' &&
         active.stage !== 'cancelled')
     );
