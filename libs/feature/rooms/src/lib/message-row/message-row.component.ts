@@ -50,6 +50,7 @@ import { MessageTimeComponent } from '../message-time/message-time.component';
 import { MessageThreadSummaryComponent } from '../message-thread-summary/message-thread-summary.component';
 import { TrnButton } from '@trinity/components/controls';
 import { type UndecryptableFix } from '../shared/undecryptable-fix.service';
+import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
 
 /** A collapsed run of adjacent system lines (see `groupSystemRuns`). */
 export interface SystemRun {
@@ -173,6 +174,17 @@ export class MessageRowComponent {
 
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly injector = inject(Injector);
+  /** The list's scroll state; absent where a row renders outside the timeline. */
+  private readonly scrollActivity = inject(TimelineScrollActivity, {
+    optional: true,
+  });
+  /** This row's hover work, held back while the list scrolls ({@link onPointerEnter}). */
+  private readonly deferredHover = (): void => {
+    if (this.pointerInside) {
+      this.showHover(this.deferredPointerType);
+    }
+  };
+  private deferredPointerType: string | undefined;
 
   private readonly toolbar = viewChild(MessageToolbarComponent);
   private readonly swipeGesture = viewChild(MessageSwipeDirective);
@@ -218,6 +230,7 @@ export class MessageRowComponent {
     this.destroyRef.onDestroy(() => {
       this.cancelLongPress();
       this.hideToolbar();
+      this.scrollActivity?.cancel(this.deferredHover);
     });
   }
 
@@ -441,8 +454,19 @@ export class MessageRowComponent {
    * scrollport; a new one places itself after its first render.
    */
   onPointerEnter(event?: PointerEvent): void {
-    this.armTimeTip(event);
     this.pointerInside = true;
+    // A row slid under a still pointer by a scroll is passed, not pointed at: mount nothing
+    // until the scroll settles, and only then on the row the pointer rests on (#1288).
+    if (this.scrollActivity?.active) {
+      this.deferredPointerType = event?.pointerType;
+      this.scrollActivity.defer(this.deferredHover);
+      return;
+    }
+    this.showHover(event?.pointerType);
+  }
+
+  private showHover(pointerType: string | undefined): void {
+    this.armTimeTip(pointerType);
     this.toolbarActive.set(true);
     this.toolbar()?.placeToolbar();
   }
@@ -452,8 +476,8 @@ export class MessageRowComponent {
    * window listeners and a focus monitor, which is a lot to pay for every row a scroll builds.
    * Touch never opens one, and the `<time>` is not focusable, so nothing else needs it earlier.
    */
-  private armTimeTip(event: PointerEvent | undefined): void {
-    if (event?.pointerType === 'mouse' || event?.pointerType === 'pen') {
+  private armTimeTip(pointerType: string | undefined): void {
+    if (pointerType === 'mouse' || pointerType === 'pen') {
       this.timeTipArmed.set(true);
     }
   }
@@ -461,6 +485,7 @@ export class MessageRowComponent {
   onPointerLeave(): void {
     this.cancelLongPress();
     this.pointerInside = false;
+    this.scrollActivity?.cancel(this.deferredHover);
     this.releaseToolbar(document.activeElement);
   }
 

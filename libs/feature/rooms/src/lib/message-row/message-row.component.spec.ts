@@ -1,4 +1,4 @@
-import { type DebugElement, signal } from '@angular/core';
+import { type DebugElement, type Provider, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { TestBed } from '@angular/core/testing';
 import { TrnTooltip } from '@trinity/components/generic-content';
@@ -25,6 +25,7 @@ import {
   type MessageRowAction,
   type MessageRowCaps,
 } from './message-row.component';
+import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
 import { type UndecryptableFix } from '../shared/undecryptable-fix.service';
 
 /** Build a row caps object, overriding only the flags a test cares about. */
@@ -111,6 +112,7 @@ describe('MessageRowComponent', () => {
       toggleRun?: () => void;
       action?: (action: MessageRowAction) => void;
     } = {},
+    extraProviders: Provider[] = [],
   ) {
     return render(MessageRowComponent, {
       inputs,
@@ -130,6 +132,7 @@ describe('MessageRowComponent', () => {
           linkPreviews: signal(true).asReadonly(),
           linkPreviewsInEncrypted: signal(false).asReadonly(),
         }),
+        ...extraProviders,
       ],
     });
   }
@@ -890,6 +893,40 @@ describe('MessageRowComponent', () => {
       await settle();
 
       expect(toolbar(container)).not.toBeNull();
+    });
+
+    describe('while the timeline scrolls (#1288)', () => {
+      const scrolling = async () => {
+        const activity = new TimelineScrollActivity();
+        activity.start();
+        const rendered = await renderRow({ row: row(), caps: caps() }, {}, [
+          { provide: TimelineScrollActivity, useValue: activity },
+        ]);
+        return { activity, container: rendered.container };
+      };
+
+      it('holds the toolbar of a row slid under the pointer until the scroll settles', async () => {
+        const { activity, container } = await scrolling();
+
+        fireEvent.pointerEnter(msg(container));
+        await settle();
+        expect(toolbar(container)).toBeNull();
+
+        activity.settle();
+        await settle();
+        expect(toolbar(container)).not.toBeNull();
+      });
+
+      it('mounts nothing for a row the pointer left before the scroll settled', async () => {
+        const { activity, container } = await scrolling();
+
+        fireEvent.pointerEnter(msg(container));
+        fireEvent.pointerLeave(msg(container));
+        activity.settle();
+        await settle();
+
+        expect(toolbar(container)).toBeNull();
+      });
     });
 
     it('unmounts the toolbar when the pointer leaves the row', async () => {
