@@ -96,16 +96,22 @@ function unscopedSelectors(scss: string): string[] {
  */
 async function withObservedWidth<T>(
   coarse: boolean,
-  body: (resize: (width: number) => void) => Promise<T>,
+  body: (
+    resize: (width: number) => void,
+    disconnected: () => boolean,
+  ) => Promise<T>,
 ): Promise<T> {
   const realObserver = globalThis.ResizeObserver;
   const realMatchMedia = globalThis.matchMedia;
-  const observers: { callback: ResizeObserverCallback; targets: Element[] }[] =
-    [];
+  const observers: {
+    callback: ResizeObserverCallback;
+    targets: Element[];
+    disconnected: boolean;
+  }[] = [];
   globalThis.ResizeObserver = class {
     private readonly entry: (typeof observers)[number];
     constructor(callback: ResizeObserverCallback) {
-      this.entry = { callback, targets: [] };
+      this.entry = { callback, targets: [], disconnected: false };
       observers.push(this.entry);
     }
     observe(target: Element): void {
@@ -116,6 +122,7 @@ async function withObservedWidth<T>(
     }
     disconnect(): void {
       this.entry.targets = [];
+      this.entry.disconnected = true;
     }
   } as unknown as typeof ResizeObserver;
   globalThis.matchMedia = ((query: string) => ({
@@ -137,7 +144,10 @@ async function withObservedWidth<T>(
     }
   };
   try {
-    return await body(resize);
+    return await body(
+      resize,
+      () => observers.length > 0 && observers.every((o) => o.disconnected),
+    );
   } finally {
     globalThis.ResizeObserver = realObserver;
     globalThis.matchMedia = realMatchMedia;
@@ -341,21 +351,55 @@ describe('TrnEmojiPickerComponent', () => {
 
   describe('trnEmojiGridFit', () => {
     it('keeps the fixed grid: nine 32px cells in the 288px row of the medium picker', () => {
-      expect(trnEmojiGridFit(288, 20, 32)).toEqual({ perLine: 9, padding: 6 });
+      expect(trnEmojiGridFit(288, 20, 32)).toEqual({
+        perLine: 9,
+        glyph: 20,
+        padding: 6,
+      });
     });
 
     it('fills a phone sheet with as many 44px touch cells as fit, widened to share the slack', () => {
-      // 390px sheet less 12px each side: 366px of row.
+      // 390px sheet less 12px each side: 366px of row, eight 45px cells. A 24px glyph would
+      // pad by 10.5px, so it grows to 25px and pads by a whole 10px.
       expect(trnEmojiGridFit(366, 24, 44)).toEqual({
         perLine: 8,
-        padding: 10.5,
+        glyph: 25,
+        padding: 10,
       });
     });
 
     it('adds columns as the row widens, as on rotation', () => {
       expect(trnEmojiGridFit(820, 24, 44)).toEqual({
         perLine: 18,
-        padding: 10.5,
+        glyph: 25,
+        padding: 10,
+      });
+    });
+
+    it('fills the desktop card: 8px insets and an 8px scrollbar leave 276px for 34px cells', () => {
+      // 302px card less its 1px border, 8px insets and the scrollbar gutter.
+      expect(trnEmojiGridFit(276, 20, 0)).toEqual({
+        perLine: 8,
+        glyph: 20,
+        padding: 7,
+      });
+    });
+
+    it('keeps every glyph on a whole pixel, moving it by a pixel to match the cell', () => {
+      // 300 / 9 = 33px cells would pad a 20px glyph by 6.5px.
+      expect(trnEmojiGridFit(300, 20, 0)).toEqual({
+        perLine: 9,
+        glyph: 21,
+        padding: 6,
+      });
+    });
+
+    it('shrinks the glyph instead where a larger one would crowd the cell', () => {
+      // A 31px cell has room for a 19px glyph at 6px, not a 21px one.
+      expect(trnEmojiGridFit(31, 20, 0)).toEqual({
+        perLine: 1,
+        glyph: 19,
+        padding: 6,
       });
     });
 
@@ -364,7 +408,11 @@ describe('TrnEmojiPickerComponent', () => {
     });
 
     it('keeps at least one column on a row narrower than a cell', () => {
-      expect(trnEmojiGridFit(30, 24, 44)).toEqual({ perLine: 1, padding: 3 });
+      expect(trnEmojiGridFit(30, 24, 44)).toEqual({
+        perLine: 1,
+        glyph: 24,
+        padding: 3,
+      });
     });
   });
 
@@ -393,7 +441,8 @@ describe('TrnEmojiPickerComponent', () => {
         host
           .querySelector<HTMLElement>('trn-emoji-picker-panel')
           ?.style.getPropertyValue('--trn-emoji-cell-padding'),
-      ).toBe('10.5px');
+      ).toBe('10px');
+      expect(vendor.componentInstance.emojiSize).toBe(25);
 
       resize(820);
       fixture.detectChanges();
@@ -450,6 +499,33 @@ describe('TrnEmojiPickerComponent', () => {
     });
   });
 
+  it('stops observing its width once destroyed', async () => {
+    await withObservedWidth(true, async (resize, disconnected) => {
+      const { fixture } = await renderFilled({ layout: 'fill' }, () =>
+        resize(366),
+      );
+
+      expect(disconnected()).toBe(false);
+      fixture.destroy();
+      expect(disconnected()).toBe(true);
+    });
+  });
+
+  it('lets the focus ring of its search show past the grid when embedded', () => {
+    // The panel insets the embedded grid, so the search's ring falls outside `.emoji-mart`;
+    // the framed picker's clip would cut it off at both sides.
+    const sheet = readFileSync(
+      join(import.meta.dirname, 'trn-emoji-picker.component.scss'),
+      'utf8',
+    );
+    const embedded =
+      /&\.trn-emoji-picker--embedded\s*\{([\s\S]*?)\n {4}\}/u.exec(sheet)?.[1];
+
+    expect(embedded).toMatch(
+      /\.emoji-mart,\s*\.trn-emoji-picker__placeholder\s*\{[^}]*overflow: visible;/u,
+    );
+  });
+
   it('keeps the vendor cell on a fine pointer when filling', async () => {
     await withObservedWidth(false, async (resize) => {
       const { fixture } = await renderFilled({ layout: 'fill' }, () =>
@@ -481,6 +557,9 @@ describe('TrnEmojiPickerComponent', () => {
       expect(fill).toContain(selector);
     }
     expect(fill).toContain('padding-inline: 0;');
+    // The vendor promotes its scroll area to its own layer; filling, that layer left a
+    // hairline of stale paint under the section headings in Chromium.
+    expect(fill).toMatch(/\.emoji-mart-scroll\s*\{\s*will-change: auto;/u);
     expect(fill).toContain('padding: var(--trn-emoji-cell-padding');
   });
 

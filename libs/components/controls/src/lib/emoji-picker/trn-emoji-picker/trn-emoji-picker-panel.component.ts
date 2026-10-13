@@ -48,7 +48,10 @@ export class TrnEmojiPickerPanelComponent {
   private readonly rowWidth = signal<number | null>(null);
   /** The host had no width to measure when it rendered (it has no layout yet). */
   private readonly unmeasured = signal(false);
-  /** A touch screen needs 44px cells; a mouse keeps the vendor's own. */
+  /**
+   * A touch screen needs 44px cells; a mouse keeps the vendor's own. Read once, when the
+   * picker opens: a pointer change while it is open keeps the cells it opened with.
+   */
   private readonly coarsePointer =
     globalThis.matchMedia?.('(pointer: coarse)').matches ?? false;
 
@@ -58,9 +61,8 @@ export class TrnEmojiPickerPanelComponent {
   readonly fill = input(false);
   readonly emojiSelect = output<EmojiEvent>();
 
-  protected readonly vendorEmojiSize = computed(() =>
-    trnEmojiPickerGlyphSize(this.size()),
-  );
+  /** The glyph the size asks for. */
+  private readonly glyph = computed(() => trnEmojiPickerGlyphSize(this.size()));
 
   /** How the measured row is shared out; null while fixed or not yet measured. */
   private readonly fit = computed(() => {
@@ -68,13 +70,17 @@ export class TrnEmojiPickerPanelComponent {
     if (!this.fill() || width === null) {
       return null;
     }
-    const glyph = this.vendorEmojiSize();
     return trnEmojiGridFit(
       width,
-      glyph,
+      this.glyph(),
       this.coarsePointer ? TRN_EMOJI_TOUCH_CELL : 0,
     );
   });
+
+  /** Filling, the fitted glyph, within a pixel of the size's own. */
+  protected readonly vendorEmojiSize = computed(
+    () => this.fit()?.glyph ?? this.glyph(),
+  );
 
   protected readonly perLine = computed(
     () => this.fit()?.perLine ?? FIXED_PER_LINE,

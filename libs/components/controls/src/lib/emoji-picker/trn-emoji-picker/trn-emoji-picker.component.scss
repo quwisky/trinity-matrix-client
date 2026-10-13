@@ -105,6 +105,9 @@
     &.trn-emoji-picker--embedded {
       .emoji-mart,
       .trn-emoji-picker__placeholder {
+        // No clip either: the panel insets the grid, so the search's focus ring falls just
+        // outside it. The vendor's scroll area keeps its own overflow.
+        overflow: visible;
         border-width: 0;
         border-radius: 0;
         background: transparent;
@@ -133,6 +136,13 @@
 
       .emoji-mart-category .emoji-mart-emoji {
         padding: var(--trn-emoji-cell-padding);
+      }
+
+      // The vendor promotes its scroll area to a layer (`will-change: transform`). Filling,
+      // that layer left a hairline of stale paint under the sticky section headings in
+      // Chromium; painted with the page, it does not.
+      .emoji-mart-scroll {
+        will-change: auto;
       }
     }
 
