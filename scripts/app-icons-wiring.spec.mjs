@@ -122,7 +122,7 @@ describe('desktop icon wiring', () => {
   it('ships every runtime icon through extraResources', () => {
     const config = read('electron/electron-builder.yml');
     for (const file of [
-      'icon.png',
+      'windowIcon.png',
       'trinityTray.png',
       'trinityTray@2x.png',
       'trinityTrayLinux.png',

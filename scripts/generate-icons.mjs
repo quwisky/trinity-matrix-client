@@ -112,6 +112,8 @@ export const OUTPUTS = [
   // Linux AppIndicators draw larger than the Windows notification area.
   out('electron/build/trinityTrayLinux.png', 32, 32, () => plated(32)),
   out('electron/build/trinityTrayLinux@2x.png', 64, 64, () => plated(64)),
+  // Shared by every Windows/Linux BrowserWindow; 256 px is all a title bar or taskbar needs.
+  out('electron/build/windowIcon.png', 256, 256, () => plated(256)),
   out('electron/build/notificationIcon.png', 256, 256, () => plated(256)),
   // Web and PWA
   out(`${ICON_DIR}/icon-1024.png`, 1024, 1024, () => plated(1024)),

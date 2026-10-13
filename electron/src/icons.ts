@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, nativeImage } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -33,9 +33,25 @@ export function trayIconFile(platform: NodeJS.Platform): string {
   return platform === 'linux' ? 'trinityTrayLinux.png' : 'trinityTray.png';
 }
 
-/** BrowserWindow icon options: the generated icon on Windows/Linux, the bundle icon on macOS. */
+// The 256 px window icon, decoded once and shared by every BrowserWindow. Only a
+// found, non-empty image is cached, so a missing asset is retried on the next window.
+let windowIconCache: Electron.NativeImage | undefined;
+
+function windowIcon(): Electron.NativeImage | undefined {
+  if (windowIconCache) return windowIconCache;
+  const file = resolveIconFile('windowIcon.png');
+  if (!file) return undefined;
+  const image = nativeImage.createFromPath(file);
+  if (image.isEmpty()) return undefined;
+  windowIconCache = image;
+  return image;
+}
+
+/** BrowserWindow icon options: the shared 256 px icon on Windows/Linux, the bundle icon on macOS. */
 export function windowIconOptions(platform: NodeJS.Platform): {
-  icon?: string;
+  icon?: Electron.NativeImage;
 } {
-  return platform === 'darwin' ? {} : { icon: resolveIconFile('icon.png') };
+  if (platform === 'darwin') return {};
+  const icon = windowIcon();
+  return icon ? { icon } : {};
 }
