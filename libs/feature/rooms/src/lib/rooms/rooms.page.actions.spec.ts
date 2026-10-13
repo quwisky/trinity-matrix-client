@@ -49,6 +49,10 @@ import {
 import { MockProvider } from 'ng-mocks';
 import { defer, map, of, Subject, tap, throwError } from 'rxjs';
 import { MatrixError } from '@trinity/util/matrix';
+import {
+  SessionLockService,
+  type SessionLockState,
+} from '@trinity/platform-native';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -79,6 +83,7 @@ describe('RoomsPage space actions', () => {
     accountIds: readonly string[] = ['@me:hs'],
   ) {
     const activeAccountId = signal<string | null>(activeUserId);
+    const lockState = signal<SessionLockState>('held');
     alertPrompt = vi.fn(() => of(null));
     alertConfirm = vi.fn(() => of(false));
     alertChoose = vi.fn(() => of('cancel'));
@@ -172,9 +177,10 @@ describe('RoomsPage space actions', () => {
           prompt$: alertPrompt,
         }),
         MockProvider(TrnToastService),
+        MockProvider(SessionLockService, { state: lockState.asReadonly() }),
       ],
     });
-    return { ...shellFrom(), activeAccountId };
+    return { ...shellFrom(), activeAccountId, lockState };
   }
 
   it('creates a space and selects it on success', async () => {
@@ -533,6 +539,46 @@ describe('RoomsPage space actions', () => {
       replaceUrl: true,
     });
   });
+
+  it('stays on the room while this tab hands its session to another tab', () => {
+    // The handover stops every client, then reloads this URL: a redirect would race the
+    // reload and could leave the tab on the sign-in page instead of the room (#1267).
+    const shell = build();
+    const router = TestBed.inject(Router);
+
+    shell.lockState.set('releasing');
+    shell.activeAccountId.set(null);
+    TestBed.flushEffects();
+
+    expect(router.navigateByUrl).not.toHaveBeenCalledWith(
+      '/login',
+      expect.anything(),
+    );
+  });
+
+  it.each([
+    'held',
+    'not-required',
+    'acquiring',
+    'waiting',
+    'taking-over',
+    'handover-timed-out',
+    'unavailable',
+  ] as const satisfies readonly SessionLockState[])(
+    'still returns to /login when the last account is lost and the lock is %s',
+    (state) => {
+      const shell = build();
+      const router = TestBed.inject(Router);
+
+      shell.lockState.set(state);
+      shell.activeAccountId.set(null);
+      TestBed.flushEffects();
+
+      expect(router.navigateByUrl).toHaveBeenCalledWith('/login', {
+        replaceUrl: true,
+      });
+    },
+  );
 });
 
 // Room / DM creation, invites, and accept/decline. The page picks a user (modal),
