@@ -82,6 +82,9 @@ test.describe('Session lock', () => {
     // without the guard; it fails (on /login) only when that redirect wins the race.
     await expect(waitingNotice(page)).toBeVisible({ timeout: 30_000 });
     await expect(page).toHaveURL(onRoom, { timeout: 30_000 });
+    // Counted from the reloaded document on, so this proves the reloaded page does not sync
+    // while it waits. That the old page stopped syncing at once when "Use here" arrived, before
+    // the drain, is checked in the unit spec (`session-handover.workflow.spec.ts`).
     const firstTabSyncs = countSyncRequests(page);
     await second.page.waitForResponse(isSyncResponse, { timeout: 60_000 });
     expect(firstTabSyncs()).toBe(0);
