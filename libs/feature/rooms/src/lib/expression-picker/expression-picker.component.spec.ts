@@ -421,9 +421,15 @@ describe('ExpressionPickerComponent', () => {
     expect(
       view.container.querySelector('[data-testid=dialog-close]'),
     ).toBeNull();
-    expect(Array.from(tablist.parentElement?.children ?? [])).toEqual([
-      tablist,
-    ]);
+    // The row is the tablist itself, and it holds the tabs and nothing else.
+    expect(tablist.nextElementSibling).toHaveAttribute(
+      'data-expression-content',
+    );
+    expect(
+      Array.from(tablist.querySelectorAll('button')).every(
+        (button) => button.getAttribute('role') === 'tab',
+      ),
+    ).toBe(true);
   });
 
   it('goes straight to the emoji grid in a sheet when Emoji is the only tab', async () => {
@@ -565,7 +571,7 @@ describe('ExpressionPickerComponent', () => {
   it('lines the tab row up with the content in the card', async () => {
     await renderPanel();
 
-    expect(view.getByRole('tablist').parentElement?.style.paddingInline).toBe(
+    expect(view.getByRole('tablist').style.paddingInline).toBe(
       'var(--trinity-space-3)',
     );
   });
@@ -573,7 +579,7 @@ describe('ExpressionPickerComponent', () => {
   it('lines the tab row up with the content in a sheet', async () => {
     await renderPanel({ presentation: 'sheet' });
 
-    expect(view.getByRole('tablist').parentElement?.style.paddingInline).toBe(
+    expect(view.getByRole('tablist').style.paddingInline).toBe(
       'var(--trinity-space-4)',
     );
   });

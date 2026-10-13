@@ -544,18 +544,23 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     expect(close).toHaveAttribute('data-testid', 'expression-sheet-close');
     expect(close).toHaveClass('sr-only');
 
-    // Last in the sheet, after the picker content, and not where focus starts.
-    const focusable = Array.from(
-      sheet.querySelectorAll<HTMLElement>('button, input, [tabindex]'),
-    ).filter((el) => el.tabIndex >= 0);
-    expect(focusable.at(-1)).toBe(close);
+    // Out of the Tab order: hidden, it would be a stop with no visible focus (WCAG 2.4.7).
+    // A screen reader still reaches it by swipe or virtual cursor; the keyboard has Escape.
+    expect(close).toHaveAttribute('tabindex', '-1');
+    expect(close.tabIndex).toBe(-1);
+    expect(close).toHaveAccessibleName('Close');
     expect(document.activeElement).not.toBe(close);
 
     close.click();
     TestBed.tick();
+    await Promise.resolve();
 
     expect(document.querySelector('trn-sheet-frame')).toBeNull();
     expect(cmp.pickerOpen()).toBe(false);
+    // Closed the way Escape closes it: focus goes back to the button that opened it.
+    expect(document.activeElement).toBe(
+      container.querySelector('.composer__emoji'),
+    );
   });
 
   it('reports a sheet the person closed as closed', async () => {
