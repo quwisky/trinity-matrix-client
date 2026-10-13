@@ -152,6 +152,34 @@ describe('scrubSecrets', () => {
     expect(scrubSecrets(line)).toBe(line);
   });
 
+  it('keeps an encoded event ID whole, with its "+" and "/" escaped once or twice', () => {
+    const v3 = '$Ab3+dE/fGh1jK2lMn4oPqR5sTuV6wXyZ7ab8cd9ef0g';
+
+    for (const encoded of [
+      encodeURIComponent(v3),
+      encodeURIComponent(v3).toLowerCase(),
+      encodeURIComponent(encodeURIComponent(v3)),
+      encodeURIComponent(encodeURIComponent(EVENT)),
+      `%24${v3.slice(1).replace(/\//g, '%2F')}`,
+    ]) {
+      const line = `GET /rooms/x/event/${encoded}/context`;
+
+      expect(scrubSecrets(line)).toBe(line);
+    }
+  });
+
+  it('still masks key material after an escape that only looks like part of an event ID', () => {
+    const v3 = encodeURIComponent(
+      '$Ab3+dE/fGh1jK2lMn4oPqR5sTuV6wXyZ7ab8cd9ef0g',
+    );
+
+    expect(scrubSecrets(`%24ab%2F${CURVE_KEY}`)).toBe(`%24ab%2F${REDACTED}`);
+    expect(scrubSecrets(`${v3}/${CURVE_KEY}`)).toBe(`${v3}/${REDACTED}`);
+    expect(scrubSecrets(`${v3}%2F${CURVE_KEY}`)).not.toContain(
+      CURVE_KEY.slice(0, 32),
+    );
+  });
+
   it('leaves ordinary log lines alone', () => {
     const sync =
       'FetchHttpApi: --> GET https://matrix.example.org/_matrix/client/v3/sync?filter=xxx&timeout=xxx';
@@ -423,6 +451,11 @@ describe('scrubSecrets', () => {
       '%41'.repeat(21000),
       `%41${'aB1-'.repeat(16000)}`,
       'a:'.repeat(32500),
+      '%24'.repeat(21000),
+      '%2524'.repeat(13000),
+      `%24${'a%2F'.repeat(16000)}`,
+      `%24${'aB1%2F'.repeat(13000)}`,
+      ('%24' + 'aB1'.repeat(14) + '%2F').repeat(1200),
     ];
 
     for (const input of inputs) {
