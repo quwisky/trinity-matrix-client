@@ -201,6 +201,11 @@ describe('createLogRedactor', () => {
     });
     const storeLine = (userId: string, deviceId: string): string =>
       `IndexedDbCryptoStore: opening main store trinity-crypto:${userId}:${deviceId}::matrix-sdk-crypto`;
+    /** Every three-character run of an ID: none may survive, whatever replaced it. */
+    const fragments = (id: string): string[] =>
+      Array.from({ length: id.length - 2 }, (_, start) =>
+        id.slice(start, start + 3),
+      );
 
     it('redacts the whole digit-led device ID in a crypto store name', () => {
       const deviceId = '1GncS3LIxD';
@@ -211,7 +216,7 @@ describe('createLogRedactor', () => {
       expect(redacted).toBe(
         'IndexedDbCryptoStore: opening main store trinity-crypto:@me:server1:DEVICE1::matrix-sdk-crypto',
       );
-      expect(redacted).not.toContain(deviceId.slice(1));
+      expect(redacted).not.toContain('GncS3LIxD');
     });
 
     it.each([
@@ -229,7 +234,9 @@ describe('createLogRedactor', () => {
           storeLine(SELF, deviceId),
         );
         expect(redacted).toBe(expected);
-        expect(redacted).not.toContain(deviceId.slice(1));
+        for (const fragment of fragments(deviceId)) {
+          expect(redacted).not.toContain(fragment);
+        }
       }
     });
 
@@ -258,6 +265,40 @@ describe('createLogRedactor', () => {
       expect(redactor.redact('!abc:host:8448 and #room:host:8448')).toBe(
         '!room1:server2 and #alias1:server2',
       );
+      expect(redactor.redact('$abc123:host:8448 sent')).toBe('$event1 sent');
+      expect(redactor.redact('mxc://host:8448/AbCdEfGhIj')).toBe(
+        'mxc://server2/media1',
+      );
+      expect(redactor.redact('https://host:8448 answered')).toBe(
+        'https://server2 answered',
+      );
+      expect(redactor.redact('from @user:host:8448')).toBe(
+        'from @user1:server2',
+      );
+    });
+
+    it('keeps a URL port that runs into a word apart from the host', () => {
+      const deviceId = '1GncS3LIxD';
+      const redactor = createLogRedactor(context([deviceId]));
+
+      expect(redactor.redact(`https://localhost:${deviceId}/x`)).toBe(
+        'https://server1:DEVICE1/x',
+      );
+      expect(redactor.redact('https://host:8448abc/x')).toBe(
+        'https://server2:8448abc/x',
+      );
+    });
+
+    it('removes a short all-digit device ID even when it reads as a port', () => {
+      for (const deviceId of ['1', '42', '12345']) {
+        const redacted = createLogRedactor(context([deviceId])).redact(
+          storeLine(SELF, deviceId),
+        );
+
+        expect(redacted).toBe(
+          'IndexedDbCryptoStore: opening main store trinity-crypto:@me:server1::matrix-sdk-crypto',
+        );
+      }
     });
 
     it('gives every mention of a known digit-led device ID the same placeholder', () => {
@@ -866,6 +907,11 @@ describe('createLogRedactor', () => {
       ['ports run into IDs', '@a:b:12345a'.repeat(SIZE / 11)],
       ['digits after a server', '@a:b:' + '1'.repeat(SIZE)],
       ['url ports run into words', 'https://a:1a'.repeat(SIZE / 12)],
+      ['labels before a failed port', '@a:' + 'b.'.repeat(SIZE / 2) + 'c:1a '],
+      [
+        'repeated labels before a failed port',
+        ('@a:' + 'b.'.repeat(30) + 'c:1a ').repeat(SIZE / 68),
+      ],
     ];
 
     it.each([
