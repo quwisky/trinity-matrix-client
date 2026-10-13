@@ -1,11 +1,19 @@
 import type { Page } from '@playwright/test';
 
+/** How long a probe waits for the element to load or fail before the journey fails. */
+const PROBE_TIMEOUT_MS = 10_000;
+
 /**
  * Whether a `blob:` URL can still be loaded in the page. The media cache revokes the URL of a
  * rendition it drops; an image already decoded stays on screen, so this is how a journey sees
  * that the bytes were released (or, for a URL still shown elsewhere, that they were not). It
  * loads the URL into a fresh element of `kind`: the app's CSP allows `blob:` for images and
- * media but not for `fetch`.
+ * media but not for `fetch`. An element that neither loads nor fails within
+ * {@link PROBE_TIMEOUT_MS} rejects, so a stuck probe can never read as "revoked".
+ *
+ * For a clip passed to {@link playToEnd}, the positive control is the clip itself: an element
+ * just loaded and played it from this very URL, so a probe that now fails to load it shows
+ * the URL was revoked, not that the probe cannot load media.
  */
 export function isBlobAlive(
   page: Page,
@@ -13,22 +21,35 @@ export function isBlobAlive(
   kind: 'image' | 'video' | 'audio',
 ): Promise<boolean> {
   return page.evaluate(
-    ({ blobUrl, tag }) =>
-      new Promise<boolean>((resolve) => {
+    ({ blobUrl, tag, timeoutMs }) =>
+      new Promise<boolean>((resolve, reject) => {
+        const timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `isBlobAlive: ${tag} ${blobUrl} neither loaded nor failed in ${timeoutMs} ms`,
+              ),
+            ),
+          timeoutMs,
+        );
+        const settle = (alive: boolean) => {
+          clearTimeout(timer);
+          resolve(alive);
+        };
         if (tag === 'image') {
           const image = new Image();
-          image.onload = () => resolve(true);
-          image.onerror = () => resolve(false);
+          image.onload = () => settle(true);
+          image.onerror = () => settle(false);
           image.src = blobUrl;
           return;
         }
         const media = document.createElement(tag);
         media.preload = 'metadata';
-        media.onloadedmetadata = () => resolve(true);
-        media.onerror = () => resolve(false);
+        media.onloadedmetadata = () => settle(true);
+        media.onerror = () => settle(false);
         media.src = blobUrl;
       }),
-    { blobUrl: url, tag: kind },
+    { blobUrl: url, tag: kind, timeoutMs: PROBE_TIMEOUT_MS },
   );
 }
 
