@@ -170,8 +170,7 @@ export class DeviceConfirmationPage {
           this.error.set(SWITCH_FAILED);
           return;
         }
-        this.leaving = true;
-        void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+        this.leaveForRooms();
       });
   }
 
@@ -206,13 +205,31 @@ export class DeviceConfirmationPage {
     this.stalled.set(false);
   }
 
+  /**
+   * Leave for Rooms after a removal or a switch. When the account now active also owes the
+   * check, the guard sends the move back to this same URL, which the router ignores, so
+   * this page stays: it must still leave once that account's gate stops asking.
+   */
+  private leaveForRooms(): void {
+    this.leaving = true;
+    void this.router.navigateByUrl('/rooms', { replaceUrl: true }).then(
+      (navigated) => {
+        if (!navigated) this.leaving = false;
+      },
+      () => {
+        this.leaving = false;
+      },
+    );
+  }
+
   private afterRemoval(outcome: AccountRemovalOutcome): void {
     switch (outcome.kind) {
       case 'removed':
         // With no account left, the removal flow has already gone to sign-in.
-        this.leaving = true;
         if (outcome.remainingAccountIds.length > 0) {
-          void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+          this.leaveForRooms();
+        } else {
+          this.leaving = true;
         }
         return;
       case 'export-keys':

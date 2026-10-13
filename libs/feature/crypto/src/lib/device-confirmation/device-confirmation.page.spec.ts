@@ -486,4 +486,42 @@ describe('DeviceConfirmationPage', () => {
       'Couldn’t switch to another account right now. Try again.',
     );
   });
+
+  it('leaves again later when the guard sent the move to Rooms back here', async () => {
+    // The account switched to owes the check too: the guard redirects to this same URL,
+    // which Angular ignores, so this page stays and must still leave once nothing is asked.
+    const { container, gate, navigateByUrl } = await renderPage({
+      otherAccount: true,
+    });
+    navigateByUrl.mockResolvedValueOnce(false);
+
+    byTestId(container, 'device-confirmation-other-account')!.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    gate.set({ kind: 'not-required' });
+    TestBed.tick();
+
+    expect(navigateByUrl).toHaveBeenCalledTimes(2);
+    expect(navigateByUrl).toHaveBeenLastCalledWith('/rooms', {
+      replaceUrl: true,
+    });
+  });
+
+  it('leaves again later when a removal’s move to Rooms is refused', async () => {
+    const removal = new Subject<AccountRemovalOutcome>();
+    const { container, gate, navigateByUrl } = await renderPage({
+      removal$: removal,
+    });
+    navigateByUrl.mockRejectedValueOnce(new Error('navigation failed'));
+
+    byTestId(container, 'device-confirmation-remove')!.click();
+    removal.next({ kind: 'removed', remainingAccountIds: ['@alt:hs'] });
+    removal.complete();
+    await Promise.resolve();
+    await Promise.resolve();
+    gate.set({ kind: 'not-required' });
+    TestBed.tick();
+
+    expect(navigateByUrl).toHaveBeenCalledTimes(2);
+  });
 });
