@@ -278,3 +278,89 @@ describe('sidebar-room-row.component.scss', () => {
     expect(scss).not.toContain('zoom');
   });
 });
+
+describe('SidebarRoomListComponent windowing (#1312)', () => {
+  const many = (
+    n: number,
+    over: (i: number) => Partial<RoomSummary> = () => ({}),
+  ) =>
+    Array.from({ length: n }, (_, i) =>
+      room({ id: `!r${i}:hs`, name: `room ${i}`, ...over(i) }),
+    );
+  /** A scroll element with a real-looking viewport; jsdom has no layout. */
+  function scroller(height = 600): HTMLElement {
+    const el = document.createElement('div');
+    Object.defineProperty(el, 'clientHeight', {
+      value: height,
+      configurable: true,
+    });
+    let top = 0;
+    Object.defineProperty(el, 'scrollTop', {
+      get: () => top,
+      set: (v: number) => (top = v),
+      configurable: true,
+    });
+    document.body.append(el);
+    return el;
+  }
+  const rows = (container: Element) =>
+    container.querySelectorAll('.channel-row');
+  const names = (container: Element) =>
+    [...container.querySelectorAll('.channel__name')].map((n) =>
+      n.textContent?.trim(),
+    );
+
+  it('renders only the rooms near the viewport of a long list', async () => {
+    const { container } = await renderRows(many(300), null, 'all', 'rich', {
+      scroller: scroller(),
+    });
+    TestBed.tick();
+
+    // 300 rows would be ~5,000 nodes kept in every room switch's style pass.
+    expect(rows(container).length).toBeGreaterThan(0);
+    expect(rows(container).length).toBeLessThan(100);
+    expect(names(container)).toContain('room 0');
+    expect(names(container)).not.toContain('room 299');
+  });
+
+  it('renders the end of the list once it is scrolled there', async () => {
+    const el = scroller();
+    const { container } = await renderRows(many(300), null, 'all', 'rich', {
+      scroller: el,
+    });
+    TestBed.tick();
+
+    el.scrollTop = 1_000_000;
+    el.dispatchEvent(new Event('scroll'));
+    TestBed.tick();
+
+    expect(names(container)).toContain('room 299');
+    expect(names(container)).not.toContain('room 0');
+    expect(rows(container).length).toBeLessThan(100);
+  });
+
+  it('keeps the section labels with the rooms they head', async () => {
+    const rooms = many(300, (i) => ({ favourite: i < 3 }));
+    const { container } = await renderRows(rooms, null, 'all', 'rich', {
+      scroller: scroller(),
+    });
+    TestBed.tick();
+
+    expect(container.querySelector('.category')?.textContent).toContain(
+      'Favourites',
+    );
+    expect(names(container).slice(0, 3)).toEqual([
+      'room 0',
+      'room 1',
+      'room 2',
+    ]);
+    expect(rows(container).length).toBeLessThan(100);
+  });
+
+  it('renders every room when it has no scroll element to window against', async () => {
+    const { container } = await renderRows(many(120));
+    TestBed.tick();
+
+    expect(rows(container).length).toBe(120);
+  });
+});

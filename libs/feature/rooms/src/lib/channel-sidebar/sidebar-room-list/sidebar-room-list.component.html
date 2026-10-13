@@ -60,62 +60,42 @@
   }
 }
 
-@if (favouriteRooms().length) {
-  <div class="category">Favourites</div>
-  @for (room of favouriteRooms(); track room.id) {
+<!-- Favourites, the rest and low priority as one windowed list (#1312): with a scroller
+     and enough rooms, only the lines near the viewport render, between two spacers. -->
+<div class="sidebar__pad" #topSpacer [style.height.px]="topPad()"></div>
+@for (item of windowedItems(); track item.key) {
+  @if (item.kind === 'room') {
     <trn-sidebar-room-row
-      [room]="room"
-      [active]="activeRoomId() === room.id"
-      [typing]="typingByRoom()[room.id]"
+      #line
+      [attr.data-sidebar-key]="item.key"
+      [room]="item.room"
+      [active]="activeRoomId() === item.room.id"
+      [typing]="typingByRoom()[item.room.id]"
       [activeUserId]="activeUserId()"
-      [accountBadge]="badgeFor(room.accountId)"
+      [accountBadge]="badgeFor(item.room.accountId)"
       [avatarSize]="avatarSize()"
       [spaceActive]="spaceActive()"
       [canCurate]="canCurateSpace()"
       [curateReason]="curateSpaceReason()"
       (action)="onRoomAction($event)"
     />
-  }
-  @if (otherRooms().length) {
-    <div class="sidebar__divider" role="separator"></div>
-  }
-}
-
-@for (room of otherRooms(); track room.id) {
-  <trn-sidebar-room-row
-    [room]="room"
-    [active]="activeRoomId() === room.id"
-    [typing]="typingByRoom()[room.id]"
-    [activeUserId]="activeUserId()"
-    [accountBadge]="badgeFor(room.accountId)"
-    [avatarSize]="avatarSize()"
-    [spaceActive]="spaceActive()"
-    [canCurate]="canCurateSpace()"
-    [curateReason]="curateSpaceReason()"
-    (action)="onRoomAction($event)"
-  />
-}
-
-@if (lowPriorityRooms().length) {
-  @if (otherRooms().length || favouriteRooms().length) {
-    <div class="sidebar__divider" role="separator"></div>
-  }
-  <div class="category">Low priority</div>
-  @for (room of lowPriorityRooms(); track room.id) {
-    <trn-sidebar-room-row
-      [room]="room"
-      [active]="activeRoomId() === room.id"
-      [typing]="typingByRoom()[room.id]"
-      [activeUserId]="activeUserId()"
-      [accountBadge]="badgeFor(room.accountId)"
-      [avatarSize]="avatarSize()"
-      [spaceActive]="spaceActive()"
-      [canCurate]="canCurateSpace()"
-      [curateReason]="curateSpaceReason()"
-      (action)="onRoomAction($event)"
-    />
+  } @else if (item.kind === 'category') {
+    <div
+      class="category"
+      #line
+      [attr.data-sidebar-key]="item.key"
+      [textContent]="item.label"
+    ></div>
+  } @else {
+    <div
+      class="sidebar__divider"
+      role="separator"
+      #line
+      [attr.data-sidebar-key]="item.key"
+    ></div>
   }
 }
+<div class="sidebar__pad" [style.height.px]="bottomPad()"></div>
 
 <!-- Two different statements, so they have two different conditions. "No channels here yet"
      is about the room list alone and shows under a pending invite exactly as it always did.
