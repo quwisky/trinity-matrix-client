@@ -133,7 +133,7 @@ describe('Message Presentation', () => {
       previewEncrypted: true,
     });
     expect(presentation?.html).toContain(
-      '<a href="https://example.org/docs">https://example.org/docs</a>',
+      '<a href="https://example.org/docs" target="_blank" rel="noopener noreferrer">https://example.org/docs</a>',
     );
     expect(presentation?.html).not.toContain('href="javascript:');
     expect(Object.isFrozen(presentation)).toBe(true);

@@ -14,6 +14,7 @@ import { isPollStart } from './poll';
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
 import { trimTrailing } from './trim-trailing';
 import {
+  isMatrixLinkHref,
   matrixToPermalink,
   parseMatrixLink,
   parseMatrixToLink,
@@ -502,9 +503,8 @@ const MATRIX_ALLOWED_TAGS = [
   'details',
   'summary',
 ];
-// `target` is intentionally omitted: dropping it avoids reverse-tabnabbing
-// without needing a post-sanitize rel hook. (Opening message links in a new tab
-// safely is a separate follow-up via a click handler.)
+// `target` and `rel` stay out of the allowlist, so a sender's own values never survive;
+// `markExternalLinks` sets them render-side on http(s) links only.
 const MATRIX_ALLOWED_ATTR = [
   'href',
   'name',
@@ -678,6 +678,7 @@ export function sanitizeMatrixHtml(
     RETURN_DOM: true as const,
   }) as HTMLElement;
   normaliseMatrixUris(body);
+  markExternalLinks(body);
   normaliseSpoilers(body);
   normaliseCustomEmotes(body);
   normaliseTaskItems(body);
@@ -713,6 +714,46 @@ function normaliseMatrixUris(body: HTMLElement): void {
         : 'https://matrix.to/#/__invalid-matrix-uri__',
     );
   }
+}
+
+/** A link that leaves Trinity: only `http(s)`. `mailto:`, `ftp:` and `magnet:` keep their behaviour. */
+const EXTERNAL_LINK = /^https?:\/\//i;
+
+/** The spec asks for `noopener`; `noreferrer` also keeps the room's URL out of the destination's logs. */
+const EXTERNAL_LINK_REL = 'noopener noreferrer';
+
+/**
+ * Give every link that leaves Trinity `target="_blank"` and `rel="noopener noreferrer"`, so a
+ * middle-click, a modifier-click, a context-menu open or a drag behaves like the plain click
+ * `MatrixLinkDirective` already intercepts. Runs after {@link normaliseMatrixUris}, so a
+ * `matrix:` link has become its `matrix.to` form and is skipped with the other permalinks,
+ * which stay routed in Trinity.
+ *
+ * Render-only, like every pass after DOMPurify: `target` is in neither allowlist, so a
+ * sender's own `target` never survives, and attributes set here never reach the wire.
+ */
+function markExternalLinks(root: ParentNode): void {
+  for (const anchor of root.querySelectorAll('a[href]')) {
+    const href = anchor.getAttribute('href') ?? '';
+    if (!EXTERNAL_LINK.test(href) || isMatrixLinkHref(href)) continue;
+    anchor.setAttribute('target', '_blank');
+    anchor.setAttribute('rel', EXTERNAL_LINK_REL);
+  }
+}
+
+/**
+ * {@link linkifyText}, with each link that leaves Trinity marked as {@link markExternalLinks}
+ * marks it. `linkifyText` emits exactly `<a href="…">` with an escaped URL, so this matches only
+ * its own output; the pattern is fixed, never built from the text.
+ */
+function linkifyMessageText(text: string): string | null {
+  return (
+    linkifyText(text)?.replace(/<a href="([^"]*)">/g, (anchor, href: string) =>
+      EXTERNAL_LINK.test(href) && !isMatrixLinkHref(href)
+        ? `<a href="${href}" target="_blank" rel="${EXTERNAL_LINK_REL}">`
+        : anchor,
+    ) ?? null
+  );
 }
 
 /**
@@ -1111,7 +1152,7 @@ export function renderNormalizedTextBody(
       : sanitizeMatrixHtml(strippedHtml, addressesViewer);
 
   // Plain text (no formatted_body) still gets bare URLs linkified so they're clickable.
-  return { text, html, textHtml: html ?? linkifyText(text) };
+  return { text, html, textHtml: html ?? linkifyMessageText(text) };
 }
 
 /** A well-formed essence for an inline kind: a bare `image`, `video` or `audio` type. */

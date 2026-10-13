@@ -109,4 +109,16 @@ describe('MatrixHtmlDirective', () => {
     });
     expect(host.textContent).toBe(source);
   });
+
+  it('keeps the new-tab attributes through Angular’s sanitizer', () => {
+    const { host } = render(
+      sanitizeMatrixHtml('<a href="https://example.org/x">x</a>'),
+    );
+    const link = host.querySelector('a')!;
+
+    // Angular re-sanitizes [innerHTML] against its own allowlist. If an upgrade drops
+    // `target` or `rel`, middle-click opens would lose `noopener` silently; fail here.
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
 });
