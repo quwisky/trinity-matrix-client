@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { ErrorHandler, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
@@ -48,6 +48,8 @@ function setup(
     readonly closeFails?: boolean;
     readonly unsent?: () => readonly PendingTextMessage[];
     readonly lifecycleBusy?: boolean;
+    readonly reloadFails?: boolean;
+    readonly restartFails?: boolean;
   } = {},
 ) {
   const steps: string[] = [];
@@ -83,10 +85,13 @@ function setup(
   });
   const reload = vi.fn(() => {
     steps.push('reload');
+    if (options.reloadFails) throw new Error('the reload was refused');
   });
   const restart = vi.fn(() => {
     steps.push('restart-at-root');
+    if (options.restartFails) throw new Error('the navigation was refused');
   });
+  const handleError = vi.fn();
   const writeBack = vi.fn((_messages: readonly PendingTextMessage[]) => {
     steps.push('write-drafts');
     return Promise.resolve();
@@ -101,6 +106,7 @@ function setup(
       MockProvider(TrnSurfaceService, { closeAll }),
       MockProvider(AppRestartService, { reload, restart }),
       MockProvider(UnsentDraftsWriter, { writeBack }),
+      { provide: ErrorHandler, useValue: { handleError } },
       MockProvider(AccountRuntimeService, {
         lifecycleBusy: lifecycleBusy.asReadonly(),
         lifecycle: lifecycle.asReadonly(),
@@ -118,6 +124,7 @@ function setup(
     lifetime,
     lifecycleBusy,
     lifecycle,
+    handleError,
   };
 }
 
@@ -331,6 +338,35 @@ describe('SessionHandoverWorkflow', () => {
     expect(matrix.pauseSync).toHaveBeenCalledOnce();
     expect(matrix.stop).toHaveBeenCalledOnce();
     expect(reload).toHaveBeenCalledOnce();
+    lifetime.unsubscribe();
+  });
+
+  it('restarts the app at its root when the reload in place fails, so the lock is still freed', async () => {
+    const { steps, requests, handleError, lifetime } = setup({
+      reloadFails: true,
+    });
+
+    requests.next();
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(steps).toEqual([...HANDED_OVER, 'restart-at-root']);
+    expect(handleError).not.toHaveBeenCalled();
+    lifetime.unsubscribe();
+  });
+
+  it('reports through the error handler when neither the reload nor the restart works', async () => {
+    const { steps, requests, handleError, lifetime } = setup({
+      reloadFails: true,
+      restartFails: true,
+    });
+
+    requests.next();
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(steps).toEqual([...HANDED_OVER, 'restart-at-root']);
+    expect(handleError).toHaveBeenCalledOnce();
+    // The handover still ends: the lifetime keeps answering requests.
+    expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
   });
 

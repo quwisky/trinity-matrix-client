@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { ErrorHandler, Injectable, inject } from '@angular/core';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
@@ -54,6 +54,7 @@ export class SessionHandoverWorkflow {
   private readonly appRestart = inject(AppRestartService);
   private readonly unsentDrafts = inject(UnsentDraftsWriter);
   private readonly accounts = inject(AccountRuntimeService);
+  private readonly errors = inject(ErrorHandler);
 
   /** For the life of the page: a tab still starting up holds the lock too. */
   run(): Observable<never> {
@@ -114,11 +115,26 @@ export class SessionHandoverWorkflow {
           catchError(() => of(undefined)),
         );
       }),
-      map(() => {
-        // The unloading document frees the session lock; the other tab's queued request is next.
-        this.appRestart.reload();
-      }),
+      // The unloading document frees the session lock; the other tab's queued request is next.
+      map(() => this.reload()),
     );
+  }
+
+  /**
+   * Only the unloading document frees the lock, so a reload that throws must not leave this tab
+   * holding it with its clients stopped: restart at the app root instead, and report the rare
+   * case where that fails too rather than let it end the handover lifetime.
+   */
+  private reload(): void {
+    try {
+      this.appRestart.reload();
+    } catch {
+      try {
+        this.appRestart.restart();
+      } catch (error: unknown) {
+        this.errors.handleError(error);
+      }
+    }
   }
 
   /** A sync loop that will not pause must not cost the unsent text: the stop still ends it. */
