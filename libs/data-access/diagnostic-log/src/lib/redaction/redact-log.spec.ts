@@ -189,6 +189,134 @@ describe('createLogRedactor', () => {
     });
   });
 
+  describe('device IDs after a user ID', () => {
+    // The crypto store is named `trinity-crypto:<user ID>:<device ID>`, and the SDK logs that
+    // name each time it opens a store. A device ID that starts with digits must not be read
+    // as the user's server port.
+    const SELF = '@bugreport-run:localhost';
+    const context = (deviceIds: readonly string[]) => ({
+      selfUserIds: [SELF],
+      selfDeviceIds: deviceIds,
+      homeserverUrls: ['http://localhost:8008'],
+    });
+    const storeLine = (userId: string, deviceId: string): string =>
+      `IndexedDbCryptoStore: opening main store trinity-crypto:${userId}:${deviceId}::matrix-sdk-crypto`;
+    /** Every three-character run of an ID: none may survive, whatever replaced it. */
+    const fragments = (id: string): string[] =>
+      Array.from({ length: id.length - 2 }, (_, start) =>
+        id.slice(start, start + 3),
+      );
+
+    it('redacts the whole digit-led device ID in a crypto store name', () => {
+      const deviceId = '1GncS3LIxD';
+      const redactor = createLogRedactor(context([deviceId]));
+
+      const redacted = redactor.redact(storeLine(SELF, deviceId));
+
+      expect(redacted).toBe(
+        'IndexedDbCryptoStore: opening main store trinity-crypto:@me:server1:DEVICE1::matrix-sdk-crypto',
+      );
+      expect(redacted).not.toContain('GncS3LIxD');
+    });
+
+    it.each([
+      '1GncS3LIxD',
+      '2bcDEF4ghi',
+      '9ZyXwVuTsR',
+      '0aB3dE9xYz',
+      '1234567890',
+    ])('redacts all of %s, known or not', (deviceId) => {
+      const expected =
+        'IndexedDbCryptoStore: opening main store trinity-crypto:@me:server1:DEVICE1::matrix-sdk-crypto';
+
+      for (const deviceIds of [[deviceId], []]) {
+        const redacted = createLogRedactor(context(deviceIds)).redact(
+          storeLine(SELF, deviceId),
+        );
+        expect(redacted).toBe(expected);
+        for (const fragment of fragments(deviceId)) {
+          expect(redacted).not.toContain(fragment);
+        }
+      }
+    });
+
+    it('redacts a digit-led device ID after another user', () => {
+      expect(
+        createLogRedactor(context([])).redact(
+          storeLine('@bob:other.net', '7GncS3LIxD'),
+        ),
+      ).toBe(
+        'IndexedDbCryptoStore: opening main store trinity-crypto:@user1:server2:DEVICE1::matrix-sdk-crypto',
+      );
+    });
+
+    it('still reads a real port as part of the server', () => {
+      const redactor = createLogRedactor(context([]));
+
+      expect(redactor.redact('@user:host:8448 joined')).toBe(
+        '@user1:server2 joined',
+      );
+      expect(redactor.redact('invited @user:host:8448.')).toBe(
+        'invited @user1:server2.',
+      );
+      expect(redactor.redact(storeLine('@user:host:8448', 'ABCDEFGHIJ'))).toBe(
+        'IndexedDbCryptoStore: opening main store trinity-crypto:@user1:server2:DEVICE1::matrix-sdk-crypto',
+      );
+      expect(redactor.redact('!abc:host:8448 and #room:host:8448')).toBe(
+        '!room1:server2 and #alias1:server2',
+      );
+      expect(redactor.redact('$abc123:host:8448 sent')).toBe('$event1 sent');
+      expect(redactor.redact('mxc://host:8448/AbCdEfGhIj')).toBe(
+        'mxc://server2/media1',
+      );
+      expect(redactor.redact('https://host:8448 answered')).toBe(
+        'https://server2 answered',
+      );
+      expect(redactor.redact('from @user:host:8448')).toBe(
+        'from @user1:server2',
+      );
+    });
+
+    it('keeps a URL port that runs into a word apart from the host', () => {
+      const deviceId = '1GncS3LIxD';
+      const redactor = createLogRedactor(context([deviceId]));
+
+      expect(redactor.redact(`https://localhost:${deviceId}/x`)).toBe(
+        'https://server1:DEVICE1/x',
+      );
+      expect(redactor.redact('https://host:8448abc/x')).toBe(
+        'https://server2:8448abc/x',
+      );
+    });
+
+    it('removes a short all-digit device ID even when it reads as a port', () => {
+      for (const deviceId of ['1', '42', '12345']) {
+        const redacted = createLogRedactor(context([deviceId])).redact(
+          storeLine(SELF, deviceId),
+        );
+
+        expect(redacted).toBe(
+          'IndexedDbCryptoStore: opening main store trinity-crypto:@me:server1::matrix-sdk-crypto',
+        );
+      }
+    });
+
+    it('gives every mention of a known digit-led device ID the same placeholder', () => {
+      const deviceId = '1GncS3LIxD';
+      const redactor = createLogRedactor(context([deviceId]));
+
+      expect(redactor.redact(storeLine(SELF, deviceId))).toContain(
+        ':@me:server1:DEVICE1::',
+      );
+      expect(redactor.redact(`session ${deviceId} started`)).toBe(
+        'session DEVICE1 started',
+      );
+      expect(redactor.redact(`device ${deviceId} verified by ${SELF}`)).toBe(
+        'device DEVICE1 verified by @me:server1',
+      );
+    });
+  });
+
   describe('server names', () => {
     it('learns every identifier in a text without producing output', () => {
       const redactor = createLogRedactor(CORPUS_CONTEXT);
@@ -776,6 +904,14 @@ describe('createLogRedactor', () => {
         'a.'.repeat(SIZE / 2) + 'matrix.example.org',
       ],
       ['ipv6 users', '@a:[::1'.repeat(SIZE / 7)],
+      ['ports run into IDs', '@a:b:12345a'.repeat(SIZE / 11)],
+      ['digits after a server', '@a:b:' + '1'.repeat(SIZE)],
+      ['url ports run into words', 'https://a:1a'.repeat(SIZE / 12)],
+      ['labels before a failed port', '@a:' + 'b.'.repeat(SIZE / 2) + 'c:1a '],
+      [
+        'repeated labels before a failed port',
+        ('@a:' + 'b.'.repeat(30) + 'c:1a ').repeat(SIZE / 68),
+      ],
     ];
 
     it.each([
