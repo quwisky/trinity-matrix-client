@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const docsRoot = fileURLToPath(new URL('../../tools/docs/', import.meta.url));
 
 export default defineConfig({
-  site: 'https://quwisky.github.io',
+  site: 'https://docs.trinityproject.dev',
   base: '/trinity-matrix-client/users',
   outDir: fileURLToPath(new URL('../../dist/docs/users/', import.meta.url)),
   markdown: {

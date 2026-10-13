@@ -9,9 +9,9 @@ renderer; host capabilities handle platform-specific behavior.
 The desktop app and the self-hostable web app (PWA) are available from
 [the latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest);
 the Android and iOS apps are still in development. The
-[user guide](https://quwisky.github.io/trinity-matrix-client/users/) covers installing
+[user guide](https://docs.trinityproject.dev/trinity-matrix-client/users/) covers installing
 the latest release. The
-[developer guide](https://quwisky.github.io/trinity-matrix-client/developers/) follows
+[developer guide](https://docs.trinityproject.dev/trinity-matrix-client/developers/) follows
 the `main` branch and documents the current source tree.
 
 ## Install
@@ -65,13 +65,13 @@ Self-host the web app from the release image, `docker run -d -p 8080:8080 ghcr.i
 (`:next` for prereleases),
 or from the `Trinity-Web-X.Y.Z.zip` attached to each
 [release](https://github.com/quwisky/trinity-matrix-client/releases). See
-[Self-host a release](https://quwisky.github.io/trinity-matrix-client/developers/platforms/web-and-pwa/#self-host-release).
+[Self-host a release](https://docs.trinityproject.dev/trinity-matrix-client/developers/platforms/web-and-pwa/#self-host-release).
 
 ### Android and iOS
 
 🚧 In development. Build them from source with the developer guide:
-[Android](https://quwisky.github.io/trinity-matrix-client/developers/platforms/android/),
-[iOS](https://quwisky.github.io/trinity-matrix-client/developers/platforms/ios/).
+[Android](https://docs.trinityproject.dev/trinity-matrix-client/developers/platforms/android/),
+[iOS](https://docs.trinityproject.dev/trinity-matrix-client/developers/platforms/ios/).
 
 ## How Trinity compares
 
@@ -106,7 +106,7 @@ shows — for Android and iOS.
 From Trinity 0.3, OAuth 2.0 sign-in needs Synapse 1.138 or newer when the server uses
 Matrix Authentication Service (MAS). On an older Synapse with MAS, accounts stop
 connecting when their access token expires but keep their local encryption keys; see
-[Server requirements](https://quwisky.github.io/trinity-matrix-client/users/#server-requirements).
+[Server requirements](https://docs.trinityproject.dev/trinity-matrix-client/users/#server-requirements).
 
 Trinity also supports polls, voice messages, location sharing, stickers, custom emoji
 and GIFs, room widgets, jump to date, pinned messages, room key export and import, and
@@ -122,7 +122,7 @@ self-assessed from this repository against the same feature definitions.
 
 Use the Node.js range in `package.json`'s `engines.node` and the pnpm version pinned in
 its `packageManager` field; the
-[prerequisites](https://quwisky.github.io/trinity-matrix-client/developers/start/prerequisites/)
+[prerequisites](https://docs.trinityproject.dev/trinity-matrix-client/developers/start/prerequisites/)
 page shows both. Then install and start the development server:
 
 ```bash
@@ -133,7 +133,7 @@ pnpm start
 
 Open `http://localhost:4200`. For prerequisites, repository orientation, platform
 setup, commands, testing, architecture, and contribution policy, use the
-[developer guide](https://quwisky.github.io/trinity-matrix-client/developers/).
+[developer guide](https://docs.trinityproject.dev/trinity-matrix-client/developers/).
 Its English source lives in
 [`apps/docs-developers/src/content/docs`](apps/docs-developers/src/content/docs).
 
