@@ -28,6 +28,7 @@ import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
 import {
+  ACCOUNT_REMOVAL_LAUNCHER_STUB,
   ROUTE_PROVIDER,
   SYSTEM_STATUS_PROVIDER,
 } from './rooms-page.spec-harness';
@@ -236,6 +237,7 @@ describe('the shell coordinators are page-scoped, not root-provided', () => {
         { provide: RoomShellStore, useValue: {} },
         ROUTE_PROVIDER,
         SYSTEM_STATUS_PROVIDER,
+        ACCOUNT_REMOVAL_LAUNCHER_STUB,
       ],
     });
     TestBed.overrideComponent(RoomsPage, {

@@ -28,6 +28,7 @@ import {
 } from '@trinity/data-access/matrix-client';
 import type { PushConfig } from '@trinity/data-access/notifications';
 import {
+  ACCOUNT_REMOVAL_LAUNCHER,
   BUG_REPORT_LAUNCHER,
   TrinityErrorHandler,
   type BuildInfo,
@@ -44,6 +45,7 @@ import {
 } from '../application-dialog-loaders';
 import { applicationCapabilityProviders } from './application-capability.providers';
 import { trinityDiagnosticProviders } from './diagnostic-log.providers';
+import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
 import { ReportBugLauncherAdapter } from './report-bug-launcher.adapter';
 import { TrinityApplicationRuntimeAdapter } from './trinity-application-runtime.adapter';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
@@ -138,5 +140,9 @@ export function provideTrinityApplication(
       useValue: options.dialogLoaders.reportBug,
     },
     { provide: BUG_REPORT_LAUNCHER, useExisting: ReportBugLauncherAdapter },
+    {
+      provide: ACCOUNT_REMOVAL_LAUNCHER,
+      useExisting: AccountRemovalLauncherAdapter,
+    },
   ]);
 }

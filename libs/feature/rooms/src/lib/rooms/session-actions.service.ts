@@ -5,20 +5,9 @@ import {
   WorkspaceApplicationSurfaceService,
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
-import {
-  ACCOUNT_REMOVAL_CONSEQUENCES,
-  AccountRuntimeService,
-  ROOM_KEYS_AT_RISK,
-  ROOM_KEYS_MAY_BE_LOST,
-  roomKeysAtRiskHeader,
-} from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import {
-  TrnAlertService,
-  type TrnAlertChoice,
-} from '@trinity/components/overlay';
+import { ACCOUNT_REMOVAL_LAUNCHER } from '@trinity/platform-native';
 import { ShellStatusService } from './shell-status.service';
-import { filter, map, of, switchMap, tap, type Observable } from 'rxjs';
 
 /**
  * Session-level actions reachable from the account menu: switching account, adding one,
@@ -29,14 +18,13 @@ import { filter, map, of, switchMap, tap, type Observable } from 'rxjs';
  */
 @Injectable()
 export class SessionActionsService {
-  private readonly accounts = inject(AccountRuntimeService);
   private readonly workspace = inject(WorkspaceNavigationService);
   private readonly matrix = inject(MatrixClientService);
   private readonly router = inject(Router);
   private readonly applicationSurfaces = inject(
     WorkspaceApplicationSurfaceService,
   );
-  private readonly alert = inject(TrnAlertService);
+  private readonly accountRemoval = inject(ACCOUNT_REMOVAL_LAUNCHER);
   private readonly status = inject(ShellStatusService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -76,85 +64,33 @@ export class SessionActionsService {
     void this.router.navigate(['/login'], { queryParams: { reauth: userId } });
   }
 
+  /**
+   * Remove an account from this device through the shared flow (Application Runtime),
+   * which asks the consequences and room-key questions and signs it out. Here: open
+   * Security settings when the person exports keys first, and say when nothing could be
+   * removed.
+   */
   logout(userId: string): void {
-    this.alert
-      .confirm$({
-        header: 'Remove account',
-        message: `Account ${userId}\n\n${ACCOUNT_REMOVAL_CONSEQUENCES}`,
-        confirmText: 'Remove account',
-        variant: 'danger',
-      })
-      .pipe(
-        filter(Boolean),
-        switchMap(() => this.confirmRoomKeysLoss(userId)),
-        tap((choice) => {
-          if (choice === 'alternative') {
-            this.goToSettings('security');
-          }
-        }),
-        filter((choice) => choice === 'confirm'),
-        switchMap(() => this.accounts.signOutAccount(userId)),
-        takeUntilDestroyed(this.destroyRef),
-      )
+    this.accountRemoval
+      .remove(userId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => {
-        if (outcome.kind === 'partial-cleanup') {
-          const restartRequired = outcome.issues.some(
-            ({ recovery }) => recovery === 'restart-application',
-          );
-          this.status.showError(
-            restartRequired
-              ? 'Account removal finished with some cleanup incomplete. Restart Trinity before trying again.'
-              : 'Account removal finished with some cleanup incomplete. Retry it to run only safe remaining work.',
-          );
-        }
-        if (
-          (outcome.kind === 'ready' || outcome.kind === 'partial-cleanup') &&
-          outcome.remainingAccountIds.length === 0
-        ) {
-          void this.router.navigateByUrl('/login', { replaceUrl: true });
-        } else if (outcome.kind === 'uncertain-cleanup') {
-          this.status.showError(
-            'Account removal is still running. Closing this message does not cancel it.',
-          );
-        } else if (
-          outcome.kind !== 'ready' &&
-          outcome.kind !== 'partial-cleanup'
-        ) {
-          this.status.showError('Unable to remove this account right now.');
+        switch (outcome.kind) {
+          case 'export-keys':
+            this.goToSettings('security');
+            break;
+          case 'failed':
+            this.status.showError('Unable to remove this account right now.');
+            break;
+          case 'kept':
+          case 'removed':
+          case 'still-running':
+            break;
+          default: {
+            const unhandled: never = outcome;
+            void unhandled;
+          }
         }
       });
-  }
-
-  /**
-   * Removing an account deletes its room keys from this device. When key backup is known
-   * to be incomplete, offer the existing key export first ('alternative'); when the status
-   * cannot be read, nothing can export either, so only warn.
-   */
-  private confirmRoomKeysLoss(userId: string): Observable<TrnAlertChoice> {
-    return this.matrix.roomKeysBackedUp(userId).pipe(
-      switchMap((backedUp): Observable<TrnAlertChoice> => {
-        if (backedUp) {
-          return of('confirm');
-        }
-        const header = roomKeysAtRiskHeader(backedUp);
-        if (backedUp === null) {
-          return this.alert
-            .confirm$({
-              header,
-              message: `Account ${userId}\n\n${ROOM_KEYS_MAY_BE_LOST}`,
-              confirmText: 'Remove anyway',
-              variant: 'danger',
-            })
-            .pipe(map((confirmed) => (confirmed ? 'confirm' : 'cancel')));
-        }
-        return this.alert.choose$({
-          header,
-          message: `Account ${userId}\n\n${ROOM_KEYS_AT_RISK}`,
-          alternativeText: 'Export keys',
-          confirmText: 'Remove anyway',
-          variant: 'danger',
-        });
-      }),
-    );
   }
 }

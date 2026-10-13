@@ -17,12 +17,14 @@ import {
   WorkspaceApplicationSurfaceService,
 } from '@trinity/application/workspace';
 import {
-  ACCOUNT_REMOVAL_CONSEQUENCES,
-  ROOM_KEYS_AT_RISK,
-  ROOM_KEYS_MAY_BE_LOST,
   AccountRuntimeService,
   type AccountSwitchCoordination,
 } from '@trinity/data-access/accounts';
+import {
+  ACCOUNT_REMOVAL_LAUNCHER,
+  type AccountRemovalOutcome,
+} from '@trinity/platform-native';
+import { ShellStatusService } from './shell-status.service';
 import { type PendingInvite } from '@trinity/data-access/room-library';
 import {
   MatrixClientService,
@@ -67,8 +69,7 @@ beforeEach(() => setRouteRoom(null));
 describe('RoomsPage space actions', () => {
   let alertPrompt: Mock;
   let alertConfirm: Mock;
-  let alertChoose: Mock;
-  let roomKeysBackedUp: Mock;
+  let accountRemoval: Mock;
   let createSpace: Mock;
   let createRoomInSpace: Mock;
   let leaveSpace: Mock;
@@ -81,8 +82,7 @@ describe('RoomsPage space actions', () => {
     const activeAccountId = signal<string | null>(activeUserId);
     alertPrompt = vi.fn(() => of(null));
     alertConfirm = vi.fn(() => of(false));
-    alertChoose = vi.fn(() => of('cancel'));
-    roomKeysBackedUp = vi.fn(() => of(true));
+    accountRemoval = vi.fn(() => of<AccountRemovalOutcome>({ kind: 'kept' }));
     createSpace = vi.fn(() => of('!new:hs'));
     createRoomInSpace = vi.fn(() =>
       of({
@@ -96,6 +96,10 @@ describe('RoomsPage space actions', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
+        {
+          provide: ACCOUNT_REMOVAL_LAUNCHER,
+          useValue: { remove: accountRemoval },
+        },
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
@@ -130,7 +134,6 @@ describe('RoomsPage space actions', () => {
           activeUserId: activeAccountId.asReadonly(),
           accountIds: signal<readonly string[]>(accountIds).asReadonly(),
           clientFor: () => clientStub(),
-          roomKeysBackedUp,
         }),
         MockProvider(UnreadAggregatorService, {
           unreadByAccount: signal<ReadonlyMap<string, number>>(
@@ -168,7 +171,6 @@ describe('RoomsPage space actions', () => {
         MockProvider(TrnSurfaceService),
         MockProvider(TrnAlertService, {
           confirm$: alertConfirm,
-          choose$: alertChoose,
           prompt$: alertPrompt,
         }),
         MockProvider(TrnToastService),
@@ -311,90 +313,19 @@ describe('RoomsPage space actions', () => {
     expect(leaveSpace).not.toHaveBeenCalled();
   });
 
-  it('signs out the last account and navigates to /login after confirming', async () => {
+  it('removes an account through the shared removal flow', () => {
     const shell = build();
-    alertConfirm.mockReturnValue(of(true));
-    const accounts = TestBed.inject(AccountRuntimeService);
-    const router = TestBed.inject(Router);
 
     shell.session.logout('@me:hs');
 
-    expect(alertConfirm).toHaveBeenCalled();
-    expect(alertConfirm).toHaveBeenCalledWith({
-      header: 'Remove account',
-      message: `Account @me:hs\n\n${ACCOUNT_REMOVAL_CONSEQUENCES}`,
-      confirmText: 'Remove account',
-      variant: 'danger',
-    });
-    expect(accounts.signOutAccount).toHaveBeenCalledWith('@me:hs');
-    // The harness has a single account, so signing it out returns to /login.
-    expect(router.navigateByUrl).toHaveBeenCalledWith('/login', {
-      replaceUrl: true,
-    });
+    expect(accountRemoval).toHaveBeenCalledWith('@me:hs');
   });
 
-  it('signs out one of several accounts without leaving the shell', async () => {
-    const shell = build('@me:hs', ['@me:hs', '@alt:hs']);
-    alertConfirm.mockReturnValue(of(true));
-    const accounts = TestBed.inject(AccountRuntimeService);
-    const router = TestBed.inject(Router);
-
-    shell.session.logout('@me:hs');
-
-    expect(accounts.signOutAccount).toHaveBeenCalledWith('@me:hs');
-    // A second account is still signed in (activeUserId stays non-null), so the
-    // wasLastAccount=false branch skips the /login redirect and the shell stays.
-    expect(router.navigateByUrl).not.toHaveBeenCalledWith('/login', {
-      replaceUrl: true,
-    });
-  });
-
-  it('asks to export room keys before removing when key backup is incomplete', () => {
+  it('opens Security settings when the flow asks to export keys first', () => {
     const shell = build();
-    alertConfirm.mockReturnValue(of(true));
-    roomKeysBackedUp.mockReturnValue(of(false));
-    const accounts = TestBed.inject(AccountRuntimeService);
-
-    shell.session.logout('@me:hs');
-
-    expect(roomKeysBackedUp).toHaveBeenCalledWith('@me:hs');
-    expect(alertChoose).toHaveBeenCalledWith({
-      header: 'Room keys are not backed up',
-      message: `Account @me:hs\n\n${ROOM_KEYS_AT_RISK}`,
-      alternativeText: 'Export keys',
-      confirmText: 'Remove anyway',
-      variant: 'danger',
-    });
-    // Cancel (the mock's default) keeps the account.
-    expect(accounts.signOutAccount).not.toHaveBeenCalled();
-  });
-
-  it('warns without an export when the backup status cannot be read', () => {
-    const shell = build();
-    alertConfirm
-      .mockReturnValueOnce(of(true)) // Remove account
-      .mockReturnValueOnce(of(false)); // the warning: Cancel
-    roomKeysBackedUp.mockReturnValue(of(null));
-    const accounts = TestBed.inject(AccountRuntimeService);
-
-    shell.session.logout('@me:hs');
-
-    expect(alertChoose).not.toHaveBeenCalled();
-    expect(alertConfirm).toHaveBeenLastCalledWith({
-      header: 'Room keys may not be backed up',
-      message: `Account @me:hs\n\n${ROOM_KEYS_MAY_BE_LOST}`,
-      confirmText: 'Remove anyway',
-      variant: 'danger',
-    });
-    expect(accounts.signOutAccount).not.toHaveBeenCalled();
-  });
-
-  it('opens the existing key export from that step and keeps the account', () => {
-    const shell = build();
-    alertConfirm.mockReturnValue(of(true));
-    roomKeysBackedUp.mockReturnValue(of(false));
-    alertChoose.mockReturnValue(of('alternative'));
-    const accounts = TestBed.inject(AccountRuntimeService);
+    accountRemoval.mockReturnValue(
+      of<AccountRemovalOutcome>({ kind: 'export-keys' }),
+    );
     const open = vi.spyOn(
       TestBed.inject(WorkspaceApplicationSurfaceService),
       'open',
@@ -405,41 +336,39 @@ describe('RoomsPage space actions', () => {
     expect(open).toHaveBeenCalledWith({
       surface: { kind: 'settings', section: 'security' },
     });
-    expect(accounts.signOutAccount).not.toHaveBeenCalled();
   });
 
-  it('removes the account when that step is answered with Remove anyway', () => {
+  it('says when the account could not be removed', () => {
     const shell = build();
-    alertConfirm.mockReturnValue(of(true));
-    roomKeysBackedUp.mockReturnValue(of(false));
-    alertChoose.mockReturnValue(of('confirm'));
-    const accounts = TestBed.inject(AccountRuntimeService);
+    accountRemoval.mockReturnValue(
+      of<AccountRemovalOutcome>({ kind: 'failed' }),
+    );
+    const showError = vi.spyOn(TestBed.inject(ShellStatusService), 'showError');
 
     shell.session.logout('@me:hs');
 
-    expect(accounts.signOutAccount).toHaveBeenCalledWith('@me:hs');
+    expect(showError).toHaveBeenCalledWith(
+      'Unable to remove this account right now.',
+    );
   });
 
-  it('skips the export step when key backup holds every room key', () => {
+  it.each([
+    { kind: 'kept' },
+    { kind: 'removed', remainingAccountIds: ['@alt:hs'] },
+    { kind: 'still-running' },
+  ] as const)('adds nothing of its own after $kind', (outcome) => {
     const shell = build();
-    alertConfirm.mockReturnValue(of(true));
-    roomKeysBackedUp.mockReturnValue(of(true));
-    const accounts = TestBed.inject(AccountRuntimeService);
+    accountRemoval.mockReturnValue(of<AccountRemovalOutcome>(outcome));
+    const showError = vi.spyOn(TestBed.inject(ShellStatusService), 'showError');
+    const open = vi.spyOn(
+      TestBed.inject(WorkspaceApplicationSurfaceService),
+      'open',
+    );
 
     shell.session.logout('@me:hs');
 
-    expect(alertChoose).not.toHaveBeenCalled();
-    expect(accounts.signOutAccount).toHaveBeenCalledWith('@me:hs');
-  });
-
-  it('does not sign out when the confirm is cancelled', async () => {
-    const shell = build();
-    alertConfirm.mockReturnValue(of(false));
-    const accounts = TestBed.inject(AccountRuntimeService);
-
-    shell.session.logout('@me:hs');
-
-    expect(accounts.signOutAccount).not.toHaveBeenCalled();
+    expect(showError).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
   });
 
   it('switches to another account (and no-ops on the active one)', async () => {
