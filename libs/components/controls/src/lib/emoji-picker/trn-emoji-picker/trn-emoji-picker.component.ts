@@ -63,6 +63,7 @@ export type { TrnEmojiPickerSize } from './trn-emoji-picker-recipe';
     // No `role` and no `aria-label`, deliberately — see the note above.
     '[attr.id]': 'pickerId()',
     '[attr.data-size]': 'size()',
+    '[class.trn-emoji-picker--embedded]': '!framed()',
     'data-testid': 'emoji-picker',
   },
 })
@@ -80,6 +81,12 @@ export class TrnEmojiPickerComponent {
    * focus continues to the search rather than staying on the container.
    */
   readonly autoFocusSearch = input(false);
+  /**
+   * Draw the picker's own card (border, background, radius and shadow). Off only where a
+   * surface around it already draws the card, as the composer's expression panel does, so
+   * the grid sits in that card rather than a second one inside it.
+   */
+  readonly framed = input(true);
 
   /** A usable pick. Entries without a `native` character never reach here. */
   readonly picked = output<TrnEmojiPick>();

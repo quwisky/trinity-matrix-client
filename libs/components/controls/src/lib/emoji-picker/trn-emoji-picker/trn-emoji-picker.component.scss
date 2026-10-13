@@ -98,6 +98,24 @@
       color: var(--muted-foreground);
     }
 
+    // Embedded in a surface that already draws the card (the composer's expression panel):
+    // the grid and its placeholder give up every part of their own frame, so the panel is
+    // one card. The sticky category labels still need an opaque fill, and it is the overlay
+    // surface the grid now sits on.
+    &.trn-emoji-picker--embedded {
+      .emoji-mart,
+      .trn-emoji-picker__placeholder {
+        border-width: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      .emoji-mart-category-label span {
+        background: var(--trinity-surface-overlay);
+      }
+    }
+
     // The vendor list deliberately keeps `overflow-y: scroll` because its width calculation
     // reserves the scrollbar. The global visible-scrollbar contract supplies its appearance.
   }

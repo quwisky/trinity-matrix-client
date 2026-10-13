@@ -224,6 +224,47 @@ describe('TrnEmojiPickerComponent', () => {
     expect(document.activeElement).not.toBe(search);
   });
 
+  it('draws its own frame by default, for a call site with no card around it', async () => {
+    const { fixture } = await renderLoaded(TrnEmojiPickerComponent);
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host).not.toHaveClass('trn-emoji-picker--embedded');
+  });
+
+  it('drops its frame when embedded in a surface that already draws the card', async () => {
+    const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
+      inputs: { framed: false },
+    });
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host).toHaveClass('trn-emoji-picker');
+    expect(host).toHaveClass('trn-emoji-picker--embedded');
+  });
+
+  it('takes the border, background, radius and shadow off the grid and its placeholder when embedded', () => {
+    // jsdom applies no CSS, so the embedded rule is read from the source: both the vendor
+    // grid and the placeholder standing in for it must lose every part of the frame.
+    const sheet = readFileSync(
+      join(import.meta.dirname, 'trn-emoji-picker.component.scss'),
+      'utf8',
+    );
+    const embedded =
+      /&\.trn-emoji-picker--embedded\s*\{([\s\S]*?)\n {4}\}/u.exec(sheet)?.[1];
+
+    expect(embedded).toBeDefined();
+    expect(embedded).toMatch(
+      /\.emoji-mart,\s*\.trn-emoji-picker__placeholder\s*\{/u,
+    );
+    for (const declaration of [
+      'border-width: 0;',
+      'border-radius: 0;',
+      'background: transparent;',
+      'box-shadow: none;',
+    ]) {
+      expect(embedded).toContain(declaration);
+    }
+  });
+
   it('never puts the vendor dark class on the element, even on a dark OS', async () => {
     // `darkMode` is pinned `false`, and the dark OS here is the whole point. The vendor's
     // default is not `false` — it is `matchMedia('(prefers-color-scheme: dark)').matches`,
