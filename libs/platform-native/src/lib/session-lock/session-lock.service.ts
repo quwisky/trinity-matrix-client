@@ -32,6 +32,7 @@ export class SessionLockService {
   private channel: SessionChannel | null = null;
   private releaseHeld: (() => void) | null = null;
   private queued = false;
+  private readonly teardown = new AbortController();
   private handoverTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly state = this.lockState.asReadonly();
@@ -43,6 +44,10 @@ export class SessionLockService {
 
   constructor() {
     inject(DestroyRef).onDestroy(() => {
+      // Withdraw a queued request, so a later release by another tab grants nothing here.
+      this.teardown.abort();
+      this.grants.complete();
+      this.requests.complete();
       this.clearHandoverTimer();
       this.channel?.close();
       this.channel = null;
@@ -80,7 +85,11 @@ export class SessionLockService {
     });
   }
 
-  /** Emits once, when this tab holds the lock (at once if it already does). */
+  /**
+   * Emits once, when this tab holds the lock (at once if it already does), whether it got it
+   * straight away or after waiting. Never emits where the lock is `not-required` or
+   * `unavailable`; completes when the service is destroyed.
+   */
   granted(): Observable<void> {
     return defer(() =>
       this.lockState() === 'held' ? of(undefined) : this.grants.pipe(take(1)),
@@ -94,6 +103,7 @@ export class SessionLockService {
   requestHandover(): void {
     const state = this.lockState();
     if (state !== 'waiting' && state !== 'handover-timed-out') return;
+    if (this.teardown.signal.aborted) return;
     if (this.locks) this.queue(this.locks);
     const request: SessionHandoverRequest = {
       type: 'handover-request',
@@ -132,6 +142,7 @@ export class SessionLockService {
     }
     if (granted) {
       this.becomeHolder();
+      this.grants.next();
       return 'held';
     }
     this.lockState.set('waiting');
@@ -143,13 +154,19 @@ export class SessionLockService {
   private queue(locks: SessionLocks): void {
     if (this.queued) return;
     this.queued = true;
-    void this.request(locks, { mode: 'exclusive' }).then(
-      () => {
+    void this.request(locks, {
+      mode: 'exclusive',
+      signal: this.teardown.signal,
+    }).then(
+      (granted) => {
         this.queued = false;
+        if (!granted) return;
         this.becomeHolder();
         this.grants.next();
       },
       () => {
+        // Aborted on destroy: nothing is waiting any more.
+        if (this.teardown.signal.aborted) return;
         // The browser dropped the queued request although this context has Web Locks: not
         // the secure-connection case. Offer "Try again", which queues again.
         this.queued = false;

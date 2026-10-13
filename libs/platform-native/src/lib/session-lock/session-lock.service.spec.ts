@@ -1,7 +1,12 @@
+import {
+  EnvironmentInjector,
+  createEnvironmentInjector,
+  runInInjectionContext,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Capacitor } from '@capacitor/core';
 import { desktopBridgeFixture } from '@trinity/testing';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, lastValueFrom, toArray } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SessionLockService } from './session-lock.service';
 import {
@@ -17,6 +22,12 @@ import {
 
 type GrantCallback = (lock: Lock | null) => Promise<void> | undefined;
 
+interface QueuedRequest {
+  readonly callback: GrantCallback;
+  readonly resolve: (value: unknown) => void;
+  readonly reject: (reason: unknown) => void;
+}
+
 /** One origin's exclusive Web Lock: one holder, a first-in-first-out queue, `ifAvailable`. */
 class FakeLocks implements SessionLocks {
   readonly requests: {
@@ -27,32 +38,46 @@ class FakeLocks implements SessionLocks {
   /** The browser drops queued (not `ifAvailable`) requests, as it may for a frozen page. */
   refuseQueued = false;
   private holder: object | null = null;
-  private readonly queue: GrantCallback[] = [];
+  private readonly queue: QueuedRequest[] = [];
 
   get queued(): number {
     return this.queue.length;
   }
 
+  get isHeld(): boolean {
+    return this.holder !== null;
+  }
+
+  /** Like the browser: settles with the callback's result, so never while the lock is held. */
   request(
     name: string,
     options: LockOptions,
     callback: GrantCallback,
   ): Promise<unknown> {
-    this.requests.push({ name, options });
+    this.requests.push({ name, options: { ...options, signal: undefined } });
     if (this.refuse) {
       return Promise.reject(new DOMException('Refused', 'SecurityError'));
     }
-    if (this.refuseQueued && !options.ifAvailable) {
-      return Promise.reject(new DOMException('Dropped', 'AbortError'));
-    }
-    if (this.holder === null && this.queue.length === 0) {
-      this.grant(callback);
-    } else if (options.ifAvailable) {
-      return Promise.resolve(callback(null));
-    } else {
-      this.queue.push(callback);
-    }
-    return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const entry: QueuedRequest = { callback, resolve, reject };
+      if (this.holder === null && this.queue.length === 0) {
+        this.grant(entry);
+      } else if (options.ifAvailable) {
+        queueMicrotask(() => resolve(callback(null)));
+      } else {
+        this.queue.push(entry);
+        options.signal?.addEventListener(
+          'abort',
+          () => this.abandon(entry, new DOMException('Aborted', 'AbortError')),
+          { once: true },
+        );
+        if (this.refuseQueued) {
+          queueMicrotask(() =>
+            this.abandon(entry, new DOMException('Dropped', 'AbortError')),
+          );
+        }
+      }
+    });
   }
 
   /** The holding tab closed or crashed: the browser frees the lock; its promise never settles. */
@@ -61,17 +86,28 @@ class FakeLocks implements SessionLocks {
     this.grantNext();
   }
 
-  private grant(callback: GrantCallback): void {
+  private abandon(entry: QueuedRequest, reason: unknown): void {
+    const index = this.queue.indexOf(entry);
+    if (index === -1) return;
+    this.queue.splice(index, 1);
+    entry.reject(reason);
+  }
+
+  private grant(entry: QueuedRequest): void {
     const holder = {};
     this.holder = holder;
-    const held = callback({
-      name: SESSION_LOCK_NAME,
-      mode: 'exclusive',
-    } as Lock);
-    void Promise.resolve(held).then(() => {
-      if (this.holder !== holder) return;
-      this.holder = null;
-      this.grantNext();
+    // The callback runs in a microtask, never inside `request()`.
+    queueMicrotask(() => {
+      const held = entry.callback({
+        name: SESSION_LOCK_NAME,
+        mode: 'exclusive',
+      } as Lock);
+      entry.resolve(held);
+      void Promise.resolve(held).then(() => {
+        if (this.holder !== holder) return;
+        this.holder = null;
+        this.grantNext();
+      });
     });
   }
 
@@ -85,6 +121,10 @@ class FakeLocks implements SessionLocks {
 class FakeChannels {
   readonly posted: unknown[] = [];
   private readonly channels = new Set<SessionChannel>();
+
+  get openCount(): number {
+    return this.channels.size;
+  }
 
   readonly open = (): SessionChannel => {
     const channel: SessionChannel = {
@@ -133,7 +173,16 @@ function setup(
   /** One more tab of the same origin: its own service over the shared locks and channel. */
   const openTab = (): SessionLockService =>
     TestBed.runInInjectionContext(() => new SessionLockService());
-  return { locks, channels, openTab };
+  /** A tab in its own injector, so a test can destroy it alone. */
+  const openDestroyableTab = () => {
+    const injector = createEnvironmentInjector(
+      [],
+      TestBed.inject(EnvironmentInjector),
+    );
+    const tab = runInInjectionContext(injector, () => new SessionLockService());
+    return { tab, destroy: () => injector.destroy() };
+  };
+  return { locks, channels, openTab, openDestroyableTab };
 }
 
 /** Let queued lock grants and channel deliveries run (real timers only). */
@@ -337,6 +386,104 @@ describe('SessionLockService', () => {
 
     expect(heard).toHaveBeenCalledOnce();
     expect(owner.state()).toBe('releasing');
+  });
+
+  it('emits granted when the lock is free at once, and not where it is not required', async () => {
+    const { openTab } = setup();
+    const tab = openTab();
+    const granted = vi.fn();
+    tab.granted().subscribe(granted);
+
+    await firstValueFrom(tab.acquire());
+
+    expect(granted).toHaveBeenCalledOnce();
+
+    TestBed.resetTestingModule();
+    const unneeded = setup({ required: false }).openTab();
+    const silent = vi.fn();
+    unneeded.granted().subscribe(silent);
+    await firstValueFrom(unneeded.acquire());
+    await settle();
+
+    expect(silent).not.toHaveBeenCalled();
+  });
+
+  it('emits granted once and completes', async () => {
+    const { locks, openTab } = setup();
+    const owner = openTab();
+    const waiter = openTab();
+    await firstValueFrom(owner.acquire());
+    await firstValueFrom(waiter.acquire());
+    const emissions = lastValueFrom(waiter.granted().pipe(toArray()));
+
+    locks.dropHolder();
+
+    await expect(emissions).resolves.toEqual([undefined]);
+  });
+
+  it('leaves the queue on destroy: a later release grants nothing, and a pending granted() completes', async () => {
+    const { locks, openTab, openDestroyableTab } = setup();
+    const owner = openTab();
+    const { tab: waiter, destroy } = openDestroyableTab();
+    await firstValueFrom(owner.acquire());
+    await firstValueFrom(waiter.acquire());
+    const completed = vi.fn();
+    const emitted = vi.fn();
+    waiter.granted().subscribe({ next: emitted, complete: completed });
+    expect(locks.queued).toBe(1);
+
+    destroy();
+    await settle();
+
+    expect(completed).toHaveBeenCalledOnce();
+    expect(locks.queued).toBe(0);
+    locks.dropHolder();
+    await settle();
+    expect(locks.isHeld).toBe(false);
+    expect(waiter.state()).toBe('waiting');
+    expect(emitted).not.toHaveBeenCalled();
+  });
+
+  it('closes the channel and frees the lock when a holder is destroyed', async () => {
+    const { locks, channels, openDestroyableTab } = setup();
+    const { tab, destroy } = openDestroyableTab();
+    await firstValueFrom(tab.acquire());
+    expect(channels.openCount).toBe(1);
+    expect(locks.isHeld).toBe(true);
+
+    destroy();
+    await settle();
+
+    expect(channels.openCount).toBe(0);
+    expect(locks.isHeld).toBe(false);
+  });
+
+  it('clears the handover timer on destroy', async () => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
+    const { openTab, openDestroyableTab } = setup();
+    const owner = openTab();
+    const { tab: requester, destroy } = openDestroyableTab();
+    await firstValueFrom(owner.acquire());
+    await firstValueFrom(requester.acquire());
+    requester.requestHandover();
+
+    destroy();
+    await vi.advanceTimersByTimeAsync(SESSION_HANDOVER_TIMEOUT_MS + 100);
+
+    expect(requester.state()).toBe('taking-over');
+  });
+
+  it('stays held when nothing listens for handover requests', async () => {
+    const { channels, openTab } = setup();
+    const owner = openTab();
+    await firstValueFrom(owner.acquire());
+
+    channels.broadcast({ type: 'handover-request', id: 'x' });
+    await settle();
+
+    expect(owner.state()).toBe('held');
   });
 
   it.each([
