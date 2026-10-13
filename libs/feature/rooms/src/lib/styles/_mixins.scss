@@ -66,11 +66,12 @@ $below-md: '(max-width: 767.98px)';
   text-align: center;
 }
 
-/// Anchored picker content layout shared by GIF, sticker and other composer trays.
-@mixin picker-surface {
+/// Content layout shared by the GIF and sticker pickers. Layout only: the expression panel
+/// holding them draws the surface (its card, or the sheet) and their side inset. No clip, so
+/// a search field's focus ring can show in that inset; each picker scrolls its own body.
+@mixin picker-layout {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 /// Full-height vertical column surface.

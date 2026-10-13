@@ -26,7 +26,7 @@ function sheetItems(): HTMLButtonElement[] {
 
 describe('ComposerInsertMenuComponent', () => {
   it('stays a plain attach button when there is nothing to collect in a tray', async () => {
-    // The thread composer with no GIF provider: a one-item menu is pure friction.
+    // The thread composer: a one-item menu is pure friction.
     const { container } = await render(ComposerInsertMenuComponent, {
       inputs: { hasMenu: false },
     });
@@ -77,10 +77,8 @@ describe('ComposerInsertMenuComponent', () => {
     const { fixture, container } = await render(ComposerInsertMenuComponent, {
       inputs: {
         hasMenu: true,
-        gifEnabled: true,
         richActions: true,
         voiceSupported: true,
-        stickerEnabled: true,
       },
     });
 
@@ -91,8 +89,6 @@ describe('ComposerInsertMenuComponent', () => {
 
     expect(trayItems().map((el) => el.getAttribute('data-testid'))).toEqual([
       'insert-attach',
-      'insert-gif',
-      'insert-sticker',
       'insert-poll',
       'insert-location',
       'insert-voice',
@@ -103,7 +99,6 @@ describe('ComposerInsertMenuComponent', () => {
     const { fixture, container } = await render(ComposerInsertMenuComponent, {
       inputs: {
         hasMenu: true,
-        gifEnabled: false,
         richActions: true,
         voiceSupported: true,
         recording: true, // already recording — no second start
@@ -123,16 +118,14 @@ describe('ComposerInsertMenuComponent', () => {
   });
 
   it('lets an upload in flight block the actions that send immediately, and only those', async () => {
-    // GIF and voice go straight out and would collide with the upload; attaching only stages,
+    // Voice goes straight out and would collide with the upload; attaching only stages,
     // and a poll or a location has nothing to do with it. The trigger deliberately does not
     // carry the union of the items' disabled states.
     const { fixture, container } = await render(ComposerInsertMenuComponent, {
       inputs: {
         hasMenu: true,
-        gifEnabled: true,
         richActions: true,
         voiceSupported: true,
-        stickerEnabled: true,
         uploading: true,
       },
     });
@@ -149,8 +142,6 @@ describe('ComposerInsertMenuComponent', () => {
     );
     expect(disabled).toEqual({
       'insert-attach': false,
-      'insert-gif': true,
-      'insert-sticker': false,
       'insert-poll': false,
       'insert-location': false,
       'insert-voice': true,
@@ -169,9 +160,9 @@ describe('ComposerInsertMenuComponent', () => {
     ).toBe(true);
   });
 
-  it('shows a spinner on the trigger while a GIF or a location is resolving', async () => {
+  it('shows a spinner on the trigger while a location is resolving', async () => {
     const { container } = await render(ComposerInsertMenuComponent, {
-      inputs: { hasMenu: true, gifDownloading: true },
+      inputs: { hasMenu: true, locationSharing: true },
     });
 
     expect(container.querySelector('trn-spinner')).not.toBeNull();
@@ -181,19 +172,13 @@ describe('ComposerInsertMenuComponent', () => {
     const { fixture, container } = await render(ComposerInsertMenuComponent, {
       inputs: {
         hasMenu: true,
-        gifEnabled: true,
         richActions: true,
         voiceSupported: true,
-        stickerEnabled: true,
       },
     });
     const fired: string[] = [];
     fixture.componentInstance.attachFile.subscribe(() => fired.push('attach'));
-    fixture.componentInstance.pickGif.subscribe(() => fired.push('gif'));
     fixture.componentInstance.createPoll.subscribe(() => fired.push('poll'));
-    fixture.componentInstance.pickSticker.subscribe(() =>
-      fired.push('sticker'),
-    );
     fixture.componentInstance.shareLocation.subscribe(() =>
       fired.push('location'),
     );
@@ -202,8 +187,6 @@ describe('ComposerInsertMenuComponent', () => {
     // Choosing an item closes the tray, so each one needs its own open.
     for (const testid of [
       'insert-attach',
-      'insert-gif',
-      'insert-sticker',
       'insert-poll',
       'insert-location',
       'insert-voice',
@@ -218,14 +201,7 @@ describe('ComposerInsertMenuComponent', () => {
       await fixture.whenStable();
     }
 
-    expect(fired).toEqual([
-      'attach',
-      'gif',
-      'sticker',
-      'poll',
-      'location',
-      'voice',
-    ]);
+    expect(fired).toEqual(['attach', 'poll', 'location', 'voice']);
   });
 
   it('uses the complete ordered action sheet on the iOS/Android interaction model', async () => {
@@ -234,10 +210,8 @@ describe('ComposerInsertMenuComponent', () => {
       inputs: {
         contextKey: '!room:example.org',
         hasMenu: true,
-        gifEnabled: true,
         richActions: true,
         voiceSupported: true,
-        stickerEnabled: true,
         uploading: true,
       },
     });
@@ -255,8 +229,6 @@ describe('ComposerInsertMenuComponent', () => {
       sheetItems().map((item) => item.getAttribute('data-testid')),
     ).toEqual([
       'insert-attach',
-      'insert-gif',
-      'insert-sticker',
       'insert-poll',
       'insert-location',
       'insert-voice',
@@ -270,8 +242,6 @@ describe('ComposerInsertMenuComponent', () => {
       ),
     ).toEqual({
       'insert-attach': false,
-      'insert-gif': true,
-      'insert-sticker': false,
       'insert-poll': false,
       'insert-location': false,
       'insert-voice': true,
@@ -283,13 +253,10 @@ describe('ComposerInsertMenuComponent', () => {
     ['hasMenu', false],
     ['editing', true],
     ['uploading', true],
-    ['gifEnabled', false],
-    ['gifDownloading', true],
     ['richActions', false],
     ['voiceSupported', false],
     ['recording', true],
     ['locationSharing', true],
-    ['stickerEnabled', false],
   ] as const)(
     'dismisses a stale mobile sheet when %s changes',
     async (inputName, nextValue) => {
@@ -298,10 +265,8 @@ describe('ComposerInsertMenuComponent', () => {
         inputs: {
           contextKey: '!first:example.org',
           hasMenu: true,
-          gifEnabled: true,
           richActions: true,
           voiceSupported: true,
-          stickerEnabled: true,
         },
       });
       const trigger = container.querySelector<HTMLButtonElement>(
@@ -334,29 +299,11 @@ describe('ComposerInsertMenuComponent', () => {
   );
 
   it.each([
-    [
-      { gifEnabled: false },
-      [
-        ['insert-attach', false],
-        ['insert-sticker', false],
-        ['insert-poll', false],
-        ['insert-location', false],
-        ['insert-voice', false],
-      ],
-    ],
-    [
-      { richActions: false },
-      [
-        ['insert-attach', false],
-        ['insert-gif', false],
-      ],
-    ],
+    [{ richActions: false }, [['insert-attach', false]]],
     [
       { voiceSupported: false },
       [
         ['insert-attach', false],
-        ['insert-gif', false],
-        ['insert-sticker', false],
         ['insert-poll', false],
         ['insert-location', false],
       ],
@@ -365,50 +312,23 @@ describe('ComposerInsertMenuComponent', () => {
       { recording: true },
       [
         ['insert-attach', false],
-        ['insert-gif', false],
-        ['insert-sticker', false],
         ['insert-poll', false],
         ['insert-location', false],
-      ],
-    ],
-    [
-      { stickerEnabled: false },
-      [
-        ['insert-attach', false],
-        ['insert-gif', false],
-        ['insert-poll', false],
-        ['insert-location', false],
-        ['insert-voice', false],
       ],
     ],
     [
       { uploading: true },
       [
         ['insert-attach', false],
-        ['insert-gif', true],
-        ['insert-sticker', false],
         ['insert-poll', false],
         ['insert-location', false],
         ['insert-voice', true],
       ],
     ],
     [
-      { gifDownloading: true },
-      [
-        ['insert-attach', false],
-        ['insert-gif', true],
-        ['insert-sticker', false],
-        ['insert-poll', false],
-        ['insert-location', false],
-        ['insert-voice', false],
-      ],
-    ],
-    [
       { locationSharing: true },
       [
         ['insert-attach', false],
-        ['insert-gif', false],
-        ['insert-sticker', false],
         ['insert-poll', false],
         ['insert-location', true],
         ['insert-voice', false],
@@ -421,10 +341,8 @@ describe('ComposerInsertMenuComponent', () => {
       const { fixture, container } = await render(ComposerInsertMenuComponent, {
         inputs: {
           hasMenu: true,
-          gifEnabled: true,
           richActions: true,
           voiceSupported: true,
-          stickerEnabled: true,
           ...changedInputs,
         },
       });

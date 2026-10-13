@@ -87,17 +87,12 @@ export class ComposerInsertMenuComponent {
   readonly contextKey = input<string | null>(null);
   /** Edit mode disables the whole tray — an edit can't become an attachment. */
   readonly editing = input(false);
-  /** Whether an attachment upload is in flight (blocks another attachment only). */
   /**
-   * A media send is in flight. Gates the items that dispatch IMMEDIATELY — a GIF and a voice
-   * clip both go straight out and would collide with it. Attaching is deliberately not gated:
+   * A media send is in flight. Gates the item that dispatches IMMEDIATELY — a voice clip
+   * goes straight out and would collide with it. Attaching is deliberately not gated:
    * a send takes the whole staged batch, so a file added during one waits for the next press.
    */
   readonly uploading = input(false);
-  /** Whether a GIF provider + API key are configured. */
-  readonly gifEnabled = input(false);
-  /** Whether a chosen GIF is being fetched. */
-  readonly gifDownloading = input(false);
   /** Whether the room-scoped rich actions (poll, location, voice) are offered. */
   readonly richActions = input(false);
   /** Whether this device can record voice (mic + MediaRecorder present). */
@@ -106,19 +101,15 @@ export class ComposerInsertMenuComponent {
   readonly recording = input(false);
   /** Whether a location is being resolved and sent. */
   readonly locationSharing = input(false);
-  /** Whether the active room has at least one sticker-capable image-pack entry. */
-  readonly stickerEnabled = input(false);
   /** The Conversation cannot take a send yet; entries that send to the Room are disabled. */
   readonly sendBlocked = input(false);
   /** How this host takes photos and videos; `'none'` withholds both actions. */
   readonly captureMode = input<CaptureMode>('none');
 
   readonly attachFile = output<void>();
-  readonly pickGif = output<void>();
   readonly createPoll = output<void>();
   readonly shareLocation = output<void>();
   readonly recordVoice = output<void>();
-  readonly pickSticker = output<void>();
   readonly takePhoto = output<void>();
   readonly recordVideo = output<void>();
 
@@ -157,28 +148,7 @@ export class ComposerInsertMenuComponent {
           },
         );
       }
-      if (this.gifEnabled()) {
-        actions.push({
-          text: 'GIF',
-          icon: 'image-play',
-          testId: 'insert-gif',
-          disabled:
-            this.sendBlocked() || this.uploading() || this.gifDownloading(),
-          transfersFocus: true,
-          run: () => this.pickGif.emit(),
-        });
-      }
       if (this.richActions()) {
-        if (this.stickerEnabled()) {
-          actions.push({
-            text: 'Sticker',
-            icon: 'image',
-            testId: 'insert-sticker',
-            disabled: this.sendBlocked(),
-            transfersFocus: true,
-            run: () => this.pickSticker.emit(),
-          });
-        }
         actions.push(
           {
             text: 'Poll',
@@ -220,13 +190,10 @@ export class ComposerInsertMenuComponent {
       this.hasMenu();
       this.editing();
       this.uploading();
-      this.gifEnabled();
-      this.gifDownloading();
       this.richActions();
       this.voiceSupported();
       this.recording();
       this.locationSharing();
-      this.stickerEnabled();
       this.captureMode();
       // A capability/context update can remove the focused row. Give focus back to the
       // replacement trigger instead of letting CDK drop it on the document body. The
@@ -261,7 +228,7 @@ export class ComposerInsertMenuComponent {
       { header: 'Add to message', buttons },
       {
         ariaLabel: 'Add to message',
-        // Selection can open a poll, GIF or sticker surface. CDK restoring the `+`
+        // Selection can open the poll dialog. CDK restoring the `+`
         // afterward would steal focus from it, so this invocation owns restoration and
         // applies it only to dismissals and actions that do not launch a focus owner.
         restoreFocus: false,

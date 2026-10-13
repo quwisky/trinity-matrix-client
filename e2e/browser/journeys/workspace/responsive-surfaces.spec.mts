@@ -197,7 +197,9 @@ test.describe('Responsive auth, crypto, and overlay surfaces', () => {
     await signInFromPasswordStage(page, credentials);
     await openRoom(page, roomName);
 
-    const emojiTrigger = page.getByRole('button', { name: 'Insert emoji' });
+    const emojiTrigger = page.getByRole('button', {
+      name: 'Emoji, GIFs and stickers',
+    });
     await emojiTrigger.click();
     const picker = page.locator('trn-emoji-picker');
     await expect(picker).toBeVisible({ timeout: 20_000 });
@@ -213,6 +215,13 @@ test.describe('Responsive auth, crypto, and overlay surfaces', () => {
     await page.setViewportSize({ width: 320, height: 568 });
     await emojiTrigger.click();
     await expect(picker).toBeVisible({ timeout: 20_000 });
+    // A phone gets the panel as a bottom sheet, which slides in: measure where it lands.
+    await expect(page.locator('trn-sheet-frame')).toBeVisible();
+    await page.waitForFunction(() =>
+      document
+        .getAnimations()
+        .every((animation) => animation.playState !== 'running'),
+    );
     await expectInsideViewport(page, picker, 'phone emoji picker');
     await expectNoHorizontalDocumentScroll(page);
     await page.keyboard.press('Escape');

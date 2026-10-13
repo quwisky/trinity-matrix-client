@@ -230,7 +230,7 @@ test.describe('GIF picker', () => {
     );
   });
 
-  test('omits GIF from the tray until a provider is configured', async ({
+  test('offers no GIFs tab until a provider is configured', async ({
     page,
     request,
   }) => {
@@ -241,12 +241,12 @@ test.describe('GIF picker', () => {
     await login(page, reader);
     await openSeededRoom(page, roomName);
 
-    // Composer is present, but the GIF affordance is not (no key configured): the `+`
-    // tray opens without a GIF item.
+    // Composer is present, but the GIF affordance is not (no key configured): the
+    // expression panel opens on the emoji picker with no GIFs tab.
     await expect(page.locator('textarea.composer__input')).toBeVisible();
-    await page.getByTestId('composer-insert').click();
-    await expect(page.getByTestId('insert-attach')).toBeVisible();
-    await expect(page.getByTestId('insert-gif')).toHaveCount(0);
+    await page.getByTestId('composer-expressions').click();
+    await expect(page.getByTestId('emoji-picker')).toBeVisible();
+    await expect(page.getByTestId('expression-tab-gif')).toHaveCount(0);
   });
 
   test('searches GIFs and sends the chosen one as an image message', async ({
@@ -268,10 +268,14 @@ test.describe('GIF picker', () => {
     await login(page, reader);
     await openSeededRoom(page, roomName);
 
-    // Open the picker from the `+` tray → trending loads (stubbed) → a result renders.
-    await page.getByTestId('composer-insert').click();
-    await page.getByTestId('insert-gif').click();
-    await expect(page.getByTestId('gif-search')).toBeVisible();
+    // Open the GIFs tab of the expression panel → trending loads (stubbed) → a result
+    // renders.
+    await page.getByTestId('composer-expressions').click();
+    await page.getByTestId('expression-tab-gif').click();
+    await expect(page.getByTestId('gif-search')).toBeFocused();
+    // Shift+Tab from the search returns to the selected tab, the row's only tab stop.
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.getByTestId('expression-tab-gif')).toBeFocused();
     const firstResult = page.getByTestId('gif-result').first();
     await expect(firstResult).toBeVisible({ timeout: 15_000 });
 
@@ -286,6 +290,125 @@ test.describe('GIF picker', () => {
       undefined,
       { timeout: 60_000, polling: 250 },
     );
+  });
+
+  test('opens as a bottom sheet on a 390×844 phone and sends a GIF from it', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}p`;
+    const { reader, roomName } = await seedRoom(request, hs, runId);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedPreference(
+      page,
+      GIF_CONFIG_KEY,
+      JSON.stringify({ provider: 'klipy', apiKey: 'e2e-key' }),
+    );
+    await stubKlipy(page);
+    await login(page, reader);
+    await openSeededRoom(page, roomName);
+
+    // Chromium cannot raise an on-screen keyboard here, so stand in for the visual viewport
+    // the way iOS reports one: the layout viewport keeps its 844px and the visible part
+    // shrinks above the keyboard. The sheet reads it when it opens.
+    await page.evaluate(() => {
+      class KeyboardViewport extends EventTarget {
+        height = window.innerHeight;
+        width = window.innerWidth;
+        offsetTop = 0;
+        offsetLeft = 0;
+        pageTop = 0;
+        pageLeft = 0;
+        scale = 1;
+      }
+      const viewport = new KeyboardViewport();
+      Object.defineProperty(window, 'visualViewport', {
+        configurable: true,
+        value: viewport,
+      });
+      Object.assign(window, {
+        e2eKeyboard: (covered: number) => {
+          viewport.height = window.innerHeight - covered;
+          viewport.dispatchEvent(new Event('resize'));
+        },
+      });
+    });
+    const keyboard = (covered: number) =>
+      page.evaluate(
+        (height) =>
+          (
+            window as unknown as { e2eKeyboard: (h: number) => void }
+          ).e2eKeyboard(height),
+        covered,
+      );
+    const settle = () =>
+      page.waitForFunction(() =>
+        document
+          .getAnimations()
+          .every((animation) => animation.playState !== 'running'),
+      );
+
+    const trigger = page.getByTestId('composer-expressions');
+    await trigger.click();
+    const sheet = page.locator('trn-sheet-frame');
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByTestId('sheet-handle')).toBeVisible();
+    // It opens on Emoji, and focus goes on into the emoji search once the grid loads.
+    const emojiSearch = sheet.locator('.emoji-mart-search input');
+    await expect(emojiSearch).toBeFocused({ timeout: 20_000 });
+
+    // A 334px keyboard: the sheet lifts above it and the search stays visible.
+    await keyboard(334);
+    await settle();
+    const lifted = await sheet.boundingBox();
+    expect((lifted?.y ?? 0) + (lifted?.height ?? 0)).toBeLessThanOrEqual(
+      844 - 334 + 1,
+    );
+    expect(lifted?.y).toBeGreaterThanOrEqual(0);
+    const search = await emojiSearch.boundingBox();
+    expect(search?.y).toBeGreaterThanOrEqual(lifted?.y ?? 0);
+    expect((search?.y ?? 0) + (search?.height ?? 0)).toBeLessThanOrEqual(
+      844 - 334,
+    );
+    await keyboard(0);
+    await expect(sheet.getByTestId('expression-picker')).toHaveAttribute(
+      'data-presentation',
+      'sheet',
+    );
+    // Full width and back at the bottom, once settled.
+    await settle();
+    const box = await sheet.boundingBox();
+    expect(box?.x).toBe(0);
+    expect(box?.width).toBe(390);
+    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeGreaterThan(844 - 2);
+    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(844);
+
+    // The same tabs; the GIF tab moves focus into its search.
+    await sheet.getByTestId('expression-tab-gif').click();
+    await expect(sheet.getByTestId('gif-search')).toBeFocused();
+    const firstResult = sheet.getByTestId('gif-result').first();
+    await expect(firstResult).toBeVisible({ timeout: 15_000 });
+    await firstResult.click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
+    await page.waitForFunction(
+      () =>
+        !!document.querySelector(
+          '[data-testid="media-bubble"][data-media-state="ready"]',
+        ),
+      undefined,
+      { timeout: 60_000, polling: 250 },
+    );
+
+    // It reopens on the tab used last, and closing it hands focus back to the trigger.
+    await trigger.click();
+    await expect(
+      page.locator('trn-sheet-frame').getByTestId('expression-tab-gif'),
+    ).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('trn-sheet-frame')).toBeHidden();
+    await expect(trigger).toBeFocused();
   });
 
   test('sends a GIF as the active account after an account switch', async ({
@@ -324,10 +447,10 @@ test.describe('GIF picker', () => {
     // we're driving B's client.
     await openSeededRoom(page, b.roomName);
 
-    // The GIF item is still there under B: the key is global, not account-scoped.
-    await page.getByTestId('composer-insert').click();
-    await expect(page.getByTestId('insert-gif')).toBeVisible();
-    await page.getByTestId('insert-gif').click();
+    // The GIFs tab is still there under B: the key is global, not account-scoped.
+    await page.getByTestId('composer-expressions').click();
+    await expect(page.getByTestId('expression-tab-gif')).toBeVisible();
+    await page.getByTestId('expression-tab-gif').click();
     const firstResult = page.getByTestId('gif-result').first();
     await expect(firstResult).toBeVisible({ timeout: 15_000 });
     await firstResult.click();

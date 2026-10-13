@@ -295,6 +295,14 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     key: 'trinity.appearance.code-line-presentation',
     owner: 'data-access/timeline',
   },
+  {
+    disposition: 'excluded',
+    key: 'trinity.composer.expression-tab',
+    owner: 'data-access/timeline',
+    reason:
+      'The expression panel tab this device used last. It records how one device was ' +
+      'used, not a setting, so another device must not inherit it.',
+  },
 
   // — read-only Appearance predecessor keys —
   {

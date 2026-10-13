@@ -1,0 +1,99 @@
+<!-- One surface. As a popover the panel is one card: the tabs are its header and the picker
+     sits inside it, with no card of its own. In a sheet the sheet is the surface, so nothing
+     here draws one. The card fills the host, which holds the one width across tabs, and takes
+     the overlay border and fill the sheet and dialog shell use; classes written here win over
+     the recipe's. -->
+@if (presentation() === 'popover') {
+  <div
+    trnOverlaySurface
+    variant="neutral"
+    size="sm"
+    layout="popover"
+    class="flex w-full max-w-full flex-col border-[var(--trinity-border-overlay)] bg-[var(--trinity-surface-overlay)]"
+  >
+    <ng-container [ngTemplateOutlet]="panel" />
+  </div>
+} @else {
+  <ng-container [ngTemplateOutlet]="panel" />
+}
+
+<ng-template #panel>
+  <!-- The tab row, and nothing else: a sheet closes by its handle, its backdrop, Escape or a
+       pick, so it has no close button. With Emoji alone there is nothing to choose between,
+       so there is no row at all and the panel starts with the emoji grid. -->
+  @if (tabs().length > 1) {
+    <!-- Plain tabs on the surface: the row has no track of its own, and only the selected
+           tab is marked, with the selected-surface pill. -->
+    <div
+      role="tablist"
+      aria-label="Picker type"
+      class="grid auto-cols-fr grid-flow-col gap-1 pt-2"
+      [style.padding-inline]="inset()"
+      data-testid="expression-tabs"
+      (keydown)="onTabKeydown($event)"
+      (focusout)="onTabFocusOut($event)"
+    >
+      @for (tab of tabs(); track tab) {
+        <!-- Plain buttons rather than `trnBtn`: the button recipe has no selected-tab state,
+               and a shared tabs recipe is tracked in #1269. -->
+        <button
+          #tab
+          type="button"
+          role="tab"
+          class="min-h-9 rounded-[var(--trinity-shape-control-radius)] px-3 text-sm font-semibold text-[var(--trinity-text-muted)] hover:bg-[var(--trinity-state-hover-surface)] hover:text-[var(--trinity-state-hover-foreground)] aria-selected:bg-[var(--trinity-state-selected-surface)] aria-selected:text-[var(--trinity-state-selected-foreground)] pointer-coarse:min-h-11"
+          [id]="tabId(tab)"
+          [attr.aria-selected]="tab === active()"
+          [attr.aria-controls]="tab === active() ? tabPanelId() : null"
+          [attr.tabindex]="tab === tabStop() ? 0 : -1"
+          [attr.data-testid]="'expression-tab-' + tab"
+          (click)="select(tab)"
+        >
+          {{ labels[tab] }}
+        </button>
+      }
+    </div>
+  }
+  <!-- Focusable so a sheet can put focus on the content when it opens; the pickers then move
+     it on into their own search fields. -->
+  <div
+    #content
+    class="grid outline-none"
+    [class.min-h-0]="presentation() === 'popover'"
+    [class.overflow-y-auto]="presentation() === 'popover'"
+    tabindex="-1"
+    data-expression-content
+    [style.padding-inline]="inset()"
+    [attr.role]="tabs().length > 1 ? 'tabpanel' : null"
+    [attr.id]="tabs().length > 1 ? tabPanelId() : null"
+    [attr.aria-labelledby]="tabs().length > 1 ? tabId(active()) : null"
+    [attr.aria-busy]="active() === 'gif' && gifBusy() ? true : null"
+  >
+    @switch (active()) {
+      @case ('gif') {
+        <trn-gif-picker (gifSelect)="gifSelect.emit($event)" />
+      }
+      @case ('sticker') {
+        <trn-sticker-picker
+          [packs]="stickerPacks()"
+          (selected)="stickerSelect.emit($event)"
+          (dismiss)="dismiss.emit()"
+          (manage)="manage.emit()"
+        />
+      }
+      @case ('emoji') {
+        <!-- The grid fills the content's width in the card and in a sheet, its columns
+             following from that width (and its real scrollbar); a sheet's touch cells are
+             44px with the larger glyph. -->
+        <!-- `min-w-0`: the grid's track is the content's width; the grid must not size it. -->
+        <trn-emoji-picker
+          class="min-w-0"
+          [framed]="false"
+          layout="fill"
+          [size]="presentation() === 'sheet' ? 'lg' : 'md'"
+          [autoFocusSearch]="presentation() === 'sheet'"
+          (picked)="emojiPick.emit($event)"
+        />
+      }
+    }
+  </div>
+</ng-template>

@@ -6,9 +6,10 @@
   }
 
   .picker {
-    @include picker-surface;
+    @include picker-layout;
 
-    padding: var(--trinity-space-4);
+    // Vertical only: the expression panel holding it sets the side inset.
+    padding-block: var(--trinity-space-3);
   }
 
   .picker__search-label {
@@ -58,7 +59,9 @@
   }
 
   .picker__scroll {
+    // `dvh` shrinks with a mobile browser's toolbars; `vh` is the fallback before it.
     max-height: min(28rem, 55vh);
+    max-height: min(28rem, 55dvh);
     margin-top: var(--trinity-space-4);
 
     @include scrollable;

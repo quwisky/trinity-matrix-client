@@ -6,11 +6,16 @@
   }
 
   .gif-picker {
-    @include picker-surface;
+    @include picker-layout;
 
     height: 360px;
+
+    // `dvh` shrinks with a mobile browser's toolbars; `vh` is the fallback before it.
     max-height: 60vh;
-    padding: var(--trinity-space-3);
+    max-height: 60dvh;
+
+    // Vertical only: the expression panel holding it sets the side inset.
+    padding-block: var(--trinity-space-3);
   }
 
   .gif-picker__search {

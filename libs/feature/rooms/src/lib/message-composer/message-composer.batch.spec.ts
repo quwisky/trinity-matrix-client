@@ -654,18 +654,18 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     ).toBe(true);
   });
 
-  it('closes the GIF grid on a send, so it cannot outlive one', async () => {
+  it('closes the expression panel on a send, so its GIF grid cannot outlive one', async () => {
     // Grid items call `sendMedia` directly and are not disabled while an upload runs, so a
     // grid still open after a send is the last route to two uploads at once.
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
     cmp.submitMedia.subscribe(() => undefined);
-    cmp['attachments'].gifPickerOpen.set(true);
+    cmp.pickerOpen.set(true);
     pickFiles(cmp, [png('one.png')]);
 
     cmp.submit();
 
-    expect(cmp['attachments'].gifPickerOpen()).toBe(false);
+    expect(cmp.pickerOpen()).toBe(false);
   });
 
   it('releases the latch when a send finishes without the bar ever appearing', async () => {

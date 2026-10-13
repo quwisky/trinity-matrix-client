@@ -13,6 +13,7 @@ import {
   TrnSheetDragHandle,
   sheetDismissFor,
 } from '../dialog-shell/trn-sheet-drag.directive';
+import { TrnSheetKeyboardAvoidance } from './trn-sheet-keyboard.directive';
 import {
   trnOverlaySurfaceRecipe,
   type TrnOverlaySurfaceSize,
@@ -20,7 +21,8 @@ import {
 
 /**
  * The one bottom-sheet surface: the overlay recipe's sheet layout, the entrance, the bottom
- * safe-area inset, the touch handle and swipe-down-to-dismiss.
+ * safe-area inset, the touch handle and swipe-down-to-dismiss, and keeping clear of the
+ * on-screen keyboard ({@link TrnSheetKeyboardAvoidance}).
  *
  * It only sits inside a dialog the surface service opened, so a swipe dismisses through that
  * dialog's ref and keeps its `dismissGuard` and `disableClose`. Content projected with
@@ -30,7 +32,10 @@ import {
   selector: 'trn-sheet-frame',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [TrnSheetDragHandle],
-  hostDirectives: [{ directive: TrnSheetDrag, inputs: [], outputs: [] }],
+  hostDirectives: [
+    { directive: TrnSheetDrag, inputs: [], outputs: [] },
+    { directive: TrnSheetKeyboardAvoidance, inputs: [], outputs: [] },
+  ],
   providers: [
     {
       provide: TRN_SHEET_DISMISS,

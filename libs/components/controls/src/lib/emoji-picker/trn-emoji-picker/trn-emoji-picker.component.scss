@@ -98,6 +98,54 @@
       color: var(--muted-foreground);
     }
 
+    // Embedded in a surface that already draws the card (the composer's expression panel):
+    // the grid and its placeholder give up every part of their own frame, so the panel is
+    // one card. The sticky category labels still need an opaque fill, and it is the overlay
+    // surface the grid now sits on.
+    &.trn-emoji-picker--embedded {
+      .emoji-mart,
+      .trn-emoji-picker__placeholder {
+        // No clip either: the panel insets the grid, so the search's focus ring falls just
+        // outside it. The vendor's scroll area keeps its own overflow.
+        overflow: visible;
+        border-width: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      .emoji-mart-category-label span {
+        background: var(--trinity-surface-overlay);
+      }
+    }
+
+    // Filling the host's width (see `layout`): the vendor's 6px side insets go, so the
+    // category bar, the search and the section headers line up with the grid, edge to edge
+    // of the host. Each cell's padding is set from the measured row so whole cells share it.
+    &.trn-emoji-picker--fill {
+      .trn-emoji-picker__placeholder {
+        width: 100%;
+      }
+
+      .emoji-mart-anchors,
+      .emoji-mart-search,
+      .emoji-mart-scroll,
+      .emoji-mart-category-label span {
+        padding-inline: 0;
+      }
+
+      .emoji-mart-category .emoji-mart-emoji {
+        padding: var(--trn-emoji-cell-padding);
+      }
+
+      // The vendor promotes its scroll area to a layer (`will-change: transform`). Filling,
+      // that layer left a hairline of stale paint under the sticky section headings in
+      // Chromium; painted with the page, it does not.
+      .emoji-mart-scroll {
+        will-change: auto;
+      }
+    }
+
     // The vendor list deliberately keeps `overflow-y: scroll` because its width calculation
     // reserves the scrollbar. The global visible-scrollbar contract supplies its appearance.
   }

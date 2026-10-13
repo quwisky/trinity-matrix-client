@@ -1,0 +1,33 @@
+<trn-dialog-shell
+  title="Emoji, GIFs and stickers"
+  [titleHidden]="true"
+  [closable]="false"
+  bodyClass="p-0"
+>
+  <trn-expression-picker
+    presentation="sheet"
+    [panelId]="bridge().panelId"
+    [gifEnabled]="bridge().gifEnabled()"
+    [gifBusy]="bridge().gifBusy()"
+    [stickerEnabled]="bridge().stickerEnabled()"
+    [stickerPacks]="bridge().stickerPacks()"
+    (emojiPick)="bridge().emojiPick($event)"
+    (gifSelect)="bridge().gifSelect($event)"
+    (stickerSelect)="bridge().stickerSelect($event)"
+    (dismiss)="bridge().dismiss()"
+    (manage)="bridge().manage()"
+  />
+  <!-- The sheet's one dismiss control a screen reader can reach (by swipe or virtual cursor):
+       the handle is aria-hidden and the backdrop takes no focus. Last, after the picker, and
+       never visible, since the sheet shows no close button. Out of the Tab order, so it is
+       never a keyboard stop without a visible focus; the keyboard closes the sheet with Escape. -->
+  <button
+    type="button"
+    class="sr-only"
+    tabindex="-1"
+    data-testid="expression-sheet-close"
+    (click)="bridge().dismiss()"
+  >
+    Close
+  </button>
+</trn-dialog-shell>

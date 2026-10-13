@@ -84,6 +84,8 @@ export interface ComposerAttachmentsHost {
   focusInput(): void;
   /** Drop out of the preview back to the input. */
   leavePreview(): void;
+  /** Close the expression panel — a chosen GIF has arrived and is on its way. */
+  closePicker(): void;
   /** Open the composer's hidden file input (no native gallery picker available). */
   openFileDialog(): void;
   /** Open the hidden capture input for a photo or a video (mobile web). */
@@ -147,8 +149,6 @@ export class ComposerAttachmentsService {
   readonly staged = this._staged.asReadonly();
   /** Whether anything is staged — the question nearly every caller actually asks. */
   readonly hasStaged = computed(() => this._staged().length > 0);
-  /** Whether the GIF search grid is open (mutually exclusive with the emoji picker). */
-  readonly gifPickerOpen = signal(false);
   /** True while a chosen GIF is being fetched, before its media upload starts. */
   readonly gifDownloading = signal(false);
   /** True while a voice message is being recorded. */
@@ -424,11 +424,6 @@ export class ComposerAttachmentsService {
     this._staged.set(current.filter((attachment) => attachment !== doomed));
   }
 
-  /** Toggle the GIF grid. The caller closes the emoji picker (only one at a time). */
-  toggleGifPicker(): void {
-    this.gifPickerOpen.set(!this.gifPickerOpen());
-  }
-
   /** A GIF was chosen → download it and send it through the media path (works in
    * rooms and threads, encrypted or not). Sends immediately, like other GIF UIs. */
   gifSelected(gif: GifResult): void {
@@ -442,7 +437,7 @@ export class ComposerAttachmentsService {
       .subscribe({
         next: (file) => {
           this.gifDownloading.set(false);
-          this.gifPickerOpen.set(false);
+          this.host.closePicker();
           // A media send carries no reply relation (see the composer's submit());
           // close any active reply so its banner doesn't linger over the next message.
           this.host.endReply();

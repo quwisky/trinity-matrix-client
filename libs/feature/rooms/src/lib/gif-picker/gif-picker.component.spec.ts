@@ -72,6 +72,14 @@ describe('GifPickerComponent', () => {
     );
   });
 
+  it('draws no surface of its own, so the expression panel holding it is the one card', () => {
+    const fixture = setup();
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelector('[data-trn-layout]')).toBeNull();
+    expect(host.querySelector('[data-testid=gif-search]')).not.toBeNull();
+  });
+
   it('loads trending GIFs on open (empty query, debounced)', async () => {
     const search = vi.fn(() => of(results));
     const fixture = setup(search);
