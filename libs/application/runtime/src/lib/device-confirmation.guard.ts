@@ -5,8 +5,11 @@ import {
   type RouterStateSnapshot,
   type UrlTree,
 } from '@angular/router';
-import { Observable, catchError, map, of, switchMap } from 'rxjs';
-import { TrustDeviceConfirmationService } from '@trinity/data-access/trust';
+import { Observable, catchError, map, of, switchMap, timeout } from 'rxjs';
+import {
+  DEVICE_CONFIRMATION_SETTLE_MS,
+  TrustDeviceConfirmationService,
+} from '@trinity/data-access/trust';
 
 /** Where a new device is verified before the app opens. */
 export const DEVICE_CONFIRMATION_URL = '/encryption/confirm';
@@ -42,8 +45,9 @@ export function showsAccountContent(url: string): boolean {
  * `DEVICE_CONFIRMATION_SETTLE_MS` for the first status read, then lets the route through;
  * the session coordinator redirects if the check turns out to be required later. A
  * `required` gate is confirmed with a fresh read of that exact Account, because just after
- * an Account switch it can still reflect the previous Account's status. A failed read lets
- * the route through too. Use it after `authGuard` and the Back guard.
+ * an Account switch it can still reflect the previous Account's status. A failed read, or
+ * one that takes longer than the settle time, lets the route through too. Use it after
+ * `authGuard` and the Back guard.
  */
 export function deviceConfirmationGuard(
   _route: ActivatedRouteSnapshot,
@@ -54,7 +58,14 @@ export function deviceConfirmationGuard(
   const router = inject(Router);
   return confirmation.settledGate().pipe(
     switchMap((gate) =>
-      gate.kind === 'required' ? confirmation.confirmRequired() : of(false),
+      gate.kind === 'required'
+        ? confirmation.confirmRequired().pipe(
+            timeout({
+              first: DEVICE_CONFIRMATION_SETTLE_MS,
+              with: () => of(false),
+            }),
+          )
+        : of(false),
     ),
     map((required) =>
       required ? router.createUrlTree([DEVICE_CONFIRMATION_URL]) : true,

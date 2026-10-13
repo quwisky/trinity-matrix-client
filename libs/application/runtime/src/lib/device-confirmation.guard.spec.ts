@@ -10,6 +10,7 @@ import { MockProvider } from 'ng-mocks';
 import { NEVER, firstValueFrom, of, throwError, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  DEVICE_CONFIRMATION_SETTLE_MS,
   TrustDeviceConfirmationService,
   type DeviceConfirmationGate,
 } from '@trinity/data-access/trust';
@@ -39,7 +40,10 @@ function run(
   );
 }
 
-afterEach(() => TestBed.resetTestingModule());
+afterEach(() => {
+  vi.useRealTimers();
+  TestBed.resetTestingModule();
+});
 
 describe('deviceConfirmationGuard', () => {
   it('sends a device that still needs verifying to the check', async () => {
@@ -92,5 +96,25 @@ describe('deviceConfirmationGuard', () => {
       ),
     ).resolves.toBe(true);
     expect(confirmRequired).toHaveBeenCalledOnce();
+  });
+
+  it('lets the route through when the fresh read never answers', async () => {
+    // RxJS timers run on `setInterval`, so fake it along with `setTimeout`.
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
+    let settled: boolean | UrlTree | undefined;
+    void run(
+      '/rooms',
+      () => of({ kind: 'required', status: 'needs-recovery' }),
+      () => NEVER,
+    ).then((result) => {
+      settled = result;
+    });
+
+    await vi.advanceTimersByTimeAsync(DEVICE_CONFIRMATION_SETTLE_MS - 1);
+    expect(settled).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(true);
   });
 });
