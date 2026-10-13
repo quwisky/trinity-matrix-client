@@ -259,3 +259,126 @@ describe('IndexedDbLogStore with an open that never settles', () => {
     await expect(cleared).resolves.toBe('reported');
   });
 });
+
+/**
+ * A fake IDBFactory whose databases keep the `onversionchange` handler the store installs
+ * and record their own `close`; a closed one refuses new transactions, as IndexedDB does.
+ * By default their requests never settle, so an operation keeps its connection open until
+ * the test plays another tab's `deleteDatabase` by firing `versionchange`. With `settles`,
+ * every request succeeds empty and every transaction completes, so operations finish.
+ */
+function versionChangeFactory(options: { readonly settles?: boolean } = {}): {
+  readonly idb: IDBFactory;
+  readonly connections: readonly {
+    readonly onversionchange: (() => void) | null;
+    readonly closed: boolean;
+    readonly transactions: number;
+  }[];
+} {
+  const connections: {
+    onversionchange: (() => void) | null;
+    closed: boolean;
+    transactions: number;
+    close(): void;
+  }[] = [];
+  const later = (
+    target: Record<string, unknown>,
+    event: string,
+    ms: number,
+  ) => {
+    if (options.settles) {
+      setTimeout(() => (target[event] as (() => void) | undefined)?.(), ms);
+    }
+    return target;
+  };
+  const settle = (result: unknown) => () => later({ result }, 'onsuccess', 0);
+  const objectStore = {
+    get: settle(undefined),
+    getAll: settle([]),
+    add: settle(undefined),
+    put: settle(undefined),
+    clear: settle(undefined),
+    openCursor: settle(null),
+    index: () => ({ openCursor: settle(null) }),
+  };
+  return {
+    connections,
+    idb: {
+      open: () => {
+        const db = {
+          onversionchange: null as (() => void) | null,
+          closed: false,
+          transactions: 0,
+          close(): void {
+            db.closed = true;
+          },
+          transaction: () => {
+            if (db.closed) {
+              throw new DOMException(
+                'The connection is closed',
+                'InvalidStateError',
+              );
+            }
+            db.transactions += 1;
+            return later({ objectStore: () => objectStore }, 'oncomplete', 10);
+          },
+        };
+        connections.push(db);
+        const request: Record<string, unknown> = { result: db };
+        queueMicrotask(() =>
+          (request['onsuccess'] as (() => void) | undefined)?.(),
+        );
+        return request as unknown as IDBOpenDBRequest;
+      },
+    } as unknown as IDBFactory,
+  };
+}
+
+describe('IndexedDbLogStore and another tab deleting the database', () => {
+  const entry = {
+    ts: 1,
+    level: 'debug',
+    source: 'sdk',
+    logger: 'matrix',
+    message: 'm',
+  } as const;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('closes an open connection on versionchange, so a wipe in another tab is not blocked', async () => {
+    const { idb, connections } = versionChangeFactory();
+    const store = await IndexedDbLogStore.open(idb);
+    void store.append([entry], 1);
+    // The write has its connection and is inside its transaction, which never finishes.
+    await vi.waitFor(() => expect(connections[1]?.transactions).toBe(1), {
+      timeout: 1_000,
+    });
+    const writing = connections[1]!;
+    expect(writing.closed).toBe(false);
+
+    writing.onversionchange?.();
+
+    expect(writing.closed).toBe(true);
+  });
+
+  it('holds no connection between writes, so a write after a delete in another tab opens a fresh one and succeeds', async () => {
+    // jsdom has no IndexedDB; `append` only passes the range to the fake cursor.
+    vi.stubGlobal('IDBKeyRange', { upperBound: () => ({}) });
+    const { idb, connections } = versionChangeFactory({ settles: true });
+    const store = await IndexedDbLogStore.open(idb);
+
+    await store.append([entry], 1);
+
+    expect(connections).toHaveLength(2);
+    expect(connections.every((connection) => connection.closed)).toBe(true);
+
+    // Another tab deletes the database: every connection still open gets versionchange.
+    for (const connection of connections) connection.onversionchange?.();
+
+    await expect(store.append([entry], 2)).resolves.toBeUndefined();
+    expect(connections).toHaveLength(3);
+    expect(connections.every((connection) => connection.closed)).toBe(true);
+  });
+});
