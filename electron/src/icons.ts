@@ -33,18 +33,29 @@ export function trayIconFile(platform: NodeJS.Platform): string {
   return platform === 'linux' ? 'trinityTrayLinux.png' : 'trinityTray.png';
 }
 
-// The 256 px window icon, decoded once and shared by every BrowserWindow. Only a
-// found, non-empty image is cached, so a missing asset is retried on the next window.
-let windowIconCache: Electron.NativeImage | undefined;
+// The 256 px app icon (notificationIcon.png), decoded once and shared by every
+// BrowserWindow and by Linux notifications. `undefined` => not yet resolved;
+// `null` => none found.
+let appIconCache: Electron.NativeImage | null | undefined;
 
-function windowIcon(): Electron.NativeImage | undefined {
-  if (windowIconCache) return windowIconCache;
-  const file = resolveIconFile('windowIcon.png');
-  if (!file) return undefined;
-  const image = nativeImage.createFromPath(file);
-  if (image.isEmpty()) return undefined;
-  windowIconCache = image;
-  return image;
+/** The shared 256 px app icon image, or `undefined` when the asset can't be found. */
+export function appIconImage(): Electron.NativeImage | undefined {
+  if (appIconCache === undefined) {
+    appIconCache = null;
+    for (const candidate of iconCandidatePaths('notificationIcon.png')) {
+      try {
+        if (!fs.existsSync(candidate)) continue;
+        const image = nativeImage.createFromPath(candidate);
+        if (!image.isEmpty()) {
+          appIconCache = image;
+          break;
+        }
+      } catch {
+        // try next candidate
+      }
+    }
+  }
+  return appIconCache ?? undefined;
 }
 
 /** BrowserWindow icon options: the shared 256 px icon on Windows/Linux, the bundle icon on macOS. */
@@ -52,6 +63,6 @@ export function windowIconOptions(platform: NodeJS.Platform): {
   icon?: Electron.NativeImage;
 } {
   if (platform === 'darwin') return {};
-  const icon = windowIcon();
+  const icon = appIconImage();
   return icon ? { icon } : {};
 }

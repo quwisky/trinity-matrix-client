@@ -66,7 +66,7 @@ describe('windowIconOptions', () => {
 
   it('sets the 256 px window icon image on Windows and Linux', async () => {
     const windowIconOptions = await load();
-    const [first] = iconCandidatePaths('windowIcon.png');
+    const [first] = iconCandidatePaths('notificationIcon.png');
     existsSync.mockImplementation((path: string) => path === first);
     expect(windowIconOptions('linux').icon).toBe(image);
     expect(windowIconOptions('win32').icon).toBe(image);
@@ -79,6 +79,14 @@ describe('windowIconOptions', () => {
     windowIconOptions('win32');
     windowIconOptions('win32');
     windowIconOptions('linux');
+    expect(createFromPath).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares one decoded image with notifications', async () => {
+    const { appIconImage, windowIconOptions } = await import('./icons');
+    existsSync.mockReturnValue(true);
+    expect(windowIconOptions('win32').icon).toBe(appIconImage());
+    expect(appIconImage()).toBe(image);
     expect(createFromPath).toHaveBeenCalledTimes(1);
   });
 

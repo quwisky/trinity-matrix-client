@@ -95,7 +95,8 @@ describe('desktop icon wiring', () => {
     expect(read('electron/src/tray.ts')).toContain(
       'trayIconFile(process.platform)',
     );
-    expect(read('electron/src/notifications.ts')).toContain(
+    expect(read('electron/src/notifications.ts')).toContain('appIconImage()');
+    expect(read('electron/src/icons.ts')).toContain(
       "iconCandidatePaths('notificationIcon.png')",
     );
   });
@@ -122,7 +123,6 @@ describe('desktop icon wiring', () => {
   it('ships every runtime icon through extraResources', () => {
     const config = read('electron/electron-builder.yml');
     for (const file of [
-      'windowIcon.png',
       'trinityTray.png',
       'trinityTray@2x.png',
       'trinityTrayLinux.png',

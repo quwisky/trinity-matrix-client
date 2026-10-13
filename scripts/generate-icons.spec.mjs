@@ -110,13 +110,6 @@ describe('generated icons', () => {
     ).toEqual([16, 32, 32, 64]);
   });
 
-  it('renders the window icon at 256 px, matching the full-bleed icon art', () => {
-    const windowIcon = find('electron/build/windowIcon.png');
-    expect(windowIcon?.png.readUInt32BE(16)).toBe(256);
-    expect(windowIcon?.png.readUInt32BE(20)).toBe(256);
-    expect(windowIcon?.alpha).toBe(true);
-  });
-
   it('keeps the Windows/Linux icon full-bleed and insets only the macOS one', () => {
     const at = (path, x, y) => {
       const icon = icons.find((i) => i.path === path);
