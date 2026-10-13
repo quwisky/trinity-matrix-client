@@ -131,7 +131,8 @@ describe('VoiceMessageComponent', () => {
     expect(error()?.textContent?.trim()).toBe(
       'Couldn’t load this voice message. Try again.',
     );
-    expect(error()?.getAttribute('role')).toBe('status');
+    // The visible text is not a live region of its own: that would announce it twice.
+    expect(error()?.getAttribute('role')).toBeNull();
     expect(button().disabled).toBe(false);
 
     fail = false;
@@ -139,6 +140,25 @@ describe('VoiceMessageComponent', () => {
 
     expect(pipeline.resolveMedia).toHaveBeenCalledTimes(2);
     expect(error()).toBeNull();
+  });
+
+  it('announces a failed load through a live region present from the start', async () => {
+    const { container, press } = await build(voiceMedia(), () =>
+      throwError(() => new Error('offline')),
+    );
+    const status = () => container.querySelector('[data-testid=voice-status]');
+    const before = status();
+
+    expect(before?.getAttribute('role')).toBe('status');
+    expect(before?.textContent?.trim()).toBe('');
+
+    press();
+
+    // The same element, so assistive technology already watches it when the text arrives.
+    expect(status()).toBe(before);
+    expect(status()?.textContent?.trim()).toBe(
+      'Couldn’t load this voice message. Try again.',
+    );
   });
 
   it('does not leave a rejected play unhandled when the host refuses to start', async () => {

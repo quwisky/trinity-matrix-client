@@ -19,8 +19,14 @@
     />
   </button>
 
+  <!-- Announced through a live region that is always present: one inserted together with
+       its text isn't reliably announced. The visible copy is hidden from assistive
+       technology so it isn't read twice. -->
+  <span class="sr-only" role="status" data-testid="voice-status">{{
+    failed() ? 'Couldn’t load this voice message. Try again.' : ''
+  }}</span>
   @if (failed()) {
-    <span class="voice__error" role="status" data-testid="voice-error"
+    <span class="voice__error" aria-hidden="true" data-testid="voice-error"
       >Couldn’t load this voice message. Try again.</span
     >
   } @else if (bars().length) {

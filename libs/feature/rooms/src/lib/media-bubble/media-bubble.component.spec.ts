@@ -165,6 +165,34 @@ describe('MediaBubbleComponent', () => {
       },
     );
 
+    it('does not take focus back from a reader who moved on before the reset rendered', async () => {
+      const { fixture, container } = await render(MediaBubbleComponent, {
+        inputs: {
+          item: item({
+            kind: 'video',
+            mimeType: 'video/mp4',
+            filename: 'clip',
+          }),
+          src: 'blob:clip',
+        },
+      });
+      fixture.componentInstance.playbackEnded.subscribe(() =>
+        fixture.componentRef.setInput('src', null),
+      );
+      const video = container.querySelector<HTMLVideoElement>('video')!;
+      video.tabIndex = 0;
+      video.focus();
+      const elsewhere = document.createElement('button');
+      document.body.append(elsewhere);
+
+      video.dispatchEvent(new Event('ended'));
+      elsewhere.focus(); // the reader tabs away before the next render
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(elsewhere);
+      elsewhere.remove();
+    });
+
     it.each(clips)(
       'leaves focus alone when a %s ends without it',
       async (kind, mimeType) => {

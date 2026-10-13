@@ -188,9 +188,18 @@ export class MediaBubbleComponent {
     const hadFocus = media.ownerDocument.activeElement === media;
     this.playbackEnded.emit();
     if (hadFocus) {
-      afterNextRender(() => this.playButton()?.nativeElement.focus(), {
-        injector: this.injector,
-      });
+      const doc = media.ownerDocument;
+      afterNextRender(
+        () => {
+          // Only if focus fell to the page with the player: a reader who has moved on keeps
+          // their place.
+          const active = doc.activeElement;
+          if (active === null || active === doc.body) {
+            this.playButton()?.nativeElement.focus();
+          }
+        },
+        { injector: this.injector },
+      );
     }
   }
 
