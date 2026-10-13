@@ -64,19 +64,22 @@ declare global {
 async function rememberNoCameraToast(): Promise<void> {
   await browser.execute((text: string) => {
     window.e2eNoCameraToastSeen = false;
-    const observer = new MutationObserver(() => {
+    const check = (): void => {
       const shown = [...document.querySelectorAll('[data-sonner-toast]')].some(
         (toast) => toast.textContent?.includes(text),
       );
       if (!shown) return;
       window.e2eNoCameraToastSeen = true;
       observer.disconnect();
-    });
-    observer.observe(document.body, {
+    };
+    const observer = new MutationObserver(check);
+    observer.observe(document.documentElement, {
       childList: true,
       subtree: true,
       characterData: true,
     });
+    // A toast already showing when the observer starts produces no mutation.
+    check();
   }, NO_CAMERA);
 }
 
@@ -137,7 +140,8 @@ describe('mobile camera capture', () => {
     // toast: look for the fast outcomes before leaving the WebView for the camera UI.
     let outcome = await captureOutcome(8_000);
     if (outcome === 'none') {
-      // Where the Simulator offers a camera, press its shutter and accept the shot.
+      // Where the Simulator offers a camera, press its shutter and accept the shot. A very
+      // late permission-prompt accept can still outlast this 15 s shutter wait there.
       await native();
       const shutter = $('~PhotoCapture');
       const hasCamera = await shutter
