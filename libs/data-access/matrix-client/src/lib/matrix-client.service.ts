@@ -857,7 +857,13 @@ export class MatrixClientService {
         }),
         switchMap(() =>
           from(
-            created!.startClient({ initialSyncLimit: 20, threadSupport: true }),
+            // Lazy members (#1295): a first sync carries only the members its events name, and
+            // a room loads the rest when it is opened, observed in settings or upgraded.
+            created!.startClient({
+              initialSyncLimit: 20,
+              threadSupport: true,
+              lazyLoadMembers: true,
+            }),
           ).pipe(
             catchError((error: unknown) => {
               const failure = expectedClientStartFailure(error);

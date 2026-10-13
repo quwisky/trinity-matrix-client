@@ -469,6 +469,10 @@ export class TimelineService {
     client.on(CryptoEvent.UserTrustStatusChanged, this.onTrust);
     client.on(CryptoEvent.DevicesUpdated, this.onTrust);
     client.on(CryptoEvent.KeysChanged, this.onTrust);
+    // The client syncs members lazily (#1295), so the room knows only the senders it has
+    // seen. Mentions, typing names and sender profiles need everyone once it is open; they
+    // arrive as RoomState.members events, which `onMember` already re-projects.
+    void room.loadMembersIfNeeded().catch(() => undefined);
     // Capture the persisted read marker BEFORE the first refresh (which marks read and
     // advances it), so the "New messages" divider anchors where the user left off.
     this._readMarker.set(this.readMarkerOf(room));

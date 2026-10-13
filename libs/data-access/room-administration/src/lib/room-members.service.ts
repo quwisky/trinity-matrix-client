@@ -257,6 +257,12 @@ export class RoomMembersService {
       client.on(RoomEvent.MyMembership, onMembership);
       client.on(ClientEvent.Sync, publish);
       publish();
+      // Lazily synced members (#1295): load the rest for the member and ban lists. They
+      // arrive as RoomState.members events and re-publish through `onMember`.
+      void client
+        .getRoom(target.roomId)
+        ?.loadMembersIfNeeded()
+        .catch(() => undefined);
       return () => {
         client.off(RoomStateEvent.Members, onMember);
         client.off(RoomEvent.MyMembership, onMembership);
