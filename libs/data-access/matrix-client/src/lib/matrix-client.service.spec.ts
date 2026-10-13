@@ -3115,6 +3115,11 @@ describe('MatrixClientService session handover with a real MatrixClient', () => 
 
   type SendFate = 'hang' | 'fail';
 
+  // What each test started, so `afterEach` can stop the real clients and undo the global
+  // thread-support flag the SDK latches on `Thread`.
+  let started: MatrixClientService | null = null;
+  let restoreThreadSupport: (() => void) | null = null;
+
   async function startWithRoom(fate: SendFate) {
     const actual =
       await vi.importActual<typeof import('matrix-js-sdk')>('matrix-js-sdk');
@@ -3125,6 +3130,11 @@ describe('MatrixClientService session handover with a real MatrixClient', () => 
       vi.spyOn(client, 'clearStores').mockResolvedValue(undefined);
       // Threads need server support, which a real startClient() would discover.
       vi.spyOn(client, 'supportsThreads').mockReturnValue(true);
+      if (!restoreThreadSupport) {
+        const previous = actual.Thread.hasServerSideSupport;
+        restoreThreadSupport = () =>
+          actual.Thread.setServerSideSupport(previous);
+      }
       actual.Thread.setServerSideSupport(actual.FeatureSupport.Stable);
       return client;
     });
@@ -3142,7 +3152,14 @@ describe('MatrixClientService session handover with a real MatrixClient', () => 
           );
         }
         if (init.method === 'PUT' && url.pathname.includes('/send/')) {
-          if (fate === 'hang') return new Promise<Response>(() => undefined);
+          if (fate === 'hang') {
+            // Pending until the client is stopped and aborts it.
+            return new Promise<Response>((_, reject) => {
+              init.signal?.addEventListener('abort', () =>
+                reject(new DOMException('Aborted', 'AbortError')),
+              );
+            });
+          }
           return new Response(
             JSON.stringify({ errcode: 'M_FORBIDDEN', error: 'no' }),
             { status: 403, headers: { 'content-type': 'application/json' } },
@@ -3154,6 +3171,7 @@ describe('MatrixClientService session handover with a real MatrixClient', () => 
     storeMock.startup.mockReset().mockResolvedValue(undefined);
     storeMock.destroy.mockReset().mockResolvedValue(undefined);
     const { svc } = setup();
+    started = svc;
     await firstValueFrom(svc.init(SESSION));
     const client = svc.instance;
     const room = new actual.Room(ROOM_ID, client, '@me:hs', {});
@@ -3171,7 +3189,11 @@ describe('MatrixClientService session handover with a real MatrixClient', () => 
     return { svc, client };
   }
 
-  afterEach(() => {
+  afterEach(async () => {
+    if (started) await firstValueFrom(started.stop());
+    started = null;
+    restoreThreadSupport?.();
+    restoreThreadSupport = null;
     vi.unstubAllGlobals();
   });
 
