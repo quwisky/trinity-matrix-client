@@ -71,6 +71,8 @@ export class MediaBubbleComponent {
   readonly download = output<void>();
   /** The reader asked to play a video or audio clip that has not been loaded yet. */
   readonly playRequested = output<void>();
+  /** A clip played to its end; the wrapper may take its `src` away to free the bytes. */
+  readonly playbackEnded = output<void>();
 
   /** Terse accessors so the template needn't unwrap `item()` repeatedly. */
   readonly kind = computed(() => this.item().kind);

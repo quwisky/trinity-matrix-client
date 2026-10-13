@@ -40,6 +40,7 @@ interface MediaServiceStub {
   downloadMedia: Mock;
   pin: Mock;
   unpin: Mock;
+  drop: Mock;
   releaseAll: Mock;
 }
 
@@ -68,6 +69,7 @@ describe('MediaAttachmentComponent', () => {
         .mockReturnValue(of({ blob: new Blob(['x']), filename: 'pic.png' })),
       pin: vi.fn(),
       unpin: vi.fn(),
+      drop: vi.fn(),
       releaseAll: vi.fn(),
     };
     // HostFileExportService owns the host contract; stub it so the component test
@@ -189,14 +191,19 @@ describe('MediaAttachmentComponent', () => {
       },
     );
 
-    it('releases the poster pin once the full video replaces it', async () => {
+    it('keeps the poster pinned while the clip plays, to show it again afterwards', async () => {
       const { fixture } = await renderMedia(
         clip('video', { hasThumbnail: true }),
       );
 
       fixture.componentInstance.play();
 
-      expect(mediaService.unpin).toHaveBeenCalledWith('blob:poster');
+      expect(mediaService.unpin).not.toHaveBeenCalledWith('blob:poster');
+      expect(mediaService.drop).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'thumbnail',
+        'blob:poster',
+      );
     });
 
     it('reports loading while the full file resolves, and a second press does not refetch', async () => {
@@ -228,18 +235,45 @@ describe('MediaAttachmentComponent', () => {
       expect(fixture.componentInstance.src()).toBeNull();
     });
 
-    it('unpins the played file when destroyed', async () => {
-      const { fixture } = await renderMedia(clip('video'));
+    it.each(['video', 'audio'] as const)(
+      'drops the played %s from the cache when it is destroyed',
+      async (kind) => {
+        const media = clip(kind);
+        const { fixture } = await renderMedia(media);
+        fixture.componentInstance.play();
+
+        fixture.destroy();
+
+        expect(mediaService.drop).toHaveBeenCalledExactlyOnceWith(
+          media,
+          'full',
+          'blob:full',
+        );
+        // Dropping releases the pin itself; a separate unpin would release someone else's.
+        expect(mediaService.unpin).not.toHaveBeenCalledWith('blob:full');
+      },
+    );
+
+    it('cancels a clip still loading when it is destroyed', async () => {
+      const full = new Subject<string>();
+      mediaService.resolveMedia.mockReturnValue(full.asObservable());
+      const media = clip('audio');
+      const { fixture } = await renderMedia(media);
       fixture.componentInstance.play();
-      mediaService.unpin.mockClear();
 
       fixture.destroy();
 
-      expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
+      expect(full.observed).toBe(false);
+      expect(mediaService.drop).toHaveBeenCalledExactlyOnceWith(
+        media,
+        'full',
+        null,
+      );
     });
 
-    it('forgets a played file when the row is recycled for another message', async () => {
-      const { fixture } = await renderMedia(clip('video'));
+    it('drops a played file when the row is recycled for another message', async () => {
+      const media = clip('video');
+      const { fixture } = await renderMedia(media);
       fixture.componentInstance.play();
       mediaService.resolveMedia.mockClear();
 
@@ -248,7 +282,63 @@ describe('MediaAttachmentComponent', () => {
 
       expect(fixture.componentInstance.src()).toBeNull();
       expect(mediaService.resolveMedia).not.toHaveBeenCalled();
-      expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
+      // The clip belonged to the previous message, so that is the rendition dropped.
+      expect(mediaService.drop).toHaveBeenCalledExactlyOnceWith(
+        media,
+        'full',
+        'blob:full',
+      );
+    });
+
+    it.each(['video', 'audio'] as const)(
+      'drops the %s and resets the player when playback ends, then re-resolves on play',
+      async (kind) => {
+        const media = clip(kind, { hasThumbnail: kind === 'video' });
+        const { fixture } = await renderMedia(media);
+        const cmp = fixture.componentInstance;
+        cmp.play();
+
+        cmp.playbackEnded();
+
+        expect(mediaService.drop).toHaveBeenCalledExactlyOnceWith(
+          media,
+          'full',
+          'blob:full',
+        );
+        expect(cmp.src()).toBeNull();
+        if (kind === 'video') expect(cmp.poster()).toBe('blob:poster');
+
+        mediaService.resolveMedia.mockClear();
+        cmp.play();
+
+        expect(mediaService.resolveMedia).toHaveBeenCalledExactlyOnceWith(
+          media,
+          'full',
+        );
+        expect(cmp.src()).toBe('blob:full');
+      },
+    );
+
+    it('returns to the poster control when the video element reports the end', async () => {
+      vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+      const media = clip('video', { hasThumbnail: true });
+      const { fixture } = await renderMedia(media);
+      const host = fixture.nativeElement as HTMLElement;
+      fixture.componentInstance.play();
+      TestBed.tick();
+
+      host.querySelector('video')!.dispatchEvent(new Event('ended'));
+      TestBed.tick();
+
+      expect(host.querySelector('video')).toBeNull();
+      expect(
+        host.querySelector('button[aria-label="Play video clip.mp4"]'),
+      ).not.toBeNull();
+      expect(mediaService.drop).toHaveBeenCalledWith(
+        media,
+        'full',
+        'blob:full',
+      );
     });
 
     it('ignores play for an image', async () => {
@@ -323,11 +413,16 @@ describe('MediaAttachmentComponent', () => {
     // Pinned so a burst of live media can't evict/revoke it while it's on screen.
     expect(mediaService.pin).toHaveBeenCalledWith('blob:full');
 
-    mediaService.unpin.mockClear();
     cmp.closeLightbox();
 
     expect(lightboxImage()).toBeNull();
-    expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
+    // Dropped, not merely unpinned: the full-size blob leaves the cache with the viewer.
+    expect(mediaService.drop).toHaveBeenCalledExactlyOnceWith(
+      imageMedia(),
+      'full',
+      'blob:full',
+    );
+    expect(mediaService.unpin).not.toHaveBeenCalledWith('blob:full');
   });
 
   it('opens the lightbox fullscreen below md, where a sheet pane would clip it', async () => {
@@ -389,7 +484,6 @@ describe('MediaAttachmentComponent', () => {
     const { fixture } = await renderMedia(imageMedia());
     fixture.componentInstance.openLightbox();
     TestBed.tick();
-    mediaService.unpin.mockClear();
 
     const close = document.querySelector<HTMLButtonElement>(
       '[data-testid=lightbox-close]',
@@ -398,7 +492,11 @@ describe('MediaAttachmentComponent', () => {
     close?.click();
 
     expect(lightboxImage()).toBeNull();
-    expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
+    expect(mediaService.drop).toHaveBeenCalledExactlyOnceWith(
+      imageMedia(),
+      'full',
+      'blob:full',
+    );
   });
 
   it('leaves the lightbox open when a new message recycles the row underneath it', async () => {
@@ -423,9 +521,18 @@ describe('MediaAttachmentComponent', () => {
 
     expect(lightboxImage()?.getAttribute('src')).toBe('blob:full');
     expect(mediaService.unpin).not.toHaveBeenCalledWith('blob:full');
+    expect(mediaService.drop).not.toHaveBeenCalled();
+
+    // Closing it later drops the image it opened with, not the new message's.
+    fixture.componentInstance.closeLightbox();
+    expect(mediaService.drop).toHaveBeenCalledExactlyOnceWith(
+      imageMedia(),
+      'full',
+      'blob:full',
+    );
   });
 
-  it('unpins the full-res URL when destroyed with the lightbox still open', async () => {
+  it('drops the full-res image when destroyed with the lightbox still open', async () => {
     mediaService.resolveMedia.mockImplementation(
       (_m: PresentedMediaReference, variant: string) =>
         of(variant === 'full' ? 'blob:full' : 'blob:thumb'),
@@ -433,10 +540,49 @@ describe('MediaAttachmentComponent', () => {
     const { fixture } = await renderMedia(imageMedia());
     fixture.componentInstance.openLightbox();
 
-    mediaService.unpin.mockClear();
     fixture.destroy();
 
-    expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
+    expect(mediaService.drop).toHaveBeenCalledExactlyOnceWith(
+      imageMedia(),
+      'full',
+      'blob:full',
+    );
+  });
+
+  it('cancels a full-res image still loading for the lightbox when destroyed', async () => {
+    const full = new Subject<string>();
+    mediaService.resolveMedia.mockImplementation(
+      (_m: PresentedMediaReference, variant: string) =>
+        variant === 'full' ? full.asObservable() : of('blob:thumb'),
+    );
+    const { fixture } = await renderMedia(imageMedia());
+    fixture.componentInstance.openLightbox();
+
+    fixture.destroy();
+
+    expect(full.observed).toBe(false);
+    expect(mediaService.drop).toHaveBeenCalledExactlyOnceWith(
+      imageMedia(),
+      'full',
+      null,
+    );
+  });
+
+  it('pins the thumbnail once however often the same URL is resolved for it', async () => {
+    // Pins are counted, so pinning the URL a row already holds would leak a pin.
+    const { fixture } = await renderMedia(imageMedia());
+
+    fixture.componentRef.setInput('media', { ...imageMedia() });
+    TestBed.tick();
+    fixture.destroy();
+
+    const pins = mediaService.pin.mock.calls.filter(
+      ([u]) => u === 'blob:thumb',
+    );
+    const unpins = mediaService.unpin.mock.calls.filter(
+      ([u]) => u === 'blob:thumb',
+    );
+    expect(pins.length).toBe(unpins.length);
   });
 
   it('download() resolves the full bytes then hands them to the host file contract', async () => {

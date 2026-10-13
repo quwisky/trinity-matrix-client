@@ -104,6 +104,24 @@ describe('MediaBubbleComponent', () => {
     expect(opened).toBe(1);
   });
 
+  it.each([
+    ['video', 'video/mp4'],
+    ['audio', 'audio/ogg'],
+  ] as const)(
+    'emits playbackEnded when a %s plays to its end',
+    async (kind, mimeType) => {
+      const { fixture, container } = await render(MediaBubbleComponent, {
+        inputs: { item: item({ kind, mimeType }), src: 'blob:clip' },
+      });
+
+      let ended = 0;
+      fixture.componentInstance.playbackEnded.subscribe(() => ended++);
+      container.querySelector(kind)!.dispatchEvent(new Event('ended'));
+
+      expect(ended).toBe(1);
+    },
+  );
+
   it('emits download when the file-card is clicked', async () => {
     const { fixture, container } = await render(MediaBubbleComponent, {
       inputs: { item: item({ kind: 'file' }) },
