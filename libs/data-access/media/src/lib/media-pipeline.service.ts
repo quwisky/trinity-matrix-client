@@ -399,6 +399,28 @@ export class MediaPipeline {
     this.bytes.unpin(url);
   }
 
+  /**
+   * Release this caller's pin on a resolved rendition and free it unless another view still
+   * pins it; see {@link MediaService.drop}. Unsubscribe from the rendition's resolve first.
+   * Works for a reference whose Account has since gone: freeing bytes needs no live client.
+   */
+  drop(
+    reference: PresentedMediaReference,
+    variant: 'thumbnail' | 'full',
+    url: string | null,
+  ): void {
+    const source = this.presented.get(reference);
+    if (source) {
+      this.bytes.drop(url, {
+        media: source.media,
+        variant,
+        client: source.client,
+      });
+    } else {
+      this.bytes.unpin(url);
+    }
+  }
+
   /** Release view resources without retiring references owned by retained messages. */
   releaseAll(): void {
     for (const staged of [...this.liveStaged]) this.releaseStaged(staged);

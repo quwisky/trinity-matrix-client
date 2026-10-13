@@ -990,6 +990,205 @@ describe('MediaService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  describe('pin counting', () => {
+    /** Resolve `a` (pinned per the test), then fill the cache past its byte budget. */
+    async function pressure(svc: MediaService): Promise<void> {
+      await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/b'), 'full'));
+      await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/c'), 'full'));
+    }
+
+    it('keeps a URL pinned while any of two pins remains', async () => {
+      const { svc } = setup();
+      stubBlobSize(40);
+      const a = await firstValueFrom(
+        svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
+      );
+      svc.pin(a); // the row
+      svc.pin(a); // the lightbox, sharing the same blob URL
+      svc.unpin(a); // one of them leaves
+
+      await pressure(svc);
+      svc.releaseUnpinned();
+
+      expect(revokeObjectURL).not.toHaveBeenCalledWith(a);
+    });
+
+    it('makes a URL evictable once its last pin is released', async () => {
+      const { svc } = setup();
+      const a = await firstValueFrom(
+        svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
+      );
+      svc.pin(a);
+      svc.pin(a);
+      svc.unpin(a);
+      svc.unpin(a);
+
+      svc.releaseUnpinned();
+
+      expect(revokeObjectURL).toHaveBeenCalledWith(a);
+    });
+
+    it('ignores an extra unpin instead of counting below zero', async () => {
+      const { svc } = setup();
+      const a = await firstValueFrom(
+        svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
+      );
+      svc.unpin(a); // never pinned
+      svc.pin(a);
+
+      svc.releaseUnpinned();
+
+      // A count that went to -1 would now be 0 and evictable.
+      expect(revokeObjectURL).not.toHaveBeenCalledWith(a);
+    });
+
+    it('forgets every pin on releaseAll', async () => {
+      const { svc } = setup();
+      const before = await firstValueFrom(
+        svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
+      );
+      svc.pin(before);
+      svc.pin(before);
+      svc.releaseAll();
+      revokeObjectURL.mockClear();
+
+      // URLs are fresh after a release, but the pins are gone too: the next one is evictable.
+      const after = await firstValueFrom(
+        svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
+      );
+      svc.releaseUnpinned();
+
+      expect(revokeObjectURL).toHaveBeenCalledWith(after);
+    });
+  });
+
+  describe('drop', () => {
+    const full = (mxc = 'mxc://hs/a') => ({
+      media: plainMedia(mxc),
+      variant: 'full' as const,
+    });
+
+    it('revokes and removes the entry when the dropping caller held the last pin', async () => {
+      const { svc } = setup();
+      const a = await firstValueFrom(svc.resolveMedia(full().media, 'full'));
+      svc.pin(a);
+      fetchMock.mockClear();
+
+      svc.drop(a, full());
+
+      expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith(a);
+      // Gone from the cache: the next resolve downloads it again, under a fresh URL.
+      const again = await firstValueFrom(
+        svc.resolveMedia(full().media, 'full'),
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(again).not.toBe(a);
+    });
+
+    it('only releases its own pin while another view still shows the URL', async () => {
+      const { svc } = setup();
+      const a = await firstValueFrom(svc.resolveMedia(full().media, 'full'));
+      svc.pin(a); // the row
+      svc.pin(a); // the lightbox
+      fetchMock.mockClear();
+
+      svc.drop(a, full());
+
+      expect(revokeObjectURL).not.toHaveBeenCalledWith(a);
+      // Still cached for the row.
+      await expect(
+        firstValueFrom(svc.resolveMedia(full().media, 'full')),
+      ).resolves.toBe(a);
+      expect(fetchMock).not.toHaveBeenCalled();
+      // The row's pin is the last one; dropping it frees the entry.
+      svc.drop(a, full());
+      expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith(a);
+    });
+
+    it('takes the dropped bytes off the budget', async () => {
+      const { svc } = setup();
+      stubBlobSize(40);
+      const a = await firstValueFrom(svc.resolveMedia(full().media, 'full'));
+      svc.pin(a);
+      const b = await firstValueFrom(
+        svc.resolveMedia(plainMedia('mxc://hs/b'), 'full'),
+      );
+
+      svc.drop(a, full());
+      revokeObjectURL.mockClear();
+      // b + c = 80 MB fits once a's 40 MB are no longer counted.
+      await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/c'), 'full'));
+
+      expect(revokeObjectURL).not.toHaveBeenCalledWith(b);
+    });
+
+    it('does not revoke a URL the cache no longer holds for that rendition', async () => {
+      const { svc } = setup();
+      const a = await firstValueFrom(svc.resolveMedia(full().media, 'full'));
+      svc.pin(a);
+      svc.releaseAll(); // a is revoked and forgotten; a later resolve gets a new URL
+      const fresh = await firstValueFrom(
+        svc.resolveMedia(full().media, 'full'),
+      );
+      svc.pin(fresh);
+      revokeObjectURL.mockClear();
+
+      svc.drop(a, full()); // a stale caller drops what it held before the release
+
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+    });
+
+    /** Park the next fetch until the returned function lets it complete. */
+    function parkFetch(): (res: Response) => void {
+      let complete!: (res: Response) => void;
+      fetchMock.mockReturnValueOnce(
+        new Promise<Response>((resolve) => {
+          complete = resolve;
+        }),
+      );
+      return (res) => complete(res);
+    }
+
+    it('cancels an in-flight resolve nobody waits for, so a late completion is not cached', async () => {
+      const { svc } = setup();
+      const complete = parkFetch();
+      const seen: string[] = [];
+      const sub = svc
+        .resolveMedia(full().media, 'full')
+        .subscribe((u) => seen.push(u));
+      await new Promise((r) => setTimeout(r));
+
+      sub.unsubscribe();
+      svc.drop(null, full());
+      complete(okResponse());
+      await new Promise((r) => setTimeout(r));
+
+      expect(seen).toEqual([]);
+      // No object URL survives the late completion.
+      expect(createObjectURL.mock.calls.length).toBe(
+        revokeObjectURL.mock.calls.length,
+      );
+      // And the next resolve is a fresh download, not the abandoned one.
+      fetchMock.mockClear();
+      await firstValueFrom(svc.resolveMedia(full().media, 'full'));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves an in-flight resolve running while another view still waits for it', async () => {
+      const { svc } = setup();
+      const complete = parkFetch();
+      const dropped = svc.resolveMedia(full().media, 'full').subscribe();
+      const waiting = firstValueFrom(svc.resolveMedia(full().media, 'full'));
+      await new Promise((r) => setTimeout(r));
+
+      dropped.unsubscribe();
+      svc.drop(null, full());
+      complete(okResponse());
+
+      await expect(waiting).resolves.toMatch(/^blob:/);
+    });
+  });
+
   it('releaseUnpinned drops unpinned entries and keeps pinned ones resolvable from cache', async () => {
     const { svc } = setup();
     const pinned = await firstValueFrom(

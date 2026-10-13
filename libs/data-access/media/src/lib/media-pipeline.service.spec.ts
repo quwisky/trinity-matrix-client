@@ -69,6 +69,7 @@ function setup() {
     downloadMedia: vi.fn(),
     pin: vi.fn(),
     unpin: vi.fn(),
+    drop: vi.fn(),
     releaseAll: vi.fn(),
     uploadLimit: vi.fn(() => of(1024)),
   };
@@ -321,6 +322,30 @@ describe('MediaPipeline', () => {
       expect.any(Object),
       client,
     );
+  });
+
+  it('drops a rendition from the cache under the client that presented it', () => {
+    const { pipeline, bytes, client, matrix } = setup();
+    const media = {
+      kind: 'image' as const,
+      mxc: 'mxc://example.org/photo',
+      file: null,
+      filename: 'photo.png',
+      mimeType: 'image/png',
+      thumbnailMxc: null,
+      thumbnailFile: null,
+    };
+    const reference = pipeline.present(media);
+    // Freeing bytes never needs a live Account: a signed-out one's pins still go.
+    matrix.clientFor.mockReturnValue(null);
+
+    pipeline.drop(reference, 'full', 'blob:photo');
+
+    expect(bytes.drop).toHaveBeenCalledExactlyOnceWith('blob:photo', {
+      media,
+      variant: 'full',
+      client,
+    });
   });
 
   it('does not start work when a synchronous progress consumer unsubscribes', async () => {
