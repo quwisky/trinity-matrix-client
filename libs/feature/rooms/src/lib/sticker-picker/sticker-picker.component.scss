@@ -6,9 +6,9 @@
   }
 
   .picker {
-    @include picker-surface;
+    @include picker-layout;
 
-    padding: var(--trinity-space-4);
+    padding: var(--trinity-space-3);
   }
 
   .picker__search-label {

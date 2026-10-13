@@ -24,7 +24,6 @@ import {
 } from 'rxjs';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
-import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
 import {
   GIF_PROVIDERS,
   GifService,
@@ -37,7 +36,8 @@ import { GifThumbComponent } from './gif-thumb.component';
 const SEARCH_DEBOUNCE_MS = 350;
 
 /**
- * GIF search grid floated above the composer. Loads trending GIFs on open and
+ * GIF search grid, the GIFs tab of the composer's expression panel. It draws no surface of
+ * its own: the panel is the card around it, or the sheet is. Loads trending GIFs on open and
  * re-queries (debounced) as the user types, emitting the chosen GIF for the
  * composer to download and send. Only rendered once a provider + API key are
  * configured, so it never queries without credentials.
@@ -45,13 +45,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 @Component({
   selector: 'trn-gif-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    EmptyStateComponent,
-    TrnButton,
-    TrnInput,
-    GifThumbComponent,
-    TrnOverlaySurfaceDirective,
-  ],
+  imports: [EmptyStateComponent, TrnButton, TrnInput, GifThumbComponent],
   templateUrl: './gif-picker.component.html',
   styleUrl: './gif-picker.component.scss',
 })

@@ -12,17 +12,15 @@ import {
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { StickerImageComponent } from '../sticker-image/sticker-image.component';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
-import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
 
-/** Searchable, keyboard-native picker for sticker-capable MSC2545 pack entries. */
+/**
+ * Searchable, keyboard-native picker for sticker-capable MSC2545 pack entries: the Stickers
+ * tab of the composer's expression panel, which draws the surface around it.
+ */
 @Component({
   selector: 'trn-sticker-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    EmptyStateComponent,
-    StickerImageComponent,
-    TrnOverlaySurfaceDirective,
-  ],
+  imports: [EmptyStateComponent, StickerImageComponent],
   templateUrl: './sticker-picker.component.html',
   styleUrl: './sticker-picker.component.scss',
 })

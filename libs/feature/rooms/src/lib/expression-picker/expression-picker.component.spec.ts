@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, input, output, signal } from '@angular/core';
 import { render, fireEvent, type RenderResult } from '@trinity/testing';
 import { TestBed } from '@angular/core/testing';
@@ -16,6 +17,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { TrnButton, type TrnEmojiPick } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 import { ExpressionPickerComponent } from './expression-picker.component';
@@ -32,6 +34,7 @@ import { ExpressionPickerComponent } from './expression-picker.component';
 class EmojiPickerStubComponent {
   readonly pickerId = input<string | null>(null);
   readonly autoFocusSearch = input(false);
+  readonly framed = input(true);
   readonly picked = output<TrnEmojiPick>();
 }
 
@@ -99,10 +102,12 @@ async function renderPanel(options: Options = {}) {
     set: {
       imports: [
         GifPickerComponent,
+        NgTemplateOutlet,
         StickerPickerComponent,
         EmojiPickerStubComponent,
         TrnButton,
         TrnIconComponent,
+        TrnOverlaySurfaceDirective,
       ],
     },
   });
@@ -142,6 +147,16 @@ async function renderPanel(options: Options = {}) {
 
 const tabNames = () =>
   view.queryAllByRole('tab').map((tab) => tab.textContent?.trim());
+
+/** Every overlay surface drawn inside the panel: the recipe stamps `data-trn-layout`. */
+const surfaces = () =>
+  Array.from(view.container.querySelectorAll<HTMLElement>('[data-trn-layout]'));
+
+const emojiPicker = (
+  fixture: RenderResult<ExpressionPickerComponent>['fixture'],
+) =>
+  fixture.debugElement.query((el) => el.name === 'trn-emoji-picker')
+    .componentInstance as EmojiPickerStubComponent;
 
 describe('ExpressionPickerComponent', () => {
   it('offers GIFs, Stickers and Emoji in that order and opens on Emoji the first time', async () => {
@@ -449,5 +464,54 @@ describe('ExpressionPickerComponent', () => {
     expect(
       (picker.componentInstance as EmojiPickerStubComponent).autoFocusSearch(),
     ).toBe(false);
+  });
+
+  it('is one card as a popover: the tabs are its header and the picker sits inside it', async () => {
+    await renderPanel();
+    const [card, ...others] = surfaces();
+
+    expect(others).toEqual([]);
+    expect(card).toHaveAttribute('data-trn-layout', 'popover');
+    expect(card).toContainElement(view.getByRole('tablist'));
+    expect(card).toContainElement(view.getByRole('tabpanel'));
+  });
+
+  it('stays one card whichever tab shows', async () => {
+    await renderPanel();
+
+    for (const name of ['GIFs', 'Stickers', 'Emoji']) {
+      view.getByRole('tab', { name }).click();
+      view.fixture.detectChanges();
+      await view.fixture.whenStable();
+
+      expect(surfaces()).toHaveLength(1);
+    }
+  });
+
+  it('is one card around the emoji grid when Emoji is the only tab', async () => {
+    await renderPanel({ gifEnabled: false, stickerEnabled: false });
+    const [card, ...others] = surfaces();
+
+    expect(others).toEqual([]);
+    expect(card).toContainElement(view.getByTestId('emoji-picker'));
+  });
+
+  it('draws no card in a sheet, where the sheet is the only surface', async () => {
+    await renderPanel({ presentation: 'sheet', remembered: 'gif' });
+
+    expect(view.getByTestId('gif-search')).toBeInTheDocument();
+    expect(surfaces()).toEqual([]);
+  });
+
+  it('embeds the emoji grid in the card without a frame of its own', async () => {
+    const { fixture } = await renderPanel();
+
+    expect(emojiPicker(fixture).framed()).toBe(false);
+  });
+
+  it('embeds the emoji grid in a sheet without a frame of its own', async () => {
+    const { fixture } = await renderPanel({ presentation: 'sheet' });
+
+    expect(emojiPicker(fixture).framed()).toBe(false);
   });
 });

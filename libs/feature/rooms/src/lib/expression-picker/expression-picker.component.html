@@ -1,90 +1,109 @@
-<!-- With Emoji alone there is nothing to choose between, so the panel is the emoji picker
-     exactly as it was before the tabs existed. -->
-@if (tabs().length > 1 || presentation() === 'sheet') {
-  <!-- In a sheet the close button shares the tab row instead of taking a row of its own;
+<!-- One surface. As a popover the panel is one card: the tabs are its header and the picker
+     sits inside it, with no card of its own. In a sheet the sheet is the surface, so nothing
+     here draws one. The card fills the host, which holds the one width across tabs, and takes
+     the overlay border and fill the sheet and dialog shell use; classes written here win over
+     the recipe's. -->
+@if (presentation() === 'popover') {
+  <div
+    trnOverlaySurface
+    variant="neutral"
+    size="sm"
+    layout="popover"
+    class="flex w-full max-w-full flex-col border-[var(--trinity-border-overlay)] bg-[var(--trinity-surface-overlay)]"
+  >
+    <ng-container [ngTemplateOutlet]="panel" />
+  </div>
+} @else {
+  <ng-container [ngTemplateOutlet]="panel" />
+}
+
+<ng-template #panel>
+  <!-- With Emoji alone there is nothing to choose between, so the popover holds the emoji grid
+     alone. -->
+  @if (tabs().length > 1 || presentation() === 'sheet') {
+    <!-- In a sheet the close button shares the tab row instead of taking a row of its own;
        it comes first, where the sheet header put it. -->
-  <div class="flex items-center gap-2">
-    @if (presentation() === 'sheet') {
-      <button
-        trnBtn
-        presentation="ghost"
-        shape="icon"
-        size="sm"
-        type="button"
-        aria-label="Close"
-        data-testid="dialog-close"
-        (click)="dismiss.emit()"
-      >
-        <trn-icon name="x" motion="rotate" />
-      </button>
-    }
-    @if (tabs().length > 1) {
-      <!-- The track carries the same chrome as the overlay surface recipe the GIF and sticker
-           cards use (subtle border, raised surface, overlay radius and shadow), so the row and the
-           cards beneath it read as one layer. Inside a sheet it drops the shadow: the sheet is the
-           layer there. -->
-      <div
-        role="tablist"
-        aria-label="Picker type"
-        class="grid flex-1 auto-cols-fr grid-flow-col gap-1 rounded-[var(--trinity-shape-overlay-radius)] border border-[var(--trinity-border-subtle)] bg-[var(--trinity-surface-raised)] p-1"
-        [class.shadow-overlay]="presentation() === 'popover'"
-        data-testid="expression-tabs"
-        (keydown)="onTabKeydown($event)"
-        (focusout)="onTabFocusOut($event)"
-      >
-        @for (tab of tabs(); track tab) {
-          <!-- Plain buttons rather than `trnBtn`: the button recipe has no selected-tab state,
+    <div class="flex items-center gap-2 px-2 pt-2">
+      @if (presentation() === 'sheet') {
+        <button
+          trnBtn
+          presentation="ghost"
+          shape="icon"
+          size="sm"
+          type="button"
+          aria-label="Close"
+          data-testid="dialog-close"
+          (click)="dismiss.emit()"
+        >
+          <trn-icon name="x" motion="rotate" />
+        </button>
+      }
+      @if (tabs().length > 1) {
+        <!-- Plain tabs on the surface: the row has no track of its own, and only the selected
+           tab is marked, with the selected-surface pill. -->
+        <div
+          role="tablist"
+          aria-label="Picker type"
+          class="grid flex-1 auto-cols-fr grid-flow-col gap-1"
+          data-testid="expression-tabs"
+          (keydown)="onTabKeydown($event)"
+          (focusout)="onTabFocusOut($event)"
+        >
+          @for (tab of tabs(); track tab) {
+            <!-- Plain buttons rather than `trnBtn`: the button recipe has no selected-tab state,
                and a shared tabs recipe is tracked in #1269. -->
-          <button
-            #tab
-            type="button"
-            role="tab"
-            class="min-h-9 rounded-[var(--trinity-shape-control-radius)] px-3 text-sm font-semibold text-[var(--trinity-text-muted)] hover:bg-[var(--trinity-state-hover-surface)] hover:text-[var(--trinity-state-hover-foreground)] aria-selected:bg-[var(--trinity-state-selected-surface)] aria-selected:text-[var(--trinity-state-selected-foreground)] pointer-coarse:min-h-11"
-            [id]="tabId(tab)"
-            [attr.aria-selected]="tab === active()"
-            [attr.aria-controls]="tab === active() ? tabPanelId() : null"
-            [attr.tabindex]="tab === tabStop() ? 0 : -1"
-            [attr.data-testid]="'expression-tab-' + tab"
-            (click)="select(tab)"
-          >
-            {{ labels[tab] }}
-          </button>
-        }
-      </div>
+            <button
+              #tab
+              type="button"
+              role="tab"
+              class="min-h-9 rounded-[var(--trinity-shape-control-radius)] px-3 text-sm font-semibold text-[var(--trinity-text-muted)] hover:bg-[var(--trinity-state-hover-surface)] hover:text-[var(--trinity-state-hover-foreground)] aria-selected:bg-[var(--trinity-state-selected-surface)] aria-selected:text-[var(--trinity-state-selected-foreground)] pointer-coarse:min-h-11"
+              [id]="tabId(tab)"
+              [attr.aria-selected]="tab === active()"
+              [attr.aria-controls]="tab === active() ? tabPanelId() : null"
+              [attr.tabindex]="tab === tabStop() ? 0 : -1"
+              [attr.data-testid]="'expression-tab-' + tab"
+              (click)="select(tab)"
+            >
+              {{ labels[tab] }}
+            </button>
+          }
+        </div>
+      }
+    </div>
+  }
+  <!-- Focusable so a sheet can put focus on the content when it opens; the pickers then move
+     it on into their own search fields. -->
+  <div
+    #content
+    class="grid outline-none"
+    tabindex="-1"
+    data-expression-content
+    [attr.role]="tabs().length > 1 ? 'tabpanel' : null"
+    [attr.id]="tabs().length > 1 ? tabPanelId() : null"
+    [attr.aria-labelledby]="tabs().length > 1 ? tabId(active()) : null"
+    [attr.aria-busy]="active() === 'gif' && gifBusy() ? true : null"
+  >
+    @switch (active()) {
+      @case ('gif') {
+        <trn-gif-picker (gifSelect)="gifSelect.emit($event)" />
+      }
+      @case ('sticker') {
+        <trn-sticker-picker
+          [packs]="stickerPacks()"
+          (selected)="stickerSelect.emit($event)"
+          (dismiss)="dismiss.emit()"
+          (manage)="manage.emit()"
+        />
+      }
+      @case ('emoji') {
+        <!-- The vendor grid is a fixed px width; centred, it sits evenly in a wider panel. -->
+        <trn-emoji-picker
+          class="justify-self-center"
+          [framed]="false"
+          [autoFocusSearch]="presentation() === 'sheet'"
+          (picked)="emojiPick.emit($event)"
+        />
+      }
     }
   </div>
-}
-<!-- Focusable so a sheet can put focus on the content when it opens; the pickers then move
-     it on into their own search fields. -->
-<div
-  #content
-  class="grid outline-none"
-  tabindex="-1"
-  data-expression-content
-  [attr.role]="tabs().length > 1 ? 'tabpanel' : null"
-  [attr.id]="tabs().length > 1 ? tabPanelId() : null"
-  [attr.aria-labelledby]="tabs().length > 1 ? tabId(active()) : null"
-  [attr.aria-busy]="active() === 'gif' && gifBusy() ? true : null"
->
-  @switch (active()) {
-    @case ('gif') {
-      <trn-gif-picker (gifSelect)="gifSelect.emit($event)" />
-    }
-    @case ('sticker') {
-      <trn-sticker-picker
-        [packs]="stickerPacks()"
-        (selected)="stickerSelect.emit($event)"
-        (dismiss)="dismiss.emit()"
-        (manage)="manage.emit()"
-      />
-    }
-    @case ('emoji') {
-      <!-- The vendor grid is a fixed px width; centred, it sits evenly in a wider panel. -->
-      <trn-emoji-picker
-        class="justify-self-center"
-        [autoFocusSearch]="presentation() === 'sheet'"
-        (picked)="emojiPick.emit($event)"
-      />
-    }
-  }
-</div>
+</ng-template>

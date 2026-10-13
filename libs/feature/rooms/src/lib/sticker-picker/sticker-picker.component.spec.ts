@@ -72,6 +72,13 @@ describe('StickerPickerComponent', () => {
     );
   });
 
+  it('draws no surface of its own, so the expression panel holding it is the one card', () => {
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelector('[data-trn-layout]')).toBeNull();
+    expect(host.querySelector('[data-testid="sticker-picker"]')).not.toBeNull();
+  });
+
   it('filters by shortcode or body and shows an empty state', () => {
     const search = fixture.nativeElement.querySelector(
       '[data-testid="sticker-search"]',

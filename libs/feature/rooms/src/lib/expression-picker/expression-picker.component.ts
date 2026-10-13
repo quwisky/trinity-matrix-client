@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -19,6 +20,7 @@ import {
   type TrnEmojiPick,
 } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
 import { type GifResult } from '@trinity/data-access/gif';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import {
@@ -37,7 +39,11 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
 
 /**
  * The composer's one panel for GIFs, stickers and emoji, each on its own tab and each the
- * existing picker, unchanged.
+ * existing picker.
+ *
+ * It is one surface. As a popover it draws one overlay card: the tabs are its header and the
+ * active picker sits inside it, drawing no card of its own (the emoji grid is embedded
+ * without its frame). In a bottom sheet the sheet is the only surface, so it draws none.
  *
  * Only the tabs that can be used are offered, and with Emoji alone there is no tab bar at
  * all. The tabs follow the WAI-ARIA tab pattern with MANUAL activation: the arrow keys,
@@ -53,14 +59,16 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     GifPickerComponent,
+    NgTemplateOutlet,
     StickerPickerComponent,
     TrnButton,
     TrnEmojiPickerComponent,
     TrnIconComponent,
+    TrnOverlaySurfaceDirective,
   ],
   templateUrl: './expression-picker.component.html',
   host: {
-    class: 'flex flex-col items-stretch gap-2',
+    class: 'flex flex-col items-stretch',
     // As a popover: the emoji picker's 302px expressed in rem, so it follows the text size
     // and stays one width across tabs, clamped to the viewport less the overlay's 8px
     // margins. The vendor emoji grid itself is fixed in px and is centred inside. As a

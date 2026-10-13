@@ -66,8 +66,9 @@ $below-md: '(max-width: 767.98px)';
   text-align: center;
 }
 
-/// Anchored picker content layout shared by GIF, sticker and other composer trays.
-@mixin picker-surface {
+/// Content layout shared by the GIF and sticker pickers. Layout only: the expression panel
+/// holding them draws the surface (its card, or the sheet).
+@mixin picker-layout {
   display: flex;
   flex-direction: column;
   overflow: hidden;
