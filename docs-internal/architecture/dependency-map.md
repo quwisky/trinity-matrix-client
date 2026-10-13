@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **71 Nx projects** and **281 dependencies**. No project cycles detected.
+This snapshot contains **71 Nx projects** and **282 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -146,7 +146,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `data-access-room-administration` | `libs/data-access/room-administration` | role:capability; capability:room-administration |                   4 |
 | `data-access-room-library`        | `libs/data-access/room-library`        | role:capability; capability:room-library        |                   6 |
 | `data-access-timeline`            | `libs/data-access/timeline`            | role:capability; capability:conversations       |                   6 |
-| `data-access-trust`               | `libs/data-access/trust`               | role:capability; capability:trust               |                   3 |
+| `data-access-trust`               | `libs/data-access/trust`               | role:capability; capability:trust               |                   4 |
 | `data-access-widgets`             | `libs/data-access/widgets`             | role:capability; capability:conversations       |                   3 |
 | `docs-developers`                 | `apps/docs-developers`                 | unmanaged tooling/test                          |                   1 |
 | `docs-e2e`                        | `e2e/docs`                             | unmanaged tooling/test                          |                   0 |
