@@ -27,4 +27,13 @@ export class AppRestartService {
   restart(): void {
     window.location.replace(new URL('/', window.location.href).toString());
   }
+
+  /**
+   * Reload the current URL, keeping its route and query, for a session handover (#1267).
+   * Nothing was wiped, so the URL is still valid: the tab waits for the session lock and, when
+   * it takes the session again, lands where it was.
+   */
+  reload(): void {
+    window.location.reload();
+  }
 }
