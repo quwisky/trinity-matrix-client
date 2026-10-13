@@ -1,5 +1,6 @@
 import type { DiagnosticNameGroup } from '../report-facts';
-import { scrubSecrets } from '../scrub-secrets';
+import { REDACTED, scrubSecrets } from '../scrub-secrets';
+import { type Rewritable, rewriteEscaped } from './escaped-text';
 import { KnownNameRedactor, type NameReading } from './known-names';
 import { LogWords } from './log-words';
 
@@ -37,9 +38,12 @@ export interface LogRedactor {
 // leading digits belong to the device ID, not to the server.
 const PORT = String.raw`(?::\d{1,5}(?![\p{L}\p{N}_-]))`;
 // After a user ID, digits that a device ID with punctuation goes on from are not a port
-// either (`@user:host:12.ab`). A full stop that ends a sentence still closes one, and so
-// does "/": `@user:host:8448/displayname` is a request path.
-const USER_PORT = String.raw`(?::\d{1,5}(?![\p{L}\p{N}_~+=-]|\.[\p{L}\p{N}_~+/=-]))`;
+// either (`@user:host:12.ab`, `@user:host:12/abCD`). A full stop, "+" or "=" with nothing
+// of an ID after it still closes one, and so does "/" before a lower-case path word:
+// `@user:host:8448/displayname` is a request path.
+const ID_GOES_ON = String.raw`(?:[\p{L}\p{N}_~-]|[.+=][\p{L}\p{N}_~+/=-])`;
+const PATH_WORD = String.raw`[a-z_]{1,64}(?!${ID_GOES_ON})`;
+const USER_PORT = String.raw`(?::\d{1,5}(?!${ID_GOES_ON}|\/(?=[\p{L}\p{N}_~+=.-])(?!${PATH_WORD})))`;
 // A server name: DNS name or IP literal, optional port (Matrix spec, "Server name").
 const serverName = (port: string): string =>
   String.raw`(?:\[[0-9A-Fa-f:.]+\]|[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*)${port}?`;
@@ -63,27 +67,33 @@ const MXC = new RegExp(
 );
 // An identifier inside a request path or query. matrix-js-sdk builds paths with
 // encodeURIComponent (`encodeUri` in utils.js), which escapes "@", "#", "$" and ":" but leaves
-// "!" alone, so a room ID arrives as `!opaque%3Aserver`; other writers escape "!" as %21, or
-// escape only the sigil or only the colons. A literal sigil counts only before an escaped
-// colon, whose lookahead stops at the first "%", so every character is scanned a bounded
-// number of times.
-const ENCODED_ID =
-  /(?:%(?:40|21|23|24)|(?<![A-Za-z0-9._%+-])@(?=[A-Za-z0-9._~-]+%3A)|(?<![A-Za-z0-9&])#(?=[A-Za-z0-9._~-]+%3A)|[!$](?=[A-Za-z0-9._~-]+%3A))[A-Za-z0-9._~%:-]+/gi;
-// A run of escapes, decoded together so that a multi-byte UTF-8 character stays whole.
-const ESCAPE_RUN = /(?:%[0-9A-Fa-f]{2})+/g;
-const ASCII_ESCAPE = /%[0-7][0-9A-Fa-f]/g;
-// The characters that separate the parts of an identifier, and their escapes.
-const SEPARATOR_ESCAPES = [
-  ['@', '%40'],
-  ['!', '%21'],
-  ['#', '%23'],
-  ['$', '%24'],
-  [':', '%3A'],
-] as const;
+// "!" alone, so a room ID arrives as `!opaque%3Aserver`; other writers escape "!" as %21,
+// escape only the sigil or only the colons, or escape the escapes once more (`%2540`).
+// A local part, room ID or event hash may hold "=", "/" and "+", literal or escaped; it ends
+// at an escaped colon or sigil, so every character is read by one alternative only. After
+// escaped colons the writer escapes those characters too, so a literal one ends the ID (a
+// request path); after literal colons, or a literal sigil, they may still belong to it.
+const ID_PART = String.raw`(?:[A-Za-z0-9._~=/+-]|%(?!(?:25)?(?:3a|40|21|23|24))[0-9a-f]{2})`;
+const ESCAPED_COLON = String.raw`%(?:25)?3a`;
+const AFTER_ESCAPED_COLON = String.raw`[A-Za-z0-9._~%:[\]-]*`;
+const AFTER_LITERAL_COLON = String.raw`[A-Za-z0-9._~%:=/+[\]-]*`;
+const ENCODED_ID = new RegExp(
+  [
+    String.raw`%(?:25)?(?:40|21|23|24)${ID_PART}*(?:${ESCAPED_COLON}${AFTER_ESCAPED_COLON}|:${AFTER_LITERAL_COLON})?`,
+    String.raw`(?<![A-Za-z0-9._%+-])@[A-Za-z0-9._~=/+-]+${ESCAPED_COLON}${AFTER_LITERAL_COLON}`,
+    String.raw`(?<![A-Za-z0-9&])#[A-Za-z0-9._~=/+-]+${ESCAPED_COLON}${AFTER_LITERAL_COLON}`,
+    String.raw`\$[A-Za-z0-9._~=/+-]+${ESCAPED_COLON}${AFTER_LITERAL_COLON}`,
+    String.raw`![A-Za-z0-9._~=/+-]+${ESCAPED_COLON}${AFTER_ESCAPED_COLON}`,
+  ].join('|'),
+  'gi',
+);
+// The device-ID characters after a user ID, read without taking them: when digits read as a
+// port start a known device ID, they are the device's.
 const USER = new RegExp(
-  String.raw`(?<![A-Za-z0-9._%+-])@(${USER_LOCALPART}):(${serverName(USER_PORT)})`,
+  String.raw`(?<![A-Za-z0-9._%+-])@(${USER_LOCALPART}):(${serverName(USER_PORT)})(?=([A-Za-z0-9._~+/=-]*))`,
   'gu',
 );
+const TRAILING_PORT = /:(\d+)$/;
 const ROOM = new RegExp(String.raw`!${OPAQUE}:(${SERVER})`, 'gu');
 // Room version 12 room IDs carry no server name: "!" and 43 unpadded base64url characters.
 const ROOM_V12 = /![A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g;
@@ -92,8 +102,11 @@ const ALIAS = new RegExp(
   'gu',
 );
 const EVENT_V1 = new RegExp(String.raw`\$${OPAQUE}:${SERVER}`, 'gu');
-// A "/" right after the ID starts a request path; any other ID character makes a longer run.
-const EVENT = /\$[A-Za-z0-9+/_-]{43,44}(?=\/|(?![A-Za-z0-9+/_=-]))/g;
+// Room version 4 and later write the hash as 43 URL-safe characters, so a "+" or "=" after
+// those ends the ID: a form-encoded space or a query separator. Otherwise a "/" right after
+// the ID starts a request path, and any other ID character makes a longer run.
+const EVENT =
+  /\$(?:[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])|[A-Za-z0-9+/_-]{43,44}(?=\/|(?![A-Za-z0-9+/_=-])))/g;
 // "device", "devices", "deviceId", "device_id", "device id": the words that introduce an ID.
 const DEVICE_KEYWORD = /device(?:s|[_ -]?ids?)?(?![A-Za-z0-9_])/gi;
 // "device:", "device=", optionally closed and opened by quotes.
@@ -106,6 +119,11 @@ const DEVICE_TOKEN = /[^A-Za-z0-9_\n-]{0,6}([A-Za-z0-9_-]{1,64})/y;
 // so prose in parentheses is kept.
 const DEVICE_AFTER_USER =
   /(@(?:me\d*|user\d+):server\d+)(?::([A-Za-z0-9._~+/=-]+)|( \(|\|)([A-Za-z0-9_-]{6,}))/g;
+// A quoted device ID field and its quoted value, in JSON or a printed object, with its quotes
+// escaped or not: the value is an ID whatever characters it holds. Bounded, so a value that
+// never closes costs a fixed amount.
+const DEVICE_FIELD =
+  /(["'])device[_ -]?id\\*\1\s*:\s*\\*(["'])([^\s"'\\]{1,255})(?=\\*\2)/gi;
 // A run of device-ID characters with punctuation, looked up in the known devices.
 const DEVICE_RUN = /(?<![A-Za-z0-9._~+/=-])[A-Za-z0-9._~+/=-]+/g;
 // A run of unreserved characters and escapes. Its two kinds of step start with different
@@ -329,23 +347,28 @@ class IdentifierRedactor implements LogRedactor {
   }
 
   /**
-   * Decodes an encoded identifier, redacts it, and the device ID after a user ID, like the
-   * plain form, so both get the same placeholder, then escapes the result as it was written.
+   * Decodes an encoded identifier, redacts it and the device ID after a user ID like the plain
+   * form, so both get the same placeholder, and writes the placeholders back escaped as the
+   * identifier was; the text around them keeps its own escapes.
    */
   private redactEncoded(match: string): string {
-    const decoded = decodeEscapes(match);
-    const redacted = this.redactDevicesAfterUsers(
-      this.redactIdentifiers(decoded),
+    return rewriteEscaped(match, (decoded) =>
+      this.redactDevicesAfterUsers(
+        this.redactKnownDevices(this.redactIdentifiers(decoded)),
+      ),
     );
-    return redacted === decoded ? match : encodeLike(redacted, match);
   }
 
-  private redactIdentifiers(text: string): string {
+  private redactIdentifiers<T extends Rewritable<T>>(text: T): T {
     return text
-      .replace(USER, (match, _localpart: string, server: string) =>
-        this.user(match, server),
-      )
-      .replace(ROOM, (match, server: string) =>
+      .replace(USER, (match, _localpart, server = '', after = '') => {
+        const port = TRAILING_PORT.exec(server)?.[1];
+        return port !== undefined &&
+          this.devices.has(withoutFullStops(port + after))
+          ? `${this.user(match, server)}:${port}`
+          : this.user(match, server);
+      })
+      .replace(ROOM, (match, server = '') =>
         this.placeholder(
           this.rooms,
           match,
@@ -355,7 +378,7 @@ class IdentifierRedactor implements LogRedactor {
       .replace(ROOM_V12, (match) =>
         this.placeholder(this.rooms, match, (n) => `!room${n}`),
       )
-      .replace(ALIAS, (match, server: string) =>
+      .replace(ALIAS, (match, server = '') =>
         this.placeholder(
           this.aliases,
           match,
@@ -398,42 +421,37 @@ class IdentifierRedactor implements LogRedactor {
     });
   }
 
-  private redactDevices(text: string): string {
-    // The keyword rule runs before the rule for IDs after a user, so that in
-    // `@user (device ID)` the keyword is read as a keyword, not as the device ID.
-    return this.redactDevicesAfterUsers(text, (known) =>
-      this.redactDeviceContext(known),
-    );
-  }
-
   /**
-   * Known device IDs, plain or escaped, then `between`, then the device ID that follows a
-   * user placeholder.
+   * Known device IDs, plain or escaped, then device ID fields, then the keyword rule, then the
+   * device ID after a user placeholder. The keyword rule runs before the rule for IDs after a
+   * user, so that in `@user (device ID)` the keyword is read as a keyword, not as the device ID.
    */
-  private redactDevicesAfterUsers(
-    text: string,
-    between: (known: string) => string = (known) => known,
-  ): string {
+  private redactDevices(text: string): string {
     let known = this.redactKnownDevices(text);
     if (known.includes('%')) {
-      known = known.replace(ESCAPED_RUN, (run) => {
-        if (!run.includes('%')) {
-          return run;
-        }
-        const decoded = decodeEscapes(run);
-        const redacted = this.redactKnownDevices(decoded);
-        return redacted === decoded ? run : encodeLike(redacted, run);
-      });
+      known = known.replace(ESCAPED_RUN, (run) =>
+        run.includes('%')
+          ? rewriteEscaped(run, (decoded) => this.redactKnownDevices(decoded))
+          : run,
+      );
     }
-    return between(known).replace(
+    known = known.replace(
+      DEVICE_FIELD,
+      (match, _quote, _valueQuote, value: string) =>
+        /[A-Za-z0-9]/.test(value) &&
+        value !== REDACTED &&
+        !ALREADY_PLACEHOLDER.test(value)
+          ? match.slice(0, match.length - value.length) + this.device(value)
+          : match,
+    );
+    return this.redactDevicesAfterUsers(this.redactDeviceContext(known));
+  }
+
+  /** The device ID that follows a user placeholder. */
+  private redactDevicesAfterUsers<T extends Rewritable<T>>(text: T): T {
+    return text.replace(
       DEVICE_AFTER_USER,
-      (
-        match: string,
-        user: string,
-        run: string | undefined,
-        separator: string | undefined,
-        plain: string | undefined,
-      ) => {
+      (match, user = '', run, separator, plain) => {
         if (plain !== undefined) {
           return `${user}${separator}${this.device(plain)}`;
         }
@@ -447,7 +465,7 @@ class IdentifierRedactor implements LogRedactor {
   }
 
   /** Known device IDs that stand as a word, or as a run of device-ID characters. */
-  private redactKnownDevices(text: string): string {
+  private redactKnownDevices<T extends Rewritable<T>>(text: T): T {
     const known = text.replace(WORD, (word) => this.devices.get(word) ?? word);
     if (!this.punctuatedDevices) {
       return known;
@@ -583,39 +601,6 @@ function withoutFullStops(run: string): string {
     end -= 1;
   }
   return run.slice(0, end);
-}
-
-/**
- * Decodes every escape that can be decoded. A run that is not valid UTF-8 still has its
- * ASCII escapes decoded, so a stray byte cannot shield the separators of an ID beside it.
- */
-function decodeEscapes(text: string): string {
-  return text.replace(ESCAPE_RUN, (run) => {
-    try {
-      return decodeURIComponent(run);
-    } catch {
-      return run.replace(ASCII_ESCAPE, (escape) =>
-        String.fromCharCode(Number.parseInt(escape.slice(1), 16)),
-      );
-    }
-  });
-}
-
-/**
- * Escapes redacted text the way `original` was written: a separator stays literal where the
- * original had it literal and never escaped (the SDK keeps "!" literal), and is escaped
- * otherwise. encodeURIComponent escapes "%" itself, so no other escape can read as one of these.
- */
-function encodeLike(redacted: string, original: string): string {
-  const upper = original.toUpperCase();
-  let encoded = encodeURIComponent(redacted);
-  for (const [separator, escape] of SEPARATOR_ESCAPES) {
-    encoded =
-      original.includes(separator) && !upper.includes(escape)
-        ? encoded.replaceAll(escape, separator)
-        : encoded.replaceAll(separator, escape);
-  }
-  return encoded;
 }
 
 /** A user ID's identity: its server's port is not part of who the user is. */

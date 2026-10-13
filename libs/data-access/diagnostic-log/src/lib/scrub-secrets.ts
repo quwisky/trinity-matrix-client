@@ -205,19 +205,30 @@ const SECRET_RULES: readonly (readonly [RegExp, string])[] = [
   [/\bgeo:[-+]?\d[^\s"']*/gi, `geo:${REDACTED}`],
   // APNs device tokens and other long hex secrets (not after "@", "!" or "$": Matrix IDs).
   [/(?<![@!$])\b[0-9A-Fa-f]{32,}\b/g, REDACTED],
-  // Long runs mixing digits, lower and upper case: keys, session IDs, opaque tokens, FCM
-  // tokens. A run straight after a %-escape is masked too, unless the escape is %21 ("!") or
-  // %24 ("$"), which start an encoded room or event ID…
-  [
-    /(%(?!2[14])[0-9A-Fa-f]{2})(?=[A-Za-z0-9+/_-]*\d)(?=[A-Za-z0-9+/_-]*[a-z])(?=[A-Za-z0-9+/_-]*[A-Z])[A-Za-z0-9+/_-]{32,}={0,2}/g,
-    `$1${REDACTED}`,
-  ],
-  // …and a run after "$" or "!" is an event or room ID, left for the export redactor.
-  [
-    /(?<![$!%A-Za-z0-9+/_-])(?=[A-Za-z0-9+/_-]*\d)(?=[A-Za-z0-9+/_-]*[a-z])(?=[A-Za-z0-9+/_-]*[A-Z])[A-Za-z0-9+/_-]{32,}={0,2}/g,
-    REDACTED,
-  ],
 ];
+
+/**
+ * Long runs mixing digits, lower and upper case: keys, session IDs, opaque tokens, FCM tokens.
+ * A run straight after a %-escape is masked too (see {@link maskRunsAfterEscapes}), unless the
+ * escape is %21 ("!") or %24 ("$"), which start an encoded room or event ID…
+ */
+const KEY_AFTER_ESCAPE =
+  /(%(?!2[14])[0-9A-Fa-f]{2})(?=[A-Za-z0-9+/_-]*\d)(?=[A-Za-z0-9+/_-]*[a-z])(?=[A-Za-z0-9+/_-]*[A-Z])[A-Za-z0-9+/_-]{32,}={0,2}/g;
+/** …and a run after "$" or "!" is an event or room ID, left for the export redactor. */
+const KEY_RUN =
+  /(?<![$!%A-Za-z0-9+/_-])(?=[A-Za-z0-9+/_-]*\d)(?=[A-Za-z0-9+/_-]*[a-z])(?=[A-Za-z0-9+/_-]*[A-Z])[A-Za-z0-9+/_-]{32,}={0,2}/g;
+/** The same run as a whole text, after the separators that may lead it. */
+const WHOLE_KEY_RUN =
+  /^([+/_-]*)(?=[A-Za-z0-9+/_-]*\d)(?=[A-Za-z0-9+/_-]*[a-z])(?=[A-Za-z0-9+/_-]*[A-Z])[A-Za-z0-9+/_-]{32,}={0,2}$/;
+/**
+ * An event or room version 12 ID escaped once or twice: "$" as %24 (%2524) and 43 or 44
+ * base64 characters whose "+" and "/" may be escaped as well, or "!" as %21 (%2521) and 43
+ * URL-safe ones. Its escapes must not start a key run, or part of the ID would be masked and
+ * part kept. Neither is padded, so a run that goes on with "=" is a key. Bounded, so each "%"
+ * costs a fixed amount.
+ */
+const ENCODED_HASH_ID =
+  /%(?:25)?(?:24(?:[A-Za-z0-9_+-]|%(?:25)?2[BF]){43,44}|21[A-Za-z0-9_-]{43})(?![A-Za-z0-9_+=-]|%(?:25)?(?:2[BF]|3D))/gi;
 
 /**
  * Mask every secret-shaped value in one log message. Runs at capture, through
@@ -238,8 +249,38 @@ export function scrubSecrets(text: string): string {
   for (const [pattern, replacement] of SECRET_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
   }
+  scrubbed = maskRunsAfterEscapes(scrubbed).replace(KEY_RUN, REDACTED);
   scrubbed = maskFields(scrubbed, isSecretName, false);
   return maskFields(scrubbed, isOAuthName, true);
+}
+
+/**
+ * Masks each key run that starts at a %-escape, except inside an encoded event or room ID:
+ * there only what runs on past the ID's end is masked, when it is a key run by itself.
+ */
+function maskRunsAfterEscapes(text: string): string {
+  const ids = Array.from(
+    text.matchAll(ENCODED_HASH_ID),
+    (match) => [match.index, match.index + match[0].length] as const,
+  );
+  let next = 0;
+  return text.replace(
+    KEY_AFTER_ESCAPE,
+    (run: string, escape: string, offset: number) => {
+      while (next < ids.length && ids[next][1] <= offset) {
+        next += 1;
+      }
+      const id = ids[next];
+      if (id === undefined || id[0] > offset) {
+        return `${escape}${REDACTED}`;
+      }
+      const inside = id[1] - offset;
+      return (
+        run.slice(0, inside) +
+        run.slice(inside).replace(WHOLE_KEY_RUN, `$1${REDACTED}`)
+      );
+    },
+  );
 }
 
 /**
