@@ -113,6 +113,86 @@ describe('firstUrl', () => {
   });
 });
 
+// A long run of trailing-set characters that is not at the end of the URL used to make
+// the anchored trim retry the run from every start position: quadratic in the run length.
+// The run stays inside the 64 KB event limit, and the bound is generous for a slow runner.
+const LONG_RUN = 60_000;
+const TRIM_BUDGET_MS = 50;
+
+describe('trailing URL punctuation', () => {
+  const cases: readonly {
+    name: string;
+    text: string;
+    url: string;
+    rest: string;
+  }[] = [
+    {
+      name: 'none',
+      text: 'https://example.com/a',
+      url: 'https://example.com/a',
+      rest: '',
+    },
+    {
+      name: 'one',
+      text: 'https://example.com/a,',
+      url: 'https://example.com/a',
+      rest: ',',
+    },
+    {
+      name: 'many',
+      text: 'https://example.com/a...',
+      url: 'https://example.com/a',
+      rest: '...',
+    },
+    {
+      name: 'a mix',
+      text: 'https://example.com/a.b?c=d!).;:,]}?',
+      url: 'https://example.com/a.b?c=d',
+      rest: '!).;:,]}?',
+    },
+    {
+      // Unchanged behaviour: the URL's own closing parenthesis goes with the outer one.
+      name: 'a URL ending in ) inside parentheses',
+      text: '(https://en.wikipedia.org/wiki/Foo_(bar))',
+      url: 'https://en.wikipedia.org/wiki/Foo_(bar',
+      rest: '))',
+    },
+  ];
+
+  for (const { name, text, url, rest } of cases) {
+    it(`firstUrl trims ${name}`, () => {
+      expect(firstUrl(text)).toBe(url);
+    });
+
+    it(`linkifyText leaves ${name} outside the link`, () => {
+      const lead = text.slice(0, text.indexOf('http'));
+      expect(linkifyText(text)).toBe(
+        `${lead}<a href="${url}">${url}</a>${rest}`,
+      );
+    });
+  }
+
+  it('trims in linear time when a long punctuation run is followed by more URL', () => {
+    const text = `https://example.com/${'.'.repeat(LONG_RUN)}x`;
+
+    const start = performance.now();
+    const first = firstUrl(text);
+    const html = linkifyText(text);
+    const elapsed = performance.now() - start;
+
+    expect(first).toBe(text);
+    expect(html).toBe(`<a href="${text}">${text}</a>`);
+    expect(elapsed).toBeLessThan(TRIM_BUDGET_MS);
+  });
+
+  it('still trims a long trailing punctuation run', () => {
+    const run = ')'.repeat(LONG_RUN);
+    expect(firstUrl(`https://example.com/a${run}`)).toBe(
+      'https://example.com/a',
+    );
+  });
+});
+
 /** Parse sanitized HTML back into a document fragment for attribute assertions. */
 function parse(html: string): HTMLElement {
   const el = document.createElement('div');

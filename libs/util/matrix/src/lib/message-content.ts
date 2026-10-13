@@ -13,6 +13,7 @@ import {
   stripReplyFallbackText,
   taskGlyph,
 } from './message-view';
+import { trimTrailing } from './trim-trailing';
 
 /**
  * Send-side content builders shared by the main timeline ({@link TimelineService})
@@ -672,9 +673,14 @@ function htmlToText(html: string): string {
  * the author's exact text, so nothing is lost by comparing loosely here.
  */
 function normaliseForCompare(value: string): string {
-  return value
-    .replace(/\r\n?/g, '\n')
-    .replace(/[ \t]+$/gm, '')
+  // Trailing blanks are trimmed per line by a linear walk, not `/[ \t]+$/gm`, which is
+  // quadratic on a long blank run that does not end its line. The capture group keeps
+  // the separators at odd indexes; they are the multiline `$` line terminators left
+  // once CR is folded into LF.
+  const lines = value.replace(/\r\n?/g, '\n').split(/([\n\u2028\u2029])/);
+  return lines
+    .map((part, index) => (index % 2 === 0 ? trimTrailing(part, ' \t') : part))
+    .join('')
     .replace(/\n{2,}/g, '\n')
     .trim();
 }

@@ -186,6 +186,21 @@ describe('renderMarkdown — plain vs formatted', () => {
     expect(renderMarkdown('x\n\n    code').formatted).toBe(true);
   });
 
+  it('levels trailing whitespace in linear time across a long blank run', () => {
+    // A long tab run that is not at the end of its line made the anchored trailing-blank
+    // trim retry the run from every start position. Tabs, because marked's own handling
+    // of a long space run is outside this comparison. The bound covers marked and the
+    // DOM parse too, so it is looser than the bare URL trim's; the quadratic trim took
+    // seconds here.
+    const text = `a${'\t'.repeat(60_000)}b`;
+
+    const start = performance.now();
+    renderMarkdown(text);
+    const elapsed = performance.now() - start;
+
+    expect(elapsed).toBeLessThan(250);
+  });
+
   it('treats input that sanitizes away to nothing as plain text', () => {
     // Sending an empty formatted_body is worse than sending the text.
     expect(renderMarkdown('<!-- just a comment -->')).toEqual({
