@@ -17,7 +17,12 @@ import {
   TrustVerificationService,
   type TrustStatus,
 } from '@trinity/data-access/trust';
-import { BUG_REPORT_LAUNCHER, BUILD_INFO } from '@trinity/platform-native';
+import {
+  BUG_REPORT_LAUNCHER,
+  BUILD_INFO,
+  SessionLockService,
+  type SessionLockState,
+} from '@trinity/platform-native';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, firstValueFrom, of, type Observable } from 'rxjs';
@@ -50,7 +55,11 @@ function settle(fixture: { detectChanges(): void }): void {
 describe('ApplicationRootComponent', () => {
   afterEach(() => vi.useRealTimers());
 
-  async function setup(initial: ApplicationRuntimeState, routes: Routes = []) {
+  async function setup(
+    initial: ApplicationRuntimeState,
+    routes: Routes = [],
+    lock: SessionLockState = 'held',
+  ) {
     const state = signal(initial);
     const trust = signal<TrustStatus>('ready');
     const recover = vi.fn<() => Observable<ApplicationRecoveryOutcome>>(() =>
@@ -60,6 +69,8 @@ describe('ApplicationRootComponent', () => {
     const confirm = vi.fn(() => of(true));
     const showToast = vi.fn();
     const openReport = vi.fn();
+    const lockState = signal<SessionLockState>(lock);
+    const requestHandover = vi.fn();
     const rendered = await render(ApplicationRootComponent, {
       providers: [
         provideRouter(routes),
@@ -95,6 +106,10 @@ describe('ApplicationRootComponent', () => {
         MockProvider(TrinityApplicationSessionAdapter, {
           runInteractions: () => NEVER,
         }),
+        MockProvider(SessionLockService, {
+          state: lockState.asReadonly(),
+          requestHandover,
+        }),
       ],
     });
     return {
@@ -106,6 +121,8 @@ describe('ApplicationRootComponent', () => {
       confirm,
       showToast,
       openReport,
+      lockState,
+      requestHandover,
       router: rendered.fixture.debugElement.injector.get(Router),
       health: rendered.fixture.debugElement.injector.get(
         CapabilityHealthService,
@@ -631,5 +648,93 @@ describe('ApplicationRootComponent', () => {
 
     expect(fixture.nativeElement.querySelector('router-outlet')).toBeNull();
     expect(queryByTestId('app-startup-blocked')).toBeNull();
+  });
+
+  it('keeps the startup spinner for 500 ms, then shows the waiting notice instead of the workspace', async () => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
+    const { fixture, requestHandover, queryByTestId } = await setup(
+      { phase: 'waiting-for-session', attempt: 1, settlements: [] },
+      [],
+      'waiting',
+    );
+
+    // A reloaded tab is usually granted its old page's lock by then: no false notice.
+    await vi.advanceTimersByTimeAsync(400);
+    fixture.detectChanges();
+    expect(queryByTestId('app-booting')).not.toBeNull();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(200);
+    fixture.detectChanges();
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: 'Trinity is open in another tab',
+      }),
+    ).toBeInTheDocument();
+    expect(queryByTestId('app-booting')).toBeNull();
+    expect(queryByTestId('app-startup-blocked')).toBeNull();
+
+    screen.getByRole('button', { name: 'Use here' }).click();
+
+    expect(requestHandover).toHaveBeenCalledOnce();
+  });
+
+  it('follows the lock from "Use here" to "Try again"', async () => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
+    const { fixture, lockState } = await setup(
+      { phase: 'waiting-for-session', attempt: 1, settlements: [] },
+      [],
+      'waiting',
+    );
+    await vi.advanceTimersByTimeAsync(600);
+
+    lockState.set('taking-over');
+    fixture.detectChanges();
+    expect(screen.getByTestId('session-lock-status')).toHaveTextContent(
+      'Moving Trinity to this tab…',
+    );
+
+    lockState.set('handover-timed-out');
+    fixture.detectChanges();
+    expect(screen.getByTestId('session-lock-status')).toHaveTextContent(
+      'The other tab didn’t respond. It may be asleep or busy.',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Try again' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the secure-connection notice, not the startup recovery page, when the lock is unavailable', async () => {
+    const { queryByTestId } = await setup(
+      {
+        phase: 'blocked',
+        attempt: 1,
+        settlements: [],
+        failure: {
+          stage: 'session-lock',
+          recovery: 'retry-startup',
+          diagnostic: { code: 'session-lock-unavailable' },
+        },
+      },
+      [],
+      'unavailable',
+    );
+
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: 'Trinity needs a secure connection',
+      }),
+    ).toBeInTheDocument();
+    expect(queryByTestId('app-startup-blocked')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry startup' })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'System status' }),
+    ).toBeInTheDocument();
   });
 });

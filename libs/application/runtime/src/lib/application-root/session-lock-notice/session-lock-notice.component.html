@@ -1,0 +1,55 @@
+<main
+  class="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center"
+  data-testid="session-lock-notice"
+  [attr.data-notice]="notice()"
+>
+  @if (notice() === 'unavailable') {
+    <h1 class="text-xl font-semibold" tabindex="-1" autofocus>
+      {{ secureConnection.heading }}
+    </h1>
+    <p class="max-w-md text-sm text-[var(--trinity-text-muted)]">
+      {{ secureConnection.body }}
+    </p>
+    <button
+      trnBtn
+      presentation="outline"
+      type="button"
+      (click)="showStatus.emit()"
+    >
+      System status
+    </button>
+  } @else {
+    <h1 class="text-xl font-semibold" tabindex="-1" autofocus>
+      Trinity is open in another tab
+    </h1>
+    <p class="max-w-md text-sm text-[var(--trinity-text-muted)]">
+      Trinity runs in one tab at a time so your encrypted messages stay
+      readable. You can move it to this tab.
+    </p>
+    <div
+      class="flex min-h-6 max-w-md items-center gap-2 text-sm"
+      role="status"
+      aria-live="polite"
+      data-testid="session-lock-status"
+    >
+      @if (movingHere()) {
+        <trn-spinner size="sm" aria-hidden="true" />
+        <span>Moving Trinity to this tab…</span>
+      } @else if (timedOut()) {
+        <span class="text-[var(--trinity-text-muted)]"
+          >The other tab didn’t respond. It may be asleep or busy.</span
+        >
+        <span class="sr-only">Choose Try again to ask again.</span>
+      }
+    </div>
+    <button
+      trnBtn
+      type="button"
+      data-testid="session-lock-use-here"
+      [trnActionAllowed]="!movingHere()"
+      (click)="useHere.emit()"
+    >
+      {{ actionLabel() }}
+    </button>
+  }
+</main>
