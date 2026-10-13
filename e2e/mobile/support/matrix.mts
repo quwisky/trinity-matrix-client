@@ -4,15 +4,19 @@ import {
   HOMESERVER_HTTP,
   SERVER_NAME,
 } from '../../support/homeserver/start.mjs';
+import {
+  describeFailure,
+  formatFailure,
+  urlPath,
+} from '../../support/http-failure.mts';
 
 export function uniqueId(prefix: string): string {
   return `${prefix}-${randomUUID().slice(0, 8)}`;
 }
 
 async function json(res: Response): Promise<Record<string, unknown>> {
-  const text = await res.text();
-  if (!res.ok) throw new Error(`${res.url} → ${res.status} ${text}`);
-  return JSON.parse(text) as Record<string, unknown>;
+  if (!res.ok) throw new Error(await describeFailure(urlPath(res.url), res));
+  return (await res.json()) as Record<string, unknown>;
 }
 
 export async function registerUser(
@@ -29,11 +33,10 @@ export async function registerUser(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ nonce, username, password, admin: false, mac }),
   });
-  if (
-    !res.ok &&
-    !/already.*exists|user.*taken|M_USER_IN_USE/i.test(await res.text())
-  ) {
-    throw new Error(`register ${username} → ${res.status}`);
+  if (res.ok) return;
+  const text = await res.text();
+  if (!/already.*exists|user.*taken|M_USER_IN_USE/i.test(text)) {
+    throw new Error(formatFailure(`register ${username}`, res.status, text));
   }
 }
 

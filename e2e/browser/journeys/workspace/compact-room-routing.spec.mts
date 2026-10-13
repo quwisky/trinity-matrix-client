@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { describeFailure } from '../../../support/http-failure.mts';
 
 // Node's fetch (the CS-API room seeding below) must accept the disposable
 // Synapse + Caddy harness's self-signed cert — same bypass the invocation applies
@@ -51,7 +52,7 @@ async function apiLogin(
     }),
   });
   if (!res.ok) {
-    throw new Error(`CS-API login failed: ${res.status} ${await res.text()}`);
+    throw new Error(await describeFailure('CS-API login failed', res));
   }
   const json = (await res.json()) as { access_token: string; user_id: string };
   return { token: json.access_token, userId: json.user_id };
@@ -89,9 +90,7 @@ async function seedRoom(
     body: JSON.stringify({ name }),
   });
   if (!res.ok) {
-    throw new Error(
-      `CS-API createRoom failed: ${res.status} ${await res.text()}`,
-    );
+    throw new Error(await describeFailure('CS-API createRoom failed', res));
   }
   const { room_id: roomId } = (await res.json()) as { room_id: string };
 
@@ -111,7 +110,7 @@ async function seedRoom(
   );
   if (!dmRes.ok) {
     throw new Error(
-      `CS-API m.direct account_data failed: ${dmRes.status} ${await dmRes.text()}`,
+      await describeFailure('CS-API m.direct account_data failed', dmRes),
     );
   }
 }

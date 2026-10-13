@@ -14,6 +14,7 @@ import {
 import { registerUser } from '../../../support/account.mts';
 import { nextTestResourceId } from '../../../support/namespace.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import { describeFailure } from '../../../support/http-failure.mts';
 
 // Covers issue #34: how rooms are ordered inside a space.
 //
@@ -129,7 +130,7 @@ async function seedOrderedSpace(
     );
     if (!link.ok()) {
       throw new Error(
-        `m.space.child ${spaceId}→${roomId} → ${link.status()} ${await link.text()}`,
+        await describeFailure(`m.space.child ${spaceId}→${roomId}`, link),
       );
     }
     return { name, roomId };
@@ -168,7 +169,7 @@ async function sendMessage(
     { headers: user.headers, data: { msgtype: 'm.text', body } },
   );
   if (!res.ok()) {
-    throw new Error(`send → ${res.status()} ${await res.text()}`);
+    throw new Error(await describeFailure('send', res));
   }
 }
 

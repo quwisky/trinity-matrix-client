@@ -14,6 +14,7 @@ import {
 import { registerUser } from '../../../support/account.mts';
 import { encryptAttachmentForTest } from '../../support/encrypted-attachment.mts';
 import { isBlobAlive } from '../../support/media-playback.mts';
+import { describeFailure } from '../../../support/http-failure.mts';
 
 const session = homeserverSession();
 const PNG_1X1 = Buffer.from(
@@ -32,9 +33,7 @@ async function requireOk(
   operation: string,
 ): Promise<void> {
   if (!response.ok()) {
-    throw new Error(
-      `${operation} returned ${response.status()}: ${await response.text()}`,
-    );
+    throw new Error(await describeFailure(operation, response));
   }
 }
 

@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { applicationOrigin } from '../../support/session.mts';
 import type { AccountSession } from '../../support/account.mts';
+import { describeFailure } from '../../support/http-failure.mts';
 import type { AuthPlatform } from '../../support/platform-contracts.mts';
 import {
   fillLabeledInput,
@@ -114,7 +115,7 @@ export async function redeemLoginToken(
     data: { type: 'm.login.token', token: loginToken },
   });
   if (!res.ok()) {
-    throw new Error(`sso token login → ${res.status()} ${await res.text()}`);
+    throw new Error(await describeFailure('sso token login', res));
   }
   const body = await res.json();
   return {
@@ -182,8 +183,6 @@ export async function ensureCrossSigning(
     },
   );
   if (!res.ok()) {
-    throw new Error(
-      `seeding cross-signing → ${res.status()} ${await res.text()}`,
-    );
+    throw new Error(await describeFailure('seeding cross-signing', res));
   }
 }

@@ -14,6 +14,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { AA_NORMAL_TEXT, measureContrast } from '../../support/contrast.mts';
+import { describeFailure } from '../../../support/http-failure.mts';
 
 // End-to-end for matrix.to link navigation: a message linking to another room routes
 // in-app (switches rooms) rather than leaving to matrix.to. Needs Synapse (Docker).
@@ -34,7 +35,7 @@ async function loginApi(
       password,
     },
   });
-  expect(response.ok(), await response.text()).toBe(true);
+  expect(response.ok(), await describeFailure('login', response)).toBe(true);
   const body = await response.json();
   return {
     accessToken: body.access_token as string,
@@ -55,7 +56,7 @@ async function registerRemote(
       password,
     },
   });
-  expect(response.ok(), await response.text()).toBe(true);
+  expect(response.ok(), await describeFailure('register', response)).toBe(true);
   const body = await response.json();
   return {
     accessToken: body.access_token as string,
@@ -73,7 +74,9 @@ async function createRoom(
     headers: { Authorization: `Bearer ${auth.accessToken}` },
     data,
   });
-  expect(response.ok(), await response.text()).toBe(true);
+  expect(response.ok(), await describeFailure('createRoom', response)).toBe(
+    true,
+  );
   return ((await response.json()) as { room_id: string }).room_id;
 }
 
@@ -97,7 +100,9 @@ async function sendRoomLink(
       },
     },
   );
-  expect(response.ok(), await response.text()).toBe(true);
+  expect(response.ok(), await describeFailure('send room link', response)).toBe(
+    true,
+  );
 }
 
 async function localScenario(
@@ -402,7 +407,10 @@ test.describe('Matrix room links', () => {
         data: { join_rule: 'invite' },
       },
     );
-    expect(response.ok(), await response.text()).toBe(true);
+    expect(
+      response.ok(),
+      await describeFailure('change join rule', response),
+    ).toBe(true);
 
     const primary = preview.getByTestId('room-link-primary');
     await primary.focus();

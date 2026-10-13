@@ -1,5 +1,6 @@
 import { setTimeout as wait } from 'node:timers/promises';
 import type { APIResponse } from '@playwright/test';
+import { describeFailure } from '../../support/http-failure.mts';
 
 /** Bounds for {@link sendWithRetry}; the defaults suit Synapse's join and room-creation limits. */
 export interface RetryOptions {
@@ -17,8 +18,9 @@ export interface RetryOptions {
  * Synapse limits joins and room creation per user (a burst of 10, then one every ten
  * seconds), so seeding more rooms than that meets a `429` carrying `retry_after_ms`. The
  * wait is capped per attempt and the attempts are bounded. Any other failure, or a `429`
- * that outlasts the attempts, throws with `label`, so a bad seed fails at the request that
- * caused it rather than as a later count mismatch.
+ * that outlasts the attempts, throws with `label` and the status, so a bad seed fails at
+ * the request that caused it rather than as a later count mismatch. The message leaves the
+ * response body out: it can echo request details into reports and CI logs.
  */
 export async function sendWithRetry(
   label: string,
@@ -34,9 +36,7 @@ export async function sendWithRetry(
     const response = await send();
     if (response.ok()) return response;
     if (response.status() !== 429) {
-      throw new Error(
-        `${label}: HTTP ${response.status()} ${await response.text()}`,
-      );
+      throw new Error(await describeFailure(label, response));
     }
     if (attempt === maxAttempts) break;
     const body = (await response.json().catch(() => ({}))) as {

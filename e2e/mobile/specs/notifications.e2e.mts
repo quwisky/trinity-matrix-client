@@ -19,6 +19,7 @@ import {
   webview,
 } from '../support/session.mts';
 import { onlyOn } from '../support/platform.mts';
+import { describeFailure } from '../../support/http-failure.mts';
 
 const POST_NOTIFICATIONS = 'android.permission.POST_NOTIFICATIONS';
 // Android's ActivityManager state for an app whose process is alive but not on screen.
@@ -44,7 +45,7 @@ async function matrixApi(
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${path} → ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(await describeFailure(path, res));
 }
 
 const roomButton = (name: string) =>

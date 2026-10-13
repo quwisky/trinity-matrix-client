@@ -10,6 +10,7 @@ import {
   ssoApiSession,
   ssoLogin,
 } from '../../support/sso.mts';
+import { describeFailure } from '../../../support/http-failure.mts';
 
 // End-to-end for the half of the recovery-key reset (issue #43) that Trinity CANNOT
 // perform: an account whose homeserver will not accept a password for the reset.
@@ -139,7 +140,7 @@ async function ensureKeyBackup(
     },
   });
   if (!res.ok()) {
-    throw new Error(`seeding key backup → ${res.status()} ${await res.text()}`);
+    throw new Error(await describeFailure('seeding key backup', res));
   }
   return (await res.json()).version as string;
 }

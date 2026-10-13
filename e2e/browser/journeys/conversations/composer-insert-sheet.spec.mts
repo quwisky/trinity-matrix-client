@@ -10,6 +10,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { describeFailure } from '../../../support/http-failure.mts';
 
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
@@ -34,7 +35,7 @@ async function seedRoom(request: APIRequestContext): Promise<void> {
   );
   if (!loginResponse.ok()) {
     throw new Error(
-      `Login failed while seeding: ${loginResponse.status()} ${await loginResponse.text()}`,
+      await describeFailure('Login failed while seeding', loginResponse),
     );
   }
   const { access_token: token } = (await loginResponse.json()) as {
@@ -48,9 +49,7 @@ async function seedRoom(request: APIRequestContext): Promise<void> {
     },
   );
   if (!roomResponse.ok()) {
-    throw new Error(
-      `Room seed failed: ${roomResponse.status()} ${await roomResponse.text()}`,
-    );
+    throw new Error(await describeFailure('Room seed failed', roomResponse));
   }
 }
 

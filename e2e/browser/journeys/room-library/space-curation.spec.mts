@@ -12,6 +12,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { describeFailure } from '../../../support/http-failure.mts';
 
 // Covers the space-curation half of #40: adding a room you are ALREADY in to a space
 // (until now a room could only join a space by being created in it), flagging a child as
@@ -51,7 +52,7 @@ async function createRoom(
     data,
   });
   if (!res.ok()) {
-    throw new Error(`createRoom → ${res.status()} ${await res.text()}`);
+    throw new Error(await describeFailure('createRoom', res));
   }
   return (await res.json()).room_id as string;
 }

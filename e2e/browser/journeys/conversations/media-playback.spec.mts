@@ -14,6 +14,7 @@ import {
 import { registerUser } from '../../../support/account.mts';
 import { encryptAttachmentForTest } from '../../support/encrypted-attachment.mts';
 import { isBlobAlive, playToEnd } from '../../support/media-playback.mts';
+import { describeFailure } from '../../../support/http-failure.mts';
 
 // Video and audio attachments load only when played: the timeline shows a poster (video) or a
 // player row (audio), fetches nothing for the clip itself, and fetches and plays it on the
@@ -118,9 +119,7 @@ async function requireOk(
   operation: string,
 ): Promise<void> {
   if (!response.ok()) {
-    throw new Error(
-      `${operation} returned ${response.status()}: ${await response.text()}`,
-    );
+    throw new Error(await describeFailure(operation, response));
   }
 }
 

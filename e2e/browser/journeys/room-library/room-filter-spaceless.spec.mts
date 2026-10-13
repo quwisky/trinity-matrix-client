@@ -10,6 +10,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { describeFailure } from '../../../support/http-failure.mts';
 
 // Covers the "Rooms view excludes space-owned rooms" behavior: the flat Rooms
 // view (revealed by the `rail-rooms` pill) lists only non-DM joined rooms that
@@ -129,7 +130,7 @@ async function seedSpaceAndRooms(
   );
   if (!linkRes.ok()) {
     throw new Error(
-      `m.space.child ${spaceId}→${childId} → ${linkRes.status()} ${await linkRes.text()}`,
+      await describeFailure(`m.space.child ${spaceId}→${childId}`, linkRes),
     );
   }
 

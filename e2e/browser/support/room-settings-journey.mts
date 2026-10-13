@@ -5,6 +5,7 @@ import {
   type Page,
 } from '../../fixtures.mts';
 import { homeserverSession } from '../../support/app.mts';
+import { describeFailure } from '../../support/http-failure.mts';
 
 // Covers editing a room's settings: the room header's ⚙ button
 // (data-testid="open-room-settings") opens a dialog (data-testid="room-settings")
@@ -76,7 +77,7 @@ export async function linkIntoSpace(
     },
   );
   if (!res.ok()) {
-    throw new Error(`m.space.child → ${res.status()} ${await res.text()}`);
+    throw new Error(await describeFailure('m.space.child', res));
   }
   return spaceId;
 }
