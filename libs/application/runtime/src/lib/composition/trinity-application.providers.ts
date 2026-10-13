@@ -28,6 +28,12 @@ import {
 } from '@trinity/data-access/matrix-client';
 import type { PushConfig } from '@trinity/data-access/notifications';
 import {
+  DEVICE_CONFIRMATION_POLICY,
+  type DeviceConfirmationPolicy,
+} from '@trinity/data-access/trust';
+import {
+  ACCOUNT_REMOVAL_LAUNCHER,
+  ACCOUNT_SWITCH_LAUNCHER,
   BUG_REPORT_LAUNCHER,
   TrinityErrorHandler,
   type BuildInfo,
@@ -44,6 +50,8 @@ import {
 } from '../application-dialog-loaders';
 import { applicationCapabilityProviders } from './application-capability.providers';
 import { trinityDiagnosticProviders } from './diagnostic-log.providers';
+import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
+import { AccountSwitchLauncherAdapter } from './account-switch-launcher.adapter';
 import { ReportBugLauncherAdapter } from './report-bug-launcher.adapter';
 import { TrinityApplicationRuntimeAdapter } from './trinity-application-runtime.adapter';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
@@ -70,6 +78,8 @@ export interface TrinityApplicationProviderOptions {
   readonly issueRepositoryUrl: string | null;
   readonly buildInfo: BuildInfo;
   readonly dialogLoaders: TrinityApplicationDialogLoaders;
+  /** The new-device check's build policy; left out, no build offers the debug skip. */
+  readonly deviceConfirmation?: DeviceConfirmationPolicy;
 }
 
 /**
@@ -138,5 +148,17 @@ export function provideTrinityApplication(
       useValue: options.dialogLoaders.reportBug,
     },
     { provide: BUG_REPORT_LAUNCHER, useExisting: ReportBugLauncherAdapter },
+    {
+      provide: ACCOUNT_REMOVAL_LAUNCHER,
+      useExisting: AccountRemovalLauncherAdapter,
+    },
+    {
+      provide: ACCOUNT_SWITCH_LAUNCHER,
+      useExisting: AccountSwitchLauncherAdapter,
+    },
+    {
+      provide: DEVICE_CONFIRMATION_POLICY,
+      useValue: options.deviceConfirmation ?? { allowSkip: false },
+    },
   ]);
 }

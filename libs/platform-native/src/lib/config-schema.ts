@@ -221,6 +221,7 @@ export type ConfigOwner =
   | 'data-access/notifications'
   | 'data-access/room-library'
   | 'data-access/diagnostic-log'
+  | 'data-access/trust'
   | 'runtime/projection'
   | 'feature/settings';
 
@@ -517,6 +518,17 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'A per-installation privacy choice about what this device records. A pasted or ' +
       'imported document must not switch logging on for another device, and an unreadable ' +
       'value already means off.',
+  },
+
+  // — data-access/trust —
+  {
+    disposition: 'excluded',
+    key: 'trinity.trust.device-confirmation',
+    owner: 'data-access/trust',
+    reason:
+      'Per-device record of a new sign-in that still has to be verified. Importing it ' +
+      'elsewhere would hold another device at the new-device check, and dropping it ' +
+      'would let this one skip the check.',
   },
 
   // — runtime/projection —

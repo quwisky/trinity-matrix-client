@@ -285,3 +285,9 @@ export type AccountRuntimeState =
       readonly phase: 'switch-cancelled' | 'switch-failed';
       readonly accountId: string;
     };
+
+/** A sign-in that created a device this installation had not used for the Account. */
+export interface NewDeviceEstablishment {
+  readonly accountId: string;
+  readonly deviceId: string;
+}

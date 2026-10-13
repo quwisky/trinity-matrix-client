@@ -47,6 +47,7 @@ import {
 } from '@trinity/application/workspace';
 
 import { MockProvider } from 'ng-mocks';
+import { ACCOUNT_REMOVAL_LAUNCHER } from '@trinity/platform-native';
 import { BehaviorSubject, Subject, of, switchMap } from 'rxjs';
 import { vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
@@ -157,6 +158,12 @@ export const SYSTEM_STATUS_PROVIDER: Provider = {
   }),
 };
 
+/** The account-removal flow lives in Application Runtime; pages only delegate to it. */
+export const ACCOUNT_REMOVAL_LAUNCHER_STUB: Provider = {
+  provide: ACCOUNT_REMOVAL_LAUNCHER,
+  useValue: { remove: () => of({ kind: 'kept' } as const) },
+};
+
 /**
  * Providers every TestBed block across the rooms.page specs supplies identically, with
  * no stub.
@@ -172,6 +179,7 @@ export const SYSTEM_STATUS_PROVIDER: Provider = {
  * one has to be supplied to the TestBed by hand, in every block.
  */
 export const SHARED_MOCKS: Provider[] = [
+  ACCOUNT_REMOVAL_LAUNCHER_STUB,
   SYSTEM_STATUS_PROVIDER,
   // Page-scoped in the component; TestBed.inject(RoomsPage) does not apply component
   // providers, so it is supplied here as the real class.

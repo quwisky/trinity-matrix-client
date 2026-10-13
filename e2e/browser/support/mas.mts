@@ -1,7 +1,7 @@
 import { expect, type APIRequestContext, type Page } from '../../fixtures.mts';
 import {
   fillLabeledInput,
-  waitForRooms,
+  settleSignIn,
   webNavigate,
 } from '../../support/app.mts';
 import type { AuthPlatform } from '../../support/platform-contracts.mts';
@@ -80,7 +80,7 @@ export async function signInWithMas(
   await provider.getByRole('button', { name: 'Continue' }).click();
   await provider.waitForURL(/\/consent\//, { timeout: 30_000 });
   await provider.getByRole('button', { name: 'Continue' }).click();
-  await waitForRooms(page, 90_000);
+  await settleSignIn(page, 'skip-if-shown', 90_000);
 }
 
 export interface MasTraffic {

@@ -9,6 +9,7 @@ import {
 import { RouterTestingHarness } from '@angular/router/testing';
 import {
   authGuard,
+  deviceConfirmationGuard,
   workspaceBrowserBackGuard,
 } from '@trinity/application/runtime';
 import { describe, expect, it } from 'vitest';
@@ -152,6 +153,37 @@ describe('app route guards', () => {
         `${path} needs a leave guard`,
       ).toHaveLength(1);
     }
+  });
+
+  // A device the new-device check holds must not reach Rooms or Settings, and Back must
+  // never wait on that check: it runs after sign-in and after the Back guard.
+  it('runs the new-device check after sign-in and Back on Rooms and Settings', () => {
+    const rooms = routes.find((route) => route.matcher);
+    const settings = routes.find((route) => route.path === 'settings');
+
+    expect(rooms?.canActivate).toEqual([
+      authGuard,
+      workspaceBrowserBackGuard,
+      deviceConfirmationGuard,
+    ]);
+    expect(settings?.canActivate).toEqual([authGuard]);
+    expect(settings?.canActivateChild).toEqual([
+      workspaceBrowserBackGuard,
+      deviceConfirmationGuard,
+    ]);
+  });
+
+  it('never holds sign-in or the encryption pages on the new-device check', () => {
+    const held = routes
+      .filter((route) =>
+        [
+          ...(route.canActivate ?? []),
+          ...(route.canActivateChild ?? []),
+        ].includes(deviceConfirmationGuard),
+      )
+      .map((route) => route.path ?? 'rooms');
+
+    expect(held).toEqual(['rooms', 'settings']);
   });
 
   /**

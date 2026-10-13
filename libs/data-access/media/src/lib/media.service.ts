@@ -30,6 +30,11 @@ import {
   withoutImageMetadata,
   withoutMediaMetadata,
 } from './image-metadata/strip-file-metadata';
+import {
+  DEVICE_PIXEL_RATIO,
+  displayThumbnailEdge,
+  UPLOAD_THUMBNAIL_PX,
+} from './thumbnail-size';
 
 /** Which rendition of an attachment to resolve. */
 export type MediaVariant = 'thumbnail' | 'full';
@@ -88,23 +93,11 @@ interface MediaAnalysis {
   thumbnail: GeneratedThumbnail | null;
 }
 
-/**
- * Max edge (px) for both a server-generated thumbnail (when the event ships none)
- * and a client-rendered thumbnail produced at upload time.
- */
-const THUMBNAIL_PX = 480;
-
 /** Encoding for client-rendered thumbnails. */
 const THUMBNAIL_MIME = 'image/jpeg';
 const THUMBNAIL_QUALITY = 0.8;
 /** PNG sources re-encode as WebP instead, which keeps their transparency. */
 const THUMBNAIL_ALPHA_MIME = 'image/webp';
-
-/**
- * Long edge (px) of the thumbnail rendered from a decrypted original that arrived
- * without one: 2x the 320 px the timeline displays, for HiDPI screens.
- */
-const DECRYPTED_THUMBNAIL_PX = 640;
 
 /**
  * The only types a thumbnail is rendered from. Anything else (GIF, WebP, AVIF, HEIF,
@@ -179,6 +172,7 @@ interface MediaSource {
 @Injectable({ providedIn: 'root' })
 export class MediaService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly devicePixelRatio = inject(DEVICE_PIXEL_RATIO);
 
   /** Insertion-ordered cache of resolved object URLs (oldest first for LRU). */
   private readonly cache = new Map<string, CacheEntry>();
@@ -574,14 +568,17 @@ export class MediaService {
       }
       // No bundled thumbnail: ask the server to scale the original (plaintext
       // only — encrypted originals have no server-side thumbnail, so those images
-      // are shrunk client-side after decryption instead).
+      // are shrunk client-side after decryption instead). Both are sized to the
+      // screen as it is now; thumbnails already resolved are not refetched when it
+      // changes, and the edge is part of the cache key so buckets never mix.
+      const edge = displayThumbnailEdge(this.devicePixelRatio());
       return {
         mxc: media.mxc,
         file: media.file,
         mimeType: media.mimeType,
-        resize: media.file ? null : { w: THUMBNAIL_PX, h: THUMBNAIL_PX },
-        ...(media.file && needsDownscale(media)
-          ? { downscaleTo: DECRYPTED_THUMBNAIL_PX }
+        resize: media.file ? null : { w: edge, h: edge },
+        ...(media.file && needsDownscale(media, edge)
+          ? { downscaleTo: edge }
           : {}),
       };
     }
@@ -599,6 +596,8 @@ export class MediaService {
    * no bundled thumbnail resolves the *same* ciphertext for both `thumbnail` and
    * `full` — so they must share one cache entry (and one decrypt), not two. The
    * exception is a downscaled thumbnail, which is a different blob from the original.
+   * Server-scaled and downscaled thumbnails carry their size bucket, so a 1x and a 2x
+   * thumbnail of the same media are separate entries.
    */
   private cacheKey(client: MatrixClient, source: MediaSource): string {
     const id = source.mxc ?? source.file?.url ?? '';
@@ -800,7 +799,7 @@ function analysisFromHints(hints: MediaHints | undefined): MediaAnalysis {
     hinted.blob.size > 0 &&
     thumbW !== undefined &&
     thumbH !== undefined &&
-    Math.max(thumbW, thumbH) <= THUMBNAIL_PX
+    Math.max(thumbW, thumbH) <= UPLOAD_THUMBNAIL_PX
       ? { blob: hinted.blob, w: thumbW, h: thumbH }
       : null;
   return {
@@ -895,7 +894,7 @@ async function renderThumbnail(
   if (typeof document === 'undefined') {
     return null;
   }
-  const { w, h } = fitWithin(bitmap.width, bitmap.height, THUMBNAIL_PX);
+  const { w, h } = fitWithin(bitmap.width, bitmap.height, UPLOAD_THUMBNAIL_PX);
   if (w >= bitmap.width && h >= bitmap.height) {
     return null; // already small — the original doubles as its own thumbnail
   }
@@ -911,13 +910,13 @@ async function renderThumbnail(
   return blob ? { blob, w, h } : null;
 }
 
-/** Whether an attachment is a JPEG/PNG the event does not already say fits the thumbnail. */
-function needsDownscale({ mimeType, width, height }: MediaPayload): boolean {
+/** Whether an attachment is a JPEG/PNG the event does not already say fits within `edge` px. */
+function needsDownscale(
+  { mimeType, width, height }: MediaPayload,
+  edge: number,
+): boolean {
   const known = width && height ? Math.max(width, height) : Infinity;
-  return (
-    DOWNSCALED_MIMES.has(mimeEssence(mimeType)) &&
-    known > DECRYPTED_THUMBNAIL_PX
-  );
+  return DOWNSCALED_MIMES.has(mimeEssence(mimeType)) && known > edge;
 }
 
 /** Whether PNG bytes carry an `acTL` (animation control) chunk before the first `IDAT`. */
@@ -1203,7 +1202,11 @@ function drawPoster(
   ) {
     return Promise.resolve(null);
   }
-  const { w, h } = fitWithin(video.videoWidth, video.videoHeight, THUMBNAIL_PX);
+  const { w, h } = fitWithin(
+    video.videoWidth,
+    video.videoHeight,
+    UPLOAD_THUMBNAIL_PX,
+  );
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;

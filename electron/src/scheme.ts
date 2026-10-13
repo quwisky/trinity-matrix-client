@@ -1,6 +1,7 @@
 import { protocol } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { Readable } from 'node:stream';
 
 /**
  * The custom *privileged* app scheme + file server for the Angular `www/` build.
@@ -56,10 +57,45 @@ export function contentTypeFor(filePath: string): string {
   );
 }
 
-async function fileResponse(filePath: string, status = 200): Promise<Response> {
-  const data = await fs.promises.readFile(filePath);
+/** Resolves once the stream has the file open, or rejects if opening fails. */
+function opened(stream: fs.ReadStream): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onOpen = (): void => {
+      stream.off('error', onError);
+      resolve();
+    };
+    const onError = (error: Error): void => {
+      stream.off('open', onOpen);
+      reject(error);
+    };
+    stream.once('open', onOpen);
+    stream.once('error', onError);
+  });
+}
+
+/**
+ * Stream a file to the renderer instead of buffering it: the bytes flow from
+ * disk to the response without being held whole (or copied) in the main
+ * process. A file that cannot be opened (removed after the caller's `stat`,
+ * unreadable) is a 404; a failure once streaming has begun errors the web
+ * stream, which the renderer sees as a network error.
+ */
+async function fileResponse(
+  filePath: string,
+  size: number,
+  status = 200,
+): Promise<Response> {
+  const stream = fs.createReadStream(filePath);
+  try {
+    await opened(stream);
+  } catch {
+    stream.destroy();
+    return new Response('Not Found', { status: 404 });
+  }
   const headers: Record<string, string> = {
     'content-type': contentTypeFor(filePath),
+    // Length comes from `stat`; safe because the packaged files are read-only.
+    'content-length': String(size),
   };
   if (path.extname(filePath).toLowerCase() === '.html') {
     // The app permits remote HTTPS widget frames. Prevent one from navigating its
@@ -67,7 +103,7 @@ async function fileResponse(filePath: string, status = 200): Promise<Response> {
     headers['content-security-policy'] = "frame-ancestors 'none'";
     headers['x-frame-options'] = 'DENY';
   }
-  return new Response(new Uint8Array(data), {
+  return new Response(Readable.toWeb(stream) as ReadableStream, {
     status,
     headers,
   });
@@ -121,7 +157,7 @@ export function registerAppProtocol(): void {
     try {
       const stat = await fs.promises.stat(resolved);
       if (stat.isFile()) {
-        return await fileResponse(resolved);
+        return await fileResponse(resolved, stat.size);
       }
     } catch {
       // fall through to SPA fallback / 404
@@ -130,7 +166,12 @@ export function registerAppProtocol(): void {
     // No file on disk: serve index.html for client routes (no extension),
     // otherwise it's a genuinely missing asset.
     if (path.extname(rel) === '') {
-      return await fileResponse(INDEX_HTML);
+      try {
+        const { size } = await fs.promises.stat(INDEX_HTML);
+        return await fileResponse(INDEX_HTML, size);
+      } catch {
+        return new Response('Not Found', { status: 404 });
+      }
     }
     return new Response('Not Found', { status: 404 });
   });

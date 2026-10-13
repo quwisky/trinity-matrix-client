@@ -71,6 +71,7 @@ import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-applica
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
 import { BackgroundMemoryRelease } from './background-memory-release.service';
+import { DeviceConfirmationCoordinator } from './device-confirmation.coordinator';
 import { CapabilityHealthService } from '../capability-health.service';
 
 interface SessionHarness {
@@ -204,6 +205,7 @@ function setup(
         recover: recoverTrust,
       }),
       MockProvider(TrustAccountStatusService, { run: () => EMPTY }),
+      MockProvider(DeviceConfirmationCoordinator, { run: () => EMPTY }),
       MockProvider(IdentityLifetime, { run: () => identitySession }),
       MockProvider(NotificationLifetime, {
         run: () => notificationSession,
@@ -564,6 +566,26 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     lifetime.unsubscribe();
     expect(accountTrust.observed).toBe(false);
+  });
+
+  it('runs the new-device check from before any sign-in until the session ends', () => {
+    const test = setup();
+    const check = new Subject<never>();
+    vi.spyOn(
+      TestBed.inject(DeviceConfirmationCoordinator),
+      'run',
+    ).mockReturnValue(check);
+    const readiness = new Subject<void>();
+
+    const lifetime = test.adapter.run(readiness).subscribe();
+    // Before readiness: the sign-in page is shown before the session is live.
+    expect(check.observed).toBe(true);
+
+    readiness.next();
+    expect(check.observed).toBe(true);
+
+    lifetime.unsubscribe();
+    expect(check.observed).toBe(false);
   });
 
   it('does not let an unsettled optional lifetime hold required preparation open', () => {

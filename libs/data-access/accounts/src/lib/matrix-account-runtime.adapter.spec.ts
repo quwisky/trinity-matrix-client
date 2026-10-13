@@ -1579,6 +1579,227 @@ describe('MatrixAccountRuntimeAdapter', () => {
       );
     }
 
+    /** The saved state: its token-free record, and the session when it has a token. */
+    function saved(test: AdapterTest, stored: MatrixSession | null) {
+      const record = stored && withoutTokens(stored);
+      vi.mocked(test.storage.record).mockReturnValue(of(record));
+      vi.mocked(test.storage.load).mockReturnValue(of(stored));
+    }
+
+    function withoutTokens(stored: MatrixSession): AccountRecord {
+      const {
+        accessToken: _access,
+        refreshToken: _refresh,
+        ...record
+      } = stored;
+      return record;
+    }
+
+    function unreadable(test: AdapterTest) {
+      vi.mocked(test.storage.record).mockReturnValue(
+        throwError(() => new Error('storage locked')),
+      );
+      vi.mocked(test.storage.load).mockReturnValue(
+        throwError(() => new Error('storage locked')),
+      );
+    }
+
+    const NEW_DEVICE = { accountId: '@new:hs', deviceId: 'DEVICE' };
+
+    /** Every new-device fact the adapter publishes from now on. */
+    function published(test: AdapterTest, order?: string[]) {
+      const facts: unknown[] = [];
+      test.adapter.newDevices.subscribe((fact) => {
+        order?.push('new-device');
+        facts.push(fact);
+      });
+      return facts;
+    }
+
+    it('marks a first sign-in on this installation as a new device', async () => {
+      const test = setup();
+      saved(test, null);
+      const facts = published(test);
+
+      await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([NEW_DEVICE]);
+    });
+
+    it('publishes the new device as soon as its record is saved, before its session starts', async () => {
+      const test = setup();
+      saved(test, null);
+      const order: string[] = [];
+      published(test, order);
+
+      await establish(test, order);
+
+      expect(order).toEqual(['persist', 'new-device', 'start']);
+    });
+
+    it('marks an OIDC sign-in that created a new device id as a new device', async () => {
+      const test = setup();
+      const oidc: MatrixSession = {
+        ...session,
+        refreshToken: 'refresh',
+        oidc: {
+          issuer: 'https://issuer',
+          clientId: 'client',
+          redirectUri: 'https://app/sso-callback',
+        },
+      };
+      saved(test, { ...oidc, deviceId: 'OLDDEVICE' });
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(of(oidc));
+      vi.mocked(test.matrix.restorePersisted).mockReturnValue(
+        of({ kind: 'ready' as const }),
+      );
+      vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
+        of(void 0),
+      );
+      vi.mocked(test.matrix.detachedClient).mockReturnValue({
+        logout: vi.fn(() => Promise.resolve()),
+      } as never);
+      const facts = published(test);
+
+      await expect(
+        firstValueFrom(
+          test.adapter.establishAccount(
+            AuthenticatedAccountGrant.issue(oidc),
+            activeIntent,
+          ),
+        ),
+      ).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([NEW_DEVICE]);
+    });
+
+    it('does not guess when the saved record cannot be read', async () => {
+      const test = setup();
+      unreadable(test);
+      const facts = published(test);
+
+      await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([]);
+    });
+
+    it('publishes a new account’s device once, from the attempt that saved it, when its establishment is retried', async () => {
+      const test = setup();
+      const newRecord = {
+        ...activeIntent,
+        accountRecord: 'new',
+      } satisfies AccountEstablishmentIntent;
+      const grant = AuthenticatedAccountGrant.issue(session);
+      unreadable(test);
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+        of(session),
+      );
+      vi.mocked(test.matrix.restorePersisted)
+        .mockReturnValueOnce(
+          of({
+            kind: 'failed' as const,
+            failure: 'transient-network' as const,
+          }),
+        )
+        .mockReturnValueOnce(of({ kind: 'ready' as const }));
+      vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
+        of(void 0),
+      );
+      const facts = published(test);
+
+      await expect(
+        firstValueFrom(test.adapter.establishAccount(grant, newRecord)),
+      ).resolves.toEqual({ kind: 'failed', failure: 'transient-network' });
+      expect(facts).toEqual([NEW_DEVICE]);
+      await expect(
+        firstValueFrom(test.adapter.establishAccount(grant, newRecord)),
+      ).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([NEW_DEVICE]);
+      expect(test.storage.persistForEstablishment).toHaveBeenCalledOnce();
+    });
+
+    it('publishes a new device whose establishment is cancelled right after the save, and not again on retry', async () => {
+      // Closing the app between the save and the outcome must not skip the check: the
+      // next launch restores the saved record as an existing device.
+      const test = setup();
+      const newRecord = {
+        ...activeIntent,
+        accountRecord: 'new',
+      } satisfies AccountEstablishmentIntent;
+      const grant = AuthenticatedAccountGrant.issue(session);
+      unreadable(test);
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+        of(session),
+      );
+      vi.mocked(test.matrix.restorePersisted)
+        .mockReturnValueOnce(NEVER)
+        .mockReturnValueOnce(of({ kind: 'ready' as const }));
+      vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
+        of(void 0),
+      );
+      const facts = published(test);
+
+      test.adapter.establishAccount(grant, newRecord).subscribe().unsubscribe();
+      expect(facts).toEqual([NEW_DEVICE]);
+
+      await expect(
+        firstValueFrom(test.adapter.establishAccount(grant, newRecord)),
+      ).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([NEW_DEVICE]);
+      expect(test.storage.persistForEstablishment).toHaveBeenCalledOnce();
+    });
+
+    it('publishes a re-login’s new device when the establishment is cancelled right after the save', async () => {
+      const test = setup();
+      saved(test, { ...OLD_SESSION });
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+        of(session),
+      );
+      vi.mocked(test.matrix.restorePersisted).mockReturnValue(NEVER);
+      const facts = published(test);
+
+      test.adapter
+        .establishAccount(
+          AuthenticatedAccountGrant.issue(session),
+          activeIntent,
+        )
+        .subscribe()
+        .unsubscribe();
+
+      expect(facts).toEqual([NEW_DEVICE]);
+    });
+
+    it('publishes a saved new device even when its session does not start, and not again on retry', async () => {
+      const test = setup();
+      const grant = AuthenticatedAccountGrant.issue(session);
+      // The failed attempt saved the new device's record; the retry reads it back.
+      vi.mocked(test.storage.record)
+        .mockReturnValueOnce(of(null))
+        .mockReturnValueOnce(of(withoutTokens(session)));
+      vi.mocked(test.storage.load).mockReturnValue(of(session));
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+        of(session),
+      );
+      vi.mocked(test.matrix.restorePersisted)
+        .mockReturnValueOnce(
+          of({
+            kind: 'failed' as const,
+            failure: 'transient-network' as const,
+          }),
+        )
+        .mockReturnValueOnce(of({ kind: 'ready' as const }));
+      vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
+        of(void 0),
+      );
+      const facts = published(test);
+
+      await expect(
+        firstValueFrom(test.adapter.establishAccount(grant, activeIntent)),
+      ).resolves.toEqual({ kind: 'failed', failure: 'transient-network' });
+      expect(facts).toEqual([NEW_DEVICE]);
+      await expect(
+        firstValueFrom(test.adapter.establishAccount(grant, activeIntent)),
+      ).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([NEW_DEVICE]);
+    });
+
     it('signs the replaced device out with its old token once the new session has started', async () => {
       const test = setup();
       const order: string[] = [];
@@ -1586,7 +1807,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
         order.push('logout');
         return Promise.resolve();
       });
-      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      saved(test, OLD_SESSION);
       vi.mocked(test.matrix.detachedClient).mockReturnValue({
         logout,
       } as never);
@@ -1606,7 +1827,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
 
     it('keeps the replaced device signed in when saving the new session fails', async () => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      saved(test, OLD_SESSION);
       vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
         throwError(() => new DOMException('quota', 'QuotaExceededError')),
       );
@@ -1627,7 +1848,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
 
     it('keeps the replaced device signed in when the new session does not start', async () => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      saved(test, OLD_SESSION);
       vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
         of(session),
       );
@@ -1651,7 +1872,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
       ['never answers', () => new Promise<never>(() => undefined)],
     ])('still signs in when that logout %s', async (_case, logout) => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      saved(test, OLD_SESSION);
       vi.mocked(test.matrix.detachedClient).mockReturnValue({
         logout: vi.fn(logout),
       } as never);
@@ -1661,9 +1882,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
 
     it('leaves a device saved through another server signed in when the sign-in is refused', async () => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(
-        of({ ...OLD_SESSION, baseUrl: 'https://stored.example' }),
-      );
+      saved(test, { ...OLD_SESSION, baseUrl: 'https://stored.example' });
       vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
         throwError(
           () =>
@@ -1691,7 +1910,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
 
     it('still signs in when the detached client cannot be built', async () => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      saved(test, OLD_SESSION);
       vi.mocked(test.matrix.detachedClient).mockImplementation(() => {
         throw new Error('bad base URL');
       });
@@ -1699,11 +1918,29 @@ describe('MatrixAccountRuntimeAdapter', () => {
       await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
     });
 
-    it('leaves the device alone on a same-device re-login', async () => {
+    it('does not mark a re-login on the device of a signed-out account as new', async () => {
       const test = setup();
-      vi.mocked(test.storage.load).mockReturnValue(of(session));
+      // Signing out keeps the record and its device id but drops the token, so the
+      // session cannot be loaded.
+      vi.mocked(test.storage.load).mockReturnValue(of(null));
+      vi.mocked(test.storage.record).mockReturnValue(
+        of({ baseUrl: 'https://hs', userId: '@new:hs', deviceId: 'DEVICE' }),
+      );
+      const facts = published(test);
 
       await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([]);
+
+      expect(test.matrix.detachedClient).not.toHaveBeenCalled();
+    });
+
+    it('leaves the device alone on a same-device re-login', async () => {
+      const test = setup();
+      saved(test, session);
+      const facts = published(test);
+
+      await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([]);
 
       expect(test.matrix.detachedClient).not.toHaveBeenCalled();
     });

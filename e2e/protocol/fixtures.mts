@@ -12,7 +12,7 @@ import type {
   E2EWorkerFixtures,
 } from '../support/composition-fixture.types.mts';
 import { registerUser } from '../support/account.mts';
-import { waitForRooms } from '../support/app.mts';
+import { settleSignIn } from '../support/app.mts';
 import { resourceFixtureDefinitions } from '../support/resource-fixtures.mts';
 import { applicationOrigin, readSession } from '../support/session.mts';
 import {
@@ -78,7 +78,9 @@ async function login(
   await fillLabeledInput(page, 'Username', credentials.user);
   await fillLabeledInput(page, 'Password', credentials.pass);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await waitForRooms(page);
+  // Device B of an account with recovery (verify-sas, verify-qr) meets the new-device
+  // check on the development build; its skip leaves it unverified, as these suites expect.
+  await settleSignIn(page);
 }
 
 const resourceTest = baseTest.extend<E2EResourceFixtures, E2EWorkerFixtures>(

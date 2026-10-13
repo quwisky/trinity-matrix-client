@@ -455,6 +455,34 @@ describe('Workspace application-surface composition adapter', () => {
     expect(close).not.toHaveBeenCalled();
   });
 
+  it('says while a trust dialog is open, so a late redirect can wait for it', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true })),
+    );
+    const closed = new Subject<unknown>();
+    dialogOpen.mockReturnValue(new TrnDialogRef({ closed, close }));
+    expect(presenter().trustDialogOpen()).toBe(false);
+
+    await firstValueFrom(
+      presenter().present({ surface: { kind: 'trust', flow: 'unlock' } }),
+    );
+    expect(presenter().trustDialogOpen()).toBe(true);
+
+    closed.next(undefined);
+    closed.complete();
+    expect(presenter().trustDialogOpen()).toBe(false);
+  });
+
+  it('does not count Settings as a trust dialog', async () => {
+    await firstValueFrom(
+      presenter().present({ surface: { kind: 'settings', section: null } }),
+    );
+
+    expect(dialogOpen).toHaveBeenCalled();
+    expect(presenter().trustDialogOpen()).toBe(false);
+  });
+
   it('drops a dialog whose lazy load finishes after a navigation started', async () => {
     const load = new Subject<Type<unknown>>();
     settingsLoad = () => load;

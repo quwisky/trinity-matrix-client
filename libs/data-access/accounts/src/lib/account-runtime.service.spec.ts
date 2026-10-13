@@ -5,6 +5,7 @@ import {
   NEVER,
   Observable,
   Subject,
+  defer,
   firstValueFrom,
   of,
   tap,
@@ -26,6 +27,7 @@ import type {
   AccountRestoreRole,
   AccountSignOutOutcome,
   InstallationResetOutcome,
+  NewDeviceEstablishment,
 } from './account-runtime.models';
 import { AccountRuntimeService } from './account-runtime.service';
 
@@ -37,6 +39,7 @@ interface TestAdapter {
   readonly establishAccount: ReturnType<typeof vi.fn>;
   readonly prepareActiveAccount: ReturnType<typeof vi.fn>;
   readonly commitActiveAccount: ReturnType<typeof vi.fn>;
+  readonly newDevices: Subject<NewDeviceEstablishment>;
 }
 
 function testAdapter(
@@ -87,8 +90,10 @@ function testAdapter(
   );
   const resetInstallation = vi.fn(() => of({ kind: 'ready' as const }));
   const retryInstallationCleanup = vi.fn(() => of({ kind: 'ready' as const }));
+  const newDevices = new Subject<NewDeviceEstablishment>();
   return {
     activeAccountId,
+    newDevices,
     readSavedAccounts,
     restoreAccount,
     establishAccount,
@@ -106,6 +111,7 @@ function testAdapter(
       retrySignOutCleanup,
       resetInstallation,
       retryInstallationCleanup,
+      newDevices: newDevices.asObservable(),
     },
   };
 }
@@ -758,6 +764,95 @@ describe('AccountRuntimeService', () => {
       failure: 'homeserver-mismatch',
       storedBaseUrl: 'https://stored.example',
     });
+  });
+
+  it('publishes a new-device sign-in from the save, before its outcome reaches the caller', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: null,
+      accountIds: [],
+    });
+    test.establishAccount.mockReturnValue(
+      defer(() => {
+        test.newDevices.next({ accountId: '@new:hs', deviceId: 'DEVICE' });
+        return of({ kind: 'ready' });
+      }),
+    );
+    const runtime = setup(test);
+    const order: string[] = [];
+    const published: NewDeviceEstablishment[] = [];
+    const subscription = runtime.newDevices.subscribe((fact) => {
+      order.push('new-device');
+      published.push(fact);
+    });
+
+    const outcome = await firstValueFrom(
+      runtime
+        .establishAuthenticatedAccount(grant(), activeIntent)
+        .pipe(tap(() => order.push('outcome'))),
+    );
+    subscription.unsubscribe();
+
+    expect(published).toEqual([{ accountId: '@new:hs', deviceId: 'DEVICE' }]);
+    expect(order).toEqual(['new-device', 'outcome']);
+    expect(outcome).toEqual({
+      kind: 'ready',
+      accountId: '@new:hs',
+      placement: 'active',
+    });
+  });
+
+  it('publishes a saved new device whose establishment is cancelled before its outcome', () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: null,
+      accountIds: [],
+    });
+    test.establishAccount.mockReturnValue(
+      defer(() => {
+        test.newDevices.next({ accountId: '@new:hs', deviceId: 'DEVICE' });
+        return NEVER;
+      }),
+    );
+    const runtime = setup(test);
+    const published: NewDeviceEstablishment[] = [];
+    const subscription = runtime.newDevices.subscribe((fact) =>
+      published.push(fact),
+    );
+
+    runtime
+      .establishAuthenticatedAccount(grant(), activeIntent)
+      .subscribe()
+      .unsubscribe();
+    subscription.unsubscribe();
+
+    expect(published).toEqual([{ accountId: '@new:hs', deviceId: 'DEVICE' }]);
+  });
+
+  it('publishes nothing for a device the account already used, or a failed sign-in', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: null,
+      accountIds: [],
+    });
+    const runtime = setup(test);
+    const published: NewDeviceEstablishment[] = [];
+    const subscription = runtime.newDevices.subscribe((fact) =>
+      published.push(fact),
+    );
+
+    await firstValueFrom(
+      runtime.establishAuthenticatedAccount(grant(), activeIntent),
+    );
+    test.establishAccount.mockReturnValue(
+      of({ kind: 'failed', failure: 'local-state-unavailable' }),
+    );
+    await firstValueFrom(
+      runtime.establishAuthenticatedAccount(grant('other'), activeIntent),
+    );
+    subscription.unsubscribe();
+
+    expect(published).toEqual([]);
   });
 
   it('joins repeated identical Account establishment while it is in flight', async () => {
