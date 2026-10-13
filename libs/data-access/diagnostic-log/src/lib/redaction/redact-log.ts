@@ -87,10 +87,13 @@ const ENCODED_ID = new RegExp(
   ].join('|'),
   'gi',
 );
+// The device-ID characters after a user ID, read without taking them: when digits read as a
+// port start a known device ID, they are the device's.
 const USER = new RegExp(
-  String.raw`(?<![A-Za-z0-9._%+-])@(${USER_LOCALPART}):(${serverName(USER_PORT)})`,
+  String.raw`(?<![A-Za-z0-9._%+-])@(${USER_LOCALPART}):(${serverName(USER_PORT)})(?=([A-Za-z0-9._~+/=-]*))`,
   'gu',
 );
+const TRAILING_PORT = /:(\d+)$/;
 const ROOM = new RegExp(String.raw`!${OPAQUE}:(${SERVER})`, 'gu');
 // Room version 12 room IDs carry no server name: "!" and 43 unpadded base64url characters.
 const ROOM_V12 = /![A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g;
@@ -99,8 +102,11 @@ const ALIAS = new RegExp(
   'gu',
 );
 const EVENT_V1 = new RegExp(String.raw`\$${OPAQUE}:${SERVER}`, 'gu');
-// A "/" right after the ID starts a request path; any other ID character makes a longer run.
-const EVENT = /\$[A-Za-z0-9+/_-]{43,44}(?=\/|(?![A-Za-z0-9+/_=-]))/g;
+// Room version 4 and later write the hash as 43 URL-safe characters, so a "+" or "=" after
+// those ends the ID: a form-encoded space or a query separator. Otherwise a "/" right after
+// the ID starts a request path, and any other ID character makes a longer run.
+const EVENT =
+  /\$(?:[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])|[A-Za-z0-9+/_-]{43,44}(?=\/|(?![A-Za-z0-9+/_=-])))/g;
 // "device", "devices", "deviceId", "device_id", "device id": the words that introduce an ID.
 const DEVICE_KEYWORD = /device(?:s|[_ -]?ids?)?(?![A-Za-z0-9_])/gi;
 // "device:", "device=", optionally closed and opened by quotes.
@@ -355,9 +361,13 @@ class IdentifierRedactor implements LogRedactor {
 
   private redactIdentifiers<T extends Rewritable<T>>(text: T): T {
     return text
-      .replace(USER, (match, _localpart, server = '') =>
-        this.user(match, server),
-      )
+      .replace(USER, (match, _localpart, server = '', after = '') => {
+        const port = TRAILING_PORT.exec(server)?.[1];
+        return port !== undefined &&
+          this.devices.has(withoutFullStops(port + after))
+          ? `${this.user(match, server)}:${port}`
+          : this.user(match, server);
+      })
       .replace(ROOM, (match, server = '') =>
         this.placeholder(
           this.rooms,

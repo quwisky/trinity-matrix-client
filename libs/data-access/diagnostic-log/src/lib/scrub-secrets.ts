@@ -221,13 +221,14 @@ const KEY_RUN =
 const WHOLE_KEY_RUN =
   /^([+/_-]*)(?=[A-Za-z0-9+/_-]*\d)(?=[A-Za-z0-9+/_-]*[a-z])(?=[A-Za-z0-9+/_-]*[A-Z])[A-Za-z0-9+/_-]{32,}={0,2}$/;
 /**
- * An event or room version 12 ID escaped once or twice: "$" or "!" as %24 or %21 (%2524,
- * %2521), then 43 or 44 base64 characters whose "+" and "/" may be escaped as well. Its
- * escapes must not start a key run, or part of the ID would be masked and part kept. Bounded,
- * so each "%" costs a fixed amount.
+ * An event or room version 12 ID escaped once or twice: "$" as %24 (%2524) and 43 or 44
+ * base64 characters whose "+" and "/" may be escaped as well, or "!" as %21 (%2521) and 43
+ * URL-safe ones. Its escapes must not start a key run, or part of the ID would be masked and
+ * part kept. Neither is padded, so a run that goes on with "=" is a key. Bounded, so each "%"
+ * costs a fixed amount.
  */
 const ENCODED_HASH_ID =
-  /%(?:25)?2[14](?:[A-Za-z0-9_+-]|%(?:25)?2[BF]){43,44}(?![A-Za-z0-9_+-]|%(?:25)?2[BF])/gi;
+  /%(?:25)?(?:24(?:[A-Za-z0-9_+-]|%(?:25)?2[BF]){43,44}|21[A-Za-z0-9_-]{43})(?![A-Za-z0-9_+=-]|%(?:25)?(?:2[BF]|3D))/gi;
 
 /**
  * Mask every secret-shaped value in one log message. Runs at capture, through

@@ -180,6 +180,31 @@ describe('scrubSecrets', () => {
     );
   });
 
+  it('keeps a version 12 room ID escaped twice whole', () => {
+    const line = `GET /rooms/%2521${ROOM_V12.slice(1)}/state`;
+
+    expect(scrubSecrets(line)).toBe(line);
+  });
+
+  it('masks key material shaped like an encoded room or event ID it cannot be', () => {
+    // 43 standard base64 characters, of which 41 run on after the "/".
+    const key = `x/${CURVE_KEY.replace('+', '').slice(0, 41)}`;
+    const twice = (text: string) =>
+      encodeURIComponent(encodeURIComponent(text));
+
+    for (const line of [
+      // A version 12 room ID is URL-safe base64, so it has no "+" or "/" to escape.
+      `GET /x/%21${encodeURIComponent(key)}/y`,
+      `GET /x/%2521${twice(key)}/y`,
+      // An event or room ID is not padded.
+      `GET /x/%24${encodeURIComponent(`${key}=`)}/y`,
+      `GET /x/%2524${twice(`${key}=`)}/y`,
+      `x=%24${encodeURIComponent(key)}= y`,
+    ]) {
+      expect(scrubSecrets(line)).not.toContain(key.slice(2, 34));
+    }
+  });
+
   it('leaves ordinary log lines alone', () => {
     const sync =
       'FetchHttpApi: --> GET https://matrix.example.org/_matrix/client/v3/sync?filter=xxx&timeout=xxx';
@@ -456,6 +481,8 @@ describe('scrubSecrets', () => {
       `%24${'a%2F'.repeat(16000)}`,
       `%24${'aB1%2F'.repeat(13000)}`,
       ('%24' + 'aB1'.repeat(14) + '%2F').repeat(1200),
+      ('%2521' + 'aB1'.repeat(14) + 'a%3D').repeat(1000),
+      ('%2524' + 'aB1'.repeat(14) + '%252F=').repeat(900),
     ];
 
     for (const input of inputs) {

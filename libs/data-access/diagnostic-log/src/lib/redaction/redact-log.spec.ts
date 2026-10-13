@@ -403,6 +403,33 @@ describe('createLogRedactor', () => {
       },
     );
 
+    it.each(['12/abcd', '8448/displayname', '12345'])(
+      'reads the known device ID %s after a user ID as a device, not as a port',
+      (deviceId) => {
+        const redactor = createLogRedactor(context([deviceId]));
+
+        for (const line of [
+          storeLine('@bob:other.net', deviceId),
+          `to @bob:other.net:${deviceId} sent`,
+          `GET /keys/${encodeURIComponent(`@bob:other.net:${deviceId}`)}/claim`,
+        ]) {
+          const redacted = redactor.redact(line);
+
+          expect(survivingFragments(redacted, deviceId)).toEqual([]);
+          expect(survivingFragments(redacted, '@bob:other.net')).toEqual([]);
+          expect(decodeEscapes(redacted)).toContain('@user1:server2:DEVICE1');
+        }
+      },
+    );
+
+    it('still reads a port and a request path after a user ID when no known device starts there', () => {
+      const redactor = createLogRedactor(context(['12/abcd']));
+
+      expect(
+        redactor.redact('GET /profile/@bob:other.net:8448/displayname'),
+      ).toBe('GET /profile/@user1:server2/displayname');
+    });
+
     it.each([
       ['@bob:other.net:8448="x"', '@user1:server2="x"'],
       ['to @bob:other.net:8448= ok', 'to @user1:server2= ok'],
@@ -427,14 +454,14 @@ describe('createLogRedactor', () => {
       );
     });
 
-    it('removes a short all-digit device ID even when it reads as a port', () => {
+    it('reads a short all-digit known device ID as the device, not as a port', () => {
       for (const deviceId of ['1', '42', '12345']) {
         const redacted = createLogRedactor(context([deviceId])).redact(
           storeLine(SELF, deviceId),
         );
 
         expect(redacted).toBe(
-          'IndexedDbCryptoStore: opening main store trinity-crypto:@me:server1::matrix-sdk-crypto',
+          'IndexedDbCryptoStore: opening main store trinity-crypto:@me:server1:DEVICE1::matrix-sdk-crypto',
         );
       }
     });
@@ -646,15 +673,15 @@ describe('createLogRedactor', () => {
         }
       });
 
-      it('removes a short all-digit device ID after an encoded user ID, like the plain form', () => {
+      it('reads a short all-digit known device ID after an encoded user ID like the plain form', () => {
         const redactor = createLogRedactor(context(['42']));
 
         expect(redactor.redact(`store ${SELF}:42 opened`)).toBe(
-          'store @me:server1 opened',
+          'store @me:server1:DEVICE1 opened',
         );
         expect(
           redactor.redact(`store ${encodeURIComponent(`${SELF}:42`)} opened`),
-        ).toBe('store %40me%3Aserver1 opened');
+        ).toBe('store %40me%3Aserver1%3ADEVICE1 opened');
       });
 
       it('redacts the device ID after an encoded user in another writer’s escapes', () => {
@@ -717,6 +744,75 @@ describe('createLogRedactor', () => {
         expect(survivingFragments(redacted, EVENT.slice(1))).toEqual([]);
         expect(redacted).not.toContain('<redacted>');
       }
+    });
+
+    const TAILS = ['+reply', '=', '=1', '+', '==', '+=x'];
+
+    it.each([
+      ['only the sigil escaped', (text: string) => `%24${text.slice(1)}`],
+      ['encodeURIComponent', encodeURIComponent],
+      [
+        'lower-case escapes',
+        (text: string) =>
+          encodeURIComponent(text).replace(/%[0-9A-F]{2}/g, (escape) =>
+            escape.toLowerCase(),
+          ),
+      ],
+      ['no escapes', (text: string) => text],
+    ])(
+      'redacts a URL-safe event ID followed by "+" or "=" written with %s',
+      (_encoding, encode) => {
+        for (const tail of TAILS) {
+          const redacted = createLogRedactor(CORPUS_CONTEXT).redact(
+            `GET /x?q=${encode(`${EVENT}${tail}`)}&y=1`,
+          );
+
+          expect(survivingFragments(redacted, EVENT.slice(1))).toEqual([]);
+          expect(decodeEscapes(redacted)).toBe(`GET /x?q=$event1${tail}&y=1`);
+        }
+      },
+    );
+
+    // Escaped twice, the ID and what follows it read as one key run to the secret scrubber,
+    // which masks them whole.
+    it.each([
+      [
+        'only the sigil escaped twice',
+        (text: string) => `%2524${text.slice(1)}`,
+      ],
+      [
+        'encodeURIComponent twice',
+        (text: string) => encodeURIComponent(encodeURIComponent(text)),
+      ],
+    ])(
+      'leaves no part of a URL-safe event ID followed by "+" or "=" written with %s',
+      (_encoding, encode) => {
+        for (const tail of TAILS) {
+          const redacted = createLogRedactor(CORPUS_CONTEXT).redact(
+            `GET /x?q=${encode(`${EVENT}${tail}`)}&y=1`,
+          );
+
+          expect(survivingFragments(redacted, EVENT.slice(1))).toEqual([]);
+        }
+      },
+    );
+
+    it('redacts an event ID written by URLSearchParams before an encoded space', () => {
+      const query = new URLSearchParams({ q: `${EVENT} reply` }).toString();
+      const redacted = createLogRedactor(CORPUS_CONTEXT).redact(
+        `GET /x?${query}`,
+      );
+
+      expect(redacted).toBe('GET /x?q=%24event1+reply');
+    });
+
+    it('redacts an event ID before an escaped "="', () => {
+      const redacted = createLogRedactor(CORPUS_CONTEXT).redact(
+        `GET /x?q=${encodeURIComponent(`${EVENT}=`)}`,
+      );
+
+      expect(survivingFragments(redacted, EVENT.slice(1))).toEqual([]);
+      expect(redacted).toBe('GET /x?q=%24event1%3D');
     });
 
     it.each([
@@ -1365,6 +1461,17 @@ describe('createLogRedactor', () => {
       ['ports before paths', '@a:b:1/a'.repeat(SIZE / 8)],
       ['ports before underscores', '@a:b:1/' + 'a_'.repeat(SIZE / 2)],
       ['ports before equals signs', '@a:b:1='.repeat(SIZE / 7)],
+      ['ports before device runs', '@a:b:1/' + 'a.+'.repeat(SIZE / 3)],
+      ['ports before device runs, repeated', '@a:b:12/a.b '.repeat(SIZE / 12)],
+      [
+        'events before plus signs',
+        ('$' + 'A'.repeat(43) + '+').repeat(SIZE / 45),
+      ],
+      [
+        'escaped events before equals signs',
+        ('%24' + 'A'.repeat(43) + '=').repeat(SIZE / 47),
+      ],
+      ['dollar before a long run', '$' + 'A'.repeat(SIZE)],
       ['alias runs', '#a:'.repeat(SIZE / 3)],
       ['dollar runs', '$a'.repeat(SIZE / 2)],
       ['hyphenated words', 'ab-'.repeat(SIZE / 3)],
