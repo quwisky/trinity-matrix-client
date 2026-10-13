@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom, of } from 'rxjs';
+import { Subject, firstValueFrom, of, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   TrnAlertService,
@@ -30,6 +30,8 @@ interface Options {
   readonly choice?: TrnAlertChoice;
   readonly backedUp?: boolean | null;
   readonly signOut?: AccountSignOutOutcome;
+  /** The sign-out's own stream, when a test settles it by hand. */
+  readonly signOut$?: Observable<AccountSignOutOutcome>;
 }
 
 function setup(options: Options = {}) {
@@ -38,7 +40,9 @@ function setup(options: Options = {}) {
   const choose = vi.fn(() => of(options.choice ?? 'cancel'));
   const show = vi.fn();
   const navigateByUrl = vi.fn(async () => true);
-  const signOutAccount = vi.fn(() => of(options.signOut ?? LAST_ACCOUNT));
+  const signOutAccount = vi.fn(
+    () => options.signOut$ ?? of(options.signOut ?? LAST_ACCOUNT),
+  );
   const roomKeysBackedUp = vi.fn(() =>
     of(options.backedUp === undefined ? true : options.backedUp),
   );
@@ -235,4 +239,43 @@ describe('AccountRemovalLauncherAdapter', () => {
       expect(test.navigateByUrl).not.toHaveBeenCalled();
     },
   );
+
+  it('says when cleanup is incomplete and goes to sign-in even when the caller has gone', () => {
+    // The new-device check is destroyed by the sign-out it started: the removal's own
+    // messages and navigation must not depend on that caller's subscription.
+    const signOut = new Subject<AccountSignOutOutcome>();
+    const test = setup({ signOut$: signOut });
+
+    const caller = test.launcher.remove('@me:hs').subscribe();
+    expect(test.signOutAccount).toHaveBeenCalledWith('@me:hs');
+    caller.unsubscribe();
+    signOut.next({
+      ...LAST_ACCOUNT,
+      kind: 'partial-cleanup',
+      issues: [{ scope: 'indexed-db', recovery: 'retry-sign-out' }],
+    });
+    signOut.complete();
+
+    expect(test.show).toHaveBeenCalledWith(
+      'Account removal finished with some cleanup incomplete. Retry it to run only safe remaining work.',
+      { duration: 4000, variant: 'danger' },
+    );
+    expect(test.navigateByUrl).toHaveBeenCalledWith('/login', {
+      replaceUrl: true,
+    });
+  });
+
+  it('still hands the outcome to a caller that stays', async () => {
+    const signOut = new Subject<AccountSignOutOutcome>();
+    const test = setup({ signOut$: signOut });
+
+    const outcome = firstValueFrom(test.launcher.remove('@me:hs'));
+    signOut.next({ ...LAST_ACCOUNT, remainingAccountIds: ['@alt:hs'] });
+    signOut.complete();
+
+    await expect(outcome).resolves.toEqual({
+      kind: 'removed',
+      remainingAccountIds: ['@alt:hs'],
+    });
+  });
 });

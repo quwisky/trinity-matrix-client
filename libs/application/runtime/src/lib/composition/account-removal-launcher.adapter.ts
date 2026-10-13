@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { Observable, map, of, switchMap } from 'rxjs';
+import { Observable, ReplaySubject, map, of, switchMap } from 'rxjs';
 import {
   TrnAlertService,
   TrnToastService,
@@ -36,6 +36,10 @@ const FAILED: AccountRemovalOutcome = Object.freeze({ kind: 'failed' });
  * signs the account out, says when cleanup is incomplete or still running, and goes to
  * sign-in when no account is left. Callers open Security settings for "Export keys" and
  * say when nothing could be removed, each in its own way.
+ *
+ * Once the sign-out has started, its messages and the move to sign-in belong to this flow,
+ * not to the caller: the sign-out can end the surface that asked (the new-device check
+ * leaves as soon as its account is gone), and unsubscribing it must not drop them.
  */
 @Injectable({ providedIn: 'root' })
 export class AccountRemovalLauncherAdapter implements AccountRemovalLauncher {
@@ -111,9 +115,13 @@ export class AccountRemovalLauncherAdapter implements AccountRemovalLauncher {
   }
 
   private signOut(accountId: string): Observable<AccountRemovalOutcome> {
-    return this.accounts
+    // Finite: Accounts bounds how long a sign-out is observed.
+    const outcome = new ReplaySubject<AccountRemovalOutcome>(1);
+    this.accounts
       .signOutAccount(accountId)
-      .pipe(map((outcome) => this.settle(outcome)));
+      .pipe(map((settled) => this.settle(settled)))
+      .subscribe(outcome);
+    return outcome.asObservable();
   }
 
   private settle(outcome: AccountSignOutOutcome): AccountRemovalOutcome {

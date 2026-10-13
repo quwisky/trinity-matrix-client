@@ -54,6 +54,8 @@ export class DeviceConfirmationPage {
   private readonly accountRemoval = inject(ACCOUNT_REMOVAL_LAUNCHER);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  /** A removal ended with a move away from the check; nothing else navigates then. */
+  private leaving = false;
 
   readonly gate = this.confirmation.gate;
   readonly canSkip = this.confirmation.canSkip;
@@ -70,12 +72,15 @@ export class DeviceConfirmationPage {
   constructor() {
     // A direct visit (reload, bookmark) still loads the active Account's record.
     this.settle();
-    // Leave as soon as nothing is asked: verified, reset, skipped or never required.
+    // Leave as soon as nothing is asked: verified, reset, skipped or never required. A
+    // removal in flight ends the check itself (the sign-out repoints the active account
+    // first), so wait for its outcome: `afterRemoval` decides where to go.
     effect(() => {
-      if (this.gate().kind !== 'not-required') return;
-      untracked(
-        () => void this.router.navigateByUrl('/rooms', { replaceUrl: true }),
-      );
+      if (this.gate().kind !== 'not-required' || this.busy()) return;
+      untracked(() => {
+        if (this.leaving) return;
+        void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+      });
     });
   }
 
@@ -144,11 +149,13 @@ export class DeviceConfirmationPage {
     switch (outcome.kind) {
       case 'removed':
         // With no account left, the removal flow has already gone to sign-in.
+        this.leaving = true;
         if (outcome.remainingAccountIds.length > 0) {
           void this.router.navigateByUrl('/rooms', { replaceUrl: true });
         }
         return;
       case 'export-keys':
+        this.leaving = true;
         void this.router.navigate(['/settings/security']);
         return;
       case 'failed':

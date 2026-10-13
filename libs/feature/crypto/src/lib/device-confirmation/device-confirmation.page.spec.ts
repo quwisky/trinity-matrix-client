@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, of, throwError, type Observable } from 'rxjs';
+import { NEVER, Subject, of, throwError, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   TrustDeviceConfirmationService,
@@ -21,6 +21,8 @@ async function renderPage(
     canSkip?: boolean;
     skipFails?: boolean;
     removal?: AccountRemovalOutcome;
+    /** The removal's own stream, when a test settles it by hand. */
+    removal$?: Observable<AccountRemovalOutcome>;
     /** `settledGate()`; by default it answers with the gate as it is now. */
     settled?: () => Observable<DeviceConfirmationGate>;
   } = {},
@@ -33,7 +35,9 @@ async function renderPage(
   const skip = vi.fn(() =>
     options.skipFails ? throwError(() => new Error('refused')) : of(undefined),
   );
-  const remove = vi.fn(() => of(options.removal ?? { kind: 'kept' }));
+  const remove = vi.fn(
+    () => options.removal$ ?? of(options.removal ?? { kind: 'kept' }),
+  );
   const settledGate = options.settled ?? vi.fn(() => of(gate()));
   const result = await render(DeviceConfirmationPage, {
     providers: [
@@ -246,5 +250,59 @@ describe('DeviceConfirmationPage', () => {
     expect(screen.getByRole('alert').textContent?.trim()).toBe(
       'This account couldn’t be removed right now. Try again.',
     );
+  });
+
+  it('stays for the removal’s outcome when the sign-out ends the check first', async () => {
+    // Signing the account out repoints the active account before the outcome arrives, so
+    // the gate stops asking while the removal is still in flight.
+    const removal = new Subject<AccountRemovalOutcome>();
+    const { container, fixture, gate, navigateByUrl } = await renderPage({
+      removal$: removal,
+    });
+
+    byTestId(container, 'device-confirmation-remove')!.click();
+    gate.set({ kind: 'not-required' });
+    TestBed.tick();
+    expect(navigateByUrl).not.toHaveBeenCalled();
+
+    removal.next({ kind: 'failed' });
+    removal.complete();
+    fixture.detectChanges();
+    expect(screen.getByRole('alert').textContent?.trim()).toBe(
+      'This account couldn’t be removed right now. Try again.',
+    );
+  });
+
+  it('leaves for Rooms once, after the removal, when other accounts remain', async () => {
+    const removal = new Subject<AccountRemovalOutcome>();
+    const { container, gate, navigateByUrl } = await renderPage({
+      removal$: removal,
+    });
+
+    byTestId(container, 'device-confirmation-remove')!.click();
+    gate.set({ kind: 'not-required' });
+    TestBed.tick();
+    removal.next({ kind: 'removed', remainingAccountIds: ['@alt:hs'] });
+    removal.complete();
+    TestBed.tick();
+
+    expect(navigateByUrl).toHaveBeenCalledOnce();
+    expect(navigateByUrl).toHaveBeenCalledWith('/rooms', { replaceUrl: true });
+  });
+
+  it('leaves sign-in to the removal flow, even once the gate stops asking', async () => {
+    const removal = new Subject<AccountRemovalOutcome>();
+    const { container, gate, navigateByUrl } = await renderPage({
+      removal$: removal,
+    });
+
+    byTestId(container, 'device-confirmation-remove')!.click();
+    gate.set({ kind: 'not-required' });
+    TestBed.tick();
+    removal.next({ kind: 'removed', remainingAccountIds: [] });
+    removal.complete();
+    TestBed.tick();
+
+    expect(navigateByUrl).not.toHaveBeenCalled();
   });
 });
