@@ -11,6 +11,7 @@ import {
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { DayBoundaryService } from './day-boundary.service';
 import { MessageListComponent } from './message-list.component';
+import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
 import { TypingIndicatorComponent } from './typing-indicator/typing-indicator.component';
 import {
   ConversationComposeStub,
@@ -1484,6 +1485,49 @@ describe('MessageListComponent', () => {
       expect(scroll.querySelector(`[data-mid="${reading}"]`)).not.toBeNull();
       expect(cmp.topPad()).toBeGreaterThan(0);
       expect(st).toBe(5000);
+    });
+  });
+  describe('hover while scrolling (#1288)', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('holds row hover work while the list scrolls, and settles once it stops', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const { fixture, container } = await renderList({ messages: many(10) });
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const activity = fixture.debugElement.injector.get(
+        TimelineScrollActivity,
+      );
+      const hovered = vi.fn();
+
+      scroll.dispatchEvent(new Event('scroll'));
+      expect(activity.active).toBe(true);
+      activity.defer(hovered);
+
+      // A scroll that keeps going keeps holding it.
+      vi.advanceTimersByTime(100);
+      scroll.dispatchEvent(new Event('scroll'));
+      vi.advanceTimersByTime(100);
+      expect(activity.active).toBe(true);
+      expect(hovered).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(60);
+      expect(activity.active).toBe(false);
+      expect(hovered).toHaveBeenCalledOnce();
+    });
+
+    it('drops a pending restore when the list is destroyed', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const { fixture, container } = await renderList({ messages: many(10) });
+      const set = vi.spyOn(globalThis, 'setTimeout');
+      container.querySelector('.scroll')!.dispatchEvent(new Event('scroll'));
+      const idle = set.mock.calls.findIndex(([, ms]) => ms === 150);
+      expect(idle).toBeGreaterThanOrEqual(0);
+      const handle = set.mock.results[idle].value;
+      const clear = vi.spyOn(globalThis, 'clearTimeout');
+
+      fixture.destroy();
+
+      expect(clear).toHaveBeenCalledWith(handle);
     });
   });
 });

@@ -18,6 +18,7 @@ import {
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageRowComponent } from '../message-row/message-row.component';
 import { MessageListBase } from './message-list-base';
+import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { DropOverlayComponent } from './drop-overlay/drop-overlay.component';
 import { TimelineDividerComponent } from './timeline-divider/timeline-divider.component';
@@ -52,6 +53,9 @@ const OVERSCAN_PX = 800;
 
 /** At or below this many rows, render everything (windowing isn't worth it). */
 const SMALL_LIST_ROWS = 80;
+
+/** How long after the last scroll event a row under the pointer gets its hover work. */
+const SCROLL_IDLE_MS = 150;
 
 /**
  * The room timeline. With `windowed` on (the default) it renders only the rows in and near
@@ -89,6 +93,8 @@ const SMALL_LIST_ROWS = 80;
       outputs: [],
     },
   ],
+  // Rows read it to hold their hover work back while the list scrolls.
+  providers: [TimelineScrollActivity],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss',
 })
@@ -132,8 +138,11 @@ export class MessageListComponent extends MessageListBase {
   private prependAnchorGeneration = 0;
   /** Last scrollTop written by our own correction; distinguishes it from user movement. */
   private expectedProgrammaticScrollTop: number | null = null;
+  /** Pending end of the current scroll; see {@link markScrolling}. */
+  private scrollIdle: ReturnType<typeof setTimeout> | null = null;
 
   private readonly destroyRef = inject(DestroyRef);
+  private readonly scrollActivity = inject(TimelineScrollActivity);
   private readonly rowHosts = viewChildren(MessageRowComponent, {
     read: ElementRef,
   });
@@ -361,6 +370,7 @@ export class MessageListComponent extends MessageListBase {
 
     this.destroyRef.onDestroy(() => {
       this.ro?.disconnect();
+      if (this.scrollIdle !== null) clearTimeout(this.scrollIdle);
     });
   }
 
@@ -387,6 +397,7 @@ export class MessageListComponent extends MessageListBase {
     if (!el) {
       return;
     }
+    this.markScrolling();
     if (this.expectedProgrammaticScrollTop !== null) {
       if (Math.abs(el.scrollTop - this.expectedProgrammaticScrollTop) < 1) {
         this.expectedProgrammaticScrollTop = null;
@@ -433,6 +444,23 @@ export class MessageListComponent extends MessageListBase {
       this.pendingPrepend = true;
       this.loadOlder.emit();
     }
+  }
+
+  /**
+   * Note the scroll for the rows, and settle it once it has been still for
+   * {@link SCROLL_IDLE_MS}, so the row the pointer rests on then mounts its toolbar
+   * ({@link TimelineScrollActivity}). A plain timer, not a signal: it changes no template
+   * state, so it must not schedule change detection on every scroll event.
+   */
+  private markScrolling(): void {
+    this.scrollActivity.start();
+    if (this.scrollIdle !== null) {
+      clearTimeout(this.scrollIdle);
+    }
+    this.scrollIdle = setTimeout(() => {
+      this.scrollIdle = null;
+      this.scrollActivity.settle();
+    }, SCROLL_IDLE_MS);
   }
 
   /** Jump back to the newest message (the jump-to-latest pill). */

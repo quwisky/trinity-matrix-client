@@ -450,6 +450,9 @@ test.describe('Message grouping', () => {
     await restingActionRow.dispatchEvent('pointerenter', {
       pointerType: 'mouse',
     });
+    // The row was scrolled into view just above, and a row entered while the timeline
+    // scrolls mounts its toolbar only once the scroll settles (#1288).
+    await expect(restingActionRow.locator('.msg__toolbar')).toBeAttached();
 
     const compact = await page.evaluate((restingBody) => {
       const rows = [...document.querySelectorAll<HTMLElement>('.msg')].filter(
