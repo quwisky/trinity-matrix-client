@@ -271,6 +271,22 @@ describe('MediaAttachmentComponent', () => {
       );
     });
 
+    it('lets go of a clip still loading before dropping it, so the drop can cancel it', async () => {
+      const full = new Subject<string>();
+      mediaService.resolveMedia.mockReturnValue(full.asObservable());
+      const observedAtDrop: boolean[] = [];
+      mediaService.drop.mockImplementation(() =>
+        observedAtDrop.push(full.observed),
+      );
+      const { fixture } = await renderMedia(clip('video'));
+      fixture.componentInstance.play();
+
+      fixture.destroy();
+
+      // MediaService cancels an in-flight resolve only once nobody is subscribed to it.
+      expect(observedAtDrop).toEqual([false]);
+    });
+
     it('drops a played file when the row is recycled for another message', async () => {
       const media = clip('video');
       const { fixture } = await renderMedia(media);

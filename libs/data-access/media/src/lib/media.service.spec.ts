@@ -1174,6 +1174,28 @@ describe('MediaService', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    it('completes a resolve obtained before the drop but subscribed after it empty', async () => {
+      const { svc } = setup();
+      const complete = parkFetch();
+      const early = svc.resolveMedia(full().media, 'full');
+      const first = early.subscribe();
+      await new Promise((r) => setTimeout(r));
+      first.unsubscribe();
+
+      svc.drop(null, full());
+      complete(okResponse());
+      const seen: string[] = [];
+      let completed = false;
+      early.subscribe({
+        next: (u) => seen.push(u),
+        complete: () => (completed = true),
+      });
+      await new Promise((r) => setTimeout(r));
+
+      expect(seen).toEqual([]);
+      expect(completed).toBe(true);
+    });
+
     it('leaves an in-flight resolve running while another view still waits for it', async () => {
       const { svc } = setup();
       const complete = parkFetch();

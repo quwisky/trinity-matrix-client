@@ -496,6 +496,8 @@ export class MediaService {
    * A resolve of `rendition` still in flight is cancelled when no subscriber is waiting for
    * it any more, so its late completion is never cached; the dropping caller must therefore
    * unsubscribe from its own resolve first. Resolving again afterwards downloads afresh.
+   * An observable returned by {@link resolveMedia} before the drop is spent by it: subscribing
+   * to it later completes without a URL, so resolve again instead.
    */
   drop(
     url: string | null,
