@@ -100,6 +100,15 @@ export const routes: Routes = [
       import('@trinity/feature/crypto').then((m) => m.DeviceVerificationPage),
   },
   {
+    // A new device of an Account with an identity is verified here before the app opens
+    // (MSC4153). The screen routes to unlock and verify, which come back via returnTo.
+    path: 'encryption/confirm',
+    canActivate: [authGuard],
+    canDeactivate: [workspaceBrowserBackGuard],
+    loadComponent: () =>
+      import('@trinity/feature/crypto').then((m) => m.DeviceConfirmationPage),
+  },
+  {
     path: '',
     redirectTo: 'rooms',
     pathMatch: 'full',
