@@ -94,7 +94,7 @@ test.describe('The new-device check', () => {
       session.hs as string,
       'dc-key',
     );
-    await login(page, asSession);
+    await login(page, asSession, webNavigate, 'forbid');
     const recoveryKey = await setUpEncryption(page, pass);
 
     const deviceB = await secondaryApp.launch();
@@ -140,7 +140,7 @@ test.describe('The new-device check', () => {
       session.hs as string,
       'dc-other',
     );
-    await login(page, asSession);
+    await login(page, asSession, webNavigate, 'forbid');
     await setUpEncryption(page, pass);
 
     const deviceB = await secondaryApp.launch();
@@ -211,7 +211,7 @@ test.describe('The new-device check', () => {
       hs,
       'dc-reset',
     );
-    await login(page, asSession);
+    await login(page, asSession, webNavigate, 'forbid');
     await setUpEncryption(page, pass);
     const account = await passwordLogin(request, hs, user, pass);
     const identityBefore = await masterKey(request, hs, account);
@@ -251,7 +251,7 @@ test.describe('The new-device check', () => {
       session.hs as string,
       'dc-remove',
     );
-    await login(page, asSession);
+    await login(page, asSession, webNavigate, 'forbid');
     await setUpEncryption(page, pass);
 
     const deviceB = await secondaryApp.launch();
@@ -302,7 +302,7 @@ test.describe('The new-device check', () => {
       session.hs as string,
       'dc-reload',
     );
-    await login(page, asSession);
+    await login(page, asSession, webNavigate, 'forbid');
     await setUpEncryption(page, pass);
 
     const deviceB = await secondaryApp.launch();
