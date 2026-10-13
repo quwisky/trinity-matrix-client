@@ -43,6 +43,8 @@ async function seedRoomWithMember(
   request: APIRequestContext,
   hs: string,
   runId: string,
+  /** Messages the reader sends after the member joins, pushing the join out of a first sync. */
+  laterMessages = 0,
 ): Promise<{
   reader: HomeserverSession;
   roomName: string;
@@ -74,10 +76,34 @@ async function seedRoomWithMember(
     })
     .then((r) => r.json())
     .then((j) => j.room_id as string);
+  // Before the member: others who join first become the room's heroes, whose membership a
+  // server sends even when members load lazily, so the member is not one of them.
+  for (let i = 0; laterMessages > 0 && i < 6; i++) {
+    const other = `mention-other-${runId}-${i}`;
+    await registerUser(request, other, `${other}-pass`);
+    const joined = await apiToken(request, hs, other, `${other}-pass`);
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/invite`,
+      { headers: reader.headers, data: { user_id: joined.userId } },
+    );
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
+      { headers: joined.headers },
+    );
+  }
   await request.post(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
     { headers: member.headers },
   );
+  for (let i = 0; i < laterMessages; i++) {
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}-later-${i}`,
+      {
+        headers: reader.headers,
+        data: { msgtype: 'm.text', body: `later ${i}` },
+      },
+    );
+  }
 
   return {
     reader: {
@@ -168,6 +194,36 @@ test.describe('Composer @-mentions', () => {
       channels.length === 4 ? Number(channels[3]) > 0 : true,
       `background was ${background}`,
     ).toBe(true);
+  });
+
+  test('offers a member who has not spoken since long before the loaded messages', async ({
+    page,
+    request,
+  }) => {
+    // Members sync lazily (#1295): the first sync names only the senders of the events it
+    // carries, plus the room's heroes. Six earlier joiners take the hero places, and 120
+    // messages after the member joined keep that join out of both the 20-event window and
+    // the history the list backfills to fill the screen, so the room must load its full
+    // member list once it is opened.
+    const runId = `${testResourceId('run')}q`;
+    const { reader, roomName, memberName, memberId } = await seedRoomWithMember(
+      request,
+      session.hs as string,
+      runId,
+      120,
+    );
+
+    await login(page, reader);
+    await openRoom(page, roomName);
+
+    const composer = page.getByTestId('composer-input');
+    await composer.click();
+    await composer.fill(`@${memberName.slice(0, 5)}`);
+    const menu = page.getByTestId('mention-autocomplete');
+    await expect(menu).toBeVisible({ timeout: 15_000 });
+    await expect(
+      menu.getByRole('option', { name: `${memberName} (${memberId})` }),
+    ).toBeVisible();
   });
 
   test('accepts a mention with the keyboard', async ({ page, request }) => {

@@ -245,6 +245,7 @@ export function fakeRoom(
     roomId: '!r:hs',
     // Room state hangs off the live timeline (what liveRoomState() reads, and what
     // the SDK's deprecated `currentState` aliased).
+    loadMembersIfNeeded: () => Promise.resolve(true),
     getLiveTimeline: () => ({
       getEvents: () => events,
       getPaginationToken: () => null,

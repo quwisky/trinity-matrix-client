@@ -180,6 +180,11 @@ describe('MatrixClientService', () => {
       cryptoDatabasePrefix: undefined,
     });
     expect(client.startClient).toHaveBeenCalledOnce();
+    // Members arrive with the events that need them, and in full only for a room in use
+    // (#1295): a large room's member list is most of a first sync's bytes and heap.
+    expect(client.startClient).toHaveBeenCalledWith(
+      expect.objectContaining({ lazyLoadMembers: true }),
+    );
     expect(svc.isInitialized).toBe(true);
     expect(svc.instance).toBe(client);
   });

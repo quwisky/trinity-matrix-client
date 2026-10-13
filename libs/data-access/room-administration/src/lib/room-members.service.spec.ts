@@ -44,6 +44,7 @@ function room(
     getJoinedMembers: vi.fn(() => members),
     getMembersWithMembership: vi.fn(() => banned),
     getCreator: () => creator,
+    loadMembersIfNeeded: vi.fn(() => Promise.resolve(true)),
   };
 }
 
@@ -94,6 +95,31 @@ function fireMemberChange(
 }
 
 describe('RoomMembersService', () => {
+  it('loads the full member list of the room it observes (#1295)', () => {
+    const target = room('!shared:hs', [member('@ada:hs', 'Ada')]);
+    const opening = client([target]);
+    TestBed.configureTestingModule({
+      providers: [
+        RoomMembersService,
+        MockProvider(MatrixClientService, {
+          accountIds: signal<readonly string[]>(['@opening:hs']).asReadonly(),
+          activeUserId: signal<string | null>('@opening:hs').asReadonly(),
+          clientFor: () => opening as unknown as MatrixClient,
+        }),
+      ],
+    });
+    const observation = TestBed.inject(RoomMembersService)
+      .observe({ accountId: '@opening:hs', roomId: '!shared:hs' })
+      .subscribe();
+    TestBed.inject(ApplicationRef).tick();
+
+    // A lazily synced room lists only the members its loaded events named; the settings
+    // member and ban lists need all of them. Arriving members re-publish through the
+    // RoomState.members listener.
+    expect(target.loadMembersIfNeeded).toHaveBeenCalledOnce();
+    observation.unsubscribe();
+  });
+
   it('observes an exact opening Account without following the active Account', async () => {
     const openingMembers = [member('@ada:hs', 'Ada')];
     const openingClient = client([room('!shared:hs', openingMembers)]);

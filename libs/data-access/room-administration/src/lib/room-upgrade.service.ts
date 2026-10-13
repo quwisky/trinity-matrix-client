@@ -235,19 +235,28 @@ export class RoomUpgradeService {
           ),
         );
       }
-      const before = readContext(client, room);
-      const creators =
-        isWholeNumber(options.version) &&
-        Number(options.version) >= 12 &&
-        before.additionalCreators.length > 0
-          ? [...before.additionalCreators]
-          : undefined;
       this.upgrading.add(key);
-      return from(client.upgradeRoom(roomId, options.version, creators)).pipe(
-        recoverRoomAdministrationRequest('upgrade-room'),
-        switchMap(({ replacement_room }) =>
-          followUp(client, roomId, replacement_room, before, options),
-        ),
+      // Members sync lazily (#1295): the room may know only the senders it has seen, and
+      // the invitations below must reach everyone. A failed load still upgrades with the
+      // members that are known.
+      return from(room.loadMembersIfNeeded().catch(() => false)).pipe(
+        switchMap(() => {
+          const before = readContext(client, room);
+          const creators =
+            isWholeNumber(options.version) &&
+            Number(options.version) >= 12 &&
+            before.additionalCreators.length > 0
+              ? [...before.additionalCreators]
+              : undefined;
+          return from(
+            client.upgradeRoom(roomId, options.version, creators),
+          ).pipe(
+            recoverRoomAdministrationRequest('upgrade-room'),
+            switchMap(({ replacement_room }) =>
+              followUp(client, roomId, replacement_room, before, options),
+            ),
+          );
+        }),
         finalize(() => this.upgrading.delete(key)),
       );
     });

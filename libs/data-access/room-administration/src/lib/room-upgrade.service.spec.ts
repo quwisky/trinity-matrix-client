@@ -83,6 +83,7 @@ function fakeRoom(roomId: string, o: FakeRoomOptions = {}) {
     getMembers: () => members,
     getMember: (userId: string) =>
       members.find((m) => m.userId === userId) ?? null,
+    loadMembersIfNeeded: () => Promise.resolve(true),
     getLiveTimeline: () => ({
       getState: () => (o.loaded === false ? undefined : state),
     }),
@@ -401,6 +402,37 @@ describe('RoomUpgradeService.upgrade', () => {
       svc.upgrade(accountId, OLD, { version: '11', inviteMembers: true }),
     ).catch((error: unknown) => error);
 
+  it('loads the full member list before choosing who to invite (#1295)', async () => {
+    const [old, ...rest] = rooms();
+    const everyone = [
+      ...old.getMembers(),
+      {
+        userId: '@dave:hs',
+        membership: 'join',
+        name: '@dave:hs',
+        powerLevel: 0,
+      },
+    ];
+    let loaded = false;
+    // A lazily synced room knows only the members its loaded events named.
+    const lazy = {
+      ...old,
+      getMembers: () => (loaded ? everyone : old.getMembers()),
+      loadMembersIfNeeded: vi.fn(async () => {
+        loaded = true;
+        return true;
+      }),
+    };
+    const { svc, invite } = setup([lazy, ...rest]);
+
+    await firstValueFrom(
+      svc.upgrade(ME, OLD, { version: '11', inviteMembers: true }),
+    );
+
+    expect(lazy.loadMembersIfNeeded).toHaveBeenCalledOnce();
+    expect(invite.mock.calls).toContainEqual([NEW, '@dave:hs']);
+  });
+
   it('is cold, then upgrades, invites and moves the space link in order', async () => {
     const { svc, upgradeRoom, invite, sendStateEvent } = setup(rooms());
 
@@ -521,7 +553,10 @@ describe('RoomUpgradeService.upgrade', () => {
       firstValueFrom(svc.upgrade(ME, OLD, options)),
     ).rejects.toThrow();
     upgradeRoom.mockReturnValueOnce(new Promise(() => undefined));
-    svc.upgrade(ME, OLD, options).subscribe().unsubscribe();
+    // Unsubscribe while the server request is in flight: it now waits for the member load.
+    const inFlight = svc.upgrade(ME, OLD, options).subscribe();
+    await vi.waitFor(() => expect(upgradeRoom).toHaveBeenCalledTimes(2));
+    inFlight.unsubscribe();
 
     await firstValueFrom(svc.upgrade(ME, OLD, options));
     expect(upgradeRoom).toHaveBeenCalledTimes(3);

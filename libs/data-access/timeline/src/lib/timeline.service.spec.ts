@@ -65,6 +65,44 @@ describe('TimelineService', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it('loads the full member list of the room it opens (#1295)', () => {
+    const loadMembersIfNeeded = vi.fn(() => Promise.resolve(true));
+    const room = {
+      roomId: '!r:hs',
+      getLiveTimeline: () => ({
+        getEvents: () => [],
+        getPaginationToken: () => null,
+        getState: () => undefined,
+      }),
+      findEventById: () => undefined,
+      getMember: () => null,
+      relations: { getChildEventsForEvent: () => undefined },
+      hasEncryptionStateEvent: () => false,
+      loadMembersIfNeeded,
+      on: () => {},
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: () => Promise.resolve({}),
+      scrollback: () => Promise.resolve(room),
+    };
+    TestBed.configureTestingModule({
+      providers: [TimelineService, matrixProvider(client)],
+    });
+    const svc = TestBed.inject(TimelineService);
+
+    svc.open('!r:hs');
+
+    // A lazily synced room knows only the senders it has seen: mentions, typing names and
+    // the member list need everyone once the room is in use.
+    expect(loadMembersIfNeeded).toHaveBeenCalledOnce();
+  });
+
   it('reports ready and ignores retry without a readiness owner', () => {
     const svc = setup([]);
     expect(svc.loadState()).toEqual({ kind: 'ready' });
@@ -299,6 +337,7 @@ describe('TimelineService', () => {
     let memberHandler: ((...a: unknown[]) => void) | undefined;
     const room = {
       roomId: '!r:hs',
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -366,6 +405,7 @@ describe('TimelineService', () => {
     let memberHandler: ((...a: unknown[]) => void) | undefined;
     const room = {
       roomId: '!r:hs',
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -427,6 +467,7 @@ describe('TimelineService', () => {
     const relations = fakeRelations([['👍', new Set([fakeReaction('@a:hs')])]]);
     const room = {
       roomId: '!r:hs',
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -506,6 +547,7 @@ describe('TimelineService', () => {
     let memberHandler: ((...a: unknown[]) => void) | undefined;
     const room = {
       roomId: '!r:hs',
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -626,6 +668,7 @@ describe('TimelineService', () => {
     const room = {
       roomId: '!r:hs',
       hasEncryptionStateEvent: () => false,
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => [],
         getPaginationToken: () => 'tok',
@@ -669,6 +712,7 @@ describe('TimelineService', () => {
     const room = {
       roomId: '!r:hs',
       hasEncryptionStateEvent: () => false,
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -717,6 +761,7 @@ describe('TimelineService', () => {
       const room = {
         roomId: '!r:hs',
         hasEncryptionStateEvent: () => false,
+        loadMembersIfNeeded: () => Promise.resolve(true),
         getLiveTimeline: () => ({
           getEvents: () => events,
           getPaginationToken: () => null,
@@ -761,6 +806,7 @@ describe('TimelineService', () => {
     const room = {
       roomId: '!r:hs',
       hasEncryptionStateEvent: () => false,
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -799,6 +845,7 @@ describe('TimelineService', () => {
     const room = {
       roomId: '!r:hs',
       hasEncryptionStateEvent: () => false,
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -841,6 +888,7 @@ describe('TimelineService', () => {
     const room = {
       roomId: '!r:hs',
       hasEncryptionStateEvent: () => false,
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -953,6 +1001,7 @@ describe('TimelineService', () => {
     const room = {
       roomId: '!r:hs',
       hasEncryptionStateEvent: () => false,
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -1065,6 +1114,7 @@ describe('TimelineService', () => {
     const room = {
       roomId: '!r:hs',
       hasEncryptionStateEvent: () => false,
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => {
           scans++;
@@ -1121,6 +1171,7 @@ describe('TimelineService', () => {
     const room = {
       roomId: '!r:hs',
       hasEncryptionStateEvent: () => false,
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -1897,6 +1948,7 @@ describe('TimelineService', () => {
       let memberHandler: ((...a: unknown[]) => void) | undefined;
       const room = {
         roomId: '!r:hs',
+        loadMembersIfNeeded: () => Promise.resolve(true),
         getLiveTimeline: () => ({
           getEvents: () => events,
           getPaginationToken: () => null,
@@ -1986,6 +2038,7 @@ describe('TimelineService', () => {
       ];
       const room = {
         roomId: '!r:hs',
+        loadMembersIfNeeded: () => Promise.resolve(true),
         getLiveTimeline: () => ({
           getEvents: () => events,
           getPaginationToken: () => null,
@@ -2042,6 +2095,7 @@ describe('TimelineService', () => {
         hasEncryptionStateEvent: () => false,
         // Room state hangs off the live timeline (what liveRoomState() reads, and what
         // the SDK's deprecated `currentState` aliased).
+        loadMembersIfNeeded: () => Promise.resolve(true),
         getLiveTimeline: () => ({
           getEvents: () => events,
           getPaginationToken: () => null,
@@ -2166,6 +2220,7 @@ describe('TimelineService', () => {
       const room = {
         roomId: '!r:hs',
         hasEncryptionStateEvent: () => roomEncrypted,
+        loadMembersIfNeeded: () => Promise.resolve(true),
         getLiveTimeline: () => ({
           getEvents: () => events,
           getPaginationToken: () => null,
@@ -2805,6 +2860,7 @@ describe('TimelineService.jumpToDate', () => {
       ...fakeRoom([]),
       roomId: '!r:hs',
       hasEncryptionStateEvent: () => false,
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => shown,
         getPaginationToken: () => 'tok',
@@ -3060,6 +3116,7 @@ describe('TimelineService.jumpToDate', () => {
       ...fakeRoom([]),
       roomId: '!r:hs',
       hasEncryptionStateEvent: () => false,
+      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => shown,
         getPaginationToken: () => null,
