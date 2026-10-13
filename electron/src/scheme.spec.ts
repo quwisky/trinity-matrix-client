@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { Readable } from 'node:stream';
+
 // Capture the handler registered with protocol.handle so we can drive it directly.
 // vi.hoisted so the mock var exists when the hoisted vi.mock factory runs.
 const { handleMock } = vi.hoisted(() => ({ handleMock: vi.fn() }));
@@ -9,29 +11,59 @@ vi.mock('electron', () => ({
 
 // The handler reads the served build from disk, but `www/` is a copied build
 // output (gitignored, absent on a fresh checkout), so the file system is faked:
-// `fakeFiles` is the set of paths that exist, everything else raises ENOENT.
-const { fakeFiles, statMock, readFileMock } = vi.hoisted(() => {
-  const fakeFiles = new Set<string>();
+// `fakeFiles` maps the paths that exist to their bytes, everything else raises
+// ENOENT. `streamFailures` lists paths whose stat succeeds but whose open fails
+// (a file removed between `stat` and the read).
+const {
+  fakeFiles,
+  streamFailures,
+  statMock,
+  readFileMock,
+  createReadStreamMock,
+} = vi.hoisted(() => {
+  const fakeFiles = new Map<string, Buffer>();
+  const streamFailures = new Set<string>();
+  const enoent = (filePath: string) =>
+    Object.assign(new Error(`ENOENT: ${filePath}`), { code: 'ENOENT' });
   return {
     fakeFiles,
+    streamFailures,
     statMock: vi.fn(async (filePath: string) => {
-      if (!fakeFiles.has(filePath)) {
-        throw Object.assign(new Error(`ENOENT: ${filePath}`), {
-          code: 'ENOENT',
-        });
+      const data = fakeFiles.get(filePath);
+      if (data === undefined) {
+        throw enoent(filePath);
       }
-      return { isFile: () => true };
+      return { isFile: () => true, size: data.length };
     }),
     readFileMock: vi.fn(async (filePath: string) =>
       Buffer.from(`body of ${filePath}`),
     ),
+    createReadStreamMock: vi.fn((filePath: string) => {
+      const data = fakeFiles.get(filePath);
+      const stream = new Readable({
+        read() {
+          this.push(data);
+          this.push(null);
+        },
+      });
+      setImmediate(() => {
+        if (data === undefined || streamFailures.has(filePath)) {
+          stream.destroy(enoent(filePath));
+        } else {
+          stream.emit('open', 1);
+        }
+      });
+      return stream;
+    }),
   };
 });
 vi.mock('node:fs', () => ({
   promises: { stat: statMock, readFile: readFileMock },
+  createReadStream: createReadStreamMock,
 }));
 
 import * as path from 'node:path';
+import { randomBytes } from 'node:crypto';
 
 import {
   contentTypeFor,
@@ -104,8 +136,10 @@ describe('registerAppProtocol — SPA fallback', () => {
     handleMock.mockClear();
     statMock.mockClear();
     readFileMock.mockClear();
+    createReadStreamMock.mockClear();
     fakeFiles.clear();
-    fakeFiles.add(INDEX_HTML);
+    streamFailures.clear();
+    fakeFiles.set(INDEX_HTML, Buffer.from('<html></html>'));
     registerAppProtocol();
     handler = handleMock.mock.calls[0][1];
   });
@@ -130,7 +164,9 @@ describe('registerAppProtocol — SPA fallback', () => {
       "frame-ancestors 'none'",
     );
     expect(res.headers.get('x-frame-options')).toBe('DENY');
-    expect(readFileMock).toHaveBeenCalledWith(INDEX_HTML);
+    expect(res.headers.get('content-length')).toBe('13');
+    expect(await res.text()).toBe('<html></html>');
+    expect(createReadStreamMock).toHaveBeenCalledWith(INDEX_HTML);
   });
 
   // The other direction, and the reason the case above is not vacuous: a
@@ -146,7 +182,7 @@ describe('registerAppProtocol — SPA fallback', () => {
 
   it('serves a file that exists instead of falling back', async () => {
     const logo = path.join(WWW_ROOT, 'assets', 'logo.png');
-    fakeFiles.add(logo);
+    fakeFiles.set(logo, Buffer.from('png'));
 
     const res = await handler({ url: 'trinity://app/assets/logo.png' });
 
@@ -154,7 +190,67 @@ describe('registerAppProtocol — SPA fallback', () => {
     expect(res.headers.get('content-type')).toBe('image/png');
     expect(res.headers.get('content-security-policy')).toBeNull();
     expect(res.headers.get('x-frame-options')).toBeNull();
-    expect(readFileMock).toHaveBeenCalledWith(logo);
-    expect(readFileMock).not.toHaveBeenCalledWith(INDEX_HTML);
+    expect(createReadStreamMock).toHaveBeenCalledWith(logo);
+    expect(createReadStreamMock).not.toHaveBeenCalledWith(INDEX_HTML);
+  });
+});
+
+describe('registerAppProtocol — streaming', () => {
+  let handler: (req: { url: string }) => Promise<Response>;
+
+  beforeEach(() => {
+    handleMock.mockClear();
+    readFileMock.mockClear();
+    createReadStreamMock.mockClear();
+    fakeFiles.clear();
+    streamFailures.clear();
+    fakeFiles.set(INDEX_HTML, Buffer.from('<html></html>'));
+    registerAppProtocol();
+    handler = handleMock.mock.calls[0][1];
+  });
+
+  it('streams a binary file byte for byte without reading it whole', async () => {
+    const bytes = randomBytes(4096);
+    fakeFiles.set(path.join(WWW_ROOT, 'crypto.wasm'), bytes);
+
+    const res = await handler({ url: 'trinity://app/crypto.wasm' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toBeInstanceOf(ReadableStream);
+    expect(res.headers.get('content-type')).toBe('application/wasm');
+    expect(res.headers.get('content-length')).toBe('4096');
+    expect(Buffer.from(await res.arrayBuffer()).equals(bytes)).toBe(true);
+    expect(readFileMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the frame protections on a streamed html file', async () => {
+    fakeFiles.set(path.join(WWW_ROOT, 'page.html'), Buffer.from('<p>x</p>'));
+
+    const res = await handler({ url: 'trinity://app/page.html' });
+
+    expect(res.headers.get('content-security-policy')).toBe(
+      "frame-ancestors 'none'",
+    );
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+    expect(res.headers.get('content-length')).toBe('8');
+  });
+
+  it('answers 404 when the file vanishes between stat and open', async () => {
+    const gone = path.join(WWW_ROOT, 'gone.js');
+    fakeFiles.set(gone, Buffer.from('x'));
+    streamFailures.add(gone);
+
+    const res = await handler({ url: 'trinity://app/gone.js' });
+
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe('Not Found');
+  });
+
+  it('answers 404 when the index.html fallback cannot be read', async () => {
+    fakeFiles.delete(INDEX_HTML);
+
+    const res = await handler({ url: 'trinity://app/rooms' });
+
+    expect(res.status).toBe(404);
   });
 });
