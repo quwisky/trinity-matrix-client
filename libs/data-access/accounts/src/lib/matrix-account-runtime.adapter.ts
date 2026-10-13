@@ -11,6 +11,7 @@ import {
 } from '@trinity/platform-native';
 import {
   Observable,
+  Subject,
   catchError,
   defer,
   map,
@@ -42,6 +43,7 @@ import type {
   AccountRestoreRole,
   AccountSignOutOutcome,
   InstallationResetOutcome,
+  NewDeviceEstablishment,
 } from './account-runtime.models';
 
 /** What the saved record says about a sign-in's device; `unknown` is never reported as new. */
@@ -58,12 +60,13 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
     {
       readonly grant: AuthenticatedAccountGrant;
       readonly stored: ReturnType<typeof authenticatedAccountGrantPayload>;
-      /** Whether an outcome has already reported this saved device as new. */
-      readonly reported: boolean;
     }
   >();
+  private readonly newDeviceFacts = new Subject<NewDeviceEstablishment>();
 
   readonly activeAccountId = this.matrix.activeUserId;
+  readonly newDevices: Observable<NewDeviceEstablishment> =
+    this.newDeviceFacts.asObservable();
 
   sweepOrphanedStores(): Observable<void> {
     return this.storage.sweepOrphanedCryptoStores();
@@ -127,19 +130,13 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
       const pending = this.pendingNewAccounts.get(session.userId);
       let replaced: MatrixSession | null = null;
       let novelty: DeviceNovelty = 'unknown';
-      // A new device is reported once its record is saved, whatever the later outcome:
-      // the next launch restores a saved record without asking whether it was new.
-      let reportNewDevice = false;
       const persisted$ =
         intent.accountRecord === 'new' &&
         pending &&
         sameAuthenticatedAccountGrant(pending.grant, grant)
-          ? defer(() => {
-              // A retried first establishment: no record existed for this Account. The
-              // attempt that saved it reported the device, unless it never settled.
-              reportNewDevice = !pending.reported;
-              return of(pending.stored);
-            })
+          ? // A retried first establishment: the attempt that saved the record published
+            // its device already.
+            of(pending.stored)
           : this.priorDevice(session).pipe(
               tap((prior) => {
                 replaced = prior.replaced;
@@ -152,14 +149,19 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
                 ),
               ),
               tap((stored) => {
-                // Saving a new record refuses an Account that already has one.
-                reportNewDevice =
-                  intent.accountRecord === 'new' || novelty === 'new';
                 if (intent.accountRecord === 'new') {
                   this.pendingNewAccounts.set(session.userId, {
                     grant,
                     stored,
-                    reported: false,
+                  });
+                }
+                // Published at once, whatever the later outcome: the next launch restores
+                // a saved record without asking whether it was new. Saving a new record
+                // refuses an Account that already has one.
+                if (intent.accountRecord === 'new' || novelty === 'new') {
+                  this.newDeviceFacts.next({
+                    accountId: session.userId,
+                    deviceId: session.deviceId,
                   });
                 }
               }),
@@ -240,11 +242,6 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
             ? this.lifecycle.registerNotifications().pipe(map(() => outcome))
             : of(outcome),
         ),
-        map((outcome): AdapterAccountEstablishmentOutcome => {
-          if (!reportNewDevice) return outcome;
-          this.markNewDeviceReported(grant);
-          return { ...outcome, newDevice: { deviceId: session.deviceId } };
-        }),
       );
     });
   }
@@ -370,15 +367,6 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
       ),
       switchMap(() => this.storageFailure(originalError)),
     );
-  }
-
-  /** Keep a retried first establishment from reporting its saved device again. */
-  private markNewDeviceReported(grant: AuthenticatedAccountGrant): void {
-    const { userId } = authenticatedAccountGrantPayload(grant);
-    const pending = this.pendingNewAccounts.get(userId);
-    if (pending && sameAuthenticatedAccountGrant(pending.grant, grant)) {
-      this.pendingNewAccounts.set(userId, { ...pending, reported: true });
-    }
   }
 
   /**

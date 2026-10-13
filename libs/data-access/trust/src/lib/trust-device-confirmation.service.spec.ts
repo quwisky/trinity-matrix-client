@@ -76,6 +76,8 @@ interface Options {
   /** This device's own status read throws. */
   localReadFails?: boolean;
   writeFails?: boolean;
+  /** Whether the Account's session is live yet; by default it is. */
+  live?: boolean;
 }
 
 function setup(options: Options = {}) {
@@ -111,6 +113,7 @@ function setup(options: Options = {}) {
   );
   const health = signal<TrustHealth>(UNAVAILABLE);
   const verifiedNow = { value: options.verifiedNow ?? false };
+  const live = { value: options.live ?? true };
   const local = options.local ?? 'needs-recovery';
   const defaultKeyId = local === 'needs-recovery' ? 'k' : null;
   const downloadKeysForUsers = vi.fn(options.server ?? (async () => PUBLISHED));
@@ -148,7 +151,7 @@ function setup(options: Options = {}) {
       MockProvider(TrustCryptoPort, {
         activeAccountId: activeAccountId.asReadonly(),
         forAccount: (id: string) =>
-          id === '@a:hs' ? ({ client, crypto } as never) : null,
+          id === '@a:hs' && live.value ? ({ client, crypto } as never) : null,
       }),
       MockProvider(TrustHealthService, { health: health.asReadonly() }),
       { provide: PREFERENCE_STORAGE_ADAPTER, useValue: adapter },
@@ -164,6 +167,7 @@ function setup(options: Options = {}) {
     activeAccountId,
     health,
     verifiedNow,
+    live,
     downloadKeysForUsers,
   };
 }
@@ -307,6 +311,27 @@ describe('TrustDeviceConfirmationService', () => {
     expect(service.gate()).toEqual({
       kind: 'required',
       status: 'needs-recovery',
+    });
+  });
+
+  it('asks the server once the session is live, when the device was recorded before it started', async () => {
+    // Accounts publishes a new device as soon as its record is saved, before its session
+    // starts: nothing can be asked yet, and that proves nothing about the identity.
+    const { service, health, live, downloadKeysForUsers } = setup({
+      live: false,
+      local: 'needs-setup',
+    });
+    await firstValueFrom(service.require('@a:hs', 'DEVICE'));
+    expect(downloadKeysForUsers).not.toHaveBeenCalled();
+
+    live.value = true;
+    await firstValueFrom(service.hydrate('@a:hs'));
+    health.set(coherent({ status: 'needs-setup' }));
+
+    expect(downloadKeysForUsers).toHaveBeenCalledOnce();
+    expect(service.gate()).toEqual({
+      kind: 'required',
+      status: 'needs-verification',
     });
   });
 

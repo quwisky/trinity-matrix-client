@@ -1,7 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   Observable,
-  Subject,
   catchError,
   defer,
   finalize,
@@ -70,18 +69,18 @@ export class AccountRuntimeService {
     phase: 'idle',
   });
   private establishment: InFlightAccountEstablishment | null = null;
-  private readonly _newDevices = new Subject<NewDeviceEstablishment>();
 
   readonly state = this.runtimeState.asReadonly();
   /** Value-free destructive cleanup progress retained independently of UI observers. */
   readonly lifecycle = this.lifecycleWorkflow.state;
   readonly activeAccountId = this.adapter.activeAccountId;
   /**
-   * Each sign-in that created a new device for an Account, published before its
-   * establishment outcome reaches the caller. Hot; never replays.
+   * Each sign-in that created a new device for an Account, published as soon as its record
+   * is saved, so before its establishment outcome reaches the caller, and even when that
+   * establishment then fails or is cancelled. Hot; never replays.
    */
   readonly newDevices: Observable<NewDeviceEstablishment> =
-    this._newDevices.asObservable();
+    this.adapter.newDevices;
   readonly hasActiveAccount = computed(() => this.activeAccountId() !== null);
 
   restoreSavedAccounts(): Observable<AccountRestoreResult> {
@@ -199,14 +198,6 @@ export class AccountRuntimeService {
         throwIfEmpty(
           () => new Error('Account Runtime adapter emitted no outcome.'),
         ),
-        tap((adapterOutcome) => {
-          if (adapterOutcome.newDevice) {
-            this._newDevices.next({
-              accountId: session.userId,
-              deviceId: adapterOutcome.newDevice.deviceId,
-            });
-          }
-        }),
         map((adapterOutcome) =>
           this.toEstablishmentOutcome(session.userId, intent, adapterOutcome),
         ),
@@ -399,12 +390,9 @@ export class AccountRuntimeService {
     intent: AccountEstablishmentIntent,
     outcome: AdapterAccountEstablishmentOutcome,
   ): AccountEstablishmentOutcome {
-    if (outcome.kind === 'ready') {
-      return { kind: 'ready', accountId, placement: intent.placement };
-    }
-    // The new-device fact is published on `newDevices`, never passed to callers.
-    const { newDevice: _newDevice, ...failure } = outcome;
-    return { ...failure, accountId, placement: intent.placement };
+    return outcome.kind === 'ready'
+      ? { kind: 'ready', accountId, placement: intent.placement }
+      : { ...outcome, accountId, placement: intent.placement };
   }
 
   private transitionOutcome(

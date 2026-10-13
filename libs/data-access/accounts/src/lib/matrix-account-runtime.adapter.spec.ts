@@ -1604,14 +1604,36 @@ describe('MatrixAccountRuntimeAdapter', () => {
       );
     }
 
+    const NEW_DEVICE = { accountId: '@new:hs', deviceId: 'DEVICE' };
+
+    /** Every new-device fact the adapter publishes from now on. */
+    function published(test: AdapterTest, order?: string[]) {
+      const facts: unknown[] = [];
+      test.adapter.newDevices.subscribe((fact) => {
+        order?.push('new-device');
+        facts.push(fact);
+      });
+      return facts;
+    }
+
     it('marks a first sign-in on this installation as a new device', async () => {
       const test = setup();
       saved(test, null);
+      const facts = published(test);
 
-      await expect(establish(test)).resolves.toEqual({
-        kind: 'ready',
-        newDevice: { deviceId: 'DEVICE' },
-      });
+      await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([NEW_DEVICE]);
+    });
+
+    it('publishes the new device as soon as its record is saved, before its session starts', async () => {
+      const test = setup();
+      saved(test, null);
+      const order: string[] = [];
+      published(test, order);
+
+      await establish(test, order);
+
+      expect(order).toEqual(['persist', 'new-device', 'start']);
     });
 
     it('marks an OIDC sign-in that created a new device id as a new device', async () => {
@@ -1636,6 +1658,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
       vi.mocked(test.matrix.detachedClient).mockReturnValue({
         logout: vi.fn(() => Promise.resolve()),
       } as never);
+      const facts = published(test);
 
       await expect(
         firstValueFrom(
@@ -1644,17 +1667,20 @@ describe('MatrixAccountRuntimeAdapter', () => {
             activeIntent,
           ),
         ),
-      ).resolves.toEqual({ kind: 'ready', newDevice: { deviceId: 'DEVICE' } });
+      ).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([NEW_DEVICE]);
     });
 
     it('does not guess when the saved record cannot be read', async () => {
       const test = setup();
       unreadable(test);
+      const facts = published(test);
 
       await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([]);
     });
 
-    it('reports a new account’s device once, from the attempt that saved it, when its establishment is retried', async () => {
+    it('publishes a new account’s device once, from the attempt that saved it, when its establishment is retried', async () => {
       const test = setup();
       const newRecord = {
         ...activeIntent,
@@ -1676,21 +1702,22 @@ describe('MatrixAccountRuntimeAdapter', () => {
       vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
         of(void 0),
       );
+      const facts = published(test);
 
       await expect(
         firstValueFrom(test.adapter.establishAccount(grant, newRecord)),
-      ).resolves.toEqual({
-        kind: 'failed',
-        failure: 'transient-network',
-        newDevice: { deviceId: 'DEVICE' },
-      });
+      ).resolves.toEqual({ kind: 'failed', failure: 'transient-network' });
+      expect(facts).toEqual([NEW_DEVICE]);
       await expect(
         firstValueFrom(test.adapter.establishAccount(grant, newRecord)),
       ).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([NEW_DEVICE]);
       expect(test.storage.persistForEstablishment).toHaveBeenCalledOnce();
     });
 
-    it('still reports a new account’s device when the attempt that saved it never settled', async () => {
+    it('publishes a new device whose establishment is cancelled right after the save, and not again on retry', async () => {
+      // Closing the app between the save and the outcome must not skip the check: the
+      // next launch restores the saved record as an existing device.
       const test = setup();
       const newRecord = {
         ...activeIntent,
@@ -1707,16 +1734,39 @@ describe('MatrixAccountRuntimeAdapter', () => {
       vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
         of(void 0),
       );
+      const facts = published(test);
 
       test.adapter.establishAccount(grant, newRecord).subscribe().unsubscribe();
+      expect(facts).toEqual([NEW_DEVICE]);
 
       await expect(
         firstValueFrom(test.adapter.establishAccount(grant, newRecord)),
-      ).resolves.toEqual({ kind: 'ready', newDevice: { deviceId: 'DEVICE' } });
+      ).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([NEW_DEVICE]);
       expect(test.storage.persistForEstablishment).toHaveBeenCalledOnce();
     });
 
-    it('reports a saved new device even when its session does not start, and not again on retry', async () => {
+    it('publishes a re-login’s new device when the establishment is cancelled right after the save', async () => {
+      const test = setup();
+      saved(test, { ...OLD_SESSION });
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+        of(session),
+      );
+      vi.mocked(test.matrix.restorePersisted).mockReturnValue(NEVER);
+      const facts = published(test);
+
+      test.adapter
+        .establishAccount(
+          AuthenticatedAccountGrant.issue(session),
+          activeIntent,
+        )
+        .subscribe()
+        .unsubscribe();
+
+      expect(facts).toEqual([NEW_DEVICE]);
+    });
+
+    it('publishes a saved new device even when its session does not start, and not again on retry', async () => {
       const test = setup();
       const grant = AuthenticatedAccountGrant.issue(session);
       // The failed attempt saved the new device's record; the retry reads it back.
@@ -1738,17 +1788,16 @@ describe('MatrixAccountRuntimeAdapter', () => {
       vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
         of(void 0),
       );
+      const facts = published(test);
 
       await expect(
         firstValueFrom(test.adapter.establishAccount(grant, activeIntent)),
-      ).resolves.toEqual({
-        kind: 'failed',
-        failure: 'transient-network',
-        newDevice: { deviceId: 'DEVICE' },
-      });
+      ).resolves.toEqual({ kind: 'failed', failure: 'transient-network' });
+      expect(facts).toEqual([NEW_DEVICE]);
       await expect(
         firstValueFrom(test.adapter.establishAccount(grant, activeIntent)),
       ).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([NEW_DEVICE]);
     });
 
     it('signs the replaced device out with its old token once the new session has started', async () => {
@@ -1763,10 +1812,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
         logout,
       } as never);
 
-      await expect(establish(test, order)).resolves.toEqual({
-        kind: 'ready',
-        newDevice: { deviceId: 'DEVICE' },
-      });
+      await expect(establish(test, order)).resolves.toEqual({ kind: 'ready' });
 
       expect(test.storage.load).toHaveBeenCalledWith('@new:hs');
       // Its token refreshes must never be saved over the new device's tokens.
@@ -1817,11 +1863,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
             activeIntent,
           ),
         ),
-      ).resolves.toEqual({
-        kind: 'failed',
-        failure: 'transient-network',
-        newDevice: { deviceId: 'DEVICE' },
-      });
+      ).resolves.toEqual({ kind: 'failed', failure: 'transient-network' });
       expect(test.matrix.detachedClient).not.toHaveBeenCalled();
     });
 
@@ -1835,10 +1877,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
         logout: vi.fn(logout),
       } as never);
 
-      await expect(establish(test)).resolves.toEqual({
-        kind: 'ready',
-        newDevice: { deviceId: 'DEVICE' },
-      });
+      await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
     });
 
     it('leaves a device saved through another server signed in when the sign-in is refused', async () => {
@@ -1876,10 +1915,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
         throw new Error('bad base URL');
       });
 
-      await expect(establish(test)).resolves.toEqual({
-        kind: 'ready',
-        newDevice: { deviceId: 'DEVICE' },
-      });
+      await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
     });
 
     it('does not mark a re-login on the device of a signed-out account as new', async () => {
@@ -1890,8 +1926,10 @@ describe('MatrixAccountRuntimeAdapter', () => {
       vi.mocked(test.storage.record).mockReturnValue(
         of({ baseUrl: 'https://hs', userId: '@new:hs', deviceId: 'DEVICE' }),
       );
+      const facts = published(test);
 
       await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([]);
 
       expect(test.matrix.detachedClient).not.toHaveBeenCalled();
     });
@@ -1899,8 +1937,10 @@ describe('MatrixAccountRuntimeAdapter', () => {
     it('leaves the device alone on a same-device re-login', async () => {
       const test = setup();
       saved(test, session);
+      const facts = published(test);
 
       await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+      expect(facts).toEqual([]);
 
       expect(test.matrix.detachedClient).not.toHaveBeenCalled();
     });

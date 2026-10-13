@@ -379,16 +379,18 @@ export class TrustDeviceConfirmationService {
       let check = this.serverChecks.get(accountId);
       if (!check) {
         const context = this.cryptoPort.forAccount(accountId);
-        // A record left by an earlier device of this Account is ignored by the gate.
-        if (context && context.client.getDeviceId() !== deviceId) {
+        // Accounts publishes a new device as soon as its record is saved, before its
+        // session starts: ask once it is live (the next hydrate). A record left by an
+        // earlier device of this Account is ignored by the gate.
+        if (!context || context.client.getDeviceId() !== deviceId) {
           return of(undefined);
         }
-        const answer: Observable<ServerIdentity> = !context
-          ? of('unknown')
-          : from(readPublishedMasterKey(context.client)).pipe(
-              map((key): ServerIdentity => (key ? 'present' : 'absent')),
-              catchError(() => of<ServerIdentity>('unknown')),
-            );
+        const answer: Observable<ServerIdentity> = from(
+          readPublishedMasterKey(context.client),
+        ).pipe(
+          map((key): ServerIdentity => (key ? 'present' : 'absent')),
+          catchError(() => of<ServerIdentity>('unknown')),
+        );
         // An answer that lands after `require()` recorded a newer sign-in is stale.
         const isCurrent = () => this.serverChecks.get(accountId) === check;
         check = answer.pipe(

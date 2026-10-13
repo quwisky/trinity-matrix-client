@@ -5,6 +5,7 @@ import {
   NEVER,
   Observable,
   Subject,
+  defer,
   firstValueFrom,
   of,
   tap,
@@ -38,6 +39,7 @@ interface TestAdapter {
   readonly establishAccount: ReturnType<typeof vi.fn>;
   readonly prepareActiveAccount: ReturnType<typeof vi.fn>;
   readonly commitActiveAccount: ReturnType<typeof vi.fn>;
+  readonly newDevices: Subject<NewDeviceEstablishment>;
 }
 
 function testAdapter(
@@ -88,8 +90,10 @@ function testAdapter(
   );
   const resetInstallation = vi.fn(() => of({ kind: 'ready' as const }));
   const retryInstallationCleanup = vi.fn(() => of({ kind: 'ready' as const }));
+  const newDevices = new Subject<NewDeviceEstablishment>();
   return {
     activeAccountId,
+    newDevices,
     readSavedAccounts,
     restoreAccount,
     establishAccount,
@@ -107,6 +111,7 @@ function testAdapter(
       retrySignOutCleanup,
       resetInstallation,
       retryInstallationCleanup,
+      newDevices: newDevices.asObservable(),
     },
   };
 }
@@ -761,14 +766,17 @@ describe('AccountRuntimeService', () => {
     });
   });
 
-  it('publishes a new-device sign-in before its outcome reaches the caller', async () => {
+  it('publishes a new-device sign-in from the save, before its outcome reaches the caller', async () => {
     const test = testAdapter({
       kind: 'available',
       activeAccountId: null,
       accountIds: [],
     });
     test.establishAccount.mockReturnValue(
-      of({ kind: 'ready', newDevice: { deviceId: 'DEVICE' } }),
+      defer(() => {
+        test.newDevices.next({ accountId: '@new:hs', deviceId: 'DEVICE' });
+        return of({ kind: 'ready' });
+      }),
     );
     const runtime = setup(test);
     const order: string[] = [];
@@ -794,17 +802,16 @@ describe('AccountRuntimeService', () => {
     });
   });
 
-  it('publishes a saved new device whose sign-in then failed, without passing it to the caller', async () => {
+  it('publishes a saved new device whose establishment is cancelled before its outcome', () => {
     const test = testAdapter({
       kind: 'available',
       activeAccountId: null,
       accountIds: [],
     });
     test.establishAccount.mockReturnValue(
-      of({
-        kind: 'failed',
-        failure: 'transient-network',
-        newDevice: { deviceId: 'DEVICE' },
+      defer(() => {
+        test.newDevices.next({ accountId: '@new:hs', deviceId: 'DEVICE' });
+        return NEVER;
       }),
     );
     const runtime = setup(test);
@@ -813,18 +820,13 @@ describe('AccountRuntimeService', () => {
       published.push(fact),
     );
 
-    const outcome = await firstValueFrom(
-      runtime.establishAuthenticatedAccount(grant(), activeIntent),
-    );
+    runtime
+      .establishAuthenticatedAccount(grant(), activeIntent)
+      .subscribe()
+      .unsubscribe();
     subscription.unsubscribe();
 
     expect(published).toEqual([{ accountId: '@new:hs', deviceId: 'DEVICE' }]);
-    expect(outcome).toEqual({
-      kind: 'failed',
-      accountId: '@new:hs',
-      placement: 'active',
-      failure: 'transient-network',
-    });
   });
 
   it('publishes nothing for a device the account already used, or a failed sign-in', async () => {
