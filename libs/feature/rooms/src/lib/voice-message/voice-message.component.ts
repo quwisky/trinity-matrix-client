@@ -30,6 +30,9 @@ interface OpenClip {
 const WAVEFORM_FULL = 1024;
 /** Shortest bar (percent) so a near-silent sample is still visible. */
 const MIN_BAR_HEIGHT = 12;
+/** Narrowest bar, and the gap between bars; the gap matches `.voice__wave` in the styles. */
+const BAR_PX = 2;
+const BAR_GAP_PX = 2;
 
 /**
  * A compact player for an MSC3245 voice message: a play/pause button, the recorded
@@ -52,6 +55,9 @@ export class VoiceMessageComponent {
 
   private readonly mediaPipeline = inject(MediaPipeline);
   private readonly audio = viewChild<ElementRef<HTMLAudioElement>>('audio');
+  private readonly wave = viewChild<ElementRef<HTMLElement>>('wave');
+  /** The wave's laid-out width in px; null until it has been measured. */
+  private readonly waveWidth = signal<number | null>(null);
 
   /** Resolved (blob) URL for the audio; null until the reader plays it, and after it ends. */
   readonly src = signal<string | null>(null);
@@ -63,8 +69,33 @@ export class VoiceMessageComponent {
   /** Elapsed playback in seconds (drives the timer + waveform fill). */
   private readonly elapsed = signal(0);
 
-  /** Waveform amplitudes (`[0, 1024]`); empty when the sender sent none. */
-  readonly bars = computed(() => this.media().waveform ?? []);
+  /** The sender's waveform amplitudes (`[0, 1024]`); empty when the sender sent none. */
+  private readonly samples = computed(() => this.media().waveform ?? []);
+
+  /**
+   * The wave's natural width: every sample as a narrowest bar. A wide bubble sizes itself
+   * to this (up to its cap); a narrow one shrinks the wave instead of pushing out the time.
+   */
+  readonly waveNaturalWidth = computed(() =>
+    Math.max(0, this.samples().length * (BAR_PX + BAR_GAP_PX) - BAR_GAP_PX),
+  );
+
+  /**
+   * How many bars fit the measured wave (all of them until it is measured). A number, so a
+   * resize that fits the same count changes nothing downstream.
+   */
+  private readonly barCount = computed(() => {
+    const total = this.samples().length;
+    const width = this.waveWidth();
+    if (width === null || width <= 0) return total;
+    const fit = Math.floor((width + BAR_GAP_PX) / (BAR_PX + BAR_GAP_PX));
+    return Math.min(total, Math.max(1, fit));
+  });
+
+  /** The bars drawn: the waveform, sampled down to as many bars as fit the wave. */
+  readonly bars = computed(() =>
+    resampleWaveform(this.samples(), this.barCount()),
+  );
 
   /** Total clip length in seconds (from the event's declared duration). */
   private readonly durationSec = computed(() =>
@@ -77,7 +108,7 @@ export class VoiceMessageComponent {
     return total > 0 ? Math.min(1, this.elapsed() / total) : 0;
   });
 
-  /** How many leading bars to render as "played". */
+  /** How many leading bars (of those drawn) to render as "played". */
   readonly playedBars = computed(() =>
     Math.round(this.fraction() * this.bars().length),
   );
@@ -103,6 +134,17 @@ export class VoiceMessageComponent {
       });
     });
     inject(DestroyRef).onDestroy(() => this.dropClip());
+    // The wave flexes with the bubble, which a narrow screen squeezes; measure it so it
+    // draws only the bars that fit and the time beside it is never pushed out.
+    effect((onCleanup) => {
+      const el = this.wave()?.nativeElement;
+      if (!el || typeof ResizeObserver === 'undefined') return;
+      const observer = new ResizeObserver(([entry]) => {
+        if (entry) this.waveWidth.set(entry.contentRect.width);
+      });
+      observer.observe(el);
+      onCleanup(() => observer.disconnect());
+    });
   }
 
   barHeight(amplitude: number): number {
@@ -198,6 +240,25 @@ export class VoiceMessageComponent {
     this.playing.set(false);
     this.elapsed.set(0);
   }
+}
+
+/**
+ * Sample `samples` down to at most `count` bars, each the peak of its share of the
+ * waveform so short loud moments survive. A waveform that already fits is returned as is.
+ */
+function resampleWaveform(
+  samples: readonly number[],
+  count: number,
+): readonly number[] {
+  if (samples.length <= count) return samples;
+  return Array.from({ length: count }, (_, i) =>
+    Math.max(
+      ...samples.slice(
+        Math.floor((i * samples.length) / count),
+        Math.floor(((i + 1) * samples.length) / count),
+      ),
+    ),
+  );
 }
 
 /** Format seconds as `m:ss`. */

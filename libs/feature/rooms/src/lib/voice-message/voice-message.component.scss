@@ -7,8 +7,10 @@
     display: inline-flex;
     align-items: center;
     gap: 10px;
-    min-width: 220px;
-    max-width: 320px;
+    min-width: min(220px, 100%);
+
+    // Never wider than the timeline column: the wave gives way, not the time.
+    max-width: min(320px, 100%);
     padding: 8px 12px;
     border-radius: var(--trinity-radius-xl);
     background: var(--trinity-rail);
@@ -29,12 +31,16 @@
     cursor: pointer;
   }
 
+  // The wave starts at its natural width (bound from the component) and shrinks to the
+  // room the play button and time leave it; the component draws only the bars that fit.
   .voice__wave {
     display: flex;
-    flex: 1;
+    flex: 1 1 auto;
     align-items: center;
     gap: 2px;
+    min-width: 0;
     height: 28px;
+    overflow: hidden;
   }
 
   .voice__wave--empty {
@@ -44,7 +50,7 @@
 
   .voice__bar {
     flex: 1;
-    min-width: 2px;
+    min-width: 0;
     border-radius: 1px;
     background: var(--trinity-text-muted);
     opacity: 0.5;

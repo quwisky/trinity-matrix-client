@@ -30,7 +30,12 @@
       >Couldn’t load this voice message. Try again.</span
     >
   } @else if (bars().length) {
-    <div class="voice__wave" aria-hidden="true">
+    <div
+      #wave
+      class="voice__wave"
+      aria-hidden="true"
+      [style.width.px]="waveNaturalWidth()"
+    >
       @for (bar of bars(); track $index) {
         <span
           class="voice__bar"
