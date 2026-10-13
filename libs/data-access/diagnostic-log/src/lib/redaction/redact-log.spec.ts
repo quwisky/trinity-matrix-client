@@ -8,6 +8,7 @@ import {
   BOB,
   CORPUS_CONTEXT,
   EVENT,
+  EVENT_2,
   OWN_DEVICE,
   REDACTION_CORPUS,
   ROOM,
@@ -128,6 +129,23 @@ describe('createLogRedactor', () => {
     );
   });
 
+  it('redacts a plain event ID followed by a path', () => {
+    const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+    expect(redactor.redact(`GET /rooms/${ROOM}/event/${EVENT}/context`)).toBe(
+      'GET /rooms/!room1:server1/event/$event1/context',
+    );
+    expect(redactor.redact(`relations of ${EVENT_2}/m.thread`)).toBe(
+      'relations of $event2/m.thread',
+    );
+  });
+
+  it('leaves a longer base64 run after "$" alone, even before a path', () => {
+    const run = `$${'A'.repeat(45)}/x`;
+
+    expect(createLogRedactor(CORPUS_CONTEXT).redact(run)).toBe(run);
+  });
+
   it('also redacts an event ID printed in a request path', () => {
     expect(
       createLogRedactor(CORPUS_CONTEXT).redact(
@@ -196,6 +214,31 @@ describe('createLogRedactor', () => {
       expect(redact('devices changed for @bob:x.org')).toBe(
         'devices changed for @user1:server3',
       );
+    });
+
+    it.each([
+      ['x%3AQWERTYUIOP', 'x%3ADEVICE1'],
+      ['%22QWERTYUIOP%22', '%22DEVICE1%22'],
+      ['ids=%5B%22QWERTYUIOP%22%5D', 'ids=%5B%22DEVICE1%22%5D'],
+      ['device_id=ab.cd%2Fef%2Bgh%3D', 'device_id=DEVICE2'],
+      ['device_id=ab.cd%2fef%2bgh%3d&x=1', 'device_id=DEVICE2&x=1'],
+      ['q=%22ab.cd%2Fef%2Bgh%3D%22', 'q=%22DEVICE2%22'],
+    ])(
+      'redacts a known device ID next to an escape in %s',
+      (line, expected) => {
+        const redactor = createLogRedactor({
+          ...CORPUS_CONTEXT,
+          selfDeviceIds: [OWN_DEVICE, 'ab.cd/ef+gh='],
+        });
+
+        expect(redactor.redact(line)).toBe(expected);
+      },
+    );
+
+    it('leaves escaped text without a known device ID as it was written', () => {
+      const line = 'q=%22abcdefghij%22&r=x%3ay%2F';
+
+      expect(redact(line)).toBe(line);
     });
 
     it('keeps known own device IDs redacted anywhere', () => {
@@ -284,6 +327,24 @@ describe('createLogRedactor', () => {
       );
       expect(redactor.redact('from @user:host:8448')).toBe(
         'from @user1:server2',
+      );
+    });
+
+    it('keeps the request path after a user ID with a port', () => {
+      const redactor = createLogRedactor(context([]));
+
+      expect(
+        redactor.redact('GET /profile/@bob:other.net:8448/displayname'),
+      ).toBe('GET /profile/@user1:server2/displayname');
+      expect(
+        redactor.redact(
+          `GET http://localhost:8008/_matrix/client/v3/profile/${SELF}:8008/avatar_url`,
+        ),
+      ).toBe(
+        'GET http://server1/_matrix/client/v3/profile/@me:server1/avatar_url',
+      );
+      expect(redactor.redact(storeLine('@bob:other.net', 'ab.cd/ef+gh='))).toBe(
+        'IndexedDbCryptoStore: opening main store trinity-crypto:@user1:server2:DEVICE1::matrix-sdk-crypto',
       );
     });
 
@@ -1091,6 +1152,9 @@ describe('createLogRedactor', () => {
       ['encoded user then dots', '%40a%3Ab%3A' + '.'.repeat(SIZE)],
       ['encoded user then escapes', '%40a%3Ab%3A' + '%2F'.repeat(SIZE / 3)],
       ['malformed escapes', '%40a%3Ab%ZZ'.repeat(SIZE / 11)],
+      ['escapes between words', 'ab%2F'.repeat(SIZE / 5)],
+      ['stray percent signs', 'a%'.repeat(SIZE / 2)],
+      ['events before paths', ('$' + 'A'.repeat(44) + '/').repeat(SIZE / 46)],
       ['invalid UTF-8 escapes', '%40a%3A' + '%FF'.repeat(SIZE / 3)],
       ['user then device punctuation', '@a:b:' + './+='.repeat(SIZE / 4)],
       ['user then full stops', '@a:b:' + '.'.repeat(SIZE) + 'a'],
@@ -1186,6 +1250,8 @@ describe('createLogRedactor', () => {
       ['device punctuation', './+='.repeat(SIZE / 4)],
       ['full stops', '.'.repeat(SIZE) + 'a'],
       ['near misses', 'ab.cd/ef+gh '.repeat(SIZE / 12)],
+      ['escaped near misses', 'ab.cd%2Fef%2Bgh%3'.repeat(SIZE / 17)],
+      ['one escaped run', 'a%2F'.repeat(SIZE / 4)],
     ])(
       'redacts %s in under 500 ms with a known device ID with punctuation',
       (_name, input) => {

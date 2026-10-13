@@ -37,8 +37,9 @@ export interface LogRedactor {
 // leading digits belong to the device ID, not to the server.
 const PORT = String.raw`(?::\d{1,5}(?![\p{L}\p{N}_-]))`;
 // After a user ID, digits that a device ID with punctuation goes on from are not a port
-// either (`@user:host:12.ab/c`); a full stop that ends a sentence still closes one.
-const USER_PORT = String.raw`(?::\d{1,5}(?![\p{L}\p{N}_~+/=-]|\.[\p{L}\p{N}_~+/=-]))`;
+// either (`@user:host:12.ab`). A full stop that ends a sentence still closes one, and so
+// does "/": `@user:host:8448/displayname` is a request path.
+const USER_PORT = String.raw`(?::\d{1,5}(?![\p{L}\p{N}_~+=-]|\.[\p{L}\p{N}_~+/=-]))`;
 // A server name: DNS name or IP literal, optional port (Matrix spec, "Server name").
 const serverName = (port: string): string =>
   String.raw`(?:\[[0-9A-Fa-f:.]+\]|[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*)${port}?`;
@@ -91,7 +92,8 @@ const ALIAS = new RegExp(
   'gu',
 );
 const EVENT_V1 = new RegExp(String.raw`\$${OPAQUE}:${SERVER}`, 'gu');
-const EVENT = /\$[A-Za-z0-9+/_-]{43,44}(?![A-Za-z0-9+/_=-])/g;
+// A "/" right after the ID starts a request path; any other ID character makes a longer run.
+const EVENT = /\$[A-Za-z0-9+/_-]{43,44}(?=\/|(?![A-Za-z0-9+/_=-]))/g;
 // "device", "devices", "deviceId", "device_id", "device id": the words that introduce an ID.
 const DEVICE_KEYWORD = /device(?:s|[_ -]?ids?)?(?![A-Za-z0-9_])/gi;
 // "device:", "device=", optionally closed and opened by quotes.
@@ -106,6 +108,10 @@ const DEVICE_AFTER_USER =
   /(@(?:me\d*|user\d+):server\d+)(?::([A-Za-z0-9._~+/=-]+)|( \(|\|)([A-Za-z0-9_-]{6,}))/g;
 // A run of device-ID characters with punctuation, looked up in the known devices.
 const DEVICE_RUN = /(?<![A-Za-z0-9._~+/=-])[A-Za-z0-9._~+/=-]+/g;
+// A run of unreserved characters and escapes. Its two kinds of step start with different
+// characters, so the run never backtracks; a run with an escape is decoded and looked up
+// for known device IDs, which "%22", "%3A" or "%2F" would otherwise hide from WORD.
+const ESCAPED_RUN = /(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})+/g;
 // A device ID that needs DEVICE_RUN to be found: it holds more than WORD characters.
 const PUNCTUATED = /[^A-Za-z0-9_-]/;
 // The shortest unknown device ID taken after a user ID.
@@ -396,14 +402,17 @@ class IdentifierRedactor implements LogRedactor {
     return this.redactDeviceContext(this.redactDevicesAfterUsers(text));
   }
 
-  /** Known device IDs anywhere, then the device ID that follows a user placeholder. */
+  /** Known device IDs, plain or escaped, then the device ID that follows a user placeholder. */
   private redactDevicesAfterUsers(text: string): string {
-    let known = text.replace(WORD, (word) => this.devices.get(word) ?? word);
-    if (this.punctuatedDevices) {
-      known = known.replace(DEVICE_RUN, (run) => {
-        const id = withoutFullStops(run);
-        const placeholder = this.devices.get(id);
-        return placeholder ? placeholder + run.slice(id.length) : run;
+    let known = this.redactKnownDevices(text);
+    if (known.includes('%')) {
+      known = known.replace(ESCAPED_RUN, (run) => {
+        if (!run.includes('%')) {
+          return run;
+        }
+        const decoded = decodeEscapes(run);
+        const redacted = this.redactKnownDevices(decoded);
+        return redacted === decoded ? run : encodeLike(redacted, run);
       });
     }
     return known.replace(
@@ -425,6 +434,19 @@ class IdentifierRedactor implements LogRedactor {
           : `${user}:${this.device(id)}${match.slice(user.length + 1 + id.length)}`;
       },
     );
+  }
+
+  /** Known device IDs that stand as a word, or as a run of device-ID characters. */
+  private redactKnownDevices(text: string): string {
+    const known = text.replace(WORD, (word) => this.devices.get(word) ?? word);
+    if (!this.punctuatedDevices) {
+      return known;
+    }
+    return known.replace(DEVICE_RUN, (run) => {
+      const id = withoutFullStops(run);
+      const placeholder = this.devices.get(id);
+      return placeholder ? placeholder + run.slice(id.length) : run;
+    });
   }
 
   /**
