@@ -1,0 +1,191 @@
+<trn-page-header title="Verify this device" />
+
+<main class="crypto-route">
+  <section class="crypto-surface" trnCard variant="muted" size="md">
+    <div trnCardContent>
+      @switch (gate().kind) {
+        @case ('required') {
+          <h2 class="heading">Verify it’s you</h2>
+          <p class="lead">
+            This is a new device for this account. Verify it before you
+            continue, so your encrypted messages are readable here and other
+            people’s apps keep sending messages to it.
+          </p>
+
+          <div class="actions">
+            @if (hasRecoveryKey()) {
+              <button
+                trnBtn
+                type="button"
+                class="w-full"
+                data-testid="device-confirmation-recovery-key"
+                [disabled]="busy()"
+                (click)="useRecoveryKey()"
+              >
+                Use recovery key
+              </button>
+              <button
+                trnBtn
+                type="button"
+                presentation="outline"
+                class="w-full"
+                data-testid="device-confirmation-other-device"
+                [disabled]="busy()"
+                (click)="verifyWithAnotherDevice()"
+              >
+                Verify with another device
+              </button>
+            } @else {
+              <p class="note" data-testid="device-confirmation-no-recovery">
+                This account has no recovery key yet. Verify with a device where
+                you’re already signed in.
+              </p>
+              <button
+                trnBtn
+                type="button"
+                class="w-full"
+                data-testid="device-confirmation-other-device"
+                [disabled]="busy()"
+                (click)="verifyWithAnotherDevice()"
+              >
+                Verify with another device
+              </button>
+            }
+          </div>
+
+          <div class="ways-out">
+            <p class="note">
+              Can’t verify? Resetting your identity lets you continue, but
+              people who verified you need to do it again and your message
+              backup is deleted.
+            </p>
+            <button
+              trnBtn
+              type="button"
+              variant="danger"
+              presentation="outline"
+              size="sm"
+              class="w-full"
+              data-testid="device-confirmation-reset"
+              [disabled]="busy()"
+              (click)="resetIdentity()"
+            >
+              Reset my identity
+            </button>
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="ghost"
+              size="sm"
+              class="w-full"
+              data-testid="device-confirmation-remove"
+              [disabled]="busy()"
+              (click)="removeAccount()"
+            >
+              Remove account from this device
+            </button>
+            @if (hasOtherAccount()) {
+              <button
+                trnBtn
+                type="button"
+                variant="secondary"
+                presentation="ghost"
+                size="sm"
+                class="w-full"
+                data-testid="device-confirmation-other-account"
+                [disabled]="busy()"
+                (click)="useAnotherAccount()"
+              >
+                Use another account
+              </button>
+            }
+            @if (canSkip) {
+              <button
+                trnBtn
+                type="button"
+                variant="secondary"
+                presentation="ghost"
+                size="sm"
+                class="w-full"
+                data-testid="device-confirmation-skip"
+                [disabled]="busy()"
+                (click)="skip()"
+              >
+                Skip for now (debug build)
+              </button>
+            }
+          </div>
+        }
+        @case ('pending') {
+          @if (stalled()) {
+            <p class="error" role="alert">
+              Checking this device is taking longer than expected. Try again.
+            </p>
+            <div class="actions">
+              <button
+                trnBtn
+                type="button"
+                class="w-full"
+                data-testid="device-confirmation-retry"
+                [disabled]="busy()"
+                (click)="retry()"
+              >
+                Try again
+              </button>
+              <button
+                trnBtn
+                type="button"
+                presentation="outline"
+                class="w-full"
+                data-testid="device-confirmation-continue"
+                [disabled]="busy()"
+                (click)="continueWithoutCheck()"
+              >
+                Continue
+              </button>
+            </div>
+            <div class="ways-out">
+              <button
+                trnBtn
+                type="button"
+                variant="secondary"
+                presentation="ghost"
+                size="sm"
+                class="w-full"
+                data-testid="device-confirmation-remove"
+                [disabled]="busy()"
+                (click)="removeAccount()"
+              >
+                Remove account from this device
+              </button>
+              @if (hasOtherAccount()) {
+                <button
+                  trnBtn
+                  type="button"
+                  variant="secondary"
+                  presentation="ghost"
+                  size="sm"
+                  class="w-full"
+                  data-testid="device-confirmation-other-account"
+                  [disabled]="busy()"
+                  (click)="useAnotherAccount()"
+                >
+                  Use another account
+                </button>
+              }
+            </div>
+          } @else {
+            <div class="status" role="status" aria-live="polite">
+              <trn-spinner />
+              <p class="text-muted-foreground">Checking this device…</p>
+            </div>
+          }
+        }
+      }
+      @if (error(); as message) {
+        <p class="error" role="alert">{{ message }}</p>
+      }
+    </div>
+  </section>
+</main>

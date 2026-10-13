@@ -11,3 +11,4 @@ export {
   type TrustProviderRecoveryPort,
 } from './lib/trust-provider-recovery.port';
 export * from './lib/trust-account-status.service';
+export * from './lib/trust-device-confirmation.service';

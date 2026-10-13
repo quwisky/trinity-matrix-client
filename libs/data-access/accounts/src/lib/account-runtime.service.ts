@@ -49,6 +49,7 @@ import type {
   AccountSwitchOutcome,
   InstallationResetOutcome,
   InactiveAccountRestoreRetryOutcome,
+  NewDeviceEstablishment,
 } from './account-runtime.models';
 
 interface InFlightAccountEstablishment {
@@ -73,6 +74,13 @@ export class AccountRuntimeService {
   /** Value-free destructive cleanup progress retained independently of UI observers. */
   readonly lifecycle = this.lifecycleWorkflow.state;
   readonly activeAccountId = this.adapter.activeAccountId;
+  /**
+   * Each sign-in that created a new device for an Account, published as soon as its record
+   * is saved, so before its establishment outcome reaches the caller, and even when that
+   * establishment then fails or is cancelled. Hot; never replays.
+   */
+  readonly newDevices: Observable<NewDeviceEstablishment> =
+    this.adapter.newDevices;
   readonly hasActiveAccount = computed(() => this.activeAccountId() !== null);
 
   restoreSavedAccounts(): Observable<AccountRestoreResult> {

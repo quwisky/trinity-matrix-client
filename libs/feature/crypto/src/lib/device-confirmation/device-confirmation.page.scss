@@ -1,0 +1,43 @@
+@use '../styles/mixins' as *;
+
+@layer components {
+  .heading {
+    @include heading;
+  }
+
+  .crypto-route {
+    @include route;
+  }
+
+  .crypto-surface {
+    width: min(100%, 640px);
+    margin-inline: auto;
+  }
+
+  .lead {
+    @include lead;
+  }
+
+  .actions,
+  .ways-out {
+    display: flex;
+    flex-direction: column;
+    gap: var(--trinity-space-4);
+    margin-top: var(--trinity-space-6);
+  }
+
+  .note {
+    margin: 0;
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-control-size);
+  }
+
+  .status {
+    @include status;
+  }
+
+  .error {
+    margin: var(--trinity-space-4) 0 0;
+    color: var(--trinity-danger);
+  }
+}

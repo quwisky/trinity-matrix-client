@@ -78,6 +78,7 @@ import { RoomOrderHealthService } from './room-order-health.service';
 import { HostSessionHealthService } from './host-session-health.service';
 import { NotificationSessionService } from './notification-session.service';
 import { BackgroundMemoryRelease } from './background-memory-release.service';
+import { DeviceConfirmationCoordinator } from './device-confirmation.coordinator';
 
 /** Owns every live host and Workspace subscription for one Application Runtime session. */
 @Injectable({ providedIn: 'root' })
@@ -107,6 +108,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly roomLibrary = inject(RoomLibraryLifetime);
   private readonly trust = inject(TrustLifetime);
   private readonly accountTrust = inject(TrustAccountStatusService);
+  private readonly deviceConfirmation = inject(DeviceConfirmationCoordinator);
   private readonly identity = inject(IdentityLifetime);
   private readonly health = inject(CapabilityHealthService);
   private readonly accounts = inject(AccountRuntimeService);
@@ -196,6 +198,7 @@ export class TrinityApplicationSessionAdapter {
         ),
       );
       observeOptional(this.accountTrust.run());
+      observeOptional(this.deviceConfirmation.run());
       observeOptional(
         this.identity.run(this.routedSurfaces.roomProjectionDemand).pipe(
           tap((event) => {

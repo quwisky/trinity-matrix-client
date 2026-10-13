@@ -11,6 +11,7 @@ import type {
   AccountSignOutOutcome,
   AccountSwitchFailure,
   InstallationResetOutcome,
+  NewDeviceEstablishment,
 } from './account-runtime.models';
 
 export type SavedAccountsSnapshot =
@@ -36,6 +37,12 @@ export type AdapterAccountSwitchOutcome =
 
 export interface AccountRuntimeAdapter {
   readonly activeAccountId: Signal<string | null>;
+  /**
+   * Each sign-in that saved a record for a device this installation had not used for the
+   * Account, published once, as soon as the record is saved: the saved record outlives a
+   * failed or cancelled establishment and is restored on the next launch. Hot; never replays.
+   */
+  readonly newDevices: Observable<NewDeviceEstablishment>;
   sweepOrphanedStores(): Observable<void>;
   readSavedAccounts(): Observable<SavedAccountsSnapshot>;
   restoreAccount(

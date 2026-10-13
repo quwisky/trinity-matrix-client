@@ -11,6 +11,7 @@ import {
 } from '@trinity/platform-native';
 import {
   Observable,
+  Subject,
   catchError,
   defer,
   map,
@@ -42,7 +43,11 @@ import type {
   AccountRestoreRole,
   AccountSignOutOutcome,
   InstallationResetOutcome,
+  NewDeviceEstablishment,
 } from './account-runtime.models';
+
+/** What the saved record says about a sign-in's device; `unknown` is never reported as new. */
+type DeviceNovelty = 'new' | 'existing' | 'unknown';
 
 @Injectable({ providedIn: 'root' })
 export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
@@ -57,8 +62,11 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
       readonly stored: ReturnType<typeof authenticatedAccountGrantPayload>;
     }
   >();
+  private readonly newDeviceFacts = new Subject<NewDeviceEstablishment>();
 
   readonly activeAccountId = this.matrix.activeUserId;
+  readonly newDevices: Observable<NewDeviceEstablishment> =
+    this.newDeviceFacts.asObservable();
 
   sweepOrphanedStores(): Observable<void> {
     return this.storage.sweepOrphanedCryptoStores();
@@ -121,14 +129,18 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
       }
       const pending = this.pendingNewAccounts.get(session.userId);
       let replaced: MatrixSession | null = null;
+      let novelty: DeviceNovelty = 'unknown';
       const persisted$ =
         intent.accountRecord === 'new' &&
         pending &&
         sameAuthenticatedAccountGrant(pending.grant, grant)
-          ? of(pending.stored)
-          : this.replacedDevice(session).pipe(
-              tap((device) => {
-                replaced = device;
+          ? // A retried first establishment: the attempt that saved the record published
+            // its device already.
+            of(pending.stored)
+          : this.priorDevice(session).pipe(
+              tap((prior) => {
+                replaced = prior.replaced;
+                novelty = prior.novelty;
               }),
               switchMap(() =>
                 this.storage.persistForEstablishment(
@@ -141,6 +153,15 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
                   this.pendingNewAccounts.set(session.userId, {
                     grant,
                     stored,
+                  });
+                }
+                // Published at once, whatever the later outcome: the next launch restores
+                // a saved record without asking whether it was new. Saving a new record
+                // refuses an Account that already has one.
+                if (intent.accountRecord === 'new' || novelty === 'new') {
+                  this.newDeviceFacts.next({
+                    accountId: session.userId,
+                    deviceId: session.deviceId,
                   });
                 }
               }),
@@ -349,14 +370,36 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   }
 
   /**
-   * The stored device a sign-in is about to replace, read before saving the new session
-   * overwrites its token, or null when there is none. Saving reclaims its local store, so
-   * nothing could reach that device afterwards; the typical case is a lost store key, where
-   * re-authentication signs in as a new device. A device saved through another server is
-   * not replaced: saving refuses that sign-in (`AccountHomeserverMismatchError`) and keeps
-   * the saved account as it is.
+   * What the saved record says about this sign-in's device, read before saving the new
+   * session overwrites it. Novelty comes from the token-free record, so re-authenticating
+   * a signed-out Account (whose record keeps its device id but no token) on that device is
+   * not new. The same device id is a re-authentication; no record is a first sign-in
+   * here; a failed read is `unknown`: it proves nothing, so it is never reported as new.
+   * A different device on the same homeserver is replaced: its session is loaded so it
+   * can be signed out once the new session starts (saving reclaims its local store, so
+   * nothing could reach it afterwards). A device saved through another server is not
+   * replaced, because saving refuses that sign-in (`AccountHomeserverMismatchError`).
    */
-  private replacedDevice(
+  private priorDevice(session: MatrixSession): Observable<{
+    readonly replaced: MatrixSession | null;
+    readonly novelty: DeviceNovelty;
+  }> {
+    return defer(() => this.storage.record(session.userId)).pipe(
+      switchMap((record) => {
+        if (!record) return of({ replaced: null, novelty: 'new' as const });
+        if (record.deviceId === session.deviceId) {
+          return of({ replaced: null, novelty: 'existing' as const });
+        }
+        return this.replacedSession(session).pipe(
+          map((replaced) => ({ replaced, novelty: 'new' as const })),
+        );
+      }),
+      catchError(() => of({ replaced: null, novelty: 'unknown' as const })),
+    );
+  }
+
+  /** The saved session of a different device on the same homeserver, when it has a token. */
+  private replacedSession(
     session: MatrixSession,
   ): Observable<MatrixSession | null> {
     return defer(() => this.storage.load(session.userId)).pipe(

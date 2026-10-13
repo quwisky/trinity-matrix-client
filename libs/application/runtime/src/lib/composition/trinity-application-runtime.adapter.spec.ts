@@ -26,6 +26,7 @@ import {
 import {
   AccountRuntimeService,
   type AccountRestoreResult,
+  type NewDeviceEstablishment,
 } from '@trinity/data-access/accounts';
 import { GifSettingsService } from '@trinity/data-access/gif';
 import {
@@ -50,6 +51,7 @@ import {
   SpaceRoomOrderService,
 } from '@trinity/data-access/room-library';
 import {
+  TrustDeviceConfirmationService,
   TrustLifetime,
   type TrustLifetimeEvent,
 } from '@trinity/data-access/trust';
@@ -75,7 +77,7 @@ import {
   type HostCapabilityManifest,
   type HostOperationOutcome,
 } from '@trinity/runtime/host';
-import { MockProvider } from 'ng-mocks';
+import { MockProvider, ngMocks } from 'ng-mocks';
 import {
   EMPTY,
   NEVER,
@@ -225,6 +227,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
           activeAccountId,
           signOutAccount,
           resetInstallation,
+          newDevices: NEVER,
         }),
         MockProvider(PushService, {
           run: () => EMPTY,
@@ -919,6 +922,38 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(badgeSession.observed).toBe(false);
     expect(notificationSession.observed).toBe(false);
     expect(orderSession.observed).toBe(false);
+  });
+
+  // Accounts publishes each new-device fact once, without replay. The sign-in page opens
+  // only after the session stage (initial navigation waits for Workspace restoration),
+  // so the check must be listening from the session's start, not from readiness.
+  it('records new-device sign-ins from before the session is ready until it ends', () => {
+    const facts = new Subject<NewDeviceEstablishment>();
+    ngMocks.stub(TestBed.inject(AccountRuntimeService), {
+      newDevices: facts.asObservable(),
+    });
+    const require = vi
+      .spyOn(TestBed.inject(TrustDeviceConfirmationService), 'require')
+      .mockReturnValue(of(undefined));
+    const readiness = new Subject<void>();
+    const lifetime = adapter.runSession(readiness).subscribe();
+
+    // A first sign-in, from the sign-in page shown before the session is live.
+    facts.next({ accountId: '@first:example.org', deviceId: 'FIRST' });
+    expect(require).toHaveBeenCalledWith('@first:example.org', 'FIRST');
+
+    roomLibrarySession.next({ kind: 'prepared' });
+    trustSession.next({ kind: 'prepared' });
+    identitySession.next({ kind: 'prepared' });
+    readiness.next();
+    TestBed.tick();
+    // A second Account, added while the app is open.
+    facts.next({ accountId: '@second:example.org', deviceId: 'SECOND' });
+    expect(require).toHaveBeenCalledWith('@second:example.org', 'SECOND');
+
+    lifetime.unsubscribe();
+    facts.next({ accountId: '@third:example.org', deviceId: 'THIRD' });
+    expect(require).toHaveBeenCalledTimes(2);
   });
 
   it('owns Appearance effects in the post-hydration preference lifetime', () => {
