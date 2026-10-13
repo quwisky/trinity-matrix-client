@@ -18,6 +18,10 @@ import {
 } from '@angular/router';
 import { TrustService } from '@trinity/data-access/trust';
 import {
+  SessionLockService,
+  type SessionLockState,
+} from '@trinity/platform-native';
+import {
   AccountRuntimeService,
   type AccountSwitchCoordination,
 } from '@trinity/data-access/accounts';
@@ -199,6 +203,10 @@ export const SHARED_MOCKS: Provider[] = [
   SessionActionsService,
   WorkspaceNavigationService,
   ConversationTimelineStub,
+  // This tab holds the session; a spec that hands it over provides its own.
+  MockProvider(SessionLockService, {
+    state: signal<SessionLockState>('held').asReadonly(),
+  }),
   MockProvider(SpaceContentsService, {
     create: () =>
       of({

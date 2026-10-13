@@ -3,6 +3,7 @@ import type { Observable } from 'rxjs';
 import type {
   ApplicationRecoveryAdapterOutcome,
   ApplicationSessionEvent,
+  ApplicationSessionLockOutcome,
   ApplicationStartupRecovery,
   ApplicationStartupStageOutcome,
 } from './application-runtime.models';
@@ -10,6 +11,10 @@ import type {
 /** Host composition supplied at the Application Runtime seam. */
 export interface ApplicationRuntimeAdapter {
   negotiateHost(): Observable<ApplicationStartupStageOutcome>;
+  /** Claims this tab's one running session: `waiting` when another tab has it. */
+  acquireSessionLock(): Observable<ApplicationSessionLockOutcome>;
+  /** Emits once this tab holds the session lock it waited for. */
+  awaitSessionLock(): Observable<void>;
   hydratePreferences(): Observable<ApplicationStartupStageOutcome>;
   restoreAccounts(): Observable<ApplicationStartupStageOutcome>;
   establishSessionCapabilities(): Observable<ApplicationStartupStageOutcome>;

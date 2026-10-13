@@ -10,3 +10,4 @@ export * from './lib/project-from-client';
 export * from './lib/trust-crypto.port';
 export * from './lib/identity-matrix.port';
 export * from './lib/known-names';
+export type { PendingTextMessage } from './lib/outgoing-work';

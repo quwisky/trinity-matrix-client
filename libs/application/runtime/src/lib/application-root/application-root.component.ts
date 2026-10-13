@@ -25,6 +25,7 @@ import {
   TrnSurfaceService,
   TrnToasterComponent,
 } from '@trinity/components/overlay';
+import { SessionLockService } from '@trinity/platform-native';
 import { markRoutedPage } from '@trinity/util/ui';
 import { filter, map, take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
@@ -38,9 +39,18 @@ import {
 } from '../capability-status.service';
 import { VerificationHostComponent } from '../verification-host/verification-host.component';
 import { ApplicationRecoveryPresenter } from './application-recovery.presenter';
+import { SessionLockNoticeComponent } from './session-lock-notice/session-lock-notice.component';
+import { sessionLockNotice } from './session-lock-notice/session-lock-notice.model';
 import { SystemStatusComponent } from './system-status/system-status.component';
 import { TitleBarComponent } from './title-bar/title-bar.component';
 import { TrinityApplicationSessionAdapter } from '../composition/trinity-application-session.adapter';
+
+/**
+ * How long a tab waiting for another tab shows the startup spinner before the notice. A
+ * reloaded tab may ask before the browser frees its old page's lock; it is usually granted
+ * within this time, so it never flashes "Trinity is open in another tab".
+ */
+const WAITING_NOTICE_DELAY_MS = 500;
 
 @Component({
   selector: 'trn-root',
@@ -55,6 +65,7 @@ import { TrinityApplicationSessionAdapter } from '../composition/trinity-applica
     TrnToasterComponent,
     TrnSpinnerComponent,
     TitleBarComponent,
+    SessionLockNoticeComponent,
   ],
 })
 export class ApplicationRootComponent {
@@ -64,7 +75,9 @@ export class ApplicationRootComponent {
   private readonly session = inject(TrinityApplicationSessionAdapter);
   private readonly router = inject(Router);
   private readonly surfaces = inject(TrnSurfaceService);
+  private readonly sessionLock = inject(SessionLockService);
   private readonly showStartupDetail = signal(false);
+  private readonly waitingNoticeDue = signal(false);
   private readonly routeUrl = toSignal(
     this.router.events.pipe(
       filter((event): event is NavigationEnd => event instanceof NavigationEnd),
@@ -77,7 +90,13 @@ export class ApplicationRootComponent {
   readonly state = this.runtime.state;
   readonly booting = computed(() => {
     const phase = this.state().phase;
-    return phase === 'stopped' || phase === 'starting' || phase === 'stopping';
+    return (
+      phase === 'stopped' ||
+      phase === 'starting' ||
+      phase === 'stopping' ||
+      // Never the routes while another tab runs Trinity; the notice after a short delay.
+      (phase === 'waiting-for-session' && !this.waitingNoticeDue())
+    );
   });
   readonly startupStep = computed(() => {
     const state = this.state();
@@ -89,6 +108,9 @@ export class ApplicationRootComponent {
     const state = this.state();
     return state.phase === 'blocked' ? state : null;
   });
+  readonly sessionNotice = computed(() =>
+    sessionLockNotice(this.state(), this.sessionLock.state()),
+  );
   readonly recoveryAction = computed(() =>
     recoveryAction(
       this.blocked()?.failure.recovery ?? 'retry-startup',
@@ -113,6 +135,7 @@ export class ApplicationRootComponent {
       500,
     );
     this.destroyRef.onDestroy(() => window.clearTimeout(timer));
+    this.revealWaitingNotice();
     this.presentSystemStatus();
   }
 
@@ -130,6 +153,33 @@ export class ApplicationRootComponent {
       .confirmAndRecover(recovery)
       .pipe(take(1), takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => this.recovery.present(outcome));
+  }
+
+  useHere(): void {
+    this.sessionLock.requestHandover();
+  }
+
+  /** Reveal the waiting notice after {@link WAITING_NOTICE_DELAY_MS} of waiting for another tab. */
+  private revealWaitingNotice(): void {
+    const waiting = computed(
+      () => this.state().phase === 'waiting-for-session',
+    );
+    let timer: number | undefined;
+    effect(() => {
+      const isWaiting = waiting();
+      untracked(() => {
+        window.clearTimeout(timer);
+        timer = undefined;
+        this.waitingNoticeDue.set(false);
+        if (isWaiting) {
+          timer = window.setTimeout(
+            () => this.waitingNoticeDue.set(true),
+            WAITING_NOTICE_DELAY_MS,
+          );
+        }
+      });
+    });
+    this.destroyRef.onDestroy(() => window.clearTimeout(timer));
   }
 
   /** System status follows its state as a surface; any close of the surface clears the state. */
@@ -163,6 +213,8 @@ function startupStep(stage: ApplicationStartupStage): string {
   switch (stage) {
     case 'host-negotiation':
       return 'Checking this device…';
+    case 'session-lock':
+      return 'Checking for other tabs…';
     case 'preference-hydration':
       return 'Restoring your preferences…';
     case 'account-restoration':
@@ -173,6 +225,11 @@ function startupStep(stage: ApplicationStartupStage): string {
       return 'Opening your Workspace…';
     case 'readiness':
       return 'Finishing startup…';
+    default: {
+      const unhandled: never = stage;
+      void unhandled;
+      return 'Finishing startup…';
+    }
   }
 }
 

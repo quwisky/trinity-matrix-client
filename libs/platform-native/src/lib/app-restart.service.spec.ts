@@ -64,6 +64,14 @@ describe('AppRestartService', () => {
     expect(stub.calls.some((c) => c === 'reload')).toBe(false);
   });
 
+  it('reloads in place for a session handover, keeping the route', () => {
+    stub = stubLocation('https://app.example/rooms/!room:hs');
+
+    service().reload();
+
+    expect(stub.calls).toEqual(['reload']);
+  });
+
   it('resolves the root against a custom scheme, for Electron and native', () => {
     // Electron's renderer runs on `trinity://app` and Capacitor serves `capacitor://localhost`
     // — the root has to be derived from the current href rather than hard-coded to a

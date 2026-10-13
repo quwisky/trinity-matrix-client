@@ -14,6 +14,7 @@ import type { ApplicationStartupRecovery } from './application-runtime.models';
 import {
   APPLICATION_STARTUP_PRODUCERS,
   APPLICATION_STARTUP_STAGES,
+  SESSION_LOCK_UNAVAILABLE_COPY,
   type ApplicationStartupProducer,
   type ApplicationStartupProducerSettlement,
 } from './application-runtime.models';
@@ -217,7 +218,9 @@ export class CapabilityStatusService {
   supportDetails(): string {
     const state = this.runtime.state();
     const stage =
-      state.phase === 'starting' || state.phase === 'blocked'
+      state.phase === 'starting' ||
+      state.phase === 'blocked' ||
+      state.phase === 'waiting-for-session'
         ? 'startup'
         : 'session';
     const attempt = 'attempt' in state ? state.attempt : 0;
@@ -319,6 +322,10 @@ const STARTUP_STATUS_COPY = {
   'host-contract': {
     heading: 'Device integration could not be prepared',
     consequence: 'Trinity cannot safely use this host yet.',
+  },
+  'session-lock': {
+    heading: SESSION_LOCK_UNAVAILABLE_COPY.heading,
+    consequence: SESSION_LOCK_UNAVAILABLE_COPY.body,
   },
   'preference-hydration': {
     heading: 'Safe settings could not be prepared',

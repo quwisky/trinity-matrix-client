@@ -12,6 +12,7 @@ import {
   merge,
   of,
   shareReplay,
+  take,
   tap,
   type Observable,
 } from 'rxjs';
@@ -48,6 +49,26 @@ export class AppearanceEffects {
 
   /** Last Appearance projected by the effect lifetime, or undefined before it first runs. */
   readonly resolved = this._resolved.asReadonly();
+
+  /**
+   * Put the saved Appearance on the document once, before preferences hydrate, for a tab
+   * that shows a notice instead of starting (#1267). Reads only; emits once when applied and
+   * completes without applying if anything fails. Hydration later applies the same values.
+   */
+  applySaved(): Observable<void> {
+    return defer(() =>
+      combineLatest([
+        this.preferences.readSaved(),
+        this.systemMode.observe().pipe(take(1)),
+      ]),
+    ).pipe(
+      take(1),
+      map(([saved, systemMode]) => {
+        this.documentAdapter.apply(resolveAppearance(saved, systemMode));
+      }),
+      catchError(() => EMPTY),
+    );
+  }
 
   run(): Observable<never> {
     return defer(() => {

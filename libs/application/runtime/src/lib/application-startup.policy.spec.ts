@@ -7,9 +7,10 @@ import {
 } from './application-startup.policy';
 
 describe('Application startup producer policy', () => {
-  it('registers every current producer with a finite budget and no automatic retry', () => {
+  it('registers every current producer, each but the session lock with a finite budget, and no automatic retry', () => {
     expect(Object.keys(APPLICATION_STARTUP_PRODUCER_POLICIES)).toEqual([
       'host-contract',
+      'session-lock',
       'preference-hydration',
       'account-registry',
       'room-library',
@@ -18,11 +19,24 @@ describe('Application startup producer policy', () => {
       'workspace',
       'readiness',
     ]);
+    const bounded = Object.entries(APPLICATION_STARTUP_PRODUCER_POLICIES)
+      .filter(([producer]) => producer !== 'session-lock')
+      .map(([, policy]) => policy);
     expect(
-      Object.values(APPLICATION_STARTUP_PRODUCER_POLICIES).every(
-        (policy) => policy.budgetMs > 0 && policy.automaticRetryLimit === 0,
+      bounded.every(
+        (policy) =>
+          policy.budgetMs !== null &&
+          policy.budgetMs > 0 &&
+          policy.automaticRetryLimit === 0,
       ),
     ).toBe(true);
+    // A tab may wait for another tab for as long as that tab runs: no deadline.
+    expect(APPLICATION_STARTUP_PRODUCER_POLICIES['session-lock']).toEqual({
+      stage: 'session-lock',
+      required: true,
+      budgetMs: null,
+      automaticRetryLimit: 0,
+    });
     expect(APPLICATION_STARTUP_PRODUCER_POLICIES['room-library'].budgetMs).toBe(
       ROOM_LIBRARY_PREPARATION_BUDGET_MS,
     );
@@ -38,12 +52,13 @@ describe('Application startup producer policy', () => {
         Math.max(
           ...Object.values(APPLICATION_STARTUP_PRODUCER_POLICIES)
             .filter((policy) => policy.stage === stage)
-            .map((policy) => policy.budgetMs),
+            .map((policy) => policy.budgetMs ?? 0),
         ),
       0,
     );
 
     expect(APPLICATION_STARTUP_WATCHDOG_BUDGET_MS).toBe(completeStagedPath);
+    // Unchanged by the session lock, whose wait is outside the watchdog.
     expect(APPLICATION_STARTUP_WATCHDOG_BUDGET_MS).toBe(230_000);
   });
 });

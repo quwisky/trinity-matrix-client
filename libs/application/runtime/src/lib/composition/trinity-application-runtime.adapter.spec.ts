@@ -1,5 +1,9 @@
 import { Location } from '@angular/common';
-import { signal } from '@angular/core';
+import {
+  EnvironmentInjector,
+  createEnvironmentInjector,
+  signal,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   NavigationError,
@@ -64,6 +68,8 @@ import {
   MessageGestureSettingsService,
   NativeNavigationService,
   PrivacySettingsService,
+  SESSION_LOCK_REQUIRED,
+  SessionLockService,
   ShellLayoutService,
   StoragePersistenceService,
   SystemLineSettingsService,
@@ -85,6 +91,7 @@ import {
   Subject,
   firstValueFrom,
   of,
+  throwError,
   toArray,
 } from 'rxjs';
 import {
@@ -137,6 +144,9 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let updateCheck: Mock<HostUpdatesService['check']>;
   let hydrateOrder: Mock<() => Observable<RoomOrderHydrationOutcome>>;
   let requestPersistence: Mock<StoragePersistenceService['requestPersistence']>;
+  let acquireLock: Mock<SessionLockService['acquire']>;
+  let applySavedAppearance: Mock<AppearanceEffects['applySaved']>;
+  let lockGranted: Subject<void>;
   let health: CapabilityHealthService;
   let adapter: TrinityApplicationRuntimeAdapter;
 
@@ -204,6 +214,13 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     );
     requestPersistence = vi.fn<StoragePersistenceService['requestPersistence']>(
       () => of(true),
+    );
+    acquireLock = vi.fn<SessionLockService['acquire']>(() =>
+      of('held' as const),
+    );
+    lockGranted = new Subject<void>();
+    applySavedAppearance = vi.fn<AppearanceEffects['applySaved']>(() =>
+      of(undefined),
     );
     const promiseInit = () => ({ init: vi.fn().mockResolvedValue(undefined) });
     TestBed.configureTestingModule({
@@ -279,7 +296,10 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(WorkspaceApplicationSurfacePresenterAdapter, {
           run: () => surfaceSession,
         }),
-        MockProvider(AppearanceEffects, { run: () => appearanceSession }),
+        MockProvider(AppearanceEffects, {
+          run: () => appearanceSession,
+          applySaved: applySavedAppearance,
+        }),
         MockProvider(AppearancePreferences, {
           hydrate: appearanceHydrate,
           recoverHydration: appearanceRecover,
@@ -330,6 +350,11 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(StoragePersistenceService, {
           requestPersistence,
         }),
+        MockProvider(SessionLockService, {
+          acquire: acquireLock,
+          granted: () => lockGranted,
+        }),
+        { provide: SESSION_LOCK_REQUIRED, useValue: true },
       ],
     });
     adapter = TestBed.inject(TrinityApplicationRuntimeAdapter);
@@ -482,6 +507,98 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       recovery: 'retry-startup',
       diagnostic: { code: 'host-negotiation-failed' },
     });
+  });
+
+  it.each([
+    ['held', { kind: 'held' }],
+    ['not-required', { kind: 'held' }],
+    ['waiting', { kind: 'waiting' }],
+    ['unavailable', { kind: 'unavailable' }],
+  ] as const)(
+    'reports a %s session lock to startup',
+    async (acquisition, outcome) => {
+      acquireLock.mockReturnValueOnce(of(acquisition));
+
+      await expect(
+        firstValueFrom(adapter.acquireSessionLock()),
+      ).resolves.toEqual(outcome);
+    },
+  );
+
+  it('reports a failing session lock as unavailable, never as held', async () => {
+    acquireLock.mockReturnValueOnce(throwError(() => new Error('locks broke')));
+
+    await expect(firstValueFrom(adapter.acquireSessionLock())).resolves.toEqual(
+      { kind: 'unavailable' },
+    );
+  });
+
+  it('applies the saved appearance once before a browser tab asks for the lock', async () => {
+    const order: string[] = [];
+    applySavedAppearance.mockImplementation(() => {
+      order.push('appearance');
+      return of(undefined);
+    });
+    acquireLock.mockImplementation(() => {
+      order.push('lock');
+      return of('waiting' as const);
+    });
+
+    await expect(firstValueFrom(adapter.acquireSessionLock())).resolves.toEqual(
+      { kind: 'waiting' },
+    );
+    await firstValueFrom(adapter.acquireSessionLock());
+
+    expect(order).toEqual(['appearance', 'lock', 'lock']);
+  });
+
+  it('leaves the appearance to hydration where no lock is required', async () => {
+    const nativeAdapter = createEnvironmentInjector(
+      [
+        TrinityApplicationRuntimeAdapter,
+        { provide: SESSION_LOCK_REQUIRED, useValue: false },
+      ],
+      TestBed.inject(EnvironmentInjector),
+    ).get(TrinityApplicationRuntimeAdapter);
+    acquireLock.mockReturnValueOnce(of('not-required'));
+
+    await expect(
+      firstValueFrom(nativeAdapter.acquireSessionLock()),
+    ).resolves.toEqual({ kind: 'held' });
+    expect(applySavedAppearance).not.toHaveBeenCalled();
+  });
+
+  it('still asks for the lock when the saved appearance fails', async () => {
+    applySavedAppearance.mockReturnValueOnce(
+      throwError(() => new Error('appearance broke')),
+    );
+
+    await expect(firstValueFrom(adapter.acquireSessionLock())).resolves.toEqual(
+      { kind: 'held' },
+    );
+  });
+
+  it('asks for the lock without waiting forever on the saved appearance', async () => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
+    applySavedAppearance.mockReturnValueOnce(NEVER);
+    let outcome: unknown = null;
+    adapter.acquireSessionLock().subscribe((value) => (outcome = value));
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(outcome).toBeNull();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(outcome).toEqual({ kind: 'held' });
+  });
+
+  it('continues startup when the waiting tab is granted the session lock', async () => {
+    const granted = firstValueFrom(adapter.awaitSessionLock());
+
+    lockGranted.next();
+
+    await expect(granted).resolves.toBeUndefined();
   });
 
   it('settles ordering health and persistence independently', async () => {

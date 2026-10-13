@@ -6,14 +6,29 @@ import {
   type ApplicationStartupStage,
 } from './application-runtime.models';
 
-interface ApplicationStartupProducerPolicy {
+interface StartupProducerPolicyBase {
   readonly stage: ApplicationStartupStage;
   readonly required: boolean;
-  readonly budgetMs: number;
   readonly automaticRetryLimit: 0;
-  readonly timeoutCode: string;
   readonly attemptBudgetMs?: number;
 }
+
+/** A producer with a deadline: missing it blocks startup with `timeoutCode`. */
+interface BoundedStartupProducerPolicy extends StartupProducerPolicyBase {
+  readonly budgetMs: number;
+  readonly timeoutCode: string;
+}
+
+/**
+ * A producer with no deadline. Only the session lock: a tab may wait for another tab for as
+ * long as that tab runs, so the wait happens between attempts, outside the watchdog.
+ */
+interface UnboundedStartupProducerPolicy extends StartupProducerPolicyBase {
+  readonly budgetMs: null;
+}
+
+type ApplicationStartupProducerPolicy =
+  BoundedStartupProducerPolicy | UnboundedStartupProducerPolicy;
 
 /**
  * The one startup producer ledger. Sibling migrations add outcomes here rather than
@@ -27,6 +42,12 @@ export const APPLICATION_STARTUP_PRODUCER_POLICIES = {
     budgetMs: 10_000,
     automaticRetryLimit: 0,
     timeoutCode: 'host-negotiation-timeout',
+  },
+  'session-lock': {
+    stage: 'session-lock',
+    required: true,
+    budgetMs: null,
+    automaticRetryLimit: 0,
   },
   'preference-hydration': {
     stage: 'preference-hydration',
@@ -86,7 +107,8 @@ export const APPLICATION_STARTUP_PRODUCER_POLICIES = {
 /**
  * The stages are serial, while producers within one stage settle in parallel. The watchdog
  * therefore owns the sum of each stage's longest declared producer budget, including optional
- * serial stages such as preference hydration.
+ * serial stages such as preference hydration. The session lock adds nothing: its quick first
+ * try is covered by the other stages' slack, and its wait is outside the watchdog.
  */
 export const APPLICATION_STARTUP_WATCHDOG_BUDGET_MS =
   APPLICATION_STARTUP_STAGES.reduce(
@@ -95,7 +117,7 @@ export const APPLICATION_STARTUP_WATCHDOG_BUDGET_MS =
       Math.max(
         ...Object.values(APPLICATION_STARTUP_PRODUCER_POLICIES)
           .filter((policy) => policy.stage === stage)
-          .map((policy) => policy.budgetMs),
+          .map((policy) => policy.budgetMs ?? 0),
       ),
     0,
   );

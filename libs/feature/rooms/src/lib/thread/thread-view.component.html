@@ -48,7 +48,7 @@
     <trn-message-composer
       [accountId]="accountId()"
       placeholder="Reply…"
-      [roomId]="rootEventId()"
+      [roomId]="draftKey()"
       [members]="members()"
       [richActions]="false"
       [editing]="editingId() !== null"

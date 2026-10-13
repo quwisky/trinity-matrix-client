@@ -1,4 +1,4 @@
-import { of, switchMap, type Observable } from 'rxjs';
+import { catchError, of, switchMap, type Observable } from 'rxjs';
 import type {
   PreferenceContext,
   PreferenceDescriptor,
@@ -38,6 +38,53 @@ export type PreferenceHydrationResult =
     };
 
 type StoredPreferenceSource = 'current' | 'legacy';
+
+/**
+ * Read a saved value without hydrating: the current key, then each legacy key, migrated in
+ * memory only. Never writes, never errors; anything missing, unreadable or invalid is the
+ * descriptor's default.
+ */
+export function readSavedPreference<T extends PreferenceValue>(
+  adapter: PreferenceStorageAdapter,
+  descriptor: PreferenceDescriptor<T>,
+  context: PreferenceContext,
+  index = -1,
+): Observable<T> {
+  const key =
+    index < 0
+      ? descriptor.persistence.key
+      : descriptor.persistence.legacyKeys?.[index];
+  if (key === undefined) return of(descriptor.defaultValue);
+  return readPreferenceStorage(adapter, {
+    ...preferenceStorageRequest(descriptor, context),
+    key,
+  }).pipe(
+    switchMap((outcome) => {
+      switch (outcome.kind) {
+        case 'missing':
+          return readSavedPreference(adapter, descriptor, context, index + 1);
+        case 'unavailable':
+          return of(descriptor.defaultValue);
+        case 'found': {
+          const migrated = descriptor.persistence.migration.migrate(
+            decodeStoredPreference(outcome.payload).stored,
+          );
+          return of(
+            migrated.kind === 'accepted'
+              ? migrated.value
+              : descriptor.defaultValue,
+          );
+        }
+        default: {
+          const unhandled: never = outcome;
+          void unhandled;
+          return of(descriptor.defaultValue);
+        }
+      }
+    }),
+    catchError(() => of(descriptor.defaultValue)),
+  );
+}
 
 export function hydratePreference(
   adapter: PreferenceStorageAdapter,

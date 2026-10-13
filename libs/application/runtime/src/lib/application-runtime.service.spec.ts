@@ -59,6 +59,15 @@ describe('ApplicationRuntimeService', () => {
       });
     adapter = {
       negotiateHost: stage('host-negotiation'),
+      acquireSessionLock: vi.fn<
+        ApplicationRuntimeAdapter['acquireSessionLock']
+      >(() => {
+        order.push('session-lock');
+        return of({ kind: 'held' as const });
+      }),
+      awaitSessionLock: vi.fn<ApplicationRuntimeAdapter['awaitSessionLock']>(
+        () => NEVER,
+      ),
       hydratePreferences: stage('preference-hydration'),
       restoreAccounts: stage('account-restoration'),
       establishSessionCapabilities: stage('session-capabilities'),
@@ -344,6 +353,7 @@ describe('ApplicationRuntimeService', () => {
 
     expect(order).toEqual([
       'host-negotiation',
+      'session-lock',
       'preference-hydration',
       'preference-lifetime',
       'account-restoration',
@@ -360,6 +370,10 @@ describe('ApplicationRuntimeService', () => {
         settlements: [
           expect.objectContaining({
             producer: 'host-contract',
+            status: 'ready',
+          }),
+          expect.objectContaining({
+            producer: 'session-lock',
             status: 'ready',
           }),
           expect.objectContaining({
@@ -533,6 +547,7 @@ describe('ApplicationRuntimeService', () => {
     expect(runtime.state()).toMatchObject({
       settlements: [
         expect.objectContaining({ producer: 'host-contract', status: 'ready' }),
+        expect.objectContaining({ producer: 'session-lock', status: 'ready' }),
         expect.objectContaining({
           producer: 'preference-hydration',
           status: 'ready',
@@ -635,5 +650,184 @@ describe('ApplicationRuntimeService', () => {
     second.unsubscribe();
     expect(preferenceLifetimeStopped).toHaveBeenCalledTimes(2);
     expect(sessionStopped).toHaveBeenCalledTimes(2);
+  });
+
+  it('waits for the session in another tab past the watchdog, then resumes from the session lock', async () => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
+    const granted = new Subject<void>();
+    vi.mocked(adapter.acquireSessionLock).mockImplementationOnce(() => {
+      order.push('session-lock');
+      return of({ kind: 'waiting' as const });
+    });
+    vi.mocked(adapter.awaitSessionLock).mockReturnValueOnce(granted);
+    const outcomes: ApplicationStartOutcome[] = [];
+    const lifetime = runtime
+      .run()
+      .subscribe((outcome) => outcomes.push(outcome));
+
+    expect(runtime.state()).toEqual({
+      phase: 'waiting-for-session',
+      attempt: 1,
+      settlements: [
+        expect.objectContaining({ producer: 'host-contract', status: 'ready' }),
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_WATCHDOG_BUDGET_MS * 2,
+    );
+    expect(runtime.state().phase).toBe('waiting-for-session');
+    expect(adapter.hydratePreferences).not.toHaveBeenCalled();
+    expect(adapter.runPreferenceLifetime).not.toHaveBeenCalled();
+
+    granted.next();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Waiting is not a retry: the attempt that waited is the one that starts.
+    expect(runtime.state()).toMatchObject({
+      phase: 'ready',
+      attempt: 1,
+      settlements: expect.arrayContaining([
+        expect.objectContaining({ producer: 'session-lock', status: 'ready' }),
+      ]),
+    });
+    expect(order).toEqual([
+      'host-negotiation',
+      'session-lock',
+      'session-lock',
+      'preference-hydration',
+      'preference-lifetime',
+      'account-restoration',
+      'session-capabilities',
+      'session-preparation',
+      'workspace-restoration',
+      'readiness',
+      'session-ready',
+    ]);
+    expect(outcomes.map((outcome) => [outcome.kind, outcome.attempt])).toEqual([
+      ['waiting', 1],
+      ['ready', 1],
+    ]);
+    expect(adapter.negotiateHost).toHaveBeenCalledOnce();
+    lifetime.unsubscribe();
+  });
+
+  it('blocks without a session lock and never starts on a retry', async () => {
+    vi.mocked(adapter.acquireSessionLock).mockImplementation(() =>
+      of({ kind: 'unavailable' as const }),
+    );
+    const lifetime = runtime.run().subscribe();
+    await vi.waitFor(() => expect(runtime.state().phase).toBe('blocked'));
+    expect(runtime.state()).toMatchObject({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'session-lock',
+        recovery: 'retry-startup',
+        diagnostic: { code: 'session-lock-unavailable' },
+      },
+    });
+
+    await expect(firstValueFrom(runtime.recover())).resolves.toEqual({
+      kind: 'accepted',
+    });
+    await vi.waitFor(() =>
+      expect(runtime.state()).toMatchObject({ phase: 'blocked', attempt: 2 }),
+    );
+
+    expect(adapter.acquireSessionLock).toHaveBeenCalledTimes(2);
+    expect(adapter.hydratePreferences).not.toHaveBeenCalled();
+    expect(adapter.runPreferenceLifetime).not.toHaveBeenCalled();
+    expect(adapter.restoreAccounts).not.toHaveBeenCalled();
+    lifetime.unsubscribe();
+  });
+
+  it('stops while waiting for another tab without leaving the wait behind', async () => {
+    const granted = new Subject<void>();
+    vi.mocked(adapter.acquireSessionLock).mockReturnValueOnce(
+      of({ kind: 'waiting' as const }),
+    );
+    vi.mocked(adapter.awaitSessionLock).mockReturnValueOnce(granted);
+    const lifetime = runtime.run().subscribe();
+    await vi.waitFor(() =>
+      expect(runtime.state().phase).toBe('waiting-for-session'),
+    );
+    expect(granted.observed).toBe(true);
+
+    await firstValueFrom(runtime.stop());
+
+    expect(runtime.state().phase).toBe('stopped');
+    expect(granted.observed).toBe(false);
+    lifetime.unsubscribe();
+  });
+
+  it('counts a retry after a wait as the second attempt, and recovers it', async () => {
+    vi.mocked(adapter.acquireSessionLock).mockReturnValueOnce(
+      of({ kind: 'waiting' as const }),
+    );
+    vi.mocked(adapter.awaitSessionLock).mockReturnValueOnce(of(undefined));
+    vi.mocked(adapter.restoreAccounts).mockReturnValueOnce(
+      of({
+        kind: 'blocked',
+        recovery: 'retry-startup',
+        diagnostic: { code: 'account-restoration-failed' },
+      }),
+    );
+    const lifetime = runtime.run().subscribe();
+    await vi.waitFor(() =>
+      expect(runtime.state()).toMatchObject({ phase: 'blocked', attempt: 1 }),
+    );
+
+    await expect(firstValueFrom(runtime.recover())).resolves.toEqual({
+      kind: 'accepted',
+    });
+    await vi.waitFor(() =>
+      expect(runtime.state()).toMatchObject({ phase: 'ready', attempt: 2 }),
+    );
+    expect(adapter.restoreAccounts).toHaveBeenCalledTimes(2);
+    lifetime.unsubscribe();
+  });
+
+  it('blames the session lock when the wait for another tab fails', async () => {
+    const granted = new Subject<void>();
+    vi.mocked(adapter.acquireSessionLock).mockReturnValueOnce(
+      of({ kind: 'waiting' as const }),
+    );
+    vi.mocked(adapter.awaitSessionLock).mockReturnValueOnce(granted);
+    const lifetime = runtime.run().subscribe();
+    await vi.waitFor(() =>
+      expect(runtime.state().phase).toBe('waiting-for-session'),
+    );
+
+    granted.error(new Error('lock request failed'));
+
+    await vi.waitFor(() => expect(runtime.state().phase).toBe('blocked'));
+    const state = runtime.state();
+    expect(state).toMatchObject({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'session-lock',
+        diagnostic: { code: 'application-adapter-failed' },
+      },
+    });
+    expect(
+      'settlements' in state
+        ? state.settlements.map(({ producer, status }) => [producer, status])
+        : [],
+    ).toEqual([
+      ['host-contract', 'ready'],
+      ['session-lock', 'blocked'],
+      ['preference-hydration', 'dependency-skipped'],
+      ['account-registry', 'dependency-skipped'],
+      ['room-library', 'dependency-skipped'],
+      ['room-order', 'dependency-skipped'],
+      ['browser-storage-persistence', 'dependency-skipped'],
+      ['workspace', 'dependency-skipped'],
+      ['readiness', 'dependency-skipped'],
+    ]);
+    expect(adapter.hydratePreferences).not.toHaveBeenCalled();
+    lifetime.unsubscribe();
   });
 });

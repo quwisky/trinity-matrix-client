@@ -50,3 +50,5 @@ export * from './lib/external-browser.service';
 export * from './lib/host-media/file-save.service';
 export * from './lib/host-media/media-picker.service';
 export * from './lib/host-media/captured-media';
+export * from './lib/session-lock/session-lock.tokens';
+export * from './lib/session-lock/session-lock.service';

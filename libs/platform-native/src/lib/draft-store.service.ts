@@ -21,6 +21,7 @@ const MAX_DRAFTS = 200;
 export class DraftStoreService implements OnDestroy {
   private drafts = new Map<string, string>();
   private pending: ReturnType<typeof setTimeout> | null = null;
+  private initialised = false;
 
   /**
    * Drop a pending write when the injector goes away.
@@ -52,6 +53,12 @@ export class DraftStoreService implements OnDestroy {
     } catch {
       // Absent or corrupt → start empty.
     }
+    this.initialised = true;
+  }
+
+  /** Whether {@link init} has loaded the stored drafts; before that the map is empty. */
+  isInitialised(): boolean {
+    return this.initialised;
   }
 
   /** The saved draft for a conversation, or '' when none. */
@@ -97,13 +104,24 @@ export class DraftStoreService implements OnDestroy {
     );
   }
 
+  /**
+   * Write the drafts now instead of after the debounce, for a page about to restart (a session
+   * handover): a debounced write would be lost with the page. Never rejects. Before
+   * {@link init} has loaded them it writes nothing: the empty map would erase the stored drafts.
+   */
+  flush(): Promise<void> {
+    if (!this.initialised) return Promise.resolve();
+    this.cancelPending();
+    return this.persist();
+  }
+
   private schedulePersist(): void {
     if (this.pending !== null) {
       return;
     }
     this.pending = setTimeout(() => {
       this.pending = null;
-      this.persist();
+      void this.persist();
     }, PERSIST_DEBOUNCE_MS);
   }
 
@@ -114,7 +132,7 @@ export class DraftStoreService implements OnDestroy {
     }
   }
 
-  private persist(): void {
+  private persist(): Promise<void> {
     // Keep only the most recently inserted MAX_DRAFTS to bound storage.
     const record: Record<string, string> = {};
     for (const [key, text] of [...this.drafts.entries()].slice(-MAX_DRAFTS)) {
@@ -123,8 +141,11 @@ export class DraftStoreService implements OnDestroy {
     // Promise.resolve wraps the call rather than chaining off it directly: this is an SDK
     // boundary we do not control, and a `.catch` straight onto a non-promise throws
     // synchronously — out of a timer callback, where nothing can catch it.
-    void Promise.resolve(
+    return Promise.resolve(
       Preferences.set({ key: DRAFTS_KEY, value: JSON.stringify(record) }),
-    ).catch(() => undefined);
+    ).then(
+      () => undefined,
+      () => undefined,
+    );
   }
 }

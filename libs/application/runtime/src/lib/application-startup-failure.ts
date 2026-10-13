@@ -1,6 +1,7 @@
 import type {
   ApplicationRuntimeState,
   ApplicationStartOutcome,
+  ApplicationStartupStage,
   ApplicationStartupStageOutcome,
 } from './application-runtime.models';
 import {
@@ -14,8 +15,7 @@ export function startupFailureOutcome(
   current: ApplicationRuntimeState,
   code: string,
 ): Extract<ApplicationStartOutcome, { readonly kind: 'blocked' }> {
-  const stage =
-    current.phase === 'starting' ? current.stage : 'session-capabilities';
+  const stage = failedStage(current);
   const settlements = 'settlements' in current ? current.settlements : [];
   const stageOutcome: ApplicationStartupStageOutcome = {
     kind: 'blocked',
@@ -37,4 +37,13 @@ export function startupFailureOutcome(
       stageSettlements(stage, stageOutcome),
     ),
   };
+}
+
+function failedStage(
+  current: ApplicationRuntimeState,
+): ApplicationStartupStage {
+  if (current.phase === 'starting') return current.stage;
+  // Only the session lock has run for a tab still waiting for another tab.
+  if (current.phase === 'waiting-for-session') return 'session-lock';
+  return 'session-capabilities';
 }

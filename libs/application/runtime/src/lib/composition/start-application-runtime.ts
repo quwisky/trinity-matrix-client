@@ -2,14 +2,20 @@ import { ApplicationRef, ErrorHandler } from '@angular/core';
 import { take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import { DiagnosticMarkersBinding } from './diagnostic-markers.binding';
+import { SessionHandoverWorkflow } from './session-handover.workflow';
 
 /**
- * Own Application Runtime's lifetime subscriptions with the Angular application: the
- * runtime itself and the diagnostic log's lifecycle markers.
+ * Own Application Runtime's lifetime subscriptions with the Angular application: the session
+ * handover, the runtime itself and the diagnostic log's lifecycle markers.
  */
 export function startApplicationRuntime(applicationRef: ApplicationRef): void {
   const runtime = applicationRef.injector.get(ApplicationRuntimeService);
   const errors = applicationRef.injector.get(ErrorHandler);
+  // First, so another tab's "Use here" is heard from the moment this tab holds the lock.
+  const handover = applicationRef.injector
+    .get(SessionHandoverWorkflow)
+    .run()
+    .subscribe({ error: (error: unknown) => errors.handleError(error) });
   const runtimeSubscription = runtime
     .run()
     .subscribe({ error: (error: unknown) => errors.handleError(error) });
@@ -22,5 +28,6 @@ export function startApplicationRuntime(applicationRef: ApplicationRef): void {
     runtime.stop().pipe(take(1)).subscribe();
     runtimeSubscription.unsubscribe();
     diagnosticMarkers.unsubscribe();
+    handover.unsubscribe();
   });
 }

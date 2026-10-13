@@ -38,6 +38,7 @@ vi.mock('@trinity/platform-native', async (importOriginal) => ({
 import {
   ConversationRuntime,
   TimelineActionsService,
+  threadDraftKey,
   type ConversationThread,
   type MessageView,
 } from '@trinity/data-access/timeline';
@@ -451,6 +452,20 @@ describe('ThreadViewComponent', () => {
     fixture.detectChanges();
     expect(composerOf(fixture).text()).toBe('draft A');
     expect(store.get('$root')).toBe('draft A');
+  });
+
+  // A session handover writes unsent thread replies under `threadDraftKey` (#1267).
+  it('opens a thread with the draft stored under its thread draft key', async () => {
+    const { fixture } = await build();
+    const store = TestBed.inject(DraftStoreService);
+    fixture.componentRef.setInput('rootEventId', '$other');
+    fixture.detectChanges();
+
+    store.set(threadDraftKey('$root'), 'not sent before the handover');
+    fixture.componentRef.setInput('rootEventId', '$root');
+    fixture.detectChanges();
+
+    expect(composerOf(fixture).text()).toBe('not sent before the handover');
   });
 
   it('quotes a thread message into the thread’s own composer', async () => {

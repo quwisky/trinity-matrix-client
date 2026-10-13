@@ -32,6 +32,7 @@ import {
   MessageGestureSettingsService,
   isMobileOs,
   FeatureFlagsService,
+  SessionLockService,
   ShellLayoutService,
 } from '@trinity/platform-native';
 import {
@@ -237,6 +238,7 @@ export class RoomsPage {
   private readonly imagePackService = inject(ImagePackService);
   readonly flags = inject(FeatureFlagsService);
   private readonly matrix = inject(MatrixClientService);
+  private readonly sessionLock = inject(SessionLockService);
   private readonly accountPicker = inject(AccountPickerService);
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
@@ -373,9 +375,14 @@ export class RoomsPage {
     // a component effect that only reads the error signal is not a reliable render
     // trigger when the failed action changes no template-read state.
     // If every account is gone (e.g. a server-side soft-logout of the last one), the
-    // shell has nothing to show — return to login instead of leaving it broken.
+    // shell has nothing to show — return to login instead of leaving it broken. Not while
+    // handing the session to another tab: that stops every client and reloads this URL, and
+    // a redirect racing the reload could leave the tab on the sign-in page (#1267).
     effect(() => {
-      if (!this.matrix.activeUserId()) {
+      if (
+        !this.matrix.activeUserId() &&
+        this.sessionLock.state() !== 'releasing'
+      ) {
         void this.router.navigateByUrl('/login', { replaceUrl: true });
       }
     });

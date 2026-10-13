@@ -12,6 +12,13 @@
         <span class="text-sm text-[var(--trinity-text-muted)]">{{ step }}</span>
       }
     </div>
+  } @else if (sessionNotice(); as notice) {
+    <trn-session-lock-notice
+      class="flex flex-1 flex-col"
+      [notice]="notice"
+      (useHere)="useHere()"
+      (showStatus)="status.show()"
+    />
   } @else if (blocked(); as blockedState) {
     <main
       class="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center"

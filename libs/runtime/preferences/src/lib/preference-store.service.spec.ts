@@ -509,3 +509,111 @@ describe('PreferenceCatalogService', () => {
     );
   });
 });
+
+describe('PreferenceStoreService.readSaved', () => {
+  beforeEach(() => TestBed.resetTestingModule());
+
+  it('reads the saved value without writing or hydrating the store', async () => {
+    const descriptor = booleanPreference();
+    const adapter: PreferenceStorageAdapter = {
+      read: vi.fn(() => of({ kind: 'found', payload: 'false' } as const)),
+      write: vi.fn(() => of({ kind: 'completed' } as const)),
+    };
+    const store = setup([descriptor], adapter);
+    const reading = store.readSaved(descriptor, { kind: 'installation' });
+
+    expect(adapter.read).not.toHaveBeenCalled();
+    await expect(firstValueFrom(reading)).resolves.toBe(false);
+    expect(adapter.write).not.toHaveBeenCalled();
+    expect(store.value(descriptor.id, { kind: 'installation' })()).toBe(true);
+  });
+
+  it('falls back to a legacy key, still without migrating it in storage', async () => {
+    const descriptor = booleanPreference({
+      persistence: {
+        key: 'test.flag',
+        legacyKeys: ['test.old-flag'],
+        migration: { currentVersion: 1, migrate: booleanMigration },
+      },
+    });
+    const write = vi.fn(() => of({ kind: 'completed' } as const));
+    const store = setup([descriptor], {
+      read: (request: PreferenceStorageRequest) =>
+        of(
+          request.key === 'test.old-flag'
+            ? ({ kind: 'found', payload: 'false' } as const)
+            : ({ kind: 'missing' } as const),
+        ),
+      write,
+    });
+
+    await expect(
+      firstValueFrom(store.readSaved(descriptor, { kind: 'installation' })),
+    ).resolves.toBe(false);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'an invalid value',
+      () => of({ kind: 'found', payload: '"maybe"' } as const),
+    ],
+    [
+      'an unavailable store',
+      () =>
+        of({
+          kind: 'unavailable',
+          diagnostic: { code: 'test-read-failed' },
+        } as const),
+    ],
+    [
+      'a throwing read',
+      () => {
+        throw new Error('storage blew up');
+      },
+    ],
+  ] as const)('answers the default for %s', async (_case, read) => {
+    const descriptor = booleanPreference();
+    const write = vi.fn(() => of({ kind: 'completed' } as const));
+    const store = setup([descriptor], { read, write });
+
+    await expect(
+      firstValueFrom(store.readSaved(descriptor, { kind: 'installation' })),
+    ).resolves.toBe(true);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('answers the default when a migration throws', async () => {
+    const descriptor = booleanPreference({
+      persistence: {
+        key: 'test.flag',
+        migration: {
+          currentVersion: 1,
+          migrate: () => {
+            throw new Error('migration blew up');
+          },
+        },
+      },
+    });
+    const store = setup([descriptor], {
+      read: () => of({ kind: 'found', payload: 'false' }),
+      write: () => of({ kind: 'completed' }),
+    });
+
+    await expect(
+      firstValueFrom(store.readSaved(descriptor, { kind: 'installation' })),
+    ).resolves.toBe(true);
+  });
+
+  it('answers the default without a storage adapter', async () => {
+    const descriptor = booleanPreference();
+    TestBed.configureTestingModule({
+      providers: [providePreferenceDescriptors(() => [descriptor])],
+    });
+    const store = TestBed.inject(PreferenceStoreService);
+
+    await expect(
+      firstValueFrom(store.readSaved(descriptor, { kind: 'installation' })),
+    ).resolves.toBe(true);
+  });
+});

@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { BehaviorSubject, firstValueFrom, of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AppearancePreferences,
   provideAppearancePreferences,
@@ -197,6 +197,120 @@ describe('AppearanceEffects', () => {
     subscription.unsubscribe();
   });
 });
+
+describe('AppearanceEffects.applySaved', () => {
+  const root = document.documentElement;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    root.classList.remove('dark');
+    root.removeAttribute('data-theme');
+    root.removeAttribute('data-density');
+    root.style.removeProperty('font-size');
+    TestBed.resetTestingModule();
+  });
+
+  it('applies saved dark Mode and Theme before hydration, writing nothing', async () => {
+    const storage = savedStorage({
+      'trinity.appearance.mode': '{"version":1,"value":"dark"}',
+      'trinity.appearance.theme': '{"version":2,"value":"amethyst"}',
+      'trinity.appearance.density': '{"version":1,"value":"compact"}',
+    });
+    const effects = configureSaved(storage, 'light');
+
+    await firstValueFrom(effects.applySaved(), { defaultValue: undefined });
+
+    expect(root.classList.contains('dark')).toBe(true);
+    expect(root.getAttribute('data-theme')).toBe('amethyst');
+    expect(root.getAttribute('data-density')).toBe('compact');
+    expect(storage.write).not.toHaveBeenCalled();
+    expect(TestBed.inject(AppearancePreferences).value().mode).toBe('system');
+    expect(effects.resolved()).toBeUndefined();
+  });
+
+  it('follows a dark system colour scheme when the saved Mode is System', async () => {
+    const storage = savedStorage({
+      'trinity.appearance.mode': '{"version":1,"value":"system"}',
+    });
+    const effects = configureSaved(storage, 'dark');
+
+    await firstValueFrom(effects.applySaved(), { defaultValue: undefined });
+
+    expect(root.classList.contains('dark')).toBe(true);
+  });
+
+  it('stays light when the saved Mode is Light on a dark system', async () => {
+    root.classList.add('dark');
+    const storage = savedStorage({ 'trinity.theme': '"light"' });
+    const effects = configureSaved(storage, 'dark');
+
+    await firstValueFrom(effects.applySaved(), { defaultValue: undefined });
+
+    expect(root.classList.contains('dark')).toBe(false);
+    expect(storage.write).not.toHaveBeenCalled();
+  });
+
+  it('falls back to defaults for unreadable or invalid values without throwing', async () => {
+    const storage: PreferenceStorageAdapter & {
+      write: ReturnType<typeof vi.fn>;
+    } = {
+      read: (request) => {
+        if (request.key === 'trinity.appearance.mode') {
+          throw new Error('storage blew up');
+        }
+        return of({ kind: 'found', payload: '{"version":1,"value":"huge"}' });
+      },
+      write: vi.fn(() => of({ kind: 'completed' } as const)),
+    };
+    const effects = configureSaved(storage, 'light');
+
+    await expect(
+      firstValueFrom(effects.applySaved(), { defaultValue: undefined }),
+    ).resolves.toBeUndefined();
+
+    expect(root.classList.contains('dark')).toBe(false);
+    expect(root.hasAttribute('data-theme')).toBe(false);
+    expect(root.style.getPropertyValue('font-size')).toBe('');
+    expect(storage.write).not.toHaveBeenCalled();
+  });
+});
+
+function savedStorage(
+  saved: Readonly<Record<string, string>>,
+): PreferenceStorageAdapter & { write: ReturnType<typeof vi.fn> } {
+  return {
+    read: (request) =>
+      of(
+        Object.hasOwn(saved, request.key)
+          ? ({ kind: 'found', payload: saved[request.key] } as const)
+          : ({ kind: 'missing' } as const),
+      ),
+    write: vi.fn(() => of({ kind: 'completed' } as const)),
+  };
+}
+
+/** Real Appearance owners over stubbed storage and a stubbed `prefers-color-scheme`. */
+function configureSaved(
+  storage: PreferenceStorageAdapter,
+  system: 'light' | 'dark',
+): AppearanceEffects {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches: system === 'dark' && query === '(prefers-color-scheme: dark)',
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  TestBed.configureTestingModule({
+    providers: [
+      provideAppearancePreferences(),
+      { provide: PREFERENCE_STORAGE_ADAPTER, useValue: storage },
+    ],
+  });
+  return TestBed.inject(AppearanceEffects);
+}
 
 function configureEffects(
   appearance: Pick<AppearancePreferences, 'value'>,

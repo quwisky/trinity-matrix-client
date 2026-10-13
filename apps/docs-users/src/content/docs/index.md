@@ -66,6 +66,20 @@ Then open `http://localhost:8080`. You can also serve the static files from
 [Self-host a release](/trinity-matrix-client/developers/platforms/web-and-pwa/#self-host-release)
 in the developer guide.
 
+### Use one tab at a time {#one-tab}
+
+In a browser, Trinity runs in one tab at a time so your encrypted messages stay readable. If you
+open it in another tab, that tab shows "Trinity is open in another tab". Choose **Use here** to
+move Trinity to it, or close the first tab and the waiting tab starts by itself. A message that
+is still sending gets up to five seconds to finish before Trinity moves; if it hasn't reached
+your server by then, its text goes back into the message box of its room or thread in the new
+tab, ready to send again. A file that was still uploading isn't sent, so attach it again.
+
+The web app needs a secure connection: HTTPS, or `localhost`. Opened over plain HTTP on another
+address, it shows "Trinity needs a secure connection" and doesn't start.
+
+The desktop app always runs in one window, so this doesn't apply to it.
+
 ## Get help {#get-help}
 
 Report problems on [GitHub Issues](https://github.com/quwisky/trinity-matrix-client/issues).

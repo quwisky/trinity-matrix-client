@@ -26,7 +26,7 @@ import {
   type PreferenceValue,
 } from '@trinity/runtime/preferences';
 import type { ThemeId, ThemeMode } from '@trinity/theme-foundation';
-import { map, tap, type Observable } from 'rxjs';
+import { forkJoin, map, tap, type Observable } from 'rxjs';
 import {
   DENSITY_PREFERENCE,
   DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS,
@@ -132,6 +132,26 @@ export class AppearancePreferences {
         ),
         tap((outcome) => this._hydration.set(outcome)),
       );
+  }
+
+  /**
+   * The saved Appearance, read without hydrating or writing (#1267): what a tab that cannot
+   * start yet shows. Any axis that is missing, unreadable or invalid is its default.
+   */
+  readSaved(): Observable<AppearanceValue> {
+    const read = <T extends PreferenceValue>(
+      descriptor: PreferenceDescriptor<T>,
+    ): Observable<T> =>
+      this.preferences.readSaved(descriptor, INSTALLATION_PREFERENCE_CONTEXT);
+    return forkJoin({
+      mode: read(MODE_PREFERENCE),
+      theme: read(THEME_PREFERENCE),
+      textSize: read(TEXT_SIZE_PREFERENCE),
+      density: read(DENSITY_PREFERENCE),
+      roomList: read(ROOM_LIST_PREFERENCE),
+      codeSize: read(CODE_SIZE_PREFERENCE),
+      codeLinePresentation: read(CODE_LINE_PRESENTATION_PREFERENCE),
+    });
   }
 
   /** Reset only axes that failed hydration, then report the resulting aggregate state. */

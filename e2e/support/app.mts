@@ -294,3 +294,13 @@ export async function waitForRooms(
     { timeout },
   );
 }
+
+/** Type a word into the "Erase all Trinity data" confirmation and press its confirm button. */
+export async function confirmErase(page: Page, word: string): Promise<void> {
+  const dialog = page.locator('trn-alert-dialog', {
+    hasText: 'Erase all Trinity data',
+  });
+  await dialog.waitFor({ state: 'visible', timeout: 20_000 });
+  await dialog.locator('input').fill(word);
+  await dialog.getByTestId('alert-confirm').click();
+}
