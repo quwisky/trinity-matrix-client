@@ -77,4 +77,6 @@ is a complete reference configuration.
 ### HTTPS {#self-host-https}
 
 Serve Trinity over HTTPS (or `localhost`). Browsers only install the app and run its service
-worker on secure origins. Third-party notices are in `3rdpartylicenses.txt`.
+worker on secure origins, and Trinity needs one to run at all: it uses the Web Locks API to run
+in one tab at a time, so over plain HTTP on another address it shows "Trinity needs a secure
+connection" and does not start. Third-party notices are in `3rdpartylicenses.txt`.
