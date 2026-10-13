@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { conversationDraftKey } from './conversation-draft-key';
+import { conversationDraftKey, threadDraftKey } from './conversation-draft-key';
 
 describe('conversationDraftKey', () => {
   it('keys a room draft by Account and Room, as the main composer stores it', () => {
@@ -14,5 +14,9 @@ describe('conversationDraftKey', () => {
     ).not.toBe(
       conversationDraftKey({ accountId: '@b:hs', roomId: '!room:hs' }),
     );
+  });
+
+  it('keys a thread draft by its root event id alone, as the thread composer stores it', () => {
+    expect(threadDraftKey('$root')).toBe('$root');
   });
 });

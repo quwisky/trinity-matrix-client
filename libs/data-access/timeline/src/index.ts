@@ -6,7 +6,10 @@ export type {
 export type { TimelineLoadState } from './lib/conversation-timeline-readiness';
 export { READY_LOAD_STATE } from './lib/conversation-timeline-readiness';
 export { ConversationRuntime } from './lib/conversation-runtime.service';
-export { conversationDraftKey } from './lib/conversation-draft-key';
+export {
+  conversationDraftKey,
+  threadDraftKey,
+} from './lib/conversation-draft-key';
 export { CONVERSATION_MESSAGE_POLICY } from './lib/conversation-message-adapter.service';
 export { CONVERSATION_PIN_POLICY } from './lib/conversation-pins.controller';
 export type {

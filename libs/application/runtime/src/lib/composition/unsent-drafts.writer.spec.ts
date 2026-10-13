@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import type { PendingTextMessage } from '@trinity/data-access/matrix-client';
+import { threadDraftKey } from '@trinity/data-access/timeline';
 import { DraftStoreService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -79,8 +80,8 @@ describe('UnsentDraftsWriter', () => {
 
     await writer.writeBack([unsent('in the thread', '$root')]);
 
-    expect(unsentDraftKey(unsent('x', '$root'))).toBe('$root');
-    expect(drafts.get('$root')).toBe('in the thread');
+    expect(unsentDraftKey(unsent('x', '$root'))).toBe(threadDraftKey('$root'));
+    expect(drafts.get(threadDraftKey('$root'))).toBe('in the thread');
     expect(drafts.has(ROOM_DRAFT)).toBe(false);
   });
 

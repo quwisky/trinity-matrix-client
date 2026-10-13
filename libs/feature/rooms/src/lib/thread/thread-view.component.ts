@@ -34,7 +34,10 @@ import {
   TrnSurfaceService,
   TrnOverlaySurfaceDirective,
 } from '@trinity/components/overlay';
-import { ConversationRuntime } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  threadDraftKey,
+} from '@trinity/data-access/timeline';
 import { RoomMembersService } from '@trinity/data-access/room-administration';
 import { quoteBlock } from '@trinity/util/matrix';
 import {
@@ -123,6 +126,12 @@ export class ThreadViewComponent implements OnDestroy {
   readonly rootEventId = input.required<string>();
   /** The user closed the thread. There is nothing to pick here, so no `selected`. */
   readonly dismissed = output<void>();
+
+  /**
+   * What the thread composer keys its draft by. Shared with a session handover's unsent thread
+   * replies (#1267), which go back under the same key.
+   */
+  readonly draftKey = computed(() => threadDraftKey(this.rootEventId()));
 
   /** The room's members, for the thread composer's @-mention autocomplete. */
   readonly members = computed(() => {

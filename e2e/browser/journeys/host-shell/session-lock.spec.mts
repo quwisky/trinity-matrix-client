@@ -96,6 +96,49 @@ test.describe('Session lock', () => {
     await expect(page).toHaveURL(onRoom, { timeout: 60_000 });
   });
 
+  test('"Use here" puts a message the first tab could not send into the second tab’s composer', async ({
+    page,
+    request,
+  }) => {
+    const roomName = `Session lock unsent ${testResourceId('room')}`;
+    const unsent = `Not on the server yet ${testResourceId('message')}`;
+    const token = await tokenFor(
+      request,
+      session.hs as string,
+      session.user as string,
+      session.pass as string,
+    );
+    const created = await request.post(
+      `${session.hs as string}/_matrix/client/v3/createRoom`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { name: roomName, preset: 'private_chat' },
+      },
+    );
+    expect(created.ok()).toBe(true);
+    await login(page, session);
+    await openRoom(page, roomName);
+    // Hold every send of the first tab, so the message stays on its way through the handover.
+    await page.route('**/_matrix/client/**/send/**', () => undefined);
+    const sending = page.waitForRequest(
+      (sent) => sent.method() === 'PUT' && sent.url().includes('/send/'),
+      { timeout: 30_000 },
+    );
+    await page.getByTestId('composer-input').fill(unsent);
+    await page.getByTestId('composer-input').press('Enter');
+    await sending;
+    const second = await openWaitingTab(page);
+
+    await second.page.getByRole('button', { name: 'Use here' }).click();
+
+    await waitForRooms(second.page, 60_000);
+    await openRoom(second.page, roomName);
+    await expect(second.page.getByTestId('composer-input')).toHaveValue(
+      unsent,
+      { timeout: 30_000 },
+    );
+  });
+
   test('closing the first tab lets the waiting tab start by itself', async ({
     page,
   }) => {

@@ -1,21 +1,23 @@
 import { Injectable, inject } from '@angular/core';
 import type { PendingTextMessage } from '@trinity/data-access/matrix-client';
-import { conversationDraftKey } from '@trinity/data-access/timeline';
+import {
+  conversationDraftKey,
+  threadDraftKey,
+} from '@trinity/data-access/timeline';
 import { DraftStoreService } from '@trinity/platform-native';
 
 /**
- * The draft an unsent text goes back into. A thread reply goes into its thread's draft, which
- * the thread composer keys by the root event id alone (`thread-view.component.html`). Anything
- * else, a plain reply included, goes into the room's draft.
+ * The draft an unsent text goes back into. A thread reply goes into its thread's draft, under
+ * the {@link threadDraftKey} the thread view gives its composer. Anything else, a plain reply
+ * included, goes into the room's draft.
  */
 export function unsentDraftKey(message: PendingTextMessage): string {
-  return (
-    message.threadRootId ??
-    conversationDraftKey({
-      accountId: message.accountId,
-      roomId: message.roomId,
-    })
-  );
+  return message.threadRootId !== null
+    ? threadDraftKey(message.threadRootId)
+    : conversationDraftKey({
+        accountId: message.accountId,
+        roomId: message.roomId,
+      });
 }
 
 /**
