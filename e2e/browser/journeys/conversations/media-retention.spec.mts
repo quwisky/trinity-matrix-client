@@ -13,6 +13,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { encryptAttachmentForTest } from '../../support/encrypted-attachment.mts';
+import { isBlobAlive } from '../../support/media-playback.mts';
 
 const session = homeserverSession();
 const PNG_1X1 = Buffer.from(
@@ -171,8 +172,17 @@ async function openAndCloseLightbox(
       image.evaluate((element) => (element as HTMLImageElement).naturalWidth),
     )
     .toBeGreaterThan(0);
+  const full = (await image.getAttribute('src')) ?? '';
+  const row = (await page
+    .locator(`trn-media-bubble img[alt="${filename}"]`)
+    .getAttribute('src')) as string;
   await page.getByTestId('lightbox-close').click();
   await expect(dialog).toBeHidden();
+  // Closing frees the full-size image, unless it is the very blob the row still shows (a
+  // small encrypted image has no separate thumbnail): then only the viewer's hold goes.
+  expect(full).toMatch(/^blob:/);
+  expect(await isBlobAlive(page, full, 'image')).toBe(full === row);
+  expect(await isBlobAlive(page, row, 'image')).toBe(true);
 }
 
 test.describe('Retained conversation media', () => {

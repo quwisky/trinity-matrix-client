@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { isBlobAlive, playToEnd } from '../../support/media-playback.mts';
 
 // Covers recording + sending a voice message (+ tray → Voice message → record → send →
 // m.audio with the MSC3245 voice marker), rendered in the timeline as a voice player
@@ -91,9 +92,19 @@ test.describe('Voice messages', () => {
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('composer-input')).toBeFocused();
 
-    // The clip uploads and renders in the timeline as a voice player.
-    await expect(page.getByTestId('voice-message').first()).toBeVisible({
-      timeout: 30_000,
-    });
+    // The clip uploads and renders in the timeline as a voice player, with its length
+    // from the event and nothing fetched until it is played.
+    const player = page.getByTestId('voice-message').first();
+    await expect(player).toBeVisible({ timeout: 30_000 });
+    await expect(player.getByTestId('voice-time')).toHaveText(/^\d+:\d\d$/);
+    await expect(player.locator('audio')).toHaveCount(0);
+
+    // Playing fetches the clip and plays it to its end; it is then freed again.
+    const play = player.getByRole('button', { name: 'Play voice message' });
+    const clip = await playToEnd(page, 'audio', () => play.click());
+    expect(clip).toMatch(/^blob:/);
+    await expect(play).toBeVisible();
+    await expect(player.locator('audio')).toHaveCount(0);
+    expect(await isBlobAlive(page, clip, 'audio')).toBe(false);
   });
 });

@@ -3,7 +3,6 @@ import {
   test,
   expect,
   type APIRequestContext,
-  type Locator,
   type Page,
 } from '../../../fixtures.mts';
 import type { TestInfo } from '@playwright/test';
@@ -14,10 +13,12 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { encryptAttachmentForTest } from '../../support/encrypted-attachment.mts';
+import { isBlobAlive, playToEnd } from '../../support/media-playback.mts';
 
 // Video and audio attachments load only when played: the timeline shows a poster (video) or a
 // player row (audio), fetches nothing for the clip itself, and fetches and plays it on the
-// reader's press. Covers plaintext and encrypted clips, mouse and keyboard. Needs a homeserver.
+// reader's press. Once a clip ends the row returns to its play control and the clip is freed.
+// Covers plaintext and encrypted clips, mouse and keyboard. Needs a homeserver.
 const session = homeserverSession();
 
 const PNG_1X1 = Buffer.from(
@@ -210,14 +211,6 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
   });
 }
 
-/** Whether a media element has started to play (the clips are short enough to have ended). */
-async function hasPlayed(media: Locator): Promise<boolean> {
-  return media.evaluate((el) => {
-    const element = el as HTMLMediaElement;
-    return element.currentTime > 0 || element.ended;
-  });
-}
-
 const VIEWPORTS = [
   { name: 'desktop', size: { width: 1280, height: 900 } },
   { name: 'phone', size: { width: 390, height: 844 } },
@@ -273,44 +266,58 @@ test.describe('Video and audio load only when played', () => {
       await shot('before-play');
       expect(seeded.clips.filter(fetched)).toEqual([]);
 
-      // Playing a video fetches only that video, then plays it.
-      await playVideo(poster).click();
-      const video = page.locator('video');
-      await expect(video).toHaveCount(1, { timeout: 60_000 });
-      await expect(video).toHaveAttribute('src', /^blob:/);
-      await expect.poll(() => hasPlayed(video), { timeout: 30_000 }).toBe(true);
+      // Playing a video fetches only that video and plays it to its end. The row then returns
+      // to its play control and the clip leaves the media cache: its blob URL is revoked.
+      const videoUrl = await playToEnd(page, 'video', () =>
+        playVideo(poster).click(),
+      );
+      expect(videoUrl).toMatch(/^blob:/);
+      await expect(playVideo(poster)).toBeVisible();
+      await expect(page.locator('video')).toHaveCount(0);
       await shot('video-played');
+      expect(await isBlobAlive(page, videoUrl, 'video')).toBe(false);
+      // The poster it returned to is still held: only the clip went.
+      const posterUrl = (await playVideo(poster)
+        .locator('img')
+        .getAttribute('src')) as string;
+      expect(await isBlobAlive(page, posterUrl, 'image')).toBe(true);
       expect(fetched(poster)).toBe(true);
       expect(fetched(placeholder)).toBe(false);
       expect(fetched(plainAudio)).toBe(false);
 
+      // Playing it again fetches it again.
+      const fetchesOf = (clip: Clip) =>
+        requested.filter((url) => url.includes(`/${clip.mediaId}`)).length;
+      const posterFetches = fetchesOf(poster);
+      await playToEnd(page, 'video', () => playVideo(poster).click());
+      expect(fetchesOf(poster)).toBeGreaterThan(posterFetches);
+      await expect(playVideo(poster)).toBeVisible();
+
       // An encrypted video decrypts on play, and its placeholder never fetched a poster.
-      await playVideo(placeholder).click();
-      await expect(page.locator('video')).toHaveCount(2, { timeout: 60_000 });
-      await expect
-        .poll(() => hasPlayed(page.locator('video').nth(1)), {
-          timeout: 30_000,
-        })
-        .toBe(true);
+      const secretVideoUrl = await playToEnd(page, 'video', () =>
+        playVideo(placeholder).click(),
+      );
+      await expect(playVideo(placeholder)).toBeVisible();
+      expect(await isBlobAlive(page, secretVideoUrl, 'video')).toBe(false);
 
       // Audio from the keyboard: focus the row's control and press Enter.
       await playAudio(plainAudio).focus();
       await shot('audio-before-play');
-      await page.keyboard.press('Enter');
-      const audio = page.locator('audio');
-      await expect(audio).toHaveCount(1, { timeout: 60_000 });
-      await expect(audio).toHaveAttribute('src', /^blob:/);
-      await expect.poll(() => hasPlayed(audio), { timeout: 30_000 }).toBe(true);
+      const audioUrl = await playToEnd(page, 'audio', () =>
+        page.keyboard.press('Enter'),
+      );
+      expect(audioUrl).toMatch(/^blob:/);
+      await expect(playAudio(plainAudio)).toBeVisible();
+      await expect(page.locator('audio')).toHaveCount(0);
       await shot('audio-played');
+      expect(await isBlobAlive(page, audioUrl, 'audio')).toBe(false);
       expect(fetched(secretAudio)).toBe(false);
 
-      await playAudio(secretAudio).click();
-      await expect(page.locator('audio')).toHaveCount(2, { timeout: 60_000 });
-      await expect
-        .poll(() => hasPlayed(page.locator('audio').nth(1)), {
-          timeout: 30_000,
-        })
-        .toBe(true);
+      const secretAudioUrl = await playToEnd(page, 'audio', () =>
+        playAudio(secretAudio).click(),
+      );
+      await expect(playAudio(secretAudio)).toBeVisible();
+      expect(await isBlobAlive(page, secretAudioUrl, 'audio')).toBe(false);
     });
   }
 });

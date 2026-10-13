@@ -7,6 +7,7 @@ import {
   finalize,
   from,
   map,
+  merge,
   of,
   shareReplay,
   switchMap,
@@ -134,6 +135,16 @@ interface CacheEntry {
   bytes: number;
 }
 
+/** A resolution under way, shared by everyone resolving the same bytes meanwhile. */
+interface InFlight {
+  /** What {@link MediaService.resolveMedia} hands each caller. */
+  readonly result: Observable<string>;
+  /** Callers currently subscribed to {@link result}. */
+  waiters: number;
+  /** Abandons the resolution before it stores anything (see {@link MediaService.drop}). */
+  readonly cancel: Subject<void>;
+}
+
 interface MediaSource {
   mxc: string | null;
   file: EncryptedFileInfo | null;
@@ -169,9 +180,14 @@ export class MediaService {
   private cachedBytes = 0;
   /** In-flight resolutions, keyed like {@link cache}, so concurrent subscribers
    * to the same bytes share one fetch+decrypt instead of racing. */
-  private readonly inFlight = new Map<string, Observable<string>>();
-  /** Object URLs currently bound on screen — exempt from eviction. */
-  private readonly pinned = new Set<string>();
+  private readonly inFlight = new Map<string, InFlight>();
+  /**
+   * How many views have each object URL bound on screen; a URL with a count is exempt from
+   * eviction. Counted, not a set: the same blob URL can be shown in two places at once (a
+   * sticker in two messages, an image in its row and its lightbox), and one of them leaving
+   * must not expose the URL the other still shows.
+   */
+  private readonly pinned = new Map<string, number>();
   /** Fires on {@link releaseAll} to cancel in-flight resolutions before teardown. */
   private readonly release$ = new Subject<void>();
   /** Cached authenticated-media probe per exact client/account. */
@@ -210,18 +226,30 @@ export class MediaService {
     // decrypting, and storing (the loser of which would leak its object URL).
     const pending = this.inFlight.get(key);
     if (pending) {
-      return pending;
+      return pending.result;
     }
-    const obs = defer(() => this.fetchBlob(client, source)).pipe(
-      // Cancel on releaseAll BEFORE store(): a late completion must not insert a
-      // fresh object URL into the cache that teardown just cleared.
-      takeUntil(this.release$),
+    const cancel = new Subject<void>();
+    const shared = defer(() => this.fetchBlob(client, source)).pipe(
+      // Cancel on releaseAll or a drop BEFORE store(): a late completion must not insert
+      // a fresh object URL into a cache that no longer wants it.
+      takeUntil(merge(this.release$, cancel)),
       map((blob) => this.store(key, blob)),
-      finalize(() => this.inFlight.delete(key)),
+      finalize(() => {
+        if (this.inFlight.get(key) === entry) this.inFlight.delete(key);
+      }),
       shareReplay(1),
     );
-    this.inFlight.set(key, obs);
-    return obs;
+    const entry: InFlight = {
+      waiters: 0,
+      cancel,
+      // Count who is still waiting, so a drop cancels only a resolve nobody else needs.
+      result: defer(() => {
+        entry.waiters++;
+        return shared.pipe(finalize(() => entry.waiters--));
+      }),
+    };
+    this.inFlight.set(key, entry);
+    return entry.result;
   }
 
   /** Resolve the full-resolution bytes + filename for a download/save. */
@@ -427,17 +455,69 @@ export class MediaService {
     }
   }
 
-  /** Mark an object URL as on screen so it is exempt from cache eviction. */
+  /**
+   * Mark an object URL as on screen so it is exempt from cache eviction. Pins are counted:
+   * each view that binds the URL pins it once and {@link unpin}s it once.
+   */
   pin(url: string | null): void {
     if (url) {
-      this.pinned.add(url);
+      this.pinned.set(url, (this.pinned.get(url) ?? 0) + 1);
     }
   }
 
-  /** Release a previously {@link pin}ned URL (it becomes eligible for eviction). */
+  /**
+   * Release one {@link pin} of a URL; it becomes eligible for eviction once no pin remains.
+   * An unpin without a matching pin does nothing.
+   */
   unpin(url: string | null): void {
-    if (url) {
+    if (!url) return;
+    const count = this.pinned.get(url) ?? 0;
+    if (count > 1) {
+      this.pinned.set(url, count - 1);
+    } else {
       this.pinned.delete(url);
+    }
+  }
+
+  /**
+   * Free one rendition now rather than when the LRU gets to it: for full-size media that has
+   * been closed (a lightbox image, a played clip), which is large and not needed again soon.
+   *
+   * `url` is the object URL the caller resolved and pinned, or null when it has none yet.
+   * Its pin is released; only if no other view still pins it is the URL revoked and the
+   * entry removed. The URL is removed only while the cache still holds it for `rendition`,
+   * so a caller holding a URL from before a {@link releaseAll} cannot revoke its successor.
+   * A resolve of `rendition` still in flight is cancelled when no subscriber is waiting for
+   * it any more, so its late completion is never cached; the dropping caller must therefore
+   * unsubscribe from its own resolve first. Resolving again afterwards downloads afresh.
+   * An observable returned by {@link resolveMedia} before the drop is spent by it: subscribing
+   * to it later completes without a URL, so resolve again instead.
+   */
+  drop(
+    url: string | null,
+    rendition: {
+      media: MediaPayload;
+      variant: MediaVariant;
+      client?: MatrixClient;
+    },
+  ): void {
+    const key = this.cacheKey(
+      rendition.client ?? this.matrix.instance,
+      this.sourceFor(rendition.media, rendition.variant),
+    );
+    if (url) {
+      this.unpin(url);
+      const entry = this.cache.get(key);
+      if (entry?.url === url && !this.pinned.has(url)) {
+        this.cache.delete(key);
+        this.cachedBytes -= entry.bytes;
+        URL.revokeObjectURL(url);
+      }
+    }
+    const pending = this.inFlight.get(key);
+    if (pending && pending.waiters === 0) {
+      this.inFlight.delete(key);
+      pending.cancel.next();
     }
   }
 
