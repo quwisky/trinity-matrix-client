@@ -967,8 +967,8 @@ function enforceMxcImages(root: ParentNode): void {
  * The reason is copied into `label`, which Angular keeps and which is inert on `span`; CSS
  * shows it as generated content on the concealed bar (rendered-markdown.scss), so it stays
  * out of `textContent`, copies and the edit-history diff. `aria-label` names the concealed
- * spoiler for screen readers instead of its hidden text; SpoilerRevealDirective removes it,
- * the role and the tab stop on reveal.
+ * spoiler for screen readers instead of its hidden text; SpoilerRevealDirective removes it
+ * and the role on reveal, and the tab stop once the revealed spoiler does not hold focus.
  */
 function normaliseSpoilers(root: ParentNode): void {
   for (const node of root.querySelectorAll('[data-mx-spoiler]')) {
@@ -989,12 +989,22 @@ function normaliseSpoilers(root: ParentNode): void {
 const MAX_SPOILER_REASON = 80;
 
 /**
+ * C0 and C1 controls other than the whitespace ones (tab to CR, which collapse to a space
+ * instead), and the bidi marks, embeddings, overrides and isolates (LRM/RLM, U+202A–U+202E,
+ * U+2066–U+2069): a reason must not reorder the bar's "Spoiler: " prefix or the message text
+ * around it. One character per match, so it cannot backtrack.
+ */
+const SPOILER_REASON_CONTROLS =
+  /[\u0000-\u0008\u000e-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
+/**
  * A sender's spoiler reason ("the reason (optionally) being in the `data-mx-spoiler`
- * attribute", spec v1.19) as one short line: trimmed, whitespace collapsed, cut to
- * {@link MAX_SPOILER_REASON}. Linear in the attribute's length.
+ * attribute", spec v1.19) as one short line: controls stripped, trimmed, whitespace
+ * collapsed, cut to {@link MAX_SPOILER_REASON}. Linear in the attribute's length.
  */
 function spoilerReason(raw: string): string {
-  return Array.from(raw.trim().replace(/\s+/g, ' '))
+  const visible = raw.replace(SPOILER_REASON_CONTROLS, '');
+  return Array.from(visible.trim().replace(/\s+/g, ' '))
     .slice(0, MAX_SPOILER_REASON)
     .join('')
     .trimEnd();

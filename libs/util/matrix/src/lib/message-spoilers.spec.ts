@@ -57,4 +57,44 @@ describe('spoiler reasons', () => {
     expect(outgoing).toContain('data-mx-spoiler="why"');
     expect(outgoing).not.toContain('label=');
   });
+
+  it.each([`"><img src=x onerror=alert(1)>`, `"; } body{display:none}`])(
+    'keeps the hostile reason %s as text',
+    (reason) => {
+      const spoiler = spoilerIn(`<span data-mx-spoiler='${reason}'>x</span>`);
+
+      expect(spoiler.getAttribute('label')).toBe(reason);
+      expect(spoiler.getAttribute('aria-label')).toBe(
+        `Spoiler: ${reason}, activate to reveal`,
+      );
+      expect(spoiler.parentElement?.querySelectorAll('*')).toHaveLength(1);
+      expect(spoiler.getAttributeNames().sort()).toEqual([
+        'aria-label',
+        'class',
+        'data-mx-spoiler',
+        'label',
+        'role',
+        'tabindex',
+      ]);
+    },
+  );
+
+  it('strips control and bidi characters from the reason', () => {
+    const spoiler = spoilerIn(
+      '<span data-mx-spoiler="a\u202eb\u2066c\u2069d\u200fe\u200ff\u0007g\u0085h\u202ai\tj">x</span>',
+    );
+
+    expect(spoiler.getAttribute('label')).toBe('abcdefghi j');
+  });
+
+  it('reads a 64 KB reason in linear time', () => {
+    const reason = 'a\u202e \t'.repeat(16_384);
+
+    const started = performance.now();
+    const spoiler = spoilerIn(`<span data-mx-spoiler="${reason}">x</span>`);
+    const elapsed = performance.now() - started;
+
+    expect(spoiler.getAttribute('label')).toBe('a '.repeat(40).trimEnd());
+    expect(elapsed).toBeLessThan(500);
+  });
 });
