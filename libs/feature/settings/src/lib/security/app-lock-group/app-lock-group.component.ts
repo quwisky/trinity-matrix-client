@@ -86,8 +86,10 @@ export class AppLockGroupComponent {
   protected readonly appName = this.appLock.appName;
   protected readonly groupDescription = `Hide ${this.appName} behind a lock screen on this device. Sync and notifications keep working while it’s locked.`;
   protected readonly keyringNote = keyringNote(this.appName);
-  protected readonly storedPinUnreadableNote = storedPinUnreadableNote(
-    this.appName,
+  /** Clearing an unreadable PIN is allowed only over a readable "off" (ruling T16-1). */
+  protected readonly canClearPin = this.appLock.canClearUnreadablePin;
+  protected readonly storedPinUnreadableNote = computed(() =>
+    storedPinUnreadableNote(this.appName, this.canClearPin()),
   );
   protected readonly noPinNote = noPinNote(this.appName);
   protected readonly lockAfterOptions: readonly TrnSelectOption<LockAfter>[] = [

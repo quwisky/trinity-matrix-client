@@ -103,6 +103,8 @@ async function setup(
     mobile?: boolean;
     /** The system-only guard's answer (replacing an unreadable PIN). */
     systemGuard?: GuardOutcome;
+    /** Whether the service allows clearing an unreadable PIN (a setting that was read). */
+    canClear?: boolean;
   } = {},
 ) {
   const support = signal(options.support ?? (options.enabled ? FACE_ON : FACE));
@@ -128,6 +130,12 @@ async function setup(
     systemAvailable: computed(() => support().system.kind === 'available'),
     pinState: computed(() => pinStateOf(support())),
     refreshSupport: vi.fn(() => of(support())),
+    canClearUnreadablePin: computed(
+      () =>
+        (options.canClear ?? true) &&
+        !enabled() &&
+        pinStateOf(support()) === 'unreadable',
+    ),
     endGuardWindow: vi.fn(),
     recentlySystemVerified: vi.fn(() => false),
     verifyWithSystemForChange: vi.fn(() =>
@@ -594,6 +602,23 @@ describe('AppLockGroupComponent', () => {
       );
     });
 
+    it('offers no clear, only Try again and the full reset, when the setting was never read', async () => {
+      const { lock } = await setup({
+        support: PIN_UNREADABLE,
+        canClear: false,
+        appName: 'Trinity Next',
+      });
+      const note = screen.getByTestId('app-lock-pin-unreadable');
+      expect(note.textContent).toContain(
+        'Trinity Next can’t read the PIN stored on this device, so App lock can’t be turned on. Try again. If that doesn’t help, erase all data on this device: choose Add account, then Erase all data on this device on the sign-in page.',
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Clear the stored PIN' }),
+      ).toBeNull();
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+      expect(lock.clearUnreadablePin).not.toHaveBeenCalled();
+    });
+
     it('clears it, then offers the switch and moves focus to it', async () => {
       const { lock } = await setup({ support: PIN_UNREADABLE });
       const clear = screen.getByRole('button', {
@@ -617,7 +642,7 @@ describe('AppLockGroupComponent', () => {
       ],
       [
         { kind: 'failed', reason: 'not-allowed' },
-        'Trinity can’t confirm that App lock is off, so the stored PIN is still there. Restart Trinity, then try again.',
+        'Trinity can’t clear the stored PIN right now, so the stored PIN is still there.',
       ],
     ])(
       'keeps the note and says why when the clear gives %o',

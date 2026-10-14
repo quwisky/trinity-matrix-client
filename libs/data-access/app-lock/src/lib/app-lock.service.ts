@@ -89,8 +89,12 @@ export class AppLockService {
   private verifiedAt: number | null = null;
   /** The system prompt opened the guard window (not a PIN check, not setup). */
   private verifiedBySystem = false;
-  /** The enabled setting could not be read; the host's PIN decides. */
-  private settingUnreadable = false;
+  /**
+   * The enabled setting could not be read; the host's PIN decides. Only a readable value
+   * saved here (`enable`, `disable`) or read at startup clears it: a lock released because
+   * the host showed no lock can exist leaves the setting as unknown as before.
+   */
+  private readonly settingUnreadable = signal(false);
   /** Counts moves into `locked`; work started before the latest one is stale. */
   private locks = 0;
   private readonly systemPrompt = new AppLockSystemPrompt({
@@ -131,6 +135,18 @@ export class AppLockService {
     () =>
       this.locked() && !this.systemAvailable() && this.pinState() !== 'ready',
   );
+  /**
+   * Whether {@link clearUnreadablePin} may run now: App lock is off by a setting that was
+   * actually read, and the PIN store exists but can't be read. Settings offers "Clear the
+   * stored PIN" only then.
+   */
+  readonly canClearUnreadablePin = computed(
+    () =>
+      !this._enabled() &&
+      !this.settingUnreadable() &&
+      this._status() === 'off' &&
+      this.pinState() === 'unreadable',
+  );
   /** See {@link AppLockSystemPrompt.waitUntil}: null again once the deadline passes. */
   readonly systemWaitUntil = this.systemPrompt.waitUntil;
 
@@ -159,7 +175,7 @@ export class AppLockService {
         tap((support) => {
           this._support.set(support);
           if (
-            this.settingUnreadable &&
+            this.settingUnreadable() &&
             this._status() === 'locked' &&
             !unreadableSettingLocks(support)
           ) {
@@ -183,7 +199,7 @@ export class AppLockService {
    */
   retry(): Observable<void> {
     return defer(() =>
-      this.settingUnreadable && this._status() === 'locked'
+      this.settingUnreadable() && this._status() === 'locked'
         ? this.load(true)
         : this.refreshSupport().pipe(map(() => undefined)),
     );
@@ -265,7 +281,7 @@ export class AppLockService {
             switchMap((saved) => {
               if (saved.kind === 'completed') {
                 this._enabled.set(true);
-                this.settingUnreadable = false;
+                this.settingUnreadable.set(false);
                 if (locks === this.locks && this._status() !== 'locked') {
                   this.openGuardWindow(false);
                   this.setStatus('unlocked');
@@ -330,6 +346,8 @@ export class AppLockService {
       this.save(APP_LOCK_ENABLED_PREFERENCE, false).pipe(
         switchMap((saved) => {
           if (saved.kind !== 'completed') return of(saved);
+          // A readable "off" is saved now.
+          this.settingUnreadable.set(false);
           this.release();
           // A readable "off" wins over a leftover PIN, so a failed clear is not an error.
           return this.clearPin().pipe(map(() => saved));
@@ -383,14 +401,7 @@ export class AppLockService {
    */
   clearUnreadablePin(): Observable<AppLockCommandOutcome> {
     return defer(() => {
-      if (
-        this._enabled() ||
-        this.settingUnreadable ||
-        this._status() !== 'off' ||
-        this.pinState() !== 'unreadable'
-      ) {
-        return of(NOT_ALLOWED);
-      }
+      if (!this.canClearUnreadablePin()) return of(NOT_ALLOWED);
       return this.clearHostPin().pipe(
         switchMap((outcome) => this.thenRefresh(outcome)),
       );
@@ -446,12 +457,12 @@ export class AppLockService {
     if (retrying) {
       // A Retry never locks: someone may have unlocked while it waited. It only releases.
       this._lockAfter.set(stored.lockAfter);
-      this.settingUnreadable = stored.enabled === 'unreadable';
+      this.settingUnreadable.set(stored.enabled === 'unreadable');
       if (!enabled && this._status() !== 'off') this.release();
       return;
     }
     this._lockAfter.set(stored.lockAfter);
-    this.settingUnreadable = stored.enabled === 'unreadable';
+    this.settingUnreadable.set(stored.enabled === 'unreadable');
     this._enabled.set(enabled);
     this.setStatus(enabled ? 'locked' : 'off');
   }
@@ -465,8 +476,8 @@ export class AppLockService {
     if (kind === 'unlock') this.setStatus('unlocked');
   }
 
+  /** Off, with the setting as known (or unknown) as it was; see `settingUnreadable`. */
   private release(): void {
-    this.settingUnreadable = false;
     this._enabled.set(false);
     this.setStatus('off');
   }

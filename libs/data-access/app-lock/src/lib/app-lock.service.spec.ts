@@ -25,7 +25,12 @@ import {
 } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { APP_LOCK_CLOCK } from './app-lock.tokens';
-import { GUARD_WINDOW_MS, PRESENCE_REASONS } from './app-lock.models';
+import {
+  GUARD_WINDOW_MS,
+  PRESENCE_REASONS,
+  SETTINGS_TIMEOUT_MS,
+  SUPPORT_TIMEOUT_MS,
+} from './app-lock.models';
 import { AppLockService } from './app-lock.service';
 
 const START = 1_000_000;
@@ -1188,6 +1193,72 @@ describe('AppLockService', () => {
         reason: 'not-allowed',
       });
       expect(adapter.clearPin).not.toHaveBeenCalled();
+    });
+
+    it('keeps refusing after Retry released an unreadable setting to off', async () => {
+      // Unreadable setting and no host answer: locked, fail closed. Retry then hears that
+      // no PIN is stored and releases the lock, but the setting was never read.
+      const { lock, adapter, report } = setup({
+        stored: 'unavailable',
+        support: 'never',
+      });
+      await withFakeTimers(async () => {
+        const started = hydrated(lock);
+        await vi.advanceTimersByTimeAsync(
+          SUPPORT_TIMEOUT_MS + SETTINGS_TIMEOUT_MS,
+        );
+        await started;
+      });
+      expect(lock.status()).toBe('locked');
+      report(PIN_NOT_SET);
+      await firstValueFrom(lock.retry(), { defaultValue: undefined });
+      expect(lock.status()).toBe('off');
+      report(UNREADABLE);
+      await firstValueFrom(lock.refreshSupport());
+      expect(lock.pinState()).toBe('unreadable');
+      expect(lock.canClearUnreadablePin()).toBe(false);
+      await expect(firstValueFrom(lock.clearUnreadablePin())).resolves.toEqual({
+        kind: 'failed',
+        reason: 'not-allowed',
+      });
+      expect(adapter.clearPin).not.toHaveBeenCalled();
+    });
+
+    it('keeps refusing after a support read released an unreadable setting to off', async () => {
+      const { lock, adapter, report } = setup({
+        stored: 'unavailable',
+        support: 'never',
+      });
+      await withFakeTimers(async () => {
+        const started = hydrated(lock);
+        await vi.advanceTimersByTimeAsync(
+          SUPPORT_TIMEOUT_MS + SETTINGS_TIMEOUT_MS,
+        );
+        await started;
+      });
+      expect(lock.status()).toBe('locked');
+      report(PIN_NOT_SET);
+      await firstValueFrom(lock.refreshSupport());
+      expect(lock.status()).toBe('off');
+      report(UNREADABLE);
+      await firstValueFrom(lock.refreshSupport());
+      expect(lock.canClearUnreadablePin()).toBe(false);
+      await expect(firstValueFrom(lock.clearUnreadablePin())).resolves.toEqual({
+        kind: 'failed',
+        reason: 'not-allowed',
+      });
+      expect(adapter.clearPin).not.toHaveBeenCalled();
+    });
+
+    it('says when the clear is allowed: readably off over an unreadable store', async () => {
+      const off = setup({ stored: {}, support: UNREADABLE });
+      await hydrated(off.lock);
+      expect(off.lock.canClearUnreadablePin()).toBe(true);
+      TestBed.resetTestingModule();
+      const on = setup({ support: FACE_UNREADABLE });
+      await hydrated(on.lock);
+      await firstValueFrom(on.lock.unlockWithSystem());
+      expect(on.lock.canClearUnreadablePin()).toBe(false);
     });
 
     it('refuses while the lock is on', async () => {

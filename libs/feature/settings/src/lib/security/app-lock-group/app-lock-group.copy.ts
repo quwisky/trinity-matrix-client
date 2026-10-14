@@ -108,7 +108,7 @@ export function failureMessage(
     case 'setting-not-saved':
       return `${appName} couldn’t save this setting, so ${kept}. Try again.`;
     case 'not-allowed':
-      return `${appName} can’t confirm that App lock is off, so ${kept}. Restart ${appName}, then try again.`;
+      return `${appName} can’t clear the stored PIN right now, so ${kept}.`;
     case 'pin-not-cleared':
       return `${appName} couldn’t clear the stored PIN, so ${kept}. Try again.`;
     default: {
@@ -146,10 +146,16 @@ export function keyringNote(appName: string): string {
 /**
  * A PIN store that exists but can't be read (a damaged record, a locked keyring) while App
  * lock is off. The host refuses a new PIN over it; Try again comes first (a keyring may
- * unlock), then "Clear the stored PIN" (ruling T16-1).
+ * unlock), then "Clear the stored PIN" (ruling T16-1) where the service allows it: App lock
+ * readably off. Where the setting itself was never read, only the full reset clears it.
  */
-export function storedPinUnreadableNote(appName: string): string {
-  return `${appName} can’t read the PIN stored on this device. App lock is off, so that PIN isn’t used: clearing it lets you turn App lock on with a new PIN.`;
+export function storedPinUnreadableNote(
+  appName: string,
+  canClear: boolean,
+): string {
+  return canClear
+    ? `${appName} can’t read the PIN stored on this device. App lock is off, so that PIN isn’t used: clearing it lets you turn App lock on with a new PIN.`
+    : `${appName} can’t read the PIN stored on this device, so App lock can’t be turned on. Try again. If that doesn’t help, erase all data on this device: choose Add account, then Erase all data on this device on the sign-in page.`;
 }
 
 /** The same with the lock on: the system prompt still confirms changes, else the reset. */
