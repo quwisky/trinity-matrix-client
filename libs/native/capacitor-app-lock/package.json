@@ -1,0 +1,16 @@
+{
+  "name": "@trinity/capacitor-app-lock",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Trinity's local Capacitor plugin: the App lock PIN verifier and the iOS presented-view dismissal.",
+  "license": "MIT",
+  "capacitor": {
+    "android": {
+      "src": "android"
+    },
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

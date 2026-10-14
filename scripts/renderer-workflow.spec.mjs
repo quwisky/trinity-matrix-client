@@ -221,11 +221,15 @@ describe('prebuilt host target contracts', () => {
         `node scripts/web-bundle-manifest.mjs verify-with-extras dist/web-bundle-manifest.json ${copied} cordova.js cordova_plugins.js`,
       ]);
       // The prebuilt build consumes the verified copy, never the renderer build. iOS also
-      // runs its TrinityPush package tests first; they have no renderer dependency.
+      // runs its TrinityPush and TrinityAppLockCore package tests first; they have no
+      // renderer dependency.
       expect(targets['build-prebuilt'].dependsOn).toEqual(
-        host === 'ios' ? ['sync-prebuilt', 'test-push'] : ['sync-prebuilt'],
+        host === 'ios'
+          ? ['sync-prebuilt', 'test-push', 'test-app-lock']
+          : ['sync-prebuilt'],
       );
       expect(targets['test-push']?.dependsOn ?? []).toEqual([]);
+      expect(targets['test-app-lock']?.dependsOn ?? []).toEqual([]);
       if (host === 'ios') {
         expect(targets['build-prebuilt'].options.command).toContain(
           '-sdk iphonesimulator',

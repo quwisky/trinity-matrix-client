@@ -130,6 +130,7 @@
     "@shikijs/engine-javascript": "4.5.0",
     "@shikijs/langs": "4.5.0",
     "@spartan-ng/brain": "1.5.0",
+    "@trinity/capacitor-app-lock": "workspace:*",
     "@trinity/capacitor-push": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

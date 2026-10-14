@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **71 Nx projects** and **285 dependencies**. No project cycles detected.
+This snapshot contains **73 Nx projects** and **286 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -35,7 +35,7 @@ Capability-to-capability dependencies are valid only inside the same named capab
 | `role:application`   |        7 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
 | `role:capability`    |       15 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
 | `role:kernel`        |        5 | `role:kernel`                                                                                          |
-| `role:adapter`       |        6 | `role:adapter`, `role:kernel`                                                                          |
+| `role:adapter`       |        8 | `role:adapter`, `role:kernel`                                                                          |
 | `role:design-system` |       19 | `role:design-system`, `role:kernel`, `role:adapter`                                                    |
 
 ## Frozen dependency exceptions
@@ -63,6 +63,7 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `application-runtime`             | `@trinity/application/runtime`             | `./libs/application/runtime/src/index.ts`             |
 | `application-search`              | `@trinity/application/search`              | `./libs/application/search/src/index.ts`              |
 | `application-workspace`           | `@trinity/application/workspace`           | `./libs/application/workspace/src/index.ts`           |
+| `native-capacitor-app-lock`       | `@trinity/capacitor-app-lock`              | `./libs/native/capacitor-app-lock/src/index.ts`       |
 | `native-capacitor-push`           | `@trinity/capacitor-push`                  | `./libs/native/capacitor-push/src/index.ts`           |
 | `components-controls`             | `@trinity/components/controls`             | `./libs/components/controls/src/index.ts`             |
 | `components-foundations`          | `@trinity/components/foundations`          | `./libs/components/foundations/src/index.ts`          |
@@ -158,6 +159,8 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `feature-rooms`                   | `libs/feature/rooms`                   | role:application; capability:workspace          |                  25 |
 | `feature-settings`                | `libs/feature/settings`                | role:application; capability:settings           |                  24 |
 | `label`                           | `libs/spartan/label`                   | role:design-system; capability:design-system    |                   1 |
+| `native-capacitor-app-lock`       | `libs/native/capacitor-app-lock`       | role:adapter; capability:host                   |                   0 |
+| `native-capacitor-app-lock-ios`   | `libs/native/capacitor-app-lock/ios`   | role:adapter; capability:host                   |                   0 |
 | `native-capacitor-push`           | `libs/native/capacitor-push`           | role:adapter; capability:host                   |                   0 |
 | `native-capacitor-push-android`   | `libs/native/capacitor-push/android`   | role:adapter; capability:host                   |                   0 |
 | `native-capacitor-push-ios`       | `libs/native/capacitor-push/ios`       | role:adapter; capability:host                   |                   0 |
@@ -185,7 +188,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `trinity-e2e-protocol`            | `e2e/protocol`                         | unmanaged tooling/test                          |                   4 |
 | `trinity-e2e-support`             | `e2e/support`                          | unmanaged tooling/test                          |                   0 |
 | `trinity-e2e-web`                 | `e2e/web`                              | unmanaged tooling/test                          |                   6 |
-| `trinity-ios`                     | `ios`                                  | role:app; capability:composition                |                   2 |
+| `trinity-ios`                     | `ios`                                  | role:app; capability:composition                |                   3 |
 | `trinity-web-container`           | `container`                            | role:app; capability:composition                |                   1 |
 | `util-matrix`                     | `libs/util/matrix`                     | role:kernel; capability:shared                  |                   0 |
 | `util-ui`                         | `libs/util/ui`                         | role:design-system; capability:design-system    |                   0 |
