@@ -27,8 +27,12 @@ export interface SystemPromptHooks {
   readonly now: () => number;
   /** Counts locks; an answer to a prompt opened before the latest lock is stale. */
   readonly locks: () => number;
-  /** A fresh, current verification: opens the guard window. */
-  readonly verified: () => void;
+  /**
+   * A current verification (no lock since the prompt opened), applied once whether or not
+   * anyone still waits: an `unlock` prompt unlocks. Opens the guard window only if it took
+   * effect.
+   */
+  readonly verified: (kind: SystemPromptKind) => void;
   /** The host says the system prompt cannot run now. */
   readonly unavailable: (reason: HostSystemPresenceUnavailableReason) => void;
 }
@@ -124,7 +128,7 @@ export class AppLockSystemPrompt {
         if (locks !== this.hooks.locks()) return CANCELLED;
         this.failures.set(0);
         this.failedAt.set(null);
-        this.hooks.verified();
+        this.hooks.verified(kind);
         return outcome;
       case 'failed':
         // Only the lock screen's prompt feeds Trinity's delay (spec §2).

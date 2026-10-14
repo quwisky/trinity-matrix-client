@@ -59,7 +59,10 @@ import {
   type GuardOutcome,
   type UnlockOutcome,
 } from './app-lock.models';
-import { AppLockSystemPrompt } from './app-lock-system-prompt';
+import {
+  AppLockSystemPrompt,
+  type SystemPromptKind,
+} from './app-lock-system-prompt';
 import { APP_LOCK_CLOCK } from './app-lock.tokens';
 import { isValidPin } from './pin-policy';
 
@@ -90,7 +93,7 @@ export class AppLockService {
     presence: this.presence,
     now: () => this.now(),
     locks: () => this.locks,
-    verified: () => (this.verifiedAt = this.now()),
+    verified: (kind) => this.presenceVerified(kind),
     unavailable: (reason) =>
       this._support.update((support) => ({
         ...support,
@@ -213,12 +216,10 @@ export class AppLockService {
       return this.systemPrompt
         .prompt(PRESENCE_REASONS.unlock(this.appName), 'unlock')
         .pipe(
-          map((outcome) => {
-            if (outcome.kind === 'verified' && this._status() === 'locked') {
-              this.setStatus('unlocked');
-            }
-            return systemUnlockOutcome(outcome, this.systemWaitUntil());
-          }),
+          // The prompt itself unlocks (see presenceVerified), even if this caller left.
+          map((outcome) =>
+            systemUnlockOutcome(outcome, this.systemWaitUntil()),
+          ),
         );
     });
   }
@@ -382,6 +383,13 @@ export class AppLockService {
     this.settingUnreadable = stored.enabled === 'unreadable';
     this._enabled.set(enabled);
     this.setStatus(enabled ? 'locked' : 'off');
+  }
+
+  /** A prompt verified with no lock since it opened; only an answer that takes effect counts. */
+  private presenceVerified(kind: SystemPromptKind): void {
+    if (kind === 'unlock' && this._status() !== 'locked') return; // A PIN unlocked first.
+    this.verifiedAt = this.now();
+    if (kind === 'unlock') this.setStatus('unlocked');
   }
 
   private release(): void {

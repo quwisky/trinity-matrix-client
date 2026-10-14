@@ -601,6 +601,36 @@ describe('AppLockService', () => {
       expect(ui.active()).toBe(false);
     });
 
+    it('unlocks when the prompt is verified after its callers have gone', async () => {
+      const prompt = new Subject<HostPresenceOutcome>();
+      const { lock } = setup({ verify: () => prompt });
+      await hydrated(lock);
+      // The lock screen went away while the OS sheet stayed up.
+      lock.unlockWithSystem().subscribe().unsubscribe();
+      prompt.next({ kind: 'verified' });
+      prompt.complete();
+      expect(lock.status()).toBe('unlocked');
+      expect(lock.recentlyVerified()).toBe(true);
+    });
+
+    it('stays locked when an abandoned prompt is verified after a newer lock', async () => {
+      const prompt = new Subject<HostPresenceOutcome>();
+      const { lock } = setup({ support: FACE_AND_PIN, verify: () => prompt });
+      await hydrated(lock);
+      lock.unlockWithSystem().subscribe().unsubscribe();
+      await firstValueFrom(lock.unlockWithPin('482913'));
+      lock.lockNow();
+      prompt.next({ kind: 'verified' });
+      prompt.complete();
+      expect(lock.status()).toBe('locked');
+      expect(lock.recentlyVerified()).toBe(false);
+      // Guarded changes stay refused under the lock.
+      await expect(firstValueFrom(lock.setLockAfter('5m'))).resolves.toEqual({
+        kind: 'failed',
+        reason: 'not-verified',
+      });
+    });
+
     it('opens its own unlock prompt after a settings prompt from before a lock', async () => {
       const prompts: Subject<HostPresenceOutcome>[] = [];
       const { lock, adapter, advance } = setup({
