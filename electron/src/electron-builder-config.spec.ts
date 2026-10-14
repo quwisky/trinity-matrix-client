@@ -247,3 +247,35 @@ describe('mergeConfig', () => {
     expect(overrides).toEqual({ a: { add: 2 }, list: [2] });
   });
 });
+
+describe('packaging scripts', () => {
+  const scripts = (
+    JSON.parse(readFileSync(join(electronRoot, 'package.json'), 'utf8')) as {
+      readonly scripts: Record<string, string>;
+    }
+  ).scripts;
+
+  it('package every channel through electron-builder.config.ts', () => {
+    const packaging = Object.entries(scripts).filter(([name]) =>
+      name.startsWith('package'),
+    );
+    expect(packaging.map(([name]) => name).sort()).toEqual([
+      'package',
+      'package:all',
+      'package:linux',
+      'package:mac',
+      'package:mac:signed',
+      'package:win',
+    ]);
+    for (const [name, command] of packaging) {
+      expect(command, name).toContain(
+        'electron-builder --config electron-builder.config.ts',
+      );
+    }
+  });
+
+  it('signs whichever app the local macOS package produced', () => {
+    expect(scripts['package:mac']).toContain('release/mac-arm64/*.app');
+    expect(scripts['package:mac']).not.toContain('Trinity.app');
+  });
+});

@@ -20,12 +20,12 @@
     "build": "node scripts/copy-www.mjs && tsc -p tsconfig.json",
     "test": "vitest run",
     "start": "electron .",
-    "package": "electron-builder",
-    "package:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac && codesign --force --deep --sign \"trinity-dev\" release/mac-arm64/Trinity.app",
-    "package:mac:signed": "electron-builder --mac",
-    "package:linux": "electron-builder --linux",
-    "package:win": "electron-builder --win",
-    "package:all": "electron-builder --mac --linux --win",
+    "package": "electron-builder --config electron-builder.config.ts",
+    "package:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --config electron-builder.config.ts --mac && codesign --force --deep --sign \"trinity-dev\" release/mac-arm64/*.app",
+    "package:mac:signed": "electron-builder --config electron-builder.config.ts --mac",
+    "package:linux": "electron-builder --config electron-builder.config.ts --linux",
+    "package:win": "electron-builder --config electron-builder.config.ts --win",
+    "package:all": "electron-builder --config electron-builder.config.ts --mac --linux --win",
     "sign:dev": "node -e \"if (process.platform !== 'darwin') { console.log('sign:dev: skipped, not macOS'); process.exit(0); } require('node:child_process').execFileSync('codesign', ['--force','--deep','--sign','trinity-dev','node_modules/electron/dist/Electron.app'], { stdio: 'inherit' });\""
   },
   "devDependencies": {
