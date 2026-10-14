@@ -232,6 +232,14 @@ const ROLES = [
     text: `--trinity-avatar-${n}-ink`,
     on: [`--trinity-avatar-${n}`],
   })),
+  // A concealed spoiler's reason (rendered-markdown.scss): drawn in `--trinity-message-surface`
+  // on a bar filled with `--trinity-text-bright`. The message surface is the workspace pane in
+  // the timeline and threads, raised in the composer preview and overlay in edit history.
+  ...[
+    '--trinity-surface-workspace',
+    '--trinity-surface-raised',
+    '--trinity-surface-overlay',
+  ].map((surface) => ({ text: surface, on: ['--trinity-text-bright'] })),
 ];
 
 /** Essential graphics and focus indicators use WCAG's 3:1 non-text threshold. */
