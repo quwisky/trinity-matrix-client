@@ -410,8 +410,8 @@ test.describe('Inline images', () => {
     );
   });
 
-  // High Contrast drops the loading box's fill; the stylesheet outlines it instead. The
-  // thumbnail is held back so the box stays in its loading state for the measurement.
+  // High Contrast drops the loading box's fill; the stylesheet's outline stays. The thumbnail
+  // is held back so the box stays in its loading state for the measurement.
   test('outlines a loading image in forced colours', async ({
     page,
     request,
@@ -434,6 +434,21 @@ test.describe('Inline images', () => {
       name: 'View image: A held test image',
     });
     await expect(image).toHaveClass(/mx-image--loading/, { timeout: 20_000 });
+    // It draws the transparent placeholder, decoded, so no broken-image icon shows.
+    await expect
+      .poll(
+        () =>
+          image.evaluate((element) => {
+            const loading = element as HTMLImageElement;
+            return (
+              loading.currentSrc.startsWith('data:image/gif') &&
+              loading.complete &&
+              loading.naturalWidth > 0
+            );
+          }),
+        { timeout: 15_000 },
+      )
+      .toBe(true);
     await expect
       .poll(() => held.length, { timeout: 15_000 })
       .toBeGreaterThan(0);
@@ -455,5 +470,43 @@ test.describe('Inline images', () => {
     await expect(image).toHaveClass(/mx-image--loading/);
 
     for (const route of held) await route.abort();
+  });
+
+  // A concealed spoiler holding an image is a short bar: the image takes no space (which would
+  // also give away its size) and is not fetched until the spoiler is revealed.
+  test('keeps an image in a concealed spoiler out of the layout until revealed', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'inline-image-spoiler');
+    const mxc = await uploadPng(request, hs, room, 300, 200, 'hidden.png');
+    const mediaId = mxc.split('/').pop() as string;
+    const requested: string[] = [];
+    page.on('request', (outgoing) => requested.push(outgoing.url()));
+    await sendMessage(request, hs, room, {
+      body: 'a spoiler with an image',
+      html: `<p>In a spoiler: <span data-mx-spoiler="a picture">look <img src="${mxc}" width="300" height="200" alt="A hidden test image"></span></p>`,
+    });
+    await signInAndOpen(page, room);
+
+    const spoiler = page.locator('.scroll .mx-spoiler').first();
+    await expect(spoiler).toHaveAttribute('label', 'a picture', {
+      timeout: 20_000,
+    });
+    const image = spoiler.locator('img.mx-image');
+    await expect(image).toHaveCount(1);
+    await expect(image).toBeHidden();
+    const lineHeight = () =>
+      spoiler.evaluate(
+        (element) => element.parentElement?.getBoundingClientRect().height ?? 0,
+      );
+    expect(await lineHeight()).toBeLessThan(60);
+    expect(requested.some((url) => url.includes(mediaId))).toBe(false);
+
+    await spoiler.click();
+    await expect(image).toHaveAttribute('src', /^blob:/, { timeout: 30_000 });
+    await expect(image).toBeVisible();
+    await expect.poll(lineHeight, { timeout: 15_000 }).toBeGreaterThan(150);
   });
 });
