@@ -415,6 +415,13 @@
         min-height: 4rem;
         background: var(--trinity-surface-raised);
         color: transparent;
+
+        // High Contrast drops the fill, which would leave nothing where the image is coming.
+        // Outline the box and show its alt text instead.
+        @media (forced-colors: active) {
+          border: 1px solid CanvasText;
+          color: CanvasText;
+        }
       }
 
       &.mx-image[role='button'] {
