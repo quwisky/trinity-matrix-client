@@ -723,6 +723,16 @@ const EXTERNAL_LINK = /^https?:\/\//i;
 const EXTERNAL_LINK_REL = 'noopener noreferrer';
 
 /**
+ * What the URL parser drops from an href (URL Standard): leading C0 controls and spaces, and
+ * ASCII tab, LF and CR anywhere. DOMPurify keeps them, so `\u0001https://…` and
+ * `ht\ttps://…` still open `https://…`. Neither pattern can backtrack: the first is anchored
+ * and non-global, the second matches one character at a time. Trailing controls don't change
+ * the scheme, so they need no pass.
+ */
+const URL_LEADING_CONTROLS = /^[\u0000- ]+/;
+const URL_TAB_OR_NEWLINE = /[\t\n\r]/g;
+
+/**
  * Give every link that leaves Trinity `target="_blank"` and `rel="noopener noreferrer"`, so a
  * middle-click, a modifier-click, a context-menu open or a drag behaves like the plain click
  * `MatrixLinkDirective` already intercepts. Runs after {@link normaliseMatrixUris}, so a
@@ -734,8 +744,12 @@ const EXTERNAL_LINK_REL = 'noopener noreferrer';
  */
 function markExternalLinks(root: ParentNode): void {
   for (const anchor of root.querySelectorAll('a[href]')) {
-    const href = anchor.getAttribute('href') ?? '';
+    const href = (anchor.getAttribute('href') ?? '')
+      .replace(URL_LEADING_CONTROLS, '')
+      .replace(URL_TAB_OR_NEWLINE, '');
     if (!EXTERNAL_LINK.test(href) || isMatrixLinkHref(href)) continue;
+    // Write back the href the browser would open, so Angular's URL check sees it too.
+    anchor.setAttribute('href', href);
     anchor.setAttribute('target', '_blank');
     anchor.setAttribute('rel', EXTERNAL_LINK_REL);
   }

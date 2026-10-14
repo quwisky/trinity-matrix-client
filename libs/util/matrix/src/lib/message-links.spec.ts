@@ -42,6 +42,55 @@ describe('message links that leave Trinity', () => {
     expect(link.hasAttribute('rel')).toBe(false);
   });
 
+  it('marks a link whose href starts with a control character the URL parser strips', () => {
+    // DOMPurify trims whitespace but keeps U+0001, which the browser's URL parser drops.
+    const link = firstLink(
+      sanitizeMatrixHtml('<a href="&#x1;https://example.org/a">x</a>'),
+    );
+
+    expect(link.getAttribute('href')).toBe('https://example.org/a');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('marks a link whose scheme a tab splits, as the URL parser removes it', () => {
+    const link = firstLink(
+      sanitizeMatrixHtml('<a href="ht&#x9;tps://x.example/a">x</a>'),
+    );
+
+    expect(link.getAttribute('href')).toBe('https://x.example/a');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('drops a javascript: href behind a control character and leaves the link unmarked', () => {
+    const link = firstLink(
+      sanitizeMatrixHtml('<a href="&#x1;javascript:alert(1)">x</a>'),
+    );
+
+    expect(link.hasAttribute('href')).toBe(false);
+    expect(link.hasAttribute('target')).toBe(false);
+    expect(link.hasAttribute('rel')).toBe(false);
+  });
+
+  it('keeps a permalink behind a control character in Trinity', () => {
+    const link = firstLink(
+      sanitizeMatrixHtml('<a href="&#x1;https://matrix.to/#/!room:hs">x</a>'),
+    );
+
+    expect(link.hasAttribute('target')).toBe(false);
+    expect(link.hasAttribute('rel')).toBe(false);
+  });
+
+  it('cleans an href with a long run of spaces inside it in linear time', () => {
+    const html = `<a href="&#x1;https://x.example/${' '.repeat(60_000)}a">x</a>`;
+
+    const started = performance.now();
+    sanitizeMatrixHtml(html);
+
+    expect(performance.now() - started).toBeLessThan(50);
+  });
+
   it('ignores the target and rel a sender wrote', () => {
     const link = firstLink(
       sanitizeMatrixHtml(
