@@ -774,6 +774,16 @@ export class MessageRowComponent {
     }
   }
 
+  /**
+   * Focus moving into a collapsed body (Tab to a link, mention, image or spoiler past the cut)
+   * shows it whole, so the focused control is never hidden behind the fade.
+   */
+  expandBodyForFocus(): void {
+    if (this.bodyCollapsed()) {
+      this.expandedBodies?.expand(this.row().id);
+    }
+  }
+
   /** If the row's top is above its scroller, scroll the row back into view. */
   private revealRowTop(): void {
     const message = (

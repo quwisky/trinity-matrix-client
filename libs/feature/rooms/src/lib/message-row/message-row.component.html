@@ -162,6 +162,7 @@
               [id]="bodyId"
               [class.msg__clamp--capped]="bodyClampable && !bodyLong()"
               [class.msg__clamp--collapsed]="bodyCollapsed()"
+              (focusin)="expandBodyForFocus()"
             >
               @if (bodyHtml(); as html) {
                 <div
