@@ -421,6 +421,127 @@ describe('InlineMxcImagesDirective', () => {
       expect(image.hasAttribute('role')).toBe(false);
     });
 
+    it('opens the viewer for an image inside a link with no href', async () => {
+      const { host } = await render(
+        sanitizeMatrixHtml('<a><img src="mxc://hs/pic" alt="pic"></a>'),
+      );
+      const image = host.querySelector('img')!;
+
+      image.click();
+
+      expect(image.getAttribute('role')).toBe('button');
+      expect(launcher.open).toHaveBeenCalledTimes(1);
+    });
+
+    describe('inside nested spoilers', () => {
+      const nested = () =>
+        sanitizeMatrixHtml(
+          '<span data-mx-spoiler>outer <span data-mx-spoiler>inner <img src="mxc://hs/pic" alt="pic"></span></span>',
+        );
+
+      it('opens nothing while an outer spoiler still conceals the image', async () => {
+        const { host } = await render(nested());
+        const image = host.querySelector('img')!;
+
+        image.click(); // reveals the inner spoiler only
+        image.click();
+        for (const key of ['Enter', ' ']) {
+          image.dispatchEvent(
+            new KeyboardEvent('keydown', { key, bubbles: true }),
+          );
+        }
+
+        expect(host.querySelectorAll('.mx-spoiler.is-revealed')).toHaveLength(
+          1,
+        );
+        expect(launcher.open).not.toHaveBeenCalled();
+      });
+
+      it('opens the image once every spoiler around it is revealed', async () => {
+        const { host } = await render(nested());
+        const image = host.querySelector('img')!;
+        const [outer, inner] =
+          host.querySelectorAll<HTMLElement>('.mx-spoiler');
+
+        inner.click();
+        outer.click();
+        image.click();
+
+        expect(launcher.open).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('keeps a concealed image out of the tab order and unnamed until revealed', async () => {
+      const { host } = await render(
+        sanitizeMatrixHtml(
+          '<span data-mx-spoiler>look <img src="mxc://hs/secret" alt="secret"></span>',
+        ),
+      );
+      const image = host.querySelector('img')!;
+
+      expect(image.getAttribute('tabindex')).toBe('-1');
+      expect(image.getAttribute('aria-hidden')).toBe('true');
+
+      host.querySelector<HTMLElement>('.mx-spoiler')!.click();
+
+      expect(image.getAttribute('tabindex')).toBe('0');
+      expect(image.hasAttribute('aria-hidden')).toBe(false);
+      expect(image.getAttribute('role')).toBe('button');
+      expect(image.getAttribute('aria-label')).toBe('View image: secret');
+    });
+
+    it('leaves an image outside any spoiler reachable and named', async () => {
+      const { host } = await render(
+        sanitizeMatrixHtml('<img src="mxc://hs/pic" alt="pic">'),
+      );
+      const image = host.querySelector('img')!;
+
+      expect(image.getAttribute('tabindex')).toBe('0');
+      expect(image.hasAttribute('aria-hidden')).toBe(false);
+      expect(image.getAttribute('aria-label')).toBe('View image: pic');
+    });
+
+    it('cancels the wait and releases the pin of an image when the body re-renders', async () => {
+      const { fixture, host } = await render(
+        sanitizeMatrixHtml(
+          '<img src="mxc://hs/a" alt="a"><img src="mxc://hs/b" alt="b">',
+        ),
+      );
+      const [first, second] = host.querySelectorAll('img');
+      FakeIntersectionObserver.enter(first);
+      resolved.next('blob:a'); // a is shown; b still waits to come near
+      const observer = FakeIntersectionObserver.instances[0];
+      expect(observer.targets.has(second)).toBe(true);
+
+      fixture.componentInstance.html.set(sanitizeMatrixHtml('<p>edited</p>'));
+      fixture.detectChanges();
+      await Promise.resolve();
+
+      expect(observer.targets.has(second)).toBe(false);
+      expect(media.unpin).toHaveBeenCalledExactlyOnceWith('blob:a');
+      FakeIntersectionObserver.enter(second);
+      expect(media.resolveMedia).toHaveBeenCalledTimes(1);
+    });
+
+    it('releases each pin of an image that appears twice', async () => {
+      const { fixture, host } = await render(
+        sanitizeMatrixHtml(
+          '<img src="mxc://hs/pic" alt="pic"> and <img src="mxc://hs/pic" alt="pic">',
+        ),
+      );
+      const images = host.querySelectorAll('img');
+      for (const image of images) FakeIntersectionObserver.enter(image);
+      resolved.next('blob:pic'); // both images share the one cached URL
+
+      images[0].dispatchEvent(new Event('error'));
+      fixture.destroy();
+
+      const count = (spy: typeof media.pin) =>
+        spy.mock.calls.filter(([url]) => url === 'blob:pic').length;
+      expect(count(media.pin)).toBe(2);
+      expect(count(media.unpin)).toBe(2);
+    });
+
     it('tells the reader when the image cannot be opened', async () => {
       launcher.open.mockReturnValueOnce(of<MediaViewerOutcome>('failed'));
       const { host } = await render(

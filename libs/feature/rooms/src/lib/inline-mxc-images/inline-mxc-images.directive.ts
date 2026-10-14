@@ -124,8 +124,10 @@ export class InlineMxcImagesDirective implements OnDestroy {
     if (!(image instanceof HTMLImageElement) || !host.contains(image)) {
       return;
     }
-    const link = image.closest('a');
-    if (link && host.contains(link)) {
+    // A link wins (the render pass gave this image no button role), and an image an outer
+    // spoiler still conceals opens nothing: a click there only revealed an inner one.
+    const link = image.closest('a[href]');
+    if ((link && host.contains(link)) || image.closest(CONCEALED)) {
       return;
     }
     const declaration = this.images.get(image);
@@ -210,6 +212,7 @@ export class InlineMxcImagesDirective implements OnDestroy {
         );
       };
       if (target.closest(CONCEALED)) {
+        conceal(target);
         this.concealed.set(target, start);
       } else {
         start();
@@ -257,6 +260,7 @@ export class InlineMxcImagesDirective implements OnDestroy {
     for (const [image, start] of this.concealed) {
       if (spoiler.contains(image) && !image.closest(CONCEALED)) {
         this.concealed.delete(image);
+        unconceal(image);
         start();
       }
     }
@@ -306,6 +310,27 @@ function payloadFor({ mxc, alt }: Declaration): MediaPayload {
     thumbnailMxc: null,
     thumbnailFile: null,
   };
+}
+
+/**
+ * Take an image a spoiler conceals out of the tab order and the accessibility tree, so
+ * assistive tech does not announce "View image: <alt>" inside a hidden spoiler. The
+ * stylesheet's `visibility: hidden` on concealed content does the same; this is defence in
+ * depth that does not depend on the stylesheet.
+ */
+function conceal(image: HTMLImageElement): void {
+  image.setAttribute('aria-hidden', 'true');
+  if (image.getAttribute('role') === 'button') {
+    image.setAttribute('tabindex', '-1');
+  }
+}
+
+/** Undo {@link conceal} once every spoiler around the image is revealed. */
+function unconceal(image: HTMLImageElement): void {
+  image.removeAttribute('aria-hidden');
+  if (image.getAttribute('role') === 'button') {
+    image.setAttribute('tabindex', '0');
+  }
 }
 
 /** Replace an image with its alt text, as a failed emoji always has been. */
