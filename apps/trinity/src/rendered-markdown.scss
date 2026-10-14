@@ -312,6 +312,27 @@
       overscroll-behavior-x: contain;
     }
 
+    // Maths is drawn in the body's text colour, never a sender's (owner decision 13): the
+    // sender-colour directive paints nothing inside it, and this stops it inheriting a colour
+    // painted around it. In a link it keeps the link's colour, in a mention the pill's.
+    .mx-maths {
+      color: var(--trinity-text);
+    }
+
+    a .mx-maths {
+      color: var(--trinity-link);
+    }
+
+    a.mention .mx-maths {
+      color: inherit;
+    }
+
+    // KaTeX's struts and tall delimiters reach a pixel or two past the box; clip that rather
+    // than add a vertical scrollbar to a formula that only scrolls sideways.
+    div.mx-maths {
+      overflow-y: hidden;
+    }
+
     th,
     td {
       padding: 3px 8px;

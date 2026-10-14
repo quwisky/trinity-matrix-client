@@ -36,8 +36,11 @@ interface Context {
 
 const TOKEN_SELECTOR = '[class*="mx-fg-"], [class*="mx-bg-"]';
 
-/** Never coloured: code keeps its syntax colours and a mention its pill. */
-const UNCOLOURED = 'pre, code, a.mention';
+/** Maths, drawn in the body's own text colour (owner decision 13); marked by the render pass. */
+const MATHS = '.mx-maths';
+
+/** Never coloured: code keeps its syntax colours, a mention its pill and maths the text colour. */
+const UNCOLOURED = `pre, code, a.mention, ${MATHS}`;
 
 /** A link sets its own text colour (`--trinity-link`); a mention is a pill and never coloured. */
 const LINK = 'a:not(.mention)';
@@ -117,9 +120,10 @@ export function readMessageTheme(host: HTMLElement): MessageTheme | null {
 /**
  * Paint the body's sender colours, parents first, keeping each that stays readable. Resets every
  * token element first, so a theme change re-decides from scratch. A kept background that holds a
- * link must suit the link colour too, and a kept text colour that holds a table header must read
- * on its rail. Linear in the size of the body: each ancestor walk is bounded by the 100-level
- * nesting cap, and the walk up from links and headers stops at a marked ancestor.
+ * link must suit the link colour too, one that holds maths the body text colour, and a kept text
+ * colour that holds a table header must read on its rail. Linear in the size of the body: each
+ * ancestor walk is bounded by the 100-level nesting cap, and the walk up from links, headers and
+ * maths stops at a marked ancestor.
  */
 export function applySenderColours(
   host: HTMLElement,
@@ -127,6 +131,7 @@ export function applySenderColours(
 ): void {
   const aroundLinks = theme ? ancestorsOf(host, LINK) : new Set<Element>();
   const aroundHeaders = theme ? ancestorsOf(host, HEADER) : new Set<Element>();
+  const aroundMaths = theme ? ancestorsOf(host, MATHS) : new Set<Element>();
   const effective = new Map<Element, Context>();
   for (const element of host.querySelectorAll<HTMLElement>(TOKEN_SELECTOR)) {
     element.style.removeProperty('color');
@@ -155,11 +160,14 @@ export function applySenderColours(
     if (
       kept.bg &&
       bg &&
-      aroundLinks.has(element) &&
-      contrastRatio(theme.link, bg) < MIN_SENDER_CONTRAST
+      ((aroundLinks.has(element) &&
+        contrastRatio(theme.link, bg) < MIN_SENDER_CONTRAST) ||
+        (aroundMaths.has(element) &&
+          contrastRatio(theme.text, bg) < MIN_SENDER_CONTRAST))
     ) {
-      // A link inside keeps its own colour, which this background would hide: drop it and
-      // decide the text colour as if no background had been asked for.
+      // A link or maths inside keeps its own colour (the link's, the body text's), which this
+      // background would hide: drop it and decide the text colour as if no background had been
+      // asked for.
       kept = decideColours({ fg, bg: null }, context.text, context.background);
     }
     if (kept.fg && fg) element.style.color = toHex(fg);
@@ -171,7 +179,7 @@ export function applySenderColours(
   }
 }
 
-/** Inside code, `pre` or a mention pill within this body. */
+/** Inside code, `pre`, a mention pill or maths within this body. */
 function isUncoloured(element: Element, host: HTMLElement): boolean {
   const owner = element.closest(UNCOLOURED);
   return owner !== null && host.contains(owner);
