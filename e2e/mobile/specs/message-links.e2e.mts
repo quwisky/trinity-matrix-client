@@ -24,7 +24,12 @@ const SAFARI = 'com.apple.mobilesafari';
 /** Safari's launch plus its wait for the foreground; a held query can add up to 38 s. */
 const SAFARI_START_MS = 120_000;
 
-/** This test's budget; see the breakdown in the test. The suite default is 180 s. */
+/**
+ * The suite default is 180 s. Measured on cold CI runners: 165 s of reinstall, launch retries
+ * and first sign-in before the tap (one tap alone was held for 69 s), and 26 s to bring the
+ * app back; plus the waits' limits: 30 s for the timeline to settle, and 30 s to see the app
+ * leave, which a held query (38 s seen) can overrun.
+ */
 const TEST_TIMEOUT_MS = 300_000;
 
 /**
@@ -132,7 +137,11 @@ async function waitForSettledTimeline(xpath: string): Promise<void> {
 // Owner decision 8 (spec part D): a message link must leave the WebView. The page it
 // opens must never replace Trinity inside the app's own WebView; where it would, the
 // platform sends message links through ExternalBrowserService (the in-app browser sheet).
-describe('message links on a phone', () => {
+describe('message links on a phone', function () {
+  // Set on the suite, not in the test: WebdriverIO arms its own timer from the test's
+  // timeout before the body runs, so a this.timeout() inside the test is ignored.
+  this.timeout(TEST_TIMEOUT_MS);
+
   before(async () => {
     if (browser.isIOS) await startSafari();
   });
@@ -143,12 +152,7 @@ describe('message links on a phone', () => {
     if (browser.isIOS) await browser.terminateApp(SAFARI);
   });
 
-  it('opens an external message link outside the app’s WebView', async function () {
-    // 165 s of reinstall, launch retries and first sign-in before the tap (measured on a cold
-    // CI runner), plus the waits' limits: 30 s for the timeline to settle, and 30 s to see
-    // the app leave, which a held query (38 s seen) can overrun. Safari is then normally
-    // already in front, and bringing the app back took 26 s (measured).
-    this.timeout(TEST_TIMEOUT_MS);
+  it('opens an external message link outside the app’s WebView', async () => {
     await resetApp();
     const user = uniqueId('message-link');
     const pass = `${user}-pass`;
