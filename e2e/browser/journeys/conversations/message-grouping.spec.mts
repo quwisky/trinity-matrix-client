@@ -320,7 +320,22 @@ test.describe('Message grouping', () => {
     const showMore = firstActionRow.getByTestId('msg-show-more');
     await showMore.click();
     await expect(showMore).toHaveAttribute('aria-expanded', 'true');
-    await expect(filler).toBeVisible();
+    // Let the list settle the taller row (its ResizeObserver re-pins before the next frame)
+    // before aligning it, so that correction cannot move the row afterwards.
+    await expect
+      .poll(() =>
+        firstActionRow.evaluate(
+          (row) =>
+            new Promise<number>((resolve) =>
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() =>
+                  resolve(row.getBoundingClientRect().height),
+                ),
+              ),
+            ),
+        ),
+      )
+      .toBeGreaterThan(600);
     await firstActionRow.evaluate(async (row) => {
       const scroller = row.closest('.scroll');
       if (!scroller) return;
