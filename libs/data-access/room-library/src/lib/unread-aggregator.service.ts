@@ -5,6 +5,7 @@ import {
   NotificationCountType,
   RoomEvent,
   type MatrixClient,
+  type Room,
 } from 'matrix-js-sdk';
 import {
   coalesce,
@@ -17,15 +18,41 @@ import {
   isMarkedUnread,
   roomActivityTs,
 } from './room-projection';
+import { roomIdOf } from './room-event-target';
 
-/** A no-arg listener reused across every unread-affecting client / room event. */
-type UnreadListener = () => void;
+/** A listener attached to one account's client. */
+type UnreadListener = (...args: unknown[]) => void;
 
-/** The client + shared handler attached for one account, kept so we can detach it. */
+/** The client and the handlers attached for one account, kept so we can detach them. */
 interface AccountListener {
   readonly client: MatrixClient;
-  readonly handler: UnreadListener;
+  /** A room event: recount that room. */
+  readonly onRoom: UnreadListener;
+  /** A room joined or left the list: recount everything. */
+  readonly onList: UnreadListener;
+  /** A sync landed: flush what the room events marked. */
+  readonly onSync: UnreadListener;
 }
+
+/**
+ * One account's unread rooms and what has changed since the last flush (#1311). A flush
+ * recounts only the rooms an event touched; every other room's entry stands. Before, every
+ * flush walked every joined room of every account, on every sync.
+ */
+interface AccountUnread {
+  /** Rooms that want attention, by room id. */
+  readonly cache: Map<string, UnreadRoom>;
+  readonly dirty: Set<string>;
+  full: boolean;
+  lastFull: number;
+}
+
+/**
+ * A change the SDK applies without any room event (an unread count reset in a sync with no
+ * receipt) would otherwise wait for the next event in that room; a full recount at least
+ * this often bounds that.
+ */
+const FULL_RECOUNT_MS = 15_000;
 
 /** One joined chat with something new in it, on one exact account. */
 export interface UnreadRoom {
@@ -89,6 +116,7 @@ export class UnreadAggregatorService {
   readonly unreadRooms = this._unreadRooms.asReadonly();
 
   private readonly listeners = new Map<string, AccountListener>();
+  private readonly accounts = new Map<string, AccountUnread>();
 
   constructor() {
     // Reconcile per-account listeners against the live account set — runs at startup
@@ -100,8 +128,9 @@ export class UnreadAggregatorService {
     const live = new Set(ids);
     for (const [userId, listener] of this.listeners) {
       if (!live.has(userId)) {
-        this.detach(listener.client, listener.handler);
+        this.detach(listener);
         this.listeners.delete(userId);
+        this.accounts.delete(userId);
       }
     }
     for (const userId of ids) {
@@ -114,15 +143,33 @@ export class UnreadAggregatorService {
         if (held.client === client) {
           continue;
         }
-        this.detach(held.client, held.handler);
+        this.detach(held);
         this.listeners.delete(userId);
       }
       if (!client) {
         continue; // not fully started yet; a later accountIds tick re-checks it
       }
-      const handler: UnreadListener = () => this.scheduleFlush();
-      this.attach(client, handler);
-      this.listeners.set(userId, { client, handler });
+      const state = this.stateFor(userId);
+      state.full = true; // a new client: count every room once
+      const listener: AccountListener = {
+        client,
+        onRoom: (...args) => {
+          const roomId = roomIdOf(args);
+          if (roomId) {
+            state.dirty.add(roomId);
+          } else {
+            state.full = true;
+          }
+          this.scheduleFlush();
+        },
+        onList: () => {
+          state.full = true;
+          this.scheduleFlush();
+        },
+        onSync: () => this.scheduleFlush(),
+      };
+      this.attach(listener);
+      this.listeners.set(userId, listener);
     }
     this.scheduleFlush();
   }
@@ -144,22 +191,70 @@ export class UnreadAggregatorService {
     this.flusher.schedule();
   }
 
+  private stateFor(userId: string): AccountUnread {
+    let state = this.accounts.get(userId);
+    if (!state) {
+      state = { cache: new Map(), dirty: new Set(), full: true, lastFull: 0 };
+      this.accounts.set(userId, state);
+    }
+    return state;
+  }
+
   private flush(): void {
     const counts = new Map<string, number>();
     const rooms: UnreadRoom[] = [];
+    const now = Date.now();
     for (const userId of this.listeners.keys()) {
-      const unread = this.unreadRoomsFor(userId);
+      const state = this.stateFor(userId);
+      if (state.full || now - state.lastFull >= FULL_RECOUNT_MS) {
+        state.cache.clear();
+        for (const room of this.unreadRoomsFor(userId)) {
+          state.cache.set(room.roomId, room);
+        }
+        state.full = false;
+        state.lastFull = now;
+        state.dirty.clear();
+      } else if (state.dirty.size) {
+        this.recountTouched(userId, state);
+      }
       // A room flagged to come back to counts as one although the server's count for it is
       // zero: that flag is the only thing saying it wants attention, and a badge that ignored
       // it would leave "come back to this" visible nowhere but the sidebar row.
-      counts.set(
-        userId,
-        unread.reduce((sum, room) => sum + (room.unreadCount || 1), 0),
-      );
-      rooms.push(...unread);
+      let total = 0;
+      for (const room of state.cache.values()) {
+        total += room.unreadCount || 1;
+        rooms.push(room);
+      }
+      counts.set(userId, total);
     }
     this._unreadByAccount.set(counts);
     this._unreadRooms.set(rooms);
+  }
+
+  /** Recount just the rooms an event touched, keeping every other room's entry. */
+  private recountTouched(userId: string, state: AccountUnread): void {
+    const client = this.matrix.clientFor(userId);
+    const touched = [...state.dirty];
+    state.dirty.clear();
+    if (!client) {
+      return;
+    }
+    let direct: ReturnType<typeof directMapOf> | null = null;
+    for (const roomId of touched) {
+      const room = client.getRoom(roomId);
+      const entry = room
+        ? this.unreadRoomOf(
+            userId,
+            room,
+            () => (direct ??= directMapOf(client)),
+          )
+        : null;
+      if (entry) {
+        state.cache.set(roomId, entry);
+      } else {
+        state.cache.delete(roomId);
+      }
+    }
   }
 
   /**
@@ -174,52 +269,68 @@ export class UnreadAggregatorService {
     let direct: ReturnType<typeof directMapOf> | null = null;
     const unread: UnreadRoom[] = [];
     for (const room of client.getRooms()) {
-      if (room.isSpaceRoom() || room.getMyMembership() !== 'join') {
-        continue;
-      }
-      const unreadCount =
-        room.getUnreadNotificationCount(NotificationCountType.Total) ?? 0;
-      const markedUnread = isMarkedUnread(room);
-      if (unreadCount <= 0 && !markedUnread) {
-        continue;
-      }
       // Read m.direct only when some room is unread: most syncs touch no unread room at all.
-      direct ??= directMapOf(client);
-      const isDirect = direct.ids.has(room.roomId);
-      const name = room.name || room.roomId;
-      unread.push({
-        accountId: userId,
-        roomId: room.roomId,
-        name,
-        initial: initialOf(name),
-        avatarMxc: roomAvatarMxc(room, isDirect),
-        direct: isDirect,
-        unreadCount,
-        markedUnread,
-        activityTs: roomActivityTs(room),
-      });
+      const entry = this.unreadRoomOf(
+        userId,
+        room,
+        () => (direct ??= directMapOf(client)),
+      );
+      if (entry) unread.push(entry);
     }
     return unread;
   }
 
-  private attach(client: MatrixClient, handler: UnreadListener): void {
-    client.on(ClientEvent.Sync, handler);
-    client.on(ClientEvent.Room, handler);
-    client.on(RoomEvent.MyMembership, handler);
-    client.on(RoomEvent.Receipt, handler);
-    client.on(RoomEvent.AccountData, handler); // carries the marked-unread flag
-    // Encrypted rooms count a message only once it decrypts, after its Sync; the
-    // client re-emits Decrypted then. Without it the badge waits for the next sync.
-    client.on(MatrixEventEvent.Decrypted, handler);
+  /** One room's entry, or null when it is not a joined chat that wants attention. */
+  private unreadRoomOf(
+    userId: string,
+    room: Room,
+    directMap: () => ReturnType<typeof directMapOf>,
+  ): UnreadRoom | null {
+    if (room.isSpaceRoom() || room.getMyMembership() !== 'join') {
+      return null;
+    }
+    const unreadCount =
+      room.getUnreadNotificationCount(NotificationCountType.Total) ?? 0;
+    const markedUnread = isMarkedUnread(room);
+    if (unreadCount <= 0 && !markedUnread) {
+      return null;
+    }
+    const isDirect = directMap().ids.has(room.roomId);
+    const name = room.name || room.roomId;
+    return {
+      accountId: userId,
+      roomId: room.roomId,
+      name,
+      initial: initialOf(name),
+      avatarMxc: roomAvatarMxc(room, isDirect),
+      direct: isDirect,
+      unreadCount,
+      markedUnread,
+      activityTs: roomActivityTs(room),
+    };
   }
 
-  private detach(client: MatrixClient, handler: UnreadListener): void {
-    client.off(ClientEvent.Sync, handler);
-    client.off(ClientEvent.Room, handler);
-    client.off(RoomEvent.MyMembership, handler);
-    client.off(RoomEvent.Receipt, handler);
-    client.off(RoomEvent.AccountData, handler);
-    client.off(MatrixEventEvent.Decrypted, handler);
+  private attach({ client, onRoom, onList, onSync }: AccountListener): void {
+    client.on(ClientEvent.Sync, onSync);
+    client.on(ClientEvent.Room, onList);
+    client.on(RoomEvent.MyMembership, onList);
+    // A new message raises a room's count; a receipt clears it.
+    client.on(RoomEvent.Timeline, onRoom);
+    client.on(RoomEvent.Receipt, onRoom);
+    client.on(RoomEvent.AccountData, onRoom); // carries the marked-unread flag
+    // Encrypted rooms count a message only once it decrypts, after its Sync; the
+    // client re-emits Decrypted then. Without it the badge waits for the next sync.
+    client.on(MatrixEventEvent.Decrypted, onRoom);
+  }
+
+  private detach({ client, onRoom, onList, onSync }: AccountListener): void {
+    client.off(ClientEvent.Sync, onSync);
+    client.off(ClientEvent.Room, onList);
+    client.off(RoomEvent.MyMembership, onList);
+    client.off(RoomEvent.Timeline, onRoom);
+    client.off(RoomEvent.Receipt, onRoom);
+    client.off(RoomEvent.AccountData, onRoom);
+    client.off(MatrixEventEvent.Decrypted, onRoom);
   }
 }
 

@@ -46,6 +46,7 @@ import {
   isMarkedUnread,
   roomActivityTs,
 } from './room-projection';
+import { roomIdOf } from './room-event-target';
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   assertRoomLibraryGovernance,
@@ -154,22 +155,6 @@ const ROOM_EVENTS = [
  * account the real bound is about the long-poll interval (~30 s), not this value.
  */
 const FULL_REBUILD_MS = 15_000;
-
-/** The room a client-level room event concerns: a `Room` argument, or an event naming one. */
-function roomIdOf(args: readonly unknown[]): string | undefined {
-  for (const arg of args) {
-    if (arg && typeof arg === 'object') {
-      const candidate = arg as {
-        roomId?: unknown;
-        getRoomId?: () => string | undefined;
-      };
-      if (typeof candidate.roomId === 'string') return candidate.roomId;
-      const fromEvent = candidate.getRoomId?.();
-      if (typeof fromEvent === 'string') return fromEvent;
-    }
-  }
-  return undefined;
-}
 
 /**
  * `next`, or `previous` when it describes the room identically.

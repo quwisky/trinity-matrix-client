@@ -1,7 +1,7 @@
 import { ApplicationRef, WritableSignal, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ClientEvent, MatrixEventEvent, RoomEvent } from 'matrix-js-sdk';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { UnreadAggregatorService } from './unread-aggregator.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
@@ -59,6 +59,7 @@ function fakeClient(
   const handlers = new Map<string, Set<Listener>>();
   return {
     getRooms: () => rooms,
+    getRoom: (id: string) => rooms.find((room) => room.roomId === id) ?? null,
     getAccountData: (type: string) =>
       type === 'm.direct' ? { getContent: () => direct } : undefined,
     on(evt: string, handler: Listener) {
@@ -69,8 +70,8 @@ function fakeClient(
     off(evt: string, handler: Listener) {
       handlers.get(evt)?.delete(handler);
     },
-    emit(evt: string) {
-      handlers.get(evt)?.forEach((handler) => handler());
+    emit(evt: string, ...args: unknown[]) {
+      handlers.get(evt)?.forEach((handler) => handler(...args));
     },
     listenerCount() {
       let total = 0;
@@ -150,7 +151,9 @@ describe('UnreadAggregatorService', () => {
     await flush();
     expect(svc.totalUnread()).toBe(2);
 
+    // A sync raises a count by delivering the room's new message as a timeline event.
     room.unread = 9;
+    client.emit(RoomEvent.Timeline, {}, room);
     client.emit(ClientEvent.Sync);
     await flush();
 
@@ -267,6 +270,7 @@ describe('UnreadAggregatorService', () => {
     // The live client's events must drive the badge, which is what the stranded
     // listener silently stopped doing.
     room.unread = 9;
+    fresh.emit(RoomEvent.Timeline, {}, room);
     fresh.emit(ClientEvent.Sync);
     await flush();
 
@@ -460,5 +464,64 @@ describe('unread chats', () => {
     await flush();
 
     expect(svc.unreadRooms()).toBe(before);
+  });
+});
+
+describe('UnreadAggregatorService touched rooms (#1311)', () => {
+  /** Count each room's notification-count reads, so a test can see which rooms were walked. */
+  function counted(
+    room: ReturnType<typeof fakeRoom>,
+    reads: Record<string, number>,
+  ) {
+    room.getUnreadNotificationCount = () => {
+      reads[room.roomId] = (reads[room.roomId] ?? 0) + 1;
+      return room.unread;
+    };
+    return room;
+  }
+
+  it('recounts only the room an event touched', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    const reads: Record<string, number> = {};
+    const a = counted(fakeRoom(1, { id: '!a:hs' }), reads);
+    const b = counted(fakeRoom(0, { id: '!b:hs' }), reads);
+    const client = fakeClient([a, b]);
+    clients.set('@a:hs', client);
+    accountIds.set(['@a:hs']);
+    await flush();
+    for (const key of Object.keys(reads)) delete reads[key];
+
+    a.unread = 4;
+    client.emit(RoomEvent.Receipt, {}, a);
+    client.emit(ClientEvent.Sync);
+    await flush();
+
+    expect(svc.totalUnread()).toBe(4);
+    // At 300 rooms, walking every room on every sync was most of this service's cost.
+    expect(reads['!b:hs'] ?? 0).toBe(0);
+  });
+
+  it('still recounts every room within the safety interval', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const { svc, accountIds, clients, flush } = harness();
+      const b = fakeRoom(0, { id: '!b:hs' });
+      const client = fakeClient([b]);
+      clients.set('@a:hs', client);
+      accountIds.set(['@a:hs']);
+      await flush();
+
+      b.unread = 2; // nothing announces this
+      client.emit(ClientEvent.Sync);
+      await flush();
+      expect(svc.totalUnread()).toBe(0);
+
+      vi.advanceTimersByTime(16_000);
+      client.emit(ClientEvent.Sync);
+      await flush();
+      expect(svc.totalUnread()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
