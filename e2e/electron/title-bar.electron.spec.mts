@@ -50,7 +50,11 @@ test.describe('frameless title row', () => {
         BrowserWindow.getAllWindows()[0].isMenuBarVisible(),
       ),
     ).toBe(false);
-    await expect(page.getByTestId('title-bar-title')).toHaveText('Trinity');
+    // The app's own name: "Trinity Next" for a -next shell, "Trinity" for stable.
+    const appName = await app.evaluate(({ app: electronApp }) =>
+      electronApp.getName(),
+    );
+    await expect(page.getByTestId('title-bar-title')).toHaveText(appName);
     const region = await page
       .locator('.title-bar--visible')
       .evaluate((el) =>

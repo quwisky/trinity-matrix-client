@@ -163,6 +163,18 @@ test('runs under its channel name and reports its identity to the renderer', asy
     });
 });
 
+test('titles the window with the app name', async () => {
+  await page.reload();
+  await expect(page).toHaveTitle(expected.productName);
+  await expect
+    .poll(() =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].getTitle(),
+      ),
+    )
+    .toBe(expected.productName);
+});
+
 test('signs in with a password as a device named after the app', async () => {
   await discoverFakeHomeserver();
   await fillLabeledInput(page, 'Username', 'channel-check');
