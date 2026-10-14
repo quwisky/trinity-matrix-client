@@ -151,4 +151,49 @@ test.describe('Spoiler reasons', () => {
     await expect(spoiler).not.toHaveAttribute('aria-label');
     expect(await before()).toBe('none');
   });
+
+  // High Contrast forces system colours, which would print the hidden text over the bar's
+  // fill; the stylesheet keeps the bar solid and the reason readable on it.
+  test('keeps a concealed spoiler a solid bar with a readable reason in forced colours', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'spoiler-forced');
+    await sendMessage(request, hs, room, {
+      body: 'the twist',
+      html: 'the twist: <span data-mx-spoiler="ending of the film">she lives</span>',
+    });
+    await page.emulateMedia({ forcedColors: 'active' });
+    await signInAndOpen(page, room);
+
+    const spoiler = page.locator('.scroll .mx-spoiler').first();
+    await expect(spoiler).toHaveAttribute('label', 'ending of the film', {
+      timeout: 20_000,
+    });
+    const colours = () =>
+      spoiler.evaluate((element) => {
+        const bar = getComputedStyle(element);
+        const reason = getComputedStyle(element, '::before');
+        return {
+          text: bar.color,
+          fill: bar.backgroundColor,
+          reason: reason.color,
+          content: reason.content,
+        };
+      });
+
+    await expect
+      .poll(
+        async () => {
+          const { text, fill } = await colours();
+          return text === fill && fill !== 'rgba(0, 0, 0, 0)';
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true);
+    const { fill, reason, content } = await colours();
+    expect(reason).not.toBe(fill);
+    expect(content).toContain('Spoiler: ');
+  });
 });

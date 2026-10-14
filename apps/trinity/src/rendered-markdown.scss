@@ -426,6 +426,18 @@
         color: var(--trinity-message-surface, var(--trinity-surface-canvas));
         unicode-bidi: isolate;
       }
+
+      // High Contrast replaces the bar's fill and the transparent text with system colours,
+      // which would print the hidden text. Keep a solid bar and the reason readable on it.
+      @media (forced-colors: active) {
+        forced-color-adjust: none;
+        background-color: CanvasText;
+        color: CanvasText;
+
+        &[label]::before {
+          color: Canvas;
+        }
+      }
     }
   }
 
