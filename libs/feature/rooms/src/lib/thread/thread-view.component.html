@@ -17,6 +17,7 @@
     class="thread flex-1 overflow-y-auto max-members:touch-pan-y"
     #scroll
     data-message-scroller
+    (focusin)="revealFocusAfterExpand($event)"
   >
     @if (loadingOlder()) {
       <div class="thread__load-older">Loading older replies…</div>

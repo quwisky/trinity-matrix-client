@@ -1,4 +1,4 @@
-import { inject, signal } from '@angular/core';
+import { inject, signal, type Provider } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import {
@@ -53,12 +53,22 @@ import {
   type SwipeAction,
 } from '@trinity/platform-native';
 import { Subject, of, throwError } from 'rxjs';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from 'vitest';
 import { ThreadViewComponent } from './thread-view.component';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageSourceComponent } from '../message-source/message-source.component';
 import type { MessageRow } from '../message-row/message-row.component';
+import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
+import { RoomShellStore } from '../rooms/room-shell-store';
 
 function msg(id: string, senderId: string, body: string): MessageView {
   return {
@@ -115,6 +125,7 @@ async function build(
     canRedactOthers?: boolean;
     typingNames?: string[];
   } = {},
+  extraProviders: Provider[] = [],
 ) {
   const threadMessages = signal<MessageView[]>(messages);
   const canPaginateThread = signal(state.canPaginate ?? false);
@@ -262,6 +273,7 @@ async function build(
       MockProvider(MessageGestureSettingsService, {
         messageSwipe: signal<SwipeAction>('right').asReadonly(),
       }),
+      ...extraProviders,
     ],
   });
   /** How many times the panel announced a close, for the dismissal assertions. */
@@ -601,6 +613,211 @@ describe('ThreadViewComponent', () => {
     const { container } = await build([], { canPaginate: false });
 
     expect(container.querySelector('.thread__load-older')).toBeNull();
+  });
+
+  it('starts a reply preview’s target expanded, and scrolls after it renders', async () => {
+    const scrollIntoViewOwn = Object.getOwnPropertyDescriptor(
+      Element.prototype,
+      'scrollIntoView',
+    );
+    onTestFinished(() => {
+      if (scrollIntoViewOwn) {
+        Object.defineProperty(
+          Element.prototype,
+          'scrollIntoView',
+          scrollIntoViewOwn,
+        );
+      } else {
+        delete (Element.prototype as Partial<Element>).scrollIntoView;
+      }
+    });
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const expand = vi.spyOn(ExpandedBodiesStore.prototype, 'expand');
+    onTestFinished(() => expand.mockRestore());
+    const { fixture, container } = await build(
+      [msg('$a', '@a:hs', 'first'), msg('$b', '@a:hs', 'second')],
+      {},
+      [
+        ExpandedBodiesStore,
+        MockProvider(RoomShellStore, {
+          activeAccountId: signal<string | null>('@me:hs'),
+          activeRoomId: signal<string | null>('!r:hs'),
+        }),
+      ],
+    );
+
+    fixture.componentInstance.onRowAction(row('$b', '@a:hs', 'second'), {
+      type: 'jump',
+      id: '$a',
+    });
+
+    expect(TestBed.inject(ExpandedBodiesStore).isExpanded('$a')).toBe(true);
+    // The thread has no re-aim after a measurement, so it must not scroll to the collapsed row.
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    await fixture.whenStable();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.contexts[0]).toBe(
+      container.querySelector('[data-mid="$a"]'),
+    );
+    expect(expand.mock.invocationCallOrder[0]).toBeLessThan(
+      scrollIntoView.mock.invocationCallOrder[0],
+    );
+  });
+
+  describe('keyboard focus in a collapsed reply', () => {
+    /** A link inside a body wrapper with `wrapperClass`, focused by keyboard or by a pointer. */
+    async function focusLinkIn(wrapperClass: string, keyboard = true) {
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
+        frames.push(frame);
+        return frames.length;
+      });
+      onTestFinished(() => {
+        vi.unstubAllGlobals();
+      });
+      const { fixture, container } = await build([msg('$a', '@a:hs', 'first')]);
+      const wrapper = document.createElement('div');
+      wrapper.className = wrapperClass;
+      const link = document.createElement('a');
+      link.href = 'https://example.org/';
+      wrapper.append(link);
+      container.querySelector('[data-mid="$a"]')?.append(wrapper);
+      link.scrollIntoView = vi.fn();
+      // jsdom's own :focus-visible depends on earlier tests' input.
+      const matches = link.matches.bind(link);
+      vi.spyOn(link, 'matches').mockImplementation((selector) =>
+        selector === ':focus-visible' ? keyboard : matches(selector),
+      );
+      link.focus();
+      await fixture.whenStable();
+      return { link, frames };
+    }
+
+    it('brings the focused control into view once the reply has expanded', async () => {
+      const { link, frames } = await focusLinkIn(
+        'msg__clamp msg__clamp--collapsed',
+      );
+      // Not before the frame after the render that shows the reply whole.
+      expect(link.scrollIntoView).not.toHaveBeenCalled();
+      for (const frame of frames.splice(0)) frame(0);
+
+      expect(link.scrollIntoView).toHaveBeenCalledWith(
+        expect.objectContaining({ block: 'nearest' }),
+      );
+    });
+
+    it('leaves focus in a reply that was not collapsed alone', async () => {
+      const shown = await focusLinkIn('msg__clamp msg__clamp--capped');
+      for (const frame of shown.frames.splice(0)) frame(0);
+      expect(shown.link.scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    // Show more sits after the collapsed body, not in it: Enter on it must not scroll the
+    // thread to the button and past the text it reveals.
+    it('leaves keyboard focus on Show more alone', async () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
+        frames.push(frame);
+        return frames.length;
+      });
+      onTestFinished(() => {
+        vi.unstubAllGlobals();
+      });
+      const { fixture, container } = await build([msg('$a', '@a:hs', 'first')]);
+      const row = container.querySelector('[data-mid="$a"]');
+      const clamp = document.createElement('div');
+      clamp.className = 'msg__clamp msg__clamp--collapsed';
+      const button = document.createElement('button');
+      row?.append(clamp, button);
+      button.scrollIntoView = vi.fn();
+      const matches = button.matches.bind(button);
+      vi.spyOn(button, 'matches').mockImplementation((selector) =>
+        selector === ':focus-visible' ? true : matches(selector),
+      );
+      button.focus();
+      await fixture.whenStable();
+      for (const frame of frames.splice(0)) frame(0);
+
+      expect(button.scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it('leaves pointer focus in a collapsed reply alone', async () => {
+      const pointer = await focusLinkIn(
+        'msg__clamp msg__clamp--collapsed',
+        false,
+      );
+      for (const frame of pointer.frames.splice(0)) frame(0);
+      expect(pointer.link.scrollIntoView).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('aiming at a jump target', () => {
+    const scrollIntoViewOwn = Object.getOwnPropertyDescriptor(
+      Element.prototype,
+      'scrollIntoView',
+    );
+    afterEach(() => {
+      if (scrollIntoViewOwn) {
+        Object.defineProperty(
+          Element.prototype,
+          'scrollIntoView',
+          scrollIntoViewOwn,
+        );
+      } else {
+        delete (Element.prototype as Partial<Element>).scrollIntoView;
+      }
+    });
+
+    /** Jump from `$b` to `$a`, with `$a` laid out `rowHeight` tall in a 600px thread. */
+    async function jumpWithRowHeight(rowHeight: number) {
+      const scrollIntoView = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      const { fixture, container } = await build([
+        msg('$a', '@a:hs', 'first'),
+        msg('$b', '@a:hs', 'second'),
+      ]);
+      const scroller = container.querySelector('[data-message-scroller]');
+      if (!scroller) throw new Error('no message scroller');
+      Object.defineProperty(scroller, 'clientHeight', {
+        value: 600,
+        configurable: true,
+      });
+      const target = container.querySelector('[data-mid="$a"]');
+      if (!target) throw new Error('no target row');
+      vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 400,
+        bottom: rowHeight,
+        width: 400,
+        height: rowHeight,
+      } as DOMRect);
+
+      fixture.componentInstance.onRowAction(row('$b', '@a:hs', 'second'), {
+        type: 'jump',
+        id: '$a',
+      });
+      return scrollIntoView;
+    }
+
+    it('aligns a target taller than the thread by its top', async () => {
+      const scrollIntoView = await jumpWithRowHeight(2000);
+
+      expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ block: 'start' }),
+      );
+    });
+
+    it('still centres a target that fits in the thread', async () => {
+      const scrollIntoView = await jumpWithRowHeight(120);
+
+      expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ block: 'center' }),
+      );
+    });
   });
 });
 

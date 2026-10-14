@@ -6,6 +6,10 @@
       var(--trinity-space-3);
     background: var(--trinity-surface-workspace);
 
+    // As the timeline's scroller: collapsing a long reply must not toggle a classic
+    // scrollbar and rewrap the bodies between long and short.
+    scrollbar-gutter: stable;
+
     // Sender colours in replies are checked against the pane they sit on.
     --trinity-message-surface: var(--trinity-surface-workspace);
   }

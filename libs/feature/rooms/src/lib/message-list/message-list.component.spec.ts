@@ -3,7 +3,15 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from 'vitest';
 import {
   ConversationRuntime,
   type MessageView,
@@ -474,6 +482,58 @@ describe('MessageListComponent', () => {
     expect(notAtBottom(cmp)).toBe(false);
   });
 
+  // A jump near the top of the loaded history asks for older history; the restore that keeps
+  // the anchored row in place must not leave the jump target where the new page pushed it.
+  it('re-aims a recent jump after a history page lands', async () => {
+    const { fixture, container } = await renderList({
+      messages: many(30),
+      canLoadOlder: true,
+    });
+    const cmp = fixture.componentInstance;
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    let st = 0;
+    Object.defineProperties(scroll, {
+      scrollTop: { get: () => st, set: (value: number) => (st = value) },
+      scrollHeight: { value: 3000 },
+      clientHeight: { value: 600 },
+    });
+    scroll.getBoundingClientRect = () => rect(0);
+    // Content offsets: the page above (`prepended`) pushes both rows down, and rows between
+    // them settle `between` taller, so holding $0 in place moves $3.
+    let prepended = 0;
+    let between = 0;
+    const top0 = () => 20 + prepended;
+    const top3 = () => 100 + prepended + between;
+    const first = scroll.querySelector('[data-mid="$0"]') as HTMLElement;
+    first.getBoundingClientRect = () => rect(top0() - st, top0() - st + 100);
+    const target = scroll.querySelector('[data-mid="$3"]') as HTMLElement;
+    target.getBoundingClientRect = () => rect(top3() - st, top3() - st + 100);
+    const scrollIntoView = vi.fn(function (this: Element) {
+      if (this === target) st = top3(); // aligned by its top
+    });
+    const ownScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+    onTestFinished(() => {
+      Element.prototype.scrollIntoView = ownScrollIntoView;
+    });
+
+    cmp.jumpTo('$3');
+    expect(st).toBe(100);
+    cmp.onScroll(); // near the top: anchors $0 and asks for older history
+
+    prepended = 500;
+    between = 50;
+    fixture.componentRef.setInput('messages', [
+      msg('$older', '@a:hs', 'A', 0),
+      ...many(30),
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(st).toBe(top3());
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(target);
+  });
+
   it('keeps a message jump when an older-history correction is queued', async () => {
     const { fixture, container } = await renderList({
       messages: many(30),
@@ -823,6 +883,246 @@ describe('MessageListComponent', () => {
       // Pinned by default → a measurement re-sticks to the bottom (scrollHeight).
       rowObserver().emit([resizeEntry(row, 120)]);
       expect(st).toBe(12_800);
+    });
+
+    /**
+     * A short room the reader is at the bottom of, near enough the top to ask for older
+     * history, after one page of 110px has landed above and its anchor restore has been
+     * acknowledged. The history anchor is still active (it lasts until the reader scrolls).
+     * `below` is extra height the page adds under the anchored row, so the restore leaves the
+     * reader that far above the bottom.
+     */
+    async function afterHistoryPage(below = 0) {
+      const { fixture, container } = await renderList({
+        messages: many(30),
+        canLoadOlder: true,
+      });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const view = { st: 0, sh: 700, prepended: 0 };
+      Object.defineProperties(scroll, {
+        scrollTop: {
+          get: () => view.st,
+          set: (value: number) =>
+            (view.st = Math.max(0, Math.min(value, view.sh - 600))),
+        },
+        scrollHeight: { get: () => view.sh },
+        clientHeight: { value: 600 },
+      });
+      scroll.getBoundingClientRect = () => rect(0);
+      // $0 is the first row reaching into the viewport: 40px below its top at scrollTop 100.
+      const anchorTop = () => 140 + view.prepended - view.st;
+      (
+        scroll.querySelector('[data-mid="$0"]') as HTMLElement
+      ).getBoundingClientRect = () => rect(anchorTop(), anchorTop() + EST);
+      const newest = scroll.querySelector('[data-mid="$29"]') as Element;
+      rowObserver().emit([resizeEntry(newest, 100)]); // pinned: scrollTop 100
+      cmp.onScroll(); // near the top: anchors $0 and asks for history
+      fixture.componentRef.setInput('loadingOlder', true);
+      fixture.detectChanges();
+
+      view.prepended = 110;
+      view.sh += 110 + below;
+      fixture.componentRef.setInput('loadingOlder', false);
+      fixture.componentRef.setInput('messages', [
+        ...['$p0', '$p1', '$p2', '$p3', '$p4'].map((id, i) =>
+          msg(id, '@a:hs', 'A', 1 + i),
+        ),
+        ...many(30),
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(view.st).toBe(210); // the anchor restore kept $0 40px below the top
+      cmp.onScroll(); // the browser's scroll event for that restore
+
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
+        frames.push(frame);
+        return frames.length;
+      });
+      const runFrames = () => {
+        for (const frame of frames.splice(0)) frame(0);
+      };
+      return { fixture, cmp, scroll, view, newest, runFrames };
+    }
+
+    // The anchor outlives its restore until the reader scrolls. A reader at the very bottom
+    // whose newest message grows (Show more, a late image) stays at the bottom instead.
+    it('keeps a reader at the bottom pinned when a row grows under a history anchor', async () => {
+      const { cmp, view, newest, runFrames } = await afterHistoryPage();
+
+      view.sh += 1000; // the newest message expands
+      rowObserver().emit([resizeEntry(newest, 1100)]);
+      runFrames();
+
+      expect(view.st).toBe(view.sh - 600);
+      expect(notAtBottom(cmp)).toBe(false);
+    });
+
+    // Near the bottom is not at it: a reader a little above the bottom keeps the anchored row
+    // where it was.
+    it('keeps the history anchor for a reader just above the bottom', async () => {
+      const { cmp, view, newest, runFrames } = await afterHistoryPage(50);
+      expect(notAtBottom(cmp)).toBe(false); // within the near-bottom threshold
+
+      view.sh += 200; // a row below the anchored one grows
+      rowObserver().emit([resizeEntry(newest, 300)]);
+      runFrames();
+
+      expect(view.st).toBe(210);
+    });
+
+    // A live message pins the reader in a frame; the anchor restore its measurement queues lands
+    // a frame later and must not nudge the newest message back up.
+    it('leaves a reader at the bottom when a live message arrives under a history anchor', async () => {
+      const { fixture, scroll, view, runFrames } = await afterHistoryPage();
+
+      view.sh += EST;
+      fixture.componentRef.setInput('messages', [
+        ...['$p0', '$p1', '$p2', '$p3', '$p4'].map((id, i) =>
+          msg(id, '@a:hs', 'A', 1 + i),
+        ),
+        ...many(30),
+        msg('$live', '@b:hs', 'B', 999_999_999),
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const live = scroll.querySelector('[data-mid="$live"]') as Element;
+      rowObserver().emit([resizeEntry(live, EST)]);
+      runFrames();
+
+      expect(view.st).toBe(view.sh - 600);
+    });
+
+    // Tab into a collapsed body expands it; the list's own correction for the taller row comes
+    // first, then the focused control is brought into view.
+    it('brings keyboard focus in a grown row into view after pinning to the bottom', async () => {
+      const { container } = await renderList({ messages: many(30) });
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const view = { st: 0, sh: 3000 };
+      Object.defineProperties(scroll, {
+        scrollTop: {
+          get: () => view.st,
+          set: (value: number) =>
+            (view.st = Math.max(0, Math.min(value, view.sh - 600))),
+        },
+        scrollHeight: { get: () => view.sh },
+        clientHeight: { value: 600 },
+      });
+      const newest = scroll.querySelector('[data-mid="$29"]') as HTMLElement;
+      rowObserver().emit([resizeEntry(newest, 100)]);
+      const link = document.createElement('a');
+      link.href = 'https://example.org/';
+      newest.querySelector('.msg__text')?.append(link);
+      const scrolledAt: number[] = [];
+      link.scrollIntoView = vi.fn(() => scrolledAt.push(view.st));
+      // Keyboard focus; jsdom's own :focus-visible depends on earlier tests' input.
+      const matches = link.matches.bind(link);
+      vi.spyOn(link, 'matches').mockImplementation((selector) =>
+        selector === ':focus-visible' ? true : matches(selector),
+      );
+      link.focus();
+
+      view.sh += 1000;
+      rowObserver().emit([resizeEntry(newest, 1100)]);
+
+      expect(link.scrollIntoView).toHaveBeenCalledWith(
+        expect.objectContaining({ block: 'nearest' }),
+      );
+      expect(scrolledAt).toEqual([view.sh - 600]); // after the pin, not before it
+    });
+
+    /** A control focused by keyboard inside `parent`, recording each scroll to it. */
+    function keyboardFocused<T extends HTMLElement>(
+      parent: Element | null,
+      control: T,
+    ): T {
+      parent?.append(control);
+      control.scrollIntoView = vi.fn();
+      const element: HTMLElement = control;
+      const matches = element.matches.bind(element);
+      vi.spyOn(element, 'matches').mockImplementation((selector) =>
+        selector === ':focus-visible' ? true : matches(selector),
+      );
+      control.focus();
+      return control;
+    }
+
+    // Enter on Show more grows the row with focus on the button, after the body. Following the
+    // button would skip the text it revealed (and on Show less fight the row-top reveal).
+    it('leaves keyboard focus on Show more where the list put it', async () => {
+      const { container } = await renderList({ messages: many(30) });
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const newest = scroll.querySelector('[data-mid="$29"]') as HTMLElement;
+      rowObserver().emit([resizeEntry(newest, 100)]);
+      const button = keyboardFocused(
+        newest.querySelector('.msg__clamp')?.parentElement ?? null,
+        document.createElement('button'),
+      );
+      expect(button.closest('.msg__clamp')).toBeNull();
+
+      rowObserver().emit([resizeEntry(newest, 1100)]);
+
+      expect(button.scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it('leaves keyboard focus in a row that did not change alone', async () => {
+      const { container } = await renderList({ messages: many(30) });
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const newest = scroll.querySelector('[data-mid="$29"]') as HTMLElement;
+      rowObserver().emit([resizeEntry(newest, 100)]);
+      const link = keyboardFocused(
+        scroll.querySelector('[data-mid="$5"] .msg__text'),
+        Object.assign(document.createElement('a'), {
+          href: 'https://example.org/',
+        }),
+      );
+
+      rowObserver().emit([resizeEntry(newest, 1100)]);
+
+      expect(link.scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it('brings keyboard focus into view after the history anchor is restored', async () => {
+      const { scroll, view, newest, runFrames } = await afterHistoryPage(50);
+      const link = keyboardFocused(
+        newest.querySelector('.msg__text'),
+        Object.assign(document.createElement('a'), {
+          href: 'https://example.org/',
+        }),
+      );
+      const scrolledAt: number[] = [];
+      vi.mocked(link.scrollIntoView).mockImplementation(() => {
+        scrolledAt.push(view.st);
+      });
+      expect(scroll.contains(link)).toBe(true);
+
+      view.sh += 200;
+      rowObserver().emit([resizeEntry(newest, 300)]);
+      expect(link.scrollIntoView).not.toHaveBeenCalled(); // the restore has not run yet
+      runFrames();
+
+      expect(scrolledAt).toEqual([210]); // after the restore held the reader's place
+    });
+
+    it('leaves pointer focus in a grown row where the list put it', async () => {
+      const { container } = await renderList({ messages: many(30) });
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const newest = scroll.querySelector('[data-mid="$29"]') as HTMLElement;
+      rowObserver().emit([resizeEntry(newest, 100)]);
+      const link = document.createElement('a');
+      link.href = 'https://example.org/';
+      newest.querySelector('.msg__text')?.append(link);
+      link.scrollIntoView = vi.fn();
+      const matches = link.matches.bind(link);
+      vi.spyOn(link, 'matches').mockImplementation((selector) =>
+        selector === ':focus-visible' ? false : matches(selector),
+      );
+      link.focus();
+
+      rowObserver().emit([resizeEntry(newest, 1100)]);
+
+      expect(link.scrollIntoView).not.toHaveBeenCalled();
     });
 
     it('compensates scroll when an above-the-fold row grows (scrolled up)', async () => {

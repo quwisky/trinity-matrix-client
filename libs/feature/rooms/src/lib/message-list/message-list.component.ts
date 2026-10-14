@@ -17,13 +17,15 @@ import {
 } from '@angular/core';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageRowComponent } from '../message-row/message-row.component';
-import { MessageListBase } from './message-list-base';
+import { BodyOverflowObserver } from '../message-row/body-overflow';
+import { MessageListBase, type JumpOptions } from './message-list-base';
+import { scrollToJumpTarget } from './jump-scroll';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
+import { scrollBehavior } from '@trinity/util/ui';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { DropOverlayComponent } from './drop-overlay/drop-overlay.component';
 import { TimelineDividerComponent } from './timeline-divider/timeline-divider.component';
 import { TypingIndicatorComponent } from './typing-indicator/typing-indicator.component';
-import { scrollBehavior } from '@trinity/util/ui';
 import {
   buildPrefixSums,
   computeWindow,
@@ -93,8 +95,9 @@ const SCROLL_IDLE_MS = 150;
       outputs: [],
     },
   ],
-  // Rows read it to hold their hover work back while the list scrolls.
-  providers: [TimelineScrollActivity],
+  // Rows read the scroll activity to hold their hover work back while the list scrolls, and
+  // share one ResizeObserver for every row body in this list (Show more).
+  providers: [TimelineScrollActivity, BodyOverflowObserver],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss',
 })
@@ -143,6 +146,7 @@ export class MessageListComponent extends MessageListBase {
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly scrollActivity = inject(TimelineScrollActivity);
+  private readonly bodyOverflow = inject(BodyOverflowObserver);
   private readonly rowHosts = viewChildren(MessageRowComponent, {
     read: ElementRef,
   });
@@ -335,11 +339,12 @@ export class MessageListComponent extends MessageListBase {
     // jumpTo reads ids()/prefix(); run it untracked so this fires only on a NEW jump
     // request — not on every timeline/height change, which would keep yanking the
     // viewport back. jumpToNonce makes a repeat request to the same id re-fire.
+    // The target is expanded first, so the row measures and scrolls at its full height.
     effect(() => {
       this.jumpToNonce();
       const id = this.jumpToId();
       if (id) {
-        untracked(() => this.jumpTo(id));
+        untracked(() => this.jumpToRequested(id));
       }
     });
 
@@ -387,6 +392,7 @@ export class MessageListComponent extends MessageListBase {
     // Forget the old room's measured heights and scroll position so the new room
     // starts from the top with fresh estimates.
     this.measured.clear();
+    this.bodyOverflow.clear();
     this.scrollTop.set(0);
     this.heightVersion.update((v) => v + 1);
   }
@@ -568,6 +574,10 @@ export class MessageListComponent extends MessageListBase {
     const st = el.scrollTop;
     const changes: HeightChange[] = [];
     let changed = false;
+    // How much the rendered rows grew in this batch. A first measurement changes no layout (the
+    // row already drew at that height; only the estimate behind the prefix sums changes).
+    let grown = 0;
+    const resized: Element[] = [];
     for (const entry of entries) {
       const mid = this.observed.get(entry.target);
       if (mid === undefined) {
@@ -580,6 +590,8 @@ export class MessageListComponent extends MessageListBase {
         continue;
       }
       this.measured.set(mid, newH);
+      if (prior !== undefined) grown += newH - prior;
+      resized.push(entry.target);
       changed = true;
       const idx = idList.indexOf(mid);
       if (idx >= 0) {
@@ -601,6 +613,20 @@ export class MessageListComponent extends MessageListBase {
     afterNextRender(() => this.reapplyRecentJump(), {
       injector: this.injector,
     });
+    // A reader exactly at the bottom before this batch (the newest message expanding behind
+    // Show more, a late image) stays at the bottom. That wins over a history anchor, which
+    // otherwise outlives its restore until the reader scrolls, and ends it: the bottom is now
+    // the reader's place. Only an exact pin: a reader near the bottom keeps the anchored row.
+    if (
+      atBottom &&
+      this.prependAnchorActive &&
+      !this.pendingPrepend &&
+      el.scrollHeight - grown - st - el.clientHeight < 1
+    ) {
+      this.prependAnchorActive = false;
+      this.prependAnchorGeneration++;
+      this.expectedProgrammaticScrollTop = null;
+    }
     if (this.prependAnchorActive) {
       // ResizeObserver runs after the prepend restore and can replace estimated spacer
       // heights with real measurements. Correct from the rendered anchor after each such
@@ -626,6 +652,7 @@ export class MessageListComponent extends MessageListBase {
           prevTop,
           anchorGeneration,
         );
+        this.revealFocusIn(resized);
       });
       this.heightVersion.update((v) => v + 1);
       return;
@@ -651,7 +678,30 @@ export class MessageListComponent extends MessageListBase {
         this.scrollTop.set(el.scrollTop);
       }
     }
+    this.revealFocusIn(resized);
     this.heightVersion.update((v) => v + 1);
+  }
+
+  /**
+   * Keep keyboard focus inside a message body in view when its row just changed height, once
+   * the corrections above have moved the list. Tabbing to a link past a Show more cut expands
+   * its body (`MessageRowComponent.expandBodyForFocus`); the browser scrolled to the link while
+   * it was still clipped, and the pin, compensation or anchor restore for the taller row decides
+   * where the row ends up, so only after them can the link be brought into view. Only focus in
+   * the body (`.msg__clamp`): the Show more button itself sits after the body, and following it
+   * would skip the text it just revealed (and fight the row-top reveal on Show less). Keyboard
+   * focus only (`:focus-visible`): a pointer user is already looking at what they clicked.
+   */
+  private revealFocusIn(rows: readonly Element[]): void {
+    const active = rows[0]?.ownerDocument.activeElement;
+    if (
+      active &&
+      active.matches(':focus-visible') &&
+      active.closest('.msg__clamp') &&
+      rows.some((row) => row !== active && row.contains(active))
+    ) {
+      active.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
+    }
   }
 
   /** Restore the captured row using rendered geometry, with prefix sums as a windowed fallback. */
@@ -667,6 +717,15 @@ export class MessageListComponent extends MessageListBase {
       this.destroyRef.destroyed ||
       !this.prependAnchorActive ||
       anchorGeneration !== this.prependAnchorGeneration
+    ) {
+      return;
+    }
+    // A reader at the bottom stays there: a restore queued before a live message pinned the
+    // list (or before the reader reached the bottom) would nudge the newest message up. Older
+    // history landing above a reader moves them off the bottom, so a real restore still runs.
+    if (
+      untracked(() => this.atBottomSig()) &&
+      el.scrollHeight - el.scrollTop - el.clientHeight < 1
     ) {
       return;
     }
@@ -688,15 +747,19 @@ export class MessageListComponent extends MessageListBase {
     }
     this.expectedProgrammaticScrollTop = el.scrollTop;
     this.scrollTop.set(el.scrollTop);
+    // A recent jump wins over the anchor: the page the jump's own scroll asked for keeps the
+    // anchored row in place, which can leave the target off its aim (half-hidden at the top
+    // when it is tall). Re-aim it; a no-op once the jump is old or the reader has moved.
+    this.reapplyRecentJump();
   }
 
   /**
    * Scroll a message into view (reply-preview click or search jump). When the target
    * row is windowed out of the DOM, first scroll near its computed offset so the
-   * window renders it, then centre it precisely once it's on screen. A no-op when the
-   * event isn't loaded.
+   * window renders it, then aim at it precisely once it's on screen: centred, or by its top
+   * when it is taller than the scroller. A no-op when the event isn't loaded.
    */
-  jumpTo(messageId: string): void {
+  jumpTo(messageId: string, options?: JumpOptions): void {
     messageId = this.revealEvent(messageId);
     const el = this.scrollEl()?.nativeElement;
     if (!el) {
@@ -727,8 +790,15 @@ export class MessageListComponent extends MessageListBase {
         ? el.querySelector(`[data-mid="${messageId}"]`)
         : null;
     if (existing) {
-      existing.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
-      this.flash(existing);
+      if (options?.afterRender) {
+        // The row was just expanded: aim at its full height, in one scroll.
+        afterNextRender(() => this.revealRow(el, messageId), {
+          injector: this.injector,
+        });
+      } else {
+        scrollToJumpTarget(existing, el);
+        this.flash(existing);
+      }
       return;
     }
     el.scrollTop = Math.max(
@@ -738,13 +808,18 @@ export class MessageListComponent extends MessageListBase {
         el.clientHeight / 2,
     );
     this.scrollTop.set(el.scrollTop);
-    afterNextRender(
-      () => {
-        const target = el.querySelector(`[data-mid="${messageId}"]`);
-        target?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
-        this.flash(target);
-      },
-      { injector: this.injector },
-    );
+    afterNextRender(() => this.revealRow(el, messageId), {
+      injector: this.injector,
+    });
+  }
+
+  /**
+   * Bring a rendered row into view (centred, or top-aligned when taller than the scroller) and
+   * flash it; a no-op when it is not rendered.
+   */
+  private revealRow(el: HTMLElement, messageId: string): void {
+    const target = el.querySelector(`[data-mid="${messageId}"]`);
+    if (target) scrollToJumpTarget(target, el);
+    this.flash(target);
   }
 }

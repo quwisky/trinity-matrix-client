@@ -51,6 +51,9 @@ import { MessageThreadSummaryComponent } from '../message-thread-summary/message
 import { TrnButton } from '@trinity/components/controls';
 import { type UndecryptableFix } from '../shared/undecryptable-fix.service';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
+import { scrollBehavior } from '@trinity/util/ui';
+import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
+import { BodyMeasureDirective, BodyOverflowObserver } from './body-overflow';
 
 /** A collapsed run of adjacent system lines (see `groupSystemRuns`). */
 export interface SystemRun {
@@ -127,6 +130,9 @@ export { SWIPE_DEAD_ZONE_PX, type SwipeDirection };
 /** The semantic action a row resolved from its affordance when a swipe committed. */
 export type MessageSwipeAction = 'edit' | 'reply';
 
+/** Ids for each row's body, so its Show more button can name what it controls. */
+let nextBodyId = 0;
+
 /**
  * One presentational message row, shared by the main timeline ({@link
  * MessageListComponent}) and the thread
@@ -160,6 +166,7 @@ export type MessageSwipeAction = 'edit' | 'reply';
     MessageTimeComponent,
     MessageSwipeDirective,
     TrnButton,
+    BodyMeasureDirective,
   ],
   templateUrl: './message-row.component.html',
   styleUrl: './message-row.component.scss',
@@ -174,6 +181,14 @@ export class MessageRowComponent {
 
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly injector = inject(Injector);
+  /** The rooms page's Show more state; absent outside the rooms page. */
+  private readonly expandedBodies = inject(ExpandedBodiesStore, {
+    optional: true,
+  });
+  /** The list's body measurement; absent outside a timeline or thread list. */
+  private readonly bodyOverflow = inject(BodyOverflowObserver, {
+    optional: true,
+  });
   /** The list's scroll state; absent where a row renders outside the timeline. */
   private readonly scrollActivity = inject(TimelineScrollActivity, {
     optional: true,
@@ -203,6 +218,9 @@ export class MessageRowComponent {
    * elsewhere: WebKit doesn't focus a clicked button, so `:has(:focus)` alone can't.
    */
   protected readonly menuOpen = signal(false);
+
+  /** The clamp wrapper's id, which the Show more button names in `aria-controls`. */
+  protected readonly bodyId = `msg-body-${++nextBodyId}`;
 
   /** Whether the pointer or focus is on this row, which is what mounts its toolbar. */
   readonly toolbarActive = signal(false);
@@ -699,6 +717,97 @@ export class MessageRowComponent {
       saveMedia: c.saveMedia,
     };
   });
+
+  /** Whether the row shows a text body or caption (media without a caption has none). */
+  readonly hasTextBody = computed(() => {
+    const r = this.row();
+    return !r.media || !!r.captionHtml || !!r.caption;
+  });
+
+  /** The formatted body or caption, when there is one. */
+  readonly bodyHtml = computed(() => {
+    const r = this.row();
+    return r.media ? r.captionHtml : r.html;
+  });
+
+  /** The plain body or caption. */
+  readonly bodyText = computed(() => {
+    const r = this.row();
+    return r.media ? (r.caption ?? '') : r.body;
+  });
+
+  /**
+   * Long bodies collapse only on rows a list measures and whose state the rooms page keeps:
+   * the timeline and the thread view (spec C).
+   */
+  readonly bodyClampable = !!this.expandedBodies && !!this.bodyOverflow;
+
+  /** Whether the body is taller than 24 lines, as the list last measured it. */
+  readonly bodyLong = computed(
+    () =>
+      this.bodyClampable &&
+      (this.bodyOverflow?.overflowing(this.row().id)() ?? false),
+  );
+
+  readonly bodyExpanded = computed(
+    () => this.expandedBodies?.expanded().has(this.row().id) ?? false,
+  );
+
+  readonly bodyCollapsed = computed(
+    () => this.bodyLong() && !this.bodyExpanded(),
+  );
+
+  /**
+   * Show more / Show less. The button stays the same element, so focus stays on it. Collapsing
+   * a body taller than the screen can leave its row's top above the list; bring it back.
+   */
+  toggleBody(): void {
+    const store = this.expandedBodies;
+    if (!store) {
+      return;
+    }
+    const id = this.row().id;
+    const collapsing = store.isExpanded(id);
+    store.toggle(id);
+    if (collapsing) {
+      afterNextRender(() => this.revealRowTop(), { injector: this.injector });
+    }
+  }
+
+  /**
+   * Keyboard focus moving into a collapsed body (Tab to a link, mention, image or spoiler past
+   * the cut) shows it whole, so the focused control is never hidden behind the fade. Only
+   * keyboard focus (`:focus-visible`): a mouse press focuses links too, and expanding then would
+   * move the content (the list re-pins to the bottom) before the button is released, so the
+   * click would miss. The list that holds the row brings the focused control into view once
+   * it has corrected its scroll for the taller row (`MessageListComponent.revealFocusIn`,
+   * `ThreadViewComponent.revealFocusAfterExpand`).
+   */
+  expandBodyForFocus(event: FocusEvent): void {
+    const target = event.target;
+    if (
+      this.bodyCollapsed() &&
+      target instanceof Element &&
+      target.matches(':focus-visible')
+    ) {
+      this.expandedBodies?.expand(this.row().id);
+    }
+  }
+
+  /** If the row's top is above its scroller, scroll the row back into view. */
+  private revealRowTop(): void {
+    const message = (
+      this.host.nativeElement as HTMLElement
+    ).querySelector<HTMLElement>('.msg');
+    const scroller = message?.closest('[data-message-scroller]');
+    if (
+      message &&
+      scroller &&
+      message.getBoundingClientRect().top < scroller.getBoundingClientRect().top
+    ) {
+      message.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
+    }
+  }
 
   /** Whether a shield is drawn in the red warning tone. The not-encrypted mark for a
    * message dated before encryption was turned on is as quiet as the grey caution. */

@@ -5,6 +5,7 @@ import {
   ElementRef,
   Injector,
   OnDestroy,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -52,6 +53,9 @@ import {
   type MessageRowAction,
   type MessageRowCaps,
 } from '../message-row/message-row.component';
+import { BodyOverflowObserver } from '../message-row/body-overflow';
+import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
+import { scrollToJumpTarget } from '../message-list/jump-scroll';
 import {
   MessageComposerComponent,
   type ComposerSubmit,
@@ -62,9 +66,9 @@ import { ReportService } from '../report/report.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import {
-  scrollBehavior,
   BELOW_MEMBERS_QUERY,
   mediaQuerySignal,
+  scrollBehavior,
 } from '@trinity/util/ui';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
@@ -107,7 +111,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
     MessageComposerComponent,
     TrnOverlaySurfaceDirective,
   ],
-  providers: [ThreadCommands],
+  providers: [ThreadCommands, BodyOverflowObserver],
   templateUrl: './thread-view.component.html',
   styleUrl: './thread-view.component.scss',
 })
@@ -126,6 +130,11 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly timeline = this.conversations.timeline;
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
+
+  /** The rooms page's Show more state, shared with the timeline. */
+  private readonly expandedBodies = inject(ExpandedBodiesStore, {
+    optional: true,
+  });
 
   readonly roomId = input.required<string>();
   readonly accountId = input<string | null>(null);
@@ -441,7 +450,7 @@ export class ThreadViewComponent implements OnDestroy {
         this.onRetry(row.id);
         break;
       case 'jump':
-        this.jumpTo(action.id);
+        this.jumpToRequested(action.id);
         break;
       // Pin/thread are not offered inside a thread (caps.canPin/canThread false).
       case 'pin':
@@ -457,10 +466,55 @@ export class ThreadViewComponent implements OnDestroy {
     }
   }
 
+  /**
+   * A reply preview's target starts expanded, as in the timeline. When that grows the row, the
+   * scroll waits for the render that shows it whole: the thread has no re-aim after a row
+   * measurement, so scrolling to the collapsed row would leave the reader off target.
+   */
+  private jumpToRequested(id: string): void {
+    const store = this.expandedBodies;
+    if (!store || store.isExpanded(id)) {
+      this.jumpTo(id);
+      return;
+    }
+    store.expand(id);
+    afterNextRender(() => this.jumpTo(id), { injector: this.injector });
+  }
+
+  /**
+   * Keyboard focus moving into a collapsed reply expands it (`MessageRowComponent
+   * .expandBodyForFocus`, which handles the event first); the browser scrolled to the control
+   * while it was still clipped, so bring it into view once the reply shows whole. The thread
+   * makes no scroll corrections of its own for a taller row, so the frame after the render is
+   * enough; the timeline does this after its corrections (`MessageListComponent.revealFocusIn`).
+   */
+  revealFocusAfterExpand(event: FocusEvent): void {
+    const target = event.target;
+    if (
+      !(target instanceof Element) ||
+      !target.matches(':focus-visible') ||
+      !target.closest('.msg__clamp--collapsed')
+    ) {
+      return;
+    }
+    afterNextRender(
+      () =>
+        requestAnimationFrame(() => {
+          if (target.ownerDocument.activeElement === target) {
+            target.scrollIntoView({
+              block: 'nearest',
+              behavior: scrollBehavior(),
+            });
+          }
+        }),
+      { injector: this.injector },
+    );
+  }
+
   /** Scroll the original message into view when its reply preview is clicked. */
   jumpTo(messageId: string): void {
-    this.scrollEl()
-      ?.nativeElement.querySelector(`[data-mid="${messageId}"]`)
-      ?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
+    const scroller = this.scrollEl()?.nativeElement;
+    const target = scroller?.querySelector(`[data-mid="${messageId}"]`);
+    if (scroller && target) scrollToJumpTarget(target, scroller);
   }
 }

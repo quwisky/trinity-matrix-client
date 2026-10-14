@@ -73,10 +73,17 @@ import {
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import { observeScrollerHeight } from './scroller-height-anchor';
 import { confirmMessageDeletion$ } from '../message-actions/confirm-message-deletion';
+import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
 import {
   UndecryptableFixService,
   type UndecryptableFix,
 } from '../shared/undecryptable-fix.service';
+
+/** How {@link MessageListBase.jumpTo} reaches a row already in the DOM. */
+export interface JumpOptions {
+  /** Scroll after the next render: the caller has just grown the row. */
+  readonly afterRender?: boolean;
+}
 
 /**
  * How long after a jump a width change still counts as "the same jump".
@@ -494,6 +501,11 @@ export abstract class MessageListBase {
     return connected;
   });
 
+  /** The rooms page's Show more state; absent where no rooms page provides it. */
+  private readonly expandedBodies = inject(ExpandedBodiesStore, {
+    optional: true,
+  });
+
   /**
    * Declared ABOVE the constructor on purpose. The constructor registers an `onDestroy` on
    * it, which works wherever the field sits — every initializer runs before the constructor
@@ -602,6 +614,25 @@ export abstract class MessageListBase {
     if (id) {
       this.jumpTo(id);
     }
+  }
+
+  /**
+   * Jump to a target someone asked for (a reply preview, permalink, search hit, pinned message
+   * or notification), starting it expanded (spec C). Only these jumps expand: positioning at
+   * the first unread message ({@link jumpToUnread}) does not. When the expansion grows the
+   * row, a row already on screen is scrolled to after the render that shows it whole, so the
+   * list scrolls once, to the full row.
+   */
+  protected jumpToRequested(id: string): void {
+    this.jumpTo(id, { afterRender: this.expandJumpTarget(id) });
+  }
+
+  /** Start a jump target expanded; true when that changed its state (the row will grow). */
+  private expandJumpTarget(id: string): boolean {
+    const store = this.expandedBodies;
+    if (!store || store.isExpanded(id)) return false;
+    store.expand(id);
+    return true;
   }
 
   /** Reset per-room state on a room switch. Subclasses override to add scroll state. */
@@ -804,8 +835,12 @@ export abstract class MessageListBase {
     this.listDestroyRef.onDestroy(() => this.stopHeightWatcher?.());
   }
 
-  /** Scroll a message into view (each scroll strategy implements it differently). */
-  abstract jumpTo(messageId: string): void;
+  /**
+   * Scroll a message into view (each scroll strategy implements it differently). With
+   * `afterRender`, a row already in the DOM is scrolled to after the next render, because the
+   * caller has just changed its height (an expanded jump target).
+   */
+  abstract jumpTo(messageId: string, options?: JumpOptions): void;
 
   /**
    * Per-row caps keyed by event id, memoized so the reference is stable across
@@ -922,7 +957,7 @@ export abstract class MessageListBase {
         this.retry.emit(row.id);
         break;
       case 'jump':
-        this.jumpTo(action.id);
+        this.jumpToRequested(action.id);
         break;
       case 'thread':
         this.openThread.emit(row.id);

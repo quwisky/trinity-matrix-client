@@ -306,7 +306,7 @@ test.describe('Message grouping', () => {
     const filler = page.locator('.msg__text', {
       hasText: `edge filler ${runId} 32`,
     });
-    await expect(filler).toBeVisible({ timeout: 20_000 });
+    await expect(filler).toBeAttached({ timeout: 20_000 });
     await expect
       .poll(() => filler.evaluate((node) => node.clientHeight))
       .toBeGreaterThan(600);
@@ -315,6 +315,27 @@ test.describe('Message grouping', () => {
       .locator('.msg--cont')
       .filter({ hasText: `edge filler ${runId} 32` });
     await expect(firstActionRow).toBeVisible({ timeout: 20_000 });
+    // Show more collapses a body this long to 20 lines, shorter than the scrollport; expand it
+    // so the row is tall enough to align at the top.
+    const showMore = firstActionRow.getByTestId('msg-show-more');
+    await showMore.click();
+    await expect(showMore).toHaveAttribute('aria-expanded', 'true');
+    // Let the list settle the taller row (its ResizeObserver re-pins before the next frame)
+    // before aligning it, so that correction cannot move the row afterwards.
+    await expect
+      .poll(() =>
+        firstActionRow.evaluate(
+          (row) =>
+            new Promise<number>((resolve) =>
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() =>
+                  resolve(row.getBoundingClientRect().height),
+                ),
+              ),
+            ),
+        ),
+      )
+      .toBeGreaterThan(600);
     await firstActionRow.evaluate(async (row) => {
       const scroller = row.closest('.scroll');
       if (!scroller) return;
@@ -344,6 +365,23 @@ test.describe('Message grouping', () => {
       'opacity',
       '1',
     );
+    // The toolbar may already be up from the Show more click, placed while the expanded row was
+    // pinned to the bottom with its top far above the scrollport. A hover during a scroll is
+    // placed once the scroll settles (TimelineScrollActivity), so wait until the toolbar sits
+    // flush at the scrollport edge before opening the picker from it.
+    await expect
+      .poll(() =>
+        firstActionRow.evaluate((row) => {
+          const scroller = row.closest('.scroll');
+          const bar = row.querySelector('.msg__toolbar');
+          if (!scroller || !bar) return Infinity;
+          return Math.abs(
+            bar.getBoundingClientRect().top -
+              scroller.getBoundingClientRect().top,
+          );
+        }),
+      )
+      .toBeLessThanOrEqual(1);
     // The row is deliberately flush with the scrollport edge. Playwright's
     // actionability scroll would centre the absolutely positioned button and invalidate that
     // geometry before the application measures it, so activate the already-proven hit target

@@ -8,6 +8,10 @@
     // Windowing keeps the read position via manual scrollTop math, so disable native
     // scroll anchoring rather than letting it fight the changing spacer heights.
     overflow-anchor: none;
+
+    // A body collapsing behind Show more must not toggle a classic scrollbar: the width it
+    // takes back would rewrap the bodies, which could flip them between long and short.
+    scrollbar-gutter: stable;
   }
 
   // Spacers standing in for the off-screen rows above/below the window. Must not
