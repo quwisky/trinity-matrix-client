@@ -45,6 +45,58 @@ async function leftForeground(timeout: number): Promise<boolean> {
   }
 }
 
+/** Longer than the 150 ms a backfill runs before "Loading older messages…" shows. */
+const SETTLE_WINDOW_MS = 750;
+
+/**
+ * Wait until the Room's timeline stops moving the element at `xpath`. Opening a Room
+ * backfills its history, and a backfill slower than 150 ms shows the "Loading older
+ * messages…" strip in flow above the rows. When the page lands, the strip goes and every row
+ * moves up by its 36 px. On a CI Simulator that happened between tap()'s stability check and
+ * the touch, which then hit the empty timeline under the link. So wait for no strip and the
+ * same position across a window longer than the strip's show delay. The element is looked
+ * up again each time, because a landing page can re-render its row.
+ */
+async function waitForSettledTimeline(xpath: string): Promise<void> {
+  await browser.waitUntil(
+    () =>
+      browser.executeAsync(
+        (path: string, windowMs: number, done: (settled: boolean) => void) => {
+          const find = (): Element | null =>
+            document.evaluate(
+              path,
+              document,
+              null,
+              XPathResult.FIRST_ORDERED_NODE_TYPE,
+              null,
+            ).singleNodeValue as Element | null;
+          const loading = (): boolean =>
+            document.querySelector('.load-older') !== null;
+          const before = find()?.getBoundingClientRect();
+          const loadingBefore = loading();
+          setTimeout(() => {
+            const after = find()?.getBoundingClientRect();
+            done(
+              !!before &&
+                !!after &&
+                !loadingBefore &&
+                !loading() &&
+                before.x === after.x &&
+                before.y === after.y,
+            );
+          }, windowMs);
+        },
+        xpath,
+        SETTLE_WINDOW_MS,
+      ),
+    {
+      timeout: 30_000,
+      interval: 100,
+      timeoutMsg: `the timeline kept moving ${xpath} (still loading older messages)`,
+    },
+  );
+}
+
 // Owner decision 8 (spec part D): a message link must leave the WebView. The page it
 // opens must never replace Trinity inside the app's own WebView; where it would, the
 // platform sends message links through ExternalBrowserService (the in-app browser sheet).
@@ -71,6 +123,7 @@ describe('message links on a phone', () => {
     await tap(roomButton);
     const link = '//a[contains(@href,"example.org/trinity-link-check")]';
     await expect($(link)).toBeDisplayed({ wait: 30_000 });
+    await waitForSettledTimeline(link);
     const roomPath = await pathname();
 
     await tap(link);
