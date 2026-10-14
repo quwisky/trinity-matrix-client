@@ -51,17 +51,17 @@ export class BodyOverflowObserver implements OnDestroy {
   }
 
   /**
-   * Forget every row's measurement: the list moved to another room. Reset the signals rather
-   * than drop them, so a row that already read its signal keeps listening to the one that a
-   * later measurement writes. Observe the bodies still shown again: the browser then delivers
-   * a fresh first measurement after the next layout, so a row that outlives the reset (its
-   * room's rows arrived before the room id changed) is measured again rather than left short.
+   * Forget the measurements of rows no longer shown: the list moved to another room. Reset
+   * those signals rather than drop them, so a row that already read its signal keeps
+   * listening to the one that a later measurement writes. A body still shown (its room's rows
+   * arrived before the room id changed) keeps its measurement, which the observer goes on
+   * updating: row ids are event ids, unique across rooms, so the value is still that row's,
+   * and resetting it would show a long body uncollapsed for a frame.
    */
   clear(): void {
-    for (const flag of this.long.values()) flag.set(false);
-    for (const body of this.rows.keys()) {
-      this.observer?.unobserve(body);
-      this.observer?.observe(body);
+    const shown = new Set(this.rows.values());
+    for (const [id, flag] of this.long) {
+      if (!shown.has(id)) flag.set(false);
     }
   }
 
@@ -76,7 +76,7 @@ export class BodyOverflowObserver implements OnDestroy {
       const id = this.rows.get(entry.target);
       if (id === undefined) continue;
       const limit = BODY_LIMIT_LINES * lineHeightOf(entry.target) + 1;
-      this.entry(id).set(entry.target.scrollHeight > limit);
+      this.entry(id).set(heightOf(entry) > limit);
     }
   }
 
@@ -88,6 +88,16 @@ export class BodyOverflowObserver implements OnDestroy {
     }
     return entry;
   }
+}
+
+/**
+ * The body's full height from the entry itself, so no layout is read for it. The observed body
+ * sits inside the clamp wrapper and is never clipped itself, so its border box is its whole
+ * content height, padding included, as `scrollHeight` gives it. Every browser on the
+ * `.browserslistrc` floor reports `borderBoxSize`; `scrollHeight` covers any that does not.
+ */
+function heightOf(entry: ResizeObserverEntry): number {
+  return entry.borderBoxSize?.[0]?.blockSize ?? entry.target.scrollHeight;
 }
 
 /**

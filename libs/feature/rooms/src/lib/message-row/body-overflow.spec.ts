@@ -22,7 +22,11 @@ function observerOf(element: Element): TestResizeObserver {
   return found;
 }
 
-/** Give `element` a content height and report it through `observer`, as a layout would. */
+/**
+ * Report `element` at `height` through `observer`, as a layout would: in the entry's border box,
+ * which every supported browser fills in. Reading the element's own layout throws, so a test
+ * fails if the measurement goes back to reading it.
+ */
 function report(
   observer: TestResizeObserver,
   element: HTMLElement,
@@ -30,9 +34,16 @@ function report(
 ): void {
   Object.defineProperty(element, 'scrollHeight', {
     configurable: true,
-    value: height,
+    get: () => {
+      throw new Error('scrollHeight read while the entry carries the size');
+    },
   });
-  observer.emit([{ target: element } as unknown as ResizeObserverEntry]);
+  observer.emit([
+    {
+      target: element,
+      borderBoxSize: [{ blockSize: height, inlineSize: 600 }],
+    } as unknown as ResizeObserverEntry,
+  ]);
 }
 
 const LINE_PX = 20;
@@ -123,30 +134,53 @@ describe('BodyOverflowObserver', () => {
     expect(overflow.overflowing('$a')()).toBe(false);
   });
 
-  it('forgets every row when cleared', () => {
+  it('measures from the content height where an entry carries no border box', () => {
+    const element = body();
+    overflow.observe(element, '$a');
+    Object.defineProperty(element, 'scrollHeight', {
+      configurable: true,
+      value: 25 * LINE_PX,
+    });
+
+    observerOf(element).emit([
+      { target: element } as unknown as ResizeObserverEntry,
+    ]);
+
+    expect(overflow.overflowing('$a')()).toBe(true);
+  });
+
+  it('forgets a row no longer shown when cleared', () => {
     const element = body();
     overflow.observe(element, '$a');
     report(observerOf(element), element, 40 * LINE_PX);
+    const tracked = overflow.overflowing('$a');
+    overflow.unobserve(element);
 
     overflow.clear();
 
-    expect(overflow.overflowing('$a')()).toBe(false);
+    expect(tracked()).toBe(false);
   });
 
-  it('asks again for the bodies still shown when cleared', () => {
+  it('keeps a row still shown long when cleared, without asking again', () => {
     const element = body();
     overflow.observe(element, '$a');
     const observer = observerOf(element) as TestResizeObserver & ResizeObserver;
     report(observer, element, 40 * LINE_PX);
+    const tracked = overflow.overflowing('$a');
     const observe = vi.spyOn(observer, 'observe');
+    const unobserve = vi.spyOn(observer, 'unobserve');
 
     overflow.clear();
 
-    // Observing again makes the browser deliver a fresh first measurement after the next
-    // layout, so a row the list keeps across the reset is not left at "short".
-    expect(observe).toHaveBeenCalledWith(element);
-    report(observer, element, 40 * LINE_PX);
-    expect(overflow.overflowing('$a')()).toBe(true);
+    // Row ids are event ids, unique across rooms: the measurement is still this row's, and
+    // resetting it would show the long body uncollapsed for a frame.
+    expect(tracked()).toBe(true);
+    expect(observe).not.toHaveBeenCalled();
+    expect(unobserve).not.toHaveBeenCalled();
+
+    // The observer goes on updating it.
+    report(observer, element, 10 * LINE_PX);
+    expect(tracked()).toBe(false);
   });
 
   it('lets go of every body when the list goes', () => {
