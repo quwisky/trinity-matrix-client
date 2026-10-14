@@ -123,6 +123,10 @@
     {
       "project": "native-capacitor-app-lock-ios",
       "reason": "The App lock plugin's Swift sources, reached by the iOS host through Capacitor sync, not through a TypeScript import."
+    },
+    {
+      "project": "native-capacitor-app-lock-android",
+      "reason": "The App lock plugin's Kotlin and Java module, reached by the Android host through Capacitor sync, not through a TypeScript import."
     }
   ],
   "secondaryEntrypoints": [],

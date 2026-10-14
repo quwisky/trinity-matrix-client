@@ -4,7 +4,11 @@
   "projectType": "application",
   "sourceRoot": "android/app/src",
   "tags": ["type:app", "scope:matrix", "role:app", "capability:composition"],
-  "implicitDependencies": ["trinity", "native-capacitor-push-android"],
+  "implicitDependencies": [
+    "trinity",
+    "native-capacitor-push-android",
+    "native-capacitor-app-lock-android"
+  ],
   "targets": {
     "sync": {
       "//": "Build the shared production renderer first, then let Capacitor copy that exact www artifact and refresh native plugin wiring. Sync mutates checked-in generated native files, so it is deliberately uncached.",
@@ -90,12 +94,13 @@
       }
     },
     "verify-native": {
-      "//": "testDebugUnitTest runs the push module's JVM tests (native-capacitor-push-android, an implicit dependency), which read the shared text-rule fixture in native/push-render. That directory belongs to no Nx project, so the input is what marks this host affected when the fixture changes.",
+      "//": "testDebugUnitTest runs the JVM tests of the push and App lock modules (native-capacitor-push-android and native-capacitor-app-lock-android, implicit dependencies), which read the shared fixtures in native/push-render and native/app-lock. Those directories belong to no Nx project, so the inputs are what mark this host affected when a fixture changes.",
       "cache": false,
       "inputs": [
         "default",
         "^default",
-        "{workspaceRoot}/native/push-render/**/*"
+        "{workspaceRoot}/native/push-render/**/*",
+        "{workspaceRoot}/native/app-lock/**/*"
       ],
       "dependsOn": ["sync"],
       "executor": "nx:run-commands",

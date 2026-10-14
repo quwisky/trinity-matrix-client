@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **73 Nx projects** and **286 dependencies**. No project cycles detected.
+This snapshot contains **74 Nx projects** and **287 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -35,7 +35,7 @@ Capability-to-capability dependencies are valid only inside the same named capab
 | `role:application`   |        7 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
 | `role:capability`    |       15 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
 | `role:kernel`        |        5 | `role:kernel`                                                                                          |
-| `role:adapter`       |        8 | `role:adapter`, `role:kernel`                                                                          |
+| `role:adapter`       |        9 | `role:adapter`, `role:kernel`                                                                          |
 | `role:design-system` |       19 | `role:design-system`, `role:kernel`, `role:adapter`                                                    |
 
 ## Frozen dependency exceptions
@@ -118,78 +118,79 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 
 ## Project classifications
 
-| Nx project                        | Root                                   | Architecture metadata                           | Direct dependencies |
-| --------------------------------- | -------------------------------------- | ----------------------------------------------- | ------------------: |
-| `application-appearance`          | `libs/application/appearance`          | role:application; capability:design-system      |                   4 |
-| `application-badge`               | `libs/application/badge`               | role:application; capability:badge              |                   2 |
-| `application-runtime`             | `libs/application/runtime`             | role:application; capability:runtime            |                  29 |
-| `application-search`              | `libs/application/search`              | role:application; capability:search             |                   5 |
-| `application-workspace`           | `libs/application/workspace`           | role:application; capability:workspace          |                   7 |
-| `avatar`                          | `libs/spartan/avatar`                  | role:design-system; capability:design-system    |                   1 |
-| `button`                          | `libs/spartan/button`                  | role:design-system; capability:design-system    |                   1 |
-| `card`                            | `libs/spartan/card`                    | role:design-system; capability:design-system    |                   1 |
-| `components-controls`             | `libs/components/controls`             | role:design-system; capability:design-system    |                   8 |
-| `components-foundations`          | `libs/components/foundations`          | role:design-system; capability:design-system    |                   1 |
-| `components-generic-content`      | `libs/components/generic-content`      | role:design-system; capability:design-system    |                   9 |
-| `components-navigation-layout`    | `libs/components/navigation-layout`    | role:design-system; capability:design-system    |                   5 |
-| `components-overlay`              | `libs/components/overlay`              | role:design-system; capability:design-system    |                   8 |
-| `components-storybook-host`       | `libs/components/storybook-host`       | role:design-system; capability:design-system    |                   1 |
-| `data-access-accounts`            | `libs/data-access/accounts`            | role:capability; capability:accounts            |                   4 |
-| `data-access-auth`                | `libs/data-access/auth`                | role:capability; capability:accounts            |                   7 |
-| `data-access-diagnostic-log`      | `libs/data-access/diagnostic-log`      | role:capability; capability:diagnostics         |                   2 |
-| `data-access-discovery`           | `libs/data-access/discovery`           | role:capability; capability:discovery           |                   3 |
-| `data-access-gif`                 | `libs/data-access/gif`                 | role:capability; capability:conversations       |                   2 |
-| `data-access-homeserver`          | `libs/data-access/homeserver`          | role:capability; capability:discovery           |                   2 |
-| `data-access-identity`            | `libs/data-access/identity`            | role:capability; capability:identity            |                   4 |
-| `data-access-matrix-client`       | `libs/data-access/matrix-client`       | role:adapter; capability:matrix-runtime         |                   4 |
-| `data-access-media`               | `libs/data-access/media`               | role:adapter; capability:media                  |                   2 |
-| `data-access-notifications`       | `libs/data-access/notifications`       | role:capability; capability:notifications       |                   7 |
-| `data-access-room-administration` | `libs/data-access/room-administration` | role:capability; capability:room-administration |                   4 |
-| `data-access-room-library`        | `libs/data-access/room-library`        | role:capability; capability:room-library        |                   6 |
-| `data-access-timeline`            | `libs/data-access/timeline`            | role:capability; capability:conversations       |                   6 |
-| `data-access-trust`               | `libs/data-access/trust`               | role:capability; capability:trust               |                   4 |
-| `data-access-widgets`             | `libs/data-access/widgets`             | role:capability; capability:conversations       |                   3 |
-| `docs-developers`                 | `apps/docs-developers`                 | unmanaged tooling/test                          |                   1 |
-| `docs-e2e`                        | `e2e/docs`                             | unmanaged tooling/test                          |                   0 |
-| `docs-site`                       | `tools/docs`                           | unmanaged tooling/test                          |                   0 |
-| `docs-users`                      | `apps/docs-users`                      | unmanaged tooling/test                          |                   1 |
-| `dropdown-menu`                   | `libs/spartan/dropdown-menu`           | role:design-system; capability:design-system    |                   1 |
-| `feature-auth`                    | `libs/feature/auth`                    | role:capability; capability:accounts            |                  11 |
-| `feature-crypto`                  | `libs/feature/crypto`                  | role:capability; capability:trust               |                  11 |
-| `feature-rooms`                   | `libs/feature/rooms`                   | role:application; capability:workspace          |                  25 |
-| `feature-settings`                | `libs/feature/settings`                | role:application; capability:settings           |                  24 |
-| `label`                           | `libs/spartan/label`                   | role:design-system; capability:design-system    |                   1 |
-| `native-capacitor-app-lock`       | `libs/native/capacitor-app-lock`       | role:adapter; capability:host                   |                   0 |
-| `native-capacitor-app-lock-ios`   | `libs/native/capacitor-app-lock/ios`   | role:adapter; capability:host                   |                   0 |
-| `native-capacitor-push`           | `libs/native/capacitor-push`           | role:adapter; capability:host                   |                   0 |
-| `native-capacitor-push-android`   | `libs/native/capacitor-push/android`   | role:adapter; capability:host                   |                   0 |
-| `native-capacitor-push-ios`       | `libs/native/capacitor-push/ios`       | role:adapter; capability:host                   |                   0 |
-| `platform-native`                 | `libs/platform-native`                 | role:adapter; capability:host                   |                   6 |
-| `progress`                        | `libs/spartan/progress`                | role:design-system; capability:design-system    |                   1 |
-| `projection-runtime`              | `libs/runtime/projection`              | role:kernel; capability:shared                  |                   0 |
-| `runtime-host`                    | `libs/runtime/host`                    | role:kernel; capability:host                    |                   0 |
-| `runtime-preferences`             | `libs/runtime/preferences`             | role:kernel; capability:preferences             |                   0 |
-| `scripts`                         | `scripts`                              | unmanaged tooling/test                          |                   7 |
-| `select`                          | `libs/spartan/select`                  | role:design-system; capability:design-system    |                   1 |
-| `sonner`                          | `libs/spartan/sonner`                  | role:design-system; capability:design-system    |                   2 |
-| `spartan-tests`                   | `libs/spartan/tests`                   | role:design-system; capability:design-system    |                   4 |
-| `spinner`                         | `libs/spartan/spinner`                 | role:design-system; capability:design-system    |                   1 |
-| `testing`                         | `libs/testing`                         | unmanaged tooling/test                          |                   0 |
-| `theme-foundation`                | `libs/theme-foundation`                | role:kernel; capability:design-system           |                   0 |
-| `tooltip`                         | `libs/spartan/tooltip`                 | role:design-system; capability:design-system    |                   1 |
-| `trinity`                         | `apps/trinity`                         | role:app; capability:composition                |                   8 |
-| `trinity-android`                 | `android`                              | role:app; capability:composition                |                   2 |
-| `trinity-desktop`                 | `electron`                             | role:app; capability:composition                |                   1 |
-| `trinity-e2e`                     | `e2e`                                  | unmanaged tooling/test                          |                   2 |
-| `trinity-e2e-browser`             | `e2e/browser`                          | unmanaged tooling/test                          |                   5 |
-| `trinity-e2e-components`          | `e2e/components`                       | unmanaged tooling/test                          |                   7 |
-| `trinity-e2e-electron`            | `e2e/electron`                         | unmanaged tooling/test                          |                   3 |
-| `trinity-e2e-mobile`              | `e2e/mobile`                           | unmanaged tooling/test                          |                   4 |
-| `trinity-e2e-protocol`            | `e2e/protocol`                         | unmanaged tooling/test                          |                   4 |
-| `trinity-e2e-support`             | `e2e/support`                          | unmanaged tooling/test                          |                   0 |
-| `trinity-e2e-web`                 | `e2e/web`                              | unmanaged tooling/test                          |                   6 |
-| `trinity-ios`                     | `ios`                                  | role:app; capability:composition                |                   3 |
-| `trinity-web-container`           | `container`                            | role:app; capability:composition                |                   1 |
-| `util-matrix`                     | `libs/util/matrix`                     | role:kernel; capability:shared                  |                   0 |
-| `util-ui`                         | `libs/util/ui`                         | role:design-system; capability:design-system    |                   0 |
-| `utils`                           | `libs/spartan/utils`                   | role:design-system; capability:design-system    |                   0 |
+| Nx project                          | Root                                     | Architecture metadata                           | Direct dependencies |
+| ----------------------------------- | ---------------------------------------- | ----------------------------------------------- | ------------------: |
+| `application-appearance`            | `libs/application/appearance`            | role:application; capability:design-system      |                   4 |
+| `application-badge`                 | `libs/application/badge`                 | role:application; capability:badge              |                   2 |
+| `application-runtime`               | `libs/application/runtime`               | role:application; capability:runtime            |                  29 |
+| `application-search`                | `libs/application/search`                | role:application; capability:search             |                   5 |
+| `application-workspace`             | `libs/application/workspace`             | role:application; capability:workspace          |                   7 |
+| `avatar`                            | `libs/spartan/avatar`                    | role:design-system; capability:design-system    |                   1 |
+| `button`                            | `libs/spartan/button`                    | role:design-system; capability:design-system    |                   1 |
+| `card`                              | `libs/spartan/card`                      | role:design-system; capability:design-system    |                   1 |
+| `components-controls`               | `libs/components/controls`               | role:design-system; capability:design-system    |                   8 |
+| `components-foundations`            | `libs/components/foundations`            | role:design-system; capability:design-system    |                   1 |
+| `components-generic-content`        | `libs/components/generic-content`        | role:design-system; capability:design-system    |                   9 |
+| `components-navigation-layout`      | `libs/components/navigation-layout`      | role:design-system; capability:design-system    |                   5 |
+| `components-overlay`                | `libs/components/overlay`                | role:design-system; capability:design-system    |                   8 |
+| `components-storybook-host`         | `libs/components/storybook-host`         | role:design-system; capability:design-system    |                   1 |
+| `data-access-accounts`              | `libs/data-access/accounts`              | role:capability; capability:accounts            |                   4 |
+| `data-access-auth`                  | `libs/data-access/auth`                  | role:capability; capability:accounts            |                   7 |
+| `data-access-diagnostic-log`        | `libs/data-access/diagnostic-log`        | role:capability; capability:diagnostics         |                   2 |
+| `data-access-discovery`             | `libs/data-access/discovery`             | role:capability; capability:discovery           |                   3 |
+| `data-access-gif`                   | `libs/data-access/gif`                   | role:capability; capability:conversations       |                   2 |
+| `data-access-homeserver`            | `libs/data-access/homeserver`            | role:capability; capability:discovery           |                   2 |
+| `data-access-identity`              | `libs/data-access/identity`              | role:capability; capability:identity            |                   4 |
+| `data-access-matrix-client`         | `libs/data-access/matrix-client`         | role:adapter; capability:matrix-runtime         |                   4 |
+| `data-access-media`                 | `libs/data-access/media`                 | role:adapter; capability:media                  |                   2 |
+| `data-access-notifications`         | `libs/data-access/notifications`         | role:capability; capability:notifications       |                   7 |
+| `data-access-room-administration`   | `libs/data-access/room-administration`   | role:capability; capability:room-administration |                   4 |
+| `data-access-room-library`          | `libs/data-access/room-library`          | role:capability; capability:room-library        |                   6 |
+| `data-access-timeline`              | `libs/data-access/timeline`              | role:capability; capability:conversations       |                   6 |
+| `data-access-trust`                 | `libs/data-access/trust`                 | role:capability; capability:trust               |                   4 |
+| `data-access-widgets`               | `libs/data-access/widgets`               | role:capability; capability:conversations       |                   3 |
+| `docs-developers`                   | `apps/docs-developers`                   | unmanaged tooling/test                          |                   1 |
+| `docs-e2e`                          | `e2e/docs`                               | unmanaged tooling/test                          |                   0 |
+| `docs-site`                         | `tools/docs`                             | unmanaged tooling/test                          |                   0 |
+| `docs-users`                        | `apps/docs-users`                        | unmanaged tooling/test                          |                   1 |
+| `dropdown-menu`                     | `libs/spartan/dropdown-menu`             | role:design-system; capability:design-system    |                   1 |
+| `feature-auth`                      | `libs/feature/auth`                      | role:capability; capability:accounts            |                  11 |
+| `feature-crypto`                    | `libs/feature/crypto`                    | role:capability; capability:trust               |                  11 |
+| `feature-rooms`                     | `libs/feature/rooms`                     | role:application; capability:workspace          |                  25 |
+| `feature-settings`                  | `libs/feature/settings`                  | role:application; capability:settings           |                  24 |
+| `label`                             | `libs/spartan/label`                     | role:design-system; capability:design-system    |                   1 |
+| `native-capacitor-app-lock`         | `libs/native/capacitor-app-lock`         | role:adapter; capability:host                   |                   0 |
+| `native-capacitor-app-lock-android` | `libs/native/capacitor-app-lock/android` | role:adapter; capability:host                   |                   0 |
+| `native-capacitor-app-lock-ios`     | `libs/native/capacitor-app-lock/ios`     | role:adapter; capability:host                   |                   0 |
+| `native-capacitor-push`             | `libs/native/capacitor-push`             | role:adapter; capability:host                   |                   0 |
+| `native-capacitor-push-android`     | `libs/native/capacitor-push/android`     | role:adapter; capability:host                   |                   0 |
+| `native-capacitor-push-ios`         | `libs/native/capacitor-push/ios`         | role:adapter; capability:host                   |                   0 |
+| `platform-native`                   | `libs/platform-native`                   | role:adapter; capability:host                   |                   6 |
+| `progress`                          | `libs/spartan/progress`                  | role:design-system; capability:design-system    |                   1 |
+| `projection-runtime`                | `libs/runtime/projection`                | role:kernel; capability:shared                  |                   0 |
+| `runtime-host`                      | `libs/runtime/host`                      | role:kernel; capability:host                    |                   0 |
+| `runtime-preferences`               | `libs/runtime/preferences`               | role:kernel; capability:preferences             |                   0 |
+| `scripts`                           | `scripts`                                | unmanaged tooling/test                          |                   7 |
+| `select`                            | `libs/spartan/select`                    | role:design-system; capability:design-system    |                   1 |
+| `sonner`                            | `libs/spartan/sonner`                    | role:design-system; capability:design-system    |                   2 |
+| `spartan-tests`                     | `libs/spartan/tests`                     | role:design-system; capability:design-system    |                   4 |
+| `spinner`                           | `libs/spartan/spinner`                   | role:design-system; capability:design-system    |                   1 |
+| `testing`                           | `libs/testing`                           | unmanaged tooling/test                          |                   0 |
+| `theme-foundation`                  | `libs/theme-foundation`                  | role:kernel; capability:design-system           |                   0 |
+| `tooltip`                           | `libs/spartan/tooltip`                   | role:design-system; capability:design-system    |                   1 |
+| `trinity`                           | `apps/trinity`                           | role:app; capability:composition                |                   8 |
+| `trinity-android`                   | `android`                                | role:app; capability:composition                |                   3 |
+| `trinity-desktop`                   | `electron`                               | role:app; capability:composition                |                   1 |
+| `trinity-e2e`                       | `e2e`                                    | unmanaged tooling/test                          |                   2 |
+| `trinity-e2e-browser`               | `e2e/browser`                            | unmanaged tooling/test                          |                   5 |
+| `trinity-e2e-components`            | `e2e/components`                         | unmanaged tooling/test                          |                   7 |
+| `trinity-e2e-electron`              | `e2e/electron`                           | unmanaged tooling/test                          |                   3 |
+| `trinity-e2e-mobile`                | `e2e/mobile`                             | unmanaged tooling/test                          |                   4 |
+| `trinity-e2e-protocol`              | `e2e/protocol`                           | unmanaged tooling/test                          |                   4 |
+| `trinity-e2e-support`               | `e2e/support`                            | unmanaged tooling/test                          |                   0 |
+| `trinity-e2e-web`                   | `e2e/web`                                | unmanaged tooling/test                          |                   6 |
+| `trinity-ios`                       | `ios`                                    | role:app; capability:composition                |                   3 |
+| `trinity-web-container`             | `container`                              | role:app; capability:composition                |                   1 |
+| `util-matrix`                       | `libs/util/matrix`                       | role:kernel; capability:shared                  |                   0 |
+| `util-ui`                           | `libs/util/ui`                           | role:design-system; capability:design-system    |                   0 |
+| `utils`                             | `libs/spartan/utils`                     | role:design-system; capability:design-system    |                   0 |
