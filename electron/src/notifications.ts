@@ -151,6 +151,7 @@ function showOsNotification(
  * stable code signature). OFF by default; never fires in normal use. Launch the app's
  * binary with the env set so you also see the console output, e.g.:
  *   TRINITY_NOTIFY_TEST=1 "/Applications/Trinity.app/Contents/MacOS/Trinity"
+ * (Trinity Next: "/Applications/Trinity Next.app/Contents/MacOS/Trinity Next").
  */
 export function maybeSendStartupTestNotification(): void {
   if (!process.env['TRINITY_NOTIFY_TEST']) {
