@@ -8,6 +8,10 @@ import {
 } from '@aparajita/capacitor-biometric-auth';
 import { Capacitor } from '@capacitor/core';
 import {
+  AppLockPinBridge,
+  type AppLockPinStatus,
+} from '@trinity/capacitor-app-lock';
+import {
   HOST_USER_PRESENCE_OPERATION,
   HostCapabilitiesService,
   NO_USER_PRESENCE,
@@ -26,6 +30,7 @@ import {
   Observable,
   catchError,
   defer,
+  forkJoin,
   from,
   map,
   of,
@@ -116,6 +121,39 @@ export function presenceOutcomeOfError(error: unknown): HostPresenceOutcome {
   }
 }
 
+/** A clear the host could not confirm: the full reset must report it, not skip it. */
+const PIN_CLEAR_FAILED: HostOperationOutcome = {
+  kind: 'rejected',
+  diagnostic: { code: 'pin-clear-failed' },
+};
+
+/** A PIN store the host cannot read: never "available, not set" (fail closed). */
+const PIN_STORE_UNREADABLE: HostPinPresence = {
+  kind: 'unavailable',
+  reason: 'secure-storage-unavailable',
+};
+
+/** The mobile plugin's PIN status as the host contract's PIN half. */
+function pinPresenceOf(status: AppLockPinStatus): HostPinPresence {
+  switch (status.kind) {
+    case 'ready':
+      return {
+        kind: 'available',
+        set: status.set,
+        nextAttemptAt: status.nextAttemptAt,
+      };
+    case 'unavailable':
+      return PIN_STORE_UNREADABLE;
+    case 'not-supported':
+      return PIN_NOT_YET;
+    default: {
+      const unhandled: never = status;
+      void unhandled;
+      return PIN_STORE_UNREADABLE;
+    }
+  }
+}
+
 /** The web and PWA have no App lock (decision 3). */
 @Injectable({ providedIn: 'root' })
 export class WebUserPresenceAdapter implements HostUserPresenceOperation {
@@ -142,22 +180,29 @@ export class WebUserPresenceAdapter implements HostUserPresenceOperation {
   }
 }
 
-/** iOS and Android: Face ID, Touch ID or fingerprint, with the passcode in the prompt. */
+/**
+ * iOS and Android: Face ID, Touch ID or fingerprint, with the passcode in the prompt; the
+ * Trinity PIN through the `TrinityAppLock` plugin (Keychain, Keystore).
+ */
 @Injectable({ providedIn: 'root' })
 export class CapacitorUserPresenceAdapter implements HostUserPresenceOperation {
+  private readonly pins = inject(AppLockPinBridge);
+
   support(): Observable<HostUserPresenceSupport> {
-    return defer(() => from(BiometricAuth.checkBiometry())).pipe(
-      map((result): HostUserPresenceSupport => ({
-        system: systemPresenceOf(result),
-        pin: PIN_NOT_YET,
-      })),
+    const system = defer(() => from(BiometricAuth.checkBiometry())).pipe(
+      map(systemPresenceOf),
       catchError(() =>
-        of<HostUserPresenceSupport>({
-          system: { kind: 'unavailable', reason: 'not-supported' },
-          pin: PIN_NOT_YET,
+        of<HostSystemPresence>({
+          kind: 'unavailable',
+          reason: 'not-supported',
         }),
       ),
     );
+    const pin = defer(() => this.pins.status()).pipe(
+      map(pinPresenceOf),
+      catchError(() => of(PIN_STORE_UNREADABLE)),
+    );
+    return forkJoin({ system, pin });
   }
 
   verify(request: {
@@ -182,16 +227,46 @@ export class CapacitorUserPresenceAdapter implements HostUserPresenceOperation {
     );
   }
 
-  setPin(): Observable<HostOperationOutcome> {
-    return defer(() => of(notSupported()));
+  setPin(pin: string): Observable<HostOperationOutcome> {
+    return defer(() => this.pins.set(pin)).pipe(
+      map((result): HostOperationOutcome => {
+        switch (result) {
+          case 'completed':
+            return { kind: 'completed' };
+          case 'invalid':
+            return { kind: 'rejected', diagnostic: { code: 'pin-invalid' } };
+          case 'unavailable':
+            return notSupported();
+          default: {
+            const unhandled: never = result;
+            void unhandled;
+            return notSupported();
+          }
+        }
+      }),
+      catchError(() => of(notSupported())),
+    );
   }
 
-  verifyPin(): Observable<HostPinOutcome> {
-    return defer(() => of<HostPinOutcome>({ kind: 'unavailable' }));
+  /** `AppLockPinCheck` is a subset of `HostPinOutcome`, so it passes through unchanged. */
+  verifyPin(pin: string): Observable<HostPinOutcome> {
+    return defer(() => this.pins.verify(pin)).pipe(
+      catchError(() => of<HostPinOutcome>({ kind: 'unavailable' })),
+    );
   }
 
+  /**
+   * Without the plugin there is no PIN, so nothing to clear. With it, a clear the plugin
+   * could not confirm is a failure, so the full reset reports it instead of skipping it.
+   */
   clearPin(): Observable<HostOperationOutcome> {
-    return defer(() => of(notSupported()));
+    return defer(() => this.pins.clear()).pipe(
+      map((result): HostOperationOutcome => {
+        if (result === 'completed') return { kind: 'completed' };
+        return this.pins.available ? PIN_CLEAR_FAILED : notSupported();
+      }),
+      catchError(() => of(PIN_CLEAR_FAILED)),
+    );
   }
 }
 
@@ -313,11 +388,6 @@ const UNAVAILABLE_REASONS: readonly HostUnavailableReason[] = [
   'protocol-mismatch',
   'host-rejected',
 ];
-/** A clear the shell could not confirm: the full reset must report it, not skip it. */
-const PIN_CLEAR_FAILED: HostOperationOutcome = {
-  kind: 'rejected',
-  diagnostic: { code: 'pin-clear-failed' },
-};
 
 function instantOrNull(value: unknown): value is number | null {
   return (

@@ -140,6 +140,7 @@ function validInput() {
       ':capacitor-push-notifications',
       ':capacitor-status-bar',
       ':capawesome-capacitor-badge',
+      ':trinity-capacitor-app-lock',
       ':trinity-capacitor-push',
     ].join('\n'),
     iosPlugins: [
@@ -152,6 +153,7 @@ function validInput() {
       'CapacitorPushNotifications',
       'CapacitorStatusBar',
       'CapawesomeCapacitorBadge',
+      'TrinityCapacitorAppLock',
       'TrinityCapacitorPush',
     ].join('\n'),
     androidManifest: appManifest(),
@@ -175,6 +177,15 @@ function validInput() {
       '@objc(PushHandoffPlugin)',
       'public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {',
       '    public let jsName = "PushHandoff"',
+    ].join('\n'),
+    androidAppLockPlugin: [
+      '@CapacitorPlugin(name = "TrinityAppLock")',
+      'public class AppLockPlugin extends Plugin {',
+    ].join('\n'),
+    iosAppLockPlugin: [
+      '@objc(AppLockPlugin)',
+      'public class AppLockPlugin: CAPPlugin, CAPBridgedPlugin {',
+      '    public let jsName = "TrinityAppLock"',
     ].join('\n'),
     androidPushLibraryManifest: pushLibraryManifest(),
     androidPushAppearance: [
@@ -460,6 +471,46 @@ describe('native host contract', () => {
         );
       },
       'iOS PushHandoff plugin must be discoverable by cap sync',
+    ],
+    [
+      'an App lock plugin hidden from the Android CLI',
+      (input) => {
+        input.androidAppLockPlugin = input.androidAppLockPlugin.replace(
+          '@CapacitorPlugin',
+          '// @CapacitorPlugin',
+        );
+      },
+      'Android TrinityAppLock plugin must be discoverable by cap sync',
+    ],
+    [
+      'an App lock instance plugin, which automatic registration skips',
+      (input) => {
+        input.iosAppLockPlugin = input.iosAppLockPlugin.replace(
+          'CAPPlugin, CAPBridgedPlugin',
+          'CAPInstancePlugin, CAPBridgedPlugin',
+        );
+      },
+      'iOS TrinityAppLock plugin must be discoverable by cap sync',
+    ],
+    [
+      'an App lock plugin missing from the Android host',
+      (input) => {
+        input.androidPlugins = input.androidPlugins.replace(
+          ':trinity-capacitor-app-lock',
+          '',
+        );
+      },
+      'Android host is missing plugin wiring: :trinity-capacitor-app-lock',
+    ],
+    [
+      'an App lock plugin missing from the iOS host',
+      (input) => {
+        input.iosPlugins = input.iosPlugins.replace(
+          'TrinityCapacitorAppLock',
+          '',
+        );
+      },
+      'iOS host is missing plugin wiring: TrinityCapacitorAppLock',
     ],
     [
       'an iOS file whose first @objc name is another class',

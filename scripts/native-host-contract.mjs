@@ -67,6 +67,7 @@ const androidPluginMarkers = [
   ':capacitor-push-notifications',
   ':capacitor-status-bar',
   ':capawesome-capacitor-badge',
+  ':trinity-capacitor-app-lock',
   ':trinity-capacitor-push',
 ];
 
@@ -80,6 +81,7 @@ const iosPluginMarkers = [
   'CapacitorPushNotifications',
   'CapacitorStatusBar',
   'CapawesomeCapacitorBadge',
+  'TrinityCapacitorAppLock',
   'TrinityCapacitorPush',
 ];
 
@@ -176,6 +178,15 @@ function manifestServices(manifest) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Whether `source` names `marker` as a whole token: `CapacitorApp` must not be satisfied by
+ * `TrinityCapacitorAppLock`, nor `:capacitor-app` by a longer module name.
+ */
+function namesPlugin(source, marker) {
+  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, 'u').test(source);
 }
 
 function dependsOnProjectTarget(target, project, dependencyTarget) {
@@ -330,12 +341,12 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
     );
   }
   for (const marker of androidPluginMarkers) {
-    if (!androidPlugins.includes(marker)) {
+    if (!namesPlugin(androidPlugins, marker)) {
       errors.push(`Android host is missing plugin wiring: ${marker}`);
     }
   }
   for (const marker of iosPluginMarkers) {
-    if (!iosPlugins.includes(marker)) {
+    if (!namesPlugin(iosPlugins, marker)) {
       errors.push(`iOS host is missing plugin wiring: ${marker}`);
     }
   }
@@ -373,6 +384,28 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
     !/public\s+let\s+jsName\s*=\s*"PushHandoff"/u.test(iosPushPlugin)
   ) {
     errors.push('iOS PushHandoff plugin must be discoverable by cap sync');
+  }
+  // @trinity/capacitor-app-lock follows the same discovery rules. A plugin cap sync misses
+  // leaves AppLockPinBridge inert, so App lock would silently offer no PIN on that host.
+  if (
+    !/^@CapacitorPlugin\(\s*name\s*=\s*"TrinityAppLock"\s*\)\s+public\s+class AppLockPlugin\s+extends\s+Plugin\b/mu.test(
+      withoutComments(input.androidAppLockPlugin, true),
+    )
+  ) {
+    errors.push(
+      'Android TrinityAppLock plugin must be discoverable by cap sync',
+    );
+  }
+  const iosAppLockPlugin = withoutComments(input.iosAppLockPlugin, true);
+  if (
+    input.iosAppLockPlugin.match(/@objc\(([A-Za-z0-9_-]+)\)/u)?.[1] !==
+      'AppLockPlugin' ||
+    !/@objc\(AppLockPlugin\)\s+public\s+class\s+AppLockPlugin\s*:\s*CAPPlugin\s*,\s*CAPBridgedPlugin\b/u.test(
+      iosAppLockPlugin,
+    ) ||
+    !/public\s+let\s+jsName\s*=\s*"TrinityAppLock"/u.test(iosAppLockPlugin)
+  ) {
+    errors.push('iOS TrinityAppLock plugin must be discoverable by cap sync');
   }
   // The library cannot reference the app's resources; the host overrides its aliases with
   // the icon and accent its FCM meta-data names.
@@ -489,6 +522,12 @@ export function validateCurrentNativeHosts(selectedHosts) {
       ),
       iosPushPlugin: read(
         'libs/native/capacitor-push/ios/Sources/PushHandoffPlugin/PushHandoffPlugin.swift',
+      ),
+      androidAppLockPlugin: read(
+        'libs/native/capacitor-app-lock/android/src/main/java/dev/trinityproject/trinity/applock/AppLockPlugin.java',
+      ),
+      iosAppLockPlugin: read(
+        'libs/native/capacitor-app-lock/ios/Sources/AppLockPlugin/AppLockPlugin.swift',
       ),
       androidPushLibraryManifest: read(
         'libs/native/capacitor-push/android/src/main/AndroidManifest.xml',

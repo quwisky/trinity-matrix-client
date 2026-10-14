@@ -9,8 +9,13 @@ import {
   HostCapabilitiesService,
   type HostUserPresenceOperation,
 } from '@trinity/runtime/host';
+import {
+  AppLockPinBridge,
+  type AppLockPinCheck,
+  type AppLockPinStatus,
+} from '@trinity/capacitor-app-lock';
 import { desktopBridgeFixture } from '@trinity/testing';
-import { firstValueFrom, of } from 'rxjs';
+import { type Observable, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const plugin = vi.hoisted(() => ({
@@ -121,25 +126,154 @@ describe('presenceOutcomeOfError', () => {
 });
 
 describe('CapacitorUserPresenceAdapter', () => {
+  const pinBridge = {
+    available: true,
+    status: vi.fn((): Observable<AppLockPinStatus> =>
+      of({ kind: 'ready', set: true, nextAttemptAt: null }),
+    ),
+    set: vi.fn((): Observable<'completed' | 'invalid' | 'unavailable'> =>
+      of('completed'),
+    ),
+    verify: vi.fn((): Observable<AppLockPinCheck> => of({ kind: 'verified' })),
+    clear: vi.fn((): Observable<'completed' | 'unavailable'> =>
+      of('completed'),
+    ),
+  };
+
   afterEach(() => {
     vi.clearAllMocks();
+    pinBridge.available = true;
     TestBed.resetTestingModule();
   });
 
   function adapter(): CapacitorUserPresenceAdapter {
     TestBed.configureTestingModule({
-      providers: [CapacitorUserPresenceAdapter],
+      providers: [
+        CapacitorUserPresenceAdapter,
+        { provide: AppLockPinBridge, useValue: pinBridge },
+      ],
     });
     return TestBed.inject(CapacitorUserPresenceAdapter);
   }
 
-  it('reads support cold, with the PIN still unavailable', async () => {
+  it('reads support cold, with the PIN from the plugin', async () => {
     plugin.checkBiometry.mockResolvedValue(check({}));
     const support = adapter().support();
     expect(plugin.checkBiometry).not.toHaveBeenCalled();
+    expect(pinBridge.status).not.toHaveBeenCalled();
     await expect(firstValueFrom(support)).resolves.toEqual({
       system: { kind: 'available', biometry: 'face' },
+      pin: { kind: 'available', set: true, nextAttemptAt: null },
+    });
+  });
+
+  it('reports a PIN store it cannot read as secure storage unavailable', async () => {
+    plugin.checkBiometry.mockResolvedValue(check({}));
+    pinBridge.status.mockReturnValueOnce(of({ kind: 'unavailable' as const }));
+    await expect(firstValueFrom(adapter().support())).resolves.toEqual({
+      system: { kind: 'available', biometry: 'face' },
+      pin: { kind: 'unavailable', reason: 'secure-storage-unavailable' },
+    });
+  });
+
+  it('reports a failing PIN status call as secure storage unavailable, not "no PIN"', async () => {
+    plugin.checkBiometry.mockResolvedValue(check({}));
+    pinBridge.status.mockReturnValueOnce(throwError(() => new Error('down')));
+    await expect(firstValueFrom(adapter().support())).resolves.toEqual({
+      system: { kind: 'available', biometry: 'face' },
+      pin: { kind: 'unavailable', reason: 'secure-storage-unavailable' },
+    });
+  });
+
+  it('reports a host without the plugin as offering no PIN', async () => {
+    plugin.checkBiometry.mockResolvedValue(check({}));
+    pinBridge.status.mockReturnValueOnce(
+      of({ kind: 'not-supported' as const }),
+    );
+    await expect(firstValueFrom(adapter().support())).resolves.toEqual({
+      system: { kind: 'available', biometry: 'face' },
       pin: { kind: 'unavailable', reason: 'not-supported' },
+    });
+  });
+
+  it('offers the PIN alone on a device without a screen lock', async () => {
+    plugin.checkBiometry.mockResolvedValue(
+      check({ isAvailable: false, deviceIsSecure: false }),
+    );
+    await expect(firstValueFrom(adapter().support())).resolves.toEqual({
+      system: { kind: 'unavailable', reason: 'no-device-credential' },
+      pin: { kind: 'available', set: true, nextAttemptAt: null },
+    });
+  });
+
+  it('sets, verifies and clears the PIN through the plugin', async () => {
+    const presence = adapter();
+    await expect(firstValueFrom(presence.setPin('482913'))).resolves.toEqual({
+      kind: 'completed',
+    });
+    pinBridge.set.mockReturnValueOnce(of('invalid' as const));
+    await expect(firstValueFrom(presence.setPin('12'))).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'pin-invalid' },
+    });
+    await expect(firstValueFrom(presence.verifyPin('482913'))).resolves.toEqual(
+      { kind: 'verified' },
+    );
+    pinBridge.verify.mockReturnValueOnce(
+      of({ kind: 'delayed' as const, nextAttemptAt: 9 }),
+    );
+    await expect(firstValueFrom(presence.verifyPin('482913'))).resolves.toEqual(
+      {
+        kind: 'delayed',
+        nextAttemptAt: 9,
+      },
+    );
+    await expect(firstValueFrom(presence.clearPin())).resolves.toEqual({
+      kind: 'completed',
+    });
+  });
+
+  it('reports a PIN the plugin could not store as a failure', async () => {
+    const presence = adapter();
+    pinBridge.set.mockReturnValueOnce(of('unavailable' as const));
+    await expect(firstValueFrom(presence.setPin('482913'))).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+    pinBridge.set.mockReturnValueOnce(throwError(() => new Error('down')));
+    await expect(firstValueFrom(presence.setPin('482913'))).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+  });
+
+  it('never reads a failing PIN check as verified', async () => {
+    pinBridge.verify.mockReturnValueOnce(throwError(() => new Error('down')));
+    await expect(
+      firstValueFrom(adapter().verifyPin('482913')),
+    ).resolves.toEqual({ kind: 'unavailable' });
+  });
+
+  it('reports a clear the plugin could not confirm as failed, so the reset says so', async () => {
+    const presence = adapter();
+    pinBridge.clear.mockReturnValueOnce(of('unavailable' as const));
+    await expect(firstValueFrom(presence.clearPin())).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'pin-clear-failed' },
+    });
+    pinBridge.clear.mockReturnValueOnce(throwError(() => new Error('down')));
+    await expect(firstValueFrom(presence.clearPin())).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'pin-clear-failed' },
+    });
+  });
+
+  it('has nothing to clear on a host without the plugin', async () => {
+    pinBridge.available = false;
+    pinBridge.clear.mockReturnValueOnce(of('unavailable' as const));
+    await expect(firstValueFrom(adapter().clearPin())).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
     });
   });
 
@@ -166,11 +300,11 @@ describe('CapacitorUserPresenceAdapter', () => {
     ).resolves.toEqual({ kind: 'cancelled' });
   });
 
-  it('treats an unreadable sensor state as no system prompt', async () => {
+  it('treats an unreadable sensor state as no system prompt, keeping the PIN', async () => {
     plugin.checkBiometry.mockRejectedValue(new Error('bridge down'));
     await expect(firstValueFrom(adapter().support())).resolves.toEqual({
       system: { kind: 'unavailable', reason: 'not-supported' },
-      pin: { kind: 'unavailable', reason: 'not-supported' },
+      pin: { kind: 'available', set: true, nextAttemptAt: null },
     });
   });
 });
