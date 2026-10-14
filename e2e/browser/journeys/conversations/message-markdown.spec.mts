@@ -741,8 +741,7 @@ test.describe('Maths', () => {
     await sendMessage(request, hs, room, {
       body: 'formulas that reach outside',
       html:
-        '<p><span data-mx-maths="\\kern{-2em}\\kern{-2em}\\text{Bob}"><code>Bob</code></span> escape:' +
-        ' <span data-mx-maths="b\\smash{\\raisebox{-8em}{\\text{fake low}}}"><code>low</code></span>' +
+        '<p>escape: <span data-mx-maths="b\\smash{\\raisebox{-8em}{\\text{fake low}}}"><code>low</code></span>' +
         ' and <span data-mx-maths="c\\smash{\\raisebox{3em}{\\raisebox{3em}{\\text{fake high}}}}"><code>high</code></span>' +
         ' and <span data-mx-maths="d\\smash{\\raisebox{-9em}{\\raisebox{-9em}{\\text{fake deep}}}}"><code>deep</code></span></p>',
     });
@@ -754,6 +753,11 @@ test.describe('Maths', () => {
         '<div data-mx-maths="\\sum_{i=1}^{n} i"><code>sum</code></div>' +
         '<div data-mx-maths="\\begin{pmatrix}1&amp;2\\\\3&amp;4\\end{pmatrix}"><code>matrix</code></div>',
     });
+    // Last, so it stays on screen: kerns that add up move "Bob" into the sender column.
+    await sendMessage(request, hs, room, {
+      body: 'a formula that reaches sideways',
+      html: '<p><span data-mx-maths="\\kern{-1.5em}\\kern{-1.5em}\\text{Bob}"><code>Bob</code></span> sideways</p>',
+    });
     await signInAndOpen(page, room);
 
     const legitBody = page.locator('.scroll .msg__text--html', {
@@ -762,62 +766,86 @@ test.describe('Maths', () => {
     const escapeBody = page.locator('.scroll .msg__text--html', {
       hasText: 'escape:',
     });
+    const sidewaysBody = page.locator('.scroll .msg__text--html', {
+      hasText: 'sideways',
+    });
     await expect(legitBody.locator('.mx-maths .katex')).toHaveCount(7, {
       timeout: 30_000,
     });
-    await expect(escapeBody.locator('.mx-maths .katex')).toHaveCount(4);
+    await expect(escapeBody.locator('.mx-maths .katex')).toHaveCount(3);
+    await expect(sidewaysBody.locator('.mx-maths .katex')).toHaveCount(1);
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
 
     // Nothing these formulas draw reaches outside their message body, give or take the 1em
     // clip margin: around that, the timeline looks the same whether the maths shows or not.
-    // Kerns that add up move "Bob" into the sender column; smashed, raised and lowered boxes
-    // move text above and below.
-    const around = await escapeBody.evaluate((body) => {
-      const pane = body.closest('.scroll')!.getBoundingClientRect();
-      const em = parseFloat(
-        getComputedStyle(body.querySelector('.katex')!).fontSize,
+    // Smashed, raised and lowered boxes move text above and below; "Bob" moves sideways.
+    const staysInside = async (body: typeof escapeBody): Promise<boolean[]> => {
+      const around = await body.evaluate((element) => {
+        const pane = element.closest('.scroll')!.getBoundingClientRect();
+        const em = parseFloat(
+          getComputedStyle(element.querySelector('.katex')!).fontSize,
+        );
+        const box = element.getBoundingClientRect();
+        const [left, top] = [box.left - em, box.top - em];
+        const [right, bottom] = [box.right + em, box.bottom + em];
+        return [
+          {
+            x: pane.left,
+            y: pane.top,
+            width: pane.width,
+            height: top - pane.top,
+          },
+          {
+            x: pane.left,
+            y: bottom,
+            width: pane.width,
+            height: pane.bottom - bottom,
+          },
+          {
+            x: pane.left,
+            y: Math.max(top, pane.top),
+            width: left - pane.left,
+            height: Math.min(bottom, pane.bottom) - Math.max(top, pane.top),
+          },
+          {
+            x: right,
+            y: Math.max(top, pane.top),
+            width: pane.right - right,
+            height: Math.min(bottom, pane.bottom) - Math.max(top, pane.top),
+          },
+        ].filter((region) => region.width >= 1 && region.height >= 1);
+      });
+      const timeline = () =>
+        Promise.all(
+          around.map((clip) =>
+            page.screenshot({ clip, animations: 'disabled' }),
+          ),
+        );
+      const withMaths = await timeline();
+      await body.evaluate((element) =>
+        element
+          .querySelectorAll<HTMLElement>('.mx-maths')
+          .forEach((maths) => (maths.style.visibility = 'hidden')),
       );
-      const box = body.getBoundingClientRect();
-      const [left, top] = [box.left - em, box.top - em];
-      const [right, bottom] = [box.right + em, box.bottom + em];
-      return [
-        {
-          x: pane.left,
-          y: pane.top,
-          width: pane.width,
-          height: top - pane.top,
-        },
-        {
-          x: pane.left,
-          y: bottom,
-          width: pane.width,
-          height: pane.bottom - bottom,
-        },
-        { x: pane.left, y: top, width: left - pane.left, height: bottom - top },
-        { x: right, y: top, width: pane.right - right, height: bottom - top },
-      ].filter((region) => region.width >= 1 && region.height >= 1);
-    });
-    expect(around.length).toBeGreaterThanOrEqual(3);
-    const timeline = () =>
-      Promise.all(
-        around.map((clip) => page.screenshot({ clip, animations: 'disabled' })),
+      const withoutMaths = await timeline();
+      await body.evaluate((element) =>
+        element
+          .querySelectorAll<HTMLElement>('.mx-maths')
+          .forEach((maths) => (maths.style.visibility = '')),
       );
-    const withMaths = await timeline();
-    await escapeBody.evaluate((body) =>
-      body
-        .querySelectorAll<HTMLElement>('.mx-maths')
-        .forEach((maths) => (maths.style.visibility = 'hidden')),
-    );
-    const withoutMaths = await timeline();
-    expect(
-      withMaths.map((shot, index) => shot.equals(withoutMaths[index])),
-    ).toEqual(around.map(() => true));
+      return withMaths.map((shot, index) => shot.equals(withoutMaths[index]));
+    };
+    const sideways = await staysInside(sidewaysBody);
+    expect(sideways.length).toBeGreaterThanOrEqual(3);
+    expect(sideways).toEqual(sideways.map(() => true));
+    const vertical = await staysInside(escapeBody);
+    expect(vertical).toEqual(vertical.map(() => true));
 
     // The clip keeps every pixel of the legitimate formulas: lifting it changes nothing.
     const clipped = await legitBody.screenshot({ animations: 'disabled' });
     await page.addStyleTag({
       content:
-        '.mx-maths .katex-html > .katex-base { overflow: visible !important; }',
+        '.mx-maths .katex-html > .katex-base { clip-path: none !important; }',
     });
     const unclipped = await legitBody.screenshot({ animations: 'disabled' });
     expect(clipped.equals(unclipped)).toBe(true);
