@@ -33,7 +33,9 @@ import {
   timer,
 } from 'rxjs';
 
-type AwayEvent = 'away' | 'back' | 'system-ui-opened' | 'system-ui-closed';
+/** `hidden`: away because the host hid or minimised the app, which the shell may hold. */
+type AwayEvent =
+  'hidden' | 'away' | 'back' | 'system-ui-opened' | 'system-ui-closed';
 
 /** Time away since `since`; `floorMs` is the least that locks (see SYSTEM_UI_CLOSED_GRACE_MS). */
 interface AwayPeriod {
@@ -92,10 +94,10 @@ export class AppLockLifecycleBinding {
     );
   }
 
-  private presence(): Observable<'away' | 'back'> {
+  private presence(): Observable<'hidden' | 'away' | 'back'> {
     const lifecycle = this.lifecycle.events.pipe(
       map((event) =>
-        event.kind === 'background' ? ('away' as const) : ('back' as const),
+        event.kind === 'background' ? ('hidden' as const) : ('back' as const),
       ),
     );
     if (this.surface !== 'desktop' || !this.window) return lifecycle;
@@ -111,6 +113,8 @@ export class AppLockLifecycleBinding {
   private awayTimer(): Observable<never> {
     return defer(() => {
       let away = false;
+      // Hidden or minimised since the last "back": only then can the shell hold the window.
+      let hidden = false;
       let period: AwayPeriod | null = null;
       let pending: Subscription | undefined;
       let reveal: Subscription | undefined;
@@ -143,6 +147,8 @@ export class AppLockLifecycleBinding {
       const back = (): void => {
         const ended = period;
         const wasLocked = this.appLock.locked();
+        const wasHidden = hidden;
+        hidden = false;
         stop();
         if (
           ended &&
@@ -152,7 +158,12 @@ export class AppLockLifecycleBinding {
           this.appLock.lockNow();
         }
         reveal?.unsubscribe();
-        reveal = this.revealHeldWindow(wasLocked).subscribe();
+        reveal = undefined;
+        // The shell holds a window only while App lock is on and only after hiding it, so a
+        // focus change alone, or an app without the lock, has nothing to reveal.
+        if (wasHidden && this.appLock.enabled()) {
+          reveal = this.revealHeldWindow(wasLocked).subscribe();
+        }
       };
 
       return merge(
@@ -163,6 +174,11 @@ export class AppLockLifecycleBinding {
       ).pipe(
         tap((event: AwayEvent) => {
           switch (event) {
+            case 'hidden':
+              hidden = true;
+              away = true;
+              begin(0);
+              return;
             case 'away':
               away = true;
               begin(0);

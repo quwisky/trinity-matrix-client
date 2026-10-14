@@ -28,6 +28,8 @@ function setup(
     desktop?: boolean;
     lockAfter?: string;
     locked?: boolean;
+    /** App lock turned on; it is unless a test says otherwise. */
+    enabled?: boolean;
     /** The real system-UI count, for the producers that report to it. */
     systemUi?: 'mock' | 'real';
     providers?: Provider[];
@@ -38,8 +40,9 @@ function setup(
       desktopBridgeFixture();
   }
   let now = 1_000_000;
+  const enabled = options.enabled ?? true;
   const status = signal<'off' | 'locked' | 'unlocked'>(
-    options.locked ? 'locked' : 'unlocked',
+    !enabled ? 'off' : options.locked ? 'locked' : 'unlocked',
   );
   const locked = signal(options.locked ?? false);
   const lifecycle = new Subject<LifecycleEvent>();
@@ -59,7 +62,7 @@ function setup(
       MockProvider(AppLockService, {
         status: status.asReadonly(),
         locked: locked.asReadonly(),
-        enabled: signal(true).asReadonly(),
+        enabled: signal(enabled).asReadonly(),
         lockAfter: signal(options.lockAfter ?? '1m').asReadonly() as never,
         lockNow,
       }),
@@ -279,8 +282,35 @@ describe('AppLockLifecycleBinding', () => {
       locked: false,
       accelerator: null,
     });
+    lifecycle.next({ kind: 'background' });
     lifecycle.next({ kind: 'active' });
     expect(coverPainted).toHaveBeenCalledOnce();
+    // The same return also brings focus back: the shell has already been told.
+    window.dispatchEvent(new Event('focus'));
+    expect(coverPainted).toHaveBeenCalledOnce();
+    lifetime.unsubscribe();
+  });
+
+  it('tells the shell nothing when a window that never left the screen gets focus back', () => {
+    // The shell holds a window only while it is hidden or minimised; a focus change alone
+    // has nothing for it to reveal.
+    const { coverPainted, lifetime } = setup({ desktop: true });
+    window.dispatchEvent(new Event('blur'));
+    window.dispatchEvent(new Event('focus'));
+    expect(coverPainted).not.toHaveBeenCalled();
+    lifetime.unsubscribe();
+  });
+
+  it('tells the shell nothing while App lock is off', () => {
+    const { lifecycle, coverPainted, lifetime } = setup({
+      desktop: true,
+      enabled: false,
+    });
+    lifecycle.next({ kind: 'background' });
+    lifecycle.next({ kind: 'active' });
+    window.dispatchEvent(new Event('blur'));
+    window.dispatchEvent(new Event('focus'));
+    expect(coverPainted).not.toHaveBeenCalled();
     lifetime.unsubscribe();
   });
 
@@ -305,6 +335,12 @@ describe('AppLockLifecycleBinding', () => {
     paintFrame(0);
     expect(coverPainted).not.toHaveBeenCalled();
     paintFrame(16);
+    expect(coverPainted).toHaveBeenCalledOnce();
+    // Focus moving away and back while locked on screen has nothing more to reveal.
+    window.dispatchEvent(new Event('blur'));
+    window.dispatchEvent(new Event('focus'));
+    paintFrame(32);
+    paintFrame(48);
     expect(coverPainted).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
   });
