@@ -26,6 +26,7 @@ import {
   uploadPng,
 } from '../../support/formatted-message-journey.mts';
 import { sendWithRetry } from '../../support/cs-api.mts';
+import { nextTestResourceId } from '../../../support/namespace.mts';
 
 // Covers the markdown render path end to end, through the REAL composer so the wire
 // format is exercised, not just the rendering:
@@ -987,6 +988,256 @@ test.describe('Maths', () => {
       );
     });
   }
+
+  // A smashed raise on a body's first or last line reaches above or below it. The body clips
+  // on every side, so the head line (name, time, "(edited)") and the reactions stay the
+  // sender's own to draw and the reader's to click, on a first and a grouped message.
+  for (const viewport of [
+    { width: 1280, height: 800 },
+    { width: 390, height: 844 },
+  ]) {
+    test(`keeps maths off the head line and reactions at ${viewport.width}px`, async ({
+      page,
+      request,
+    }) => {
+      const hs = session.hs as string;
+      const room = await seedFormattedRoom(request, hs, 'maths-head');
+      const auth = { Authorization: `Bearer ${room.account.accessToken}` };
+      const roomUrl = `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room.roomId)}`;
+      const reaching = (label: string): string =>
+        `<p><span data-mx-maths="\\smash[t]{\\raisebox{1.2em}{\\rule{14em}{1.2em}}}"><code>up</code></span> ${label} first line</p>` +
+        `<p>${label} last line <span data-mx-maths="\\smash[b]{\\raisebox{-2em}{\\rule{14em}{1.2em}}}"><code>down</code></span></p>`;
+      const edit = (eventId: string, label: string) =>
+        sendWithRetry('edit message', () =>
+          request.put(
+            `${roomUrl}/send/m.room.message/${nextTestResourceId('txn')}`,
+            {
+              headers: auth,
+              data: {
+                msgtype: 'm.text',
+                body: `* ${label}`,
+                format: 'org.matrix.custom.html',
+                formatted_body: reaching(label),
+                'm.new_content': {
+                  msgtype: 'm.text',
+                  body: label,
+                  format: 'org.matrix.custom.html',
+                  formatted_body: reaching(label),
+                },
+                'm.relates_to': { rel_type: 'm.replace', event_id: eventId },
+              },
+            },
+          ),
+        );
+      const react = (eventId: string) =>
+        sendWithRetry('react', () =>
+          request.put(
+            `${roomUrl}/send/m.reaction/${nextTestResourceId('txn')}`,
+            {
+              headers: auth,
+              data: {
+                'm.relates_to': {
+                  rel_type: 'm.annotation',
+                  event_id: eventId,
+                  key: '👍',
+                },
+              },
+            },
+          ),
+        );
+      for (const label of ['heading', 'grouped']) {
+        const eventId = await sendMessage(request, hs, room, {
+          body: label,
+          html: reaching(label),
+        });
+        await edit(eventId, label);
+        await react(eventId);
+      }
+      await page.setViewportSize(viewport);
+      await signInAndOpen(page, room);
+
+      const pane = page.locator('.scroll');
+      for (const label of ['heading', 'grouped']) {
+        const body = pane.locator('.msg__text--html', {
+          hasText: `${label} first line`,
+        });
+        await expect(body.locator('.mx-maths .katex')).toHaveCount(2, {
+          timeout: 30_000,
+        });
+        const row = pane.locator('.msg', {
+          has: page.locator('.msg__text--html', {
+            hasText: `${label} first line`,
+          }),
+        });
+        await expect(row.getByTestId('msg-edited')).toBeVisible({
+          timeout: 20_000,
+        });
+        await expect(row.locator('.reaction').first()).toBeVisible({
+          timeout: 20_000,
+        });
+      }
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+
+      const heading = pane.locator('.msg', {
+        has: page.locator('.msg__text--html', {
+          hasText: 'heading first line',
+        }),
+      });
+      const grouped = pane.locator('.msg', {
+        has: page.locator('.msg__text--html', {
+          hasText: 'grouped first line',
+        }),
+      });
+      await expect(grouped).toHaveClass(/msg--cont/);
+      const targets = [
+        heading.locator('.msg__author'),
+        heading.locator('.msg__time'),
+        heading.getByTestId('msg-edited'),
+        heading.locator('.reaction').first(),
+        grouped.getByTestId('msg-edited'),
+        grouped.locator('.reaction').first(),
+      ];
+      // Each target's centre is its own to hit; a miss names what took it (class names only).
+      const hits: string[] = [];
+      for (const target of targets) {
+        hits.push(
+          await target.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+              rect.left + rect.width / 2,
+              rect.top + rect.height / 2,
+            );
+            return hit && element.contains(hit)
+              ? 'itself'
+              : `${element.localName}.${element.className} → ${hit?.localName}.${hit?.getAttribute('class')}`;
+          }),
+        );
+      }
+      expect(hits).toEqual(targets.map(() => 'itself'));
+
+      // Around each body, past the focus-ring reach, nothing changes when its maths is hidden.
+      for (const label of ['heading', 'grouped']) {
+        const body = pane.locator('.msg__text--html', {
+          hasText: `${label} first line`,
+        });
+        const around = await body.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const scroller = element.closest('.scroll')!.getBoundingClientRect();
+          const reach = 5;
+          const left = Math.floor(box.left) - reach;
+          const right = Math.ceil(box.right) + reach;
+          const top = Math.floor(box.top) - reach;
+          const bottom = Math.ceil(box.bottom) + reach;
+          return [
+            {
+              x: scroller.left,
+              y: scroller.top,
+              width: scroller.width,
+              height: top - scroller.top,
+            },
+            {
+              x: scroller.left,
+              y: bottom,
+              width: scroller.width,
+              height: scroller.bottom - bottom,
+            },
+            {
+              x: scroller.left,
+              y: top,
+              width: left - scroller.left,
+              height: bottom - top,
+            },
+            {
+              x: right,
+              y: top,
+              width: scroller.right - right,
+              height: bottom - top,
+            },
+          ]
+            .map((region) => ({
+              x: Math.ceil(region.x),
+              y: Math.ceil(region.y),
+              width: Math.floor(region.width),
+              height: Math.floor(region.height),
+            }))
+            .filter((region) => region.width >= 1 && region.height >= 1);
+        });
+        const shots = () =>
+          Promise.all(
+            around.map((clip) =>
+              page.screenshot({ clip, animations: 'disabled' }),
+            ),
+          );
+        const withMaths = await shots();
+        await body.evaluate((element) =>
+          element
+            .querySelectorAll<HTMLElement>('.mx-maths')
+            .forEach((maths) => (maths.style.visibility = 'hidden')),
+        );
+        const withoutMaths = await shots();
+        await body.evaluate((element) =>
+          element
+            .querySelectorAll<HTMLElement>('.mx-maths')
+            .forEach((maths) => (maths.style.visibility = '')),
+        );
+        expect(
+          withMaths.map((shot, index) => shot.equals(withoutMaths[index])),
+        ).toEqual(around.map(() => true));
+      }
+    });
+  }
+
+  // The body clip must not cut list numbers: one too long for the indent sits inside its item.
+  test('keeps long list numbers whole inside the body clip', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'list-numbers');
+    await sendMessage(request, hs, room, {
+      body: 'long list numbers',
+      html:
+        '<p>lists:</p><ol start="100000"><li>far along</li><li>further</li></ol>' +
+        '<ol start="95"><li>a</li><li>b</li><li>c</li><li>d</li></ol>' +
+        '<ol><li>one</li><li>two</li></ol>',
+    });
+    await signInAndOpen(page, room);
+
+    const body = page.locator('.scroll .msg__text--html', {
+      hasText: 'far along',
+    });
+    await expect(body).toBeVisible({ timeout: 20_000 });
+    // Six digits sit inside their items; two get a wider indent; one keeps the usual.
+    const positions = await body.evaluate((element) =>
+      [...element.querySelectorAll('ol')].map(
+        (list) => getComputedStyle(list).listStylePosition,
+      ),
+    );
+    expect(positions).toEqual(['inside', 'outside', 'outside']);
+
+    // Lifting the clip changes no pixel: no number reached past it.
+    const around = await body.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return {
+        x: Math.floor(box.left) - 40,
+        y: Math.floor(box.top),
+        width: Math.ceil(box.width) + 40,
+        height: Math.ceil(box.height),
+      };
+    });
+    const clipped = await page.screenshot({
+      clip: around,
+      animations: 'disabled',
+    });
+    await page.addStyleTag({
+      content: '.msg__text--html { clip-path: none !important; }',
+    });
+    const unclipped = await page.screenshot({
+      clip: around,
+      animations: 'disabled',
+    });
+    expect(clipped.equals(unclipped)).toBe(true);
+  });
 
   // High Contrast would paint `\phantom`'s transparent content in the system text colour.
   test('keeps phantom maths invisible in forced colours', async ({
