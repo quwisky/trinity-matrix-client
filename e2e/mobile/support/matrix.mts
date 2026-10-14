@@ -115,6 +115,34 @@ export async function sendMessage(
   return response['event_id'] as string;
 }
 
+/** Send an HTML-formatted message into a room the user is in; resolves its event id. */
+export async function sendFormattedMessage(
+  token: string,
+  roomId: string,
+  body: string,
+  formattedBody: string,
+): Promise<string> {
+  const response = await json(
+    await fetch(
+      `${HOMESERVER_HTTP}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${uniqueId('txn')}`,
+      {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          msgtype: 'm.text',
+          body,
+          format: 'org.matrix.custom.html',
+          formatted_body: formattedBody,
+        }),
+      },
+    ),
+  );
+  return response['event_id'] as string;
+}
+
 /** A client-server API call as the token's user; throws unless it succeeds. */
 async function clientRequest(
   token: string,

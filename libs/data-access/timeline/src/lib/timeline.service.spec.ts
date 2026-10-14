@@ -244,7 +244,7 @@ describe('TimelineService', () => {
     expect(html).not.toContain('header-bar');
   });
 
-  it('neutralizes javascript: links and strips the new-tab target', () => {
+  it('neutralizes javascript: links and ignores a sender’s target', () => {
     const svc = setup([
       fakeEvent({
         id: '$l',
@@ -259,8 +259,14 @@ describe('TimelineService', () => {
 
     const html = svc.messages()[0].html ?? '';
     expect(html).not.toContain('javascript:');
-    expect(html).not.toContain('target'); // no reverse-tabnabbing surface
-    expect(html).toContain('https://ok.test'); // safe link preserved
+    const [neutralised, safe] = Array.from(
+      new DOMParser().parseFromString(html, 'text/html').querySelectorAll('a'),
+    );
+    // The sender's target never survives; only the render pass marks safe http(s) links.
+    expect(neutralised.hasAttribute('target')).toBe(false);
+    expect(safe.getAttribute('href')).toBe('https://ok.test');
+    expect(safe.getAttribute('target')).toBe('_blank');
+    expect(safe.getAttribute('rel')).toBe('noopener noreferrer');
   });
 
   it('canRedactOthers is false for a regular member (power below redact level)', () => {
@@ -2015,7 +2021,7 @@ describe('TimelineService', () => {
         }),
       ]);
       expect(svc.messages()[0].html).toContain(
-        '<a href="https://example.com">https://example.com</a>',
+        '<a href="https://example.com" target="_blank" rel="noopener noreferrer">https://example.com</a>',
       );
     });
 
