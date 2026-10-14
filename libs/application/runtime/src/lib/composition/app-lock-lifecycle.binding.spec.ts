@@ -8,6 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import { TitleBarState } from '@trinity/application/workspace';
 import { APP_LOCK_CLOCK, AppLockService } from '@trinity/data-access/app-lock';
 import {
+  ExternalBrowserService,
   KeyboardShortcutsService,
   MediaPickerService,
   TrackFileChooserDirective,
@@ -29,7 +30,7 @@ import {
 } from '@trinity/runtime/host';
 import { desktopBridgeFixture } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, Subject, of } from 'rxjs';
+import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppLockLifecycleBinding } from './app-lock-lifecycle.binding';
 
@@ -43,6 +44,11 @@ const native = vi.hoisted(() => ({
     checkPermissions: vi.fn(),
     requestPermissions: vi.fn(),
   },
+  browser: {
+    open: vi.fn(() => Promise.resolve()),
+    // The person never closes the sheet in these tests.
+    addListener: vi.fn(() => new Promise(() => undefined)),
+  },
 }));
 vi.mock('@capacitor/core', async (importOriginal) => {
   const actual = await importOriginal<{
@@ -53,6 +59,7 @@ vi.mock('@capacitor/core', async (importOriginal) => {
     Capacitor: { ...actual.Capacitor, isNativePlatform: () => native.platform },
   };
 });
+vi.mock('@capacitor/browser', () => ({ Browser: native.browser }));
 vi.mock('@capacitor/camera', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   Camera: native.camera,
@@ -591,6 +598,30 @@ describe('AppLockLifecycleBinding', () => {
       lifecycle.next({ kind: 'background' });
       advance(120_000);
       // No callback, no close and no closed event: coming back releases the count.
+      lifecycle.next({ kind: 'active' });
+      TestBed.tick();
+      expect(lockNow).not.toHaveBeenCalled();
+      lifecycle.next({ kind: 'background' });
+      expect(lockNow).toHaveBeenCalledOnce();
+      lifetime.unsubscribe();
+    });
+
+    it('holds the away timer while an account page is open in the in-app browser', async () => {
+      native.platform = true;
+      const { lifecycle, lockNow, advance, lifetime } = setup({
+        lockAfter: 'immediately',
+        systemUi: 'real',
+      });
+      await firstValueFrom(
+        TestBed.inject(ExternalBrowserService).open(
+          'https://account.example/account',
+        ),
+      );
+      TestBed.tick();
+      lifecycle.next({ kind: 'background' });
+      advance(120_000);
+      expect(lockNow).not.toHaveBeenCalled();
+      // No closed event and no link: coming back releases the count.
       lifecycle.next({ kind: 'active' });
       TestBed.tick();
       expect(lockNow).not.toHaveBeenCalled();

@@ -1,7 +1,9 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
-import { Observable, catchError, defer, from, map, of } from 'rxjs';
+import { HostBrowserSheetService } from '@trinity/runtime/host';
+import { Observable, catchError, defer, from, map, of, tap } from 'rxjs';
+import { browserSheetClosed } from './browser-sheet-closed';
 
 /**
  * Opens an explicit third-party destination outside Trinity's app surface.
@@ -11,9 +13,14 @@ import { Observable, catchError, defer, from, map, of } from 'rxjs';
  * Protocol validation is repeated here even when a caller already validated its model: a
  * platform boundary must not become a `javascript:` dispatch primitive after a future
  * call-site refactor.
+ *
+ * The native sheet is Trinity's own system UI, counted like the sign-in sheet so App lock never
+ * locks behind it; the web and desktop browsers are outside Trinity.
  */
 @Injectable({ providedIn: 'root' })
 export class ExternalBrowserService {
+  private readonly sheet = inject(HostBrowserSheetService);
+
   /** Returns false when the URL is unsafe/malformed or the platform dispatch fails. */
   open(url: string): Observable<boolean> {
     return defer(() => {
@@ -21,7 +28,12 @@ export class ExternalBrowserService {
         return of(false);
       }
       if (Capacitor.isNativePlatform()) {
-        return from(Browser.open({ url })).pipe(map(() => true));
+        // From before the sheet shows: the plugin's open resolves only once it is up.
+        this.sheet.begin(browserSheetClosed);
+        return from(Browser.open({ url })).pipe(
+          map(() => true),
+          tap({ error: () => this.sheet.end() }),
+        );
       }
 
       window.open(url, '_blank', 'noopener,noreferrer');
