@@ -48,11 +48,18 @@ linux:
 deb:
   packageName: trinity-next
   artifactName: trinity-desktop_${version}_${arch}.${ext}
+# No ${arch} here or in nsis below: CI packages Linux and Windows for x64 only, and
+# electron-builder's default names (which stable uses) omit the arch for x64 alone. A
+# pinned name omits it for every arch, so before adding an arm64 Linux or Windows build,
+# pin -${arch} names (for example Trinity-${version}-${arch}.${ext}) or the two builds
+# overwrite each other.
 appImage:
   artifactName: Trinity-${version}.${ext}
 
 mac:
   icon: build/next/Trinity.icon
+  extendInfo:
+    NSCameraUsageDescription: Trinity Next uses the camera to scan device-verification QR codes.
   # The zip's name; the dmg has its own below.
   artifactName: Trinity-${version}-${arch}-mac.${ext}
 dmg:
@@ -63,4 +70,5 @@ dmg:
 win:
   icon: build/next/icon.png
 nsis:
+  # No ${arch}: x64 only; see the note above appImage.
   artifactName: Trinity Setup ${version}.${ext}

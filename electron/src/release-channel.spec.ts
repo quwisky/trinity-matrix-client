@@ -25,6 +25,9 @@ describe('releaseChannel', () => {
     '0.5',
     '01.2.3',
     ' 0.5.0',
+    '0.5.0 ',
+    '0.5.0\n',
+    '0.5.0-rc.1',
     '',
   ])('refuses %j, so a mistyped version cannot ship as stable', (version) => {
     expect(() => releaseChannel(version)).toThrow(/Unknown release channel/);

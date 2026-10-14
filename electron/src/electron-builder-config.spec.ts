@@ -3,7 +3,6 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import type { Configuration } from 'electron-builder';
 import { describe, expect, it } from 'vitest';
-import { parse } from 'yaml';
 import { builderConfigFor, mergeConfig } from '../electron-builder.config';
 import { CHANNEL_IDENTITY } from './release-channel';
 
@@ -11,8 +10,33 @@ const electronRoot = join(import.meta.dirname, '..');
 const STABLE_VERSION = '0.5.0';
 const NEXT_VERSION = '0.5.0-next.3';
 
-const baseFile = (): unknown =>
-  parse(readFileSync(join(electronRoot, 'electron-builder.yml'), 'utf8'));
+/** electron-builder's own config loader (js-yaml for YAML, jiti for TypeScript). */
+async function loadWithBuilder(file: string): Promise<unknown> {
+  const fromBuilder = createRequire(
+    createRequire(import.meta.url).resolve('electron-builder'),
+  );
+  const { getConfig } = fromBuilder('app-builder-lib/out/util/config/load') as {
+    getConfig: (
+      request: {
+        readonly packageKey: string;
+        readonly configFilename: string;
+        readonly projectDir: string;
+        readonly packageMetadata: null;
+      },
+      configPath: string,
+    ) => Promise<{ readonly result: unknown }>;
+  };
+  const { result } = await getConfig(
+    {
+      packageKey: 'build',
+      configFilename: 'electron-builder',
+      projectDir: electronRoot,
+      packageMetadata: null,
+    },
+    file,
+  );
+  return result;
+}
 const stable = (): Configuration => builderConfigFor(STABLE_VERSION).config;
 const next = (): Configuration => builderConfigFor(NEXT_VERSION).config;
 
@@ -54,11 +78,20 @@ async function validate(config: Configuration): Promise<void> {
 }
 
 describe('electron-builder config by release channel', () => {
-  it('packages a plain X.Y.Z version from electron-builder.yml exactly as written', () => {
+  it('packages a plain X.Y.Z version from electron-builder.yml exactly as written', async () => {
     expect(builderConfigFor(STABLE_VERSION)).toEqual({
       channel: 'stable',
-      config: baseFile(),
+      config: await loadWithBuilder('electron-builder.yml'),
     });
+  });
+
+  it("is what electron-builder loads from --config for electron/package.json's version", async () => {
+    const { version } = JSON.parse(
+      readFileSync(join(electronRoot, 'package.json'), 'utf8'),
+    ) as { readonly version: string };
+    expect(await loadWithBuilder('electron-builder.config.ts')).toEqual(
+      builderConfigFor(version).config,
+    );
   });
 
   it('turns an X.Y.Z-next.N version into Trinity Next', () => {
@@ -79,6 +112,17 @@ describe('electron-builder config by release channel', () => {
     expect(config.deb).toMatchObject({ packageName: 'trinity-next' });
     expect(config.mac?.icon).toBe('build/next/Trinity.icon');
     expect(config.win?.icon).toBe('build/next/icon.png');
+  });
+
+  it("names each app in macOS's camera prompt", () => {
+    expect(stable().mac?.extendInfo).toEqual({
+      NSCameraUsageDescription:
+        'Trinity uses the camera to scan device-verification QR codes.',
+    });
+    expect(next().mac?.extendInfo).toEqual({
+      NSCameraUsageDescription:
+        'Trinity Next uses the camera to scan device-verification QR codes.',
+    });
   });
 
   it("names Trinity Next's data folder, lock and keychain item through the packaged package.json", () => {
