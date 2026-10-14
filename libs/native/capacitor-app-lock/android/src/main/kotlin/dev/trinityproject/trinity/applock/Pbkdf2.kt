@@ -39,26 +39,42 @@ internal object Pbkdf2 {
         }
     }
 
-    /** RFC 8018 section 5.2 with HMAC-SHA256 as the pseudorandom function. */
+    /**
+     * RFC 8018 section 5.2 with HMAC-SHA256 as the pseudorandom function. Each round writes
+     * into the same buffer, so the 600,000 rounds allocate nothing.
+     */
     fun withMac(password: ByteArray, salt: ByteArray, iterations: Int, length: Int): ByteArray {
         val mac = Mac.getInstance(MAC)
         mac.init(SecretKeySpec(password, MAC))
         val blockBytes = mac.macLength
         val derived = ByteArray(length)
+        val counter = ByteArray(4)
+        val u = ByteArray(blockBytes)
+        val t = ByteArray(blockBytes)
         var block = 1
         var offset = 0
-        while (offset < length) {
-            mac.update(salt)
-            mac.update(byteArrayOf((block ushr 24).toByte(), (block ushr 16).toByte(), (block ushr 8).toByte(), block.toByte()))
-            var u = mac.doFinal()
-            val t = u.copyOf()
-            repeat(iterations - 1) {
-                u = mac.doFinal(u)
-                for (i in t.indices) t[i] = (t[i].toInt() xor u[i].toInt()).toByte()
+        try {
+            while (offset < length) {
+                counter[0] = (block ushr 24).toByte()
+                counter[1] = (block ushr 16).toByte()
+                counter[2] = (block ushr 8).toByte()
+                counter[3] = block.toByte()
+                mac.update(salt)
+                mac.update(counter)
+                mac.doFinal(u, 0)
+                u.copyInto(t)
+                repeat(iterations - 1) {
+                    mac.update(u)
+                    mac.doFinal(u, 0)
+                    for (i in t.indices) t[i] = (t[i].toInt() xor u[i].toInt()).toByte()
+                }
+                t.copyInto(derived, offset, 0, minOf(blockBytes, length - offset))
+                offset += blockBytes
+                block += 1
             }
-            t.copyInto(derived, offset, 0, minOf(blockBytes, length - offset))
-            offset += blockBytes
-            block += 1
+        } finally {
+            u.fill(0)
+            t.fill(0)
         }
         return derived
     }

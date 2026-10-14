@@ -1,5 +1,8 @@
 package dev.trinityproject.trinity.applock
 
+import java.io.IOException
+import java.security.GeneralSecurityException
+import java.security.KeyStoreException
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
@@ -20,11 +23,15 @@ private class MemoryStore : PinRecordStore {
     var failReads = false
     var failWrites = false
     var failRemoves = false
+
+    /** Thrown by `read` as it is, checked or not, as a Keystore or Cipher error would be. */
+    var readFailure: Exception? = null
     var writes = 0
         private set
 
     override fun read(): String? {
         if (failReads) throw PinStoreException.Unreadable()
+        readFailure?.let { throw it }
         return text
     }
 
@@ -197,6 +204,89 @@ class PinVerifierTest {
         store.text = "not a record"
         assertEquals(PinStatus.Unavailable, verifier(store).status())
         assertEquals(PinCheck.Unavailable, verifier(store).verify(PIN))
+    }
+
+    /**
+     * Text that is not a JSON object is unavailable on every path, never a crash. On a device
+     * Android's JSONException is checked; here Maven's org.json throws an unchecked one. Both
+     * end in the decoder's `catch (error: Exception)`, which these inputs reach either way.
+     */
+    @Test
+    fun garbledRecordTextIsUnavailable() {
+        val whole = MemoryStore().also { assertEquals(PinSetResult.COMPLETED, verifier(it).set(PIN)) }.text
+        checkNotNull(whole)
+        val garbled = listOf(
+            "",
+            " ",
+            "not a record",
+            "{",
+            "}",
+            "null",
+            "[1]",
+            "\"text\"",
+            "{\"v\":1",
+            "{\"v\":1,}x",
+            whole.substring(0, whole.length / 2),
+            whole.dropLast(1),
+            "\u0000\uFFFD",
+        )
+        garbled.forEachIndexed { index, text ->
+            // Messages name the case by index: half a record holds part of a salt or hash.
+            val case = "garbled text $index"
+            assertTrue(case, PinRecord.decode(text) == null)
+            val store = MemoryStore()
+            store.text = text
+            assertEquals(case, PinStatus.Unavailable, verifier(store).status())
+            assertEquals(case, PinCheck.Unavailable, verifier(store).verify(PIN))
+            assertEquals(case, PinCheck.Unavailable, verifier(store).verify("12"))
+            assertEquals(case, PinSetResult.UNAVAILABLE, verifier(store).set(PIN))
+            assertTrue(case, store.text == text)
+        }
+    }
+
+    /** Checked store and crypto errors (Keystore, Cipher, I/O) are unavailable, never thrown. */
+    @Test
+    fun checkedStoreAndCryptoErrorsAreUnavailable() {
+        for (failure in listOf(IOException("io"), KeyStoreException("keystore"), GeneralSecurityException("cipher"))) {
+            val store = MemoryStore()
+            store.readFailure = failure
+            val case = failure.javaClass.simpleName
+            assertEquals(case, PinStatus.Unavailable, verifier(store).status())
+            assertEquals(case, PinCheck.Unavailable, verifier(store).verify(PIN))
+            assertEquals(case, PinSetResult.UNAVAILABLE, verifier(store).set(PIN))
+            assertEquals(case, 0, store.writes)
+        }
+        val store = MemoryStore()
+        assertEquals(PinSetResult.COMPLETED, verifier(store).set(PIN))
+        val before = store.text
+        val failingKdf = PinVerifier(
+            store,
+            { PinClockReading(now, uptime) },
+            1_000,
+            { _, _, _ -> throw GeneralSecurityException("kdf") },
+        )
+        assertEquals(PinCheck.Unavailable, failingKdf.verify(PIN))
+        assertEquals(PinSetResult.UNAVAILABLE, failingKdf.set(PIN))
+        assertTrue("the record is unchanged", before == store.text)
+    }
+
+    /** Neither a record nor anything that wraps it can print the salt or the hash. */
+    @Test
+    fun aRecordNeverPrintsItsSaltOrHash() {
+        val store = MemoryStore()
+        assertEquals(PinSetResult.COMPLETED, verifier(store).set(PIN))
+        val json = JSONObject(checkNotNull(store.text))
+        val salt = json.getString("salt")
+        val hash = json.getString("hash")
+        val record = checkNotNull(PinRecord.decode(checkNotNull(store.text)))
+        val text = record.toString()
+        assertFalse(text.contains(salt))
+        assertFalse(text.contains(hash))
+        assertTrue(text.contains("salt=<redacted>"))
+        assertTrue(text.contains("hash=<redacted>"))
+        val copy = record.copy(failures = 5, failureAtMs = 1.0, failureUptimeS = 2.0).toString()
+        assertFalse(copy.contains(salt) || copy.contains(hash))
+        assertTrue(copy.contains("failures=5"))
     }
 
     /** Setting a PIN over a record that cannot be read would skip the full reset. */

@@ -156,14 +156,19 @@ class PinVerifier internal constructor(
     }
 
     private fun readRecord(): Read {
+        // Exception, not RuntimeException: the store's Keystore and Cipher errors are checked.
         val text = try {
             store.read()
         } catch (error: Exception) {
             return Read.Unreadable
         }
         if (text == null) return Read.Missing
-        val record = PinRecord.decode(text) ?: return Read.Unreadable
-        return Read.Present(record)
+        val record = try {
+            PinRecord.decode(text)
+        } catch (error: Exception) {
+            null
+        }
+        return if (record == null) Read.Unreadable else Read.Present(record)
     }
 
     private fun save(record: PinRecord): Boolean = try {

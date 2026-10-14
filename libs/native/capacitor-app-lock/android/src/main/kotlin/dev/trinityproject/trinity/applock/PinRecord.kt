@@ -16,6 +16,11 @@ internal data class PinRecord(
 ) {
     val failureState: PinFailureState get() = PinFailureState(failures, failureAtMs, failureUptimeS)
 
+    /** Never the salt or the hash, so no log line or assertion message can carry them. */
+    override fun toString(): String =
+        "PinRecord(iterations=$iterations, failures=$failures, failureAtMs=$failureAtMs, " +
+            "failureUptimeS=$failureUptimeS, salt=<redacted>, hash=<redacted>)"
+
     fun encode(): String = JSONObject()
         .put("v", VERSION)
         .put("kdf", KDF)
@@ -50,7 +55,10 @@ internal data class PinRecord(
         fun decode(text: String): PinRecord? {
             val json = try {
                 JSONObject(text)
-            } catch (error: RuntimeException) {
+            } catch (error: Exception) {
+                // Exception, not RuntimeException: Android's JSONException is checked (the
+                // JVM tests' Maven org.json makes it unchecked), and an escaping one would end
+                // the plugin's worker and the app instead of reading as unavailable.
                 return null
             }
             if (count(json.opt("v")) != VERSION || json.opt("kdf") != KDF) return null

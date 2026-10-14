@@ -111,14 +111,17 @@ public class AppLockPlugin extends Plugin {
 
     /**
      * Runs a call on the worker. Anything unexpected is answered as `storage-unavailable` with
-     * fixed text, never the error's own message, so no call is left waiting.
+     * fixed text, never the error's own message, so no call is left waiting. It catches
+     * Exception, not RuntimeException: Kotlin declares no checked exceptions, so a checked one
+     * (Android's JSONException, a Keystore or Cipher error) could otherwise end the worker
+     * thread and the app.
      */
     private void submit(PluginCall call, Runnable task) {
         try {
             work.execute(() -> {
                 try {
                     task.run();
-                } catch (RuntimeException error) {
+                } catch (Exception error) {
                     call.reject(UNAVAILABLE_MESSAGE, STORAGE_UNAVAILABLE);
                 }
             });
