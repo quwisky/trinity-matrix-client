@@ -229,6 +229,7 @@ function capacitorSupportedOperations(
     'location',
     'secure-store',
     'lifecycle',
+    'user-presence',
     ...(notificationPresentation.kind === 'supported'
       ? (['notification-presentation'] as const)
       : []),
