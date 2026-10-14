@@ -236,6 +236,58 @@ describe('MessageRowComponent — Show more', () => {
     expect(document.activeElement).toBe(link);
   });
 
+  it('brings the focused control into view once the expanded body has rendered', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
+      frames.push(frame);
+      return frames.length;
+    });
+    const { clamp, fixture } = await renderRow({
+      long: true,
+      row: linkPastTheCut,
+    });
+    const link = clamp().querySelector<HTMLAnchorElement>('a')!;
+    const scrollIntoView = vi.fn();
+    link.scrollIntoView = scrollIntoView;
+
+    focusAs(link, true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    // Not before the frame after the render: the list's own correction comes first.
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    for (const frame of frames.splice(0)) frame(0);
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ block: 'nearest' }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('leaves the scroll alone when focus has moved on before the body expanded', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
+      frames.push(frame);
+      return frames.length;
+    });
+    const { clamp, button, fixture } = await renderRow({
+      long: true,
+      row: linkPastTheCut,
+    });
+    const link = clamp().querySelector<HTMLAnchorElement>('a')!;
+    const scrollIntoView = vi.fn();
+    link.scrollIntoView = scrollIntoView;
+
+    focusAs(link, true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    button()?.focus();
+    for (const frame of frames.splice(0)) frame(0);
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
   it('keeps a body collapsed when a mouse press focuses a link in it, so the click lands', async () => {
     const { clamp, fixture } = await renderRow({
       long: true,
