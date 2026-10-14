@@ -365,6 +365,23 @@ test.describe('Message grouping', () => {
       'opacity',
       '1',
     );
+    // The toolbar may already be up from the Show more click, placed while the expanded row was
+    // pinned to the bottom with its top far above the scrollport. A hover during a scroll is
+    // placed once the scroll settles (TimelineScrollActivity), so wait until the toolbar sits
+    // flush at the scrollport edge before opening the picker from it.
+    await expect
+      .poll(() =>
+        firstActionRow.evaluate((row) => {
+          const scroller = row.closest('.scroll');
+          const bar = row.querySelector('.msg__toolbar');
+          if (!scroller || !bar) return Infinity;
+          return Math.abs(
+            bar.getBoundingClientRect().top -
+              scroller.getBoundingClientRect().top,
+          );
+        }),
+      )
+      .toBeLessThanOrEqual(1);
     // The row is deliberately flush with the scrollport edge. Playwright's
     // actionability scroll would centre the absolutely positioned button and invalidate that
     // geometry before the application measures it, so activate the already-proven hit target
