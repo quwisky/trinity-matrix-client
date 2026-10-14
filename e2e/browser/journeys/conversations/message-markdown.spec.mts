@@ -19,6 +19,7 @@ import {
   seedFormattedRoom,
   sendMessage,
   signInAndOpen,
+  uploadPng,
 } from '../../support/formatted-message-journey.mts';
 
 // Covers the markdown render path end to end, through the REAL composer so the wire
@@ -317,5 +318,96 @@ test.describe('Sender colours', () => {
         timeout: 15_000,
       },
     );
+  });
+});
+
+// Inline images (spec A2): an uploaded mxc image renders from authenticated media at most
+// 300px tall and opens in the viewer; a remote image in the same message is never fetched.
+// A second image claims height="20000": too large to reserve a box, so only the 300px cap
+// (the stylesheet's and the directive's) keeps it from towering over the timeline.
+test.describe('Inline images', () => {
+  test.skip(!session.available, 'needs a homeserver');
+
+  test('shows an uploaded image at most 300px tall, opens it, and never fetches a remote one', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'inline-image');
+    const tall = await uploadPng(request, hs, room, 400, 900, 'tall.png');
+    const toweringMxc = await uploadPng(
+      request,
+      hs,
+      room,
+      300,
+      1200,
+      'towering.png',
+    );
+    const requested: string[] = [];
+    page.on('request', (outgoing) => requested.push(outgoing.url()));
+    await sendMessage(request, hs, room, {
+      body: 'a tall image, a towering image and a remote pixel',
+      html: `<p>tall:</p><img src="${tall}" width="400" height="900" alt="A tall test image"><img src="${toweringMxc}" width="400" height="20000" alt="A towering test image"><img src="https://tracker.invalid/pixel.png" alt="remote pixel">`,
+    });
+    await signInAndOpen(page, room);
+
+    const loaded = (element: HTMLElement | SVGElement): boolean =>
+      (element as HTMLImageElement).complete &&
+      (element as HTMLImageElement).naturalHeight > 0;
+
+    const image = page.getByRole('button', {
+      name: 'View image: A tall test image',
+    });
+    await expect(image).toHaveAttribute('src', /^blob:/, { timeout: 30_000 });
+    await expect
+      .poll(() => image.evaluate(loaded), { timeout: 15_000 })
+      .toBe(true);
+    const box = await image.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThan(100);
+    expect(box?.height ?? Infinity).toBeLessThanOrEqual(300.5);
+
+    const towering = page.getByRole('button', {
+      name: 'View image: A towering test image',
+    });
+    await expect(towering).toHaveAttribute('src', /^blob:/, {
+      timeout: 30_000,
+    });
+    await expect
+      .poll(() => towering.evaluate(loaded), { timeout: 15_000 })
+      .toBe(true);
+    // Both caps, read apart: the computed one, and the stylesheet's alone with the
+    // directive's inline max-height lifted for the read and put straight back.
+    const caps = await towering.evaluate((element) => {
+      const style = (element as HTMLImageElement).style;
+      const computed = parseFloat(getComputedStyle(element).maxHeight);
+      const inline = style.maxHeight;
+      style.maxHeight = '';
+      const stylesheet = parseFloat(getComputedStyle(element).maxHeight);
+      style.maxHeight = inline;
+      return { computed, stylesheet };
+    });
+    expect(caps.computed).toBeLessThanOrEqual(300);
+    expect(caps.stylesheet).toBeLessThanOrEqual(300);
+    const toweringBox = await towering.boundingBox();
+    expect(toweringBox?.height ?? 0).toBeGreaterThan(100);
+    expect(toweringBox?.height ?? Infinity).toBeLessThanOrEqual(300.5);
+
+    await expect(
+      page.locator('.scroll .msg__text--html', { hasText: 'remote pixel' }),
+    ).toBeVisible({ timeout: 15_000 });
+    expect(requested.some((url) => url.includes('tracker.invalid'))).toBe(
+      false,
+    );
+
+    await image.click();
+    const viewer = page.getByRole('dialog', { name: 'A tall test image' });
+    await expect(viewer).toBeVisible({ timeout: 20_000 });
+    await page.keyboard.press('Escape');
+    await expect(viewer).toBeHidden({ timeout: 15_000 });
+
+    // Closing the viewer releases the full image, so Enter downloads it again.
+    await image.focus();
+    await page.keyboard.press('Enter');
+    await expect(viewer).toBeVisible({ timeout: 20_000 });
   });
 });
