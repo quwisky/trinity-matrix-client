@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CHANNEL_IDENTITY, type ChannelIdentity } from './release-channel';
 
 const mocks = vi.hoisted(() => {
   const files = new Map<string, string>();
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => {
     }
   }
   return {
+    identity: { current: undefined as ChannelIdentity | undefined },
     files,
     notifications,
     FakeNotification,
@@ -43,6 +45,9 @@ vi.mock('electron', () => ({
   net: { fetch: mocks.fetch },
   Notification: mocks.FakeNotification,
   shell: { openExternal: mocks.openExternal },
+}));
+vi.mock('./app-identity', () => ({
+  appIdentity: () => mocks.identity.current,
 }));
 vi.mock('node:fs', () => ({
   existsSync: (path: string) => mocks.files.has(path),
@@ -78,6 +83,7 @@ const respond = (body: unknown, ok = true) =>
   });
 
 beforeEach(() => {
+  mocks.identity.current = CHANNEL_IDENTITY.stable;
   mocks.files.clear();
   mocks.notifications.length = 0;
   mocks.fetch.mockReset();
@@ -190,6 +196,24 @@ describe('checkForUpdates', () => {
     expect(mocks.showMessageBox).toHaveBeenCalledWith(
       expect.objectContaining({
         message: 'Trinity 0.2.0 is the latest version.',
+      }),
+    );
+  });
+
+  it("names Trinity Next in a prerelease's notices", async () => {
+    mocks.identity.current = CHANNEL_IDENTITY.next;
+    mocks.app.getVersion.mockReturnValue('0.3.0-next.1');
+    respond([release('v0.3.0-next.2')]);
+    await checkForUpdates({ manual: false });
+    expect(mocks.notifications.map((n) => n.options.title)).toEqual([
+      'Trinity Next 0.3.0-next.2 is available',
+    ]);
+
+    respond([release('v0.3.0-next.1')]);
+    await checkForUpdates({ manual: true });
+    expect(mocks.showMessageBox).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Trinity Next 0.3.0-next.1 is the latest version.',
       }),
     );
   });
