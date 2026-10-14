@@ -345,6 +345,29 @@
       overflow-clip-margin: 1em;
     }
 
+    // KaTeX pins a display formula's `\tag` to the right edge of the visible box, so in a
+    // formula that scrolls sideways it sits over the formula. Lay the line out as a row
+    // instead, as wide as the formula and at least the box: the spacer and the tag share the
+    // room left over (centring the formula, as KaTeX does), and the tag scrolls with it.
+    .mx-maths .katex-display > .katex > .katex-html:has(> .katex-tag) {
+      display: flex;
+      align-items: baseline;
+      width: max-content;
+      min-width: 100%;
+
+      &::before {
+        content: '';
+        flex: 1 1 0;
+      }
+
+      > .katex-tag {
+        position: static;
+        flex: 1 1 0;
+        padding-left: var(--trinity-space-4);
+        text-align: right;
+      }
+    }
+
     // High Contrast would draw `\phantom`'s transparent content, and the backplate it puts
     // behind each run of text covers the limits under a `\sum`. Maths keeps its own colours
     // there, set to the system's text and link colours (a mention is a link, too).
