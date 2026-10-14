@@ -91,13 +91,26 @@ export class BodyOverflowObserver implements OnDestroy {
 }
 
 /**
- * The body's full height from the entry itself, so no layout is read for it. The observed body
- * sits inside the clamp wrapper and is never clipped itself, so its border box is its whole
- * content height, padding included, as `scrollHeight` gives it. Every browser on the
- * `.browserslistrc` floor reports `borderBoxSize`; `scrollHeight` covers any that does not.
+ * The body's content height from the entry itself, so no layout is read for it: its lines, and
+ * the margins of its last element, which its bottom padding keeps inside. Not the border box: a
+ * formatted body pads itself by the focus-ring reach (and takes that back with a negative
+ * margin) so its overflow clip keeps rings whole, and that padding is not a line. Every browser
+ * on the `.browserslistrc` floor reports `contentBoxSize` and `contentRect`; for an entry that
+ * carries neither, `scrollHeight` less the block padding.
  */
 function heightOf(entry: ResizeObserverEntry): number {
-  return entry.borderBoxSize?.[0]?.blockSize ?? entry.target.scrollHeight;
+  const content =
+    entry.contentBoxSize?.[0]?.blockSize ?? entry.contentRect?.height;
+  if (content !== undefined) {
+    return content;
+  }
+  const style = entry.target.ownerDocument.defaultView?.getComputedStyle(
+    entry.target,
+  );
+  const padding =
+    (Number.parseFloat(style?.paddingTop ?? '') || 0) +
+    (Number.parseFloat(style?.paddingBottom ?? '') || 0);
+  return entry.target.scrollHeight - padding;
 }
 
 /**

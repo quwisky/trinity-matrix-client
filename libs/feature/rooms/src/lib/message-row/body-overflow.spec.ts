@@ -23,14 +23,15 @@ function observerOf(element: Element): TestResizeObserver {
 }
 
 /**
- * Report `element` at `height` through `observer`, as a layout would: in the entry's border box,
- * which every supported browser fills in. Reading the element's own layout throws, so a test
- * fails if the measurement goes back to reading it.
+ * Report `element` with content `height` through `observer`, as a layout would: in the entry's
+ * content box, which every supported browser fills in, with a border box `padding` taller.
+ * Reading the element's own layout throws, so a test fails if the measurement goes back to it.
  */
 function report(
   observer: TestResizeObserver,
   element: HTMLElement,
   height: number,
+  padding = 0,
 ): void {
   Object.defineProperty(element, 'scrollHeight', {
     configurable: true,
@@ -41,7 +42,9 @@ function report(
   observer.emit([
     {
       target: element,
-      borderBoxSize: [{ blockSize: height, inlineSize: 600 }],
+      contentBoxSize: [{ blockSize: height, inlineSize: 600 }],
+      contentRect: { height } as DOMRectReadOnly,
+      borderBoxSize: [{ blockSize: height + padding, inlineSize: 600 }],
     } as unknown as ResizeObserverEntry,
   ]);
 }
@@ -134,7 +137,18 @@ describe('BodyOverflowObserver', () => {
     expect(overflow.overflowing('$a')()).toBe(false);
   });
 
-  it('measures from the content height where an entry carries no border box', () => {
+  // A formatted body pads itself by the focus-ring reach (so an overflow clip keeps rings
+  // whole); that padding is not a line of the message.
+  it('counts the content, not the focus-ring padding, against the 24 lines', () => {
+    const element = body();
+    overflow.observe(element, '$a');
+
+    report(observerOf(element), element, 24 * LINE_PX, 8);
+
+    expect(overflow.overflowing('$a')()).toBe(false);
+  });
+
+  it('measures from the content height where an entry carries no box sizes', () => {
     const element = body();
     overflow.observe(element, '$a');
     Object.defineProperty(element, 'scrollHeight', {
@@ -147,6 +161,32 @@ describe('BodyOverflowObserver', () => {
     ]);
 
     expect(overflow.overflowing('$a')()).toBe(true);
+  });
+
+  it('leaves the block padding out where an entry carries no box sizes', () => {
+    const element = body();
+    overflow.observe(element, '$a');
+    const original = window.getComputedStyle;
+    vi.mocked(window.getComputedStyle).mockImplementation((target, pseudo) =>
+      target === element
+        ? ({
+            lineHeight: `${LINE_PX}px`,
+            fontSize: '16px',
+            paddingTop: '4px',
+            paddingBottom: '4px',
+          } as CSSStyleDeclaration)
+        : original(target, pseudo),
+    );
+    Object.defineProperty(element, 'scrollHeight', {
+      configurable: true,
+      value: 24 * LINE_PX + 8,
+    });
+
+    observerOf(element).emit([
+      { target: element } as unknown as ResizeObserverEntry,
+    ]);
+
+    expect(overflow.overflowing('$a')()).toBe(false);
   });
 
   it('forgets a row no longer shown when cleared', () => {

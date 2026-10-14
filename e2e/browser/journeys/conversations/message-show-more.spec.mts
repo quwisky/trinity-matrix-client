@@ -650,6 +650,52 @@ test.describe('Show more on long messages', () => {
     }
   });
 
+  // A formatted body pads itself by the focus-ring reach; that padding is not a line, so a
+  // 24-line formatted body is still shown whole, whether it starts a group or continues one.
+  test('shows a 24-line formatted body whole and collapses a 25-line one', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'show-more-24');
+    for (const label of ['first24', 'next24']) {
+      await sendMessage(request, hs, room, {
+        body: `${label} body`,
+        html: `<p>${htmlLines(24, label)}</p>`,
+      });
+    }
+    await signInAndOpen(page, room);
+
+    for (const label of ['first24', 'next24']) {
+      const row = rowWith(page, `${label} line 1`);
+      await expect(row.locator('.msg__clamp')).toHaveClass(
+        /msg__clamp--capped/,
+        { timeout: 20_000 },
+      );
+      await expect(row.getByTestId('msg-show-more')).toHaveCount(0);
+      const cut = await row.locator('.msg__clamp').evaluate((element) => {
+        const body = element.querySelector('.msg__text--html') as HTMLElement;
+        const style = getComputedStyle(element);
+        return (
+          body.getBoundingClientRect().bottom -
+          Number.parseFloat(getComputedStyle(body).paddingBottom) -
+          (element.getBoundingClientRect().bottom -
+            Number.parseFloat(style.paddingBottom))
+        );
+      });
+      expect(cut, label).toBeLessThanOrEqual(0.5);
+    }
+
+    // One line more and it collapses.
+    await sendMessage(request, hs, room, {
+      body: 'over25 body',
+      html: `<p>${htmlLines(25, 'over25')}</p>`,
+    });
+    await expect(
+      rowWith(page, 'over25 line 1').getByTestId('msg-show-more'),
+    ).toHaveAttribute('aria-expanded', 'false', { timeout: 20_000 });
+  });
+
   test('collapses and expands a long reply in the thread view', async ({
     page,
     request,
