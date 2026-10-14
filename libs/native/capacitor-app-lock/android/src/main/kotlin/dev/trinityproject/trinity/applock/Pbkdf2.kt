@@ -40,8 +40,9 @@ internal object Pbkdf2 {
     }
 
     /**
-     * RFC 8018 section 5.2 with HMAC-SHA256 as the pseudorandom function. Each round writes
-     * into the same buffer, so the 600,000 rounds allocate nothing.
+     * RFC 8018 section 5.2 with HMAC-SHA256 as the pseudorandom function. The U and T
+     * blocks are reused across rounds and zeroed afterwards; Mac.doFinal still allocates
+     * its own result each round.
      */
     fun withMac(password: ByteArray, salt: ByteArray, iterations: Int, length: Int): ByteArray {
         val mac = Mac.getInstance(MAC)
