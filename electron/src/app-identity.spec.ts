@@ -9,8 +9,10 @@ const electronApp = vi.hoisted(() => ({
   getPath: vi.fn((name: string) => `/home/dev/.config/${name}`),
   setPath: vi.fn(),
   commandLine: { getSwitchValue: vi.fn((_name: string) => '') },
+  exit: vi.fn(),
 }));
-vi.mock('electron', () => ({ app: electronApp }));
+const electronDialog = vi.hoisted(() => ({ showErrorBox: vi.fn() }));
+vi.mock('electron', () => ({ app: electronApp, dialog: electronDialog }));
 
 import { CHANNEL_IDENTITY, releaseChannel } from './release-channel';
 
@@ -26,6 +28,8 @@ describe('app identity', () => {
   beforeEach(() => {
     electronApp.setName.mockClear();
     electronApp.setPath.mockClear();
+    electronApp.exit.mockClear();
+    electronDialog.showErrorBox.mockClear();
     electronApp.commandLine.getSwitchValue.mockReturnValue('');
   });
 
@@ -119,5 +123,22 @@ describe('app identity', () => {
     identity.alignDevelopmentName();
     expect(electronApp.setName).not.toHaveBeenCalled();
     expect(electronApp.setPath).not.toHaveBeenCalled();
+  });
+
+  it('explains an unknown version in its own error box and exits, leaving no process behind', async () => {
+    const identity = await load('0.5.0-beta.1');
+    expect(identity.alignDevelopmentNameOrExit()).toBe(false);
+    expect(electronDialog.showErrorBox).toHaveBeenCalledExactlyOnceWith(
+      'Trinity cannot start',
+      expect.stringMatching(/Unknown release channel/),
+    );
+    expect(electronApp.exit).toHaveBeenCalledExactlyOnceWith(1);
+  });
+
+  it('starts a known channel without an error box', async () => {
+    const identity = await load('0.5.0-next.3');
+    expect(identity.alignDevelopmentNameOrExit()).toBe(true);
+    expect(electronDialog.showErrorBox).not.toHaveBeenCalled();
+    expect(electronApp.exit).not.toHaveBeenCalled();
   });
 });

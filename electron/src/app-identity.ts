@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, dialog } from 'electron';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import {
@@ -64,5 +64,26 @@ export function alignDevelopmentName(): void {
   // empty value and leaves the default folder in place, so it is moved like no switch.
   if (app.commandLine.getSwitchValue('user-data-dir') === '') {
     app.setPath('userData', path.join(app.getPath('appData'), productName));
+  }
+}
+
+/**
+ * alignDevelopmentName(), or, when the version names no known release channel, an error
+ * box and exit code 1. An uncaught throw would show Electron's generic dialog and leave a
+ * windowless process behind, one more on every relaunch (the single-instance lock is not
+ * taken yet). The title names no channel, as the channel is what is unknown. Returns
+ * whether startup may continue. dialog.showErrorBox is safe before `ready`.
+ */
+export function alignDevelopmentNameOrExit(): boolean {
+  try {
+    alignDevelopmentName();
+    return true;
+  } catch (error) {
+    dialog.showErrorBox(
+      'Trinity cannot start',
+      error instanceof Error ? error.message : String(error),
+    );
+    app.exit(1);
+    return false;
   }
 }
