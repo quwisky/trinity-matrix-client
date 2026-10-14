@@ -53,7 +53,15 @@ import {
   type SwipeAction,
 } from '@trinity/platform-native';
 import { Subject, of, throwError } from 'rxjs';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from 'vitest';
 import { ThreadViewComponent } from './thread-view.component';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
@@ -607,9 +615,27 @@ describe('ThreadViewComponent', () => {
     expect(container.querySelector('.thread__load-older')).toBeNull();
   });
 
-  it('starts a reply preview’s target expanded', async () => {
-    Element.prototype.scrollIntoView = vi.fn();
-    const { fixture } = await build(
+  it('starts a reply preview’s target expanded, and scrolls after it renders', async () => {
+    const scrollIntoViewOwn = Object.getOwnPropertyDescriptor(
+      Element.prototype,
+      'scrollIntoView',
+    );
+    onTestFinished(() => {
+      if (scrollIntoViewOwn) {
+        Object.defineProperty(
+          Element.prototype,
+          'scrollIntoView',
+          scrollIntoViewOwn,
+        );
+      } else {
+        delete (Element.prototype as Partial<Element>).scrollIntoView;
+      }
+    });
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const expand = vi.spyOn(ExpandedBodiesStore.prototype, 'expand');
+    onTestFinished(() => expand.mockRestore());
+    const { fixture, container } = await build(
       [msg('$a', '@a:hs', 'first'), msg('$b', '@a:hs', 'second')],
       {},
       [
@@ -627,6 +653,16 @@ describe('ThreadViewComponent', () => {
     });
 
     expect(TestBed.inject(ExpandedBodiesStore).isExpanded('$a')).toBe(true);
+    // The thread has no re-aim after a measurement, so it must not scroll to the collapsed row.
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    await fixture.whenStable();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.contexts[0]).toBe(
+      container.querySelector('[data-mid="$a"]'),
+    );
+    expect(expand.mock.invocationCallOrder[0]).toBeLessThan(
+      scrollIntoView.mock.invocationCallOrder[0],
+    );
   });
 });
 

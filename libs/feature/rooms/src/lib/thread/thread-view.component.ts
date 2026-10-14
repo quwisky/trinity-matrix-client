@@ -5,6 +5,7 @@ import {
   ElementRef,
   Injector,
   OnDestroy,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -128,6 +129,7 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly timeline = this.conversations.timeline;
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
+
   /** The rooms page's Show more state, shared with the timeline. */
   private readonly expandedBodies = inject(ExpandedBodiesStore, {
     optional: true,
@@ -447,9 +449,7 @@ export class ThreadViewComponent implements OnDestroy {
         this.onRetry(row.id);
         break;
       case 'jump':
-        // A reply preview's target starts expanded, as in the timeline.
-        this.expandedBodies?.expand(action.id);
-        this.jumpTo(action.id);
+        this.jumpToRequested(action.id);
         break;
       // Pin/thread are not offered inside a thread (caps.canPin/canThread false).
       case 'pin':
@@ -463,6 +463,21 @@ export class ThreadViewComponent implements OnDestroy {
         break;
       }
     }
+  }
+
+  /**
+   * A reply preview's target starts expanded, as in the timeline. When that grows the row, the
+   * scroll waits for the render that shows it whole: the thread has no re-aim after a row
+   * measurement, so scrolling to the collapsed row would leave the reader off target.
+   */
+  private jumpToRequested(id: string): void {
+    const store = this.expandedBodies;
+    if (!store || store.isExpanded(id)) {
+      this.jumpTo(id);
+      return;
+    }
+    store.expand(id);
+    afterNextRender(() => this.jumpTo(id), { injector: this.injector });
   }
 
   /** Scroll the original message into view when its reply preview is clicked. */
