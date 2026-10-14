@@ -5,6 +5,9 @@
     padding: var(--trinity-space-5) var(--trinity-space-5)
       var(--trinity-space-3);
     background: var(--trinity-surface-workspace);
+
+    // Sender colours in replies are checked against the pane they sit on.
+    --trinity-message-surface: var(--trinity-surface-workspace);
   }
 
   // "Load older replies" affordance / loading note, centered above the replies.

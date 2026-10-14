@@ -4,14 +4,35 @@ import { sanitizeMatrixHtml } from '@trinity/util/matrix';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SenderColoursDirective } from './sender-colours.directive';
 
-// The default theme's canvases and body text (variables.scss :321/:406 light, :494/:500 dark).
-const LIGHT = {
+interface Palette {
+  readonly surface: string;
+  readonly canvas?: string;
+  readonly text: string;
+  readonly link: string;
+  readonly rail: string;
+}
+
+// The default theme's panes, body text, links and table-header rail (variables.scss light
+// :243/:317/:318/:406, dark :489/:491/:500/:515).
+const LIGHT: Palette = {
   surface: 'oklch(99% 0.004 85deg)',
   text: 'oklch(32% 0.012 60deg)',
+  link: 'oklch(47% 0.19 275deg)',
+  rail: 'oklch(96.5% 0.006 85deg)',
 };
-const DARK = {
+const DARK: Palette = {
   surface: 'oklch(20% 0.005 269deg)',
   text: 'oklch(90% 0.004 269deg)',
+  link: 'oklch(76% 0.105 275deg)',
+  rail: 'oklch(16% 0.004 269deg)',
+};
+// Amethyst dark (variables.scss :752-782): the timeline pane is lighter than the canvas.
+const AMETHYST_DARK: Palette = {
+  surface: 'oklch(22% 0.022 300deg)',
+  canvas: 'oklch(16% 0.018 300deg)',
+  text: 'oklch(90% 0.018 300deg)',
+  link: 'oklch(77% 0.1 300deg)',
+  rail: 'oklch(18% 0.018 300deg)',
 };
 
 @Component({
@@ -35,13 +56,14 @@ function expectColour(actual: string, hex: string): void {
 }
 
 describe('SenderColoursDirective', () => {
-  let palette = LIGHT;
+  let palette: Palette = LIGHT;
   let reads = 0;
 
   beforeEach(() => {
     palette = LIGHT;
     reads = 0;
     document.documentElement.classList.remove('dark');
+    document.documentElement.removeAttribute('data-theme');
     // jsdom computes no theme: answer for the body element only.
     const original = window.getComputedStyle.bind(window);
     vi.spyOn(window, 'getComputedStyle').mockImplementation(
@@ -50,10 +72,15 @@ describe('SenderColoursDirective', () => {
           return original(element, pseudo);
         }
         reads += 1;
+        const properties: Readonly<Record<string, string | undefined>> = {
+          '--trinity-message-surface': palette.surface,
+          '--trinity-surface-canvas': palette.canvas,
+          '--trinity-link': palette.link,
+          '--trinity-rail': palette.rail,
+        };
         return {
           color: palette.text,
-          getPropertyValue: (name: string) =>
-            name === '--trinity-message-surface' ? palette.surface : '',
+          getPropertyValue: (name: string) => properties[name] ?? '',
         } as unknown as CSSStyleDeclaration;
       },
     );
@@ -64,6 +91,7 @@ describe('SenderColoursDirective', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     document.documentElement.classList.remove('dark');
+    document.documentElement.removeAttribute('data-theme');
   });
 
   function render(formatted: string) {
@@ -163,7 +191,7 @@ describe('SenderColoursDirective', () => {
   });
 
   it('applies nothing when the surface cannot be read', () => {
-    palette = { surface: '', text: LIGHT.text };
+    palette = { ...LIGHT, surface: '' };
     const { element } = render('<span data-mx-color="#e03030">red</span>');
 
     expect(element('.mx-fg-e03030').style.color).toBe('');
@@ -183,5 +211,135 @@ describe('SenderColoursDirective', () => {
         (span) => span.style.color !== '',
       ),
     ).toBe(true);
+  });
+  it('checks timeline text against the pane it sits on, not the darker canvas', () => {
+    palette = AMETHYST_DARK;
+    const { element } = render('<span data-mx-color="#606060">grey</span>');
+
+    // 3.1:1 on Amethyst's canvas, but 2.8:1 on the pane the timeline draws.
+    expect(element('.mx-fg-606060').style.color).toBe('');
+  });
+
+  it('falls back to the canvas when no message surface is set', () => {
+    palette = { ...AMETHYST_DARK, surface: '' };
+    const { element } = render('<span data-mx-color="#606060">grey</span>');
+
+    expectColour(element('.mx-fg-606060').style.color, '#606060');
+  });
+
+  it('re-checks a mounted body when only the Theme changes', async () => {
+    document.documentElement.classList.add('dark');
+    palette = DARK;
+    const { fixture, element } = render(
+      '<span data-mx-color="#646464">grey</span>',
+    );
+    expectColour(element('.mx-fg-646464').style.color, '#646464');
+
+    palette = AMETHYST_DARK;
+    document.documentElement.setAttribute('data-theme', 'amethyst');
+
+    await vi.waitFor(
+      () => {
+        fixture.detectChanges();
+        expect(element('.mx-fg-646464').style.color).toBe('');
+      },
+      { timeout: 1_000 },
+    );
+  });
+
+  it('keeps a background around a link only when the link stays readable on it', () => {
+    const pair =
+      '<span data-mx-color="#ffffff" data-mx-bg-color="#1a237e">' +
+      '<a href="https://example.org/x">x</a></span>';
+    const { element } = render(pair);
+    const span = element('.mx-bg-1a237e');
+
+    // The light theme's blue link is unreadable on navy: the background goes, and white text
+    // alone cannot be read on the light pane either.
+    expect(span.style.backgroundColor).toBe('');
+    expect(span.style.color).toBe('');
+  });
+
+  it('keeps that background where the theme’s link reads on it', () => {
+    palette = DARK;
+    const { element } = render(
+      '<span data-mx-color="#ffffff" data-mx-bg-color="#1a237e">' +
+        '<a href="https://example.org/x">x</a></span>',
+    );
+    const span = element('.mx-bg-1a237e');
+
+    expectColour(span.style.backgroundColor, '#1a237e');
+    expectColour(span.style.color, '#ffffff');
+  });
+
+  it('checks a background inside a link against the link colour', () => {
+    const { host } = render(
+      '<a href="https://example.org/x"><span data-mx-bg-color="#909090">in</span></a>' +
+        '<span data-mx-bg-color="#909090">out</span>',
+    );
+
+    // Body text reads on #909090 (3.6:1); the light theme's link does not (2.1:1).
+    expect(
+      host.querySelector<HTMLElement>('a .mx-bg-909090')!.style.backgroundColor,
+    ).toBe('');
+    expectColour(
+      host.querySelector<HTMLElement>(':scope > .mx-bg-909090')!.style
+        .backgroundColor,
+      '#909090',
+    );
+  });
+
+  it('checks text in a table header against the header’s rail', () => {
+    const { host } = render(
+      '<table><thead><tr><th><span data-mx-color="#8f8f8f">h</span></th></tr></thead></table>' +
+        '<span data-mx-color="#8f8f8f">p</span>',
+    );
+
+    // 3.2:1 on the light pane, 2.9:1 on the slightly darker header rail.
+    expect(
+      host.querySelector<HTMLElement>('th .mx-fg-8f8f8f')!.style.color,
+    ).toBe('');
+    expectColour(
+      host.querySelector<HTMLElement>(':scope > .mx-fg-8f8f8f')!.style.color,
+      '#8f8f8f',
+    );
+  });
+
+  describe('a surface only the browser can resolve', () => {
+    function stubCanvas(pixel: readonly number[]): void {
+      const context = {
+        fillStyle: '',
+        fillRect: () => undefined,
+        getImageData: () => ({ data: Uint8ClampedArray.from(pixel) }),
+      };
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+        context as unknown as CanvasRenderingContext2D,
+      );
+    }
+
+    it('measures against the colour the browser resolved', () => {
+      stubCanvas([253, 252, 249, 255]);
+      palette = { ...LIGHT, surface: 'color(srgb 0.99 0.99 0.98)' };
+      const { element } = render('<span data-mx-color="#e03030">red</span>');
+
+      expectColour(element('.mx-fg-e03030').style.color, '#e03030');
+    });
+
+    it('applies nothing when the browser resolves it to something see-through', () => {
+      stubCanvas([0, 0, 0, 0]);
+      palette = { ...LIGHT, surface: 'color(srgb 0 0 0 / 0)' };
+      const { element } = render('<span data-mx-color="#e03030">red</span>');
+
+      expect(element('.mx-fg-e03030').style.color).toBe('');
+    });
+
+    it('does not take a transparent surface for black', () => {
+      // Chromium's computed `transparent`; #e03030 would pass 3:1 against black.
+      stubCanvas([0, 0, 0, 0]);
+      palette = { ...LIGHT, surface: 'rgba(0, 0, 0, 0)' };
+      const { element } = render('<span data-mx-color="#e03030">red</span>');
+
+      expect(element('.mx-fg-e03030').style.color).toBe('');
+    });
   });
 });

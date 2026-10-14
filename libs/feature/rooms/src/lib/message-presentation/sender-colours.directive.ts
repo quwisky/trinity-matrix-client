@@ -7,6 +7,8 @@ import {
 } from '@angular/core';
 import { RootThemeObserver } from './root-theme';
 import {
+  MIN_SENDER_CONTRAST,
+  contrastRatio,
   decideColours,
   parseCssColour,
   parseHexColour,
@@ -14,16 +16,34 @@ import {
   type Rgb,
 } from './sender-colours';
 
-/** What a body's sender colours are drawn on and inherit, resolved to sRGB. */
+/**
+ * What a body's sender colours are drawn on and inherit, resolved to sRGB: the message surface
+ * and text colour, the colour links keep inside a sender colour, and the rail a table header
+ * is drawn on.
+ */
 export interface MessageTheme {
   readonly text: Rgb;
   readonly surface: Rgb;
+  readonly link: Rgb;
+  readonly rail: Rgb;
+}
+
+/** The colours a sender colour is checked against at one place in the body. */
+interface Context {
+  readonly text: Rgb;
+  readonly background: Rgb;
 }
 
 const TOKEN_SELECTOR = '[class*="mx-fg-"], [class*="mx-bg-"]';
 
 /** Never coloured: code keeps its syntax colours and a mention its pill. */
 const UNCOLOURED = 'pre, code, a.mention';
+
+/** A link sets its own text colour (`--trinity-link`); a mention is a pill and never coloured. */
+const LINK = 'a:not(.mention)';
+
+/** Elements that change the context below them: a link's text, a table header's background. */
+const BOUNDARY = `${LINK}, th`;
 
 /** Surface and text colours are a handful of theme values; resolve each one once. */
 const resolved = new Map<string, Rgb | null>();
@@ -69,11 +89,11 @@ function hasColourTokens(source: string): boolean {
 }
 
 /**
- * The body's message surface and text colour. The surface is `--trinity-message-surface`, set by
- * a container whose background is not the canvas (the composer preview, edit history); timeline
- * and thread bodies leave it unset and get `--trinity-surface-canvas`. Transient tints (hover,
- * the jump flash, selection) are deliberately ignored. Null when either cannot be resolved, and
- * then no sender colour is applied.
+ * The body's message surface, text, link and table-header colours, from one computed style. The
+ * surface is `--trinity-message-surface`, set by every container a body is drawn in (the timeline
+ * and thread panes, the composer preview, edit history); `--trinity-surface-canvas` is only the
+ * fallback. Transient tints (hover, the jump flash, selection) are deliberately ignored. Null when
+ * any cannot be resolved, and then no sender colour is applied.
  */
 export function readMessageTheme(host: HTMLElement): MessageTheme | null {
   const doc = host.ownerDocument;
@@ -84,23 +104,25 @@ export function readMessageTheme(host: HTMLElement): MessageTheme | null {
       style.getPropertyValue('--trinity-surface-canvas'),
     doc,
   );
-  const text = surface && resolveColour(style.color, doc);
-  return surface && text ? { surface, text } : null;
+  if (!surface) return null;
+  const text = resolveColour(style.color, doc);
+  const link = resolveColour(style.getPropertyValue('--trinity-link'), doc);
+  const rail = resolveColour(style.getPropertyValue('--trinity-rail'), doc);
+  return text && link && rail ? { surface, text, link, rail } : null;
 }
 
 /**
  * Paint the body's sender colours, parents first, keeping each that stays readable. Resets every
- * token element first, so a theme change re-decides from scratch. Linear in the number of token
- * elements; the ancestor walk is bounded by the 100-level nesting cap.
+ * token element first, so a theme change re-decides from scratch. A kept background that holds a
+ * link must suit the link colour too. Linear in the size of the body: each ancestor walk is
+ * bounded by the 100-level nesting cap, and the walk up from links stops at a marked ancestor.
  */
 export function applySenderColours(
   host: HTMLElement,
   theme: MessageTheme | null,
 ): void {
-  const effective = new Map<
-    Element,
-    { readonly text: Rgb; readonly background: Rgb }
-  >();
+  const aroundLinks = theme ? linkAncestors(host) : new Set<Element>();
+  const effective = new Map<Element, Context>();
   for (const element of host.querySelectorAll<HTMLElement>(TOKEN_SELECTOR)) {
     element.style.removeProperty('color');
     element.style.removeProperty('background-color');
@@ -110,17 +132,24 @@ export function applySenderColours(
     if (
       !theme ||
       element.classList.contains('mx-spoiler') ||
-      element.closest(UNCOLOURED)
+      isUncoloured(element, host)
     ) {
       continue;
     }
-    const context = contextOf(element, host, effective) ?? {
-      text: theme.text,
-      background: theme.surface,
-    };
+    const context = contextOf(element, host, theme, effective);
     const fg = tokenColour(element, 'mx-fg-');
     const bg = tokenColour(element, 'mx-bg-');
-    const kept = decideColours({ fg, bg }, context.text, context.background);
+    let kept = decideColours({ fg, bg }, context.text, context.background);
+    if (
+      kept.bg &&
+      bg &&
+      aroundLinks.has(element) &&
+      contrastRatio(theme.link, bg) < MIN_SENDER_CONTRAST
+    ) {
+      // A link inside keeps its own colour, which this background would hide: drop it and
+      // decide the text colour as if no background had been asked for.
+      kept = decideColours({ fg, bg: null }, context.text, context.background);
+    }
     if (kept.fg && fg) element.style.color = toHex(fg);
     if (kept.bg && bg) element.style.backgroundColor = toHex(bg);
     effective.set(element, {
@@ -130,24 +159,60 @@ export function applySenderColours(
   }
 }
 
-/** The nearest coloured ancestor's effective colours, skipping ancestors that were not painted. */
+/** Inside code, `pre` or a mention pill within this body. */
+function isUncoloured(element: Element, host: HTMLElement): boolean {
+  const owner = element.closest(UNCOLOURED);
+  return owner !== null && host.contains(owner);
+}
+
+/** Every element in the body that holds a (non-mention) link. */
+function linkAncestors(host: HTMLElement): ReadonlySet<Element> {
+  const marked = new Set<Element>();
+  for (const link of host.querySelectorAll(LINK)) {
+    // A marked ancestor's own ancestors are marked already.
+    for (
+      let ancestor = link.parentElement;
+      ancestor && ancestor !== host && !marked.has(ancestor);
+      ancestor = ancestor.parentElement
+    ) {
+      marked.add(ancestor);
+    }
+  }
+  return marked;
+}
+
+/**
+ * What an element is drawn on and inherits: the nearest decided ancestor's colours (or the
+ * theme's), changed by any link (its text colour) or table header (the rail) in between.
+ */
 function contextOf(
   element: Element,
   host: HTMLElement,
-  effective: ReadonlyMap<
-    Element,
-    { readonly text: Rgb; readonly background: Rgb }
-  >,
-): { readonly text: Rgb; readonly background: Rgb } | undefined {
+  theme: MessageTheme,
+  effective: ReadonlyMap<Element, Context>,
+): Context {
+  let context: Context = { text: theme.text, background: theme.surface };
+  const boundaries: Element[] = [];
   for (
-    let ancestor = element.parentElement?.closest(TOKEN_SELECTOR);
-    ancestor && host.contains(ancestor);
-    ancestor = ancestor.parentElement?.closest(TOKEN_SELECTOR)
+    let ancestor = element.parentElement;
+    ancestor && ancestor !== host;
+    ancestor = ancestor.parentElement
   ) {
-    const context = effective.get(ancestor);
-    if (context) return context;
+    const decided = effective.get(ancestor);
+    if (decided) {
+      context = decided;
+      break;
+    }
+    if (ancestor.matches(BOUNDARY)) boundaries.push(ancestor);
   }
-  return undefined;
+  // Outermost first, so the innermost boundary has the last word.
+  for (const boundary of boundaries.reverse()) {
+    context =
+      boundary.nodeName === 'TH'
+        ? { text: context.text, background: theme.rail }
+        : { text: theme.link, background: context.background };
+  }
+  return context;
 }
 
 function tokenColour(
