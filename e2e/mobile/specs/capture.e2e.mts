@@ -45,10 +45,47 @@ async function openInsertSheet(): Promise<void> {
 
 type CaptureOutcome = 'photo' | 'no-camera' | 'none';
 
+const NO_CAMERA = 'This device has no camera';
+
+declare global {
+  interface Window {
+    /** Set by {@link rememberNoCameraToast} once the "no camera" toast has shown. */
+    e2eNoCameraToastSeen?: boolean;
+  }
+}
+
+/**
+ * Remember the "no camera" toast (a sonner `[data-sonner-toast]` whose text sits in nested
+ * spans) for the rest of the page's life. It lives only 4 s, and on iOS it follows the camera
+ * permission prompt, which appium:autoAcceptAlerts accepts only at WebDriverAgent's next alert
+ * check: 10.7 s after the tap in #1287, while the spec was already looking for a shutter in
+ * the native context. Polling for the toast itself then missed it.
+ */
+async function rememberNoCameraToast(): Promise<void> {
+  await browser.execute((text: string) => {
+    window.e2eNoCameraToastSeen = false;
+    const check = (): void => {
+      const shown = [...document.querySelectorAll('[data-sonner-toast]')].some(
+        (toast) => toast.textContent?.includes(text),
+      );
+      if (!shown) return;
+      window.e2eNoCameraToastSeen = true;
+      observer.disconnect();
+    };
+    const observer = new MutationObserver(check);
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    // A toast already showing when the observer starts produces no mutation.
+    check();
+  }, NO_CAMERA);
+}
+
 /**
  * Poll the WebView for what a capture left behind: a staged photo, or the "no camera" toast
- * (a sonner `[data-sonner-toast]` whose text sits in nested spans). 'none' when neither
- * shows within `timeout`.
+ * that {@link rememberNoCameraToast} saw. 'none' when neither shows within `timeout`.
  */
 async function captureOutcome(timeout: number): Promise<CaptureOutcome> {
   const read = (): Promise<CaptureOutcome> =>
@@ -56,12 +93,7 @@ async function captureOutcome(timeout: number): Promise<CaptureOutcome> {
       if (document.querySelector('[data-testid="composer-pending"] img')) {
         return 'photo';
       }
-      const toasts = [...document.querySelectorAll('[data-sonner-toast]')];
-      return toasts.some((toast) =>
-        toast.textContent?.includes('This device has no camera'),
-      )
-        ? 'no-camera'
-        : 'none';
+      return window.e2eNoCameraToastSeen ? 'no-camera' : 'none';
     });
   let outcome: CaptureOutcome = 'none';
   await browser
@@ -101,13 +133,15 @@ describe('mobile camera capture', () => {
     ).call(this);
     await openFreshRoom('capture-photo');
     await openInsertSheet();
+    await rememberNoCameraToast();
     await press(`${SHEET} [data-testid="insert-take-photo"]`);
 
-    // The Simulator has no camera, so the composer answers within a moment with a toast that
-    // lives only 4 s: look for the fast outcomes before leaving the WebView for the camera UI.
+    // The Simulator has no camera, so the composer usually answers within a moment with a
+    // toast: look for the fast outcomes before leaving the WebView for the camera UI.
     let outcome = await captureOutcome(8_000);
     if (outcome === 'none') {
-      // Where the Simulator offers a camera, press its shutter and accept the shot.
+      // Where the Simulator offers a camera, press its shutter and accept the shot. A very
+      // late permission-prompt accept can still outlast this 15 s shutter wait there.
       await native();
       const shutter = $('~PhotoCapture');
       const hasCamera = await shutter
