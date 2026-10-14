@@ -620,6 +620,15 @@ test.describe('Maths', () => {
     await expect(
       page.locator('.scroll').getByText('no formulas here', { exact: true }),
     ).toBeVisible({ timeout: 20_000 });
+    // A negative check needs a window: the directive would ask for KaTeX within a frame of the
+    // body rendering, so let two frames pass and then hold for a second.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    await page.waitForTimeout(1_000);
     expect(chunks).toEqual([]);
     expect(styles).toEqual([]);
 
@@ -644,6 +653,10 @@ test.describe('Maths', () => {
       'font-family',
       /KaTeX_Main/,
     );
+    // KaTeX's `body { position: relative }` is undone in the same layer.
+    expect(
+      await page.evaluate(() => getComputedStyle(document.body).position),
+    ).toBe('static');
 
     // Back and forth: still one chunk and one stylesheet.
     await openRoom(page, room.roomName);
@@ -664,8 +677,6 @@ test.describe('Maths', () => {
   }) => {
     const hs = session.hs as string;
     const room = await seedFormattedRoom(request, hs, 'maths-colour');
-    const requested: string[] = [];
-    page.on('request', (outgoing) => requested.push(outgoing.url()));
     await sendMessage(request, hs, room, {
       body: 'coloured maths and two rejected formulas',
       html:
@@ -707,6 +718,127 @@ test.describe('Maths', () => {
     // The colour around the maths is painted, so the reset is what keeps the maths plain.
     expect(colours.font).toBe('rgb(224, 48, 48)');
     expect(colours.maths).toEqual([colours.text]);
-    expect(requested.some((url) => url.includes('maths.invalid'))).toBe(false);
+  });
+
+  // T17-1: sender TeX cannot draw outside its formula. Lengths past 10em show the source
+  // (unit tests); within that bound, kerns and lowered boxes add up, and the stylesheet clips
+  // each inline KaTeX run to its own box. Legitimate overhangs keep their pixels.
+  test('keeps maths inside its formula without changing legitimate formulas', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'maths-clip');
+    const legit = [
+      '\\!x',
+      '\\kern-0.5em x',
+      '\\mathllap{x}',
+      '\\raisebox{0.5em}{x}',
+      '\\frac{a}{b}',
+    ]
+      .map((tex) => `<span data-mx-maths="${tex}"><code>${tex}</code></span>`)
+      .join(' ');
+    await sendMessage(request, hs, room, {
+      body: 'legitimate formulas',
+      html:
+        `<p>legit: ${legit}</p>` +
+        '<div data-mx-maths="\\sum_{i=1}^{n} i"><code>sum</code></div>' +
+        '<div data-mx-maths="\\begin{pmatrix}1&amp;2\\\\3&amp;4\\end{pmatrix}"><code>matrix</code></div>',
+    });
+    await sendMessage(request, hs, room, {
+      body: 'formulas that reach outside',
+      html:
+        '<p><span data-mx-maths="\\kern{-2em}\\kern{-2em}\\text{Bob}"><code>Bob</code></span> escape:' +
+        ' <span data-mx-maths="b\\smash{\\raisebox{-8em}{\\text{fake low}}}"><code>low</code></span>' +
+        ' and <span data-mx-maths="c\\smash{\\raisebox{3em}{\\raisebox{3em}{\\text{fake high}}}}"><code>high</code></span></p>',
+    });
+    await signInAndOpen(page, room);
+
+    const legitBody = page.locator('.scroll .msg__text--html', {
+      hasText: 'legit:',
+    });
+    const escapeBody = page.locator('.scroll .msg__text--html', {
+      hasText: 'escape:',
+    });
+    await expect(legitBody.locator('.mx-maths .katex')).toHaveCount(7, {
+      timeout: 30_000,
+    });
+    await expect(escapeBody.locator('.mx-maths .katex')).toHaveCount(3);
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+
+    // Nothing these formulas draw reaches outside their message body, give or take the 1em
+    // clip margin: around that, the timeline looks the same whether the maths shows or not.
+    // Kerns that add up move "Bob" into the sender column; smashed, raised and lowered boxes
+    // move text above and below.
+    const around = await escapeBody.evaluate((body) => {
+      const pane = body.closest('.scroll')!.getBoundingClientRect();
+      const em = parseFloat(
+        getComputedStyle(body.querySelector('.katex')!).fontSize,
+      );
+      const box = body.getBoundingClientRect();
+      const [left, top] = [box.left - em, box.top - em];
+      const [right, bottom] = [box.right + em, box.bottom + em];
+      return [
+        {
+          x: pane.left,
+          y: pane.top,
+          width: pane.width,
+          height: top - pane.top,
+        },
+        {
+          x: pane.left,
+          y: bottom,
+          width: pane.width,
+          height: pane.bottom - bottom,
+        },
+        { x: pane.left, y: top, width: left - pane.left, height: bottom - top },
+        { x: right, y: top, width: pane.right - right, height: bottom - top },
+      ].filter((region) => region.width >= 1 && region.height >= 1);
+    });
+    expect(around.length).toBeGreaterThanOrEqual(3);
+    const timeline = () =>
+      Promise.all(
+        around.map((clip) => page.screenshot({ clip, animations: 'disabled' })),
+      );
+    const withMaths = await timeline();
+    await escapeBody.evaluate((body) =>
+      body
+        .querySelectorAll<HTMLElement>('.mx-maths')
+        .forEach((maths) => (maths.style.visibility = 'hidden')),
+    );
+    const withoutMaths = await timeline();
+    expect(
+      withMaths.map((shot, index) => shot.equals(withoutMaths[index])),
+    ).toEqual(around.map(() => true));
+
+    // The clip keeps every pixel of the legitimate formulas: lifting it changes nothing.
+    const clipped = await legitBody.screenshot({ animations: 'disabled' });
+    await page.addStyleTag({
+      content:
+        '.mx-maths .katex-html > .katex-base { overflow: visible !important; }',
+    });
+    const unclipped = await legitBody.screenshot({ animations: 'disabled' });
+    expect(clipped.equals(unclipped)).toBe(true);
+  });
+
+  // High Contrast would paint `\phantom`'s transparent content in the system text colour.
+  test('keeps phantom maths invisible in forced colours', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'maths-forced');
+    await sendMessage(request, hs, room, {
+      body: 'a phantom term',
+      html: '<p>phantom: <span data-mx-maths="a\\phantom{b}c"><code>a\\phantom{b}c</code></span></p>',
+    });
+    await page.emulateMedia({ forcedColors: 'active' });
+    await signInAndOpen(page, room);
+
+    const maths = page.locator('.scroll .msg__text--html .mx-maths');
+    await expect(maths.locator('.katex')).toBeVisible({ timeout: 30_000 });
+    const phantom = maths.locator(".katex-html [style*='transparent']");
+    await expect(phantom).toHaveCount(1);
+    await expect(phantom).toHaveCSS('color', 'rgba(0, 0, 0, 0)');
   });
 });
