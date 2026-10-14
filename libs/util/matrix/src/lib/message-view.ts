@@ -852,9 +852,12 @@ function markExternalLinks(root: ParentNode): void {
     const href = (anchor.getAttribute('href') ?? '')
       .replace(URL_LEADING_CONTROLS, '')
       .replace(URL_TAB_OR_NEWLINE, '');
-    if (!EXTERNAL_LINK.test(href) || isMatrixLinkHref(href)) continue;
-    // Write back the href the browser would open, so Angular's URL check sees it too.
+    if (!EXTERNAL_LINK.test(href)) continue;
+    // Write back the href the browser would open, so Angular's URL check sees it too. A
+    // permalink needs it as much as an external link: left with its leading control
+    // character, Angular marks it `unsafe:` and MatrixLinkDirective cannot route it.
     anchor.setAttribute('href', href);
+    if (isMatrixLinkHref(href)) continue;
     anchor.setAttribute('target', '_blank');
     anchor.setAttribute('rel', EXTERNAL_LINK_REL);
   }
@@ -863,9 +866,10 @@ function markExternalLinks(root: ParentNode): void {
 /**
  * {@link linkifyText}, with each link that leaves Trinity marked as {@link markExternalLinks}
  * marks it. `linkifyText` emits exactly `<a href="…">` with an escaped URL, so this matches only
- * its own output; the pattern is fixed, never built from the text.
+ * its own output; the pattern is fixed, never built from the text. For any plain text shown as a
+ * message is (a body, a room topic, the composer's preview), so its links open alike.
  */
-function linkifyMessageText(text: string): string | null {
+export function linkifyMessageText(text: string): string | null {
   return (
     linkifyText(text)?.replace(/<a href="([^"]*)">/g, (anchor, href: string) =>
       EXTERNAL_LINK.test(href) && !isMatrixLinkHref(href)

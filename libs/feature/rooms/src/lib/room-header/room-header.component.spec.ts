@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type RoomSummary } from '@trinity/data-access/room-library';
 import { render, type ComponentInput } from '@trinity/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import {
   RoomHeaderComponent,
   type RoomHeaderAction,
@@ -122,6 +123,48 @@ describe('RoomHeaderComponent title', () => {
         'a[href="https://example.org"][target="_blank"][rel~="noopener"]',
       ),
     ).toHaveLength(1);
+  });
+
+  it('keeps a permalink in the topic in Trinity, routes it, and closes the topic', async () => {
+    const { root, fixture } = await build({
+      room: topicRoom('see https://matrix.to/#/!other:hs'),
+    });
+    const routed: MatrixLinkClick[] = [];
+    fixture.componentInstance.matrixLink.subscribe((click) =>
+      routed.push(click),
+    );
+    const popover = root.querySelector('#room-topic-popover') as HTMLElement;
+    const hide = vi.fn();
+    popover.hidePopover = hide;
+    const link = popover.querySelector('a') as HTMLAnchorElement;
+
+    expect(link.hasAttribute('target')).toBe(false);
+    link.click();
+
+    expect(routed.map((click) => click.target)).toEqual([
+      expect.objectContaining({ kind: 'room', roomIdOrAlias: '!other:hs' }),
+    ]);
+    expect(hide).toHaveBeenCalled();
+  });
+
+  it('opens an external topic link through the same path as a message link', async () => {
+    const { root } = await build({
+      room: topicRoom('see https://example.org'),
+    });
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    try {
+      (
+        root.querySelector('#room-topic-popover a') as HTMLAnchorElement
+      ).click();
+
+      expect(open).toHaveBeenCalledWith(
+        'https://example.org',
+        '_blank',
+        'noopener,noreferrer',
+      );
+    } finally {
+      open.mockRestore();
+    }
   });
 
   it('treats a literal anchor tag in the topic as text, not a link', async () => {

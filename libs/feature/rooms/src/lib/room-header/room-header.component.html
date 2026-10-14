@@ -73,11 +73,16 @@
         >
           {{ room.topic }}
         </button>
+        <!-- trnMatrixLink opens the topic's links as a message's: external ones out of the app,
+             permalinks routed in it. -->
         <span
+          #topicPopover
           id="room-topic-popover"
           popover
           class="topic-popover"
           [innerHTML]="topicHtml()"
+          trnMatrixLink
+          (matrixLink)="onTopicLink($event, topicPopover)"
         ></span>
       }
     } @else if (loading()) {
