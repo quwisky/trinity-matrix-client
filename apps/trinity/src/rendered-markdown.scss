@@ -15,6 +15,18 @@
  * message-row's scoped styles cannot reach.
  */
   .msg__text--html {
+    // Nothing a sender writes paints over, or takes clicks from, anything beside the body: the
+    // authenticity shield, avatar, name, timestamp or toolbar. Kerns that add up can make one
+    // KaTeX run far wider than the body, and its runs are positioned, so the body clips them.
+    // The clip leaves room for a focus ring at either edge and 1em above and below, as the
+    // runs' own clip does. A clip path, not `overflow`, because WebKit cannot widen an
+    // overflow clip; display maths, tables and code keep their own sideways scroll inside.
+    $focus-reach: calc(
+      var(--trinity-focus-ring-width) + var(--trinity-focus-ring-offset)
+    );
+
+    clip-path: inset(-1em calc(-1 * #{$focus-reach}));
+
     img.mx-emoticon {
       display: inline-block;
       width: auto;
