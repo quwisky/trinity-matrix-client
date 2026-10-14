@@ -104,12 +104,13 @@ describe('the Matrix HTML allowlist (spec v1.19)', () => {
     expect(names(clean.querySelector('div'))).toEqual([]);
     expect(names(clean.querySelector('ol'))).toEqual([]);
     // The send path unwraps font (never emitted), so check it where it is still read. The
-    // colour survives DOMPurify: as `color` here, as an `mx-fg-` token once Task 6 lands.
+    // colour survives DOMPurify and the render pass turns it into an `mx-fg-` token.
     const font = parse(
       sanitizeMatrixHtml('<font color="#112233" width="5">f</font>'),
     ).querySelector('font')!;
     expect(font.hasAttribute('width')).toBe(false);
-    expect(font.getAttribute('color') ?? font.className).toMatch(/112233/);
+    expect(font.hasAttribute('color')).toBe(false);
+    expect(font.className).toBe('mx-fg-112233');
   });
 
   it('drops attributes a sender adds that the spec does not list, on the render path too', () => {

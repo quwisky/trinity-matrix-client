@@ -768,6 +768,7 @@ export function sanitizeMatrixHtml(
   normaliseMatrixUris(body);
   markExternalLinks(body);
   normaliseSpoilers(body);
+  normaliseColours(body);
   normaliseCustomEmotes(body);
   normaliseTaskItems(body);
   renderCodeBlocks(body);
@@ -968,6 +969,39 @@ function normaliseSpoilers(root: ParentNode): void {
     node.classList.add('mx-spoiler');
     node.setAttribute('tabindex', '0');
     node.setAttribute('role', 'button');
+  }
+}
+
+/** `#` and exactly six hex digits: the only sender colour Trinity applies (owner decision 2). */
+const SENDER_COLOUR = /^#([0-9a-f]{6})$/i;
+
+/**
+ * Turn sender colours into class tokens the render leaf can read: `mx-fg-rrggbb` from
+ * `data-mx-color` (or a `font`'s deprecated `color`), `mx-bg-rrggbb` from `data-mx-bg-color`.
+ * Angular's `[innerHTML]` sanitizer strips `data-*` and `style` but keeps `class`, and the
+ * colour is applied only after the leaf has checked its contrast against the current theme
+ * (`SenderColoursDirective`), which this memoized, theme-free string cannot know. `color` is
+ * removed so no browser paints a colour that has not been checked.
+ *
+ * Render-only and after DOMPurify: the allowlist hook has already removed every sender `class`
+ * outside `code` (see {@link ALLOWED_CLASS}), so a sender cannot write a token directly.
+ */
+function normaliseColours(root: ParentNode): void {
+  for (const node of root.querySelectorAll(
+    'span[data-mx-color], span[data-mx-bg-color], font[data-mx-color], font[data-mx-bg-color], font[color]',
+  )) {
+    // The first valid colour wins, so an invalid `data-mx-color` can't hide a valid `font color`.
+    const fg =
+      SENDER_COLOUR.exec(node.getAttribute('data-mx-color') ?? '')?.[1] ??
+      (node.nodeName === 'FONT'
+        ? SENDER_COLOUR.exec(node.getAttribute('color') ?? '')?.[1]
+        : undefined);
+    const bg = SENDER_COLOUR.exec(
+      node.getAttribute('data-mx-bg-color') ?? '',
+    )?.[1];
+    if (fg) node.classList.add(`mx-fg-${fg.toLowerCase()}`);
+    if (bg) node.classList.add(`mx-bg-${bg.toLowerCase()}`);
+    node.removeAttribute('color');
   }
 }
 
