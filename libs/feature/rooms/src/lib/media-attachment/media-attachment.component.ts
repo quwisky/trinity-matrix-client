@@ -14,15 +14,14 @@ import { EMPTY, Observable, Subscription, catchError } from 'rxjs';
 import { runWithBusy } from '@trinity/util/ui';
 import { MediaBubbleComponent } from '../media-bubble/media-bubble.component';
 import {
-  TrnSurfaceService,
-  type TrnDialogRef,
-} from '@trinity/components/overlay';
-import {
   MediaPipeline,
   type PresentedMediaReference,
 } from '@trinity/data-access/media';
 import { MediaSaveService } from './media-save.service';
-import { LightboxComponent } from './lightbox/lightbox.component';
+import {
+  MediaViewerLauncher,
+  type MediaViewerOutcome,
+} from './media-viewer-launcher';
 
 /** A full-size rendition this row opened: whose it is, its pinned URL once resolved, the resolve. */
 interface OpenRendition {
@@ -35,7 +34,8 @@ interface OpenRendition {
  * Smart wrapper bridging the timeline's opaque media reference to the presentational
  * {@link MediaBubbleComponent}: resolves the thumbnail object URL via
  * {@link MediaPipeline}, pins it on screen so
- * the cache won't revoke it, and drives full-resolution view + download.
+ * the cache won't revoke it, and drives full-resolution view + download. The full-resolution
+ * viewer is {@link MediaViewerLauncher}'s, shared with the inline images of message bodies.
  *
  * A video or audio clip is the exception to "resolve on render": the whole file would be
  * fetched, decrypted and pinned for every row on screen, so only a video's bundled thumbnail
@@ -43,20 +43,22 @@ interface OpenRendition {
  *
  * Full-size renditions are large and rarely needed twice, so they are dropped from the media
  * cache as soon as they are closed instead of waiting for the LRU: the lightbox image when the
- * lightbox closes, a clip when its playback ends (the player returns to its play control),
- * when the row is recycled for another message, and when the row is destroyed.
+ * lightbox closes ({@link MediaViewerLauncher}'s job), a clip when its playback ends (the player
+ * returns to its play control), when the row is recycled for another message, and when the row
+ * is destroyed.
  */
 @Component({
   selector: 'trn-media-attachment',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MediaBubbleComponent],
+  providers: [MediaViewerLauncher],
   templateUrl: './media-attachment.component.html',
 })
 export class MediaAttachmentComponent {
   readonly media = input.required<PresentedMediaReference>();
 
   private readonly mediaPipeline = inject(MediaPipeline);
-  private readonly dialogs = inject(TrnSurfaceService);
+  private readonly viewer = inject(MediaViewerLauncher);
   private readonly mediaSave = inject(MediaSaveService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -76,20 +78,6 @@ export class MediaAttachmentComponent {
    * current one), its pinned URL once resolved, and the resolve.
    */
   private clip: OpenRendition | null = null;
-  /** The full-resolution image the lightbox shows (or is loading), pinned while it is open. */
-  private lightbox: OpenRendition | null = null;
-  private lightboxRef: TrnDialogRef<void> | null = null;
-  /**
-   * Whether a lightbox is open or on its way.
-   *
-   * The guard is not defensive tidiness. `resolveMedia` hands every caller the SAME
-   * in-flight observable, so a second tap while the full-resolution bytes are still
-   * arriving reaches `next` twice: two dialogs open, `lightboxRef` keeps only the second,
-   * and closing THAT one unpins a URL the first is still displaying — after which the
-   * cache is free to revoke it under a visible image. The inline version this replaced was
-   * idempotent by accident (setting a signal twice is one lightbox); an overlay is not.
-   */
-  private lightboxPending = false;
 
   constructor() {
     // Re-resolve whenever the bound message changes — instances are recycled
@@ -136,15 +124,11 @@ export class MediaAttachmentComponent {
       }
     });
 
+    // The lightbox outlives this element; MediaViewerLauncher, provided here, closes it (or
+    // cancels the full image still loading for it) when this component is destroyed.
     this.destroyRef.onDestroy(() => {
       this.repin(null);
       this.dropClip();
-      // The overlay outlives this component's element, so closing it here is not tidiness:
-      // the full-resolution URL is dropped on the way out and would be revoked under an
-      // image still on screen.
-      this.closeLightbox();
-      // Nothing to close while the full image is still on its way: cancel that instead.
-      if (!this.lightboxRef) this.dropLightbox();
     });
   }
 
@@ -181,69 +165,38 @@ export class MediaAttachmentComponent {
 
   /** Open the full-resolution image over the app, in a modal dialog. */
   openLightbox(): void {
-    if (this.media().kind !== 'image' || this.lightboxPending) {
+    if (this.media().kind !== 'image') {
       return;
     }
-    this.lightboxPending = true;
-    const lightbox: OpenRendition = {
-      media: this.media(),
-      url: null,
-      sub: Subscription.EMPTY,
-    };
-    this.lightbox = lightbox;
-    lightbox.sub = this.mediaPipeline
-      .resolveMedia(lightbox.media, 'full')
+    this.viewer
+      .open(this.media())
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (url) => {
-          // Pin the full URL like the thumbnail: a burst of live media
-          // (store() → evict(), 64-entry cap) would otherwise revoke it while
-          // it's still on screen. Dropped on close / destroy.
-          this.mediaPipeline.pin(url);
-          lightbox.url = url;
-          this.lightboxRef = this.dialogs.open<void, LightboxComponent>(
-            LightboxComponent,
-            {
-              inputs: {
-                src: url,
-                filename: this.media().filename,
-                media: this.media(),
-              },
-              ariaLabel: this.media().filename,
-              kind: this.dialogs.prefersSheet() ? 'fullscreen' : 'auto',
-              // Keep the full viewer container as the initial focus target. The visible close
-              // button remains keyboard reachable, while Escape/backdrop dismissal stay intact.
-              autoFocus: 'dialog',
-            },
-          );
-          this.lightboxRef.closed.subscribe(() => {
-            this.dropLightbox();
-            this.lightboxRef = null;
-            this.lightboxPending = false;
-          });
-        },
-        error: () => {
-          this.lightbox = null;
-          this.lightboxPending = false;
-          this.errorMsg.set('Could not open image');
-        },
-      });
+      .subscribe((outcome) => this.onViewerOutcome(outcome));
   }
 
-  /**
-   * Close the lightbox if it is open.
-   *
-   * Dropping the image is the `closed` subscription's job rather than this method's, so that
-   * a close the CDK performs on its own — Escape, a backdrop click — releases the URL too.
-   * This is only the programmatic route.
-   */
+  /** Close the lightbox if it is open. */
   closeLightbox(): void {
-    this.lightboxRef?.close();
+    this.viewer.close();
   }
 
   /** Save the full-resolution attachment — native share sheet or web download. */
   download(): void {
     this.mediaSave.save(this.media());
+  }
+
+  private onViewerOutcome(outcome: MediaViewerOutcome): void {
+    switch (outcome) {
+      case 'opened':
+      case 'busy':
+        return;
+      case 'failed':
+        this.errorMsg.set('Could not open image');
+        return;
+      default: {
+        const unhandled: never = outcome;
+        void unhandled;
+      }
+    }
   }
 
   /** Resolve one rendition with the busy/error convention. */
@@ -278,14 +231,5 @@ export class MediaAttachmentComponent {
     clip.sub.unsubscribe();
     this.mediaPipeline.drop(clip.media, 'full', clip.url);
     if (clip.url && this.src() === clip.url) this.src.set(null);
-  }
-
-  /** Drop the lightbox's full-resolution image, or cancel it while it is still loading. */
-  private dropLightbox(): void {
-    const lightbox = this.lightbox;
-    if (!lightbox) return;
-    this.lightbox = null;
-    lightbox.sub.unsubscribe();
-    this.mediaPipeline.drop(lightbox.media, 'full', lightbox.url);
   }
 }
