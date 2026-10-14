@@ -305,11 +305,14 @@
     // applies here. A maths source fallback is a `code` element, styled by the rule above.
     table,
     div.mx-maths {
-      display: block;
       margin: 4px 0;
-      border-collapse: collapse;
       overflow-x: auto;
       overscroll-behavior-x: contain;
+    }
+
+    table {
+      display: block;
+      border-collapse: collapse;
     }
 
     // Maths is drawn in the body's text colour, never a sender's (owner decision 13): the
@@ -327,10 +330,24 @@
       color: inherit;
     }
 
-    // KaTeX's struts and tall delimiters reach a pixel or two past the box; clip that rather
-    // than add a vertical scrollbar to a formula that only scrolls sideways.
+    // Maths never draws outside its own formula (T17-1). A display formula clips to its box:
+    // the scroll above holds the width, and KaTeX's struts and tall delimiters, which reach a
+    // pixel or two past the box, are clipped rather than given a vertical scrollbar. Inline,
+    // each KaTeX run between line breaks (`.katex-base`, an inline-block) clips what a kern or a
+    // lowered, smashed box moves out of it; the margin keeps glyphs and `\mathllap` that
+    // overhang a little. `clip`, unlike `hidden`, keeps the baseline and scrolls nothing.
     div.mx-maths {
       overflow-y: hidden;
+    }
+
+    .mx-maths .katex-html > .katex-base {
+      overflow: clip;
+      overflow-clip-margin: 1em;
+    }
+
+    // High Contrast replaces every colour, which would draw `\phantom`'s transparent content.
+    .mx-maths [style*='transparent'] {
+      forced-color-adjust: none;
     }
 
     th,
