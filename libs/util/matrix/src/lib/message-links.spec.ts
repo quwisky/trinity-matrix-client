@@ -88,7 +88,9 @@ describe('message links that leave Trinity', () => {
     const started = performance.now();
     sanitizeMatrixHtml(html);
 
-    expect(performance.now() - started).toBeLessThan(50);
+    // The whole sanitize call, DOMPurify included: tens of milliseconds when linear (63 ms
+    // on a loaded CI runner), about 1.6 s with a backtracking edge trim.
+    expect(performance.now() - started).toBeLessThan(500);
   });
 
   it('ignores the target and rel a sender wrote', () => {
