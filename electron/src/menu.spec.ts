@@ -18,13 +18,23 @@ vi.mock('./update-check', () => ({ checkForUpdates: mocks.checkForUpdates }));
 
 import { buildMenu } from './menu';
 
-function helpItems(): MenuItemConstructorOptions[] {
-  buildMenu();
-  const template = mocks.buildFromTemplate.mock.calls.at(
+function template(packaged = false): MenuItemConstructorOptions[] {
+  buildMenu({ packaged });
+  return mocks.buildFromTemplate.mock.calls.at(
     -1,
   )?.[0] as MenuItemConstructorOptions[];
-  const help = template.find((item) => item.role === 'help');
+}
+
+function helpItems(): MenuItemConstructorOptions[] {
+  const help = template().find((item) => item.role === 'help');
   return help?.submenu as MenuItemConstructorOptions[];
+}
+
+function viewRoles(packaged: boolean): (string | undefined)[] {
+  const view = template(packaged).find((item) => item.label === 'View');
+  return (view?.submenu as MenuItemConstructorOptions[]).map(
+    (entry) => entry.role,
+  );
 }
 
 describe('application menu', () => {
@@ -47,5 +57,16 @@ describe('application menu', () => {
     expect(mocks.openExternal).toHaveBeenCalledWith(
       'https://github.com/quwisky/trinity-matrix-client',
     );
+  });
+
+  it('keeps the developer tools item in development builds', () => {
+    expect(viewRoles(false)).toContain('toggleDevTools');
+  });
+
+  it('leaves the developer tools item out of release builds', () => {
+    const roles = viewRoles(true);
+    expect(roles).not.toContain('toggleDevTools');
+    expect(roles).toContain('reload');
+    expect(roles).toContain('togglefullscreen');
   });
 });

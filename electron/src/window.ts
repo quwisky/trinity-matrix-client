@@ -158,6 +158,10 @@ export function createWindow(): void {
       // background notifications. This is the key enabler for "notify while in
       // the background" alongside close-to-tray below.
       backgroundThrottling: false,
+      // Decision 20: a packaged release build (Trinity or Trinity Next) refuses developer
+      // tools; development runs and the Electron journeys (which launch dist/main.js
+      // unpackaged) keep them.
+      devTools: !app.isPackaged,
     },
   });
 

@@ -2,7 +2,13 @@ import { Menu, shell } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { checkForUpdates } from './update-check';
 
-export function buildMenu(): void {
+/** What the application menu depends on at build time. */
+export interface MenuOptions {
+  /** A packaged release build: no developer tools (decision 20). */
+  readonly packaged: boolean;
+}
+
+export function buildMenu(options: MenuOptions): void {
   const isMac = process.platform === 'darwin';
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' as const }] : []),
@@ -13,7 +19,9 @@ export function buildMenu(): void {
       submenu: [
         { role: 'reload' },
         { role: 'forceReload' },
-        { role: 'toggleDevTools' },
+        // Release builds have no developer tools; leaving the role out also drops its
+        // accelerator. window.ts turns devTools off in webPreferences as well.
+        ...(options.packaged ? [] : [{ role: 'toggleDevTools' as const }]),
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },

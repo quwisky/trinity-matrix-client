@@ -109,7 +109,7 @@ if (!channelKnown) {
     // clipboard writes only); Electron would otherwise auto-approve every powerful
     // permission.
     installPermissionPolicy(session.defaultSession);
-    buildMenu();
+    buildMenu({ packaged: app.isPackaged });
     registerHostCapabilityHandshake();
     registerTitleBarIpc();
     registerDockBadge();

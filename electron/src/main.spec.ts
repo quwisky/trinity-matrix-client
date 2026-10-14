@@ -18,6 +18,8 @@ vi.mock('electron', () => ({
     quit: vi.fn(),
     on: vi.fn(),
     setAppUserModelId: vi.fn(),
+    // A packaged release build of Trinity Next (appIdentity below).
+    isPackaged: true,
     // Return a thenable that captures the ready callback (never auto-invokes it).
     whenReady: vi.fn(() => ({
       then: (cb: () => void) => {
@@ -77,6 +79,7 @@ vi.mock('./app-identity', () => ({
 import { app, session } from 'electron';
 import { registerAppProtocol, registerPrivilegedScheme } from './scheme';
 import { installMatrixCors } from './cors';
+import { buildMenu } from './menu';
 import { createWindow } from './window';
 import { registerDockBadge } from './dock-badge';
 import { registerHostCapabilityHandshake } from './host-capabilities';
@@ -121,6 +124,10 @@ describe('main bootstrap', () => {
     expect(app.setAppUserModelId).toHaveBeenCalledWith(
       'dev.trinityproject.trinity.next',
     );
+  });
+
+  it('builds the menu as a release build when packaged, on the Next channel too', () => {
+    expect(buildMenu).toHaveBeenCalledExactlyOnceWith({ packaged: true });
   });
 
   it('installs the CORS shim on session.defaultSession', () => {

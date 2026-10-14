@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { openExternal } = vi.hoisted(() => ({ openExternal: vi.fn() }));
+const { openExternal, channel } = vi.hoisted(() => ({
+  openExternal: vi.fn(),
+  channel: { current: 'next' as 'stable' | 'next' },
+}));
 vi.mock('electron', () => ({
   shell: { openExternal },
   // window.ts (and its ./deep-link import) reference these at module load.
@@ -8,20 +11,21 @@ vi.mock('electron', () => ({
     on: vi.fn(),
     whenReady: vi.fn(() => Promise.resolve()),
     isReady: vi.fn(() => false),
+    isPackaged: false,
   },
   BrowserWindow: vi.fn(),
 }));
 vi.mock('./icons', () => ({ windowIconOptions: vi.fn(() => ({})) }));
 vi.mock('./app-identity', () => ({
   appIdentity: () => ({ deepLinkScheme: 'dev.trinityproject.trinity.next' }),
-  releaseChannelArgument: () => '--trinity-release-channel=next',
+  releaseChannelArgument: () => `--trinity-release-channel=${channel.current}`,
 }));
 vi.mock('./window-prefs', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./window-prefs')>()),
   readWindowPrefs: vi.fn(() => ({ systemTitleBar: false })),
 }));
 
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import {
   createWindow,
   hardenContents,
@@ -356,6 +360,29 @@ describe('createWindow title bar', () => {
   it('paints the Graphite dark app surface before the renderer loads', () => {
     expect(create()['backgroundColor']).toBe('#0d0d0f');
   });
+
+  // Both channels ship packaged release builds: Trinity and Trinity Next.
+  it.each([
+    [false, 'stable', true],
+    [false, 'next', true],
+    [true, 'stable', false],
+    [true, 'next', false],
+  ] as const)(
+    'allows developer tools only outside release builds (packaged %s, %s channel)',
+    (packaged, releaseChannel, devTools) => {
+      (app as { isPackaged: boolean }).isPackaged = packaged;
+      channel.current = releaseChannel;
+      try {
+        const webPreferences = create()['webPreferences'] as {
+          devTools?: boolean;
+        };
+        expect(webPreferences.devTools).toBe(devTools);
+      } finally {
+        (app as { isPackaged: boolean }).isPackaged = false;
+        channel.current = 'next';
+      }
+    },
+  );
 
   it.each([
     [false, '--trinity-title-bar=row'],
