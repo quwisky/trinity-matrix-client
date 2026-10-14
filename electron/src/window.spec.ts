@@ -17,6 +17,7 @@ vi.mock('./app-identity', () => ({
   appIdentity: () => ({ deepLinkScheme: 'dev.trinityproject.trinity.next' }),
   releaseChannelArgument: () => '--trinity-release-channel=next',
 }));
+vi.mock('./renderer-recovery', () => ({ watchRendererRecovery: vi.fn() }));
 vi.mock('./window-prefs', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./window-prefs')>()),
   readWindowPrefs: vi.fn(() => ({ systemTitleBar: false })),
@@ -29,6 +30,7 @@ import {
   installPermissionPolicy,
   isSystemTitleBarActive,
 } from './window';
+import { watchRendererRecovery } from './renderer-recovery';
 import { readWindowPrefs, titleBarOptions } from './window-prefs';
 
 /** Minimal WebContents fake that records its window-open handler + event listeners. */
@@ -433,6 +435,28 @@ describe('createWindow close requested by the page', () => {
     expect(channel).toBe('trinity:window:close');
     (listener as () => void)();
     expect(close).toHaveBeenCalledOnce();
+  });
+});
+
+describe('createWindow renderer recovery', () => {
+  it('watches the new window for a crashed or hung renderer', () => {
+    const win = {
+      webContents: {
+        setWindowOpenHandler: vi.fn(),
+        on: vi.fn(),
+        ipc: { on: vi.fn() },
+      },
+      once: vi.fn(),
+      on: vi.fn(),
+      loadURL: vi.fn(() => Promise.resolve()),
+      setMenuBarVisibility: vi.fn(),
+    };
+    vi.mocked(BrowserWindow).mockImplementation(function () {
+      return win;
+    } as never);
+    createWindow();
+
+    expect(watchRendererRecovery).toHaveBeenCalledExactlyOnceWith(win);
   });
 });
 

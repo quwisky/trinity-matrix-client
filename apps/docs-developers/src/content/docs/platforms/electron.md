@@ -34,6 +34,8 @@ Unit and type checks exercise Node-side shell code. The static verifier checks h
 
 Renderer code uses the validated preload API, not direct Node or Electron access. IPC is protocol-versioned, sender-validated, and capability-scoped. Secure storage accepts only a usable operating-system encryption backend and keeps diagnostic payloads free of secrets.
 
+Packaged release builds, Trinity and Trinity Next alike, have no developer tools: the window is created with `devTools: false`, the View menu has no Toggle Developer Tools, Reload or Force Reload, and a launch with `--remote-debugging-port` or `--remote-debugging-pipe` shows an error and exits. Development runs and the Electron journeys, which launch `electron/dist/main.js` unpackaged, keep all of them. Without Reload, the shell recovers the renderer itself (`renderer-recovery.ts`): a crash reloads the window, and a second crash within a minute asks Reload or Quit; a window that stops responding asks Reload or Keep Waiting, and the question closes if it responds again.
+
 Packaging targets produce host-specific artifacts and may require native toolchains or signing configuration. Do not describe a locally built development package as a release artifact. Release artifacts come from the release workflow; its Windows installer may be published unsigned, and Windows SmartScreen then warns about an unknown publisher on first run. Read [host capabilities](../../architecture/host-capabilities/) and [desktop and native tests](../../testing/desktop-and-native-tests/).
 
 ## Window frame and title row {#title-row}
