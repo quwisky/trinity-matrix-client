@@ -11,6 +11,8 @@ import {
   TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import {
   TrustService,
@@ -18,15 +20,20 @@ import {
   type TrustStatus,
 } from '@trinity/data-access/trust';
 import {
+  AppRestartService,
   BUG_REPORT_LAUNCHER,
   BUILD_INFO,
   SessionLockService,
   type SessionLockState,
 } from '@trinity/platform-native';
+import {
+  HostLockIntegrationService,
+  NO_USER_PRESENCE,
+} from '@trinity/runtime/host';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, Observable, firstValueFrom, of } from 'rxjs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type {
   ApplicationRecoveryOutcome,
   ApplicationRuntimeState,
@@ -54,12 +61,21 @@ function settle(fixture: { detectChanges(): void }): void {
 }
 
 describe('ApplicationRootComponent', () => {
+  beforeAll(() => {
+    // jsdom has no top layer; record App lock's modal as an open attribute.
+    HTMLDialogElement.prototype.showModal ??= function (
+      this: HTMLDialogElement,
+    ) {
+      this.setAttribute('open', '');
+    };
+  });
   afterEach(() => vi.useRealTimers());
 
   async function setup(
     initial: ApplicationRuntimeState,
     routes: Routes = [],
     lock: SessionLockState = 'held',
+    appLocked = false,
   ) {
     const state = signal(initial);
     const trust = signal<TrustStatus>('ready');
@@ -116,6 +132,21 @@ describe('ApplicationRootComponent', () => {
           requestHandover,
         }),
         MockProvider(AppLockLifecycleBinding, { run: () => lockLifetime }),
+        MockProvider(AppLockService, {
+          appName: 'Trinity',
+          locked: signal(appLocked).asReadonly(),
+          support: signal(NO_USER_PRESENCE).asReadonly(),
+          systemAvailable: signal(false).asReadonly(),
+          pinState: signal<'ready'>('ready').asReadonly(),
+          recoveryOnly: signal(false).asReadonly(),
+          systemWaitUntil: signal(null).asReadonly(),
+          refreshSupport: () => of(NO_USER_PRESENCE),
+        }),
+        MockProvider(HostLockIntegrationService, {
+          coverPainted: () => of({ kind: 'completed' as const }),
+        }),
+        MockProvider(AccountRuntimeService),
+        MockProvider(AppRestartService),
       ],
     });
     return {
@@ -140,6 +171,31 @@ describe('ApplicationRootComponent', () => {
   it('runs App lock’s away timer from the first render, before anyone signs in', async () => {
     const { lockLifetimeStarted } = await setup({ phase: 'stopped' });
     expect(lockLifetimeStarted()).toBe(1);
+  });
+
+  it('mounts App lock’s cover outside the startup screens, closed while unlocked', async () => {
+    const { container } = await setup({ phase: 'stopped' });
+    const workspace = container.querySelector('div') as HTMLElement;
+    const cover = container.querySelector('trn-app-lock-cover');
+    expect(cover).toBeTruthy();
+    expect(workspace.contains(cover)).toBe(false);
+    expect(screen.getByTestId('app-lock-cover').hasAttribute('open')).toBe(
+      false,
+    );
+    expect(workspace.style.visibility).toBe('');
+  });
+
+  it('hides the workspace and opens the cover in the first frame when the app starts locked', async () => {
+    const { container } = await setup({ phase: 'stopped' }, [], 'held', true);
+    const workspace = container.querySelector('div') as HTMLElement;
+    expect(workspace.contains(screen.getByTestId('app-booting'))).toBe(true);
+    expect(workspace.style.visibility).toBe('hidden');
+    expect(screen.getByTestId('app-lock-cover').hasAttribute('open')).toBe(
+      true,
+    );
+    expect(workspace.contains(screen.getByTestId('app-lock-cover'))).toBe(
+      false,
+    );
   });
 
   it('keeps the healthy fallback on login and removes it across every shell URL', async () => {

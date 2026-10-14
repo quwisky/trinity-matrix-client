@@ -1,0 +1,260 @@
+<!--
+  A native modal dialog: `showModal()` puts it in the top layer above every overlay and makes
+  the rest of the page inert. Utilities only; `backdrop:` paints the `::backdrop` with the same
+  surface, so nothing behind the cover shows even while it fades in.
+-->
+<dialog
+  #dialog
+  class="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-y-auto border-0 bg-[var(--trinity-surface-app)] p-4 text-foreground backdrop:bg-[var(--trinity-surface-app)] open:flex open:flex-col open:items-center open:justify-center motion-safe:open:animate-in motion-safe:open:fade-in-0"
+  aria-labelledby="app-lock-heading"
+  aria-describedby="app-lock-message"
+  data-testid="app-lock-cover"
+  [attr.data-view]="view()"
+  (cancel)="$event.preventDefault()"
+  (close)="onClose()"
+  (keydown)="onKeydown($event)"
+>
+  <!-- Reserved for a future incoming-call UI (spec decision 19): a call rings and shows here,
+       above the lock, without unlocking the rest of the app. Nothing projects into it yet. -->
+  <div class="w-full max-w-sm empty:hidden" data-testid="app-lock-above-lock">
+    <ng-content select="[trnAboveLock]" />
+  </div>
+
+  <div class="flex w-full max-w-sm flex-col items-center gap-4 text-center">
+    <img
+      class="size-12"
+      src="assets/icon/icon-plated.svg"
+      alt=""
+      aria-hidden="true"
+    />
+    <h1 id="app-lock-heading" class="m-0 text-xl font-semibold">
+      {{ appName }} is locked
+    </h1>
+
+    @switch (view()) {
+      @case ('system') {
+        <div class="grid w-full gap-2">
+          <button
+            trnBtn
+            type="button"
+            data-testid="app-lock-unlock"
+            data-autofocus
+            [disabled]="busy() || waiting()"
+            (click)="unlockWithSystem()"
+          >
+            {{ unlockText() }}
+          </button>
+          @if (pinOffered()) {
+            <button
+              trnBtn
+              presentation="ghost"
+              type="button"
+              data-testid="app-lock-use-pin"
+              (click)="usePin()"
+            >
+              Use PIN instead
+            </button>
+          }
+        </div>
+      }
+      @case ('pin') {
+        @let pinError = shownError(pinForm.pin);
+        <form
+          class="grid w-full gap-2 text-start"
+          [formRoot]="pinForm"
+          (submit)="submitPin()"
+        >
+          <trn-field [invalid]="!!pinError">
+            <trn-field-label controlId="app-lock-pin" [invalid]="!!pinError">
+              {{ appName }} PIN
+            </trn-field-label>
+            <input
+              trnInput
+              id="app-lock-pin"
+              type="password"
+              inputmode="numeric"
+              autocomplete="off"
+              [formField]="pinForm.pin"
+              [attr.aria-describedby]="
+                pinError
+                  ? 'app-lock-pin-error app-lock-message'
+                  : 'app-lock-message'
+              "
+              data-testid="app-lock-pin"
+              data-autofocus
+            />
+            @if (pinError) {
+              <p id="app-lock-pin-error" class="m-0 text-sm text-danger">
+                {{ pinError.message }}
+              </p>
+            }
+          </trn-field>
+          <button
+            trnBtn
+            type="submit"
+            data-testid="app-lock-pin-submit"
+            [disabled]="busy() || waiting()"
+          >
+            Unlock
+          </button>
+        </form>
+        <div class="grid w-full gap-2">
+          @if (backText(); as back) {
+            <button
+              trnBtn
+              presentation="ghost"
+              type="button"
+              data-testid="app-lock-use-system"
+              (click)="useSystem()"
+            >
+              {{ back }}
+            </button>
+          }
+          <button
+            trnBtn
+            presentation="ghost"
+            type="button"
+            data-testid="app-lock-forgot"
+            (click)="showForgot()"
+          >
+            Forgot PIN?
+          </button>
+        </div>
+      }
+      @case ('pin-unreadable') {
+        <p class="m-0 text-sm text-[var(--trinity-text-muted)]">
+          {{ appName }} can’t read your PIN right now.
+        </p>
+        <div class="grid w-full gap-2">
+          <button
+            trnBtn
+            type="button"
+            data-testid="app-lock-retry"
+            data-autofocus
+            [disabled]="busy()"
+            (click)="retry()"
+          >
+            Retry
+          </button>
+          @if (backText(); as back) {
+            <button
+              trnBtn
+              presentation="ghost"
+              type="button"
+              data-testid="app-lock-use-system"
+              (click)="useSystem()"
+            >
+              {{ back }}
+            </button>
+          }
+          <button
+            trnBtn
+            variant="danger"
+            presentation="ghost"
+            type="button"
+            data-testid="app-lock-reset"
+            (click)="confirmErase()"
+          >
+            Erase all data on this device
+          </button>
+        </div>
+      }
+      @case ('forgot') {
+        <p class="m-0 text-sm text-[var(--trinity-text-muted)]">
+          {{ unlockText() }}, then change your PIN in Settings › Security.
+        </p>
+        <div class="grid w-full gap-2">
+          @if (backText(); as back) {
+            <button
+              trnBtn
+              type="button"
+              data-testid="app-lock-use-system"
+              data-autofocus
+              (click)="useSystem()"
+            >
+              {{ back }}
+            </button>
+          }
+          <button
+            trnBtn
+            presentation="ghost"
+            type="button"
+            (click)="cancelPanel()"
+          >
+            Cancel
+          </button>
+        </div>
+      }
+      @case ('erase') {
+        <p class="m-0 text-sm text-[var(--trinity-text-muted)]">
+          {{ eraseText() }}
+        </p>
+        <div class="grid w-full gap-2">
+          <button
+            trnBtn
+            variant="danger"
+            type="button"
+            data-testid="app-lock-erase"
+            [disabled]="erasing()"
+            (click)="erase()"
+          >
+            Erase all data on this device
+          </button>
+          <button
+            trnBtn
+            presentation="ghost"
+            type="button"
+            data-autofocus
+            [disabled]="erasing()"
+            (click)="cancelPanel()"
+          >
+            Cancel
+          </button>
+        </div>
+      }
+      @default {
+        <!-- `no-pin` / `no-pin-store`: no PIN can unlock here. Say so, and offer the way that
+             can: the system prompt, or else the reset. -->
+        <p class="m-0 text-sm text-[var(--trinity-text-muted)]">
+          {{ recoveryText() }}
+        </p>
+        <div class="grid w-full gap-2">
+          @if (backText(); as back) {
+            <button
+              trnBtn
+              type="button"
+              data-testid="app-lock-use-system"
+              data-autofocus
+              (click)="useSystem()"
+            >
+              {{ back }}
+            </button>
+          } @else {
+            <button
+              trnBtn
+              variant="danger"
+              presentation="outline"
+              type="button"
+              data-testid="app-lock-reset"
+              data-autofocus
+              (click)="confirmErase()"
+            >
+              Erase all data on this device
+            </button>
+          }
+        </div>
+      }
+    }
+
+    <p
+      id="app-lock-message"
+      class="m-0 min-h-5 text-sm text-[var(--trinity-text-muted)]"
+      data-testid="app-lock-message"
+    >
+      {{ line() }}
+    </p>
+    <p class="sr-only" role="status" aria-live="polite">
+      {{ announcement() }}
+    </p>
+  </div>
+</dialog>

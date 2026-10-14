@@ -25,6 +25,7 @@ import {
   TrnSurfaceService,
   TrnToasterComponent,
 } from '@trinity/components/overlay';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import { SessionLockService } from '@trinity/platform-native';
 import { markRoutedPage } from '@trinity/util/ui';
 import { filter, map, take } from 'rxjs';
@@ -39,6 +40,7 @@ import {
 } from '../capability-status.service';
 import { VerificationHostComponent } from '../verification-host/verification-host.component';
 import { ApplicationRecoveryPresenter } from './application-recovery.presenter';
+import { AppLockCoverComponent } from './app-lock-cover/app-lock-cover.component';
 import { SessionLockNoticeComponent } from './session-lock-notice/session-lock-notice.component';
 import { sessionLockNotice } from './session-lock-notice/session-lock-notice.model';
 import { SystemStatusComponent } from './system-status/system-status.component';
@@ -67,6 +69,7 @@ const WAITING_NOTICE_DELAY_MS = 500;
     TrnSpinnerComponent,
     TitleBarComponent,
     SessionLockNoticeComponent,
+    AppLockCoverComponent,
   ],
 })
 export class ApplicationRootComponent {
@@ -120,6 +123,8 @@ export class ApplicationRootComponent {
   );
 
   protected readonly markRoutedPage = markRoutedPage;
+  /** Hides the workspace while locked, so a removed or glitched cover never shows content. */
+  protected readonly appLocked = inject(AppLockService).locked;
   protected readonly isShellRoute = computed(
     () =>
       this.router.parseUrl(this.routeUrl()).root.children[PRIMARY_OUTLET]

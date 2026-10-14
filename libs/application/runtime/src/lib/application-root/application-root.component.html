@@ -1,4 +1,7 @@
-<div class="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+<div
+  class="flex h-dvh flex-col overflow-hidden bg-background text-foreground"
+  [style.visibility]="appLocked() ? 'hidden' : null"
+>
   <trn-title-bar />
   @if (booting()) {
     <div
@@ -127,3 +130,5 @@
   {{ status.recoveryAnnouncement() }}
 </p>
 <trn-toaster />
+<!-- App lock's cover: outside the startup chain, so a locked cold start paints it first. -->
+<trn-app-lock-cover />
