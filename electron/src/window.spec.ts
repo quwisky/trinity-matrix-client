@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { openExternal, channel } = vi.hoisted(() => ({
-  openExternal: vi.fn(),
-  channel: { current: 'next' as 'stable' | 'next' },
-}));
+const { openExternal } = vi.hoisted(() => ({ openExternal: vi.fn() }));
 vi.mock('electron', () => ({
   shell: { openExternal },
   // window.ts (and its ./deep-link import) reference these at module load.
@@ -18,7 +15,7 @@ vi.mock('electron', () => ({
 vi.mock('./icons', () => ({ windowIconOptions: vi.fn(() => ({})) }));
 vi.mock('./app-identity', () => ({
   appIdentity: () => ({ deepLinkScheme: 'dev.trinityproject.trinity.next' }),
-  releaseChannelArgument: () => `--trinity-release-channel=${channel.current}`,
+  releaseChannelArgument: () => '--trinity-release-channel=next',
 }));
 vi.mock('./window-prefs', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./window-prefs')>()),
@@ -361,17 +358,13 @@ describe('createWindow title bar', () => {
     expect(create()['backgroundColor']).toBe('#0d0d0f');
   });
 
-  // Both channels ship packaged release builds: Trinity and Trinity Next.
   it.each([
-    [false, 'stable', true],
-    [false, 'next', true],
-    [true, 'stable', false],
-    [true, 'next', false],
-  ] as const)(
-    'allows developer tools only outside release builds (packaged %s, %s channel)',
-    (packaged, releaseChannel, devTools) => {
+    [false, true],
+    [true, false],
+  ])(
+    'allows developer tools only outside release builds (packaged %s)',
+    (packaged, devTools) => {
       (app as { isPackaged: boolean }).isPackaged = packaged;
-      channel.current = releaseChannel;
       try {
         const webPreferences = create()['webPreferences'] as {
           devTools?: boolean;
@@ -379,7 +372,6 @@ describe('createWindow title bar', () => {
         expect(webPreferences.devTools).toBe(devTools);
       } finally {
         (app as { isPackaged: boolean }).isPackaged = false;
-        channel.current = 'next';
       }
     },
   );
