@@ -58,7 +58,7 @@ export async function seedFormattedRoom(
   const roomName = `${prefix} ${testResourceId('room')}`;
   const roomId = await createRoomFor(request, hs, account, roomName);
   return {
-    session: { available: true, hs, user, pass } as HomeserverSession,
+    session: { available: true, hs, user, pass } satisfies HomeserverSession,
     account,
     roomId,
     roomName,

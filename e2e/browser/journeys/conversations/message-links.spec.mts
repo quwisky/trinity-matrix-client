@@ -22,8 +22,11 @@ import {
   signInAndOpen,
 } from '../../support/formatted-message-journey.mts';
 
-// End-to-end for matrix.to link navigation: a message linking to another room routes
-// in-app (switches rooms) rather than leaving to matrix.to. Needs Synapse (Docker).
+// End-to-end for message links. A matrix.to link to another room routes in-app (switches
+// rooms) rather than leaving to matrix.to; those tests need the federated secondary
+// homeserver (Docker). An external http(s) link opens a new tab with no opener, through
+// the click handler and through its own attributes; that describe runs on any homeserver,
+// native Synapse included.
 const session = homeserverSession();
 
 type Auth = { accessToken: string; userId: string };
@@ -648,5 +651,40 @@ test.describe('External message links', () => {
       timeout: 20_000,
     });
     expect(page.context().pages()).toHaveLength(1);
+  });
+
+  test('opens an external link with no opener when the click handler never sees it', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'ext-attr');
+    const external = `${hs}/_matrix/client/versions`;
+    await sendMessage(request, hs, room, {
+      body: 'link',
+      html: `<p><a href="${external}">the external page</a></p>`,
+    });
+    await signInAndOpen(page, room);
+
+    // A middle-click, a context-menu open or a drag never reaches MatrixLinkDirective's
+    // click handler, so only the rendered target and rel apply. Playwright's middle-click
+    // tabs don't load reliably in headless Chromium, so stop this one real click at the
+    // anchor instead: the browser then follows the link by its own attributes.
+    const externalLink = page
+      .locator('.scroll a', { hasText: 'the external page' })
+      .first();
+    await expect(externalLink).toBeVisible({ timeout: 20_000 });
+    await externalLink.evaluate((anchor) =>
+      anchor.addEventListener('click', (event) => event.stopPropagation(), {
+        once: true,
+      }),
+    );
+    const popupEvent = page.waitForEvent('popup', { timeout: 15_000 });
+    await externalLink.click();
+    const popup = await popupEvent;
+    await popup.waitForLoadState('domcontentloaded');
+    expect(await popup.evaluate(() => window.opener)).toBeNull();
+    expect(await popup.evaluate(() => document.referrer)).toBe('');
+    await popup.close();
   });
 });
