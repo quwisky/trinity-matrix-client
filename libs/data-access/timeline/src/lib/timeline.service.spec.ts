@@ -219,8 +219,11 @@ describe('TimelineService', () => {
 
     const html = svc.messages()[0].html ?? '';
     expect(html).not.toContain('attacker.test'); // remote src dropped
-    expect(html).toContain('mxc://hs/abc'); // local mxc src kept
-    expect(html).toContain('alt="leak"'); // node itself survives, just no src
+    // The mxc source moves off src for the render leaf to resolve through authenticated media.
+    expect(html).toContain('data-mx-src="mxc://hs/abc"');
+    // The remote image reduces to its alt text: no element, so no empty box and no fetch.
+    expect(html).not.toContain('alt="leak"');
+    expect(html).toContain('leak');
     expect(html).toContain('<strong>text</strong>');
   });
 

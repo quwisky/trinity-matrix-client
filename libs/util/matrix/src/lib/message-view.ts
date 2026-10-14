@@ -510,6 +510,8 @@ const MATRIX_ALLOWED_ATTR = [
   'href',
   'alt',
   'title',
+  'width',
+  'height',
   'src',
   'start',
   'color',
@@ -524,25 +526,28 @@ const MATRIX_ALLOWED_ATTR = [
 /**
  * Attributes whose values are not URIs. DOMPurify tests the value of every attribute it does
  * not consider URI-safe against ALLOWED_URI_REGEXP, and ours admits only Matrix's schemes, so
- * without this `color="#ff0000"` and `start="3"` were dropped.
+ * without this `color="#ff0000"`, `start="3"` and an image's `width`/`height` were dropped.
  */
-const MATRIX_URI_SAFE_ATTR = ['color', 'start'];
+const MATRIX_URI_SAFE_ATTR = ['color', 'start', 'width', 'height'];
 
 /**
  * The attributes Matrix permits on each tag ("Clients should only permit the attributes listed
  * for the tags below", spec v1.19 § m.room.message msgtypes). Keyed by upper-case `nodeName`;
  * a tag missing here keeps no attribute. `font` is deprecated (v1.10) and kept only so older
  * messages still read as their sender meant; `sanitizeOutgoingHtml` never sends it. `input` is
- * the render path's GFM checkbox, read by {@link normaliseTaskItems} and then removed. The spec
- * also lists `width`/`height` on `img`; they stay out until inline images are capped at 300px,
- * or a sender's size could open an arbitrarily tall empty box.
+ * the render path's GFM checkbox, read by {@link normaliseTaskItems} and then removed. An
+ * image's `width`/`height` reserve its box; the renderer caps inline images at 300px tall and
+ * the body's width, so a sender's size cannot open an arbitrarily large empty box.
  */
 const MATRIX_TAG_ATTRIBUTES: ReadonlyMap<string, ReadonlySet<string>> = new Map<
   string,
   ReadonlySet<string>
 >([
   ['A', new Set(['href'])],
-  ['IMG', new Set(['alt', 'title', 'src', 'data-mx-emoticon'])],
+  [
+    'IMG',
+    new Set(['width', 'height', 'alt', 'title', 'src', 'data-mx-emoticon']),
+  ],
   ['OL', new Set(['start'])],
   ['CODE', new Set(['class'])],
   [
@@ -561,9 +566,10 @@ const MATRIX_TAG_ATTRIBUTES: ReadonlyMap<string, ReadonlySet<string>> = new Map<
 
 const NO_ATTRIBUTES: ReadonlySet<string> = new Set();
 
-// Image sources we consider local (no network fetch on render). Remote schemes
-// are stripped below so sender HTML can't smuggle a tracking pixel.
-const LOCAL_IMG_SCHEME = /^(?:mxc|blob|data):/i;
+// The only image source Matrix permits ("src (provided it is a Matrix Content (mxc://) URI)",
+// spec v1.19). Every other scheme is stripped below, so sender HTML can neither smuggle a
+// tracking pixel nor embed a `data:` payload; such an image becomes its alt text.
+const MXC_SCHEME = /^mxc:\/\//i;
 
 // The only `class` tokens Matrix sanctions: `language-*`, on `code` (syntax highlighting). Every
 // class the renderer needs (mx-spoiler, mx-emoticon, colour tokens, …) is added after this
@@ -572,7 +578,7 @@ const ALLOWED_CLASS = /^language-[\w-]+$/;
 
 // A sender's `formatted_body` can embed `<img src="https://attacker/x.gif">`,
 // which the browser would fetch on render — leaking the viewer's IP and acting
-// as a read receipt. So strip the `src` of any non-local image. The hook also enforces the
+// as a read receipt. So strip the `src` of any non-`mxc:` image. The hook also enforces the
 // per-tag attribute list above and filters `class` to the Matrix-sanctioned tokens.
 //
 // Registered once at module load, and it applies to BOTH entry points — incoming
@@ -590,7 +596,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
   if (node.nodeName === 'IMG' && node.hasAttribute('src')) {
     const src = node.getAttribute('src') ?? '';
-    if (!LOCAL_IMG_SCHEME.test(src)) {
+    if (!MXC_SCHEME.test(src)) {
       node.removeAttribute('src');
     }
   }
@@ -769,7 +775,7 @@ export function sanitizeMatrixHtml(
   markExternalLinks(body);
   normaliseSpoilers(body);
   normaliseColours(body);
-  normaliseCustomEmotes(body);
+  normaliseImages(body);
   normaliseTaskItems(body);
   renderCodeBlocks(body);
   markMentionPills(body, addressesViewer);
@@ -859,21 +865,56 @@ function linkifyMessageText(text: string): string | null {
   );
 }
 
+/** Images one message may show inline (spec A2); past it the rest read as their alt text. */
+const MAX_INLINE_IMAGES = 10;
+
+/** An `mxc://server/media-id` URI. */
+const MXC_IMAGE_SOURCE = /^mxc:\/\/[^/\s]+\/[^\s]+$/;
+
 /**
- * Mark safe MSC2545 inline custom emotes for the render bridge. Their source stays an
- * `mxc://` identifier until the feature directive resolves it through authenticated media;
- * remote, data and blob sources become readable alt text and never reach an image fetch.
+ * Prepare every image for the render leaf. A valid `mxc://` source moves to `data-mx-src`:
+ * Angular strips `data-*` at the leaf, so the browser never sees an `mxc:` URL (the CSP would
+ * block it as a broken image), and InlineMxcImagesDirective re-reads the source from this string
+ * and resolves it through authenticated media. Any other image (no source, `data:`, `blob:`,
+ * remote) becomes its alt text here, never a fetch.
+ *
+ * MSC2545 custom emoji (`data-mx-emoticon`) are sized as before and capped at the leaf (50).
+ * Other images are marked `mx-image`, the first {@link MAX_INLINE_IMAGES} only, so a crafted
+ * message cannot fire many downloads; outside a link they are buttons that open the viewer,
+ * named after their alt text ("Image" without one). Inside a link they follow the link.
  */
-function normaliseCustomEmotes(body: HTMLElement): void {
-  for (const image of body.querySelectorAll('img[data-mx-emoticon]')) {
+function normaliseImages(root: ParentNode): void {
+  let inline = 0;
+  for (const image of root.querySelectorAll('img')) {
     const source = image.getAttribute('src') ?? '';
-    if (!/^mxc:\/\/[^/\s]+\/[^\s]+$/.test(source)) {
-      image.replaceWith(image.getAttribute('alt') ?? 'custom emoji');
+    const alt = image.getAttribute('alt');
+    const emote = image.hasAttribute('data-mx-emoticon');
+    if (
+      !MXC_IMAGE_SOURCE.test(source) ||
+      (!emote && inline >= MAX_INLINE_IMAGES)
+    ) {
+      image.replaceWith(emote ? (alt ?? 'custom emoji') : (alt ?? ''));
       continue;
     }
-    image.classList.add('mx-emoticon');
-    image.removeAttribute('width');
-    image.setAttribute('height', '32');
+    image.removeAttribute('src');
+    image.setAttribute('data-mx-src', source);
+    if (emote) {
+      image.classList.add('mx-emoticon');
+      image.removeAttribute('width');
+      image.setAttribute('height', '32');
+      continue;
+    }
+    inline += 1;
+    image.classList.add('mx-image');
+    image.setAttribute('alt', alt || 'Image');
+    if (!image.closest('a')) {
+      image.setAttribute('role', 'button');
+      image.setAttribute('tabindex', '0');
+      image.setAttribute(
+        'aria-label',
+        alt ? `View image: ${alt}` : 'View image',
+      );
+    }
   }
 }
 

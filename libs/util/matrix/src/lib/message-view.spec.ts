@@ -380,7 +380,10 @@ describe('sanitizeMatrixHtml — MSC2545 custom emotes', () => {
     );
     const image = parse(clean).querySelector('img.mx-emoticon');
 
-    expect(image?.getAttribute('src')).toBe('mxc://hs/wave');
+    // The source moves to data-mx-src, which Angular strips at the leaf: the browser never
+    // sees an mxc: URL, and InlineMxcImagesDirective re-reads it from this string.
+    expect(image?.hasAttribute('src')).toBe(false);
+    expect(image?.getAttribute('data-mx-src')).toBe('mxc://hs/wave');
     expect(image?.getAttribute('data-mx-emoticon')).toBe('');
     expect(image?.getAttribute('height')).toBe('32');
     expect(image?.hasAttribute('width')).toBe(false);
