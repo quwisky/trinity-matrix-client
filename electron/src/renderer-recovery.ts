@@ -67,9 +67,10 @@ export function watchRendererRecovery(
     }
   };
 
-  const askAfterRepeatedCrash = async (): Promise<void> => {
+  /** `shown`: a show, restore or focus event, which proves the window is on screen. */
+  const askAfterRepeatedCrash = async (shown = false): Promise<void> => {
     crashedAgain = true;
-    if (!onScreen()) return;
+    if (!shown && !onScreen()) return;
     crashedAgain = false;
     const response = await ask('crash', {
       type: 'error',
@@ -88,10 +89,10 @@ export function watchRendererRecovery(
     }
   };
 
-  const askWhileHung = async (): Promise<void> => {
+  const askWhileHung = async (shown = false): Promise<void> => {
     // Asked once per report: after Keep Waiting, Chromium reports a still-hung window
     // again on new input, so returning focus to the window does not reopen the box.
-    hangDeferred = !onScreen();
+    hangDeferred = !shown && !onScreen();
     if (hangDeferred) return;
     const askedAbout = renderer;
     const response = await ask('hang', {
@@ -157,8 +158,10 @@ export function watchRendererRecovery(
   });
   const askIfWaiting = (): void => {
     if (question) return;
-    if (crashedAgain) void askAfterRepeatedCrash();
-    else if (hangDeferred) void askWhileHung();
+    // The event itself shows the window is on screen: isVisible() can stay false on Linux
+    // without a window manager, which would otherwise defer the question for good.
+    if (crashedAgain) void askAfterRepeatedCrash(true);
+    else if (hangDeferred) void askWhileHung(true);
   };
   win.on('show', askIfWaiting);
   win.on('restore', askIfWaiting);

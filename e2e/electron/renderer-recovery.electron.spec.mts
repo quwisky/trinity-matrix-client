@@ -127,6 +127,13 @@ test('asks after a crash soon after the last reload, and reloads on Reload', asy
 
   await markRenderer();
   await crash();
+  // Bring the window forward, as a person coming back to it would. Linux CI (xvfb, no
+  // window manager) reports the window hidden, so the question waits for this.
+  await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    win?.show();
+    win?.focus();
+  });
   await expectRecovered();
   expect(await asked()).toEqual([
     expect.stringMatching(/^Trinity( Next)? stopped working$/),

@@ -162,6 +162,19 @@ describe('renderer recovery', () => {
       expect(fake.contents.reload).toHaveBeenCalledTimes(2);
     });
 
+    it('asks about a deferred crash on show even while Electron still reports the window hidden', async () => {
+      // Linux without a window manager (CI's xvfb) reports isVisible() false throughout.
+      mocks.showMessageBox.mockResolvedValue({ response: 0 });
+      const fake = fakeWindow(false);
+      watchRendererRecovery(fake.win, () => now);
+      fake.gone('crashed');
+      fake.gone('crashed');
+      fake.emit('focus');
+      await settle();
+      expect(mocks.showMessageBox).toHaveBeenCalledTimes(1);
+      expect(fake.contents.reload).toHaveBeenCalledTimes(2);
+    });
+
     it('keeps recovering after a question fails to open', async () => {
       mocks.showMessageBox.mockRejectedValueOnce(new Error('destroyed'));
       const fake = fakeWindow();
@@ -324,6 +337,16 @@ describe('renderer recovery', () => {
         expect(mocks.showMessageBox).toHaveBeenCalledTimes(1);
       },
     );
+
+    it('asks about a deferred hang on focus even while Electron still reports the window hidden', () => {
+      mocks.showMessageBox.mockReturnValue(new Promise(() => undefined));
+      const fake = fakeWindow(false);
+      watchRendererRecovery(fake.win, () => now);
+      fake.emit('unresponsive');
+      expect(mocks.showMessageBox).not.toHaveBeenCalled();
+      fake.emit('focus');
+      expect(mocks.showMessageBox).toHaveBeenCalledTimes(1);
+    });
 
     it('does not ask on show once a hidden window has recovered', () => {
       const fake = fakeWindow(false);
