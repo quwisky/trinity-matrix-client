@@ -12,8 +12,11 @@ import { APP_PACKAGE, native, resetApp, webview } from '../support/session.mts';
 /** XCUITest and UiAutomator2 both report 4 for an app in the foreground. */
 const RUNNING_IN_FOREGROUND = 4;
 
-/** The settle wait's timeout message: the app never left the foreground. */
-const STAYED_IN_FOREGROUND = 'the app stayed in the foreground';
+/**
+ * How long the OS gets to bring the system browser to the front. A cold first Safari
+ * launch on a CI Simulator took 17 s to start Safari's process.
+ */
+const LEAVE_TIMEOUT_MS = 30_000;
 
 const pathname = async (): Promise<string> =>
   new URL(await browser.getUrl()).pathname;
@@ -24,6 +27,23 @@ const appState = async (): Promise<number> =>
     'mobile: queryAppState',
     browser.isIOS ? { bundleId: APP_PACKAGE } : { appId: APP_PACKAGE },
   )) as number;
+
+/**
+ * Whether the app left the foreground within `timeout`. Every reading runs to completion,
+ * and the deadline is checked only between readings: WebDriverAgent can hold a query for
+ * as long as the OS takes to switch apps (38 s on a CI runner), and a wall-clock wait that
+ * gives up on that pending query would report "stayed in the foreground" when its answer
+ * is "left". A failing query (a driver or capability error) rejects instead, so it can't
+ * pass for "the link opened nothing".
+ */
+async function leftForeground(timeout: number): Promise<boolean> {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    if ((await appState()) !== RUNNING_IN_FOREGROUND) return true;
+    if (Date.now() >= deadline) return false;
+    await browser.pause(250);
+  }
+}
 
 // Owner decision 8 (spec part D): a message link must leave the WebView. The page it
 // opens must never replace Trinity inside the app's own WebView; where it would, the
@@ -55,24 +75,10 @@ describe('message links on a phone', () => {
 
     await tap(link);
     await native();
-    // Settle: give the OS up to 10 s to bring the system browser to the front. Keep the
-    // result: a no-op window.open (or an Android launch with no browser to handle it) leaves
-    // the app in the foreground, and must fail rather than pass as "left the WebView".
-    // Only the timeout means "stayed in the foreground"; a failing queryAppState (a driver or
-    // capability error) is rethrown, so it can't pass for "the link opened nothing".
-    const left = await browser
-      .waitUntil(async () => (await appState()) !== RUNNING_IN_FOREGROUND, {
-        timeout: 10_000,
-        timeoutMsg: STAYED_IN_FOREGROUND,
-      })
-      .then(
-        () => true,
-        (error: unknown) => {
-          if (error instanceof Error && error.message === STAYED_IN_FOREGROUND)
-            return false;
-          throw error;
-        },
-      );
+    // Settle, and keep the result: a no-op window.open (or an Android launch with no browser
+    // to handle it) leaves the app in the foreground, and must fail rather than pass as
+    // "left the WebView".
+    const left = await leftForeground(LEAVE_TIMEOUT_MS);
     await browser.activateApp(APP_PACKAGE);
     // On iOS, webview() only accepts a WKWebView showing capacitor://localhost, so a WebView
     // that navigated away fails here ("no WKWebView context loaded capacitor://localhost"),
