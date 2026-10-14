@@ -158,6 +158,7 @@ test('negotiates the grouped protocol-v1 bridge without exposing Node', async ()
     'deepLinks',
     'lifecycle',
     'location',
+    'lockIntegration',
     'networkCors',
     'notificationPresentation',
     'secureStore',

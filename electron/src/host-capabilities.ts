@@ -40,6 +40,7 @@ const SUPPORTED = new Set<HostOperation>([
   'lifecycle',
   'title-bar',
   'user-presence',
+  'lock-integration',
 ]);
 
 function isOperation(value: unknown): value is HostOperation {

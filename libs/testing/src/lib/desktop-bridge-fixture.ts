@@ -100,6 +100,17 @@ export interface DesktopBridgeFixture {
       readonly support: () => Promise<unknown>;
       readonly verify: (reason: string) => Promise<unknown>;
     };
+    readonly lockIntegration?: {
+      readonly setState: (state: {
+        readonly enabled: boolean;
+        readonly locked: boolean;
+        readonly accelerator: string | null;
+      }) => void;
+      readonly coverPainted: () => void;
+      readonly subscribeRequests: (
+        callback: (request: 'menu' | 'system-locked' | 'suspended') => void,
+      ) => () => void;
+    };
   };
 }
 
@@ -214,6 +225,16 @@ export function desktopBridgeFixture(
                 reason: 'not-supported',
               }),
               ...capabilities.userPresence,
+            },
+          }
+        : {}),
+      ...(capabilities?.lockIntegration
+        ? {
+            lockIntegration: {
+              setState: () => undefined,
+              coverPainted: () => undefined,
+              subscribeRequests: () => () => undefined,
+              ...capabilities.lockIntegration,
             },
           }
         : {}),

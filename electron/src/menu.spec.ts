@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   setApplicationMenu: vi.fn(),
   openExternal: vi.fn(),
   checkForUpdates: vi.fn(() => Promise.resolve()),
+  productName: { current: 'Trinity' },
 }));
 vi.mock('electron', () => ({
   Menu: {
@@ -15,6 +16,9 @@ vi.mock('electron', () => ({
   shell: { openExternal: mocks.openExternal },
 }));
 vi.mock('./update-check', () => ({ checkForUpdates: mocks.checkForUpdates }));
+vi.mock('./app-identity', () => ({
+  appIdentity: () => ({ productName: mocks.productName.current }),
+}));
 
 import { buildMenu } from './menu';
 
@@ -60,7 +64,10 @@ function viewRoles(packaged: boolean): (string | undefined)[] {
 
 describe('application menu', () => {
   beforeEach(() => vi.clearAllMocks());
-  afterEach(() => setPlatform(realPlatform));
+  afterEach(() => {
+    setPlatform(realPlatform);
+    mocks.productName.current = 'Trinity';
+  });
 
   it('checks for updates on demand from Help', () => {
     const item = helpItems().find(
@@ -140,17 +147,106 @@ describe('application menu', () => {
     }
   });
 
-  it('keeps Close (Cmd/Ctrl+W) in File on every platform, and Quit there off macOS', () => {
-    const fileRoles = () =>
-      (
-        template().find((item) => item.label === 'File')
-          ?.submenu as MenuItemConstructorOptions[]
-      ).map((entry) => entry.role);
-    setPlatform('darwin');
-    expect(fileRoles()).toEqual(['close']);
-    for (const platform of ['win32', 'linux'] as const) {
+  it.each([
+    ['Trinity', 'Lock Trinity'],
+    ['Trinity Next', 'Lock Trinity Next'],
+  ])(
+    'puts the lock item first in File in %s, with its shortcut shown but not registered',
+    (productName, label) => {
+      mocks.productName.current = productName;
+      const onLock = vi.fn();
+      buildMenu({
+        packaged: false,
+        lock: {
+          visible: true,
+          enabled: true,
+          accelerator: 'CommandOrControl+Shift+L',
+          onLock,
+        },
+      });
+      const file = (
+        mocks.buildFromTemplate.mock.calls.at(
+          -1,
+        )?.[0] as MenuItemConstructorOptions[]
+      ).find((item) => item.label === 'File');
+      const items = file?.submenu as MenuItemConstructorOptions[];
+      expect(items[0]).toMatchObject({
+        id: 'lock-trinity',
+        label,
+        enabled: true,
+        accelerator: 'CommandOrControl+Shift+L',
+        registerAccelerator: false,
+      });
+      items[0].click?.({} as never, undefined, {} as never);
+      expect(onLock).toHaveBeenCalledOnce();
+    },
+  );
+
+  /** File's items by role or type, with the lock item by its id. */
+  function fileItems(lock?: Parameters<typeof buildMenu>[0]['lock']) {
+    buildMenu({ packaged: false, ...(lock ? { lock } : {}) });
+    const file = (
+      mocks.buildFromTemplate.mock.calls.at(
+        -1,
+      )?.[0] as MenuItemConstructorOptions[]
+    ).find((item) => item.label === 'File');
+    return (file?.submenu as MenuItemConstructorOptions[]).map(
+      (item) => item.id ?? item.role ?? item.type,
+    );
+  }
+
+  it('keeps Close in File everywhere, and Quit on Windows and Linux, while the lock is off', () => {
+    for (const platform of ['darwin', 'win32', 'linux'] as const) {
       setPlatform(platform);
-      expect(fileRoles()).toEqual(['close', 'quit']);
+      expect(fileItems()).toEqual(
+        platform === 'darwin' ? ['close'] : ['close', 'quit'],
+      );
+      expect(
+        fileItems({
+          visible: false,
+          enabled: false,
+          accelerator: null,
+          onLock: vi.fn(),
+        }),
+      ).toEqual(platform === 'darwin' ? ['close'] : ['close', 'quit']);
     }
+  });
+
+  it('puts the lock item and a separator above Close and Quit', () => {
+    const lock = {
+      visible: true,
+      enabled: true,
+      accelerator: null,
+      onLock: vi.fn(),
+    };
+    for (const platform of ['darwin', 'win32', 'linux'] as const) {
+      setPlatform(platform);
+      expect(fileItems(lock)).toEqual(
+        platform === 'darwin'
+          ? ['lock-trinity', 'separator', 'close']
+          : ['lock-trinity', 'separator', 'close', 'quit'],
+      );
+    }
+  });
+
+  it('omits the accelerator while the shortcut is unassigned', () => {
+    buildMenu({
+      packaged: false,
+      lock: {
+        visible: true,
+        enabled: false,
+        accelerator: null,
+        onLock: vi.fn(),
+      },
+    });
+    const file = (
+      mocks.buildFromTemplate.mock.calls.at(
+        -1,
+      )?.[0] as MenuItemConstructorOptions[]
+    ).find((item) => item.label === 'File');
+    const lock = (file?.submenu as MenuItemConstructorOptions[])[0];
+    expect(lock.id).toBe('lock-trinity');
+    expect(lock.enabled).toBe(false);
+    expect('accelerator' in lock).toBe(false);
   });
 });

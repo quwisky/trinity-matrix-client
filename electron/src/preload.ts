@@ -57,6 +57,11 @@ const RELAUNCH_CHANNEL = 'trinity:host:v1:title-bar:relaunch';
 // Mirror user-presence-ipc.ts by string value; main re-validates every payload.
 const USER_PRESENCE_SUPPORT_CHANNEL = 'trinity:host:v1:user-presence:support';
 const USER_PRESENCE_VERIFY_CHANNEL = 'trinity:host:v1:user-presence:verify';
+// Mirror lock-integration.ts by string value; main re-validates every payload.
+const LOCK_SET_STATE_CHANNEL = 'trinity:host:v1:lock-integration:set-state';
+const LOCK_COVER_PAINTED_CHANNEL =
+  'trinity:host:v1:lock-integration:cover-painted';
+const LOCK_REQUEST_CHANNEL = 'trinity:host:v1:lock-integration:request';
 const PRESENCE_NOT_SUPPORTED = {
   kind: 'unavailable',
   reason: 'not-supported',
@@ -452,6 +457,46 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
         return ipcRenderer.invoke(USER_PRESENCE_VERIFY_CHANNEL, {
           reason,
         }) as Promise<unknown>;
+      },
+    },
+    lockIntegration: {
+      setState: (state: {
+        enabled: boolean;
+        locked: boolean;
+        accelerator: string | null;
+      }): void => {
+        if (!grantedOperations.has('lock-integration')) return;
+        if (!state || typeof state !== 'object') return;
+        const { enabled, locked, accelerator } = state as Partial<typeof state>;
+        if (typeof enabled !== 'boolean' || typeof locked !== 'boolean') return;
+        if (accelerator !== null && typeof accelerator !== 'string') return;
+        ipcRenderer.send(LOCK_SET_STATE_CHANNEL, {
+          enabled,
+          locked,
+          accelerator,
+        });
+      },
+      coverPainted: (): void => {
+        if (grantedOperations.has('lock-integration')) {
+          ipcRenderer.send(LOCK_COVER_PAINTED_CHANNEL);
+        }
+      },
+      subscribeRequests(
+        callback: (request: 'menu' | 'system-locked' | 'suspended') => void,
+      ): () => void {
+        if (!grantedOperations.has('lock-integration')) return () => undefined;
+        const listener = (_event: IpcRendererEvent, request: unknown): void => {
+          if (!grantedOperations.has('lock-integration')) return;
+          if (
+            request === 'menu' ||
+            request === 'system-locked' ||
+            request === 'suspended'
+          ) {
+            callback(request);
+          }
+        };
+        ipcRenderer.on(LOCK_REQUEST_CHANNEL, listener);
+        return () => ipcRenderer.removeListener(LOCK_REQUEST_CHANNEL, listener);
       },
     },
   },

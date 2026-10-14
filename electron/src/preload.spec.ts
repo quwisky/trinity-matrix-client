@@ -85,6 +85,13 @@ type ExposedBridge = {
       readonly support: () => Promise<unknown>;
       readonly verify: (reason: unknown) => Promise<unknown>;
     };
+    readonly lockIntegration: {
+      readonly setState: (state: unknown) => void;
+      readonly coverPainted: () => void;
+      readonly subscribeRequests: (
+        callback: (request: unknown) => void,
+      ) => () => void;
+    };
   };
   readonly onDeepLink?: unknown;
   readonly showNotification?: unknown;
@@ -135,6 +142,7 @@ describe('preload host capabilities', () => {
       'deepLinks',
       'lifecycle',
       'location',
+      'lockIntegration',
       'networkCors',
       'notificationPresentation',
       'secureStore',
@@ -194,6 +202,13 @@ describe('preload host capabilities', () => {
     bridge.capabilities.titleBar.relaunch();
     bridge.capabilities.lifecycle.subscribeVisibility(vi.fn());
     bridge.capabilities.lifecycle.releaseMemory();
+    bridge.capabilities.lockIntegration.setState({
+      enabled: true,
+      locked: false,
+      accelerator: null,
+    });
+    bridge.capabilities.lockIntegration.coverPainted();
+    bridge.capabilities.lockIntegration.subscribeRequests(vi.fn());
     expect(clearCache).not.toHaveBeenCalled();
     await expect(
       bridge.capabilities.titleBar.getSystemTitleBar(),
@@ -353,6 +368,45 @@ describe('preload host capabilities', () => {
       ['trinity:host:v1:user-presence:support'],
       ['trinity:host:v1:user-presence:verify', { reason: 'Unlock Trinity' }],
     ]);
+  });
+
+  it('sends lock state and accepts only known lock requests once granted', async () => {
+    bridge.capabilities.lockIntegration.setState({
+      enabled: true,
+      locked: false,
+      accelerator: null,
+    });
+    expect(send).not.toHaveBeenCalled();
+    await bridge.negotiate(['lock-integration']);
+    send.mockClear();
+    bridge.capabilities.lockIntegration.setState({
+      enabled: true,
+      locked: true,
+      accelerator: 'CommandOrControl+Shift+L',
+    });
+    bridge.capabilities.lockIntegration.setState({ enabled: 'x' });
+    bridge.capabilities.lockIntegration.coverPainted();
+    expect(send.mock.calls).toEqual([
+      [
+        'trinity:host:v1:lock-integration:set-state',
+        {
+          enabled: true,
+          locked: true,
+          accelerator: 'CommandOrControl+Shift+L',
+        },
+      ],
+      ['trinity:host:v1:lock-integration:cover-painted'],
+    ]);
+    const received: unknown[] = [];
+    bridge.capabilities.lockIntegration.subscribeRequests((request) =>
+      received.push(request),
+    );
+    const listener = on.mock.calls.find(
+      ([channel]) => channel === 'trinity:host:v1:lock-integration:request',
+    )?.[1] as (event: unknown, request: unknown) => void;
+    listener({}, 'menu');
+    listener({}, 'shell:execute');
+    expect(received).toEqual(['menu']);
   });
 
   it('drops malformed title-bar input before IPC', async () => {
