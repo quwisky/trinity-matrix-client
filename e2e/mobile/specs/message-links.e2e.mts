@@ -9,13 +9,20 @@ import {
 } from '../support/matrix.mts';
 import { APP_PACKAGE, native, resetApp, webview } from '../support/session.mts';
 
-/** XCUITest and UiAutomator2 both report 4 for an app in the foreground. */
+/**
+ * XCUITest and UiAutomator2 share these `queryAppState` values: 1 not running, 2 suspended
+ * or running in the background, 3 running in the background, 4 in the foreground.
+ */
 const RUNNING_IN_FOREGROUND = 4;
+const RUNNING_BEHIND = [2, 3];
 
 /** How long the OS gets to bring the system browser, already started, to the front. */
 const LEAVE_TIMEOUT_MS = 30_000;
 
 const SAFARI = 'com.apple.mobilesafari';
+
+/** Safari's launch plus its wait for the foreground; a held query can add up to 38 s. */
+const SAFARI_START_MS = 120_000;
 
 /** This test's budget; see the breakdown in the test. The suite default is 180 s. */
 const TEST_TIMEOUT_MS = 300_000;
@@ -27,40 +34,45 @@ const TEST_TIMEOUT_MS = 300_000;
  * how fast Safari boots. A link that opens nothing still leaves Trinity in the foreground.
  */
 async function startSafari(): Promise<void> {
+  const deadline = Date.now() + SAFARI_START_MS;
   await native();
   await browser.execute('mobile: launchApp', { bundleId: SAFARI });
-  await browser.waitUntil(
-    async () =>
-      (await browser.execute('mobile: queryAppState', {
-        bundleId: SAFARI,
-      })) === RUNNING_IN_FOREGROUND,
-    { timeout: 150_000, interval: 1_000, timeoutMsg: 'Safari never started' },
+  const state = await appStateWithin(
+    SAFARI,
+    (reading) => reading === RUNNING_IN_FOREGROUND,
+    Math.max(0, deadline - Date.now()),
   );
+  if (state !== RUNNING_IN_FOREGROUND)
+    throw new Error(`Safari never reached the foreground (state ${state})`);
 }
 
 const pathname = async (): Promise<string> =>
   new URL(await browser.getUrl()).pathname;
 
-/** The app's state as the OS reports it; read from the native context. */
-const appState = async (): Promise<number> =>
+/** An app's state as the OS reports it; read from the native context. */
+const appState = async (id: string): Promise<number> =>
   (await browser.execute(
     'mobile: queryAppState',
-    browser.isIOS ? { bundleId: APP_PACKAGE } : { appId: APP_PACKAGE },
+    browser.isIOS ? { bundleId: id } : { appId: id },
   )) as number;
 
 /**
- * Whether the app left the foreground within `timeout`. Every reading runs to completion,
- * and the deadline is checked only between readings: WebDriverAgent can hold a query for
- * as long as the OS takes to switch apps (38 s on a CI runner), and a wall-clock wait that
- * gives up on that pending query would report "stayed in the foreground" when its answer
- * is "left". A failing query (a driver or capability error) rejects instead, so it can't
- * pass for "the link opened nothing".
+ * Read `id`'s state until `accept` takes it or `timeout` passes; return the last reading.
+ * Every reading runs to completion, and the deadline is checked only between readings:
+ * WebDriverAgent can hold a query for as long as the OS takes to switch apps (38 s on a CI
+ * runner), and a wall-clock wait that gave up on that pending query reported "stayed in the
+ * foreground" when its answer was "left". A failing query (a driver or capability error)
+ * rejects instead, so it can't pass for "the link opened nothing".
  */
-async function leftForeground(timeout: number): Promise<boolean> {
+async function appStateWithin(
+  id: string,
+  accept: (state: number) => boolean,
+  timeout: number,
+): Promise<number> {
   const deadline = Date.now() + timeout;
   for (;;) {
-    if ((await appState()) !== RUNNING_IN_FOREGROUND) return true;
-    if (Date.now() >= deadline) return false;
+    const state = await appState(id);
+    if (accept(state) || Date.now() >= deadline) return state;
     await browser.pause(250);
   }
 }
@@ -132,9 +144,10 @@ describe('message links on a phone', () => {
   });
 
   it('opens an external message link outside the app’s WebView', async function () {
-    // Measured on a cold CI runner: 165 s of reinstall, launch retries and first sign-in
-    // before the tap, up to 30 s for the timeline to settle, up to 70 s to see the app
-    // leave (a 30 s window plus a 38 s query WebDriverAgent held) and 26 s to bring it back.
+    // 165 s of reinstall, launch retries and first sign-in before the tap (measured on a cold
+    // CI runner), plus the waits' limits: 30 s for the timeline to settle, and 30 s to see
+    // the app leave, which a held query (38 s seen) can overrun. Safari is then normally
+    // already in front, and bringing the app back took 26 s (measured).
     this.timeout(TEST_TIMEOUT_MS);
     await resetApp();
     const user = uniqueId('message-link');
@@ -162,10 +175,25 @@ describe('message links on a phone', () => {
 
     await tap(link);
     await native();
-    // Settle, and keep the result: a no-op window.open (or an Android launch with no browser
-    // to handle it) leaves the app in the foreground, and must fail rather than pass as
-    // "left the WebView".
-    const left = await leftForeground(LEAVE_TIMEOUT_MS);
+    // The link went to the system browser (spec part D, decision 8). A no-op window.open (or
+    // an Android launch with no browser to handle it) leaves Trinity in the foreground; a
+    // crash leaves it not running. Neither may pass as "left the WebView": Trinity must be
+    // running behind another app, and on iOS that app is Safari.
+    const left = await appStateWithin(
+      APP_PACKAGE,
+      (state) => state !== RUNNING_IN_FOREGROUND,
+      LEAVE_TIMEOUT_MS,
+    );
+    expect(RUNNING_BEHIND).toContain(left);
+    if (browser.isIOS) {
+      const safari = await appStateWithin(
+        SAFARI,
+        (state) => state === RUNNING_IN_FOREGROUND,
+        LEAVE_TIMEOUT_MS,
+      );
+      expect(safari).toBe(RUNNING_IN_FOREGROUND);
+    }
+
     await browser.activateApp(APP_PACKAGE);
     // On iOS, webview() only accepts a WKWebView showing capacitor://localhost, so a WebView
     // that navigated away fails here ("no WKWebView context loaded capacitor://localhost"),
@@ -174,7 +202,5 @@ describe('message links on a phone', () => {
 
     // The WebView is back on the room it showed before the tap.
     expect(await pathname()).toBe(roomPath);
-    // And the link really went to the system browser (spec part D, decision 8).
-    expect(left).toBe(true);
   });
 });
