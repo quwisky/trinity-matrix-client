@@ -206,6 +206,16 @@ describe('CapacitorUserPresenceAdapter', () => {
     });
   });
 
+  it('hands the PIN to the plugin for setting and checking', async () => {
+    const presence = adapter();
+    await firstValueFrom(presence.setPin('482913'));
+    expect(pinBridge.set).toHaveBeenCalledTimes(1);
+    expect(pinBridge.set).toHaveBeenCalledWith('482913');
+    await firstValueFrom(presence.verifyPin('482913'));
+    expect(pinBridge.verify).toHaveBeenCalledTimes(1);
+    expect(pinBridge.verify).toHaveBeenCalledWith('482913');
+  });
+
   it('sets, verifies and clears the PIN through the plugin', async () => {
     const presence = adapter();
     await expect(firstValueFrom(presence.setPin('482913'))).resolves.toEqual({

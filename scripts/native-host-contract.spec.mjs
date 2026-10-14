@@ -200,6 +200,35 @@ describe('native host contract', () => {
     expect(validateCurrentNativeHosts).not.toThrow();
   });
 
+  it('accepts each plugin named exactly, in the shapes cap update writes', () => {
+    const input = validInput();
+    const android = input.androidPlugins.split('\n');
+    const ios = input.iosPlugins.split('\n');
+    input.androidPlugins = android
+      .map(
+        (name) =>
+          `include '${name}'\nproject('${name}').projectDir = new File('../x/android')`,
+      )
+      .join('\n');
+    input.iosPlugins = ios
+      .map(
+        (name) =>
+          `.package(name: "${name}", path: "../x"),\n.product(name: "${name}", package: "${name}"),`,
+      )
+      .join('\n');
+    const errors = [];
+
+    validateNativeHostContract(input, errors);
+
+    expect(errors.filter((error) => error.includes('plugin wiring'))).toEqual(
+      [],
+    );
+    expect(ios).toContain('CapacitorApp');
+    expect(ios).toContain('TrinityCapacitorAppLock');
+    expect(android).toContain(':capacitor-app');
+    expect(android).toContain(':trinity-capacitor-app-lock');
+  });
+
   it('accepts the push library service with reordered attributes', () => {
     const input = validInput();
     input.androidPushLibraryManifest = pushLibraryManifest(
@@ -511,6 +540,53 @@ describe('native host contract', () => {
         );
       },
       'iOS host is missing plugin wiring: TrinityCapacitorAppLock',
+    ],
+    [
+      'an iOS plugin named only inside a longer package name',
+      (input) => {
+        input.iosPlugins = input.iosPlugins.replace(/^CapacitorApp$/mu, '');
+      },
+      'iOS host is missing plugin wiring: CapacitorApp',
+    ],
+    [
+      'an iOS plugin replaced by one with a longer name',
+      (input) => {
+        input.iosPlugins = input.iosPlugins.replace(
+          /^CapacitorApp$/mu,
+          'CapacitorAppX',
+        );
+      },
+      'iOS host is missing plugin wiring: CapacitorApp',
+    ],
+    [
+      'an iOS plugin replaced by a prefix of its name',
+      (input) => {
+        input.iosPlugins = input.iosPlugins.replace(
+          /^CapacitorApp$/mu,
+          'CapacitorAp',
+        );
+      },
+      'iOS host is missing plugin wiring: CapacitorApp',
+    ],
+    [
+      'an Android module named only as the prefix of a longer module',
+      (input) => {
+        input.androidPlugins = input.androidPlugins.replace(
+          /^:capacitor-app$/mu,
+          ':capacitor-app-lock',
+        );
+      },
+      'Android host is missing plugin wiring: :capacitor-app',
+    ],
+    [
+      'an Android module named only inside a longer module',
+      (input) => {
+        input.androidPlugins = input.androidPlugins.replace(
+          /^:trinity-capacitor-app-lock$/mu,
+          ':trinity-capacitor-app-lock-legacy',
+        );
+      },
+      'Android host is missing plugin wiring: :trinity-capacitor-app-lock',
     ],
     [
       'an iOS file whose first @objc name is another class',
