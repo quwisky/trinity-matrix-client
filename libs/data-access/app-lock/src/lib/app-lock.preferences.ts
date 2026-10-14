@@ -103,11 +103,20 @@ export const APP_LOCK_LOCK_AFTER_PREFERENCE = definePreference<LockAfter>({
 
 export interface StoredAppLock {
   /**
-   * `unreadable` when the saved switch could not be read or was not a boolean: never
-   * collapse it to `false`. The caller decides with the PIN's presence (fail closed).
+   * The saved switch, or `unreadable` (fail closed: never collapse it to `false`; the caller
+   * decides with the PIN's presence). `unreadable` whenever the switch did not load as
+   * `ready`, which covers:
+   * - storage reported the read as unavailable, or the adapter threw;
+   * - there is no storage adapter;
+   * - the saved value is not a boolean, or its version is unsupported;
+   * - the value needed rewriting to the current version and the write failed;
+   * - any other load state, including ones added to `PreferenceState` later;
+   * - hydration errored or completed without an outcome.
+   *
+   * Nothing saved is `false` (off by default): a readable setting always wins.
    */
   readonly enabled: boolean | 'unreadable';
-  /** The saved delay, or the default (`1m`) when it could not be read. */
+  /** The saved delay, or the default (`1m`) when it did not load as `ready`. */
   readonly lockAfter: LockAfter;
 }
 
@@ -115,8 +124,8 @@ const UNREADABLE: StoredAppLock = { enabled: 'unreadable', lockAfter: '1m' };
 
 /**
  * Read both settings from installation storage. Cold; emits once and never errors. Each
- * setting is judged on its own hydration: a failed switch is `unreadable`, a failed delay
- * falls back to its default.
+ * setting is judged on its own load state: a switch that is not `ready` is `unreadable`,
+ * a delay that is not `ready` falls back to its default.
  */
 export function readAppLockSettings(
   preferences: PreferenceStoreService,
@@ -138,12 +147,9 @@ export function readAppLockSettings(
         INSTALLATION_PREFERENCE_CONTEXT,
       )();
       return {
-        enabled:
-          enabled.kind === 'recoverable-failure' ? 'unreadable' : enabled.value,
+        enabled: enabled.kind === 'ready' ? enabled.value : 'unreadable',
         lockAfter:
-          lockAfter.kind === 'recoverable-failure'
-            ? UNREADABLE.lockAfter
-            : lockAfter.value,
+          lockAfter.kind === 'ready' ? lockAfter.value : UNREADABLE.lockAfter,
       };
     }),
     catchError(() => of(UNREADABLE)),

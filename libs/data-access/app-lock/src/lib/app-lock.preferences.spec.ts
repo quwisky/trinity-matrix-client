@@ -1,10 +1,13 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import {
   PREFERENCE_STORAGE_ADAPTER,
   PreferenceStoreService,
+  type PreferenceState,
   type PreferenceStorageAdapter,
+  type PreferenceValue,
 } from '@trinity/runtime/preferences';
-import { firstValueFrom, of, throwError } from 'rxjs';
+import { EMPTY, firstValueFrom, of, throwError, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   APP_LOCK_ENABLED_PREFERENCE,
@@ -152,5 +155,43 @@ describe('App lock preferences', () => {
         ),
       ),
     ).resolves.toEqual({ enabled: true, lockAfter: '1m' });
+  });
+
+  describe('with a store that reports an unexpected load state', () => {
+    /** A store whose hydration succeeds but whose cells hold `state`, whatever its kind. */
+    function reporting(
+      state: unknown,
+      hydration: Observable<unknown> = of({ kind: 'ready', hydrated: 2 }),
+    ): PreferenceStoreService {
+      return {
+        hydrateDescriptors: () => hydration,
+        stateFor: () => signal(state as PreferenceState<PreferenceValue>),
+      } as unknown as PreferenceStoreService;
+    }
+
+    it.each([
+      ['its default state', { kind: 'default', value: false }],
+      ['a state kind added later', { kind: 'stale', value: false }],
+    ])(
+      'read as unreadable, never as off, when the switch is in %s',
+      async (_name, state) => {
+        await expect(
+          firstValueFrom(readAppLockSettings(reporting(state))),
+        ).resolves.toEqual({
+          enabled: 'unreadable',
+          lockAfter: '1m',
+        });
+      },
+    );
+
+    it('read as unreadable, never as off, when hydration completes without an outcome', async () => {
+      await expect(
+        firstValueFrom(
+          readAppLockSettings(
+            reporting({ kind: 'ready', value: false }, EMPTY),
+          ),
+        ),
+      ).resolves.toEqual({ enabled: 'unreadable', lockAfter: '1m' });
+    });
   });
 });

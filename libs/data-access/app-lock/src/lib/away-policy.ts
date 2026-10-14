@@ -27,17 +27,24 @@ export type AwayVerdict =
   | { readonly kind: 'lock' }
   | { readonly kind: 'wait'; readonly remainingMs: number };
 
-/** Whether time away has used up the delay. A clock that went backwards locks. */
+/**
+ * Whether time away has used up the delay. Fails closed: a clock that went backwards, or a
+ * time that is not finite (NaN, ±Infinity), locks.
+ */
 export function awayVerdict(input: {
   readonly awaySince: number;
   readonly now: number;
   readonly lockAfter: LockAfter;
   readonly surface: AppLockSurface;
 }): AwayVerdict {
+  if (!Number.isFinite(input.now) || !Number.isFinite(input.awaySince)) {
+    return { kind: 'lock' };
+  }
   const elapsed = input.now - input.awaySince;
   if (elapsed < 0) return { kind: 'lock' };
   const remaining = lockDelayMs(input.lockAfter, input.surface) - elapsed;
-  return remaining <= 0
-    ? { kind: 'lock' }
-    : { kind: 'wait', remainingMs: remaining };
+  // Only a positive remainder waits; anything else, NaN included, locks.
+  return remaining > 0
+    ? { kind: 'wait', remainingMs: remaining }
+    : { kind: 'lock' };
 }

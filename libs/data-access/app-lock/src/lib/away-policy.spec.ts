@@ -57,4 +57,24 @@ describe('awayVerdict', () => {
   it('locks when the clock went backwards while away', () => {
     expect(awayVerdict({ ...base, now: 999_999 })).toEqual({ kind: 'lock' });
   });
+
+  it.each([
+    ['now is NaN', { now: Number.NaN }],
+    ['away since NaN', { now: 1_000_000, awaySince: Number.NaN }],
+    ['now is infinite', { now: Number.POSITIVE_INFINITY }],
+    [
+      'away since infinite',
+      { now: 1_000_000, awaySince: Number.POSITIVE_INFINITY },
+    ],
+    [
+      'away since minus infinity',
+      { now: 1_000_000, awaySince: Number.NEGATIVE_INFINITY },
+    ],
+    [
+      'both infinite',
+      { now: Number.POSITIVE_INFINITY, awaySince: Number.POSITIVE_INFINITY },
+    ],
+  ])('locks when the times are not finite: %s', (_name, times) => {
+    expect(awayVerdict({ ...base, ...times })).toEqual({ kind: 'lock' });
+  });
 });

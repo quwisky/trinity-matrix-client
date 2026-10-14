@@ -39,7 +39,17 @@ describe('PIN policy in the renderer', () => {
     [5 * 60_000, '5 minutes'],
     [60 * 60_000, '1 hour'],
     [59 * 60_000 + 1, '1 hour'],
+    [60 * 60_000 + 1, '2 hours'],
+    [2 * 60 * 60_000, '2 hours'],
+    [25 * 60 * 60_000 - 1, '25 hours'],
   ])('says %i ms as %s', (ms, text) => {
     expect(formatRetryWait(ms)).toBe(text);
   });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY])(
+    'says an unknown wait (%s) as the longest single wait',
+    (ms) => {
+      expect(formatRetryWait(ms)).toBe('1 hour');
+    },
+  );
 });

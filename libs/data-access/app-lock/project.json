@@ -12,7 +12,13 @@
   ],
   "targets": {
     "test": {
-      "inputs": ["default", "^default", "{workspaceRoot}/native/app-lock/**/*"]
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/vite.base.config.ts",
+        "{workspaceRoot}/test-setup.base.ts",
+        "{workspaceRoot}/native/app-lock/**/*"
+      ]
     },
     "typecheck": {}
   }
