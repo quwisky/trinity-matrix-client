@@ -91,6 +91,7 @@
           layout="fill"
           [size]="presentation() === 'sheet' ? 'lg' : 'md'"
           [autoFocusSearch]="presentation() === 'sheet'"
+          [shown]="shown()"
           (picked)="emojiPick.emit($event)"
         />
       }

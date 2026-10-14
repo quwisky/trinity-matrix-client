@@ -1,5 +1,11 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, input, output, signal } from '@angular/core';
+import {
+  Component,
+  input,
+  output,
+  signal,
+  type WritableSignal,
+} from '@angular/core';
 import { render, fireEvent, type RenderResult } from '@trinity/testing';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
@@ -16,7 +22,10 @@ import {
   type ComposerExpressionTab,
 } from '@trinity/data-access/timeline';
 import { type TrnEmojiPick } from '@trinity/components/controls';
-import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
+import {
+  TrnAnchoredOverlayDirective,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 import { ExpressionPickerComponent } from './expression-picker.component';
@@ -36,6 +45,7 @@ class EmojiPickerStubComponent {
   readonly framed = input(true);
   readonly layout = input<'fixed' | 'fill'>('fixed');
   readonly size = input<'sm' | 'md' | 'lg'>('md');
+  readonly shown = input(0);
   readonly picked = output<TrnEmojiPick>();
 }
 
@@ -79,6 +89,8 @@ interface Options {
   readonly stickerPacks?: readonly ImagePack[];
   readonly remembered?: ComposerExpressionTab;
   readonly presentation?: 'popover' | 'sheet';
+  /** The anchored layer's show count, for a panel that layer keeps between opens. */
+  readonly shown?: WritableSignal<number>;
 }
 
 /** The latest render; queries stay inside its container, since earlier renders are not torn down. */
@@ -120,6 +132,14 @@ async function renderPanel(options: Options = {}) {
     },
     on: handlers,
     providers: [
+      ...(options.shown
+        ? [
+            {
+              provide: TrnAnchoredOverlayDirective,
+              useValue: { shown: options.shown.asReadonly() },
+            },
+          ]
+        : []),
       MockProvider(ComposerExpressionTabPreference, {
         tab: remembered.asReadonly(),
         remember,
@@ -196,6 +216,59 @@ describe('ExpressionPickerComponent', () => {
       'true',
     );
     expect(view.getByTestId('gif-search')).toBeInTheDocument();
+  });
+
+  describe('kept by its layer between opens (#1320)', () => {
+    async function reopen(
+      fixture: RenderResult<ExpressionPickerComponent>['fixture'],
+      shown: WritableSignal<number>,
+    ) {
+      (document.activeElement as HTMLElement | null)?.blur();
+      shown.update((count) => count + 1);
+      TestBed.tick();
+      await fixture.whenStable();
+    }
+
+    it.each([
+      ['GIFs', 'gif', 'gif-search'],
+      ['Stickers', 'sticker', 'sticker-search'],
+    ] as const)(
+      'focuses the %s search again on a reopen',
+      async (_, tab, search) => {
+        const shown = signal(1);
+        const { fixture } = await renderPanel({ remembered: tab, shown });
+
+        await reopen(fixture, shown);
+
+        // The picker focused it when it was created; a kept one is not created again.
+        expect(document.activeElement).toBe(view.getByTestId(search));
+      },
+    );
+
+    it('opens on the remembered tab again, like a new panel', async () => {
+      const shown = signal(1);
+      const { fixture } = await renderPanel({ remembered: 'gif', shown });
+      view.getByRole('tab', { name: 'Stickers' }).click();
+      await fixture.whenStable();
+      // Another panel (the phone's sheet) chose Emoji meanwhile.
+      TestBed.inject(ComposerExpressionTabPreference).remember('emoji');
+
+      await reopen(fixture, shown);
+
+      expect(view.getByRole('tab', { name: 'Emoji' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+
+    it('tells the emoji grid it was shown again', async () => {
+      const shown = signal(1);
+      const { fixture } = await renderPanel({ shown });
+
+      await reopen(fixture, shown);
+
+      expect(emojiPicker(fixture).shown()).toBe(2);
+    });
   });
 
   it('falls back to Emoji when the remembered tab is unavailable', async () => {

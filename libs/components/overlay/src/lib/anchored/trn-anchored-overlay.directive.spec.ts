@@ -1,4 +1,4 @@
-import { Component, signal, OnDestroy } from '@angular/core';
+import { Component, OnDestroy, inject, input, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -266,11 +266,12 @@ describe('TrnAnchoredOverlayDirective', () => {
 const lifecycle = { created: 0, destroyed: 0 };
 @Component({
   selector: 'trn-test-counted',
-  template: `<input data-t="search" autofocus /><span data-t="kept"
-      >kept</span
-    >`,
+  template: `<span data-t="kept">{{ label() }}</span
+    ><span data-t="shown">{{ overlay.shown() }}</span>`,
 })
 class CountedComponent implements OnDestroy {
+  protected readonly overlay = inject(TrnAnchoredOverlayDirective);
+  readonly label = input('kept');
   constructor() {
     lifecycle.created++;
   }
@@ -288,8 +289,9 @@ class CountedComponent implements OnDestroy {
         [trnAnchoredOverlay]="anchor"
         [(open)]="open"
         [retainFor]="retainMs()"
+        [retainKey]="key()"
       >
-        <trn-test-counted />
+        <trn-test-counted [label]="label()" />
       </ng-template>
     }
   `,
@@ -298,6 +300,8 @@ class RetainHostComponent {
   readonly open = signal(false);
   readonly retainMs = signal(60_000);
   readonly mounted = signal(true);
+  readonly key = signal('@a:hs');
+  readonly label = signal('kept');
 }
 
 describe('TrnAnchoredOverlayDirective retained view (#1320)', () => {
@@ -348,18 +352,102 @@ describe('TrnAnchoredOverlayDirective retained view (#1320)', () => {
     expect(element?.isConnected).toBe(false);
   });
 
-  it('focuses the autofocus element again on every open', async () => {
+  it('lets the kept content see every reopen, which it is not created again for', async () => {
+    const host = await buildRetained();
+    const shown = () => document.querySelector('[data-t="shown"]')?.textContent;
+    toggle(host, true);
+    expect(shown()).toBe('1');
+
+    toggle(host, false);
+    toggle(host, true);
+
+    expect(shown()).toBe('2');
+  });
+
+  it('shows an input that changed while the view was kept', async () => {
     const host = await buildRetained();
     toggle(host, true);
     toggle(host, false);
-    (document.activeElement as HTMLElement | null)?.blur();
 
+    host.label.set('renamed');
+    TestBed.tick();
     toggle(host, true);
 
-    // The browser honours `autofocus` only when an element is first inserted.
-    expect(document.activeElement).toBe(
-      document.querySelector('[data-t="search"]'),
-    );
+    expect(kept()?.textContent).toBe('renamed');
+  });
+
+  it('destroys the kept view with the host while it is open', async () => {
+    const host = await buildRetained();
+    toggle(host, true);
+
+    host.mounted.set(false);
+    TestBed.tick();
+
+    expect(lifecycle.destroyed).toBe(1);
+  });
+
+  it('releases the kept view when retention is turned off', async () => {
+    const host = await buildRetained();
+    toggle(host, true);
+    toggle(host, false);
+
+    host.retainMs.set(0);
+    TestBed.tick();
+
+    expect(lifecycle.destroyed).toBe(1);
+  });
+
+  it.each([-5, Number.NaN])(
+    'treats a retention of %s as off',
+    async (retainMs) => {
+      const host = await buildRetained(retainMs);
+      toggle(host, true);
+      toggle(host, false);
+      toggle(host, true);
+
+      expect(lifecycle.created).toBe(2);
+    },
+  );
+
+  it('waits as long as a timer can for a retention past that, rather than not at all', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const host = await buildRetained(Number.POSITIVE_INFINITY);
+      toggle(host, true);
+      toggle(host, false);
+
+      // `setTimeout` fires at once for a delay past 2^31 - 1 ms.
+      vi.advanceTimersByTime(60_000);
+
+      expect(lifecycle.destroyed).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('releases the kept view when the layer changes hands', async () => {
+    const host = await buildRetained();
+    toggle(host, true);
+    toggle(host, false);
+
+    host.key.set('@b:hs');
+    TestBed.tick();
+
+    expect(lifecycle.destroyed).toBe(1);
+  });
+
+  it('releases a view that changed hands while open once it closes, not under the user', async () => {
+    const host = await buildRetained();
+    toggle(host, true);
+
+    host.key.set('@b:hs');
+    TestBed.tick();
+    expect(lifecycle.destroyed).toBe(0);
+
+    toggle(host, false);
+    expect(lifecycle.destroyed).toBe(1);
+    toggle(host, true);
+    expect(lifecycle.created).toBe(2);
   });
 
   it('destroys the kept view with the host', async () => {

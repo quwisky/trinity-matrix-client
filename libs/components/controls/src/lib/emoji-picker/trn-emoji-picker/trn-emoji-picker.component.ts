@@ -96,6 +96,13 @@ export class TrnEmojiPickerComponent {
   readonly framed = input(true);
   /** The vendor's fixed width, or the host's whole width (a phone's bottom sheet). */
   readonly layout = input<TrnEmojiPickerLayout>('fixed');
+  /**
+   * How many times the surface holding the picker has been shown. A surface that keeps the
+   * picker between opens bumps it on each one; the picker then refreshes its frequently-used
+   * row, which the vendor reads only when it is created. Without this, an emoji picked in one
+   * open would be missing from that row in the next.
+   */
+  readonly shown = input(0);
 
   /** A usable pick. Entries without a `native` character never reach here. */
   readonly picked = output<TrnEmojiPick>();

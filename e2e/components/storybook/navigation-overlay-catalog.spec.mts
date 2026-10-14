@@ -303,6 +303,20 @@ test('anchored overlays honor both outside-press policies and model results', as
   await expect(page.getByTestId('anchored-surface')).toHaveCount(1);
 });
 
+test('an anchored overlay keeps its view between opens when asked to', async ({
+  page,
+}) => {
+  await page.goto(story('components-anchored-overlay--retained-view'));
+  const anchor = page.getByTestId('retained-anchor');
+  await page.getByTestId('retained-input').fill('kept');
+
+  await anchor.click();
+  await expect(page.getByTestId('anchored-surface')).toHaveCount(0);
+  await anchor.click();
+
+  await expect(page.getByTestId('retained-input')).toHaveValue('kept');
+});
+
 test('every dialog placement renders its matching surface layout', async ({
   page,
 }) => {

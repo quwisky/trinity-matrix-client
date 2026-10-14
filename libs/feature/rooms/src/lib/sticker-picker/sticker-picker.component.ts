@@ -33,7 +33,15 @@ export class StickerPickerComponent {
   private readonly search = viewChild<ElementRef<HTMLInputElement>>('search');
 
   constructor() {
-    afterNextRender(() => this.search()?.nativeElement.focus());
+    afterNextRender(() => this.focusSearch());
+  }
+
+  /**
+   * Put focus in the search field. The picker does this when it is created; a panel that
+   * keeps it between opens calls this on each reopen.
+   */
+  focusSearch(): void {
+    this.search()?.nativeElement.focus();
   }
 
   protected readonly visiblePacks = computed(() => {

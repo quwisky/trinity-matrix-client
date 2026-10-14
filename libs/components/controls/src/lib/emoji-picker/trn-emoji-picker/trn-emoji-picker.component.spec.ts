@@ -473,6 +473,38 @@ describe('TrnEmojiPickerComponent', () => {
     );
   });
 
+  it('refreshes the frequently-used row when its surface shows it again', async () => {
+    const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
+      inputs: { shown: 1 },
+    });
+    const vendor = fixture.debugElement.query(By.directive(PickerComponent))
+      .componentInstance as PickerComponent;
+    const recentRow = () =>
+      fixture.nativeElement.querySelector(
+        'section.emoji-mart-category[aria-label="Frequently Used"]',
+      ) as HTMLElement;
+    try {
+      // A pick, through the vendor's own handler: it stores the emoji, but reads storage into
+      // the row only when the row is created.
+      vendor.handleEmojiClick({
+        $event: new MouseEvent('click'),
+        emoji: { id: 'tada', native: '🎉', colons: ':tada:' },
+      } as unknown as Parameters<PickerComponent['handleEmojiClick']>[0]);
+      fixture.detectChanges();
+      expect(recentRow().textContent).not.toContain('🎉');
+
+      // A surface that kept the picker shows it again.
+      fixture.componentRef.setInput('shown', 2);
+      await vi.waitFor(() => {
+        fixture.detectChanges();
+        expect(recentRow().textContent).toContain('🎉');
+      });
+    } finally {
+      localStorage.removeItem('emoji-mart.frequently');
+      localStorage.removeItem('emoji-mart.last');
+    }
+  });
+
   it('creates the vendor grid with the measured line, when filling a host that has a width', async () => {
     // The vendor sizes its frequently-used row from `perLine` once, when it is created, so
     // the grid waits for the host's width rather than starting at nine and changing.

@@ -191,6 +191,56 @@ export const OutsidePressPolicyCatalog: Story = {
 };
 
 /**
+ * A layer whose view is kept between opens (`retainFor`).
+ *
+ * Type into the field, close the layer with its anchor, and open it again within a minute:
+ * the text is still there, because the closed view was parked outside the document rather
+ * than destroyed. That is what keeps reopening the composer's emoji grid fast. Wait a minute
+ * with it closed and it is released, so the next open starts empty.
+ */
+export const RetainedView: Story = {
+  render: () => ({
+    props: { open: true },
+    template: `
+      <div class="grid min-h-96 place-items-center">
+        <button
+          #anchor
+          type="button"
+          class="rounded-md border border-border p-3"
+          data-testid="retained-anchor"
+          (click)="open = !open"
+        >
+          {{ open ? 'Close' : 'Open' }} the kept layer
+        </button>
+        <ng-template
+          [trnAnchoredOverlay]="anchor"
+          [(open)]="open"
+          [retainFor]="60000"
+          side="top"
+          align="center"
+        >
+          <div
+            trnOverlaySurface
+            variant="neutral"
+            size="sm"
+            layout="popover"
+            class="p-3 text-sm"
+            data-testid="anchored-surface"
+          >
+            <label class="grid gap-1">
+              Kept between opens
+              <input
+                class="rounded-md border border-border bg-transparent p-1"
+                data-testid="retained-input"
+              />
+            </label>
+          </div>
+        </ng-template>
+      </div>`,
+  }),
+};
+
+/**
  * Anchored near the top, so the requested side has nowhere to go.
  *
  * `createMenuPosition` returns the position AND its mirror, which is what lets CDK put the
