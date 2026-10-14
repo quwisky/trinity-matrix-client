@@ -154,6 +154,9 @@ export type HostSystemPresence =
 /**
  * The Trinity PIN backup (spec decision 23). `set` says whether a verifier is stored;
  * `nextAttemptAt` (epoch ms) is the end of a failure wait still running, else null.
+ * `not-supported` means the host has no PIN store and keeps no PIN; a store or record
+ * the host cannot read, or an answer about it that cannot be trusted, is
+ * `secure-storage-unavailable` (fail closed).
  */
 export type HostPinPresence =
   | {

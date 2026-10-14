@@ -39,10 +39,19 @@ import {
 } from 'rxjs';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
 
-/** The PIN half until a host's verifier exists (PR 2 replaces it per host). */
-export const PIN_NOT_YET: HostPinPresence = {
+/** The PIN half for a host with no PIN store (no plugin, no usable encryption, the web). */
+const NO_PIN_STORE: HostPinPresence = {
   kind: 'unavailable',
   reason: 'not-supported',
+};
+
+/**
+ * A PIN store the host cannot read, or an answer about it that cannot be trusted: never
+ * "available, not set" nor "no PIN store" (fail closed).
+ */
+const PIN_STORE_UNREADABLE: HostPinPresence = {
+  kind: 'unavailable',
+  reason: 'secure-storage-unavailable',
 };
 
 const notSupported = (): HostOperationOutcome => ({
@@ -127,12 +136,6 @@ const PIN_CLEAR_FAILED: HostOperationOutcome = {
   diagnostic: { code: 'pin-clear-failed' },
 };
 
-/** A PIN store the host cannot read: never "available, not set" (fail closed). */
-const PIN_STORE_UNREADABLE: HostPinPresence = {
-  kind: 'unavailable',
-  reason: 'secure-storage-unavailable',
-};
-
 /** The mobile plugin's PIN status as the host contract's PIN half. */
 function pinPresenceOf(status: AppLockPinStatus): HostPinPresence {
   switch (status.kind) {
@@ -145,7 +148,7 @@ function pinPresenceOf(status: AppLockPinStatus): HostPinPresence {
     case 'unavailable':
       return PIN_STORE_UNREADABLE;
     case 'not-supported':
-      return PIN_NOT_YET;
+      return NO_PIN_STORE;
     default: {
       const unhandled: never = status;
       void unhandled;
@@ -317,6 +320,7 @@ function systemOf(raw: unknown): HostSystemPresence {
   return { kind: 'unavailable', reason: 'not-supported' };
 }
 
+/** Only an explicit "no PIN store" reads as one; anything garbled fails closed. */
 function pinOf(raw: unknown): HostPinPresence {
   const kind = field(raw, 'kind');
   const next = field(raw, 'nextAttemptAt');
@@ -337,10 +341,16 @@ function pinOf(raw: unknown): HostPinPresence {
   ) {
     return { kind, reason: 'secure-storage-unavailable' };
   }
-  return PIN_NOT_YET;
+  if (kind === 'unavailable' && field(raw, 'reason') === 'not-supported') {
+    return NO_PIN_STORE;
+  }
+  return PIN_STORE_UNREADABLE;
 }
 
-/** Support as the shell reported it, validated; anything unknown means "not offered". */
+/**
+ * Support as the shell reported it, validated. An unknown system half means "no system
+ * prompt"; an unknown PIN half means "PIN store unreadable", so a bad answer fails closed.
+ */
 export function parseUserPresenceSupport(
   raw: unknown,
 ): HostUserPresenceSupport {
@@ -465,10 +475,17 @@ export class ElectronUserPresenceAdapter implements HostUserPresenceOperation {
     return this.granted.pipe(
       switchMap((granted) => {
         const bridge = getTrinityDesktopBridge()?.capabilities.userPresence;
+        // Without the granted operation the shell has no PIN store. With it, a failed
+        // call says nothing about the store, so the PIN half fails closed as on mobile.
         return granted && bridge
-          ? from(bridge.support()).pipe(
+          ? defer(() => bridge.support()).pipe(
               map(parseUserPresenceSupport),
-              catchError(() => of(NO_USER_PRESENCE)),
+              catchError(() =>
+                of<HostUserPresenceSupport>({
+                  system: NO_USER_PRESENCE.system,
+                  pin: PIN_STORE_UNREADABLE,
+                }),
+              ),
             )
           : of(NO_USER_PRESENCE);
       }),

@@ -406,6 +406,28 @@ describe('ElectronUserPresenceAdapter', () => {
     expect(support).not.toHaveBeenCalled();
   });
 
+  it('reads a failing support call as an unreadable PIN store, not "no PIN"', async () => {
+    const unreadable = {
+      system: { kind: 'unavailable', reason: 'not-supported' },
+      pin: { kind: 'unavailable', reason: 'secure-storage-unavailable' },
+    };
+    const rejecting = vi.fn(() => Promise.reject(new Error('ipc gone')));
+    await expect(
+      firstValueFrom(
+        adapter(true, { support: rejecting, verify: vi.fn() }).support(),
+      ),
+    ).resolves.toEqual(unreadable);
+    TestBed.resetTestingModule();
+    const throwing = vi.fn((): Promise<unknown> => {
+      throw new Error('preload broke');
+    });
+    await expect(
+      firstValueFrom(
+        adapter(true, { support: throwing, verify: vi.fn() }).support(),
+      ),
+    ).resolves.toEqual(unreadable);
+  });
+
   it('turns a hostile answer into a stable code', async () => {
     const verify = vi.fn(() =>
       Promise.resolve({ kind: 'verified', token: 'access_token=x' }),
@@ -584,4 +606,53 @@ describe('parsePresenceOutcome and parseUserPresenceSupport', () => {
       pin: { kind: 'available', set: true, nextAttemptAt: null },
     });
   });
+});
+
+describe('parseUserPresenceSupport, the PIN half', () => {
+  const unreadable = {
+    kind: 'unavailable',
+    reason: 'secure-storage-unavailable',
+  };
+
+  it('keeps "no PIN store" only for the shell saying so', () => {
+    expect(
+      parseUserPresenceSupport({
+        system: { kind: 'unavailable', reason: 'not-supported' },
+        pin: { kind: 'unavailable', reason: 'not-supported' },
+      }).pin,
+    ).toEqual({ kind: 'unavailable', reason: 'not-supported' });
+    expect(
+      parseUserPresenceSupport({
+        pin: { kind: 'unavailable', reason: 'secure-storage-unavailable' },
+      }).pin,
+    ).toEqual(unreadable);
+  });
+
+  it.each([
+    ['no answer at all', undefined],
+    ['no PIN half', {}],
+    ['a bare string', { pin: 'available' }],
+    [
+      'a set flag that is not a boolean',
+      { pin: { kind: 'available', set: 'yes', nextAttemptAt: null } },
+    ],
+    [
+      'a wait that is not a number',
+      { pin: { kind: 'available', set: true, nextAttemptAt: 'soon' } },
+    ],
+    [
+      'a wait that is not finite',
+      { pin: { kind: 'available', set: true, nextAttemptAt: Number.NaN } },
+    ],
+    ['an unknown reason', { pin: { kind: 'unavailable', reason: 'hacked' } }],
+    [
+      'an unknown kind',
+      { pin: { kind: 'ready', set: false, nextAttemptAt: null } },
+    ],
+  ])(
+    'reads a garbled PIN half as unreadable, never "no PIN": %s',
+    (_name, raw) => {
+      expect(parseUserPresenceSupport(raw).pin).toEqual(unreadable);
+    },
+  );
 });
