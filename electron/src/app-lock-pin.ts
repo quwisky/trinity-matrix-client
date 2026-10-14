@@ -8,6 +8,7 @@
 import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import * as fs from 'node:fs';
 import { uptime } from 'node:os';
+import * as path from 'node:path';
 import type { SafeStorage } from 'electron';
 import { atomicWriteFile, secureStorageUsable } from './secure-store';
 
@@ -273,25 +274,52 @@ export function decodePinRecord(text: string): PinRecord | null {
 /** The verifier record's file in `userData`; main-only, never in the secure-store map. */
 export const PIN_FILE_NAME = 'app-lock.bin';
 
-/** File access, injectable so tests never touch disk. `read` returns null only for ENOENT. */
+/**
+ * File access, injectable so tests never touch disk. `read` returns null only for ENOENT;
+ * `remove` also takes any temp file an interrupted write left beside the record.
+ */
 export interface PinFileIo {
   read(path: string): string | null;
   write(path: string, data: string): void;
   remove(path: string): void;
 }
 
+/** `atomicWriteFile`'s temp names for `file`: `<file>.<pid>.<ms>.tmp`. */
+function isTempOf(file: string, name: string): boolean {
+  const base = path.basename(file);
+  return (
+    name.startsWith(base) && /^\.\d+\.\d+\.tmp$/.test(name.slice(base.length))
+  );
+}
+
+function removeRecord(file: string): void {
+  fs.rmSync(file, { force: true });
+  const dir = path.dirname(file);
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+  for (const name of names) {
+    if (isTempOf(file, name)) fs.rmSync(path.join(dir, name), { force: true });
+  }
+}
+
 const defaultIo: PinFileIo = {
-  read(path) {
+  read(file) {
     try {
-      return fs.readFileSync(path, 'utf8');
+      return fs.readFileSync(file, 'utf8');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw error;
     }
   },
   // Temp file, fsync and rename, mode 0600: a crash leaves the old record or the new one.
-  write: (path, data) => atomicWriteFile(path, data),
-  remove: (path) => fs.rmSync(path, { force: true }),
+  write: (file, data) => atomicWriteFile(file, data),
+  // A crash between the temp write and the rename leaves ciphertext the reset must take.
+  remove: (file) => removeRecord(file),
 };
 
 /**
@@ -335,7 +363,7 @@ const UNAVAILABLE = { kind: 'unavailable' } as const;
 export class PinVerifier {
   private readonly io: PinFileIo;
   private readonly clock: () => PinClock;
-  /** Bumped by {@link clear}: work that began before a reset never writes after it. */
+  /** Bumped by {@link clear}: work requested before a reset never writes after it. */
   private generation = 0;
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -364,10 +392,13 @@ export class PinVerifier {
   }
 
   set(pin: unknown): Promise<'completed' | 'invalid' | 'unavailable'> {
+    // Taken at request time: a set asked for before a reset never lands after it, even
+    // when it waited in the queue until the reset had run.
+    const generation = this.generation;
     return this.serial(async () => {
       if (!isValidPin(pin)) return 'invalid';
-      if (!this.usable()) return 'unavailable';
-      const generation = this.generation;
+      if (!this.usable() || generation !== this.generation)
+        return 'unavailable';
       if (this.read() === 'unreadable') return 'unavailable';
       let record: PinRecord;
       try {
@@ -382,9 +413,9 @@ export class PinVerifier {
   }
 
   verify(pin: unknown): Promise<PinCheck | { readonly kind: 'unavailable' }> {
+    const generation = this.generation;
     return this.serial(async () => {
-      if (!this.usable()) return UNAVAILABLE;
-      const generation = this.generation;
+      if (!this.usable() || generation !== this.generation) return UNAVAILABLE;
       const record = this.read();
       if (record === null || record === 'unreadable') return UNAVAILABLE;
       let result: Awaited<ReturnType<typeof checkPin>>;

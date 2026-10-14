@@ -1,5 +1,6 @@
 import { scrypt } from 'node:crypto';
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -357,6 +358,8 @@ describe('PinVerifier', () => {
   afterEach(() => {
     setPlatform(realPlatform);
     vi.restoreAllMocks();
+    // restoreAllMocks leaves vi.mock functions alone; mockReset restores the real uptime.
+    vi.mocked(uptime).mockReset();
     now = FAILURE_AT;
     up = FAILURE_UPTIME;
   });
@@ -641,6 +644,19 @@ describe('PinVerifier', () => {
     expect(io.files.has(file)).toBe(false);
   });
 
+  it('never stores a PIN set requested before a reset, even if it starts after', async () => {
+    const io = memoryIo();
+    const pins = verifier(io);
+    await pins.set('482913');
+    // The set queues behind the check; the reset lands before either has started.
+    const checking = pins.verify('000000');
+    const setting = pins.set('111111');
+    expect(pins.clear()).toBe('completed');
+    await expect(checking).resolves.toEqual({ kind: 'unavailable' });
+    await expect(setting).resolves.toBe('unavailable');
+    expect(io.files.has(file)).toBe(false);
+  });
+
   it('never stores a PIN set while the reset cleared it', async () => {
     const io = memoryIo();
     const pins = verifier(io);
@@ -675,6 +691,11 @@ describe('PinVerifier', () => {
     await pins.set('482913');
     await pins.verify('000000');
     expect(storedRecord(io.files.get(file))?.failureUptimeS).toBe(123_456);
+  });
+
+  it('leaves the real since-boot uptime to later tests', () => {
+    // Runs after the test above: its pinned uptime must not have leaked.
+    expect(uptime()).not.toBe(123_456);
   });
 
   it('never puts the PIN, salt or hash in a log or an answer', async () => {
@@ -725,6 +746,46 @@ describe('PinVerifier', () => {
         kind: 'verified',
       });
       expect(pins.clear()).toBe('completed');
+      expect(pins.clear()).toBe('completed');
+    });
+
+    it('removes temp files an interrupted write left, and nothing else', async () => {
+      dir = mkdtempSync(join(tmpdir(), 'trinity-pin-'));
+      const record = join(dir, PIN_FILE_NAME);
+      const pins = new PinVerifier({
+        safeStorage: fakeSafeStorage() as never,
+        file: record,
+        params: FAST,
+      });
+      await pins.set('482913');
+      const leftovers = [
+        `${PIN_FILE_NAME}.4242.1700000000000.tmp`,
+        `${PIN_FILE_NAME}.7.8.tmp`,
+      ];
+      const kept = [
+        `${PIN_FILE_NAME}.bak`,
+        `${PIN_FILE_NAME}.x.y.tmp`,
+        'trinity-secure-store.json.1.2.tmp',
+        'other.tmp',
+      ];
+      for (const name of [...leftovers, ...kept]) {
+        writeFileSync(join(dir, name), 'x');
+      }
+      expect(pins.clear()).toBe('completed');
+      expect(existsSync(record)).toBe(false);
+      expect(leftovers.filter((name) => existsSync(join(dir, name)))).toEqual(
+        [],
+      );
+      expect(kept.filter((name) => existsSync(join(dir, name)))).toEqual(kept);
+    });
+
+    it('clears when the profile folder does not exist', () => {
+      dir = mkdtempSync(join(tmpdir(), 'trinity-pin-'));
+      const pins = new PinVerifier({
+        safeStorage: fakeSafeStorage() as never,
+        file: join(dir, 'missing', PIN_FILE_NAME),
+        params: FAST,
+      });
       expect(pins.clear()).toBe('completed');
     });
 
