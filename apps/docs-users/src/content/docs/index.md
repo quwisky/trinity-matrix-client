@@ -53,6 +53,27 @@ chmod +x Trinity-0.4.0.AppImage
 ./Trinity-0.4.0.AppImage
 ```
 
+## Try Trinity Next {#trinity-next}
+
+Trinity Next is the prerelease of the desktop app, for trying what comes next. It installs
+beside Trinity as a separate app with its own icon and data, so both can run at once. It
+does not share Trinity's sign-in: sign in to it as a new device.
+
+Install it from a `-next` prerelease on
+[the releases page](https://github.com/quwisky/trinity-matrix-client/releases), or on macOS
+with Homebrew:
+
+```bash
+brew install --cask quwisky/trinity/trinity@next
+```
+
+On Debian and Ubuntu, the prerelease's `.deb` installs the package `trinity-next`, so it
+does not replace `trinity-desktop`.
+
+Prereleases published before Trinity Next installed as "Trinity". With Homebrew,
+`brew upgrade` replaces that app with Trinity Next. If you installed it by hand and don't
+use stable Trinity, remove it.
+
 ## Web {#web}
 
 Run the web app on your own server from the container image:

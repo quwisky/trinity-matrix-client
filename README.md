@@ -55,9 +55,15 @@ chmod +x Trinity-<version>.AppImage && ./Trinity-<version>.AppImage    # AppImag
 
 `-next` builds are published on the
 [releases page](https://github.com/quwisky/trinity-matrix-client/releases) as
-pre-releases, for testing. On macOS, once a `-next` prerelease has been published:
-`brew install --cask quwisky/trinity/trinity@next`. The two casks conflict because both
-install `Trinity.app`; run `brew uninstall --cask trinity` first.
+pre-releases, for testing. On the desktop they install as a separate app, **Trinity
+Next**, beside Trinity: it has its own icon, data and sign-in, so sign in to it as a new
+device. On macOS: `brew install --cask quwisky/trinity/trinity@next`. On Linux the `.deb`
+keeps its `trinity-desktop_<version>_amd64.deb` file name but installs the package
+`trinity-next`.
+
+Prereleases from before Trinity Next installed as "Trinity". With Homebrew,
+`brew upgrade` replaces that app with Trinity Next. If you installed it by hand and don't
+use stable Trinity, remove it.
 
 ### Web
 
