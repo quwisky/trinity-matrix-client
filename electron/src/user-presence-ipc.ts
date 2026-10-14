@@ -47,7 +47,10 @@ function pinOf(raw: unknown): unknown {
     : undefined;
 }
 
-/** The PIN half of support. A record that cannot be read is reported, never "not set". */
+/**
+ * The PIN half of support. A record that cannot be read is reported, never "not set";
+ * a host with no usable store and no record has no PIN store at all.
+ */
 function pinSupport(pins: PinVerifier) {
   let status: PinStatus;
   try {
@@ -64,6 +67,8 @@ function pinSupport(pins: PinVerifier) {
       } as const;
     case 'unavailable':
       return PIN_UNREADABLE;
+    case 'not-supported':
+      return NOT_SUPPORTED;
     default: {
       const unhandled: never = status;
       void unhandled;

@@ -339,7 +339,9 @@ export type PinStatus =
       readonly set: boolean;
       readonly nextAttemptAt: number | null;
     }
-  | { readonly kind: 'unavailable' };
+  | { readonly kind: 'unavailable' }
+  /** No usable encryption and no PIN file: this host cannot keep a PIN, and none was kept. */
+  | { readonly kind: 'not-supported' };
 
 export interface PinVerifierDeps {
   readonly safeStorage: SafeStorage;
@@ -350,12 +352,15 @@ export interface PinVerifierDeps {
 }
 
 const UNAVAILABLE = { kind: 'unavailable' } as const;
+const NO_STORE = { kind: 'not-supported' } as const;
 
 /**
  * The desktop Trinity PIN: one record, encrypted with safeStorage, read and written by
  * the main process only. A record that exists but cannot be read is `unavailable`, never
  * "no PIN": treating it as absent would let a damaged file open the lock, and setting a
- * new PIN over it would skip the full reset. Only {@link clear} removes it.
+ * new PIN over it would skip the full reset. Only {@link clear} removes it. Without usable
+ * encryption (none at all, or Linux `basic_text`) and with no file, there is no PIN store
+ * (`not-supported`), so a lock that cannot be read does not ask for a PIN never set.
  *
  * `set` and `verify` run one at a time, and each saves its record before it answers, so
  * two quick submits cannot both pass a wait and a crash cannot forget a failure.
@@ -373,7 +378,7 @@ export class PinVerifier {
   }
 
   status(): PinStatus {
-    if (!this.usable()) return UNAVAILABLE;
+    if (!this.usable()) return this.exists() === false ? NO_STORE : UNAVAILABLE;
     const record = this.read();
     if (record === 'unreadable') return UNAVAILABLE;
     if (record === null)
@@ -449,6 +454,15 @@ export class PinVerifier {
       return secureStorageUsable(this.deps.safeStorage);
     } catch {
       return false;
+    }
+  }
+
+  /** Whether a record file is on disk, without decrypting it; null when that is unknown. */
+  private exists(): boolean | null {
+    try {
+      return this.io.read(this.deps.file) !== null;
+    } catch {
+      return null;
     }
   }
 

@@ -445,11 +445,11 @@ describe('PinVerifier', () => {
     expect(io.files.get(file)).toBe(before);
   });
 
-  it('is unavailable without real encryption', async () => {
+  it('has no PIN store without real encryption, and refuses to set one', async () => {
     setPlatform('linux');
     const io = memoryIo();
     const pins = verifier(io, fakeSafeStorage('basic_text'));
-    expect(pins.status()).toEqual({ kind: 'unavailable' });
+    expect(pins.status()).toEqual({ kind: 'not-supported' });
     await expect(pins.set('482913')).resolves.toBe('unavailable');
     await expect(pins.verify('482913')).resolves.toEqual({
       kind: 'unavailable',
@@ -457,13 +457,63 @@ describe('PinVerifier', () => {
     expect(io.files.size).toBe(0);
   });
 
-  it('is unavailable when safeStorage cannot encrypt at all', async () => {
-    const pins = verifier(memoryIo(), {
+  it('has no PIN store when safeStorage cannot encrypt at all', async () => {
+    const io = memoryIo();
+    const pins = verifier(io, {
       ...fakeSafeStorage(),
       isEncryptionAvailable: () => false,
     });
-    expect(pins.status()).toEqual({ kind: 'unavailable' });
+    expect(pins.status()).toEqual({ kind: 'not-supported' });
     await expect(pins.set('482913')).resolves.toBe('unavailable');
+    expect(io.files.size).toBe(0);
+  });
+
+  describe('fails closed on a stored record without usable encryption', () => {
+    const unusable: readonly (readonly [
+      string,
+      ReturnType<typeof fakeSafeStorage>,
+    ])[] = [
+      ['Linux basic_text', fakeSafeStorage('basic_text')],
+      [
+        'no encryption at all',
+        { ...fakeSafeStorage(), isEncryptionAvailable: () => false },
+      ],
+    ];
+
+    it.each(unusable)(
+      '%s with a PIN file is unavailable',
+      async (_name, safeStorage) => {
+        setPlatform('linux');
+        const io = memoryIo();
+        const stored = fakeSafeStorage()
+          .encryptString(encodePinRecord(await createPinRecord('482913', FAST)))
+          .toString('base64');
+        io.files.set(file, stored);
+        const pins = verifier(io, safeStorage);
+        expect(pins.status()).toEqual({ kind: 'unavailable' });
+        await expect(pins.set('135790')).resolves.toBe('unavailable');
+        await expect(pins.verify('482913')).resolves.toEqual({
+          kind: 'unavailable',
+        });
+        expect(io.files.get(file)).toBe(stored);
+      },
+    );
+
+    it.each(unusable)(
+      '%s with a file it cannot check is unavailable',
+      (_name, safeStorage) => {
+        setPlatform('linux');
+        const io: PinFileIo = {
+          ...memoryIo(),
+          read: () => {
+            throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+          },
+        };
+        expect(verifier(io, safeStorage).status()).toEqual({
+          kind: 'unavailable',
+        });
+      },
+    );
   });
 
   it('answers verify with no PIN set as unavailable, never verified', async () => {

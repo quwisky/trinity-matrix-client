@@ -235,6 +235,16 @@ describe('user presence IPC', () => {
     });
   });
 
+  it('reports a host with no PIN store as not supported', async () => {
+    pins.status.mockReturnValueOnce({ kind: 'not-supported' } as never);
+    await expect(
+      handlers.get(USER_PRESENCE_SUPPORT_CHANNEL)!({ sender: contents }),
+    ).resolves.toEqual({
+      system: { kind: 'available', biometry: 'touch-id' },
+      pin: { kind: 'unavailable', reason: 'not-supported' },
+    });
+  });
+
   it('turns a verifier that cannot store or clear into plain outcomes', async () => {
     pins.set.mockResolvedValueOnce('unavailable' as never);
     pins.clear.mockReturnValueOnce('unavailable' as never);
@@ -297,8 +307,9 @@ describe('user presence IPC with the real verifier', () => {
     write: (path, data) => void files.set(path, data),
     remove: (path) => void files.delete(path),
   };
+  let encryption = true;
   const safeStorage = {
-    isEncryptionAvailable: () => true,
+    isEncryptionAvailable: () => encryption,
     getSelectedStorageBackend: () => 'gnome_libsecret',
     encryptString: (plain: string) =>
       Buffer.from(`enc:${Buffer.from(plain).toString('base64')}`),
@@ -309,6 +320,7 @@ describe('user presence IPC with the real verifier', () => {
   beforeEach(() => {
     handlers.clear();
     files.clear();
+    encryption = true;
     mainWindowRef.current = { webContents: contents };
     registerUserPresenceIpc(
       {
@@ -355,5 +367,30 @@ describe('user presence IPC with the real verifier', () => {
     const text = JSON.stringify(answers);
     expect(text.includes('4829')).toBe(false);
     expect(text.includes('4821')).toBe(false);
+  });
+
+  it('without usable encryption, reports no PIN store unless a PIN file exists', async () => {
+    const event = { sender: contents };
+    const support = handlers.get(USER_PRESENCE_SUPPORT_CHANNEL)!;
+    const setPin = handlers.get(USER_PRESENCE_SET_PIN_CHANNEL)!;
+    encryption = false;
+    await expect(support(event)).resolves.toEqual({
+      system: { kind: 'unavailable', reason: 'not-supported' },
+      pin: { kind: 'unavailable', reason: 'not-supported' },
+    });
+    await expect(setPin(event, { pin: '4829' })).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+    expect(files.size).toBe(0);
+    encryption = true;
+    await expect(setPin(event, { pin: '4829' })).resolves.toEqual({
+      kind: 'completed',
+    });
+    encryption = false;
+    await expect(support(event)).resolves.toEqual({
+      system: { kind: 'unavailable', reason: 'not-supported' },
+      pin: { kind: 'unavailable', reason: 'secure-storage-unavailable' },
+    });
   });
 });
