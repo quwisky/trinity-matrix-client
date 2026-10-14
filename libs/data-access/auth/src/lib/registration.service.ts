@@ -124,40 +124,40 @@ export class RegistrationService {
       serverName: expectedServerName,
     });
     const client = createClient({ baseUrl });
-    const request: RegisterRequest = {
-      username: localpart,
-      password,
-      refresh_token: true,
-      inhibit_login: false,
-      initial_device_display_name: this.handoff.deviceDisplayName(),
-    };
 
-    const initial = defer(() =>
-      from(this.withBusy(token, client.registerRequest(request))),
-    ).pipe(
-      map((response): InitialRegistrationResult => ({
-        kind: 'registered',
-        response,
-      })),
-      catchError((error: unknown) => {
-        const data = readRegistrationUiaChallenge(error);
-        return data
-          ? of<InitialRegistrationResult>({ kind: 'uia', data })
-          : (() => {
-              throw error;
-            })();
-      }),
-    );
-
-    return initial.pipe(
-      tap(() => this.ensureActive(token)),
-      switchMap((result) =>
-        result.kind === 'registered'
-          ? this.establishCreated(token, result.response)
-          : this.prepareInteractiveAuth(token, client, request, result.data),
-      ),
-      catchError((error: unknown) => this.handleFailure(token, error)),
-    );
+    // The request is built on subscription: naming the device can fail on a broken
+    // desktop shell, and that failure must reach handleFailure like any other.
+    return defer(() => {
+      const request: RegisterRequest = {
+        username: localpart,
+        password,
+        refresh_token: true,
+        inhibit_login: false,
+        initial_device_display_name: this.handoff.deviceDisplayName(),
+      };
+      return defer(() =>
+        from(this.withBusy(token, client.registerRequest(request))),
+      ).pipe(
+        map((response): InitialRegistrationResult => ({
+          kind: 'registered',
+          response,
+        })),
+        catchError((error: unknown) => {
+          const data = readRegistrationUiaChallenge(error);
+          return data
+            ? of<InitialRegistrationResult>({ kind: 'uia', data })
+            : (() => {
+                throw error;
+              })();
+        }),
+        tap(() => this.ensureActive(token)),
+        switchMap((result) =>
+          result.kind === 'registered'
+            ? this.establishCreated(token, result.response)
+            : this.prepareInteractiveAuth(token, client, request, result.data),
+        ),
+      );
+    }).pipe(catchError((error: unknown) => this.handleFailure(token, error)));
   }
 
   /** Supply the email address after the chosen server flow reveals that it needs one. */

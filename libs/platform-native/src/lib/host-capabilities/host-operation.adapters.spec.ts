@@ -549,6 +549,16 @@ describe('Electron app identity', () => {
     );
   });
 
+  it('refuses a sign-in callback that is not on the Trinity app scheme', () => {
+    configure(NEXT);
+    expect(() =>
+      TestBed.inject(HostAuthenticationHandoffService).callback({
+        webUrl: 'trinity://app/sso-callback',
+        appUrl: 'https://x/sso-callback',
+      }),
+    ).toThrow(/Trinity app scheme/);
+  });
+
   it('keeps stable Trinity on its own scheme', () => {
     configure({
       channel: 'stable',
@@ -588,6 +598,40 @@ describe('Electron app identity', () => {
       'dev.trinityproject.trinity://matrix.to/#/!room:hs.example',
       'dev.trinityproject.trinity:/sso-callback?code=abc&state=xyz',
       'https://elsewhere.example/',
+    ]);
+  });
+
+  it("drops stable Trinity's links on Trinity Next", () => {
+    // Main already forwards only this app's scheme (electron/src/deep-link.ts); this is
+    // defence in depth so a stable link can never reach Trinity Next's parsers.
+    configure(NEXT);
+    const urls: string[] = [];
+    const subscription = TestBed.inject(
+      HostDeepLinksService,
+    ).received.subscribe(({ url }) => urls.push(url));
+    emit('dev.trinityproject.trinity://matrix.to/#/!room:hs.example');
+    emit('dev.trinityproject.trinity:/sso-callback?code=abc&state=xyz');
+    emit('dev.trinityproject.trinity.next://matrix.to/#/!other:hs.example');
+    subscription.unsubscribe();
+    expect(urls).toEqual([
+      'dev.trinityproject.trinity://matrix.to/#/!other:hs.example',
+    ]);
+  });
+
+  it("passes stable Trinity's links through on stable Trinity", () => {
+    configure({
+      channel: 'stable',
+      deepLinkScheme: 'dev.trinityproject.trinity',
+      displayName: 'Trinity',
+    });
+    const urls: string[] = [];
+    const subscription = TestBed.inject(
+      HostDeepLinksService,
+    ).received.subscribe(({ url }) => urls.push(url));
+    emit('dev.trinityproject.trinity://matrix.to/#/!room:hs.example');
+    subscription.unsubscribe();
+    expect(urls).toEqual([
+      'dev.trinityproject.trinity://matrix.to/#/!room:hs.example',
     ]);
   });
 });

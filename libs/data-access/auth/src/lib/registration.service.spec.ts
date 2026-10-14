@@ -502,4 +502,30 @@ describe('RegistrationService', () => {
       ),
     );
   });
+
+  it('shows an error instead of registering when the host cannot name the device', () => {
+    vi.spyOn(
+      TestBed.inject(HostAuthenticationHandoffService),
+      'deviceDisplayName',
+    ).mockImplementation(() => {
+      throw new Error('The desktop shell did not report its app identity.');
+    });
+    const matrixClient = client({ registerRequest: vi.fn() });
+    createClientMock.mockReturnValue(matrixClient as never);
+    const error = vi.fn();
+    const complete = vi.fn();
+
+    service
+      .begin('https://hs', 'alice', 'not-a-real-password', 'hs')
+      .subscribe({ error, complete });
+
+    expect(error).not.toHaveBeenCalled();
+    expect(complete).toHaveBeenCalledOnce();
+    expect(service.error()).toBe(
+      'The desktop shell did not report its app identity.',
+    );
+    expect(service.stage().kind).toBe('credentials');
+    expect(service.busy()).toBe(false);
+    expect(matrixClient.registerRequest).not.toHaveBeenCalled();
+  });
 });

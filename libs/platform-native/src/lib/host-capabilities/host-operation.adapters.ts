@@ -71,12 +71,18 @@ function desktopAppUrl(appUrl: string): string {
   return `${deepLinkScheme}${appUrl.slice(CANONICAL_APP_SCHEME.length)}`;
 }
 
-/** A link the shell delivered, moved back onto the scheme the renderer's parsers know. */
-function canonicalAppUrl(url: string): string {
+/**
+ * A link the shell delivered, moved back onto the scheme the renderer's parsers know, or
+ * null for stable Trinity's link arriving in Trinity Next. Main already forwards only this
+ * app's own scheme (electron/src/deep-link.ts); dropping it here is defence in depth.
+ */
+function canonicalAppUrl(url: string): string | null {
   const scheme = getTrinityDesktopBridge()?.appIdentity?.deepLinkScheme;
-  return scheme && url.startsWith(`${scheme}:`)
-    ? `${CANONICAL_APP_SCHEME}${url.slice(scheme.length)}`
-    : url;
+  if (!scheme || scheme === CANONICAL_APP_SCHEME) return url;
+  if (url.startsWith(`${scheme}:`)) {
+    return `${CANONICAL_APP_SCHEME}${url.slice(scheme.length)}`;
+  }
+  return url.startsWith(`${CANONICAL_APP_SCHEME}:`) ? null : url;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -233,8 +239,11 @@ class ElectronHostOperationAdapter implements HostOperationsAdapter {
     switchMap((support) =>
       support.kind === 'supported'
         ? new Observable<{ readonly url: string }>((subscriber) =>
-            getTrinityDesktopBridge()?.capabilities.deepLinks.subscribe((url) =>
-              subscriber.next({ url: canonicalAppUrl(url) }),
+            getTrinityDesktopBridge()?.capabilities.deepLinks.subscribe(
+              (url) => {
+                const appUrl = canonicalAppUrl(url);
+                if (appUrl !== null) subscriber.next({ url: appUrl });
+              },
             ),
           )
         : EMPTY,
