@@ -10,6 +10,7 @@ export type PreferenceValue =
 
 export type PreferenceOwner =
   | 'accounts'
+  | 'app-lock'
   | 'application-runtime'
   | 'conversations'
   | 'design-system'
