@@ -1,4 +1,5 @@
 import { sanitizeMatrixHtml } from '@trinity/util/matrix';
+import katex from 'katex';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   MAX_MATHS_SOURCE_LENGTH,
@@ -43,6 +44,30 @@ function dangerous(fragment: DocumentFragment): string[] {
   return found;
 }
 
+/** Every `style` in document order, as `property:value` declarations joined by `;`. */
+function styleDeclarations(root: ParentNode): string[] {
+  return [...root.querySelectorAll('[style]')].map((element) =>
+    (element.getAttribute('style') ?? '')
+      .split(';')
+      .map((declaration) => declaration.replace(/\s*:\s*/, ':').trim())
+      .filter(Boolean)
+      .join(';'),
+  );
+}
+
+/** KaTeX's own markup for `latex`, parsed but never sanitized (test reference only). */
+function unsanitized(latex: string, displayMode: boolean): DocumentFragment {
+  const template = document.createElement('template');
+  template.innerHTML = katex.renderToString(latex, {
+    displayMode,
+    maxSize: 10,
+    throwOnError: false,
+    strict: 'ignore',
+    output: 'htmlAndMathml',
+  });
+  return template.content;
+}
+
 function rendered(latex: string, display = false): DocumentFragment {
   const outcome = renderMaths(latex, display);
   if (outcome.kind !== 'rendered') {
@@ -80,36 +105,45 @@ describe('renderMaths (real KaTeX)', () => {
     ).not.toBeNull();
   });
 
-  it.each([
-    '\\href{https://evil.example}{click}',
-    '\\url{https://evil.example}',
-    '\\includegraphics{https://evil.example/x.png}',
-    '\\htmlClass{x}{y}',
-  ])('renders no link, image or URL for %s', (latex) => {
-    const outcome = renderMaths(latex, false);
-
-    if (outcome.kind === 'rendered') {
-      expect(
-        outcome.fragment.querySelector('a, img, image, use, [href], [src]'),
-      ).toBeNull();
-    }
+  it('keeps the line KaTeX draws for a cancelled term', () => {
+    expect(rendered('\\cancel{x}').querySelector('svg line')).not.toBeNull();
   });
 
   it.each([
-    '\\text{<script>alert(1)</script>}',
-    '\\text{<img src=x onerror=alert(1)>}',
-    '\\href{javascript:alert(1)}{x}',
-    '\\htmlStyle{background:url(https://evil.example/x)}{x}',
-    '\\color{red;background:url(https://evil.example/x)}{x}',
-    '\\text{<svg><foreignObject><img src=x onerror=alert(1)></foreignObject></svg>}',
+    '\\href{https://x}{click}',
+    '\\foo',
+    '\\htmlStyle{color:red}{x}',
+    '\\url{https://evil.example}',
+    '\\includegraphics{https://evil.example/x.png}',
+    '\\htmlClass{x}{y}',
   ])(
-    'lets no code or network reference through from the maths payload %s',
+    "shows the source, not KaTeX's red error text, for %s (T14-2)",
     (latex) => {
+      // KaTeX paints an unknown or untrusted command in its error colour, below 3:1 on dark
+      // themes, and drops the command's text; the reader gets the LaTeX instead.
+      expect(renderMaths(latex, false).kind).toBe('source');
+    },
+  );
+
+  it.each([
+    ['\\text{<script>alert(1)</script>}', 'rendered'],
+    ['\\text{<img src=x onerror=alert(1)>}', 'rendered'],
+    ['\\href{javascript:alert(1)}{x}', 'source'],
+    ['\\htmlStyle{background:url(https://evil.example/x)}{x}', 'source'],
+    ['\\color{red;background:url(https://evil.example/x)}{x}', 'rendered'],
+    [
+      '\\text{<svg><foreignObject><img src=x onerror=alert(1)></foreignObject></svg>}',
+      'rendered',
+    ],
+  ] as const)(
+    'lets no code or network reference through from the maths payload %s',
+    (latex, kind) => {
       const outcome = renderMaths(latex, false);
 
-      if (outcome.kind === 'rendered') {
-        expect(dangerous(outcome.fragment)).toEqual([]);
-      }
+      expect(outcome.kind).toBe(kind);
+      expect(
+        outcome.kind === 'rendered' ? dangerous(outcome.fragment) : [],
+      ).toEqual([]);
     },
   );
 
@@ -143,12 +177,44 @@ describe('renderMaths (real KaTeX)', () => {
     );
   });
 
+  it('keeps only the inline styles KaTeX writes, with plain lengths', () => {
+    const fragment = sanitizeMathsMarkup(
+      '<span style="height:0.43em;vertical-align:-0.2em;display:none;color:red;' +
+        'position:fixed;width:calc(100vw);margin:0 -0.02em">a</span>' +
+        '<span style="color:transparent">b</span>' +
+        '<span style="background:red;z-index:9">c</span>',
+    );
+    const [first, second, third] = fragment.querySelectorAll('span');
+
+    expect(first.getAttribute('style')).toBe(
+      'height:0.43em;vertical-align:-0.2em;margin:0 -0.02em',
+    );
+    // \phantom hides its content with a transparent colour, the one colour KaTeX may keep.
+    expect(second.getAttribute('style')).toBe('color:transparent');
+    expect(third.hasAttribute('style')).toBe(false);
+  });
+
+  it.each([
+    '\\cancel{x} \\sqrt[3]{x} \\sout{abc} \\boxed{x} \\pmb{x} \\phantom{x}y',
+    '\\xrightarrow{abc} \\widehat{abc} \\overbrace{a+b}^{n} \\phase{-78^\\circ}',
+    '\\left(\\frac{\\frac{a}{b}}{c}\\right) \\Bigg[ \\raisebox{0.5em}{x} \\rule{1em}{2em}',
+    '\\begin{pmatrix}1&2\\\\3&4\\end{pmatrix} \\begin{array}{c|c:c}a&b&c\\\\\\hline d&e&f\\end{array}',
+    'a \\\\[1em] b \\kern-1em c \\mathllap{d} \\angl{n} \\cancel{\\frac{a}{b}}',
+    '\\int_0^1 x^2 \\, dx \\sum_{i=0}^n i \\oiint \\vec{x} \\textcircled{a} x^{2^{3}}_{i_j}',
+  ])('keeps every style KaTeX writes for %s', (latex) => {
+    for (const displayMode of [false, true]) {
+      expect(styleDeclarations(rendered(latex, displayMode))).toEqual(
+        styleDeclarations(unsanitized(latex, displayMode)),
+      );
+    }
+  });
+
   it('keeps its markup while the message sanitizer hooks the default DOMPurify instance', () => {
     // Loading message-view registers its per-tag table on the default instance, which strips
     // every class and style outside it; the maths sanitizer must not share that instance.
     expect(
       sanitizeMatrixHtml('<span class="katex" style="width:1em">x</span>'),
-    ).toBe('<span>x</span>');
+    ).not.toMatch(/\b(?:class|style)=/);
 
     const fragment = rendered('\\sqrt{x}');
     expect(fragment.querySelector('.katex .katex-html')).not.toBeNull();

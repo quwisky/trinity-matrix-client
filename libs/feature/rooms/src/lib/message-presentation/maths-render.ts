@@ -1,4 +1,4 @@
-import DOMPurify from 'dompurify';
+import DOMPurify, { type Config } from 'dompurify';
 import katex from 'katex';
 
 /**
@@ -6,7 +6,9 @@ import katex from 'katex';
  *
  * Never imported statically: MathsDirective loads this module with a dynamic `import()` the
  * first time a rendered body holds maths, so KaTeX (about 270 KB minified) is a lazy chunk and
- * a room without maths never downloads it.
+ * a room without maths never downloads it. The chunk is named after this file
+ * (`maths-render-<hash>.js`), and `apps/trinity/ngsw-config.json` matches that name to keep it
+ * out of the service worker's prefetch: renaming this file moves KaTeX back into prefetch.
  */
 
 /** Characters of LaTeX one expression may have; past it the source is shown. */
@@ -21,12 +23,66 @@ export type MathsOutcome =
 // KaTeX's classes and styles. Defence in depth — `trust: false` already keeps URLs out.
 const purifier = DOMPurify(window);
 
-// No URL in an inline style (owner decision 10): KaTeX never writes `url(…)`, `image-set`,
-// `cross-fade`, `element(…)` or a CSS escape (which could spell `u\rl(`), and they are the ways a
-// style attribute reaches the network. A fixed pattern, never built from the input.
-const STYLE_URL = /\\|url\s*\(|image-set|cross-fade|element\s*\(/i;
+/** KaTeX's colour for what it cannot render; see {@link renderMaths}. */
+const ERROR_COLOUR = '#cc0000';
+
+// Up to four plain lengths (`0.25em`, `0 -0.02em`, `0.02em 0.01em 0.04px`): no URL, function,
+// keyword or CSS escape can match. A fixed pattern, never built from the input.
+const LENGTHS =
+  /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:em|px)?(?: -?(?:\d+(?:\.\d+)?|\.\d+)(?:em|px)?){0,3}$/;
+
+/**
+ * Every inline style KaTeX 0.19.0 writes, with the values it writes (owner decision 10). Its
+ * layout uses plain lengths; `\phantom` hides content with `color: transparent`, the one colour
+ * kept. Sender colours never reach here (they are neutralised) and `color: #cc0000` (errors) is
+ * dropped. Derived from KaTeX's source and output (`\cancel`, `\sqrt[3]`, `\xrightarrow`,
+ * `\widehat`, `\overbrace`, `\phase`, `\boxed`, `\pmb`, `\raisebox`, `\rule`, `\\[1em]`,
+ * limits, accents, `\oiint`, large delimiters, matrices and arrays with rules); the spec's
+ * "keeps every style KaTeX writes" cases fail if a property here is missing.
+ */
+const KATEX_STYLES: ReadonlyMap<string, RegExp> = new Map([
+  ...[
+    'height',
+    'width',
+    'min-width',
+    'vertical-align',
+    'top',
+    'bottom',
+    'left',
+    'margin',
+    'margin-top',
+    'margin-left',
+    'margin-right',
+    'padding-left',
+    'border-width',
+    'border-top-width',
+    'border-right-width',
+    'border-bottom-width',
+    'text-shadow',
+  ].map((property) => [property, LENGTHS] as const),
+  ['border-style', /^solid$/],
+  ['border-right-style', /^(?:solid|dashed)$/],
+  ['position', /^relative$/],
+  ['color', /^transparent$/],
+]);
+
+// Inline styles keep only the declarations in KATEX_STYLES, one by one; a style left empty is
+// removed. So no URL, `image-set`, CSS escape, sender colour or unknown property gets through.
 purifier.addHook('uponSanitizeAttribute', (_node, data) => {
-  if (data.attrName === 'style' && STYLE_URL.test(data.attrValue)) {
+  if (data.attrName !== 'style') {
+    return;
+  }
+  const kept = data.attrValue.split(';').flatMap((declaration) => {
+    const colon = declaration.indexOf(':');
+    const property = declaration.slice(0, colon).trim().toLowerCase();
+    const value = declaration.slice(colon + 1).trim();
+    return colon > 0 && KATEX_STYLES.get(property)?.test(value)
+      ? [`${property}:${value}`]
+      : [];
+  });
+  if (kept.length > 0) {
+    data.attrValue = kept.join(';');
+  } else {
     data.keepAttr = false;
   }
 });
@@ -79,7 +135,7 @@ const MATHS_PURIFY_CONFIG = {
   ],
   ALLOW_DATA_ATTR: false,
   RETURN_DOM_FRAGMENT: true as const,
-};
+} satisfies Config;
 
 /**
  * KaTeX built-ins replaced for every call; `renderMaths` copies them into a fresh table.
@@ -112,8 +168,10 @@ export function sanitizeMathsMarkup(markup: string): DocumentFragment {
  * `\includegraphics`, `\html*`), sizes up to 10em, at most 100 macro expansions, warnings
  * ignored (console warnings feed the diagnostic log, which must never hold message content),
  * and a fresh macro table for every call, seeded with {@link NEUTRALISED_MACROS}, so a `\gdef`
- * cannot leak into the next expression or message. Anything KaTeX rejects, or an expression over {@link MAX_MATHS_SOURCE_LENGTH},
- * becomes `{ kind: 'source' }`.
+ * cannot leak into the next expression or message. Anything KaTeX rejects, an expression over
+ * {@link MAX_MATHS_SOURCE_LENGTH}, and anything KaTeX paints in its error colour (an unknown
+ * command such as `\foo`, or one `trust: false` refuses, such as `\href`; red text below 3:1 on
+ * dark themes that hides the command's content) becomes `{ kind: 'source' }`.
  */
 export function renderMaths(latex: string, displayMode: boolean): MathsOutcome {
   if (latex.length === 0 || latex.length > MAX_MATHS_SOURCE_LENGTH) {
@@ -129,6 +187,7 @@ export function renderMaths(latex: string, displayMode: boolean): MathsOutcome {
       throwOnError: false,
       strict: 'ignore',
       output: 'htmlAndMathml',
+      errorColor: ERROR_COLOUR,
       // A fresh table per call, so a `\gdef` cannot leak into the next expression.
       macros: { ...NEUTRALISED_MACROS },
     });
@@ -136,8 +195,10 @@ export function renderMaths(latex: string, displayMode: boolean): MathsOutcome {
     return { kind: 'source' };
   }
   const fragment = sanitizeMathsMarkup(markup);
+  // The style allowlist drops the error colour from the HTML copy; the MathML copy keeps it as
+  // `mathcolor`, which no sender can set (every colour command is neutralised).
   if (
-    fragment.querySelector('.katex-error') ||
+    fragment.querySelector(`.katex-error, [mathcolor="${ERROR_COLOUR}"]`) ||
     !fragment.querySelector('.katex')
   ) {
     return { kind: 'source' };
