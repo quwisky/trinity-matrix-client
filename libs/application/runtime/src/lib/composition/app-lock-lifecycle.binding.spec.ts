@@ -7,13 +7,16 @@ import {
   MediaPickerService,
 } from '@trinity/platform-native';
 import {
+  HOST_AUTHENTICATION_HANDOFF_OPERATION,
   HOST_FILE_EXPORT_OPERATION,
   HOST_USER_PRESENCE_OPERATION,
+  HostAuthenticationHandoffService,
   HostFileExportService,
   HostLifecycleService,
   HostLockIntegrationService,
   HostSystemUiService,
   HostUserPresenceService,
+  type HostAuthenticationHandoffOperation,
   type HostFileExportOperation,
   type HostLockRequest,
   type HostUserPresenceOperation,
@@ -439,6 +442,62 @@ describe('AppLockLifecycleBinding', () => {
       lifecycle.next({ kind: 'active' });
       expect(lockNow).not.toHaveBeenCalled();
       sheet.unsubscribe();
+      lifetime.unsubscribe();
+    });
+
+    it('holds the away timer while the sign-in sheet is open', () => {
+      const sheetClosed = new Subject<void>();
+      const handoff = {
+        open: () => of({ kind: 'completed' as const }),
+        sheetClosed: sheetClosed.asObservable(),
+      } as Partial<HostAuthenticationHandoffOperation> as HostAuthenticationHandoffOperation;
+      const { lifecycle, lockNow, advance, lifetime } = setup({
+        lockAfter: 'immediately',
+        systemUi: 'real',
+        providers: [
+          { provide: HOST_AUTHENTICATION_HANDOFF_OPERATION, useValue: handoff },
+        ],
+      });
+      TestBed.inject(HostAuthenticationHandoffService)
+        .open({ url: 'https://account.example/authorize' })
+        .subscribe();
+      TestBed.tick();
+      // Custom Tabs sends the app to the background.
+      lifecycle.next({ kind: 'background' });
+      advance(120_000);
+      expect(lockNow).not.toHaveBeenCalled();
+      sheetClosed.next();
+      TestBed.tick();
+      lifecycle.next({ kind: 'active' });
+      lifecycle.next({ kind: 'background' });
+      expect(lockNow).toHaveBeenCalledOnce();
+      lifetime.unsubscribe();
+    });
+
+    it('runs the away timer again once the app is back from a sign-in sheet whose end was missed', () => {
+      const handoff = {
+        open: () => of({ kind: 'completed' as const }),
+        sheetClosed: NEVER,
+      } as Partial<HostAuthenticationHandoffOperation> as HostAuthenticationHandoffOperation;
+      const { lifecycle, lockNow, advance, lifetime } = setup({
+        lockAfter: 'immediately',
+        systemUi: 'real',
+        providers: [
+          { provide: HOST_AUTHENTICATION_HANDOFF_OPERATION, useValue: handoff },
+        ],
+      });
+      TestBed.inject(HostAuthenticationHandoffService)
+        .open({ url: 'https://account.example/authorize' })
+        .subscribe();
+      TestBed.tick();
+      lifecycle.next({ kind: 'background' });
+      advance(120_000);
+      // No callback, no close and no closed event: coming back releases the count.
+      lifecycle.next({ kind: 'active' });
+      TestBed.tick();
+      expect(lockNow).not.toHaveBeenCalled();
+      lifecycle.next({ kind: 'background' });
+      expect(lockNow).toHaveBeenCalledOnce();
       lifetime.unsubscribe();
     });
 

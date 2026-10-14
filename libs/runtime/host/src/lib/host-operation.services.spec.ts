@@ -1,13 +1,15 @@
 import { TestBed } from '@angular/core/testing';
-import { NEVER, firstValueFrom, of, toArray } from 'rxjs';
+import { NEVER, Subject, firstValueFrom, of, toArray } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   HOST_AUTHENTICATION_HANDOFF_OPERATION,
+  HOST_DEEP_LINKS_OPERATION,
   HOST_FILE_EXPORT_OPERATION,
   HOST_LIFECYCLE_OPERATION,
   HOST_UPDATES_OPERATION,
   HOST_USER_PRESENCE_OPERATION,
   HostAuthenticationHandoffService,
+  HostDeepLinksService,
   HostFileExportService,
   HostLifecycleService,
   HostLockIntegrationService,
@@ -17,6 +19,7 @@ import {
   NO_USER_PRESENCE,
 } from './host-operation.services';
 import { HostSystemUiService } from './host-system-ui.service';
+import type { HostOperationOutcome } from './host-capability.models';
 
 describe('remaining host operation services', () => {
   afterEach(() => TestBed.resetTestingModule());
@@ -226,6 +229,120 @@ describe('app lock host services without an adapter', () => {
       .subscribe();
     expect(ui.active()).toBe(true);
     save.unsubscribe();
+    expect(ui.active()).toBe(false);
+  });
+});
+
+describe('HostAuthenticationHandoffService sign-in sheet', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function setup(
+    options: {
+      /** The host shows sign-in in a sheet of its own (iOS, Android). */
+      sheet?: boolean;
+      opened?: HostOperationOutcome;
+    } = {},
+  ) {
+    const sheetClosed = new Subject<void>();
+    const received = new Subject<{ readonly url: string }>();
+    const lifecycle = new Subject<{ readonly kind: 'active' | 'background' }>();
+    const closeAuthentication = vi.fn(() => of({ kind: 'completed' as const }));
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: HOST_AUTHENTICATION_HANDOFF_OPERATION,
+          useValue: {
+            callback: () => ({
+              url: 'dev.trinityproject.trinity:/sso-callback',
+              applicationType: 'native' as const,
+            }),
+            open: () => of(options.opened ?? { kind: 'completed' as const }),
+            ...(options.sheet === false
+              ? {}
+              : { sheetClosed: sheetClosed.asObservable() }),
+          },
+        },
+        {
+          provide: HOST_DEEP_LINKS_OPERATION,
+          useValue: {
+            deepLinkSupport: () => of({ kind: 'supported' as const }),
+            received: received.asObservable(),
+            closeAuthentication,
+          },
+        },
+        {
+          provide: HOST_LIFECYCLE_OPERATION,
+          useValue: { events: lifecycle.asObservable() },
+        },
+      ],
+    });
+    const ui = TestBed.inject(HostSystemUiService);
+    const handoff = TestBed.inject(HostAuthenticationHandoffService);
+    const deepLinks = TestBed.inject(HostDeepLinksService);
+    // The application listens for links for its whole lifetime.
+    deepLinks.received.subscribe();
+    const open = () =>
+      handoff.open({ url: 'https://account.example/authorize' }).subscribe();
+    return { ui, deepLinks, sheetClosed, received, lifecycle, open };
+  }
+
+  it('counts the sign-in sheet as Trinity’s own system UI until the callback arrives', () => {
+    const { ui, received, open } = setup();
+    open();
+    // The host's open resolves as soon as the sheet shows; the sheet is still up.
+    expect(ui.active()).toBe(true);
+    received.next({ url: 'dev.trinityproject.trinity:/sso-callback?code=a' });
+    expect(ui.active()).toBe(false);
+  });
+
+  it('stops counting when Trinity closes the sheet', () => {
+    const { ui, deepLinks, open } = setup();
+    open();
+    expect(ui.active()).toBe(true);
+    deepLinks.closeAuthentication().subscribe();
+    expect(ui.active()).toBe(false);
+  });
+
+  it('stops counting when the person closes the sheet', () => {
+    const { ui, sheetClosed, open } = setup();
+    open();
+    expect(ui.active()).toBe(true);
+    sheetClosed.next();
+    expect(ui.active()).toBe(false);
+  });
+
+  it('releases a sheet whose end was missed once the app is back in the foreground', () => {
+    const { ui, lifecycle, open } = setup();
+    open();
+    lifecycle.next({ kind: 'background' });
+    expect(ui.active()).toBe(true);
+    lifecycle.next({ kind: 'active' });
+    expect(ui.active()).toBe(false);
+  });
+
+  it('counts a second sign-in once, ending with its own sheet', () => {
+    const { ui, sheetClosed, open } = setup();
+    open();
+    open();
+    expect(ui.active()).toBe(true);
+    sheetClosed.next();
+    expect(ui.active()).toBe(false);
+  });
+
+  it('counts nothing when the sheet could not open', () => {
+    const { ui, open } = setup({
+      opened: {
+        kind: 'rejected',
+        diagnostic: { code: 'authentication-handoff-failed' },
+      },
+    });
+    open();
+    expect(ui.active()).toBe(false);
+  });
+
+  it('counts nothing for a browser outside Trinity, as on desktop', () => {
+    const { ui, open } = setup({ sheet: false });
+    open();
     expect(ui.active()).toBe(false);
   });
 });
