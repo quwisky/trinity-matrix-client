@@ -683,18 +683,21 @@ export class MessageListComponent extends MessageListBase {
   }
 
   /**
-   * Keep keyboard focus in view inside rows that just changed height, once the corrections
-   * above have moved the list. Tabbing to a link past a Show more cut expands its body
-   * (`MessageRowComponent.expandBodyForFocus`); the browser scrolled to the link while it was
-   * still clipped, and the pin, compensation or anchor restore for the taller row decides where
-   * the row ends up, so only after them can the link be brought into view. Keyboard focus only
-   * (`:focus-visible`): a pointer user is already looking at what they clicked.
+   * Keep keyboard focus inside a message body in view when its row just changed height, once
+   * the corrections above have moved the list. Tabbing to a link past a Show more cut expands
+   * its body (`MessageRowComponent.expandBodyForFocus`); the browser scrolled to the link while
+   * it was still clipped, and the pin, compensation or anchor restore for the taller row decides
+   * where the row ends up, so only after them can the link be brought into view. Only focus in
+   * the body (`.msg__clamp`): the Show more button itself sits after the body, and following it
+   * would skip the text it just revealed (and fight the row-top reveal on Show less). Keyboard
+   * focus only (`:focus-visible`): a pointer user is already looking at what they clicked.
    */
   private revealFocusIn(rows: readonly Element[]): void {
     const active = rows[0]?.ownerDocument.activeElement;
     if (
       active &&
       active.matches(':focus-visible') &&
+      active.closest('.msg__clamp') &&
       rows.some((row) => row !== active && row.contains(active))
     ) {
       active.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });

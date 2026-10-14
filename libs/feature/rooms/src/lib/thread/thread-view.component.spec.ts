@@ -713,6 +713,35 @@ describe('ThreadViewComponent', () => {
       expect(shown.link.scrollIntoView).not.toHaveBeenCalled();
     });
 
+    // Show more sits after the collapsed body, not in it: Enter on it must not scroll the
+    // thread to the button and past the text it reveals.
+    it('leaves keyboard focus on Show more alone', async () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
+        frames.push(frame);
+        return frames.length;
+      });
+      onTestFinished(() => {
+        vi.unstubAllGlobals();
+      });
+      const { fixture, container } = await build([msg('$a', '@a:hs', 'first')]);
+      const row = container.querySelector('[data-mid="$a"]');
+      const clamp = document.createElement('div');
+      clamp.className = 'msg__clamp msg__clamp--collapsed';
+      const button = document.createElement('button');
+      row?.append(clamp, button);
+      button.scrollIntoView = vi.fn();
+      const matches = button.matches.bind(button);
+      vi.spyOn(button, 'matches').mockImplementation((selector) =>
+        selector === ':focus-visible' ? true : matches(selector),
+      );
+      button.focus();
+      await fixture.whenStable();
+      for (const frame of frames.splice(0)) frame(0);
+
+      expect(button.scrollIntoView).not.toHaveBeenCalled();
+    });
+
     it('leaves pointer focus in a collapsed reply alone', async () => {
       const pointer = await focusLinkIn(
         'msg__clamp msg__clamp--collapsed',

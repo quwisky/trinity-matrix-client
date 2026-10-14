@@ -1032,6 +1032,79 @@ describe('MessageListComponent', () => {
       expect(scrolledAt).toEqual([view.sh - 600]); // after the pin, not before it
     });
 
+    /** A control focused by keyboard inside `parent`, recording each scroll to it. */
+    function keyboardFocused<T extends HTMLElement>(
+      parent: Element | null,
+      control: T,
+    ): T {
+      parent?.append(control);
+      control.scrollIntoView = vi.fn();
+      const element: HTMLElement = control;
+      const matches = element.matches.bind(element);
+      vi.spyOn(element, 'matches').mockImplementation((selector) =>
+        selector === ':focus-visible' ? true : matches(selector),
+      );
+      control.focus();
+      return control;
+    }
+
+    // Enter on Show more grows the row with focus on the button, after the body. Following the
+    // button would skip the text it revealed (and on Show less fight the row-top reveal).
+    it('leaves keyboard focus on Show more where the list put it', async () => {
+      const { container } = await renderList({ messages: many(30) });
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const newest = scroll.querySelector('[data-mid="$29"]') as HTMLElement;
+      rowObserver().emit([resizeEntry(newest, 100)]);
+      const button = keyboardFocused(
+        newest.querySelector('.msg__clamp')?.parentElement ?? null,
+        document.createElement('button'),
+      );
+      expect(button.closest('.msg__clamp')).toBeNull();
+
+      rowObserver().emit([resizeEntry(newest, 1100)]);
+
+      expect(button.scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it('leaves keyboard focus in a row that did not change alone', async () => {
+      const { container } = await renderList({ messages: many(30) });
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const newest = scroll.querySelector('[data-mid="$29"]') as HTMLElement;
+      rowObserver().emit([resizeEntry(newest, 100)]);
+      const link = keyboardFocused(
+        scroll.querySelector('[data-mid="$5"] .msg__text'),
+        Object.assign(document.createElement('a'), {
+          href: 'https://example.org/',
+        }),
+      );
+
+      rowObserver().emit([resizeEntry(newest, 1100)]);
+
+      expect(link.scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it('brings keyboard focus into view after the history anchor is restored', async () => {
+      const { scroll, view, newest, runFrames } = await afterHistoryPage(50);
+      const link = keyboardFocused(
+        newest.querySelector('.msg__text'),
+        Object.assign(document.createElement('a'), {
+          href: 'https://example.org/',
+        }),
+      );
+      const scrolledAt: number[] = [];
+      vi.mocked(link.scrollIntoView).mockImplementation(() => {
+        scrolledAt.push(view.st);
+      });
+      expect(scroll.contains(link)).toBe(true);
+
+      view.sh += 200;
+      rowObserver().emit([resizeEntry(newest, 300)]);
+      expect(link.scrollIntoView).not.toHaveBeenCalled(); // the restore has not run yet
+      runFrames();
+
+      expect(scrolledAt).toEqual([210]); // after the restore held the reader's place
+    });
+
     it('leaves pointer focus in a grown row where the list put it', async () => {
       const { container } = await renderList({ messages: many(30) });
       const scroll = container.querySelector('.scroll') as HTMLElement;
