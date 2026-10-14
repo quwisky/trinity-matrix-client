@@ -18,6 +18,8 @@ import {
   sendComposerLines,
 } from '../../../support/message-composer.mts';
 import {
+  addRoom,
+  openRoom,
   seedFormattedRoom,
   sendMessage,
   signInAndOpen,
@@ -569,5 +571,142 @@ test.describe('Inline images', () => {
       timeout: 30_000,
     });
     await expect(nestedImage).toBeVisible();
+  });
+});
+
+// Maths (spec B): KaTeX renders inline and display maths with MathML, and neither its chunk
+// nor its stylesheet loads until a room shows maths.
+const MATHS_CHUNK = /\/maths-render-[A-Za-z0-9]+\.js(?:\?|$)/;
+const KATEX_CSS = /\/katex\.css(?:\?|$)/;
+
+test.describe('Maths', () => {
+  test.skip(!session.available, 'needs a homeserver');
+
+  test('renders maths with KaTeX, loading it only once a room shows maths', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'maths');
+    const mathsRoomName = `maths room ${testResourceId('formulas')}`;
+    const mathsRoomId = await addRoom(request, hs, room, mathsRoomName);
+    // HTML without maths, so the body goes through the directive that would load KaTeX.
+    await sendMessage(request, hs, room, {
+      body: 'no formulas here',
+      html: '<p><em>no formulas here</em></p>',
+    });
+    await sendMessage(
+      request,
+      hs,
+      room,
+      {
+        body: 'Euler and an integral',
+        html: '<p>Euler: <span data-mx-maths="e^{i\\pi} + 1 = 0"><code>e^{i\\pi} + 1 = 0</code></span></p><div data-mx-maths="\\int_0^1 x^2 \\, dx"><code>\\int_0^1 x^2 \\, dx</code></div>',
+      },
+      mathsRoomId,
+    );
+    const chunks: string[] = [];
+    const styles: string[] = [];
+    const styleStatuses: number[] = [];
+    page.on('request', (outgoing) => {
+      if (MATHS_CHUNK.test(outgoing.url())) chunks.push(outgoing.url());
+      if (KATEX_CSS.test(outgoing.url())) styles.push(outgoing.url());
+    });
+    page.on('response', (incoming) => {
+      if (KATEX_CSS.test(incoming.url())) styleStatuses.push(incoming.status());
+    });
+
+    await signInAndOpen(page, room);
+    await expect(
+      page.locator('.scroll').getByText('no formulas here', { exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
+    expect(chunks).toEqual([]);
+    expect(styles).toEqual([]);
+
+    await openRoom(page, mathsRoomName);
+    await expect(page.locator('.scroll span.mx-maths .katex')).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(
+      page.locator('.scroll div.mx-maths .katex-display'),
+    ).toBeVisible();
+    await expect(
+      page.locator('.scroll .katex-mathml math').first(),
+    ).toBeAttached();
+    await expect(page.locator('.scroll .katex-html').first()).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+    // The stylesheet MathsLoader links is the `katex` bundle the build emits: it loads and
+    // its rules apply.
+    await expect.poll(() => styleStatuses, { timeout: 15_000 }).toEqual([200]);
+    await expect(page.locator('.scroll span.mx-maths .katex')).toHaveCSS(
+      'font-family',
+      /KaTeX_Main/,
+    );
+
+    // Back and forth: still one chunk and one stylesheet.
+    await openRoom(page, room.roomName);
+    await openRoom(page, mathsRoomName);
+    await expect(page.locator('.scroll span.mx-maths .katex')).toBeVisible({
+      timeout: 30_000,
+    });
+    expect(chunks).toHaveLength(1);
+    expect(styles).toHaveLength(1);
+  });
+
+  // Owner decision 13: maths keeps the body text colour, whether the sender colours the maths
+  // itself or text around it. LaTeX KaTeX rejects (an unknown command, a link with trust off)
+  // shows as source instead of KaTeX's error rendering.
+  test('keeps maths in the text colour and shows the LaTeX KaTeX rejects', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'maths-colour');
+    const requested: string[] = [];
+    page.on('request', (outgoing) => requested.push(outgoing.url()));
+    await sendMessage(request, hs, room, {
+      body: 'coloured maths and two rejected formulas',
+      html:
+        '<p>own: <span data-mx-color="#e03030" data-mx-maths="a+b"><code>a+b</code></span></p>' +
+        '<p><font color="#e03030">around: <span data-mx-maths="c+d"><code>c+d</code></span></font></p>' +
+        '<p>unknown: <span data-mx-maths="\\notacommand{x}"><code>\\notacommand{x}</code></span></p>' +
+        '<p>link: <span data-mx-maths="\\href{https://maths.invalid}{y}"><code>\\href{https://maths.invalid}{y}</code></span></p>',
+    });
+    await signInAndOpen(page, room);
+
+    const body = page.locator('.scroll .msg__text--html', {
+      hasText: 'around',
+    });
+    await expect(body.locator('.mx-maths .katex')).toHaveCount(2, {
+      timeout: 30_000,
+    });
+    await expect(body.locator('.mx-maths code.mx-maths-source')).toHaveText([
+      '\\notacommand{x}',
+      '\\href{https://maths.invalid}{y}',
+    ]);
+    await expect(body.locator('.katex-error')).toHaveCount(0);
+
+    const colours = await body.evaluate((element) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--trinity-text)';
+      element.append(probe);
+      const text = getComputedStyle(probe).color;
+      probe.remove();
+      const maths = [
+        ...element.querySelectorAll('.mx-maths .katex, .mx-maths .katex *'),
+      ].map((node) => getComputedStyle(node).color);
+      const font = element.querySelector('font');
+      return {
+        text,
+        maths: [...new Set(maths)],
+        font: font ? getComputedStyle(font).color : null,
+      };
+    });
+    // The colour around the maths is painted, so the reset is what keeps the maths plain.
+    expect(colours.font).toBe('rgb(224, 48, 48)');
+    expect(colours.maths).toEqual([colours.text]);
+    expect(requested.some((url) => url.includes('maths.invalid'))).toBe(false);
   });
 });
