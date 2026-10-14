@@ -31,16 +31,22 @@ const expected = /^\d+\.\d+\.\d+-next\.\d+$/.test(shellVersion)
       displayName: 'Trinity',
     };
 
+/** Only what the journey checks; the password is never kept. */
+interface LoginRecord {
+  readonly type: unknown;
+  readonly initial_device_display_name: unknown;
+}
+
 interface FakeHomeserver {
   readonly origin: string;
-  /** Bodies of password sign-in requests, in order. */
-  readonly logins: unknown[];
+  /** The non-secret fields of each password sign-in request, in order. */
+  readonly logins: LoginRecord[];
   close(): Promise<void>;
 }
 
 /** A homeserver that offers password and SSO sign-in and refuses every password. */
 async function startFakeHomeserver(): Promise<FakeHomeserver> {
-  const logins: unknown[] = [];
+  const logins: LoginRecord[] = [];
   const server = createServer(
     {
       key: readFileSync(
@@ -74,7 +80,17 @@ async function startFakeHomeserver(): Promise<FakeHomeserver> {
         let body = '';
         request.on('data', (chunk: Buffer) => (body += chunk.toString()));
         request.on('end', () => {
-          logins.push(JSON.parse(body));
+          let parsed: { type?: unknown; initial_device_display_name?: unknown };
+          try {
+            parsed = JSON.parse(body) as typeof parsed;
+          } catch {
+            // Never echo the body: it may carry the password.
+            return send(400, { errcode: 'M_NOT_JSON', error: 'Invalid JSON' });
+          }
+          logins.push({
+            type: parsed?.type,
+            initial_device_display_name: parsed?.initial_device_display_name,
+          });
           send(403, { errcode: 'M_FORBIDDEN', error: 'Invalid password' });
         });
         return;
