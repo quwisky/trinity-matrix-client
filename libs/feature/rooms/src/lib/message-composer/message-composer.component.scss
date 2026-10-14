@@ -147,6 +147,9 @@
 
     color: var(--trinity-text);
 
+    // Sender colours in the preview are checked against the field they sit on.
+    --trinity-message-surface: var(--trinity-surface-raised);
+
     // The same type as the textarea, because it stands in for it: a different size or leading
     // would change the cell's height on toggle, which is the drift this arrangement removes.
     font-size: var(--trinity-entry-font-size);

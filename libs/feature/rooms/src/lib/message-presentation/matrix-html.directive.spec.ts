@@ -121,4 +121,12 @@ describe('MatrixHtmlDirective', () => {
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
   });
+
+  it('keeps the colour tokens through Angular’s sanitizer', () => {
+    const { host } = render(
+      sanitizeMatrixHtml('<span data-mx-color="#e03030">r</span>'),
+    );
+
+    expect(host.querySelector('.mx-fg-e03030')).not.toBeNull();
+  });
 });

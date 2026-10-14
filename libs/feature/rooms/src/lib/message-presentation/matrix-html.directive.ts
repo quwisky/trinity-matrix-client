@@ -3,12 +3,13 @@ import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images
 import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import { CodeHighlightDirective } from './code-highlight.directive';
+import { SenderColoursDirective } from './sender-colours.directive';
 
 /**
  * Renders a sanitized Matrix message body into its host element.
  *
- * Spoiler reveal, `matrix.to` link routing, inline custom emoji and code highlighting all
- * delegate from the container that holds the body, so they travel with it: bind
+ * Spoiler reveal, `matrix.to` link routing, inline custom emoji, code highlighting and sender
+ * colours all delegate from the container that holds the body, so they travel with it: bind
  * `[trnMatrixHtml]` on that element and handle `(matrixLink)` where permalinks are routed.
  */
 @Directive({
@@ -24,6 +25,11 @@ import { CodeHighlightDirective } from './code-highlight.directive';
     {
       directive: CodeHighlightDirective,
       inputs: ['trnCodeHighlight: trnMatrixHtml'],
+      outputs: [],
+    },
+    {
+      directive: SenderColoursDirective,
+      inputs: ['trnSenderColours: trnMatrixHtml'],
       outputs: [],
     },
   ],
