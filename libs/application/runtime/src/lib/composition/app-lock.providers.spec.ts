@@ -79,7 +79,17 @@ describe('appLockProviders', () => {
   });
 
   it('does not wait more than half a second for the saved appearance', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    // RxJS `timeout` schedules through `setInterval`: fake it too, so the bound is pinned in
+    // fake time rather than passing on real time.
+    vi.useFakeTimers({
+      toFake: [
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+        'Date',
+      ],
+    });
     const hydrated = new Subject<void>();
     const { applySaved } = setup({
       hydrate: () => hydrated,
