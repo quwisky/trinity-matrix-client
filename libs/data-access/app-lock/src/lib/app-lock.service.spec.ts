@@ -899,6 +899,17 @@ describe('AppLockService', () => {
   });
 
   describe('setup and guarded changes', () => {
+    it('opens no guard window from a settings check while locked', async () => {
+      const { lock } = setup({ support: FACE_AND_PIN });
+      await hydrated(lock);
+      expect(lock.status()).toBe('locked');
+      await firstValueFrom(lock.verifyForChange());
+      expect(lock.recentlyVerified()).toBe(false);
+      await firstValueFrom(lock.verifyPinForChange('482913'));
+      expect(lock.recentlyVerified()).toBe(false);
+      expect(lock.status()).toBe('locked');
+    });
+
     it('turns on only after the system prompt, then the PIN', async () => {
       const { lock, adapter, writes } = setup({ stored: {} });
       await hydrated(lock);

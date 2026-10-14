@@ -290,7 +290,7 @@ export class AppLockService {
   }
 
   verifyPinForChange(pin: string): Observable<UnlockOutcome> {
-    return this.checkPin(pin, () => undefined);
+    return this.checkPin(pin, () => undefined, false);
   }
 
   recentlyVerified(): boolean {
@@ -388,6 +388,8 @@ export class AppLockService {
   /** A prompt verified with no lock since it opened; only an answer that takes effect counts. */
   private presenceVerified(kind: SystemPromptKind): void {
     if (kind === 'unlock' && this._status() !== 'locked') return; // A PIN unlocked first.
+    // A settings check never opens the guard window behind the lock.
+    if (kind !== 'unlock' && this._status() === 'locked') return;
     this.verifiedAt = this.now();
     if (kind === 'unlock') this.setStatus('unlocked');
   }
@@ -453,6 +455,7 @@ export class AppLockService {
   private checkPin(
     pin: string,
     onVerified: () => void,
+    unlocks = true,
   ): Observable<UnlockOutcome> {
     return defer((): Observable<UnlockOutcome> => {
       if (!isValidPin(pin)) return of({ kind: 'invalid' });
@@ -464,7 +467,9 @@ export class AppLockService {
           const result = pinUnlockOutcome(outcome, now);
           if (result.kind === 'unlocked') {
             this.patchPinWait(null);
-            if (locks !== this.locks) return { kind: 'cancelled' };
+            const behindLock = !unlocks && this._status() === 'locked';
+            if (locks !== this.locks || behindLock)
+              return { kind: 'cancelled' };
             this.verifiedAt = now;
             onVerified();
           } else if (result.kind === 'failed' || result.kind === 'delayed') {
