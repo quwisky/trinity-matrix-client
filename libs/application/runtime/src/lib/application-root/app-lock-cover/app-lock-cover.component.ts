@@ -4,6 +4,8 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  Injector,
+  afterNextRender,
   afterRenderEffect,
   inject,
   untracked,
@@ -44,6 +46,7 @@ export class AppLockCoverComponent {
   private readonly appLock = inject(AppLockService);
   private readonly lockIntegration = inject(HostLockIntegrationService);
   private readonly window = inject(DOCUMENT).defaultView;
+  private readonly injector = inject(Injector);
   private readonly dialog =
     viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
   private mounted = false;
@@ -67,9 +70,9 @@ export class AppLockCoverComponent {
     });
     // A new view, or an answer that disabled the control, puts focus on its first control.
     afterRenderEffect(() => {
-      this.state.view();
+      const view = this.state.view();
       this.state.focusRequest();
-      untracked(() => this.focusPrimary());
+      untracked(() => this.focusWhenShown(view));
     });
     // The binding tells of a return after its away timer, so a lock due on return is in place.
     inject(AppLockLifecycleBinding)
@@ -124,6 +127,18 @@ export class AppLockCoverComponent {
     const dialog = this.dialog().nativeElement;
     if (dialog.open) dialog.close();
     this.state.closed();
+  }
+
+  /**
+   * Focus once the dialog shows `view`. A view that changed while the cover opened (the prompt
+   * at start fell back) is not in the DOM yet, so wait for the render that puts it there.
+   */
+  private focusWhenShown(view: string): void {
+    if (this.dialog().nativeElement.dataset['view'] === view) {
+      this.focusPrimary();
+      return;
+    }
+    afterNextRender(() => this.focusPrimary(), { injector: this.injector });
   }
 
   /** The view's first control, or its first enabled one while that is disabled (a wait). */

@@ -966,6 +966,19 @@ describe('AppLockCoverComponent', () => {
       );
     });
 
+    it('puts focus on the new view when the prompt at start falls back', async () => {
+      await setup({
+        support: { system: FACE.system, pin: NO_PIN_ONLY.pin },
+        system: () =>
+          of<UnlockOutcome>({ kind: 'use-pin', reason: 'locked-out' }),
+      });
+      await vi.waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole('button', { name: 'Use Face ID' }),
+        ),
+      );
+    });
+
     it('tells screen readers what erasing does', async () => {
       await setup({ support: NO_PIN_ONLY });
       const entry = screen.getByRole('button', {
