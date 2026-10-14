@@ -141,6 +141,15 @@ function provideRooms(
   matrix: MatrixClientService;
   activeUserId: WritableSignal<string | null>;
 } {
+  // The SDK's `getRoom` and `getRooms` read one store; most fakes only list rooms.
+  const withLookup = client as {
+    getRooms?: () => { roomId: string }[];
+    getRoom?: (id: string) => unknown;
+  };
+  if (!withLookup.getRoom && withLookup.getRooms) {
+    withLookup.getRoom = (id: string) =>
+      withLookup.getRooms?.().find((room) => room.roomId === id) ?? null;
+  }
   const activeUserId = signal<string | null>(null);
   TestBed.configureTestingModule({
     providers: [
@@ -350,14 +359,17 @@ describe('RoomLibraryService', () => {
   describe('rebuilding only the rooms a sync touched (#1292)', () => {
     function setupTracked() {
       const unread: Record<string, number> = { '!a:hs': 0, '!b:hs': 0 };
-      const reads: Record<string, number> = {};
+      /** Summary rebuilds per room: only a rebuild reads the joined-member count. */
+      const builds: Record<string, number> = {};
       const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
       const rooms = new Map<string, ReturnType<typeof fakeRoom>>();
       const make = (roomId: string, name: string) => {
         const room = fakeRoom({ roomId, name });
-        room.getUnreadNotificationCount = () => {
-          reads[roomId] = (reads[roomId] ?? 0) + 1;
-          return unread[roomId] ?? 0;
+        room.getUnreadNotificationCount = (type?: string) =>
+          type === 'highlight' ? 0 : (unread[roomId] ?? 0);
+        room.getJoinedMemberCount = () => {
+          builds[roomId] = (builds[roomId] ?? 0) + 1;
+          return 0;
         };
         rooms.set(roomId, room);
         return room;
@@ -368,58 +380,206 @@ describe('RoomLibraryService', () => {
         baseUrl: 'https://hs.example',
         getRooms: () => [...rooms.values()],
         getRoom: (id: string) => rooms.get(id) ?? null,
+        // `!a:hs` is a DM with @peer:hs.
+        getAccountData: (type: string) =>
+          type === 'm.direct'
+            ? { getContent: () => ({ '@peer:hs': ['!a:hs'] }) }
+            : undefined,
         on: (event: string, handler: (...args: unknown[]) => void) => {
           listeners.set(event, [...(listeners.get(event) ?? []), handler]);
         },
+        off: (event: string, handler: (...args: unknown[]) => void) => {
+          listeners.set(
+            event,
+            (listeners.get(event) ?? []).filter((h) => h !== handler),
+          );
+        },
       };
       const { svc } = provideRooms(client);
-      svc.runProjection().subscribe();
+      const lifetime = svc.runProjection().subscribe();
       const emit = async (event: string, ...args: unknown[]) => {
         for (const handler of listeners.get(event) ?? []) handler(...args);
         await Promise.resolve(); // the rebuild is coalesced into a microtask
       };
-      const resetReads = () => {
-        for (const key of Object.keys(reads)) delete reads[key];
+      const resetBuilds = () => {
+        for (const key of Object.keys(builds)) delete builds[key];
       };
-      return { svc, unread, reads, rooms, make, emit, resetReads };
+      const room = (id: string) => rooms.get(id)!;
+      return {
+        svc,
+        unread,
+        builds,
+        rooms,
+        room,
+        make,
+        emit,
+        resetBuilds,
+        listeners,
+        lifetime,
+      };
     }
-    const unreadOf = (svc: RoomLibraryService, id: string) =>
-      svc.rooms().find((r) => r.id === id)?.unreadCount;
+    const summary = (svc: RoomLibraryService, id: string) =>
+      svc.rooms().find((r) => r.id === id);
+    /** A MatrixEvent-shaped stand-in that names its room. */
+    const eventIn = (roomId: string, type = 'm.room.message') => ({
+      getRoomId: () => roomId,
+      getType: () => type,
+    });
 
     it('rebuilds only the room a sync touched', async () => {
       const t = setupTracked();
-      t.resetReads();
+      t.resetBuilds();
 
       t.unread['!a:hs'] = 3;
-      await t.emit(RoomEvent.Timeline, {}, t.rooms.get('!a:hs'));
+      await t.emit(RoomEvent.Timeline, eventIn('!a:hs'), t.room('!a:hs'));
       await t.emit(ClientEvent.Sync);
 
-      expect(unreadOf(t.svc, '!a:hs')).toBe(3);
+      expect(summary(t.svc, '!a:hs')?.unreadCount).toBe(3);
       // At 300 rooms, rebuilding every summary on every sync was most of the room list's cost.
-      expect(t.reads['!b:hs'] ?? 0).toBe(0);
+      expect(t.builds['!b:hs'] ?? 0).toBe(0);
     });
 
-    it('rebuilds everything when a room joins the list', async () => {
+    it.each([
+      [
+        'a decrypted event',
+        MatrixEventEvent.Decrypted,
+        (id: string) => [eventIn(id)],
+      ],
+      [
+        'a receipt',
+        RoomEvent.Receipt,
+        (id: string) => [eventIn(id, 'm.receipt'), { roomId: id }],
+      ],
+      [
+        'a tag change',
+        RoomEvent.Tags,
+        (id: string) => [eventIn(id, 'm.tag'), { roomId: id }],
+      ],
+      [
+        'a redaction',
+        RoomEvent.Redaction,
+        (id: string) => [eventIn(id), { roomId: id }],
+      ],
+      [
+        'a local echo',
+        RoomEvent.LocalEchoUpdated,
+        (id: string) => [eventIn(id), { roomId: id }],
+      ],
+      [
+        'a timeline reset',
+        RoomEvent.TimelineReset,
+        (id: string) => [{ roomId: id }],
+      ],
+      [
+        'a room state event',
+        RoomStateEvent.Events,
+        (id: string) => [eventIn(id, 'm.room.topic'), { roomId: id }],
+      ],
+    ] as const)('maps %s to its room alone', async (_, event, args) => {
       const t = setupTracked();
-      const room = t.make('!c:hs', 'C');
+      t.resetBuilds();
 
-      await t.emit(ClientEvent.Room, room);
+      await t.emit(event, ...args('!a:hs'));
+
+      expect(t.builds['!a:hs'] ?? 0).toBeGreaterThan(0);
+      expect(t.builds['!b:hs'] ?? 0).toBe(0);
+    });
+
+    it("maps a DM peer's member change to their DM alone, and ignores anyone else's", async () => {
+      const t = setupTracked();
+      t.resetBuilds();
+      const member = (userId: string) => [
+        eventIn('!a:hs', 'm.room.member'),
+        { roomId: '!a:hs' },
+        { userId, roomId: '!a:hs' },
+      ];
+
+      await t.emit(RoomStateEvent.Members, ...member('@stranger:hs'));
+      expect(t.builds['!a:hs'] ?? 0).toBe(0);
+
+      await t.emit(RoomStateEvent.Members, ...member('@peer:hs'));
+      expect(t.builds['!a:hs'] ?? 0).toBeGreaterThan(0);
+      expect(t.builds['!b:hs'] ?? 0).toBe(0);
+    });
+
+    it('picks up a count no event announced on the next sync', async () => {
+      const t = setupTracked();
+      t.resetBuilds();
+
+      // A sync that carries only `unread_notifications`, or the SDK's start-up fix-up.
+      t.unread['!b:hs'] = 5;
+      await t.emit(ClientEvent.Sync);
+
+      expect(summary(t.svc, '!b:hs')?.unreadCount).toBe(5);
+      expect(t.builds['!a:hs'] ?? 0).toBe(0);
+    });
+
+    it('compares counts after a sync, not on every room event', async () => {
+      const t = setupTracked();
+
+      t.unread['!b:hs'] = 5;
+      await t.emit(RoomEvent.Timeline, eventIn('!a:hs'), t.room('!a:hs'));
+      expect(summary(t.svc, '!b:hs')?.unreadCount).toBe(0);
+
+      await t.emit(ClientEvent.Sync);
+      expect(summary(t.svc, '!b:hs')?.unreadCount).toBe(5);
+    });
+
+    it('drops a touched room that is no longer joined', async () => {
+      const t = setupTracked();
+      t.room('!a:hs').getMyMembership = () => 'leave';
+
+      await t.emit(RoomEvent.Timeline, eventIn('!a:hs'), t.room('!a:hs'));
+
+      expect(t.svc.rooms().map((r) => r.id)).toEqual(['!b:hs']);
+    });
+
+    it('rebuilds every room when a room joins the list', async () => {
+      const t = setupTracked();
+      t.resetBuilds();
+      const joined = t.make('!c:hs', 'C');
+
+      await t.emit(ClientEvent.Room, joined);
 
       expect(t.svc.rooms().map((r) => r.id)).toContain('!c:hs');
+      expect(t.builds['!b:hs'] ?? 0).toBeGreaterThan(0);
+    });
+
+    it('rebuilds every room for m.direct, and none for other account data', async () => {
+      const t = setupTracked();
+      t.resetBuilds();
+
+      await t.emit(ClientEvent.AccountData, {
+        getType: () => 'io.element.recent_emoji',
+      });
+      expect(t.builds['!a:hs'] ?? 0).toBe(0);
+
+      await t.emit(ClientEvent.AccountData, { getType: () => 'm.direct' });
+      expect(t.builds['!a:hs'] ?? 0).toBeGreaterThan(0);
+      expect(t.builds['!b:hs'] ?? 0).toBeGreaterThan(0);
+    });
+
+    it('removes every listener it added when the projection ends', () => {
+      const t = setupTracked();
+      expect([...t.listeners.values()].flat().length).toBeGreaterThan(0);
+
+      t.lifetime.unsubscribe();
+
+      expect([...t.listeners.values()].flat()).toEqual([]);
     });
 
     it('still picks up a change no event announced, within the safety interval', async () => {
       vi.useFakeTimers({ toFake: ['Date'] });
       try {
         const t = setupTracked();
-        t.unread['!b:hs'] = 5; // nothing announces this
+        t.room('!b:hs').name = 'Renamed'; // nothing announces this
 
         await t.emit(ClientEvent.Sync);
-        expect(unreadOf(t.svc, '!b:hs')).toBe(0);
+        expect(summary(t.svc, '!b:hs')?.name).toBe('B');
 
         vi.advanceTimersByTime(16_000);
         await t.emit(ClientEvent.Sync);
-        expect(unreadOf(t.svc, '!b:hs')).toBe(5);
+        expect(summary(t.svc, '!b:hs')?.name).toBe('Renamed');
       } finally {
         vi.useRealTimers();
       }

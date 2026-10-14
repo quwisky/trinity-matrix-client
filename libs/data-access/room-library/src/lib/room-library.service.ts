@@ -2,6 +2,7 @@ import { Injectable, computed, inject, signal, untracked } from '@angular/core';
 import {
   ClientEvent,
   EventType,
+  NotificationCountType,
   MatrixEventEvent,
   Preset,
   ReceiptType,
@@ -42,6 +43,7 @@ import {
   compareRoomSummaries,
   directMapOf,
   isMarkedUnread,
+  roomActivityTs,
 } from './room-projection';
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
@@ -141,12 +143,15 @@ const ROOM_EVENTS = [
   RoomEvent.AccountData,
   RoomEvent.LocalEchoUpdated,
   RoomEvent.Redaction,
+  RoomEvent.TimelineReset,
 ] as const;
 
 /**
- * However well the room events above are tracked, a change the SDK applies without one
- * (an unread count reset in a sync with no receipt, say) would otherwise wait for the next
- * event in that room. A full rebuild at least this often bounds that.
+ * A safety net for summary changes the SDK applies without any room event this service
+ * hears. Count changes are already caught by comparing counts after each sync, so what is
+ * left is rare (a new thread's bundled latest reply, say). A refresh at least this long
+ * after the last full rebuild rebuilds everything. Refreshes follow syncs, so on an idle
+ * account the real bound is about the long-poll interval (~30 s), not this value.
  */
 const FULL_REBUILD_MS = 15_000;
 
@@ -169,8 +174,8 @@ function roomIdOf(args: readonly unknown[]): string | undefined {
 /**
  * `next`, or `previous` when it describes the room identically.
  *
- * Every sync rebuilds every joined room's summary (#1292). Handing back the previous object
- * for a room the sync didn't change keeps its OnPush sidebar row from re-rendering, and
+ * A full rebuild builds every joined room's summary, and an incremental one the rooms an event
+ * touched (#1292). Handing back the previous object for a room that didn't change keeps its OnPush sidebar row from re-rendering, and
  * lets {@link sameRooms} keep the whole list when no room changed at all.
  */
 function reuseUnchanged(
@@ -231,6 +236,10 @@ export class RoomLibraryService {
    * list depend on member state, where before it depended only on room state.
    */
   private dmPeers: ReadonlySet<string> = new Set();
+  /** DM room → peer, from the last full rebuild; an `m.direct` change forces another one. */
+  private userByRoom: ReadonlyMap<string, string> = new Map();
+  /** A sync landed since the last refresh; see {@link markChangedRooms}. */
+  private compareOnRefresh = false;
 
   /**
    * Marked-unread writes shown before /sync confirms them, keyed by room id.
@@ -285,10 +294,30 @@ export class RoomLibraryService {
     this.touch(event?.getRoomId?.());
   };
 
-  /** A room joined the client, or global account data (`m.direct`, push rules) changed. */
+  /**
+   * A sync landed: the next refresh compares every room's counts and activity time with its
+   * summary. Only after a sync, because the counts change there, and every room event also
+   * schedules a refresh: walking every room on each one cost more than it saved.
+   */
+  private readonly onSync = (): void => {
+    this.compareOnRefresh = true;
+    this.projection.schedule();
+  };
+
+  /** A room joined the client. */
   private readonly onListChanged = (): void => {
     this.fullRebuild = true;
     this.projection.schedule();
+  };
+
+  /**
+   * Global account data changed. Only `m.direct` reaches a summary (DM-ness and the peer
+   * whose avatar a DM shows); recent emoji, secret storage and app settings do not.
+   */
+  private readonly onGlobalAccountData = (event?: MatrixEvent): void => {
+    if (event?.getType?.() === EventType.Direct) {
+      this.onListChanged();
+    }
   };
 
   /**
@@ -443,12 +472,11 @@ export class RoomLibraryService {
 
   /**
    * One active-Account Projection Runtime entry: {@link projectFromClient} owns listener
-   * identity, coalescing, switching, and acknowledgement; only event list and rebuild stay here.
+   * identity, coalescing, switching, and acknowledgement; only the rebuild and its listeners stay here.
    */
   private readonly projection = projectFromClient({
     id: 'rooms.list',
     matrix: this.matrix,
-    events: [ClientEvent.Sync],
     // refresh() writes signals, which schedule change detection, so the room list and
     // unread badges surface immediately.
     rebuild: () => this.refresh(),
@@ -463,7 +491,8 @@ export class RoomLibraryService {
       client.on(RoomStateEvent.Events, this.onRoomStateEvent);
       client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
       client.on(ClientEvent.Room, this.onListChanged);
-      client.on(ClientEvent.AccountData, this.onListChanged);
+      client.on(ClientEvent.AccountData, this.onGlobalAccountData);
+      client.on(ClientEvent.Sync, this.onSync);
       this.fullRebuild = true;
     },
     unbind: (client) => {
@@ -474,7 +503,8 @@ export class RoomLibraryService {
       client.off(RoomStateEvent.Events, this.onRoomStateEvent);
       client.off(MatrixEventEvent.Decrypted, this.onDecrypted);
       client.off(ClientEvent.Room, this.onListChanged);
-      client.off(ClientEvent.AccountData, this.onListChanged);
+      client.off(ClientEvent.AccountData, this.onGlobalAccountData);
+      client.off(ClientEvent.Sync, this.onSync);
     },
     reset: () => {
       this.dirtyRooms.clear();
@@ -934,15 +964,12 @@ export class RoomLibraryService {
     const client = this.matrix.instance;
     const accountId = this.matrix.activeUserId() ?? client.getUserId?.() ?? '';
     const now = Date.now();
-    if (
-      !this.fullRebuild &&
-      now - this.lastFullRebuild < FULL_REBUILD_MS &&
-      typeof client.getRoom === 'function'
-    ) {
+    if (!this.fullRebuild && now - this.lastFullRebuild < FULL_REBUILD_MS) {
       this.refreshTouched(client, accountId);
       return;
     }
     this.fullRebuild = false;
+    this.compareOnRefresh = false;
     this.lastFullRebuild = now;
     this.dirtyRooms.clear();
     const { ids: direct, userByRoom } = directMapOf(client);
@@ -967,17 +994,22 @@ export class RoomLibraryService {
     );
     this._directRoomIds.set(direct);
     this.dmPeers = new Set(userByRoom.values());
+    this.userByRoom = userByRoom;
   }
 
   /** Rebuild just the rooms an event touched, keeping every other summary as it was. */
   private refreshTouched(client: MatrixClient, accountId: string): void {
+    const current = untracked(this._rooms);
+    if (this.compareOnRefresh) {
+      this.compareOnRefresh = false;
+      this.markChangedRooms(client, current);
+    }
     if (this.dirtyRooms.size === 0) {
       return;
     }
     const touched = this.dirtyRooms;
     this.dirtyRooms = new Set();
-    const { userByRoom } = directMapOf(client);
-    const current = untracked(this._rooms);
+    const userByRoom = this.userByRoom;
     const byId = new Map(current.map((room) => [room.id, room] as const));
     let changed = false;
     for (const roomId of touched) {
@@ -1002,6 +1034,36 @@ export class RoomLibraryService {
     }
     if (changed) {
       this._rooms.set([...byId.values()].sort(compareRoomSummaries));
+    }
+  }
+
+  /**
+   * Mark every listed room whose counts or activity time no longer match its summary.
+   *
+   * Both change without any event this service hears. A sync can carry only a room's
+   * `unread_notifications`, and the SDK's start-up `fixupRoomNotifications` corrects counts
+   * on the first prepared sync: `RoomEvent.UnreadNotifications` is emitted only on the Room,
+   * never re-emitted at the client. A new thread's bundled latest reply moves the room's
+   * activity time (#1230) through `ThreadEvent.Update`, which is not re-emitted either. These
+   * few reads per room are far cheaper than rebuilding its summary, and they close all of it.
+   */
+  private markChangedRooms(
+    client: MatrixClient,
+    current: readonly RoomSummary[],
+  ): void {
+    for (const summary of current) {
+      if (this.dirtyRooms.has(summary.id)) continue;
+      const room = client.getRoom(summary.id);
+      if (
+        !room ||
+        room.getUnreadNotificationCount(NotificationCountType.Total) !==
+          summary.unreadCount ||
+        room.getUnreadNotificationCount(NotificationCountType.Highlight) !==
+          summary.highlightCount ||
+        roomActivityTs(room) !== summary.activityTs
+      ) {
+        this.dirtyRooms.add(summary.id);
+      }
     }
   }
 
