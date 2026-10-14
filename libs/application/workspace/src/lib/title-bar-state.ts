@@ -1,21 +1,40 @@
 import { computed, effect, inject, Injectable, signal } from '@angular/core';
 import { Title } from '@angular/platform-browser';
+import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 
-const APP_NAME = 'Trinity';
+/** The web and mobile name, and the fallback when the desktop shell reports none. */
+const DEFAULT_APP_NAME = 'Trinity';
 
 interface TitleBarContext {
-  readonly title: string;
+  /** The open room's title, or `null` with no room open (the row shows the app name). */
+  readonly title: string | null;
   readonly quickSwitcher: () => void;
 }
 
-/** The title row text for the open room; DMs and rooms without a space drop the prefix. */
+/**
+ * The title row text for the open room, or `null` with none open; DMs and rooms without
+ * a space drop the prefix.
+ */
 export function roomTitle(
   space: string | null,
   room: { name: string; isDirect: boolean } | null,
-): string {
-  if (!room) return APP_NAME;
+): string | null {
+  if (!room) return null;
   const name = room.isDirect ? room.name : `#${room.name}`;
   return space && !room.isDirect ? `${space} · ${name}` : name;
+}
+
+/**
+ * The app's own name: the host names its Matrix devices after the app ("Trinity Next" for
+ * the desktop prerelease), so the title uses the same name. A shell that reports no
+ * identity fails sign-in on its own; the title falls back rather than break the app.
+ */
+function hostAppName(handoff: HostAuthenticationHandoffService): string {
+  try {
+    return handoff.deviceDisplayName();
+  } catch {
+    return DEFAULT_APP_NAME;
+  }
 }
 
 /** What the desktop title row and the browser tab show; the open room publishes it. */
@@ -24,7 +43,9 @@ export class TitleBarState {
   private readonly context = signal<TitleBarContext | null>(null);
   private readonly activeState = signal(false);
 
-  readonly title = computed(() => this.context()?.title ?? APP_NAME);
+  /** "Trinity", or "Trinity Next" in the desktop prerelease. */
+  readonly appName = hostAppName(inject(HostAuthenticationHandoffService));
+  readonly title = computed(() => this.context()?.title ?? this.appName);
   readonly quickSwitcher = computed(
     () => this.context()?.quickSwitcher ?? null,
   );
@@ -35,10 +56,10 @@ export class TitleBarState {
   constructor() {
     const pageTitle = inject(Title);
     effect(() => {
-      const title = this.title();
-      // No room open: the row says "Trinity", and the tab must not repeat it.
+      const room = this.context()?.title ?? null;
+      // No room open: the row shows the app name, and the tab must not repeat it.
       pageTitle.setTitle(
-        title === APP_NAME ? APP_NAME : `${title} – ${APP_NAME}`,
+        room === null ? this.appName : `${room} – ${this.appName}`,
       );
     });
   }
