@@ -20,18 +20,31 @@ test.afterEach(async () => {
 });
 
 /**
- * Whether the window's current renderer shows the sign-in form, asked from main: the
- * Playwright page of a crashed renderer cannot be used again.
+ * What the window's current renderer shows, asked from main: the Playwright page of a
+ * crashed renderer cannot be used again. A poll's failure names the last state.
  */
-function signInShown(): Promise<boolean> {
+function rendererState(): Promise<string> {
   return app.evaluate(async ({ BrowserWindow }) => {
     const contents = BrowserWindow.getAllWindows()[0]?.webContents;
-    if (!contents || contents.isCrashed() || contents.isLoading()) return false;
-    return contents
+    if (!contents) return 'no window';
+    if (contents.isCrashed()) return 'crashed';
+    if (contents.isLoading()) return 'loading';
+    const page = contents
       .executeJavaScript(
-        `document.body?.textContent?.includes('Homeserver') && window.__beforeRecovery !== true`,
+        `({ marked: window.__beforeRecovery === true, signIn: document.body?.textContent?.includes('Homeserver') === true })`,
       )
-      .catch(() => false) as Promise<boolean>;
+      .then((answer: { marked: boolean; signIn: boolean }) =>
+        answer.marked
+          ? 'the crashed renderer'
+          : answer.signIn
+            ? 'sign-in shown'
+            : 'no sign-in form',
+      )
+      .catch((error: unknown) => `script failed: ${String(error)}`);
+    const late = new Promise<string>((resolve) =>
+      setTimeout(() => resolve('script did not answer'), 2_000),
+    );
+    return Promise.race([page, late]);
   });
 }
 
@@ -50,7 +63,7 @@ test('reloads the window after its renderer crashes', async () => {
     BrowserWindow.getAllWindows()[0]?.webContents.forcefullyCrashRenderer(),
   );
 
-  await expect.poll(signInShown, { timeout: 30_000 }).toBe(true);
+  await expect.poll(rendererState, { timeout: 30_000 }).toBe('sign-in shown');
 });
 
 test('asks after a crash soon after the last reload, and reloads on Reload', async () => {
@@ -76,12 +89,12 @@ test('asks after a crash soon after the last reload, and reloads on Reload', asy
 
   await markRenderer();
   await crash();
-  await expect.poll(signInShown, { timeout: 30_000 }).toBe(true);
+  await expect.poll(rendererState, { timeout: 30_000 }).toBe('sign-in shown');
   expect(await asked()).toEqual([]);
 
   await markRenderer();
   await crash();
-  await expect.poll(signInShown, { timeout: 30_000 }).toBe(true);
+  await expect.poll(rendererState, { timeout: 30_000 }).toBe('sign-in shown');
   expect(await asked()).toEqual([
     expect.stringMatching(/^Trinity( Next)? stopped working$/),
   ]);
