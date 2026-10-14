@@ -62,6 +62,8 @@ export class ShortcutsSectionComponent {
   private readonly toast = inject(TrnToastService);
   private readonly appLock = inject(AppLockService);
   private readonly destroyRef = inject(DestroyRef);
+  /** Ends this section's hold on every shortcut; set only while a row captures. */
+  private releaseCapture: (() => void) | null = null;
 
   /** The shortcut currently in capture (edit) mode, or null. */
   readonly capturingId = signal<string | null>(null);
@@ -115,14 +117,17 @@ export class ShortcutsSectionComponent {
     return [...byCategory].map(([category, rows]) => ({ category, rows }));
   });
 
-  /** Whether any shortcut carries a custom binding (enables "Reset all"). */
+  /**
+   * Whether any listed shortcut carries a custom binding (enables "Reset all"). A hidden
+   * Lock Trinity binding (imported where App lock can't be on) doesn't count by itself.
+   */
   readonly hasCustomBindings = computed(() =>
-    this.rows().some((row) => !row.isDefault),
+    this.groups().some((group) => group.rows.some((row) => !row.isDefault)),
   );
 
   constructor() {
     // Closing Settings mid-capture must not leave every shortcut held.
-    this.destroyRef.onDestroy(() => this.shortcuts.setCapturing(false));
+    this.destroyRef.onDestroy(() => this.setCapturing(null));
   }
 
   /** Enter capture mode for a rebindable shortcut. */
@@ -197,7 +202,12 @@ export class ShortcutsSectionComponent {
   /** Enter or leave capture mode; while capturing, no shortcut fires anywhere. */
   private setCapturing(id: string | null): void {
     this.capturingId.set(id);
-    this.shortcuts.setCapturing(id !== null);
+    if (id === null) {
+      this.releaseCapture?.();
+      this.releaseCapture = null;
+    } else {
+      this.releaseCapture ??= this.shortcuts.holdForCapture();
+    }
   }
 
   private announce(

@@ -212,8 +212,11 @@ export class KeyboardShortcutsService {
 
   /** id → override chord, or `null` for an explicitly-unset shortcut. */
   private readonly overrides = signal<Record<string, Chord | null>>({});
-  /** Settings is waiting for a new chord, so a keypress is that chord, not a shortcut. */
-  private capturing = false;
+  /**
+   * The captures in progress: while Settings waits for a new chord, a keypress is that
+   * chord, not a shortcut. Each capture owns its entry, so one ending never ends another.
+   */
+  private readonly captures = new Set<symbol>();
 
   /** The catalog joined with each shortcut's live binding state, for the settings list. */
   readonly list = computed<ShortcutView[]>(() => {
@@ -269,7 +272,7 @@ export class KeyboardShortcutsService {
    * Electron shell), and the digit family (returning which digit).
    */
   resolve(event: KeyboardEvent): ShortcutHit | null {
-    if (this.capturing) {
+    if (this.captures.size > 0) {
       return null;
     }
     for (const def of SHORTCUTS) {
@@ -306,9 +309,15 @@ export class KeyboardShortcutsService {
    * Hold every shortcut while Settings captures a new chord. The page's handler sees a key
    * before the capture listener does and, for Lock Trinity, even over the Settings dialog:
    * without this, pressing a chord to bind it would run the shortcut that holds it.
+   *
+   * Returns the release for this capture alone; calling it again does nothing.
    */
-  setCapturing(active: boolean): void {
-    this.capturing = active;
+  holdForCapture(): () => void {
+    const capture = Symbol('shortcut-capture');
+    this.captures.add(capture);
+    return () => {
+      this.captures.delete(capture);
+    };
   }
 
   /**

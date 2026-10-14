@@ -54,9 +54,7 @@
                   @if (row.rebindable) {
                     @if (row.isUnset) {
                       <!-- Shipped without a binding, or one taken away by a rebind. -->
-                      <span class="text-sm text-muted-foreground">{{
-                        row.isDefault ? 'Not assigned' : 'Unset'
-                      }}</span>
+                      <span class="text-sm text-muted-foreground">Unset</span>
                     } @else {
                       @for (cap of row.caps; track $index) {
                         <kbd

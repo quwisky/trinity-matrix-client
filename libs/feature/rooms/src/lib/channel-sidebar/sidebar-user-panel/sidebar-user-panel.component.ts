@@ -103,10 +103,11 @@ export class SidebarUserPanelComponent {
   /**
    * Present the account picker as a dialog rather than a submenu.
    *
-   * Set by the host from the layout, not read here: this component stays presentational
-   * (it injects only the title-bar state and App lock). Below the `md` breakpoint the sidebar is a full-screen page and this
-   * panel is a bar across the bottom of the viewport, so a submenu flying out beside the
-   * account menu has nowhere to go and lands back on top of it.
+   * Set by the host from the layout, not read here: the component doesn't measure the
+   * viewport (it reads only the title-bar state and App lock). Below the `md` breakpoint the
+   * sidebar is a full-screen page and this panel is a bar across the bottom of the viewport,
+   * so a submenu flying out beside the account menu has nowhere to go and lands back on top
+   * of it.
    */
   readonly pickAccountsInDialog = input(false);
   /** The picker is only meaningful with more than one account signed in. */

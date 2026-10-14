@@ -219,13 +219,27 @@ describe('KeyboardShortcutsService', () => {
 
   it('resolves nothing while Settings captures a new chord', () => {
     const svc = build();
-    svc.setCapturing(true);
+    const release = svc.holdForCapture();
     expect(svc.resolve(keydown({ key: 'k', ctrlKey: true }))).toBeNull();
 
-    svc.setCapturing(false);
+    release();
     expect(svc.resolve(keydown({ key: 'k', ctrlKey: true }))).toEqual({
       id: 'switcher.open',
     });
+  });
+
+  it('keeps shortcuts held until every capture that started has ended', () => {
+    const svc = build();
+    const ctrlK = keydown({ key: 'k', ctrlKey: true });
+    const first = svc.holdForCapture();
+    const second = svc.holdForCapture();
+
+    first();
+    first(); // releasing twice cannot end someone else's capture
+    expect(svc.resolve(ctrlK)).toBeNull();
+
+    second();
+    expect(svc.resolve(ctrlK)).toEqual({ id: 'switcher.open' });
   });
 
   it('refuses a chord the fixed digit family already claims', () => {
