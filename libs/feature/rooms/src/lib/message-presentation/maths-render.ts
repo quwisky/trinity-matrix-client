@@ -26,6 +26,19 @@ const purifier = DOMPurify(window);
 /** KaTeX's colour for what it cannot render; see {@link renderMaths}. */
 const ERROR_COLOUR = '#cc0000';
 
+/**
+ * KaTeX's `maxSize`, in em: also the largest length, either sign, any inline style may hold.
+ * KaTeX caps only positive user sizes, so `\kern{-40em}` or `\smash{\raisebox{-30em}{…}}`
+ * would move text far outside the formula, over other messages.
+ */
+const MAX_SIZE_EM = 10;
+
+/** {@link MAX_SIZE_EM} in px, at the 16px em KaTeX's few px lengths assume. */
+const MAX_SIZE_PX = MAX_SIZE_EM * 16;
+
+// One number of a LENGTHS value, with its unit. A fixed pattern, never built from the input.
+const LENGTH = /(-?(?:\d+(?:\.\d+)?|\.\d+))(em|px)?/g;
+
 // Up to four plain lengths (`0.25em`, `0 -0.02em`, `0.02em 0.01em 0.04px`): no URL, function,
 // keyword or CSS escape can match. A fixed pattern, never built from the input.
 const LENGTHS =
@@ -160,22 +173,42 @@ const NEUTRALISED_MACROS: Readonly<Record<string, string>> = {
 // attributes, never text that spells one. A fixed pattern, never built from the input.
 const STYLE_ATTRIBUTE = /\sstyle="([^"]*)"/g;
 
-/**
- * Whether KaTeX painted anything in its error colour in the HTML copy, read from the raw markup
- * before the style allowlist drops the colour: `\html@mathml{\foo}{x}` keeps the error out of
- * the MathML copy. Only `style` attribute values are read, never text.
- */
-function paintsErrorColour(markup: string): boolean {
-  for (const [, style] of markup.matchAll(STYLE_ATTRIBUTE)) {
-    const painted = style
-      .split(';')
-      .some(
-        (declaration) =>
-          declaration.replace(/\s+/g, '').toLowerCase() ===
-          `color:${ERROR_COLOUR}`,
-      );
-    if (painted) {
+/** Whether an allowlisted length declaration holds a length past {@link MAX_SIZE_EM}. */
+function oversized(property: string, value: string): boolean {
+  if (KATEX_STYLES.get(property) !== LENGTHS || !LENGTHS.test(value)) {
+    return false;
+  }
+  for (const [, number, unit] of value.matchAll(LENGTH)) {
+    const size = Math.abs(Number(number));
+    if (size > (unit === 'px' ? MAX_SIZE_PX : MAX_SIZE_EM)) {
       return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether KaTeX's markup must give way to the source, read from the raw markup's `style`
+ * attribute values (never text) before the style allowlist drops anything:
+ * - it painted something in its error colour in the HTML copy (`\html@mathml{\foo}{x}` keeps
+ *   the error out of the MathML copy);
+ * - an allowlisted length is longer than {@link MAX_SIZE_EM} either way. A negative kern or a
+ *   lowered, smashed box would otherwise draw text over other messages, and nested raises add
+ *   up in the box heights KaTeX writes, which this bound catches too.
+ */
+function forcesSource(markup: string): boolean {
+  for (const [, style] of markup.matchAll(STYLE_ATTRIBUTE)) {
+    for (const declaration of style.split(';')) {
+      const colon = declaration.indexOf(':');
+      const property = declaration.slice(0, colon).trim().toLowerCase();
+      const value = declaration.slice(colon + 1).trim();
+      if (
+        declaration.replace(/\s+/g, '').toLowerCase() ===
+          `color:${ERROR_COLOUR}` ||
+        (colon > 0 && oversized(property, value))
+      ) {
+        return true;
+      }
     }
   }
   return false;
@@ -195,9 +228,11 @@ export function sanitizeMathsMarkup(markup: string): DocumentFragment {
  * ignored (console warnings feed the diagnostic log, which must never hold message content),
  * and a fresh macro table for every call, seeded with {@link NEUTRALISED_MACROS}, so a `\gdef`
  * cannot leak into the next expression or message. Anything KaTeX rejects, an expression over
- * {@link MAX_MATHS_SOURCE_LENGTH}, and anything KaTeX paints in its error colour (an unknown
+ * {@link MAX_MATHS_SOURCE_LENGTH}, anything KaTeX paints in its error colour (an unknown
  * command such as `\foo`, or one `trust: false` refuses, such as `\href`; red text below 3:1 on
- * dark themes that hides the command's content) becomes `{ kind: 'source' }`.
+ * dark themes that hides the command's content), and any layout length past
+ * {@link MAX_SIZE_EM} either way (which also keeps formulas taller than that as source)
+ * becomes `{ kind: 'source' }`.
  */
 export function renderMaths(latex: string, displayMode: boolean): MathsOutcome {
   if (latex.length === 0 || latex.length > MAX_MATHS_SOURCE_LENGTH) {
@@ -208,7 +243,7 @@ export function renderMaths(latex: string, displayMode: boolean): MathsOutcome {
     markup = katex.renderToString(latex, {
       displayMode,
       trust: false,
-      maxSize: 10,
+      maxSize: MAX_SIZE_EM,
       maxExpand: 100,
       throwOnError: false,
       strict: 'ignore',
@@ -220,7 +255,7 @@ export function renderMaths(latex: string, displayMode: boolean): MathsOutcome {
   } catch {
     return { kind: 'source' };
   }
-  if (paintsErrorColour(markup)) {
+  if (forcesSource(markup)) {
     return { kind: 'source' };
   }
   const fragment = sanitizeMathsMarkup(markup);

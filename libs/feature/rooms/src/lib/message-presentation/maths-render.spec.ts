@@ -245,6 +245,41 @@ describe('renderMaths (real KaTeX)', () => {
     expect(renderMaths(bomb, false).kind).toBe('source');
   });
 
+  it.each([
+    'a\\kern{-40em}\\text{Bob: fake}',
+    '\\smash{\\raisebox{-30em}{\\text{fake}}}',
+    '\\raisebox{10em}{\\raisebox{10em}{x}}',
+    '\\smash{\\raisebox{-9em}{\\raisebox{-9em}{\\text{fake}}}}',
+    '\\hspace{-20em}x',
+    '\\mkern-200mu x',
+    '\\rule[-20em]{1em}{1em}',
+  ])(
+    'shows the source for %s, which would draw outside the formula (T17-1)',
+    (latex) => {
+      // KaTeX's maxSize caps only positive sizes; a length past 10em either way, including
+      // nested raises adding up in a box height, would draw over other messages.
+      expect(renderMaths(latex, false).kind).toBe('source');
+    },
+  );
+
+  it.each([
+    ['\\!x', false],
+    ['\\kern-0.5em x', false],
+    ['\\mathllap{x}', false],
+    ['\\raisebox{0.5em}{x}', false],
+    ['\\frac{a}{b}', false],
+    ['\\sum_{i=1}^{n} i', true],
+    ['\\begin{pmatrix}1&2&3\\\\4&5&6\\\\7&8&9\\end{pmatrix}', true],
+    ['\\begin{aligned}a&=1\\\\b&=2\\\\c&=3\\\\d&=4\\end{aligned}', true],
+    ['\\underbrace{a+b+c+d+e+f+g+h+i+j+k+l+m+n+o+p}_{16}', true],
+    ['x \\xrightarrow{\\text{a very long label over the arrow}} y', true],
+    // Each kern stays within the bound; the stylesheet's clip holds their sum inside the
+    // formula (rendered-markdown.scss).
+    ['\\kern{-9em}\\kern{-9em}\\text{fake}', false],
+  ])('renders %s, whose lengths stay within 10em', (latex, display) => {
+    expect(renderMaths(latex, display).kind).toBe('rendered');
+  });
+
   it('shows the source past 2,000 characters and renders up to it', () => {
     expect(MAX_MATHS_SOURCE_LENGTH).toBe(2_000);
     expect(renderMaths('x'.repeat(2_000), false).kind).toBe('rendered');
