@@ -36,6 +36,7 @@ vi.mock('electron', () => ({
     })),
   },
   dialog: { showErrorBox: vi.fn() },
+  powerMonitor: { on: vi.fn() },
   // Sentinel default session — installMatrixCors must receive exactly this.
   session: { defaultSession: { __brand: 'defaultSession' } },
 }));
@@ -51,6 +52,7 @@ vi.mock('./menu', () => ({ buildMenu: vi.fn() }));
 vi.mock('./window', () => ({
   createWindow: vi.fn(),
   focusMainWindow: vi.fn(),
+  getMainWindow: vi.fn(),
   hardenContents: vi.fn(),
   installPermissionPolicy: vi.fn(),
   setQuitting: vi.fn(),
@@ -67,6 +69,8 @@ vi.mock('./host-capabilities', () => ({
   registerHostCapabilityHandshake: vi.fn(),
 }));
 vi.mock('./title-bar-ipc', () => ({ registerTitleBarIpc: vi.fn() }));
+vi.mock('./user-presence-ipc', () => ({ registerUserPresenceIpc: vi.fn() }));
+vi.mock('./lock-integration', () => ({ registerLockIntegration: vi.fn() }));
 vi.mock('./update-check', () => ({ startUpdateChecks: vi.fn() }));
 vi.mock('./deep-link', () => ({
   deepLinkFromArgv: vi.fn(),
@@ -84,14 +88,16 @@ vi.mock('./app-identity', () => ({
   })),
 }));
 
-import { app, dialog, session } from 'electron';
+import { app, dialog, powerMonitor, session } from 'electron';
 import { registerAppProtocol, registerPrivilegedScheme } from './scheme';
 import { installMatrixCors } from './cors';
 import { buildMenu } from './menu';
-import { createWindow } from './window';
+import { createWindow, getMainWindow } from './window';
 import { registerDockBadge } from './dock-badge';
 import { registerHostCapabilityHandshake } from './host-capabilities';
 import { registerTitleBarIpc } from './title-bar-ipc';
+import { registerUserPresenceIpc } from './user-presence-ipc';
+import { registerLockIntegration } from './lock-integration';
 import { startUpdateChecks } from './update-check';
 
 /** First invocation-order tick of a mock (a global monotonic counter in vitest,
@@ -163,6 +169,25 @@ describe('main bootstrap', () => {
     expect(registerTitleBarIpc).toHaveBeenCalledTimes(1);
     expect(firstOrder(vi.mocked(registerTitleBarIpc))).toBeLessThan(
       firstOrder(vi.mocked(createWindow)),
+    );
+  });
+
+  it('registers the user-presence IPC before creating the renderer window', () => {
+    expect(registerUserPresenceIpc).toHaveBeenCalledTimes(1);
+    expect(firstOrder(vi.mocked(registerUserPresenceIpc))).toBeLessThan(
+      firstOrder(vi.mocked(createWindow)),
+    );
+  });
+
+  it('wires lock integration once, after the window exists so it is watched from the start', () => {
+    expect(registerLockIntegration).toHaveBeenCalledExactlyOnceWith({
+      buildMenu,
+      packaged: true,
+      powerMonitor,
+      getMainWindow,
+    });
+    expect(firstOrder(vi.mocked(createWindow))).toBeLessThan(
+      firstOrder(vi.mocked(registerLockIntegration)),
     );
   });
 

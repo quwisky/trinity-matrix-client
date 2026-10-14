@@ -93,7 +93,8 @@
       "matchPackageNames": [
         "@capacitor/**",
         "@capawesome/**",
-        "@aparajita/capacitor-secure-storage"
+        "@aparajita/capacitor-secure-storage",
+        "@aparajita/capacitor-biometric-auth"
       ]
     },
     {

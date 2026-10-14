@@ -59,6 +59,7 @@ const CAPACITOR_LOGGING_OFF = [
 
 const androidPluginMarkers = [
   ':aparajita-capacitor-secure-storage',
+  ':aparajita-capacitor-biometric-auth',
   ':capacitor-app',
   ':capacitor-browser',
   ':capacitor-filesystem',
@@ -71,6 +72,7 @@ const androidPluginMarkers = [
 
 const iosPluginMarkers = [
   'AparajitaCapacitorSecureStorage',
+  'AparajitaCapacitorBiometricAuth',
   'CapacitorApp',
   'CapacitorBrowser',
   'CapacitorFilesystem',

@@ -116,6 +116,23 @@ export interface TrinityDesktopBridge {
       setSystemTitleBar: (value: boolean) => Promise<HostOperationOutcome>;
       relaunch: () => void;
     };
+    /** App lock's system prompt and PIN; optional so an older shell still validates. */
+    userPresence?: {
+      support: () => Promise<unknown>;
+      verify: (reason: string) => Promise<unknown>;
+    };
+    /** App lock's desktop menu item, OS lock and sleep, and the show hold; optional. */
+    lockIntegration?: {
+      setState: (state: {
+        enabled: boolean;
+        locked: boolean;
+        accelerator: string | null;
+      }) => void;
+      coverPainted: () => void;
+      subscribeRequests: (
+        callback: (request: 'menu' | 'system-locked' | 'suspended') => void,
+      ) => () => void;
+    };
   };
 }
 

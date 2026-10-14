@@ -132,6 +132,7 @@ function validInput() {
     ].join('\n'),
     androidPlugins: [
       ':aparajita-capacitor-secure-storage',
+      ':aparajita-capacitor-biometric-auth',
       ':capacitor-app',
       ':capacitor-browser',
       ':capacitor-filesystem',
@@ -143,6 +144,7 @@ function validInput() {
     ].join('\n'),
     iosPlugins: [
       'AparajitaCapacitorSecureStorage',
+      'AparajitaCapacitorBiometricAuth',
       'CapacitorApp',
       'CapacitorBrowser',
       'CapacitorFilesystem',

@@ -16,6 +16,9 @@ export const HOST_OPERATIONS = [
   'lifecycle',
   'updates',
   'title-bar',
+  'user-presence',
+  'lock-integration',
+  'screen-privacy',
 ] as const;
 
 type HostOperation = (typeof HOST_OPERATIONS)[number];
@@ -36,6 +39,8 @@ const SUPPORTED = new Set<HostOperation>([
   'secure-store',
   'lifecycle',
   'title-bar',
+  'user-presence',
+  'lock-integration',
 ]);
 
 function isOperation(value: unknown): value is HostOperation {
@@ -100,6 +105,9 @@ export function negotiateHostCapabilities(
     lifecycle: support('lifecycle'),
     updates: support('updates'),
     'title-bar': support('title-bar'),
+    'user-presence': support('user-presence'),
+    'lock-integration': support('lock-integration'),
+    'screen-privacy': support('screen-privacy'),
   };
   return { kind: 'accepted', protocolVersion: 1, operations };
 }

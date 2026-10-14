@@ -1,10 +1,11 @@
-import { app, session } from 'electron';
+import { app, powerMonitor, session } from 'electron';
 import { registerAppProtocol, registerPrivilegedScheme } from './scheme';
 import { installMatrixCors } from './cors';
 import { buildMenu } from './menu';
 import {
   createWindow,
   focusMainWindow,
+  getMainWindow,
   hardenContents,
   installPermissionPolicy,
   setQuitting,
@@ -20,6 +21,8 @@ import { registerGeolocationIpc } from './geolocation-ipc';
 import { registerDockBadge } from './dock-badge';
 import { registerHostCapabilityHandshake } from './host-capabilities';
 import { registerTitleBarIpc } from './title-bar-ipc';
+import { registerUserPresenceIpc } from './user-presence-ipc';
+import { registerLockIntegration } from './lock-integration';
 import { startUpdateChecks } from './update-check';
 import {
   deepLinkFromArgv,
@@ -115,8 +118,17 @@ if (!mayStart) {
     buildMenu({ packaged: app.isPackaged });
     registerHostCapabilityHandshake();
     registerTitleBarIpc();
+    registerUserPresenceIpc();
     registerDockBadge();
     createWindow();
+    // After createWindow so the first window's hide and show are watched from the start.
+    // Its menu rebuilds keep the packaged flag of the initial build above.
+    registerLockIntegration({
+      buildMenu,
+      packaged: app.isPackaged,
+      powerMonitor,
+      getMainWindow,
+    });
     createTray();
     // "A new version is available" notices (packaged builds only; see update-check.ts).
     startUpdateChecks();

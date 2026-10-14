@@ -47,6 +47,23 @@ describe('host capability negotiation', () => {
     });
   });
 
+  it('supports user presence and lock integration, and not screen privacy (mobile only)', () => {
+    const result = negotiateHostCapabilities({
+      protocolVersion: 1,
+      operations: HOST_OPERATIONS,
+    });
+    expect(result.kind).toBe('accepted');
+    if (result.kind !== 'accepted') return;
+    expect(result.operations['user-presence']).toEqual({ kind: 'supported' });
+    expect(result.operations['lock-integration']).toEqual({
+      kind: 'supported',
+    });
+    expect(result.operations['screen-privacy']).toEqual({
+      kind: 'unavailable',
+      reason: 'not-implemented',
+    });
+  });
+
   it('rejects mismatched protocol versions and hostile operation names', () => {
     expect(
       negotiateHostCapabilities({ protocolVersion: 2, operations: [] }),

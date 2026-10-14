@@ -81,6 +81,17 @@ type ExposedBridge = {
       readonly setSystemTitleBar: (value: unknown) => Promise<unknown>;
       readonly relaunch: () => void;
     };
+    readonly userPresence: {
+      readonly support: () => Promise<unknown>;
+      readonly verify: (reason: unknown) => Promise<unknown>;
+    };
+    readonly lockIntegration: {
+      readonly setState: (state: unknown) => void;
+      readonly coverPainted: () => void;
+      readonly subscribeRequests: (
+        callback: (request: unknown) => void,
+      ) => () => void;
+    };
   };
   readonly onDeepLink?: unknown;
   readonly showNotification?: unknown;
@@ -131,10 +142,12 @@ describe('preload host capabilities', () => {
       'deepLinks',
       'lifecycle',
       'location',
+      'lockIntegration',
       'networkCors',
       'notificationPresentation',
       'secureStore',
       'titleBar',
+      'userPresence',
     ]);
     expect(bridge.onDeepLink).toBeUndefined();
     expect(bridge.showNotification).toBeUndefined();
@@ -189,6 +202,13 @@ describe('preload host capabilities', () => {
     bridge.capabilities.titleBar.relaunch();
     bridge.capabilities.lifecycle.subscribeVisibility(vi.fn());
     bridge.capabilities.lifecycle.releaseMemory();
+    bridge.capabilities.lockIntegration.setState({
+      enabled: true,
+      locked: false,
+      accelerator: null,
+    });
+    bridge.capabilities.lockIntegration.coverPainted();
+    bridge.capabilities.lockIntegration.subscribeRequests(vi.fn());
     expect(clearCache).not.toHaveBeenCalled();
     await expect(
       bridge.capabilities.titleBar.getSystemTitleBar(),
@@ -327,6 +347,82 @@ describe('preload host capabilities', () => {
       ['trinity:host:v1:title-bar:get-system-title-bar'],
       ['trinity:host:v1:title-bar:set-system-title-bar', true],
     ]);
+  });
+
+  it('forwards user-presence requests only once the operation is granted', async () => {
+    invoke.mockClear();
+    await expect(
+      bridge.capabilities.userPresence.verify('Unlock Trinity'),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'not-supported' });
+    expect(invoke).not.toHaveBeenCalled();
+
+    await bridge.negotiate(['user-presence']);
+    invoke.mockClear();
+    await bridge.capabilities.userPresence.support();
+    await bridge.capabilities.userPresence.verify('Unlock Trinity');
+    await expect(bridge.capabilities.userPresence.verify(7)).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'invalid-presence-reason' },
+    });
+    expect(invoke.mock.calls).toEqual([
+      ['trinity:host:v1:user-presence:support'],
+      ['trinity:host:v1:user-presence:verify', { reason: 'Unlock Trinity' }],
+    ]);
+  });
+
+  it('sends lock state and accepts only known lock requests once granted', async () => {
+    bridge.capabilities.lockIntegration.setState({
+      enabled: true,
+      locked: false,
+      accelerator: null,
+    });
+    expect(send).not.toHaveBeenCalled();
+    await bridge.negotiate(['lock-integration']);
+    send.mockClear();
+    bridge.capabilities.lockIntegration.setState({
+      enabled: true,
+      locked: true,
+      accelerator: 'CommandOrControl+Shift+L',
+    });
+    bridge.capabilities.lockIntegration.setState({ enabled: 'x' });
+    bridge.capabilities.lockIntegration.coverPainted();
+    expect(send.mock.calls).toEqual([
+      [
+        'trinity:host:v1:lock-integration:set-state',
+        {
+          enabled: true,
+          locked: true,
+          accelerator: 'CommandOrControl+Shift+L',
+        },
+      ],
+      ['trinity:host:v1:lock-integration:cover-painted'],
+    ]);
+    const received: unknown[] = [];
+    bridge.capabilities.lockIntegration.subscribeRequests((request) =>
+      received.push(request),
+    );
+    const listener = on.mock.calls.find(
+      ([channel]) => channel === 'trinity:host:v1:lock-integration:request',
+    )?.[1] as (event: unknown, request: unknown) => void;
+    listener({}, 'menu');
+    listener({}, 'shell:execute');
+    expect(received).toEqual(['menu']);
+  });
+
+  it('removes the same lock request listener on unsubscribe', async () => {
+    await bridge.negotiate(['lock-integration']);
+    const unsubscribe = bridge.capabilities.lockIntegration.subscribeRequests(
+      vi.fn(),
+    );
+    const listener = on.mock.calls.find(
+      ([channel]) => channel === 'trinity:host:v1:lock-integration:request',
+    )?.[1];
+    expect(listener).toBeTypeOf('function');
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledExactlyOnceWith(
+      'trinity:host:v1:lock-integration:request',
+      listener,
+    );
   });
 
   it('drops malformed title-bar input before IPC', async () => {

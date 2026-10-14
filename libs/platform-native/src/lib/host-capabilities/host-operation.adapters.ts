@@ -42,6 +42,8 @@ import {
 } from '../trinity-desktop-bridge';
 import { FileSaveService } from '../host-media/file-save.service';
 import { notificationPresentationProvider } from './host-notification-presentation.adapters';
+import { userPresenceProvider } from './host-user-presence.adapters';
+import { lockIntegrationProvider } from './host-lock-integration.adapters';
 
 type HostOperationsAdapter = HostAuthenticationHandoffOperation &
   HostDeepLinksOperation &
@@ -415,5 +417,7 @@ export function hostOperationProviders(): Provider[] {
       useExisting: ServiceWorkerHostUpdatesAdapter,
     },
     notificationPresentationProvider(),
+    userPresenceProvider(),
+    lockIntegrationProvider(),
   ];
 }
