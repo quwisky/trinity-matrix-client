@@ -429,6 +429,11 @@ describe('UI vendor boundary', () => {
     // They enter through one explicit `vendor` layer instead of two anonymous build entries.
     // A third import has to be argued for here instead of appearing in configuration nobody
     // reads as part of the boundary.
+    //
+    // KaTeX's stylesheet is the third, and it is argued for in apps/trinity/src/katex.css: a
+    // non-injected `katex` bundle (an object entry, hence the `.input` below) that imports it
+    // into the same `vendor` layer, which MathsLoader links only once a message contains
+    // maths. It is not global, so a room without maths never loads it.
     const app = JSON.parse(
       readFileSync(join(workspaceRoot, 'apps/trinity/project.json'), 'utf8'),
     );
@@ -436,9 +441,9 @@ describe('UI vendor boundary', () => {
       'apps/trinity/src/vendor.css',
     );
     expect(
-      app.targets.build.options.styles.filter((style) =>
-        style.startsWith('node_modules/'),
-      ),
+      app.targets.build.options.styles
+        .map((style) => (typeof style === 'string' ? style : style.input))
+        .filter((style) => style.startsWith('node_modules/')),
     ).toEqual([]);
 
     const vendorStyles = readFileSync(
