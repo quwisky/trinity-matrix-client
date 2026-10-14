@@ -12,10 +12,18 @@ export function buildMenu(options: MenuOptions): void {
   const isMac = process.platform === 'darwin';
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' as const }] : []),
-    { role: 'fileMenu' },
     {
-      // The stock editMenu adds Delete, Paste and Match Style and Speech; Trinity's
-      // fields are plain text, so they would only repeat Paste or do nothing.
+      label: 'File',
+      // Close (Cmd/Ctrl+W) hides the window to the tray. Windows and Linux keep it here
+      // because they have no Window menu.
+      submenu: isMac
+        ? [{ role: 'close' }]
+        : [{ role: 'close' }, { role: 'quit' }],
+    },
+    {
+      // The stock editMenu adds Delete and Paste and Match Style, which repeat Paste in
+      // Trinity's plain-text fields, and on macOS Speech, which the system's Spoken
+      // Content shortcut (Option+Esc) still covers.
       label: 'Edit',
       submenu: [
         { role: 'undo' },
@@ -31,9 +39,9 @@ export function buildMenu(options: MenuOptions): void {
     {
       label: 'View',
       submenu: [
-        // Release builds have no developer tools, and no Reload: it is a debugging aid
-        // that drops unsent drafts. Leaving the roles out also drops their accelerators.
-        // window.ts turns devTools off in webPreferences as well.
+        // Release builds have no developer tools and no Reload, a debugging aid;
+        // renderer-recovery.ts brings back a crashed or hung window instead. Leaving the
+        // roles out also drops their accelerators. window.ts turns devTools off as well.
         ...(options.packaged
           ? []
           : [
@@ -49,7 +57,8 @@ export function buildMenu(options: MenuOptions): void {
         { role: 'togglefullscreen' },
       ],
     },
-    // Windows and Linux get only Minimize and Close here, which the title bar already has.
+    // On Windows and Linux the stock Window menu is only Minimize and Close: the title bar
+    // has both buttons, and File keeps Close's Ctrl+W. Ctrl+M (Minimize) goes with it.
     ...(isMac ? [{ role: 'windowMenu' as const }] : []),
     {
       role: 'help',

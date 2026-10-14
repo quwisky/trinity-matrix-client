@@ -18,7 +18,7 @@ import { CRASH_LOOP_MS, watchRendererRecovery } from './renderer-recovery';
 type Listener = (...args: unknown[]) => void;
 
 /** A window fake that records listeners on itself and on its WebContents. */
-function fakeWindow(visible = true) {
+function fakeWindow(onScreen = true) {
   const windowListeners: Record<string, Listener> = {};
   const contentsListeners: Record<string, Listener> = {};
   const contents = {
@@ -28,21 +28,24 @@ function fakeWindow(visible = true) {
     reload: vi.fn(),
     forcefullyCrashRenderer: vi.fn(),
     isDestroyed: vi.fn(() => false),
+    isCrashed: vi.fn(() => false),
   };
   const win = {
     on: vi.fn((event: string, listener: Listener) => {
       windowListeners[event] = listener;
     }),
-    isDestroyed: vi.fn(() => false),
-    isVisible: vi.fn(() => visible),
+    isVisible: vi.fn(() => onScreen),
+    isMinimized: vi.fn(() => false),
     webContents: contents,
   };
   return {
     win: win as unknown as BrowserWindow,
     contents,
     setVisible: (value: boolean) => win.isVisible.mockReturnValue(value),
+    setMinimized: (value: boolean) => win.isMinimized.mockReturnValue(value),
     gone: (reason: string) =>
       contentsListeners['render-process-gone']?.({}, { reason, exitCode: 1 }),
+    loaded: () => contentsListeners['did-finish-load']?.(),
     emit: (event: string) => windowListeners[event]?.(),
   };
 }
@@ -50,11 +53,23 @@ function fakeWindow(visible = true) {
 /** Let the dialog promise and its continuation run. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+/** A question that stays open until aborted, then answers its cancel button. */
+function openUntilAborted(): void {
+  mocks.showMessageBox.mockImplementation(
+    (_win: unknown, options: { signal: AbortSignal; cancelId: number }) =>
+      new Promise((resolve) =>
+        options.signal.addEventListener('abort', () =>
+          resolve({ response: options.cancelId }),
+        ),
+      ),
+  );
+}
+
 describe('renderer recovery', () => {
   let now: number;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     now = 1_000_000;
   });
 
@@ -65,6 +80,13 @@ describe('renderer recovery', () => {
       fake.gone('crashed');
       expect(fake.contents.reload).toHaveBeenCalledTimes(1);
       expect(mocks.showMessageBox).not.toHaveBeenCalled();
+    });
+
+    it('reloads a window hidden to the tray too, so it keeps syncing', () => {
+      const fake = fakeWindow(false);
+      watchRendererRecovery(fake.win, () => now);
+      fake.gone('oom');
+      expect(fake.contents.reload).toHaveBeenCalledTimes(1);
     });
 
     it('does nothing after a clean exit', () => {
@@ -98,6 +120,7 @@ describe('renderer recovery', () => {
           buttons: ['Reload', 'Quit'],
           // Escape reloads; only an explicit Quit quits.
           cancelId: 0,
+          noLink: true,
         }),
       );
       expect(mocks.quit).toHaveBeenCalledTimes(1);
@@ -123,10 +146,40 @@ describe('renderer recovery', () => {
       expect(fake.contents.reload).toHaveBeenCalledTimes(2);
       expect(mocks.showMessageBox).not.toHaveBeenCalled();
     });
+
+    it('asks about a repeated crash only once the hidden window is shown', async () => {
+      mocks.showMessageBox.mockResolvedValue({ response: 0 });
+      const fake = fakeWindow(false);
+      watchRendererRecovery(fake.win, () => now);
+      fake.gone('crashed');
+      fake.gone('crashed');
+      await settle();
+      expect(mocks.showMessageBox).not.toHaveBeenCalled();
+      fake.setVisible(true);
+      fake.emit('show');
+      await settle();
+      expect(mocks.showMessageBox).toHaveBeenCalledTimes(1);
+      expect(fake.contents.reload).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps recovering after a question fails to open', async () => {
+      mocks.showMessageBox.mockRejectedValueOnce(new Error('destroyed'));
+      const fake = fakeWindow();
+      watchRendererRecovery(fake.win, () => now);
+      fake.gone('crashed');
+      fake.gone('crashed');
+      await settle();
+      // The failed question reloads, as Escape would.
+      expect(fake.contents.reload).toHaveBeenCalledTimes(2);
+      mocks.showMessageBox.mockResolvedValue({ response: 0 });
+      fake.gone('crashed');
+      await settle();
+      expect(mocks.showMessageBox).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('when the window stops responding', () => {
-    it('reloads it when the person chooses Reload', async () => {
+    it('asks, then ends the renderer and reloads after it exits on Reload', async () => {
       mocks.showMessageBox.mockResolvedValue({ response: 0 });
       const fake = fakeWindow();
       watchRendererRecovery(fake.win, () => now);
@@ -139,6 +192,7 @@ describe('renderer recovery', () => {
           buttons: ['Reload', 'Keep Waiting'],
           defaultId: 1,
           cancelId: 1,
+          noLink: true,
         }),
       );
       expect(fake.contents.forcefullyCrashRenderer).toHaveBeenCalledTimes(1);
@@ -149,16 +203,63 @@ describe('renderer recovery', () => {
       expect(mocks.showMessageBox).toHaveBeenCalledTimes(1);
     });
 
-    it('reloads the killed renderer even soon after an automatic reload', async () => {
+    // Linux and Windows report the deliberate end as a crash, macOS as killed.
+    it.each([
+      ['killed', 0],
+      ['crashed', 0],
+      ['crashed', CRASH_LOOP_MS],
+    ])(
+      'reloads without asking again when the ended renderer reports %s (%i ms after a reload)',
+      async (reason, sinceReload) => {
+        mocks.showMessageBox.mockResolvedValue({ response: 0 });
+        const fake = fakeWindow();
+        watchRendererRecovery(fake.win, () => now);
+        fake.gone('crashed');
+        fake.loaded();
+        now += sinceReload;
+        fake.emit('unresponsive');
+        await settle();
+        fake.gone(reason);
+        expect(fake.contents.reload).toHaveBeenCalledTimes(2);
+        expect(mocks.showMessageBox).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('reloads a renderer that already crashed instead of ending it', async () => {
       mocks.showMessageBox.mockResolvedValue({ response: 0 });
       const fake = fakeWindow();
       watchRendererRecovery(fake.win, () => now);
-      fake.gone('crashed');
       fake.emit('unresponsive');
+      fake.contents.isCrashed.mockReturnValue(true);
       await settle();
-      fake.gone('killed');
-      expect(fake.contents.reload).toHaveBeenCalledTimes(2);
-      expect(mocks.showMessageBox).toHaveBeenCalledTimes(1);
+      expect(fake.contents.forcefullyCrashRenderer).not.toHaveBeenCalled();
+      expect(fake.contents.reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes the question and reloads when the renderer crashes while it is open', async () => {
+      openUntilAborted();
+      const fake = fakeWindow();
+      watchRendererRecovery(fake.win, () => now);
+      fake.emit('unresponsive');
+      fake.gone('oom');
+      await settle();
+      expect(fake.contents.reload).toHaveBeenCalledTimes(1);
+      expect(fake.contents.forcefullyCrashRenderer).not.toHaveBeenCalled();
+    });
+
+    it('drops a Reload answer about a renderer that has since been replaced', async () => {
+      let answer: (value: { response: number }) => void = () => undefined;
+      mocks.showMessageBox.mockReturnValue(
+        new Promise((resolve) => (answer = resolve)),
+      );
+      const fake = fakeWindow();
+      watchRendererRecovery(fake.win, () => now);
+      fake.emit('unresponsive');
+      fake.gone('crashed');
+      answer({ response: 0 });
+      await settle();
+      expect(fake.contents.forcefullyCrashRenderer).not.toHaveBeenCalled();
+      expect(fake.contents.reload).toHaveBeenCalledTimes(1);
     });
 
     it('leaves it alone when the person keeps waiting', async () => {
@@ -171,20 +272,15 @@ describe('renderer recovery', () => {
       expect(fake.contents.reload).not.toHaveBeenCalled();
     });
 
-    it('closes the question when the window responds again', async () => {
-      let signal: AbortSignal | undefined;
-      mocks.showMessageBox.mockImplementation(
-        (_win: unknown, options: { signal: AbortSignal }) => {
-          signal = options.signal;
-          return new Promise(() => undefined);
-        },
-      );
+    it('closes the question, ending nothing, when the window responds again', async () => {
+      openUntilAborted();
       const fake = fakeWindow();
       watchRendererRecovery(fake.win, () => now);
       fake.emit('unresponsive');
-      expect(signal?.aborted).toBe(false);
       fake.emit('responsive');
-      expect(signal?.aborted).toBe(true);
+      await settle();
+      expect(fake.contents.forcefullyCrashRenderer).not.toHaveBeenCalled();
+      expect(fake.contents.reload).not.toHaveBeenCalled();
     });
 
     it('asks only once while the question is open', () => {
@@ -196,16 +292,20 @@ describe('renderer recovery', () => {
       expect(mocks.showMessageBox).toHaveBeenCalledTimes(1);
     });
 
-    it('waits until a hidden window is shown again before asking', async () => {
-      mocks.showMessageBox.mockResolvedValue({ response: 1 });
-      const fake = fakeWindow(false);
-      watchRendererRecovery(fake.win, () => now);
-      fake.emit('unresponsive');
-      expect(mocks.showMessageBox).not.toHaveBeenCalled();
-      fake.setVisible(true);
-      fake.emit('show');
-      expect(mocks.showMessageBox).toHaveBeenCalledTimes(1);
-    });
+    it.each(['show', 'restore', 'focus'])(
+      'waits until a window off screen comes back (%s) before asking',
+      (event) => {
+        mocks.showMessageBox.mockReturnValue(new Promise(() => undefined));
+        const fake = fakeWindow();
+        fake.setMinimized(true);
+        watchRendererRecovery(fake.win, () => now);
+        fake.emit('unresponsive');
+        expect(mocks.showMessageBox).not.toHaveBeenCalled();
+        fake.setMinimized(false);
+        fake.emit(event);
+        expect(mocks.showMessageBox).toHaveBeenCalledTimes(1);
+      },
+    );
 
     it('does not ask on show once a hidden window has recovered', () => {
       const fake = fakeWindow(false);
@@ -215,6 +315,17 @@ describe('renderer recovery', () => {
       fake.setVisible(true);
       fake.emit('show');
       expect(mocks.showMessageBox).not.toHaveBeenCalled();
+    });
+
+    it('does not ask on show about a hang its crash and reload already ended', () => {
+      const fake = fakeWindow(false);
+      watchRendererRecovery(fake.win, () => now);
+      fake.emit('unresponsive');
+      fake.gone('crashed');
+      fake.setVisible(true);
+      fake.emit('show');
+      expect(mocks.showMessageBox).not.toHaveBeenCalled();
+      expect(fake.contents.reload).toHaveBeenCalledTimes(1);
     });
   });
 });

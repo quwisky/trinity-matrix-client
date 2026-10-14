@@ -109,7 +109,7 @@ describe('application menu', () => {
     setPlatform('darwin');
     expect(menus()).toEqual([
       'appMenu',
-      'fileMenu',
+      'File',
       'Edit',
       'View',
       'windowMenu',
@@ -120,7 +120,7 @@ describe('application menu', () => {
   it('leaves the Window menu out on Windows and Linux, where the title bar has those controls', () => {
     for (const platform of ['win32', 'linux'] as const) {
       setPlatform(platform);
-      expect(menus()).toEqual(['fileMenu', 'Edit', 'View', 'help']);
+      expect(menus()).toEqual(['File', 'Edit', 'View', 'help']);
     }
   });
 
@@ -137,6 +137,20 @@ describe('application menu', () => {
         'separator',
         'selectAll',
       ]);
+    }
+  });
+
+  it('keeps Close (Cmd/Ctrl+W) in File on every platform, and Quit there off macOS', () => {
+    const fileRoles = () =>
+      (
+        template().find((item) => item.label === 'File')
+          ?.submenu as MenuItemConstructorOptions[]
+      ).map((entry) => entry.role);
+    setPlatform('darwin');
+    expect(fileRoles()).toEqual(['close']);
+    for (const platform of ['win32', 'linux'] as const) {
+      setPlatform(platform);
+      expect(fileRoles()).toEqual(['close', 'quit']);
     }
   });
 });

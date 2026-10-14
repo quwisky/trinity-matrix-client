@@ -52,3 +52,37 @@ test('reloads the window after its renderer crashes', async () => {
 
   await expect.poll(signInShown, { timeout: 30_000 }).toBe(true);
 });
+
+test('asks after a crash soon after the last reload, and reloads on Reload', async () => {
+  // Answer the native question with Reload, and keep what it asked.
+  await app.evaluate(({ dialog }) => {
+    const asked: string[] = [];
+    Object.assign(globalThis, { rendererRecoveryAsked: asked });
+    dialog.showMessageBox = (async (...args: unknown[]) => {
+      asked.push((args.at(-1) as { message: string }).message);
+      return { response: 0, checkboxChecked: false };
+    }) as typeof dialog.showMessageBox;
+  });
+  const asked = () =>
+    app.evaluate(
+      () =>
+        (globalThis as { rendererRecoveryAsked?: string[] })
+          .rendererRecoveryAsked ?? [],
+    );
+  const crash = () =>
+    app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]?.webContents.forcefullyCrashRenderer(),
+    );
+
+  await markRenderer();
+  await crash();
+  await expect.poll(signInShown, { timeout: 30_000 }).toBe(true);
+  expect(await asked()).toEqual([]);
+
+  await markRenderer();
+  await crash();
+  await expect.poll(signInShown, { timeout: 30_000 }).toBe(true);
+  expect(await asked()).toEqual([
+    expect.stringMatching(/^Trinity( Next)? stopped working$/),
+  ]);
+});
