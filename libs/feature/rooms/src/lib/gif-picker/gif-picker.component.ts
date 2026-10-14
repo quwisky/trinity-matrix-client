@@ -73,9 +73,17 @@ export class GifPickerComponent {
         ?.attribution ?? '',
   );
 
+  /**
+   * Put focus in the search field. The picker does this when it is created; a panel that
+   * keeps it between opens calls this on each reopen.
+   */
+  focusSearch(): void {
+    this.searchInput()?.nativeElement.focus();
+  }
+
   constructor() {
     // Opening the picker is a focus transfer from the composer's mobile action sheet.
-    afterNextRender(() => this.searchInput()?.nativeElement.focus());
+    afterNextRender(() => this.focusSearch());
 
     // The initial '' emission loads trending; each edit debounces into a search.
     const typed$ = toObservable(this.query).pipe(

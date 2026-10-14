@@ -1,5 +1,6 @@
 import {
   Directive,
+  DOCUMENT,
   DestroyRef,
   Injector,
   TemplateRef,
@@ -8,10 +9,12 @@ import {
   inject,
   input,
   model,
+  signal,
   untracked,
+  type EmbeddedViewRef,
 } from '@angular/core';
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
-import { TemplatePortal } from '@angular/cdk/portal';
+import { DomPortal, TemplatePortal, type Portal } from '@angular/cdk/portal';
 import { createMenuPosition } from '@spartan-ng/brain/core';
 import type {
   TrnOverlayAlign,
@@ -22,6 +25,9 @@ import type {
 export type TrnAnchoredSide = TrnOverlaySide;
 /** Where along that side it lines up. */
 export type TrnAnchoredAlign = TrnOverlayAlign;
+
+/** The longest delay `setTimeout` honours; a longer one fires almost at once. */
+const MAX_TIMEOUT_MS = 2_147_483_647;
 
 /**
  * A floating layer positioned against an element, rendered outside the DOM it belongs to.
@@ -79,6 +85,7 @@ export class TrnAnchoredOverlayDirective {
   private readonly template = inject<TemplateRef<unknown>>(TemplateRef);
   private readonly viewContainer = inject(ViewContainerRef);
   private readonly injector = inject(Injector);
+  private readonly document = inject(DOCUMENT);
 
   /**
    * The element the layer is positioned against.
@@ -124,7 +131,56 @@ export class TrnAnchoredOverlayDirective {
    */
   readonly closeOnOutsidePress = input(true);
 
+  /**
+   * How long, in milliseconds, to keep the layer's view alive after it closes; 0 rebuilds it
+   * on every open.
+   *
+   * For a large layer opened again and again: the composer's emoji grid is about 5,500
+   * elements of a third-party picker, and creating it is most of the ~140 ms an open takes
+   * (#1320). Closed, the kept view is parked outside the document, so it adds nothing to the
+   * page's style and layout work, and its change detection is paused. It still holds its
+   * memory (about 23 MB and 11,000 listeners for that grid), so it is released once it has
+   * stayed closed this long: bursts of reopening are fast, and an idle layer costs nothing.
+   *
+   * Its state carries over to a reopen within the window (a search, a tab), which suits a
+   * picker and would be wrong for a layer that must start fresh, so it is off by default. A
+   * scroll position does not: a scroll container taken out of the document and put back
+   * starts at the top. Work the content does once, when it is created, does not run again
+   * either (focusing a search, reading a list), so content that needs it on every open reads
+   * {@link shown}.
+   *
+   * Not a number, zero or less means off; anything past what `setTimeout` can wait (about 24
+   * days) waits that long. Turning it off while a view is kept releases that view.
+   */
+  readonly retainFor = input(0);
+
+  /**
+   * Whose layer this is, for a kept view: when it changes, the kept view is released (at once
+   * if the layer is closed, else when it closes), so the next open builds a fresh one. The
+   * composer passes its account, so a search typed under one account never shows, or is sent
+   * to a provider, under the next.
+   */
+  readonly retainKey = input<unknown>(undefined);
+
+  private readonly shownCount = signal(0);
+  /**
+   * How many times the layer has been shown, counting the first. A kept view is not created
+   * again on a reopen, so content that has to act on every open (focus its search, refresh a
+   * list it read when it was created) reacts to this changing. Content can inject the
+   * directive: it is the template's own.
+   */
+  readonly shown = this.shownCount.asReadonly();
+
   private ref: OverlayRef | null = null;
+  /** The kept view and the element its nodes live in, parked in a fragment while closed. */
+  private retained: {
+    readonly view: EmbeddedViewRef<unknown>;
+    readonly holder: HTMLElement;
+  } | null = null;
+  /** Pending release of the kept view, armed when the layer closes. */
+  private releaseTimer: ReturnType<typeof setTimeout> | null = null;
+  /** {@link retainKey} changed while the layer was open: release the view when it closes. */
+  private releaseOnClose = false;
 
   constructor() {
     // WHETHER there is a layer, and what it is anchored to. Only these two re-create it,
@@ -151,7 +207,31 @@ export class TrnAnchoredOverlayDirective {
       untracked(() => this.reposition());
     });
 
-    inject(DestroyRef).onDestroy(() => this.close());
+    // Turning retention off, or the layer changing hands, while a view is kept.
+    effect(() => {
+      const off = this.retainMs() === 0;
+      untracked(() => {
+        if (off) {
+          this.releaseIfClosed();
+        }
+      });
+    });
+    let firstKey = true;
+    effect(() => {
+      this.retainKey();
+      untracked(() => {
+        if (firstKey) {
+          firstKey = false;
+          return;
+        }
+        this.releaseIfClosed();
+      });
+    });
+
+    inject(DestroyRef).onDestroy(() => {
+      this.close();
+      this.release();
+    });
   }
 
   private attach(anchor: HTMLElement): void {
@@ -168,14 +248,8 @@ export class TrnAnchoredOverlayDirective {
         ? { width: anchor.getBoundingClientRect().width }
         : {}),
     });
-    ref.attach(
-      new TemplatePortal(
-        this.template,
-        this.viewContainer,
-        undefined,
-        this.injector,
-      ),
-    );
+    this.shownCount.update((count) => count + 1);
+    ref.attach(this.portal());
     // `outsidePointerEvents`, not a backdrop — see the class note. Written back through the
     // model so the host's own signal agrees with what is on screen.
     ref.outsidePointerEvents().subscribe((event) => {
@@ -266,8 +340,84 @@ export class TrnAnchoredOverlayDirective {
       .withViewportMargin(8);
   }
 
+  /** The layer's content: rebuilt each time, or the kept view while {@link retainFor} allows. */
+  private portal(): Portal<unknown> {
+    if (this.releaseTimer !== null) {
+      clearTimeout(this.releaseTimer);
+      this.releaseTimer = null;
+    }
+    if (this.retainMs() === 0) {
+      return new TemplatePortal(
+        this.template,
+        this.viewContainer,
+        undefined,
+        this.injector,
+      );
+    }
+    if (!this.retained) {
+      const view = this.viewContainer.createEmbeddedView(
+        this.template,
+        undefined,
+        { injector: this.injector },
+      );
+      // The holder lays out as if the view's nodes were the pane's own children. It is parked
+      // in a fragment so a DomPortal has a place to return it to when the pane goes away.
+      const holder = this.document.createElement('div');
+      holder.style.display = 'contents';
+      this.document.createDocumentFragment().append(holder);
+      holder.append(...view.rootNodes);
+      this.retained = { view, holder };
+    } else {
+      this.retained.view.reattach();
+    }
+    return new DomPortal(this.retained.holder);
+  }
+
   private close(): void {
     this.ref?.dispose();
     this.ref = null;
+    if (!this.retained) {
+      return;
+    }
+    if (this.releaseOnClose || this.retainMs() === 0) {
+      this.release();
+      return;
+    }
+    // Disposing returned the holder to its fragment; nothing in it needs checking until the
+    // next open, and nothing in it is kept once it has stayed closed long enough.
+    this.retained.view.detach();
+    if (this.releaseTimer === null) {
+      this.releaseTimer = setTimeout(() => this.release(), this.retainMs());
+    }
+  }
+
+  /** {@link retainFor} as a delay `setTimeout` keeps; 0 when retention is off. */
+  private retainMs(): number {
+    const ms = this.retainFor();
+    // `!(ms > 0)` rather than `ms <= 0`, so NaN is off too.
+    return !(ms > 0) ? 0 : Math.min(ms, MAX_TIMEOUT_MS);
+  }
+
+  /** Release the kept view now if the layer is closed, else once it closes. */
+  private releaseIfClosed(): void {
+    if (!this.retained) {
+      return;
+    }
+    if (this.ref) {
+      this.releaseOnClose = true;
+    } else {
+      this.release();
+    }
+  }
+
+  /** Destroy the kept view, if any; the next open builds a fresh one. */
+  private release(): void {
+    if (this.releaseTimer !== null) {
+      clearTimeout(this.releaseTimer);
+      this.releaseTimer = null;
+    }
+    this.releaseOnClose = false;
+    this.retained?.view.destroy();
+    this.retained = null;
   }
 }

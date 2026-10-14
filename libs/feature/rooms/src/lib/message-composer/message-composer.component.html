@@ -65,11 +65,15 @@
   <!-- On a wide screen the expression panel (GIFs, stickers and emoji) renders in the CDK
        overlay container, anchored to the input row, so no `overflow: hidden` ancestor can cut
        it in half; where the app prefers sheets it opens as a bottom sheet instead (see
-       `togglePicker`). An outside press closes the anchored panel and writes back `false`. -->
+       `togglePicker`). An outside press closes the anchored panel and writes back `false`.
+       Its view is kept for a minute after closing, since the emoji grid is ~5,500 elements
+       (#1320); a different account releases it, so no search carries across accounts. -->
   <ng-template
     [trnAnchoredOverlay]="composerField"
     [open]="pickerOpen() && !pickerSheet()"
     (openChange)="pickerOpen.set($event)"
+    [retainFor]="60000"
+    [retainKey]="accountId()"
     side="top"
     align="end"
   >

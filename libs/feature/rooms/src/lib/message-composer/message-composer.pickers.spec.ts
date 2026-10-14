@@ -20,12 +20,16 @@ import {
 import { type BatchItem } from '../shared/send-media-batch';
 import { MockProvider } from 'ng-mocks';
 import { VoiceRecorderService } from '@trinity/platform-native';
-import { GifSettingsService } from '@trinity/data-access/gif';
+import { GifService, GifSettingsService } from '@trinity/data-access/gif';
 import {
   TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { TimelineActionsService } from '@trinity/data-access/timeline';
+import {
+  ComposerExpressionTabPreference,
+  TimelineActionsService,
+  type ComposerExpressionTab,
+} from '@trinity/data-access/timeline';
 import { LocationShareService } from '../location-share/location-share.service';
 import { MediaService, type ImagePack } from '@trinity/data-access/media';
 import { CreatePollService } from '../poll/create-poll.service';
@@ -177,6 +181,64 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     // Both, because the failure was them disagreeing.
     expect(cmp.pickerOpen()).toBe(false);
     expect(document.querySelector('trn-emoji-picker')).toBeNull();
+  });
+
+  describe('the panel kept between opens (#1320)', () => {
+    // This device last used GIFs; the panel opens on the remembered tab.
+    const gifs = () => [
+      ...gifProviders(),
+      MockProvider(GifService, { search: () => NEVER }),
+      MockProvider(ComposerExpressionTabPreference, {
+        tab: signal<ComposerExpressionTab>('gif').asReadonly(),
+        remember: () => of({ kind: 'completed' as const }),
+        restore: () => NEVER,
+      }),
+    ];
+    const gifSearch = () =>
+      document.querySelector<HTMLInputElement>('[data-testid=gif-search]');
+
+    it('focuses the GIF search again when it reopens on GIFs', async () => {
+      const { fixture } = await renderComposer({}, gifs());
+      const cmp = fixture.componentInstance;
+      cmp.pickerOpen.set(true);
+      TestBed.tick();
+      await fixture.whenStable();
+      const search = gifSearch();
+      expect(search).not.toBeNull();
+
+      cmp.pickerOpen.set(false);
+      TestBed.tick();
+      search!.blur();
+      cmp.pickerOpen.set(true);
+      TestBed.tick();
+      await fixture.whenStable();
+
+      // The same field, kept, and focused again so typing goes into the search.
+      expect(gifSearch()).toBe(search);
+      expect(document.activeElement).toBe(search);
+    });
+
+    it('drops a search typed under one account when the composer moves to another', async () => {
+      const { fixture } = await renderComposer({ accountId: '@a:hs' }, gifs());
+      const cmp = fixture.componentInstance;
+      cmp.pickerOpen.set(true);
+      TestBed.tick();
+      await fixture.whenStable();
+      const search = gifSearch()!;
+      search.value = 'cats';
+      search.dispatchEvent(new Event('input'));
+      cmp.pickerOpen.set(false);
+      TestBed.tick();
+
+      fixture.componentRef.setInput('accountId', '@b:hs');
+      TestBed.tick();
+      cmp.pickerOpen.set(true);
+      TestBed.tick();
+      await fixture.whenStable();
+
+      expect(gifSearch()).not.toBe(search);
+      expect(gifSearch()?.value).toBe('');
+    });
   });
 
   it('points the emoji trigger at the panel that actually exists', async () => {

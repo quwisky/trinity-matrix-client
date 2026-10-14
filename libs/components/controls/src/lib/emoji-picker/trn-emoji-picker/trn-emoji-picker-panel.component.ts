@@ -3,12 +3,16 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  Injector,
   afterNextRender,
   computed,
+  effect,
   inject,
   input,
   output,
   signal,
+  untracked,
+  viewChild,
 } from '@angular/core';
 import { PickerComponent } from '@ctrl/ngx-emoji-mart';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
@@ -56,7 +60,7 @@ export class TrnEmojiPickerPanelComponent {
   private readonly unmeasured = signal(false);
   /**
    * A touch screen needs 44px cells; a mouse keeps the vendor's own. Read once, when the
-   * picker opens: a pointer change while it is open keeps the cells it opened with.
+   * picker is created: a pointer change while it lives keeps the cells it started with.
    */
   private readonly coarsePointer =
     globalThis.matchMedia?.('(pointer: coarse)').matches ?? false;
@@ -65,7 +69,11 @@ export class TrnEmojiPickerPanelComponent {
   readonly autoFocusSearch = input(false);
   /** Fill the host's width instead of the vendor's fixed nine-column width. */
   readonly fill = input(false);
+  /** See {@link TrnEmojiPickerComponent.shown}. */
+  readonly shown = input(0);
   readonly emojiSelect = output<EmojiEvent>();
+
+  private readonly vendor = viewChild(PickerComponent);
 
   /** The glyph the size asks for. */
   private readonly glyph = computed(() => trnEmojiPickerGlyphSize(this.size()));
@@ -121,6 +129,19 @@ export class TrnEmojiPickerPanelComponent {
   );
 
   constructor() {
+    const injector = inject(Injector);
+    let firstShown = true;
+    effect(() => {
+      this.shown();
+      untracked(() => {
+        if (firstShown) {
+          firstShown = false;
+          return;
+        }
+        afterNextRender(() => this.refreshVendor(), { injector });
+      });
+    });
+
     const destroyRef = inject(DestroyRef);
     // The vendor's rows are the host's width, less its scrollbar (it takes the host's width
     // and, filling, has no side insets). The host's width never depends on the columns, so a
@@ -167,6 +188,39 @@ export class TrnEmojiPickerPanelComponent {
    * this value into inline styles, which a stylesheet cannot outrank without `!important`.
    */
   protected readonly accent = 'var(--trinity-accent)';
+
+  /**
+   * Shown again without being created again: bring the vendor up to date.
+   *
+   * Its frequently-used row is read from storage only when the row is created, and drawn from
+   * a second list it derives then too (`emojisToDisplay`), so both are refreshed here. The
+   * vendor's own `enableFrequentEmojiSort` refreshes only the first, and only on its own
+   * picks, so it would neither draw the change nor see a pick made in another picker. The
+   * row is drawn at once so the vendor can measure it: it caches where each category starts
+   * (`updateCategoriesSize`), and a row that grew would otherwise shift the category the
+   * anchor bar marks while scrolling. The grid also came back scrolled to the top, while the
+   * anchor bar still marks the category it was scrolled to; `handleScroll` reads the position
+   * again.
+   *
+   * These are the vendor's public members, but not a documented API; the panel's spec pins
+   * them against the installed version.
+   */
+  private refreshVendor(): void {
+    const picker = this.vendor();
+    if (!picker) {
+      return;
+    }
+    const recent = picker.categoryRefs.find(
+      (category) => category.name === 'Recent',
+    );
+    if (recent) {
+      recent.updateRecentEmojis();
+      recent.emojisToDisplay = [...(recent.emojis ?? [])];
+      recent.ref.detectChanges();
+    }
+    picker.updateCategoriesSize();
+    picker.handleScroll();
+  }
 }
 
 /**

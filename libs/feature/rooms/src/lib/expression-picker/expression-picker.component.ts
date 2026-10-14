@@ -4,12 +4,15 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  Injector,
   afterNextRender,
   computed,
+  effect,
   inject,
   input,
   output,
   signal,
+  untracked,
   viewChild,
   viewChildren,
 } from '@angular/core';
@@ -18,7 +21,10 @@ import {
   TrnEmojiPickerComponent,
   type TrnEmojiPick,
 } from '@trinity/components/controls';
-import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
+import {
+  TrnAnchoredOverlayDirective,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import { type GifResult } from '@trinity/data-access/gif';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import {
@@ -86,12 +92,27 @@ export class ExpressionPickerComponent {
     viewChildren<ElementRef<HTMLButtonElement>>('tab');
   private readonly content =
     viewChild.required<ElementRef<HTMLElement>>('content');
-  /** The tab chosen while this panel is open; null until one is. */
+  private readonly gifPicker = viewChild(GifPickerComponent);
+  private readonly stickerPicker = viewChild(StickerPickerComponent);
+  /**
+   * The anchored layer holding the panel, when it is one. It keeps the panel between opens
+   * (#1320), so the panel is not created again on a reopen; a sheet has no such layer.
+   */
+  private readonly layer = inject(TrnAnchoredOverlayDirective, {
+    optional: true,
+  });
+  /**
+   * The tab chosen since the panel was last shown; null until one is. Cleared on each show,
+   * so a kept panel opens on the remembered tab, as a new one does, even if another panel
+   * (the phone's sheet) chose a different tab meanwhile.
+   */
   private readonly chosen = signal<ComposerExpressionTab | null>(null);
   /** The tab holding the single tab stop; null means the selected one. */
   private readonly focusTarget = signal<ComposerExpressionTab | null>(null);
 
   protected readonly labels = TAB_LABELS;
+  /** How many times the panel has been shown; see {@link TrnAnchoredOverlayDirective.shown}. */
+  protected readonly shown = computed(() => this.layer?.shown() ?? 0);
 
   /** Element id, so the composer's trigger can point `aria-controls` at the panel. */
   readonly panelId = input.required<string>();
@@ -147,6 +168,30 @@ export class ExpressionPickerComponent {
   });
 
   constructor() {
+    // Shown again without being created again: do what creating it did. The GIF and sticker
+    // pickers focus their search when they are created, and the emoji grid refreshes its
+    // frequently-used row from `shown`.
+    const injector = inject(Injector);
+    let firstShown = true;
+    effect(() => {
+      this.shown();
+      untracked(() => {
+        if (firstShown) {
+          firstShown = false;
+          return;
+        }
+        this.chosen.set(null);
+        this.focusTarget.set(null);
+        afterNextRender(
+          () => {
+            this.gifPicker()?.focusSearch();
+            this.stickerPicker()?.focusSearch();
+          },
+          { injector },
+        );
+      });
+    });
+
     // A sheet opens with focus on its content. Done here rather than by the dialog's own
     // autofocus, which runs later and would take focus back out of a search field a picker
     // has already focused (the emoji grid does as soon as its chunk is loaded); so only when

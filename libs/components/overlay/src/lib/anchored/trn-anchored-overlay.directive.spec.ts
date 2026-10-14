@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, OnDestroy, inject, input, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -259,5 +259,239 @@ describe('TrnAnchoredOverlayDirective', () => {
 
     expect(panes()).toBe(0);
     expect(layer()).toBeNull();
+  });
+});
+
+/** Counts its own lifecycle, so a test can tell a kept view from a rebuilt one. */
+const lifecycle = { created: 0, destroyed: 0 };
+@Component({
+  selector: 'trn-test-counted',
+  template: `<span data-t="kept">{{ label() }}</span
+    ><span data-t="shown">{{ overlay.shown() }}</span>`,
+})
+class CountedComponent implements OnDestroy {
+  protected readonly overlay = inject(TrnAnchoredOverlayDirective);
+  readonly label = input('kept');
+  constructor() {
+    lifecycle.created++;
+  }
+  ngOnDestroy(): void {
+    lifecycle.destroyed++;
+  }
+}
+
+@Component({
+  imports: [TrnAnchoredOverlayDirective, CountedComponent],
+  template: `
+    @if (mounted()) {
+      <div #anchor data-t="anchor">field</div>
+      <ng-template
+        [trnAnchoredOverlay]="anchor"
+        [(open)]="open"
+        [retainFor]="retainMs()"
+        [retainKey]="key()"
+      >
+        <trn-test-counted [label]="label()" />
+      </ng-template>
+    }
+  `,
+})
+class RetainHostComponent {
+  readonly open = signal(false);
+  readonly retainMs = signal(60_000);
+  readonly mounted = signal(true);
+  readonly key = signal('@a:hs');
+  readonly label = signal('kept');
+}
+
+describe('TrnAnchoredOverlayDirective retained view (#1320)', () => {
+  const kept = () => document.querySelector('[data-t="kept"]');
+  async function buildRetained(retainMs = 60_000) {
+    lifecycle.created = 0;
+    lifecycle.destroyed = 0;
+    const { fixture } = await render(RetainHostComponent);
+    fixture.componentInstance.retainMs.set(retainMs);
+    TestBed.tick();
+    return fixture.componentInstance;
+  }
+  const toggle = (host: RetainHostComponent, open: boolean) => {
+    host.open.set(open);
+    TestBed.tick();
+  };
+
+  afterEach(() => {
+    document
+      .querySelectorAll('.cdk-overlay-container')
+      .forEach((el) => el.remove());
+  });
+
+  it('shows the same rendered content again instead of rebuilding it', async () => {
+    const host = await buildRetained();
+    toggle(host, true);
+    const first = kept();
+    expect(first).not.toBeNull();
+
+    toggle(host, false);
+    toggle(host, true);
+
+    // Rebuilding a large layer (the composer's emoji grid, ~5,500 nodes) on every open is
+    // the cost this avoids.
+    expect(kept()).toBe(first);
+    expect(lifecycle.created).toBe(1);
+    expect(lifecycle.destroyed).toBe(0);
+  });
+
+  it('takes the kept content out of the document while closed', async () => {
+    const host = await buildRetained();
+    toggle(host, true);
+    const element = kept();
+
+    toggle(host, false);
+
+    expect(kept()).toBeNull();
+    expect(element?.isConnected).toBe(false);
+  });
+
+  it('lets the kept content see every reopen, which it is not created again for', async () => {
+    const host = await buildRetained();
+    const shown = () => document.querySelector('[data-t="shown"]')?.textContent;
+    toggle(host, true);
+    expect(shown()).toBe('1');
+
+    toggle(host, false);
+    toggle(host, true);
+
+    expect(shown()).toBe('2');
+  });
+
+  it('shows an input that changed while the view was kept', async () => {
+    const host = await buildRetained();
+    toggle(host, true);
+    toggle(host, false);
+
+    host.label.set('renamed');
+    TestBed.tick();
+    toggle(host, true);
+
+    expect(kept()?.textContent).toBe('renamed');
+  });
+
+  it('destroys the kept view with the host while it is open', async () => {
+    const host = await buildRetained();
+    toggle(host, true);
+
+    host.mounted.set(false);
+    TestBed.tick();
+
+    expect(lifecycle.destroyed).toBe(1);
+  });
+
+  it('releases the kept view when retention is turned off', async () => {
+    const host = await buildRetained();
+    toggle(host, true);
+    toggle(host, false);
+
+    host.retainMs.set(0);
+    TestBed.tick();
+
+    expect(lifecycle.destroyed).toBe(1);
+  });
+
+  it.each([-5, Number.NaN])(
+    'treats a retention of %s as off',
+    async (retainMs) => {
+      const host = await buildRetained(retainMs);
+      toggle(host, true);
+      toggle(host, false);
+      toggle(host, true);
+
+      expect(lifecycle.created).toBe(2);
+    },
+  );
+
+  it('waits as long as a timer can for a retention past that, rather than not at all', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const host = await buildRetained(Number.POSITIVE_INFINITY);
+      toggle(host, true);
+      toggle(host, false);
+
+      // `setTimeout` fires at once for a delay past 2^31 - 1 ms.
+      vi.advanceTimersByTime(60_000);
+
+      expect(lifecycle.destroyed).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('releases the kept view when the layer changes hands', async () => {
+    const host = await buildRetained();
+    toggle(host, true);
+    toggle(host, false);
+
+    host.key.set('@b:hs');
+    TestBed.tick();
+
+    expect(lifecycle.destroyed).toBe(1);
+  });
+
+  it('releases a view that changed hands while open once it closes, not under the user', async () => {
+    const host = await buildRetained();
+    toggle(host, true);
+
+    host.key.set('@b:hs');
+    TestBed.tick();
+    expect(lifecycle.destroyed).toBe(0);
+
+    toggle(host, false);
+    expect(lifecycle.destroyed).toBe(1);
+    toggle(host, true);
+    expect(lifecycle.created).toBe(2);
+  });
+
+  it('destroys the kept view with the host', async () => {
+    const host = await buildRetained();
+    toggle(host, true);
+    toggle(host, false);
+
+    host.mounted.set(false);
+    TestBed.tick();
+
+    expect(lifecycle.destroyed).toBe(1);
+  });
+
+  it('releases the kept view once it has stayed closed long enough', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const host = await buildRetained(60_000);
+      toggle(host, true);
+      toggle(host, false);
+
+      // A reopen inside the window keeps it, and restarts the clock when it closes again.
+      vi.advanceTimersByTime(59_000);
+      toggle(host, true);
+      toggle(host, false);
+      vi.advanceTimersByTime(59_000);
+      expect(lifecycle.destroyed).toBe(0);
+
+      // Idle past the window, its memory goes; the next open builds a fresh view.
+      vi.advanceTimersByTime(2_000);
+      expect(lifecycle.destroyed).toBe(1);
+      toggle(host, true);
+      expect(lifecycle.created).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still rebuilds the content on every open without the opt-in', async () => {
+    const host = await buildRetained(0);
+    toggle(host, true);
+    toggle(host, false);
+    toggle(host, true);
+
+    expect(lifecycle.created).toBe(2);
+    expect(lifecycle.destroyed).toBe(1);
   });
 });
