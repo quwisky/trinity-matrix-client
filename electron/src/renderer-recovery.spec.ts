@@ -225,15 +225,19 @@ describe('renderer recovery', () => {
       },
     );
 
-    it('reloads a renderer that already crashed instead of ending it', async () => {
+    it('ends the hung renderer on Reload even while Electron still reports an earlier crash', async () => {
+      // Linux keeps isCrashed() true after a crashed renderer has been reloaded.
       mocks.showMessageBox.mockResolvedValue({ response: 0 });
       const fake = fakeWindow();
       watchRendererRecovery(fake.win, () => now);
-      fake.emit('unresponsive');
+      fake.gone('crashed');
       fake.contents.isCrashed.mockReturnValue(true);
+      now += CRASH_LOOP_MS;
+      fake.emit('unresponsive');
       await settle();
-      expect(fake.contents.forcefullyCrashRenderer).not.toHaveBeenCalled();
-      expect(fake.contents.reload).toHaveBeenCalledTimes(1);
+      expect(fake.contents.forcefullyCrashRenderer).toHaveBeenCalledTimes(1);
+      fake.gone('crashed');
+      expect(fake.contents.reload).toHaveBeenCalledTimes(2);
     });
 
     it('closes the question and reloads when the renderer crashes while it is open', async () => {

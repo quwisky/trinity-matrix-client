@@ -26,9 +26,8 @@ test.afterEach(async () => {
 function rendererState(): Promise<string> {
   return app.evaluate(async ({ BrowserWindow }) => {
     const contents = BrowserWindow.getAllWindows()[0]?.webContents;
+    // Not isCrashed()/isLoading(): Linux keeps reporting the crash after the reload.
     if (!contents) return 'no window';
-    if (contents.isCrashed()) return 'crashed';
-    if (contents.isLoading()) return 'loading';
     const page = contents
       .executeJavaScript(
         `({ marked: window.__beforeRecovery === true, signIn: document.body?.textContent?.includes('Homeserver') === true })`,

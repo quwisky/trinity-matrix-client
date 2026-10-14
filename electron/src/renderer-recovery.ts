@@ -106,11 +106,10 @@ export function watchRendererRecovery(
     if (response !== 0 || askedAbout !== renderer || contents.isDestroyed()) {
       return;
     }
-    if (contents.isCrashed()) {
-      reload();
-      return;
-    }
-    // A hung renderer cannot run a reload itself, so end it. A reload issued before it
+    // A renderer that exited while the question was open has already been reloaded, and
+    // the counter above dropped this answer; isCrashed() is not consulted because Linux
+    // keeps reporting an earlier crash after the reload. A hung renderer cannot run a
+    // reload itself, so end it. A reload issued before it
     // is gone is lost, so its exit reloads (reported as killed or crashed, by platform).
     killedOnPurpose = true;
     contents.forcefullyCrashRenderer();
