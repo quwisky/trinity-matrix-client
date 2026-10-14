@@ -20,6 +20,7 @@ import {
 } from '@trinity/runtime/host';
 import {
   Observable,
+  Subject,
   Subscription,
   defer,
   finalize,
@@ -75,7 +76,16 @@ export class AppLockLifecycleBinding {
   private readonly injector = inject(Injector);
   private readonly now = inject(APP_LOCK_CLOCK);
   private readonly window = inject(DOCUMENT).defaultView;
+  private readonly visitEvents = new Subject<'front' | 'away'>();
 
+  /**
+   * The app left the front (`away`) or came back to it (`front`), told after the away timer
+   * has handled the event, so a lock that fell due on return is already in place. On desktop,
+   * window focus and blur count. Trinity's own system UI is not a visit. Emits only while
+   * {@link run} is subscribed.
+   */
+  readonly visits: Observable<'front' | 'away'> =
+    this.visitEvents.asObservable();
   readonly surface: AppLockSurface = getTrinityDesktopBridge()
     ? 'desktop'
     : 'mobile';
@@ -188,18 +198,22 @@ export class AppLockLifecycleBinding {
               hidden = true;
               away = true;
               begin(0);
+              this.visitEvents.next('away');
               return;
             case 'away':
               away = true;
               begin(0);
+              this.visitEvents.next('away');
               return;
             case 'shown':
               away = false;
               back(true);
+              this.visitEvents.next('front');
               return;
             case 'back':
               away = false;
               back(false);
+              this.visitEvents.next('front');
               return;
             case 'system-ui-opened':
               stop();

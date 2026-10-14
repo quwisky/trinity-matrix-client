@@ -372,6 +372,51 @@ describe('AppLockLifecycleBinding', () => {
     lifetime.unsubscribe();
   });
 
+  it('tells the cover the app came back only after locking what fell due on return', () => {
+    const { lifecycle, locked, skipClock, lifetime } = setup({
+      lockAfter: '1m',
+    });
+    const seen: string[] = [];
+    const visits = TestBed.inject(AppLockLifecycleBinding).visits.subscribe(
+      (visit) => seen.push(`${visit}:${locked() ? 'locked' : 'unlocked'}`),
+    );
+    lifecycle.next({ kind: 'background' });
+    // Suspended in the background: no timer fired, so the lock falls due on return.
+    skipClock(2 * 60_000);
+    lifecycle.next({ kind: 'active' });
+    expect(seen).toEqual(['away:unlocked', 'front:locked']);
+    visits.unsubscribe();
+    lifetime.unsubscribe();
+  });
+
+  it('counts desktop window focus and blur as visits', () => {
+    const { lifetime } = setup({ desktop: true });
+    const seen: string[] = [];
+    const visits = TestBed.inject(AppLockLifecycleBinding).visits.subscribe(
+      (visit) => seen.push(visit),
+    );
+    window.dispatchEvent(new Event('blur'));
+    window.dispatchEvent(new Event('focus'));
+    expect(seen).toEqual(['away', 'front']);
+    visits.unsubscribe();
+    lifetime.unsubscribe();
+  });
+
+  it('does not count Trinity’s own system UI as a visit', () => {
+    const { systemUiActive, lifetime } = setup();
+    const seen: string[] = [];
+    const visits = TestBed.inject(AppLockLifecycleBinding).visits.subscribe(
+      (visit) => seen.push(visit),
+    );
+    systemUiActive.set(true);
+    TestBed.tick();
+    systemUiActive.set(false);
+    TestBed.tick();
+    expect(seen).toEqual([]);
+    visits.unsubscribe();
+    lifetime.unsubscribe();
+  });
+
   it('tells the shell nothing when a window that never left the screen gets focus back', () => {
     // The shell holds a window only while it is hidden or minimised; a focus change alone
     // has nothing for it to reveal.
