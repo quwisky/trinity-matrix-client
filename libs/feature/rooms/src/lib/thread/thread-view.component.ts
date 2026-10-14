@@ -65,7 +65,11 @@ import { MediaSaveService } from '../media-attachment/media-save.service';
 import { ReportService } from '../report/report.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
-import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
+import {
+  BELOW_MEMBERS_QUERY,
+  mediaQuerySignal,
+  scrollBehavior,
+} from '@trinity/util/ui';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -475,6 +479,36 @@ export class ThreadViewComponent implements OnDestroy {
     }
     store.expand(id);
     afterNextRender(() => this.jumpTo(id), { injector: this.injector });
+  }
+
+  /**
+   * Keyboard focus moving into a collapsed reply expands it (`MessageRowComponent
+   * .expandBodyForFocus`, which handles the event first); the browser scrolled to the control
+   * while it was still clipped, so bring it into view once the reply shows whole. The thread
+   * makes no scroll corrections of its own for a taller row, so the frame after the render is
+   * enough; the timeline does this after its corrections (`MessageListComponent.revealFocusIn`).
+   */
+  revealFocusAfterExpand(event: FocusEvent): void {
+    const target = event.target;
+    if (
+      !(target instanceof Element) ||
+      !target.matches(':focus-visible') ||
+      !target.closest('.msg__clamp--collapsed')
+    ) {
+      return;
+    }
+    afterNextRender(
+      () =>
+        requestAnimationFrame(() => {
+          if (target.ownerDocument.activeElement === target) {
+            target.scrollIntoView({
+              block: 'nearest',
+              behavior: scrollBehavior(),
+            });
+          }
+        }),
+      { injector: this.injector },
+    );
   }
 
   /** Scroll the original message into view when its reply preview is clicked. */

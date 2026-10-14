@@ -106,6 +106,14 @@ const htmlLines = (count: number, label: string): string =>
     '<br>',
   );
 
+/** An 80-line HTML body whose only link is on line 22, past the 20-line cut. */
+const linkOnLine22 = (hs: string, label: string): string =>
+  `<p>${Array.from({ length: 80 }, (_, i) =>
+    i === 21
+      ? `${label} line 22 <a href="${hs}/_matrix/client/versions">the only link</a>`
+      : `${label} line ${i + 1}`,
+  ).join('<br>')}</p>`;
+
 /** Reply in the thread under `rootId`; resolves the reply's event id. */
 async function sendThreadReply(
   request: APIRequestContext,
@@ -113,7 +121,12 @@ async function sendThreadReply(
   room: FormattedRoom,
   rootId: string,
   body: string,
+  html?: string,
 ): Promise<string> {
+  const formatted =
+    html === undefined
+      ? {}
+      : { format: 'org.matrix.custom.html', formatted_body: html };
   const response = await sendWithRetry('send thread reply', () =>
     request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room.roomId)}/send/m.room.message/${nextTestResourceId('txn')}`,
@@ -122,6 +135,7 @@ async function sendThreadReply(
         data: {
           msgtype: 'm.text',
           body,
+          ...formatted,
           'm.relates_to': {
             rel_type: 'm.thread',
             event_id: rootId,
@@ -518,6 +532,77 @@ test.describe('Show more on long messages', () => {
     const firstRing = await focusRing(first);
     expect(firstRing.style).not.toBe('none');
     expect(firstRing.insideClamp).toBe(true);
+  });
+
+  // The list pins a reader at the bottom to the end of the expanded message, which would leave
+  // a link near its start out of view; the focused link must still end up on screen.
+  test('keeps a focused link in view when Tab expands the newest message at the bottom', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'show-more-tab-pinned');
+    await sendMessage(request, hs, room, {
+      body: 'an 80-line body with one link',
+      html: linkOnLine22(hs, 'pinned'),
+    });
+    await signInAndOpen(page, room);
+
+    const row = rowWith(page, 'pinned line 1');
+    const button = row.getByTestId('msg-show-more');
+    await expect(button).toHaveAttribute('aria-expanded', 'false', {
+      timeout: 20_000,
+    });
+    const link = row.locator('a', { hasText: 'the only link' });
+    await button.focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(link).toBeFocused();
+    await expect(button).toHaveAttribute('aria-expanded', 'true', {
+      timeout: 15_000,
+    });
+    await expect(link).toBeInViewport({ timeout: 15_000 });
+  });
+
+  test('keeps a focused link in view when Tab expands a reply in the thread view', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'show-more-tab-thread');
+    const rootId = await sendMessage(request, hs, room, {
+      body: 'a thread root',
+    });
+    await sendThreadReply(
+      request,
+      hs,
+      room,
+      rootId,
+      'an 80-line reply with one link',
+      linkOnLine22(hs, 'replied'),
+    );
+    await signInAndOpen(page, room);
+    await page
+      .locator('.scroll .msg[data-mid]', { hasText: 'a thread root' })
+      .getByTestId('message-thread-summary')
+      .click({ timeout: 20_000 });
+    const thread = page.getByTestId('thread-view');
+    await expect(thread).toBeVisible({ timeout: 15_000 });
+
+    const reply = thread.locator('.msg[data-mid]', {
+      hasText: 'replied line 1',
+    });
+    const button = reply.getByTestId('msg-show-more');
+    await expect(button).toHaveAttribute('aria-expanded', 'false', {
+      timeout: 20_000,
+    });
+    const link = reply.locator('a', { hasText: 'the only link' });
+    await button.focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(link).toBeFocused();
+    await expect(button).toHaveAttribute('aria-expanded', 'true', {
+      timeout: 15_000,
+    });
+    await expect(link).toBeInViewport({ timeout: 15_000 });
   });
 
   test('collapses and expands a long reply in the thread view', async ({

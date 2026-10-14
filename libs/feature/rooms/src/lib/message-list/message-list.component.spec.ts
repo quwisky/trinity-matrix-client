@@ -976,6 +976,64 @@ describe('MessageListComponent', () => {
       expect(anchor.getBoundingClientRect().top).toBe(100);
     });
 
+    // Tab into a collapsed body expands it; the list's own correction for the taller row comes
+    // first, then the focused control is brought into view.
+    it('brings keyboard focus in a grown row into view after pinning to the bottom', async () => {
+      const { container } = await renderList({ messages: many(30) });
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const view = { st: 0, sh: 3000 };
+      Object.defineProperties(scroll, {
+        scrollTop: {
+          get: () => view.st,
+          set: (value: number) =>
+            (view.st = Math.max(0, Math.min(value, view.sh - 600))),
+        },
+        scrollHeight: { get: () => view.sh },
+        clientHeight: { value: 600 },
+      });
+      const newest = scroll.querySelector('[data-mid="$29"]') as HTMLElement;
+      rowObserver().emit([resizeEntry(newest, 100)]);
+      const link = document.createElement('a');
+      link.href = 'https://example.org/';
+      newest.querySelector('.msg__text')?.append(link);
+      const scrolledAt: number[] = [];
+      link.scrollIntoView = vi.fn(() => scrolledAt.push(view.st));
+      // Keyboard focus; jsdom's own :focus-visible depends on earlier tests' input.
+      const matches = link.matches.bind(link);
+      vi.spyOn(link, 'matches').mockImplementation((selector) =>
+        selector === ':focus-visible' ? true : matches(selector),
+      );
+      link.focus();
+
+      view.sh += 1000;
+      rowObserver().emit([resizeEntry(newest, 1100)]);
+
+      expect(link.scrollIntoView).toHaveBeenCalledWith(
+        expect.objectContaining({ block: 'nearest' }),
+      );
+      expect(scrolledAt).toEqual([view.sh - 600]); // after the pin, not before it
+    });
+
+    it('leaves pointer focus in a grown row where the list put it', async () => {
+      const { container } = await renderList({ messages: many(30) });
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const newest = scroll.querySelector('[data-mid="$29"]') as HTMLElement;
+      rowObserver().emit([resizeEntry(newest, 100)]);
+      const link = document.createElement('a');
+      link.href = 'https://example.org/';
+      newest.querySelector('.msg__text')?.append(link);
+      link.scrollIntoView = vi.fn();
+      const matches = link.matches.bind(link);
+      vi.spyOn(link, 'matches').mockImplementation((selector) =>
+        selector === ':focus-visible' ? false : matches(selector),
+      );
+      link.focus();
+
+      rowObserver().emit([resizeEntry(newest, 1100)]);
+
+      expect(link.scrollIntoView).not.toHaveBeenCalled();
+    });
+
     it('compensates scroll when an above-the-fold row grows (scrolled up)', async () => {
       const { fixture, container } = await renderList({ messages: many(200) });
       const cmp = fixture.componentInstance;

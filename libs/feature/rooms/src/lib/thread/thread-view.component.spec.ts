@@ -665,6 +665,64 @@ describe('ThreadViewComponent', () => {
     );
   });
 
+  describe('keyboard focus in a collapsed reply', () => {
+    /** A link inside a body wrapper with `wrapperClass`, focused by keyboard or by a pointer. */
+    async function focusLinkIn(wrapperClass: string, keyboard = true) {
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
+        frames.push(frame);
+        return frames.length;
+      });
+      onTestFinished(() => {
+        vi.unstubAllGlobals();
+      });
+      const { fixture, container } = await build([msg('$a', '@a:hs', 'first')]);
+      const wrapper = document.createElement('div');
+      wrapper.className = wrapperClass;
+      const link = document.createElement('a');
+      link.href = 'https://example.org/';
+      wrapper.append(link);
+      container.querySelector('[data-mid="$a"]')?.append(wrapper);
+      link.scrollIntoView = vi.fn();
+      // jsdom's own :focus-visible depends on earlier tests' input.
+      const matches = link.matches.bind(link);
+      vi.spyOn(link, 'matches').mockImplementation((selector) =>
+        selector === ':focus-visible' ? keyboard : matches(selector),
+      );
+      link.focus();
+      await fixture.whenStable();
+      return { link, frames };
+    }
+
+    it('brings the focused control into view once the reply has expanded', async () => {
+      const { link, frames } = await focusLinkIn(
+        'msg__clamp msg__clamp--collapsed',
+      );
+      // Not before the frame after the render that shows the reply whole.
+      expect(link.scrollIntoView).not.toHaveBeenCalled();
+      for (const frame of frames.splice(0)) frame(0);
+
+      expect(link.scrollIntoView).toHaveBeenCalledWith(
+        expect.objectContaining({ block: 'nearest' }),
+      );
+    });
+
+    it('leaves focus in a reply that was not collapsed alone', async () => {
+      const shown = await focusLinkIn('msg__clamp msg__clamp--capped');
+      for (const frame of shown.frames.splice(0)) frame(0);
+      expect(shown.link.scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it('leaves pointer focus in a collapsed reply alone', async () => {
+      const pointer = await focusLinkIn(
+        'msg__clamp msg__clamp--collapsed',
+        false,
+      );
+      for (const frame of pointer.frames.splice(0)) frame(0);
+      expect(pointer.link.scrollIntoView).not.toHaveBeenCalled();
+    });
+  });
+
   describe('aiming at a jump target', () => {
     const scrollIntoViewOwn = Object.getOwnPropertyDescriptor(
       Element.prototype,

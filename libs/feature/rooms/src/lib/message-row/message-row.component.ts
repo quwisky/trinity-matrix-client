@@ -779,12 +779,9 @@ export class MessageRowComponent {
    * the cut) shows it whole, so the focused control is never hidden behind the fade. Only
    * keyboard focus (`:focus-visible`): a mouse press focuses links too, and expanding then would
    * move the content (the list re-pins to the bottom) before the button is released, so the
-   * click would miss.
-   *
-   * The browser scrolled to the control when it took focus, while it was still clipped, so
-   * once the body shows whole the control is brought into view again. That waits for the frame
-   * after the render: the list's own correction for the taller row (re-pinning to the bottom,
-   * or holding the read position) runs on the render's layout and would otherwise undo it.
+   * click would miss. The list that holds the row brings the focused control into view once
+   * it has corrected its scroll for the taller row (`MessageListComponent.revealFocusIn`,
+   * `ThreadViewComponent.revealFocusAfterExpand`).
    */
   expandBodyForFocus(event: FocusEvent): void {
     const target = event.target;
@@ -794,18 +791,6 @@ export class MessageRowComponent {
       target.matches(':focus-visible')
     ) {
       this.expandedBodies?.expand(this.row().id);
-      afterNextRender(
-        () =>
-          requestAnimationFrame(() => {
-            if (target.ownerDocument.activeElement === target) {
-              target.scrollIntoView({
-                block: 'nearest',
-                behavior: scrollBehavior(),
-              });
-            }
-          }),
-        { injector: this.injector },
-      );
     }
   }
 

@@ -21,6 +21,7 @@ import { BodyOverflowObserver } from '../message-row/body-overflow';
 import { MessageListBase, type JumpOptions } from './message-list-base';
 import { scrollToJumpTarget } from './jump-scroll';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
+import { scrollBehavior } from '@trinity/util/ui';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { DropOverlayComponent } from './drop-overlay/drop-overlay.component';
 import { TimelineDividerComponent } from './timeline-divider/timeline-divider.component';
@@ -576,6 +577,7 @@ export class MessageListComponent extends MessageListBase {
     // How much the rendered rows grew in this batch. A first measurement changes no layout (the
     // row already drew at that height; only the estimate behind the prefix sums changes).
     let grown = 0;
+    const resized: Element[] = [];
     for (const entry of entries) {
       const mid = this.observed.get(entry.target);
       if (mid === undefined) {
@@ -589,6 +591,7 @@ export class MessageListComponent extends MessageListBase {
       }
       this.measured.set(mid, newH);
       if (prior !== undefined) grown += newH - prior;
+      resized.push(entry.target);
       changed = true;
       const idx = idList.indexOf(mid);
       if (idx >= 0) {
@@ -649,6 +652,7 @@ export class MessageListComponent extends MessageListBase {
           prevTop,
           anchorGeneration,
         );
+        this.revealFocusIn(resized);
       });
       this.heightVersion.update((v) => v + 1);
       return;
@@ -674,7 +678,27 @@ export class MessageListComponent extends MessageListBase {
         this.scrollTop.set(el.scrollTop);
       }
     }
+    this.revealFocusIn(resized);
     this.heightVersion.update((v) => v + 1);
+  }
+
+  /**
+   * Keep keyboard focus in view inside rows that just changed height, once the corrections
+   * above have moved the list. Tabbing to a link past a Show more cut expands its body
+   * (`MessageRowComponent.expandBodyForFocus`); the browser scrolled to the link while it was
+   * still clipped, and the pin, compensation or anchor restore for the taller row decides where
+   * the row ends up, so only after them can the link be brought into view. Keyboard focus only
+   * (`:focus-visible`): a pointer user is already looking at what they clicked.
+   */
+  private revealFocusIn(rows: readonly Element[]): void {
+    const active = rows[0]?.ownerDocument.activeElement;
+    if (
+      active &&
+      active.matches(':focus-visible') &&
+      rows.some((row) => row !== active && row.contains(active))
+    ) {
+      active.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
+    }
   }
 
   /** Restore the captured row using rendered geometry, with prefix sums as a windowed fallback. */
