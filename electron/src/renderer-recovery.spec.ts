@@ -283,6 +283,20 @@ describe('renderer recovery', () => {
       expect(fake.contents.reload).not.toHaveBeenCalled();
     });
 
+    it('does not ask again on focus after Keep Waiting, only on a new hang', async () => {
+      mocks.showMessageBox.mockResolvedValue({ response: 1 });
+      const fake = fakeWindow();
+      watchRendererRecovery(fake.win, () => now);
+      fake.emit('unresponsive');
+      await settle();
+      // Closing the box hands focus back to the window.
+      fake.emit('focus');
+      expect(mocks.showMessageBox).toHaveBeenCalledTimes(1);
+      fake.emit('unresponsive');
+      await settle();
+      expect(mocks.showMessageBox).toHaveBeenCalledTimes(2);
+    });
+
     it('asks only once while the question is open', () => {
       mocks.showMessageBox.mockReturnValue(new Promise(() => undefined));
       const fake = fakeWindow();

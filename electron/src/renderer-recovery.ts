@@ -29,8 +29,8 @@ export function watchRendererRecovery(
   let lastReload = Number.NEGATIVE_INFINITY;
   let question: 'hang' | 'crash' | null = null;
   let stopAsking: AbortController | undefined;
-  /** Waiting to be asked: the renderer hangs, or crashed again soon after a reload. */
-  let hung = false;
+  /** Waiting for the window to come back on screen to ask: a hang, or a repeated crash. */
+  let hangDeferred = false;
   let crashedAgain = false;
   /** The renderer was ended for a Reload answer; its exit reloads. */
   let killedOnPurpose = false;
@@ -89,7 +89,10 @@ export function watchRendererRecovery(
   };
 
   const askWhileHung = async (): Promise<void> => {
-    if (!onScreen()) return;
+    // Asked once per report: after Keep Waiting, Chromium reports a still-hung window
+    // again on new input, so returning focus to the window does not reopen the box.
+    hangDeferred = !onScreen();
+    if (hangDeferred) return;
     const askedAbout = renderer;
     const response = await ask('hang', {
       type: 'warning',
@@ -103,7 +106,6 @@ export function watchRendererRecovery(
     if (response !== 0 || askedAbout !== renderer || contents.isDestroyed()) {
       return;
     }
-    hung = false;
     if (contents.isCrashed()) {
       reload();
       return;
@@ -119,7 +121,7 @@ export function watchRendererRecovery(
     (_event: unknown, details: RenderProcessGoneDetails) => {
       if (details.reason === 'clean-exit' || contents.isDestroyed()) return;
       renderer += 1;
-      hung = false;
+      hangDeferred = false;
       if (killedOnPurpose) {
         // Asked for: reload without the crash-loop check.
         killedOnPurpose = false;
@@ -127,7 +129,9 @@ export function watchRendererRecovery(
         return;
       }
       if (question === 'hang') {
-        // The hang question is about a renderer that is gone; reload in its place.
+        // The hang question is about a renderer that is gone; reload in its place. This
+        // skips the crash-loop check, which would open a second box before this one has
+        // closed; a renderer that keeps hanging and crashing is asked about each hang.
         stopAsking?.abort();
         reload();
         return;
@@ -146,17 +150,16 @@ export function watchRendererRecovery(
   });
 
   win.on('unresponsive', () => {
-    hung = true;
     if (!question) void askWhileHung();
   });
   win.on('responsive', () => {
-    hung = false;
+    hangDeferred = false;
     if (question === 'hang') stopAsking?.abort();
   });
   const askIfWaiting = (): void => {
     if (question) return;
     if (crashedAgain) void askAfterRepeatedCrash();
-    else if (hung) void askWhileHung();
+    else if (hangDeferred) void askWhileHung();
   };
   win.on('show', askIfWaiting);
   win.on('restore', askIfWaiting);
