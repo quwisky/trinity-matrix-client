@@ -3,7 +3,11 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { sanitizeMatrixHtml } from '@trinity/util/matrix';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MathsLoader, type MathsRenderer } from './maths-loader';
-import { MAX_MATHS_PER_MESSAGE, MathsDirective } from './maths.directive';
+import {
+  MAX_MATHS_PER_MESSAGE,
+  MathsDirective,
+  WIDE_MATHS,
+} from './maths.directive';
 
 @Component({
   imports: [MathsDirective],
@@ -114,6 +118,56 @@ describe('MathsDirective', () => {
 
     expect(host.querySelector('div.mx-maths .katex-display')).not.toBeNull();
     expect(annotations(host)).toEqual(['x^2', '\\frac{1}{2}']);
+  });
+
+  /** The test setup's ResizeObserver stub watching `element` (see test-setup.ts). */
+  interface StubObserver {
+    readonly observed: Set<Element>;
+    emit(entries: ResizeObserverEntry[]): void;
+  }
+  const observerOf = (element: Element): StubObserver | undefined =>
+    (
+      globalThis.ResizeObserver as unknown as { instances: StubObserver[] }
+    ).instances.find((observer) => observer.observed.has(element));
+
+  it('marks inline maths wider than the body, and unmarks it once the body is wide enough', async () => {
+    const { fixture, host } = render(
+      '<span data-mx-maths="x+y">x+y</span> and <span data-mx-maths="z">z</span>' +
+        '<div data-mx-maths="w">w</div>',
+    );
+    await waitForCount(fixture, host, '.katex', 3);
+    const [wide, narrow] = host.querySelectorAll<HTMLElement>('span.mx-maths');
+    let width = 200;
+    Object.defineProperty(host, 'clientWidth', {
+      configurable: true,
+      get: () => width,
+    });
+    const runsOf = (maths: Element, offsetWidth: number) => {
+      for (const run of maths.querySelectorAll('.katex-base')) {
+        Object.defineProperty(run, 'offsetWidth', {
+          configurable: true,
+          value: offsetWidth,
+        });
+      }
+    };
+    runsOf(wide, 300);
+    runsOf(narrow, 20);
+    runsOf(host.querySelector('div.mx-maths')!, 300);
+    const observer = observerOf(host);
+    expect(observer).toBeDefined();
+
+    observer!.emit([]);
+    expect(wide.classList.contains(WIDE_MATHS)).toBe(true);
+    expect(narrow.classList.contains(WIDE_MATHS)).toBe(false);
+    // Display maths scrolls already; only inline maths is marked.
+    expect(host.querySelector(`div.${WIDE_MATHS}`)).toBeNull();
+
+    width = 400;
+    observer!.emit([]);
+    expect(wide.classList.contains(WIDE_MATHS)).toBe(false);
+
+    fixture.destroy();
+    expect(observer!.observed.size).toBe(0);
   });
 
   it('adds the KaTeX stylesheet once', async () => {

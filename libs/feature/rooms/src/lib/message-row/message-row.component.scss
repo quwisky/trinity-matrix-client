@@ -355,6 +355,32 @@
     flex: 1;
   }
 
+  // A formatted body clips at its padding box (rendered-markdown.scss: `overflow: clip`, and
+  // WebKit cannot widen an overflow clip). Pad it by the focus-ring reach and take that back
+  // with a negative margin, so a ring at its edge stays whole and nothing moves: sideways and
+  // below everywhere, and above in a grouped row, which has no top margin to keep.
+  .msg__text--html,
+  .msg--cont .msg__text--html {
+    $focus-reach: calc(
+      var(--trinity-focus-ring-width) + var(--trinity-focus-ring-offset)
+    );
+
+    max-width: calc(var(--trinity-measure-prose) + 2 * #{$focus-reach});
+    margin-inline: calc(-1 * #{$focus-reach});
+    margin-bottom: calc(-1 * #{$focus-reach});
+    padding-inline: $focus-reach;
+    padding-bottom: $focus-reach;
+  }
+
+  .msg--cont .msg__text--html {
+    $focus-reach: calc(
+      var(--trinity-focus-ring-width) + var(--trinity-focus-ring-offset)
+    );
+
+    margin-top: calc(-1 * #{$focus-reach});
+    padding-top: $focus-reach;
+  }
+
   // Decryption-failure / redacted fallback: a distinct bordered container so the
   // state is perceivable, not just italic-muted text that blends into the timeline.
   .msg--failed .msg__text {

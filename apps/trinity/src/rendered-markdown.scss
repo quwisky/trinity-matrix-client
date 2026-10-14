@@ -18,15 +18,19 @@
     // Nothing a sender writes paints over, or takes clicks from, anything around the body: the
     // authenticity shield, avatar, name, timestamp, "(edited)", reactions or toolbar. Kerns that
     // add up can make one KaTeX run far wider than the body, and a smashed raise can reach above
-    // or below it, so the body clips on every side, leaving room only for a focus ring. A clip
-    // path, not `overflow`, because WebKit cannot widen an overflow clip; display maths, tables
-    // and code keep their own sideways scroll inside. Real content grows the lines it sits on,
-    // so only overhang that takes no room is cut.
+    // or below it, so the body clips on every side, leaving room only for a focus ring. An
+    // overflow clip also keeps a positioned run from giving the timeline, the thread or the
+    // composer preview a scroll range. WebKit cannot widen an overflow clip, so each stylesheet
+    // that lays a body out pads it by the focus-ring reach where it can and takes that back with
+    // a negative margin (message-row, edit-history). Display maths, tables, code and wide inline
+    // maths keep their own sideways scroll inside. Real content grows the lines it sits on, so
+    // only overhang that takes no room is cut.
     $focus-reach: calc(
       var(--trinity-focus-ring-width) + var(--trinity-focus-ring-offset)
     );
 
-    clip-path: inset(calc(-1 * #{$focus-reach}));
+    overflow: clip;
+    overflow-clip-margin: content-box $focus-reach;
 
     img.mx-emoticon {
       display: inline-block;
@@ -356,6 +360,18 @@
 
     .mx-maths .katex-html > .katex-base {
       clip-path: inset(-1em);
+    }
+
+    // Inline maths with a run wider than the body (MathsDirective marks it) scrolls sideways on
+    // its own, like display maths, instead of being cut at the body's edge. It fills its line,
+    // so how it sits on the baseline moves no text beside it; `first` keeps the formula's own
+    // where the engine supports it.
+    span.mx-maths.mx-maths--wide {
+      display: inline-block;
+      max-width: 100%;
+      overflow: auto hidden;
+      overscroll-behavior-x: contain;
+      baseline-source: first;
     }
 
     // KaTeX pins a display formula's `\tag` to the right edge of the visible box, so in a
