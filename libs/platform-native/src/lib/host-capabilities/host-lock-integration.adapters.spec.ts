@@ -15,6 +15,7 @@ describe('ElectronLockIntegrationAdapter', () => {
   });
 
   function setup(granted: boolean) {
+    const unsubscribe = vi.fn();
     let emit: (request: 'menu' | 'system-locked' | 'suspended') => void = () =>
       undefined;
     const lockIntegration = {
@@ -25,7 +26,7 @@ describe('ElectronLockIntegrationAdapter', () => {
           callback: (request: 'menu' | 'system-locked' | 'suspended') => void,
         ) => {
           emit = callback;
-          return () => undefined;
+          return unsubscribe;
         },
       ),
     };
@@ -56,6 +57,7 @@ describe('ElectronLockIntegrationAdapter', () => {
     return {
       adapter: TestBed.inject(ElectronLockIntegrationAdapter),
       lockIntegration,
+      unsubscribe,
       emit: (request: 'menu' | 'system-locked' | 'suspended') => emit(request),
     };
   }
@@ -83,6 +85,19 @@ describe('ElectronLockIntegrationAdapter', () => {
     emit('suspended');
     emit('menu');
     await expect(requests).resolves.toEqual(['suspended', 'menu']);
+  });
+
+  it('unsubscribes from the shell once the last subscriber leaves', async () => {
+    const { adapter, lockIntegration, unsubscribe } = setup(true);
+    const first = adapter.requests.subscribe();
+    const second = adapter.requests.subscribe();
+    await vi.waitFor(() =>
+      expect(lockIntegration.subscribeRequests).toHaveBeenCalledOnce(),
+    );
+    first.unsubscribe();
+    expect(unsubscribe).not.toHaveBeenCalled();
+    second.unsubscribe();
+    expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
   it('does nothing when the operation is not granted', async () => {

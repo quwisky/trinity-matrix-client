@@ -409,6 +409,22 @@ describe('preload host capabilities', () => {
     expect(received).toEqual(['menu']);
   });
 
+  it('removes the same lock request listener on unsubscribe', async () => {
+    await bridge.negotiate(['lock-integration']);
+    const unsubscribe = bridge.capabilities.lockIntegration.subscribeRequests(
+      vi.fn(),
+    );
+    const listener = on.mock.calls.find(
+      ([channel]) => channel === 'trinity:host:v1:lock-integration:request',
+    )?.[1];
+    expect(listener).toBeTypeOf('function');
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledExactlyOnceWith(
+      'trinity:host:v1:lock-integration:request',
+      listener,
+    );
+  });
+
   it('drops malformed title-bar input before IPC', async () => {
     await bridge.negotiate(['title-bar']);
     invoke.mockClear();

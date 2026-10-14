@@ -12,7 +12,7 @@ export const LOCK_REQUEST_CHANNEL = 'trinity:host:v1:lock-integration:request';
 /** How long a shown window waits, transparent, for the renderer to paint the cover. */
 export const SHOW_HOLD_TIMEOUT_MS = 700;
 
-/** Electron accelerators are `Modifier+Key`; anything else is not displayed. */
+/** Electron accelerators are `Modifier+Key`; anything else is shown without a shortcut. */
 const ACCELERATOR = /^[A-Za-z0-9]+(?:\+[A-Za-z0-9`\-=[\];',./\\]+)*$/;
 
 export interface LockState {
@@ -28,19 +28,20 @@ export interface LockIntegrationDeps {
   readonly getMainWindow: () => BrowserWindow | null;
 }
 
+/**
+ * The renderer's lock state, or null when `enabled` or `locked` is malformed. A shortcut
+ * main can't display becomes null instead: dropping the whole state would also drop the
+ * menu item and the OS lock and sleep forwarding.
+ */
 export function parseLockState(raw: unknown): LockState | null {
   if (!raw || typeof raw !== 'object') return null;
   const { enabled, locked, accelerator } = raw as Record<string, unknown>;
   if (typeof enabled !== 'boolean' || typeof locked !== 'boolean') return null;
-  if (
-    accelerator !== null &&
-    (typeof accelerator !== 'string' ||
-      accelerator.length > 64 ||
-      !ACCELERATOR.test(accelerator))
-  ) {
-    return null;
-  }
-  return { enabled, locked, accelerator };
+  const displayable =
+    typeof accelerator === 'string' &&
+    accelerator.length <= 64 &&
+    ACCELERATOR.test(accelerator);
+  return { enabled, locked, accelerator: displayable ? accelerator : null };
 }
 
 /**
@@ -51,7 +52,10 @@ export function parseLockState(raw: unknown): LockState | null {
  */
 export function registerLockIntegration(deps: LockIntegrationDeps): void {
   let state: LockState = { enabled: false, locked: false, accelerator: null };
-  let holding = false;
+  // The show hold: 'concealed' while hidden or minimised (a painted signal then is ignored,
+  // as the frame may be replaced again before the window shows), 'revealing' once shown
+  // again (the next painted signal or the timeout reveals it).
+  let hold: 'none' | 'concealed' | 'revealing' = 'none';
   let reveal: ReturnType<typeof setTimeout> | null = null;
   const watched = new WeakSet<BrowserWindow>();
 
@@ -65,33 +69,51 @@ export function registerLockIntegration(deps: LockIntegrationDeps): void {
       win.webContents.send(LOCK_REQUEST_CHANNEL, kind);
     }
   };
-  const show = (win: BrowserWindow): void => {
+  const cancelReveal = (): void => {
     if (reveal) clearTimeout(reveal);
     reveal = null;
-    holding = false;
+  };
+  const setOpacity = (win: BrowserWindow, opacity: number): void => {
     try {
-      win.setOpacity(1);
+      win.setOpacity(opacity);
     } catch {
-      // A window being destroyed; nothing to reveal.
+      // A window being destroyed; nothing to hide or reveal.
     }
+  };
+  const show = (win: BrowserWindow): void => {
+    cancelReveal();
+    hold = 'none';
+    setOpacity(win, 1);
   };
   const watch = (win: BrowserWindow): void => {
     if (watched.has(win)) return;
     watched.add(win);
     const conceal = (): void => {
       if (!state.enabled) return;
-      holding = true;
-      win.setOpacity(0);
+      cancelReveal();
+      hold = 'concealed';
+      setOpacity(win, 0);
     };
     const shown = (): void => {
-      if (!holding) return;
-      if (reveal) clearTimeout(reveal);
+      if (hold !== 'concealed') return;
+      hold = 'revealing';
       reveal = setTimeout(() => show(win), SHOW_HOLD_TIMEOUT_MS);
+    };
+    // Some restores emit neither show nor restore (e.g. a minimised maximised window on
+    // Windows may emit only maximize); start the reveal once the window is visible anyway.
+    const maybeShown = (): void => {
+      try {
+        if (win.isVisible() && !win.isMinimized()) shown();
+      } catch {
+        // A window being destroyed; nothing to reveal.
+      }
     };
     win.on('hide', conceal);
     win.on('minimize', conceal);
     win.on('show', shown);
     win.on('restore', shown);
+    win.on('maximize', maybeShown);
+    win.on('focus', maybeShown);
   };
   const rebuild = (): void => {
     deps.buildMenu({
@@ -123,7 +145,9 @@ export function registerLockIntegration(deps: LockIntegrationDeps): void {
 
   ipcMain.on(LOCK_COVER_PAINTED_CHANNEL, (event) => {
     const win = trusted(event);
-    if (win && holding) show(win);
+    // Only once the window is showing again: a cover painted while hidden (an OS lock, sleep
+    // or a renderer-recovery reload) says nothing about the frame the next show reveals.
+    if (win && hold === 'revealing') show(win);
   });
 
   deps.powerMonitor.on('lock-screen', () => request('system-locked'));

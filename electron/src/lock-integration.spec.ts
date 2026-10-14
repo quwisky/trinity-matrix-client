@@ -33,6 +33,8 @@ function fakeWindow() {
     webContents: contents,
     setOpacity: vi.fn(),
     isDestroyed: () => false,
+    isVisible: vi.fn(() => true),
+    isMinimized: vi.fn(() => false),
   });
 }
 
@@ -40,15 +42,34 @@ describe('parseLockState', () => {
   it.each([
     [
       { enabled: true, locked: false, accelerator: 'CommandOrControl+Shift+L' },
-      true,
+      { enabled: true, locked: false, accelerator: 'CommandOrControl+Shift+L' },
     ],
-    [{ enabled: true, locked: true, accelerator: null }, true],
-    [{ enabled: 'yes', locked: false, accelerator: null }, false],
-    [{ enabled: true, locked: false, accelerator: 'Ctrl+L; rm -rf' }, false],
-    [{ enabled: true, locked: false, accelerator: 'x'.repeat(65) }, false],
-    [null, false],
-  ])('accepts %j: %s', (raw, ok) => {
-    expect(parseLockState(raw) !== null).toBe(ok);
+    [
+      { enabled: true, locked: true, accelerator: null },
+      { enabled: true, locked: true, accelerator: null },
+    ],
+    [{ enabled: 'yes', locked: false, accelerator: null }, null],
+    [{ enabled: true, locked: 1, accelerator: null }, null],
+    // A shortcut main can't display drops only the shortcut, never the lock itself.
+    [
+      { enabled: true, locked: false, accelerator: 'Ctrl+L; rm -rf' },
+      { enabled: true, locked: false, accelerator: null },
+    ],
+    [
+      { enabled: true, locked: false, accelerator: 'x'.repeat(65) },
+      { enabled: true, locked: false, accelerator: null },
+    ],
+    [
+      { enabled: true, locked: false, accelerator: 7 },
+      { enabled: true, locked: false, accelerator: null },
+    ],
+    [
+      { enabled: true, locked: false },
+      { enabled: true, locked: false, accelerator: null },
+    ],
+    [null, null],
+  ])('reads %j as %j', (raw, expected) => {
+    expect(parseLockState(raw)).toEqual(expected);
   });
 });
 
@@ -155,5 +176,99 @@ describe('registerLockIntegration', () => {
     win.emit('hide');
     win.emit('show');
     expect(win.setOpacity).not.toHaveBeenCalled();
+  });
+
+  const paint = (sender: unknown = contents) =>
+    handlers.get(LOCK_COVER_PAINTED_CHANNEL)!({ sender });
+
+  it('keeps the menu item and OS forwarding when the shortcut is unreadable', () => {
+    setState({ enabled: true, locked: false, accelerator: 'Ctrl+L; rm -rf' });
+    expect(buildMenu).toHaveBeenLastCalledWith({
+      packaged: false,
+      lock: expect.objectContaining({
+        visible: true,
+        enabled: true,
+        accelerator: null,
+      }),
+    });
+    power.emit('lock-screen');
+    power.emit('suspend');
+    expect(contents.send.mock.calls).toEqual([
+      [LOCK_REQUEST_CHANNEL, 'system-locked'],
+      [LOCK_REQUEST_CHANNEL, 'suspended'],
+    ]);
+  });
+
+  it('ignores a painted signal from another sender', () => {
+    setState({ enabled: true, locked: false, accelerator: null });
+    win.emit('hide');
+    win.emit('show');
+    paint({ other: true });
+    expect(win.setOpacity.mock.calls).toEqual([[0]]);
+  });
+
+  it('keeps the hold through a cover painted while hidden, until the next show', () => {
+    setState({ enabled: true, locked: false, accelerator: null });
+    win.emit('hide');
+    // The renderer locks while hidden (OS lock, sleep, a crash reload) and paints its cover.
+    paint();
+    vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS * 2);
+    expect(win.setOpacity.mock.calls).toEqual([[0]]);
+    win.emit('show');
+    vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS - 1);
+    expect(win.setOpacity.mock.calls).toEqual([[0]]);
+    paint();
+    expect(win.setOpacity).toHaveBeenLastCalledWith(1);
+  });
+
+  it('keeps the hold through a cover painted while hidden, then reveals on the timeout', () => {
+    setState({ enabled: true, locked: true, accelerator: null });
+    win.emit('minimize');
+    paint();
+    win.emit('restore');
+    vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS - 1);
+    expect(win.setOpacity.mock.calls).toEqual([[0]]);
+    vi.advanceTimersByTime(1);
+    expect(win.setOpacity).toHaveBeenLastCalledWith(1);
+  });
+
+  it('cancels a pending reveal when the window hides again', () => {
+    setState({ enabled: true, locked: false, accelerator: null });
+    win.emit('hide');
+    win.emit('show');
+    win.emit('hide');
+    vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS * 2);
+    expect(win.setOpacity.mock.calls).toEqual([[0], [0]]);
+    win.emit('show');
+    vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS - 1);
+    expect(win.setOpacity).toHaveBeenLastCalledWith(0);
+    paint();
+    expect(win.setOpacity).toHaveBeenLastCalledWith(1);
+  });
+
+  it('starts the reveal when a held window comes back through maximize, without restore', () => {
+    setState({ enabled: true, locked: true, accelerator: null });
+    win.emit('minimize');
+    win.emit('maximize');
+    vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS);
+    expect(win.setOpacity).toHaveBeenLastCalledWith(1);
+  });
+
+  it('does not start the reveal for a focus while the window is still hidden', () => {
+    setState({ enabled: true, locked: true, accelerator: null });
+    win.emit('hide');
+    win.isVisible.mockReturnValue(false);
+    win.emit('focus');
+    paint();
+    vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS * 2);
+    expect(win.setOpacity.mock.calls).toEqual([[0]]);
+  });
+
+  it('survives a window that throws while being destroyed', () => {
+    setState({ enabled: true, locked: false, accelerator: null });
+    win.setOpacity.mockImplementation(() => {
+      throw new Error('Object has been destroyed');
+    });
+    expect(() => win.emit('hide')).not.toThrow();
   });
 });
