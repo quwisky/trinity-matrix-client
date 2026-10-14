@@ -125,6 +125,12 @@ describe('message links on a phone', () => {
     if (browser.isIOS) await startSafari();
   });
 
+  // Leave no Safari behind: its page is a WEBVIEW_ context too, and on a CI runner the next
+  // spec's webview() hung for minutes switching into it.
+  after(async () => {
+    if (browser.isIOS) await browser.terminateApp(SAFARI);
+  });
+
   it('opens an external message link outside the app’s WebView', async function () {
     // Measured on a cold CI runner: 165 s of reinstall, launch retries and first sign-in
     // before the tap, up to 30 s for the timeline to settle, up to 70 s to see the app
