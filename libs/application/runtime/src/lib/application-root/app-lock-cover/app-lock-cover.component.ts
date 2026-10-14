@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot } from '@angular/forms/signals';
+import { TitleBarState } from '@trinity/application/workspace';
 import {
   TrnButton,
   TrnFieldImports,
@@ -50,6 +51,8 @@ export class AppLockCoverComponent {
 
   protected readonly state = inject(AppLockCoverState);
   protected readonly shownError = shownError;
+  /** A frameless desktop window keeps a drag strip where its title row was. */
+  protected readonly titleRow = inject(TitleBarState).active;
 
   constructor() {
     // Open exactly while locked, after the view exists, so it is in the first painted frame.

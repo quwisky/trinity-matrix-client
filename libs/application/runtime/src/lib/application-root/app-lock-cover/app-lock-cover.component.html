@@ -1,19 +1,35 @@
 <!--
   A native modal dialog: `showModal()` puts it in the top layer above every overlay and makes
-  the rest of the page inert. Utilities only; `backdrop:` paints the `::backdrop` with the same
-  surface, so nothing behind the cover shows even while it fades in.
+  the rest of the page inert. The dialog itself fills the viewport with an opaque surface, so
+  the `::backdrop` needs no colour (custom properties reach it only from Chromium 122 and
+  Safari 17.4). Content centres safely, so a short or zoomed screen scrolls from the top.
 -->
 <dialog
   #dialog
-  class="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-y-auto border-0 bg-[var(--trinity-surface-app)] p-4 text-foreground backdrop:bg-[var(--trinity-surface-app)] open:flex open:flex-col open:items-center open:justify-center motion-safe:open:animate-in motion-safe:open:fade-in-0"
+  class="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-y-auto border-0 bg-[var(--trinity-surface-app)] pt-[max(var(--trinity-space-4),env(safe-area-inset-top))] pr-[max(var(--trinity-space-4),env(safe-area-inset-right))] pb-[max(var(--trinity-space-4),env(safe-area-inset-bottom))] pl-[max(var(--trinity-space-4),env(safe-area-inset-left))] text-foreground open:flex open:flex-col open:items-center open:justify-center-safe motion-safe:open:animate-in motion-safe:open:fade-in-0"
   aria-labelledby="app-lock-heading"
   aria-describedby="app-lock-message"
   data-testid="app-lock-cover"
   [attr.data-view]="state.view()"
+  [style.padding-top]="
+    titleRow()
+      ? 'calc(env(titlebar-area-height, var(--trinity-title-bar-height)) + var(--trinity-space-4))'
+      : null
+  "
   (cancel)="$event.preventDefault()"
   (close)="onClose()"
   (keydown)="onKeydown($event)"
 >
+  @if (titleRow()) {
+    <!-- The frameless window's title row is hidden with the workspace; this strip keeps the
+         locked window draggable. No controls sit in it. -->
+    <div
+      class="fixed inset-x-0 top-0 h-[env(titlebar-area-height,var(--trinity-title-bar-height))] [-webkit-app-region:drag]"
+      aria-hidden="true"
+      data-testid="app-lock-drag-region"
+    ></div>
+  }
+
   <!-- Reserved for a future incoming-call UI (spec decision 19): a call rings and shows here,
        above the lock, without unlocking the rest of the app. Nothing projects into it yet. -->
   <div class="w-full max-w-sm empty:hidden" data-testid="app-lock-above-lock">
@@ -36,6 +52,7 @@
         <div class="grid w-full gap-2">
           <button
             trnBtn
+            size="lg"
             type="button"
             data-testid="app-lock-unlock"
             data-autofocus
@@ -70,12 +87,13 @@
             </trn-field-label>
             <input
               trnInput
+              size="lg"
               id="app-lock-pin"
               type="password"
               inputmode="numeric"
               autocomplete="off"
               [formField]="state.pinForm.pin"
-              [attr.aria-describedby]="
+              [aria-describedby]="
                 pinError
                   ? 'app-lock-pin-error app-lock-message'
                   : 'app-lock-message'
@@ -91,6 +109,7 @@
           </trn-field>
           <button
             trnBtn
+            size="lg"
             type="submit"
             data-testid="app-lock-pin-submit"
             [disabled]="state.busy() || state.waiting()"
@@ -128,6 +147,7 @@
         <div class="grid w-full gap-2">
           <button
             trnBtn
+            size="lg"
             type="button"
             data-testid="app-lock-retry"
             data-autofocus
@@ -150,7 +170,7 @@
           <button
             trnBtn
             variant="danger"
-            presentation="ghost"
+            presentation="outline"
             type="button"
             data-testid="app-lock-reset"
             (click)="state.confirmErase()"
@@ -167,6 +187,7 @@
           @if (state.backText(); as back) {
             <button
               trnBtn
+              size="lg"
               type="button"
               data-testid="app-lock-use-system"
               data-autofocus
@@ -186,15 +207,20 @@
         </div>
       }
       @case ('erase') {
-        <p class="m-0 text-sm text-[var(--trinity-text-muted)]">
+        <p
+          id="app-lock-erase-text"
+          class="m-0 text-sm text-[var(--trinity-text-muted)]"
+        >
           {{ state.eraseText() }}
         </p>
         <div class="grid w-full gap-2">
           <button
             trnBtn
+            size="lg"
             variant="danger"
             type="button"
             data-testid="app-lock-erase"
+            aria-describedby="app-lock-erase-text"
             [disabled]="state.erasing()"
             (click)="state.erase()"
           >
@@ -215,13 +241,17 @@
       @default {
         <!-- `no-pin` / `no-pin-store`: no PIN can unlock here. Say so, and offer the system
              prompt where there is one; the reset is always there, so it is never a dead end. -->
-        <p class="m-0 text-sm text-[var(--trinity-text-muted)]">
+        <p
+          id="app-lock-recovery-text"
+          class="m-0 text-sm text-[var(--trinity-text-muted)]"
+        >
           {{ state.recoveryText() }}
         </p>
         <div class="grid w-full gap-2">
           @if (state.backText(); as back) {
             <button
               trnBtn
+              size="lg"
               type="button"
               data-testid="app-lock-use-system"
               data-autofocus
@@ -237,6 +267,7 @@
             type="button"
             data-testid="app-lock-reset"
             data-autofocus
+            aria-describedby="app-lock-recovery-text"
             (click)="state.confirmErase()"
           >
             Erase all data on this device

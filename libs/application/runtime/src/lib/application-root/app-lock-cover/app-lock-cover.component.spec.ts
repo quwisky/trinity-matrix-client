@@ -276,6 +276,19 @@ describe('AppLockCoverComponent', () => {
       ).toEqual(['Unlock with Face ID', 'Use PIN instead']);
     });
 
+    it('keeps a frameless desktop window draggable by its top strip', async () => {
+      const { dialog } = await setup({ titleRow: true });
+      const strip = screen.getByTestId('app-lock-drag-region');
+      expect(dialog.contains(strip)).toBe(true);
+      expect(strip.getAttribute('aria-hidden')).toBe('true');
+      expect(strip.querySelector('button, input, a')).toBeNull();
+    });
+
+    it('has no drag strip without the desktop title row', async () => {
+      await setup();
+      expect(screen.queryByTestId('app-lock-drag-region')).toBeNull();
+    });
+
     it('reserves the region above the lock for calls', async () => {
       await setup();
       const region = screen.getByTestId('app-lock-above-lock');
@@ -630,6 +643,13 @@ describe('AppLockCoverComponent', () => {
       expect(pinField().value === '').toBe(true);
     });
 
+    it('describes the field with the line under it', async () => {
+      await setup({ support: PIN_ONLY });
+      expect(pinField().getAttribute('aria-describedby')).toContain(
+        'app-lock-message',
+      );
+    });
+
     it('announces a wrong PIN', async () => {
       await setup({
         support: PIN_ONLY,
@@ -943,6 +963,25 @@ describe('AppLockCoverComponent', () => {
         expect(
           screen.getAllByRole('button').map((b) => b.textContent?.trim()),
         ).toEqual(['Use Face ID', 'Erase all data on this device']),
+      );
+    });
+
+    it('tells screen readers what erasing does', async () => {
+      await setup({ support: NO_PIN_ONLY });
+      const entry = screen.getByRole('button', {
+        name: 'Erase all data on this device',
+      });
+      const describedBy = (button: Element): string =>
+        (button.getAttribute('aria-describedby') ?? '')
+          .split(' ')
+          .map((id) => document.getElementById(id)?.textContent ?? '')
+          .join(' ');
+      expect(describedBy(entry)).toContain(
+        'The only way back in is to erase all data on this device.',
+      );
+      await click(entry);
+      expect(describedBy(screen.getByTestId('app-lock-erase'))).toContain(
+        'signs out every account',
       );
     });
 
