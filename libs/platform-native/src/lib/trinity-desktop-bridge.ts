@@ -116,6 +116,11 @@ export interface TrinityDesktopBridge {
       setSystemTitleBar: (value: boolean) => Promise<HostOperationOutcome>;
       relaunch: () => void;
     };
+    /** App lock's system prompt and PIN; optional so an older shell still validates. */
+    userPresence?: {
+      support: () => Promise<unknown>;
+      verify: (reason: string) => Promise<unknown>;
+    };
   };
 }
 

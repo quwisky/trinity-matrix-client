@@ -81,6 +81,10 @@ type ExposedBridge = {
       readonly setSystemTitleBar: (value: unknown) => Promise<unknown>;
       readonly relaunch: () => void;
     };
+    readonly userPresence: {
+      readonly support: () => Promise<unknown>;
+      readonly verify: (reason: unknown) => Promise<unknown>;
+    };
   };
   readonly onDeepLink?: unknown;
   readonly showNotification?: unknown;
@@ -135,6 +139,7 @@ describe('preload host capabilities', () => {
       'notificationPresentation',
       'secureStore',
       'titleBar',
+      'userPresence',
     ]);
     expect(bridge.onDeepLink).toBeUndefined();
     expect(bridge.showNotification).toBeUndefined();
@@ -326,6 +331,27 @@ describe('preload host capabilities', () => {
     expect(invoke.mock.calls).toEqual([
       ['trinity:host:v1:title-bar:get-system-title-bar'],
       ['trinity:host:v1:title-bar:set-system-title-bar', true],
+    ]);
+  });
+
+  it('forwards user-presence requests only once the operation is granted', async () => {
+    invoke.mockClear();
+    await expect(
+      bridge.capabilities.userPresence.verify('Unlock Trinity'),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'not-supported' });
+    expect(invoke).not.toHaveBeenCalled();
+
+    await bridge.negotiate(['user-presence']);
+    invoke.mockClear();
+    await bridge.capabilities.userPresence.support();
+    await bridge.capabilities.userPresence.verify('Unlock Trinity');
+    await expect(bridge.capabilities.userPresence.verify(7)).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'invalid-presence-reason' },
+    });
+    expect(invoke.mock.calls).toEqual([
+      ['trinity:host:v1:user-presence:support'],
+      ['trinity:host:v1:user-presence:verify', { reason: 'Unlock Trinity' }],
     ]);
   });
 

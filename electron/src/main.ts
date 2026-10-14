@@ -20,6 +20,7 @@ import { registerGeolocationIpc } from './geolocation-ipc';
 import { registerDockBadge } from './dock-badge';
 import { registerHostCapabilityHandshake } from './host-capabilities';
 import { registerTitleBarIpc } from './title-bar-ipc';
+import { registerUserPresenceIpc } from './user-presence-ipc';
 import { startUpdateChecks } from './update-check';
 import {
   deepLinkFromArgv,
@@ -115,6 +116,7 @@ if (!mayStart) {
     buildMenu({ packaged: app.isPackaged });
     registerHostCapabilityHandshake();
     registerTitleBarIpc();
+    registerUserPresenceIpc();
     registerDockBadge();
     createWindow();
     createTray();

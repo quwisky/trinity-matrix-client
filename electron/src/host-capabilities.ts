@@ -39,6 +39,7 @@ const SUPPORTED = new Set<HostOperation>([
   'secure-store',
   'lifecycle',
   'title-bar',
+  'user-presence',
 ]);
 
 function isOperation(value: unknown): value is HostOperation {

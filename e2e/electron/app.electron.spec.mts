@@ -162,6 +162,7 @@ test('negotiates the grouped protocol-v1 bridge without exposing Node', async ()
     'notificationPresentation',
     'secureStore',
     'titleBar',
+    'userPresence',
   ]);
   expect(exposure.legacyFlatMethods).toEqual([
     'undefined',

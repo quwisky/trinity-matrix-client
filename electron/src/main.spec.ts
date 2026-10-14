@@ -67,6 +67,7 @@ vi.mock('./host-capabilities', () => ({
   registerHostCapabilityHandshake: vi.fn(),
 }));
 vi.mock('./title-bar-ipc', () => ({ registerTitleBarIpc: vi.fn() }));
+vi.mock('./user-presence-ipc', () => ({ registerUserPresenceIpc: vi.fn() }));
 vi.mock('./update-check', () => ({ startUpdateChecks: vi.fn() }));
 vi.mock('./deep-link', () => ({
   deepLinkFromArgv: vi.fn(),
@@ -92,6 +93,7 @@ import { createWindow } from './window';
 import { registerDockBadge } from './dock-badge';
 import { registerHostCapabilityHandshake } from './host-capabilities';
 import { registerTitleBarIpc } from './title-bar-ipc';
+import { registerUserPresenceIpc } from './user-presence-ipc';
 import { startUpdateChecks } from './update-check';
 
 /** First invocation-order tick of a mock (a global monotonic counter in vitest,
@@ -162,6 +164,13 @@ describe('main bootstrap', () => {
   it('registers the title-bar IPC before creating the renderer window', () => {
     expect(registerTitleBarIpc).toHaveBeenCalledTimes(1);
     expect(firstOrder(vi.mocked(registerTitleBarIpc))).toBeLessThan(
+      firstOrder(vi.mocked(createWindow)),
+    );
+  });
+
+  it('registers the user-presence IPC before creating the renderer window', () => {
+    expect(registerUserPresenceIpc).toHaveBeenCalledTimes(1);
+    expect(firstOrder(vi.mocked(registerUserPresenceIpc))).toBeLessThan(
       firstOrder(vi.mocked(createWindow)),
     );
   });

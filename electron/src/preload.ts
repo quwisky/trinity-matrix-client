@@ -54,6 +54,13 @@ const GET_SYSTEM_TITLE_BAR_CHANNEL =
 const SET_SYSTEM_TITLE_BAR_CHANNEL =
   'trinity:host:v1:title-bar:set-system-title-bar';
 const RELAUNCH_CHANNEL = 'trinity:host:v1:title-bar:relaunch';
+// Mirror user-presence-ipc.ts by string value; main re-validates every payload.
+const USER_PRESENCE_SUPPORT_CHANNEL = 'trinity:host:v1:user-presence:support';
+const USER_PRESENCE_VERIFY_CHANNEL = 'trinity:host:v1:user-presence:verify';
+const PRESENCE_NOT_SUPPORTED = {
+  kind: 'unavailable',
+  reason: 'not-supported',
+} as const;
 // Mirrors window.ts by string value; main only closes the window, as a user close does.
 const CLOSE_WINDOW_CHANNEL = 'trinity:window:close';
 // window.ts appends the running title-bar mode to argv; anything else means "no row".
@@ -420,6 +427,31 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
       relaunch: (): void => {
         if (!grantedOperations.has('title-bar')) return;
         ipcRenderer.send(RELAUNCH_CHANNEL);
+      },
+    },
+    userPresence: {
+      support: (): Promise<unknown> =>
+        grantedOperations.has('user-presence')
+          ? (ipcRenderer.invoke(
+              USER_PRESENCE_SUPPORT_CHANNEL,
+            ) as Promise<unknown>)
+          : Promise.resolve({
+              system: PRESENCE_NOT_SUPPORTED,
+              pin: PRESENCE_NOT_SUPPORTED,
+            }),
+      verify: (reason: string): Promise<unknown> => {
+        if (!grantedOperations.has('user-presence')) {
+          return Promise.resolve(PRESENCE_NOT_SUPPORTED);
+        }
+        if (typeof reason !== 'string') {
+          return Promise.resolve({
+            kind: 'rejected',
+            diagnostic: { code: 'invalid-presence-reason' },
+          });
+        }
+        return ipcRenderer.invoke(USER_PRESENCE_VERIFY_CHANNEL, {
+          reason,
+        }) as Promise<unknown>;
       },
     },
   },
