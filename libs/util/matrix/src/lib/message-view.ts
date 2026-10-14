@@ -783,8 +783,8 @@ export function sanitizeMatrixHtml(
   markExternalLinks(body);
   normaliseSpoilers(body);
   normaliseColours(body);
-  normaliseImages(body);
   normaliseMaths(body);
+  normaliseImages(body);
   normaliseTaskItems(body);
   markWideLists(body);
   renderCodeBlocks(body);
@@ -946,6 +946,10 @@ function normaliseImages(root: ParentNode): void {
  * `span[data-mx-maths]` is inline, `div[data-mx-maths]` display. The sender's fallback content
  * stays until MathsDirective has KaTeX render the LaTeX it re-reads from this string (Angular
  * strips `data-*` at the leaf). Empty maths keeps its fallback.
+ *
+ * An image in a marked fallback becomes its alt text. KaTeX replaces the fallback, so an image
+ * there would leave the inline images {@link normaliseImages} counts and the leaf pairs in
+ * document order out of step: the next image would get its source. Runs before it.
  */
 function normaliseMaths(root: ParentNode): void {
   for (const node of root.querySelectorAll(
@@ -953,6 +957,9 @@ function normaliseMaths(root: ParentNode): void {
   )) {
     if ((node.getAttribute('data-mx-maths') ?? '').trim()) {
       node.classList.add('mx-maths');
+      for (const image of node.querySelectorAll('img')) {
+        image.replaceWith(image.getAttribute('alt')?.trim() || 'Image');
+      }
     }
   }
 }

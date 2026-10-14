@@ -27,6 +27,20 @@ describe('maths in formatted bodies', () => {
     expect(clean.querySelector('span code')?.textContent).toBe('x^2');
   });
 
+  it('turns an image in a maths fallback into its alt text, so the next image keeps its own source', () => {
+    const clean = parse(
+      sanitizeMatrixHtml(
+        '<span data-mx-maths="x"><img src="mxc://hs/a" alt="A"></span> and <img src="mxc://hs/b" alt="B">',
+      ),
+    );
+
+    expect(clean.querySelector('.mx-maths')?.textContent).toBe('A');
+    const images = [...clean.querySelectorAll('img.mx-image')];
+    expect(images).toHaveLength(1);
+    expect(images[0].getAttribute('data-mx-src')).toBe('mxc://hs/b');
+    expect(images[0].getAttribute('alt')).toBe('B');
+  });
+
   it('leaves empty maths as its fallback', () => {
     expect(
       parse(sanitizeMatrixHtml('<span data-mx-maths="  ">fallback</span>'))
