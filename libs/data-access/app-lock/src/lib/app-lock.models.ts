@@ -99,7 +99,11 @@ export type AppLockCommandOutcome =
         | 'not-verified'
         | 'pin-invalid'
         | 'pin-not-saved'
-        | 'setting-not-saved';
+        | 'setting-not-saved'
+        /** `clearUnreadablePin` is only for a readable "off" over a PIN store it can't read. */
+        | 'not-allowed'
+        /** The host couldn't clear the PIN record: unavailable, rejected or no answer. */
+        | 'pin-not-cleared';
     };
 
 /** A guarded change's reading of the system prompt: only `verified` lets the change through. */
@@ -236,5 +240,13 @@ export const PIN_NOT_SAVED: AppLockCommandOutcome = {
 export const SETTING_NOT_SAVED: AppLockCommandOutcome = {
   kind: 'failed',
   reason: 'setting-not-saved',
+};
+export const NOT_ALLOWED: AppLockCommandOutcome = {
+  kind: 'failed',
+  reason: 'not-allowed',
+};
+export const PIN_NOT_CLEARED: AppLockCommandOutcome = {
+  kind: 'failed',
+  reason: 'pin-not-cleared',
 };
 export const PIN_UNAVAILABLE: UnlockOutcome = { kind: 'unavailable' };

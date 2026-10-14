@@ -1092,6 +1092,188 @@ describe('AppLockService', () => {
     });
   });
 
+  describe('a PIN store that cannot be read', () => {
+    const UNREADABLE: HostUserPresenceSupport = {
+      system: { kind: 'unavailable', reason: 'not-supported' },
+      pin: { kind: 'unavailable', reason: 'secure-storage-unavailable' },
+    };
+    const FACE_UNREADABLE: HostUserPresenceSupport = {
+      ...UNREADABLE,
+      system: { kind: 'available', biometry: 'face' },
+    };
+    const PIN_NOT_SET: HostUserPresenceSupport = {
+      ...UNREADABLE,
+      pin: { kind: 'available', set: false, nextAttemptAt: null },
+    };
+
+    it('clears it when the lock is readably off, then re-reads support', async () => {
+      const { lock, adapter, report } = setup({
+        stored: {},
+        support: UNREADABLE,
+        clearPin: () => {
+          report(PIN_NOT_SET);
+          return of<HostOperationOutcome>({ kind: 'completed' });
+        },
+      });
+      await hydrated(lock);
+      expect(lock.status()).toBe('off');
+      expect(lock.pinState()).toBe('unreadable');
+      await expect(firstValueFrom(lock.clearUnreadablePin())).resolves.toEqual({
+        kind: 'completed',
+      });
+      expect(adapter.clearPin).toHaveBeenCalledOnce();
+      expect(lock.pinState()).toBe('not-set');
+      expect(lock.offered()).toBe(true);
+    });
+
+    it('says when the host could not clear it, and re-reads support', async () => {
+      const { lock, adapter } = setup({
+        stored: {},
+        support: UNREADABLE,
+        clearPin: () =>
+          of<HostOperationOutcome>({
+            kind: 'unavailable',
+            reason: 'not-supported',
+          }),
+      });
+      await hydrated(lock);
+      const reads = vi.mocked(adapter.support).mock.calls.length;
+      await expect(firstValueFrom(lock.clearUnreadablePin())).resolves.toEqual({
+        kind: 'failed',
+        reason: 'pin-not-cleared',
+      });
+      expect(vi.mocked(adapter.support).mock.calls.length).toBe(reads + 1);
+    });
+
+    it('reads a host that rejects or fails the clear as not cleared', async () => {
+      const rejected = setup({
+        stored: {},
+        support: UNREADABLE,
+        clearPin: () =>
+          of<HostOperationOutcome>({
+            kind: 'rejected',
+            diagnostic: { code: 'pin-clear-failed' },
+          }),
+      });
+      await hydrated(rejected.lock);
+      await expect(
+        firstValueFrom(rejected.lock.clearUnreadablePin()),
+      ).resolves.toEqual({ kind: 'failed', reason: 'pin-not-cleared' });
+      TestBed.resetTestingModule();
+      const broke = setup({
+        stored: {},
+        support: UNREADABLE,
+        clearPin: () => throwError(() => new Error('ipc')),
+      });
+      await hydrated(broke.lock);
+      await expect(
+        firstValueFrom(broke.lock.clearUnreadablePin()),
+      ).resolves.toEqual({ kind: 'failed', reason: 'pin-not-cleared' });
+    });
+
+    it('refuses while the setting itself could not be read', async () => {
+      // Startup: setting unreadable, no PIN → off. The record then turns unreadable, which
+      // is exactly where only the full reset may remove it.
+      const { lock, adapter, report } = setup({
+        stored: 'unavailable',
+        support: PIN_NOT_SET,
+      });
+      await hydrated(lock);
+      expect(lock.status()).toBe('off');
+      report(UNREADABLE);
+      await firstValueFrom(lock.refreshSupport());
+      expect(lock.pinState()).toBe('unreadable');
+      await expect(firstValueFrom(lock.clearUnreadablePin())).resolves.toEqual({
+        kind: 'failed',
+        reason: 'not-allowed',
+      });
+      expect(adapter.clearPin).not.toHaveBeenCalled();
+    });
+
+    it('refuses while the lock is on', async () => {
+      const { lock, adapter } = setup({ support: FACE_UNREADABLE });
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithSystem());
+      expect(lock.status()).toBe('unlocked');
+      await expect(firstValueFrom(lock.clearUnreadablePin())).resolves.toEqual({
+        kind: 'failed',
+        reason: 'not-allowed',
+      });
+      expect(adapter.clearPin).not.toHaveBeenCalled();
+    });
+
+    it('refuses a PIN record it can read', async () => {
+      const { lock, adapter } = setup({ stored: {}, support: PIN_ONLY });
+      await hydrated(lock);
+      await expect(firstValueFrom(lock.clearUnreadablePin())).resolves.toEqual({
+        kind: 'failed',
+        reason: 'not-allowed',
+      });
+      expect(adapter.clearPin).not.toHaveBeenCalled();
+    });
+
+    it('replaces it with a new PIN after the system prompt confirms it’s you', async () => {
+      const { lock, adapter } = setup({ support: FACE_UNREADABLE });
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithSystem());
+      await expect(firstValueFrom(lock.changePin('7777'))).resolves.toEqual({
+        kind: 'completed',
+      });
+      expect(adapter.clearPin).toHaveBeenCalledOnce();
+      expect(adapter.setPin).toHaveBeenCalledWith('7777');
+      expect(
+        vi.mocked(adapter.clearPin).mock.invocationCallOrder[0],
+      ).toBeLessThan(vi.mocked(adapter.setPin).mock.invocationCallOrder[0]);
+    });
+
+    it('never replaces it on a PIN check alone', async () => {
+      const { lock, adapter, report } = setup({ support: PIN_ONLY });
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithPin('482913'));
+      report(UNREADABLE);
+      await firstValueFrom(lock.refreshSupport());
+      await expect(firstValueFrom(lock.changePin('7777'))).resolves.toEqual({
+        kind: 'failed',
+        reason: 'not-verified',
+      });
+      expect(adapter.clearPin).not.toHaveBeenCalled();
+      expect(adapter.setPin).not.toHaveBeenCalled();
+    });
+
+    it('keeps the old record when the host cannot clear it', async () => {
+      const { lock, adapter } = setup({
+        support: FACE_UNREADABLE,
+        clearPin: () =>
+          of<HostOperationOutcome>({
+            kind: 'rejected',
+            diagnostic: { code: 'pin-clear-failed' },
+          }),
+      });
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithSystem());
+      await expect(firstValueFrom(lock.changePin('7777'))).resolves.toEqual({
+        kind: 'failed',
+        reason: 'pin-not-cleared',
+      });
+      expect(adapter.setPin).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the guard window', () => {
+    it('ends when Settings is left', async () => {
+      const { lock } = setup();
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithSystem());
+      expect(lock.recentlyVerified()).toBe(true);
+      lock.endGuardWindow();
+      expect(lock.recentlyVerified()).toBe(false);
+      await expect(firstValueFrom(lock.setLockAfter('5m'))).resolves.toEqual({
+        kind: 'failed',
+        reason: 'not-verified',
+      });
+    });
+  });
+
   describe('PIN secrecy', () => {
     it('keeps the PIN out of logs, errors and outcomes', async () => {
       const pin = '93817264';

@@ -9,7 +9,8 @@ import type { HostPresenceBiometry } from '@trinity/runtime/host';
 // Runtime, which owns that copy).
 
 /** What a guarded change was trying to do; it names what stayed as it was. */
-export type AppLockChange = 'enable' | 'disable' | 'lock-after' | 'change-pin';
+export type AppLockChange =
+  'enable' | 'disable' | 'lock-after' | 'change-pin' | 'clear-pin';
 
 export type AppLockFailure = Extract<
   AppLockCommandOutcome,
@@ -71,6 +72,8 @@ function unchanged(change: AppLockChange): string {
       return 'Lock after hasn’t changed';
     case 'change-pin':
       return 'your PIN hasn’t changed';
+    case 'clear-pin':
+      return 'the stored PIN is still there';
     default: {
       const unhandled: never = change;
       void unhandled;
@@ -97,6 +100,10 @@ export function failureMessage(
       return `${appName} couldn’t save your PIN, so ${kept}. Try again.`;
     case 'setting-not-saved':
       return `${appName} couldn’t save this setting, so ${kept}. Try again.`;
+    case 'not-allowed':
+      return `${appName} can’t confirm that App lock is off, so ${kept}. Restart ${appName}, then try again.`;
+    case 'pin-not-cleared':
+      return `${appName} couldn’t clear the stored PIN, so ${kept}. Try again.`;
     default: {
       const unhandled: never = reason;
       void unhandled;

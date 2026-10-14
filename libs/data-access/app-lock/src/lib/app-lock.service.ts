@@ -36,9 +36,11 @@ import {
 import {
   COMPLETED,
   GUARD_WINDOW_MS,
+  NOT_ALLOWED,
   NOT_OFFERED,
   NOT_VERIFIED,
   NO_ANSWER,
+  PIN_NOT_CLEARED,
   PIN_NOT_SAVED,
   PIN_UNAVAILABLE,
   PRESENCE_REASONS,
@@ -85,6 +87,8 @@ export class AppLockService {
   private readonly _lockAfter = signal<LockAfter>('1m');
   private readonly _support = signal<HostUserPresenceSupport>(NO_USER_PRESENCE);
   private verifiedAt: number | null = null;
+  /** The system prompt opened the guard window (not a PIN check, not setup). */
+  private verifiedBySystem = false;
   /** The enabled setting could not be read; the host's PIN decides. */
   private settingUnreadable = false;
   /** Counts moves into `locked`; work started before the latest one is stale. */
@@ -263,7 +267,7 @@ export class AppLockService {
                 this._enabled.set(true);
                 this.settingUnreadable = false;
                 if (locks === this.locks && this._status() !== 'locked') {
-                  this.verifiedAt = this.now();
+                  this.openGuardWindow(false);
                   this.setStatus('unlocked');
                 }
                 return of(saved);
@@ -324,12 +328,59 @@ export class AppLockService {
     );
   }
 
+  /**
+   * A new PIN. Over a PIN record the host can't read, only after the system prompt confirmed
+   * it's you inside the guard window (spec §1: someone who forgot the PIN but can use the
+   * system prompt resets it this way): the record is cleared, then the new PIN stored, then
+   * support re-read. A PIN check alone never replaces a record it couldn't read.
+   */
   changePin(pin: string): Observable<AppLockCommandOutcome> {
-    return this.guarded(() =>
-      isValidPin(pin)
-        ? this.storePin(pin)
-        : of<AppLockCommandOutcome>({ kind: 'failed', reason: 'pin-invalid' }),
-    );
+    return this.guarded(() => {
+      if (!isValidPin(pin)) {
+        return of<AppLockCommandOutcome>({
+          kind: 'failed',
+          reason: 'pin-invalid',
+        });
+      }
+      if (this.pinState() !== 'unreadable') return this.storePin(pin);
+      if (!this.verifiedBySystem) return of(NOT_VERIFIED);
+      return this.clearHostPin().pipe(
+        switchMap((cleared) =>
+          cleared.kind === 'completed' ? this.storePin(pin) : of(cleared),
+        ),
+        switchMap((outcome) => this.thenRefresh(outcome)),
+      );
+    });
+  }
+
+  /**
+   * Settings' way out of a PIN record the host can't read while App lock is readably off
+   * (ruling T16-1). With a readable "off" nothing consults the record, so clearing it needs
+   * no verification and grants nothing: turning the lock on still runs setup. Refused
+   * (`not-allowed`) unless, at call time, the lock is off, the setting was actually read and
+   * the PIN store is unreadable; there the full reset stays the only way. Re-reads support
+   * afterwards, whatever the host answered.
+   */
+  clearUnreadablePin(): Observable<AppLockCommandOutcome> {
+    return defer(() => {
+      if (
+        this._enabled() ||
+        this.settingUnreadable ||
+        this._status() !== 'off' ||
+        this.pinState() !== 'unreadable'
+      ) {
+        return of(NOT_ALLOWED);
+      }
+      return this.clearHostPin().pipe(
+        switchMap((outcome) => this.thenRefresh(outcome)),
+      );
+    });
+  }
+
+  /** Settings was left: the next change needs a fresh verification (decision 7). */
+  endGuardWindow(): void {
+    this.verifiedAt = null;
+    this.verifiedBySystem = false;
   }
 
   /** Startup reads everything; a Retry only releases a lock that is still in place. */
@@ -390,7 +441,7 @@ export class AppLockService {
     if (kind === 'unlock' && this._status() !== 'locked') return; // A PIN unlocked first.
     // A settings check never opens the guard window behind the lock.
     if (kind !== 'unlock' && this._status() === 'locked') return;
-    this.verifiedAt = this.now();
+    this.openGuardWindow(true);
     if (kind === 'unlock') this.setStatus('unlocked');
   }
 
@@ -421,6 +472,34 @@ export class AppLockService {
       }),
       catchError(() => of(PIN_NOT_SAVED)),
       defaultIfEmpty(PIN_NOT_SAVED),
+    );
+  }
+
+  private openGuardWindow(bySystem: boolean): void {
+    this.verifiedAt = this.now();
+    this.verifiedBySystem = bySystem;
+  }
+
+  /** The host's clear, with its failure kept: unavailable, rejected, an error or no answer. */
+  private clearHostPin(): Observable<AppLockCommandOutcome> {
+    return this.presence.clearPin().pipe(
+      take(1),
+      map((outcome) =>
+        outcome.kind === 'completed' ? COMPLETED : PIN_NOT_CLEARED,
+      ),
+      catchError(() => of(PIN_NOT_CLEARED)),
+      defaultIfEmpty(PIN_NOT_CLEARED),
+    );
+  }
+
+  /** `outcome`, once support has been read again (what the PIN store holds now). */
+  private thenRefresh(
+    outcome: AppLockCommandOutcome,
+  ): Observable<AppLockCommandOutcome> {
+    return this.refreshSupport().pipe(
+      take(1),
+      map(() => outcome),
+      defaultIfEmpty(outcome),
     );
   }
 
@@ -470,7 +549,7 @@ export class AppLockService {
             const behindLock = !unlocks && this._status() === 'locked';
             if (locks !== this.locks || behindLock)
               return { kind: 'cancelled' };
-            this.verifiedAt = now;
+            this.openGuardWindow(false);
             onVerified();
           } else if (result.kind === 'failed' || result.kind === 'delayed') {
             this.patchPinWait(futureOrNull(result.until, now));
@@ -493,7 +572,7 @@ export class AppLockService {
 
   private setStatus(status: AppLockStatus): void {
     if (status === 'locked') {
-      this.verifiedAt = null;
+      this.endGuardWindow();
       if (this._status() !== 'locked') this.locks += 1;
     }
     this._status.set(status);
