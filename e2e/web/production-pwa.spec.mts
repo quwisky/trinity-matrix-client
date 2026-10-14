@@ -185,8 +185,9 @@ test('the installed production PWA starts, routes, and remains usable offline', 
       await context.setOffline(true);
       await page.goto('/offline-deep-link', { waitUntil: 'domcontentloaded' });
 
-      // The worker serves the shell and every lazy chunk; Router still repairs the URL and the
-      // prefetched crypto module remains available for the first encrypted offline start.
+      // The worker serves the shell and every lazy chunk but the maths renderer's (installed on
+      // first use); Router still repairs the URL and the prefetched crypto module remains
+      // available for the first encrypted offline start.
       await expect(
         page.getByRole('heading', { name: 'Sign in to Trinity' }),
       ).toBeVisible();
