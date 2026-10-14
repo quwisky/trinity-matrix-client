@@ -24,6 +24,9 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { AppLockGroupComponent } from './app-lock-group.component';
 
 const PIN = '482913';
+/** What the PIN dialog closes with. */
+const NEW_PIN = { kind: 'pin', pin: PIN } as const;
+const VERIFIED = { kind: 'verified' } as const;
 
 /** One macrotask for the zoneless renderer. */
 const tick = () => new Promise((resolve) => setTimeout(resolve));
@@ -161,7 +164,7 @@ const verifyDialog = (methodName: string | null) =>
 describe('AppLockGroupComponent', () => {
   describe('turning it on', () => {
     it('runs the system prompt, then asks for a PIN', async () => {
-      const { lock, open } = await setup({ dialogResults: [PIN] });
+      const { lock, open } = await setup({ dialogResults: [NEW_PIN] });
       expect(lockSwitch().checked).toBe(false);
       await click(lockSwitch());
       expect(lock.confirmPresence).toHaveBeenCalledOnce();
@@ -177,7 +180,7 @@ describe('AppLockGroupComponent', () => {
     it('goes straight to the PIN where there is no system prompt', async () => {
       const { lock, open } = await setup({
         support: { ...PIN_ONLY, pin: { ...PIN_ONLY.pin, set: false } as never },
-        dialogResults: [PIN],
+        dialogResults: [NEW_PIN],
       });
       await click(lockSwitch());
       expect(lock.confirmPresence).not.toHaveBeenCalled();
@@ -213,7 +216,7 @@ describe('AppLockGroupComponent', () => {
     it('falls back to the PIN alone when the system prompt turns out unavailable', async () => {
       const { lock, open } = await setup({
         presence: { kind: 'unavailable', reason: 'not-enrolled' },
-        dialogResults: [PIN],
+        dialogResults: [NEW_PIN],
       });
       await click(lockSwitch());
       expect(open).toHaveBeenCalledOnce();
@@ -230,7 +233,7 @@ describe('AppLockGroupComponent', () => {
 
     it('asks the system prompt again when the PIN took longer than the guard window', async () => {
       const { lock } = await setup({
-        dialogResults: [PIN],
+        dialogResults: [NEW_PIN],
         // The window closed while the PIN was typed.
         recentlyVerified: false,
       });
@@ -264,7 +267,7 @@ describe('AppLockGroupComponent', () => {
       'shows the switch off and says why when enable gives %o',
       async (failure, text) => {
         const { lock } = await setup({
-          dialogResults: [PIN],
+          dialogResults: [NEW_PIN],
           failures: { enable: failure },
         });
         await click(lockSwitch());
@@ -278,7 +281,7 @@ describe('AppLockGroupComponent', () => {
 
     it('clears an earlier message when the next attempt starts', async () => {
       await setup({
-        dialogResults: [PIN, undefined],
+        dialogResults: [NEW_PIN, undefined],
         failures: { enable: { kind: 'failed', reason: 'pin-not-saved' } },
       });
       await click(lockSwitch());
@@ -306,7 +309,7 @@ describe('AppLockGroupComponent', () => {
         enabled: true,
         recentlyVerified: false,
         guard: 'use-pin',
-        dialogResults: ['verified'],
+        dialogResults: [VERIFIED],
       });
       await click(lockSwitch());
       expect(open).toHaveBeenCalledWith(
@@ -446,7 +449,7 @@ describe('AppLockGroupComponent', () => {
         // Not yet verified; the PIN check then opens the window.
         recentlyVerified: () => checks++ > 0,
         guard: 'use-pin',
-        dialogResults: ['verified', PIN],
+        dialogResults: [VERIFIED, NEW_PIN],
       });
       await click(screen.getByRole('button', { name: 'Change PIN' }));
       expect(open).toHaveBeenNthCalledWith(
@@ -469,7 +472,7 @@ describe('AppLockGroupComponent', () => {
       let checks = 0;
       const { lock } = await setup({
         enabled: true,
-        dialogResults: [PIN],
+        dialogResults: [NEW_PIN],
         recentlyVerified: () => checks++ === 0,
       });
       await click(screen.getByRole('button', { name: 'Change PIN' }));
@@ -503,7 +506,7 @@ describe('AppLockGroupComponent', () => {
     ])('says why when changePin gives %o', async (failure, text) => {
       await setup({
         enabled: true,
-        dialogResults: [PIN],
+        dialogResults: [NEW_PIN],
         failures: { changePin: failure },
       });
       await click(screen.getByRole('button', { name: 'Change PIN' }));

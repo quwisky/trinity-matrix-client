@@ -6,14 +6,17 @@ import {
 import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { AppLockPinDialogComponent } from './app-lock-pin-dialog.component';
 
 // The fixture PIN. Failure messages never print a PIN: presence checks use `.toBe(false)`.
 const PIN = '482913';
 
-/** One macrotask for the zoneless renderer. */
-const tick = () => new Promise((resolve) => setTimeout(resolve));
+/** One macrotask for the zoneless renderer, in real or fake time. */
+async function tick(): Promise<void> {
+  if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(0);
+  else await new Promise((resolve) => setTimeout(resolve));
+}
 
 async function click(element: Element): Promise<void> {
   fireEvent.click(element);
@@ -67,7 +70,7 @@ describe('AppLockPinDialogComponent', () => {
       await type(field('New PIN'), PIN);
       await type(field('Confirm PIN'), PIN);
       await click(screen.getByRole('button', { name: 'Set PIN' }));
-      expect(close).toHaveBeenCalledWith(PIN);
+      expect(close).toHaveBeenCalledWith({ kind: 'pin', pin: PIN });
     });
 
     it('clears both fields once the PIN leaves the dialog', async () => {
@@ -127,7 +130,7 @@ describe('AppLockPinDialogComponent', () => {
       await type(field('New PIN'), '4829');
       await type(field('Confirm PIN'), '4829');
       await click(screen.getByRole('button', { name: 'Set PIN' }));
-      expect(close).toHaveBeenCalledWith('4829');
+      expect(close).toHaveBeenCalledWith({ kind: 'pin', pin: '4829' });
     });
 
     it('asks for a numeric PIN the browser never saves or shows', async () => {
@@ -147,12 +150,14 @@ describe('AppLockPinDialogComponent', () => {
       expect(field('New PIN').hasAttribute('data-autofocus')).toBe(true);
     });
 
-    it('cancels without a PIN', async () => {
+    it('cancels without a PIN, from its one Cancel button', async () => {
       const { close } = await setup('set', null);
+      // The footer cancels; no second control (an X) carries the same name.
+      expect(
+        screen.getAllByRole('button', { name: /^(Cancel|Close)$/ }),
+      ).toHaveLength(1);
       await type(field('New PIN'), PIN);
-      await click(
-        screen.getAllByRole('button', { name: 'Cancel' }).at(-1) as HTMLElement,
-      );
+      await click(screen.getByRole('button', { name: 'Cancel' }));
       expect(close).toHaveBeenCalledWith();
     });
   });
@@ -167,7 +172,7 @@ describe('AppLockPinDialogComponent', () => {
       await type(field('Trinity PIN'), PIN);
       await click(screen.getByRole('button', { name: 'Confirm' }));
       expect(verifyPinForChange).toHaveBeenCalledWith(PIN);
-      expect(close).toHaveBeenCalledWith('verified');
+      expect(close).toHaveBeenCalledWith({ kind: 'verified' });
       expect(field('Trinity PIN').value).toBe('');
     });
 
@@ -183,6 +188,70 @@ describe('AppLockPinDialogComponent', () => {
       );
       expect(field('Trinity PIN').value).toBe('');
       expect(document.activeElement).toBe(field('Trinity PIN'));
+    });
+
+    it('counts a wait down and refuses to submit until it ends', async () => {
+      vi.useFakeTimers({
+        toFake: [
+          'setTimeout',
+          'clearTimeout',
+          'setInterval',
+          'clearInterval',
+          'Date',
+        ],
+      });
+      onTestFinished(() => {
+        vi.useRealTimers();
+      });
+      const until = Date.now() + 30_000;
+      const { verifyPinForChange } = await setup('verify', null, {
+        verify: { kind: 'delayed', until },
+      });
+      await type(field('Trinity PIN'), '000000');
+      await click(screen.getByRole('button', { name: 'Confirm' }));
+      const shown = () =>
+        screen.getByTestId('app-lock-pin-message').textContent?.trim();
+      expect(shown()).toBe('Too many wrong PINs. Try again in 30 seconds.');
+      // Announced once, not every second.
+      expect(screen.getByRole('alert').textContent?.trim()).toBe(
+        'Too many wrong PINs. Try again in 30 seconds.',
+      );
+      const confirm = screen.getByRole('button', { name: 'Confirm' });
+      expect((confirm as HTMLButtonElement).disabled).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(11_500);
+      await tick();
+      expect(shown()).toBe('Too many wrong PINs. Try again in 19 seconds.');
+      expect(screen.getByRole('alert').textContent?.trim()).toBe(
+        'Too many wrong PINs. Try again in 30 seconds.',
+      );
+      await type(field('Trinity PIN'), '111111');
+      fireEvent.submit(field('Trinity PIN').form as HTMLFormElement);
+      await tick();
+      expect(verifyPinForChange).toHaveBeenCalledOnce();
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      await tick();
+      expect(shown()).toBe('Too many wrong PINs. Try again.');
+      expect(screen.getByRole('alert').textContent?.trim()).toBe(
+        'You can try again now.',
+      );
+      expect((confirm as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('never shows a negative wait for a deadline already passed', async () => {
+      await setup('verify', null, {
+        verify: { kind: 'delayed', until: Date.now() - 5_000 },
+      });
+      await type(field('Trinity PIN'), '000000');
+      await click(screen.getByRole('button', { name: 'Confirm' }));
+      expect(
+        screen.getByTestId('app-lock-pin-message').textContent?.trim(),
+      ).toBe('Too many wrong PINs. Try again.');
+      expect(
+        (screen.getByRole('button', { name: 'Confirm' }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
     });
 
     it('says how long to wait after too many wrong PINs', async () => {

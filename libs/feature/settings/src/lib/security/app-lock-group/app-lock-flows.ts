@@ -59,7 +59,7 @@ export class AppLockFlows {
       switchMap((ended) =>
         ended
           ? of(ended)
-          : this.askPin('set').pipe(
+          : this.askNewPin().pipe(
               switchMap((pin) =>
                 pin
                   ? // Typing the PIN may outlast the 60-second window: prompt again if so.
@@ -78,7 +78,7 @@ export class AppLockFlows {
   /** Change PIN: a fresh check, the new PIN twice, then (still verified) the change. */
   changePin(): Observable<AppLockFlowEnd> {
     return this.guarded(() =>
-      this.askPin('set').pipe(
+      this.askNewPin().pipe(
         switchMap((pin) =>
           // Typing the new PIN may outlast the guard window: check again if it did.
           pin ? this.guarded(() => this.appLock.changePin(pin)) : of(STOPPED),
@@ -164,7 +164,16 @@ export class AppLockFlows {
       });
     }
     return this.askPin('verify').pipe(
-      switchMap((result) => (result === 'verified' ? command() : of(STOPPED))),
+      switchMap((result) =>
+        result?.kind === 'verified' ? command() : of(STOPPED),
+      ),
+    );
+  }
+
+  /** The new PIN, typed twice; null when the dialog was cancelled. */
+  private askNewPin(): Observable<string | null> {
+    return this.askPin('set').pipe(
+      map((result) => (result?.kind === 'pin' ? result.pin : null)),
     );
   }
 

@@ -4,12 +4,8 @@
   (submit)="submitPin()"
   data-testid="app-lock-pin-dialog"
 >
-  <trn-dialog-shell
-    [title]="title()"
-    size="sm"
-    closeLabel="Cancel"
-    (closed)="cancel()"
-  >
+  <!-- No X: the footer's Cancel is the one way out by button (Escape still cancels). -->
+  <trn-dialog-shell [title]="title()" size="sm" [closable]="false">
     <div class="flex flex-col gap-4">
       @if (mode() === 'set') {
         <!-- The warning decision 11 requires: always shown, never behind a toggle. The
@@ -58,7 +54,7 @@
         @if (pinError) {
           <p
             id="app-lock-pin-input-error"
-            class="m-0 text-13 text-danger"
+            class="m-0 text-sm text-danger"
             role="alert"
           >
             {{ pinError.message }}
@@ -66,7 +62,7 @@
         } @else if (mode() === 'set') {
           <p
             id="app-lock-pin-input-hint"
-            class="m-0 text-13 text-muted-foreground"
+            class="m-0 text-sm text-muted-foreground"
           >
             4 to 16 digits. Use {{ suggested }} or more if you can.
           </p>
@@ -98,7 +94,7 @@
           @if (confirmError) {
             <p
               id="app-lock-pin-confirm-error"
-              class="m-0 text-13 text-danger"
+              class="m-0 text-sm text-danger"
               role="alert"
             >
               {{ confirmError.message }}
@@ -108,14 +104,12 @@
       }
 
       @if (message(); as text) {
-        <p
-          class="m-0 text-13 text-danger"
-          role="alert"
-          data-testid="app-lock-pin-message"
-        >
+        <!-- Counts down live; the announcement below speaks only when it fails and ends. -->
+        <p class="m-0 text-sm text-danger" data-testid="app-lock-pin-message">
           {{ text }}
         </p>
       }
+      <p class="sr-only" role="alert">{{ announcement() }}</p>
     </div>
 
     <div trnDialogActions>
@@ -132,7 +126,7 @@
         trnBtn
         type="submit"
         [loading]="busy()"
-        [disabled]="busy()"
+        [disabled]="busy() || waiting()"
         data-testid="app-lock-pin-submit"
       >
         {{ mode() === 'set' ? 'Set PIN' : 'Confirm' }}
