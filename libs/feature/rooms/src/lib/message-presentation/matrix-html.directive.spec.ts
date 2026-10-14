@@ -129,4 +129,23 @@ describe('MatrixHtmlDirective', () => {
 
     expect(host.querySelector('.mx-fg-e03030')).not.toBeNull();
   });
+
+  it('keeps the spoiler reason through Angular’s sanitizer and drops the name on reveal', () => {
+    const { host } = render(
+      sanitizeMatrixHtml('<span data-mx-spoiler="ending">she lives</span>'),
+    );
+    const spoiler = host.querySelector<HTMLElement>('.mx-spoiler')!;
+
+    // Angular keeps `label` today; an upgrade that drops it must fail here, not silently.
+    expect(spoiler.getAttribute('label')).toBe('ending');
+    expect(spoiler.getAttribute('aria-label')).toBe(
+      'Spoiler: ending, activate to reveal',
+    );
+
+    spoiler.click();
+
+    expect(spoiler.hasAttribute('aria-label')).toBe(false);
+    expect(spoiler.hasAttribute('role')).toBe(false);
+    expect(spoiler.hasAttribute('tabindex')).toBe(false);
+  });
 });

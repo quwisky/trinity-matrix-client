@@ -74,4 +74,18 @@ describe('SpoilerRevealDirective', () => {
     expect(spoiler.classList.contains('is-revealed')).toBe(true);
     expect(event.preventDefault).toHaveBeenCalled();
   });
+
+  it('stops naming a revealed spoiler as a button and drops its tab stop', () => {
+    const root = container(
+      '<span class="mx-spoiler" role="button" tabindex="0" aria-label="Spoiler, activate to reveal">secret</span>',
+    );
+    const spoiler = root.querySelector('.mx-spoiler')!;
+
+    directive.onClick(eventOn(spoiler));
+
+    expect(spoiler.hasAttribute('aria-label')).toBe(false);
+    expect(spoiler.hasAttribute('role')).toBe(false);
+    // Ruling 2N2: revealed content is no longer interactive, so it leaves the tab order.
+    expect(spoiler.hasAttribute('tabindex')).toBe(false);
+  });
 });

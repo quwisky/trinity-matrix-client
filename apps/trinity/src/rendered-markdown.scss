@@ -415,6 +415,15 @@
       * {
         visibility: hidden;
       }
+
+      // The sender's reason, as generated content: it stays out of textContent, copies and the
+      // edit-history diff, like the code block's `language` caption. Drawn in the message
+      // surface's colour so it reads against the bar (filled with --trinity-text-bright). A
+      // pseudo-element is not matched by `*` above, so it stays visible.
+      &[label]::before {
+        content: 'Spoiler: ' attr(label) ' ';
+        color: var(--trinity-message-surface, var(--trinity-surface-canvas));
+      }
     }
   }
 

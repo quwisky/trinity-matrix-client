@@ -963,13 +963,41 @@ function enforceMxcImages(root: ParentNode): void {
  * send path as well, and attributes it sets are not re-filtered against ALLOWED_ATTR —
  * so from there `tabindex`/`role` (in neither allowlist) would end up in outgoing
  * `formatted_body`.
+ *
+ * The reason is copied into `label`, which Angular keeps and which is inert on `span`; CSS
+ * shows it as generated content on the concealed bar (rendered-markdown.scss), so it stays
+ * out of `textContent`, copies and the edit-history diff. `aria-label` names the concealed
+ * spoiler for screen readers instead of its hidden text; SpoilerRevealDirective removes it,
+ * the role and the tab stop on reveal.
  */
 function normaliseSpoilers(root: ParentNode): void {
   for (const node of root.querySelectorAll('[data-mx-spoiler]')) {
     node.classList.add('mx-spoiler');
     node.setAttribute('tabindex', '0');
     node.setAttribute('role', 'button');
+    const reason = spoilerReason(node.getAttribute('data-mx-spoiler') ?? '');
+    if (reason) {
+      node.setAttribute('label', reason);
+      node.setAttribute('aria-label', `Spoiler: ${reason}, activate to reveal`);
+    } else {
+      node.setAttribute('aria-label', 'Spoiler, activate to reveal');
+    }
   }
+}
+
+/** Longest spoiler reason shown, in characters (code points, so an emoji is one). */
+const MAX_SPOILER_REASON = 80;
+
+/**
+ * A sender's spoiler reason ("the reason (optionally) being in the `data-mx-spoiler`
+ * attribute", spec v1.19) as one short line: trimmed, whitespace collapsed, cut to
+ * {@link MAX_SPOILER_REASON}. Linear in the attribute's length.
+ */
+function spoilerReason(raw: string): string {
+  return Array.from(raw.trim().replace(/\s+/g, ' '))
+    .slice(0, MAX_SPOILER_REASON)
+    .join('')
+    .trimEnd();
 }
 
 /** `#` and exactly six hex digits: the only sender colour Trinity applies (owner decision 2). */

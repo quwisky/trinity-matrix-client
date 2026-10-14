@@ -45,5 +45,9 @@ export class SpoilerRevealDirective {
     event.preventDefault();
     event.stopPropagation();
     spoiler.classList.add(REVEALED_CLASS);
+    // Revealed content is ordinary text again: no button, no name hiding it, no tab stop.
+    spoiler.removeAttribute('aria-label');
+    spoiler.removeAttribute('role');
+    spoiler.removeAttribute('tabindex');
   }
 }
