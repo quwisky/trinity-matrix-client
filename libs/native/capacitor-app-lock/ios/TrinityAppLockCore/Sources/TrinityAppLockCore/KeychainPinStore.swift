@@ -39,11 +39,13 @@ public final class KeychainPinStore: PinRecordStore {
         if status == errSecItemNotFound {
             status = SecItemAdd(query.merging(attributes) { $1 } as CFDictionary, nil)
         }
-        guard status == errSecSuccess else { throw PinStoreError.unreadable }
+        guard status == errSecSuccess else { throw PinStoreError.writeFailed }
     }
 
     public func remove() throws {
         let status = SecItemDelete(query as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else { throw PinStoreError.unreadable }
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw PinStoreError.deleteFailed
+        }
     }
 }

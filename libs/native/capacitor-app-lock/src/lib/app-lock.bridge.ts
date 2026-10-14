@@ -21,20 +21,38 @@ export type AppLockPinCheck =
   | { readonly kind: 'invalid' }
   | { readonly kind: 'unavailable' };
 
+type VerifyResult = Awaited<ReturnType<AppLockPlugin['verifyPin']>>['result'];
+
+const UNAVAILABLE = { kind: 'unavailable' } as const;
+
 function codeOf(error: unknown): unknown {
   return typeof error === 'object' && error !== null && 'code' in error
     ? (error as { code: unknown }).code
     : undefined;
 }
 
-function instant(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * A wait's end as the plugin declares it: a finite number or null. Anything else (missing,
+ * a string, an infinity) is undefined: a garbled answer, which the caller reads as unavailable.
+ */
+function waitEnd(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 /**
  * The mobile Trinity PIN verifier (iOS Keychain, Android Keystore), written through this
  * package's `TrinityAppLock` plugin, which `cap sync` registers in both hosts. Inert
  * everywhere else, including Electron, whose verifier lives in the main process.
+ *
+ * Fails closed: an answer outside the declared shape (an older or a hostile build) is
+ * unavailable, never "no PIN set", "no wait" or "verified".
  */
 @Injectable({ providedIn: 'root' })
 export class AppLockPinBridge {
@@ -46,12 +64,15 @@ export class AppLockPinBridge {
     return defer((): Observable<AppLockPinStatus> => {
       if (!this.available) return of({ kind: 'not-supported' });
       return from(appLock.pinStatus()).pipe(
-        map((result): AppLockPinStatus => ({
-          kind: 'ready',
-          set: result.set === true,
-          nextAttemptAt: instant(result.nextAttemptAt),
-        })),
-        catchError(() => of<AppLockPinStatus>({ kind: 'unavailable' })),
+        map((answer: unknown): AppLockPinStatus => {
+          if (!isRecord(answer)) return UNAVAILABLE;
+          const set = answer['set'];
+          const next = waitEnd(answer['nextAttemptAt']);
+          if (typeof set !== 'boolean' || next === undefined)
+            return UNAVAILABLE;
+          return { kind: 'ready', set, nextAttemptAt: next };
+        }),
+        catchError(() => of<AppLockPinStatus>(UNAVAILABLE)),
       );
     });
   }
@@ -74,31 +95,36 @@ export class AppLockPinBridge {
 
   verify(pin: string): Observable<AppLockPinCheck> {
     return defer((): Observable<AppLockPinCheck> => {
-      if (!this.available) return of({ kind: 'unavailable' });
+      if (!this.available) return of(UNAVAILABLE);
       return from(appLock.verifyPin({ pin })).pipe(
-        map((result): AppLockPinCheck => {
-          const next = instant(result.nextAttemptAt);
-          switch (result.result) {
+        map((answer: unknown): AppLockPinCheck => {
+          if (!isRecord(answer)) return UNAVAILABLE;
+          // Narrowed by the switch; any other value reaches the default branch at runtime.
+          const result = answer['result'] as VerifyResult;
+          const next = waitEnd(answer['nextAttemptAt']);
+          switch (result) {
             case 'verified':
             case 'invalid':
             case 'unavailable':
-              return { kind: result.result };
+              return { kind: result };
             case 'failed':
-              return { kind: 'failed', nextAttemptAt: next };
+              return next === undefined
+                ? UNAVAILABLE
+                : { kind: 'failed', nextAttemptAt: next };
             case 'delayed':
-              return next === null
-                ? { kind: 'unavailable' }
+              return next === undefined || next === null
+                ? UNAVAILABLE
                 : { kind: 'delayed', nextAttemptAt: next };
             default: {
               // A native host answering outside the declared union (an older or a hostile
               // build) is unavailable; the compiler still checks that every result is handled.
-              const unhandled: never = result.result;
+              const unhandled: never = result;
               void unhandled;
-              return { kind: 'unavailable' };
+              return UNAVAILABLE;
             }
           }
         }),
-        catchError(() => of<AppLockPinCheck>({ kind: 'unavailable' })),
+        catchError(() => of<AppLockPinCheck>(UNAVAILABLE)),
       );
     });
   }

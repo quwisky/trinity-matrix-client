@@ -5,7 +5,8 @@ import UIKit
 /**
  * The App lock PIN verifier for the web layer (AppLockPinBridge in @trinity/capacitor-app-lock).
  * The PIN arrives once per call and is never logged, stored or returned; errors carry stable
- * codes only. Work runs off the main thread: PBKDF2 takes a few hundred milliseconds.
+ * codes only (every storage failure, read, write or delete, is `storage-unavailable`). Work runs
+ * off the main thread: PBKDF2 takes a few hundred milliseconds.
  *
  * `cap sync` registers this class from the @trinity/capacitor-app-lock package, so it is a
  * public CAPPlugin: Capacitor's automatic registration skips CAPInstancePlugin subclasses.
@@ -49,10 +50,9 @@ public class AppLockPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func verifyPin(_ call: CAPPluginCall) {
-        guard let pin = call.getString("pin") else {
-            call.resolve(["result": "invalid", "nextAttemptAt": NSNull()])
-            return
-        }
+        // A missing PIN goes through the verifier as an empty one, so it meets the same order
+        // as any malformed PIN: an unreadable record is unavailable, otherwise it is invalid.
+        let pin = call.getString("pin") ?? ""
         work.async {
             switch self.verifier.verify(pin) {
             case .verified:

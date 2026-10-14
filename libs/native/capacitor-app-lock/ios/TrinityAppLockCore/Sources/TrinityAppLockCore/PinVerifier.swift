@@ -11,7 +11,12 @@ public protocol PinRecordStore {
 
 /// Fixed cases only: no error carries the PIN, its salt, its hash or the system's detail.
 public enum PinStoreError: Error {
+    /// The record exists but could not be read or decoded.
     case unreadable
+    /// The record could not be added or updated.
+    case writeFailed
+    /// The record could not be removed.
+    case deleteFailed
     case random
     case kdf
 }
@@ -135,9 +140,11 @@ public final class PinVerifier {
 
     public func verify(_ pin: String) -> PinCheck {
         queue.sync {
-            // Checked first: a malformed PIN never reaches PBKDF2 and is never counted.
-            guard PinPolicy.isValid(pin) else { return .invalid }
+            // Electron's order: the record first, so an unreadable record is unavailable for any
+            // PIN; then the format, before the wait and the KDF, so a malformed PIN never
+            // reaches PBKDF2 and is never counted.
             guard case .some(.success(var record)) = readRecord() else { return .unavailable }
+            guard PinPolicy.isValid(pin) else { return .invalid }
             let now = clock()
             guard PinPolicy.attemptAllowed(record.failureState, at: now) else {
                 return .delayed(nextAttemptAt: PinPolicy.nextAttemptAt(record.failureState) ?? now.nowMs)

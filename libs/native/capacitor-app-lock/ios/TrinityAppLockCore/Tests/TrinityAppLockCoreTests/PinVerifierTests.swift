@@ -11,7 +11,7 @@ private final class MemoryStore: PinRecordStore {
         return data
     }
     func write(_ data: Data) throws {
-        if failWrites { throw PinStoreError.unreadable }
+        if failWrites { throw PinStoreError.writeFailed }
         writes += 1
         self.data = data
     }
@@ -126,6 +126,20 @@ final class PinVerifierTests: XCTestCase {
 
     func testVerifyWithoutARecordIsUnavailable() {
         XCTAssertEqual(verifier(MemoryStore()).verify("482913"), .unavailable)
+        XCTAssertEqual(verifier(MemoryStore()).verify("12"), .unavailable)
+    }
+
+    /// Electron's order: the record is read before the format is checked, so a malformed PIN
+    /// against an unreadable record is unavailable, and it still never reaches PBKDF2.
+    func testAMalformedPinAgainstAnUnreadableRecordIsUnavailable() {
+        let store = MemoryStore()
+        store.failReads = true
+        XCTAssertEqual(verifier(store).verify("12"), .unavailable)
+        XCTAssertEqual(verifier(store).verify("\u{0661}\u{0662}\u{0663}\u{0664}"), .unavailable)
+        store.failReads = false
+        store.data = Data("not a record".utf8)
+        XCTAssertEqual(verifier(store).verify("12 34"), .unavailable)
+        XCTAssertEqual(store.writes, 0)
     }
 
     /// A failure count and its two instants exist together or not at all, as Electron's

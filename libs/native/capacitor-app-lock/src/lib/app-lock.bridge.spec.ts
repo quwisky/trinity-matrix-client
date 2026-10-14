@@ -139,12 +139,50 @@ describe('AppLockPinBridge', () => {
     });
   });
 
-  it('ignores a non-numeric wait end in the status', async () => {
-    plugin.pinStatus.mockResolvedValue({ set: true, nextAttemptAt: 'soon' });
+  // A garbled answer (an older or a hostile build) must never read as "no PIN set" or "no
+  // wait": a stored PIN keeps the lock on when the setting cannot be read.
+  it.each([
+    ['a missing set', { nextAttemptAt: null }],
+    ['a string set', { set: 'false', nextAttemptAt: null }],
+    ['a numeric set', { set: 0, nextAttemptAt: null }],
+    ['a null set', { set: null, nextAttemptAt: null }],
+    ['a non-numeric wait end', { set: true, nextAttemptAt: 'soon' }],
+    ['a missing wait end', { set: true }],
+    [
+      'an infinite wait end',
+      { set: true, nextAttemptAt: Number.POSITIVE_INFINITY },
+    ],
+    ['no answer', undefined],
+    ['a null answer', null],
+  ])('reads a status with %s as unavailable', async (_name, answer) => {
+    plugin.pinStatus.mockResolvedValue(answer);
+    await expect(firstValueFrom(bridge().status())).resolves.toEqual({
+      kind: 'unavailable',
+    });
+  });
+
+  it('reads a running wait from the status', async () => {
+    plugin.pinStatus.mockResolvedValue({ set: true, nextAttemptAt: 30_000 });
     await expect(firstValueFrom(bridge().status())).resolves.toEqual({
       kind: 'ready',
       set: true,
-      nextAttemptAt: null,
+      nextAttemptAt: 30_000,
+    });
+  });
+
+  it.each([
+    [
+      'a failure with a non-numeric wait end',
+      { result: 'failed', nextAttemptAt: 'soon' },
+    ],
+    ['a failure with a missing wait end', { result: 'failed' }],
+    ['a missing result', { nextAttemptAt: null }],
+    ['no answer', undefined],
+    ['a null answer', null],
+  ])('reads a check with %s as unavailable', async (_name, answer) => {
+    plugin.verifyPin.mockResolvedValue(answer);
+    await expect(firstValueFrom(bridge().verify('482913'))).resolves.toEqual({
+      kind: 'unavailable',
     });
   });
 

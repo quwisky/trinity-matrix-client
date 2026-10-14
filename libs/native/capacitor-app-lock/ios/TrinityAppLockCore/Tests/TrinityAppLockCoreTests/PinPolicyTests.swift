@@ -59,12 +59,13 @@ final class PinPolicyTests: XCTestCase {
         }
     }
 
-    /// The since-boot reading is mach_continuous_time, which counts through sleep and never
-    /// follows the wall clock.
-    func testSystemClockCountsSinceBootIncludingSleep() {
+    /// The since-boot reading comes from CLOCK_MONOTONIC_RAW (mach_continuous_time), not the
+    /// wall-derived CLOCK_MONOTONIC; why that clock counts sleep is on PinVerifier.systemClock.
+    /// Sleep itself cannot be shown here: that stays an owner check on a device.
+    func testSystemClockReadsTheContinuousClock() {
         let continuous = Double(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) / 1_000_000_000
         let reading = PinVerifier.systemClock()
-        XCTAssertEqual(reading.uptimeS, continuous, accuracy: 1)
+        XCTAssertEqual(reading.uptimeS, continuous, accuracy: 0.05)
         XCTAssertEqual(reading.nowMs, Date().timeIntervalSince1970 * 1000, accuracy: 1000)
     }
 
