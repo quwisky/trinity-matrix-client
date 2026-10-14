@@ -314,7 +314,7 @@ describe('InlineMxcImagesDirective', () => {
       expect(host.textContent).toBe('pic');
     });
 
-    it('reserves the sender’s box, no taller than 300px', async () => {
+    it('reserves the sender’s box within the stylesheet’s height cap', async () => {
       const { host } = await render(
         sanitizeMatrixHtml(
           '<img src="mxc://hs/pic" width="1200" height="900" alt="pic">',
@@ -322,11 +322,13 @@ describe('InlineMxcImagesDirective', () => {
       );
       const image = host.querySelector('img')!;
 
-      expect(image.style.width).toBe('400px');
       expect(image.style.aspectRatio).toBe('1200 / 900');
+      expect(image.style.width).toBe(
+        'min(1200px, calc(var(--trinity-message-image-max-height) * 1200 / 900))',
+      );
     });
 
-    it('caps every inline image at 300px tall, whatever height the sender gives', async () => {
+    it('never draws a sender’s height as a presentational hint', async () => {
       const { host } = await render(
         sanitizeMatrixHtml(
           '<img src="mxc://hs/pic" width="10" height="20000" alt="pic">',
@@ -334,41 +336,14 @@ describe('InlineMxcImagesDirective', () => {
       );
       const image = host.querySelector('img')!;
 
-      expect(getComputedStyle(image).maxHeight).toBe('300px');
-      // The sender's size is no presentational hint either: no 20000px box, loaded or not.
+      // No 20000px box, loaded or not. The cap itself is the stylesheet's alone (the Inline
+      // images journey measures it in a browser), so nothing inline repeats it.
       expect(image.hasAttribute('height')).toBe(false);
       expect(image.hasAttribute('width')).toBe(false);
       expect(image.style.height).toBe('');
       expect(image.style.width).toBe('');
+      expect(image.style.maxHeight).toBe('');
     });
-
-    it('keeps a very tall reserved box within 300px', async () => {
-      const { host } = await render(
-        sanitizeMatrixHtml(
-          '<img src="mxc://hs/pic" width="1" height="9999" alt="pic">',
-        ),
-      );
-      const image = host.querySelector('img')!;
-      const [width, height] = image.style.aspectRatio.split('/').map(Number);
-
-      expect(parseFloat(image.style.width)).toBeGreaterThan(0);
-      expect(
-        (parseFloat(image.style.width) * height) / width,
-      ).toBeLessThanOrEqual(300);
-    });
-
-    it.each(['400px', '1e3', '0', '-5', ' 400', '123456'])(
-      'reserves no box from a sender size of %j',
-      async (size) => {
-        const { host } = await render(
-          `<img class="mx-image" data-mx-src="mxc://hs/pic" width="${size}" height="${size}" alt="pic">`,
-        );
-        const image = host.querySelector('img')!;
-
-        expect(image.style.width).toBe('');
-        expect(image.style.aspectRatio).toBe('');
-      },
-    );
 
     it('opens the full image on click, Enter and Space', async () => {
       const { host } = await render(

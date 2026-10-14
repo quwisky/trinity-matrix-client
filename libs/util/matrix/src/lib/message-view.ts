@@ -538,7 +538,7 @@ const MATRIX_URI_SAFE_ATTR = ['color', 'start', 'width', 'height'];
  * the render path's GFM checkbox, read by {@link normaliseTaskItems} and then removed. An
  * image's `width`/`height` reserve its box: {@link normaliseImages} keeps only plain 1–5 digit
  * values, and the feature layer draws an inline image no taller than 300px and no wider than the
- * body (`IMAGE_MAX_HEIGHT_PX` in InlineMxcImagesDirective, `img.mx-image` in
+ * body (`--trinity-message-image-max-height` on `img.mx-image` in
  * `apps/trinity/src/rendered-markdown.scss`), so a sender's size cannot open a huge empty box.
  */
 const MATRIX_TAG_ATTRIBUTES: ReadonlyMap<string, ReadonlySet<string>> = new Map<

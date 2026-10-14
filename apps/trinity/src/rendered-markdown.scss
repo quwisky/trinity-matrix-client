@@ -394,12 +394,15 @@
       border-radius: var(--trinity-radius-sm);
 
       // An inline image from another client (spec A2): no taller than 300px, never wider than
-      // the body, ratio kept. InlineMxcImagesDirective reserves the sender's box with an inline
-      // width and aspect-ratio, which win over these.
+      // the body, ratio kept. The cap's one source is the custom property below: the reserved
+      // width InlineMxcImagesDirective sets inline (with an aspect-ratio, both winning over
+      // these) reads it too (inline-image-box.ts).
       &.mx-image {
+        --trinity-message-image-max-height: 300px;
+
         width: auto;
         height: auto;
-        max-height: 300px;
+        max-height: var(--trinity-message-image-max-height);
         vertical-align: bottom;
 
         // A sender's width/height that disagree with the real image must not stretch it.
