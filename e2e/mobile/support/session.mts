@@ -12,6 +12,10 @@ import {
   parseSystemErrorDialogs,
   parseWebviewDevtoolsUnfreeze,
 } from './android-shell.mts';
+import {
+  pickAppWebview,
+  type AppiumContext,
+} from '../../support/appium-contexts.mts';
 import { describeAppiumFailure } from '../../support/http-failure.mts';
 import { appiumLogPath } from './artifacts.mts';
 import {
@@ -76,28 +80,38 @@ export async function keyboardShown(): Promise<boolean> {
 
 /**
  * WKWebView contexts are WEBVIEW_<pid>.<page>, and the first page can still be about:blank:
- * take the one that has loaded the bundled app. No certificate bypass exists here; the
+ * take the one that has loaded the bundled app. It is chosen from Appium's details (its URL
+ * and owning bundle) without switching into any page: once a spec has opened Safari, its pages
+ * are WEBVIEW_ contexts too, and switching into one can hang the session (#1347). See
+ * `pickAppWebview`. No certificate bypass exists here; the
  * runner trusts Caddy's root in the Simulator keychain instead.
  */
 async function iosWebview(): Promise<void> {
-  let seen: string[] = [];
+  let seen: AppiumContext[] = [];
   try {
     await browser.waitUntil(
       async () => {
-        seen = (await browser.getContexts()).map(String);
-        for (const context of seen.filter((name) =>
-          name.startsWith('WEBVIEW_'),
-        )) {
-          await browser.switchContext(context);
-          if ((await browser.getUrl()).startsWith(IOS_APP_ORIGIN)) return true;
-        }
-        return false;
+        seen = (await browser.getContexts({
+          returnDetailedContexts: true,
+        })) as AppiumContext[];
+        const own = pickAppWebview(seen, {
+          origin: IOS_APP_ORIGIN,
+          bundleId: APP_PACKAGE,
+        });
+        if (!own) return false;
+        await browser.switchContext(own.id);
+        return true;
       },
       { timeout: 60_000, interval: 1_000 },
     );
   } catch (error) {
+    const contexts = seen
+      .map(({ id, url, bundleId }) =>
+        [id, bundleId, url].filter(Boolean).join(' '),
+      )
+      .join(', ');
     throw new Error(
-      `no WKWebView context loaded ${IOS_APP_ORIGIN}; contexts: ${seen.join(', ') || 'none'}`,
+      `no WKWebView context loaded ${IOS_APP_ORIGIN}; contexts: ${contexts || 'none'}`,
       { cause: error },
     );
   }
