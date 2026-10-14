@@ -349,6 +349,22 @@ describe('AppLockLifecycleBinding', () => {
     lifetime.unsubscribe();
   });
 
+  it('tells the shell again when the window reports it is shown after an earlier focus', () => {
+    // A restore whose DOM focus arrives before main has started the reveal: main ignores that
+    // first signal, so the shown report must send it again rather than wait for the timeout.
+    const { lifecycle, coverPainted, lifetime } = setup({ desktop: true });
+    lifecycle.next({ kind: 'background' });
+    window.dispatchEvent(new Event('focus'));
+    expect(coverPainted).toHaveBeenCalledOnce();
+    lifecycle.next({ kind: 'active' });
+    expect(coverPainted).toHaveBeenCalledTimes(2);
+    // Once shown, focus changes have nothing more to reveal.
+    window.dispatchEvent(new Event('blur'));
+    window.dispatchEvent(new Event('focus'));
+    expect(coverPainted).toHaveBeenCalledTimes(2);
+    lifetime.unsubscribe();
+  });
+
   it('tells the shell nothing when a window that never left the screen gets focus back', () => {
     // The shell holds a window only while it is hidden or minimised; a focus change alone
     // has nothing for it to reveal.

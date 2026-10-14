@@ -33,9 +33,17 @@ import {
   timer,
 } from 'rxjs';
 
-/** `hidden`: away because the host hid or minimised the app, which the shell may hold. */
+/**
+ * `hidden`: away because the host hid or minimised the app, which the shell may hold.
+ * `shown`: back because the host reports the app on screen again; `back` is focus alone.
+ */
 type AwayEvent =
-  'hidden' | 'away' | 'back' | 'system-ui-opened' | 'system-ui-closed';
+  | 'hidden'
+  | 'away'
+  | 'shown'
+  | 'back'
+  | 'system-ui-opened'
+  | 'system-ui-closed';
 
 /** Time away since `since`; `floorMs` is the least that locks (see SYSTEM_UI_CLOSED_GRACE_MS). */
 interface AwayPeriod {
@@ -94,10 +102,10 @@ export class AppLockLifecycleBinding {
     );
   }
 
-  private presence(): Observable<'hidden' | 'away' | 'back'> {
+  private presence(): Observable<'hidden' | 'away' | 'shown' | 'back'> {
     const lifecycle = this.lifecycle.events.pipe(
       map((event) =>
-        event.kind === 'background' ? ('hidden' as const) : ('back' as const),
+        event.kind === 'background' ? ('hidden' as const) : ('shown' as const),
       ),
     );
     if (this.surface !== 'desktop' || !this.window) return lifecycle;
@@ -113,7 +121,7 @@ export class AppLockLifecycleBinding {
   private awayTimer(): Observable<never> {
     return defer(() => {
       let away = false;
-      // Hidden or minimised since the last "back": only then can the shell hold the window.
+      // Hidden or minimised and not yet reported shown: only then can the shell hold the window.
       let hidden = false;
       let period: AwayPeriod | null = null;
       let pending: Subscription | undefined;
@@ -144,11 +152,13 @@ export class AppLockLifecycleBinding {
           this.appLock.lockNow();
         });
       };
-      const back = (): void => {
+      const back = (shown: boolean): void => {
         const ended = period;
         const wasLocked = this.appLock.locked();
         const wasHidden = hidden;
-        hidden = false;
+        // Only the host's own report ends the hidden state. A DOM focus can arrive before the
+        // shell starts its reveal, which then ignores that first signal; the report sends it again.
+        if (shown) hidden = false;
         stop();
         if (
           ended &&
@@ -183,9 +193,13 @@ export class AppLockLifecycleBinding {
               away = true;
               begin(0);
               return;
+            case 'shown':
+              away = false;
+              back(true);
+              return;
             case 'back':
               away = false;
-              back();
+              back(false);
               return;
             case 'system-ui-opened':
               stop();
