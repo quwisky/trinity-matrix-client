@@ -12,11 +12,31 @@ import { APP_PACKAGE, native, resetApp, webview } from '../support/session.mts';
 /** XCUITest and UiAutomator2 both report 4 for an app in the foreground. */
 const RUNNING_IN_FOREGROUND = 4;
 
-/**
- * How long the OS gets to bring the system browser to the front. A cold first Safari
- * launch on a CI Simulator took 17 s to start Safari's process.
- */
+/** How long the OS gets to bring the system browser, already started, to the front. */
 const LEAVE_TIMEOUT_MS = 30_000;
+
+const SAFARI = 'com.apple.mobilesafari';
+
+/** This test's budget; see the breakdown in the test. The suite default is 180 s. */
+const TEST_TIMEOUT_MS = 300_000;
+
+/**
+ * The OS's first Safari launch on a CI Simulator took 17 s in one run and 54 s in another.
+ * Pay it once, in a hook with its own budget, so the tap is measured against a Safari that
+ * has already started: the claim is that Trinity hands the link to the system browser, not
+ * how fast Safari boots. A link that opens nothing still leaves Trinity in the foreground.
+ */
+async function startSafari(): Promise<void> {
+  await native();
+  await browser.execute('mobile: launchApp', { bundleId: SAFARI });
+  await browser.waitUntil(
+    async () =>
+      (await browser.execute('mobile: queryAppState', {
+        bundleId: SAFARI,
+      })) === RUNNING_IN_FOREGROUND,
+    { timeout: 150_000, interval: 1_000, timeoutMsg: 'Safari never started' },
+  );
+}
 
 const pathname = async (): Promise<string> =>
   new URL(await browser.getUrl()).pathname;
@@ -101,7 +121,15 @@ async function waitForSettledTimeline(xpath: string): Promise<void> {
 // opens must never replace Trinity inside the app's own WebView; where it would, the
 // platform sends message links through ExternalBrowserService (the in-app browser sheet).
 describe('message links on a phone', () => {
-  it('opens an external message link outside the app’s WebView', async () => {
+  before(async () => {
+    if (browser.isIOS) await startSafari();
+  });
+
+  it('opens an external message link outside the app’s WebView', async function () {
+    // Measured on a cold CI runner: 165 s of reinstall, launch retries and first sign-in
+    // before the tap, up to 30 s for the timeline to settle, up to 70 s to see the app
+    // leave (a 30 s window plus a 38 s query WebDriverAgent held) and 26 s to bring it back.
+    this.timeout(TEST_TIMEOUT_MS);
     await resetApp();
     const user = uniqueId('message-link');
     const pass = `${user}-pass`;
