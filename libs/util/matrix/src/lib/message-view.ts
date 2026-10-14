@@ -487,6 +487,7 @@ const MATRIX_ALLOWED_TAGS = [
   'ol',
   'p',
   'pre',
+  's',
   'span',
   'strike',
   'strong',
@@ -507,7 +508,6 @@ const MATRIX_ALLOWED_TAGS = [
 // `markExternalLinks` sets them render-side on http(s) links only.
 const MATRIX_ALLOWED_ATTR = [
   'href',
-  'name',
   'alt',
   'title',
   'width',
@@ -520,31 +520,77 @@ const MATRIX_ALLOWED_ATTR = [
   'data-mx-color',
   'data-mx-emoticon',
   'data-mx-spoiler',
+  'data-mx-maths',
 ];
+
+/**
+ * Attributes whose values are not URIs. DOMPurify tests the value of every attribute it does
+ * not consider URI-safe against ALLOWED_URI_REGEXP, and ours admits only Matrix's schemes, so
+ * without this `color="#ff0000"`, `start="3"` and an image's `width`/`height` were dropped.
+ */
+const MATRIX_URI_SAFE_ATTR = ['color', 'start', 'width', 'height'];
+
+/**
+ * The attributes Matrix permits on each tag ("Clients should only permit the attributes listed
+ * for the tags below", spec v1.19 § m.room.message msgtypes). Keyed by upper-case `nodeName`;
+ * a tag missing here keeps no attribute. `font` is deprecated (v1.10) and kept only so older
+ * messages still read as their sender meant; `sanitizeOutgoingHtml` never sends it. `input` is
+ * the render path's GFM checkbox, read by {@link normaliseTaskItems} and then removed.
+ */
+const MATRIX_TAG_ATTRIBUTES: ReadonlyMap<string, ReadonlySet<string>> = new Map<
+  string,
+  ReadonlySet<string>
+>([
+  ['A', new Set(['href'])],
+  [
+    'IMG',
+    new Set(['width', 'height', 'alt', 'title', 'src', 'data-mx-emoticon']),
+  ],
+  ['OL', new Set(['start'])],
+  ['CODE', new Set(['class'])],
+  [
+    'SPAN',
+    new Set([
+      'data-mx-color',
+      'data-mx-bg-color',
+      'data-mx-spoiler',
+      'data-mx-maths',
+    ]),
+  ],
+  ['DIV', new Set(['data-mx-maths'])],
+  ['FONT', new Set(['color', 'data-mx-color', 'data-mx-bg-color'])],
+  ['INPUT', new Set(['type', 'checked'])],
+]);
+
+const NO_ATTRIBUTES: ReadonlySet<string> = new Set();
 
 // Image sources we consider local (no network fetch on render). Remote schemes
 // are stripped below so sender HTML can't smuggle a tracking pixel.
 const LOCAL_IMG_SCHEME = /^(?:mxc|blob|data):/i;
 
-// The only `class` tokens Matrix sanctions: `language-*` (syntax highlighting on
-// <code>) and the spoiler class. `class` is otherwise allowed globally, so a
-// sender could borrow app/Ionic classes to spoof UI chrome — restrict to these.
-const ALLOWED_CLASS = /^(?:language-[\w-]+|mx-spoiler|mx-emoticon)$/;
+// The only `class` tokens Matrix sanctions: `language-*`, on `code` (syntax highlighting). Every
+// class the renderer needs (mx-spoiler, mx-emoticon, colour tokens, …) is added after this
+// filter by a render-only pass, so a sender can borrow none of them, nor app/Ionic classes.
+const ALLOWED_CLASS = /^language-[\w-]+$/;
 
 // A sender's `formatted_body` can embed `<img src="https://attacker/x.gif">`,
 // which the browser would fetch on render — leaking the viewer's IP and acting
-// as a read receipt. Inline mxc rendering isn't wired yet, so strip the `src`
-// of any non-local image: this blocks remote auto-loading outright while
-// leaving mxc/blob/data sources intact for when inline rendering lands. The hook
-// also filters the `class` attribute to the Matrix-sanctioned allowlist.
+// as a read receipt. So strip the `src` of any non-local image. The hook also enforces the
+// per-tag attribute list above and filters `class` to the Matrix-sanctioned tokens.
 //
 // Registered once at module load, and it applies to BOTH entry points — incoming
 // {@link sanitizeMatrixHtml} and outgoing {@link sanitizeOutgoingHtml}. Only
 // security belongs here for that reason: attributes set inside
 // `afterSanitizeAttributes` are not re-filtered against ALLOWED_ATTR, so anything
 // added here would ride out onto the wire too. Render-only normalisation lives in
-// {@link normaliseSpoilers} instead.
+// {@link normaliseSpoilers} and the other passes instead. It sits on the default DOMPurify
+// instance, so any other sanitizer in the app must create its own (`DOMPurify(window)`), as
+// the maths renderer does, or this per-tag table would strip its markup too.
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  const allowed = MATRIX_TAG_ATTRIBUTES.get(node.nodeName) ?? NO_ATTRIBUTES;
+  for (const name of node.getAttributeNames()) {
+    if (!allowed.has(name)) node.removeAttribute(name);
+  }
   if (node.nodeName === 'IMG' && node.hasAttribute('src')) {
     const src = node.getAttribute('src') ?? '';
     if (!LOCAL_IMG_SCHEME.test(src)) {
@@ -575,6 +621,7 @@ const sanitizedHtmlCache = new Map<string, string>();
 const MATRIX_PURIFY_CONFIG = {
   ALLOWED_TAGS: MATRIX_ALLOWED_TAGS,
   ALLOWED_ATTR: MATRIX_ALLOWED_ATTR,
+  ADD_URI_SAFE_ATTR: MATRIX_URI_SAFE_ATTR,
   // Only safe URL schemes on href/src (DOMPurify also blocks javascript:).
   ALLOWED_URI_REGEXP: /^(?:https?|ftp|mailto|magnet|matrix|mxc):/i,
 } as const;
@@ -596,7 +643,7 @@ const RENDER_PURIFY_CONFIG = {
   // valueless `checked` came through, leaving every incoming box indistinguishable and
   // unchecked. Marking it URI-safe skips the scheme test; the attribute is swept off the tree
   // either way before anything is serialized.
-  ADD_URI_SAFE_ATTR: ['type'],
+  ADD_URI_SAFE_ATTR: [...MATRIX_URI_SAFE_ATTR, 'type'],
   // No `as const` here, unlike the config above: it would make these three readonly tuples,
   // which do not satisfy DOMPurify's `string[]` config — the overload stops matching and the
   // `HTMLElement` downcast at the call site fails to compile. Vitest does not typecheck, so
@@ -639,6 +686,49 @@ const MAX_NUMBERED_LINES_PER_MESSAGE = 2_000;
 /** `Node.TEXT_NODE`, spelled out because this module never touches a live `Node` global. */
 const NODE_TYPE_TEXT = 3;
 
+/** "Tags must not be nested more than 100 levels deep" (spec v1.19). */
+const MAX_NESTING_DEPTH = 100;
+
+/**
+ * Replace every element nested deeper than {@link MAX_NESTING_DEPTH} with its text. Iterative,
+ * so hostile nesting cannot exhaust the stack, and linear: a flattened subtree is turned into
+ * one text node and never visited again. Runs on both paths, before any render pass.
+ */
+function flattenDeepNesting(body: HTMLElement): void {
+  const pending: Array<{ readonly element: Element; readonly depth: number }> =
+    [{ element: body, depth: 0 }];
+  for (let next = pending.pop(); next; next = pending.pop()) {
+    const depth = next.depth + 1;
+    for (const child of [...next.element.children]) {
+      if (depth > MAX_NESTING_DEPTH) {
+        child.replaceWith(
+          child.ownerDocument.createTextNode(child.textContent ?? ''),
+        );
+      } else {
+        pending.push({ element: child, depth });
+      }
+    }
+  }
+}
+
+/**
+ * `font` and `strike` are read for older messages but never sent (deprecated in spec v1.10):
+ * `font` gives way to its content and `strike` becomes `del`, which is what the markdown
+ * renderer emits for `~~text~~`.
+ */
+function replaceDeprecatedTags(root: ParentNode): void {
+  // The type argument selects the generic overload; lib.dom marks the `font`/`strike`
+  // tag-name overloads deprecated, which `@typescript-eslint/no-deprecated` rejects.
+  for (const font of root.querySelectorAll<HTMLElement>('font')) {
+    font.replaceWith(...font.childNodes);
+  }
+  for (const strike of root.querySelectorAll<HTMLElement>('strike')) {
+    const del = strike.ownerDocument.createElement('del');
+    del.append(...strike.childNodes);
+    strike.replaceWith(del);
+  }
+}
+
 /**
  * Sanitize sender-provided HTML (`formatted_body`) for RENDERING, against the Matrix
  * allowlist. Federated, end-to-end-encrypted content is untrusted and can't be scanned
@@ -677,6 +767,7 @@ export function sanitizeMatrixHtml(
     ...RENDER_PURIFY_CONFIG,
     RETURN_DOM: true as const,
   }) as HTMLElement;
+  flattenDeepNesting(body);
   normaliseMatrixUris(body);
   markExternalLinks(body);
   normaliseSpoilers(body);
@@ -838,6 +929,8 @@ export function sanitizeOutgoingHtml(html: string): string {
     ...MATRIX_PURIFY_CONFIG,
     RETURN_DOM: true as const,
   }) as HTMLElement;
+  flattenDeepNesting(body);
+  replaceDeprecatedTags(body);
   enforceMxcImages(body);
   return body.innerHTML;
 }
