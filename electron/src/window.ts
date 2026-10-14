@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { isAppUrl, START_URL } from './scheme';
 import { processDeepLinkQueue } from './deep-link';
 import { windowIconOptions } from './icons';
+import { watchRendererRecovery } from './renderer-recovery';
 import { releaseChannelArgument } from './app-identity';
 import {
   GRAPHITE_DARK_SURFACE_APP,
@@ -158,6 +159,10 @@ export function createWindow(): void {
       // background notifications. This is the key enabler for "notify while in
       // the background" alongside close-to-tray below.
       backgroundThrottling: false,
+      // Decision 20: a packaged release build (Trinity or Trinity Next) refuses developer
+      // tools; development runs and the Electron journeys (which launch dist/main.js
+      // unpackaged) keep them.
+      devTools: !app.isPackaged,
     },
   });
 
@@ -168,6 +173,8 @@ export function createWindow(): void {
   }
 
   hardenContents(mainWindow.webContents);
+  // Release builds have no View › Reload; recover a crashed or hung renderer instead.
+  watchRendererRecovery(mainWindow);
 
   // Flush any deep links buffered before the renderer was ready to receive them
   // (cold start, or a load/reload that was in flight when the link arrived).

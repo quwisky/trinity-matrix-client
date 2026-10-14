@@ -5,12 +5,17 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 // `app.whenReady().then(cb)`. We capture that `cb` so the test can drive the
 // startup sequence deterministically instead of racing microtasks.
 // vi.hoisted so these exist when the hoisted vi.mock factories run.
-const { readyRef, requestSingleInstanceLock, alignDevelopmentNameOrExit } =
-  vi.hoisted(() => ({
-    readyRef: { cb: undefined as undefined | (() => void) },
-    requestSingleInstanceLock: vi.fn(() => true),
-    alignDevelopmentNameOrExit: vi.fn(() => true),
-  }));
+const {
+  readyRef,
+  requestSingleInstanceLock,
+  alignDevelopmentNameOrExit,
+  hasSwitch,
+} = vi.hoisted(() => ({
+  readyRef: { cb: undefined as undefined | (() => void) },
+  requestSingleInstanceLock: vi.fn(() => true),
+  alignDevelopmentNameOrExit: vi.fn(() => true),
+  hasSwitch: vi.fn((_name: string) => false),
+}));
 
 vi.mock('electron', () => ({
   app: {
@@ -18,6 +23,10 @@ vi.mock('electron', () => ({
     quit: vi.fn(),
     on: vi.fn(),
     setAppUserModelId: vi.fn(),
+    // A packaged release build of Trinity Next (appIdentity below).
+    isPackaged: true,
+    commandLine: { hasSwitch },
+    exit: vi.fn(),
     // Return a thenable that captures the ready callback (never auto-invokes it).
     whenReady: vi.fn(() => ({
       then: (cb: () => void) => {
@@ -26,6 +35,7 @@ vi.mock('electron', () => ({
       },
     })),
   },
+  dialog: { showErrorBox: vi.fn() },
   // Sentinel default session — installMatrixCors must receive exactly this.
   session: { defaultSession: { __brand: 'defaultSession' } },
 }));
@@ -74,9 +84,10 @@ vi.mock('./app-identity', () => ({
   })),
 }));
 
-import { app, session } from 'electron';
+import { app, dialog, session } from 'electron';
 import { registerAppProtocol, registerPrivilegedScheme } from './scheme';
 import { installMatrixCors } from './cors';
+import { buildMenu } from './menu';
 import { createWindow } from './window';
 import { registerDockBadge } from './dock-badge';
 import { registerHostCapabilityHandshake } from './host-capabilities';
@@ -111,6 +122,11 @@ describe('main bootstrap', () => {
     );
   });
 
+  it('starts a release build launched without remote debugging', () => {
+    expect(hasSwitch).toHaveBeenCalledWith('remote-debugging-port');
+    expect(app.exit).not.toHaveBeenCalled();
+  });
+
   it('names an unpackaged run before taking the single-instance lock', () => {
     expect(firstOrder(alignDevelopmentNameOrExit)).toBeLessThan(
       firstOrder(requestSingleInstanceLock),
@@ -121,6 +137,10 @@ describe('main bootstrap', () => {
     expect(app.setAppUserModelId).toHaveBeenCalledWith(
       'dev.trinityproject.trinity.next',
     );
+  });
+
+  it('builds the menu as a release build when packaged, on the Next channel too', () => {
+    expect(buildMenu).toHaveBeenCalledExactlyOnceWith({ packaged: true });
   });
 
   it('installs the CORS shim on session.defaultSession', () => {
@@ -177,6 +197,25 @@ describe('main bootstrap under an unknown release channel', () => {
   });
 
   it('stops before taking the single-instance lock or waiting for ready', () => {
+    expect(requestSingleInstanceLock).not.toHaveBeenCalled();
+    expect(readyRef.cb).toBeUndefined();
+  });
+});
+
+describe('main bootstrap of a release build with remote debugging', () => {
+  beforeAll(async () => {
+    hasSwitch.mockImplementation((name) => name === 'remote-debugging-port');
+    alignDevelopmentNameOrExit.mockClear();
+    requestSingleInstanceLock.mockClear();
+    readyRef.cb = undefined;
+    vi.resetModules();
+    await import('./main');
+  });
+
+  it('exits before naming the run, taking the single-instance lock or waiting for ready', () => {
+    expect(dialog.showErrorBox).toHaveBeenCalledTimes(1);
+    expect(app.exit).toHaveBeenCalledWith(1);
+    expect(alignDevelopmentNameOrExit).not.toHaveBeenCalled();
     expect(requestSingleInstanceLock).not.toHaveBeenCalled();
     expect(readyRef.cb).toBeUndefined();
   });

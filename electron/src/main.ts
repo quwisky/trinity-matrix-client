@@ -28,6 +28,7 @@ import {
   registerDeepLinkProtocol,
 } from './deep-link';
 import { alignDevelopmentNameOrExit, appIdentity } from './app-identity';
+import { checkRemoteDebuggingOrExit } from './remote-debugging';
 
 /**
  * Hand-rolled Electron main process for Trinity — thin bootstrap.
@@ -45,17 +46,19 @@ import { alignDevelopmentNameOrExit, appIdentity } from './app-identity';
  * `secure-store-ipc.ts`).
  */
 
-// An unpackaged run takes its channel's app name and user-data folder (e.g. "Trinity
+// A release build launched with a remote debugging switch shows an error box and exits.
+// Then an unpackaged run takes its channel's app name and user-data folder (e.g. "Trinity
 // Next") before anything reads that folder or takes the single-instance lock, which lives
 // in it. A `--user-data-dir=<path>` switch (the E2E launcher's isolated profile) keeps its
 // own. An unknown version shape, packaged or not, shows an error box and exits instead.
-const channelKnown = alignDevelopmentNameOrExit();
+const mayStart = checkRemoteDebuggingOrExit() && alignDevelopmentNameOrExit();
 
 // Custom schemes must be registered as privileged BEFORE the app is ready.
 registerPrivilegedScheme();
 
-if (!channelKnown) {
-  // app.exit(1) is under way; register nothing that would read the unknown identity.
+if (!mayStart) {
+  // app.exit(1) is under way; register nothing that would read the unknown identity or
+  // start the app.
 } else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -109,7 +112,7 @@ if (!channelKnown) {
     // clipboard writes only); Electron would otherwise auto-approve every powerful
     // permission.
     installPermissionPolicy(session.defaultSession);
-    buildMenu();
+    buildMenu({ packaged: app.isPackaged });
     registerHostCapabilityHandshake();
     registerTitleBarIpc();
     registerDockBadge();
