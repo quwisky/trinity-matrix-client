@@ -3,7 +3,15 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from 'vitest';
 import {
   ConversationRuntime,
   type MessageView,
@@ -472,6 +480,58 @@ describe('MessageListComponent', () => {
 
     expect(st).toBe(3000);
     expect(notAtBottom(cmp)).toBe(false);
+  });
+
+  // A jump near the top of the loaded history asks for older history; the restore that keeps
+  // the anchored row in place must not leave the jump target where the new page pushed it.
+  it('re-aims a recent jump after a history page lands', async () => {
+    const { fixture, container } = await renderList({
+      messages: many(30),
+      canLoadOlder: true,
+    });
+    const cmp = fixture.componentInstance;
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    let st = 0;
+    Object.defineProperties(scroll, {
+      scrollTop: { get: () => st, set: (value: number) => (st = value) },
+      scrollHeight: { value: 3000 },
+      clientHeight: { value: 600 },
+    });
+    scroll.getBoundingClientRect = () => rect(0);
+    // Content offsets: the page above (`prepended`) pushes both rows down, and rows between
+    // them settle `between` taller, so holding $0 in place moves $3.
+    let prepended = 0;
+    let between = 0;
+    const top0 = () => 20 + prepended;
+    const top3 = () => 100 + prepended + between;
+    const first = scroll.querySelector('[data-mid="$0"]') as HTMLElement;
+    first.getBoundingClientRect = () => rect(top0() - st, top0() - st + 100);
+    const target = scroll.querySelector('[data-mid="$3"]') as HTMLElement;
+    target.getBoundingClientRect = () => rect(top3() - st, top3() - st + 100);
+    const scrollIntoView = vi.fn(function (this: Element) {
+      if (this === target) st = top3(); // aligned by its top
+    });
+    const ownScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+    onTestFinished(() => {
+      Element.prototype.scrollIntoView = ownScrollIntoView;
+    });
+
+    cmp.jumpTo('$3');
+    expect(st).toBe(100);
+    cmp.onScroll(); // near the top: anchors $0 and asks for older history
+
+    prepended = 500;
+    between = 50;
+    fixture.componentRef.setInput('messages', [
+      msg('$older', '@a:hs', 'A', 0),
+      ...many(30),
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(st).toBe(top3());
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(target);
   });
 
   it('keeps a message jump when an older-history correction is queued', async () => {

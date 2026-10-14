@@ -711,6 +711,10 @@ export class MessageListComponent extends MessageListBase {
     }
     this.expectedProgrammaticScrollTop = el.scrollTop;
     this.scrollTop.set(el.scrollTop);
+    // A recent jump wins over the anchor: the page the jump's own scroll asked for keeps the
+    // anchored row in place, which can leave the target off its aim (half-hidden at the top
+    // when it is tall). Re-aim it; a no-op once the jump is old or the reader has moved.
+    this.reapplyRecentJump();
   }
 
   /**
