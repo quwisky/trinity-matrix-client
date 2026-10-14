@@ -739,18 +739,20 @@ test.describe('Maths', () => {
       .map((tex) => `<span data-mx-maths="${tex}"><code>${tex}</code></span>`)
       .join(' ');
     await sendMessage(request, hs, room, {
+      body: 'formulas that reach outside',
+      html:
+        '<p><span data-mx-maths="\\kern{-2em}\\kern{-2em}\\text{Bob}"><code>Bob</code></span> escape:' +
+        ' <span data-mx-maths="b\\smash{\\raisebox{-8em}{\\text{fake low}}}"><code>low</code></span>' +
+        ' and <span data-mx-maths="c\\smash{\\raisebox{3em}{\\raisebox{3em}{\\text{fake high}}}}"><code>high</code></span>' +
+        ' and <span data-mx-maths="d\\smash{\\raisebox{-9em}{\\raisebox{-9em}{\\text{fake deep}}}}"><code>deep</code></span></p>',
+    });
+    // Sent second, so text the formulas above move down lands on it.
+    await sendMessage(request, hs, room, {
       body: 'legitimate formulas',
       html:
         `<p>legit: ${legit}</p>` +
         '<div data-mx-maths="\\sum_{i=1}^{n} i"><code>sum</code></div>' +
         '<div data-mx-maths="\\begin{pmatrix}1&amp;2\\\\3&amp;4\\end{pmatrix}"><code>matrix</code></div>',
-    });
-    await sendMessage(request, hs, room, {
-      body: 'formulas that reach outside',
-      html:
-        '<p><span data-mx-maths="\\kern{-2em}\\kern{-2em}\\text{Bob}"><code>Bob</code></span> escape:' +
-        ' <span data-mx-maths="b\\smash{\\raisebox{-8em}{\\text{fake low}}}"><code>low</code></span>' +
-        ' and <span data-mx-maths="c\\smash{\\raisebox{3em}{\\raisebox{3em}{\\text{fake high}}}}"><code>high</code></span></p>',
     });
     await signInAndOpen(page, room);
 
@@ -763,7 +765,7 @@ test.describe('Maths', () => {
     await expect(legitBody.locator('.mx-maths .katex')).toHaveCount(7, {
       timeout: 30_000,
     });
-    await expect(escapeBody.locator('.mx-maths .katex')).toHaveCount(3);
+    await expect(escapeBody.locator('.mx-maths .katex')).toHaveCount(4);
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
 
     // Nothing these formulas draw reaches outside their message body, give or take the 1em
@@ -819,6 +821,46 @@ test.describe('Maths', () => {
     });
     const unclipped = await legitBody.screenshot({ animations: 'disabled' });
     expect(clipped.equals(unclipped)).toBe(true);
+  });
+
+  // KaTeX pins a display formula's \tag to the box's visible right edge; in a formula that
+  // scrolls sideways it must come after the formula instead of over it.
+  test('keeps the tag of a scrolling display formula after the formula', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'maths-tag');
+    const terms = Array.from(
+      { length: 40 },
+      (_, n) => `\\frac{1}{${n + 1}}`,
+    ).join(' + ');
+    await sendMessage(request, hs, room, {
+      body: 'a long tagged formula',
+      html: `<p>tagged:</p><div data-mx-maths="${terms} \\tag{1}"><code>long</code></div>`,
+    });
+    await signInAndOpen(page, room);
+
+    const display = page.locator('.scroll div.mx-maths');
+    await expect(display.locator('.katex-tag')).toHaveText('(1)', {
+      timeout: 30_000,
+    });
+    const layout = await display.evaluate((box) => {
+      const bases = [...box.querySelectorAll('.katex-html > .katex-base')];
+      const tag = box.querySelector('.katex-tag')!.getBoundingClientRect();
+      return {
+        scrolls: box.scrollWidth > box.clientWidth,
+        formulaEnd: Math.max(
+          ...bases.map((base) => base.getBoundingClientRect().right),
+        ),
+        tagStart: tag.left,
+        tagEnd: tag.right,
+        scrollEnd: box.getBoundingClientRect().left + box.scrollWidth,
+      };
+    });
+    expect(layout.scrolls).toBe(true);
+    expect(layout.tagStart).toBeGreaterThanOrEqual(layout.formulaEnd);
+    expect(layout.tagEnd).toBeLessThanOrEqual(layout.scrollEnd + 0.5);
   });
 
   // High Contrast would paint `\phantom`'s transparent content in the system text colour.
