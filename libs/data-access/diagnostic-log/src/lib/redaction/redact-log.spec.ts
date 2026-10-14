@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DiagnosticNameGroup } from '../report-facts';
 import { runToEnd } from '../report/run-in-slices';
 import { MAX_DISPLAY_NAMES_PER_GROUP, MAX_NAMES } from './known-names';
-import { createLogRedactor } from './redact-log';
+import { createLogRedactor, type LogRedactor } from './redact-log';
 import {
   ALICE,
   BOB,
@@ -1409,6 +1409,26 @@ describe('createLogRedactor', () => {
 
   describe('adversarial 64 KB inputs', () => {
     const SIZE = 64 * 1024;
+    // Linear work takes well under 100 ms here, but a loaded CI runner has stretched it past
+    // 500 ms. A quadratic pattern takes seconds at this size on every run, so the fastest of
+    // a few runs, each on a fresh redactor, still catches one while absorbing load bursts.
+    const BUDGET_MS = 1000;
+    const RUNS = 3;
+
+    /** Times `run` on a fresh redactor up to `RUNS` times and returns the fastest. */
+    function fastestRun(
+      prepare: () => LogRedactor,
+      run: (redactor: LogRedactor) => void,
+    ): number {
+      let fastest = Infinity;
+      for (let attempt = 0; attempt < RUNS && fastest >= BUDGET_MS; attempt++) {
+        const redactor = prepare();
+        const start = performance.now();
+        run(redactor);
+        fastest = Math.min(fastest, performance.now() - start);
+      }
+      return fastest;
+    }
     const inputs: readonly (readonly [string, string])[] = [
       ['at signs', '@'.repeat(SIZE)],
       ['bangs', '!'.repeat(SIZE)],
@@ -1505,11 +1525,13 @@ describe('createLogRedactor', () => {
       ['long local parts', 'a'.repeat(SIZE - 6) + '@b.cc1'],
       ['dotted domain', 'a@' + 'b.'.repeat(SIZE / 2)],
       ['plus runs', '+'.repeat(SIZE) + '@x.org'],
-    ])('redacts %s in under 500 ms', (_name, input) => {
-      const redactor = createLogRedactor(CORPUS_CONTEXT);
-      const start = performance.now();
-      redactor.redact(input);
-      expect(performance.now() - start).toBeLessThan(500);
+    ])('redacts %s in under a second', (_name, input) => {
+      expect(
+        fastestRun(
+          () => createLogRedactor(CORPUS_CONTEXT),
+          (redactor) => redactor.redact(input),
+        ),
+      ).toBeLessThan(BUDGET_MS);
     });
 
     describe('with thousands of known names', () => {
@@ -1542,21 +1564,35 @@ describe('createLogRedactor', () => {
         ['spaces', ' '.repeat(SIZE)],
       ];
 
-      it.each(named)('learns names for %s in under 500 ms', (_name, input) => {
+      function learned(input: string): LogRedactor {
         const redactor = createLogRedactor(CORPUS_CONTEXT);
         redactor.learn(input);
-        const start = performance.now();
-        runToEnd(redactor.learnNames(groups));
-        expect(performance.now() - start).toBeLessThan(500);
-      });
+        return redactor;
+      }
 
-      it.each(named)('redacts %s in under 500 ms', (_name, input) => {
-        const redactor = createLogRedactor(CORPUS_CONTEXT);
-        redactor.learn(input);
-        runToEnd(redactor.learnNames(groups));
-        const start = performance.now();
-        redactor.redact(input);
-        expect(performance.now() - start).toBeLessThan(500);
+      it.each(named)(
+        'learns names for %s in under a second',
+        (_name, input) => {
+          expect(
+            fastestRun(
+              () => learned(input),
+              (redactor) => runToEnd(redactor.learnNames(groups)),
+            ),
+          ).toBeLessThan(BUDGET_MS);
+        },
+      );
+
+      it.each(named)('redacts %s in under a second', (_name, input) => {
+        expect(
+          fastestRun(
+            () => {
+              const redactor = learned(input);
+              runToEnd(redactor.learnNames(groups));
+              return redactor;
+            },
+            (redactor) => redactor.redact(input),
+          ),
+        ).toBeLessThan(BUDGET_MS);
       });
     });
 
@@ -1569,23 +1605,28 @@ describe('createLogRedactor', () => {
       ['invalid UTF-8 before devices', '%FFab.cd/ef+gh='.repeat(SIZE / 15)],
       ['double-encoded runs', '%2522ab.cd%252Fef'.repeat(SIZE / 17)],
     ])(
-      'redacts %s in under 500 ms with a known device ID with punctuation',
+      'redacts %s in under a second with a known device ID with punctuation',
       (_name, input) => {
-        const redactor = createLogRedactor({
-          ...CORPUS_CONTEXT,
-          selfDeviceIds: ['ab.cd/ef+gh='],
-        });
-        const start = performance.now();
-        redactor.redact(input);
-        expect(performance.now() - start).toBeLessThan(500);
+        expect(
+          fastestRun(
+            () =>
+              createLogRedactor({
+                ...CORPUS_CONTEXT,
+                selfDeviceIds: ['ab.cd/ef+gh='],
+              }),
+            (redactor) => redactor.redact(input),
+          ),
+        ).toBeLessThan(BUDGET_MS);
       },
     );
 
-    it.each(inputs)('redacts %s in under 500 ms', (_name, input) => {
-      const redactor = createLogRedactor(CORPUS_CONTEXT);
-      const start = performance.now();
-      redactor.redact(input);
-      expect(performance.now() - start).toBeLessThan(500);
+    it.each(inputs)('redacts %s in under a second', (_name, input) => {
+      expect(
+        fastestRun(
+          () => createLogRedactor(CORPUS_CONTEXT),
+          (redactor) => redactor.redact(input),
+        ),
+      ).toBeLessThan(BUDGET_MS);
     });
   });
 });
