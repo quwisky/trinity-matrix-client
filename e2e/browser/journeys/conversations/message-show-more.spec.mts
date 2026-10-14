@@ -607,6 +607,49 @@ test.describe('Show more on long messages', () => {
     await expect(link).toBeInViewport({ timeout: 15_000 });
   });
 
+  // The list measures the body's border box; the clamp also holds the margins that collapse out
+  // of it (a first heading's top, a last rule's bottom). Bodies around the 24-line limit with
+  // both: each one either gets Show more or shows its last element whole.
+  test('never cuts a body the list measured as short, outer margins included', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'show-more-margins');
+    const sizes = [18, 19, 20, 21, 22, 23];
+    for (const size of sizes) {
+      await sendMessage(request, hs, room, {
+        body: `margins ${size}`,
+        html: `<h1>margins ${size} heading</h1><p>${htmlLines(size, `margins ${size}`)}</p><hr>`,
+      });
+    }
+    await signInAndOpen(page, room);
+
+    for (const size of sizes) {
+      const row = rowWith(page, `margins ${size} heading`);
+      await row.scrollIntoViewIfNeeded({ timeout: 20_000 });
+      const clamp = row.locator('.msg__clamp');
+      await expect(clamp).toHaveClass(/msg__clamp--(capped|collapsed)/, {
+        timeout: 15_000,
+      });
+      const cut = await clamp.evaluate((element) => {
+        if (element.classList.contains('msg__clamp--collapsed')) return 0;
+        const last = element.querySelector('.msg__text--html')
+          ?.lastElementChild as HTMLElement;
+        const style = getComputedStyle(element);
+        const contentBottom =
+          element.getBoundingClientRect().bottom -
+          Number.parseFloat(style.paddingBottom);
+        return (
+          last.getBoundingClientRect().bottom +
+          Number.parseFloat(getComputedStyle(last).marginBottom) -
+          contentBottom
+        );
+      });
+      expect(cut, `${size} lines`).toBeLessThanOrEqual(0.5);
+    }
+  });
+
   test('collapses and expands a long reply in the thread view', async ({
     page,
     request,

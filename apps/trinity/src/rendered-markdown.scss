@@ -615,8 +615,11 @@
  * Show more (message-row, spec C): the wrapper around a timeline or thread body. Every body is
  * capped at 24 lines; one the list measured as longer collapses to 20 lines behind a fade. The
  * `em` lengths resolve against the message type size set here, because the `lh` unit is not on
- * the Firefox 119 floor. The space-3 allowance covers the body's own top margin, so a body of
- * exactly 24 lines is never cut. There is no transition, so reduced motion needs nothing. Kept
+ * the Firefox 119 floor. The cap's 1em + space-3 allowance covers the margins that collapse out
+ * of the body, which the list's border-box measurement does not count: the body's own top
+ * margin merged with a first heading's or rule's (up to 8px) and a last rule's or list's bottom
+ * margin (up to 8px). So a body the list measured at 24 lines or fewer is never cut. There is
+ * no transition, so reduced motion needs nothing. Kept
  * here rather than in message-row.component.scss, which is at its component style budget; the
  * build adds `-webkit-mask-image` for the Chrome 119 floor.
  *
@@ -647,8 +650,11 @@
   }
 
   .msg__clamp--capped {
+    --trinity-message-clamp-24: calc(
+      24em * var(--trinity-type-message-line-height)
+    );
     --trinity-message-clamp-lines: calc(
-      24em * var(--trinity-type-message-line-height) + var(--trinity-space-3)
+      var(--trinity-message-clamp-24) + 1em + var(--trinity-space-3)
     );
   }
 
