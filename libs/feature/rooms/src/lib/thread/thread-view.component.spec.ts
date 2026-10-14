@@ -1,4 +1,4 @@
-import { inject, signal } from '@angular/core';
+import { inject, signal, type Provider } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import {
@@ -59,6 +59,8 @@ import { ConversationTimelineStub } from '../testing/conversation-timeline.stub'
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageSourceComponent } from '../message-source/message-source.component';
 import type { MessageRow } from '../message-row/message-row.component';
+import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
+import { RoomShellStore } from '../rooms/room-shell-store';
 
 function msg(id: string, senderId: string, body: string): MessageView {
   return {
@@ -115,6 +117,7 @@ async function build(
     canRedactOthers?: boolean;
     typingNames?: string[];
   } = {},
+  extraProviders: Provider[] = [],
 ) {
   const threadMessages = signal<MessageView[]>(messages);
   const canPaginateThread = signal(state.canPaginate ?? false);
@@ -262,6 +265,7 @@ async function build(
       MockProvider(MessageGestureSettingsService, {
         messageSwipe: signal<SwipeAction>('right').asReadonly(),
       }),
+      ...extraProviders,
     ],
   });
   /** How many times the panel announced a close, for the dismissal assertions. */
@@ -601,6 +605,28 @@ describe('ThreadViewComponent', () => {
     const { container } = await build([], { canPaginate: false });
 
     expect(container.querySelector('.thread__load-older')).toBeNull();
+  });
+
+  it('starts a reply preview’s target expanded', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const { fixture } = await build(
+      [msg('$a', '@a:hs', 'first'), msg('$b', '@a:hs', 'second')],
+      {},
+      [
+        ExpandedBodiesStore,
+        MockProvider(RoomShellStore, {
+          activeAccountId: signal<string | null>('@me:hs'),
+          activeRoomId: signal<string | null>('!r:hs'),
+        }),
+      ],
+    );
+
+    fixture.componentInstance.onRowAction(row('$b', '@a:hs', 'second'), {
+      type: 'jump',
+      id: '$a',
+    });
+
+    expect(TestBed.inject(ExpandedBodiesStore).isExpanded('$a')).toBe(true);
   });
 });
 

@@ -53,6 +53,7 @@ import {
   type MessageRowCaps,
 } from '../message-row/message-row.component';
 import { BodyOverflowObserver } from '../message-row/body-overflow';
+import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
 import {
   MessageComposerComponent,
   type ComposerSubmit,
@@ -127,6 +128,10 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly timeline = this.conversations.timeline;
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
+  /** The rooms page's Show more state, shared with the timeline. */
+  private readonly expandedBodies = inject(ExpandedBodiesStore, {
+    optional: true,
+  });
 
   readonly roomId = input.required<string>();
   readonly accountId = input<string | null>(null);
@@ -442,6 +447,8 @@ export class ThreadViewComponent implements OnDestroy {
         this.onRetry(row.id);
         break;
       case 'jump':
+        // A reply preview's target starts expanded, as in the timeline.
+        this.expandedBodies?.expand(action.id);
         this.jumpTo(action.id);
         break;
       // Pin/thread are not offered inside a thread (caps.canPin/canThread false).

@@ -338,11 +338,15 @@ export class MessageListComponent extends MessageListBase {
     // jumpTo reads ids()/prefix(); run it untracked so this fires only on a NEW jump
     // request — not on every timeline/height change, which would keep yanking the
     // viewport back. jumpToNonce makes a repeat request to the same id re-fire.
+    // The target is expanded first, so the row measures and scrolls at its full height.
     effect(() => {
       this.jumpToNonce();
       const id = this.jumpToId();
       if (id) {
-        untracked(() => this.jumpTo(id));
+        untracked(() => {
+          this.expandJumpTarget(id);
+          this.jumpTo(id);
+        });
       }
     });
 

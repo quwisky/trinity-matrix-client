@@ -73,6 +73,7 @@ import {
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import { observeScrollerHeight } from './scroller-height-anchor';
 import { confirmMessageDeletion$ } from '../message-actions/confirm-message-deletion';
+import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
 import {
   UndecryptableFixService,
   type UndecryptableFix,
@@ -504,6 +505,20 @@ export abstract class MessageListBase {
   private readonly listDestroyRef = inject(DestroyRef);
   protected readonly injector = inject(Injector);
 
+  /** The rooms page's Show more state; absent where no rooms page provides it. */
+  private readonly expandedBodies = inject(ExpandedBodiesStore, {
+    optional: true,
+  });
+
+  /**
+   * Start an explicitly requested jump target expanded (spec C), before the list measures and
+   * scrolls to it. Only jumps someone asked for: positioning at the first unread message
+   * ({@link jumpToUnread}) expands nothing.
+   */
+  protected expandJumpTarget(id: string): void {
+    this.expandedBodies?.expand(id);
+  }
+
   /** A requested jump whose row had not loaded yet; applied when it arrives, within the limit. */
   private awaitedJumpId: string | null = null;
   private awaitedJumpAt = 0;
@@ -922,6 +937,7 @@ export abstract class MessageListBase {
         this.retry.emit(row.id);
         break;
       case 'jump':
+        this.expandJumpTarget(action.id);
         this.jumpTo(action.id);
         break;
       case 'thread':
