@@ -64,6 +64,7 @@ vi.mock('./notifications', () => ({
 }));
 vi.mock('./secure-store-ipc', () => ({ registerSecureStoreIpc: vi.fn() }));
 vi.mock('./geolocation-ipc', () => ({ registerGeolocationIpc: vi.fn() }));
+vi.mock('./lifecycle-ipc', () => ({ registerLifecycleIpc: vi.fn() }));
 vi.mock('./dock-badge', () => ({ registerDockBadge: vi.fn() }));
 vi.mock('./host-capabilities', () => ({
   registerHostCapabilityHandshake: vi.fn(),

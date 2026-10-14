@@ -46,6 +46,7 @@ const SET_BADGE_COUNT_CHANNEL = 'trinity:host:v1:badge:set';
 const HOST_NEGOTIATE_CHANNEL = 'trinity:host:v1:negotiate';
 // Mirrors window.ts by string value: main reports the window leaving or returning to the screen.
 const VISIBILITY_CHANNEL = 'trinity:host:v1:lifecycle:visibility';
+const VISIBILITY_QUERY_CHANNEL = 'trinity:host:v1:lifecycle:visibility:current';
 // Mirror title-bar-ipc.ts by string value; main re-validates every payload.
 const SET_OVERLAY_CHANNEL = 'trinity:host:v1:title-bar:set-overlay';
 const POPUP_MENU_CHANNEL = 'trinity:host:v1:title-bar:popup-menu';
@@ -370,14 +371,34 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
         callback: (visibility: 'visible' | 'hidden') => void,
       ): () => void {
         if (!grantedOperations.has('lifecycle')) return () => undefined;
-        const listener = (_event: IpcRendererEvent, visibility: unknown) => {
-          if (!grantedOperations.has('lifecycle')) return;
+        let heard = false;
+        let subscribed = true;
+        const deliver = (visibility: unknown): void => {
+          if (!subscribed || !grantedOperations.has('lifecycle')) return;
           if (visibility === 'visible' || visibility === 'hidden') {
             callback(visibility);
           }
         };
+        const listener = (_event: IpcRendererEvent, visibility: unknown) => {
+          heard = true;
+          deliver(visibility);
+        };
         ipcRenderer.on(VISIBILITY_CHANNEL, listener);
-        return () => ipcRenderer.removeListener(VISIBILITY_CHANNEL, listener);
+        // Main announces only changes, so a renderer that starts while the window is hidden
+        // (reloaded or recovered in the tray) asks where it stands. Only "hidden" is news: a
+        // renderer starts as foreground, and a "visible" here would read as a return to it
+        // (an update check, clearing the open room's notifications). A change that arrives
+        // before the answer is newer, so the answer is dropped then.
+        void ipcRenderer
+          .invoke(VISIBILITY_QUERY_CHANNEL)
+          .then((visibility: unknown) => {
+            if (!heard && visibility === 'hidden') deliver(visibility);
+          })
+          .catch(() => undefined);
+        return () => {
+          subscribed = false;
+          ipcRenderer.removeListener(VISIBILITY_CHANNEL, listener);
+        };
       },
       // Electron advises this only after an event that lowers memory use, such as hiding.
       releaseMemory: (): void => {
