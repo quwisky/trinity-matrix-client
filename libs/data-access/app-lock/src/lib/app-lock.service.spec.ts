@@ -1240,6 +1240,38 @@ describe('AppLockService', () => {
       expect(adapter.setPin).not.toHaveBeenCalled();
     });
 
+    it('asks the system prompt for that change even inside a window a PIN opened', async () => {
+      const { lock, adapter, report } = setup();
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithPin('482913'));
+      expect(lock.recentlyVerified()).toBe(true);
+      expect(lock.recentlySystemVerified()).toBe(false);
+      report(FACE_UNREADABLE);
+      await firstValueFrom(lock.refreshSupport());
+      await expect(
+        firstValueFrom(lock.verifyWithSystemForChange()),
+      ).resolves.toBe('verified');
+      expect(adapter.verify).toHaveBeenCalledWith({
+        reason: PRESENCE_REASONS.change,
+      });
+      expect(lock.recentlySystemVerified()).toBe(true);
+      await expect(firstValueFrom(lock.changePin('7777'))).resolves.toEqual({
+        kind: 'completed',
+      });
+      // Inside the window it asks no more.
+      await firstValueFrom(lock.verifyWithSystemForChange());
+      expect(adapter.verify).toHaveBeenCalledOnce();
+    });
+
+    it('has no system check to offer where there is no system prompt', async () => {
+      const { lock, adapter } = setup({ support: UNREADABLE });
+      await hydrated(lock);
+      await expect(
+        firstValueFrom(lock.verifyWithSystemForChange()),
+      ).resolves.toBe('use-pin');
+      expect(adapter.verify).not.toHaveBeenCalled();
+    });
+
     it('keeps the old record when the host cannot clear it', async () => {
       const { lock, adapter } = setup({
         support: FACE_UNREADABLE,

@@ -1,9 +1,10 @@
-import { Injectable, computed, inject } from '@angular/core';
+import { InjectionToken, Injectable, computed, inject } from '@angular/core';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
   AppLockService,
   type AppLockCommandOutcome,
 } from '@trinity/data-access/app-lock';
+import { isMobileOs } from '@trinity/platform-native';
 import type { HostPresenceOutcome } from '@trinity/runtime/host';
 import {
   Observable,
@@ -36,6 +37,19 @@ export type AppLockFlowEnd =
 export const STOPPED: AppLockFlowEnd = { kind: 'stopped' };
 
 /**
+ * Whether this is a phone or tablet, where Touch ID falls back to the device passcode; on a
+ * Mac it falls back to the account password. Read once; replaced in tests.
+ */
+export const APP_LOCK_MOBILE_OS = new InjectionToken<boolean>(
+  'APP_LOCK_MOBILE_OS',
+  { providedIn: 'root', factory: () => isMobileOs() },
+);
+
+type Guard = (
+  command: () => Observable<AppLockFlowEnd>,
+) => Observable<AppLockFlowEnd>;
+
+/**
  * The App lock group's verification flows: setup (decision 23) and guarded changes
  * (decision 7). Each is cold and ends with exactly one {@link AppLockFlowEnd}. Provided by
  * the group, so it lives as long as Settings shows it.
@@ -44,12 +58,13 @@ export const STOPPED: AppLockFlowEnd = { kind: 'stopped' };
 export class AppLockFlows {
   private readonly appLock = inject(AppLockService);
   private readonly surfaces = inject(TrnSurfaceService);
+  private readonly mobile = inject(APP_LOCK_MOBILE_OS);
   private readonly appName = this.appLock.appName;
   /** Everything the system prompt accepts, for the forgotten-PIN warning. */
   private readonly warningMethod = computed(() => {
     const system = this.appLock.support().system;
     return system.kind === 'available'
-      ? methodWarningName(system.biometry)
+      ? methodWarningName(system.biometry, this.mobile)
       : null;
   });
 
@@ -75,16 +90,31 @@ export class AppLockFlows {
     );
   }
 
-  /** Change PIN: a fresh check, the new PIN twice, then (still verified) the change. */
+  /**
+   * Change PIN: a fresh check, the new PIN twice, then (still verified) the change. Over a
+   * PIN record the host can't read, only the system prompt counts as the check: the service
+   * then clears the record and stores the new PIN.
+   */
   changePin(): Observable<AppLockFlowEnd> {
-    return this.guarded(() =>
-      this.askNewPin().pipe(
-        switchMap((pin) =>
-          // Typing the new PIN may outlast the guard window: check again if it did.
-          pin ? this.guarded(() => this.appLock.changePin(pin)) : of(STOPPED),
+    return defer(() => {
+      const guard: Guard =
+        this.appLock.pinState() === 'unreadable'
+          ? (command) => this.systemGuarded(command)
+          : (command) => this.guarded(command);
+      return guard(() =>
+        this.askNewPin().pipe(
+          switchMap((pin) =>
+            // Typing the new PIN may outlast the guard window: check again if it did.
+            pin ? guard(() => this.appLock.changePin(pin)) : of(STOPPED),
+          ),
         ),
-      ),
-    );
+      );
+    });
+  }
+
+  /** Readably off over a PIN record that can't be read: clear it (ruling T16-1). */
+  clearUnreadablePin(): Observable<AppLockFlowEnd> {
+    return this.appLock.clearUnreadablePin();
   }
 
   /** A change after setup: a fresh verification first, unless one is recent (60 s). */
@@ -102,6 +132,35 @@ export class AppLockFlows {
               return of(STOPPED);
             case 'use-pin':
               return this.withPin(command);
+            default: {
+              const unhandled: never = guard;
+              void unhandled;
+              return of(STOPPED);
+            }
+          }
+        }),
+      );
+    });
+  }
+
+  /** A guard only the system prompt passes: the PIN can't be checked against a broken record. */
+  private systemGuarded(
+    command: () => Observable<AppLockFlowEnd>,
+  ): Observable<AppLockFlowEnd> {
+    return defer(() => {
+      if (this.appLock.recentlySystemVerified()) return command();
+      return this.appLock.verifyWithSystemForChange().pipe(
+        switchMap((guard): Observable<AppLockFlowEnd> => {
+          switch (guard) {
+            case 'verified':
+              return command();
+            case 'cancelled':
+              return of(STOPPED);
+            case 'use-pin':
+              return of<AppLockFlowEnd>({
+                kind: 'refused',
+                message: noPinToCheckMessage('unreadable', this.appName),
+              });
             default: {
               const unhandled: never = guard;
               void unhandled;

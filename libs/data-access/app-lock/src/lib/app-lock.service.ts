@@ -293,8 +293,28 @@ export class AppLockService {
     });
   }
 
+  /**
+   * The guard for replacing a PIN record the host can't read: only the system prompt counts,
+   * so a window a PIN check opened doesn't (see {@link changePin}). `use-pin` here means
+   * there is no system prompt, and so no way to make that change.
+   */
+  verifyWithSystemForChange(): Observable<GuardOutcome> {
+    return defer((): Observable<GuardOutcome> => {
+      if (this.recentlySystemVerified()) return of('verified');
+      if (!this.systemAvailable()) return of('use-pin');
+      return this.systemPrompt
+        .prompt(PRESENCE_REASONS.change, 'change')
+        .pipe(map(guardOutcome));
+    });
+  }
+
   verifyPinForChange(pin: string): Observable<UnlockOutcome> {
     return this.checkPin(pin, () => undefined, false);
+  }
+
+  /** The guard window is open, and the system prompt opened it. */
+  recentlySystemVerified(): boolean {
+    return this.recentlyVerified() && this.verifiedBySystem;
   }
 
   recentlyVerified(): boolean {
@@ -343,7 +363,7 @@ export class AppLockService {
         });
       }
       if (this.pinState() !== 'unreadable') return this.storePin(pin);
-      if (!this.verifiedBySystem) return of(NOT_VERIFIED);
+      if (!this.recentlySystemVerified()) return of(NOT_VERIFIED);
       return this.clearHostPin().pipe(
         switchMap((cleared) =>
           cleared.kind === 'completed' ? this.storePin(pin) : of(cleared),

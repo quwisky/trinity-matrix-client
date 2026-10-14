@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import {
   TrnSurfaceService,
   TrnToastService,
@@ -21,6 +21,7 @@ import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { APP_LOCK_MOBILE_OS } from './app-lock-flows';
 import { AppLockGroupComponent } from './app-lock-group.component';
 
 const PIN = '482913';
@@ -60,7 +61,8 @@ const NO_PIN_STORE: HostUserPresenceSupport = {
   pin: { kind: 'unavailable', reason: 'not-supported' },
 };
 
-type Command = 'enable' | 'disable' | 'setLockAfter' | 'changePin';
+type Command =
+  'enable' | 'disable' | 'setLockAfter' | 'changePin' | 'clearUnreadablePin';
 
 function pinStateOf(support: HostUserPresenceSupport): AppLockPinState {
   const pin = support.pin;
@@ -95,9 +97,15 @@ async function setup(
     recentlyVerified?: boolean | (() => boolean);
     failures?: Partial<Record<Command, AppLockCommandOutcome>>;
     appName?: string;
+    /** What a successful clear of an unreadable PIN leaves the host reporting. */
+    afterClear?: HostUserPresenceSupport;
+    /** A phone or tablet (Touch ID falls back to a passcode there, not a password). */
+    mobile?: boolean;
+    /** The system-only guard's answer (replacing an unreadable PIN). */
+    systemGuard?: GuardOutcome;
   } = {},
 ) {
-  const support = options.support ?? (options.enabled ? FACE_ON : FACE);
+  const support = signal(options.support ?? (options.enabled ? FACE_ON : FACE));
   const enabled = signal(options.enabled ?? false);
   const lockAfter = signal<LockAfter>(options.lockAfter ?? '1m');
   const results = [...(options.dialogResults ?? [])];
@@ -115,11 +123,26 @@ async function setup(
     appName: options.appName ?? 'Trinity',
     enabled: enabled.asReadonly(),
     lockAfter: lockAfter.asReadonly(),
-    support: signal(support).asReadonly(),
-    offered: signal(support.pin.kind === 'available').asReadonly(),
-    systemAvailable: signal(support.system.kind === 'available').asReadonly(),
-    pinState: signal(pinStateOf(support)).asReadonly(),
-    refreshSupport: vi.fn(() => of(support)),
+    support: support.asReadonly(),
+    offered: computed(() => support().pin.kind === 'available'),
+    systemAvailable: computed(() => support().system.kind === 'available'),
+    pinState: computed(() => pinStateOf(support())),
+    refreshSupport: vi.fn(() => of(support())),
+    endGuardWindow: vi.fn(),
+    recentlySystemVerified: vi.fn(() => false),
+    verifyWithSystemForChange: vi.fn(() =>
+      of<GuardOutcome>(options.systemGuard ?? 'verified'),
+    ),
+    clearUnreadablePin: vi.fn(() =>
+      outcome('clearUnreadablePin', () =>
+        support.set(
+          options.afterClear ?? {
+            ...support(),
+            pin: { kind: 'available', set: false, nextAttemptAt: null },
+          },
+        ),
+      ),
+    ),
     recentlyVerified: vi.fn(
       typeof recent === 'function' ? recent : () => recent,
     ),
@@ -134,7 +157,11 @@ async function setup(
     ),
     changePin: vi.fn((_pin: string) => outcome('changePin', () => undefined)),
   };
-  const open = vi.fn(() => ({ closed: of(results.shift()) }));
+  // A dialog takes focus from its opener, as the real surface does.
+  const open = vi.fn(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    return { closed: of(results.shift()) };
+  });
   const view = await render(AppLockGroupComponent, {
     providers: [
       MockProvider(AppLockService, lock as never),
@@ -143,6 +170,7 @@ async function setup(
       MockProvider(HostCapabilitiesService, {
         manifest: () => of(manifest(options.hostPresence ?? true)),
       }),
+      { provide: APP_LOCK_MOBILE_OS, useValue: options.mobile ?? false },
     ],
   });
   return { lock, open, view };
@@ -543,23 +571,69 @@ describe('AppLockGroupComponent', () => {
       expect(screen.queryByTestId('app-lock-group')).toBeNull();
     });
 
-    it('says a damaged PIN store blocks turning it on until the full reset', async () => {
+    it('offers to clear a damaged PIN store while App lock is off, after Try again', async () => {
       const { lock } = await setup({
         support: PIN_UNREADABLE,
         appName: 'Trinity Next',
       });
-      const note = screen.getByTestId('app-lock-pin-unreadable').textContent;
-      expect(note).toContain(
-        'Trinity Next can’t read the PIN stored on this device, so App lock can’t be turned on.',
+      const note = screen.getByTestId('app-lock-pin-unreadable');
+      expect(note.textContent).toContain(
+        'Trinity Next can’t read the PIN stored on this device. App lock is off, so that PIN isn’t used: clearing it lets you turn App lock on with a new PIN.',
       );
-      expect(note).toContain('Erase all data on this device');
+      expect(note.textContent?.includes('Erase all data')).toBe(false);
       expect(screen.queryByRole('switch')).toBeNull();
+      const buttons = Array.from(note.querySelectorAll('button')).map((b) =>
+        b.textContent?.trim(),
+      );
+      expect(buttons).toEqual(['Try again', 'Clear the stored PIN']);
       await click(screen.getByRole('button', { name: 'Try again' }));
       expect(lock.refreshSupport).toHaveBeenCalledTimes(2);
+      expect(lock.clearUnreadablePin).not.toHaveBeenCalled();
       expect(screen.getByRole('status').textContent?.trim()).toBe(
         'Trinity Next still can’t read the stored PIN.',
       );
     });
+
+    it('clears it, then offers the switch and moves focus to it', async () => {
+      const { lock } = await setup({ support: PIN_UNREADABLE });
+      const clear = screen.getByRole('button', {
+        name: 'Clear the stored PIN',
+      });
+      clear.focus();
+      await click(clear);
+      expect(lock.clearUnreadablePin).toHaveBeenCalledOnce();
+      expect(lockSwitch().checked).toBe(false);
+      expect(screen.getByRole('status').textContent?.trim()).toBe(
+        'The stored PIN has been cleared. You can turn on App lock with a new PIN.',
+      );
+      await tick();
+      expect(document.activeElement).toBe(lockSwitch());
+    });
+
+    it.each<[AppLockCommandOutcome & { kind: 'failed' }, string]>([
+      [
+        { kind: 'failed', reason: 'pin-not-cleared' },
+        'Trinity couldn’t clear the stored PIN, so the stored PIN is still there. Try again.',
+      ],
+      [
+        { kind: 'failed', reason: 'not-allowed' },
+        'Trinity can’t confirm that App lock is off, so the stored PIN is still there. Restart Trinity, then try again.',
+      ],
+    ])(
+      'keeps the note and says why when the clear gives %o',
+      async (failure, text) => {
+        await setup({
+          support: PIN_UNREADABLE,
+          failures: { clearUnreadablePin: failure },
+        });
+        await click(
+          screen.getByRole('button', { name: 'Clear the stored PIN' }),
+        );
+        expect(alertText()).toBe(text);
+        expect(screen.getByTestId('app-lock-pin-unreadable')).toBeTruthy();
+        expect(screen.queryByRole('switch')).toBeNull();
+      },
+    );
 
     it('with the lock on and the PIN unreadable, still turns off with the system prompt', async () => {
       const { lock } = await setup({
@@ -569,9 +643,43 @@ describe('AppLockGroupComponent', () => {
       });
       expect(
         screen.getByTestId('app-lock-pin-unreadable').textContent,
-      ).toContain('Use Face ID to change App lock or turn it off.');
+      ).toContain(
+        'Use Face ID to set a new PIN, which replaces the one it can’t read, or to turn App lock off.',
+      );
       await click(lockSwitch());
       expect(lock.disable).toHaveBeenCalledOnce();
+    });
+
+    it('replaces an unreadable PIN once the system prompt confirms it’s you', async () => {
+      const { lock, open } = await setup({
+        enabled: true,
+        recentlyVerified: false,
+        support: { ...PIN_UNREADABLE, system: FACE.system },
+        dialogResults: [NEW_PIN],
+      });
+      await click(screen.getByRole('button', { name: 'Change PIN' }));
+      // Only the system prompt counts here: a PIN can't be checked against a broken record.
+      expect(lock.verifyWithSystemForChange).toHaveBeenCalledTimes(2);
+      expect(lock.verifyForChange).not.toHaveBeenCalled();
+      expect(open).toHaveBeenCalledOnce();
+      expect(open).toHaveBeenCalledWith(
+        expect.anything(),
+        setDialog('Face ID or your device passcode'),
+      );
+      expect(lock.changePin).toHaveBeenCalledWith(PIN);
+    });
+
+    it('changes nothing when that system prompt is cancelled', async () => {
+      const { lock, open } = await setup({
+        enabled: true,
+        recentlyVerified: false,
+        support: { ...PIN_UNREADABLE, system: FACE.system },
+        systemGuard: 'cancelled',
+      });
+      await click(screen.getByRole('button', { name: 'Change PIN' }));
+      expect(open).not.toHaveBeenCalled();
+      expect(lock.changePin).not.toHaveBeenCalled();
+      expect(alertText()).toBeUndefined();
     });
 
     it('with the lock on and no way to check, says how to get out instead of a dead PIN dialog', async () => {
@@ -584,6 +692,14 @@ describe('AppLockGroupComponent', () => {
       expect(
         screen.getByTestId('app-lock-pin-unreadable').textContent,
       ).toContain('lock Trinity and choose Erase all data on this device');
+      // No system prompt and no readable PIN: a new PIN can't be set, so it isn't offered.
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Change PIN',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
       await click(lockSwitch());
       expect(open).not.toHaveBeenCalled();
       expect(lock.disable).not.toHaveBeenCalled();
@@ -591,6 +707,108 @@ describe('AppLockGroupComponent', () => {
         'Trinity can’t read your PIN right now, so it can’t confirm it’s you. Try again.',
       );
       expect(lockSwitch().checked).toBe(true);
+    });
+
+    it('with the lock on, no system prompt and no PIN, names the way out', async () => {
+      const { lock } = await setup({
+        enabled: true,
+        recentlyVerified: false,
+        guard: 'use-pin',
+        appName: 'Trinity Next',
+        support: {
+          system: { kind: 'unavailable', reason: 'not-supported' },
+          pin: { kind: 'available', set: false, nextAttemptAt: null },
+        },
+      });
+      expect(screen.getByTestId('app-lock-no-pin').textContent?.trim()).toBe(
+        'There’s no Trinity Next PIN on this device, so Trinity Next can’t confirm changes to App lock. To turn it off, erase all data on this device: choose Add account, then Erase all data on this device on the sign-in page.',
+      );
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Change PIN',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      await click(lockSwitch('Lock Trinity Next'));
+      expect(lock.disable).not.toHaveBeenCalled();
+      expect(alertText()).toBe(
+        'There’s no Trinity Next PIN on this device to confirm it’s you. To turn App lock off, choose Add account, then Erase all data on this device on the sign-in page.',
+      );
+    });
+  });
+
+  describe('Settings left', () => {
+    it('ends the guard window when the group goes away', async () => {
+      const { lock, view } = await setup({ enabled: true });
+      expect(lock.endGuardWindow).not.toHaveBeenCalled();
+      view.fixture.destroy();
+      expect(lock.endGuardWindow).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('Touch ID’s fallback', () => {
+    const TOUCH: HostUserPresenceSupport = {
+      system: { kind: 'available', biometry: 'touch-id' },
+      pin: { kind: 'available', set: false, nextAttemptAt: null },
+    };
+
+    it('is the device passcode on iPhone and iPad', async () => {
+      const { open } = await setup({
+        support: TOUCH,
+        mobile: true,
+        dialogResults: [NEW_PIN],
+      });
+      await click(lockSwitch());
+      expect(open).toHaveBeenCalledWith(
+        expect.anything(),
+        setDialog('Touch ID or your device passcode'),
+      );
+    });
+
+    it('is the device password on a Mac', async () => {
+      const { open } = await setup({
+        support: TOUCH,
+        mobile: false,
+        dialogResults: [NEW_PIN],
+      });
+      await click(lockSwitch());
+      expect(open).toHaveBeenCalledWith(
+        expect.anything(),
+        setDialog('Touch ID or your device password'),
+      );
+    });
+  });
+
+  describe('focus', () => {
+    it('comes back to Change PIN once its dialogs close', async () => {
+      await setup({ enabled: true, dialogResults: [NEW_PIN] });
+      const change = screen.getByRole('button', { name: 'Change PIN' });
+      change.focus();
+      await click(change);
+      await tick();
+      expect(document.activeElement).toBe(change);
+    });
+
+    it('comes back to the switch when turning on is cancelled', async () => {
+      await setup({ dialogResults: [undefined] });
+      lockSwitch().focus();
+      await click(lockSwitch());
+      await tick();
+      expect(document.activeElement).toBe(lockSwitch());
+    });
+
+    it('leaves focus alone when it already went somewhere else', async () => {
+      await setup({ enabled: true, dialogResults: [NEW_PIN] });
+      const change = screen.getByRole('button', { name: 'Change PIN' });
+      const elsewhere = document.createElement('button');
+      document.body.append(elsewhere);
+      onTestFinished(() => elsewhere.remove());
+      change.focus();
+      fireEvent.click(change);
+      elsewhere.focus();
+      await tick();
+      expect(document.activeElement).toBe(elsewhere);
     });
   });
 
@@ -608,6 +826,20 @@ describe('AppLockGroupComponent', () => {
       expect(lockSwitch()).toHaveAccessibleDescription(
         'Unlock with a Trinity PIN you set now.',
       );
+    });
+
+    it('draws no divider under a lone switch row', async () => {
+      await setup({ enabled: false });
+      expect(
+        screen.getByTestId('app-lock-enabled').classList.contains('border-b'),
+      ).toBe(false);
+    });
+
+    it('divides the switch row from the options while the lock is on', async () => {
+      await setup({ enabled: true });
+      expect(
+        screen.getByTestId('app-lock-enabled').classList.contains('border-b'),
+      ).toBe(true);
     });
 
     it('names the Lock after select by its row label', async () => {

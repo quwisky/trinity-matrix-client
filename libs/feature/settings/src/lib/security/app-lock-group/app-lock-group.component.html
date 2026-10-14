@@ -2,7 +2,6 @@
   @case ('controls') {
     <trn-settings-group
       title="App lock"
-      partId="app-lock"
       [description]="groupDescription"
       data-testid="app-lock-group"
     >
@@ -10,6 +9,7 @@
         [label]="'Lock ' + appName"
         [description]="switchDescription()"
         for="app-lock-switch"
+        [divider]="enabled()"
         data-testid="app-lock-enabled"
       >
         <trn-switch
@@ -47,7 +47,7 @@
             size="sm"
             presentation="outline"
             type="button"
-            [disabled]="busy()"
+            [disabled]="busy() || !canChangePin()"
             (click)="changePin()"
             data-testid="app-lock-change-pin"
           >
@@ -69,9 +69,16 @@
           <ng-container
             *ngTemplateOutlet="
               retry;
-              context: { $implicit: pinUnreadableNote() }
+              context: { $implicit: pinUnreadableNote(), clear: false }
             "
           />
+        } @else if (noPinToCheck()) {
+          <p
+            class="m-0 py-3 text-sm text-muted-foreground"
+            data-testid="app-lock-no-pin"
+          >
+            {{ noPinNote }}
+          </p>
         } @else if (pinState() === 'not-supported') {
           <p
             class="m-0 py-3 text-sm text-muted-foreground"
@@ -82,42 +89,26 @@
         }
       }
 
-      @if (error(); as message) {
-        <p
-          class="m-0 py-3 text-sm text-danger"
-          role="alert"
-          data-testid="app-lock-error"
-        >
-          {{ message }}
-        </p>
-      }
-      <ng-container *ngTemplateOutlet="statusLine" />
+      <ng-container *ngTemplateOutlet="messages" />
     </trn-settings-group>
   }
   @case ('pin-unreadable') {
-    <!-- A PIN store that exists but can't be read: a damaged record, or a locked keyring.
-         The host refuses a new PIN over it, so say so instead of offering the switch. -->
-    <trn-settings-group
-      title="App lock"
-      partId="app-lock"
-      data-testid="app-lock-group"
-    >
+    <!-- A PIN store that exists but can't be read (a damaged record, a locked keyring) while
+         App lock is readably off. The host refuses a new PIN over it, so there is no switch:
+         Try again first, then clearing it (ruling T16-1). -->
+    <trn-settings-group title="App lock" data-testid="app-lock-group">
       <ng-container
         *ngTemplateOutlet="
           retry;
-          context: { $implicit: storedPinUnreadableNote }
+          context: { $implicit: storedPinUnreadableNote, clear: true }
         "
       />
-      <ng-container *ngTemplateOutlet="statusLine" />
+      <ng-container *ngTemplateOutlet="messages" />
     </trn-settings-group>
   }
   @case ('keyring') {
     <!-- No PIN store: a desktop without usable encryption (Linux `basic_text`). -->
-    <trn-settings-group
-      title="App lock"
-      partId="app-lock"
-      data-testid="app-lock-group"
-    >
+    <trn-settings-group title="App lock" data-testid="app-lock-group">
       <p
         class="m-0 py-3 text-sm text-muted-foreground"
         data-testid="app-lock-keyring"
@@ -128,28 +119,52 @@
   }
 }
 
-<ng-template #retry let-note>
+<ng-template #retry let-note let-clear="clear">
   <div
     class="flex flex-col items-start gap-2 py-3"
     data-testid="app-lock-pin-unreadable"
   >
     <p class="m-0 text-sm text-muted-foreground">{{ note }}</p>
-    <button
-      trnBtn
-      size="sm"
-      presentation="outline"
-      type="button"
-      [disabled]="busy()"
-      (click)="retryPin()"
-      data-testid="app-lock-retry"
-    >
-      Try again
-    </button>
+    <div class="flex flex-wrap gap-2">
+      <button
+        trnBtn
+        size="sm"
+        presentation="outline"
+        type="button"
+        [disabled]="busy()"
+        (click)="retryPin()"
+        data-testid="app-lock-retry"
+      >
+        Try again
+      </button>
+      @if (clear) {
+        <button
+          trnBtn
+          size="sm"
+          presentation="outline"
+          type="button"
+          [disabled]="busy()"
+          (click)="clearStoredPin()"
+          data-testid="app-lock-clear-pin"
+        >
+          Clear the stored PIN
+        </button>
+      }
+    </div>
   </div>
 </ng-template>
 
-<!-- Present before it has anything to say, so the live region is heard; visible once it does. -->
-<ng-template #statusLine>
+<ng-template #messages>
+  @if (error(); as message) {
+    <p
+      class="m-0 py-3 text-sm text-danger"
+      role="alert"
+      data-testid="app-lock-error"
+    >
+      {{ message }}
+    </p>
+  }
+  <!-- Present before it has anything to say, so the live region is heard; visible once it does. -->
   <p
     class="m-0 pb-3 text-sm text-muted-foreground"
     [class.sr-only]="!status()"

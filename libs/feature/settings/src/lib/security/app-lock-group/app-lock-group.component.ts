@@ -1,8 +1,9 @@
-import { NgTemplateOutlet } from '@angular/common';
+import { DOCUMENT, NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   Injector,
   afterNextRender,
   computed,
@@ -26,8 +27,11 @@ import { HostCapabilitiesService } from '@trinity/runtime/host';
 import { Observable, catchError, defaultIfEmpty, map, of, take } from 'rxjs';
 import { AppLockFlows, STOPPED, type AppLockFlowEnd } from './app-lock-flows';
 import {
+  PIN_CHANGED,
+  STORED_PIN_CLEARED,
   failureMessage,
   keyringNote,
+  noPinNote,
   methodShortName,
   pinUnreadableNote,
   storedPinUnreadableNote,
@@ -63,6 +67,8 @@ export class AppLockGroupComponent {
   private readonly flows = inject(AppLockFlows);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
+  private readonly document = inject(DOCUMENT);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   /** Whether this host has App lock at all; the web has not (decision 3). */
   private readonly hostHasAppLock = toSignal(
     inject(HostCapabilitiesService)
@@ -83,6 +89,7 @@ export class AppLockGroupComponent {
   protected readonly storedPinUnreadableNote = storedPinUnreadableNote(
     this.appName,
   );
+  protected readonly noPinNote = noPinNote(this.appName);
   protected readonly lockAfterOptions: readonly TrnSelectOption<LockAfter>[] = [
     {
       value: 'immediately',
@@ -138,6 +145,22 @@ export class AppLockGroupComponent {
   protected readonly pinUnreadableNote = computed(() =>
     pinUnreadableNote(this.appName, this.method()),
   );
+  /**
+   * Whether Change PIN can work: a PIN to check, or the system prompt, which can also replace
+   * a PIN record the host can't read. Without either, the notes say what's left.
+   */
+  protected readonly canChangePin = computed(() => {
+    const pin = this.pinState();
+    return (
+      pin === 'ready' ||
+      (this.appLock.systemAvailable() &&
+        (pin === 'not-set' || pin === 'unreadable'))
+    );
+  });
+  /** On, with no PIN and no system prompt: nothing here can confirm a change. */
+  protected readonly noPinToCheck = computed(
+    () => this.pinState() === 'not-set' && !this.appLock.systemAvailable(),
+  );
   protected readonly noScreenLock = computed(() => {
     const system = this.appLock.support().system;
     return (
@@ -147,6 +170,8 @@ export class AppLockGroupComponent {
 
   constructor() {
     this.refresh();
+    // Spec §1: one verification covers changes "while Settings stays open".
+    this.destroyRef.onDestroy(() => this.appLock.endGuardWindow());
   }
 
   protected toggle(on: boolean): void {
@@ -171,8 +196,14 @@ export class AppLockGroupComponent {
   }
 
   protected changePin(): void {
-    if (this.busy()) return;
+    if (this.busy() || !this.canChangePin()) return;
     this.run('change-pin', this.flows.changePin());
+  }
+
+  /** App lock is readably off over a PIN record that can't be read: clear it (T16-1). */
+  protected clearStoredPin(): void {
+    if (this.busy()) return;
+    this.run('clear-pin', this.flows.clearUnreadablePin());
   }
 
   /** Re-read whether the stored PIN can be read (a keyring unlocked meanwhile). */
@@ -198,6 +229,8 @@ export class AppLockGroupComponent {
   }
 
   private run(change: AppLockChange, flow: Observable<AppLockFlowEnd>): void {
+    // The control is disabled while its dialogs are open, so the dialog can't hand focus back.
+    const trigger = this.document.activeElement;
     this.error.set(null);
     this.status.set('');
     this.busy.set(true);
@@ -217,7 +250,52 @@ export class AppLockGroupComponent {
       .subscribe((end) => {
         this.busy.set(false);
         this.finish(change, end);
+        this.restoreFocus(change, trigger);
       });
+  }
+
+  /**
+   * Once the controls are enabled again, focus goes back to the control that started the
+   * change, or, if that one has gone (Clear the stored PIN gives way to the switch; the Lock
+   * after option list closed), to the control that now stands for it. Focus someone moved
+   * elsewhere meanwhile is left alone.
+   */
+  private restoreFocus(change: AppLockChange, trigger: Element | null): void {
+    afterNextRender(
+      () => {
+        const active = this.document.activeElement;
+        if (active && active !== this.document.body) return;
+        const target =
+          trigger instanceof HTMLElement && trigger.isConnected
+            ? trigger
+            : this.standIn(change);
+        target?.focus();
+      },
+      { injector: this.injector },
+    );
+  }
+
+  private standIn(change: AppLockChange): HTMLElement | null {
+    const root = this.host.nativeElement;
+    switch (change) {
+      case 'clear-pin':
+      case 'enable':
+      case 'disable':
+        return root.querySelector<HTMLElement>('#app-lock-switch');
+      case 'lock-after':
+        return root.querySelector<HTMLElement>(
+          '[data-testid=app-lock-after-select] [role=combobox]',
+        );
+      case 'change-pin':
+        return root.querySelector<HTMLElement>(
+          '[data-testid=app-lock-change-pin]',
+        );
+      default: {
+        const unhandled: never = change;
+        void unhandled;
+        return null;
+      }
+    }
   }
 
   private finish(change: AppLockChange, end: AppLockFlowEnd): void {
@@ -229,8 +307,13 @@ export class AppLockGroupComponent {
     });
     switch (end.kind) {
       case 'completed':
-        if (change === 'change-pin')
-          this.status.set('Your PIN has been changed.');
+        if (change === 'change-pin') this.status.set(PIN_CHANGED);
+        if (change === 'clear-pin') {
+          // The switch's view replaces the note: say it once its live region is on screen.
+          afterNextRender(() => this.status.set(STORED_PIN_CLEARED), {
+            injector: this.injector,
+          });
+        }
         return;
       case 'stopped':
         return;

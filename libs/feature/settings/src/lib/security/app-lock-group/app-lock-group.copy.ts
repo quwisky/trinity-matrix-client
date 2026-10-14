@@ -41,13 +41,20 @@ export function methodShortName(biometry: HostPresenceBiometry): string {
 /**
  * Everything the system prompt accepts, for the forgotten-PIN warning: "If you can’t use Face
  * ID or your device passcode and you forget this PIN…". Windows Hello includes its own PIN.
+ * `mobile` is a phone or tablet: Touch ID's fallback is a passcode there, a password on a Mac.
  */
-export function methodWarningName(biometry: HostPresenceBiometry): string {
+export function methodWarningName(
+  biometry: HostPresenceBiometry,
+  mobile: boolean,
+): string {
   switch (biometry) {
     case 'face':
       return 'Face ID or your device passcode';
     case 'touch-id':
-      return 'Touch ID or your device password';
+      // iPhone and iPad fall back to the passcode, a Mac to the account password.
+      return mobile
+        ? 'Touch ID or your device passcode'
+        : 'Touch ID or your device password';
     case 'fingerprint':
       return 'your fingerprint or your device’s screen lock';
     case 'windows-hello':
@@ -122,7 +129,7 @@ export function noPinToCheckMessage(
       return `${appName} can’t read your PIN right now, so it can’t confirm it’s you. Try again.`;
     case 'not-set':
     case 'not-supported':
-      return `There’s no ${appName} PIN on this device to confirm it’s you.`;
+      return `There’s no ${appName} PIN on this device to confirm it’s you. To turn App lock off, choose Add account, then Erase all data on this device on the sign-in page.`;
     default: {
       const unhandled: never = pinState;
       void unhandled;
@@ -137,11 +144,12 @@ export function keyringNote(appName: string): string {
 }
 
 /**
- * A PIN store that exists but can't be read (a damaged record, a locked keyring). With the
- * lock off the host refuses a new PIN over it, so only the full reset clears it.
+ * A PIN store that exists but can't be read (a damaged record, a locked keyring) while App
+ * lock is off. The host refuses a new PIN over it; Try again comes first (a keyring may
+ * unlock), then "Clear the stored PIN" (ruling T16-1).
  */
 export function storedPinUnreadableNote(appName: string): string {
-  return `${appName} can’t read the PIN stored on this device, so App lock can’t be turned on. Try again. If that doesn’t help, erasing all data on this device clears it: you’ll find Erase all data on this device on the sign-in screen.`;
+  return `${appName} can’t read the PIN stored on this device. App lock is off, so that PIN isn’t used: clearing it lets you turn App lock on with a new PIN.`;
 }
 
 /** The same with the lock on: the system prompt still confirms changes, else the reset. */
@@ -150,6 +158,15 @@ export function pinUnreadableNote(
   method: string | null,
 ): string {
   return method
-    ? `${appName} can’t read your PIN right now. Use ${method} to change App lock or turn it off.`
+    ? `${appName} can’t read your PIN right now. Use ${method} to set a new PIN, which replaces the one it can’t read, or to turn App lock off.`
     : `${appName} can’t read your PIN right now. Try again. If that doesn’t help, lock ${appName} and choose Erase all data on this device on the lock screen.`;
 }
+
+/** The lock is on with no PIN and no system prompt: nothing can confirm a change here. */
+export function noPinNote(appName: string): string {
+  return `There’s no ${appName} PIN on this device, so ${appName} can’t confirm changes to App lock. To turn it off, erase all data on this device: choose Add account, then Erase all data on this device on the sign-in page.`;
+}
+
+export const PIN_CHANGED = 'Your PIN has been changed.';
+export const STORED_PIN_CLEARED =
+  'The stored PIN has been cleared. You can turn on App lock with a new PIN.';
