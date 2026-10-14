@@ -170,6 +170,43 @@ describe('MathsDirective', () => {
     expect(observer!.observed.size).toBe(0);
   });
 
+  it('re-checks inline maths when fonts finish loading, until the body goes', async () => {
+    // jsdom has no FontFaceSet: stand one in, as an event target with a settled `ready`.
+    const fonts = Object.assign(new EventTarget(), {
+      ready: Promise.resolve(),
+    });
+    Object.defineProperty(document, 'fonts', {
+      configurable: true,
+      value: fonts,
+    });
+    const removed = vi.spyOn(fonts, 'removeEventListener');
+    try {
+      const { fixture, host } = render('<span data-mx-maths="x+y">x+y</span>');
+      await waitForCount(fixture, host, '.katex', 1);
+      const maths = host.querySelector<HTMLElement>('span.mx-maths')!;
+      Object.defineProperty(host, 'clientWidth', {
+        configurable: true,
+        value: 200,
+      });
+      expect(maths.classList.contains(WIDE_MATHS)).toBe(false);
+
+      // KaTeX's fonts arrive and the formula widens; nothing about the body changed size.
+      for (const run of maths.querySelectorAll('.katex-base')) {
+        Object.defineProperty(run, 'offsetWidth', {
+          configurable: true,
+          value: 300,
+        });
+      }
+      fonts.dispatchEvent(new Event('loadingdone'));
+      expect(maths.classList.contains(WIDE_MATHS)).toBe(true);
+
+      fixture.destroy();
+      expect(removed).toHaveBeenCalledWith('loadingdone', expect.any(Function));
+    } finally {
+      Reflect.deleteProperty(document, 'fonts');
+    }
+  });
+
   it('adds the KaTeX stylesheet once', async () => {
     const { fixture, host } = render(
       '<span data-mx-maths="a">a</span><span data-mx-maths="b">b</span>',
@@ -280,7 +317,11 @@ describe('MathsDirective', () => {
 
   it('shows markup in an expression past 2,000 characters as text', async () => {
     const latex = INJECTION + 'x'.repeat(2_001 - INJECTION.length);
-    const attribute = latex.replace('<', '&lt;').replace('>', '&gt;');
+    const attribute = latex
+      .replaceAll('&', '&amp;')
+      .replaceAll('"', '&quot;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
     const { fixture, host } = render(
       `<span data-mx-maths="${attribute}">long</span>`,
     );

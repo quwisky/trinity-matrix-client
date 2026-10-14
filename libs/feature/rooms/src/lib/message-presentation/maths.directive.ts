@@ -29,14 +29,16 @@ const outermost = (element: Element): boolean =>
  * expression is rendered from the LaTeX re-read in the sanitized string — parsed once per body,
  * paired with the live elements in document order. At most {@link MAX_MATHS_PER_MESSAGE}
  * render; the rest, and anything KaTeX rejects, show their source as code. Inline maths too
- * wide for the body is marked {@link WIDE_MATHS}, re-checked whenever the body resizes.
+ * wide for the body is marked {@link WIDE_MATHS}, re-checked whenever the body resizes or fonts
+ * finish loading.
  */
 @Directive({ selector: '[trnMaths]' })
 export class MathsDirective {
   private readonly destroyRef = inject(DestroyRef);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly loader = inject(MathsLoader);
-  private resizes: ResizeObserver | null = null;
+  private destroyed = false;
+  private watching = false;
 
   readonly source = input('', { alias: 'trnMaths' });
 
@@ -75,14 +77,37 @@ export class MathsDirective {
     });
   }
 
-  /** Re-check {@link fitInline} when the body's width changes; one observer per body. */
+  /**
+   * Re-check {@link fitInline} when the body's width changes (one observer per body) and when
+   * fonts finish loading: a formula measured in fallback fonts can widen once KaTeX's arrive.
+   */
   private watchWidth(): void {
-    if (this.resizes || typeof ResizeObserver === 'undefined') {
+    if (this.watching) {
       return;
     }
-    this.resizes = new ResizeObserver(() => this.fitInline());
-    this.resizes.observe(this.host.nativeElement);
-    this.destroyRef.onDestroy(() => this.resizes?.disconnect());
+    this.watching = true;
+    const refit = () => {
+      if (!this.destroyed) {
+        this.fitInline();
+      }
+    };
+    if (typeof ResizeObserver !== 'undefined') {
+      const resizes = new ResizeObserver(refit);
+      resizes.observe(this.host.nativeElement);
+      this.destroyRef.onDestroy(() => resizes.disconnect());
+    }
+    const fonts = this.host.nativeElement.ownerDocument.fonts as
+      FontFaceSet | undefined;
+    if (fonts) {
+      fonts.addEventListener('loadingdone', refit);
+      void fonts.ready.then(refit);
+      this.destroyRef.onDestroy(() =>
+        fonts.removeEventListener('loadingdone', refit),
+      );
+    }
+    this.destroyRef.onDestroy(() => {
+      this.destroyed = true;
+    });
   }
 
   /**
