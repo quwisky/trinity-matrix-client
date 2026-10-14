@@ -249,15 +249,14 @@ describe('renderMaths (real KaTeX)', () => {
     'a\\kern{-40em}\\text{Bob: fake}',
     '\\smash{\\raisebox{-30em}{\\text{fake}}}',
     '\\raisebox{10em}{\\raisebox{10em}{x}}',
-    '\\smash{\\raisebox{-9em}{\\raisebox{-9em}{\\text{fake}}}}',
     '\\hspace{-20em}x',
     '\\mkern-200mu x',
     '\\rule[-20em]{1em}{1em}',
   ])(
     'shows the source for %s, which would draw outside the formula (T17-1)',
     (latex) => {
-      // KaTeX's maxSize caps only positive sizes; a length past 10em either way, including
-      // nested raises adding up in a box height, would draw over other messages.
+      // KaTeX's maxSize caps only positive sizes; a kern, raise or shift moving content more
+      // than 10em either way would draw over other messages.
       expect(renderMaths(latex, false).kind).toBe('source');
     },
   );
@@ -273,10 +272,21 @@ describe('renderMaths (real KaTeX)', () => {
     ['\\begin{aligned}a&=1\\\\b&=2\\\\c&=3\\\\d&=4\\end{aligned}', true],
     ['\\underbrace{a+b+c+d+e+f+g+h+i+j+k+l+m+n+o+p}_{16}', true],
     ['x \\xrightarrow{\\text{a very long label over the arrow}} y', true],
-    // Each kern stays within the bound; the stylesheet's clip holds their sum inside the
+    [
+      `\\begin{aligned}${Array.from({ length: 10 }, (_, row) => `a_{${row}}&=${row}`).join('\\\\')}\\end{aligned}`,
+      true,
+    ],
+    [
+      `\\begin{pmatrix}${Array.from({ length: 10 }, (_, row) =>
+        Array.from({ length: 10 }, (_, column) => row * column).join('&'),
+      ).join('\\\\')}\\end{pmatrix}`,
+      true,
+    ],
+    // Each move stays within the bound; the stylesheet's clip holds their sum inside the
     // formula (rendered-markdown.scss).
     ['\\kern{-9em}\\kern{-9em}\\text{fake}', false],
-  ])('renders %s, whose lengths stay within 10em', (latex, display) => {
+    ['\\smash{\\raisebox{-9em}{\\raisebox{-9em}{\\text{fake}}}}', false],
+  ])('renders %s, which moves nothing further than 10em', (latex, display) => {
     expect(renderMaths(latex, display).kind).toBe('rendered');
   });
 
