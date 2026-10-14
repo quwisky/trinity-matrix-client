@@ -247,16 +247,15 @@ describe('renderMaths (real KaTeX)', () => {
 
   it.each([
     'a\\kern{-40em}\\text{Bob: fake}',
-    '\\smash{\\raisebox{-30em}{\\text{fake}}}',
-    '\\raisebox{10em}{\\raisebox{10em}{x}}',
     '\\hspace{-20em}x',
     '\\mkern-200mu x',
-    '\\rule[-20em]{1em}{1em}',
+    '\\smash{\\raisebox{-60em}{\\text{fake}}}',
+    `${'\\raisebox{10em}{'.repeat(6)}x${'}'.repeat(6)}`,
   ])(
-    'shows the source for %s, which would draw outside the formula (T17-1)',
+    'shows the source for %s, which would move content too far (T17-1)',
     (latex) => {
-      // KaTeX's maxSize caps only positive sizes; a kern, raise or shift moving content more
-      // than 10em either way would draw over other messages.
+      // KaTeX's maxSize caps only positive sizes. A kern more than 10em sideways, or a raise
+      // more than 50em up or down, shows the source.
       expect(renderMaths(latex, false).kind).toBe('source');
     },
   );
@@ -282,13 +281,32 @@ describe('renderMaths (real KaTeX)', () => {
       ).join('\\\\')}\\end{pmatrix}`,
       true,
     ],
-    // Each move stays within the bound; the stylesheet's clip holds their sum inside the
-    // formula (rendered-markdown.scss).
+    // Rows placed with `top` and `vertical-align` well past 10em.
+    [
+      `f(x)=\\begin{cases}${Array.from({ length: 8 }, (_, row) => `${row} & x=${row}`).join('\\\\')}\\end{cases}`,
+      true,
+    ],
+    [
+      `\\begin{aligned}${Array.from({ length: 7 }, (_, row) => `a_{${row}}&=\\frac{${row}}{x+${row}}`).join('\\\\')}\\end{aligned}`,
+      true,
+    ],
+    [
+      `\\begin{pmatrix}${Array.from({ length: 14 }, (_, row) => `${row}&${row * 2}`).join('\\\\')}\\end{pmatrix}`,
+      true,
+    ],
+    // Each move stays within its bound; the formula's and the body's clips hold the rest
+    // (rendered-markdown.scss).
     ['\\kern{-9em}\\kern{-9em}\\text{fake}', false],
     ['\\smash{\\raisebox{-9em}{\\raisebox{-9em}{\\text{fake}}}}', false],
-  ])('renders %s, which moves nothing further than 10em', (latex, display) => {
-    expect(renderMaths(latex, display).kind).toBe('rendered');
-  });
+    ['\\smash{\\raisebox{-30em}{\\text{fake}}}', false],
+    ['\\raisebox{10em}{\\raisebox{10em}{x}}', false],
+    ['\\rule[-20em]{1em}{1em}', false],
+  ])(
+    'renders %s, which moves nothing further than it may',
+    (latex, display) => {
+      expect(renderMaths(latex, display).kind).toBe('rendered');
+    },
+  );
 
   it('shows the source past 2,000 characters and renders up to it', () => {
     expect(MAX_MATHS_SOURCE_LENGTH).toBe(2_000);

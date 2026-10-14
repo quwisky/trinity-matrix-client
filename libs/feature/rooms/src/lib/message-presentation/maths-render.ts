@@ -27,14 +27,11 @@ const purifier = DOMPurify(window);
 const ERROR_COLOUR = '#cc0000';
 
 /**
- * KaTeX's `maxSize`, in em: also the furthest any inline style may move content, either way.
- * KaTeX caps only positive user sizes, so `\kern{-40em}` or `\smash{\raisebox{-30em}{…}}`
- * would move text far outside the formula, over other messages.
+ * KaTeX's `maxSize`, in em: also the furthest any inline style may move content sideways.
+ * KaTeX caps only positive user sizes, so `\kern{-40em}` would move text far outside the
+ * formula; see {@link oversized}.
  */
 const MAX_SIZE_EM = 10;
-
-/** {@link MAX_SIZE_EM} in px, at the 16px em KaTeX's few px lengths assume. */
-const MAX_SIZE_PX = MAX_SIZE_EM * 16;
 
 // One number of a LENGTHS value, with its unit. A fixed pattern, never built from the input.
 const LENGTH = /(-?(?:\d+(?:\.\d+)?|\.\d+))(em|px)?/g;
@@ -173,37 +170,48 @@ const NEUTRALISED_MACROS: Readonly<Record<string, string>> = {
 // attributes, never text that spells one. A fixed pattern, never built from the input.
 const STYLE_ATTRIBUTE = /\sstyle="([^"]*)"/g;
 
+/** The furthest any inline style may move content up or down, in em. */
+const MAX_VERTICAL_MOVE_EM = 50;
+
 /**
- * Lengths that move content away from where layout put it. A box's own positive height, width
- * or padding only makes the formula bigger, which the stylesheet's clip and the display scroll
- * already contain; so tall matrices and long `aligned` blocks still render.
+ * Lengths that move content away from where layout put it, and how far each may: sideways
+ * {@link MAX_SIZE_EM}, up or down {@link MAX_VERTICAL_MOVE_EM}. Tall matrices, `cases` and
+ * `aligned` blocks place their rows with `top` and `vertical-align` well past 10em; what a
+ * sender moves vertically stays inside the message body's clip (rendered-markdown.scss). A
+ * box's own positive height, width or padding only makes the formula bigger.
  */
-const MOVING = new Set([
-  'top',
-  'bottom',
-  'left',
-  'margin',
-  'margin-top',
-  'margin-left',
-  'margin-right',
-  'vertical-align',
+const MOVING: ReadonlyMap<string, number> = new Map([
+  ['left', MAX_SIZE_EM],
+  ['margin', MAX_SIZE_EM],
+  ['margin-left', MAX_SIZE_EM],
+  ['margin-right', MAX_SIZE_EM],
+  ['top', MAX_VERTICAL_MOVE_EM],
+  ['bottom', MAX_VERTICAL_MOVE_EM],
+  ['margin-top', MAX_VERTICAL_MOVE_EM],
+  ['vertical-align', MAX_VERTICAL_MOVE_EM],
 ]);
 
 /**
- * Whether an allowlisted length declaration moves content further than {@link MAX_SIZE_EM}:
- * any length of a {@link MOVING} property, or a negative length of any other.
+ * Whether an allowlisted length declaration moves content further than it may: any length of
+ * a {@link MOVING} property past its bound, or a negative length of any other property past
+ * {@link MAX_SIZE_EM} (a negative `height`, which KaTeX writes for lowered content, past
+ * {@link MAX_VERTICAL_MOVE_EM}). Lengths in px count at KaTeX's 16px em.
  */
 function oversized(property: string, value: string): boolean {
   if (KATEX_STYLES.get(property) !== LENGTHS || !LENGTHS.test(value)) {
     return false;
   }
-  const moving = MOVING.has(property);
+  const moving = MOVING.get(property);
   for (const [, number, unit] of value.matchAll(LENGTH)) {
     const length = Number(number);
-    if (
-      (moving || length < 0) &&
-      Math.abs(length) > (unit === 'px' ? MAX_SIZE_PX : MAX_SIZE_EM)
-    ) {
+    const bound =
+      moving ??
+      (length >= 0
+        ? Infinity
+        : property === 'height'
+          ? MAX_VERTICAL_MOVE_EM
+          : MAX_SIZE_EM);
+    if (Math.abs(length) / (unit === 'px' ? 16 : 1) > bound) {
       return true;
     }
   }
@@ -215,9 +223,9 @@ function oversized(property: string, value: string): boolean {
  * attribute values (never text) before the style allowlist drops anything:
  * - it painted something in its error colour in the HTML copy (`\html@mathml{\foo}{x}` keeps
  *   the error out of the MathML copy);
- * - a length that moves content is longer than {@link MAX_SIZE_EM} either way (see
- *   {@link oversized}): a large negative kern or a lowered, smashed box. What smaller moves add
- *   up to stays inside the formula's clip (rendered-markdown.scss).
+ * - a length moves content further than it may (see {@link oversized}), such as a large
+ *   negative kern. What smaller moves add up to stays inside the formula's and the message
+ *   body's clips (rendered-markdown.scss).
  */
 function forcesSource(markup: string): boolean {
   for (const [, style] of markup.matchAll(STYLE_ATTRIBUTE)) {
@@ -253,8 +261,8 @@ export function sanitizeMathsMarkup(markup: string): DocumentFragment {
  * cannot leak into the next expression or message. Anything KaTeX rejects, an expression over
  * {@link MAX_MATHS_SOURCE_LENGTH}, anything KaTeX paints in its error colour (an unknown
  * command such as `\foo`, or one `trust: false` refuses, such as `\href`; red text below 3:1 on
- * dark themes that hides the command's content), and any length moving content further than
- * {@link MAX_SIZE_EM} becomes `{ kind: 'source' }`.
+ * dark themes that hides the command's content), and any length moving content further than it
+ * may (see {@link oversized}) becomes `{ kind: 'source' }`.
  */
 export function renderMaths(latex: string, displayMode: boolean): MathsOutcome {
   if (latex.length === 0 || latex.length > MAX_MATHS_SOURCE_LENGTH) {
