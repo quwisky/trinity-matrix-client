@@ -1,5 +1,6 @@
 import { Injectable, Injector, effect, inject, untracked } from '@angular/core';
 import { TrnToastService } from '@trinity/components/overlay';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import {
   NativePushLifetime,
   NotificationService,
@@ -19,6 +20,7 @@ import {
 import {
   EMPTY,
   Observable,
+  Subject,
   Subscription,
   catchError,
   concatMap,
@@ -26,11 +28,13 @@ import {
   exhaustMap,
   filter,
   ignoreElements,
+  map,
   merge,
   mergeMap,
   switchMap,
 } from 'rxjs';
 import { CapabilityHealthService } from '../capability-health.service';
+import { appLockCovers } from './app-lock.providers';
 
 /** Owns notification delivery/activation health and contextual navigation incidents. */
 @Injectable({ providedIn: 'root' })
@@ -43,11 +47,16 @@ export class NotificationSessionService {
   private readonly navigation = inject(WorkspaceNavigationService);
   private readonly health = inject(CapabilityHealthService);
   private readonly toast = inject(TrnToastService);
+  private readonly appLock = inject(AppLockService);
   private readonly injector = inject(Injector);
   private readonly navigationContext = Symbol();
+  /** Tapped notifications' destinations, opened by {@link openTaps}. */
+  private readonly taps = new Subject<WorkspaceNavigationIntent>();
 
   run(): Observable<never> {
     return merge(
+      // First, so a tap the runtimes below emit as they start still reaches it.
+      this.openTaps(),
       this.notifications
         .run()
         .pipe(concatMap((event) => this.handleNotification(event))),
@@ -78,8 +87,9 @@ export class NotificationSessionService {
 
   /**
    * Each time a room becomes the focused Conversation (Workspace focuses only a room it has
-   * found ready), clear that account's delivered notifications for it. Best effort: the
-   * handoff swallows native failures, so Workspace never sees one.
+   * found ready), or is still focused when App lock unlocks, clear that account's delivered
+   * notifications for it. Best effort: the handoff swallows native failures, so Workspace
+   * never sees one.
    */
   private clearOpenedRooms(): Observable<never> {
     return new Observable<never>(() => {
@@ -87,7 +97,11 @@ export class NotificationSessionService {
       const clearing = new Subscription();
       const focus = effect(
         () => {
-          const key = this.conversations.focused()?.key ?? null;
+          // Behind App lock nothing counts as opened: a room selected while locked, or
+          // the one left open, clears once the person unlocks and can see it.
+          const key = appLockCovers(this.appLock.status())
+            ? null
+            : (this.conversations.focused()?.key ?? null);
           untracked(() => {
             const id = key ? `${key.accountId}\u0000${key.roomId}` : null;
             if (id === opened) return;
@@ -115,7 +129,12 @@ export class NotificationSessionService {
    */
   private clearResumedRoom(): Observable<never> {
     return this.lifecycle.events.pipe(
-      filter((event) => event.kind === 'active'),
+      // A return to the lock screen keeps them; clearOpenedRooms clears them after unlock.
+      filter(
+        (event) =>
+          event.kind === 'active' &&
+          !appLockCovers(untracked(this.appLock.status)),
+      ),
       mergeMap(() => {
         const key = untracked(() => this.conversations.focused()?.key);
         return key ? this.handoff.clearRoom(key.accountId, key.roomId) : EMPTY;
@@ -159,6 +178,11 @@ export class NotificationSessionService {
     return this.openIntent({ kind: 'notification', ...activation });
   }
 
+  /**
+   * A tap brings the app forward at once, to the lock screen if App lock covers it; the
+   * destination opens once the person unlocks (spec §2). It never holds up the other
+   * notification and push events behind it.
+   */
   private openIntent(intent: WorkspaceNavigationIntent): Observable<never> {
     return defer(() => {
       try {
@@ -166,17 +190,33 @@ export class NotificationSessionService {
       } catch {
         // Browser focus may be denied; Workspace navigation is still valid.
       }
-      return this.navigation.navigate(intent).pipe(
-        switchMap((outcome) =>
-          outcome.kind === 'ready'
-            ? EMPTY
-            : this.navigationIncident('notification-navigation-rejected'),
-        ),
-        catchError(() =>
-          this.navigationIncident('notification-navigation-failed'),
-        ),
-      );
+      this.taps.next(intent);
+      return EMPTY;
     });
+  }
+
+  /**
+   * Opens tapped destinations in order. While App lock covers the app only the latest tap
+   * waits, and it opens as soon as the lock is off or unlocked.
+   */
+  private openTaps(): Observable<never> {
+    return this.taps.pipe(
+      switchMap((intent) =>
+        this.appLock.whenUnlocked().pipe(map(() => intent)),
+      ),
+      concatMap((intent) =>
+        this.navigation.navigate(intent).pipe(
+          switchMap((outcome) =>
+            outcome.kind === 'ready'
+              ? EMPTY
+              : this.navigationIncident('notification-navigation-rejected'),
+          ),
+          catchError(() =>
+            this.navigationIncident('notification-navigation-failed'),
+          ),
+        ),
+      ),
+    );
   }
 
   private navigationIncident(

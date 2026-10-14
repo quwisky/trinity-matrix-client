@@ -16,6 +16,7 @@ import {
   ACCOUNT_LIFECYCLE_PORT,
   type AccountLifecyclePort,
 } from '@trinity/data-access/accounts';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import {
   AUTHENTICATION_HOMESERVER_DISCOVERY,
   AuthService,
@@ -74,6 +75,7 @@ import {
 } from '@trinity/platform-native';
 import { HostBadgeService } from '@trinity/runtime/host';
 import { of } from 'rxjs';
+import { appLockCovers, visibilityWhileLocked } from './app-lock.providers';
 import { NewDeviceSignInPresenter } from './new-device-sign-in.presenter';
 
 interface ApplicationCapabilityProviderOptions {
@@ -166,12 +168,18 @@ export function applicationCapabilityProviders(
       provide: NOTIFICATION_VISIBILITY,
       useFactory: (): NotificationVisibilityPort => {
         const conversations = inject(ConversationRuntime);
+        const appLock = inject(AppLockService);
         return {
-          snapshot: () => ({
-            foreground: document.hasFocus(),
-            hidden: document.visibilityState === 'hidden',
-            conversation: conversations.focused()?.key ?? null,
-          }),
+          // The lock cover keeps the window focused, but nobody is looking behind it.
+          snapshot: () =>
+            visibilityWhileLocked(
+              {
+                foreground: document.hasFocus(),
+                hidden: document.visibilityState === 'hidden',
+                conversation: conversations.focused()?.key ?? null,
+              },
+              appLockCovers(appLock.status()),
+            ),
         };
       },
     },

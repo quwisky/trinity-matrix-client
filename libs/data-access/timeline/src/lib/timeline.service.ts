@@ -1,4 +1,11 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import {
+  Injectable,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import {
   Direction,
   EventType,
@@ -58,6 +65,7 @@ import { projectMessage } from './project-message';
 import { isPresentableSystemEvent } from './normalize-timeline-event';
 import { scrollbackLive } from './live-scrollback';
 import type { TrimGuard } from './live-timeline-trim';
+import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import type {
   MessageShield,
   MessageView,
@@ -178,6 +186,9 @@ export class TimelineService {
   private readonly messageAdapter = inject(CONVERSATION_MESSAGE_ADAPTER);
   private readonly messagePolicy = inject(CONVERSATION_MESSAGE_POLICY);
   private readonly readiness = inject(ConversationTimelineReadiness, {
+    optional: true,
+  });
+  private readonly attention = inject(CONVERSATION_ATTENTION, {
     optional: true,
   });
 
@@ -303,6 +314,11 @@ export class TimelineService {
         return;
       }
       this.scheduleRefresh();
+    });
+    // App lock released: the person is looking again, so ack what arrived behind the cover.
+    // markRead still holds it until the window has focus and the conversation is visible.
+    effect(() => {
+      if (this.attention?.attentive()) untracked(() => this.markRead());
     });
   }
 
@@ -1145,6 +1161,8 @@ export class TimelineService {
    * its unread badge — but ONLY while the window is focused. When the app isn't in
    * focus we skip the ack, so an open room still accumulates unread (the badge
    * climbs like any other channel); {@link onFocus} re-acks when focus returns.
+   * Likewise while {@link CONVERSATION_ATTENTION} says nobody is looking (App lock
+   * covers the app); the constructor's attention effect re-acks once someone is.
    * Deduped on the last-acked event id so a live message marks read but a no-op
    * refresh (decryption, pagination) doesn't re-send. Pending local echoes are
    * skipped (the SDK rejects a receipt on an unsent event) and any missing/failed
@@ -1159,6 +1177,10 @@ export class TimelineService {
     // The room is open, but the user isn't looking if the window is unfocused —
     // hold the receipt so its unread accumulates; onFocus re-acks on return.
     if (!windowHasFocus()) {
+      return;
+    }
+    // Covered by App lock: focused, but nobody is looking; the attention effect re-acks.
+    if (this.attention && !untracked(this.attention.attentive)) {
       return;
     }
     const list = events ?? this.room.getLiveTimeline().getEvents();

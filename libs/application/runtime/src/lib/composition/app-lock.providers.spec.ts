@@ -1,11 +1,15 @@
 import { ApplicationInitStatus, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AppearanceEffects } from '@trinity/application/appearance';
-import { AppLockService } from '@trinity/data-access/app-lock';
+import {
+  AppLockService,
+  type AppLockStatus,
+} from '@trinity/data-access/app-lock';
+import { CONVERSATION_ATTENTION } from '@trinity/data-access/timeline';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, Subject, of, tap, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { appLockProviders } from './app-lock.providers';
+import { appLockProviders, visibilityWhileLocked } from './app-lock.providers';
 
 function setup(options: {
   hydrate: () => Observable<void>;
@@ -128,5 +132,59 @@ describe('appLockProviders', () => {
     });
     await TestBed.inject(ApplicationInitStatus).donePromise;
     expect(applySaved).not.toHaveBeenCalled();
+  });
+});
+
+describe('visibilityWhileLocked', () => {
+  const open = {
+    foreground: true,
+    hidden: false,
+    conversation: { accountId: '@me:hs', roomId: '!r:hs' },
+  };
+
+  it('treats a locked app as nobody looking, so the open room still notifies', () => {
+    expect(visibilityWhileLocked(open, true)).toEqual({
+      foreground: false,
+      hidden: false,
+      conversation: null,
+    });
+    expect(visibilityWhileLocked(open, false)).toBe(open);
+  });
+});
+
+describe('conversation attention', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function attentionFor(status: AppLockStatus) {
+    const state = signal<AppLockStatus>(status);
+    TestBed.configureTestingModule({
+      providers: [
+        appLockProviders(),
+        MockProvider(AppLockService, {
+          hydrate: () => of(undefined),
+          status: state.asReadonly() as never,
+        }),
+        MockProvider(AppearanceEffects, { applySaved: () => of(undefined) }),
+      ],
+    });
+    return { state, attention: TestBed.inject(CONVERSATION_ATTENTION) };
+  }
+
+  it('follows the lock', () => {
+    const { state, attention } = attentionFor('locked');
+    expect(attention.attentive()).toBe(false);
+    state.set('unlocked');
+    expect(attention.attentive()).toBe(true);
+    state.set('locked');
+    expect(attention.attentive()).toBe(false);
+    state.set('off');
+    expect(attention.attentive()).toBe(true);
+  });
+
+  it('fails closed until the lock state is known', () => {
+    const { state, attention } = attentionFor('unknown');
+    expect(attention.attentive()).toBe(false);
+    state.set('off');
+    expect(attention.attentive()).toBe(true);
   });
 });

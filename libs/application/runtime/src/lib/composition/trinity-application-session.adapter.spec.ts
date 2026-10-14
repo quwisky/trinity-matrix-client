@@ -33,6 +33,7 @@ import {
   ConversationRuntime,
   LiveTimelineTrimmer,
 } from '@trinity/data-access/timeline';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import {
   IdentityLifetime,
   type IdentityLifetimeEvent,
@@ -263,6 +264,11 @@ function setup(
         },
       },
       MockProvider(TrnToastService, { show: showToast }),
+      // App lock is off: taps open at once (its waiting is NotificationSessionService's).
+      MockProvider(AppLockService, {
+        status: signal('off').asReadonly() as never,
+        whenUnlocked: () => of(undefined),
+      }),
     ],
   });
   return {

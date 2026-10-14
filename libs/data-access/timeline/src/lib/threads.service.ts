@@ -1,4 +1,11 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import {
+  Injectable,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import {
   Direction,
   MatrixEvent,
@@ -44,6 +51,7 @@ import { projectMessage } from './project-message';
 import type { MessageShield, MessageView } from './message-presentation';
 import type { ConversationKey } from './conversation-messages';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
+import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import type { ThreadParticipant, ThreadSummary } from './conversation-threads';
 import {
   editMessageContent,
@@ -81,6 +89,9 @@ const THREAD_SCROLLBACK = 30;
 export class ThreadsService {
   private readonly mediaPipeline = inject(MediaPipeline);
   private readonly messageAdapter = inject(CONVERSATION_MESSAGE_ADAPTER);
+  private readonly attention = inject(CONVERSATION_ATTENTION, {
+    optional: true,
+  });
   private conversationKey: ConversationKey | null = null;
 
   private readonly _summaries = signal<Record<string, ThreadSummary>>({});
@@ -250,6 +261,13 @@ export class ThreadsService {
     }
     this.refreshThread();
   };
+
+  constructor() {
+    // App lock released: ack the open thread's replies that arrived behind the cover.
+    effect(() => {
+      if (this.attention?.attentive()) untracked(() => this.markThreadRead());
+    });
+  }
 
   resources(): { listenerCount: number; retainedBytes: number } {
     const summaryListeners = this.summariesRoom ? 7 : 0;
@@ -809,9 +827,9 @@ export class ThreadsService {
 
   /**
    * Send a thread-scoped read receipt for the opened thread's latest confirmed
-   * event, clearing its unread badge. Best-effort: a pending local echo is skipped
-   * (the SDK rejects a receipt on an unsent event) and any missing/failed receipt
-   * API is swallowed so viewing a thread never throws.
+   * event, clearing its unread badge, unless App lock covers the app. Best-effort: a
+   * pending local echo is skipped (the SDK rejects a receipt on an unsent event) and any
+   * missing/failed receipt API is swallowed so viewing a thread never throws.
    */
   private markThreadRead(): void {
     // Open, but nobody is looking at an unfocused window: hold the receipt so the thread
@@ -823,6 +841,10 @@ export class ThreadsService {
     const key = this.conversationKey;
     const rootEventId = this._openThreadRootId();
     if (!thread || !key || !rootEventId) {
+      return;
+    }
+    // Covered by App lock: nobody is looking; the attention effect re-acks after unlock.
+    if (this.attention && !untracked(this.attention.attentive)) {
       return;
     }
     const latest = [...(thread.events ?? [])].reverse().find((e) => !e.status);

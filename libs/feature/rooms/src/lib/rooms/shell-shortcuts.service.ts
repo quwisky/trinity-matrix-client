@@ -2,6 +2,7 @@ import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, switchMap } from 'rxjs';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import type { RoomSummary } from '@trinity/data-access/room-library';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
@@ -35,6 +36,7 @@ export class ShellShortcutsService {
   private readonly switcher = inject(QuickSwitcherService);
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private readonly dialog = inject(TrnSurfaceService);
+  private readonly appLock = inject(AppLockService);
   private readonly destroyRef = inject(DestroyRef);
 
   /**
@@ -54,6 +56,9 @@ export class ShellShortcutsService {
    * the timeline, not something over it, and hopping rooms with it open has always worked.
    */
   onGlobalKeydown(event: Event): void {
+    // Locked: the cover stops keys at its dialog, and this guard covers anything that
+    // still reaches the document.
+    if (this.appLock.locked()) return;
     const e = event as KeyboardEvent;
     if ((!e.ctrlKey && !e.metaKey && !e.altKey) || this.dialog.hasOpen()) {
       return;

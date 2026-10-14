@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
@@ -23,6 +24,7 @@ import {
   vi,
 } from 'vitest';
 import { ThreadsService } from './threads.service';
+import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
 import { switchableMatrixProvider } from './timeline.spec-harness';
@@ -1669,6 +1671,40 @@ describe('ThreadsService', () => {
       svc.attachThreadRoot('$root');
 
       expect(acknowledge).toHaveBeenCalledWith({
+        key: { accountId: '@me:hs', roomId: '!r:hs' },
+        messageId: '$r1',
+        threadRootId: '$root',
+      });
+    });
+
+    it('holds the thread receipt while App lock covers the app and sends it after unlock', () => {
+      const attentive = signal(false);
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: CONVERSATION_ATTENTION,
+            useValue: { attentive: attentive.asReadonly() },
+          },
+        ],
+      });
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'reply',
+        ts: 1000,
+      });
+      const { svc, acknowledge } = setup([
+        fakeThread({ id: '$root', rootEvent: root, events: [root, reply] }),
+      ]);
+
+      svc.attachThreadRoot('$root');
+      TestBed.tick();
+      expect(acknowledge).not.toHaveBeenCalled();
+
+      attentive.set(true);
+      TestBed.tick();
+      expect(acknowledge).toHaveBeenCalledExactlyOnceWith({
         key: { accountId: '@me:hs', roomId: '!r:hs' },
         messageId: '$r1',
         threadRootId: '$root',
