@@ -61,7 +61,7 @@
     {{ filterActive() ? filterStatus() : '' }}
   </p>
 
-  <div class="sidebar__scroll">
+  <div class="sidebar__scroll" #roomScroller>
     <trn-sidebar-room-list
       [rooms]="rooms()"
       [typingByRoom]="typingByRoom()"
@@ -73,6 +73,7 @@
       [canCurateSpace]="canCurateSpace()"
       [curateSpaceReason]="curateSpaceReason()"
       [accountBadges]="accountBadges()"
+      [scroller]="roomScroller"
       (selectRoom)="selectRoom.emit($event)"
       (leaveRoom)="leaveRoom.emit($event)"
       (removeRoom)="removeRoom.emit($event)"

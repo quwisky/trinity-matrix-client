@@ -13,10 +13,20 @@
     padding: 12px 8px 4px;
   }
 
+  // Spacing as padding, not margin: the windowed list measures each line's border box, and
+  // a margin would sit outside it and make every divider 12px short in the window's maths.
+  // The background stays on the 1px content box, so the line draws inset exactly as before.
   .sidebar__divider {
+    box-sizing: content-box;
     height: 1px;
-    margin: 8px 8px 4px;
+    padding: 8px 8px 4px;
     background: var(--trinity-divider);
+    background-clip: content-box;
+  }
+
+  // Spacers standing in for the lines above and below the window.
+  .sidebar__pad {
+    flex: 0 0 auto;
   }
 
   .invite {
