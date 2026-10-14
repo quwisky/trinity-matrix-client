@@ -32,7 +32,7 @@ import {
 } from '@trinity/runtime/host';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, Observable, firstValueFrom, of } from 'rxjs';
+import { EMPTY, NEVER, Observable, firstValueFrom, of } from 'rxjs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type {
   ApplicationRecoveryOutcome,
@@ -131,7 +131,10 @@ describe('ApplicationRootComponent', () => {
           state: lockState.asReadonly(),
           requestHandover,
         }),
-        MockProvider(AppLockLifecycleBinding, { run: () => lockLifetime }),
+        MockProvider(AppLockLifecycleBinding, {
+          run: () => lockLifetime,
+          visits: EMPTY,
+        }),
         MockProvider(AppLockService, {
           appName: 'Trinity',
           locked: signal(appLocked).asReadonly(),

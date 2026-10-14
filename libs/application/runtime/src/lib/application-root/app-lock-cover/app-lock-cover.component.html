@@ -9,7 +9,7 @@
   aria-labelledby="app-lock-heading"
   aria-describedby="app-lock-message"
   data-testid="app-lock-cover"
-  [attr.data-view]="view()"
+  [attr.data-view]="state.view()"
   (cancel)="$event.preventDefault()"
   (close)="onClose()"
   (keydown)="onKeydown($event)"
@@ -28,10 +28,10 @@
       aria-hidden="true"
     />
     <h1 id="app-lock-heading" class="m-0 text-xl font-semibold">
-      {{ appName }} is locked
+      {{ state.appName }} is locked
     </h1>
 
-    @switch (view()) {
+    @switch (state.view()) {
       @case ('system') {
         <div class="grid w-full gap-2">
           <button
@@ -39,18 +39,18 @@
             type="button"
             data-testid="app-lock-unlock"
             data-autofocus
-            [disabled]="busy() || waiting()"
-            (click)="unlockWithSystem()"
+            [disabled]="state.busy() || state.waiting()"
+            (click)="state.unlockWithSystem()"
           >
-            {{ unlockText() }}
+            {{ state.unlockText() }}
           </button>
-          @if (pinOffered()) {
+          @if (state.pinOffered()) {
             <button
               trnBtn
               presentation="ghost"
               type="button"
               data-testid="app-lock-use-pin"
-              (click)="usePin()"
+              (click)="state.usePin()"
             >
               Use PIN instead
             </button>
@@ -58,15 +58,15 @@
         </div>
       }
       @case ('pin') {
-        @let pinError = shownError(pinForm.pin);
+        @let pinError = shownError(state.pinForm.pin);
         <form
           class="grid w-full gap-2 text-start"
-          [formRoot]="pinForm"
-          (submit)="submitPin()"
+          [formRoot]="state.pinForm"
+          (submit)="state.submitPin()"
         >
           <trn-field [invalid]="!!pinError">
             <trn-field-label controlId="app-lock-pin" [invalid]="!!pinError">
-              {{ appName }} PIN
+              {{ state.appName }} PIN
             </trn-field-label>
             <input
               trnInput
@@ -74,7 +74,7 @@
               type="password"
               inputmode="numeric"
               autocomplete="off"
-              [formField]="pinForm.pin"
+              [formField]="state.pinForm.pin"
               [attr.aria-describedby]="
                 pinError
                   ? 'app-lock-pin-error app-lock-message'
@@ -93,19 +93,19 @@
             trnBtn
             type="submit"
             data-testid="app-lock-pin-submit"
-            [disabled]="busy() || waiting()"
+            [disabled]="state.busy() || state.waiting()"
           >
             Unlock
           </button>
         </form>
         <div class="grid w-full gap-2">
-          @if (backText(); as back) {
+          @if (state.backText(); as back) {
             <button
               trnBtn
               presentation="ghost"
               type="button"
               data-testid="app-lock-use-system"
-              (click)="useSystem()"
+              (click)="state.useSystem()"
             >
               {{ back }}
             </button>
@@ -115,7 +115,7 @@
             presentation="ghost"
             type="button"
             data-testid="app-lock-forgot"
-            (click)="showForgot()"
+            (click)="state.showForgot()"
           >
             Forgot PIN?
           </button>
@@ -123,7 +123,7 @@
       }
       @case ('pin-unreadable') {
         <p class="m-0 text-sm text-[var(--trinity-text-muted)]">
-          {{ appName }} can’t read your PIN right now.
+          {{ state.appName }} can’t read your PIN right now.
         </p>
         <div class="grid w-full gap-2">
           <button
@@ -131,18 +131,18 @@
             type="button"
             data-testid="app-lock-retry"
             data-autofocus
-            [disabled]="busy()"
-            (click)="retry()"
+            [disabled]="state.busy()"
+            (click)="state.retry()"
           >
             Retry
           </button>
-          @if (backText(); as back) {
+          @if (state.backText(); as back) {
             <button
               trnBtn
               presentation="ghost"
               type="button"
               data-testid="app-lock-use-system"
-              (click)="useSystem()"
+              (click)="state.useSystem()"
             >
               {{ back }}
             </button>
@@ -153,7 +153,7 @@
             presentation="ghost"
             type="button"
             data-testid="app-lock-reset"
-            (click)="confirmErase()"
+            (click)="state.confirmErase()"
           >
             Erase all data on this device
           </button>
@@ -161,16 +161,16 @@
       }
       @case ('forgot') {
         <p class="m-0 text-sm text-[var(--trinity-text-muted)]">
-          {{ unlockText() }}, then change your PIN in Settings › Security.
+          {{ state.unlockText() }}, then change your PIN in Settings › Security.
         </p>
         <div class="grid w-full gap-2">
-          @if (backText(); as back) {
+          @if (state.backText(); as back) {
             <button
               trnBtn
               type="button"
               data-testid="app-lock-use-system"
               data-autofocus
-              (click)="useSystem()"
+              (click)="state.useSystem()"
             >
               {{ back }}
             </button>
@@ -179,7 +179,7 @@
             trnBtn
             presentation="ghost"
             type="button"
-            (click)="cancelPanel()"
+            (click)="state.cancelPanel()"
           >
             Cancel
           </button>
@@ -187,7 +187,7 @@
       }
       @case ('erase') {
         <p class="m-0 text-sm text-[var(--trinity-text-muted)]">
-          {{ eraseText() }}
+          {{ state.eraseText() }}
         </p>
         <div class="grid w-full gap-2">
           <button
@@ -195,8 +195,8 @@
             variant="danger"
             type="button"
             data-testid="app-lock-erase"
-            [disabled]="erasing()"
-            (click)="erase()"
+            [disabled]="state.erasing()"
+            (click)="state.erase()"
           >
             Erase all data on this device
           </button>
@@ -205,43 +205,42 @@
             presentation="ghost"
             type="button"
             data-autofocus
-            [disabled]="erasing()"
-            (click)="cancelPanel()"
+            [disabled]="state.erasing()"
+            (click)="state.cancelPanel()"
           >
             Cancel
           </button>
         </div>
       }
       @default {
-        <!-- `no-pin` / `no-pin-store`: no PIN can unlock here. Say so, and offer the way that
-             can: the system prompt, or else the reset. -->
+        <!-- `no-pin` / `no-pin-store`: no PIN can unlock here. Say so, and offer the system
+             prompt where there is one; the reset is always there, so it is never a dead end. -->
         <p class="m-0 text-sm text-[var(--trinity-text-muted)]">
-          {{ recoveryText() }}
+          {{ state.recoveryText() }}
         </p>
         <div class="grid w-full gap-2">
-          @if (backText(); as back) {
+          @if (state.backText(); as back) {
             <button
               trnBtn
               type="button"
               data-testid="app-lock-use-system"
               data-autofocus
-              (click)="useSystem()"
+              (click)="state.useSystem()"
             >
               {{ back }}
             </button>
-          } @else {
-            <button
-              trnBtn
-              variant="danger"
-              presentation="outline"
-              type="button"
-              data-testid="app-lock-reset"
-              data-autofocus
-              (click)="confirmErase()"
-            >
-              Erase all data on this device
-            </button>
           }
+          <button
+            trnBtn
+            variant="danger"
+            presentation="outline"
+            type="button"
+            data-testid="app-lock-reset"
+            data-autofocus
+            (click)="state.confirmErase()"
+          >
+            Erase all data on this device
+          </button>
         </div>
       }
     }
@@ -251,10 +250,10 @@
       class="m-0 min-h-5 text-sm text-[var(--trinity-text-muted)]"
       data-testid="app-lock-message"
     >
-      {{ line() }}
+      {{ state.line() }}
     </p>
     <p class="sr-only" role="status" aria-live="polite">
-      {{ announcement() }}
+      {{ state.announcement() }}
     </p>
   </div>
 </dialog>

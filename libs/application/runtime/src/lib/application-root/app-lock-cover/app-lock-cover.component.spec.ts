@@ -7,21 +7,17 @@ import {
   type UnlockOutcome,
 } from '@trinity/data-access/app-lock';
 import { AppRestartService } from '@trinity/platform-native';
+import { TitleBarState } from '@trinity/application/workspace';
 import {
-  HostLifecycleService,
   HostLockIntegrationService,
   HostSystemUiService,
   type HostUserPresenceSupport,
 } from '@trinity/runtime/host';
-import {
-  desktopBridgeFixture,
-  fireEvent,
-  render,
-  screen,
-} from '@trinity/testing';
+import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, type Observable } from 'rxjs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { AppLockLifecycleBinding } from '../../composition/app-lock-lifecycle.binding';
 import { AppLockCoverComponent } from './app-lock-cover.component';
 
 const FACE: HostUserPresenceSupport = {
@@ -71,7 +67,6 @@ beforeAll(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
-  delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
 });
 
 async function setup(
@@ -84,14 +79,13 @@ async function setup(
     pin?: () => Observable<UnlockOutcome>;
     appName?: string;
     systemWaitUntil?: number | null;
-    desktop?: boolean;
     reset?: () => Observable<unknown>;
+    /** `held`: the host answers a support read only when the test calls `answerRefreshes`. */
+    refresh?: 'immediate' | 'held';
+    /** The desktop title row is showing (a frameless Electron window). */
+    titleRow?: boolean;
   } = {},
 ) {
-  if (options.desktop) {
-    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
-      desktopBridgeFixture();
-  }
   const locked = signal(options.locked ?? true);
   const support = signal(options.support ?? FACE);
   const systemAvailable = computed(() => support().system.kind === 'available');
@@ -105,12 +99,25 @@ async function setup(
   const unlockWithPin = vi.fn(
     options.pin ?? (() => of<UnlockOutcome>({ kind: 'unlocked' })),
   );
-  const refreshSupport = vi.fn(() => {
+  const heldRefreshes: Subject<HostUserPresenceSupport>[] = [];
+  const refreshSupport = vi.fn((): Observable<HostUserPresenceSupport> => {
+    if (options.refresh === 'held') {
+      const answer = new Subject<HostUserPresenceSupport>();
+      heldRefreshes.push(answer);
+      return answer;
+    }
     if (options.refreshed) support.set(options.refreshed);
     return of(support());
   });
+  /** The host answers every support read still waiting (a cancelled one is ignored). */
+  const answerRefreshes = (): void => {
+    for (const answer of heldRefreshes.splice(0)) {
+      answer.next(support());
+      answer.complete();
+    }
+  };
   const retry = vi.fn(() => of(undefined));
-  const lifecycle = new Subject<{ readonly kind: 'active' | 'background' }>();
+  const visits = new Subject<'front' | 'away'>();
   const systemUiActive = signal(false);
   const coverPainted = vi.fn(() => of({ kind: 'completed' as const }));
   const resetInstallation = vi.fn(
@@ -135,7 +142,10 @@ async function setup(
         unlockWithSystem,
         unlockWithPin,
       }),
-      MockProvider(HostLifecycleService, { events: lifecycle }),
+      MockProvider(AppLockLifecycleBinding, { visits }),
+      MockProvider(TitleBarState, {
+        active: signal(options.titleRow ?? false).asReadonly(),
+      }),
       MockProvider(HostLockIntegrationService, { coverPainted }),
       MockProvider(HostSystemUiService, {
         active: systemUiActive.asReadonly(),
@@ -159,11 +169,12 @@ async function setup(
     locked,
     support,
     systemWaitUntil,
-    lifecycle,
+    visits,
     systemUiActive,
     unlockWithSystem,
     unlockWithPin,
     refreshSupport,
+    answerRefreshes,
     retry,
     coverPainted,
     resetInstallation,
@@ -190,16 +201,22 @@ function holdFrames(): { frame(): void } {
   };
 }
 
+/** One macrotask for the zoneless renderer, in real or fake time. */
+async function tick(): Promise<void> {
+  if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(0);
+  else await new Promise((resolve) => setTimeout(resolve));
+}
+
 /** A click, then a tick for the zoneless renderer. */
 async function click(element: Element): Promise<void> {
   fireEvent.click(element);
-  await new Promise((resolve) => setTimeout(resolve));
+  await tick();
 }
 
 /** Types `value` into a field as one input event. */
 async function type(element: Element, value: string): Promise<void> {
   fireEvent.input(element, { target: { value } });
-  await new Promise((resolve) => setTimeout(resolve));
+  await tick();
 }
 
 const pinField = (appName = 'Trinity') =>
@@ -321,10 +338,10 @@ describe('AppLockCoverComponent', () => {
     });
 
     it('stays open while a locked app is hidden and shown again', async () => {
-      // The lifecycle binding re-sends the signal on show; it needs the cover still painted.
-      const { dialog, lifecycle, settle } = await setup();
-      lifecycle.next({ kind: 'background' });
-      lifecycle.next({ kind: 'active' });
+      // The visits binding re-sends the signal on show; it needs the cover still painted.
+      const { dialog, visits, settle } = await setup();
+      visits.next('away');
+      visits.next('front');
       await settle();
       expect(dialog.hasAttribute('open')).toBe(true);
     });
@@ -406,36 +423,57 @@ describe('AppLockCoverComponent', () => {
     });
 
     it('does not open it again after a cancel, until the app comes back to the front', async () => {
-      const { unlockWithSystem, lifecycle, settle } = await setup();
+      const { unlockWithSystem, visits, settle } = await setup();
       await vi.waitFor(() => expect(unlockWithSystem).toHaveBeenCalledOnce());
-      lifecycle.next({ kind: 'active' });
+      visits.next('front');
       await settle();
       expect(unlockWithSystem).toHaveBeenCalledOnce();
-      lifecycle.next({ kind: 'background' });
-      lifecycle.next({ kind: 'active' });
+      visits.next('away');
+      visits.next('front');
       await settle();
       await vi.waitFor(() => expect(unlockWithSystem).toHaveBeenCalledTimes(2));
     });
 
     it('does not count the prompt’s own trip to the background as leaving', async () => {
-      const { unlockWithSystem, lifecycle, systemUiActive, settle } =
+      const { unlockWithSystem, visits, systemUiActive, settle } =
         await setup();
       await vi.waitFor(() => expect(unlockWithSystem).toHaveBeenCalledOnce());
       systemUiActive.set(true);
-      lifecycle.next({ kind: 'background' });
+      visits.next('away');
       systemUiActive.set(false);
-      lifecycle.next({ kind: 'active' });
+      visits.next('front');
       await settle();
       expect(unlockWithSystem).toHaveBeenCalledOnce();
     });
 
-    it('opens the prompt on desktop when the locked window gets focus again', async () => {
-      const { unlockWithSystem, settle } = await setup({ desktop: true });
-      await vi.waitFor(() => expect(unlockWithSystem).toHaveBeenCalledOnce());
-      window.dispatchEvent(new Event('blur'));
-      window.dispatchEvent(new Event('focus'));
+    it('opens the prompt once when the lock falls due as the app comes back', async () => {
+      // The binding locks on return, then tells the cover; the host answers support later.
+      const { unlockWithSystem, locked, visits, settle, answerRefreshes } =
+        await setup({ locked: false, refresh: 'held' });
+      locked.set(true);
+      visits.next('front');
+      // The cover opens after the next render; its own read must not cancel the prompt.
       await settle();
-      await vi.waitFor(() => expect(unlockWithSystem).toHaveBeenCalledTimes(2));
+      expect(unlockWithSystem).not.toHaveBeenCalled();
+      answerRefreshes();
+      await settle();
+      expect(unlockWithSystem).toHaveBeenCalledOnce();
+    });
+
+    it('opens the prompt once when a cover that opened away comes back to the front', async () => {
+      const { unlockWithSystem, locked, visits, settle, answerRefreshes } =
+        await setup({ locked: false, refresh: 'held' });
+      visits.next('away');
+      // The away timer locked while the app was in the background.
+      locked.set(true);
+      await settle();
+      answerRefreshes();
+      await settle();
+      expect(unlockWithSystem).not.toHaveBeenCalled();
+      visits.next('front');
+      answerRefreshes();
+      await settle();
+      expect(unlockWithSystem).toHaveBeenCalledOnce();
     });
 
     it('does not open the prompt when the person locks the app in front of them', async () => {
@@ -473,7 +511,7 @@ describe('AppLockCoverComponent', () => {
     });
 
     it('says why the PIN form took over, naming the method that went away', async () => {
-      const { support, settle } = await setup({ desktop: true });
+      const { support, settle } = await setup();
       support.set({
         system: { kind: 'unavailable', reason: 'not-configured' },
         pin: { kind: 'available', set: true, nextAttemptAt: null },
@@ -507,11 +545,11 @@ describe('AppLockCoverComponent', () => {
     });
 
     it('reads it again each time the locked app comes back', async () => {
-      const { refreshSupport, lifecycle, settle } = await setup();
+      const { refreshSupport, visits, settle } = await setup();
       await vi.waitFor(() => expect(refreshSupport).toHaveBeenCalled());
       const before = refreshSupport.mock.calls.length;
-      lifecycle.next({ kind: 'background' });
-      lifecycle.next({ kind: 'active' });
+      visits.next('away');
+      visits.next('front');
       await settle();
       expect(refreshSupport.mock.calls.length).toBeGreaterThan(before);
     });
@@ -566,6 +604,30 @@ describe('AppLockCoverComponent', () => {
       expect(unlockWithPin).toHaveBeenCalledWith(FIXTURE_PIN);
       expect(pinField().value === '').toBe(true);
       expect((container.textContent ?? '').includes(FIXTURE_PIN)).toBe(false);
+    });
+
+    it('puts focus back on the PIN field after a wrong PIN', async () => {
+      const answer = new Subject<UnlockOutcome>();
+      await setup({ support: PIN_ONLY, pin: () => answer });
+      await type(pinField(), '000000');
+      await click(screen.getByTestId('app-lock-pin-submit'));
+      // The browser drops focus from the field while it is disabled during the check (jsdom
+      // can't blur a disabled field, so focus moves elsewhere instead).
+      screen.getByTestId('app-lock-forgot').focus();
+      expect(document.activeElement).not.toBe(pinField());
+      answer.next({ kind: 'failed', until: null });
+      answer.complete();
+      await tick();
+      await vi.waitFor(() => expect(document.activeElement).toBe(pinField()));
+    });
+
+    it('clears typed digits when the person switches to the system prompt and back', async () => {
+      await setup();
+      await click(screen.getByRole('button', { name: 'Use PIN instead' }));
+      await type(pinField(), '1234');
+      await click(screen.getByRole('button', { name: 'Use Face ID' }));
+      await click(screen.getByRole('button', { name: 'Use PIN instead' }));
+      expect(pinField().value === '').toBe(true);
     });
 
     it('announces a wrong PIN', async () => {
@@ -640,6 +702,15 @@ describe('AppLockCoverComponent', () => {
 
   describe('waits', () => {
     it('shows no countdown for a delay that is already over, and does not retry', async () => {
+      vi.useFakeTimers({
+        toFake: [
+          'setTimeout',
+          'clearTimeout',
+          'setInterval',
+          'clearInterval',
+          'Date',
+        ],
+      });
       const now = Date.now();
       const { unlockWithPin } = await setup({
         support: PIN_ONLY,
@@ -651,7 +722,7 @@ describe('AppLockCoverComponent', () => {
       expect(line).not.toContain('Try again in');
       expect(line).not.toContain('-');
       expect(pinField().disabled).toBe(false);
-      await new Promise((resolve) => setTimeout(resolve, 1_200));
+      await vi.advanceTimersByTimeAsync(5_000);
       expect(unlockWithPin).toHaveBeenCalledOnce();
     });
 
@@ -698,9 +769,12 @@ describe('AppLockCoverComponent', () => {
         'Try again in 20 seconds',
       );
       expect(pinField().disabled).toBe(true);
+      (document.activeElement as HTMLElement | null)?.blur();
       await vi.advanceTimersByTimeAsync(21_000);
       await settle();
       expect(pinField().disabled).toBe(false);
+      // Back on the field, so the keyboard comes back and keys stay in the cover.
+      expect(document.activeElement).toBe(pinField());
       expect(screen.getByTestId('app-lock-message').textContent).not.toContain(
         'Try again in',
       );
@@ -857,6 +931,19 @@ describe('AppLockCoverComponent', () => {
       await click(screen.getByTestId('app-lock-erase'));
       expect(resetInstallation).toHaveBeenCalledOnce();
       expect(restart).toHaveBeenCalledOnce();
+    });
+
+    it('offers the reset too when no PIN is stored and the system prompt is locked out', async () => {
+      await setup({
+        support: { system: FACE.system, pin: NO_PIN_ONLY.pin },
+        system: () =>
+          of<UnlockOutcome>({ kind: 'use-pin', reason: 'locked-out' }),
+      });
+      await vi.waitFor(() =>
+        expect(
+          screen.getAllByRole('button').map((b) => b.textContent?.trim()),
+        ).toEqual(['Use Face ID', 'Erase all data on this device']),
+      );
     });
 
     it('offers only the reset where this device can’t keep a PIN', async () => {
