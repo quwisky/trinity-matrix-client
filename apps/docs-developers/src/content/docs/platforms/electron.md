@@ -59,7 +59,7 @@ Each release line installs as its own app, so stable Trinity and the `-next` pre
 
 The main process derives the same channel for the Windows AppUserModelID and the URL scheme it registers and accepts, names the tray and body-only notifications after the app, and passes the channel to preload as `--trinity-release-channel=`. Preload exposes `trinityDesktop.appIdentity` (channel, URL scheme and device name, or `null` for an unknown channel). The renderer's Electron host adapter sends sign-in callbacks to that scheme, moves incoming links back to `dev.trinityproject.trinity:` before they are parsed, and names new Matrix devices and the OIDC client after the app. Each app accepts only its own scheme, so Trinity Next ignores links on stable's `dev.trinityproject.trinity:` scheme. When the shell reports no identity, sign-in fails rather than fall back to stable's scheme. Account-data types, the widget client ID and the push app ID stay shared: both apps are Trinity on the same account.
 
-Unit tests check the merged builder config, the package scripts, the startup identity and the host adapter, and the launched-shell journey `e2e/electron/release-channel.electron.spec.mts` checks the running app's name, bridge identity, device name and sign-in callback scheme. A local unsigned macOS package has been inspected (bundle ID, URL scheme, name and NEXT icon). The Windows installer, the Linux packages and a signed, notarized macOS build are confirmed only by a real prerelease run.
+The launched-shell journey `e2e/electron/release-channel.electron.spec.mts` checks the running app's name, bridge identity, device name and sign-in callback scheme.
 
 ## Data and updates {#data-updates}
 

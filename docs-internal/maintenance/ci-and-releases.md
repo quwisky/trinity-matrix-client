@@ -764,12 +764,29 @@ The stable cask in the tap still says `conflicts_with cask: "trinity@next"` unti
 re-rendered, and `homebrew.yml` re-renders it only for a stable release or a dispatch.
 After the change that made Trinity Next its own app merges, the owner:
 
-1. Dispatches `homebrew.yml` from `main` with the current stable tag (`v0.4.0`), so the
-   stable cask drops the conflict and gains the new `zap` list. Until then
-   `brew install --cask quwisky/trinity/trinity` fails while `trinity@next` is installed.
-2. Adds a note by hand to the release PR of the first `-next` release that contains the
-   change: "Trinity Next installs alongside Trinity; sign in again; remove the old Trinity
-   app if you don't use stable".
+1. Dispatches the "Homebrew" workflow from `main` with the current stable tag, so the
+   stable cask drops the conflict and gains the new `zap` list:
+
+   ```bash
+   gh workflow run homebrew.yml --ref main -f tag=v0.4.0
+   ```
+
+   Until then `brew install --cask quwisky/trinity/trinity` fails while `trinity@next` is
+   installed. Even afterwards, a user who still has the old `trinity@next` (the old
+   `Trinity.app`, at the same path as stable's) cannot install `trinity` until they
+   upgrade `trinity@next`. That cask keeps its old `conflicts_with cask: "trinity"` until
+   the first Trinity Next prerelease publishes and re-renders it.
+
+2. Adds the release note by hand to the release-please PR of the first `-next` release
+   that contains the change. Edit its body last, immediately before merging it:
+   release-please regenerates the body on every push to `main`, and merging publishes the
+   release. The note:
+
+   > The desktop prerelease is now its own app, Trinity Next, with its own icon, data
+   > folder and sign-in, so it installs alongside Trinity and both can run at once.
+   > Trinity Next starts empty: sign in again, as a new device. A prerelease installed by
+   > hand before this one stays installed as "Trinity"; remove it if you do not use stable
+   > Trinity. Homebrew replaces it on upgrade.
 
 Skip step 1 if a stable release with the change has already published the stable cask.
 
