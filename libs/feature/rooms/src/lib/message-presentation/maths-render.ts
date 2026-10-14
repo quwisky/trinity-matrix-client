@@ -4,9 +4,9 @@ import katex from 'katex';
 /**
  * KaTeX for maths in messages (spec B, Matrix spec v1.11 "Mathematical messages").
  *
- * Never imported statically: MathsDirective loads this module with a dynamic `import()` the
- * first time a rendered body holds maths, so KaTeX (about 270 KB minified) is a lazy chunk and
- * a room without maths never downloads it. The chunk is named after this file
+ * Never imported statically: MathsLoader (for MathsDirective) loads this module with a dynamic
+ * `import()` the first time a rendered body holds maths, so KaTeX (about 270 KB minified) is a
+ * lazy chunk and a room without maths never downloads it. The chunk is named after this file
  * (`maths-render-<hash>.js`), and `apps/trinity/ngsw-config.json` matches that name to keep it
  * out of the service worker's prefetch: renaming this file moves KaTeX back into prefetch.
  */

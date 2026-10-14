@@ -10,8 +10,9 @@ import { MathsDirective } from './maths.directive';
  * Renders a sanitized Matrix message body into its host element.
  *
  * Spoiler reveal, `matrix.to` link routing, inline custom emoji, code highlighting, sender
- * colours and maths all delegate from the container that holds the body, so they travel with it: bind
- * `[trnMatrixHtml]` on that element and handle `(matrixLink)` where permalinks are routed.
+ * colours and maths all delegate from the container that holds the body, so they travel with
+ * it: bind `[trnMatrixHtml]` on that element and handle `(matrixLink)` where permalinks are
+ * routed.
  */
 @Directive({
   selector: '[trnMatrixHtml]',

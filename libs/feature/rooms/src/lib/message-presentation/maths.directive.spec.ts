@@ -1,7 +1,8 @@
-import { Component, signal } from '@angular/core';
+import { Component, Injectable, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { sanitizeMatrixHtml } from '@trinity/util/matrix';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MathsLoader, type MathsRenderer } from './maths-loader';
 import { MAX_MATHS_PER_MESSAGE, MathsDirective } from './maths.directive';
 
 @Component({
@@ -12,29 +13,86 @@ class HostComponent {
   readonly html = signal('');
 }
 
+/** A chunk that fails to load once (offline), then loads. */
+@Injectable()
+class FlakyMathsLoader extends MathsLoader {
+  attempts = 0;
+
+  protected override importRenderer(): Promise<MathsRenderer> {
+    this.attempts += 1;
+    return this.attempts === 1
+      ? Promise.reject(new Error('offline'))
+      : super.importRenderer();
+  }
+}
+
+/** Angular's dev-mode notice that its sanitizer dropped `data-mx-maths`; it holds no content. */
+const ANGULAR_STRIPPED = 'sanitizing HTML stripped some content';
+
+/** Markup a sender might hope KaTeX or the fallback turns into an element. */
+const INJECTION = '<img src=x onerror=alert(1)>';
+
+const stylesheet = (): HTMLLinkElement | null =>
+  document.head.querySelector('link[data-trinity-katex]');
+
+/** jsdom never fetches stylesheets: answer for the KaTeX `<link>` as the browser would. */
+function settleStylesheet(event: 'load' | 'error'): void {
+  const link = stylesheet();
+  expect(link).not.toBeNull();
+  link?.dispatchEvent(new Event(event));
+}
+
+/** Let settled promises (the chunk import, the loader's bookkeeping) run. */
+const flush = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve));
+
 describe('MathsDirective', () => {
+  let console$: unknown[][];
+
   beforeEach(() => {
-    // Angular's sanitizer warns that it stripped data-mx-maths.
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    console$ = [];
+    // Nothing may reach the console (it feeds the diagnostic log) but Angular's notice.
+    for (const method of ['log', 'info', 'debug', 'warn', 'error'] as const) {
+      vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+        if (method === 'warn' && String(args[0]).includes(ANGULAR_STRIPPED)) {
+          return;
+        }
+        console$.push(args);
+      });
+    }
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    // Each test's injector has its own loader, so each adds its own `<link>`.
+    for (const link of document.head.querySelectorAll(
+      'link[data-trinity-katex]',
+    )) {
+      link.remove();
+    }
+    expect(console$).toEqual([]);
+  });
 
   function render(formatted: string) {
     const fixture = TestBed.createComponent(HostComponent);
     fixture.componentInstance.html.set(sanitizeMatrixHtml(formatted));
     fixture.detectChanges();
     const host = fixture.nativeElement.querySelector('.body') as HTMLElement;
-    return { fixture, host };
+    const edit = (next: string) => {
+      fixture.componentInstance.html.set(sanitizeMatrixHtml(next));
+      fixture.detectChanges();
+    };
+    return { fixture, host, edit };
   }
 
-  /** Wait for the lazy chunk, re-running change detection until `count` matches. */
+  /** Load the stylesheet, then re-run change detection until `count` matches. */
   async function waitForCount(
     fixture: ComponentFixture<HostComponent>,
     host: HTMLElement,
     selector: string,
     count: number,
   ): Promise<void> {
+    stylesheet()?.dispatchEvent(new Event('load'));
     await vi.waitFor(
       () => {
         fixture.detectChanges();
@@ -44,6 +102,9 @@ describe('MathsDirective', () => {
     );
   }
 
+  const annotations = (host: HTMLElement): (string | null)[] =>
+    [...host.querySelectorAll('annotation')].map((note) => note.textContent);
+
   it('renders inline and display maths from the sanitized string once KaTeX loads', async () => {
     const { fixture, host } = render(
       '<span data-mx-maths="x^2">x^2</span> and <div data-mx-maths="\\frac{1}{2}">1/2</div>',
@@ -52,9 +113,7 @@ describe('MathsDirective', () => {
     await waitForCount(fixture, host, '.katex', 2);
 
     expect(host.querySelector('div.mx-maths .katex-display')).not.toBeNull();
-    expect(
-      [...host.querySelectorAll('annotation')].map((note) => note.textContent),
-    ).toEqual(['x^2', '\\frac{1}{2}']);
+    expect(annotations(host)).toEqual(['x^2', '\\frac{1}{2}']);
   });
 
   it('adds the KaTeX stylesheet once', async () => {
@@ -69,6 +128,90 @@ describe('MathsDirective', () => {
     expect(links[0].getAttribute('href')).toBe('katex.css');
   });
 
+  it('shows the sender’s fallback until both the chunk and the stylesheet have loaded', async () => {
+    const { fixture, host } = render(
+      '<span data-mx-maths="x^2"><code>x^2</code></span>',
+    );
+    expect(host.querySelector('.mx-maths code')?.textContent).toBe('x^2');
+
+    // The chunk is in; the stylesheet is not.
+    await import('./maths-render');
+    await flush();
+    fixture.detectChanges();
+
+    expect(host.querySelector('.katex')).toBeNull();
+    expect(host.querySelector('.mx-maths code')?.textContent).toBe('x^2');
+
+    await waitForCount(fixture, host, '.katex', 1);
+  });
+
+  it('removes a stylesheet that fails, keeps the fallback and retries on the next render', async () => {
+    const { fixture, host, edit } = render(
+      '<span data-mx-maths="x^2">x squared</span>',
+    );
+
+    settleStylesheet('error');
+    await flush();
+    fixture.detectChanges();
+
+    expect(stylesheet()).toBeNull();
+    expect(host.querySelector('.katex')).toBeNull();
+    expect(host.textContent).toBe('x squared');
+
+    edit('<span data-mx-maths="y^3">y cubed</span>');
+    await waitForCount(fixture, host, '.katex', 1);
+
+    expect(annotations(host)).toEqual(['y^3']);
+    expect(
+      document.head.querySelectorAll('link[data-trinity-katex]'),
+    ).toHaveLength(1);
+  });
+
+  it('keeps the fallback when the chunk fails to load and retries on the next render', async () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: MathsLoader, useClass: FlakyMathsLoader }],
+    });
+    const { fixture, host, edit } = render(
+      '<span data-mx-maths="x^2">x squared</span>',
+    );
+
+    settleStylesheet('load');
+    await flush();
+    fixture.detectChanges();
+
+    expect(host.querySelector('.katex')).toBeNull();
+    expect(host.textContent).toBe('x squared');
+
+    edit('<span data-mx-maths="y^3">y cubed</span>');
+    await waitForCount(fixture, host, '.katex', 1);
+
+    expect(annotations(host)).toEqual(['y^3']);
+    expect((TestBed.inject(MathsLoader) as FlakyMathsLoader).attempts).toBe(2);
+    // The stylesheet that loaded is kept, not fetched again.
+    expect(
+      document.head.querySelectorAll('link[data-trinity-katex]'),
+    ).toHaveLength(1);
+  });
+
+  it('renders an edited message’s new formula with nothing stale or doubled', async () => {
+    const { fixture, host, edit } = render(
+      '<span data-mx-maths="x^2">x^2</span>',
+    );
+    await waitForCount(fixture, host, '.katex', 1);
+
+    edit('<span data-mx-maths="y^3">y^3</span>');
+
+    await vi.waitFor(
+      () => {
+        fixture.detectChanges();
+        expect(annotations(host)).toEqual(['y^3']);
+      },
+      { timeout: 5_000 },
+    );
+    expect(host.querySelectorAll('.katex')).toHaveLength(1);
+    expect(host.querySelectorAll('.mx-maths')).toHaveLength(1);
+  });
+
   it('shows the source of an expression KaTeX rejects or one past 2,000 characters', async () => {
     const { fixture, host } = render(
       `<span data-mx-maths="\\frac{1}{">bad</span><span data-mx-maths="${'x'.repeat(2_001)}">long</span>`,
@@ -79,6 +222,19 @@ describe('MathsDirective', () => {
     expect(host.querySelector('code.mx-maths-source')?.textContent).toBe(
       '\\frac{1}{',
     );
+  });
+
+  it('shows markup in an expression past 2,000 characters as text', async () => {
+    const latex = INJECTION + 'x'.repeat(2_001 - INJECTION.length);
+    const attribute = latex.replace('<', '&lt;').replace('>', '&gt;');
+    const { fixture, host } = render(
+      `<span data-mx-maths="${attribute}">long</span>`,
+    );
+
+    await waitForCount(fixture, host, 'code.mx-maths-source', 1);
+
+    expect(host.querySelector('code.mx-maths-source')?.textContent).toBe(latex);
+    expect(host.querySelector('img')).toBeNull();
   });
 
   it('renders at most 50 expressions in one message and shows the rest as source', async () => {
@@ -94,6 +250,23 @@ describe('MathsDirective', () => {
     expect(host.querySelectorAll('code.mx-maths-source')).toHaveLength(2);
   });
 
+  it('shows markup in an expression past the per-message cap as text', async () => {
+    const body = Array.from(
+      { length: MAX_MATHS_PER_MESSAGE },
+      (_, i) => `<span data-mx-maths="x_{${i}}">x${i}</span>`,
+    ).join(' ');
+    const { fixture, host } = render(
+      `${body}<span data-mx-maths="&lt;img src=x onerror=alert(1)&gt;">over</span>`,
+    );
+
+    await waitForCount(fixture, host, 'code.mx-maths-source', 1);
+
+    expect(host.querySelector('code.mx-maths-source')?.textContent).toBe(
+      INJECTION,
+    );
+    expect(host.querySelector('img')).toBeNull();
+  });
+
   it('pairs nested maths with the right source', async () => {
     const { fixture, host } = render(
       '<span data-mx-maths="a"><span data-mx-maths="b">b</span></span><span data-mx-maths="c">c</span>',
@@ -101,12 +274,10 @@ describe('MathsDirective', () => {
 
     await waitForCount(fixture, host, '.katex', 2);
 
-    expect(
-      [...host.querySelectorAll('annotation')].map((note) => note.textContent),
-    ).toEqual(['a', 'c']);
+    expect(annotations(host)).toEqual(['a', 'c']);
   });
 
-  it('does not parse a body without maths', () => {
+  it('neither parses nor loads anything for a body without maths', () => {
     const parse = vi.spyOn(DOMParser.prototype, 'parseFromString');
     const body = '<p>no maths</p>';
     const fixture = TestBed.createComponent(HostComponent);
@@ -115,5 +286,6 @@ describe('MathsDirective', () => {
     fixture.detectChanges();
 
     expect(parse).not.toHaveBeenCalledWith(body, 'text/html');
+    expect(stylesheet()).toBeNull();
   });
 });
