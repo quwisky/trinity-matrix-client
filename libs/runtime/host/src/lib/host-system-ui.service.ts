@@ -12,7 +12,10 @@ export class HostSystemUiService {
 
   readonly active = computed(() => this.open() > 0);
 
-  /** Cold: counts from subscription until the work completes, errors or is unsubscribed. */
+  /**
+   * Cold: counts from subscription until the work completes, errors or is unsubscribed.
+   * It writes a signal: never call it or subscribe to it inside `computed()`.
+   */
   track<T>(work: Observable<T>): Observable<T> {
     return defer(() => {
       this.open.update((count) => count + 1);
