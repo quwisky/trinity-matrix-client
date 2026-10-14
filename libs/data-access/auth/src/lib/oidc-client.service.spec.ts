@@ -33,6 +33,7 @@ import {
   encodeUnpaddedBase64Url,
   isValidAuthMetadata,
 } from 'matrix-js-sdk';
+import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import { AUTH_METADATA } from './auth-metadata.fixture';
 import {
   OidcClientService,
@@ -374,6 +375,22 @@ describe('OidcClientService', () => {
       expect(request.clientId).toBe(CLIENT_ID);
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(prefs.get(CLIENT_ID_KEY)).toBe(CLIENT_ID);
+    });
+
+    it('registers under the host app name', async () => {
+      vi.spyOn(
+        TestBed.inject(HostAuthenticationHandoffService),
+        'deviceDisplayName',
+      ).mockReturnValue('Trinity Next');
+      const fetchMock = stubFetch({
+        registration: () => jsonResponse({ client_id: CLIENT_ID }),
+      });
+
+      await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
+
+      expect(jsonBody(fetchMock.mock.calls[0][1])).toMatchObject({
+        client_name: 'Trinity Next',
+      });
     });
   });
 

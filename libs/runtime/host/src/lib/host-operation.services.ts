@@ -43,6 +43,9 @@ const unavailableSupport = (): Extract<
 });
 const unavailableOutcome = (): HostOperationOutcome => unavailableSupport();
 
+/** What a new Matrix device is called when the host does not name it. */
+const DEFAULT_DEVICE_DISPLAY_NAME = 'Trinity';
+
 @Injectable({ providedIn: 'root' })
 export class HostAuthenticationHandoffService implements HostAuthenticationHandoffOperation {
   private readonly adapter = inject(HOST_AUTHENTICATION_HANDOFF_OPERATION, {
@@ -63,6 +66,10 @@ export class HostAuthenticationHandoffService implements HostAuthenticationHando
 
   open(request: { readonly url: string }): Observable<HostOperationOutcome> {
     return this.adapter?.open(request) ?? defer(() => of(unavailableOutcome()));
+  }
+
+  deviceDisplayName(): string {
+    return this.adapter?.deviceDisplayName?.() ?? DEFAULT_DEVICE_DISPLAY_NAME;
   }
 }
 

@@ -18,10 +18,9 @@ import {
   throwError,
 } from 'rxjs';
 import { DevicePreferenceStorageService } from '@trinity/platform-native';
+import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import type { OidcSessionBinding } from '@trinity/util/matrix';
 
-/** How this client identifies itself to an OIDC provider during dynamic registration. */
-const CLIENT_NAME = 'Trinity';
 /** Stable https identifier for the app (dynamic-registration `client_uri`). */
 const CLIENT_URI = 'https://trinity.trinityproject.dev';
 /**
@@ -121,6 +120,8 @@ export interface OidcGrant {
 @Injectable({ providedIn: 'root' })
 export class OidcClientService {
   private readonly storage = inject(DevicePreferenceStorageService);
+  /** Names the client after the host app; Trinity Next keeps its ids in its own storage. */
+  private readonly handoff = inject(HostAuthenticationHandoffService);
 
   /**
    * Build the authorization URL to redirect to. Registers this client with the provider
@@ -347,7 +348,7 @@ export class OidcClientService {
     // against — redirect_uris, application_type, client_uri — are otherwise unchanged,
     // so this change alone needed no version bump (v3 keys the cache by homeserver as well).
     const request: OAuthRegistrationRequest = {
-      client_name: CLIENT_NAME,
+      client_name: this.handoff.deviceDisplayName(),
       client_uri: CLIENT_URI,
       application_type: applicationType,
       redirect_uris: redirectUris as OAuthRegistrationRequest['redirect_uris'],

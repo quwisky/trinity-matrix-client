@@ -53,6 +53,11 @@ export interface HostAuthenticationHandoffOperation {
     readonly applicationType: 'web' | 'native';
   };
   open(request: { readonly url: string }): Observable<HostOperationOutcome>;
+  /**
+   * The name of a Matrix device this host signs in or registers, also sent as the OIDC
+   * client name. Optional: a host without one of its own is "Trinity".
+   */
+  deviceDisplayName?(): string;
 }
 
 export interface HostDeepLinksOperation {

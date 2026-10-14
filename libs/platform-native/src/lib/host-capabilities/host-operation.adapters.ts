@@ -36,7 +36,10 @@ import {
   take,
   timeout,
 } from 'rxjs';
-import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
+import {
+  desktopAppIdentity,
+  getTrinityDesktopBridge,
+} from '../trinity-desktop-bridge';
 import { FileSaveService } from '../host-media/file-save.service';
 import { notificationPresentationProvider } from './host-notification-presentation.adapters';
 
@@ -55,6 +58,26 @@ const rejected = (code: string): HostOperationOutcome => ({
   diagnostic: { code },
 });
 const HOST_UPDATE_CHECK_TIMEOUT_MS = 5_000;
+
+/** The scheme sign-in callbacks and app links are written in on every host. */
+const CANONICAL_APP_SCHEME = 'dev.trinityproject.trinity';
+
+/** An app URL moved onto the scheme this desktop app registered (Trinity Next has its own). */
+function desktopAppUrl(appUrl: string): string {
+  const { deepLinkScheme } = desktopAppIdentity(getTrinityDesktopBridge());
+  if (!appUrl.startsWith(`${CANONICAL_APP_SCHEME}:`)) {
+    throw new Error('A sign-in callback must use the Trinity app scheme.');
+  }
+  return `${deepLinkScheme}${appUrl.slice(CANONICAL_APP_SCHEME.length)}`;
+}
+
+/** A link the shell delivered, moved back onto the scheme the renderer's parsers know. */
+function canonicalAppUrl(url: string): string {
+  const scheme = getTrinityDesktopBridge()?.appIdentity?.deepLinkScheme;
+  return scheme && url.startsWith(`${scheme}:`)
+    ? `${CANONICAL_APP_SCHEME}${url.slice(scheme.length)}`
+    : url;
+}
 
 @Injectable({ providedIn: 'root' })
 class WebHostOperationAdapter implements HostOperationsAdapter {
@@ -192,7 +215,13 @@ class ElectronHostOperationAdapter implements HostOperationsAdapter {
   private readonly capabilities = inject(HostCapabilitiesService);
 
   callback(request: { readonly webUrl: string; readonly appUrl: string }) {
-    return { url: request.appUrl, applicationType: 'native' as const };
+    return {
+      url: desktopAppUrl(request.appUrl),
+      applicationType: 'native' as const,
+    };
+  }
+  deviceDisplayName(): string {
+    return desktopAppIdentity(getTrinityDesktopBridge()).displayName;
   }
   open(request: { readonly url: string }): Observable<HostOperationOutcome> {
     return defer(() => {
@@ -205,7 +234,7 @@ class ElectronHostOperationAdapter implements HostOperationsAdapter {
       support.kind === 'supported'
         ? new Observable<{ readonly url: string }>((subscriber) =>
             getTrinityDesktopBridge()?.capabilities.deepLinks.subscribe((url) =>
-              subscriber.next({ url }),
+              subscriber.next({ url: canonicalAppUrl(url) }),
             ),
           )
         : EMPTY,

@@ -5,6 +5,7 @@ import { firstValueFrom, lastValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RegistrationService } from './registration.service';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 
 vi.mock('matrix-js-sdk', async (importActual) => {
   const actual = await importActual<typeof import('matrix-js-sdk')>();
@@ -475,5 +476,30 @@ describe('RegistrationService', () => {
     expect(service.error()).toBeNull();
     expect(registerRequest).toHaveBeenCalledOnce();
     expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
+  });
+
+  it('names the registered device after the host app', async () => {
+    vi.spyOn(
+      TestBed.inject(HostAuthenticationHandoffService),
+      'deviceDisplayName',
+    ).mockReturnValue('Trinity Next');
+    const matrixClient = client({
+      registerRequest: vi
+        .fn()
+        .mockRejectedValue(new MatrixError({ errcode: 'M_FORBIDDEN' }, 403)),
+    });
+    createClientMock.mockReturnValue(matrixClient as never);
+
+    service
+      .begin('https://hs', 'alice', 'not-a-real-password', 'hs')
+      .subscribe({ error: () => undefined });
+
+    await vi.waitFor(() =>
+      expect(matrixClient.registerRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initial_device_display_name: 'Trinity Next',
+        }),
+      ),
+    );
   });
 });
