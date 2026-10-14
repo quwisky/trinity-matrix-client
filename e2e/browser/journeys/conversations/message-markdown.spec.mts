@@ -3,6 +3,7 @@ import {
   test,
   expect,
   type APIRequestContext,
+  type Route,
 } from '../../../fixtures.mts';
 import {
   login,
@@ -323,8 +324,8 @@ test.describe('Sender colours', () => {
 
 // Inline images (spec A2): an uploaded mxc image renders from authenticated media at most
 // 300px tall and opens in the viewer; a remote image in the same message is never fetched.
-// A second image claims height="20000": too large to reserve a box, so only the 300px cap
-// (the stylesheet's and the directive's) keeps it from towering over the timeline.
+// A second image claims height="20000": too large to reserve a box, so only the stylesheet's
+// 300px cap keeps it from towering over the timeline.
 test.describe('Inline images', () => {
   test.skip(!session.available, 'needs a homeserver');
 
@@ -375,19 +376,13 @@ test.describe('Inline images', () => {
     await expect
       .poll(() => towering.evaluate(loaded), { timeout: 15_000 })
       .toBe(true);
-    // Both caps, read apart: the computed one, and the stylesheet's alone with the
-    // directive's inline max-height lifted for the read and put straight back.
-    const caps = await towering.evaluate((element) => {
-      const style = (element as HTMLImageElement).style;
-      const computed = parseFloat(getComputedStyle(element).maxHeight);
-      const inline = style.maxHeight;
-      style.maxHeight = '';
-      const stylesheet = parseFloat(getComputedStyle(element).maxHeight);
-      style.maxHeight = inline;
-      return { computed, stylesheet };
-    });
-    expect(caps.computed).toBeLessThanOrEqual(300);
-    expect(caps.stylesheet).toBeLessThanOrEqual(300);
+    // The stylesheet holds the only cap; nothing inline repeats or overrides it.
+    const cap = await towering.evaluate((element) => ({
+      computed: parseFloat(getComputedStyle(element).maxHeight),
+      inline: (element as HTMLImageElement).style.maxHeight,
+    }));
+    expect(cap.computed).toBeLessThanOrEqual(300);
+    expect(cap.inline).toBe('');
     const toweringBox = await towering.boundingBox();
     expect(toweringBox?.height ?? 0).toBeGreaterThan(100);
     expect(toweringBox?.height ?? Infinity).toBeLessThanOrEqual(300.5);
@@ -404,10 +399,61 @@ test.describe('Inline images', () => {
     await expect(viewer).toBeVisible({ timeout: 20_000 });
     await page.keyboard.press('Escape');
     await expect(viewer).toBeHidden({ timeout: 15_000 });
+    // Focus returns to the image that opened the viewer.
+    await expect(image).toBeFocused({ timeout: 15_000 });
 
     // Closing the viewer releases the full image, so Enter downloads it again.
-    await image.focus();
     await page.keyboard.press('Enter');
     await expect(viewer).toBeVisible({ timeout: 20_000 });
+    expect(requested.some((url) => url.includes('tracker.invalid'))).toBe(
+      false,
+    );
+  });
+
+  // High Contrast drops the loading box's fill; the stylesheet outlines it instead. The
+  // thumbnail is held back so the box stays in its loading state for the measurement.
+  test('outlines a loading image in forced colours', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'inline-image-forced');
+    const mxc = await uploadPng(request, hs, room, 400, 300, 'held.png');
+    await sendMessage(request, hs, room, {
+      body: 'an image still on its way',
+      html: `<img src="${mxc}" width="400" height="300" alt="A held test image">`,
+    });
+    const held: Route[] = [];
+    await page.route(/\/thumbnail\//, (route) => {
+      held.push(route);
+    });
+    await page.emulateMedia({ forcedColors: 'active' });
+    await signInAndOpen(page, room);
+
+    const image = page.getByRole('button', {
+      name: 'View image: A held test image',
+    });
+    await expect(image).toHaveClass(/mx-image--loading/, { timeout: 20_000 });
+    await expect
+      .poll(() => held.length, { timeout: 15_000 })
+      .toBeGreaterThan(0);
+    const box = await image.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return {
+        style: style.borderTopStyle,
+        width: parseFloat(style.borderTopWidth),
+        colour: style.borderTopColor,
+        fill: style.backgroundColor,
+        height: rect.height,
+      };
+    });
+    expect(box.style).toBe('solid');
+    expect(box.width).toBeGreaterThanOrEqual(1);
+    expect(box.colour).not.toBe(box.fill);
+    expect(box.height).toBeGreaterThan(0);
+    await expect(image).toHaveClass(/mx-image--loading/);
+
+    for (const route of held) await route.abort();
   });
 });
