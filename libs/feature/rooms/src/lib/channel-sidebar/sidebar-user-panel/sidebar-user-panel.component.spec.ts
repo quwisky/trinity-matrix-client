@@ -1,11 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { AppLockService } from '@trinity/data-access/app-lock';
+import { MockProvider } from 'ng-mocks';
 import { TitleBarState } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
 import { By } from '@angular/platform-browser';
 import { TrnTooltip } from '@trinity/components/generic-content';
-import { render } from '@trinity/testing';
+import { render, screen } from '@trinity/testing';
 import { SidebarUserPanelComponent } from './sidebar-user-panel.component';
 
 // The account-switcher dropdown (switch / add / sign out / re-auth rows) is
@@ -14,6 +17,65 @@ import { SidebarUserPanelComponent } from './sidebar-user-panel.component';
 const USER = { userId: '@alice:hs', displayName: 'Alice', avatarMxc: null };
 
 describe('SidebarUserPanelComponent', () => {
+  // App lock is off unless a test turns it on.
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        MockProvider(AppLockService, {
+          enabled: signal(false).asReadonly(),
+          appName: 'Trinity',
+          lockNow: vi.fn(),
+        }),
+      ],
+    });
+  });
+
+  async function openMenuWithLock(enabled: boolean, appName = 'Trinity') {
+    const lockNow = vi.fn();
+    const rendered = await render(SidebarUserPanelComponent, {
+      inputs: { user: USER, accounts: ACCOUNTS, activeUserId: '@alice:hs' },
+      providers: [
+        MockProvider(AppLockService, {
+          enabled: signal(enabled).asReadonly(),
+          appName,
+          lockNow,
+        }),
+      ],
+    });
+    rendered.container.querySelector<HTMLElement>('.userbar__trigger')!.click();
+    rendered.fixture.detectChanges();
+    return { ...rendered, lockNow };
+  }
+
+  it('puts Lock Trinity first in the account menu while App lock is on', async () => {
+    const { fixture, lockNow } = await openMenuWithLock(true);
+
+    const items = screen.getAllByRole('menuitem');
+    expect(items[0]).toBe(
+      screen.getByRole('menuitem', { name: 'Lock Trinity' }),
+    );
+    expect(items[0].getAttribute('data-testid')).toBe('lock-trinity');
+    items[0].click();
+    fixture.detectChanges();
+
+    expect(lockNow).toHaveBeenCalledOnce();
+  });
+
+  it('names the running app in the Lock item', async () => {
+    await openMenuWithLock(true, 'Trinity Next');
+
+    expect(
+      screen.getByRole('menuitem', { name: 'Lock Trinity Next' }),
+    ).toBeTruthy();
+  });
+
+  it('offers no Lock item while App lock is off', async () => {
+    await openMenuWithLock(false);
+
+    expect(screen.getAllByRole('menuitem').length).toBeGreaterThan(0);
+    expect(document.querySelector('[data-testid="lock-trinity"]')).toBeNull();
+  });
+
   it('shows the signed-in user name and handle in the trigger', async () => {
     const { container } = await render(SidebarUserPanelComponent, {
       inputs: { user: USER },

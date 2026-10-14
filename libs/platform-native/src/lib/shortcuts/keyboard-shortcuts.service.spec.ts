@@ -120,6 +120,114 @@ describe('KeyboardShortcutsService', () => {
     expect(hop?.chord).toBeNull();
   });
 
+  describe('lock.now', () => {
+    const CTRL_SHIFT_L = keydown({ key: 'l', ctrlKey: true, shiftKey: true });
+
+    it('is listed under General as a rebindable shortcut', () => {
+      const row = build()
+        .list()
+        .find((view) => view.id === 'lock.now');
+      expect(row).toMatchObject({
+        category: 'General',
+        description: 'Lock Trinity',
+        defaultChord: null,
+        rebindable: true,
+      });
+    });
+
+    it('ships Lock Trinity unassigned, so no key locks the app until chosen', () => {
+      const svc = build();
+      const row = svc.list().find((view) => view.id === 'lock.now');
+      expect(row).toMatchObject({
+        chord: null,
+        isDefault: true,
+        isUnset: true,
+        rebindable: true,
+      });
+      expect(svc.binding('lock.now')).toBeNull();
+      expect(svc.resolve(CTRL_SHIFT_L)).toBeNull();
+    });
+
+    it('locks with the chord once bound, and Reset unassigns it again', () => {
+      const svc = build();
+      expect(
+        svc.rebind('lock.now', chord({ accel: true, shift: true, key: 'l' })),
+      ).toEqual({ ok: true, displaced: null });
+      expect(
+        svc.resolve(keydown({ key: 'L', metaKey: true, shiftKey: true })),
+      ).toEqual({ id: 'lock.now' });
+      expect(svc.list().find((view) => view.id === 'lock.now')).toMatchObject({
+        isDefault: false,
+        isUnset: false,
+      });
+
+      svc.reset('lock.now');
+
+      expect(svc.binding('lock.now')).toBeNull();
+      expect(svc.resolve(CTRL_SHIFT_L)).toBeNull();
+      expect(svc.list().find((view) => view.id === 'lock.now')).toMatchObject({
+        isDefault: true,
+        isUnset: true,
+      });
+    });
+
+    it('takes a chord from another shortcut, and gives one up the same way', () => {
+      const svc = build();
+      expect(svc.rebind('lock.now', chord({ accel: true, key: 'k' }))).toEqual({
+        ok: true,
+        displaced: 'switcher.open',
+      });
+      expect(svc.resolve(keydown({ key: 'k', ctrlKey: true }))).toEqual({
+        id: 'lock.now',
+      });
+
+      expect(
+        svc.rebind('room.search', chord({ accel: true, key: 'k' })),
+      ).toEqual({ ok: true, displaced: 'lock.now' });
+      expect(svc.binding('lock.now')).toBeNull();
+      // Taken away, unlike shipped without one: an override that Reset removes.
+      expect(svc.list().find((view) => view.id === 'lock.now')).toMatchObject({
+        isDefault: false,
+        isUnset: true,
+      });
+    });
+
+    it('displaces nothing when a chord is bound while it is unassigned', () => {
+      const svc = build();
+      expect(
+        svc.rebind(
+          'room.search',
+          chord({ accel: true, shift: true, key: 'l' }),
+        ),
+      ).toEqual({ ok: true, displaced: null });
+      expect(svc.list().find((view) => view.id === 'lock.now')?.isDefault).toBe(
+        true,
+      );
+    });
+
+    it('reloads a stored binding on init', async () => {
+      get.mockResolvedValue({
+        value: JSON.stringify({
+          'lock.now': { accel: true, alt: false, shift: true, key: 'l' },
+        }),
+      });
+      const svc = build();
+      await svc.init();
+      expect(svc.resolve(CTRL_SHIFT_L)).toEqual({ id: 'lock.now' });
+    });
+  });
+
+  it('resolves nothing while Settings captures a new chord', () => {
+    const svc = build();
+    svc.setCapturing(true);
+    expect(svc.resolve(keydown({ key: 'k', ctrlKey: true }))).toBeNull();
+
+    svc.setCapturing(false);
+    expect(svc.resolve(keydown({ key: 'k', ctrlKey: true }))).toEqual({
+      id: 'switcher.open',
+    });
+  });
+
   it('refuses a chord the fixed digit family already claims', () => {
     // `resolve` is first-hit-wins and the digit family sits ahead of the formatting
     // shortcuts, so accepting this would show new key-caps for a chord that jumps rooms

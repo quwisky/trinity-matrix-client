@@ -41,8 +41,9 @@ export class ShellShortcutsService {
 
   /**
    * Global keyboard shortcuts (issues #12/#13). One listener rather than many host
-   * bindings: it bails unless a modifier is held (so plain typing is untouched) and no
-   * overlay owns the screen (mirrors {@link openSwitcher}'s guard), then asks
+   * bindings: it bails unless a modifier is held (so plain typing is untouched) and, for
+   * every shortcut but Lock Trinity, no overlay owns the screen (mirrors
+   * {@link openSwitcher}'s guard), then asks
    * {@link KeyboardShortcutsService} which shortcut the chord triggers — honouring the
    * user's custom bindings and the desktop-only gate — and dispatches it. The bindings
    * themselves live in the registry (and the settings page); this only maps an id to its
@@ -60,10 +61,22 @@ export class ShellShortcutsService {
     // still reaches the document.
     if (this.appLock.locked()) return;
     const e = event as KeyboardEvent;
-    if ((!e.ctrlKey && !e.metaKey && !e.altKey) || this.dialog.hasOpen()) {
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
       return;
     }
     const hit = this.shortcuts.resolve(e);
+    // Lock Trinity works over any dialog, Settings included. While App lock is off the
+    // chord is not ours, so it falls through to the browser untouched.
+    if (hit?.id === 'lock.now') {
+      if (this.appLock.enabled()) {
+        e.preventDefault();
+        this.appLock.lockNow();
+      }
+      return;
+    }
+    if (this.dialog.hasOpen()) {
+      return;
+    }
     // Search is the one chord that is still wanted with a panel open: it refocuses the
     // header field, which is how a reader edits the query of the panel they are looking at.
     if (!hit || (this.panelOwnsTheScreen() && hit.id !== 'room.search')) {

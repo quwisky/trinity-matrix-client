@@ -24,8 +24,8 @@ export interface ShortcutDef {
   category: string;
   /** One-line description shown in the list. */
   description: string;
-  /** The out-of-the-box binding. */
-  defaultChord: Chord;
+  /** The out-of-the-box binding; null for a shortcut that ships unassigned. */
+  defaultChord: Chord | null;
   /** Whether the user may rebind it (false for the fixed digit family). */
   rebindable: boolean;
   /** Whether the default chord is browser-reserved (only works in the desktop shell). */
@@ -51,7 +51,7 @@ export interface ShortcutHit {
 
 /** A shortcut row for the settings list: the definition plus its live binding state. */
 export interface ShortcutView extends ShortcutDef {
-  /** The effective binding, or null when unset (stolen away) or a fixed family. */
+  /** The effective binding, or null when unset (stolen away or shipped so) or a fixed family. */
   chord: Chord | null;
   isDefault: boolean;
   isUnset: boolean;
@@ -138,6 +138,16 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     desktopOnly: true,
     family: 'digit',
   },
+  // Handled by the Rooms shell, which checks it before its open-dialog guard so it works
+  // over Settings too. Ships unassigned (spec decision 21), so no existing habit locks the
+  // app by surprise, and does something only while App lock is on and unlocked.
+  {
+    id: 'lock.now',
+    category: 'General',
+    description: 'Lock Trinity',
+    defaultChord: null,
+    rebindable: true,
+  },
   // Formatting — handled by the message composer, which resolves them itself and stops the
   // event before it reaches the page-level handler. They only do anything while the composer
   // has focus; everywhere else they fall through to the browser.
@@ -192,8 +202,9 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
  * settings section reads {@link list} / rebinds through it, so a binding is defined once.
  *
  * A shortcut can be **unset**: rebinding onto a taken chord steals it, leaving the previous
- * holder with no binding (its override is an explicit `null`). {@link reset} restores a
- * default; {@link resetAll} clears every override.
+ * holder with no binding (its override is an explicit `null`). One can also ship unset
+ * (`defaultChord: null`). {@link reset} restores a default; {@link resetAll} clears every
+ * override.
  */
 @Injectable({ providedIn: 'root' })
 export class KeyboardShortcutsService {
@@ -201,6 +212,8 @@ export class KeyboardShortcutsService {
 
   /** id → override chord, or `null` for an explicitly-unset shortcut. */
   private readonly overrides = signal<Record<string, Chord | null>>({});
+  /** Settings is waiting for a new chord, so a keypress is that chord, not a shortcut. */
+  private capturing = false;
 
   /** The catalog joined with each shortcut's live binding state, for the settings list. */
   readonly list = computed<ShortcutView[]>(() => {
@@ -215,7 +228,8 @@ export class KeyboardShortcutsService {
         ...def,
         chord: def.rebindable ? chord : null,
         isDefault: !overridden,
-        isUnset: overridden && chord === null,
+        // Unset: taken away by a rebind, or shipped without a binding.
+        isUnset: def.rebindable && chord === null,
       };
     });
   });
@@ -255,6 +269,9 @@ export class KeyboardShortcutsService {
    * Electron shell), and the digit family (returning which digit).
    */
   resolve(event: KeyboardEvent): ShortcutHit | null {
+    if (this.capturing) {
+      return null;
+    }
     for (const def of SHORTCUTS) {
       // The numbered-jump family matches accel + any digit 1–9, desktop only.
       if (def.family === 'digit') {
@@ -283,6 +300,15 @@ export class KeyboardShortcutsService {
       }
     }
     return null;
+  }
+
+  /**
+   * Hold every shortcut while Settings captures a new chord. The page's handler sees a key
+   * before the capture listener does and, for Lock Trinity, even over the Settings dialog:
+   * without this, pressing a chord to bind it would run the shortcut that holds it.
+   */
+  setCapturing(active: boolean): void {
+    this.capturing = active;
   }
 
   /**

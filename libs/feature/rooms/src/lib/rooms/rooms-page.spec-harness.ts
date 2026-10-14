@@ -205,7 +205,10 @@ export const SHARED_MOCKS: Provider[] = [
   WorkspaceNavigationService,
   ConversationTimelineStub,
   // App lock is off; a spec that locks it overrides this.
-  MockProvider(AppLockService, { locked: signal(false).asReadonly() }),
+  MockProvider(AppLockService, {
+    enabled: signal(false).asReadonly(),
+    locked: signal(false).asReadonly(),
+  }),
   // This tab holds the session; a spec that hands it over provides its own.
   MockProvider(SessionLockService, {
     state: signal<SessionLockState>('held').asReadonly(),

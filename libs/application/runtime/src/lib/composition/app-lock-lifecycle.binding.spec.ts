@@ -356,6 +356,37 @@ describe('AppLockLifecycleBinding', () => {
     lifetime.unsubscribe();
   });
 
+  it('gives the desktop menu the Lock Trinity chord once one is bound, and none after Reset', () => {
+    const { setState, lifetime } = setup({
+      desktop: true,
+      providers: [KeyboardShortcutsService],
+    });
+    const shortcuts = TestBed.inject(KeyboardShortcutsService);
+    // Shipped unassigned: the menu item shows no accelerator.
+    expect(setState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ accelerator: null }),
+    );
+
+    shortcuts.rebind('lock.now', {
+      accel: true,
+      alt: false,
+      shift: true,
+      key: 'l',
+    });
+    TestBed.tick();
+    expect(setState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ accelerator: 'CommandOrControl+Shift+L' }),
+    );
+
+    shortcuts.reset('lock.now');
+    TestBed.tick();
+    expect(setState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ accelerator: null }),
+    );
+    shortcuts.resetAll();
+    lifetime.unsubscribe();
+  });
+
   it('tells the shell again when the window reports it is shown after an earlier focus', () => {
     // A restore whose DOM focus arrives before main has started the reveal: main ignores that
     // first signal, so the shown report must send it again rather than wait for the timeout.

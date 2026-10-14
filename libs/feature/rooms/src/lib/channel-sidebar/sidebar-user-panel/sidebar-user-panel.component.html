@@ -75,6 +75,18 @@
 
 <ng-template #accountMenu>
   <div class="account-menu" trnDropdownMenu>
+    @if (appLockOn()) {
+      <button
+        class="menu-action"
+        trnDropdownMenuItem
+        (triggered)="lockNow()"
+        data-testid="lock-trinity"
+      >
+        <trn-icon name="lock" />
+        Lock {{ appName }}
+      </button>
+      <div trnDropdownMenuSeparator></div>
+    }
     <div trnDropdownMenuLabel>Switch account</div>
     <div trnDropdownMenuSeparator></div>
     @for (account of accounts(); track account.userId) {

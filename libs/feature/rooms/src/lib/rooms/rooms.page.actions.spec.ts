@@ -22,6 +22,7 @@ import {
 } from '@trinity/data-access/accounts';
 import {
   ACCOUNT_REMOVAL_LAUNCHER,
+  KeyboardShortcutsService,
   type AccountRemovalOutcome,
 } from '@trinity/platform-native';
 import { ShellStatusService } from './shell-status.service';
@@ -897,6 +898,82 @@ describe('RoomsPage room / DM / invite actions', () => {
     shell.page.onGlobalKeydown(unlocked);
     expect(unlocked.defaultPrevented).toBe(true);
     expect(openSwitcher).toHaveBeenCalledOnce();
+  });
+
+  describe('Lock Trinity shortcut', () => {
+    const lockChord = () =>
+      new KeyboardEvent('keydown', {
+        key: 'l',
+        ctrlKey: true,
+        shiftKey: true,
+        cancelable: true,
+      });
+
+    function buildWithLock(state: { enabled: boolean; locked: boolean }) {
+      const lockNow = vi.fn();
+      TestBed.overrideProvider(AppLockService, {
+        useValue: {
+          enabled: signal(state.enabled).asReadonly(),
+          locked: signal(state.locked).asReadonly(),
+          lockNow,
+        },
+      });
+      const shell = build();
+      const shortcuts = TestBed.inject(KeyboardShortcutsService);
+      shortcuts.resetAll();
+      shortcuts.rebind('lock.now', {
+        accel: true,
+        alt: false,
+        shift: true,
+        key: 'l',
+      });
+      return { shell, lockNow, shortcuts };
+    }
+
+    it('locks with the bound shortcut even over an open dialog', () => {
+      const { shell, lockNow, shortcuts } = buildWithLock({
+        enabled: true,
+        locked: false,
+      });
+      vi.spyOn(TestBed.inject(TrnSurfaceService), 'hasOpen').mockReturnValue(
+        true,
+      );
+      const chord = lockChord();
+
+      shell.page.onGlobalKeydown(chord);
+
+      expect(lockNow).toHaveBeenCalledOnce();
+      expect(chord.defaultPrevented).toBe(true);
+      shortcuts.resetAll();
+    });
+
+    it('does nothing while already locked, since the cover owns the keys', () => {
+      const { shell, lockNow, shortcuts } = buildWithLock({
+        enabled: true,
+        locked: true,
+      });
+      const chord = lockChord();
+
+      shell.page.onGlobalKeydown(chord);
+
+      expect(lockNow).not.toHaveBeenCalled();
+      expect(chord.defaultPrevented).toBe(false);
+      shortcuts.resetAll();
+    });
+
+    it('leaves the chord to the browser while App lock is off', () => {
+      const { shell, lockNow, shortcuts } = buildWithLock({
+        enabled: false,
+        locked: false,
+      });
+      const chord = lockChord();
+
+      shell.page.onGlobalKeydown(chord);
+
+      expect(lockNow).not.toHaveBeenCalled();
+      expect(chord.defaultPrevented).toBe(false);
+      shortcuts.resetAll();
+    });
   });
 
   it('ignores Escape while App lock is locked', () => {

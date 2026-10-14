@@ -27,13 +27,7 @@
         <li>
           <trn-settings-row
             [label]="row.description"
-            [description]="
-              row.desktopOnly
-                ? 'Desktop app only'
-                : row.desktopAlias
-                  ? 'Also Ctrl+Tab in the desktop app'
-                  : undefined
-            "
+            [description]="row.hint"
             [attr.data-testid]="'shortcut-' + row.id"
           >
             <div class="flex flex-wrap items-center justify-end gap-2">
@@ -59,7 +53,10 @@
                 >
                   @if (row.rebindable) {
                     @if (row.isUnset) {
-                      <span class="text-sm text-muted-foreground">Unset</span>
+                      <!-- Shipped without a binding, or one taken away by a rebind. -->
+                      <span class="text-sm text-muted-foreground">{{
+                        row.isDefault ? 'Not assigned' : 'Unset'
+                      }}</span>
                     } @else {
                       @for (cap of row.caps; track $index) {
                         <kbd
