@@ -20,6 +20,7 @@ import {
   TrnSettingsGroupComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
+import { TrackFileChooserDirective } from '@trinity/platform-native';
 
 /**
  * Security settings sub-page: surfaces this account's end-to-end-encryption posture —
@@ -32,7 +33,7 @@ import {
   selector: 'trn-security-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './security-section.component.html',
-  imports: [TrnSettingsGroupComponent, TrnButton],
+  imports: [TrackFileChooserDirective, TrnSettingsGroupComponent, TrnButton],
 })
 export class SecuritySectionComponent {
   private readonly crypto = inject(TrustService);

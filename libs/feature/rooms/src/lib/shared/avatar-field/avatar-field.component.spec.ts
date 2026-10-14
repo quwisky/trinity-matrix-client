@@ -5,6 +5,7 @@ import { of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomSettingsService } from '@trinity/data-access/room-administration';
 import { TrnToastService } from '@trinity/components/overlay';
+import { HostSystemUiService } from '@trinity/runtime/host';
 import { AvatarFieldComponent } from './avatar-field.component';
 
 // These cases moved here verbatim from room-settings.component.spec.ts when the avatar row was
@@ -48,6 +49,18 @@ function pickEvent(file?: File): Event {
 }
 
 describe('AvatarFieldComponent', () => {
+  it('counts the image chooser as Trinity’s own system UI while it is open', async () => {
+    const { container } = await build();
+    const ui = TestBed.inject(HostSystemUiService);
+    const input = container.querySelector<HTMLInputElement>(
+      'input[type=file]',
+    ) as HTMLInputElement;
+    input.click();
+    expect(ui.active()).toBe(true);
+    input.dispatchEvent(new Event('cancel'));
+    expect(ui.active()).toBe(false);
+  });
+
   it('uploads a picked image as the avatar', async () => {
     const { cmp, setAvatar, toastShow } = await build();
     const file = new File(['x'], 'photo.png', { type: 'image/png' });

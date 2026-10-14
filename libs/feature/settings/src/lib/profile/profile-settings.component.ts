@@ -19,6 +19,7 @@ import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
+import { TrackFileChooserDirective } from '@trinity/platform-native';
 
 /** Profile settings sub-page: avatar (with a corner change badge) + display name. */
 @Component({
@@ -26,6 +27,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './profile-settings.component.html',
   imports: [
+    TrackFileChooserDirective,
     TrnSettingsRowComponent,
     TrnSettingsGroupComponent,
     AvatarComponent,

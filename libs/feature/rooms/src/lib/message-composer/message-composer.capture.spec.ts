@@ -25,6 +25,7 @@ import {
   type CaptureOptions,
   type CapturedMedia,
 } from '@trinity/platform-native';
+import { HostSystemUiService } from '@trinity/runtime/host';
 
 const photo = (): CapturedMedia => ({
   file: new File([new Uint8Array([1, 2])], 'photo.jpeg', {
@@ -79,6 +80,22 @@ describe('MessageComposerComponent — capture', () => {
       const { fixture } = await renderComposer();
       expect(fixture.componentInstance['attachments'].captureMode).toBe('none');
     });
+  });
+
+  it('counts each of its file choosers as Trinity’s own system UI while it is open', async () => {
+    // The attachment picker, and the photo and video capture inputs of the mobile web.
+    const { container } = await renderComposer();
+    const ui = TestBed.inject(HostSystemUiService);
+    const inputs = Array.from(
+      container.querySelectorAll<HTMLInputElement>('input[type=file]'),
+    );
+    expect(inputs).toHaveLength(3);
+    for (const input of inputs) {
+      input.click();
+      expect(ui.active()).toBe(true);
+      input.dispatchEvent(new Event('cancel'));
+      expect(ui.active()).toBe(false);
+    }
   });
 
   it('stages a native photo with its hints, asking the camera to follow the gallery setting', async () => {

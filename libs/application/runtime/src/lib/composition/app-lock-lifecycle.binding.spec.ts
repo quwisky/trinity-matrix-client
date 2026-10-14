@@ -1,10 +1,16 @@
-import { signal, type Provider } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  signal,
+  type Provider,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TitleBarState } from '@trinity/application/workspace';
 import { APP_LOCK_CLOCK, AppLockService } from '@trinity/data-access/app-lock';
 import {
   KeyboardShortcutsService,
   MediaPickerService,
+  TrackFileChooserDirective,
 } from '@trinity/platform-native';
 import {
   HOST_AUTHENTICATION_HANDOFF_OPERATION,
@@ -51,6 +57,25 @@ vi.mock('@capacitor/camera', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   Camera: native.camera,
 }));
+
+@Component({
+  imports: [TrackFileChooserDirective],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `<input type="file" hidden trnTrackFileChooser />`,
+})
+class FileInputHostComponent {}
+
+/** A file input as the composer and Settings render it, opened the way they open it. */
+function openFileChooser(): HTMLInputElement {
+  const fixture = TestBed.createComponent(FileInputHostComponent);
+  fixture.detectChanges();
+  const input = (fixture.nativeElement as HTMLElement).querySelector(
+    'input',
+  ) as HTMLInputElement;
+  input.click();
+  TestBed.tick();
+  return input;
+}
 
 type LifecycleEvent = { readonly kind: 'active' | 'background' };
 
@@ -442,6 +467,63 @@ describe('AppLockLifecycleBinding', () => {
       lifecycle.next({ kind: 'active' });
       expect(lockNow).not.toHaveBeenCalled();
       sheet.unsubscribe();
+      lifetime.unsubscribe();
+    });
+
+    it('holds the away timer while a file chooser is open', () => {
+      const { lockNow, advance, lifetime } = setup({
+        desktop: true,
+        lockAfter: 'immediately',
+        systemUi: 'real',
+      });
+      const input = openFileChooser();
+      // The chooser takes focus from the window.
+      window.dispatchEvent(new Event('blur'));
+      advance(120_000);
+      expect(lockNow).not.toHaveBeenCalled();
+      // Cancelled while the person is still away: the time away counts from now.
+      input.dispatchEvent(new Event('cancel'));
+      TestBed.tick();
+      advance(9_999);
+      expect(lockNow).not.toHaveBeenCalled();
+      advance(1);
+      expect(lockNow).toHaveBeenCalledOnce();
+      lifetime.unsubscribe();
+    });
+
+    it('runs the away timer again once the window has focus back after a file chooser whose end was missed', () => {
+      const { lockNow, advance, lifetime } = setup({
+        desktop: true,
+        lockAfter: 'immediately',
+        systemUi: 'real',
+      });
+      openFileChooser();
+      window.dispatchEvent(new Event('blur'));
+      advance(120_000);
+      // Neither change nor cancel arrives.
+      window.dispatchEvent(new Event('focus'));
+      TestBed.tick();
+      expect(lockNow).not.toHaveBeenCalled();
+      window.dispatchEvent(new Event('blur'));
+      advance(10_000);
+      expect(lockNow).toHaveBeenCalledOnce();
+      lifetime.unsubscribe();
+    });
+
+    it('runs the away timer again once the app is back from a file chooser whose end was missed', () => {
+      // Android's document picker sends Trinity to the background.
+      const { lifecycle, lockNow, advance, lifetime } = setup({
+        lockAfter: 'immediately',
+        systemUi: 'real',
+      });
+      openFileChooser();
+      lifecycle.next({ kind: 'background' });
+      advance(120_000);
+      lifecycle.next({ kind: 'active' });
+      TestBed.tick();
+      expect(lockNow).not.toHaveBeenCalled();
+      lifecycle.next({ kind: 'background' });
+      expect(lockNow).toHaveBeenCalledOnce();
       lifetime.unsubscribe();
     });
 

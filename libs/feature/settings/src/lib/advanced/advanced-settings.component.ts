@@ -18,6 +18,7 @@ import {
   CONFIG_EXCLUSION_NOTES,
   describeConfigChange,
   type ConfigApplyPlan,
+  TrackFileChooserDirective,
 } from '@trinity/platform-native';
 import { HostFileExportService } from '@trinity/runtime/host';
 import {
@@ -105,6 +106,7 @@ function exportFileName(now: Date): string {
   host: { class: 'block' },
   providers: [AdvancedSettingsResetService],
   imports: [
+    TrackFileChooserDirective,
     TrnSettingsGroupComponent,
     ConfigEditorOutletDirective,
     ConfigApplyReviewComponent,

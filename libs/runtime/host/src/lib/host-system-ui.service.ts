@@ -3,8 +3,9 @@ import { Observable, defer, finalize } from 'rxjs';
 
 /**
  * Counts system UI Trinity itself put up: the user-presence prompt, a native save or share
- * sheet, the camera and the photo picker. App lock's away timer ignores time spent there,
- * so taking a photo or confirming Face ID never locks the app behind the person using it.
+ * sheet, the camera, the photo picker, a file chooser and the sign-in sheet on mobile. App
+ * lock's away timer ignores time spent there, so taking a photo or confirming Face ID never
+ * locks the app behind the person using it.
  */
 @Injectable({ providedIn: 'root' })
 export class HostSystemUiService {
