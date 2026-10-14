@@ -8,17 +8,18 @@ pageType: reference
 platforms: [web, desktop, android, ios]
 ---
 
-The repository security baseline defines five invariants. A change touching one needs its enforcement check and behavior-specific tests.
+The repository security baseline defines five invariants, and App lock adds one for its PIN. A change touching one needs its enforcement check and behavior-specific tests.
 
 ## Required invariants {#required-invariants}
 
-| Invariant                   | Required property                                                                          | Enforcement                                      |
-| --------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| Normalized Matrix input     | Capability and presentation code consume normalized events                                 | Adapter contracts and hostile-input tests        |
-| Secret-safe diagnostics     | Credentials, secret material, message bodies, and precise location stay out of diagnostics | Typed failure metadata and hostile-adapter tests |
-| SDK import containment      | Matrix SDK imports stay in approved adapters and pure Matrix modeling utilities            | ESLint and architecture checks                   |
-| Electron IPC boundary       | IPC is versioned, sender-validated, and capability-scoped                                  | Host contract and IPC security tests             |
-| Sensitive preference policy | Sensitive settings declare storage and export restrictions                                 | Preference catalog and export-schema guards      |
+| Invariant                   | Required property                                                                              | Enforcement                                      |
+| --------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Normalized Matrix input     | Capability and presentation code consume normalized events                                     | Adapter contracts and hostile-input tests        |
+| Secret-safe diagnostics     | Credentials, secret material, message bodies, and precise location stay out of diagnostics     | Typed failure metadata and hostile-adapter tests |
+| SDK import containment      | Matrix SDK imports stay in approved adapters and pure Matrix modeling utilities                | ESLint and architecture checks                   |
+| Electron IPC boundary       | IPC is versioned, sender-validated, and capability-scoped                                      | Host contract and IPC security tests             |
+| Sensitive preference policy | Sensitive settings declare storage and export restrictions                                     | Preference catalog and export-schema guards      |
+| App lock PIN containment    | The PIN, its hash and salt stay in the host verifier, out of IPC answers, logs and diagnostics | PIN verifier, user-presence IPC and plugin tests |
 
 ## Apply the invariants {#apply-invariants}
 
