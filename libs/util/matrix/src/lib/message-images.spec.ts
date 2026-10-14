@@ -78,6 +78,27 @@ describe('inline images in formatted bodies', () => {
     expect(clean).not.toContain(source);
   });
 
+  it.each([
+    ['a remote image', '<img src="https://tracker.example/pixel.png">'],
+    ['a data: image', '<img src="data:image/png;base64,iVBORw0KGgo=">'],
+    ['a blob: image', '<img src="blob:https://example.org/1" alt="  ">'],
+    ['an image with no source', '<img alt="">'],
+  ])('shows %s without alt text as "Image"', (_, html) => {
+    const clean = parse(sanitizeMatrixHtml(`<p>before ${html} after</p>`));
+
+    expect(clean.querySelector('img')).toBeNull();
+    expect(clean.textContent).toBe('before Image after');
+  });
+
+  it('shows an image over the cap without alt text as "Image"', () => {
+    const clean = parse(
+      sanitizeMatrixHtml(images(10) + '<img src="mxc://hs/over">'),
+    );
+
+    expect(clean.querySelectorAll('img.mx-image')).toHaveLength(10);
+    expect(clean.textContent).toBe('Image');
+  });
+
   it('keeps none of the render markup a sender forges', () => {
     const forged =
       '<img src="mxc://hs/a" class="mx-image" data-mx-src="mxc://other/b" role="button" aria-label="x">';

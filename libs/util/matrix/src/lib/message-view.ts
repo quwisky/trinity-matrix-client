@@ -887,7 +887,8 @@ const SENDER_SIZE = /^\d{1,5}$/;
  * Angular strips `data-*` at the leaf, so the browser never sees an `mxc:` URL (the CSP would
  * block it as a broken image), and InlineMxcImagesDirective re-reads the source from this string
  * and resolves it through authenticated media. Any other image (no source, `data:`, `blob:`,
- * remote) becomes its alt text here, never a fetch.
+ * remote), and every image over the cap, becomes its alt text here, never a fetch; without
+ * one it reads "Image", so the reader still sees that something was there.
  *
  * MSC2545 custom emoji (`data-mx-emoticon`) are sized as before and capped at the leaf (50).
  * Other images are marked `mx-image`, the first {@link MAX_INLINE_IMAGES} only, so a crafted
@@ -905,7 +906,9 @@ function normaliseImages(root: ParentNode): void {
       !MXC_IMAGE_SOURCE.test(source) ||
       (!emote && inline >= MAX_INLINE_IMAGES)
     ) {
-      image.replaceWith(emote ? (alt ?? 'custom emoji') : (alt ?? ''));
+      image.replaceWith(
+        emote ? (alt ?? 'custom emoji') : alt?.trim() || 'Image',
+      );
       continue;
     }
     image.removeAttribute('src');
