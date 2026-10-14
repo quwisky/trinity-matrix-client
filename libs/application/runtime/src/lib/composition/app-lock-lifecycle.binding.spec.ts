@@ -2,7 +2,10 @@ import { signal, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TitleBarState } from '@trinity/application/workspace';
 import { APP_LOCK_CLOCK, AppLockService } from '@trinity/data-access/app-lock';
-import { KeyboardShortcutsService } from '@trinity/platform-native';
+import {
+  KeyboardShortcutsService,
+  MediaPickerService,
+} from '@trinity/platform-native';
 import {
   HOST_FILE_EXPORT_OPERATION,
   HOST_USER_PRESENCE_OPERATION,
@@ -20,6 +23,31 @@ import { MockProvider } from 'ng-mocks';
 import { NEVER, Subject, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppLockLifecycleBinding } from './app-lock-lifecycle.binding';
+
+// The media picker runs for real; only the platform check and the camera plugin are replaced.
+const native = vi.hoisted(() => ({
+  platform: false,
+  camera: {
+    takePhoto: vi.fn(),
+    recordVideo: vi.fn(),
+    chooseFromGallery: vi.fn(),
+    checkPermissions: vi.fn(),
+    requestPermissions: vi.fn(),
+  },
+}));
+vi.mock('@capacitor/core', async (importOriginal) => {
+  const actual = await importOriginal<{
+    Capacitor: Record<string, unknown>;
+  }>();
+  return {
+    ...actual,
+    Capacitor: { ...actual.Capacitor, isNativePlatform: () => native.platform },
+  };
+});
+vi.mock('@capacitor/camera', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  Camera: native.camera,
+}));
 
 type LifecycleEvent = { readonly kind: 'active' | 'background' };
 
@@ -120,6 +148,8 @@ describe('AppLockLifecycleBinding', () => {
     }),
   );
   afterEach(() => {
+    native.platform = false;
+    for (const plugin of Object.values(native.camera)) plugin.mockReset();
     vi.useRealTimers();
     vi.restoreAllMocks();
     delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
@@ -412,20 +442,64 @@ describe('AppLockLifecycleBinding', () => {
       lifetime.unsubscribe();
     });
 
-    it('holds the away timer while the camera or photo picker is open', () => {
+    it('holds the away timer while the camera is open', async () => {
+      native.platform = true;
+      native.camera.checkPermissions.mockResolvedValue({
+        camera: 'granted',
+        photos: 'granted',
+      });
+      let cancel: (reason: unknown) => void = () => undefined;
+      native.camera.takePhoto.mockReturnValue(
+        new Promise((_, reject) => (cancel = reject)),
+      );
       const { lifecycle, lockNow, advance, lifetime } = setup({
         lockAfter: 'immediately',
         systemUi: 'real',
       });
-      // MediaPickerService reports the camera and the photo picker through the same count.
-      const camera = TestBed.inject(HostSystemUiService)
-        .track(NEVER)
-        .subscribe();
+      const photo = vi.fn();
+      TestBed.inject(MediaPickerService)
+        .capturePhoto({ saveToGallery: false })
+        .subscribe(photo);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(native.camera.takePhoto).toHaveBeenCalledOnce();
       lifecycle.next({ kind: 'background' });
       advance(120_000);
       lifecycle.next({ kind: 'active' });
       expect(lockNow).not.toHaveBeenCalled();
-      camera.unsubscribe();
+      // Closing the camera ends the count: the next time away locks at once again.
+      cancel({ code: 'OS-PLUG-CAMR-0006' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(photo).toHaveBeenCalledWith(null);
+      TestBed.tick();
+      lifecycle.next({ kind: 'background' });
+      expect(lockNow).toHaveBeenCalledOnce();
+      lifetime.unsubscribe();
+    });
+
+    it('holds the away timer while the photo picker is open', async () => {
+      native.platform = true;
+      native.camera.checkPermissions.mockResolvedValue({
+        camera: 'granted',
+        photos: 'granted',
+      });
+      let choose: (value: { results: [] }) => void = () => undefined;
+      native.camera.chooseFromGallery.mockReturnValue(
+        new Promise((resolve) => (choose = resolve)),
+      );
+      const { lifecycle, lockNow, advance, lifetime } = setup({
+        lockAfter: 'immediately',
+        systemUi: 'real',
+      });
+      TestBed.inject(MediaPickerService).pickImages().subscribe();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(native.camera.chooseFromGallery).toHaveBeenCalledOnce();
+      lifecycle.next({ kind: 'background' });
+      advance(120_000);
+      lifecycle.next({ kind: 'active' });
+      expect(lockNow).not.toHaveBeenCalled();
+      choose({ results: [] });
+      await vi.advanceTimersByTimeAsync(0);
+      TestBed.tick();
       lifecycle.next({ kind: 'background' });
       expect(lockNow).toHaveBeenCalledOnce();
       lifetime.unsubscribe();
