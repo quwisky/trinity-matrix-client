@@ -717,6 +717,15 @@ export class MessageListComponent extends MessageListBase {
     ) {
       return;
     }
+    // A reader at the bottom stays there: a restore queued before a live message pinned the
+    // list (or before the reader reached the bottom) would nudge the newest message up. Older
+    // history landing above a reader moves them off the bottom, so a real restore still runs.
+    if (
+      untracked(() => this.atBottomSig()) &&
+      el.scrollHeight - el.scrollTop - el.clientHeight < 1
+    ) {
+      return;
+    }
     const idx = this.ids().indexOf(anchorId);
     const anchor = Array.from(
       el.querySelectorAll<HTMLElement>('.msg[data-mid]'),

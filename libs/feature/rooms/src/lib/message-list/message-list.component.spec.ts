@@ -885,95 +885,113 @@ describe('MessageListComponent', () => {
       expect(st).toBe(12_800);
     });
 
-    // A history anchor outlives its restore until the reader scrolls (no scroll event follows
-    // a restore that did not move). A reader at the very bottom whose newest message grows
-    // (Show more, a late image) stays at the bottom instead of being held by that old anchor.
-    it('keeps a reader at the bottom pinned when a row grows under a history anchor', async () => {
-      const { fixture, container } = await renderList({ messages: many(30) });
+    /**
+     * A short room the reader is at the bottom of, near enough the top to ask for older
+     * history, after one page of 110px has landed above and its anchor restore has been
+     * acknowledged. The history anchor is still active (it lasts until the reader scrolls).
+     * `below` is extra height the page adds under the anchored row, so the restore leaves the
+     * reader that far above the bottom.
+     */
+    async function afterHistoryPage(below = 0) {
+      const { fixture, container } = await renderList({
+        messages: many(30),
+        canLoadOlder: true,
+      });
       const cmp = fixture.componentInstance;
       const scroll = container.querySelector('.scroll') as HTMLElement;
-      let sh = 3000;
-      let st = sh - 600;
+      const view = { st: 0, sh: 700, prepended: 0 };
       Object.defineProperties(scroll, {
         scrollTop: {
-          get: () => st,
-          set: (value: number) => (st = Math.min(value, sh - 600)),
+          get: () => view.st,
+          set: (value: number) =>
+            (view.st = Math.max(0, Math.min(value, view.sh - 600))),
         },
-        scrollHeight: { get: () => sh },
-        clientHeight: { value: 600 },
-      });
-      const newest = scroll.querySelector('[data-mid="$29"]') as Element;
-      rowObserver().emit([resizeEntry(newest, 500)]);
-      cmp.onScroll();
-      expect(st).toBe(2400);
-
-      const frames: FrameRequestCallback[] = [];
-      vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
-        frames.push(frame);
-        return frames.length;
-      });
-      Object.assign(cmp as unknown as Record<string, unknown>, {
-        prependAnchorActive: true,
-        prependAnchorId: '$0',
-        prependAnchorOffset: 0,
-        expectedProgrammaticScrollTop: st,
-      });
-
-      sh += 1000; // the newest message expands
-      rowObserver().emit([resizeEntry(newest, 1500)]);
-      for (const frame of frames.splice(0)) frame(0);
-
-      expect(st).toBe(3400);
-      expect(notAtBottom(cmp)).toBe(false);
-    });
-
-    // Near the bottom is not at it: a reader a little above the bottom while history lands
-    // keeps the anchored row where it was.
-    it('keeps the history anchor for a reader just above the bottom', async () => {
-      const { fixture, container } = await renderList({ messages: many(30) });
-      const cmp = fixture.componentInstance;
-      const scroll = container.querySelector('.scroll') as HTMLElement;
-      let sh = 3000;
-      let st = sh - 600;
-      Object.defineProperties(scroll, {
-        scrollTop: {
-          get: () => st,
-          set: (value: number) => (st = Math.min(value, sh - 600)),
-        },
-        scrollHeight: { get: () => sh },
+        scrollHeight: { get: () => view.sh },
         clientHeight: { value: 600 },
       });
       scroll.getBoundingClientRect = () => rect(0);
-      const anchor = scroll.querySelector('[data-mid="$20"]') as HTMLElement;
-      let grown = 0;
-      // The anchored row sits 100px below the viewport top, pushed down by growth above it.
-      anchor.getBoundingClientRect = () =>
-        rect(100 + grown - (st - 2350), 100 + grown - (st - 2350) + EST);
-      const above = scroll.querySelector('[data-mid="$10"]') as Element;
-      rowObserver().emit([resizeEntry(above, EST)]);
-      st = 2350; // the reader scrolls 50px up from the bottom
-      cmp.onScroll();
-      expect(notAtBottom(cmp)).toBe(false);
+      // $0 is the first row reaching into the viewport: 40px below its top at scrollTop 100.
+      const anchorTop = () => 140 + view.prepended - view.st;
+      (
+        scroll.querySelector('[data-mid="$0"]') as HTMLElement
+      ).getBoundingClientRect = () => rect(anchorTop(), anchorTop() + EST);
+      const newest = scroll.querySelector('[data-mid="$29"]') as Element;
+      rowObserver().emit([resizeEntry(newest, 100)]); // pinned: scrollTop 100
+      cmp.onScroll(); // near the top: anchors $0 and asks for history
+      fixture.componentRef.setInput('loadingOlder', true);
+      fixture.detectChanges();
+
+      view.prepended = 110;
+      view.sh += 110 + below;
+      fixture.componentRef.setInput('loadingOlder', false);
+      fixture.componentRef.setInput('messages', [
+        ...['$p0', '$p1', '$p2', '$p3', '$p4'].map((id, i) =>
+          msg(id, '@a:hs', 'A', 1 + i),
+        ),
+        ...many(30),
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(view.st).toBe(210); // the anchor restore kept $0 40px below the top
+      cmp.onScroll(); // the browser's scroll event for that restore
 
       const frames: FrameRequestCallback[] = [];
       vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
         frames.push(frame);
         return frames.length;
       });
-      Object.assign(cmp as unknown as Record<string, unknown>, {
-        prependAnchorActive: true,
-        prependAnchorId: '$20',
-        prependAnchorOffset: 100,
-        expectedProgrammaticScrollTop: st,
-      });
+      const runFrames = () => {
+        for (const frame of frames.splice(0)) frame(0);
+      };
+      return { fixture, cmp, scroll, view, newest, runFrames };
+    }
 
-      sh += 200;
-      grown = 200; // a row above the anchor settles 200px taller
-      rowObserver().emit([resizeEntry(above, EST + 200)]);
-      for (const frame of frames.splice(0)) frame(0);
+    // The anchor outlives its restore until the reader scrolls. A reader at the very bottom
+    // whose newest message grows (Show more, a late image) stays at the bottom instead.
+    it('keeps a reader at the bottom pinned when a row grows under a history anchor', async () => {
+      const { cmp, view, newest, runFrames } = await afterHistoryPage();
 
-      expect(st).toBe(2550);
-      expect(anchor.getBoundingClientRect().top).toBe(100);
+      view.sh += 1000; // the newest message expands
+      rowObserver().emit([resizeEntry(newest, 1100)]);
+      runFrames();
+
+      expect(view.st).toBe(view.sh - 600);
+      expect(notAtBottom(cmp)).toBe(false);
+    });
+
+    // Near the bottom is not at it: a reader a little above the bottom keeps the anchored row
+    // where it was.
+    it('keeps the history anchor for a reader just above the bottom', async () => {
+      const { cmp, view, newest, runFrames } = await afterHistoryPage(50);
+      expect(notAtBottom(cmp)).toBe(false); // within the near-bottom threshold
+
+      view.sh += 200; // a row below the anchored one grows
+      rowObserver().emit([resizeEntry(newest, 300)]);
+      runFrames();
+
+      expect(view.st).toBe(210);
+    });
+
+    // A live message pins the reader in a frame; the anchor restore its measurement queues lands
+    // a frame later and must not nudge the newest message back up.
+    it('leaves a reader at the bottom when a live message arrives under a history anchor', async () => {
+      const { fixture, scroll, view, runFrames } = await afterHistoryPage();
+
+      view.sh += EST;
+      fixture.componentRef.setInput('messages', [
+        ...['$p0', '$p1', '$p2', '$p3', '$p4'].map((id, i) =>
+          msg(id, '@a:hs', 'A', 1 + i),
+        ),
+        ...many(30),
+        msg('$live', '@b:hs', 'B', 999_999_999),
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const live = scroll.querySelector('[data-mid="$live"]') as Element;
+      rowObserver().emit([resizeEntry(live, EST)]);
+      runFrames();
+
+      expect(view.st).toBe(view.sh - 600);
     });
 
     // Tab into a collapsed body expands it; the list's own correction for the taller row comes
