@@ -78,6 +78,29 @@ describe('TitleBarState', () => {
     expect(title.getTitle()).toBe('Trinity Next');
   });
 
+  it('shows only the app name while App lock is locked', () => {
+    const state = TestBed.inject(TitleBarState);
+    state.setContext({ title: '#general', quickSwitcher: () => undefined });
+    state.setLocked(true);
+    expect(state.title()).toBe('Trinity');
+    TestBed.tick();
+    expect(TestBed.inject(Title).getTitle()).toBe('Trinity');
+    state.setLocked(false);
+    expect(state.title()).toBe('#general');
+    TestBed.tick();
+    expect(TestBed.inject(Title).getTitle()).toBe('#general – Trinity');
+  });
+
+  it('names Trinity Next while the desktop prerelease is locked', () => {
+    provideHostAppName(() => 'Trinity Next');
+    const state = TestBed.inject(TitleBarState);
+    state.setContext({ title: '#general', quickSwitcher: vi.fn() });
+    state.setLocked(true);
+    expect(state.title()).toBe('Trinity Next');
+    TestBed.tick();
+    expect(TestBed.inject(Title).getTitle()).toBe('Trinity Next');
+  });
+
   it('falls back to "Trinity" when the desktop shell reports no identity', () => {
     provideHostAppName(() => {
       throw new Error('The desktop shell did not report its app identity.');

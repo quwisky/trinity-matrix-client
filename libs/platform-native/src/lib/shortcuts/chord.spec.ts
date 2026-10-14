@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   chordFromEvent,
+  chordToAccelerator,
   formatChord,
   hasModifier,
   isBrowserReserved,
@@ -157,5 +158,24 @@ describe('isBrowserReserved', () => {
         key,
       ).toBe(true);
     }
+  });
+});
+
+describe('chordToAccelerator', () => {
+  it.each([
+    [
+      { accel: true, alt: false, shift: true, key: 'l' },
+      'CommandOrControl+Shift+L',
+    ],
+    [{ accel: false, alt: true, shift: false, key: 'ArrowUp' }, 'Alt+Up'],
+    [{ accel: true, alt: false, shift: false, key: '7' }, 'CommandOrControl+7'],
+    [
+      { accel: true, alt: false, shift: false, key: 'F5' },
+      'CommandOrControl+F5',
+    ],
+    [{ accel: true, alt: false, shift: false, key: 'Dead' }, null],
+    [null, null],
+  ] as const)('%o → %s', (chord, accelerator) => {
+    expect(chordToAccelerator(chord)).toBe(accelerator);
   });
 });

@@ -44,6 +44,7 @@ import { sessionLockNotice } from './session-lock-notice/session-lock-notice.mod
 import { SystemStatusComponent } from './system-status/system-status.component';
 import { TitleBarComponent } from './title-bar/title-bar.component';
 import { TrinityApplicationSessionAdapter } from '../composition/trinity-application-session.adapter';
+import { AppLockLifecycleBinding } from '../composition/app-lock-lifecycle.binding';
 
 /**
  * How long a tab waiting for another tab shows the startup spinner before the notice. A
@@ -128,6 +129,11 @@ export class ApplicationRootComponent {
   constructor() {
     this.session
       .runInteractions()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+    // App lock's away timer and shell state live as long as the app, signed in or not.
+    inject(AppLockLifecycleBinding)
+      .run()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
     const timer = window.setTimeout(

@@ -12,6 +12,7 @@ import {
 import { Capacitor } from '@capacitor/core';
 import { Camera } from '@capacitor/camera';
 import { Filesystem } from '@capacitor/filesystem';
+import { HostSystemUiService } from '@trinity/runtime/host';
 import { MediaPickerService } from './media-picker.service';
 
 vi.mock('@capacitor/core', () => ({
@@ -70,6 +71,29 @@ describe('MediaPickerService host adapter', () => {
       oversized: 0,
     });
     expect(chooseFromGallery).not.toHaveBeenCalled();
+  });
+
+  it('counts the open photo picker as Trinity’s own system UI', async () => {
+    isNative.mockReturnValue(true);
+    let choose: (value: unknown) => void = () => undefined;
+    chooseFromGallery.mockReturnValueOnce(
+      new Promise((resolve) => (choose = resolve)),
+    );
+    const picker = makeService();
+    const ui = TestBed.inject(HostSystemUiService);
+    const pick = picker.pickImages().subscribe();
+    expect(ui.active()).toBe(true);
+    choose({ results: [] });
+    await vi.waitFor(() => expect(ui.active()).toBe(false), { timeout: 1_000 });
+    pick.unsubscribe();
+  });
+
+  it('counts no system UI on the web, which uses the file input instead', () => {
+    const picker = makeService();
+    const ui = TestBed.inject(HostSystemUiService);
+    const pick = picker.pickImages().subscribe();
+    expect(ui.active()).toBe(false);
+    pick.unsubscribe();
   });
 
   it('opens the native gallery and materializes EVERY choice into a File', async () => {

@@ -49,6 +49,7 @@ import {
   type EncryptionDialogLoaders,
 } from '../application-dialog-loaders';
 import { applicationCapabilityProviders } from './application-capability.providers';
+import { appLockProviders } from './app-lock.providers';
 import { trinityDiagnosticProviders } from './diagnostic-log.providers';
 import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
 import { AccountSwitchLauncherAdapter } from './account-switch-launcher.adapter';
@@ -102,6 +103,7 @@ export function provideTrinityApplication(
     provideHostCapabilities(),
     provideCapacitorPreferenceStorage(),
     ...applicationCapabilityProviders(options),
+    appLockProviders(),
     provideTrnIcons(),
     provideBrowserGlobalErrorListeners(),
     { provide: ErrorHandler, useClass: TrinityErrorHandler },

@@ -25,7 +25,7 @@ import {
 } from '@trinity/platform-native';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, firstValueFrom, of, type Observable } from 'rxjs';
+import { NEVER, Observable, firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   ApplicationRecoveryOutcome,
@@ -36,6 +36,7 @@ import { SystemStatusVisibilityService } from '../system-status-visibility.servi
 import { CapabilityHealthService } from '../capability-health.service';
 import { ApplicationRootComponent } from './application-root.component';
 import { TrinityApplicationSessionAdapter } from '../composition/trinity-application-session.adapter';
+import { AppLockLifecycleBinding } from '../composition/app-lock-lifecycle.binding';
 
 @Component({
   standalone: true,
@@ -71,6 +72,10 @@ describe('ApplicationRootComponent', () => {
     const openReport = vi.fn();
     const lockState = signal<SessionLockState>(lock);
     const requestHandover = vi.fn();
+    let lockLifetimeStarted = 0;
+    const lockLifetime = new Observable<never>(() => {
+      lockLifetimeStarted += 1;
+    });
     const rendered = await render(ApplicationRootComponent, {
       providers: [
         provideRouter(routes),
@@ -110,6 +115,7 @@ describe('ApplicationRootComponent', () => {
           state: lockState.asReadonly(),
           requestHandover,
         }),
+        MockProvider(AppLockLifecycleBinding, { run: () => lockLifetime }),
       ],
     });
     return {
@@ -123,12 +129,18 @@ describe('ApplicationRootComponent', () => {
       openReport,
       lockState,
       requestHandover,
+      lockLifetimeStarted: () => lockLifetimeStarted,
       router: rendered.fixture.debugElement.injector.get(Router),
       health: rendered.fixture.debugElement.injector.get(
         CapabilityHealthService,
       ),
     };
   }
+
+  it('runs App lock’s away timer from the first render, before anyone signs in', async () => {
+    const { lockLifetimeStarted } = await setup({ phase: 'stopped' });
+    expect(lockLifetimeStarted()).toBe(1);
+  });
 
   it('keeps the healthy fallback on login and removes it across every shell URL', async () => {
     const { fixture, router, getByTestId, queryByTestId } = await setup(

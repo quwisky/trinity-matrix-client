@@ -26,10 +26,19 @@ export function roomTitle(
 export class TitleBarState {
   private readonly context = signal<TitleBarContext | null>(null);
   private readonly activeState = signal(false);
+  private readonly lockedState = signal(false);
+  /** The open room's title, or null with none open or while App lock is locked. */
+  private readonly roomTitle = computed(() =>
+    this.lockedState() ? null : (this.context()?.title ?? null),
+  );
 
   /** "Trinity", or "Trinity Next" in the desktop prerelease. */
   readonly appName = injectHostAppName();
-  readonly title = computed(() => this.context()?.title ?? this.appName);
+  /**
+   * Only the app name while App lock is locked: the taskbar, the macOS Window menu and
+   * window switchers show the window title (spec §2).
+   */
+  readonly title = computed(() => this.roomTitle() ?? this.appName);
   readonly quickSwitcher = computed(
     () => this.context()?.quickSwitcher ?? null,
   );
@@ -40,7 +49,7 @@ export class TitleBarState {
   constructor() {
     const pageTitle = inject(Title);
     effect(() => {
-      const room = this.context()?.title ?? null;
+      const room = this.roomTitle();
       // No room open: the row shows the app name, and the tab must not repeat it.
       pageTitle.setTitle(
         room === null ? this.appName : `${room} – ${this.appName}`,
@@ -54,5 +63,9 @@ export class TitleBarState {
 
   setContext(context: TitleBarContext | null): void {
     this.context.set(context);
+  }
+
+  setLocked(locked: boolean): void {
+    this.lockedState.set(locked);
   }
 }

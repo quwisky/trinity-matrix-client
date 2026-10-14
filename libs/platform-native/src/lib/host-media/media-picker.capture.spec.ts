@@ -11,6 +11,7 @@ import {
 } from 'vitest';
 import { Capacitor } from '@capacitor/core';
 import { Camera } from '@capacitor/camera';
+import { HostSystemUiService } from '@trinity/runtime/host';
 import { MediaPickerService } from './media-picker.service';
 import {
   CapturePermissionDeniedError,
@@ -85,6 +86,46 @@ describe('MediaPickerService capture', () => {
       .mockResolvedValue({ camera: 'granted', photos: 'granted' });
   });
   afterEach(() => vi.unstubAllGlobals());
+
+  it('counts the open camera as Trinity’s own system UI', async () => {
+    let resolvePhoto: (value: unknown) => void = () => undefined;
+    takePhoto.mockReturnValueOnce(
+      new Promise((resolve) => (resolvePhoto = resolve)),
+    );
+    const picker = makeService();
+    const ui = TestBed.inject(HostSystemUiService);
+    const capture = picker.capturePhoto({ saveToGallery: false }).subscribe({
+      error: () => undefined,
+    });
+    expect(ui.active()).toBe(true);
+    resolvePhoto({});
+    await vi.waitFor(() => expect(ui.active()).toBe(false), { timeout: 1_000 });
+    capture.unsubscribe();
+  });
+
+  it('counts video recording as Trinity’s own system UI until it is cancelled', async () => {
+    let cancel: (reason: unknown) => void = () => undefined;
+    recordVideo.mockReturnValueOnce(
+      new Promise((_, reject) => (cancel = reject)),
+    );
+    const picker = makeService();
+    const ui = TestBed.inject(HostSystemUiService);
+    const capture = picker.captureVideo({ saveToGallery: false }).subscribe();
+    expect(ui.active()).toBe(true);
+    cancel({ code: 'OS-PLUG-CAMR-0017' });
+    await vi.waitFor(() => expect(ui.active()).toBe(false), { timeout: 1_000 });
+    capture.unsubscribe();
+  });
+
+  it('stops counting when the caller leaves the camera', () => {
+    takePhoto.mockReturnValueOnce(new Promise(() => undefined));
+    const picker = makeService();
+    const ui = TestBed.inject(HostSystemUiService);
+    const capture = picker.capturePhoto({ saveToGallery: false }).subscribe();
+    expect(ui.active()).toBe(true);
+    capture.unsubscribe();
+    expect(ui.active()).toBe(false);
+  });
 
   it('offers nothing off a native platform and never opens the camera', async () => {
     isNative.mockReturnValue(false);
