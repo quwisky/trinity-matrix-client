@@ -13,7 +13,41 @@ test.beforeEach(async () => {
   app = await launchApp();
   const page = await app.firstWindow();
   await expect(page.getByLabel('Homeserver')).toBeVisible();
+  // What main saw, for a failure message: renderer exits (with whether the window was on
+  // screen) and finished loads.
+  await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    const events: string[] = [];
+    Object.assign(globalThis, { rendererRecoveryEvents: events });
+    win?.webContents.on(
+      'render-process-gone',
+      (_event: unknown, details: { reason: string }) =>
+        events.push(
+          `gone ${details.reason} visible=${win.isVisible()} minimized=${win.isMinimized()}`,
+        ),
+    );
+    win?.webContents.on('did-finish-load', () => events.push('loaded'));
+  });
 });
+
+/** Wait for a new renderer with the sign-in form; a timeout names what main saw. */
+async function expectRecovered(): Promise<void> {
+  try {
+    await expect.poll(rendererState, { timeout: 30_000 }).toBe('sign-in shown');
+  } catch (error) {
+    const seen = await app.evaluate(() =>
+      JSON.stringify({
+        events:
+          (globalThis as { rendererRecoveryEvents?: string[] })
+            .rendererRecoveryEvents ?? [],
+        asked:
+          (globalThis as { rendererRecoveryAsked?: string[] })
+            .rendererRecoveryAsked ?? [],
+      }),
+    );
+    throw new Error(`${String(error)}\nmain saw: ${seen}`);
+  }
+}
 
 test.afterEach(async () => {
   await app?.close();
@@ -62,7 +96,7 @@ test('reloads the window after its renderer crashes', async () => {
     BrowserWindow.getAllWindows()[0]?.webContents.forcefullyCrashRenderer(),
   );
 
-  await expect.poll(rendererState, { timeout: 30_000 }).toBe('sign-in shown');
+  await expectRecovered();
 });
 
 test('asks after a crash soon after the last reload, and reloads on Reload', async () => {
@@ -88,12 +122,12 @@ test('asks after a crash soon after the last reload, and reloads on Reload', asy
 
   await markRenderer();
   await crash();
-  await expect.poll(rendererState, { timeout: 30_000 }).toBe('sign-in shown');
+  await expectRecovered();
   expect(await asked()).toEqual([]);
 
   await markRenderer();
   await crash();
-  await expect.poll(rendererState, { timeout: 30_000 }).toBe('sign-in shown');
+  await expectRecovered();
   expect(await asked()).toEqual([
     expect.stringMatching(/^Trinity( Next)? stopped working$/),
   ]);
