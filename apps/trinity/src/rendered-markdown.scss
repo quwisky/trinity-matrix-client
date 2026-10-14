@@ -300,13 +300,14 @@
 
     // Reachable now that `gfm` is pinned on and outgoing HTML carries these: the file
     // had no rules for them even though the Matrix allowlist has always permitted them.
-    table {
+    // A wide table or display formula scrolls itself rather than stretching the message row,
+    // and that scroll stays inside it — see the note on `pre` above; the same back-swipe
+    // applies here. A maths source fallback is a `code` element, styled by the rule above.
+    table,
+    div.mx-maths {
       display: block;
       margin: 4px 0;
       border-collapse: collapse;
-
-      // A wide table scrolls itself rather than stretching the message row, and that scroll
-      // stays inside it — see the note on `pre` above; the same back-swipe applies here.
       overflow-x: auto;
       overscroll-behavior-x: contain;
     }

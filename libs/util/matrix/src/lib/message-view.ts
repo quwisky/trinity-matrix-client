@@ -784,6 +784,7 @@ export function sanitizeMatrixHtml(
   normaliseSpoilers(body);
   normaliseColours(body);
   normaliseImages(body);
+  normaliseMaths(body);
   normaliseTaskItems(body);
   renderCodeBlocks(body);
   markMentionPills(body, addressesViewer);
@@ -935,6 +936,22 @@ function normaliseImages(root: ParentNode): void {
         'aria-label',
         name ? `View image: ${name}` : 'View image',
       );
+    }
+  }
+}
+
+/**
+ * Mark maths for the render leaf (Matrix spec v1.11 "Mathematical messages"):
+ * `span[data-mx-maths]` is inline, `div[data-mx-maths]` display. The sender's fallback content
+ * stays until MathsDirective has KaTeX render the LaTeX it re-reads from this string (Angular
+ * strips `data-*` at the leaf). Empty maths keeps its fallback.
+ */
+function normaliseMaths(root: ParentNode): void {
+  for (const node of root.querySelectorAll(
+    'span[data-mx-maths], div[data-mx-maths]',
+  )) {
+    if ((node.getAttribute('data-mx-maths') ?? '').trim()) {
+      node.classList.add('mx-maths');
     }
   }
 }

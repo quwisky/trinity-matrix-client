@@ -4,12 +4,13 @@ import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import { CodeHighlightDirective } from './code-highlight.directive';
 import { SenderColoursDirective } from './sender-colours.directive';
+import { MathsDirective } from './maths.directive';
 
 /**
  * Renders a sanitized Matrix message body into its host element.
  *
- * Spoiler reveal, `matrix.to` link routing, inline custom emoji, code highlighting and sender
- * colours all delegate from the container that holds the body, so they travel with it: bind
+ * Spoiler reveal, `matrix.to` link routing, inline custom emoji, code highlighting, sender
+ * colours and maths all delegate from the container that holds the body, so they travel with it: bind
  * `[trnMatrixHtml]` on that element and handle `(matrixLink)` where permalinks are routed.
  */
 @Directive({
@@ -30,6 +31,11 @@ import { SenderColoursDirective } from './sender-colours.directive';
     {
       directive: SenderColoursDirective,
       inputs: ['trnSenderColours: trnMatrixHtml'],
+      outputs: [],
+    },
+    {
+      directive: MathsDirective,
+      inputs: ['trnMaths: trnMatrixHtml'],
       outputs: [],
     },
   ],
