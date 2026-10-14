@@ -470,6 +470,68 @@ describe('InlineMxcImagesDirective', () => {
       });
     });
 
+    describe('in a spoiler that holds only images', () => {
+      const IMAGE_ONLY = 'mx-spoiler--image-only';
+
+      it('marks the spoiler so it still draws a bar, and loads the image on reveal', async () => {
+        const { host } = await render(
+          sanitizeMatrixHtml(
+            '<span data-mx-spoiler> <img src="mxc://hs/secret" alt="secret"> </span>',
+          ),
+        );
+        const spoiler = host.querySelector<HTMLElement>('.mx-spoiler')!;
+        const image = host.querySelector('img')!;
+
+        expect(spoiler.classList.contains(IMAGE_ONLY)).toBe(true);
+
+        spoiler.click();
+        FakeIntersectionObserver.enter(image);
+
+        expect(spoiler.classList.contains(IMAGE_ONLY)).toBe(false);
+        expect(media.resolveMedia).toHaveBeenCalledWith(
+          expect.objectContaining({ mxc: 'mxc://hs/secret' }),
+          'thumbnail',
+        );
+      });
+
+      it('leaves a spoiler with text of its own unmarked', async () => {
+        const { host } = await render(
+          sanitizeMatrixHtml(
+            '<span data-mx-spoiler>look <img src="mxc://hs/secret" alt="secret"></span>',
+          ),
+        );
+
+        expect(
+          host.querySelector('.mx-spoiler')!.classList.contains(IMAGE_ONLY),
+        ).toBe(false);
+      });
+
+      it('marks one nested spoiler at a time, outermost first', async () => {
+        const { host } = await render(
+          sanitizeMatrixHtml(
+            '<span data-mx-spoiler><span data-mx-spoiler><img src="mxc://hs/secret" alt="secret"></span></span>',
+          ),
+        );
+        const [outer, inner] =
+          host.querySelectorAll<HTMLElement>('.mx-spoiler');
+        const image = host.querySelector('img')!;
+
+        expect(outer.classList.contains(IMAGE_ONLY)).toBe(true);
+        expect(inner.classList.contains(IMAGE_ONLY)).toBe(false);
+
+        outer.click();
+        expect(outer.classList.contains(IMAGE_ONLY)).toBe(false);
+        expect(inner.classList.contains(IMAGE_ONLY)).toBe(true);
+        FakeIntersectionObserver.enter(image);
+        expect(media.resolveMedia).not.toHaveBeenCalled();
+
+        inner.click();
+        FakeIntersectionObserver.enter(image);
+        expect(inner.classList.contains(IMAGE_ONLY)).toBe(false);
+        expect(media.resolveMedia).toHaveBeenCalledTimes(1);
+      });
+    });
+
     it('keeps a concealed image out of the tab order and unnamed until revealed', async () => {
       const { host } = await render(
         sanitizeMatrixHtml(

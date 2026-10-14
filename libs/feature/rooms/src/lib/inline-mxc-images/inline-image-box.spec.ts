@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  IMAGE_ONLY_SPOILER,
   LOADING_PLACEHOLDER,
   conceal,
+  markImageOnlySpoiler,
   reserveBox,
   senderSize,
   unconceal,
@@ -138,5 +140,46 @@ describe('conceal and unconceal', () => {
 describe('LOADING_PLACEHOLDER', () => {
   it('is an inline image, never a URL that could be fetched', () => {
     expect(LOADING_PLACEHOLDER.startsWith('data:image/gif;base64,')).toBe(true);
+  });
+});
+
+describe('markImageOnlySpoiler', () => {
+  function body(html: string): HTMLElement {
+    const host = document.createElement('div');
+    host.innerHTML = html;
+    return host;
+  }
+
+  it('marks the outermost concealed spoiler that has no text of its own', () => {
+    const host = body(
+      '<span class="mx-spoiler"><span class="mx-spoiler"> <img> </span></span>',
+    );
+    const [outer, inner] = host.querySelectorAll('.mx-spoiler');
+
+    markImageOnlySpoiler(host.querySelector('img')!, host);
+
+    expect(outer.classList.contains(IMAGE_ONLY_SPOILER)).toBe(true);
+    expect(inner.classList.contains(IMAGE_ONLY_SPOILER)).toBe(false);
+  });
+
+  it('skips revealed spoilers and leaves one with text unmarked', () => {
+    const host = body(
+      '<span class="mx-spoiler">text <span class="mx-spoiler is-revealed"><img></span></span>',
+    );
+
+    markImageOnlySpoiler(host.querySelector('img')!, host);
+
+    expect(host.querySelector(`.${IMAGE_ONLY_SPOILER}`)).toBeNull();
+  });
+
+  it('looks no further than the body', () => {
+    const outside = document.createElement('span');
+    outside.className = 'mx-spoiler';
+    const host = body('<img>');
+    outside.append(host);
+
+    markImageOnlySpoiler(host.querySelector('img')!, host);
+
+    expect(outside.classList.contains(IMAGE_ONLY_SPOILER)).toBe(false);
   });
 });

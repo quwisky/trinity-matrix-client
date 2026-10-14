@@ -477,6 +477,13 @@
         unicode-bidi: isolate;
       }
 
+      // A spoiler holding only images (collapsed above) would draw no bar at all. The leaf
+      // marks it (InlineMxcImagesDirective), so it shows a bar named like a reason would be.
+      &.mx-spoiler--image-only:not([label])::before {
+        content: 'Spoiler';
+        color: var(--trinity-message-surface, var(--trinity-surface-canvas));
+      }
+
       // High Contrast replaces the bar's fill and the transparent text with system colours,
       // which would print the hidden text. Keep a solid bar and the reason readable on it.
       @media (forced-colors: active) {
@@ -484,7 +491,8 @@
         background-color: CanvasText;
         color: CanvasText;
 
-        &[label]::before {
+        &[label]::before,
+        &.mx-spoiler--image-only::before {
           color: Canvas;
         }
       }

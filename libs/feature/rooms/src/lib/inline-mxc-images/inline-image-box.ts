@@ -69,3 +69,32 @@ export function unconceal(image: HTMLImageElement): void {
     image.setAttribute('tabindex', '0');
   }
 }
+
+/** Marks a concealed spoiler whose only content is collapsed images; the stylesheet labels it. */
+export const IMAGE_ONLY_SPOILER = 'mx-spoiler--image-only';
+const CONCEALED_SPOILER = '.mx-spoiler:not(.is-revealed)';
+
+/**
+ * Keep a concealed image's spoiler visible. A concealed image takes no space, so a spoiler
+ * holding nothing else would draw no bar and could not be seen or tapped. The outermost
+ * concealed spoiler around `image` (within `host`) is marked when it has no text of its own,
+ * and the stylesheet draws a "Spoiler" bar for it. Only the outermost is marked, so nested
+ * spoilers draw one bar; call it again after a reveal to mark the next one in.
+ */
+export function markImageOnlySpoiler(
+  image: HTMLImageElement,
+  host: HTMLElement,
+): void {
+  let outermost: HTMLElement | null = null;
+  for (
+    let spoiler = image.closest<HTMLElement>(CONCEALED_SPOILER);
+    spoiler && host.contains(spoiler);
+    spoiler =
+      spoiler.parentElement?.closest<HTMLElement>(CONCEALED_SPOILER) ?? null
+  ) {
+    outermost = spoiler;
+  }
+  if (outermost && !outermost.textContent?.trim()) {
+    outermost.classList.add(IMAGE_ONLY_SPOILER);
+  }
+}

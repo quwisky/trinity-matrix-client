@@ -19,8 +19,10 @@ import {
 } from '../media-attachment/media-viewer-launcher';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import {
+  IMAGE_ONLY_SPOILER,
   LOADING_PLACEHOLDER,
   conceal,
+  markImageOnlySpoiler,
   reserveBox,
   unconceal,
 } from './inline-image-box';
@@ -216,6 +218,7 @@ export class InlineMxcImagesDirective implements OnDestroy {
       };
       if (target.closest(CONCEALED)) {
         conceal(target);
+        markImageOnlySpoiler(target, this.host.nativeElement);
         this.concealed.set(target, start);
       } else {
         start();
@@ -260,14 +263,21 @@ export class InlineMxcImagesDirective implements OnDestroy {
     );
   }
 
-  /** Start the images a just-revealed spoiler was holding back. */
+  /**
+   * Start the images a just-revealed spoiler was holding back; an image a nested spoiler still
+   * conceals gets that spoiler's bar instead.
+   */
   private startRevealed(spoiler: HTMLElement): void {
+    spoiler.classList.remove(IMAGE_ONLY_SPOILER);
     for (const [image, start] of this.concealed) {
-      if (spoiler.contains(image) && !image.closest(CONCEALED)) {
-        this.concealed.delete(image);
-        unconceal(image);
-        start();
+      if (!spoiler.contains(image)) continue;
+      if (image.closest(CONCEALED)) {
+        markImageOnlySpoiler(image, this.host.nativeElement);
+        continue;
       }
+      this.concealed.delete(image);
+      unconceal(image);
+      start();
     }
   }
 
