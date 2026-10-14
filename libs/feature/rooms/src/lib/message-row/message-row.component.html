@@ -150,37 +150,59 @@
           <trn-location [location]="location" />
         } @else if (r.media?.isVoice) {
           <trn-voice-message [media]="r.media!" />
-        } @else if (r.media) {
-          <trn-media-attachment class="msg__media" [media]="r.media" />
-          @if (r.captionHtml) {
-            <div
-              class="msg__text msg__text--html"
-              [trnMatrixHtml]="r.captionHtml"
-              (matrixLink)="matrixLink.emit($event)"
-            ></div>
-          } @else if (r.caption) {
-            <p class="msg__text">{{ r.caption }}</p>
-          }
-        } @else if (r.html) {
-          <div
-            class="msg__text msg__text--html"
-            [trnMatrixHtml]="r.html"
-            (matrixLink)="matrixLink.emit($event)"
-          ></div>
         } @else {
-          <p class="msg__text">{{ r.body }}</p>
-          @if (undecryptableFixLabel(); as label) {
-            <button
-              trnBtn
-              type="button"
-              presentation="link"
-              shape="inline"
-              size="sm"
-              data-testid="msg-utd-fix"
-              (click)="action.emit({ type: 'fix-undecryptable' })"
+          @if (r.media) {
+            <trn-media-attachment class="msg__media" [media]="r.media" />
+          }
+          @if (hasTextBody()) {
+            <!-- Show more (spec C): the wrapper clamps a long body, and the body inside keeps
+                 its full height, so the list's ResizeObserver can measure it. -->
+            <div
+              class="msg__clamp"
+              [id]="bodyId"
+              [class.msg__clamp--capped]="bodyClampable && !bodyLong()"
+              [class.msg__clamp--collapsed]="bodyCollapsed()"
             >
-              {{ label }}
-            </button>
+              @if (bodyHtml(); as html) {
+                <div
+                  class="msg__text msg__text--html"
+                  [trnMatrixHtml]="html"
+                  [trnBodyMeasure]="r.id"
+                  (matrixLink)="matrixLink.emit($event)"
+                ></div>
+              } @else {
+                <!-- One line: the plain body is pre-wrap, so wrapped whitespace would show. -->
+                <!-- prettier-ignore -->
+                <p class="msg__text" [trnBodyMeasure]="r.id">{{ bodyText() }}</p>
+              }
+            </div>
+            @if (bodyLong()) {
+              <button
+                trnBtn
+                type="button"
+                presentation="link"
+                size="sm"
+                data-testid="msg-show-more"
+                [attr.aria-expanded]="bodyExpanded()"
+                [attr.aria-controls]="bodyId"
+                (click)="toggleBody()"
+              >
+                {{ bodyExpanded() ? 'Show less' : 'Show more' }}
+              </button>
+            }
+            @if (undecryptableFixLabel(); as label) {
+              <button
+                trnBtn
+                type="button"
+                presentation="link"
+                shape="inline"
+                size="sm"
+                data-testid="msg-utd-fix"
+                (click)="action.emit({ type: 'fix-undecryptable' })"
+              >
+                {{ label }}
+              </button>
+            }
           }
         }
         @if (r.previewUrl) {

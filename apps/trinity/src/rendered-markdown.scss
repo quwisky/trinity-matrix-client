@@ -612,6 +612,35 @@
   }
 
   /*
+ * Show more (message-row, spec C): the wrapper around a timeline or thread body. Every body is
+ * capped at 24 lines; one the list measured as longer collapses to 20 lines behind a fade. The
+ * `em` lengths resolve against the message type size set here, because the `lh` unit is not on
+ * the Firefox 119 floor. The space-3 allowance covers the body's own top margin, so a body of
+ * exactly 24 lines is never cut. There is no transition, so reduced motion needs nothing. Kept
+ * here rather than in message-row.component.scss, which is at its component style budget; the
+ * build adds `-webkit-mask-image` for the Chrome 119 floor.
+ */
+  .msg__clamp {
+    font-size: var(--trinity-type-message-size);
+  }
+
+  .msg__clamp--capped,
+  .msg__clamp--collapsed {
+    overflow: hidden;
+  }
+
+  .msg__clamp--capped {
+    max-height: calc(
+      24em * var(--trinity-type-message-line-height) + var(--trinity-space-3)
+    );
+  }
+
+  .msg__clamp--collapsed {
+    max-height: calc(20em * var(--trinity-type-message-line-height));
+    mask-image: linear-gradient(to bottom, black 75%, transparent);
+  }
+
+  /*
  * Edit-history diff highlights. Injected via [innerHTML] by the edit-history dialog, so
  * like the markdown rules above they cannot live in a component stylesheet.
  *

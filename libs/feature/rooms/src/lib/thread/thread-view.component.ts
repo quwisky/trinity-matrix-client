@@ -52,6 +52,7 @@ import {
   type MessageRowAction,
   type MessageRowCaps,
 } from '../message-row/message-row.component';
+import { BodyOverflowObserver } from '../message-row/body-overflow';
 import {
   MessageComposerComponent,
   type ComposerSubmit,
@@ -107,7 +108,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
     MessageComposerComponent,
     TrnOverlaySurfaceDirective,
   ],
-  providers: [ThreadCommands],
+  providers: [ThreadCommands, BodyOverflowObserver],
   templateUrl: './thread-view.component.html',
   styleUrl: './thread-view.component.scss',
 })

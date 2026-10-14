@@ -17,6 +17,7 @@ import {
 } from '@angular/core';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageRowComponent } from '../message-row/message-row.component';
+import { BodyOverflowObserver } from '../message-row/body-overflow';
 import { MessageListBase } from './message-list-base';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
@@ -93,8 +94,9 @@ const SCROLL_IDLE_MS = 150;
       outputs: [],
     },
   ],
-  // Rows read it to hold their hover work back while the list scrolls.
-  providers: [TimelineScrollActivity],
+  // Rows read the scroll activity to hold their hover work back while the list scrolls, and
+  // share one ResizeObserver for every row body in this list (Show more).
+  providers: [TimelineScrollActivity, BodyOverflowObserver],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss',
 })
@@ -143,6 +145,7 @@ export class MessageListComponent extends MessageListBase {
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly scrollActivity = inject(TimelineScrollActivity);
+  private readonly bodyOverflow = inject(BodyOverflowObserver);
   private readonly rowHosts = viewChildren(MessageRowComponent, {
     read: ElementRef,
   });
@@ -387,6 +390,7 @@ export class MessageListComponent extends MessageListBase {
     // Forget the old room's measured heights and scroll position so the new room
     // starts from the top with fresh estimates.
     this.measured.clear();
+    this.bodyOverflow.clear();
     this.scrollTop.set(0);
     this.heightVersion.update((v) => v + 1);
   }
