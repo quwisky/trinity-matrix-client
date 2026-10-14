@@ -36,6 +36,36 @@ public struct PinRecord: Codable, Equatable {
     }
 }
 
+/// Never the salt or the hash, so no log line, `dump` or assertion message can carry them
+/// (as the Kotlin record's `toString`). `Mirror` sees the same redacted fields.
+extension PinRecord: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+    public var description: String {
+        "PinRecord(v: \(v), kdf: \(kdf), iterations: \(iterations), failures: \(failures), "
+            + "failureAtMs: \(failureAtMs.map { String($0) } ?? "nil"), "
+            + "failureUptimeS: \(failureUptimeS.map { String($0) } ?? "nil"), "
+            + "salt: <redacted>, hash: <redacted>)"
+    }
+
+    public var debugDescription: String { description }
+
+    public var customMirror: Mirror {
+        Mirror(
+            self,
+            children: [
+                "v": v,
+                "kdf": kdf,
+                "iterations": iterations,
+                "failures": failures,
+                "failureAtMs": failureAtMs as Any,
+                "failureUptimeS": failureUptimeS as Any,
+                "salt": "<redacted>",
+                "hash": "<redacted>",
+            ],
+            displayStyle: .struct
+        )
+    }
+}
+
 public enum PinStatus: Equatable {
     case ready(set: Bool, nextAttemptAt: Double?)
     case unavailable

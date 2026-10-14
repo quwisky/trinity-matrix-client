@@ -96,6 +96,39 @@ final class PinVerifierTests: XCTestCase {
         XCTAssertEqual(store.data, before)
     }
 
+    func testARecordNeverPrintsItsSaltOrHash() throws {
+        let store = MemoryStore()
+        XCTAssertEqual(verifier(store).set("482913"), .completed)
+        var record = try JSONDecoder().decode(PinRecord.self, from: XCTUnwrap(store.data))
+        record.failures = 5
+        record.failureAtMs = 1
+        record.failureUptimeS = 2
+        let result: Result<PinRecord, PinStoreError> = .success(record)
+        var dumped = ""
+        dump(record, to: &dumped)
+        var dumpedResult = ""
+        dump(result, to: &dumpedResult)
+        let mirrored = Mirror(reflecting: record).children.map { "\($0.label ?? ""): \($0.value)" }
+        // Labelled, so a failure names the form without printing what leaked.
+        let printed = [
+            ("description", String(describing: record)),
+            ("debugDescription", String(reflecting: record)),
+            ("interpolation", "\(record)"),
+            ("Result description", String(describing: result)),
+            ("Result debugDescription", String(reflecting: result)),
+            ("dump", dumped),
+            ("Result dump", dumpedResult),
+            ("Mirror", mirrored.joined(separator: ", ")),
+        ]
+        for (form, text) in printed {
+            XCTAssertFalse(text.contains(record.salt), form)
+            XCTAssertFalse(text.contains(record.hash), form)
+        }
+        XCTAssertTrue(String(describing: record).contains("salt: <redacted>"))
+        XCTAssertTrue(String(reflecting: record).contains("hash: <redacted>"))
+        XCTAssertTrue(dumped.contains("failures: 5"))
+    }
+
     func testAnUnreadableStoreIsUnavailableNotEmpty() {
         let store = MemoryStore()
         store.failReads = true
