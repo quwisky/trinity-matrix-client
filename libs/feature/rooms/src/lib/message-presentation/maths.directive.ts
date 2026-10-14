@@ -5,7 +5,10 @@ import {
   afterRenderEffect,
   inject,
   input,
+  signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import { MathsLoader } from './maths-loader';
 import type { MathsOutcome } from './maths-render';
 
@@ -18,13 +21,17 @@ export const MAX_MATHS_PER_MESSAGE = 50;
  */
 export const WIDE_MATHS = 'mx-maths--wide';
 
+const CONCEALED = '.mx-spoiler:not(.is-revealed)';
+
 /** Maths nested in maths renders with its outermost expression. */
 const outermost = (element: Element): boolean =>
   !element.parentElement?.closest('.mx-maths');
 
 /**
  * Renders the maths of a sanitized message body with KaTeX (spec B). Nothing loads until a
- * rendered body holds `.mx-maths`; then {@link MathsLoader} fetches the KaTeX chunk and
+ * rendered body holds `.mx-maths` outside a concealed spoiler (maths a spoiler hides waits for
+ * its reveal, so a body whose only maths is hidden costs no download); then
+ * {@link MathsLoader} fetches the KaTeX chunk and
  * stylesheet once (the sender's fallback shows until both have loaded), and each
  * expression is rendered from the LaTeX re-read in the sanitized string — parsed once per body,
  * paired with the live elements in document order. At most {@link MAX_MATHS_PER_MESSAGE}
@@ -39,11 +46,17 @@ export class MathsDirective {
   private readonly loader = inject(MathsLoader);
   private destroyed = false;
   private watching = false;
+  /** Bumped on each spoiler reveal, so a body whose maths was all concealed asks again. */
+  private readonly reveals = signal(0);
 
   readonly source = input('', { alias: 'trnMaths' });
 
   constructor() {
+    inject(SpoilerRevealDirective, { optional: true, self: true })
+      ?.revealed.pipe(takeUntilDestroyed())
+      .subscribe(() => this.reveals.update((count) => count + 1));
     afterRenderEffect(() => {
+      this.reveals();
       const source = this.source();
       const render = this.loader.renderer();
       const live = [
@@ -53,7 +66,9 @@ export class MathsDirective {
         return;
       }
       if (!render) {
-        this.loader.load();
+        if (live.some((element) => !element.closest(CONCEALED))) {
+          this.loader.load();
+        }
         return;
       }
       const declared = [

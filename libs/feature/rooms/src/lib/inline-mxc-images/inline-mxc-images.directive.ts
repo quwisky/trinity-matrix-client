@@ -51,8 +51,9 @@ interface Declaration {
  * `mxc:` URL. `sanitizeMatrixHtml` moved each source to `data-mx-src`, which Angular strips at
  * the leaf, so the sources are re-read from the sanitized string — parsed once, and only when it
  * declares one — and paired with the live elements in document order. Emoji resolve at once
- * (cap 50). Images (cap 10) wait until they come within one viewport of view and, inside a
- * concealed spoiler, until it is revealed; the sender's `width`/`height` reserve their box
+ * (cap 50), or inside a concealed spoiler once it is revealed: hidden is not enough, because the
+ * fetch itself tells the media server the emoji was shown. Images (cap 10) wait until they come
+ * within one viewport of view and, inside a concealed spoiler, until it is revealed; the sender's `width`/`height` reserve their box
  * within the stylesheet's height cap (see `inline-image-box.ts`). Click, Enter or Space on an image opens the full image in the shared
  * viewer; an image inside a link is left to the link.
  */
@@ -91,6 +92,8 @@ export class InlineMxcImagesDirective implements OnDestroy {
   private readonly images = new Map<HTMLImageElement, Declaration>();
   /** Images inside a concealed spoiler, with what to start once it is revealed. */
   private readonly concealed = new Map<HTMLImageElement, () => void>();
+  /** Emoji inside a concealed spoiler, with their load to start once it is revealed. */
+  private readonly concealedEmotes = new Map<HTMLImageElement, () => void>();
   private readonly reveal = latestGuard();
 
   readonly source = input('', { alias: 'trnInlineMxcImages' });
@@ -200,7 +203,12 @@ export class InlineMxcImagesDirective implements OnDestroy {
       }
       target.removeAttribute('src');
       if (kind === 'emote') {
-        this.load(target, declaration);
+        const load = (): void => this.load(target, declaration);
+        if (target.closest(CONCEALED)) {
+          this.concealedEmotes.set(target, load);
+        } else {
+          load();
+        }
         return;
       }
       this.images.set(target, declaration);
@@ -264,11 +272,17 @@ export class InlineMxcImagesDirective implements OnDestroy {
   }
 
   /**
-   * Start the images a just-revealed spoiler was holding back; an image a nested spoiler still
-   * conceals gets that spoiler's bar instead.
+   * Start the images and emoji a just-revealed spoiler was holding back; an image a nested
+   * spoiler still conceals gets that spoiler's bar instead, and an emoji keeps waiting.
    */
   private startRevealed(spoiler: HTMLElement): void {
     spoiler.classList.remove(IMAGE_ONLY_SPOILER);
+    for (const [emote, load] of this.concealedEmotes) {
+      if (spoiler.contains(emote) && !emote.closest(CONCEALED)) {
+        this.concealedEmotes.delete(emote);
+        load();
+      }
+    }
     for (const [image, start] of this.concealed) {
       if (!spoiler.contains(image)) continue;
       if (image.closest(CONCEALED)) {
@@ -284,6 +298,7 @@ export class InlineMxcImagesDirective implements OnDestroy {
   private forget(image: HTMLImageElement): void {
     this.images.delete(image);
     this.concealed.delete(image);
+    this.concealedEmotes.delete(image);
   }
 
   private release(): void {
@@ -293,6 +308,7 @@ export class InlineMxcImagesDirective implements OnDestroy {
     this.pinned = [];
     this.images.clear();
     this.concealed.clear();
+    this.concealedEmotes.clear();
   }
 }
 
