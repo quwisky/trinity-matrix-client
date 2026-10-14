@@ -1,11 +1,35 @@
 /** The Homebrew cask is generated whole, so its exact shape is the contract. */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { CHANNEL_IDENTITY } from '../electron/src/release-channel.ts';
 import { renderCask } from './homebrew-cask.mjs';
 
 const SHA = 'a'.repeat(64);
 
 describe('Homebrew cask', () => {
+  // The shell's own channel table names the app and bundle ID each cask installs and
+  // zaps; reading it here keeps the casks from drifting from what electron-builder packages.
+  it.each([
+    ['trinity', '0.2.0', CHANNEL_IDENTITY.stable],
+    ['trinity@next', '0.2.0-next.3', CHANNEL_IDENTITY.next],
+  ])(
+    'installs and zaps the %s app the shell packages',
+    (cask, version, { productName, appId }) => {
+      const rendered = renderCask({ cask, version, sha256: SHA });
+      expect(rendered).toContain(`  name "${productName}"\n`);
+      expect(rendered).toContain(`  app "${productName}.app"\n`);
+      expect(rendered).toContain(
+        `"~/Library/Application Support/${productName}",`,
+      );
+      expect(rendered).toContain(`"~/Library/Caches/${appId}",`);
+      expect(rendered).toContain(`"~/Library/Logs/${productName}",`);
+      expect(rendered).toContain(`"~/Library/Preferences/${appId}.plist",`);
+      expect(rendered).toContain(
+        `"~/Library/Saved Application State/${appId}.savedState",`,
+      );
+    },
+  );
+
   it('renders the stable cask against the GitHub release asset', () => {
     expect(renderCask({ cask: 'trinity', version: '0.2.0', sha256: SHA }))
       .toBe(`cask "trinity" do
