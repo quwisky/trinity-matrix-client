@@ -196,8 +196,11 @@ export class TrnEmojiPickerPanelComponent {
    * a second list it derives then too (`emojisToDisplay`), so both are refreshed here. The
    * vendor's own `enableFrequentEmojiSort` refreshes only the first, and only on its own
    * picks, so it would neither draw the change nor see a pick made in another picker. The
-   * grid also came back scrolled to the top, while the anchor bar still marks the category
-   * it was scrolled to; `handleScroll` reads the position again.
+   * row is drawn at once so the vendor can measure it: it caches where each category starts
+   * (`updateCategoriesSize`), and a row that grew would otherwise shift the category the
+   * anchor bar marks while scrolling. The grid also came back scrolled to the top, while the
+   * anchor bar still marks the category it was scrolled to; `handleScroll` reads the position
+   * again.
    *
    * These are the vendor's public members, but not a documented API; the panel's spec pins
    * them against the installed version.
@@ -213,8 +216,9 @@ export class TrnEmojiPickerPanelComponent {
     if (recent) {
       recent.updateRecentEmojis();
       recent.emojisToDisplay = [...(recent.emojis ?? [])];
-      recent.ref.markForCheck();
+      recent.ref.detectChanges();
     }
+    picker.updateCategoriesSize();
     picker.handleScroll();
   }
 }

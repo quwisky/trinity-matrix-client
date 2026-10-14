@@ -494,11 +494,15 @@ describe('TrnEmojiPickerComponent', () => {
       expect(recentRow().textContent).not.toContain('🎉');
 
       // A surface that kept the picker shows it again.
+      const measured = vi.spyOn(vendor, 'updateCategoriesSize');
       fixture.componentRef.setInput('shown', 2);
       await vi.waitFor(() => {
         fixture.detectChanges();
         expect(recentRow().textContent).toContain('🎉');
       });
+      // Where each category starts is measured again once the row is drawn, so the anchor
+      // bar follows the grid after the row grew.
+      expect(measured).toHaveBeenCalled();
     } finally {
       localStorage.removeItem('emoji-mart.frequently');
       localStorage.removeItem('emoji-mart.last');
