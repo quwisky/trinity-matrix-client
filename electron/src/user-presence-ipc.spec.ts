@@ -52,6 +52,7 @@ describe('user presence IPC', () => {
       system: { kind: 'unavailable', reason: 'not-supported' },
       pin: { kind: 'unavailable', reason: 'not-supported' },
     });
+    expect(driver.support).not.toHaveBeenCalled();
     await expect(support({ sender: contents })).resolves.toEqual({
       system: { kind: 'available', biometry: 'touch-id' },
       pin: { kind: 'unavailable', reason: 'not-supported' },
@@ -101,5 +102,17 @@ describe('user presence IPC', () => {
       kind: 'rejected',
       diagnostic: { code: 'presence-failed' },
     });
+  });
+
+  it('answers support without the error text when the driver fails', async () => {
+    driver.support.mockRejectedValueOnce(new Error('LAContext detail'));
+    const answer = await handlers.get(USER_PRESENCE_SUPPORT_CHANNEL)!({
+      sender: contents,
+    });
+    expect(answer).toEqual({
+      system: { kind: 'unavailable', reason: 'not-supported' },
+      pin: { kind: 'unavailable', reason: 'not-supported' },
+    });
+    expect(JSON.stringify(answer).includes('LAContext')).toBe(false);
   });
 });

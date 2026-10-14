@@ -69,4 +69,19 @@ describe('presenceReason', () => {
   ] as const)('accepts %j as %j', (raw, expected) => {
     expect(presenceReason(raw)).toBe(expected);
   });
+
+  it.each([
+    ['a right-to-left override', 'Unlock\u202eTrinity', 'UnlockTrinity'],
+    ['isolates', '\u2066Unlock Trinity\u2069', 'Unlock Trinity'],
+    ['direction marks', '\u200eUnlock\u200f Trinity', 'Unlock Trinity'],
+    ['embeddings', 'Unlock\u202a\u202b\u202c\u202d Trinity', 'Unlock Trinity'],
+    ['more isolates', '\u2067\u2068Unlock Trinity', 'Unlock Trinity'],
+    ['a newline and a bell', 'Unlock\nTrinity\u0007', 'UnlockTrinity'],
+    ['NUL and DEL', '\u0000 Unlock Trinity \u007f', 'Unlock Trinity'],
+    ['C1 controls', 'Unlock\u0085\u009f Trinity', 'Unlock Trinity'],
+    ['nothing but marks', '\u202e\u0000\u2066', null],
+    ['a mark past the cap', `${'x'.repeat(120)}\u202e`, 'x'.repeat(120)],
+  ] as const)('strips %s before trimming', (_label, raw, expected) => {
+    expect(presenceReason(raw)).toBe(expected);
+  });
 });

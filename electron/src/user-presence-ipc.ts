@@ -29,10 +29,15 @@ export function registerUserPresenceIpc(
     systemPreferences,
   }),
 ): void {
-  ipcMain.handle(USER_PRESENCE_SUPPORT_CHANNEL, async (event) => ({
-    system: trusted(event) ? await driver.support() : NOT_SUPPORTED,
-    pin: NOT_SUPPORTED,
-  }));
+  ipcMain.handle(USER_PRESENCE_SUPPORT_CHANNEL, async (event) => {
+    if (!trusted(event)) return { system: NOT_SUPPORTED, pin: NOT_SUPPORTED };
+    try {
+      return { system: await driver.support(), pin: NOT_SUPPORTED };
+    } catch {
+      // A driver that cannot report reads as no system prompt; its text never crosses IPC.
+      return { system: NOT_SUPPORTED, pin: NOT_SUPPORTED };
+    }
+  });
 
   ipcMain.handle(USER_PRESENCE_VERIFY_CHANNEL, async (event, raw: unknown) => {
     if (!trusted(event)) {

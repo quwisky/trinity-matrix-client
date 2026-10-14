@@ -47,12 +47,17 @@ export interface SystemPresenceDeps {
   >;
 }
 
-/** The prompt's reason, shown by the OS: 1–120 characters once trimmed. */
+/** The prompt's reason, shown by the OS: 1–120 characters once cleaned and trimmed. */
 export const MAX_PRESENCE_REASON_LENGTH = 120;
+
+// C0 and C1 controls, direction marks, embeddings, overrides and isolates: none may reach
+// the system sheet, where text is shown with the OS's authority.
+const UNSAFE_REASON_CHARACTERS =
+  /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 
 export function presenceReason(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
-  const reason = raw.trim();
+  const reason = raw.replace(UNSAFE_REASON_CHARACTERS, '').trim();
   return reason.length > 0 && reason.length <= MAX_PRESENCE_REASON_LENGTH
     ? reason
     : null;
