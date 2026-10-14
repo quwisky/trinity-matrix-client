@@ -14,10 +14,12 @@ import type { IpcRendererEvent } from 'electron';
  *   (globalThis as any).trinityDesktop?.isElectron === true
  *
  * Deep-link contract (consumed by the selected host adapter):
- *   trinityDesktop.capabilities.deepLinks.subscribe(cb) receives `dev.trinityproject.trinity://…` URLs that
- *   the main process forwards over the `deep-link` ipcRenderer channel (used for
- *   the desktop SSO callback) and returns an unsubscribe function. Only the URL
- *   string is passed to the callback — the raw IpcRendererEvent is never leaked.
+ *   trinityDesktop.capabilities.deepLinks.subscribe(cb) receives URLs on this app's own
+ *   scheme (`dev.trinityproject.trinity://…`, or `dev.trinityproject.trinity.next://…`
+ *   in Trinity Next) that the main process forwards over the `deep-link` ipcRenderer
+ *   channel (used for the desktop SSO callback) and returns an unsubscribe function.
+ *   Only the URL string is passed to the callback — the raw IpcRendererEvent is never
+ *   leaked.
  *
  * Notification contract (consumed by the selected host adapter):
  *   trinityDesktop.capabilities.notificationPresentation.present(...) asks the MAIN
@@ -28,6 +30,11 @@ import type { IpcRendererEvent } from 'electron';
  *   event), and it returns an unsubscribe function. The payload is re-validated
  *   in main — this bridge grants no privileged capability and never exposes
  *   ipcRenderer/Node.
+ *
+ * App identity contract (consumed by the selected host adapter):
+ *   trinityDesktop.appIdentity is { channel, deepLinkScheme, displayName } for the
+ *   installed app (Trinity or Trinity Next), or null when main passed no known channel.
+ *   It is not a privilege and needs no negotiation.
  */
 const DEEP_LINK_CHANNEL = 'deep-link';
 const SHOW_NOTIFICATION_CHANNEL =
@@ -57,6 +64,30 @@ const titleBarArgument = process.argv
 const titleBarMode =
   titleBarArgument === 'row' || titleBarArgument === 'system'
     ? titleBarArgument
+    : null;
+// window.ts appends the release channel main derived from the app's version
+// (app-identity.ts); anything else means "unknown", which sign-in refuses to guess.
+const RELEASE_CHANNEL_ARGUMENT = '--trinity-release-channel=';
+// Mirrors CHANNEL_IDENTITY in release-channel.ts by value, as the channel strings above
+// mirror main's: a sandboxed preload cannot import it. preload.spec.ts keeps them equal.
+const APP_IDENTITIES = {
+  stable: {
+    channel: 'stable',
+    deepLinkScheme: 'dev.trinityproject.trinity',
+    displayName: 'Trinity',
+  },
+  next: {
+    channel: 'next',
+    deepLinkScheme: 'dev.trinityproject.trinity.next',
+    displayName: 'Trinity Next',
+  },
+} as const;
+const releaseChannelArgument = process.argv
+  .find((arg) => arg.startsWith(RELEASE_CHANNEL_ARGUMENT))
+  ?.slice(RELEASE_CHANNEL_ARGUMENT.length);
+const appIdentity =
+  releaseChannelArgument === 'stable' || releaseChannelArgument === 'next'
+    ? APP_IDENTITIES[releaseChannelArgument]
     : null;
 const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 
@@ -184,6 +215,8 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
   protocolVersion: 1,
   isElectron: true,
   platform: process.platform,
+  // Not a privilege: which installed app this is, known before negotiation.
+  appIdentity,
   negotiate,
   capabilities: {
     deepLinks: {

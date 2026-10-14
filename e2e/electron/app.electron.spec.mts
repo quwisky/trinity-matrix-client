@@ -146,6 +146,7 @@ test('negotiates the grouped protocol-v1 bridge without exposing Node', async ()
   expect(exposure.process).toBe('undefined');
   expect(exposure.ipcRenderer).toBe('undefined');
   expect(exposure.topLevel).toEqual([
+    'appIdentity',
     'capabilities',
     'isElectron',
     'negotiate',

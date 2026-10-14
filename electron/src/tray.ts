@@ -2,6 +2,7 @@ import { Menu, nativeImage, Tray } from 'electron';
 import * as fs from 'node:fs';
 import { iconCandidatePaths, trayIconFile } from './icons';
 import { focusMainWindow, requestQuit } from './window';
+import { appIdentity } from './app-identity';
 
 // The reference is held in module scope so the tray is not garbage-collected
 // (which would make it vanish).
@@ -54,10 +55,12 @@ export function createTray(): void {
   }
 
   tray = new Tray(resolveTrayIcon());
-  tray.setToolTip('Trinity');
+  // Trinity and Trinity Next share the tray icon; the name tells them apart.
+  const { productName } = appIdentity();
+  tray.setToolTip(productName);
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Open Trinity', click: () => focusMainWindow() },
+    { label: `Open ${productName}`, click: () => focusMainWindow() },
     { type: 'separator' },
     {
       label: 'Quit',

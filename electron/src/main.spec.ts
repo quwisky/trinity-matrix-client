@@ -62,8 +62,18 @@ vi.mock('./deep-link', () => ({
   processDeepLinkQueue: vi.fn(),
   registerDeepLinkProtocol: vi.fn(),
 }));
+vi.mock('./app-identity', () => ({
+  alignDevelopmentName: vi.fn(),
+  appIdentity: vi.fn(() => ({
+    appId: 'dev.trinityproject.trinity.next',
+    productName: 'Trinity Next',
+    deepLinkScheme: 'dev.trinityproject.trinity.next',
+    displayName: 'Trinity Next',
+  })),
+}));
 
-import { session } from 'electron';
+import { app, session } from 'electron';
+import { alignDevelopmentName } from './app-identity';
 import { registerAppProtocol, registerPrivilegedScheme } from './scheme';
 import { installMatrixCors } from './cors';
 import { createWindow } from './window';
@@ -97,6 +107,18 @@ describe('main bootstrap', () => {
     expect(registerPrivilegedScheme).toHaveBeenCalledTimes(1);
     expect(firstOrder(vi.mocked(registerPrivilegedScheme))).toBeLessThan(
       firstOrder(vi.mocked(registerAppProtocol)),
+    );
+  });
+
+  it('names an unpackaged run before taking the single-instance lock', () => {
+    expect(firstOrder(vi.mocked(alignDevelopmentName))).toBeLessThan(
+      firstOrder(requestSingleInstanceLock),
+    );
+  });
+
+  it("attributes Windows notifications to the channel's app ID", () => {
+    expect(app.setAppUserModelId).toHaveBeenCalledWith(
+      'dev.trinityproject.trinity.next',
     );
   });
 

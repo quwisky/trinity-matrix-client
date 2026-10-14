@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { isAppUrl, START_URL } from './scheme';
 import { processDeepLinkQueue } from './deep-link';
 import { windowIconOptions } from './icons';
+import { releaseChannelArgument } from './app-identity';
 import {
   GRAPHITE_DARK_SURFACE_APP,
   readWindowPrefs,
@@ -139,9 +140,9 @@ export function createWindow(): void {
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      // The running title-bar mode, read synchronously by preload so the first render
-      // already knows whether to draw the title row.
-      additionalArguments: [titleBarArgument(prefs)],
+      // The running title-bar mode and release channel, read synchronously by preload so
+      // the first render knows whether to draw the title row and which app it runs in.
+      additionalArguments: [titleBarArgument(prefs), releaseChannelArgument()],
       // Hardened defaults — see .agents/skills/electron/ipc-security.md.
       contextIsolation: true,
       nodeIntegration: false,

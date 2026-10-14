@@ -12,6 +12,10 @@ vi.mock('electron', () => ({
   BrowserWindow: vi.fn(),
 }));
 vi.mock('./icons', () => ({ windowIconOptions: vi.fn(() => ({})) }));
+vi.mock('./app-identity', () => ({
+  appIdentity: () => ({ deepLinkScheme: 'dev.trinityproject.trinity.next' }),
+  releaseChannelArgument: () => '--trinity-release-channel=next',
+}));
 vi.mock('./window-prefs', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./window-prefs')>()),
   readWindowPrefs: vi.fn(() => ({ systemTitleBar: false })),
@@ -357,13 +361,16 @@ describe('createWindow title bar', () => {
     [false, '--trinity-title-bar=row'],
     [true, '--trinity-title-bar=system'],
   ])(
-    'tells the renderer the running title-bar mode (system bar %s)',
+    'tells the renderer the running title-bar mode (system bar %s) and release channel',
     (systemTitleBar, argument) => {
       vi.mocked(readWindowPrefs).mockReturnValueOnce({ systemTitleBar });
       const webPreferences = create()['webPreferences'] as {
         additionalArguments?: string[];
       };
-      expect(webPreferences.additionalArguments).toEqual([argument]);
+      expect(webPreferences.additionalArguments).toEqual([
+        argument,
+        '--trinity-release-channel=next',
+      ]);
     },
   );
 
