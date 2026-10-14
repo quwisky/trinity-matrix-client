@@ -180,12 +180,13 @@
     },
     {
       "description": [
-        "Shipped runtime code where a patch can change what users run: the HTML sanitizer, the Matrix SDK with its crypto WASM, the widget API and the desktop Chromium. Their patches opt back OUT of the patch automerge above, like action digests, but keep its dashboard exemption, so a patch still opens a pull request straight away and waits for a human merge. Their other updates follow the top-level rules unchanged.",
+        "Shipped runtime code where a patch can change what users run: the HTML sanitizer, the maths renderer (KaTeX parses untrusted LaTeX into markup), the Matrix SDK with its crypto WASM, the widget API and the desktop Chromium. Their patches opt back OUT of the patch automerge above, like action digests, but keep its dashboard exemption, so a patch still opens a pull request straight away and waits for a human merge. Their other updates follow the top-level rules unchanged.",
         "additionalBranchPrefix 'runtime-' gives these patches branches of their own: off renovate/patch-*, which ci.yml treats as 'no pull request exists', and off the branch of a minor or major in the same group that is waiting for dashboard approval. rebaseWhen goes back to the top-level 'conflicted' so a pull request waiting for review is not rebased and re-tested on every push to main. electron's patches therefore leave the 'electron shell' group's patch branch for renovate/runtime-electron-shell.",
         "Keep this rule LAST: the last matching rule wins each key, and it must win automerge over the patch rule. scripts/renovate-config.spec.mjs checks that no later rule sets automerge."
       ],
       "matchPackageNames": [
         "dompurify",
+        "katex",
         "@matrix-org/matrix-sdk-crypto-wasm",
         "matrix-js-sdk",
         "matrix-widget-api",

@@ -313,6 +313,9 @@ importers:
       dompurify:
         specifier: ^3.4.12
         version: 3.4.16
+      katex:
+        specifier: 0.19.0
+        version: 0.19.0
       loglevel:
         specifier: ^1.9.2
         version: 1.9.2
@@ -9253,6 +9256,10 @@ packages:
   karma@6.4.4:
     resolution: {integrity: sha512-LrtUxbdvt1gOpo3gxG+VAJlJAEMhbWlM4YrFQgql98FwF7+K8K12LYO4hnDdUkNjeztYrOXEMqgTajSWgmtI/w==}
     engines: {node: '>= 10'}
+    hasBin: true
+
+  katex@0.19.0:
+    resolution: {integrity: sha512-v6Tznz3zJ7u3niRCoDTsumM2+HA2XXcCu+WAacCeHD2z3p9A9Ks987o5FzfTGBN0e8A0vjEgIDvLbICrXpdw/Q==}
     hasBin: true
 
   keyv@5.6.0:
@@ -23031,6 +23038,10 @@ snapshots:
       - supports-color
       - utf-8-validate
     optional: true
+
+  katex@0.19.0:
+    dependencies:
+      commander: 15.0.0
 
   keyv@5.6.0:
     dependencies:

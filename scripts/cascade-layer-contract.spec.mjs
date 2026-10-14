@@ -153,6 +153,11 @@ describe('cascade layer contract', () => {
       'apps/trinity/src/vendor.css',
       'apps/trinity/src/global.scss',
       'apps/trinity/src/rendered-markdown.scss',
+      {
+        input: 'apps/trinity/src/katex.css',
+        inject: false,
+        bundleName: 'katex',
+      },
     ]);
     expect(
       topLevelStyleStatements(read('libs/theme-foundation/styles/theme.scss')),
@@ -168,6 +173,17 @@ describe('cascade layer contract', () => {
     ).toBe(
       "@import '../../../node_modules/@angular/cdk/overlay-prebuilt.css' layer(vendor);\n" +
         "@import '../../../node_modules/@ctrl/ngx-emoji-mart/picker.css' layer(vendor);",
+    );
+    // KaTeX's stylesheet loads only with maths (MathsLoader adds its <link>), and joins the
+    // vendor layer like every other third-party stylesheet. In that layer it undoes KaTeX's
+    // `body { position: relative }`, and adds nothing else.
+    expect(
+      stripSourceComments(read('apps/trinity/src/katex.css'))
+        .replace(/\s+/gu, ' ')
+        .trim(),
+    ).toBe(
+      "@import '../../../node_modules/katex/dist/katex.min.css' layer(vendor); " +
+        '@layer vendor { body { position: static; } }',
     );
     const storybookStyles = stripSourceComments(
       read('libs/components/storybook-host/.storybook/global-styles.scss'),

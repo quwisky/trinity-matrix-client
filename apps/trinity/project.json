@@ -48,7 +48,12 @@
           "libs/theme-foundation/styles/theme.scss",
           "apps/trinity/src/vendor.css",
           "apps/trinity/src/global.scss",
-          "apps/trinity/src/rendered-markdown.scss"
+          "apps/trinity/src/rendered-markdown.scss",
+          {
+            "input": "apps/trinity/src/katex.css",
+            "inject": false,
+            "bundleName": "katex"
+          }
         ],
         "scripts": [],
         "allowedCommonJsDependencies": [
@@ -93,6 +98,7 @@
             }
           ],
           "outputHashing": "all",
+          "namedChunks": true,
           "serviceWorker": "apps/trinity/ngsw-config.json",
           "optimization": {
             "scripts": true,

@@ -783,8 +783,10 @@ export function sanitizeMatrixHtml(
   markExternalLinks(body);
   normaliseSpoilers(body);
   normaliseColours(body);
+  normaliseMaths(body);
   normaliseImages(body);
   normaliseTaskItems(body);
+  markWideLists(body);
   renderCodeBlocks(body);
   markMentionPills(body, addressesViewer);
   const clean = body.innerHTML;
@@ -935,6 +937,29 @@ function normaliseImages(root: ParentNode): void {
         'aria-label',
         name ? `View image: ${name}` : 'View image',
       );
+    }
+  }
+}
+
+/**
+ * Mark maths for the render leaf (Matrix spec v1.11 "Mathematical messages"):
+ * `span[data-mx-maths]` is inline, `div[data-mx-maths]` display. The sender's fallback content
+ * stays until MathsDirective has KaTeX render the LaTeX it re-reads from this string (Angular
+ * strips `data-*` at the leaf). Empty maths keeps its fallback.
+ *
+ * An image in a marked fallback becomes its alt text. KaTeX replaces the fallback, so an image
+ * there would leave the inline images {@link normaliseImages} counts and the leaf pairs in
+ * document order out of step: the next image would get its source. Runs before it.
+ */
+function normaliseMaths(root: ParentNode): void {
+  for (const node of root.querySelectorAll(
+    'span[data-mx-maths], div[data-mx-maths]',
+  )) {
+    if ((node.getAttribute('data-mx-maths') ?? '').trim()) {
+      node.classList.add('mx-maths');
+      for (const image of node.querySelectorAll('img')) {
+        image.replaceWith(image.getAttribute('alt')?.trim() || 'Image');
+      }
     }
   }
 }
@@ -1159,6 +1184,29 @@ function normaliseTaskItems(root: ParentNode): void {
   for (const item of root.querySelectorAll('li')) {
     if (TASK_GLYPH.test(item.textContent ?? '')) {
       item.classList.add('mx-task');
+    }
+  }
+}
+
+/**
+ * Mark ordered lists whose numbers are too long for the list's usual indent: `mx-ol-wide` when
+ * the longest number has two characters (`10`, `-9`), which a wider indent holds, and
+ * `mx-ol-long` past that (`100`, or a sender's `start="100000"`), whose numbers the stylesheet
+ * puts inside the items. Otherwise they would hang out of the message body, which clips
+ * anything beside it. Render-only, like {@link normaliseTaskItems}; one pass over the lists
+ * and their direct items.
+ */
+function markWideLists(root: ParentNode): void {
+  for (const list of root.querySelectorAll('ol')) {
+    const parsed = Number.parseInt(list.getAttribute('start') ?? '', 10);
+    const first = Number.isFinite(parsed) ? parsed : 1;
+    const items = list.querySelectorAll(':scope > li').length;
+    const last = first + Math.max(items - 1, 0);
+    const widest = Math.max(String(first).length, String(last).length);
+    if (widest > 2) {
+      list.classList.add('mx-ol-long');
+    } else if (widest === 2) {
+      list.classList.add('mx-ol-wide');
     }
   }
 }

@@ -15,6 +15,23 @@
  * message-row's scoped styles cannot reach.
  */
   .msg__text--html {
+    // Nothing a sender writes paints over, or takes clicks from, anything around the body: the
+    // authenticity shield, avatar, name, timestamp, "(edited)", reactions or toolbar. Kerns that
+    // add up can make one KaTeX run far wider than the body, and a smashed raise can reach above
+    // or below it, so the body clips on every side, leaving room only for a focus ring. An
+    // overflow clip also keeps a positioned run from giving the timeline, the thread or the
+    // composer preview a scroll range. WebKit cannot widen an overflow clip, so each stylesheet
+    // that lays a body out pads it by the focus-ring reach where it can and takes that back with
+    // a negative margin (message-row, edit-history). Display maths, tables, code and wide inline
+    // maths keep their own sideways scroll inside. Real content grows the lines it sits on, so
+    // only overhang that takes no room is cut.
+    $focus-reach: calc(
+      var(--trinity-focus-ring-width) + var(--trinity-focus-ring-offset)
+    );
+
+    overflow: clip;
+    overflow-clip-margin: content-box $focus-reach;
+
     img.mx-emoticon {
       display: inline-block;
       width: auto;
@@ -300,15 +317,99 @@
 
     // Reachable now that `gfm` is pinned on and outgoing HTML carries these: the file
     // had no rules for them even though the Matrix allowlist has always permitted them.
-    table {
-      display: block;
+    // A wide table or display formula scrolls itself rather than stretching the message row,
+    // and that scroll stays inside it — see the note on `pre` above; the same back-swipe
+    // applies here. A maths source fallback is a `code` element, styled by the rule above.
+    table,
+    div.mx-maths {
       margin: 4px 0;
-      border-collapse: collapse;
-
-      // A wide table scrolls itself rather than stretching the message row, and that scroll
-      // stays inside it — see the note on `pre` above; the same back-swipe applies here.
       overflow-x: auto;
       overscroll-behavior-x: contain;
+    }
+
+    table {
+      display: block;
+      border-collapse: collapse;
+    }
+
+    // Maths is drawn in the body's text colour, never a sender's (owner decision 13): the
+    // sender-colour directive paints nothing inside it, and this stops it inheriting a colour
+    // painted around it. In a link it keeps the link's colour, in a mention the pill's.
+    .mx-maths {
+      color: var(--trinity-text);
+    }
+
+    a .mx-maths {
+      color: var(--trinity-link);
+    }
+
+    a.mention .mx-maths {
+      color: inherit;
+    }
+
+    // Maths never draws outside its own formula (T17-1). A display formula clips to its box:
+    // the scroll above holds the width, and KaTeX's struts and tall delimiters, which reach a
+    // pixel or two past the box, are clipped rather than given a vertical scrollbar. Inline,
+    // each KaTeX run between line breaks (`.katex-base`, an inline-block) clips what a kern or a
+    // lowered, smashed box moves out of it, 1em out so glyphs and `\mathllap` that overhang a
+    // little keep their pixels. A clip path changes no layout; `overflow: clip` would need
+    // `overflow-clip-margin`, which WebKit lacks, and moves an inline-block's baseline there.
+    div.mx-maths {
+      overflow-y: hidden;
+    }
+
+    .mx-maths .katex-html > .katex-base {
+      clip-path: inset(-1em);
+    }
+
+    // Inline maths with a run wider than the body (MathsDirective marks it) scrolls sideways on
+    // its own, like display maths, instead of being cut at the body's edge. It fills its line,
+    // so how it sits on the baseline moves no text beside it; `first` keeps the formula's own
+    // where the engine supports it.
+    span.mx-maths.mx-maths--wide {
+      display: inline-block;
+      max-width: 100%;
+      overflow: auto hidden;
+      overscroll-behavior-x: contain;
+      baseline-source: first;
+    }
+
+    // KaTeX pins a display formula's `\tag` to the right edge of the visible box, so in a
+    // formula that scrolls sideways it sits over the formula. Lay the line out as a row
+    // instead, as wide as the formula and at least the box: the spacer and the tag share the
+    // room left over (centring the formula, as KaTeX does), and the tag scrolls with it.
+    .mx-maths .katex-display > .katex > .katex-html:has(> .katex-tag) {
+      display: flex;
+      align-items: baseline;
+      width: max-content;
+      min-width: 100%;
+
+      &::before {
+        content: '';
+        flex: 1 1 0;
+      }
+
+      > .katex-tag {
+        position: static;
+        flex: 1 1 0;
+        padding-left: var(--trinity-space-4);
+        text-align: right;
+      }
+    }
+
+    // High Contrast would draw `\phantom`'s transparent content, and the backplate it puts
+    // behind each run of text covers the limits under a `\sum`. Maths keeps its own colours
+    // there, set to the system's text and link colours (a mention is a link, too).
+    @media (forced-colors: active) {
+      .mx-maths {
+        forced-color-adjust: none;
+        color: CanvasText;
+      }
+
+      a .mx-maths,
+      a.mention .mx-maths {
+        color: LinkText;
+      }
     }
 
     th,
@@ -351,6 +452,17 @@
       margin: 4px 0;
       padding-left: 22px;
       list-style: revert;
+    }
+
+    // Numbers too long for the indent would hang out of the body, which clips them. The render
+    // pass marks lists by their longest number: two characters get a wider indent, longer ones
+    // sit inside their items.
+    ol.mx-ol-wide {
+      padding-left: var(--trinity-space-7);
+    }
+
+    ol.mx-ol-long {
+      list-style-position: inside;
     }
 
     // A task item carries its own ☑/☐, so a bullet beside it reads as "• ☑ done". The class is

@@ -1,0 +1,18 @@
+/*
+ * KaTeX's stylesheet, emitted as the non-injected `katex` bundle (apps/trinity/project.json)
+ * and linked by MathsLoader only once a message contains maths. It joins the vendor layer,
+ * as vendor.css does for static third-party styles, so it cannot outrank Trinity's own
+ * component rules. Its fonts are rewritten into media/ on the app's own origin.
+ */
+@import '../../../node_modules/katex/dist/katex.min.css' layer(vendor);
+
+/*
+ * KaTeX also sets `body { position: relative }`, which would turn the whole app into a
+ * containing block the moment a message shows maths. Undone in the same layer; a display
+ * formula's `\tag` is placed against `.katex-html`, which KaTeX positions itself.
+ */
+@layer vendor {
+  body {
+    position: static;
+  }
+}

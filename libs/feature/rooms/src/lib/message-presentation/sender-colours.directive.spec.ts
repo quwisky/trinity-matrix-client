@@ -181,6 +181,50 @@ describe('SenderColoursDirective', () => {
     }
   });
 
+  it('never paints a sender colour on maths or inside it', () => {
+    const { host } = render(
+      '<span data-mx-maths="x" data-mx-color="#e03030" data-mx-bg-color="#ffeb3b">x</span>' +
+        '<font color="#e03030"><span data-mx-maths="y"><font color="#e03030">y</font></span></font>',
+    );
+    const [own, wrapped] = host.querySelectorAll<HTMLElement>('.mx-maths');
+
+    // Owner decision 13: maths keeps the body text colour. The stylesheet resets `.mx-maths`
+    // to it, so the colour the outer `font` keeps outside the maths is not inherited.
+    expect(own.style.color).toBe('');
+    expect(own.style.backgroundColor).toBe('');
+    expect(wrapped.style.color).toBe('');
+    expect(wrapped.querySelector<HTMLElement>('font')!.style.color).toBe('');
+    expectColour(
+      host.querySelector<HTMLElement>(':scope > font')!.style.color,
+      '#e03030',
+    );
+  });
+
+  it('keeps a background around maths only when the body text stays readable on it', () => {
+    const { element } = render(
+      '<span data-mx-color="#ffffff" data-mx-bg-color="#1a237e">' +
+        '<span data-mx-maths="x">x</span></span>',
+    );
+    const span = element('.mx-bg-1a237e');
+
+    // The light theme's dark text is unreadable on navy: the background goes, and white text
+    // alone cannot be read on the light pane either.
+    expect(span.style.backgroundColor).toBe('');
+    expect(span.style.color).toBe('');
+  });
+
+  it('keeps that background where the body text reads on it', () => {
+    palette = DARK;
+    const { element } = render(
+      '<span data-mx-color="#ffffff" data-mx-bg-color="#1a237e">' +
+        '<span data-mx-maths="x">x</span></span>',
+    );
+    const span = element('.mx-bg-1a237e');
+
+    expectColour(span.style.backgroundColor, '#1a237e');
+    expectColour(span.style.color, '#ffffff');
+  });
+
   it('never colours the spoiler element itself', () => {
     const { element } = render(
       '<span data-mx-spoiler data-mx-color="#e03030">hidden</span>',

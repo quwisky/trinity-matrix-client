@@ -71,6 +71,18 @@
     white-space: pre-wrap;
   }
 
+  // A formatted revision clips at its padding box (rendered-markdown.scss: `overflow: clip`,
+  // and WebKit cannot widen an overflow clip). Pad it by the focus-ring reach and take that
+  // back with a negative margin, so a ring at its edge stays whole and nothing moves.
+  .revision__text.msg__text--html {
+    $focus-reach: calc(
+      var(--trinity-focus-ring-width) + var(--trinity-focus-ring-offset)
+    );
+
+    margin: calc(-1 * #{$focus-reach});
+    padding: $focus-reach;
+  }
+
   .revision__text--muted {
     color: var(--trinity-text-muted);
     font-style: italic;
