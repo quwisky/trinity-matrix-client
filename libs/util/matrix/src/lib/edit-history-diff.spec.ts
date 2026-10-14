@@ -388,6 +388,50 @@ describe('annotateRevision', () => {
     );
   });
 
+  describe('a formula edited between two revisions (#1336)', () => {
+    // As sanitized: `normaliseMaths` marks maths `.mx-maths`, keeping the sender's fallback.
+    const maths = (latex: string, fallback: string, tag = 'span') =>
+      `<${tag} data-mx-maths="${latex}" class="mx-maths">${fallback}</${tag}>`;
+
+    it('shows each formula as its LaTeX and marks the change inside it as text', () => {
+      const out = render(
+        annotateRevision(
+          rich('area', `<p>area: ${maths('\\pi r^2', 'πr²')}</p>`),
+          rich('area', `<p>area: ${maths('\\pi r^3', 'πr³')}</p>`),
+        ),
+      );
+
+      // Rendered, KaTeX would replace the fallback, and the marks with it.
+      expect(out.querySelector('.mx-maths')).toBeNull();
+      const source = out.querySelector('code.mx-maths-source');
+      // The removed 2 sits just before the 3 that replaced it.
+      expect(source?.textContent).toBe('\\pi r^23');
+      expect(source?.querySelector('ins.diff-ins')?.textContent).toBe('3');
+      expect(source?.querySelector('del.diff-del')?.textContent).toBe('2');
+    });
+
+    it('keeps display maths a block', () => {
+      const out = render(
+        annotateRevision(
+          rich('sum', maths('a+b', 'a+b', 'div')),
+          rich('sum', maths('a+c', 'a+c', 'div')),
+        ),
+      );
+
+      expect(out.querySelector('div > code.mx-maths-source')).not.toBeNull();
+    });
+
+    it('marks a changed formula even when its fallback text stayed the same', () => {
+      // Two clients' fallbacks can agree while the LaTeX differs.
+      expect(
+        annotateRevision(
+          rich('f', maths('x^2', 'x squared')),
+          rich('f', maths('x_2', 'x squared')),
+        ),
+      ).not.toBeNull();
+    });
+  });
+
   it('says nothing when only the formatting changed', () => {
     const before = rich('ship it', 'ship it');
     const after = rich('ship it', '<strong>ship it</strong>');

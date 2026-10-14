@@ -207,16 +207,41 @@ function markRemoved(
   anchor.parentNode?.insertBefore(removed, anchor);
 }
 
-/** The text a revision reads as, ignoring its markup. */
+/**
+ * Show each formula as its LaTeX source, in the `code.mx-maths-source` the maths directive
+ * shows for one it cannot render (#1336). Rendered, KaTeX replaces a formula's fallback, and
+ * any change marks in it with it; its boxes are inline-blocks, which an underline or a
+ * strike-through does not reach, so a changed formula would be marked by colour alone. As
+ * source, the diff compares and marks the LaTeX itself. The element keeps its tag, so display
+ * maths stays a block, and loses `mx-maths`, so the directive leaves it as text.
+ */
+function mathsAsSource(root: Element): void {
+  const formulas = [...root.querySelectorAll('.mx-maths')].filter(
+    (maths) => !maths.parentElement?.closest('.mx-maths'),
+  );
+  for (const maths of formulas) {
+    const code = root.ownerDocument.createElement('code');
+    code.className = 'mx-maths-source';
+    code.textContent = maths.getAttribute('data-mx-maths') ?? '';
+    maths.classList.remove('mx-maths');
+    maths.replaceChildren(code);
+  }
+}
+
+/** The text a revision reads as, ignoring its markup; a formula reads as its LaTeX. */
 function plainTextOf(html: string, body: string): string {
   if (!html) {
     return body;
   }
-  const parsed = new DOMParser().parseFromString(
+  const root = new DOMParser().parseFromString(
     `<div>${html}</div>`,
     'text/html',
-  );
-  return parsed.body.firstElementChild?.textContent ?? body;
+  ).body.firstElementChild;
+  if (!root) {
+    return body;
+  }
+  mathsAsSource(root);
+  return root.textContent ?? body;
 }
 
 /**
@@ -258,6 +283,7 @@ export function annotateRevision(
   const root = doc.body.firstElementChild as HTMLElement;
   if (current.html) {
     root.innerHTML = current.html;
+    mathsAsSource(root);
   } else {
     root.append(doc.createTextNode(current.body));
   }
