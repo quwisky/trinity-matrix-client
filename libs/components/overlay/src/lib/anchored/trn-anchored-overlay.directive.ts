@@ -1,5 +1,6 @@
 import {
   Directive,
+  DOCUMENT,
   DestroyRef,
   Injector,
   TemplateRef,
@@ -9,9 +10,10 @@ import {
   input,
   model,
   untracked,
+  type EmbeddedViewRef,
 } from '@angular/core';
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
-import { TemplatePortal } from '@angular/cdk/portal';
+import { DomPortal, TemplatePortal, type Portal } from '@angular/cdk/portal';
 import { createMenuPosition } from '@spartan-ng/brain/core';
 import type {
   TrnOverlayAlign,
@@ -79,6 +81,7 @@ export class TrnAnchoredOverlayDirective {
   private readonly template = inject<TemplateRef<unknown>>(TemplateRef);
   private readonly viewContainer = inject(ViewContainerRef);
   private readonly injector = inject(Injector);
+  private readonly document = inject(DOCUMENT);
 
   /**
    * The element the layer is positioned against.
@@ -124,7 +127,32 @@ export class TrnAnchoredOverlayDirective {
    */
   readonly closeOnOutsidePress = input(true);
 
+  /**
+   * How long, in milliseconds, to keep the layer's view alive after it closes; 0 rebuilds it
+   * on every open.
+   *
+   * For a large layer opened again and again: the composer's emoji grid is about 5,500
+   * elements of a third-party picker, and creating it is most of the ~140 ms an open takes
+   * (#1320). Closed, the kept view is parked outside the document, so it adds nothing to the
+   * page's style and layout work, and its change detection is paused. It still holds its
+   * memory (about 23 MB and 11,000 listeners for that grid), so it is released once it has
+   * stayed closed this long: bursts of reopening are fast, and an idle layer costs nothing.
+   *
+   * Its state carries over to a reopen within the window (a search, a scroll position, a
+   * tab), which suits a picker and would be wrong for a layer that must start fresh, so it is
+   * off by default. The browser honours `autofocus` only when an element is first inserted,
+   * so each reopen of a kept view focuses its `[autofocus]` element itself.
+   */
+  readonly retainFor = input(0);
+
   private ref: OverlayRef | null = null;
+  /** The kept view and the element its nodes live in, parked in a fragment while closed. */
+  private retained: {
+    readonly view: EmbeddedViewRef<unknown>;
+    readonly holder: HTMLElement;
+  } | null = null;
+  /** Pending release of the kept view, armed when the layer closes. */
+  private releaseTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     // WHETHER there is a layer, and what it is anchored to. Only these two re-create it,
@@ -151,7 +179,10 @@ export class TrnAnchoredOverlayDirective {
       untracked(() => this.reposition());
     });
 
-    inject(DestroyRef).onDestroy(() => this.close());
+    inject(DestroyRef).onDestroy(() => {
+      this.close();
+      this.release();
+    });
   }
 
   private attach(anchor: HTMLElement): void {
@@ -168,14 +199,10 @@ export class TrnAnchoredOverlayDirective {
         ? { width: anchor.getBoundingClientRect().width }
         : {}),
     });
-    ref.attach(
-      new TemplatePortal(
-        this.template,
-        this.viewContainer,
-        undefined,
-        this.injector,
-      ),
-    );
+    ref.attach(this.portal());
+    if (this.retained) {
+      this.retained.holder.querySelector<HTMLElement>('[autofocus]')?.focus();
+    }
     // `outsidePointerEvents`, not a backdrop — see the class note. Written back through the
     // model so the host's own signal agrees with what is on screen.
     ref.outsidePointerEvents().subscribe((event) => {
@@ -266,8 +293,60 @@ export class TrnAnchoredOverlayDirective {
       .withViewportMargin(8);
   }
 
+  /** The layer's content: rebuilt each time, or the kept view while {@link retainFor} allows. */
+  private portal(): Portal<unknown> {
+    if (this.releaseTimer !== null) {
+      clearTimeout(this.releaseTimer);
+      this.releaseTimer = null;
+    }
+    if (this.retainFor() <= 0) {
+      return new TemplatePortal(
+        this.template,
+        this.viewContainer,
+        undefined,
+        this.injector,
+      );
+    }
+    if (!this.retained) {
+      const view = this.viewContainer.createEmbeddedView(
+        this.template,
+        undefined,
+        { injector: this.injector },
+      );
+      // The holder lays out as if the view's nodes were the pane's own children. It is parked
+      // in a fragment so a DomPortal has a place to return it to when the pane goes away.
+      const holder = this.document.createElement('div');
+      holder.style.display = 'contents';
+      this.document.createDocumentFragment().append(holder);
+      holder.append(...view.rootNodes);
+      this.retained = { view, holder };
+    } else {
+      this.retained.view.reattach();
+    }
+    return new DomPortal(this.retained.holder);
+  }
+
   private close(): void {
     this.ref?.dispose();
     this.ref = null;
+    if (!this.retained) {
+      return;
+    }
+    // Disposing returned the holder to its fragment; nothing in it needs checking until the
+    // next open, and nothing in it is kept once it has stayed closed long enough.
+    this.retained.view.detach();
+    if (this.releaseTimer === null) {
+      this.releaseTimer = setTimeout(() => this.release(), this.retainFor());
+    }
+  }
+
+  /** Destroy the kept view, if any; the next open builds a fresh one. */
+  private release(): void {
+    if (this.releaseTimer !== null) {
+      clearTimeout(this.releaseTimer);
+      this.releaseTimer = null;
+    }
+    this.retained?.view.destroy();
+    this.retained = null;
   }
 }
