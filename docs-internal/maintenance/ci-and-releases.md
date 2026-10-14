@@ -777,6 +777,15 @@ After the change that made Trinity Next its own app merges, the owner:
    upgrade `trinity@next`. That cask keeps its old `conflicts_with cask: "trinity"` until
    the first Trinity Next prerelease publishes and re-renders it.
 
+   A `v0.4.x` patch release undoes this: `homebrew.yml` runs on the published release
+   from the tagged commit, and `release/0.4.x` still renders the stable cask with
+   `conflicts_with cask: "trinity@next"`. After any `v0.4.x` patch publishes, dispatch
+   the workflow from `main` again with that tag:
+
+   ```bash
+   gh workflow run homebrew.yml --ref main -f tag=<that tag>
+   ```
+
 2. Adds the release note by hand to the release-please PR of the first `-next` release
    that contains the change. Edit its body last, immediately before merging it:
    release-please regenerates the body on every push to `main`, and merging publishes the
@@ -788,7 +797,9 @@ After the change that made Trinity Next its own app merges, the owner:
    > hand before this one stays installed as "Trinity"; remove it if you do not use stable
    > Trinity. Homebrew replaces it on upgrade.
 
-Skip step 1 if a stable release with the change has already published the stable cask.
+Skip step 1 if a stable release from a branch that contains the change (`release/0.5.x`
+or later) has already published the stable cask. A `v0.4.x` patch never counts: its
+cask still conflicts, so it always needs the re-dispatch above.
 
 ## Recover a release run
 
