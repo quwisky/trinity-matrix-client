@@ -46,11 +46,15 @@ jobs:
             exit 1
           fi
           version="${TAG#v}"
-          case "$TAG" in *-next.*) cask='trinity@next' ;; *) cask='trinity' ;; esac
+          case "$TAG" in
+            *-next.*) cask='trinity@next' app='Trinity Next.app' ;;
+            *) cask='trinity' app='Trinity.app' ;;
+          esac
           {
             echo "tag=$TAG"
             echo "version=$version"
             echo "cask=$cask"
+            echo "app=$app"
             echo "asset=Trinity-$version-arm64-mac.zip"
           } >> "$GITHUB_OUTPUT"
 
@@ -108,16 +112,17 @@ jobs:
         if: ${{ steps.latest.outputs.skip != 'true' }}
         env:
           ASSET: ${{ steps.release.outputs.asset }}
+          APP: ${{ steps.release.outputs.app }}
         run: |
           cd "$RUNNER_TEMP/release"
           ditto -x -k "$ASSET" unpacked
-          codesign --verify --deep --strict --verbose=2 unpacked/Trinity.app
-          spctl --assess --type execute --verbose unpacked/Trinity.app
-          xcrun stapler validate unpacked/Trinity.app
+          codesign --verify --deep --strict --verbose=2 "unpacked/$APP"
+          spctl --assess --type execute --verbose "unpacked/$APP"
+          xcrun stapler validate "unpacked/$APP"
           # brew audit compares the cask's depends_on macos with this exact value.
-          min=$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' unpacked/Trinity.app/Contents/Info.plist)
+          min=$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' "unpacked/$APP/Contents/Info.plist")
           if [ "$min" != '13.0' ]; then
-            echo "::error::Trinity.app requires macOS $min; update depends_on macos in scripts/homebrew-cask.mjs and this check."
+            echo "::error::$APP requires macOS $min; update depends_on macos in scripts/homebrew-cask.mjs and this check."
             exit 1
           fi
 

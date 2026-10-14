@@ -10,16 +10,20 @@ const LIVECHECK = {
   stable: '    url :url\n    strategy :github_latest\n',
   next: '    url :url\n    regex(/^v?(\\d+(?:\\.\\d+)+-next\\.\\d+)$/i)\n    strategy :git\n',
 };
+// The two lines are separate apps (Trinity and Trinity Next), so the casks install side
+// by side and each zaps only its own data folder, caches, logs, preferences and saved state.
 const CASKS = {
   trinity: {
     name: 'Trinity',
-    conflicts: 'trinity@next',
+    app: 'Trinity',
+    bundleId: 'dev.trinityproject.trinity',
     version: STABLE,
     livecheck: LIVECHECK.stable,
   },
   'trinity@next': {
-    name: 'Trinity (next)',
-    conflicts: 'trinity',
+    name: 'Trinity Next',
+    app: 'Trinity Next',
+    bundleId: 'dev.trinityproject.trinity.next',
     version: NEXT,
     livecheck: LIVECHECK.next,
   },
@@ -51,16 +55,17 @@ export function renderCask({ cask, version, sha256 }) {
   livecheck do
 ${spec.livecheck}  end
 
-  conflicts_with cask: "${spec.conflicts}"
   depends_on arch: :arm64
   depends_on macos: :ventura
 
-  app "Trinity.app"
+  app "${spec.app}.app"
 
   zap trash: [
-    "~/Library/Application Support/Trinity",
-    "~/Library/Preferences/dev.trinityproject.trinity.plist",
-    "~/Library/Saved Application State/dev.trinityproject.trinity.savedState",
+    "~/Library/Application Support/${spec.app}",
+    "~/Library/Caches/${spec.bundleId}",
+    "~/Library/Logs/${spec.app}",
+    "~/Library/Preferences/${spec.bundleId}.plist",
+    "~/Library/Saved Application State/${spec.bundleId}.savedState",
   ]
 end
 `;

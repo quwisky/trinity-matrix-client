@@ -22,7 +22,6 @@ describe('Homebrew cask', () => {
     strategy :github_latest
   end
 
-  conflicts_with cask: "trinity@next"
   depends_on arch: :arm64
   depends_on macos: :ventura
 
@@ -30,6 +29,8 @@ describe('Homebrew cask', () => {
 
   zap trash: [
     "~/Library/Application Support/Trinity",
+    "~/Library/Caches/dev.trinityproject.trinity",
+    "~/Library/Logs/Trinity",
     "~/Library/Preferences/dev.trinityproject.trinity.plist",
     "~/Library/Saved Application State/dev.trinityproject.trinity.savedState",
   ]
@@ -37,7 +38,7 @@ end
 `);
   });
 
-  it('renders the prerelease cask as its own token that conflicts with stable', () => {
+  it('renders the prerelease cask as Trinity Next, installable beside stable', () => {
     const cask = renderCask({
       cask: 'trinity@next',
       version: '0.2.0-next.3',
@@ -45,8 +46,16 @@ end
     });
     expect(cask).toMatch(/^cask "trinity@next" do\n/);
     expect(cask).toContain('  version "0.2.0-next.3"\n');
-    expect(cask).toContain('  name "Trinity (next)"\n');
-    expect(cask).toContain('  conflicts_with cask: "trinity"\n');
+    expect(cask).toContain(
+      '  url "https://github.com/quwisky/trinity-matrix-client/releases/download/v#{version}/Trinity-#{version}-arm64-mac.zip"\n',
+    );
+    expect(cask).toContain('  name "Trinity Next"\n');
+    expect(cask).toContain('  app "Trinity Next.app"\n');
+    expect(cask).not.toContain('conflicts_with');
+    // Zap removes only Trinity Next's own data, never stable Trinity's.
+    expect(cask).toContain(
+      '  zap trash: [\n    "~/Library/Application Support/Trinity Next",\n    "~/Library/Caches/dev.trinityproject.trinity.next",\n    "~/Library/Logs/Trinity Next",\n    "~/Library/Preferences/dev.trinityproject.trinity.next.plist",\n    "~/Library/Saved Application State/dev.trinityproject.trinity.next.savedState",\n  ]\n',
+    );
     // Without its own livecheck, Homebrew would compare against stable tags too.
     expect(cask).toContain(
       '  livecheck do\n    url :url\n    regex(/^v?(\\d+(?:\\.\\d+)+-next\\.\\d+)$/i)\n    strategy :git\n  end\n',
