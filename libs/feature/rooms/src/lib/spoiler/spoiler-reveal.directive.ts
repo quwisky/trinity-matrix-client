@@ -1,4 +1,5 @@
 import { Directive } from '@angular/core';
+import { Subject, type Observable } from 'rxjs';
 
 /** Marks a spoiler element the user has chosen to uncover (drives the CSS reveal). */
 const REVEALED_CLASS = 'is-revealed';
@@ -24,6 +25,15 @@ const REVEALED_CLASS = 'is-revealed';
   },
 })
 export class SpoilerRevealDirective {
+  private readonly revealedSpoilers = new Subject<HTMLElement>();
+
+  /**
+   * Each spoiler as it is revealed. InlineMxcImagesDirective, composed on the same element,
+   * starts fetching the images inside it only then.
+   */
+  readonly revealed: Observable<HTMLElement> =
+    this.revealedSpoilers.asObservable();
+
   // Angular types host-binding `$event` as the base `Event`, so accept that and read
   // the fields (`target`, `preventDefault`, `stopPropagation`) common to both.
   onClick(event: Event): void {
@@ -57,6 +67,7 @@ export class SpoilerRevealDirective {
     // Revealed content is ordinary text again: no button and no name hiding it.
     spoiler.removeAttribute('aria-label');
     spoiler.removeAttribute('role');
+    this.revealedSpoilers.next(spoiler);
     // Removing the tab stop of the focused element would drop focus to <body>, so a
     // keyboard reveal keeps it until focus leaves (onFocusOut).
     if (spoiler.ownerDocument.activeElement !== spoiler) {

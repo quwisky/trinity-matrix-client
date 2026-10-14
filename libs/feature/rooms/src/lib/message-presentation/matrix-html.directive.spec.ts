@@ -1,9 +1,18 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MediaService } from '@trinity/data-access/media';
+import {
+  MediaPipeline,
+  MediaService,
+  type PresentedMediaReference,
+} from '@trinity/data-access/media';
 import { sanitizeMatrixHtml } from '@trinity/util/matrix';
-import { Subject } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
+import {
+  MediaViewerLauncher,
+  type MediaViewerOutcome,
+} from '../media-attachment/media-viewer-launcher';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { MatrixHtmlDirective } from './matrix-html.directive';
 
@@ -83,7 +92,9 @@ describe('MatrixHtmlDirective', () => {
 
   it('resolves inline custom emoji through the media service', async () => {
     render(
-      '<img class="mx-emoticon" data-mx-emoticon src="mxc://hs/wave" alt=":wave:">',
+      sanitizeMatrixHtml(
+        '<img data-mx-emoticon src="mxc://hs/wave" alt=":wave:">',
+      ),
     );
     await Promise.resolve();
 
@@ -172,4 +183,39 @@ describe('MatrixHtmlDirective', () => {
       expect(spoiler.hasAttribute('tabindex')).toBe(false);
     },
   );
+
+  it('reveals a concealed spoiler before opening an image inside it', async () => {
+    const open = vi.fn(() => of<MediaViewerOutcome>('opened'));
+    TestBed.overrideDirective(InlineMxcImagesDirective, {
+      set: {
+        providers: [
+          { provide: MediaViewerLauncher, useValue: { open, close: vi.fn() } },
+        ],
+      },
+    });
+    TestBed.overrideProvider(MediaPipeline, {
+      useValue: {
+        present: () =>
+          ({ id: 'presented' }) as unknown as PresentedMediaReference,
+      },
+    });
+    const { host } = render(
+      sanitizeMatrixHtml(
+        '<span data-mx-spoiler><img src="mxc://hs/pic" alt="pic"></span>',
+      ),
+    );
+    await Promise.resolve();
+    const image = host.querySelector('img')!;
+
+    image.click();
+
+    expect(
+      host.querySelector('.mx-spoiler')?.classList.contains('is-revealed'),
+    ).toBe(true);
+    expect(open).not.toHaveBeenCalled();
+
+    image.click();
+
+    expect(open).toHaveBeenCalledTimes(1);
+  });
 });

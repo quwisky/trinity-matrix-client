@@ -4,7 +4,7 @@ import {
   MediaPipeline,
   type PresentedMediaReference,
 } from '@trinity/data-access/media';
-import { Subject, firstValueFrom, of, throwError } from 'rxjs';
+import { EMPTY, Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LightboxComponent } from './lightbox/lightbox.component';
 import { MediaViewerLauncher } from './media-viewer-launcher';
@@ -114,6 +114,36 @@ describe('MediaViewerLauncher', () => {
     expect(await firstValueFrom(launcher.open(image))).toBe('failed');
     expect(dialogs.open).not.toHaveBeenCalled();
     expect(await firstValueFrom(launcher.open(image))).toBe('opened');
+  });
+
+  it('reports a resolve that ends without a URL as failed, and lets a retry open', async () => {
+    pipeline.resolveMedia.mockReturnValueOnce(EMPTY);
+    const launcher = TestBed.inject(MediaViewerLauncher);
+
+    expect(await firstValueFrom(launcher.open(image))).toBe('failed');
+    expect(dialogs.open).not.toHaveBeenCalled();
+    expect(await firstValueFrom(launcher.open(image))).toBe('opened');
+    expect(dialogs.open).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers busy while the full image is still loading, and resolves it once', () => {
+    const full = new Subject<string>();
+    pipeline.resolveMedia.mockReturnValue(full.asObservable());
+    const launcher = TestBed.inject(MediaViewerLauncher);
+    const first: string[] = [];
+    const second: string[] = [];
+
+    launcher.open(image).subscribe((outcome) => first.push(outcome));
+    launcher.open(image).subscribe((outcome) => second.push(outcome));
+
+    expect(second).toEqual(['busy']);
+    expect(pipeline.resolveMedia).toHaveBeenCalledTimes(1);
+    expect(first).toEqual([]);
+
+    full.next('blob:full');
+
+    expect(first).toEqual(['opened']);
+    expect(dialogs.open).toHaveBeenCalledTimes(1);
   });
 
   it('closes the viewer when its owner goes away', async () => {

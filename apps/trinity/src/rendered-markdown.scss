@@ -392,6 +392,36 @@
     img {
       max-width: 100%;
       border-radius: var(--trinity-radius-sm);
+
+      // An inline image from another client (spec A2): no taller than 300px, never wider than
+      // the body, ratio kept. InlineMxcImagesDirective reserves the sender's box with an inline
+      // width and aspect-ratio, which win over these.
+      &.mx-image {
+        width: auto;
+        height: auto;
+        max-height: 300px;
+        vertical-align: bottom;
+
+        // A sender's width/height that disagree with the real image must not stretch it.
+        object-fit: contain;
+      }
+
+      // Reserved but not loaded yet: a box in the raised surface colour, alt text hidden.
+      &.mx-image--loading {
+        min-width: 4rem;
+        min-height: 4rem;
+        background: var(--trinity-surface-raised);
+        color: transparent;
+      }
+
+      &.mx-image[role='button'] {
+        cursor: zoom-in;
+      }
+
+      &.mx-image[role='button']:focus-visible {
+        outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+        outline-offset: var(--trinity-focus-ring-offset);
+      }
     }
 
     // Spoilers render as a black bar until clicked/activated. The sanitizer tags them
