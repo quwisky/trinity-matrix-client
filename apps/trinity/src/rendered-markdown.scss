@@ -456,6 +456,12 @@
         visibility: hidden;
       }
 
+      // An inline image would hold its whole box open under a short bar, which also gives away
+      // its size; it takes no space until the spoiler is revealed.
+      img.mx-image {
+        display: none;
+      }
+
       // The sender's reason, as generated content: it stays out of textContent, copies and the
       // edit-history diff, like the code block's `language` caption. Drawn in the message
       // surface's colour so it reads against the bar (filled with --trinity-text-bright). A
