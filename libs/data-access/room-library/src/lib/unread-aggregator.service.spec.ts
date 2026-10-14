@@ -632,6 +632,21 @@ describe('UnreadAggregatorService touched rooms (#1311)', () => {
     expect(t.svc.totalUnread()).toBe(1);
   });
 
+  it('re-dates an unread chat whose thread reply moved with no event', async () => {
+    const t = await setup();
+    // The server's echo of your own reply in an older thread updates the thread's latest
+    // reply after the events this service hears.
+    t.a.getThreads = () => [
+      { rootEvent: { getTs: () => 0 }, replyToEvent: { getTs: () => 900 } },
+    ];
+
+    t.client.emit(ClientEvent.Sync, ...steadySync);
+    await t.flush();
+
+    expect(t.svc.unreadRooms()[0].activityTs).toBe(900);
+    expect(t.recounts['!b:hs'] ?? 0).toBe(0);
+  });
+
   it('recounts every room when the sync state changes', async () => {
     const t = await setup();
 

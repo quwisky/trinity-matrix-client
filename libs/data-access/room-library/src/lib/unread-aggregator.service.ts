@@ -56,7 +56,7 @@ interface AccountUnread {
   readonly dirty: Set<string>;
   /** Recount every room on the next flush. */
   full: boolean;
-  /** A sync landed since the last flush: compare every room's count with its entry. */
+  /** A sync landed since the last flush: compare rooms with their entries; see {@link markChangedRooms}. */
   compare: boolean;
   lastFull: number;
 }
@@ -248,7 +248,7 @@ export class UnreadAggregatorService {
       } else {
         if (state.compare) {
           state.compare = false;
-          markChangedCounts(client, state);
+          markChangedRooms(client, state);
         }
         if (state.dirty.size) {
           this.recountTouched(userId, client, state);
@@ -404,15 +404,24 @@ function countOf(room: Room): number {
 }
 
 /**
- * Mark every room whose count moved since it was last counted. A sync can change a count
- * with no event this service hears: one carrying only the counts, or the SDK's start-up
- * fix-up (`fixupRoomNotifications`), which zeroes rooms whose last message is your own. The
- * SDK announces these with `RoomEvent.UnreadNotifications`, but only on the room, not the
- * client. Reading one count per room is cheap next to building every entry.
+ * Mark every room whose count moved since it was last counted, and every listed room whose
+ * activity time moved.
+ *
+ * A sync can change a count with no event this service hears: one carrying only the counts,
+ * or the SDK's start-up fix-up (`fixupRoomNotifications`), which zeroes rooms whose last
+ * message is your own. The SDK announces these with `RoomEvent.UnreadNotifications`, but only
+ * on the room, not the client. A thread's latest reply can also move after its last event
+ * here (the server's echo of your own reply, say), announced only by `ThreadEvent`s, which
+ * the client does not re-emit. Reading one count per room, and the activity time of the few
+ * listed ones, is cheap next to building every entry.
  */
-function markChangedCounts(client: MatrixClient, state: AccountUnread): void {
+function markChangedRooms(client: MatrixClient, state: AccountUnread): void {
   for (const room of client.getRooms()) {
-    if (state.seen.get(room.roomId) !== countOf(room)) {
+    const entry = state.cache.get(room.roomId);
+    if (
+      state.seen.get(room.roomId) !== countOf(room) ||
+      (entry !== undefined && roomActivityTs(room) !== entry.activityTs)
+    ) {
       state.dirty.add(room.roomId);
     }
   }
