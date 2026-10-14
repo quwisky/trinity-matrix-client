@@ -990,12 +990,12 @@ const MAX_SPOILER_REASON = 80;
 
 /**
  * C0 and C1 controls other than the whitespace ones (tab to CR, which collapse to a space
- * instead), and the bidi marks, embeddings, overrides and isolates (LRM/RLM, U+202A–U+202E,
+ * instead), and the bidi marks, embeddings, overrides and isolates (ALM/LRM/RLM, U+202A–U+202E,
  * U+2066–U+2069): a reason must not reorder the bar's "Spoiler: " prefix or the message text
  * around it. One character per match, so it cannot backtrack.
  */
 const SPOILER_REASON_CONTROLS =
-  /[\u0000-\u0008\u000e-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+  /[\u0000-\u0008\u000e-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 
 /**
  * A sender's spoiler reason ("the reason (optionally) being in the `data-mx-spoiler`

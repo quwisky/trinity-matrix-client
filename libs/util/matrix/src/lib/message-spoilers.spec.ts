@@ -87,6 +87,14 @@ describe('spoiler reasons', () => {
     expect(spoiler.getAttribute('label')).toBe('abcdefghi j');
   });
 
+  it('strips the Arabic letter mark from the reason', () => {
+    const spoiler = spoilerIn(
+      '<span data-mx-spoiler="\u061cending\u061c of the film">x</span>',
+    );
+
+    expect(spoiler.getAttribute('label')).toBe('ending of the film');
+  });
+
   it('reads a 64 KB reason in linear time', () => {
     const reason = 'a\u202e \t'.repeat(16_384);
 
