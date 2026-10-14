@@ -775,11 +775,19 @@ export class MessageRowComponent {
   }
 
   /**
-   * Focus moving into a collapsed body (Tab to a link, mention, image or spoiler past the cut)
-   * shows it whole, so the focused control is never hidden behind the fade.
+   * Keyboard focus moving into a collapsed body (Tab to a link, mention, image or spoiler past
+   * the cut) shows it whole, so the focused control is never hidden behind the fade. Only
+   * keyboard focus (`:focus-visible`): a mouse press focuses links too, and expanding then would
+   * move the content (the list re-pins to the bottom) before the button is released, so the
+   * click would miss.
    */
-  expandBodyForFocus(): void {
-    if (this.bodyCollapsed()) {
+  expandBodyForFocus(event: FocusEvent): void {
+    const target = event.target;
+    if (
+      this.bodyCollapsed() &&
+      target instanceof Element &&
+      target.matches(':focus-visible')
+    ) {
       this.expandedBodies?.expand(this.row().id);
     }
   }

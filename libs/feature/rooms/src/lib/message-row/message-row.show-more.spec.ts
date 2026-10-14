@@ -206,22 +206,47 @@ describe('MessageRowComponent — Show more', () => {
     expect(button()).toBeNull();
   });
 
-  it('expands a collapsed body when focus moves into it, so a link past the cut shows', async () => {
+  /** Focus `element` as the keyboard (`:focus-visible`) or a mouse press (not) would. */
+  function focusAs(element: HTMLElement, visible: boolean): void {
+    // jsdom matches :focus-visible whenever an element has focus, so the mouse case is stubbed.
+    const matches = element.matches.bind(element);
+    vi.spyOn(element, 'matches').mockImplementation((selector) =>
+      selector === ':focus-visible' ? visible : matches(selector),
+    );
+    element.focus();
+  }
+
+  const linkPastTheCut = {
+    html: '<p>start</p><p><a href="https://example.org/">a link past the cut</a></p>',
+  };
+
+  it('expands a collapsed body when keyboard focus moves into it, so a link past the cut shows', async () => {
     const { clamp, button, fixture } = await renderRow({
       long: true,
-      row: {
-        html: '<p>start</p><p><a href="https://example.org/">a link past the cut</a></p>',
-      },
+      row: linkPastTheCut,
     });
     const link = clamp().querySelector<HTMLAnchorElement>('a')!;
 
-    link.focus();
+    focusAs(link, true);
     fixture.detectChanges();
 
     expect(TestBed.inject(ExpandedBodiesStore).isExpanded('$1')).toBe(true);
     expect(clamp().classList.contains('msg__clamp--collapsed')).toBe(false);
     expect(button()?.getAttribute('aria-expanded')).toBe('true');
     expect(document.activeElement).toBe(link);
+  });
+
+  it('keeps a body collapsed when a mouse press focuses a link in it, so the click lands', async () => {
+    const { clamp, fixture } = await renderRow({
+      long: true,
+      row: linkPastTheCut,
+    });
+
+    focusAs(clamp().querySelector<HTMLAnchorElement>('a')!, false);
+    fixture.detectChanges();
+
+    expect(TestBed.inject(ExpandedBodiesStore).isExpanded('$1')).toBe(false);
+    expect(clamp().classList.contains('msg__clamp--collapsed')).toBe(true);
   });
 
   it('leaves the state alone when focus moves into a body that is not collapsed', async () => {
