@@ -64,33 +64,56 @@ describe('the Matrix HTML allowlist (spec v1.19)', () => {
     expect(names(clean.querySelector('p'))).toEqual([]);
     expect(names(clean.querySelector('ol'))).toEqual(['start']);
     expect(names(clean.querySelector('li'))).toEqual([]);
-    expect(names(clean.querySelector('img'))).toEqual(['alt', 'src', 'title']);
+    expect(names(clean.querySelector('img'))).toEqual([
+      'alt',
+      'height',
+      'src',
+      'title',
+      'width',
+    ]);
     expect(clean.querySelector('code')?.getAttribute('class')).toBe(
       'language-js',
     );
   });
 
   it('keeps the values DOMPurify used to drop as non-URIs', () => {
-    const clean = parse(sanitizeOutgoingHtml('<ol start="3"><li>c</li></ol>'));
+    const clean = parse(
+      sanitizeOutgoingHtml(
+        '<ol start="3"><li>c</li></ol><img src="mxc://hs/a" width="10" height="20" alt="a">',
+      ),
+    );
 
     expect(clean.querySelector('ol')?.getAttribute('start')).toBe('3');
+    expect(clean.querySelector('img')?.getAttribute('width')).toBe('10');
+    expect(clean.querySelector('img')?.getAttribute('height')).toBe('20');
   });
 
-  // Spec v1.19 allows `width`/`height` on `img`, but nothing caps an inline image's height yet,
-  // so a sender's size could open an arbitrarily tall empty box. They return with that cap.
+  // Spec v1.19 allows `width`/`height` on `img` only. A sender's size reserves the image's box;
+  // the feature layer draws an inline image at most 300px tall and the body's width
+  // (InlineMxcImagesDirective and rendered-markdown.scss), so even a huge size cannot open an
+  // arbitrarily tall empty box.
   it.each([
     ['render', sanitizeMatrixHtml],
     ['send', sanitizeOutgoingHtml],
-  ])('drops image sizes from senders on the %s path', (_path, sanitize) => {
-    const img = parse(
-      sanitize('<img src="mxc://hs/a" width="10" height="20000" alt="a">'),
-    ).querySelector('img');
+  ])(
+    'keeps image sizes from senders on img only on the %s path',
+    (_path, sanitize) => {
+      const clean = parse(
+        sanitize(
+          '<img src="mxc://hs/a" width="10" height="20000" alt="a">' +
+            '<p width="10" height="20">p</p><span width="10" height="20">s</span>',
+        ),
+      );
+      const img = clean.querySelector('img');
 
-    expect(img?.hasAttribute('width')).toBe(false);
-    expect(img?.hasAttribute('height')).toBe(false);
-  });
+      expect(img?.getAttribute('width')).toBe('10');
+      expect(img?.getAttribute('height')).toBe('20000');
+      expect(names(clean.querySelector('p'))).toEqual([]);
+      expect(names(clean.querySelector('span'))).toEqual([]);
+    },
+  );
 
-  it('keeps color and start only on the tags the spec lists them for', () => {
+  it('keeps color, start, width and height only on the tags the spec lists them for', () => {
     const clean = parse(
       sanitizeOutgoingHtml(
         '<span color="#112233">s</span><ul start="2"><li>u</li></ul>' +

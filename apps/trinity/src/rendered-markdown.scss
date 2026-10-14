@@ -392,6 +392,50 @@
     img {
       max-width: 100%;
       border-radius: var(--trinity-radius-sm);
+
+      // An inline image from another client (spec A2): no taller than 300px, never wider than
+      // the body, ratio kept. The cap's one source is the custom property below: the reserved
+      // width InlineMxcImagesDirective sets inline (with an aspect-ratio, both winning over
+      // these) reads it too (inline-image-box.ts).
+      &.mx-image {
+        --trinity-message-image-max-height: 300px;
+
+        width: auto;
+        height: auto;
+        max-height: var(--trinity-message-image-max-height);
+        vertical-align: bottom;
+
+        // A sender's width/height that disagree with the real image must not stretch it.
+        object-fit: contain;
+      }
+
+      // Reserved but not loaded yet: a box in the raised surface colour, drawn around the
+      // directive's transparent placeholder, so no broken-image icon or alt text shows. The
+      // raised fill alone barely differs from the dark panes, so the box carries the control
+      // border (3:1 on every message surface, scripts/contrast-matrix.spec.mjs). Border-box, so
+      // the border sits inside the reserved box and the loaded image does not shift.
+      &.mx-image--loading {
+        box-sizing: border-box;
+        min-width: 4rem;
+        min-height: 4rem;
+        border: 1px solid var(--trinity-border-control);
+        background: var(--trinity-surface-raised);
+        color: transparent;
+
+        // High Contrast drops the fill; keep the outline in the system text colour.
+        @media (forced-colors: active) {
+          border-color: CanvasText;
+        }
+      }
+
+      &.mx-image[role='button'] {
+        cursor: zoom-in;
+      }
+
+      &.mx-image[role='button']:focus-visible {
+        outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+        outline-offset: var(--trinity-focus-ring-offset);
+      }
     }
 
     // Spoilers render as a black bar until clicked/activated. The sanitizer tags them
@@ -416,6 +460,12 @@
         visibility: hidden;
       }
 
+      // An inline image would hold its whole box open under a short bar, which also gives away
+      // its size; it takes no space until the spoiler is revealed.
+      img.mx-image {
+        display: none;
+      }
+
       // The sender's reason, as generated content: it stays out of textContent, copies and the
       // edit-history diff, like the code block's `language` caption. Drawn in the message
       // surface's colour so it reads against the bar (filled with --trinity-text-bright). A
@@ -427,6 +477,13 @@
         unicode-bidi: isolate;
       }
 
+      // A spoiler holding only images (collapsed above) would draw no bar at all. The leaf
+      // marks it (InlineMxcImagesDirective), so it shows a bar named like a reason would be.
+      &.mx-spoiler--image-only:not([label])::before {
+        content: 'Spoiler';
+        color: var(--trinity-message-surface, var(--trinity-surface-canvas));
+      }
+
       // High Contrast replaces the bar's fill and the transparent text with system colours,
       // which would print the hidden text. Keep a solid bar and the reason readable on it.
       @media (forced-colors: active) {
@@ -434,7 +491,8 @@
         background-color: CanvasText;
         color: CanvasText;
 
-        &[label]::before {
+        &[label]::before,
+        &.mx-spoiler--image-only::before {
           color: Canvas;
         }
       }

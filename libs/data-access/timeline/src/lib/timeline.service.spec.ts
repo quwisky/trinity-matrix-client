@@ -217,11 +217,12 @@ describe('TimelineService', () => {
       }),
     ]);
 
-    const html = svc.messages()[0].html ?? '';
-    expect(html).not.toContain('attacker.test'); // remote src dropped
-    expect(html).toContain('mxc://hs/abc'); // local mxc src kept
-    expect(html).toContain('alt="leak"'); // node itself survives, just no src
-    expect(html).toContain('<strong>text</strong>');
+    // The remote image reduces to its alt text (no element, so no empty box and no fetch); the
+    // mxc source moves off src for the render leaf to resolve through authenticated media.
+    expect(svc.messages()[0].html).toBe(
+      'leak<img alt="ok" data-mx-src="mxc://hs/abc" class="mx-image" role="button" ' +
+        'tabindex="0" aria-label="View image: ok"><strong>text</strong>',
+    );
   });
 
   it('restricts the class attribute to the Matrix-sanctioned allowlist', () => {

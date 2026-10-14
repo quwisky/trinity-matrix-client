@@ -173,7 +173,7 @@ describe('EditHistoryComponent', () => {
       .spyOn(console, 'warn')
       .mockImplementation(() => undefined);
     const html =
-      '<img class="mx-emoticon" data-mx-emoticon src="mxc://hs/wave" alt=":wave:">';
+      '<img class="mx-emoticon" data-mx-emoticon data-mx-src="mxc://hs/wave" alt=":wave:">';
     const { container, media } = await build(
       of({
         revisions: [revision({ body: ':wave:', html })],
