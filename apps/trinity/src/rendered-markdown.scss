@@ -345,9 +345,19 @@
       overflow-clip-margin: 1em;
     }
 
-    // High Contrast replaces every colour, which would draw `\phantom`'s transparent content.
-    .mx-maths [style*='transparent'] {
-      forced-color-adjust: none;
+    // High Contrast would draw `\phantom`'s transparent content, and the backplate it puts
+    // behind each run of text covers the limits under a `\sum`. Maths keeps its own colours
+    // there, set to the system's text and link colours (a mention is a link, too).
+    @media (forced-colors: active) {
+      .mx-maths {
+        forced-color-adjust: none;
+        color: CanvasText;
+      }
+
+      a .mx-maths,
+      a.mention .mx-maths {
+        color: LinkText;
+      }
     }
 
     th,
