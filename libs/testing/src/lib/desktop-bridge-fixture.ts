@@ -99,6 +99,9 @@ export interface DesktopBridgeFixture {
     readonly userPresence?: {
       readonly support: () => Promise<unknown>;
       readonly verify: (reason: string) => Promise<unknown>;
+      readonly setPin: (pin: string) => Promise<unknown>;
+      readonly verifyPin: (pin: string) => Promise<unknown>;
+      readonly clearPin: () => Promise<unknown>;
     };
     readonly lockIntegration?: {
       readonly setState: (state: {
@@ -221,6 +224,15 @@ export function desktopBridgeFixture(
                 pin: { kind: 'unavailable', reason: 'not-supported' },
               }),
               verify: async () => ({
+                kind: 'unavailable',
+                reason: 'not-supported',
+              }),
+              setPin: async () => ({
+                kind: 'unavailable',
+                reason: 'not-supported',
+              }),
+              verifyPin: async () => ({ kind: 'unavailable' }),
+              clearPin: async () => ({
                 kind: 'unavailable',
                 reason: 'not-supported',
               }),

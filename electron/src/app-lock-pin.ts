@@ -1,10 +1,15 @@
 /**
- * The Trinity PIN verifier's pure core: format, delay schedule, clock rules and the
- * scrypt record. No `electron` import, so it runs in plain Node tests. The shared fixture
+ * The Trinity PIN verifier: its pure core (format, delay schedule, clock rules and the
+ * scrypt record) and the main-only store, {@link PinVerifier}. Only an `import type` of
+ * `electron`, so it runs in plain Node tests. The shared fixture
  * native/app-lock/pin-policy-cases.json pins the rules for every host; change them together.
  * Nothing here logs, and no error or outcome carries the PIN, its hash or its salt.
  */
 import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import * as fs from 'node:fs';
+import { uptime } from 'node:os';
+import type { SafeStorage } from 'electron';
+import { atomicWriteFile, secureStorageUsable } from './secure-store';
 
 /** 4–16 ASCII digits (spec decision 18). Unicode digits are refused, never normalised. */
 export const PIN_PATTERN = /^[0-9]{4,16}$/;
@@ -263,4 +268,192 @@ export function decodePinRecord(text: string): PinRecord | null {
     failureAtMs,
     failureUptimeS,
   };
+}
+
+/** The verifier record's file in `userData`; main-only, never in the secure-store map. */
+export const PIN_FILE_NAME = 'app-lock.bin';
+
+/** File access, injectable so tests never touch disk. `read` returns null only for ENOENT. */
+export interface PinFileIo {
+  read(path: string): string | null;
+  write(path: string, data: string): void;
+  remove(path: string): void;
+}
+
+const defaultIo: PinFileIo = {
+  read(path) {
+    try {
+      return fs.readFileSync(path, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  },
+  // Temp file, fsync and rename, mode 0600: a crash leaves the old record or the new one.
+  write: (path, data) => atomicWriteFile(path, data),
+  remove: (path) => fs.rmSync(path, { force: true }),
+};
+
+/**
+ * Wall-clock time and seconds since boot. `os.uptime()` is libuv's `uv_uptime`, which
+ * counts from boot and keeps counting through sleep on every desktop: on macOS it is now
+ * minus `kern.boottime` (XNU moves boottime with any wall-clock change, so setting the
+ * clock does not move it), on Linux `/proc/uptime` (CLOCK_BOOTTIME, suspend included) and
+ * on Windows `GetTickCount64` (sleep and hibernation included). `process.uptime()` counts
+ * from this process's start and `performance.now()` stops during sleep on macOS, so
+ * neither can carry a wait across a restart or a night's sleep.
+ */
+const systemClock = (): PinClock => ({ nowMs: Date.now(), uptimeS: uptime() });
+
+export type PinStatus =
+  | {
+      readonly kind: 'ready';
+      readonly set: boolean;
+      readonly nextAttemptAt: number | null;
+    }
+  | { readonly kind: 'unavailable' };
+
+export interface PinVerifierDeps {
+  readonly safeStorage: SafeStorage;
+  readonly file: string;
+  readonly io?: PinFileIo;
+  readonly clock?: () => PinClock;
+  readonly params?: ScryptParams;
+}
+
+const UNAVAILABLE = { kind: 'unavailable' } as const;
+
+/**
+ * The desktop Trinity PIN: one record, encrypted with safeStorage, read and written by
+ * the main process only. A record that exists but cannot be read is `unavailable`, never
+ * "no PIN": treating it as absent would let a damaged file open the lock, and setting a
+ * new PIN over it would skip the full reset. Only {@link clear} removes it.
+ *
+ * `set` and `verify` run one at a time, and each saves its record before it answers, so
+ * two quick submits cannot both pass a wait and a crash cannot forget a failure.
+ */
+export class PinVerifier {
+  private readonly io: PinFileIo;
+  private readonly clock: () => PinClock;
+  /** Bumped by {@link clear}: work that began before a reset never writes after it. */
+  private generation = 0;
+  private queue: Promise<unknown> = Promise.resolve();
+
+  constructor(private readonly deps: PinVerifierDeps) {
+    this.io = deps.io ?? defaultIo;
+    this.clock = deps.clock ?? systemClock;
+  }
+
+  status(): PinStatus {
+    if (!this.usable()) return UNAVAILABLE;
+    const record = this.read();
+    if (record === 'unreadable') return UNAVAILABLE;
+    if (record === null)
+      return { kind: 'ready', set: false, nextAttemptAt: null };
+    try {
+      return {
+        kind: 'ready',
+        set: true,
+        nextAttemptAt: attemptAllowed(record, this.clock())
+          ? null
+          : nextAttemptAt(record),
+      };
+    } catch {
+      return UNAVAILABLE;
+    }
+  }
+
+  set(pin: unknown): Promise<'completed' | 'invalid' | 'unavailable'> {
+    return this.serial(async () => {
+      if (!isValidPin(pin)) return 'invalid';
+      if (!this.usable()) return 'unavailable';
+      const generation = this.generation;
+      if (this.read() === 'unreadable') return 'unavailable';
+      let record: PinRecord;
+      try {
+        record = await createPinRecord(pin, this.deps.params);
+      } catch {
+        return 'unavailable';
+      }
+      return generation === this.generation && this.write(record)
+        ? 'completed'
+        : 'unavailable';
+    });
+  }
+
+  verify(pin: unknown): Promise<PinCheck | { readonly kind: 'unavailable' }> {
+    return this.serial(async () => {
+      if (!this.usable()) return UNAVAILABLE;
+      const generation = this.generation;
+      const record = this.read();
+      if (record === null || record === 'unreadable') return UNAVAILABLE;
+      let result: Awaited<ReturnType<typeof checkPin>>;
+      try {
+        result = await checkPin(record, pin, this.clock());
+      } catch {
+        return UNAVAILABLE;
+      }
+      if (generation !== this.generation) return UNAVAILABLE;
+      // An attempt the record cannot keep is not answered: a failure must be counted.
+      if (result.record !== record && !this.write(result.record)) {
+        return UNAVAILABLE;
+      }
+      return result.check;
+    });
+  }
+
+  /** Remove the record, readable or not; the full reset's way past a damaged file. */
+  clear(): 'completed' | 'unavailable' {
+    this.generation += 1;
+    try {
+      this.io.remove(this.deps.file);
+      return 'completed';
+    } catch {
+      return 'unavailable';
+    }
+  }
+
+  private usable(): boolean {
+    try {
+      return secureStorageUsable(this.deps.safeStorage);
+    } catch {
+      return false;
+    }
+  }
+
+  private read(): PinRecord | null | 'unreadable' {
+    let stored: string | null;
+    try {
+      stored = this.io.read(this.deps.file);
+    } catch {
+      return 'unreadable';
+    }
+    if (stored === null) return null;
+    try {
+      const plain = this.deps.safeStorage.decryptString(
+        Buffer.from(stored, 'base64'),
+      );
+      return decodePinRecord(plain) ?? 'unreadable';
+    } catch {
+      return 'unreadable';
+    }
+  }
+
+  private write(record: PinRecord): boolean {
+    try {
+      const cipher = this.deps.safeStorage.encryptString(
+        encodePinRecord(record),
+      );
+      this.io.write(this.deps.file, cipher.toString('base64'));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private serial<T>(work: () => Promise<T>): Promise<T> {
+    const next = this.queue.then(work, work);
+    this.queue = next.catch(() => undefined);
+    return next;
+  }
 }

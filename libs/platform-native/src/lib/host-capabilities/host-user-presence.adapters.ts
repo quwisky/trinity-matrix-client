@@ -18,6 +18,7 @@ import {
   type HostPresenceOutcome,
   type HostSystemPresence,
   type HostSystemPresenceUnavailableReason,
+  type HostUnavailableReason,
   type HostUserPresenceOperation,
   type HostUserPresenceSupport,
 } from '@trinity/runtime/host';
@@ -302,7 +303,81 @@ export function parsePresenceOutcome(raw: unknown): HostPresenceOutcome {
   }
 }
 
-/** Electron: the main process's system prompt (Touch ID on macOS) and, from PR 2, PIN. */
+const MALFORMED_PIN: HostPinOutcome = {
+  kind: 'rejected',
+  diagnostic: { code: 'electron-malformed-response' },
+};
+const UNAVAILABLE_REASONS: readonly HostUnavailableReason[] = [
+  'not-implemented',
+  'not-supported',
+  'protocol-mismatch',
+  'host-rejected',
+];
+/** A clear the shell could not confirm: the full reset must report it, not skip it. */
+const PIN_CLEAR_FAILED: HostOperationOutcome = {
+  kind: 'rejected',
+  diagnostic: { code: 'pin-clear-failed' },
+};
+
+function instantOrNull(value: unknown): value is number | null {
+  return (
+    value === null || (typeof value === 'number' && Number.isFinite(value))
+  );
+}
+
+function diagnosticCode(raw: unknown): string | null {
+  const code = field(field(raw, 'diagnostic'), 'code');
+  return typeof code === 'string' && /^[a-z0-9-]{1,64}$/.test(code)
+    ? code
+    : null;
+}
+
+/** A PIN outcome from the shell, validated; only stable fields survive. */
+export function parsePinOutcome(raw: unknown): HostPinOutcome {
+  const kind = field(raw, 'kind');
+  const next = field(raw, 'nextAttemptAt');
+  switch (kind) {
+    case 'verified':
+    case 'invalid':
+    case 'unavailable':
+      return { kind };
+    case 'failed':
+      return instantOrNull(next)
+        ? { kind, nextAttemptAt: next }
+        : MALFORMED_PIN;
+    case 'delayed':
+      return typeof next === 'number' && Number.isFinite(next)
+        ? { kind, nextAttemptAt: next }
+        : MALFORMED_PIN;
+    case 'rejected': {
+      const code = diagnosticCode(raw);
+      return code ? { kind, diagnostic: { code } } : MALFORMED_PIN;
+    }
+    default:
+      return MALFORMED_PIN;
+  }
+}
+
+/** A PIN command's outcome from the shell; an unknown shape is malformed, not "none". */
+function parseCommandOutcome(raw: unknown): HostOperationOutcome {
+  const kind = field(raw, 'kind');
+  const reason = field(raw, 'reason');
+  const code = diagnosticCode(raw);
+  if (kind === 'completed') return { kind };
+  if (
+    kind === 'unavailable' &&
+    UNAVAILABLE_REASONS.includes(reason as HostUnavailableReason)
+  ) {
+    return { kind, reason: reason as HostUnavailableReason };
+  }
+  if (kind === 'rejected' && code) return { kind, diagnostic: { code } };
+  return {
+    kind: 'rejected',
+    diagnostic: { code: 'electron-malformed-response' },
+  };
+}
+
+/** Electron: the main process's system prompt (Touch ID on macOS) and the Trinity PIN. */
 @Injectable({ providedIn: 'root' })
 export class ElectronUserPresenceAdapter implements HostUserPresenceOperation {
   private readonly capabilities = inject(HostCapabilitiesService);
@@ -354,16 +429,47 @@ export class ElectronUserPresenceAdapter implements HostUserPresenceOperation {
     );
   }
 
-  setPin(): Observable<HostOperationOutcome> {
-    return defer(() => of(notSupported()));
+  setPin(pin: string): Observable<HostOperationOutcome> {
+    return this.granted.pipe(
+      switchMap((granted) => {
+        const bridge = getTrinityDesktopBridge()?.capabilities.userPresence;
+        return granted && bridge
+          ? from(bridge.setPin(pin)).pipe(
+              map(parseCommandOutcome),
+              catchError(() => of(notSupported())),
+            )
+          : of(notSupported());
+      }),
+    );
   }
 
-  verifyPin(): Observable<HostPinOutcome> {
-    return defer(() => of<HostPinOutcome>({ kind: 'unavailable' }));
+  verifyPin(pin: string): Observable<HostPinOutcome> {
+    return this.granted.pipe(
+      switchMap((granted): Observable<HostPinOutcome> => {
+        const bridge = getTrinityDesktopBridge()?.capabilities.userPresence;
+        return granted && bridge
+          ? from(bridge.verifyPin(pin)).pipe(
+              map(parsePinOutcome),
+              catchError(() => of<HostPinOutcome>({ kind: 'unavailable' })),
+            )
+          : of<HostPinOutcome>({ kind: 'unavailable' });
+      }),
+    );
   }
 
+  /** Without the granted operation there is no shell PIN, so nothing to clear. */
   clearPin(): Observable<HostOperationOutcome> {
-    return defer(() => of(notSupported()));
+    return this.granted.pipe(
+      switchMap((granted) => {
+        const bridge = getTrinityDesktopBridge()?.capabilities.userPresence;
+        return granted && bridge
+          ? from(bridge.clearPin()).pipe(
+              map(parseCommandOutcome),
+              catchError(() => of(PIN_CLEAR_FAILED)),
+            )
+          : of(notSupported());
+      }),
+    );
   }
 }
 

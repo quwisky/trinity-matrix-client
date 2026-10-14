@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { HostUserPresenceService } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
+import { EMPTY, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // In-memory @capacitor/preferences, hoisted so the vi.mock factory can see it. `calls`
@@ -294,6 +296,82 @@ describe('LocalDataWipeService', () => {
         preferences: true,
         webStorage: false,
       });
+    });
+  });
+
+  describe('wipeSecureStorage', () => {
+    afterEach(() => TestBed.resetTestingModule());
+
+    function withPresence(
+      clearPin: HostUserPresenceService['clearPin'],
+      clearAll: () => Promise<boolean> = vi.fn(async () => true),
+    ): LocalDataWipeService {
+      TestBed.configureTestingModule({
+        providers: [
+          LocalDataWipeService,
+          MockProvider(SecureStorageService, { clearAll }),
+          MockProvider(HostUserPresenceService, { clearPin }),
+        ],
+      });
+      return TestBed.inject(LocalDataWipeService);
+    }
+
+    it('clears the Trinity PIN with the other secrets', async () => {
+      const clearPin = vi.fn(() => of({ kind: 'completed' as const }));
+      await expect(withPresence(clearPin).wipeSecureStorage()).resolves.toBe(
+        true,
+      );
+      expect(clearPin).toHaveBeenCalledOnce();
+    });
+
+    it('reports the secrets wipe as failed when the PIN could not be cleared', async () => {
+      const clearPin = () =>
+        of({
+          kind: 'rejected' as const,
+          diagnostic: { code: 'pin-clear-failed' },
+        });
+      await expect(withPresence(clearPin).wipeSecureStorage()).resolves.toBe(
+        false,
+      );
+    });
+
+    it('reports a PIN clear that errors or completes without an answer as failed', async () => {
+      await expect(
+        withPresence(() =>
+          throwError(() => new Error('bridge gone')),
+        ).wipeSecureStorage(),
+      ).resolves.toBe(false);
+      TestBed.resetTestingModule();
+      await expect(
+        withPresence(() => {
+          throw new Error('adapter threw');
+        }).wipeSecureStorage(),
+      ).resolves.toBe(false);
+      TestBed.resetTestingModule();
+      await expect(withPresence(() => EMPTY).wipeSecureStorage()).resolves.toBe(
+        false,
+      );
+    });
+
+    it('treats a host without a PIN as nothing to clear', async () => {
+      const clearPin = () =>
+        of({ kind: 'unavailable' as const, reason: 'not-supported' as const });
+      await expect(withPresence(clearPin).wipeSecureStorage()).resolves.toBe(
+        true,
+      );
+    });
+
+    it('still clears the PIN when the secret sweep fails', async () => {
+      const clearPin = vi.fn(() => of({ kind: 'completed' as const }));
+      await expect(
+        withPresence(
+          clearPin,
+          vi.fn(async () => {
+            throw new Error('keychain unavailable');
+          }),
+        ).wipeSecureStorage(),
+      ).resolves.toBe(false);
+      expect(clearPin).toHaveBeenCalledOnce();
     });
   });
 

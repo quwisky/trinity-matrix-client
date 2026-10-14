@@ -120,6 +120,10 @@ export interface TrinityDesktopBridge {
     userPresence?: {
       support: () => Promise<unknown>;
       verify: (reason: string) => Promise<unknown>;
+      /** The Trinity PIN: main validates (4–16 ASCII digits), hashes and keeps it. */
+      setPin: (pin: string) => Promise<unknown>;
+      verifyPin: (pin: string) => Promise<unknown>;
+      clearPin: () => Promise<unknown>;
     };
     /** App lock's desktop menu item, OS lock and sleep, and the show hold; optional. */
     lockIntegration?: {

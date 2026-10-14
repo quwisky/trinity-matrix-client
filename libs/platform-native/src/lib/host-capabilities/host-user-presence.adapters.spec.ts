@@ -28,6 +28,7 @@ import {
   CapacitorUserPresenceAdapter,
   ElectronUserPresenceAdapter,
   WebUserPresenceAdapter,
+  parsePinOutcome,
   parsePresenceOutcome,
   parseUserPresenceSupport,
   presenceOutcomeOfError,
@@ -203,6 +204,9 @@ describe('ElectronUserPresenceAdapter', () => {
     userPresence: {
       support: () => Promise<unknown>;
       verify: () => Promise<unknown>;
+      setPin?: (pin: string) => Promise<unknown>;
+      verifyPin?: (pin: string) => Promise<unknown>;
+      clearPin?: () => Promise<unknown>;
     },
   ): ElectronUserPresenceAdapter {
     (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
@@ -269,6 +273,139 @@ describe('ElectronUserPresenceAdapter', () => {
     );
     expect(outcome).toEqual({ kind: 'verified' });
     expect(JSON.stringify(outcome).includes('access_token')).toBe(false);
+  });
+
+  it('forwards PIN commands through the granted bridge and validates the answers', async () => {
+    const setPin = vi.fn(() => Promise.resolve({ kind: 'completed' }));
+    const verifyPin = vi.fn(() =>
+      Promise.resolve({ kind: 'failed', nextAttemptAt: 30_000 }),
+    );
+    const clearPin = vi.fn(() =>
+      Promise.resolve({ kind: 'rejected', diagnostic: { code: 'pin-clear' } }),
+    );
+    const presence = adapter(true, {
+      support: vi.fn(),
+      verify: vi.fn(),
+      setPin,
+      verifyPin,
+      clearPin,
+    });
+    await expect(firstValueFrom(presence.setPin('482913'))).resolves.toEqual({
+      kind: 'completed',
+    });
+    await expect(firstValueFrom(presence.verifyPin('482913'))).resolves.toEqual(
+      { kind: 'failed', nextAttemptAt: 30_000 },
+    );
+    await expect(firstValueFrom(presence.clearPin())).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'pin-clear' },
+    });
+    expect(setPin).toHaveBeenCalledWith('482913');
+    expect(verifyPin).toHaveBeenCalledWith('482913');
+    expect(clearPin).toHaveBeenCalledOnce();
+  });
+
+  it('never calls the bridge for PIN commands when the operation is not granted', async () => {
+    const setPin = vi.fn();
+    const verifyPin = vi.fn();
+    const clearPin = vi.fn();
+    const presence = adapter(false, {
+      support: vi.fn(),
+      verify: vi.fn(),
+      setPin,
+      verifyPin,
+      clearPin,
+    });
+    await expect(firstValueFrom(presence.setPin('482913'))).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+    await expect(firstValueFrom(presence.verifyPin('482913'))).resolves.toEqual(
+      { kind: 'unavailable' },
+    );
+    await expect(firstValueFrom(presence.clearPin())).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+    expect(setPin).not.toHaveBeenCalled();
+    expect(verifyPin).not.toHaveBeenCalled();
+    expect(clearPin).not.toHaveBeenCalled();
+  });
+
+  it('turns a failing or hostile PIN answer into a stable outcome', async () => {
+    const presence = adapter(true, {
+      support: vi.fn(),
+      verify: vi.fn(),
+      setPin: () => Promise.reject(new Error('pin 482913 detail')),
+      verifyPin: () => Promise.reject(new Error('pin 482913 detail')),
+      clearPin: () =>
+        Promise.resolve({
+          kind: 'rejected',
+          diagnostic: { code: 'Bad Code!' },
+        }),
+    });
+    const outcomes = [
+      await firstValueFrom(presence.setPin('482913')),
+      await firstValueFrom(presence.verifyPin('482913')),
+      await firstValueFrom(presence.clearPin()),
+    ];
+    expect(outcomes).toEqual([
+      { kind: 'unavailable', reason: 'not-supported' },
+      { kind: 'unavailable' },
+      { kind: 'rejected', diagnostic: { code: 'electron-malformed-response' } },
+    ]);
+    expect(JSON.stringify(outcomes).includes('482913')).toBe(false);
+  });
+
+  it('reports a clear the shell could not confirm, so the full reset sees it', async () => {
+    const presence = adapter(true, {
+      support: vi.fn(),
+      verify: vi.fn(),
+      clearPin: () => Promise.reject(new Error('no handler')),
+    });
+    await expect(firstValueFrom(presence.clearPin())).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'pin-clear-failed' },
+    });
+  });
+});
+
+describe('parsePinOutcome', () => {
+  const malformed = {
+    kind: 'rejected',
+    diagnostic: { code: 'electron-malformed-response' },
+  };
+  it.each([
+    [{ kind: 'verified' }, { kind: 'verified' }],
+    [
+      { kind: 'failed', nextAttemptAt: null },
+      { kind: 'failed', nextAttemptAt: null },
+    ],
+    [
+      { kind: 'failed', nextAttemptAt: 5 },
+      { kind: 'failed', nextAttemptAt: 5 },
+    ],
+    [
+      { kind: 'delayed', nextAttemptAt: 5 },
+      { kind: 'delayed', nextAttemptAt: 5 },
+    ],
+    [{ kind: 'invalid' }, { kind: 'invalid' }],
+    [{ kind: 'unavailable' }, { kind: 'unavailable' }],
+    [
+      { kind: 'rejected', diagnostic: { code: 'sender-rejected' } },
+      { kind: 'rejected', diagnostic: { code: 'sender-rejected' } },
+    ],
+    [{ kind: 'rejected', diagnostic: { code: 'Bad Code!' } }, malformed],
+    [{ kind: 'verified', hash: 'abc' }, { kind: 'verified' }],
+    [{ kind: 'failed' }, malformed],
+    [{ kind: 'failed', nextAttemptAt: Number.NaN }, malformed],
+    [{ kind: 'delayed' }, malformed],
+    [{ kind: 'delayed', nextAttemptAt: null }, malformed],
+    [{ kind: 'delayed', nextAttemptAt: '5' }, malformed],
+    ['verified', malformed],
+    [null, malformed],
+  ] as const)('maps %j', (raw, expected) => {
+    expect(parsePinOutcome(raw)).toEqual(expected);
   });
 });
 
