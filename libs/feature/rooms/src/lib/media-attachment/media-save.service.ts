@@ -1,5 +1,13 @@
 import { Injectable, effect, inject, signal, untracked } from '@angular/core';
-import { Subscription, finalize, switchMap } from 'rxjs';
+import {
+  Observable,
+  Subscription,
+  finalize,
+  from,
+  map,
+  of,
+  switchMap,
+} from 'rxjs';
 import { TrnToastService } from '@trinity/components/overlay';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
@@ -7,6 +15,7 @@ import {
   type PresentedMediaReference,
 } from '@trinity/data-access/media';
 import { HostFileExportService } from '@trinity/runtime/host';
+import { SNIFF_BYTES, hasExtension, sniffImage } from './media-filename';
 
 /**
  * Saves a timeline attachment to the device: full-resolution bytes (decrypted in encrypted
@@ -65,9 +74,8 @@ export class MediaSaveService {
       .downloadMedia(media)
       .pipe(
         // The event's own filename, also in encrypted rooms where the ciphertext has none.
-        switchMap(({ blob }) =>
-          this.fileSave.save({ bytes: blob, filename: media.filename }),
-        ),
+        switchMap(({ blob }) => savedFile(blob, media)),
+        switchMap((file) => this.fileSave.save(file)),
         finalize(() => {
           this.running.delete(id);
           this.savingIds.update((ids) => {
@@ -88,4 +96,35 @@ export class MediaSaveService {
     // A synchronous completion has already run finalize; only track what is still live.
     if (!subscription.closed) this.running.set(id, subscription);
   }
+}
+
+/**
+ * The bytes and name to save. A name without an extension (an inline image's, which is its
+ * alt text) takes the one its bytes declare, and the bytes take that type: the event says
+ * nothing about an inline image's type, so a GIF would otherwise save as a nameless PNG.
+ */
+function savedFile(
+  blob: Blob,
+  media: PresentedMediaReference,
+): Observable<{ bytes: Blob; filename: string }> {
+  const filename = media.filename.trim();
+  if (hasExtension(filename)) {
+    return of({ bytes: blob, filename });
+  }
+  const base = filename || media.kind;
+  return from(blob.slice(0, SNIFF_BYTES).arrayBuffer()).pipe(
+    map((head) => {
+      const image = sniffImage(new Uint8Array(head));
+      if (!image) {
+        return { bytes: blob, filename: base };
+      }
+      return {
+        bytes:
+          blob.type === image.type
+            ? blob
+            : new Blob([blob], { type: image.type }),
+        filename: `${base}.${image.extension}`,
+      };
+    }),
+  );
 }

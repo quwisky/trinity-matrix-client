@@ -321,7 +321,9 @@ function payloadFor({ mxc, alt }: Declaration): MediaPayload {
     mxc,
     file: null,
     filename: alt,
-    mimeType: 'image/png',
+    // Unknown: an inline image declares no type. Its bytes say what it is when it is shown or
+    // saved; claiming PNG would flatten an animated GIF the full view downscales.
+    mimeType: 'application/octet-stream',
     thumbnailMxc: null,
     thumbnailFile: null,
   };

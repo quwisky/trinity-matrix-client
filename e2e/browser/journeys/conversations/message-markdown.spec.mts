@@ -477,6 +477,39 @@ test.describe('Inline images', () => {
     for (const route of held) await route.abort();
   });
 
+  // An inline image declares no file name or type: it saves under its alt text with the
+  // extension its bytes declare, and the viewer hides the app behind it (#1338).
+  test('saves an inline image under its alt text with the extension its bytes declare', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'inline-image-save');
+    const mxc = await uploadPng(request, hs, room, 300, 200, 'upload.png');
+    await sendMessage(request, hs, room, {
+      body: 'an inline image to save',
+      html: `<p>save me: <img src="${mxc}" width="300" height="200" alt="A saved picture"></p>`,
+    });
+    await signInAndOpen(page, room);
+
+    const image = page.locator('.scroll img.mx-image').first();
+    await expect(image).toHaveAttribute('src', /^blob:/, { timeout: 30_000 });
+    await image.click();
+    const dialog = page.getByRole('dialog', { name: 'A saved picture' });
+    await expect(dialog).toBeVisible({ timeout: 20_000 });
+    // The media matte: opaque black, whatever the theme.
+    await expect(dialog.locator('trn-lightbox')).toHaveCSS(
+      'background-color',
+      'oklch(0 0 0)',
+    );
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      dialog.getByTestId('lightbox-download').click(),
+    ]);
+    expect(download.suggestedFilename()).toBe('A saved picture.png');
+  });
+
   // A concealed spoiler holding an image is a short bar: the image takes no space (which would
   // also give away its size) and is not fetched until the spoiler is revealed.
   test('keeps an image in a concealed spoiler out of the layout until revealed', async ({
