@@ -305,6 +305,41 @@ describe('SenderColoursDirective', () => {
     );
   });
 
+  it('drops a text colour that a table header inside would show on its rail', () => {
+    const { host } = render(
+      '<font color="#8f8f8f"><table><tbody><tr><th>h</th></tr></tbody></table></font>' +
+        '<font color="#8f8f8f">p</font>',
+    );
+    const [holder, plain] = host.querySelectorAll<HTMLElement>('.mx-fg-8f8f8f');
+
+    // The header inherits the colour: 3.2:1 on the pane, but 2.9:1 on the rail.
+    expect(holder.querySelector('th')).not.toBeNull();
+    expect(holder.style.color).toBe('');
+    expectColour(plain.style.color, '#8f8f8f');
+  });
+
+  it('checks a background against a link nested deep inside it', () => {
+    const { element } = render(
+      '<span data-mx-color="#ffffff" data-mx-bg-color="#1a237e">' +
+        '<em><strong><a href="https://example.org/x">x</a></strong></em></span>',
+    );
+    const span = element('.mx-bg-1a237e');
+
+    expect(span.style.backgroundColor).toBe('');
+    expect(span.style.color).toBe('');
+  });
+
+  it('checks a background inside a link against the link, not a coloured ancestor', () => {
+    const { element } = render(
+      '<span data-mx-color="#000000"><a href="https://example.org/x">' +
+        '<span data-mx-bg-color="#909090">x</span></a></span>',
+    );
+
+    expectColour(element('.mx-fg-000000').style.color, '#000000');
+    // Black would read on #909090 (6.9:1), but the link's blue shows there (2.1:1).
+    expect(element('.mx-bg-909090').style.backgroundColor).toBe('');
+  });
+
   describe('a surface only the browser can resolve', () => {
     function stubCanvas(pixel: readonly number[]): void {
       const context = {

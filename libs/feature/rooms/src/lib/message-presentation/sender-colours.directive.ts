@@ -42,8 +42,11 @@ const UNCOLOURED = 'pre, code, a.mention';
 /** A link sets its own text colour (`--trinity-link`); a mention is a pill and never coloured. */
 const LINK = 'a:not(.mention)';
 
+/** A table header draws its own background (`--trinity-rail`) under inherited text. */
+const HEADER = 'th';
+
 /** Elements that change the context below them: a link's text, a table header's background. */
-const BOUNDARY = `${LINK}, th`;
+const BOUNDARY = `${LINK}, ${HEADER}`;
 
 /** Surface and text colours are a handful of theme values; resolve each one once. */
 const resolved = new Map<string, Rgb | null>();
@@ -114,14 +117,16 @@ export function readMessageTheme(host: HTMLElement): MessageTheme | null {
 /**
  * Paint the body's sender colours, parents first, keeping each that stays readable. Resets every
  * token element first, so a theme change re-decides from scratch. A kept background that holds a
- * link must suit the link colour too. Linear in the size of the body: each ancestor walk is
- * bounded by the 100-level nesting cap, and the walk up from links stops at a marked ancestor.
+ * link must suit the link colour too, and a kept text colour that holds a table header must read
+ * on its rail. Linear in the size of the body: each ancestor walk is bounded by the 100-level
+ * nesting cap, and the walk up from links and headers stops at a marked ancestor.
  */
 export function applySenderColours(
   host: HTMLElement,
   theme: MessageTheme | null,
 ): void {
-  const aroundLinks = theme ? linkAncestors(host) : new Set<Element>();
+  const aroundLinks = theme ? ancestorsOf(host, LINK) : new Set<Element>();
+  const aroundHeaders = theme ? ancestorsOf(host, HEADER) : new Set<Element>();
   const effective = new Map<Element, Context>();
   for (const element of host.querySelectorAll<HTMLElement>(TOKEN_SELECTOR)) {
     element.style.removeProperty('color');
@@ -137,8 +142,15 @@ export function applySenderColours(
       continue;
     }
     const context = contextOf(element, host, theme, effective);
-    const fg = tokenColour(element, 'mx-fg-');
+    const requested = tokenColour(element, 'mx-fg-');
     const bg = tokenColour(element, 'mx-bg-');
+    // A table header inside inherits the text colour onto its own rail, so it must read there too.
+    const fg =
+      requested &&
+      aroundHeaders.has(element) &&
+      contrastRatio(requested, theme.rail) < MIN_SENDER_CONTRAST
+        ? null
+        : requested;
     let kept = decideColours({ fg, bg }, context.text, context.background);
     if (
       kept.bg &&
@@ -165,13 +177,16 @@ function isUncoloured(element: Element, host: HTMLElement): boolean {
   return owner !== null && host.contains(owner);
 }
 
-/** Every element in the body that holds a (non-mention) link. */
-function linkAncestors(host: HTMLElement): ReadonlySet<Element> {
+/** Every element in the body that holds an element matching `selector`. */
+function ancestorsOf(
+  host: HTMLElement,
+  selector: string,
+): ReadonlySet<Element> {
   const marked = new Set<Element>();
-  for (const link of host.querySelectorAll(LINK)) {
+  for (const match of host.querySelectorAll(selector)) {
     // A marked ancestor's own ancestors are marked already.
     for (
-      let ancestor = link.parentElement;
+      let ancestor = match.parentElement;
       ancestor && ancestor !== host && !marked.has(ancestor);
       ancestor = ancestor.parentElement
     ) {
@@ -207,10 +222,9 @@ function contextOf(
   }
   // Outermost first, so the innermost boundary has the last word.
   for (const boundary of boundaries.reverse()) {
-    context =
-      boundary.nodeName === 'TH'
-        ? { text: context.text, background: theme.rail }
-        : { text: theme.link, background: context.background };
+    context = boundary.matches(HEADER)
+      ? { text: context.text, background: theme.rail }
+      : { text: theme.link, background: context.background };
   }
   return context;
 }
