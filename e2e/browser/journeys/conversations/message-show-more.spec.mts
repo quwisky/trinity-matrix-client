@@ -415,25 +415,27 @@ test.describe('Show more on long messages', () => {
   }) => {
     const hs = session.hs as string;
     const room = await seedFormattedRoom(request, hs, 'show-more-maths');
-    // A 14-row column: one line of source, about 14 lines once KaTeX lays it out.
-    const tex = `\\begin{matrix}${Array.from({ length: 14 }, (_, i) => `${i + 1}`).join('\\\\')}\\end{matrix}`;
+    // Three 5-row columns: one line of source each, about five lines each once KaTeX lays them
+    // out. Each stays inside the 10em that maths may extend (a taller one shows its source).
+    const tex = `\\begin{matrix}${Array.from({ length: 5 }, (_, i) => `${i + 1}`).join('\\\\')}\\end{matrix}`;
+    const display = `<div data-mx-maths="${tex}"><code>${tex}</code></div>`;
     await sendMessage(request, hs, room, {
       body: 'a body that grows when its maths renders',
-      html: `<p>${htmlLines(16, 'formula')}</p><div data-mx-maths="${tex}"><code>${tex}</code></div>`,
+      html: `<p>${htmlLines(16, 'formula')}</p>${display}${display}${display}`,
     });
     const chunk = await holdRequests(page, MATHS_CHUNK);
     await signInAndOpen(page, room);
 
     const row = rowWith(page, 'formula line 1');
     // The sender's fallback shows until KaTeX loads.
-    await expect(row.locator('div.mx-maths > code')).toBeVisible({
+    await expect(row.locator('div.mx-maths > code').first()).toBeVisible({
       timeout: 20_000,
     });
     await expect.poll(chunk.count, { timeout: 15_000 }).toBeGreaterThan(0);
     await expect(row.getByTestId('msg-show-more')).toHaveCount(0);
 
     await chunk.release();
-    await expect(row.locator('div.mx-maths .katex-display')).toBeAttached({
+    await expect(row.locator('div.mx-maths .katex-display')).toHaveCount(3, {
       timeout: 30_000,
     });
     await expect(row.getByTestId('msg-show-more')).toHaveAttribute(
