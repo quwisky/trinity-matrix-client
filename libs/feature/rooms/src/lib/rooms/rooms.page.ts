@@ -71,6 +71,7 @@ import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
+import { ExpandedBodiesStore } from './expanded-bodies.store';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
@@ -108,6 +109,7 @@ const PANEL_DRAWER_PX = 480;
     MessageActionsService,
     ShellShortcutsService,
     SessionActionsService,
+    ExpandedBodiesStore,
   ],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],
