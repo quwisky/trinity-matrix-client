@@ -11,6 +11,11 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import {
+  seedFormattedRoom,
+  sendMessage,
+  signInAndOpen,
+} from '../../support/formatted-message-journey.mts';
 
 // End-to-end for spoiler reveal: a message carrying a `data-mx-spoiler` span renders
 // concealed, and clicking it uncovers it. The spoiler is injected through the Matrix
@@ -107,5 +112,43 @@ test.describe('Spoiler reveal', () => {
 
     await expect(spoiler).toHaveClass(/is-revealed/);
     await expect(spoiler).not.toHaveCSS('color', 'rgba(0, 0, 0, 0)');
+  });
+});
+
+test.describe('Spoiler reasons', () => {
+  test.skip(!session.available, 'needs a homeserver');
+
+  test('shows the sender’s reason on the concealed bar and announces it', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'spoiler-reason');
+    await sendMessage(request, hs, room, {
+      body: 'the twist',
+      html: 'the twist: <span data-mx-spoiler="ending of the film">she lives</span>',
+    });
+    await signInAndOpen(page, room);
+
+    const spoiler = page.locator('.scroll .mx-spoiler').first();
+    await expect(spoiler).toHaveAttribute('label', 'ending of the film', {
+      timeout: 20_000,
+    });
+    await expect(spoiler).toHaveAttribute(
+      'aria-label',
+      'Spoiler: ending of the film, activate to reveal',
+    );
+    const before = () =>
+      spoiler.evaluate(
+        (element) => getComputedStyle(element, '::before').content,
+      );
+    expect(await before()).toContain('Spoiler: ');
+    await expect(spoiler).toHaveCSS('color', 'rgba(0, 0, 0, 0)');
+
+    await spoiler.click();
+
+    await expect(spoiler).toHaveClass(/is-revealed/);
+    await expect(spoiler).not.toHaveAttribute('aria-label');
+    expect(await before()).toBe('none');
   });
 });

@@ -15,6 +15,11 @@ import {
   openNamedRoom,
   sendComposerLines,
 } from '../../../support/message-composer.mts';
+import {
+  seedFormattedRoom,
+  sendMessage,
+  signInAndOpen,
+} from '../../support/formatted-message-journey.mts';
 
 // Covers the markdown render path end to end, through the REAL composer so the wire
 // format is exercised, not just the rendering:
@@ -261,5 +266,56 @@ test.describe('Message markdown', () => {
 
     expect(overlap?.isContinuation).toBe(true);
     expect(overlap?.overlaps).toBe(false);
+  });
+});
+
+// Sender colours (spec A1): computed colours in both themes, and the 3:1 guard dropping a
+// colour or background that stops being readable when the theme changes. Values chosen from
+// the shipped themes: #e03030 reads on every canvas; #202020 text and a #ffeb3b background
+// read only in the light theme.
+test.describe('Sender colours', () => {
+  test.skip(!session.available, 'needs a homeserver');
+
+  test('keeps readable sender colours and drops what loses contrast in the dark theme', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'colours');
+    await sendMessage(request, hs, room, {
+      body: 'red, near-black and highlighted',
+      html: '<span data-mx-color="#e03030">red text</span> <span data-mx-color="#202020">near-black text</span> <span data-mx-bg-color="#ffeb3b">highlighted</span>',
+    });
+    await signInAndOpen(page, room);
+    await page.evaluate(() =>
+      document.documentElement.classList.remove('dark'),
+    );
+
+    const red = page.locator('.scroll .mx-fg-e03030').first();
+    const nearBlack = page.locator('.scroll .mx-fg-202020').first();
+    const highlight = page.locator('.scroll .mx-bg-ffeb3b').first();
+    await expect(red).toHaveCSS('color', 'rgb(224, 48, 48)', {
+      timeout: 20_000,
+    });
+    await expect(nearBlack).toHaveCSS('color', 'rgb(32, 32, 32)');
+    await expect(highlight).toHaveCSS('background-color', 'rgb(255, 235, 59)', {
+      timeout: 15_000,
+    });
+
+    await page.evaluate(() => document.documentElement.classList.add('dark'));
+
+    await expect(red).toHaveCSS('color', 'rgb(224, 48, 48)', {
+      timeout: 15_000,
+    });
+    await expect(nearBlack).not.toHaveCSS('color', 'rgb(32, 32, 32)', {
+      timeout: 15_000,
+    });
+    await expect(highlight).not.toHaveCSS(
+      'background-color',
+      'rgb(255, 235, 59)',
+      {
+        timeout: 15_000,
+      },
+    );
   });
 });
