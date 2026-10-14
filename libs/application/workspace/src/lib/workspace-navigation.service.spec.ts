@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { convertToParamMap, type ParamMap } from '@angular/router';
 import {
@@ -13,7 +13,10 @@ import {
   RoomReadinessService,
   SpacesService,
 } from '@trinity/data-access/room-library';
-import { ConversationRuntime } from '@trinity/data-access/timeline';
+import {
+  CONVERSATION_ATTENTION,
+  ConversationRuntime,
+} from '@trinity/data-access/timeline';
 import {
   BehaviorSubject,
   Observable,
@@ -48,6 +51,8 @@ interface HarnessOptions {
   readonly routeEventId?: string;
   readonly rooms?: Readonly<Record<string, readonly string[]>>;
   readonly compact?: boolean;
+  /** Conversations' attention port (App lock); absent means only the Workspace decides. */
+  readonly attentive?: WritableSignal<boolean>;
 }
 
 function harness(options: HarnessOptions = {}) {
@@ -228,6 +233,14 @@ function harness(options: HarnessOptions = {}) {
       },
       { provide: InvitesService, useValue: { acceptInvite } },
       { provide: SpacesService, useValue: spaces },
+      ...(options.attentive
+        ? [
+            {
+              provide: CONVERSATION_ATTENTION,
+              useValue: { attentive: options.attentive.asReadonly() },
+            },
+          ]
+        : []),
     ],
   });
   const service = TestBed.inject(WorkspaceNavigationService);
@@ -412,6 +425,47 @@ describe('WorkspaceNavigationService', () => {
       queryParams: { account: BOB },
       replaceUrl: true,
     });
+  });
+
+  it('clears a restored room’s marked-unread flag as it opens', async () => {
+    const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM });
+
+    await vi.waitFor(() =>
+      expect(h.rooms.clearMarkedUnread).toHaveBeenCalledExactlyOnceWith(ROOM),
+    );
+  });
+
+  it('keeps a restored room’s marked-unread flag behind App lock until unlock', async () => {
+    const attentive = signal(false);
+    const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM, attentive });
+    await vi.waitFor(() =>
+      expect(h.conversations.focus).toHaveBeenCalledWith({
+        accountId: ALICE,
+        roomId: ROOM,
+      }),
+    );
+    TestBed.tick();
+    expect(h.rooms.clearMarkedUnread).not.toHaveBeenCalled();
+
+    attentive.set(true);
+    TestBed.tick();
+    expect(h.rooms.clearMarkedUnread).toHaveBeenCalledExactlyOnceWith(ROOM);
+  });
+
+  it('does not clear the flag of a room left before unlock', async () => {
+    const attentive = signal(false);
+    const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM, attentive });
+    await vi.waitFor(() => expect(h.conversations.focus).toHaveBeenCalled());
+
+    h.paramMap.next(convertToParamMap({}));
+    h.queryParamMap.next(convertToParamMap({ account: ALICE }));
+    await vi.waitFor(() =>
+      expect(h.service.view()).toMatchObject({ roomId: null }),
+    );
+    attentive.set(true);
+    TestBed.tick();
+
+    expect(h.rooms.clearMarkedUnread).not.toHaveBeenCalled();
   });
 
   it('seeds a cold start naming an unconfirmed room on the active Account', async () => {

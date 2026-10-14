@@ -20,6 +20,7 @@ import {
   BehaviorSubject,
   EMPTY,
   Subject,
+  type Subscription,
   filter,
   map,
   of,
@@ -204,11 +205,18 @@ describe('NotificationSessionService', () => {
     expect(clearRoom.mock.calls).toEqual([['@me:hs', '!a:hs']]);
   });
   describe('while App lock covers the app', () => {
-    function covered(initial: AppLockStatus = 'locked') {
+    function covered(
+      initial: AppLockStatus = 'locked',
+      beforeRun?: (
+        lifecycle: Subject<LifecycleEvent>,
+        appLock: ReturnType<typeof fakeAppLock>,
+      ) => void,
+    ) {
       const appLock = fakeAppLock(initial);
       const notifications = new Subject<NotificationRuntimeEvent>();
       const pushes = new Subject<NativePushLifetimeEvent>();
       const lifecycle = new Subject<LifecycleEvent>();
+      beforeRun?.(lifecycle, appLock);
       const focused = signal<FocusedConversation | null>(null);
       const navigate = vi.fn((_intent: unknown) =>
         of({ kind: 'ready' as const }),
@@ -358,6 +366,56 @@ describe('NotificationSessionService', () => {
       TestBed.tick();
       expect(clearRoom).toHaveBeenCalledTimes(2);
       expect(clearRoom).toHaveBeenLastCalledWith('@me:hs', '!r:hs');
+      lifetime.unsubscribe();
+    });
+
+    // The away timer locks on the same `active` event; which of the two hears it first is
+    // up to subscription order, so the session must not depend on it.
+    it.each(['before', 'after'] as const)(
+      'keeps the open room’s notifications when the return itself locks (away timer subscribed %s)',
+      async (order) => {
+        const awayTimer = (
+          lifecycle: Subject<LifecycleEvent>,
+          appLock: ReturnType<typeof fakeAppLock>,
+        ) =>
+          lifecycle.subscribe((event) => {
+            if (event.kind === 'active') appLock.set('locked');
+          });
+        let away: Subscription | undefined;
+        const { appLock, lifecycle, focused, clearRoom, lifetime } = covered(
+          'unlocked',
+          order === 'before'
+            ? (events, lock) => (away = awayTimer(events, lock))
+            : undefined,
+        );
+        if (order === 'after') away = awayTimer(lifecycle, appLock);
+        focused.set({ key: { accountId: '@me:hs', roomId: '!r:hs' } });
+        TestBed.tick();
+        expect(clearRoom).toHaveBeenCalledOnce();
+
+        lifecycle.next({ kind: 'active' });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        TestBed.tick();
+        expect(clearRoom).toHaveBeenCalledOnce();
+
+        appLock.set('unlocked');
+        TestBed.tick();
+        expect(clearRoom).toHaveBeenCalledTimes(2);
+        away?.unsubscribe();
+        lifetime.unsubscribe();
+      },
+    );
+
+    it('clears the open room on a return that does not lock, once the event is over', async () => {
+      const { lifecycle, focused, clearRoom, lifetime } = covered('unlocked');
+      focused.set({ key: { accountId: '@me:hs', roomId: '!r:hs' } });
+      TestBed.tick();
+      clearRoom.mockClear();
+
+      lifecycle.next({ kind: 'active' });
+      await vi.waitFor(() =>
+        expect(clearRoom).toHaveBeenCalledExactlyOnceWith('@me:hs', '!r:hs'),
+      );
       lifetime.unsubscribe();
     });
 

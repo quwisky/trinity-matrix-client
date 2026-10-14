@@ -1,11 +1,13 @@
 import {
   DestroyRef,
   Injectable,
+  Injector,
   computed,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
@@ -20,7 +22,10 @@ import {
   WorkspaceNavigationOutcome,
   type WorkspaceView,
 } from './workspace-navigation.models';
-import { ConversationRuntime } from '@trinity/data-access/timeline';
+import {
+  CONVERSATION_ATTENTION,
+  ConversationRuntime,
+} from '@trinity/data-access/timeline';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import {
   Observable,
@@ -32,6 +37,7 @@ import {
   map,
   of,
   switchMap,
+  take,
 } from 'rxjs';
 import { WorkspaceVisitHistoryService } from './workspace-visit-history.service';
 import {
@@ -66,10 +72,17 @@ export class WorkspaceNavigationService {
   private readonly spaces = inject(SpacesService);
   private readonly mru = inject(WorkspaceVisitHistoryService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
+  /** Whether anyone can see the app (false behind App lock); absent, someone always can. */
+  private readonly attention = inject(CONVERSATION_ATTENTION, {
+    optional: true,
+  });
   private readonly compact = mediaQuerySignal(BELOW_MD_QUERY, this.destroyRef);
   private readonly workspaceView = signal<WorkspaceView>(this.seedView());
   private readonly eventTargetState = signal<WorkspaceEventTarget | null>(null);
   private hierarchySubscription: Subscription | null = null;
+  /** A marked-unread clear waiting for someone to look (see {@link clearMarkedUnread}). */
+  private markedUnreadWait: Subscription | null = null;
   private projectionsActive = false;
   private hasProjected = false;
 
@@ -342,6 +355,7 @@ export class WorkspaceNavigationService {
   private releaseProjections(): void {
     if (!this.projectionsActive) return;
     this.projectionsActive = false;
+    this.markedUnreadWait?.unsubscribe();
     this.hierarchySubscription?.unsubscribe();
     this.hierarchySubscription = null;
     this.conversations.blur();
@@ -350,6 +364,7 @@ export class WorkspaceNavigationService {
   }
 
   private project(view: WorkspaceView, initial = false): void {
+    this.markedUnreadWait?.unsubscribe();
     if (!initial) this.media.releaseAll();
     this.hierarchySubscription?.unsubscribe();
     this.hierarchySubscription = this.spaces
@@ -364,15 +379,36 @@ export class WorkspaceNavigationService {
       accountId: view.accountId,
       roomId: view.roomId,
     });
-    this.rooms
-      .clearMarkedUnread(view.roomId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        // Opening a room should not toast if this best-effort cleanup fails; the flag
-        // remains visible and the next open retries, but the workflow still owns the
-        // command subscription and cancellation.
-        error: () => undefined,
-      });
+    this.clearMarkedUnread(view.roomId);
+  }
+
+  /**
+   * Opening a room clears its manual "marked unread" flag, once someone can see it: a room
+   * restored behind App lock (a locked cold start or Reload) keeps the flag until unlock,
+   * and one left before unlock keeps it.
+   */
+  private clearMarkedUnread(roomId: string): void {
+    const clear = (): void => {
+      this.rooms
+        .clearMarkedUnread(roomId)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          // Opening a room should not toast if this best-effort cleanup fails; the flag
+          // remains visible and the next open retries, but the workflow still owns the
+          // command subscription and cancellation.
+          error: () => undefined,
+        });
+    };
+    const attention = this.attention;
+    if (!attention || untracked(attention.attentive)) {
+      clear();
+      return;
+    }
+    this.markedUnreadWait = toObservable(attention.attentive, {
+      injector: this.injector,
+    })
+      .pipe(filter(Boolean), take(1), takeUntilDestroyed(this.destroyRef))
+      .subscribe(clear);
   }
 
   private seedView(): WorkspaceView {

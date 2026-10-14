@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import {
   KeyboardShortcutsService,
   chordFromEvent,
@@ -57,6 +58,7 @@ export class ShortcutsSectionComponent {
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
+  private readonly appLock = inject(AppLockService);
   private readonly destroyRef = inject(DestroyRef);
 
   /** The shortcut currently in capture (edit) mode, or null. */
@@ -127,7 +129,9 @@ export class ShortcutsSectionComponent {
   /** Capture the next chord while a row is in edit mode and apply it. */
   onCapture(event: Event): void {
     const id = this.capturingId();
-    if (!id) {
+    // Locked: keys typed at the lock screen never change a binding behind the cover. The
+    // row keeps waiting for a chord once the person unlocks.
+    if (!id || this.appLock.locked()) {
       return;
     }
     const e = event as KeyboardEvent;

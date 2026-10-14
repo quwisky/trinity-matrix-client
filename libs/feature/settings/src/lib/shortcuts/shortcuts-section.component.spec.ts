@@ -1,4 +1,6 @@
+import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
@@ -53,11 +55,12 @@ describe('ShortcutsSectionComponent', () => {
     delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
   });
 
-  async function setup() {
+  async function setup(locked = signal(false)) {
     const rendered = await render(ShortcutsSectionComponent, {
       providers: [
         MockProvider(TrnAlertService, { confirm$: confirm }),
         MockProvider(TrnToastService, { show: toast }),
+        MockProvider(AppLockService, { locked: locked.asReadonly() }),
       ],
     });
     const svc = rendered.fixture.debugElement.injector.get(
@@ -111,6 +114,25 @@ describe('ShortcutsSectionComponent', () => {
       shift: false,
       key: 'p',
     });
+  });
+
+  it('records no chord while App lock is locked', async () => {
+    const locked = signal(false);
+    const { container, fixture, svc } = await setup(locked);
+    container
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="shortcut-edit-switcher.open"]',
+      )!
+      .click();
+    fixture.detectChanges();
+
+    locked.set(true); // the lock arrives while the row is capturing
+    pressWindow({ key: 'p', code: 'KeyP', ctrlKey: true });
+    expect(svc.binding('switcher.open')?.key).toBe('k');
+
+    locked.set(false);
+    pressWindow({ key: 'p', code: 'KeyP', ctrlKey: true });
+    expect(svc.binding('switcher.open')?.key).toBe('p');
   });
 
   it('rejects a modifier-less chord with a hint', async () => {

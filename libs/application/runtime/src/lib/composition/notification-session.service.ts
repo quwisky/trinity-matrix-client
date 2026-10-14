@@ -32,6 +32,7 @@ import {
   merge,
   mergeMap,
   switchMap,
+  timer,
 } from 'rxjs';
 import { CapabilityHealthService } from '../capability-health.service';
 import { appLockCovers } from './app-lock.providers';
@@ -126,22 +127,36 @@ export class NotificationSessionService {
    * When the app returns to the foreground, clear the delivered notifications of the room
    * still open: while it was hidden, pushes for that room were shown natively (Android
    * hands the background to push). Best effort, like {@link clearOpenedRooms}.
+   *
+   * A return to the lock screen keeps them; clearOpenedRooms clears them after unlock. The
+   * away timer may lock on this very event, and whether its listener runs before or after
+   * this one depends on subscription order (each subscriber has its own host listener). So
+   * while App lock is unlocked the decision waits until that event's dispatch is over
+   * (a macrotask: a microtask could still run between two DOM listeners).
    */
   private clearResumedRoom(): Observable<never> {
     return this.lifecycle.events.pipe(
-      // A return to the lock screen keeps them; clearOpenedRooms clears them after unlock.
-      filter(
-        (event) =>
-          event.kind === 'active' &&
-          !appLockCovers(untracked(this.appLock.status)),
-      ),
+      filter((event) => event.kind === 'active'),
       mergeMap(() => {
-        const key = untracked(() => this.conversations.focused()?.key);
-        return key ? this.handoff.clearRoom(key.accountId, key.roomId) : EMPTY;
+        const status = untracked(this.appLock.status);
+        if (status === 'off') return this.clearFocusedRoom();
+        if (status !== 'unlocked') return EMPTY;
+        return timer(0).pipe(
+          switchMap(() =>
+            appLockCovers(untracked(this.appLock.status))
+              ? EMPTY
+              : this.clearFocusedRoom(),
+          ),
+        );
       }),
       ignoreElements(),
       catchError(() => EMPTY),
     );
+  }
+
+  private clearFocusedRoom(): Observable<void> {
+    const key = untracked(() => this.conversations.focused()?.key);
+    return key ? this.handoff.clearRoom(key.accountId, key.roomId) : EMPTY;
   }
 
   private handlePush(event: NativePushLifetimeEvent): Observable<never> {
