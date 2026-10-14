@@ -14,6 +14,7 @@ import {
   type MediaViewerOutcome,
 } from '../media-attachment/media-viewer-launcher';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
+import { LOADING_PLACEHOLDER } from './inline-image-box';
 import { InlineMxcImagesDirective } from './inline-mxc-images.directive';
 
 @Component({
@@ -225,6 +226,29 @@ describe('InlineMxcImagesDirective', () => {
       );
       resolved.next('blob:pic');
       expect(image.src).toBe('blob:pic');
+    });
+
+    it('draws a transparent placeholder, never pinned, until the thumbnail loads', async () => {
+      const { host } = await render(
+        sanitizeMatrixHtml('<img src="mxc://hs/pic" alt="pic">'),
+      );
+      const image = host.querySelector('img')!;
+
+      expect(image.getAttribute('src')).toBe(LOADING_PLACEHOLDER);
+      expect(image.getAttribute('aria-label')).toBe('View image: pic');
+      // The placeholder's own load and error are not the thumbnail's.
+      image.dispatchEvent(new Event('load'));
+      image.dispatchEvent(new Event('error'));
+      expect(image.isConnected).toBe(true);
+      expect(image.classList.contains('mx-image--loading')).toBe(true);
+
+      FakeIntersectionObserver.enter(image);
+      resolved.next('blob:pic');
+      expect(image.getAttribute('src')).toBe('blob:pic');
+      expect(media.pin).toHaveBeenCalledExactlyOnceWith('blob:pic');
+
+      image.dispatchEvent(new Event('load'));
+      expect(image.classList.contains('mx-image--loading')).toBe(false);
     });
 
     it('shares one observer per scroll root', async () => {

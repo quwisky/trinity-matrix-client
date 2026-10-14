@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { conceal, reserveBox, senderSize, unconceal } from './inline-image-box';
+import {
+  LOADING_PLACEHOLDER,
+  conceal,
+  reserveBox,
+  senderSize,
+  unconceal,
+} from './inline-image-box';
 
 function image(attributes: Record<string, string>): HTMLImageElement {
   const element = document.createElement('img');
@@ -126,5 +132,11 @@ describe('conceal and unconceal', () => {
     unconceal(element);
     expect(element.hasAttribute('tabindex')).toBe(false);
     expect(element.hasAttribute('aria-hidden')).toBe(false);
+  });
+});
+
+describe('LOADING_PLACEHOLDER', () => {
+  it('is an inline image, never a URL that could be fetched', () => {
+    expect(LOADING_PLACEHOLDER.startsWith('data:image/gif;base64,')).toBe(true);
   });
 });

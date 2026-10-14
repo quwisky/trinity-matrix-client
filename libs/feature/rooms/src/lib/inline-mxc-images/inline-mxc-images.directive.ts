@@ -12,13 +12,18 @@ import { TrnToastService } from '@trinity/components/overlay';
 import { MediaPipeline, MediaService } from '@trinity/data-access/media';
 import type { MediaPayload } from '@trinity/util/matrix';
 import { latestGuard } from '@trinity/util/ui';
-import { Subscription, fromEvent, take } from 'rxjs';
+import { Subscription, filter, fromEvent, take } from 'rxjs';
 import {
   MediaViewerLauncher,
   type MediaViewerOutcome,
 } from '../media-attachment/media-viewer-launcher';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
-import { conceal, reserveBox, unconceal } from './inline-image-box';
+import {
+  LOADING_PLACEHOLDER,
+  conceal,
+  reserveBox,
+  unconceal,
+} from './inline-image-box';
 import { InlineImageVisibility } from './inline-image-visibility';
 
 const MAX_INLINE_EMOTES = 50;
@@ -199,6 +204,9 @@ export class InlineMxcImagesDirective implements OnDestroy {
       this.images.set(target, declaration);
       reserveBox(target);
       target.classList.add('mx-image--loading');
+      // Something decodable to draw until the thumbnail arrives: an image with no source draws
+      // the browser's broken-image icon in the loading box.
+      target.src = LOADING_PLACEHOLDER;
       const start = (): void => {
         this.subscriptions.add(
           this.visibility.whenNear(target, () =>
@@ -222,9 +230,11 @@ export class InlineMxcImagesDirective implements OnDestroy {
         next: (url) => {
           this.media.pin(url);
           this.pinned.push(url);
+          // Only the thumbnail's own events count, not the placeholder's.
+          const own = filter(() => target.getAttribute('src') === url);
           this.subscriptions.add(
             fromEvent(target, 'error')
-              .pipe(take(1))
+              .pipe(own, take(1))
               .subscribe(() => {
                 const at = this.pinned.indexOf(url);
                 if (at >= 0) {
@@ -237,7 +247,7 @@ export class InlineMxcImagesDirective implements OnDestroy {
           );
           this.subscriptions.add(
             fromEvent(target, 'load')
-              .pipe(take(1))
+              .pipe(own, take(1))
               .subscribe(() => target.classList.remove('mx-image--loading')),
           );
           target.src = url;
