@@ -10,8 +10,12 @@ publication authorization.
 
 The committed [`electron-builder.yml`](../../../electron/electron-builder.yml)
 packages Linux AppImage and deb artifacts, macOS dmg and zip artifacts, and a
-Windows NSIS executable. The release workflow builds those desktop artifacts
-with publishing disabled, then creates or updates a draft GitHub release.
+Windows NSIS executable. [`electron-builder.config.ts`](../../../electron/electron-builder.config.ts)
+selects it by release channel; a `-next` version merges
+[`electron-builder.next.yml`](../../../electron/electron-builder.next.yml) onto it to
+package Trinity Next. Always pass `--config electron-builder.config.ts` (the `package*`
+scripts do). The release workflow builds those desktop artifacts with publishing
+disabled, then creates or updates a draft GitHub release.
 
 Before changing packaging:
 

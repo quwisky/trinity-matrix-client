@@ -2,11 +2,16 @@ import { TestBed } from '@angular/core/testing';
 import { SwUpdate } from '@angular/service-worker';
 import {
   HOST_LIFECYCLE_OPERATION,
+  HostAuthenticationHandoffService,
   HostCapabilitiesService,
+  HostDeepLinksService,
   HostLifecycleService,
   unavailableHostManifest,
 } from '@trinity/runtime/host';
-import { desktopBridgeFixture } from '@trinity/testing';
+import {
+  desktopBridgeFixture,
+  type DesktopBridgeFixture,
+} from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -478,5 +483,172 @@ describe('file, lifecycle and update host operation contracts', () => {
       kind: 'completed',
     });
     expect(checkForUpdate).toHaveBeenCalledOnce();
+  });
+});
+
+describe('Electron app identity', () => {
+  const NEXT = {
+    channel: 'next',
+    deepLinkScheme: 'dev.trinityproject.trinity.next',
+    displayName: 'Trinity Next',
+  } as const;
+  const SSO = {
+    webUrl: 'trinity://app/sso-callback',
+    appUrl: 'dev.trinityproject.trinity://sso-callback',
+  };
+  const OIDC = {
+    webUrl: 'trinity://app/sso-callback',
+    appUrl: 'dev.trinityproject.trinity:/sso-callback',
+  };
+  let emit: (url: string) => void = () => undefined;
+
+  function configure(appIdentity: DesktopBridgeFixture['appIdentity']) {
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture({
+        appIdentity,
+        capabilities: {
+          deepLinks: {
+            subscribe: (callback) => {
+              emit = callback;
+              return () => undefined;
+            },
+          },
+        },
+      });
+    const value = unavailableHostManifest('not-implemented');
+    TestBed.configureTestingModule({
+      providers: [
+        hostOperationProviders(),
+        MockProvider(HostCapabilitiesService, {
+          manifest: () =>
+            of({
+              ...value,
+              operations: {
+                ...value.operations,
+                'deep-links': { kind: 'supported' as const },
+              },
+            }),
+        }),
+      ],
+    });
+  }
+
+  afterEach(() => {
+    delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+  });
+
+  it('sends sign-in callbacks to the scheme Trinity Next registered', () => {
+    configure(NEXT);
+    const handoff = TestBed.inject(HostAuthenticationHandoffService);
+    expect(handoff.callback(SSO)).toEqual({
+      url: 'dev.trinityproject.trinity.next://sso-callback',
+      applicationType: 'native',
+    });
+    expect(handoff.callback(OIDC).url).toBe(
+      'dev.trinityproject.trinity.next:/sso-callback',
+    );
+  });
+
+  it('refuses a sign-in callback that is not on the Trinity app scheme', () => {
+    configure(NEXT);
+    expect(() =>
+      TestBed.inject(HostAuthenticationHandoffService).callback({
+        webUrl: 'trinity://app/sso-callback',
+        appUrl: 'https://x/sso-callback',
+      }),
+    ).toThrow(/Trinity app scheme/);
+  });
+
+  it('keeps stable Trinity on its own scheme', () => {
+    configure({
+      channel: 'stable',
+      deepLinkScheme: 'dev.trinityproject.trinity',
+      displayName: 'Trinity',
+    });
+    expect(
+      TestBed.inject(HostAuthenticationHandoffService).callback(OIDC).url,
+    ).toBe('dev.trinityproject.trinity:/sso-callback');
+  });
+
+  it('refuses to guess a scheme or name when the shell reports no identity', () => {
+    configure(null);
+    const handoff = TestBed.inject(HostAuthenticationHandoffService);
+    expect(() => handoff.callback(SSO)).toThrow(/app identity/);
+    expect(() => handoff.deviceDisplayName()).toThrow(/app identity/);
+  });
+
+  it('names new devices after the desktop app', () => {
+    configure(NEXT);
+    expect(
+      TestBed.inject(HostAuthenticationHandoffService).deviceDisplayName(),
+    ).toBe('Trinity Next');
+  });
+
+  it('hands Trinity Next links to the renderer on the canonical scheme', () => {
+    configure(NEXT);
+    const urls: string[] = [];
+    const subscription = TestBed.inject(
+      HostDeepLinksService,
+    ).received.subscribe(({ url }) => urls.push(url));
+    emit('dev.trinityproject.trinity.next://matrix.to/#/!room:hs.example');
+    emit('dev.trinityproject.trinity.next:/sso-callback?code=abc&state=xyz');
+    emit('https://elsewhere.example/');
+    subscription.unsubscribe();
+    expect(urls).toEqual([
+      'dev.trinityproject.trinity://matrix.to/#/!room:hs.example',
+      'dev.trinityproject.trinity:/sso-callback?code=abc&state=xyz',
+      'https://elsewhere.example/',
+    ]);
+  });
+
+  it("drops stable Trinity's links on Trinity Next", () => {
+    // Main already forwards only this app's scheme (electron/src/deep-link.ts); this is
+    // defence in depth so a stable link can never reach Trinity Next's parsers.
+    configure(NEXT);
+    const urls: string[] = [];
+    const subscription = TestBed.inject(
+      HostDeepLinksService,
+    ).received.subscribe(({ url }) => urls.push(url));
+    emit('dev.trinityproject.trinity://matrix.to/#/!room:hs.example');
+    emit('dev.trinityproject.trinity:/sso-callback?code=abc&state=xyz');
+    emit('dev.trinityproject.trinity.next://matrix.to/#/!other:hs.example');
+    subscription.unsubscribe();
+    expect(urls).toEqual([
+      'dev.trinityproject.trinity://matrix.to/#/!other:hs.example',
+    ]);
+  });
+
+  it("passes stable Trinity's links through on stable Trinity", () => {
+    configure({
+      channel: 'stable',
+      deepLinkScheme: 'dev.trinityproject.trinity',
+      displayName: 'Trinity',
+    });
+    const urls: string[] = [];
+    const subscription = TestBed.inject(
+      HostDeepLinksService,
+    ).received.subscribe(({ url }) => urls.push(url));
+    emit('dev.trinityproject.trinity://matrix.to/#/!room:hs.example');
+    subscription.unsubscribe();
+    expect(urls).toEqual([
+      'dev.trinityproject.trinity://matrix.to/#/!room:hs.example',
+    ]);
+  });
+});
+
+describe('device display name off the desktop shell', () => {
+  afterEach(() => {
+    cap.native = true;
+  });
+
+  it.each([
+    ['web', false],
+    ['mobile', true],
+  ])('stays "Trinity" on %s', (_host, native) => {
+    cap.native = native;
+    TestBed.configureTestingModule({ providers: [hostOperationProviders()] });
+    expect(
+      TestBed.inject(HostAuthenticationHandoffService).deviceDisplayName(),
+    ).toBe('Trinity');
   });
 });

@@ -649,6 +649,13 @@ stays a draft. Inspect each available artifact and the failed platform, fix the 
 re-package the tag. The workflow does not update an auto-updater feed, upload to mobile
 stores, or check signing status for you.
 
+A `-next` tag packages **Trinity Next**: `electron/electron-builder.config.ts` merges
+`electron/electron-builder.next.yml` (app ID `dev.trinityproject.trinity.next`, product
+name, URL scheme, Linux package `trinity-next`, NEXT-badged icons) onto
+`electron-builder.yml`; a stable tag packages `electron-builder.yml` as written. Both lines
+keep the same file names, so the `publish` asset checks and the Homebrew asset name are
+unchanged. See [release channels](../../apps/docs-developers/src/content/docs/platforms/electron.md#release-channels).
+
 > [!WARNING]
 > Merging a release PR now publishes the release without a further confirmation. Confirm
 > authorization, the release notes and signing status before merging it.
@@ -657,11 +664,13 @@ stores, or check signing status for you.
 
 Only the `sign-mac` job reads the signing secrets, and only it uses the GitHub `release`
 environment. It installs `electron/`'s own lockfile with `--ignore-scripts` and runs
-electron-builder, with its `afterPack` hook, on the shell the `desktop-shell` job built. It
-downloads that artifact outside the checkout and copies only `dist` and `www` into `electron/`,
-failing if the artifact holds anything else or a symbolic link. No workspace install, Nx or
-renderer build runs next to the certificate. electron-builder signs and notarizes only while it
-packs, never a `--prepackaged` app, which is why the packing moved into this job.
+electron-builder with its config (`electron-builder.config.ts`, which reads the YAML files
+and `src/release-channel.ts` from the checkout) and its `afterPack` hook on the shell the
+`desktop-shell` job built. It downloads that artifact outside the checkout and copies only
+`dist` and `www` into `electron/`, failing if the artifact holds anything else or a symbolic
+link. No workspace install, Nx or renderer build runs next to the certificate.
+electron-builder signs and notarizes only while it packs, never a `--prepackaged` app, which
+is why the packing moved into this job.
 `scripts/release-workflow.spec.mjs` keeps every signing secret name out of all other jobs.
 Store the signing secrets in the `release` environment rather than as repository secrets, so
 no other job can read them.
@@ -705,8 +714,12 @@ releases and `trinity@next` for `-next` prereleases. The stable cask follows onl
 repository's latest release: a patch on an older line (for example `v0.1.3` after
 `v0.2.0`) ends with a notice and leaves `trinity` untouched. Users install with
 `brew install --cask quwisky/trinity/trinity` (or `…/trinity@next`). The casks are
-Apple Silicon only and require macOS 13; each conflicts with the other because both
-install `Trinity.app`.
+Apple Silicon only and require macOS 13. `trinity` installs `Trinity.app` and
+`trinity@next` installs `Trinity Next.app`, so both can be installed at once. Each cask's
+`zap` removes only its own app's data folder, caches, logs, preferences and saved state.
+The job verifies the app its cask installs. For a `trinity@next` user whose installed
+version predates Trinity Next, `brew upgrade` replaces the old prerelease `Trinity.app`
+with `Trinity Next.app`; a prerelease installed by hand stays as "Trinity".
 
 The job refuses any app that is not signed with a Developer ID, notarized, and
 stapled (`codesign`, `spctl`, `stapler` in the step "App is signed, notarized and
@@ -744,6 +757,49 @@ commit predates `homebrew.yml` never triggers it; dispatch it from `main` instea
 | Missing `-arm64-mac.zip` asset                             | The macOS package failed. `release.yml` refuses to change a published release, so either cut a new version, or set the release back to draft (`gh release edit <tag> --draft=true`) and dispatch `release.yml` with the tag; the `publish` job republishes it once complete, which runs `homebrew.yml`. |
 | Signing gate fails                                         | The app is unsigned or not notarized. Set all macOS signing secrets, and release a new version; it publishes itself.                                                                                                                                                                                    |
 | `brew style` / `brew audit` fails                          | Fix `scripts/homebrew-cask.mjs` and its test, merge, then dispatch `homebrew.yml` with the tag.                                                                                                                                                                                                         |
+
+### Trinity Next transition (once, after it merges)
+
+The stable cask in the tap still says `conflicts_with cask: "trinity@next"` until it is
+re-rendered, and `homebrew.yml` re-renders it only for a stable release or a dispatch.
+After the change that made Trinity Next its own app merges, the owner:
+
+1. Dispatches the "Homebrew" workflow from `main` with the current stable tag, so the
+   stable cask drops the conflict and gains the new `zap` list:
+
+   ```bash
+   gh workflow run homebrew.yml --ref main -f tag=v0.4.0
+   ```
+
+   Until then `brew install --cask quwisky/trinity/trinity` fails while `trinity@next` is
+   installed. Even afterwards, a user who still has the old `trinity@next` (the old
+   `Trinity.app`, at the same path as stable's) cannot install `trinity` until they
+   upgrade `trinity@next`. That cask keeps its old `conflicts_with cask: "trinity"` until
+   the first Trinity Next prerelease publishes and re-renders it.
+
+   A `v0.4.x` patch release undoes this: `homebrew.yml` runs on the published release
+   from the tagged commit, and `release/0.4.x` still renders the stable cask with
+   `conflicts_with cask: "trinity@next"`. After any `v0.4.x` patch publishes, dispatch
+   the workflow from `main` again with that tag:
+
+   ```bash
+   gh workflow run homebrew.yml --ref main -f tag=<that tag>
+   ```
+
+2. Adds the release note by hand to the release-please PR of the first `-next` release
+   that contains the change. Edit its body last, immediately before merging it:
+   release-please regenerates the body on every push to `main`, and merging publishes the
+   release. The note:
+
+   > The desktop prerelease is now its own app, Trinity Next, with its own icon, data
+   > folder and sign-in, so it installs alongside Trinity and both can run at once.
+   > Trinity Next starts empty: sign in again, as a new device. A prerelease installed by
+   > hand before this one stays installed as "Trinity"; remove it if you do not use stable
+   > Trinity. Homebrew replaces it on upgrade.
+
+Skip step 1 if a stable release from a branch that contains the change (`release/0.5.x`
+or later) has already published the stable cask. A `v0.4.x` patch never counts: its
+cask still conflicts, so it always needs the re-dispatch above.
 
 ## Recover a release run
 
@@ -811,6 +867,9 @@ The executable contracts are [`ci.yml`](../../.github/workflows/ci.yml),
 [`release-stable.yml`](../../.github/workflows/release-stable.yml),
 [`renovate.yml`](../../.github/workflows/renovate.yml),
 [`codeql.yml`](../../.github/workflows/codeql.yml),
-and [`electron-builder.yml`](../../electron/electron-builder.yml), which notarizes signed macOS
-builds with electron-builder's built-in notarization. Keep this guide aligned
+[`electron-builder.yml`](../../electron/electron-builder.yml), which notarizes signed macOS
+builds with electron-builder's built-in notarization, and
+[`electron-builder.config.ts`](../../electron/electron-builder.config.ts) with
+[`electron-builder.next.yml`](../../electron/electron-builder.next.yml), which choose each
+release line's app identity. Keep this guide aligned
 with those files when a trigger, job, artifact, or credential name changes.

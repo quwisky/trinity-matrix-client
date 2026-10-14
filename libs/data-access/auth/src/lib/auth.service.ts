@@ -22,6 +22,7 @@ import {
   AccountRuntimeService,
   type AccountEstablishmentOutcome,
 } from '@trinity/data-access/accounts';
+import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import {
   SessionStorageService,
   sameHomeserver,
@@ -52,8 +53,6 @@ import {
 export type { LoginMode } from './account-establishment';
 export type { AccountEstablishmentOutcome } from '@trinity/data-access/accounts';
 
-const DEVICE_DISPLAY_NAME = 'Trinity';
-
 /** The active OIDC account's provider-hosted account-management surface. */
 export interface AccountManagement {
   /** The provider's account-management URL (validated https). */
@@ -81,6 +80,7 @@ export class AuthService {
   private readonly oidc = inject(OidcClientService);
   private readonly accounts = inject(AccountRuntimeService);
   private readonly newDeviceSignIn = inject(NEW_DEVICE_SIGN_IN);
+  private readonly handoff = inject(HostAuthenticationHandoffService);
 
   /** Which login flows the homeserver supports (e.g. 'm.login.password', 'm.login.sso'). */
   getSupportedFlows(baseUrl: string): Observable<string[]> {
@@ -126,7 +126,7 @@ export class AuthService {
           type: 'm.login.password',
           identifier: { type: 'm.id.user', user: this.localpart(user) },
           password,
-          initial_device_display_name: DEVICE_DISPLAY_NAME,
+          initial_device_display_name: this.handoff.deviceDisplayName(),
           ...(deviceId ? { device_id: deviceId } : {}),
         }),
       ),
@@ -159,7 +159,7 @@ export class AuthService {
         createClient({ baseUrl }).loginRequest({
           type: 'm.login.token',
           token: loginToken,
-          initial_device_display_name: DEVICE_DISPLAY_NAME,
+          initial_device_display_name: this.handoff.deviceDisplayName(),
           ...(deviceId ? { device_id: deviceId } : {}),
         }),
       ),

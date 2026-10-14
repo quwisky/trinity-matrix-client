@@ -75,6 +75,20 @@ describe('Homebrew tap workflow', () => {
     );
   });
 
+  it('verifies the app its cask installs', () => {
+    const step = job.steps[stepIndex('App is signed, notarized and stapled')];
+    expect(step.env.APP).toBe('${{ steps.release.outputs.app }}');
+    expect(step.run).not.toContain('Trinity.app');
+    for (const check of [
+      'codesign --verify --deep --strict --verbose=2 "unpacked/$APP"',
+      'spctl --assess --type execute --verbose "unpacked/$APP"',
+      'xcrun stapler validate "unpacked/$APP"',
+      '"unpacked/$APP/Contents/Info.plist"',
+    ]) {
+      expect(step.run).toContain(check);
+    }
+  });
+
   it('requires the app minimum macOS to match the cask before writing', () => {
     const run =
       job.steps[stepIndex('App is signed, notarized and stapled')].run;
@@ -102,6 +116,13 @@ describe('Homebrew tap workflow', () => {
     };
     expect(resolveTag('v0.2.0').text).toContain('cask=trinity\n');
     expect(resolveTag('v0.2.0-next.1').text).toContain('cask=trinity@next\n');
+    expect(resolveTag('v0.2.0').text).toContain('app=Trinity.app\n');
+    expect(resolveTag('v0.2.0-next.1').text).toContain(
+      'app=Trinity Next.app\n',
+    );
+    expect(resolveTag('v0.2.0-next.1').text).toContain(
+      'asset=Trinity-0.2.0-next.1-arm64-mac.zip\n',
+    );
     expect(resolveTag('v0.2.0').text).toContain(
       'asset=Trinity-0.2.0-arm64-mac.zip\n',
     );

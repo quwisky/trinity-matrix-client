@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CHANNEL_IDENTITY } from './release-channel';
 
 const {
   exposed,
@@ -511,4 +512,44 @@ describe('preload window.close()', () => {
     }
     expect(send).toHaveBeenCalledExactlyOnceWith('trinity:window:close');
   });
+});
+
+describe('preload app identity', () => {
+  const originalArgv = process.argv;
+
+  async function identityFor(argv: string[]): Promise<unknown> {
+    process.argv = [...originalArgv.slice(0, 1), ...argv];
+    try {
+      vi.resetModules();
+      await import('./preload');
+    } finally {
+      process.argv = originalArgv;
+    }
+    return (exposed.value as { appIdentity: unknown }).appIdentity;
+  }
+
+  it.each(['stable', 'next'] as const)(
+    'reports the %s identity main passed, matching the packaging table',
+    async (channel) => {
+      const identity = CHANNEL_IDENTITY[channel];
+      expect(
+        await identityFor([`--trinity-release-channel=${channel}`]),
+      ).toEqual({
+        channel,
+        deepLinkScheme: identity.deepLinkScheme,
+        displayName: identity.displayName,
+      });
+    },
+  );
+
+  it.each([
+    [[]],
+    [['--trinity-release-channel=']],
+    [['--trinity-release-channel=beta']],
+  ])(
+    'reports no identity for %j, so sign-in refuses to guess',
+    async (argv) => {
+      expect(await identityFor(argv)).toBeNull();
+    },
+  );
 });

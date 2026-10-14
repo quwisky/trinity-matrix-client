@@ -3,6 +3,11 @@ export interface DesktopBridgeFixture {
   readonly protocolVersion: 1;
   readonly isElectron: true;
   readonly platform: string;
+  readonly appIdentity?: {
+    readonly channel: 'stable' | 'next';
+    readonly deepLinkScheme: string;
+    readonly displayName: string;
+  } | null;
   readonly negotiate: (operations: readonly string[]) => Promise<unknown>;
   readonly capabilities: {
     readonly deepLinks: {
@@ -119,6 +124,11 @@ export function desktopBridgeFixture(
     protocolVersion: 1,
     isElectron: true,
     platform: 'linux',
+    appIdentity: {
+      channel: 'stable',
+      deepLinkScheme: 'dev.trinityproject.trinity',
+      displayName: 'Trinity',
+    },
     negotiate: async () => ({ kind: 'rejected', reason: 'host-rejected' }),
     capabilities: {
       deepLinks: { subscribe: () => () => undefined },

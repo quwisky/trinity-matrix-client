@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import {
   encodePng,
   ICON_COMPOSER,
+  NEXT_BADGE_BOX,
   OUTPUTS,
   renderIcons,
 } from './generate-icons.mjs';
@@ -118,6 +119,45 @@ describe('generated icons', () => {
     // 6 % in from the left edge, half-way down: inside a full-bleed tile, outside Apple's grid.
     expect(at('electron/build/icon.png', 61, 512)).toBe(255);
     expect(at('electron/build/icon-mac.png', 61, 512)).toBe(0);
+  });
+
+  it('badges Trinity Next icons inside the NEXT box and nowhere else', () => {
+    const badged = byRule('next-badge');
+    expect(badged.map((icon) => icon.path)).toEqual([
+      'electron/build/next/icon.png',
+      'electron/build/next/notificationIcon.png',
+    ]);
+    for (const icon of badged) {
+      const stable = find(icon.stableOf);
+      const left = Math.floor(NEXT_BADGE_BOX.x * icon.width);
+      const right = Math.ceil(
+        (NEXT_BADGE_BOX.x + NEXT_BADGE_BOX.width) * icon.width,
+      );
+      const top = Math.floor(NEXT_BADGE_BOX.y * icon.height);
+      const bottom = Math.ceil(
+        (NEXT_BADGE_BOX.y + NEXT_BADGE_BOX.height) * icon.height,
+      );
+      let changedOutside = 0;
+      let badgeFill = 0;
+      for (let i = 0; i < icon.rgba.length; i += 4) {
+        const x = (i / 4) % icon.width;
+        const y = Math.floor(i / 4 / icon.width);
+        const inside = x >= left && x < right && y >= top && y < bottom;
+        const same = [0, 1, 2, 3].every(
+          (c) => icon.rgba[i + c] === stable.rgba[i + c],
+        );
+        if (!inside && !same) changedOutside += 1;
+        if (
+          inside &&
+          icon.rgba[i] === 0xf0 &&
+          icon.rgba[i + 1] === 0xb2 &&
+          icon.rgba[i + 2] === 0x32
+        )
+          badgeFill += 1;
+      }
+      expect(changedOutside, icon.path).toBe(0);
+      expect(badgeFill, icon.path).toBeGreaterThan(0);
+    }
   });
 
   it('renders every declared output at its exact size', () => {
@@ -335,6 +375,29 @@ describe('Icon Composer source', () => {
     const mark = ICON_COMPOSER['electron/build/Trinity.icon/Assets/Mark.svg'];
     expect(mark).toContain('#ffffff');
     expect(mark).not.toContain('#5865f2');
+  });
+
+  it("puts Trinity Next's NEXT badge in front of the same mark", () => {
+    const stable = JSON.parse(
+      ICON_COMPOSER['electron/build/Trinity.icon/icon.json'],
+    );
+    const next = JSON.parse(
+      ICON_COMPOSER['electron/build/next/Trinity.icon/icon.json'],
+    );
+    // Icon Composer lists groups front to back: actool drew the badge over the mark.
+    expect(next.groups).toEqual([
+      { layers: [{ 'image-name': 'Badge.svg', name: 'Badge' }] },
+      ...stable.groups,
+    ]);
+    expect(next['fill-specializations']).toEqual(
+      stable['fill-specializations'],
+    );
+    expect(
+      ICON_COMPOSER['electron/build/next/Trinity.icon/Assets/Mark.svg'],
+    ).toBe(ICON_COMPOSER['electron/build/Trinity.icon/Assets/Mark.svg']);
+    expect(
+      ICON_COMPOSER['electron/build/next/Trinity.icon/Assets/Badge.svg'],
+    ).toContain('fill="#f0b232"');
   });
 });
 

@@ -2,9 +2,11 @@ import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  HOST_AUTHENTICATION_HANDOFF_OPERATION,
   HOST_FILE_EXPORT_OPERATION,
   HOST_LIFECYCLE_OPERATION,
   HOST_UPDATES_OPERATION,
+  HostAuthenticationHandoffService,
   HostFileExportService,
   HostLifecycleService,
   HostUpdatesService,
@@ -81,5 +83,48 @@ describe('remaining host operation services', () => {
     await expect(
       firstValueFrom(TestBed.inject(HostLifecycleService).events),
     ).resolves.toEqual({ kind: 'active' });
+  });
+});
+
+describe('HostAuthenticationHandoffService device display name', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const adapter = {
+    callback: () => ({
+      url: 'https://app/sso-callback',
+      applicationType: 'web' as const,
+    }),
+    open: () => of({ kind: 'completed' as const }),
+  };
+
+  it('names devices "Trinity" when no host adapter is wired', () => {
+    expect(
+      TestBed.inject(HostAuthenticationHandoffService).deviceDisplayName(),
+    ).toBe('Trinity');
+  });
+
+  it('names devices "Trinity" when the host has no name of its own', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: HOST_AUTHENTICATION_HANDOFF_OPERATION, useValue: adapter },
+      ],
+    });
+    expect(
+      TestBed.inject(HostAuthenticationHandoffService).deviceDisplayName(),
+    ).toBe('Trinity');
+  });
+
+  it("uses the host's own name", () => {
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: HOST_AUTHENTICATION_HANDOFF_OPERATION,
+          useValue: { ...adapter, deviceDisplayName: () => 'Trinity Next' },
+        },
+      ],
+    });
+    expect(
+      TestBed.inject(HostAuthenticationHandoffService).deviceDisplayName(),
+    ).toBe('Trinity Next');
   });
 });

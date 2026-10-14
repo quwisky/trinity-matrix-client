@@ -1,0 +1,74 @@
+# Trinity Next: the -next prerelease as its own app, installed beside stable Trinity.
+#
+# electron-builder.config.ts merges this file onto electron-builder.yml for an
+# X.Y.Z-next.N version: objects merge key by key; lists and values replace the base's
+# (so `protocols` and `extraResources` below are complete lists). Stable X.Y.Z versions
+# package electron-builder.yml as written. The appId, product name and URL scheme must
+# match CHANNEL_IDENTITY.next in src/release-channel.ts (src/electron-builder-config.spec.ts
+# checks it). Release file names stay the same: the version already says -next.
+appId: dev.trinityproject.trinity.next
+productName: Trinity Next
+
+# Electron names the user-data folder, the single-instance lock and the macOS keychain item
+# ("Trinity Next Safe Storage") after productName in the PACKAGED package.json, which the
+# productName option above does not rewrite.
+extraMetadata:
+  productName: Trinity Next
+
+protocols:
+  - name: Trinity Next SSO Callback
+    schemes:
+      - dev.trinityproject.trinity.next
+
+# The base list with the NEXT-badged 256 px icon for windows and notifications. The tray
+# icons stay shared: a badge is not legible at tray size.
+extraResources:
+  - from: build/trinityTray.png
+    to: build/trinityTray.png
+  - from: build/trinityTrayTemplate.png
+    to: build/trinityTrayTemplate.png
+  - from: build/unreadOverlay.png
+    to: build/unreadOverlay.png
+  - from: build/trinityTray@2x.png
+    to: build/trinityTray@2x.png
+  - from: build/trinityTrayLinux.png
+    to: build/trinityTrayLinux.png
+  - from: build/trinityTrayLinux@2x.png
+    to: build/trinityTrayLinux@2x.png
+  - from: build/trinityTrayTemplate@2x.png
+    to: build/trinityTrayTemplate@2x.png
+  - from: build/next/notificationIcon.png
+    to: build/notificationIcon.png
+
+# /opt/Trinity Next, trinity-next.desktop and StartupWMClass "Trinity Next" follow from
+# productName and executableName.
+linux:
+  executableName: trinity-next
+  icon: build/next/icon.png
+deb:
+  packageName: trinity-next
+  artifactName: trinity-desktop_${version}_${arch}.${ext}
+# No ${arch} here or in nsis below: CI packages Linux and Windows for x64 only, and
+# electron-builder's default names (which stable uses) omit the arch for x64 alone. A
+# pinned name omits it for every arch, so before adding an arm64 Linux or Windows build,
+# pin -${arch} names (for example Trinity-${version}-${arch}.${ext}) or the two builds
+# overwrite each other.
+appImage:
+  artifactName: Trinity-${version}.${ext}
+
+mac:
+  icon: build/next/Trinity.icon
+  extendInfo:
+    NSCameraUsageDescription: Trinity Next uses the camera to scan device-verification QR codes.
+  # The zip's name; the dmg has its own below.
+  artifactName: Trinity-${version}-${arch}-mac.${ext}
+dmg:
+  artifactName: Trinity-${version}-${arch}.${ext}
+
+# The NSIS GUID derives from appId, so Trinity Next gets its own install folder
+# (…\Programs\Trinity Next) and uninstall entry.
+win:
+  icon: build/next/icon.png
+nsis:
+  # No ${arch}: x64 only; see the note above appImage.
+  artifactName: Trinity Setup ${version}.${ext}

@@ -17,6 +17,7 @@ import {
   AccountRuntimeService,
   type AccountEstablishmentOutcome,
 } from '@trinity/data-access/accounts';
+import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import { AUTH_METADATA } from './auth-metadata.fixture';
 import { AuthService } from './auth.service';
 import { ReauthAccountMismatchError } from './account-establishment';
@@ -1047,6 +1048,40 @@ describe('AuthService', () => {
 
       expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
       expect(logout).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('device display name', () => {
+    const names = (loginRequest: ReturnType<typeof vi.fn>) =>
+      loginRequest.mock.calls.map(
+        ([body]) =>
+          (body as { initial_device_display_name?: string })
+            .initial_device_display_name,
+      );
+
+    it('names a new device "Trinity" when the host has no name of its own', async () => {
+      const loginRequest = vi.fn().mockRejectedValue(new Error('stop'));
+      createClientMock.mockReturnValue({ loginRequest } as never);
+      await expect(
+        firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
+      ).rejects.toThrow('stop');
+      expect(names(loginRequest)).toEqual(['Trinity']);
+    });
+
+    it('names password and SSO sign-ins after the host app', async () => {
+      vi.spyOn(
+        TestBed.inject(HostAuthenticationHandoffService),
+        'deviceDisplayName',
+      ).mockReturnValue('Trinity Next');
+      const loginRequest = vi.fn().mockRejectedValue(new Error('stop'));
+      createClientMock.mockReturnValue({ loginRequest } as never);
+      await expect(
+        firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
+      ).rejects.toThrow('stop');
+      await expect(
+        firstValueFrom(auth.completeSsoLogin('https://hs', 'login-token')),
+      ).rejects.toThrow('stop');
+      expect(names(loginRequest)).toEqual(['Trinity Next', 'Trinity Next']);
     });
   });
 });

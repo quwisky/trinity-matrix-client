@@ -15,6 +15,15 @@ import type {
  * grants it; a rejected or partial renegotiation revokes earlier grants. The preload never leaks
  * `ipcRenderer` or Node.
  */
+/** Which installed desktop app this is. Fixed for the process; readable without negotiation. */
+export interface TrinityDesktopAppIdentity {
+  readonly channel: 'stable' | 'next';
+  /** The OS URL scheme this app registered, e.g. `dev.trinityproject.trinity.next`. */
+  readonly deepLinkScheme: string;
+  /** The display name of a Matrix device this app signs in, e.g. `Trinity Next`. */
+  readonly displayName: string;
+}
+
 export interface TrinityDesktopBridge {
   readonly protocolVersion: 1;
   /** Always `true` when running inside the Electron shell. */
@@ -22,6 +31,13 @@ export interface TrinityDesktopBridge {
 
   /** Host `process.platform` ('darwin' | 'win32' | 'linux' | …). */
   readonly platform: string;
+
+  /**
+   * The installed app (Trinity or Trinity Next). Optional so the structural guard below
+   * still recognises the shell; consumers read it through {@link desktopAppIdentity},
+   * which refuses to guess rather than fall back to stable Trinity's scheme.
+   */
+  readonly appIdentity?: TrinityDesktopAppIdentity | null;
 
   /** Negotiate a versioned, explicit capability manifest with the validated main process. */
   readonly negotiate: (
@@ -170,6 +186,30 @@ export function getTrinityDesktopBridge(): TrinityDesktopBridge | undefined {
     typeof capabilities.titleBar.relaunch === 'function'
     ? (bridge as TrinityDesktopBridge)
     : undefined;
+}
+
+/**
+ * The desktop app's identity. Throws when the shell did not report a valid one: sign-in
+ * from Trinity Next must never fall back to stable Trinity's callback scheme.
+ */
+export function desktopAppIdentity(
+  bridge: TrinityDesktopBridge | undefined,
+): TrinityDesktopAppIdentity {
+  const identity: unknown = bridge?.appIdentity;
+  if (identity && typeof identity === 'object') {
+    const { channel, deepLinkScheme, displayName } =
+      identity as Partial<TrinityDesktopAppIdentity>;
+    if (
+      (channel === 'stable' || channel === 'next') &&
+      typeof deepLinkScheme === 'string' &&
+      deepLinkScheme.length > 0 &&
+      typeof displayName === 'string' &&
+      displayName.length > 0
+    ) {
+      return { channel, deepLinkScheme, displayName };
+    }
+  }
+  throw new Error('The desktop shell did not report its app identity.');
 }
 
 /**

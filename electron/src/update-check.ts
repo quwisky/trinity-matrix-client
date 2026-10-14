@@ -1,6 +1,7 @@
 import { app, dialog, net, Notification, shell } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { appIdentity } from './app-identity';
 
 /**
  * "A new version is available" notices for the desktop app.
@@ -148,7 +149,7 @@ function rememberNotified(version: string): void {
 function announce(release: AvailableRelease): void {
   if (!Notification.isSupported()) return;
   new Notification({
-    title: `Trinity ${release.version} is available`,
+    title: `${appIdentity().productName} ${release.version} is available`,
     body: 'Click to open the download page.',
   })
     .on('click', () => void shell.openExternal(release.url))
@@ -183,7 +184,7 @@ export async function checkForUpdates({
     if (manual) {
       void dialog.showMessageBox({
         type: 'info',
-        message: `Trinity ${app.getVersion()} is the latest version.`,
+        message: `${appIdentity().productName} ${app.getVersion()} is the latest version.`,
       });
     }
     return;

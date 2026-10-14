@@ -5,6 +5,7 @@ import {
 } from './notification-payload';
 import { appIconImage } from './icons';
 import { focusMainWindow, getMainWindow } from './window';
+import { appIdentity } from './app-identity';
 
 // Native notifications.
 //   renderer -> main (`ipcMain.handle`, request/response): SHOW_NOTIFICATION_CHANNEL asks us
@@ -69,7 +70,8 @@ function showOsNotification(
   try {
     const icon = resolveNotificationIcon();
     notification = new Notification({
-      title: payload.title || 'Trinity',
+      // A body-only notification carries the app's name ("Trinity" or "Trinity Next").
+      title: payload.title || appIdentity().productName,
       body: payload.body,
       silent: payload.silent,
       ...(icon ? { icon } : {}),
@@ -149,6 +151,7 @@ function showOsNotification(
  * stable code signature). OFF by default; never fires in normal use. Launch the app's
  * binary with the env set so you also see the console output, e.g.:
  *   TRINITY_NOTIFY_TEST=1 "/Applications/Trinity.app/Contents/MacOS/Trinity"
+ * (Trinity Next: "/Applications/Trinity Next.app/Contents/MacOS/Trinity Next").
  */
 export function maybeSendStartupTestNotification(): void {
   if (!process.env['TRINITY_NOTIFY_TEST']) {
@@ -161,7 +164,7 @@ export function maybeSendStartupTestNotification(): void {
     }
     const icon = resolveNotificationIcon();
     const notification = new Notification({
-      title: 'Trinity',
+      title: appIdentity().productName,
       body: 'Test notification — desktop notifications are working.',
       ...(icon ? { icon } : {}),
     });

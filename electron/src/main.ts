@@ -27,6 +27,7 @@ import {
   processDeepLinkQueue,
   registerDeepLinkProtocol,
 } from './deep-link';
+import { alignDevelopmentNameOrExit, appIdentity } from './app-identity';
 
 /**
  * Hand-rolled Electron main process for Trinity — thin bootstrap.
@@ -44,18 +45,21 @@ import {
  * `secure-store-ipc.ts`).
  */
 
-// Windows toast identity: OS notifications are attributed to this
-// AppUserModelID (must match the installer's appId). Set once at startup;
-// no-op on macOS/Linux.
-const APP_USER_MODEL_ID = 'dev.trinityproject.trinity';
+// An unpackaged run takes its channel's app name and user-data folder (e.g. "Trinity
+// Next") before anything reads that folder or takes the single-instance lock, which lives
+// in it. A `--user-data-dir=<path>` switch (the E2E launcher's isolated profile) keeps its
+// own. An unknown version shape, packaged or not, shows an error box and exits instead.
+const channelKnown = alignDevelopmentNameOrExit();
 
 // Custom schemes must be registered as privileged BEFORE the app is ready.
 registerPrivilegedScheme();
 
-if (!app.requestSingleInstanceLock()) {
+if (!channelKnown) {
+  // app.exit(1) is under way; register nothing that would read the unknown identity.
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  // Become the OS handler for `dev.trinityproject.trinity://` (the SSO callback). Only the
+  // Become the OS handler for this channel's URL scheme (the SSO callback). Only the
   // lock-holding instance registers; safe to call before `ready`.
   registerDeepLinkProtocol();
 
@@ -88,10 +92,11 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    // Windows toast identity: set before any window/notification so OS
-    // notifications are attributed to Trinity rather than "Electron". No-op
-    // on macOS/Linux.
-    app.setAppUserModelId(APP_USER_MODEL_ID);
+    // Windows toast identity: set before any window/notification so OS notifications are
+    // attributed to this channel's app ("Trinity" or "Trinity Next") rather than
+    // "Electron". It matches the AppUserModelID the installer gave the Start menu
+    // shortcut (the appId). No-op on macOS/Linux.
+    app.setAppUserModelId(appIdentity().appId);
 
     registerAppProtocol();
     // Inject permissive CORS headers on the renderer's outbound homeserver

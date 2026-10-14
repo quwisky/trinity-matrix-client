@@ -75,6 +75,36 @@ const splash = (w, h) => {
   );
 };
 
+/** "NEXT" as straight strokes on a 60×100 grid per letter, so rendering needs no font. */
+const NEXT_GLYPHS = [
+  'M0 100V0L60 100V0',
+  'M60 0H0V100H60M0 50H48',
+  'M0 0L60 100M60 0L0 100',
+  'M0 0H60M30 0V100',
+];
+const NEXT_GLYPH_ADVANCE = 92;
+const NEXT_BADGE_FILL = '#f0b232';
+/** Trinity Next's badge: a "NEXT" pill across the bottom, as fractions of the canvas. */
+export const NEXT_BADGE_BOX = { x: 0.25, y: 0.8, width: 0.5, height: 0.14 };
+const nextBadge = (s) => {
+  const x = s * NEXT_BADGE_BOX.x;
+  const y = s * NEXT_BADGE_BOX.y;
+  const w = s * NEXT_BADGE_BOX.width;
+  const h = s * NEXT_BADGE_BOX.height;
+  const k = (h * 0.46) / 100;
+  const textWidth = (3 * NEXT_GLYPH_ADVANCE + 60) * k;
+  const letters = NEXT_GLYPHS.map(
+    (d, i) =>
+      `<path transform="translate(${i * NEXT_GLYPH_ADVANCE} 0)" d="${d}"/>`,
+  ).join('');
+  return (
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="${NEXT_BADGE_FILL}"/>` +
+    `<g transform="translate(${(s - textWidth) / 2} ${y + (h - 100 * k) / 2}) scale(${k})" fill="none" stroke="${DARK_TILE}" stroke-width="20" stroke-linecap="square" stroke-linejoin="bevel">${letters}</g>`
+  );
+};
+/** The plated app icon with Trinity Next's badge. */
+const platedNext = (s) => doc(s, s, plate(0, 0, s) + nextBadge(s));
+
 const DPI = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 };
 const RES = 'android/app/src/main/res';
 const IOS = 'ios/App/App/Assets.xcassets';
@@ -113,6 +143,19 @@ export const OUTPUTS = [
   out('electron/build/trinityTrayLinux.png', 32, 32, () => plated(32)),
   out('electron/build/trinityTrayLinux@2x.png', 64, 64, () => plated(64)),
   out('electron/build/notificationIcon.png', 256, 256, () => plated(256)),
+  // Trinity Next (the -next prerelease app): the app icon and the 256 px window and
+  // notification icon with a NEXT badge. Tray icons stay shared: a badge is illegible there.
+  out('electron/build/next/icon.png', 1024, 1024, () => platedNext(1024), {
+    rule: 'next-badge',
+    stableOf: 'electron/build/icon.png',
+  }),
+  out(
+    'electron/build/next/notificationIcon.png',
+    256,
+    256,
+    () => platedNext(256),
+    { rule: 'next-badge', stableOf: 'electron/build/notificationIcon.png' },
+  ),
   // Web and PWA
   out(`${ICON_DIR}/icon-1024.png`, 1024, 1024, () => plated(1024)),
   out(`${ICON_DIR}/icon-192.png`, 192, 192, () => plated(192)),
@@ -275,12 +318,27 @@ const [PLATE_FROM, PLATE_TO] = [
   ...PLATED.matchAll(/stop-color="(#[0-9a-f]{6})"/g),
 ].map((match) => match[1]);
 
-/**
- * The macOS 26 Icon Composer source. macOS renders its Default, Dark, Clear and Tinted
- * styles from it, also while Trinity is not running; electron-builder compiles it.
- */
-export const ICON_COMPOSER = {
-  'electron/build/Trinity.icon/icon.json': `${JSON.stringify(
+/** The mark layer group, shared by Trinity and Trinity Next. */
+const MARK_GROUP = {
+  layers: [
+    {
+      // Same as the iOS dark appearance: DARK_MARK on DARK_TILE.
+      'fill-specializations': [
+        { value: { solid: srgb('#ffffff') } },
+        { appearance: 'dark', value: { solid: srgb(DARK_MARK) } },
+      ],
+      glass: true,
+      'image-name': 'Mark.svg',
+      name: 'Mark',
+    },
+  ],
+  shadow: { kind: 'neutral', opacity: 0.5 },
+  translucency: { enabled: true, value: 0.5 },
+};
+/** Trinity Next's badge layer. Listed first: Icon Composer orders groups front to back. */
+const BADGE_GROUP = { layers: [{ 'image-name': 'Badge.svg', name: 'Badge' }] };
+const iconComposerJson = (groups) =>
+  `${JSON.stringify(
     {
       'fill-specializations': [
         { value: { 'linear-gradient': [srgb(PLATE_FROM), srgb(PLATE_TO)] } },
@@ -289,30 +347,27 @@ export const ICON_COMPOSER = {
           value: { 'linear-gradient': [srgb(DARK_TILE), srgb(DARK_TILE)] },
         },
       ],
-      groups: [
-        {
-          layers: [
-            {
-              // Same as the iOS dark appearance: DARK_MARK on DARK_TILE.
-              'fill-specializations': [
-                { value: { solid: srgb('#ffffff') } },
-                { appearance: 'dark', value: { solid: srgb(DARK_MARK) } },
-              ],
-              glass: true,
-              'image-name': 'Mark.svg',
-              name: 'Mark',
-            },
-          ],
-          shadow: { kind: 'neutral', opacity: 0.5 },
-          translucency: { enabled: true, value: 0.5 },
-        },
-      ],
+      groups,
       'supported-platforms': { squares: ['macOS'] },
     },
     null,
     2,
-  )}\n`,
-  'electron/build/Trinity.icon/Assets/Mark.svg': `${markOnly(1024, '#ffffff', 0.66)}\n`,
+  )}\n`;
+const MARK_LAYER = `${markOnly(1024, '#ffffff', 0.66)}\n`;
+
+/**
+ * The macOS 26 Icon Composer sources. macOS renders its Default, Dark, Clear and Tinted
+ * styles from them, also while Trinity is not running; electron-builder compiles them.
+ */
+export const ICON_COMPOSER = {
+  'electron/build/Trinity.icon/icon.json': iconComposerJson([MARK_GROUP]),
+  'electron/build/Trinity.icon/Assets/Mark.svg': MARK_LAYER,
+  'electron/build/next/Trinity.icon/icon.json': iconComposerJson([
+    BADGE_GROUP,
+    MARK_GROUP,
+  ]),
+  'electron/build/next/Trinity.icon/Assets/Mark.svg': MARK_LAYER,
+  'electron/build/next/Trinity.icon/Assets/Badge.svg': `${doc(1024, 1024, nextBadge(1024))}\n`,
 };
 
 /** Render every output under `outRoot` and return them (rendered ones with pixels). */

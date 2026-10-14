@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { desktopBridgeFixture } from '@trinity/testing';
 import {
+  desktopAppIdentity,
   getTrinityDesktopBridge,
   isElectronRenderer,
   type TrinityDesktopBridge,
@@ -136,5 +137,44 @@ describe('isElectronRenderer', () => {
 
     expect(getTrinityDesktopBridge()).toBeUndefined();
     expect(isElectronRenderer()).toBe(false);
+  });
+});
+
+describe('desktopAppIdentity', () => {
+  it("reads Trinity Next's identity from the shell", () => {
+    const next = {
+      channel: 'next',
+      deepLinkScheme: 'dev.trinityproject.trinity.next',
+      displayName: 'Trinity Next',
+    } as const;
+    expect(
+      desktopAppIdentity(desktopBridgeFixture({ appIdentity: next })),
+    ).toEqual(next);
+  });
+
+  it.each([
+    ['no bridge', undefined],
+    ['a null identity', desktopBridgeFixture({ appIdentity: null })],
+    ['a missing identity', desktopBridgeFixture({ appIdentity: undefined })],
+    [
+      'an unknown channel',
+      desktopBridgeFixture({
+        appIdentity: {
+          channel: 'beta',
+          deepLinkScheme: 'x',
+          displayName: 'x',
+        } as never,
+      }),
+    ],
+    [
+      'an empty scheme',
+      desktopBridgeFixture({
+        appIdentity: { channel: 'next', deepLinkScheme: '', displayName: 'x' },
+      }),
+    ],
+  ])('refuses to guess with %s', (_case, bridge) => {
+    expect(() => desktopAppIdentity(bridge as never)).toThrow(
+      'The desktop shell did not report its app identity.',
+    );
   });
 });

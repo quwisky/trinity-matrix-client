@@ -5,10 +5,12 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 // `app.whenReady().then(cb)`. We capture that `cb` so the test can drive the
 // startup sequence deterministically instead of racing microtasks.
 // vi.hoisted so these exist when the hoisted vi.mock factories run.
-const { readyRef, requestSingleInstanceLock } = vi.hoisted(() => ({
-  readyRef: { cb: undefined as undefined | (() => void) },
-  requestSingleInstanceLock: vi.fn(() => true),
-}));
+const { readyRef, requestSingleInstanceLock, alignDevelopmentNameOrExit } =
+  vi.hoisted(() => ({
+    readyRef: { cb: undefined as undefined | (() => void) },
+    requestSingleInstanceLock: vi.fn(() => true),
+    alignDevelopmentNameOrExit: vi.fn(() => true),
+  }));
 
 vi.mock('electron', () => ({
   app: {
@@ -62,8 +64,17 @@ vi.mock('./deep-link', () => ({
   processDeepLinkQueue: vi.fn(),
   registerDeepLinkProtocol: vi.fn(),
 }));
+vi.mock('./app-identity', () => ({
+  alignDevelopmentNameOrExit,
+  appIdentity: vi.fn(() => ({
+    appId: 'dev.trinityproject.trinity.next',
+    productName: 'Trinity Next',
+    deepLinkScheme: 'dev.trinityproject.trinity.next',
+    displayName: 'Trinity Next',
+  })),
+}));
 
-import { session } from 'electron';
+import { app, session } from 'electron';
 import { registerAppProtocol, registerPrivilegedScheme } from './scheme';
 import { installMatrixCors } from './cors';
 import { createWindow } from './window';
@@ -97,6 +108,18 @@ describe('main bootstrap', () => {
     expect(registerPrivilegedScheme).toHaveBeenCalledTimes(1);
     expect(firstOrder(vi.mocked(registerPrivilegedScheme))).toBeLessThan(
       firstOrder(vi.mocked(registerAppProtocol)),
+    );
+  });
+
+  it('names an unpackaged run before taking the single-instance lock', () => {
+    expect(firstOrder(alignDevelopmentNameOrExit)).toBeLessThan(
+      firstOrder(requestSingleInstanceLock),
+    );
+  });
+
+  it("attributes Windows notifications to the channel's app ID", () => {
+    expect(app.setAppUserModelId).toHaveBeenCalledWith(
+      'dev.trinityproject.trinity.next',
     );
   });
 
@@ -140,5 +163,21 @@ describe('main bootstrap', () => {
     expect(firstOrder(vi.mocked(createWindow))).toBeLessThan(
       firstOrder(vi.mocked(startUpdateChecks)),
     );
+  });
+});
+
+describe('main bootstrap under an unknown release channel', () => {
+  beforeAll(async () => {
+    // alignDevelopmentNameOrExit has shown its error box and called app.exit(1).
+    alignDevelopmentNameOrExit.mockReturnValue(false);
+    requestSingleInstanceLock.mockClear();
+    readyRef.cb = undefined;
+    vi.resetModules();
+    await import('./main');
+  });
+
+  it('stops before taking the single-instance lock or waiting for ready', () => {
+    expect(requestSingleInstanceLock).not.toHaveBeenCalled();
+    expect(readyRef.cb).toBeUndefined();
   });
 });

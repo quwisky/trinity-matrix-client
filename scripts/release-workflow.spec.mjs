@@ -239,17 +239,19 @@ describe('macOS signing isolation', () => {
       expect(copied('www/index.html')).toBe(true);
     });
 
-    it.each(['electron-builder.yml', 'afterPack.cjs', 'node_modules/x.js'])(
-      'refuses an artifact that also carries %s',
-      (extra) => {
-        artifact('dist/main.js');
-        artifact('www/index.html');
-        artifact(extra);
-        expect(copyShell()).not.toBe(0);
-        expect(copied('dist')).toBe(false);
-        expect(copied(extra)).toBe(false);
-      },
-    );
+    it.each([
+      'electron-builder.yml',
+      'electron-builder.config.ts',
+      'afterPack.cjs',
+      'node_modules/x.js',
+    ])('refuses an artifact that also carries %s', (extra) => {
+      artifact('dist/main.js');
+      artifact('www/index.html');
+      artifact(extra);
+      expect(copyShell()).not.toBe(0);
+      expect(copied('dist')).toBe(false);
+      expect(copied(extra)).toBe(false);
+    });
 
     it('refuses an artifact without both directories', () => {
       artifact('dist/main.js');
@@ -271,7 +273,7 @@ describe('macOS signing isolation', () => {
     const builder = job.steps.find((s) => s.name === 'electron-builder --mac');
     expect(builder['working-directory']).toBe('electron');
     expect(builder.run).toBe(
-      'pnpm exec electron-builder --mac --publish never',
+      'pnpm exec electron-builder --config electron-builder.config.ts --mac --publish never',
     );
     expect(builder.env).toEqual({
       CSC_LINK: '${{ secrets.MAC_CSC_LINK }}',
@@ -290,6 +292,16 @@ describe('macOS signing isolation', () => {
       'electron/release/*.zip',
     ]);
     expect(workflow.jobs['draft-release'].needs).toContain('sign-mac');
+  });
+
+  it('packages Linux and Windows through the release-channel config', () => {
+    const step = workflow.jobs.package.steps.find(
+      (s) => s.name === 'electron-builder ${{ matrix.flag }}',
+    );
+    expect(step['working-directory']).toBe('electron');
+    expect(step.run).toBe(
+      'pnpm exec electron-builder --config electron-builder.config.ts ${{ matrix.flag }} --publish never',
+    );
   });
 });
 

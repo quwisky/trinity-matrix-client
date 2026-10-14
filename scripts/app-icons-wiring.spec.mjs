@@ -113,7 +113,7 @@ describe('desktop icon wiring', () => {
     const { jobs } = parse(read('.github/workflows/release.yml'));
     const packing = Object.values(jobs).filter((job) =>
       job.steps?.some((step) =>
-        /electron-builder --mac\b/.test(step.run ?? ''),
+        /\belectron-builder\b.*\s--mac\b/.test(step.run ?? ''),
       ),
     );
     expect(packing.length).toBeGreaterThan(0);

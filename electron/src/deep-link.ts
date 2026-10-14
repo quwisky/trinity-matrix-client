@@ -1,22 +1,19 @@
 import { app } from 'electron';
 import * as path from 'node:path';
+import { appIdentity } from './app-identity';
 import { focusMainWindow, getMainWindow } from './window';
 
-// OS-level deep-link scheme for the SSO callback. The IdP redirects the system
-// browser to `dev.trinityproject.trinity://sso-callback?loginToken=…&sso_state=…`; the OS
-// re-launches/forwards to us and we hand the raw URL to the renderer over the
-// `deep-link` IPC channel.
+// OS-level deep-link scheme for the SSO callback and app links: this release channel's
+// own (`dev.trinityproject.trinity` for Trinity, `dev.trinityproject.trinity.next` for
+// Trinity Next; see release-channel.ts). The IdP redirects the system browser to
+// `<scheme>://sso-callback?loginToken=…&sso_state=…`; the OS re-launches/forwards to us
+// and we hand the raw URL to the renderer over the `deep-link` IPC channel. Each app
+// registers and accepts only its own scheme, so a callback never reaches the other app.
 //
-// NOTE: this is DISTINCT from the in-session `trinity://app` scheme (see
-// scheme.ts). That one is an Electron-session-only privileged scheme that serves
-// `www/` and is NOT registered with the OS. `dev.trinityproject.trinity` MUST be a real OS
-// protocol client (app.setAsDefaultProtocolClient) for the browser redirect to
-// route back into the app.
-const DEEP_LINK_SCHEME = 'dev.trinityproject.trinity';
-// Scheme-only, so both callback shapes route: legacy SSO redirects to the `//` form,
-// while OIDC uses the RFC 8252 §7.1 form (`dev.trinityproject.trinity:/sso-callback`) which has
-// no authority. Matching on `://` would silently drop every OIDC callback.
-const DEEP_LINK_PREFIX = `${DEEP_LINK_SCHEME}:`;
+// NOTE: this is DISTINCT from the in-session `trinity://app` scheme (see scheme.ts). That
+// one is an Electron-session-only privileged scheme that serves `www/` and is NOT
+// registered with the OS. This scheme MUST be a real OS protocol client
+// (app.setAsDefaultProtocolClient) for the browser redirect to route back into the app.
 export const DEEP_LINK_CHANNEL = 'deep-link';
 
 // Deep-link URLs that arrived before the renderer was ready to receive them
@@ -24,9 +21,20 @@ export const DEEP_LINK_CHANNEL = 'deep-link';
 // renderer on `did-finish-load` / once the app is ready. See deliverDeepLink().
 const pendingDeepLinks: string[] = [];
 
-/** First `dev.trinityproject.trinity:…` entry in a process argv array, if any. */
+/**
+ * Scheme-only prefix, so both callback shapes route: legacy SSO redirects to the `//`
+ * form, while OIDC uses the RFC 8252 §7.1 form (`<scheme>:/sso-callback`) which has no
+ * authority; matching on `://` would silently drop every OIDC callback. The colon also
+ * keeps stable's `dev.trinityproject.trinity:` from matching Trinity Next's scheme.
+ */
+function deepLinkPrefix(): string {
+  return `${appIdentity().deepLinkScheme}:`;
+}
+
+/** First entry in a process argv array on this app's own scheme, if any. */
 export function deepLinkFromArgv(argv: readonly string[]): string | undefined {
-  return argv.find((arg) => arg.startsWith(DEEP_LINK_PREFIX));
+  const prefix = deepLinkPrefix();
+  return argv.find((arg) => arg.startsWith(prefix));
 }
 
 /**
@@ -54,12 +62,12 @@ export function processDeepLinkQueue(): void {
 
 /**
  * Validate, buffer, and attempt to deliver an inbound OS deep link. Anything
- * that isn't our `dev.trinityproject.trinity:` scheme is ignored. This is the single
+ * that isn't this app's own scheme is ignored. This is the single
  * funnel for all OS sources (macOS `open-url`, Windows/Linux argv on cold start
  * and via `second-instance`).
  */
 export function deliverDeepLink(url: string | undefined): void {
-  if (!url || !url.startsWith(DEEP_LINK_PREFIX)) {
+  if (!url || !url.startsWith(deepLinkPrefix())) {
     return;
   }
   pendingDeepLinks.push(url);
@@ -67,20 +75,21 @@ export function deliverDeepLink(url: string | undefined): void {
 }
 
 /**
- * Register Trinity as the OS handler for `dev.trinityproject.trinity://`. Per the Electron
- * docs, an unpackaged dev run (`process.defaultApp`) must register the Electron
- * binary plus the resolved path to our entry point so the OS re-launches us
- * with the correct arguments; a packaged build registers itself with a plain
- * call. Safe to call before `app.whenReady()`.
+ * Register this app as the OS handler for its own scheme. Per the Electron docs, an
+ * unpackaged dev run (`process.defaultApp`) must register the Electron binary plus the
+ * resolved path to our entry point so the OS re-launches us with the correct arguments;
+ * a packaged build registers itself with a plain call. Safe to call before
+ * `app.whenReady()`.
  */
 export function registerDeepLinkProtocol(): void {
+  const scheme = appIdentity().deepLinkScheme;
   if (process.defaultApp) {
     if (process.argv.length >= 2) {
-      app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME, process.execPath, [
+      app.setAsDefaultProtocolClient(scheme, process.execPath, [
         path.resolve(process.argv[1]),
       ]);
     }
   } else {
-    app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);
+    app.setAsDefaultProtocolClient(scheme);
   }
 }

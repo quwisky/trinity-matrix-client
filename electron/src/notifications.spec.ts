@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CHANNEL_IDENTITY, type ChannelIdentity } from './release-channel';
 
 const mocks = vi.hoisted(() => {
   type Listener = (...args: unknown[]) => void;
@@ -69,6 +70,7 @@ const mocks = vi.hoisted(() => {
     },
     focusMainWindow: vi.fn(),
     iconPaths: [] as string[],
+    identity: { current: undefined as ChannelIdentity | undefined },
   };
 });
 
@@ -88,10 +90,14 @@ vi.mock('./window', () => ({
   focusMainWindow: mocks.focusMainWindow,
   getMainWindow: () => mocks.mainWindow.current,
 }));
+vi.mock('./app-identity', () => ({
+  appIdentity: () => mocks.identity.current,
+}));
 
 import {
   NOTIFICATION_CLICK_CHANNEL,
   SHOW_NOTIFICATION_CHANNEL,
+  maybeSendStartupTestNotification,
   registerNotificationIpc,
 } from './notifications';
 
@@ -109,6 +115,7 @@ describe('notification-presentation IPC', () => {
     mocks.FakeNotification.mode = 'show';
     mocks.focusMainWindow.mockClear();
     mocks.mainWindow.current = { webContents: { send: vi.fn() } };
+    mocks.identity.current = CHANNEL_IDENTITY.stable;
     registerNotificationIpc();
   });
 
@@ -259,4 +266,34 @@ describe('notification-presentation IPC', () => {
       mocks.iconPaths = [];
     }
   });
+
+  it.each(['stable', 'next'] as const)(
+    "titles a body-only notification with the %s app's name",
+    async (channel) => {
+      mocks.identity.current = CHANNEL_IDENTITY[channel];
+      await present({ title: '', body: 'Hello', destination });
+      expect(mocks.FakeNotification.instances[0].options['title']).toBe(
+        CHANNEL_IDENTITY[channel].productName,
+      );
+    },
+  );
+
+  it.each(['stable', 'next'] as const)(
+    "titles the startup test notification with the %s app's name",
+    (channel) => {
+      mocks.identity.current = CHANNEL_IDENTITY[channel];
+      vi.useFakeTimers();
+      vi.stubEnv('TRINITY_NOTIFY_TEST', '1');
+      vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        maybeSendStartupTestNotification();
+        vi.runAllTimers();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      expect(mocks.FakeNotification.instances[0].options['title']).toBe(
+        CHANNEL_IDENTITY[channel].productName,
+      );
+    },
+  );
 });

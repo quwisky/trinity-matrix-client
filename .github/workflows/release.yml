@@ -281,9 +281,11 @@ jobs:
       - run: pnpm electron:build:release
 
       # Unsigned: Windows signing is not wired up (electron-builder.yml).
+      # electron-builder.config.ts packages a -next tag as Trinity Next and a stable tag
+      # from electron-builder.yml as written; the file names are the same on both lines.
       - name: electron-builder ${{ matrix.flag }}
         working-directory: electron
-        run: pnpm exec electron-builder ${{ matrix.flag }} --publish never
+        run: pnpm exec electron-builder --config electron-builder.config.ts ${{ matrix.flag }} --publish never
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -329,7 +331,8 @@ jobs:
 
   # The only job that can read the macOS signing secrets. It installs the desktop shell's
   # own lockfile with --ignore-scripts and runs nothing from the workspace except
-  # electron-builder and its afterPack hook (electron-builder.yml): no workspace install,
+  # electron-builder, its config (electron-builder.config.ts, which reads the two YAML files
+  # and src/release-channel.ts from this checkout) and its afterPack hook: no workspace install,
   # no Nx, no renderer build. electron-builder signs and notarizes only while it packs, never
   # a --prepackaged app, so it packs the shell from desktop-shell here.
   sign-mac:
@@ -360,8 +363,9 @@ jobs:
           node-version-file: .nvmrc
       # electron-builder from the shell's lockfile; no package's install script runs.
       - run: pnpm -C electron install --frozen-lockfile --ignore-scripts
-      # Outside the checkout, so the artifact can never land on electron-builder.yml,
-      # afterPack.cjs or node_modules, which the signing step loads.
+      # Outside the checkout, so the artifact can never land on the files the signing step
+      # loads: the builder config (electron-builder.config.ts, electron-builder.yml,
+      # electron-builder.next.yml, src/release-channel.ts), afterPack.cjs or node_modules.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: desktop-shell
@@ -403,7 +407,7 @@ jobs:
 
       - name: electron-builder --mac
         working-directory: electron
-        run: pnpm exec electron-builder --mac --publish never
+        run: pnpm exec electron-builder --config electron-builder.config.ts --mac --publish never
         env:
           # Signing is wired but optional: with no secrets set these resolve to empty and
           # the artifacts are simply unsigned. Auto-discovery is forced OFF in that case so
