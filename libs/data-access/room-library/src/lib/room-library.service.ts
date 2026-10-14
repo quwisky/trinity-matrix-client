@@ -13,6 +13,7 @@ import {
   type MatrixEvent,
   type RoomMember,
   type RoomState,
+  type SyncState,
 } from 'matrix-js-sdk';
 import {
   Observable,
@@ -253,7 +254,7 @@ export class RoomLibraryService {
    * Rooms an event changed since the last rebuild (#1292). A sync rebuilds only these and
    * keeps every other summary as it was; at 300 rooms, rebuilding every summary on every
    * sync was most of the room list's per-sync cost. Global changes (a joined or left room,
-   * `m.direct`, push rules, a new client) set {@link fullRebuild} instead.
+   * `m.direct`, a sync-state change, a new client) set {@link fullRebuild} instead.
    */
   private dirtyRooms = new Set<string>();
   private fullRebuild = true;
@@ -297,10 +298,19 @@ export class RoomLibraryService {
   /**
    * A sync landed: the next refresh compares every room's counts and activity time with its
    * summary. Only after a sync, because the counts change there, and every room event also
-   * schedules a refresh: walking every room on each one cost more than it saved.
+   * schedules a refresh: walking every room on each one cost more than it saved. A changed
+   * sync state (prepared, or caught up after a reconnect) can bring many rooms' changes at
+   * once, so it rebuilds them all.
    */
-  private readonly onSync = (): void => {
-    this.compareOnRefresh = true;
+  private readonly onSync = (
+    state?: SyncState,
+    prev?: SyncState | null,
+  ): void => {
+    if (state !== prev) {
+      this.fullRebuild = true;
+    } else {
+      this.compareOnRefresh = true;
+    }
     this.projection.schedule();
   };
 
@@ -509,9 +519,11 @@ export class RoomLibraryService {
     reset: () => {
       this.dirtyRooms.clear();
       this.fullRebuild = true;
+      this.compareOnRefresh = false;
       this._rooms.set([]);
       this._directRoomIds.set(new Set());
       this.dmPeers = new Set();
+      this.userByRoom = new Map();
       // The typing map is protected one layer earlier too: its flusher reads
       // `projection.client()` and returns when there is none, so a late flush cannot
       // repopulate from the outgoing client. Cancelling also skips that pointless

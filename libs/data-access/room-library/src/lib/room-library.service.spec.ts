@@ -525,6 +525,18 @@ describe('RoomLibraryService', () => {
       expect(summary(t.svc, '!b:hs')?.unreadCount).toBe(5);
     });
 
+    it('rebuilds every room when the sync state changes', async () => {
+      const t = setupTracked();
+      t.room('!b:hs').name = 'Renamed'; // nothing announces this
+
+      await t.emit(ClientEvent.Sync, 'SYNCING', 'SYNCING');
+      expect(summary(t.svc, '!b:hs')?.name).toBe('B');
+
+      // Caught up after a reconnect.
+      await t.emit(ClientEvent.Sync, 'SYNCING', 'RECONNECTING');
+      expect(summary(t.svc, '!b:hs')?.name).toBe('Renamed');
+    });
+
     it('drops a touched room that is no longer joined', async () => {
       const t = setupTracked();
       t.room('!a:hs').getMyMembership = () => 'leave';
