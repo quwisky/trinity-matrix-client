@@ -46,20 +46,23 @@ export function releaseChannelArgument(): string {
 }
 
 /**
- * Give an unpackaged run its channel's app name and user-data folder (e.g. "Trinity
- * Next"), so it keeps its data, single-instance lock and cached OIDC client where a
- * packaged build of that channel would, instead of in the folder named by
- * electron/package.json's productName ("Trinity"). Electron fixes the user-data path from
- * that name before main.js runs, so renaming the app alone does not move it. A
- * `--user-data-dir` switch (the E2E launcher's isolated profile) keeps its folder.
- * Packaged apps already carry both in their package.json. Call before anything reads the
- * user-data folder or takes the single-instance lock.
+ * Resolve this run's channel, so an unknown version shape stops the app at startup, and
+ * give an unpackaged run its channel's app name and user-data folder (e.g. "Trinity
+ * Next"). It then keeps its data, single-instance lock and cached OIDC client where a
+ * packaged build of that channel would, instead of in the folder Electron picked before
+ * main.js ran: the productName of electron/package.json ("Trinity") for `electron .`, or
+ * Electron's own name for `electron dist/main.js`. Renaming the app alone does not move
+ * that folder. A `--user-data-dir=<path>` switch (the E2E launcher's isolated profile)
+ * keeps its folder. Packaged apps already carry both in their package.json. Call before
+ * anything reads the user-data folder or takes the single-instance lock.
  */
 export function alignDevelopmentName(): void {
-  if (app.isPackaged) return;
   const { productName } = appIdentity();
+  if (app.isPackaged) return;
   app.setName(productName);
-  if (!app.commandLine.hasSwitch('user-data-dir')) {
+  // Chromium takes the profile only from `--user-data-dir=<path>`; a bare switch has an
+  // empty value and leaves the default folder in place, so it is moved like no switch.
+  if (app.commandLine.getSwitchValue('user-data-dir') === '') {
     app.setPath('userData', path.join(app.getPath('appData'), productName));
   }
 }

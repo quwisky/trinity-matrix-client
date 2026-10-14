@@ -47,8 +47,8 @@ import { alignDevelopmentName, appIdentity } from './app-identity';
 
 // An unpackaged run takes its channel's app name and user-data folder (e.g. "Trinity
 // Next") before anything reads that folder or takes the single-instance lock, which lives
-// in it. A `--user-data-dir` switch (the E2E launcher's isolated profile) keeps its own.
-// An unknown version shape throws here, so the app does not start.
+// in it. A `--user-data-dir=<path>` switch (the E2E launcher's isolated profile) keeps its
+// own. An unknown version shape throws here, packaged or not, so the app does not start.
 alignDevelopmentName();
 
 // Custom schemes must be registered as privileged BEFORE the app is ready.

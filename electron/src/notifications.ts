@@ -5,6 +5,7 @@ import {
 } from './notification-payload';
 import { appIconImage } from './icons';
 import { focusMainWindow, getMainWindow } from './window';
+import { appIdentity } from './app-identity';
 
 // Native notifications.
 //   renderer -> main (`ipcMain.handle`, request/response): SHOW_NOTIFICATION_CHANNEL asks us
@@ -69,7 +70,8 @@ function showOsNotification(
   try {
     const icon = resolveNotificationIcon();
     notification = new Notification({
-      title: payload.title || 'Trinity',
+      // A body-only notification carries the app's name ("Trinity" or "Trinity Next").
+      title: payload.title || appIdentity().productName,
       body: payload.body,
       silent: payload.silent,
       ...(icon ? { icon } : {}),
@@ -161,7 +163,7 @@ export function maybeSendStartupTestNotification(): void {
     }
     const icon = resolveNotificationIcon();
     const notification = new Notification({
-      title: 'Trinity',
+      title: appIdentity().productName,
       body: 'Test notification — desktop notifications are working.',
       ...(icon ? { icon } : {}),
     });

@@ -8,7 +8,7 @@ const electronApp = vi.hoisted(() => ({
   setName: vi.fn(),
   getPath: vi.fn((name: string) => `/home/dev/.config/${name}`),
   setPath: vi.fn(),
-  commandLine: { hasSwitch: vi.fn((_name: string) => false) },
+  commandLine: { getSwitchValue: vi.fn((_name: string) => '') },
 }));
 vi.mock('electron', () => ({ app: electronApp }));
 
@@ -26,7 +26,7 @@ describe('app identity', () => {
   beforeEach(() => {
     electronApp.setName.mockClear();
     electronApp.setPath.mockClear();
-    electronApp.commandLine.hasSwitch.mockReturnValue(false);
+    electronApp.commandLine.getSwitchValue.mockReturnValue('');
   });
 
   it('runs a packaged X.Y.Z-next.N build as Trinity Next', async () => {
@@ -49,6 +49,14 @@ describe('app identity', () => {
   it('refuses to start under a version outside both channels', async () => {
     const identity = await load('0.5.0-beta.1');
     expect(() => identity.appIdentity()).toThrow(/Unknown release channel/);
+  });
+
+  it('stops a packaged app with an unknown version at startup', async () => {
+    const identity = await load('0.5.0-beta.1');
+    expect(() => identity.alignDevelopmentName()).toThrow(
+      /Unknown release channel/,
+    );
+    expect(electronApp.setName).not.toHaveBeenCalled();
   });
 
   it("takes an unpackaged run's channel from electron/package.json, not Electron's own version", async () => {
@@ -81,14 +89,28 @@ describe('app identity', () => {
   });
 
   it('keeps the profile a --user-data-dir switch chose, as the E2E launcher passes', async () => {
-    electronApp.commandLine.hasSwitch.mockImplementation(
-      (name) => name === 'user-data-dir',
+    electronApp.commandLine.getSwitchValue.mockImplementation((name) =>
+      name === 'user-data-dir' ? '/tmp/trinity-e2e-abc' : '',
     );
     const identity = await load('44.6.0', false);
     identity.alignDevelopmentName();
     expect(electronApp.setPath).not.toHaveBeenCalled();
     expect(electronApp.setName).toHaveBeenCalledExactlyOnceWith(
       identity.appIdentity().productName,
+    );
+  });
+
+  it('still moves the user data when --user-data-dir has no value, which Chromium ignores', async () => {
+    // `--user-data-dir /x` (space, not `=`) is a valueless switch plus a stray argument.
+    electronApp.commandLine.getSwitchValue.mockReturnValue('');
+    const identity = await load('44.6.0', false);
+    identity.alignDevelopmentName();
+    expect(electronApp.commandLine.getSwitchValue).toHaveBeenCalledWith(
+      'user-data-dir',
+    );
+    expect(electronApp.setPath).toHaveBeenCalledExactlyOnceWith(
+      'userData',
+      join('/home/dev/.config/appData', identity.appIdentity().productName),
     );
   });
 

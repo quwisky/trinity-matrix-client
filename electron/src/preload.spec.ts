@@ -519,9 +519,12 @@ describe('preload app identity', () => {
 
   async function identityFor(argv: string[]): Promise<unknown> {
     process.argv = [...originalArgv.slice(0, 1), ...argv];
-    vi.resetModules();
-    await import('./preload');
-    process.argv = originalArgv;
+    try {
+      vi.resetModules();
+      await import('./preload');
+    } finally {
+      process.argv = originalArgv;
+    }
     return (exposed.value as { appIdentity: unknown }).appIdentity;
   }
 

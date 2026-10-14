@@ -59,6 +59,16 @@ describe('deepLinkFromArgv', () => {
     ).toBe('dev.trinityproject.trinity:/sso-callback?code=abc');
   });
 
+  it("ignores Trinity Next's scheme, which the stable scheme is a prefix of", () => {
+    expect(
+      deepLinkFromArgv([
+        'electron',
+        '.',
+        'dev.trinityproject.trinity.next:/sso-callback?code=b',
+      ]),
+    ).toBeUndefined();
+  });
+
   it('returns undefined when no deep link is present', () => {
     expect(deepLinkFromArgv(['electron', '.', '--some-flag'])).toBeUndefined();
     expect(deepLinkFromArgv([])).toBeUndefined();
