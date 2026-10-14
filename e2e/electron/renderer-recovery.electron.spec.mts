@@ -60,7 +60,8 @@ test.afterEach(async () => {
 function rendererState(): Promise<string> {
   return app.evaluate(async ({ BrowserWindow }) => {
     const contents = BrowserWindow.getAllWindows()[0]?.webContents;
-    // Not isCrashed()/isLoading(): Linux keeps reporting the crash after the reload.
+    // Not isCrashed(): Linux keeps reporting the crash after the reload. Not isLoading()
+    // either: the marker below already tells the new renderer from the crashed one.
     if (!contents) return 'no window';
     const page = contents
       .executeJavaScript(
@@ -127,6 +128,21 @@ test('asks after a crash soon after the last reload, and reloads on Reload', asy
 
   await markRenderer();
   await crash();
+  // Wait for main to see the exit: on Linux the renderer crashes itself on an IPC, so
+  // bringing the window forward any earlier would find nothing waiting to be asked.
+  await expect
+    .poll(
+      () =>
+        app.evaluate(
+          () =>
+            (
+              (globalThis as { rendererRecoveryEvents?: string[] })
+                .rendererRecoveryEvents ?? []
+            ).filter((event) => event.startsWith('gone ')).length,
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe(2);
   // Bring the window forward, as a person coming back to it would. Linux CI (xvfb, no
   // window manager) reports the window hidden, so the question waits for this.
   await app.evaluate(({ BrowserWindow }) => {

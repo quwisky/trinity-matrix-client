@@ -29,8 +29,9 @@ export function watchRendererRecovery(
   let lastReload = Number.NEGATIVE_INFINITY;
   let question: 'hang' | 'crash' | null = null;
   let stopAsking: AbortController | undefined;
-  /** Waiting for the window to come back on screen to ask: a hang, or a repeated crash. */
+  /** A hang reported while the window was off screen, to ask about when it comes back. */
   let hangDeferred = false;
+  /** A crash soon after a reload, to ask about once the window is on screen. */
   let crashedAgain = false;
   /** The renderer was ended for a Reload answer; its exit reloads. */
   let killedOnPurpose = false;
@@ -110,8 +111,8 @@ export function watchRendererRecovery(
     // A renderer that exited while the question was open has already been reloaded, and
     // the counter above dropped this answer; isCrashed() is not consulted because Linux
     // keeps reporting an earlier crash after the reload. A hung renderer cannot run a
-    // reload itself, so end it. A reload issued before it
-    // is gone is lost, so its exit reloads (reported as killed or crashed, by platform).
+    // reload itself, so end it. A reload issued before it is gone is lost, so its exit
+    // reloads (reported as killed or crashed, by platform).
     killedOnPurpose = true;
     contents.forcefullyCrashRenderer();
   };
