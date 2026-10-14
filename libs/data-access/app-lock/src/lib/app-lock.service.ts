@@ -1,8 +1,8 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import {
-  HostAuthenticationHandoffService,
   HostUserPresenceService,
   NO_USER_PRESENCE,
+  injectHostAppName,
   type HostOperationOutcome,
   type HostPresenceOutcome,
   type HostUserPresenceSupport,
@@ -18,11 +18,9 @@ import {
   defaultIfEmpty,
   defer,
   filter,
-  finalize,
   forkJoin,
   map,
   of,
-  share,
   switchMap,
   take,
   tap,
@@ -33,15 +31,27 @@ import {
   APP_LOCK_LOCK_AFTER_PREFERENCE,
   readAppLockSettings,
   type LockAfter,
+  type StoredAppLock,
 } from './app-lock.preferences';
 import {
+  COMPLETED,
   GUARD_WINDOW_MS,
+  NOT_OFFERED,
+  NOT_VERIFIED,
+  NO_ANSWER,
+  PIN_NOT_SAVED,
+  PIN_UNAVAILABLE,
   PRESENCE_REASONS,
+  SETTINGS_TIMEOUT_MS,
+  SETTINGS_UNREADABLE,
+  SETTING_NOT_SAVED,
   SUPPORT_TIMEOUT_MS,
   futureOrNull,
   guardOutcome,
+  pinStateOf,
   pinUnlockOutcome,
   systemUnlockOutcome,
+  unreadableSettingLocks,
   withoutPastWait,
   type AppLockCommandOutcome,
   type AppLockPinState,
@@ -49,65 +59,15 @@ import {
   type GuardOutcome,
   type UnlockOutcome,
 } from './app-lock.models';
+import { AppLockSystemPrompt } from './app-lock-system-prompt';
 import { APP_LOCK_CLOCK } from './app-lock.tokens';
-import { isValidPin, waitSecondsAfter } from './pin-policy';
-
-/** The app's name where the host reports none (web, mobile, a shell without an identity). */
-const DEFAULT_APP_NAME = 'Trinity';
-
-const COMPLETED: AppLockCommandOutcome = { kind: 'completed' };
-const NOT_OFFERED: AppLockCommandOutcome = {
-  kind: 'failed',
-  reason: 'not-offered',
-};
-const NOT_VERIFIED: AppLockCommandOutcome = {
-  kind: 'failed',
-  reason: 'not-verified',
-};
-const PIN_NOT_SAVED: AppLockCommandOutcome = {
-  kind: 'failed',
-  reason: 'pin-not-saved',
-};
-const SETTING_NOT_SAVED: AppLockCommandOutcome = {
-  kind: 'failed',
-  reason: 'setting-not-saved',
-};
-const PIN_UNAVAILABLE: UnlockOutcome = { kind: 'unavailable' };
-const PROMPT_ENDED: HostPresenceOutcome = { kind: 'cancelled' };
-const PROMPT_BROKE: HostPresenceOutcome = {
-  kind: 'rejected',
-  diagnostic: { code: 'app-lock-prompt-failed' },
-};
-
-/** Whether a system prompt's failures count toward the unlock delay (spec §2). */
-type PromptPurpose = 'unlock' | 'guard';
-
-/**
- * Whether an unreadable enabled setting means the lock is on (spec §1 "Unreadable setting",
- * decision 27). Every lock has a PIN (decision 23), so only a host that reports no stored PIN
- * turns it off. A host that did not answer (`null`) or cannot read its PIN record fails closed.
- */
-function unreadableSettingLocks(
-  support: HostUserPresenceSupport | null,
-): boolean {
-  return (
-    support === null || support.pin.kind !== 'available' || support.pin.set
-  );
-}
-
-function appNameFrom(handoff: HostAuthenticationHandoffService): string {
-  try {
-    return handoff.deviceDisplayName() || DEFAULT_APP_NAME;
-  } catch {
-    // A desktop shell without an identity fails sign-in on its own; the prompt still works.
-    return DEFAULT_APP_NAME;
-  }
-}
+import { isValidPin } from './pin-policy';
 
 /**
  * App lock's state and commands (spec 2026-10-12). A privacy screen only: nothing here
  * touches keys or stored data, and no PIN is ever logged, stored or returned. Commands are
- * cold, finite and never error.
+ * cold, finite and never error. A lock sticks: an answer to anything started before the
+ * latest lock never unlocks or opens the guard window.
  */
 @Injectable({ providedIn: 'root' })
 export class AppLockService {
@@ -121,16 +81,25 @@ export class AppLockService {
   private readonly _enabled = signal(false);
   private readonly _lockAfter = signal<LockAfter>('1m');
   private readonly _support = signal<HostUserPresenceSupport>(NO_USER_PRESENCE);
-  private readonly systemFailures = signal(0);
-  private readonly systemFailureAt = signal<number | null>(null);
-  /** The one system prompt open now; concurrent callers share it (never two at once). */
-  private prompt: Observable<HostPresenceOutcome> | null = null;
   private verifiedAt: number | null = null;
-  /** The enabled setting could not be read at startup; the host's PIN decides. */
+  /** The enabled setting could not be read; the host's PIN decides. */
   private settingUnreadable = false;
+  /** Counts moves into `locked`; work started before the latest one is stale. */
+  private locks = 0;
+  private readonly systemPrompt = new AppLockSystemPrompt({
+    presence: this.presence,
+    now: () => this.now(),
+    locks: () => this.locks,
+    verified: () => (this.verifiedAt = this.now()),
+    unavailable: (reason) =>
+      this._support.update((support) => ({
+        ...support,
+        system: { kind: 'unavailable', reason },
+      })),
+  });
 
   /** "Trinity", or "Trinity Next" in the desktop prerelease; the window title uses it too. */
-  readonly appName = appNameFrom(inject(HostAuthenticationHandoffService));
+  readonly appName = injectHostAppName();
   readonly status = this._status.asReadonly();
   readonly locked = computed(() => this._status() === 'locked');
   readonly enabled = this._enabled.asReadonly();
@@ -142,67 +111,38 @@ export class AppLockService {
   readonly systemAvailable = computed(
     () => this._support().system.kind === 'available',
   );
-  readonly pinState = computed((): AppLockPinState => {
-    const pin = this._support().pin;
-    if (pin.kind !== 'available') return 'unavailable';
-    return pin.set ? 'ready' : 'not-set';
-  });
+  readonly pinState = computed((): AppLockPinState =>
+    pinStateOf(this._support()),
+  );
   /**
-   * Locked with no system prompt and no usable PIN. Never unlocks. With `pinState`
-   * `unavailable` the lock screen says "Trinity can't read your PIN right now" and offers
-   * Retry (`retry`) and the full reset; with `not-set` (a reset that stopped half way) it
-   * offers only the full reset ("Erase all data on this device").
+   * Locked with no system prompt and no usable PIN, so only recovery is left; it never
+   * unlocks. With `pinState` `unreadable` the lock screen says "Trinity can't read your PIN
+   * right now" and offers Retry (`retry`) and the full reset; otherwise only the full reset
+   * ("Erase all data on this device").
    */
-  readonly resetOnly = computed(
+  readonly recoveryOnly = computed(
     () =>
       this.locked() && !this.systemAvailable() && this.pinState() !== 'ready',
   );
-  readonly systemWaitUntil = computed(() => {
-    const wait = waitSecondsAfter(this.systemFailures());
-    const at = this.systemFailureAt();
-    return wait > 0 && at !== null ? at + wait * 1000 : null;
-  });
+  /** See {@link AppLockSystemPrompt.waitUntil}: null again once the deadline passes. */
+  readonly systemWaitUntil = this.systemPrompt.waitUntil;
 
   /**
-   * Read the settings and the host's support; never errors. Run before the first render, and
-   * again by `retry`. A readable setting always wins. An unreadable one is on unless the host
-   * reports no stored PIN; a host that does not answer within {@link SUPPORT_TIMEOUT_MS}, or
-   * cannot read its PIN record, fails closed until `refreshSupport` or `retry` hears more.
+   * Read the settings and the host's support; never errors and always completes. Run before
+   * the first render. A readable setting always wins. An unreadable one (or storage that does
+   * not answer within 3 s) follows `unreadableSettingLocks`: locked only where the host can
+   * verify presence, then a stored PIN decides. A host that does not answer within
+   * {@link SUPPORT_TIMEOUT_MS} fails closed until `refreshSupport` or `retry` hears from it.
    */
   hydrate(): Observable<void> {
-    return forkJoin({
-      stored: readAppLockSettings(this.preferences),
-      support: this.presence.support().pipe(
-        take(1),
-        timeout({ first: SUPPORT_TIMEOUT_MS, with: () => of(null) }),
-        catchError(() => of(null)),
-        defaultIfEmpty(null),
-      ),
-    }).pipe(
-      map(({ stored, support }) => {
-        if (support) this._support.set(withoutPastWait(support, this.now()));
-        this._lockAfter.set(stored.lockAfter);
-        this.settingUnreadable = stored.enabled === 'unreadable';
-        const enabled =
-          stored.enabled === 'unreadable'
-            ? unreadableSettingLocks(support)
-            : stored.enabled;
-        this._enabled.set(enabled);
-        this.setStatus(enabled ? 'locked' : 'off');
-      }),
-      catchError(() => {
-        this._enabled.set(true);
-        this.setStatus('locked');
-        return of(undefined);
-      }),
-    );
+    return this.load(false);
   }
 
   /**
    * Re-read the host's support (at every unlock and when Settings opens). While an unreadable
-   * setting holds the lock, a host that now reports no stored PIN turns it off: no lock was
-   * ever set up. A readable setting is never changed here. On a host error, or no answer
-   * within {@link SUPPORT_TIMEOUT_MS}, it keeps and emits the support it had.
+   * setting holds the lock, a host that now shows no lock can exist turns it off. A readable
+   * setting is never changed here. On a host error, or no answer within
+   * {@link SUPPORT_TIMEOUT_MS}, it keeps and emits the support it had.
    */
   refreshSupport(): Observable<HostUserPresenceSupport> {
     return defer(() =>
@@ -216,9 +156,7 @@ export class AppLockService {
             this._status() === 'locked' &&
             !unreadableSettingLocks(support)
           ) {
-            this.settingUnreadable = false;
-            this._enabled.set(false);
-            this.setStatus('off');
+            this.release();
           }
         }),
         timeout({
@@ -232,14 +170,14 @@ export class AppLockService {
   }
 
   /**
-   * The lock screen's Retry, for "Trinity can't read your PIN right now" and a setting that
-   * could not be read: re-read the setting (when it was unreadable) and the host's support.
-   * Never unlocks; a readable "off" releases the lock. Emits once and never errors.
+   * The lock screen's Retry: re-read the setting (when it was unreadable) and the host's
+   * support. It only ever releases a lock (a readable "off"), never unlocks, and never
+   * re-locks someone who unlocked meanwhile. Emits once and never errors.
    */
   retry(): Observable<void> {
     return defer(() =>
       this.settingUnreadable && this._status() === 'locked'
-        ? this.hydrate()
+        ? this.load(true)
         : this.refreshSupport().pipe(map(() => undefined)),
     );
   }
@@ -272,17 +210,16 @@ export class AppLockService {
       if (until !== null && this.now() < until) {
         return of({ kind: 'delayed', until });
       }
-      return this.systemPrompt(
-        PRESENCE_REASONS.unlock(this.appName),
-        'unlock',
-      ).pipe(
-        map((outcome) => {
-          if (outcome.kind === 'verified' && this._status() === 'locked') {
-            this.setStatus('unlocked');
-          }
-          return systemUnlockOutcome(outcome, this.systemWaitUntil());
-        }),
-      );
+      return this.systemPrompt
+        .prompt(PRESENCE_REASONS.unlock(this.appName), 'unlock')
+        .pipe(
+          map((outcome) => {
+            if (outcome.kind === 'verified' && this._status() === 'locked') {
+              this.setStatus('unlocked');
+            }
+            return systemUnlockOutcome(outcome, this.systemWaitUntil());
+          }),
+        );
     });
   }
 
@@ -296,13 +233,14 @@ export class AppLockService {
 
   /** Setup step 1: the system prompt. A success opens the 60-second window. */
   confirmPresence(): Observable<HostPresenceOutcome> {
-    return this.systemPrompt(PRESENCE_REASONS.enable, 'guard');
+    return this.systemPrompt.prompt(PRESENCE_REASONS.enable, 'enable');
   }
 
   /**
    * Setup step 2: store the PIN, then turn the lock on. Needs a PIN backup on this host
    * (`offered`), and a fresh verification where the system prompt is available. A lock that
-   * is already on changes its PIN only through the guarded `changePin`.
+   * is already on changes its PIN only through the guarded `changePin`. A lock that comes
+   * while it runs sticks: the lock is on, but nothing unlocks.
    */
   enable(pin: string): Observable<AppLockCommandOutcome> {
     return defer((): Observable<AppLockCommandOutcome> => {
@@ -314,6 +252,7 @@ export class AppLockService {
       if (!isValidPin(pin)) {
         return of({ kind: 'failed', reason: 'pin-invalid' });
       }
+      const locks = this.locks;
       return this.storePin(pin).pipe(
         switchMap((stored) => {
           if (stored.kind !== 'completed') return of(stored);
@@ -322,8 +261,10 @@ export class AppLockService {
               if (saved.kind === 'completed') {
                 this._enabled.set(true);
                 this.settingUnreadable = false;
-                this.verifiedAt = this.now();
-                this.setStatus('unlocked');
+                if (locks === this.locks && this._status() !== 'locked') {
+                  this.verifiedAt = this.now();
+                  this.setStatus('unlocked');
+                }
                 return of(saved);
               }
               // Not on after all: take the PIN back so nothing half-set remains. A readable
@@ -341,9 +282,9 @@ export class AppLockService {
     return defer((): Observable<GuardOutcome> => {
       if (this.recentlyVerified()) return of('verified');
       if (!this.systemAvailable()) return of('use-pin');
-      return this.systemPrompt(PRESENCE_REASONS.change, 'guard').pipe(
-        map(guardOutcome),
-      );
+      return this.systemPrompt
+        .prompt(PRESENCE_REASONS.change, 'change')
+        .pipe(map(guardOutcome));
     });
   }
 
@@ -358,14 +299,13 @@ export class AppLockService {
     );
   }
 
+  /** Turning the lock off is the person's verified choice; it completes even past a lock. */
   disable(): Observable<AppLockCommandOutcome> {
     return this.guarded(() =>
       this.save(APP_LOCK_ENABLED_PREFERENCE, false).pipe(
         switchMap((saved) => {
           if (saved.kind !== 'completed') return of(saved);
-          this._enabled.set(false);
-          this.settingUnreadable = false;
-          this.setStatus('off');
+          this.release();
           // A readable "off" wins over a leftover PIN, so a failed clear is not an error.
           return this.clearPin().pipe(map(() => saved));
         }),
@@ -389,6 +329,65 @@ export class AppLockService {
         ? this.storePin(pin)
         : of<AppLockCommandOutcome>({ kind: 'failed', reason: 'pin-invalid' }),
     );
+  }
+
+  /** Startup reads everything; a Retry only releases a lock that is still in place. */
+  private load(retrying: boolean): Observable<void> {
+    let answered: HostUserPresenceSupport | null = null;
+    return forkJoin({
+      stored: readAppLockSettings(this.preferences).pipe(
+        timeout({
+          first: SETTINGS_TIMEOUT_MS,
+          with: () => of(SETTINGS_UNREADABLE),
+        }),
+      ),
+      support: this.presence.support().pipe(
+        take(1),
+        tap((support) => (answered = support)),
+        timeout({ first: SUPPORT_TIMEOUT_MS, with: () => of(null) }),
+        catchError(() => of(null)),
+        defaultIfEmpty(null),
+      ),
+    }).pipe(
+      map(({ stored, support }) => {
+        if (support) this._support.set(withoutPastWait(support, this.now()));
+        else if (!retrying) this._support.set(NO_ANSWER);
+        this.decide(stored, support, retrying);
+      }),
+      catchError(() => {
+        // Only a bug gets here: read it as an unreadable setting with what the host said.
+        this.decide(SETTINGS_UNREADABLE, answered, retrying);
+        return of(undefined);
+      }),
+    );
+  }
+
+  private decide(
+    stored: StoredAppLock,
+    support: HostUserPresenceSupport | null,
+    retrying: boolean,
+  ): void {
+    const enabled =
+      stored.enabled === 'unreadable'
+        ? unreadableSettingLocks(support)
+        : stored.enabled;
+    if (retrying) {
+      // A Retry never locks: someone may have unlocked while it waited. It only releases.
+      this._lockAfter.set(stored.lockAfter);
+      this.settingUnreadable = stored.enabled === 'unreadable';
+      if (!enabled && this._status() !== 'off') this.release();
+      return;
+    }
+    this._lockAfter.set(stored.lockAfter);
+    this.settingUnreadable = stored.enabled === 'unreadable';
+    this._enabled.set(enabled);
+    this.setStatus(enabled ? 'locked' : 'off');
+  }
+
+  private release(): void {
+    this.settingUnreadable = false;
+    this._enabled.set(false);
+    this.setStatus('off');
   }
 
   private guarded(
@@ -442,84 +441,23 @@ export class AppLockService {
       );
   }
 
-  /**
-   * The system prompt, shared: a call while one is open joins it instead of opening a second.
-   * Its outcome is recorded once, however many callers share it.
-   */
-  private systemPrompt(
-    reason: string,
-    purpose: PromptPurpose,
-  ): Observable<HostPresenceOutcome> {
-    return defer(() => {
-      if (this.prompt) return this.prompt;
-      const shared: Observable<HostPresenceOutcome> = this.presence
-        .verify({ reason })
-        .pipe(
-          take(1),
-          catchError(() => of(PROMPT_BROKE)),
-          defaultIfEmpty(PROMPT_ENDED),
-          tap((outcome) => {
-            if (this.prompt === shared) this.prompt = null;
-            this.recordPrompt(outcome, purpose);
-          }),
-          finalize(() => {
-            if (this.prompt === shared) this.prompt = null;
-          }),
-          share(),
-        );
-      this.prompt = shared;
-      return shared;
-    });
-  }
-
-  private recordPrompt(
-    outcome: HostPresenceOutcome,
-    purpose: PromptPurpose,
-  ): void {
-    switch (outcome.kind) {
-      case 'verified':
-        this.systemFailures.set(0);
-        this.systemFailureAt.set(null);
-        this.verifiedAt = this.now();
-        return;
-      case 'failed':
-        // Only the lock screen's prompt feeds Trinity's delay (spec §2).
-        if (purpose === 'unlock') {
-          this.systemFailures.update((count) => count + 1);
-          this.systemFailureAt.set(this.now());
-        }
-        return;
-      case 'unavailable':
-        this._support.update((support) => ({
-          ...support,
-          system: { kind: 'unavailable', reason: outcome.reason },
-        }));
-        return;
-      case 'cancelled':
-      case 'locked-out':
-      case 'rejected':
-        return;
-      default: {
-        const unhandled: never = outcome;
-        void unhandled;
-      }
-    }
-  }
-
+  /** A PIN check; a `verified` answer to a check started before the latest lock is `cancelled`. */
   private checkPin(
     pin: string,
     onVerified: () => void,
   ): Observable<UnlockOutcome> {
     return defer((): Observable<UnlockOutcome> => {
       if (!isValidPin(pin)) return of({ kind: 'invalid' });
+      const locks = this.locks;
       return this.presence.verifyPin(pin).pipe(
         take(1),
-        map((outcome) => {
+        map((outcome): UnlockOutcome => {
           const now = this.now();
           const result = pinUnlockOutcome(outcome, now);
           if (result.kind === 'unlocked') {
-            this.verifiedAt = now;
             this.patchPinWait(null);
+            if (locks !== this.locks) return { kind: 'cancelled' };
+            this.verifiedAt = now;
             onVerified();
           } else if (result.kind === 'failed' || result.kind === 'delayed') {
             this.patchPinWait(futureOrNull(result.until, now));
@@ -541,7 +479,10 @@ export class AppLockService {
   }
 
   private setStatus(status: AppLockStatus): void {
-    if (status === 'locked') this.verifiedAt = null;
+    if (status === 'locked') {
+      this.verifiedAt = null;
+      if (this._status() !== 'locked') this.locks += 1;
+    }
     this._status.set(status);
     this.statusChanges.next(status);
   }

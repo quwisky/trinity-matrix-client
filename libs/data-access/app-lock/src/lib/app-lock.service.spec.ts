@@ -18,6 +18,7 @@ import {
   NEVER,
   Subject,
   firstValueFrom,
+  isObservable,
   of,
   throwError,
   type Observable,
@@ -39,9 +40,39 @@ const PIN_ONLY: HostUserPresenceSupport = {
   pin: { kind: 'available', set: true, nextAttemptAt: null },
 };
 
+/** What the host answers for support: `never` never answers. */
+type HostReport =
+  HostUserPresenceSupport | 'never' | Observable<HostUserPresenceSupport>;
+
+/** A host with no presence method at all, as the web reports. */
+const NO_PRESENCE: HostUserPresenceSupport = {
+  system: { kind: 'unavailable', reason: 'not-supported' },
+  pin: { kind: 'unavailable', reason: 'not-supported' },
+};
+
+const FAKE_TIMERS = {
+  toFake: [
+    'setTimeout',
+    'clearTimeout',
+    'setInterval',
+    'clearInterval',
+    'Date',
+  ],
+} as const;
+
+async function withFakeTimers(test: () => Promise<void>): Promise<void> {
+  vi.useFakeTimers({ toFake: [...FAKE_TIMERS.toFake] });
+  try {
+    await test();
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 interface Setup {
-  readonly stored?: Record<string, unknown> | 'unavailable';
-  readonly support?: HostUserPresenceSupport | 'never';
+  /** `never`: the preference storage never answers. */
+  readonly stored?: Record<string, unknown> | 'unavailable' | 'never';
+  readonly support?: HostReport;
   readonly verify?: () => Observable<HostPresenceOutcome>;
   readonly verifyPin?: () => Observable<HostPinOutcome>;
   readonly setPin?: () => Observable<HostOperationOutcome>;
@@ -58,16 +89,18 @@ function setup(options: Setup = {}) {
   let support = options.support ?? FACE_AND_PIN;
   const storage: PreferenceStorageAdapter = {
     read: ({ key }) =>
-      of(
-        stored === 'unavailable'
-          ? { kind: 'unavailable', diagnostic: { code: 'io' } }
-          : key in stored
-            ? {
-                kind: 'found',
-                payload: JSON.stringify({ version: 1, value: stored[key] }),
-              }
-            : { kind: 'missing' },
-      ),
+      stored === 'never'
+        ? NEVER
+        : of(
+            stored === 'unavailable'
+              ? { kind: 'unavailable', diagnostic: { code: 'io' } }
+              : key in stored
+                ? {
+                    kind: 'found',
+                    payload: JSON.stringify({ version: 1, value: stored[key] }),
+                  }
+                : { kind: 'missing' },
+          ),
     write: (request) => {
       if (options.writeFails) {
         return of({ kind: 'unavailable', diagnostic: { code: 'io' } });
@@ -77,7 +110,13 @@ function setup(options: Setup = {}) {
     },
   };
   const adapter: HostUserPresenceOperation = {
-    support: vi.fn(() => (support === 'never' ? NEVER : of(support))),
+    support: vi.fn(() =>
+      support === 'never'
+        ? NEVER
+        : isObservable(support)
+          ? support
+          : of(support),
+    ),
     verify: vi.fn(
       options.verify ?? (() => of<HostPresenceOutcome>({ kind: 'verified' })),
     ),
@@ -131,9 +170,10 @@ function setup(options: Setup = {}) {
     writes,
     advance: (ms: number) => (now += ms),
     /** The preference storage now reads differently (it recovered, or changed). */
-    restore: (next: Record<string, unknown> | 'unavailable') => (stored = next),
+    restore: (next: Record<string, unknown> | 'unavailable' | 'never') =>
+      (stored = next),
     /** The host now reports different support (a keyring unlocked, a PIN record readable). */
-    report: (next: HostUserPresenceSupport | 'never') => (support = next),
+    report: (next: HostReport) => (support = next),
   };
 }
 
@@ -195,6 +235,44 @@ describe('AppLockService', () => {
       expect(lock.enabled()).toBe(false);
     });
 
+    it('stays off when the setting cannot be read on a host that cannot verify presence', async () => {
+      // The web: no adapter, so neither a system prompt nor a PIN store.
+      const { lock } = setup({ stored: 'unavailable', support: NO_PRESENCE });
+      await hydrated(lock);
+      expect(lock.status()).toBe('off');
+      expect(lock.pinState()).toBe('not-supported');
+      expect(lock.recoveryOnly()).toBe(false);
+    });
+
+    it('locks an unreadable setting where only the system prompt can verify', async () => {
+      const { lock } = setup({
+        stored: 'unavailable',
+        support: { system: FACE_AND_PIN.system, pin: NO_PRESENCE.pin },
+      });
+      await hydrated(lock);
+      expect(lock.status()).toBe('locked');
+    });
+
+    it('reads the setting as unreadable when the preference storage never answers', async () => {
+      await withFakeTimers(async () => {
+        const desktop = setup({ stored: 'never', support: PIN_ONLY });
+        const locking = firstValueFrom(desktop.lock.hydrate(), {
+          defaultValue: undefined,
+        });
+        await vi.advanceTimersByTimeAsync(3_000);
+        await locking;
+        expect(desktop.lock.status()).toBe('locked');
+        TestBed.resetTestingModule();
+        const web = setup({ stored: 'never', support: NO_PRESENCE });
+        const releasing = firstValueFrom(web.lock.hydrate(), {
+          defaultValue: undefined,
+        });
+        await vi.advanceTimersByTimeAsync(3_000);
+        await releasing;
+        expect(web.lock.status()).toBe('off');
+      });
+    });
+
     it('fails closed when neither the setting nor the PIN state can be read', async () => {
       const unknownPin = {
         kind: 'unavailable',
@@ -209,7 +287,7 @@ describe('AppLockService', () => {
       });
       await hydrated(pinOnly.lock);
       expect(pinOnly.lock.status()).toBe('locked');
-      expect(pinOnly.lock.pinState()).toBe('unavailable');
+      expect(pinOnly.lock.pinState()).toBe('unreadable');
       TestBed.resetTestingModule();
       const withPrompt = setup({
         stored: 'unavailable',
@@ -283,7 +361,9 @@ describe('AppLockService', () => {
         await vi.advanceTimersByTimeAsync(3_000);
         await done;
         expect(lock.status()).toBe('locked');
-        expect(lock.resetOnly()).toBe(true);
+        expect(lock.recoveryOnly()).toBe(true);
+        // No answer is not "no PIN": the lock screen offers Retry.
+        expect(lock.pinState()).toBe('unreadable');
       } finally {
         vi.useRealTimers();
       }
@@ -299,8 +379,8 @@ describe('AppLockService', () => {
       });
       await hydrated(lock);
       expect(lock.status()).toBe('locked');
-      expect(lock.pinState()).toBe('unavailable');
-      expect(lock.resetOnly()).toBe(true);
+      expect(lock.pinState()).toBe('unreadable');
+      expect(lock.recoveryOnly()).toBe(true);
       await expect(
         firstValueFrom(lock.unlockWithPin('482913')),
       ).resolves.toEqual({
@@ -322,7 +402,7 @@ describe('AppLockService', () => {
         },
       });
       await hydrated(lock);
-      expect(lock.resetOnly()).toBe(false);
+      expect(lock.recoveryOnly()).toBe(false);
       await expect(firstValueFrom(lock.unlockWithSystem())).resolves.toEqual({
         kind: 'unlocked',
       });
@@ -339,7 +419,7 @@ describe('AppLockService', () => {
       await hydrated(lock);
       expect(lock.status()).toBe('locked');
       expect(lock.pinState()).toBe('not-set');
-      expect(lock.resetOnly()).toBe(true);
+      expect(lock.recoveryOnly()).toBe(true);
       await firstValueFrom(lock.refreshSupport());
       expect(lock.status()).toBe('locked');
     });
@@ -352,12 +432,12 @@ describe('AppLockService', () => {
         },
       });
       await hydrated(lock);
-      expect(lock.pinState()).toBe('unavailable');
+      expect(lock.pinState()).toBe('unreadable');
       report(PIN_ONLY);
       await firstValueFrom(lock.retry(), { defaultValue: undefined });
       expect(lock.status()).toBe('locked');
       expect(lock.pinState()).toBe('ready');
-      expect(lock.resetOnly()).toBe(false);
+      expect(lock.recoveryOnly()).toBe(false);
       await expect(
         firstValueFrom(lock.unlockWithPin('482913')),
       ).resolves.toEqual({
@@ -388,6 +468,28 @@ describe('AppLockService', () => {
       restore({ 'trinity.app-lock.enabled': true });
       await firstValueFrom(lock.retry(), { defaultValue: undefined });
       expect(lock.status()).toBe('locked');
+    });
+
+    it('does not re-lock someone who unlocked while Retry was waiting', async () => {
+      const { lock, report } = setup({
+        stored: 'unavailable',
+        support: PIN_ONLY,
+      });
+      await hydrated(lock);
+      const late = new Subject<HostUserPresenceSupport>();
+      report(late);
+      const retrying = firstValueFrom(lock.retry(), {
+        defaultValue: undefined,
+      });
+      await expect(
+        firstValueFrom(lock.unlockWithPin('482913')),
+      ).resolves.toEqual({
+        kind: 'unlocked',
+      });
+      late.next(PIN_ONLY);
+      late.complete();
+      await retrying;
+      expect(lock.status()).toBe('unlocked');
     });
 
     it('drops a PIN wait the host reports as already over', async () => {
@@ -481,6 +583,103 @@ describe('AppLockService', () => {
       prompt.complete();
       await expect(first).resolves.toBe('verified');
       await expect(second).resolves.toBe('verified');
+    });
+
+    it('keeps a prompt open while nobody waits for it', async () => {
+      const prompt = new Subject<HostPresenceOutcome>();
+      const { lock, adapter } = setup({ verify: () => prompt });
+      await hydrated(lock);
+      const ui = TestBed.inject(HostSystemUiService);
+      lock.unlockWithSystem().subscribe().unsubscribe();
+      // The OS sheet is still up: the away timer stays held, and no second sheet opens.
+      expect(ui.active()).toBe(true);
+      const again = firstValueFrom(lock.unlockWithSystem());
+      expect(adapter.verify).toHaveBeenCalledOnce();
+      prompt.next({ kind: 'verified' });
+      prompt.complete();
+      await expect(again).resolves.toEqual({ kind: 'unlocked' });
+      expect(ui.active()).toBe(false);
+    });
+
+    it('opens its own unlock prompt after a settings prompt from before a lock', async () => {
+      const prompts: Subject<HostPresenceOutcome>[] = [];
+      const { lock, adapter, advance } = setup({
+        verify: () => {
+          const prompt = new Subject<HostPresenceOutcome>();
+          prompts.push(prompt);
+          return prompt;
+        },
+      });
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithPin('482913'));
+      advance(GUARD_WINDOW_MS + 1);
+      const guard = firstValueFrom(lock.verifyForChange());
+      lock.lockNow();
+      const unlock = firstValueFrom(lock.unlockWithSystem());
+      expect(adapter.verify).toHaveBeenCalledOnce();
+      prompts[0].next({ kind: 'verified' });
+      prompts[0].complete();
+      // The settings prompt answered after the lock: it opens nothing.
+      await expect(guard).resolves.toBe('cancelled');
+      expect(lock.recentlyVerified()).toBe(false);
+      expect(lock.status()).toBe('locked');
+      expect(adapter.verify).toHaveBeenCalledTimes(2);
+      expect(adapter.verify).toHaveBeenLastCalledWith({
+        reason: 'Unlock Trinity',
+      });
+      prompts[1].next({ kind: 'verified' });
+      prompts[1].complete();
+      await expect(unlock).resolves.toEqual({ kind: 'unlocked' });
+      expect(lock.status()).toBe('unlocked');
+    });
+
+    it('does not open the guard window from a PIN check answered after a lock', async () => {
+      const answer = new Subject<HostPinOutcome>();
+      let first = true;
+      const { lock, advance } = setup({
+        support: PIN_ONLY,
+        verifyPin: () => {
+          if (first) {
+            first = false;
+            return of<HostPinOutcome>({ kind: 'verified' });
+          }
+          return answer;
+        },
+      });
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithPin('482913'));
+      advance(GUARD_WINDOW_MS + 1);
+      const check = firstValueFrom(lock.verifyPinForChange('482913'));
+      lock.lockNow();
+      answer.next({ kind: 'verified' });
+      answer.complete();
+      await expect(check).resolves.toEqual({ kind: 'cancelled' });
+      expect(lock.recentlyVerified()).toBe(false);
+      expect(lock.status()).toBe('locked');
+    });
+
+    it('clears the system wait once its deadline passes', async () => {
+      await withFakeTimers(async () => {
+        const { lock, advance } = setup({
+          verify: () => of<HostPresenceOutcome>({ kind: 'failed' }),
+        });
+        await hydrated(lock);
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          await firstValueFrom(lock.unlockWithSystem());
+        }
+        expect(lock.systemWaitUntil()).toBe(START + 30_000);
+        advance(29_999);
+        await vi.advanceTimersByTimeAsync(29_999);
+        expect(lock.systemWaitUntil()).toBe(START + 30_000);
+        advance(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(lock.systemWaitUntil()).toBeNull();
+        // The count is kept: the next failure starts the next, longer wait.
+        await expect(firstValueFrom(lock.unlockWithSystem())).resolves.toEqual({
+          kind: 'failed',
+          until: START + 30_000 + 60_000,
+        });
+      });
     });
 
     it('counts a shared failed prompt once', async () => {
@@ -754,6 +953,20 @@ describe('AppLockService', () => {
         reason: 'not-verified',
       });
       expect(adapter.setPin).not.toHaveBeenCalled();
+    });
+
+    it('stays locked when a lock comes while enable is saving', async () => {
+      const saving = new Subject<HostOperationOutcome>();
+      const { lock } = setup({ support: PIN_ONLY, setPin: () => saving });
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithPin('482913'));
+      const enabling = firstValueFrom(lock.enable('7777'));
+      lock.lockNow();
+      saving.next({ kind: 'completed' });
+      saving.complete();
+      await expect(enabling).resolves.toEqual({ kind: 'completed' });
+      expect(lock.status()).toBe('locked');
+      expect(lock.recentlyVerified()).toBe(false);
     });
 
     it('takes the PIN back when the setting cannot be saved', async () => {

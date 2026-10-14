@@ -4,6 +4,10 @@ import type {
   HostSystemPresenceUnavailableReason,
   HostUserPresenceSupport,
 } from '@trinity/runtime/host';
+import {
+  APP_LOCK_LOCK_AFTER_PREFERENCE,
+  type StoredAppLock,
+} from './app-lock.preferences';
 
 /** How long startup waits for the host to report support before failing closed. */
 export const SUPPORT_TIMEOUT_MS = 3_000;
@@ -22,11 +26,50 @@ export const PRESENCE_REASONS = {
 export type AppLockStatus = 'unknown' | 'off' | 'locked' | 'unlocked';
 
 /**
- * What the lock screen's PIN form can do: check a stored PIN, nothing because none is stored
- * (a reset that stopped half way), or nothing because the host cannot read its PIN record now
- * (a locked keyring, a damaged record, or no answer yet).
+ * What the lock screen's PIN form can do:
+ * - `ready`: a PIN is stored and can be checked;
+ * - `not-set`: the PIN store works but holds no PIN (a reset that stopped half way);
+ * - `unreadable`: a PIN store exists but cannot be read now (a locked keyring, a damaged
+ *   record, or no answer from the host): "Trinity can't read your PIN right now", with Retry;
+ * - `not-supported`: this host has no PIN store (the web).
  */
-export type AppLockPinState = 'ready' | 'not-set' | 'unavailable';
+export type AppLockPinState =
+  'ready' | 'not-set' | 'unreadable' | 'not-supported';
+
+export function pinStateOf(support: HostUserPresenceSupport): AppLockPinState {
+  const pin = support.pin;
+  if (pin.kind === 'available') return pin.set ? 'ready' : 'not-set';
+  return pin.reason === 'not-supported' ? 'not-supported' : 'unreadable';
+}
+
+/**
+ * Whether an unreadable enabled setting means the lock is on (spec §1 "Unreadable setting",
+ * decision 27). Locked only where the host can verify presence, and then a stored PIN
+ * decides; every lock has a PIN (decision 23). `null` is a host that did not answer.
+ * - no answer, or a PIN store that cannot be read: locked (fail closed);
+ * - a PIN store: locked when it holds a PIN, off when it holds none;
+ * - no PIN store: locked only where the system prompt can verify (never on the web).
+ */
+export function unreadableSettingLocks(
+  support: HostUserPresenceSupport | null,
+): boolean {
+  if (support === null) return true;
+  const pin = pinStateOf(support);
+  switch (pin) {
+    case 'ready':
+    case 'unreadable':
+      return true;
+    case 'not-set':
+      return false;
+    case 'not-supported':
+      return support.system.kind === 'available';
+    default: {
+      const unhandled: never = pin;
+      void unhandled;
+      return true;
+    }
+  }
+}
 
 /**
  * An unlock attempt. A returned `until` is never earlier than the clock: a wait the host
@@ -159,3 +202,39 @@ export function pinUnlockOutcome(
     }
   }
 }
+
+// Internal to the library (not exported from its index).
+
+/** How long startup waits for the preference storage before reading the setting unreadable. */
+export const SETTINGS_TIMEOUT_MS = 3_000;
+export const SETTINGS_UNREADABLE: StoredAppLock = {
+  enabled: 'unreadable',
+  lockAfter: APP_LOCK_LOCK_AFTER_PREFERENCE.defaultValue,
+};
+/**
+ * The host did not answer: whether a PIN is stored is unknown, so the PIN reads as unreadable
+ * (fail closed, with Retry) and no system prompt is offered until the host answers.
+ */
+export const NO_ANSWER: HostUserPresenceSupport = {
+  system: { kind: 'unavailable', reason: 'not-supported' },
+  pin: { kind: 'unavailable', reason: 'secure-storage-unavailable' },
+};
+
+export const COMPLETED: AppLockCommandOutcome = { kind: 'completed' };
+export const NOT_OFFERED: AppLockCommandOutcome = {
+  kind: 'failed',
+  reason: 'not-offered',
+};
+export const NOT_VERIFIED: AppLockCommandOutcome = {
+  kind: 'failed',
+  reason: 'not-verified',
+};
+export const PIN_NOT_SAVED: AppLockCommandOutcome = {
+  kind: 'failed',
+  reason: 'pin-not-saved',
+};
+export const SETTING_NOT_SAVED: AppLockCommandOutcome = {
+  kind: 'failed',
+  reason: 'setting-not-saved',
+};
+export const PIN_UNAVAILABLE: UnlockOutcome = { kind: 'unavailable' };

@@ -1,9 +1,6 @@
 import { computed, effect, inject, Injectable, signal } from '@angular/core';
 import { Title } from '@angular/platform-browser';
-import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
-
-/** The web and mobile name, and the fallback when the desktop shell reports none. */
-const DEFAULT_APP_NAME = 'Trinity';
+import { injectHostAppName } from '@trinity/runtime/host';
 
 interface TitleBarContext {
   /** The open room's title, or `null` with no room open (the row shows the app name). */
@@ -24,19 +21,6 @@ export function roomTitle(
   return space && !room.isDirect ? `${space} · ${name}` : name;
 }
 
-/**
- * The app's own name: the host names its Matrix devices after the app ("Trinity Next" for
- * the desktop prerelease), so the title uses the same name. A shell that reports no
- * identity fails sign-in on its own; the title falls back rather than break the app.
- */
-function hostAppName(handoff: HostAuthenticationHandoffService): string {
-  try {
-    return handoff.deviceDisplayName();
-  } catch {
-    return DEFAULT_APP_NAME;
-  }
-}
-
 /** What the desktop title row and the browser tab show; the open room publishes it. */
 @Injectable({ providedIn: 'root' })
 export class TitleBarState {
@@ -44,7 +28,7 @@ export class TitleBarState {
   private readonly activeState = signal(false);
 
   /** "Trinity", or "Trinity Next" in the desktop prerelease. */
-  readonly appName = hostAppName(inject(HostAuthenticationHandoffService));
+  readonly appName = injectHostAppName();
   readonly title = computed(() => this.context()?.title ?? this.appName);
   readonly quickSwitcher = computed(
     () => this.context()?.quickSwitcher ?? null,
