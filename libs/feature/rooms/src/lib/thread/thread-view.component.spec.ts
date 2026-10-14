@@ -664,6 +664,74 @@ describe('ThreadViewComponent', () => {
       scrollIntoView.mock.invocationCallOrder[0],
     );
   });
+
+  describe('aiming at a jump target', () => {
+    const scrollIntoViewOwn = Object.getOwnPropertyDescriptor(
+      Element.prototype,
+      'scrollIntoView',
+    );
+    afterEach(() => {
+      if (scrollIntoViewOwn) {
+        Object.defineProperty(
+          Element.prototype,
+          'scrollIntoView',
+          scrollIntoViewOwn,
+        );
+      } else {
+        delete (Element.prototype as Partial<Element>).scrollIntoView;
+      }
+    });
+
+    /** Jump from `$b` to `$a`, with `$a` laid out `rowHeight` tall in a 600px thread. */
+    async function jumpWithRowHeight(rowHeight: number) {
+      const scrollIntoView = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      const { fixture, container } = await build([
+        msg('$a', '@a:hs', 'first'),
+        msg('$b', '@a:hs', 'second'),
+      ]);
+      const scroller = container.querySelector('[data-message-scroller]');
+      if (!scroller) throw new Error('no message scroller');
+      Object.defineProperty(scroller, 'clientHeight', {
+        value: 600,
+        configurable: true,
+      });
+      const target = container.querySelector('[data-mid="$a"]');
+      if (!target) throw new Error('no target row');
+      vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 400,
+        bottom: rowHeight,
+        width: 400,
+        height: rowHeight,
+      } as DOMRect);
+
+      fixture.componentInstance.onRowAction(row('$b', '@a:hs', 'second'), {
+        type: 'jump',
+        id: '$a',
+      });
+      return scrollIntoView;
+    }
+
+    it('aligns a target taller than the thread by its top', async () => {
+      const scrollIntoView = await jumpWithRowHeight(2000);
+
+      expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ block: 'start' }),
+      );
+    });
+
+    it('still centres a target that fits in the thread', async () => {
+      const scrollIntoView = await jumpWithRowHeight(120);
+
+      expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ block: 'center' }),
+      );
+    });
+  });
 });
 
 describe('ThreadViewComponent members', () => {

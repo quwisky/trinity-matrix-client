@@ -55,6 +55,7 @@ import {
 } from '../message-row/message-row.component';
 import { BodyOverflowObserver } from '../message-row/body-overflow';
 import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
+import { scrollToJumpTarget } from '../message-list/jump-scroll';
 import {
   MessageComposerComponent,
   type ComposerSubmit,
@@ -64,11 +65,7 @@ import { MediaSaveService } from '../media-attachment/media-save.service';
 import { ReportService } from '../report/report.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
-import {
-  scrollBehavior,
-  BELOW_MEMBERS_QUERY,
-  mediaQuerySignal,
-} from '@trinity/util/ui';
+import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 
 /** Group consecutive messages from the same sender within this window (Discord-style). */
 const GROUP_GAP_MS = 5 * 60 * 1000;
@@ -482,8 +479,8 @@ export class ThreadViewComponent implements OnDestroy {
 
   /** Scroll the original message into view when its reply preview is clicked. */
   jumpTo(messageId: string): void {
-    this.scrollEl()
-      ?.nativeElement.querySelector(`[data-mid="${messageId}"]`)
-      ?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
+    const scroller = this.scrollEl()?.nativeElement;
+    const target = scroller?.querySelector(`[data-mid="${messageId}"]`);
+    if (scroller && target) scrollToJumpTarget(target, scroller);
   }
 }

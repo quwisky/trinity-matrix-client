@@ -8,6 +8,7 @@ import {
   describe,
   expect,
   it,
+  onTestFinished,
   vi,
   type Mock,
   type MockInstance,
@@ -98,6 +99,34 @@ describe('MessageListComponent — jump targets start expanded', () => {
     );
   }
 
+  /** Give one row a layout height (jsdom lays nothing out) and the list a visible height. */
+  function layOut(container: Element, id: string, rowHeight: number): void {
+    const scroller = container.querySelector('[data-message-scroller]');
+    if (!scroller) throw new Error('no message scroller');
+    Object.defineProperty(scroller, 'clientHeight', {
+      value: 600,
+      configurable: true,
+    });
+    const measure = Element.prototype.getBoundingClientRect;
+    const rect = vi
+      .spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: Element) {
+        return this.getAttribute('data-mid') === id
+          ? ({
+              x: 0,
+              y: 0,
+              top: 0,
+              left: 0,
+              right: 400,
+              bottom: rowHeight,
+              width: 400,
+              height: rowHeight,
+            } as DOMRect)
+          : measure.call(this);
+      });
+    onTestFinished(() => rect.mockRestore());
+  }
+
   function renderList(
     inputs: Partial<{
       messages: MessageView[];
@@ -153,6 +182,49 @@ describe('MessageListComponent — jump targets start expanded', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(scrollIntoView.mock.contexts[0]).toBe(
       container.querySelector('[data-mid="$2"]'),
+    );
+  });
+
+  it('aligns a jump target taller than the list by its top', async () => {
+    const { fixture, container } = await renderList({ messages: many(10) });
+    const list = fixture.componentInstance;
+    layOut(container, '$2', 2000);
+
+    list.onRowAction(list.rows()[9], { type: 'jump', id: '$2' });
+    await fixture.whenStable();
+
+    expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ block: 'start' }),
+    );
+  });
+
+  it('still centres a jump target that fits in the list', async () => {
+    const { fixture, container } = await renderList({ messages: many(10) });
+    const list = fixture.componentInstance;
+    layOut(container, '$2', 120);
+
+    list.onRowAction(list.rows()[9], { type: 'jump', id: '$2' });
+    await fixture.whenStable();
+
+    expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ block: 'center' }),
+    );
+  });
+
+  it('aligns a tall windowed-out jump target by its top once it renders', async () => {
+    const { fixture, container } = await renderList({ messages: many(200) });
+    const list = fixture.componentInstance;
+    expect(container.querySelector('[data-mid="$150"]')).toBeNull();
+    layOut(container, '$150', 2000);
+
+    list.onRowAction(list.rows()[199], { type: 'jump', id: '$150' });
+    await fixture.whenStable();
+
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(
+      container.querySelector('[data-mid="$150"]'),
+    );
+    expect(scrollIntoView).toHaveBeenLastCalledWith(
+      expect.objectContaining({ block: 'start' }),
     );
   });
 

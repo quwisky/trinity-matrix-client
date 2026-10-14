@@ -19,12 +19,12 @@ import { MessageComposerComponent } from '../message-composer/message-composer.c
 import { MessageRowComponent } from '../message-row/message-row.component';
 import { BodyOverflowObserver } from '../message-row/body-overflow';
 import { MessageListBase, type JumpOptions } from './message-list-base';
+import { scrollToJumpTarget } from './jump-scroll';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { DropOverlayComponent } from './drop-overlay/drop-overlay.component';
 import { TimelineDividerComponent } from './timeline-divider/timeline-divider.component';
 import { TypingIndicatorComponent } from './typing-indicator/typing-indicator.component';
-import { scrollBehavior } from '@trinity/util/ui';
 import {
   buildPrefixSums,
   computeWindow,
@@ -698,8 +698,8 @@ export class MessageListComponent extends MessageListBase {
   /**
    * Scroll a message into view (reply-preview click or search jump). When the target
    * row is windowed out of the DOM, first scroll near its computed offset so the
-   * window renders it, then centre it precisely once it's on screen. A no-op when the
-   * event isn't loaded.
+   * window renders it, then aim at it precisely once it's on screen: centred, or by its top
+   * when it is taller than the scroller. A no-op when the event isn't loaded.
    */
   jumpTo(messageId: string, options?: JumpOptions): void {
     messageId = this.revealEvent(messageId);
@@ -734,14 +734,11 @@ export class MessageListComponent extends MessageListBase {
     if (existing) {
       if (options?.afterRender) {
         // The row was just expanded: aim at its full height, in one scroll.
-        afterNextRender(() => this.centreRow(el, messageId), {
+        afterNextRender(() => this.revealRow(el, messageId), {
           injector: this.injector,
         });
       } else {
-        existing.scrollIntoView({
-          behavior: scrollBehavior(),
-          block: 'center',
-        });
+        scrollToJumpTarget(existing, el);
         this.flash(existing);
       }
       return;
@@ -753,15 +750,18 @@ export class MessageListComponent extends MessageListBase {
         el.clientHeight / 2,
     );
     this.scrollTop.set(el.scrollTop);
-    afterNextRender(() => this.centreRow(el, messageId), {
+    afterNextRender(() => this.revealRow(el, messageId), {
       injector: this.injector,
     });
   }
 
-  /** Centre a rendered row in the scroller and flash it; a no-op when it is not rendered. */
-  private centreRow(el: HTMLElement, messageId: string): void {
+  /**
+   * Bring a rendered row into view (centred, or top-aligned when taller than the scroller) and
+   * flash it; a no-op when it is not rendered.
+   */
+  private revealRow(el: HTMLElement, messageId: string): void {
     const target = el.querySelector(`[data-mid="${messageId}"]`);
-    target?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
+    if (target) scrollToJumpTarget(target, el);
     this.flash(target);
   }
 }
