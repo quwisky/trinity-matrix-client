@@ -44,17 +44,55 @@ describe('sender colour parsing', () => {
       g: 48,
       b: 48,
     });
-    expect(parseCssColour('rgba(224, 48, 48, 0.5)')).toEqual({
+    expect(parseCssColour('rgba(224, 48, 48, 1)')).toEqual({
       r: 224,
       g: 48,
       b: 48,
     });
-    expect(parseCssColour('rgb(224 48 48 / 50%)')).toEqual({
+    expect(parseCssColour('rgb(224 48 48 / 100%)')).toEqual({
       r: 224,
       g: 48,
       b: 48,
     });
+    expect(parseCssColour('oklch(100% 0 0deg / 1)')).toEqual(WHITE);
     expect(parseCssColour('color-mix(in oklch, red, blue)')).toBeNull();
+  });
+
+  it.each([
+    // Chromium's computed `transparent`.
+    'rgba(0, 0, 0, 0)',
+    'rgba(224, 48, 48, 0.5)',
+    'rgb(224 48 48 / 50%)',
+    'oklch(20% 0.005 269deg / 0.8)',
+  ])('leaves the see-through %j for the caller to resolve', (value) => {
+    // What shows through it is not known here, so it is not a colour to measure against.
+    expect(parseCssColour(value)).toBeNull();
+  });
+
+  it.each([
+    'rgb(1.2.3, 1, 1)',
+    'rgb(1, 1, ..)',
+    'rgba(1, 1, 1, 1.2.3)',
+    'oklch(1.2.3 0.005 269)',
+    'oklch(20% 0.0.5 269deg)',
+    'oklch(20% 0.005 2.6.9)',
+  ])('does not invent a colour from the malformed %j', (value) => {
+    expect(parseCssColour(value)).toBeNull();
+  });
+
+  it('turns down a long malformed colour quickly', () => {
+    const hostile = [
+      `rgb(${'1.'.repeat(50_000)}1, 1, 1)`,
+      `rgb(1, 1, 1${' '.repeat(100_000)}x`,
+      `oklch(${'1'.repeat(100_000)}`,
+      `oklch(1 1 1${' /'.repeat(50_000)})`,
+    ];
+    const started = performance.now();
+
+    for (const value of hostile) {
+      expect(parseCssColour(value)).toBeNull();
+    }
+    expect(performance.now() - started).toBeLessThan(500);
   });
 
   it('resolves the OKLCH theme surfaces to sRGB', () => {

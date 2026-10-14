@@ -24,9 +24,9 @@ export interface ColourDecision {
 const HEX6 = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i;
 const HEX3 = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i;
 const RGB_FUNCTION =
-  /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[,/]\s*[\d.]+%?\s*)?\)$/i;
+  /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[,/]\s*([\d.]+)(%?)\s*)?\)$/i;
 const OKLCH_FUNCTION =
-  /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)(%?)\s+([\d.]+)(?:deg)?\s*(?:\/\s*[\d.]+%?\s*)?\)$/i;
+  /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)(%?)\s+([\d.]+)(?:deg)?\s*(?:\/\s*([\d.]+)(%?)\s*)?\)$/i;
 
 /** Six hex digits, with or without `#`, as sRGB; anything else is null. */
 export function parseHexColour(value: string): Rgb | null {
@@ -43,7 +43,9 @@ export function parseHexColour(value: string): Rgb | null {
 /**
  * The colour forms Trinity's surfaces arrive in: hex, `rgb()`/`rgba()` and `oklch()` (the theme
  * tokens are OKLCH, and Chromium keeps OKLCH in computed values). Null for anything else, so the
- * caller can ask the browser instead.
+ * caller can ask the browser instead: a malformed number (`1.2.3`), and a see-through colour
+ * (alpha below 1, such as Chromium's computed `transparent`, `rgba(0, 0, 0, 0)`), whose
+ * appearance depends on what lies behind it.
  */
 export function parseCssColour(value: string): Rgb | null {
   const text = value.trim();
@@ -60,14 +62,20 @@ export function parseCssColour(value: string): Rgb | null {
   }
   const rgb = RGB_FUNCTION.exec(text);
   if (rgb) {
-    return { r: channel(rgb[1]), g: channel(rgb[2]), b: channel(rgb[3]) };
+    const [r, g, b] = [rgb[1], rgb[2], rgb[3]].map(Number);
+    return opaque(rgb[4], rgb[5]) && allFinite(r, g, b)
+      ? { r: channel(r), g: channel(g), b: channel(b) }
+      : null;
   }
   const oklch = OKLCH_FUNCTION.exec(text);
   if (oklch) {
     const lightness = Number(oklch[1]) / (oklch[2] ? 100 : 1);
     // A percentage chroma is relative to 0.4, CSS Color 4's reference range.
     const chroma = oklch[4] ? (Number(oklch[3]) / 100) * 0.4 : Number(oklch[3]);
-    return oklchToRgb(lightness, chroma, Number(oklch[5]));
+    const hue = Number(oklch[5]);
+    return opaque(oklch[6], oklch[7]) && allFinite(lightness, chroma, hue)
+      ? oklchToRgb(lightness, chroma, hue)
+      : null;
   }
   return null;
 }
@@ -134,8 +142,20 @@ export function toHex({ r, g, b }: Rgb): string {
   return `#${[r, g, b].map((value) => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
-function channel(value: string): number {
-  return Math.min(255, Math.max(0, Math.round(Number(value))));
+function channel(value: number): number {
+  return Math.min(255, Math.max(0, Math.round(value)));
+}
+
+function allFinite(...values: readonly number[]): boolean {
+  return values.every(Number.isFinite);
+}
+
+/** No alpha, or an alpha of at least 1 (CSS clamps above it); a malformed alpha is not opaque. */
+function opaque(
+  alpha: string | undefined,
+  percent: string | undefined,
+): boolean {
+  return alpha === undefined || Number(alpha) / (percent ? 100 : 1) >= 1;
 }
 
 function linear(value: number): number {
