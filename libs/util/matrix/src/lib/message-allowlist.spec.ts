@@ -64,31 +64,33 @@ describe('the Matrix HTML allowlist (spec v1.19)', () => {
     expect(names(clean.querySelector('p'))).toEqual([]);
     expect(names(clean.querySelector('ol'))).toEqual(['start']);
     expect(names(clean.querySelector('li'))).toEqual([]);
-    expect(names(clean.querySelector('img'))).toEqual([
-      'alt',
-      'height',
-      'src',
-      'title',
-      'width',
-    ]);
+    expect(names(clean.querySelector('img'))).toEqual(['alt', 'src', 'title']);
     expect(clean.querySelector('code')?.getAttribute('class')).toBe(
       'language-js',
     );
   });
 
   it('keeps the values DOMPurify used to drop as non-URIs', () => {
-    const clean = parse(
-      sanitizeOutgoingHtml(
-        '<ol start="3"><li>c</li></ol><img src="mxc://hs/a" width="10" height="20" alt="a">',
-      ),
-    );
+    const clean = parse(sanitizeOutgoingHtml('<ol start="3"><li>c</li></ol>'));
 
     expect(clean.querySelector('ol')?.getAttribute('start')).toBe('3');
-    expect(clean.querySelector('img')?.getAttribute('width')).toBe('10');
-    expect(clean.querySelector('img')?.getAttribute('height')).toBe('20');
   });
 
-  it('keeps color, start, width and height only on the tags the spec lists them for', () => {
+  // Spec v1.19 allows `width`/`height` on `img`, but nothing caps an inline image's height yet,
+  // so a sender's size could open an arbitrarily tall empty box. They return with that cap.
+  it.each([
+    ['render', sanitizeMatrixHtml],
+    ['send', sanitizeOutgoingHtml],
+  ])('drops image sizes from senders on the %s path', (_path, sanitize) => {
+    const img = parse(
+      sanitize('<img src="mxc://hs/a" width="10" height="20000" alt="a">'),
+    ).querySelector('img');
+
+    expect(img?.hasAttribute('width')).toBe(false);
+    expect(img?.hasAttribute('height')).toBe(false);
+  });
+
+  it('keeps color and start only on the tags the spec lists them for', () => {
     const clean = parse(
       sanitizeOutgoingHtml(
         '<span color="#112233">s</span><ul start="2"><li>u</li></ul>' +

@@ -510,8 +510,6 @@ const MATRIX_ALLOWED_ATTR = [
   'href',
   'alt',
   'title',
-  'width',
-  'height',
   'src',
   'start',
   'color',
@@ -526,26 +524,25 @@ const MATRIX_ALLOWED_ATTR = [
 /**
  * Attributes whose values are not URIs. DOMPurify tests the value of every attribute it does
  * not consider URI-safe against ALLOWED_URI_REGEXP, and ours admits only Matrix's schemes, so
- * without this `color="#ff0000"`, `start="3"` and an image's `width`/`height` were dropped.
+ * without this `color="#ff0000"` and `start="3"` were dropped.
  */
-const MATRIX_URI_SAFE_ATTR = ['color', 'start', 'width', 'height'];
+const MATRIX_URI_SAFE_ATTR = ['color', 'start'];
 
 /**
  * The attributes Matrix permits on each tag ("Clients should only permit the attributes listed
  * for the tags below", spec v1.19 § m.room.message msgtypes). Keyed by upper-case `nodeName`;
  * a tag missing here keeps no attribute. `font` is deprecated (v1.10) and kept only so older
  * messages still read as their sender meant; `sanitizeOutgoingHtml` never sends it. `input` is
- * the render path's GFM checkbox, read by {@link normaliseTaskItems} and then removed.
+ * the render path's GFM checkbox, read by {@link normaliseTaskItems} and then removed. The spec
+ * also lists `width`/`height` on `img`; they stay out until inline images are capped at 300px,
+ * or a sender's size could open an arbitrarily tall empty box.
  */
 const MATRIX_TAG_ATTRIBUTES: ReadonlyMap<string, ReadonlySet<string>> = new Map<
   string,
   ReadonlySet<string>
 >([
   ['A', new Set(['href'])],
-  [
-    'IMG',
-    new Set(['width', 'height', 'alt', 'title', 'src', 'data-mx-emoticon']),
-  ],
+  ['IMG', new Set(['alt', 'title', 'src', 'data-mx-emoticon'])],
   ['OL', new Set(['start'])],
   ['CODE', new Set(['class'])],
   [
