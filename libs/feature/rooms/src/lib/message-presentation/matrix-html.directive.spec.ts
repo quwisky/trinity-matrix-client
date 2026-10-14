@@ -148,4 +148,28 @@ describe('MatrixHtmlDirective', () => {
     expect(spoiler.hasAttribute('role')).toBe(false);
     expect(spoiler.hasAttribute('tabindex')).toBe(false);
   });
+
+  it.each(['Enter', ' '])(
+    'keeps focus on a spoiler revealed with %j until focus leaves it',
+    (key) => {
+      const { host } = render(
+        sanitizeMatrixHtml('<span data-mx-spoiler>x</span>'),
+      );
+      const spoiler = host.querySelector<HTMLElement>('.mx-spoiler')!;
+      spoiler.focus();
+
+      spoiler.dispatchEvent(
+        new KeyboardEvent('keydown', { key, bubbles: true }),
+      );
+
+      expect(spoiler.classList.contains('is-revealed')).toBe(true);
+      expect(document.activeElement).toBe(spoiler);
+      expect(spoiler.hasAttribute('tabindex')).toBe(true);
+      expect(spoiler.hasAttribute('role')).toBe(false);
+
+      spoiler.blur();
+
+      expect(spoiler.hasAttribute('tabindex')).toBe(false);
+    },
+  );
 });

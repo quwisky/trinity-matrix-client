@@ -20,6 +20,7 @@ const REVEALED_CLASS = 'is-revealed';
     '(click)': 'onClick($event)',
     '(keydown.enter)': 'onKey($event)',
     '(keydown.space)': 'onKey($event)',
+    '(focusout)': 'onFocusOut($event)',
   },
 })
 export class SpoilerRevealDirective {
@@ -38,6 +39,14 @@ export class SpoilerRevealDirective {
     this.reveal(target?.closest<HTMLElement>('.mx-spoiler'), event);
   }
 
+  onFocusOut(event: Event): void {
+    // A spoiler revealed while focused kept its tab stop (see reveal); drop it once focus leaves.
+    const target = event.target as HTMLElement | null;
+    if (target?.matches(`.mx-spoiler.${REVEALED_CLASS}`)) {
+      target.removeAttribute('tabindex');
+    }
+  }
+
   private reveal(spoiler: HTMLElement | null | undefined, event: Event): void {
     if (!spoiler || spoiler.classList.contains(REVEALED_CLASS)) {
       return; // no spoiler here, or it is already uncovered — let the event proceed
@@ -45,9 +54,13 @@ export class SpoilerRevealDirective {
     event.preventDefault();
     event.stopPropagation();
     spoiler.classList.add(REVEALED_CLASS);
-    // Revealed content is ordinary text again: no button, no name hiding it, no tab stop.
+    // Revealed content is ordinary text again: no button and no name hiding it.
     spoiler.removeAttribute('aria-label');
     spoiler.removeAttribute('role');
-    spoiler.removeAttribute('tabindex');
+    // Removing the tab stop of the focused element would drop focus to <body>, so a
+    // keyboard reveal keeps it until focus leaves (onFocusOut).
+    if (spoiler.ownerDocument.activeElement !== spoiler) {
+      spoiler.removeAttribute('tabindex');
+    }
   }
 }

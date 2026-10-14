@@ -75,7 +75,7 @@ describe('SpoilerRevealDirective', () => {
     expect(event.preventDefault).toHaveBeenCalled();
   });
 
-  it('stops naming a revealed spoiler as a button and drops its tab stop', () => {
+  it('stops naming a revealed spoiler as a button and drops its tab stop when unfocused', () => {
     const root = container(
       '<span class="mx-spoiler" role="button" tabindex="0" aria-label="Spoiler, activate to reveal">secret</span>',
     );
@@ -85,7 +85,41 @@ describe('SpoilerRevealDirective', () => {
 
     expect(spoiler.hasAttribute('aria-label')).toBe(false);
     expect(spoiler.hasAttribute('role')).toBe(false);
-    // Ruling 2N2: revealed content is no longer interactive, so it leaves the tab order.
+    // Ruling 2N2: revealed content is no longer interactive, so it leaves the tab order at
+    // once when a pointer reveals it without focusing it.
     expect(spoiler.hasAttribute('tabindex')).toBe(false);
+  });
+
+  it('keeps a keyboard-revealed spoiler focused until focus leaves it', () => {
+    const root = container(
+      '<span class="mx-spoiler" role="button" tabindex="0" aria-label="Spoiler, activate to reveal">secret</span>',
+    );
+    document.body.append(root);
+    const spoiler = root.querySelector<HTMLElement>('.mx-spoiler')!;
+    spoiler.focus();
+
+    directive.onKey(eventOn(spoiler));
+
+    expect(document.activeElement).toBe(spoiler);
+    expect(spoiler.getAttribute('tabindex')).toBe('0');
+    expect(spoiler.hasAttribute('role')).toBe(false);
+    expect(spoiler.hasAttribute('aria-label')).toBe(false);
+
+    spoiler.blur();
+    directive.onFocusOut(eventOn(spoiler));
+
+    expect(spoiler.hasAttribute('tabindex')).toBe(false);
+    root.remove();
+  });
+
+  it('keeps the tab stop of a concealed spoiler that loses focus', () => {
+    const root = container(
+      '<span class="mx-spoiler" tabindex="0">secret</span>',
+    );
+    const spoiler = root.querySelector('.mx-spoiler')!;
+
+    directive.onFocusOut(eventOn(spoiler));
+
+    expect(spoiler.getAttribute('tabindex')).toBe('0');
   });
 });
