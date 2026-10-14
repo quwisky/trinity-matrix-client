@@ -1006,6 +1006,7 @@ test.describe('Maths', () => {
       const roomUrl = `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room.roomId)}`;
       const reaching = (label: string): string =>
         `<p><span data-mx-maths="\\smash[t]{\\raisebox{1.2em}{\\rule{14em}{1.2em}}}"><code>up</code></span> ${label} first line</p>` +
+        `<p>${label} middle <span data-mx-maths="\\smash{\\raisebox{-30em}{\\rule{14em}{1.2em}}}\\smash{\\raisebox{10em}{\\raisebox{10em}{\\raisebox{10em}{\\raisebox{10em}{\\rule{14em}{1.2em}}}}}}"><code>far</code></span></p>` +
         `<p>${label} last line <span data-mx-maths="\\smash[b]{\\raisebox{-2em}{\\rule{14em}{1.2em}}}"><code>down</code></span></p>`;
       const edit = (eventId: string, label: string) =>
         sendWithRetry('edit message', () =>
@@ -1061,7 +1062,7 @@ test.describe('Maths', () => {
         const body = pane.locator('.msg__text--html', {
           hasText: `${label} first line`,
         });
-        await expect(body.locator('.mx-maths .katex')).toHaveCount(2, {
+        await expect(body.locator('.mx-maths .katex')).toHaveCount(3, {
           timeout: 30_000,
         });
         const row = pane.locator('.msg', {
@@ -1100,6 +1101,8 @@ test.describe('Maths', () => {
       // Each target's centre is its own to hit; a miss names what took it (class names only).
       const hits: string[] = [];
       for (const target of targets) {
+        // Far moves can make a body taller than the pane; bring each target into view first.
+        await target.scrollIntoViewIfNeeded();
         hits.push(
           await target.evaluate((element) => {
             const rect = element.getBoundingClientRect();
@@ -1120,14 +1123,18 @@ test.describe('Maths', () => {
         const body = pane.locator('.msg__text--html', {
           hasText: `${label} first line`,
         });
+        await body.scrollIntoViewIfNeeded();
         const around = await body.evaluate((element) => {
-          const box = element.getBoundingClientRect();
           const scroller = element.closest('.scroll')!.getBoundingClientRect();
+          const box = element.getBoundingClientRect();
           const reach = 5;
           const left = Math.floor(box.left) - reach;
           const right = Math.ceil(box.right) + reach;
-          const top = Math.floor(box.top) - reach;
-          const bottom = Math.ceil(box.bottom) + reach;
+          const top = Math.max(Math.floor(box.top) - reach, scroller.top);
+          const bottom = Math.min(
+            Math.ceil(box.bottom) + reach,
+            scroller.bottom,
+          );
           return [
             {
               x: scroller.left,
@@ -1230,13 +1237,152 @@ test.describe('Maths', () => {
       animations: 'disabled',
     });
     await page.addStyleTag({
-      content: '.msg__text--html { clip-path: none !important; }',
+      content: '.msg__text--html { overflow: visible !important; }',
     });
     const unclipped = await page.screenshot({
       clip: around,
       animations: 'disabled',
     });
     expect(clipped.equals(unclipped)).toBe(true);
+  });
+
+  // A run KaTeX cannot wrap, wider than the body, scrolls sideways on its own; the timeline,
+  // the thread and the page never get a sideways scroll range from it.
+  test('scrolls wide inline maths on its own, in the timeline and a thread', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'maths-wide');
+    const terms = Array.from({ length: 60 }, (_, n) => `a_{${n}}`).join('+');
+    const wide = (label: string): string =>
+      `<p>${label}: <span data-mx-maths="\\left(${terms}\\right)\\text{END}"><code>wide</code></span> after</p>`;
+    const rootId = await sendMessage(request, hs, room, {
+      body: 'wide root',
+      html:
+        wide('root') +
+        '<p><a href="https://example.org/">edge link</a> and <span data-mx-maths="x^2+\\frac{a}{b}"><code>narrow</code></span></p>',
+    });
+    await sendWithRetry('thread reply', () =>
+      request.put(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room.roomId)}/send/m.room.message/${nextTestResourceId('txn')}`,
+        {
+          headers: { Authorization: `Bearer ${room.account.accessToken}` },
+          data: {
+            msgtype: 'm.text',
+            body: 'wide reply',
+            format: 'org.matrix.custom.html',
+            formatted_body: wide('reply'),
+            'm.relates_to': {
+              rel_type: 'm.thread',
+              event_id: rootId,
+              is_falling_back: true,
+              'm.in_reply_to': { event_id: rootId },
+            },
+          },
+        },
+      ),
+    );
+    await signInAndOpen(page, room);
+
+    const rootBody = page.locator('.scroll .msg__text--html', {
+      hasText: 'root:',
+    });
+    await expect(rootBody.locator('.mx-maths .katex')).toHaveCount(2, {
+      timeout: 30_000,
+    });
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+
+    /** The formula scrolls, and scrolling it to its end brings "END" into view. */
+    const scrollsToEnd = (body: typeof rootBody) =>
+      body.locator('span.mx-maths--wide').evaluate(async (maths) => {
+        const scrolls = maths.scrollWidth > maths.clientWidth + 1;
+        maths.scrollLeft = maths.scrollWidth;
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const end = [...maths.querySelectorAll('.text')].at(-1)!;
+        const box = maths.getBoundingClientRect();
+        const last = end.getBoundingClientRect();
+        return {
+          scrolls,
+          endShown: last.right <= box.right + 1 && last.left >= box.left - 1,
+        };
+      });
+    const noSidewaysRange = (selector: string) =>
+      page.locator(selector).evaluate((element) => ({
+        pane: element.scrollWidth - element.clientWidth,
+        page:
+          document.scrollingElement!.scrollWidth -
+          document.scrollingElement!.clientWidth,
+      }));
+
+    await expect(rootBody.locator('span.mx-maths--wide')).toHaveCount(1);
+    expect(await scrollsToEnd(rootBody)).toEqual({
+      scrolls: true,
+      endShown: true,
+    });
+    expect(await noSidewaysRange('.scroll')).toEqual({ pane: 0, page: 0 });
+
+    // The pad-and-pull-back moves nothing: lifting it (and the clip) changes no pixel of the
+    // narrow formula's paragraph.
+    const narrow = rootBody.locator('p', { hasText: 'edge link' });
+    const before = await narrow.screenshot({ animations: 'disabled' });
+
+    // A ring on a link at the body's edge is whole: the clip changes none of its pixels.
+    const link = narrow.getByRole('link', { name: 'edge link' });
+    await page.keyboard.press('Shift');
+    await link.focus();
+    const ringArea = await link.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        x: Math.floor(rect.left) - 8,
+        y: Math.floor(rect.top) - 8,
+        width: Math.ceil(rect.width) + 16,
+        height: Math.ceil(rect.height) + 16,
+      };
+    });
+    const ringed = await page.screenshot({
+      clip: ringArea,
+      animations: 'disabled',
+    });
+    const lifted = await page.addStyleTag({
+      content: '.msg__text--html { overflow: visible !important; }',
+    });
+    expect(
+      (
+        await page.screenshot({ clip: ringArea, animations: 'disabled' })
+      ).equals(ringed),
+    ).toBe(true);
+    await link.blur();
+    await page.addStyleTag({
+      content:
+        '.msg__text--html { padding-inline: 0 !important; padding-bottom: 0 !important; margin-inline: 0 !important; margin-bottom: 0 !important; max-width: var(--trinity-measure-prose) !important; }',
+    });
+    expect(
+      (await narrow.screenshot({ animations: 'disabled' })).equals(before),
+    ).toBe(true);
+    await lifted.evaluate((style) => (style as HTMLStyleElement).remove());
+
+    // The same in the thread.
+    await page
+      .locator('.scroll .msg', {
+        has: page.locator('.msg__text--html', { hasText: 'root:' }),
+      })
+      .getByTestId('message-thread-summary')
+      .click();
+    const thread = page.getByTestId('thread-view');
+    const replyBody = thread.locator('.msg__text--html', {
+      hasText: 'reply:',
+    });
+    await expect(replyBody.locator('span.mx-maths--wide')).toHaveCount(1, {
+      timeout: 30_000,
+    });
+    expect(await scrollsToEnd(replyBody)).toEqual({
+      scrolls: true,
+      endShown: true,
+    });
+    expect(
+      await noSidewaysRange('[data-testid="thread-view"] .thread'),
+    ).toEqual({ pane: 0, page: 0 });
   });
 
   // High Contrast would paint `\phantom`'s transparent content in the system text colour.
