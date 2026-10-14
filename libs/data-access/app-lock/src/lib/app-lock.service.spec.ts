@@ -54,7 +54,8 @@ interface Setup {
 function setup(options: Setup = {}) {
   let now = START;
   const writes: { key: string; payload: string }[] = [];
-  const stored = options.stored ?? { 'trinity.app-lock.enabled': true };
+  let stored = options.stored ?? { 'trinity.app-lock.enabled': true };
+  let support = options.support ?? FACE_AND_PIN;
   const storage: PreferenceStorageAdapter = {
     read: ({ key }) =>
       of(
@@ -76,9 +77,7 @@ function setup(options: Setup = {}) {
     },
   };
   const adapter: HostUserPresenceOperation = {
-    support: vi.fn(() =>
-      options.support === 'never' ? NEVER : of(options.support ?? FACE_AND_PIN),
-    ),
+    support: vi.fn(() => (support === 'never' ? NEVER : of(support))),
     verify: vi.fn(
       options.verify ?? (() => of<HostPresenceOutcome>({ kind: 'verified' })),
     ),
@@ -131,6 +130,10 @@ function setup(options: Setup = {}) {
     adapter,
     writes,
     advance: (ms: number) => (now += ms),
+    /** The preference storage now reads differently (it recovered, or changed). */
+    restore: (next: Record<string, unknown> | 'unavailable') => (stored = next),
+    /** The host now reports different support (a keyring unlocked, a PIN record readable). */
+    report: (next: HostUserPresenceSupport | 'never') => (support = next),
   };
 }
 
@@ -167,7 +170,7 @@ describe('AppLockService', () => {
       expect(lock.enabled()).toBe(true);
     });
 
-    it('stays locked when the setting cannot be read, even with no PIN set', async () => {
+    it('stays off when the setting cannot be read and no PIN is set', async () => {
       const { lock } = setup({
         stored: 'unavailable',
         support: {
@@ -176,8 +179,88 @@ describe('AppLockService', () => {
         },
       });
       await hydrated(lock);
-      expect(lock.status()).toBe('locked');
-      // Refreshing support never turns an unreadable setting into "off".
+      expect(lock.status()).toBe('off');
+    });
+
+    it('stays off when the setting cannot be read, no PIN is set and there is no system prompt', async () => {
+      const { lock } = setup({
+        stored: 'unavailable',
+        support: {
+          system: { kind: 'unavailable', reason: 'not-supported' },
+          pin: { kind: 'available', set: false, nextAttemptAt: null },
+        },
+      });
+      await hydrated(lock);
+      expect(lock.status()).toBe('off');
+      expect(lock.enabled()).toBe(false);
+    });
+
+    it('fails closed when neither the setting nor the PIN state can be read', async () => {
+      const unknownPin = {
+        kind: 'unavailable',
+        reason: 'secure-storage-unavailable',
+      } as const;
+      const pinOnly = setup({
+        stored: 'unavailable',
+        support: {
+          system: { kind: 'unavailable', reason: 'not-supported' },
+          pin: unknownPin,
+        },
+      });
+      await hydrated(pinOnly.lock);
+      expect(pinOnly.lock.status()).toBe('locked');
+      expect(pinOnly.lock.pinState()).toBe('unavailable');
+      TestBed.resetTestingModule();
+      const withPrompt = setup({
+        stored: 'unavailable',
+        support: { system: FACE_AND_PIN.system, pin: unknownPin },
+      });
+      await hydrated(withPrompt.lock);
+      expect(withPrompt.lock.status()).toBe('locked');
+      await expect(
+        firstValueFrom(withPrompt.lock.unlockWithSystem()),
+      ).resolves.toEqual({ kind: 'unlocked' });
+    });
+
+    it('releases a fail-closed start once the host reports no PIN', async () => {
+      vi.useFakeTimers({
+        toFake: [
+          'setTimeout',
+          'clearTimeout',
+          'setInterval',
+          'clearInterval',
+          'Date',
+        ],
+      });
+      try {
+        const { lock, report } = setup({
+          stored: 'unavailable',
+          support: 'never',
+        });
+        const done = firstValueFrom(lock.hydrate(), {
+          defaultValue: undefined,
+        });
+        await vi.advanceTimersByTimeAsync(3_000);
+        await done;
+        expect(lock.status()).toBe('locked');
+        report({
+          system: { kind: 'unavailable', reason: 'not-supported' },
+          pin: { kind: 'available', set: false, nextAttemptAt: null },
+        });
+        await firstValueFrom(lock.refreshSupport());
+        expect(lock.status()).toBe('off');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('never releases a readable on setting when the host reports no PIN', async () => {
+      const { lock, report } = setup({ support: PIN_ONLY });
+      await hydrated(lock);
+      report({
+        system: { kind: 'unavailable', reason: 'not-supported' },
+        pin: { kind: 'available', set: false, nextAttemptAt: null },
+      });
       await firstValueFrom(lock.refreshSupport());
       expect(lock.status()).toBe('locked');
     });
@@ -258,6 +341,52 @@ describe('AppLockService', () => {
       expect(lock.pinState()).toBe('not-set');
       expect(lock.resetOnly()).toBe(true);
       await firstValueFrom(lock.refreshSupport());
+      expect(lock.status()).toBe('locked');
+    });
+
+    it('lets Retry use the PIN once the host can read it again', async () => {
+      const { lock, report } = setup({
+        support: {
+          system: { kind: 'unavailable', reason: 'not-supported' },
+          pin: { kind: 'unavailable', reason: 'secure-storage-unavailable' },
+        },
+      });
+      await hydrated(lock);
+      expect(lock.pinState()).toBe('unavailable');
+      report(PIN_ONLY);
+      await firstValueFrom(lock.retry(), { defaultValue: undefined });
+      expect(lock.status()).toBe('locked');
+      expect(lock.pinState()).toBe('ready');
+      expect(lock.resetOnly()).toBe(false);
+      await expect(
+        firstValueFrom(lock.unlockWithPin('482913')),
+      ).resolves.toEqual({
+        kind: 'unlocked',
+      });
+      expect(lock.status()).toBe('unlocked');
+    });
+
+    it('releases the lock when Retry reads a readable off setting', async () => {
+      const { lock, restore } = setup({
+        stored: 'unavailable',
+        support: PIN_ONLY,
+      });
+      await hydrated(lock);
+      expect(lock.status()).toBe('locked');
+      restore({ 'trinity.app-lock.enabled': false });
+      await firstValueFrom(lock.retry(), { defaultValue: undefined });
+      expect(lock.status()).toBe('off');
+      expect(lock.enabled()).toBe(false);
+    });
+
+    it('keeps the lock when Retry reads a readable on setting', async () => {
+      const { lock, restore } = setup({
+        stored: 'unavailable',
+        support: PIN_ONLY,
+      });
+      await hydrated(lock);
+      restore({ 'trinity.app-lock.enabled': true });
+      await firstValueFrom(lock.retry(), { defaultValue: undefined });
       expect(lock.status()).toBe('locked');
     });
 

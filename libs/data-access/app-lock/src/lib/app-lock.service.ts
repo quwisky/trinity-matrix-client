@@ -82,6 +82,19 @@ const PROMPT_BROKE: HostPresenceOutcome = {
 /** Whether a system prompt's failures count toward the unlock delay (spec §2). */
 type PromptPurpose = 'unlock' | 'guard';
 
+/**
+ * Whether an unreadable enabled setting means the lock is on (spec §1 "Unreadable setting",
+ * decision 27). Every lock has a PIN (decision 23), so only a host that reports no stored PIN
+ * turns it off. A host that did not answer (`null`) or cannot read its PIN record fails closed.
+ */
+function unreadableSettingLocks(
+  support: HostUserPresenceSupport | null,
+): boolean {
+  return (
+    support === null || support.pin.kind !== 'available' || support.pin.set
+  );
+}
+
 function appNameFrom(handoff: HostAuthenticationHandoffService): string {
   try {
     return handoff.deviceDisplayName() || DEFAULT_APP_NAME;
@@ -113,6 +126,8 @@ export class AppLockService {
   /** The one system prompt open now; concurrent callers share it (never two at once). */
   private prompt: Observable<HostPresenceOutcome> | null = null;
   private verifiedAt: number | null = null;
+  /** The enabled setting could not be read at startup; the host's PIN decides. */
+  private settingUnreadable = false;
 
   /** "Trinity", or "Trinity Next" in the desktop prerelease; the window title uses it too. */
   readonly appName = appNameFrom(inject(HostAuthenticationHandoffService));
@@ -133,9 +148,10 @@ export class AppLockService {
     return pin.set ? 'ready' : 'not-set';
   });
   /**
-   * Locked with no way in but the full reset ("Erase all data on this device"): no system
-   * prompt and no usable PIN. Never unlocks; the lock screen offers the reset, and Retry
-   * (`refreshSupport`) while the PIN is `unavailable`, which may pass.
+   * Locked with no system prompt and no usable PIN. Never unlocks. With `pinState`
+   * `unavailable` the lock screen says "Trinity can't read your PIN right now" and offers
+   * Retry (`retry`) and the full reset; with `not-set` (a reset that stopped half way) it
+   * offers only the full reset ("Erase all data on this device").
    */
   readonly resetOnly = computed(
     () =>
@@ -148,11 +164,10 @@ export class AppLockService {
   });
 
   /**
-   * Read the settings and the host's support; never errors. Run before the first render.
-   * Fails closed: only a readable "off" leaves the lock off. An unreadable setting locks
-   * whatever the host says about its PIN, and a host that does not answer within
-   * {@link SUPPORT_TIMEOUT_MS} leaves no method available ({@link resetOnly}) until
-   * `refreshSupport` hears from it.
+   * Read the settings and the host's support; never errors. Run before the first render, and
+   * again by `retry`. A readable setting always wins. An unreadable one is on unless the host
+   * reports no stored PIN; a host that does not answer within {@link SUPPORT_TIMEOUT_MS}, or
+   * cannot read its PIN record, fails closed until `refreshSupport` or `retry` hears more.
    */
   hydrate(): Observable<void> {
     return forkJoin({
@@ -167,7 +182,11 @@ export class AppLockService {
       map(({ stored, support }) => {
         if (support) this._support.set(withoutPastWait(support, this.now()));
         this._lockAfter.set(stored.lockAfter);
-        const enabled = stored.enabled !== false;
+        this.settingUnreadable = stored.enabled === 'unreadable';
+        const enabled =
+          stored.enabled === 'unreadable'
+            ? unreadableSettingLocks(support)
+            : stored.enabled;
         this._enabled.set(enabled);
         this.setStatus(enabled ? 'locked' : 'off');
       }),
@@ -180,16 +199,28 @@ export class AppLockService {
   }
 
   /**
-   * Re-read the host's support (at every unlock and when Settings opens). Never changes the
-   * status: an unreadable setting stays locked even when no PIN is stored. On a host error,
-   * or no answer within {@link SUPPORT_TIMEOUT_MS}, it keeps and emits the support it had.
+   * Re-read the host's support (at every unlock and when Settings opens). While an unreadable
+   * setting holds the lock, a host that now reports no stored PIN turns it off: no lock was
+   * ever set up. A readable setting is never changed here. On a host error, or no answer
+   * within {@link SUPPORT_TIMEOUT_MS}, it keeps and emits the support it had.
    */
   refreshSupport(): Observable<HostUserPresenceSupport> {
     return defer(() =>
       this.presence.support().pipe(
         take(1),
         map((support) => withoutPastWait(support, this.now())),
-        tap((support) => this._support.set(support)),
+        tap((support) => {
+          this._support.set(support);
+          if (
+            this.settingUnreadable &&
+            this._status() === 'locked' &&
+            !unreadableSettingLocks(support)
+          ) {
+            this.settingUnreadable = false;
+            this._enabled.set(false);
+            this.setStatus('off');
+          }
+        }),
         timeout({
           first: SUPPORT_TIMEOUT_MS,
           with: () => of(this._support()),
@@ -197,6 +228,19 @@ export class AppLockService {
         catchError(() => of(this._support())),
         defaultIfEmpty(this._support()),
       ),
+    );
+  }
+
+  /**
+   * The lock screen's Retry, for "Trinity can't read your PIN right now" and a setting that
+   * could not be read: re-read the setting (when it was unreadable) and the host's support.
+   * Never unlocks; a readable "off" releases the lock. Emits once and never errors.
+   */
+  retry(): Observable<void> {
+    return defer(() =>
+      this.settingUnreadable && this._status() === 'locked'
+        ? this.hydrate()
+        : this.refreshSupport().pipe(map(() => undefined)),
     );
   }
 
@@ -277,6 +321,7 @@ export class AppLockService {
             switchMap((saved) => {
               if (saved.kind === 'completed') {
                 this._enabled.set(true);
+                this.settingUnreadable = false;
                 this.verifiedAt = this.now();
                 this.setStatus('unlocked');
                 return of(saved);
@@ -319,6 +364,7 @@ export class AppLockService {
         switchMap((saved) => {
           if (saved.kind !== 'completed') return of(saved);
           this._enabled.set(false);
+          this.settingUnreadable = false;
           this.setStatus('off');
           // A readable "off" wins over a leftover PIN, so a failed clear is not an error.
           return this.clearPin().pipe(map(() => saved));
