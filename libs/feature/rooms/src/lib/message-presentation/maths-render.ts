@@ -155,6 +155,32 @@ const NEUTRALISED_MACROS: Readonly<Record<string, string>> = {
   '\\fcolorbox': '\\@firstoftwo{\\text{#3}}{#1#2}',
 };
 
+// One `style="…"` attribute value of KaTeX's markup. KaTeX escapes `"` in text, attribute values
+// and the MathML annotation (which repeats the sender's TeX), so this matches only real
+// attributes, never text that spells one. A fixed pattern, never built from the input.
+const STYLE_ATTRIBUTE = /\sstyle="([^"]*)"/g;
+
+/**
+ * Whether KaTeX painted anything in its error colour in the HTML copy, read from the raw markup
+ * before the style allowlist drops the colour: `\html@mathml{\foo}{x}` keeps the error out of
+ * the MathML copy. Only `style` attribute values are read, never text.
+ */
+function paintsErrorColour(markup: string): boolean {
+  for (const [, style] of markup.matchAll(STYLE_ATTRIBUTE)) {
+    const painted = style
+      .split(';')
+      .some(
+        (declaration) =>
+          declaration.replace(/\s+/g, '').toLowerCase() ===
+          `color:${ERROR_COLOUR}`,
+      );
+    if (painted) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * KaTeX's markup through the maths-only DOMPurify instance: HTML, MathML and the minimal SVG
  * KaTeX emits; no script, `foreignObject`, event handlers, links or URLs anywhere.
@@ -194,9 +220,12 @@ export function renderMaths(latex: string, displayMode: boolean): MathsOutcome {
   } catch {
     return { kind: 'source' };
   }
+  if (paintsErrorColour(markup)) {
+    return { kind: 'source' };
+  }
   const fragment = sanitizeMathsMarkup(markup);
-  // The style allowlist drops the error colour from the HTML copy; the MathML copy keeps it as
-  // `mathcolor`, which no sender can set (every colour command is neutralised).
+  // The MathML copy marks an error with `mathcolor`, which no sender can set (every colour
+  // command is neutralised); `\html@mathml` can put one in the MathML copy alone.
   if (
     fragment.querySelector(`.katex-error, [mathcolor="${ERROR_COLOUR}"]`) ||
     !fragment.querySelector('.katex')

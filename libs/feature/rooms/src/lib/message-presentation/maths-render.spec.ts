@@ -125,6 +125,21 @@ describe('renderMaths (real KaTeX)', () => {
     },
   );
 
+  it('shows the source when only the HTML copy holds an error', () => {
+    // \html@mathml{A}{B} draws A and gives screen readers B: no `mathcolor` in the MathML.
+    expect(renderMaths('\\html@mathml{\\foo}{x}', false).kind).toBe('source');
+  });
+
+  it('renders TeX whose text merely spells the error colour', () => {
+    const fragment = rendered(
+      '\\text{style="color:\\#cc0000" color:\\#cc0000} + 1',
+    );
+
+    expect(fragment.querySelector('.katex-html')?.textContent).toContain(
+      'color:#cc0000',
+    );
+  });
+
   it.each([
     ['\\text{<script>alert(1)</script>}', 'rendered'],
     ['\\text{<img src=x onerror=alert(1)>}', 'rendered'],
