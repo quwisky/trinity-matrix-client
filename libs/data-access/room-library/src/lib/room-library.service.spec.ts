@@ -359,7 +359,7 @@ describe('RoomLibraryService', () => {
   describe('rebuilding only the rooms a sync touched (#1292)', () => {
     function setupTracked() {
       const unread: Record<string, number> = { '!a:hs': 0, '!b:hs': 0 };
-      /** Summary rebuilds per room: only a rebuild reads the joined-member count. */
+      /** Summary rebuilds per room: only a rebuild reads the encryption state. */
       const builds: Record<string, number> = {};
       const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
       const rooms = new Map<string, ReturnType<typeof fakeRoom>>();
@@ -367,9 +367,9 @@ describe('RoomLibraryService', () => {
         const room = fakeRoom({ roomId, name });
         room.getUnreadNotificationCount = (type?: string) =>
           type === 'highlight' ? 0 : (unread[roomId] ?? 0);
-        room.getJoinedMemberCount = () => {
+        room.hasEncryptionStateEvent = () => {
           builds[roomId] = (builds[roomId] ?? 0) + 1;
-          return 0;
+          return false;
         };
         rooms.set(roomId, room);
         return room;
@@ -466,11 +466,6 @@ describe('RoomLibraryService', () => {
         (id: string) => [eventIn(id), { roomId: id }],
       ],
       [
-        'a timeline reset',
-        RoomEvent.TimelineReset,
-        (id: string) => [{ roomId: id }],
-      ],
-      [
         'a room state event',
         RoomStateEvent.Events,
         (id: string) => [eventIn(id, 'm.room.topic'), { roomId: id }],
@@ -500,6 +495,29 @@ describe('RoomLibraryService', () => {
       await t.emit(RoomStateEvent.Members, ...member('@peer:hs'));
       expect(t.builds['!a:hs'] ?? 0).toBeGreaterThan(0);
       expect(t.builds['!b:hs'] ?? 0).toBe(0);
+    });
+
+    it('rebuilds a reset room once the sync is in, not at the reset', async () => {
+      const t = setupTracked();
+      t.resetBuilds();
+
+      await t.emit(RoomEvent.TimelineReset, t.room('!a:hs'));
+      // The SDK has emptied the timeline but not yet added the sync's events.
+      expect(t.builds['!a:hs'] ?? 0).toBe(0);
+
+      await t.emit(ClientEvent.Sync);
+      expect(t.builds['!a:hs'] ?? 0).toBeGreaterThan(0);
+      expect(t.builds['!b:hs'] ?? 0).toBe(0);
+    });
+
+    it('picks up a joined-member count the sync summary changed', async () => {
+      const t = setupTracked();
+      // Applied by the SDK after the member event has fired, with no event of its own.
+      t.room('!b:hs').getJoinedMemberCount = () => 7;
+
+      await t.emit(ClientEvent.Sync);
+
+      expect(summary(t.svc, '!b:hs')?.memberCount).toBe(7);
     });
 
     it('picks up a count no event announced on the next sync', async () => {

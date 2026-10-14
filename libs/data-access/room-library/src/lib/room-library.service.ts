@@ -144,7 +144,6 @@ const ROOM_EVENTS = [
   RoomEvent.AccountData,
   RoomEvent.LocalEchoUpdated,
   RoomEvent.Redaction,
-  RoomEvent.TimelineReset,
 ] as const;
 
 /**
@@ -277,6 +276,21 @@ export class RoomLibraryService {
    */
   private readonly onRoomEvent = (...args: unknown[]): void => {
     this.touch(roomIdOf(args));
+  };
+
+  /**
+   * A room's live timeline was reset (a gappy sync). Marked, not refreshed: the SDK awaits
+   * between the reset and adding the sync's new events, and a refresh in that gap would show
+   * the room with no last message and sink it in Recent. The new events' `Timeline`, or this
+   * sync's `Sync`, refreshes it once they are in.
+   */
+  private readonly onTimelineReset = (...args: unknown[]): void => {
+    const roomId = roomIdOf(args);
+    if (roomId) {
+      this.dirtyRooms.add(roomId);
+    } else {
+      this.fullRebuild = true;
+    }
   };
 
   /** A state event: a room's name, avatar, topic or encryption. */
@@ -498,6 +512,7 @@ export class RoomLibraryService {
       client.on(RoomEvent.MyMembership, this.onMyMembership);
       client.on(RoomMemberEvent.Typing, this.onTypingChanged);
       for (const event of ROOM_EVENTS) client.on(event, this.onRoomEvent);
+      client.on(RoomEvent.TimelineReset, this.onTimelineReset);
       client.on(RoomStateEvent.Events, this.onRoomStateEvent);
       client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
       client.on(ClientEvent.Room, this.onListChanged);
@@ -510,6 +525,7 @@ export class RoomLibraryService {
       client.off(RoomEvent.MyMembership, this.onMyMembership);
       client.off(RoomMemberEvent.Typing, this.onTypingChanged);
       for (const event of ROOM_EVENTS) client.off(event, this.onRoomEvent);
+      client.off(RoomEvent.TimelineReset, this.onTimelineReset);
       client.off(RoomStateEvent.Events, this.onRoomStateEvent);
       client.off(MatrixEventEvent.Decrypted, this.onDecrypted);
       client.off(ClientEvent.Room, this.onListChanged);
@@ -1050,14 +1066,17 @@ export class RoomLibraryService {
   }
 
   /**
-   * Mark every listed room whose counts or activity time no longer match its summary.
+   * Mark every listed room whose counts, activity time or joined-member count no longer
+   * match its summary.
    *
-   * Both change without any event this service hears. A sync can carry only a room's
+   * All of them can change without any event this service hears. A sync can carry only a room's
    * `unread_notifications`, and the SDK's start-up `fixupRoomNotifications` corrects counts
    * on the first prepared sync: `RoomEvent.UnreadNotifications` is emitted only on the Room,
    * never re-emitted at the client. A new thread's bundled latest reply moves the room's
-   * activity time (#1230) through `ThreadEvent.Update`, which is not re-emitted either. These
-   * few reads per room are far cheaper than rebuilding its summary, and they close all of it.
+   * activity time (#1230) through `ThreadEvent.Update`, which is not re-emitted either. The
+   * joined-member count comes from the sync's room summary, which the SDK applies after the
+   * room's member events have fired and announces only with `RoomEvent.Summary`, on the room.
+   * These few reads per room are far cheaper than rebuilding its summary.
    */
   private markChangedRooms(
     client: MatrixClient,
@@ -1072,7 +1091,8 @@ export class RoomLibraryService {
           summary.unreadCount ||
         room.getUnreadNotificationCount(NotificationCountType.Highlight) !==
           summary.highlightCount ||
-        roomActivityTs(room) !== summary.activityTs
+        roomActivityTs(room) !== summary.activityTs ||
+        room.getJoinedMemberCount() !== summary.memberCount
       ) {
         this.dirtyRooms.add(summary.id);
       }
