@@ -573,6 +573,9 @@ export class MessageListComponent extends MessageListBase {
     const st = el.scrollTop;
     const changes: HeightChange[] = [];
     let changed = false;
+    // How much the rendered rows grew in this batch. A first measurement changes no layout (the
+    // row already drew at that height; only the estimate behind the prefix sums changes).
+    let grown = 0;
     for (const entry of entries) {
       const mid = this.observed.get(entry.target);
       if (mid === undefined) {
@@ -585,6 +588,7 @@ export class MessageListComponent extends MessageListBase {
         continue;
       }
       this.measured.set(mid, newH);
+      if (prior !== undefined) grown += newH - prior;
       changed = true;
       const idx = idList.indexOf(mid);
       if (idx >= 0) {
@@ -606,6 +610,20 @@ export class MessageListComponent extends MessageListBase {
     afterNextRender(() => this.reapplyRecentJump(), {
       injector: this.injector,
     });
+    // A reader exactly at the bottom before this batch (the newest message expanding behind
+    // Show more, a late image) stays at the bottom. That wins over a history anchor, which
+    // otherwise outlives its restore until the reader scrolls, and ends it: the bottom is now
+    // the reader's place. Only an exact pin: a reader near the bottom keeps the anchored row.
+    if (
+      atBottom &&
+      this.prependAnchorActive &&
+      !this.pendingPrepend &&
+      el.scrollHeight - grown - st - el.clientHeight < 1
+    ) {
+      this.prependAnchorActive = false;
+      this.prependAnchorGeneration++;
+      this.expectedProgrammaticScrollTop = null;
+    }
     if (this.prependAnchorActive) {
       // ResizeObserver runs after the prepend restore and can replace estimated spacer
       // heights with real measurements. Correct from the rendered anchor after each such
