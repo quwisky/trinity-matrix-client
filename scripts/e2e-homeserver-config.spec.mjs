@@ -292,6 +292,28 @@ describe('Synapse adapter config generation', () => {
     expect(yaml).toContain('display_name_template: "{{ user.name }}"');
   });
 
+  it('raises the room-creation limit above its default burst of 10, also on an existing config', async () => {
+    stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
+    const { ensureConfig } = await adapterIn(stateDir);
+    const ctx = { log: () => undefined, generate: generateInto(stateDir) };
+    const config = join(stateDir, 'data/homeserver.yaml');
+    const roomCreation =
+      /^rc_room_creation:\n {2}per_second: 100\n {2}burst_count: 1000$/m;
+
+    await ensureConfig(ctx);
+    expect(readFileSync(config, 'utf8')).toMatch(roomCreation);
+
+    // A stack patched before this limit was added keeps its once-only extras block.
+    writeFileSync(
+      config,
+      readFileSync(config, 'utf8').replace(roomCreation, ''),
+    );
+    await ensureConfig(ctx);
+    const yaml = readFileSync(config, 'utf8');
+    expect(yaml).toMatch(roomCreation);
+    expect(yaml.match(/^rc_room_creation:/gm)).toHaveLength(1);
+  });
+
   it('keeps the Dex block for the Docker runtime', async () => {
     stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
     const { ensureConfig } = await adapterIn(stateDir);

@@ -252,6 +252,17 @@ export async function ensureConfig(ctx) {
   if (!yaml.includes('room_list_publication_rules')) {
     additions.push('room_list_publication_rules:', '  - "action": "allow"');
   }
+  // Synapse allows a burst of 10 createRoom calls per user, then about one a minute
+  // (rc_room_creation; 429 M_LIMIT_EXCEEDED). Specs that seed a large account, such as
+  // the 120-room sidebar windowing journey, create rooms back to back. Guarded on its
+  // own key for the same reason as the publication rules above.
+  if (!/^rc_room_creation:/m.test(yaml)) {
+    additions.push(
+      'rc_room_creation:',
+      '  per_second: 100',
+      '  burst_count: 1000',
+    );
+  }
   if (!/^federation_verify_certificates:/m.test(yaml)) {
     // The harness Caddy uses its own disposable CA. Federation is still real — only
     // certificate-chain verification is relaxed inside this isolated test network.
