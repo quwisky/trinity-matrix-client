@@ -616,6 +616,22 @@ describe('UnreadAggregatorService touched rooms (#1311)', () => {
     expect(t.svc.totalUnread()).toBe(2);
   });
 
+  it('recounts a left room that keeps a count once, not on every sync', async () => {
+    const t = await setup();
+    t.b.leave();
+    t.b.unread = 2; // the server still reports a count for a room no longer joined
+
+    t.client.emit(ClientEvent.Sync, ...steadySync);
+    await t.flush();
+    expect(t.recounts['!b:hs'] ?? 0).toBe(1);
+
+    t.reset();
+    t.client.emit(ClientEvent.Sync, ...steadySync);
+    await t.flush();
+    expect(t.recounts['!b:hs'] ?? 0).toBe(0);
+    expect(t.svc.totalUnread()).toBe(1);
+  });
+
   it('recounts every room when the sync state changes', async () => {
     const t = await setup();
 

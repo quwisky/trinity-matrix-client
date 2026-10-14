@@ -47,6 +47,12 @@ interface AccountListener {
 interface AccountUnread {
   /** Rooms that want attention, by room id. */
   readonly cache: Map<string, UnreadRoom>;
+  /**
+   * Every room's count when it was last counted, listed or not. A sync re-marks a room only
+   * when its count moved, so a space or a left room that keeps a count is not recounted on
+   * every sync.
+   */
+  readonly seen: Map<string, number>;
   readonly dirty: Set<string>;
   /** Recount every room on the next flush. */
   full: boolean;
@@ -212,6 +218,7 @@ export class UnreadAggregatorService {
     if (!state) {
       state = {
         cache: new Map(),
+        seen: new Map(),
         dirty: new Set(),
         full: true,
         compare: false,
@@ -230,7 +237,8 @@ export class UnreadAggregatorService {
       const state = this.stateFor(userId);
       if (state.full || now - state.lastFull >= FULL_REFRESH_MS) {
         state.cache.clear();
-        for (const room of this.unreadRoomsFor(userId, client)) {
+        state.seen.clear();
+        for (const room of this.unreadRoomsFor(userId, client, state.seen)) {
           state.cache.set(room.roomId, room);
         }
         state.full = false;
@@ -271,13 +279,19 @@ export class UnreadAggregatorService {
     let direct: ReturnType<typeof directMapOf> | null = null;
     for (const roomId of touched) {
       const room = client.getRoom(roomId);
-      const entry = room
-        ? this.unreadRoomOf(
-            userId,
-            room,
-            () => (direct ??= directMapOf(client)),
-          )
-        : null;
+      let entry: UnreadRoom | null = null;
+      if (room) {
+        const count = countOf(room);
+        state.seen.set(roomId, count);
+        entry = this.unreadRoomOf(
+          userId,
+          room,
+          count,
+          () => (direct ??= directMapOf(client)),
+        );
+      } else {
+        state.seen.delete(roomId);
+      }
       if (entry) {
         state.cache.set(roomId, entry);
       } else {
@@ -290,14 +304,21 @@ export class UnreadAggregatorService {
    * An account's joined, non-space rooms that want attention: a notification count above
    * zero, or the marked-unread flag even when the count is zero.
    */
-  private unreadRoomsFor(userId: string, client: MatrixClient): UnreadRoom[] {
+  private unreadRoomsFor(
+    userId: string,
+    client: MatrixClient,
+    seen: Map<string, number>,
+  ): UnreadRoom[] {
     let direct: ReturnType<typeof directMapOf> | null = null;
     const unread: UnreadRoom[] = [];
     for (const room of client.getRooms()) {
+      const count = countOf(room);
+      seen.set(room.roomId, count);
       // Read m.direct only when some room is unread: most syncs touch no unread room at all.
       const entry = this.unreadRoomOf(
         userId,
         room,
+        count,
         () => (direct ??= directMapOf(client)),
       );
       if (entry) unread.push(entry);
@@ -309,13 +330,12 @@ export class UnreadAggregatorService {
   private unreadRoomOf(
     userId: string,
     room: Room,
+    unreadCount: number,
     directMap: () => ReturnType<typeof directMapOf>,
   ): UnreadRoom | null {
     if (room.isSpaceRoom() || room.getMyMembership() !== 'join') {
       return null;
     }
-    const unreadCount =
-      room.getUnreadNotificationCount(NotificationCountType.Total) ?? 0;
     const markedUnread = isMarkedUnread(room);
     if (unreadCount <= 0 && !markedUnread) {
       return null;
@@ -379,19 +399,20 @@ export class UnreadAggregatorService {
   }
 }
 
+function countOf(room: Room): number {
+  return room.getUnreadNotificationCount(NotificationCountType.Total) ?? 0;
+}
+
 /**
- * Mark every room whose count no longer matches its entry. A sync can change a count with
- * no event this service hears: one carrying only the counts, or the SDK's start-up fix-up
- * (`fixupRoomNotifications`), which zeroes rooms whose last message is your own. The SDK
- * announces these with `RoomEvent.UnreadNotifications`, but only on the room, not the client.
- * Reading one count per room is cheap next to building every entry.
+ * Mark every room whose count moved since it was last counted. A sync can change a count
+ * with no event this service hears: one carrying only the counts, or the SDK's start-up
+ * fix-up (`fixupRoomNotifications`), which zeroes rooms whose last message is your own. The
+ * SDK announces these with `RoomEvent.UnreadNotifications`, but only on the room, not the
+ * client. Reading one count per room is cheap next to building every entry.
  */
 function markChangedCounts(client: MatrixClient, state: AccountUnread): void {
   for (const room of client.getRooms()) {
-    const count =
-      room.getUnreadNotificationCount(NotificationCountType.Total) ?? 0;
-    const entry = state.cache.get(room.roomId);
-    if (entry ? entry.unreadCount !== count : count > 0) {
+    if (state.seen.get(room.roomId) !== countOf(room)) {
       state.dirty.add(room.roomId);
     }
   }
