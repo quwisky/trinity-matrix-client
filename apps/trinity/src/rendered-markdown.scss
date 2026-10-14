@@ -415,6 +415,29 @@
       * {
         visibility: hidden;
       }
+
+      // The sender's reason, as generated content: it stays out of textContent, copies and the
+      // edit-history diff, like the code block's `language` caption. Drawn in the message
+      // surface's colour so it reads against the bar (filled with --trinity-text-bright). A
+      // pseudo-element is not matched by `*` above, so it stays visible. Isolated, so a
+      // right-to-left reason stays in its own run and never reorders the text after it.
+      &[label]::before {
+        content: 'Spoiler: ' attr(label) ' ';
+        color: var(--trinity-message-surface, var(--trinity-surface-canvas));
+        unicode-bidi: isolate;
+      }
+
+      // High Contrast replaces the bar's fill and the transparent text with system colours,
+      // which would print the hidden text. Keep a solid bar and the reason readable on it.
+      @media (forced-colors: active) {
+        forced-color-adjust: none;
+        background-color: CanvasText;
+        color: CanvasText;
+
+        &[label]::before {
+          color: Canvas;
+        }
+      }
     }
   }
 

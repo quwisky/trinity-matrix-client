@@ -58,6 +58,9 @@
     margin: 0;
     color: var(--trinity-text);
     overflow-wrap: anywhere;
+
+    // Sender colours in a past revision are checked against the dialog's surface.
+    --trinity-message-surface: var(--trinity-surface-overlay);
   }
 
   // Only a plain-text revision preserves its own newlines; a rich one encodes them as

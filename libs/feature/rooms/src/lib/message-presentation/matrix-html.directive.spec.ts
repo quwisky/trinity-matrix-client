@@ -121,4 +121,55 @@ describe('MatrixHtmlDirective', () => {
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
   });
+
+  it('keeps the colour tokens through Angular’s sanitizer', () => {
+    const { host } = render(
+      sanitizeMatrixHtml('<span data-mx-color="#e03030">r</span>'),
+    );
+
+    expect(host.querySelector('.mx-fg-e03030')).not.toBeNull();
+  });
+
+  it('keeps the spoiler reason through Angular’s sanitizer and drops the name on reveal', () => {
+    const { host } = render(
+      sanitizeMatrixHtml('<span data-mx-spoiler="ending">she lives</span>'),
+    );
+    const spoiler = host.querySelector<HTMLElement>('.mx-spoiler')!;
+
+    // Angular keeps `label` today; an upgrade that drops it must fail here, not silently.
+    expect(spoiler.getAttribute('label')).toBe('ending');
+    expect(spoiler.getAttribute('aria-label')).toBe(
+      'Spoiler: ending, activate to reveal',
+    );
+
+    spoiler.click();
+
+    expect(spoiler.hasAttribute('aria-label')).toBe(false);
+    expect(spoiler.hasAttribute('role')).toBe(false);
+    expect(spoiler.hasAttribute('tabindex')).toBe(false);
+  });
+
+  it.each(['Enter', ' '])(
+    'keeps focus on a spoiler revealed with %j until focus leaves it',
+    (key) => {
+      const { host } = render(
+        sanitizeMatrixHtml('<span data-mx-spoiler>x</span>'),
+      );
+      const spoiler = host.querySelector<HTMLElement>('.mx-spoiler')!;
+      spoiler.focus();
+
+      spoiler.dispatchEvent(
+        new KeyboardEvent('keydown', { key, bubbles: true }),
+      );
+
+      expect(spoiler.classList.contains('is-revealed')).toBe(true);
+      expect(document.activeElement).toBe(spoiler);
+      expect(spoiler.hasAttribute('tabindex')).toBe(true);
+      expect(spoiler.hasAttribute('role')).toBe(false);
+
+      spoiler.blur();
+
+      expect(spoiler.hasAttribute('tabindex')).toBe(false);
+    },
+  );
 });

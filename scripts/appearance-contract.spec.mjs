@@ -193,6 +193,9 @@ describe('Appearance contraction', () => {
   it('gives one adapter ownership of every document-root Appearance carrier', () => {
     const adapter =
       'libs/application/appearance/src/lib/appearance-document.adapter.ts';
+    // Message rendering re-checks sender colours when the theme changes, but never writes it.
+    const themeReader =
+      'libs/feature/rooms/src/lib/message-presentation/root-theme.ts';
     for (const carrier of [
       'data-theme',
       'data-density',
@@ -200,15 +203,21 @@ describe('Appearance contraction', () => {
       'data-code-lines',
       '--trinity-code-scale',
     ]) {
-      expect(filesContaining(`'${carrier}'`)).toEqual([adapter]);
+      expect(filesContaining(`'${carrier}'`)).toEqual(
+        carrier === 'data-theme' ? [adapter, themeReader] : [adapter],
+      );
     }
     expect(filesContaining("'font-size'")).toEqual([adapter]);
     // Responsive presentation may observe root text size, but never owns its writes.
     const viewportReader = 'libs/util/ui/src/lib/text-scaled-viewport.ts';
     expect(filesContaining('documentElement')).toEqual([
       adapter,
+      themeReader,
       viewportReader,
     ]);
+    expect(read(themeReader)).not.toMatch(
+      /\.style\s*(?:\.|\[)|classList\.(?:add|remove|toggle)|setAttribute\(/u,
+    );
     expect(read(viewportReader)).not.toMatch(
       /\.style\s*(?:\.|\[)|classList\.(?:add|remove|toggle)|setAttribute\(/u,
     );
