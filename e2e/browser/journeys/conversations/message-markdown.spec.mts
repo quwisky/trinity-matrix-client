@@ -25,6 +25,7 @@ import {
   signInAndOpen,
   uploadPng,
 } from '../../support/formatted-message-journey.mts';
+import { sendWithRetry } from '../../support/cs-api.mts';
 
 // Covers the markdown render path end to end, through the REAL composer so the wire
 // format is exercised, not just the rendering:
@@ -890,6 +891,102 @@ test.describe('Maths', () => {
     expect(layout.tagStart).toBeGreaterThanOrEqual(layout.formulaEnd);
     expect(layout.tagEnd).toBeLessThanOrEqual(layout.scrollEnd + 0.5);
   });
+
+  // Kerns that add up make one KaTeX run far wider than the body. The body clips it, so a
+  // sender cannot cover, or take the clicks of, the shield that marks their message.
+  for (const viewport of [
+    { width: 1280, height: 800 },
+    { width: 390, height: 844 },
+  ]) {
+    test(`keeps maths off the message's shield at ${viewport.width}px`, async ({
+      page,
+      request,
+    }) => {
+      const hs = session.hs as string;
+      const room = await seedFormattedRoom(request, hs, 'maths-shield');
+      // Sent without encryption into an encrypted room, so the message is marked.
+      await sendWithRetry('enable encryption', () =>
+        request.put(
+          `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room.roomId)}/state/m.room.encryption/`,
+          {
+            headers: { Authorization: `Bearer ${room.account.accessToken}` },
+            data: { algorithm: 'm.megolm.v1.aes-sha2' },
+          },
+        ),
+      );
+      await sendMessage(request, hs, room, {
+        body: 'wide maths',
+        html:
+          '<p>wide: <span data-mx-maths="x\\kern{10em}\\kern{8.6em}\\rule{1.5em}{1.5em}"><code>rule</code></span></p>' +
+          '<p>far: <span data-mx-maths="y\\hspace{9em}\\hspace{9em}\\hspace{9em}\\hspace{9em}\\rule{1.5em}{1.5em}\\text{over the edge}"><code>far</code></span></p>' +
+          // Rules of 10em each, which add up to a bar past the body on any screen.
+          '<p>bar: <span data-mx-maths="z\\rule{10em}{0.5em}\\rule{10em}{0.5em}\\rule{10em}{0.5em}\\rule{10em}{0.5em}"><code>bar</code></span></p>',
+      });
+      await page.setViewportSize(viewport);
+      await signInAndOpen(page, room);
+
+      const body = page.locator('.scroll .msg__text--html', {
+        hasText: 'wide:',
+      });
+      await expect(body.locator('.mx-maths .katex')).toHaveCount(3, {
+        timeout: 30_000,
+      });
+      const shield = page.locator('.scroll [data-testid^="msg-shield-"]');
+      await expect(shield).toBeVisible({ timeout: 30_000 });
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+
+      // The shield's centre is still the shield's to hit.
+      const hitsShield = await shield.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+        );
+        return !!hit && element.contains(hit);
+      });
+      expect(hitsShield).toBe(true);
+
+      // Right of the body, nothing changes when the maths is hidden.
+      const beside = await body.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const pane = element.closest('.scroll')!.getBoundingClientRect();
+        // Past the focus-ring reach (2px + 2px), on whole pixels.
+        const x = Math.ceil(box.right + 4) + 1;
+        return {
+          x,
+          y: Math.floor(box.top),
+          width: Math.floor(pane.right) - x,
+          height: Math.ceil(box.height),
+        };
+      });
+      expect(beside.width).toBeGreaterThan(16);
+      const withMaths = await page.screenshot({
+        clip: beside,
+        animations: 'disabled',
+      });
+      await body.evaluate((element) =>
+        element
+          .querySelectorAll<HTMLElement>('.mx-maths')
+          .forEach((maths) => (maths.style.visibility = 'hidden')),
+      );
+      const withoutMaths = await page.screenshot({
+        clip: beside,
+        animations: 'disabled',
+      });
+      expect(withMaths.equals(withoutMaths)).toBe(true);
+      await body.evaluate((element) =>
+        element
+          .querySelectorAll<HTMLElement>('.mx-maths')
+          .forEach((maths) => (maths.style.visibility = '')),
+      );
+
+      // And its tooltip still opens.
+      await shield.hover();
+      await expect(page.getByTestId('msg-shield-tip')).toContainText(
+        'This message was sent without end-to-end encryption.',
+      );
+    });
+  }
 
   // High Contrast would paint `\phantom`'s transparent content in the system text colour.
   test('keeps phantom maths invisible in forced colours', async ({
