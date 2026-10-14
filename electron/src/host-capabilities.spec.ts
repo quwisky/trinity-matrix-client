@@ -47,7 +47,7 @@ describe('host capability negotiation', () => {
     });
   });
 
-  it('supports user presence and lock integration but not yet screen privacy', () => {
+  it('supports user presence and lock integration, and not screen privacy (mobile only)', () => {
     const result = negotiateHostCapabilities({
       protocolVersion: 1,
       operations: HOST_OPERATIONS,
