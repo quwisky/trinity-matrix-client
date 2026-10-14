@@ -229,6 +229,9 @@ export class AppLockCoverState {
 
   unlockWithSystem(): void {
     if (this.busy()) return;
+    // A prompt by hand counts as this visit's prompt; a read answering later won't reopen it.
+    this.promptedThisVisit = true;
+    this.promptPending = false;
     this.say(null);
     this.busy.set(true);
     this.appLock

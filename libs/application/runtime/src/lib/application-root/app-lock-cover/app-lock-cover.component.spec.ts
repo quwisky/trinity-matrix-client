@@ -473,6 +473,20 @@ describe('AppLockCoverComponent', () => {
       expect(unlockWithSystem).toHaveBeenCalledOnce();
     });
 
+    it('does not prompt again after the person unlocks by hand while a read is pending', async () => {
+      const { unlockWithSystem, locked, visits, settle, answerRefreshes } =
+        await setup({ locked: false, refresh: 'held' });
+      locked.set(true);
+      visits.next('front');
+      await settle();
+      // The person presses Unlock before the host has answered, then cancels the prompt.
+      await click(screen.getByRole('button', { name: 'Unlock with Face ID' }));
+      expect(unlockWithSystem).toHaveBeenCalledOnce();
+      answerRefreshes();
+      await settle();
+      expect(unlockWithSystem).toHaveBeenCalledOnce();
+    });
+
     it('opens the prompt once when a cover that opened away comes back to the front', async () => {
       const { unlockWithSystem, locked, visits, settle, answerRefreshes } =
         await setup({ locked: false, refresh: 'held' });
