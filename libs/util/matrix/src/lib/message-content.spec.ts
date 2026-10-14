@@ -759,3 +759,48 @@ describe('m.mentions is always present', () => {
     expect(reply['m.mentions']).toEqual({ user_ids: ['@bob:hs'] });
   });
 });
+
+describe('renderMarkdown long space runs (#1306)', () => {
+  /** Below the shield threshold, rendered by marked as-is: the reference output. */
+  const NATIVE = ' '.repeat(31);
+  const LONG = ' '.repeat(40);
+  const templates: ((run: string) => string)[] = [
+    (s) => `a${s}b`,
+    (s) => `**bold**${s}_italic_ and *more*${s}text`,
+    (s) => `x_y${s}_z_`,
+    (s) => `\`code${s}span\``,
+    (s) => '```\nfenced' + s + 'block\n```',
+    (s) => `[link${s}text](https://example.org) after${s}it`,
+    (s) => `- item${s}one\n- item two`,
+    (s) => `| a${s}b | c |\n| --- | --- |\n| d${s}e | f |`,
+    (s) => `> quoted${s}words`,
+    (s) => `see https://example.org${s}and www.example.org${s}too`,
+    (s) => `@alice:example.org${s}#room:example.org`,
+    (s) => `line one${s}\nline two`,
+    (s) => `trailing words${s}`,
+  ];
+
+  it.each(templates.map((t, i) => [i, t] as const))(
+    'renders template %i exactly as marked would',
+    (_, template) => {
+      const native = renderMarkdown(template(NATIVE));
+      const long = renderMarkdown(template(LONG));
+      expect(long.formatted).toBe(native.formatted);
+      expect(long.html).toBe(native.html.split(NATIVE).join(LONG));
+    },
+  );
+
+  it('renders a 60,000-space run between two words without stalling', () => {
+    const run = ' '.repeat(60_000);
+    const started = performance.now();
+    const rendered = renderMarkdown(`a${run}b`);
+    // marked alone takes ~1.7 s here: its inline text rule rescans the run at every space.
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(rendered.html).toBe(`<p>a${run}b</p>\n`);
+  });
+
+  it('leaves text that already holds the shield characters to marked', () => {
+    const text = `a${LONG}b  c`;
+    expect(renderMarkdown(text).html).toContain(`a${LONG}b  c`);
+  });
+});

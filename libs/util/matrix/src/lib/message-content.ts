@@ -255,6 +255,76 @@ const markdown = new Marked({
   renderer: { checkbox, image, link },
 });
 
+/** A run of at least this many spaces between two other characters is shielded (#1306). */
+const SHIELDED_RUN = 32;
+/** Private-use characters that stand in for a shielded run: open, close, and ten digits. */
+const SHIELD_OPEN = '\uE000';
+const SHIELD_CLOSE = '\uE001';
+const SHIELD_DIGIT_ZERO = 0xe010;
+const SHIELD_CHARS = /[\uE000-\uE01F]/;
+const SHIELD_MARK = /\uE000([\uE010-\uE019]+)\uE001/g;
+
+/**
+ * Stand in for long runs of spaces between two words before marked sees them.
+ *
+ * marked's inline text rule looks ahead for "two or more spaces, then a newline" at every
+ * position, so a run of n spaces costs O(n²): 20,000 spaces took ~200 ms and 60,000 about
+ * 1.7 s, on every keystroke of the composer preview. The run is replaced by a space, a
+ * private-use mark naming it, and a space, and put back verbatim in the HTML. The two real
+ * spaces keep every rule that looks at a neighbour (emphasis flanking, autolinks) seeing the
+ * whitespace it would have seen. Runs at the start of a line (indentation, code blocks) or
+ * before a newline (a hard break) are left to marked, and so is text that already holds a
+ * shield character. A scan, not a regex: ` {32,}(?=\S)` is quadratic itself on a run that
+ * ends in a newline.
+ */
+function shieldSpaceRuns(
+  text: string,
+): { text: string; runs: number[] } | null {
+  if (SHIELD_CHARS.test(text)) {
+    return null;
+  }
+  const runs: number[] = [];
+  let out = '';
+  let copied = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) !== 0x20) continue;
+    let end = i;
+    while (end < text.length && text.charCodeAt(end) === 0x20) end++;
+    const before = i > 0 ? text[i - 1] : '\n';
+    const after = end < text.length ? text[end] : '\n';
+    if (
+      end - i >= SHIELDED_RUN &&
+      before !== '\n' &&
+      before !== '\r' &&
+      after !== '\n' &&
+      after !== '\r'
+    ) {
+      out += `${text.slice(copied, i)} ${SHIELD_OPEN}${shieldIndex(runs.length)}${SHIELD_CLOSE} `;
+      runs.push(end - i - 2);
+      copied = end;
+    }
+    i = end - 1;
+  }
+  return runs.length ? { text: out + text.slice(copied), runs } : null;
+}
+
+/** A run's index in private-use digits, so nothing marked reads as text touches it. */
+function shieldIndex(index: number): string {
+  return [...String(index)]
+    .map((d) => String.fromCharCode(SHIELD_DIGIT_ZERO + Number(d)))
+    .join('');
+}
+
+/** Put each shielded run back, wherever marked placed its mark. */
+function restoreSpaceRuns(html: string, runs: readonly number[]): string {
+  return html.replace(SHIELD_MARK, (_, digits: string) => {
+    const index = Number(
+      [...digits].map((d) => d.charCodeAt(0) - SHIELD_DIGIT_ZERO).join(''),
+    );
+    return ' '.repeat(runs[index] ?? 0);
+  });
+}
+
 /**
  * Render composer markdown to sanitized HTML. `formatted` is false when the HTML
  * carries no formatting beyond the plain text, so the caller can send plain text.
@@ -262,7 +332,13 @@ const markdown = new Marked({
 export function renderMarkdown(text: string): RenderedMarkdown {
   let rendered: string;
   try {
-    rendered = markdown.parse(text, { async: false });
+    const shielded = shieldSpaceRuns(text);
+    rendered = shielded
+      ? restoreSpaceRuns(
+          markdown.parse(shielded.text, { async: false }),
+          shielded.runs,
+        )
+      : markdown.parse(text, { async: false });
   } catch {
     return { formatted: false, html: '' };
   }
