@@ -51,19 +51,58 @@ describe('sender colours become checked class tokens', () => {
     ).toEqual(['mx-fg-222222']);
   });
 
-  it.each(['#abc', 'red', 'rgb(1, 2, 3)', '#e03030ff', 'e03030', ''])(
-    'ignores %j',
+  it.each([
+    '#abc',
+    'red',
+    'rgb(1, 2, 3)',
+    '#e03030ff',
+    'e03030',
+    '',
+    '#e03030 mx-fg-000000',
+    '#e03030\tmx-bg-000000',
+  ])('ignores %j', (value) => {
+    expect(
+      classesOf(
+        sanitizeMatrixHtml(
+          `<span data-mx-color="${value}" data-mx-bg-color="${value}">x</span>`,
+        ),
+        'span',
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([' #e03030', '#e03030\n'])(
+    'reads %j as DOMPurify trims it, one token and nothing more',
     (value) => {
+      // DOMPurify trims every attribute value before the hooks see it (as HTML's legacy colour
+      // rule does for `font color`), so only surrounding whitespace is forgiven: the colour is
+      // still exactly `#RRGGBB` and still goes through the contrast guard.
       expect(
         classesOf(
-          sanitizeMatrixHtml(
-            `<span data-mx-color="${value}" data-mx-bg-color="${value}">x</span>`,
-          ),
+          sanitizeMatrixHtml(`<span data-mx-color="${value}">x</span>`),
           'span',
         ),
-      ).toEqual([]);
+      ).toEqual(['mx-fg-e03030']);
     },
   );
+
+  it('tokenizes a font’s background colour on its own', () => {
+    expect(
+      classesOf(
+        sanitizeMatrixHtml('<font data-mx-bg-color="#FFEB3B">x</font>'),
+        'font',
+      ),
+    ).toEqual(['mx-bg-ffeb3b']);
+  });
+
+  it('leaves a font with no usable colour untokenized and without color', () => {
+    const clean = sanitizeMatrixHtml(
+      '<font data-mx-color="red" color="#abc">x</font>',
+    );
+
+    expect(classesOf(clean, 'font')).toEqual([]);
+    expect(first(clean, 'font')?.hasAttribute('color')).toBe(false);
+  });
 
   it('removes a font color it cannot use, so nothing unchecked is painted', () => {
     const clean = sanitizeMatrixHtml('<font color="red">x</font>');
