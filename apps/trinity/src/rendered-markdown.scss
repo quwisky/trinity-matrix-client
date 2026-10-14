@@ -334,15 +334,15 @@
     // the scroll above holds the width, and KaTeX's struts and tall delimiters, which reach a
     // pixel or two past the box, are clipped rather than given a vertical scrollbar. Inline,
     // each KaTeX run between line breaks (`.katex-base`, an inline-block) clips what a kern or a
-    // lowered, smashed box moves out of it; the margin keeps glyphs and `\mathllap` that
-    // overhang a little. `clip`, unlike `hidden`, keeps the baseline and scrolls nothing.
+    // lowered, smashed box moves out of it, 1em out so glyphs and `\mathllap` that overhang a
+    // little keep their pixels. A clip path changes no layout; `overflow: clip` would need
+    // `overflow-clip-margin`, which WebKit lacks, and moves an inline-block's baseline there.
     div.mx-maths {
       overflow-y: hidden;
     }
 
     .mx-maths .katex-html > .katex-base {
-      overflow: clip;
-      overflow-clip-margin: 1em;
+      clip-path: inset(-1em);
     }
 
     // KaTeX pins a display formula's `\tag` to the right edge of the visible box, so in a
