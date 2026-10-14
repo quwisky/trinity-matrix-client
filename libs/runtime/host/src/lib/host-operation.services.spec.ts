@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { NEVER, Subject, firstValueFrom, of, toArray } from 'rxjs';
+import { NEVER, Subject, firstValueFrom, of, throwError, toArray } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   HOST_AUTHENTICATION_HANDOFF_OPERATION,
@@ -241,6 +241,8 @@ describe('HostAuthenticationHandoffService sign-in sheet', () => {
       /** The host shows sign-in in a sheet of its own (iOS, Android). */
       sheet?: boolean;
       opened?: HostOperationOutcome;
+      /** The host's open fails outright instead of reporting an outcome. */
+      openFails?: boolean;
     } = {},
   ) {
     const sheetClosed = new Subject<void>();
@@ -256,7 +258,10 @@ describe('HostAuthenticationHandoffService sign-in sheet', () => {
               url: 'dev.trinityproject.trinity:/sso-callback',
               applicationType: 'native' as const,
             }),
-            open: () => of(options.opened ?? { kind: 'completed' as const }),
+            open: () =>
+              options.openFails
+                ? throwError(() => new Error('browser unavailable'))
+                : of(options.opened ?? { kind: 'completed' as const }),
             ...(options.sheet === false
               ? {}
               : { sheetClosed: sheetClosed.asObservable() }),
@@ -282,7 +287,9 @@ describe('HostAuthenticationHandoffService sign-in sheet', () => {
     // The application listens for links for its whole lifetime.
     deepLinks.received.subscribe();
     const open = () =>
-      handoff.open({ url: 'https://account.example/authorize' }).subscribe();
+      handoff
+        .open({ url: 'https://account.example/authorize' })
+        .subscribe({ error: () => undefined });
     return { ui, deepLinks, sheetClosed, received, lifecycle, open };
   }
 
@@ -336,6 +343,12 @@ describe('HostAuthenticationHandoffService sign-in sheet', () => {
         diagnostic: { code: 'authentication-handoff-failed' },
       },
     });
+    open();
+    expect(ui.active()).toBe(false);
+  });
+
+  it('counts nothing when opening the sheet fails', () => {
+    const { ui, open } = setup({ openFails: true });
     open();
     expect(ui.active()).toBe(false);
   });
