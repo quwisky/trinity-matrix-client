@@ -89,6 +89,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
       { id: 'this-session', label: 'This session' },
       { id: 'key-backup', label: 'Key backup' },
       { id: 'encrypted-key-export', label: 'Encrypted key export' },
+      { id: 'app-lock', label: 'App lock' },
     ],
   },
   {

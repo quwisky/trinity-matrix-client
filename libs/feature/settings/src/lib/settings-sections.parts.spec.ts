@@ -20,6 +20,7 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import { AuthService } from '@trinity/data-access/auth';
 import {
   AccountIdentitiesService,
@@ -147,6 +148,19 @@ const SETUPS: Record<string, () => Setup> = {
         settingKnown: signal(true).asReadonly(),
       }),
       FILE_EXPORT,
+      // The App lock group renders on a host that keeps a PIN (every app but the web).
+      MockProvider(AppLockService, {
+        appName: 'Trinity',
+        offered: signal(true).asReadonly(),
+        enabled: signal(false).asReadonly(),
+        lockAfter: signal('1m' as const).asReadonly(),
+        pinState: signal('not-set' as const).asReadonly(),
+        support: signal({
+          system: { kind: 'available', biometry: 'face' },
+          pin: { kind: 'available', set: false, nextAttemptAt: null },
+        } as const).asReadonly(),
+        refreshSupport: () => NEVER,
+      } as never),
     ],
   }),
   appearance: () => {

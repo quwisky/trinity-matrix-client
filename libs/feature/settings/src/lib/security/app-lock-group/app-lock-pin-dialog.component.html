@@ -1,0 +1,142 @@
+<!-- `[formRoot]` sets novalidate and prevents the native submit. -->
+<form
+  [formRoot]="pinForm"
+  (submit)="submitPin()"
+  data-testid="app-lock-pin-dialog"
+>
+  <trn-dialog-shell
+    [title]="title()"
+    size="sm"
+    closeLabel="Cancel"
+    (closed)="cancel()"
+  >
+    <div class="flex flex-col gap-4">
+      @if (mode() === 'set') {
+        <!-- The warning decision 11 requires: always shown, never behind a toggle. The
+             opener points the dialog's aria-describedby at it. -->
+        <p
+          id="app-lock-pin-warning"
+          class="m-0 text-sm text-muted-foreground"
+          data-testid="app-lock-pin-warning"
+        >
+          @if (methodName(); as method) {
+            Keep this PIN somewhere safe. If you can’t use {{ method }} and you
+            forget this PIN, the only way back into {{ appName }} is to erase
+            all data on this device.
+          } @else {
+            If you forget this PIN, the only way back into {{ appName }} is to
+            erase all data on this device.
+          }
+          That signs out every account. Encrypted messages are lost unless you
+          have your recovery key or another signed-in device.
+        </p>
+      }
+
+      @let pinError = shownError(pinForm.pin);
+      <trn-field [invalid]="!!pinError">
+        <trn-field-label controlId="app-lock-pin-input" [invalid]="!!pinError">
+          {{ mode() === 'set' ? 'New PIN' : appName + ' PIN' }}
+        </trn-field-label>
+        <input
+          #pinInput
+          trnInput
+          id="app-lock-pin-input"
+          type="password"
+          inputmode="numeric"
+          autocomplete="off"
+          [formField]="pinForm.pin"
+          [aria-describedby]="
+            pinError
+              ? 'app-lock-pin-input-error'
+              : mode() === 'set'
+                ? 'app-lock-pin-input-hint'
+                : null
+          "
+          data-autofocus
+          data-testid="app-lock-pin-input"
+        />
+        @if (pinError) {
+          <p
+            id="app-lock-pin-input-error"
+            class="m-0 text-13 text-danger"
+            role="alert"
+          >
+            {{ pinError.message }}
+          </p>
+        } @else if (mode() === 'set') {
+          <p
+            id="app-lock-pin-input-hint"
+            class="m-0 text-13 text-muted-foreground"
+          >
+            4 to 16 digits. Use {{ suggested }} or more if you can.
+          </p>
+        }
+      </trn-field>
+
+      @if (mode() === 'set') {
+        @let confirmError = shownError(pinForm.confirmPin);
+        <trn-field [invalid]="!!confirmError">
+          <trn-field-label
+            controlId="app-lock-pin-confirm"
+            [invalid]="!!confirmError"
+          >
+            Confirm PIN
+          </trn-field-label>
+          <input
+            #confirmInput
+            trnInput
+            id="app-lock-pin-confirm"
+            type="password"
+            inputmode="numeric"
+            autocomplete="off"
+            [formField]="pinForm.confirmPin"
+            [aria-describedby]="
+              confirmError ? 'app-lock-pin-confirm-error' : null
+            "
+            data-testid="app-lock-pin-confirm"
+          />
+          @if (confirmError) {
+            <p
+              id="app-lock-pin-confirm-error"
+              class="m-0 text-13 text-danger"
+              role="alert"
+            >
+              {{ confirmError.message }}
+            </p>
+          }
+        </trn-field>
+      }
+
+      @if (message(); as text) {
+        <p
+          class="m-0 text-13 text-danger"
+          role="alert"
+          data-testid="app-lock-pin-message"
+        >
+          {{ text }}
+        </p>
+      }
+    </div>
+
+    <div trnDialogActions>
+      <button
+        trnBtn
+        presentation="ghost"
+        type="button"
+        data-testid="app-lock-pin-cancel"
+        (click)="cancel()"
+      >
+        Cancel
+      </button>
+      <button
+        trnBtn
+        type="submit"
+        [loading]="busy()"
+        [disabled]="busy()"
+        data-testid="app-lock-pin-submit"
+      >
+        {{ mode() === 'set' ? 'Set PIN' : 'Confirm' }}
+      </button>
+    </div>
+  </trn-dialog-shell>
+</form>
