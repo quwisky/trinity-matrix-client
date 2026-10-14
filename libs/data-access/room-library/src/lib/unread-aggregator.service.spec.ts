@@ -468,58 +468,209 @@ describe('unread chats', () => {
 });
 
 describe('UnreadAggregatorService touched rooms (#1311)', () => {
-  /** Count each room's notification-count reads, so a test can see which rooms were walked. */
-  function counted(
-    room: ReturnType<typeof fakeRoom>,
-    reads: Record<string, number>,
-  ) {
-    room.getUnreadNotificationCount = () => {
-      reads[room.roomId] = (reads[room.roomId] ?? 0) + 1;
-      return room.unread;
-    };
-    return room;
-  }
+  /** A steady sync, as the SDK reports one between two long polls. */
+  const steadySync = ['SYNCING', 'SYNCING'] as const;
+  /** A MatrixEvent-shaped stand-in that names its room. */
+  const eventIn = (roomId: string, type = 'm.room.message') => ({
+    getRoomId: () => roomId,
+    getType: () => type,
+  });
 
-  it('recounts only the room an event touched', async () => {
+  /** One account over rooms `!a:hs` (unread 1) and `!b:hs` (read), counting recounts. */
+  async function setup() {
     const { svc, accountIds, clients, flush } = harness();
-    const reads: Record<string, number> = {};
-    const a = counted(fakeRoom(1, { id: '!a:hs' }), reads);
-    const b = counted(fakeRoom(0, { id: '!b:hs' }), reads);
-    const client = fakeClient([a, b]);
+    /** Entries built per room: only building one reads the membership. */
+    const recounts: Record<string, number> = {};
+    const counted = (room: ReturnType<typeof fakeRoom>) => {
+      let membership = 'join';
+      Object.assign(room, {
+        getMyMembership: () => {
+          recounts[room.roomId] = (recounts[room.roomId] ?? 0) + 1;
+          return membership;
+        },
+        leave: () => (membership = 'leave'),
+      });
+      return room as typeof room & { leave: () => void };
+    };
+    const a = counted(fakeRoom(1, { id: '!a:hs', name: 'A' }));
+    const b = counted(fakeRoom(0, { id: '!b:hs', name: 'B' }));
+    const rooms = [b, a];
+    const client = fakeClient(rooms);
     clients.set('@a:hs', client);
     accountIds.set(['@a:hs']);
     await flush();
-    for (const key of Object.keys(reads)) delete reads[key];
+    const reset = () => {
+      for (const key of Object.keys(recounts)) delete recounts[key];
+    };
+    reset();
+    const names = () => svc.unreadRooms().map((r) => r.name);
+    return { svc, client, flush, rooms, a, b, recounts, reset, names };
+  }
 
-    a.unread = 4;
-    client.emit(RoomEvent.Receipt, {}, a);
-    client.emit(ClientEvent.Sync);
-    await flush();
+  it('recounts only the room an event touched', async () => {
+    const t = await setup();
 
-    expect(svc.totalUnread()).toBe(4);
+    t.a.unread = 4;
+    t.client.emit(RoomEvent.Receipt, eventIn('!a:hs', 'm.receipt'), t.a);
+    t.client.emit(ClientEvent.Sync, ...steadySync);
+    await t.flush();
+
+    expect(t.svc.totalUnread()).toBe(4);
     // At 300 rooms, walking every room on every sync was most of this service's cost.
-    expect(reads['!b:hs'] ?? 0).toBe(0);
+    expect(t.recounts['!b:hs'] ?? 0).toBe(0);
   });
 
-  it('still recounts every room within the safety interval', async () => {
+  it.each([
+    [
+      'a timeline event',
+      RoomEvent.Timeline,
+      (room: { roomId: string }) => [eventIn(room.roomId), room],
+    ],
+    [
+      'a receipt',
+      RoomEvent.Receipt,
+      (room: { roomId: string }) => [eventIn(room.roomId, 'm.receipt'), room],
+    ],
+    [
+      'room account data',
+      RoomEvent.AccountData,
+      (room: { roomId: string }) => [
+        eventIn(room.roomId, 'm.marked_unread'),
+        room,
+      ],
+    ],
+    [
+      'a decrypted event',
+      MatrixEventEvent.Decrypted,
+      (room: { roomId: string }) => [eventIn(room.roomId)],
+    ],
+    ['a rename', RoomEvent.Name, (room: { roomId: string }) => [room]],
+    [
+      'a local echo',
+      RoomEvent.LocalEchoUpdated,
+      (room: { roomId: string }) => [eventIn(room.roomId), room],
+    ],
+  ] as const)('maps %s to its room alone', async (_, event, args) => {
+    const t = await setup();
+
+    t.b.unread = 2;
+    t.client.emit(event, ...args(t.b));
+    await t.flush();
+
+    expect(t.svc.totalUnread()).toBe(3);
+    expect(t.recounts['!a:hs'] ?? 0).toBe(0);
+  });
+
+  it('renames an unread chat when the SDK recalculates its name', async () => {
+    const t = await setup();
+
+    t.a.name = 'Renamed';
+    t.client.emit(RoomEvent.Name, t.a);
+    await t.flush();
+
+    expect(t.names()).toEqual(['Renamed']);
+  });
+
+  it.each([
+    [
+      'read',
+      (t: Awaited<ReturnType<typeof setup>>) => {
+        t.a.unread = 0;
+        t.client.emit(RoomEvent.Receipt, eventIn('!a:hs', 'm.receipt'), t.a);
+      },
+    ],
+    [
+      'left',
+      (t: Awaited<ReturnType<typeof setup>>) => {
+        t.a.leave();
+        t.client.emit(RoomEvent.Timeline, eventIn('!a:hs'), t.a);
+      },
+    ],
+    [
+      'gone',
+      (t: Awaited<ReturnType<typeof setup>>) => {
+        t.rooms.splice(t.rooms.indexOf(t.a), 1);
+        t.client.emit(MatrixEventEvent.Decrypted, eventIn('!a:hs'));
+      },
+    ],
+  ] as const)('drops a touched chat once it is %s', async (_, change) => {
+    const t = await setup();
+
+    change(t);
+    await t.flush();
+
+    expect(t.svc.unreadRooms()).toEqual([]);
+  });
+
+  it('picks up a count no event announced on the next sync', async () => {
+    const t = await setup();
+
+    // A sync carrying only the counts, or the SDK's start-up fix-up zeroing a room whose
+    // last message is your own.
+    t.b.unread = 2;
+    t.a.unread = 0;
+    t.client.emit(ClientEvent.Sync, ...steadySync);
+    await t.flush();
+
+    expect(t.names()).toEqual(['B']);
+    expect(t.svc.totalUnread()).toBe(2);
+  });
+
+  it('recounts every room when the sync state changes', async () => {
+    const t = await setup();
+
+    t.a.name = 'Renamed'; // nothing announces this
+    t.client.emit(ClientEvent.Sync, 'SYNCING', 'RECONNECTING');
+    await t.flush();
+
+    expect(t.names()).toEqual(['Renamed']);
+    expect(t.recounts['!b:hs'] ?? 0).toBeGreaterThan(0);
+  });
+
+  it('recounts every room for m.direct, and none for other account data', async () => {
+    const t = await setup();
+
+    t.client.emit(
+      ClientEvent.AccountData,
+      eventIn('', 'io.element.recent_emoji'),
+    );
+    await t.flush();
+    expect(t.recounts['!a:hs'] ?? 0).toBe(0);
+
+    t.client.emit(ClientEvent.AccountData, eventIn('', 'm.direct'));
+    await t.flush();
+    expect(t.recounts['!a:hs'] ?? 0).toBeGreaterThan(0);
+    expect(t.recounts['!b:hs'] ?? 0).toBeGreaterThan(0);
+  });
+
+  it('keeps the same list when a full recount only reorders it', async () => {
+    const t = await setup();
+    t.b.unread = 2;
+    t.client.emit(RoomEvent.Receipt, eventIn('!b:hs', 'm.receipt'), t.b);
+    await t.flush();
+    const before = t.svc.unreadRooms();
+    expect(before.map((r) => r.roomId)).toEqual(['!a:hs', '!b:hs']);
+
+    t.client.emit(ClientEvent.Sync, 'SYNCING', 'CATCHUP'); // lists them in client order
+    await t.flush();
+
+    expect(t.svc.unreadRooms()).toBe(before);
+  });
+
+  it('still picks up a change no event announced, within the safety interval', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
-      const { svc, accountIds, clients, flush } = harness();
-      const b = fakeRoom(0, { id: '!b:hs' });
-      const client = fakeClient([b]);
-      clients.set('@a:hs', client);
-      accountIds.set(['@a:hs']);
-      await flush();
+      const t = await setup();
 
-      b.unread = 2; // nothing announces this
-      client.emit(ClientEvent.Sync);
-      await flush();
-      expect(svc.totalUnread()).toBe(0);
+      t.a.name = 'Renamed'; // nothing announces this
+      t.client.emit(ClientEvent.Sync, ...steadySync);
+      await t.flush();
+      expect(t.names()).toEqual(['A']);
 
       vi.advanceTimersByTime(16_000);
-      client.emit(ClientEvent.Sync);
-      await flush();
-      expect(svc.totalUnread()).toBe(2);
+      t.client.emit(ClientEvent.Sync, ...steadySync);
+      await t.flush();
+      expect(t.names()).toEqual(['Renamed']);
     } finally {
       vi.useRealTimers();
     }

@@ -1,11 +1,14 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import {
   ClientEvent,
+  EventType,
   MatrixEventEvent,
   NotificationCountType,
   RoomEvent,
   type MatrixClient,
+  type MatrixEvent,
   type Room,
+  type SyncState,
 } from 'matrix-js-sdk';
 import {
   coalesce,
@@ -18,7 +21,7 @@ import {
   isMarkedUnread,
   roomActivityTs,
 } from './room-projection';
-import { roomIdOf } from './room-event-target';
+import { FULL_REFRESH_MS, roomIdOf } from './room-event-target';
 
 /** A listener attached to one account's client. */
 type UnreadListener = (...args: unknown[]) => void;
@@ -30,8 +33,10 @@ interface AccountListener {
   readonly onRoom: UnreadListener;
   /** A room joined or left the list: recount everything. */
   readonly onList: UnreadListener;
-  /** A sync landed: flush what the room events marked. */
-  readonly onSync: UnreadListener;
+  /** A sync landed: compare counts, then flush what changed. */
+  readonly onSync: (state: SyncState, prev: SyncState | null) => void;
+  /** Global account data: `m.direct` changes every room's DM flag and avatar. */
+  readonly onAccountData: (event?: MatrixEvent) => void;
 }
 
 /**
@@ -43,16 +48,12 @@ interface AccountUnread {
   /** Rooms that want attention, by room id. */
   readonly cache: Map<string, UnreadRoom>;
   readonly dirty: Set<string>;
+  /** Recount every room on the next flush. */
   full: boolean;
+  /** A sync landed since the last flush: compare every room's count with its entry. */
+  compare: boolean;
   lastFull: number;
 }
-
-/**
- * A change the SDK applies without any room event (an unread count reset in a sync with no
- * receipt) would otherwise wait for the next event in that room; a full recount at least
- * this often bounds that.
- */
-const FULL_RECOUNT_MS = 15_000;
 
 /** One joined chat with something new in it, on one exact account. */
 export interface UnreadRoom {
@@ -166,7 +167,22 @@ export class UnreadAggregatorService {
           state.full = true;
           this.scheduleFlush();
         },
-        onSync: () => this.scheduleFlush(),
+        onSync: (syncState, prev) => {
+          // A changed sync state (prepared, or caught up after a reconnect) can bring many
+          // rooms' changes at once: recount them all.
+          if (syncState !== prev) {
+            state.full = true;
+          } else {
+            state.compare = true;
+          }
+          this.scheduleFlush();
+        },
+        onAccountData: (event) => {
+          if (event?.getType?.() === EventType.Direct) {
+            state.full = true;
+            this.scheduleFlush();
+          }
+        },
       };
       this.attach(listener);
       this.listeners.set(userId, listener);
@@ -194,7 +210,13 @@ export class UnreadAggregatorService {
   private stateFor(userId: string): AccountUnread {
     let state = this.accounts.get(userId);
     if (!state) {
-      state = { cache: new Map(), dirty: new Set(), full: true, lastFull: 0 };
+      state = {
+        cache: new Map(),
+        dirty: new Set(),
+        full: true,
+        compare: false,
+        lastFull: 0,
+      };
       this.accounts.set(userId, state);
     }
     return state;
@@ -204,18 +226,25 @@ export class UnreadAggregatorService {
     const counts = new Map<string, number>();
     const rooms: UnreadRoom[] = [];
     const now = Date.now();
-    for (const userId of this.listeners.keys()) {
+    for (const [userId, { client }] of this.listeners) {
       const state = this.stateFor(userId);
-      if (state.full || now - state.lastFull >= FULL_RECOUNT_MS) {
+      if (state.full || now - state.lastFull >= FULL_REFRESH_MS) {
         state.cache.clear();
-        for (const room of this.unreadRoomsFor(userId)) {
+        for (const room of this.unreadRoomsFor(userId, client)) {
           state.cache.set(room.roomId, room);
         }
         state.full = false;
+        state.compare = false;
         state.lastFull = now;
         state.dirty.clear();
-      } else if (state.dirty.size) {
-        this.recountTouched(userId, state);
+      } else {
+        if (state.compare) {
+          state.compare = false;
+          markChangedCounts(client, state);
+        }
+        if (state.dirty.size) {
+          this.recountTouched(userId, client, state);
+        }
       }
       // A room flagged to come back to counts as one although the server's count for it is
       // zero: that flag is the only thing saying it wants attention, and a badge that ignored
@@ -232,13 +261,13 @@ export class UnreadAggregatorService {
   }
 
   /** Recount just the rooms an event touched, keeping every other room's entry. */
-  private recountTouched(userId: string, state: AccountUnread): void {
-    const client = this.matrix.clientFor(userId);
+  private recountTouched(
+    userId: string,
+    client: MatrixClient,
+    state: AccountUnread,
+  ): void {
     const touched = [...state.dirty];
     state.dirty.clear();
-    if (!client) {
-      return;
-    }
     let direct: ReturnType<typeof directMapOf> | null = null;
     for (const roomId of touched) {
       const room = client.getRoom(roomId);
@@ -261,11 +290,7 @@ export class UnreadAggregatorService {
    * An account's joined, non-space rooms that want attention: a notification count above
    * zero, or the marked-unread flag even when the count is zero.
    */
-  private unreadRoomsFor(userId: string): UnreadRoom[] {
-    const client = this.matrix.clientFor(userId);
-    if (!client) {
-      return [];
-    }
+  private unreadRoomsFor(userId: string, client: MatrixClient): UnreadRoom[] {
     let direct: ReturnType<typeof directMapOf> | null = null;
     const unread: UnreadRoom[] = [];
     for (const room of client.getRooms()) {
@@ -310,8 +335,15 @@ export class UnreadAggregatorService {
     };
   }
 
-  private attach({ client, onRoom, onList, onSync }: AccountListener): void {
+  private attach({
+    client,
+    onRoom,
+    onList,
+    onSync,
+    onAccountData,
+  }: AccountListener): void {
     client.on(ClientEvent.Sync, onSync);
+    client.on(ClientEvent.AccountData, onAccountData);
     client.on(ClientEvent.Room, onList);
     client.on(RoomEvent.MyMembership, onList);
     // A new message raises a room's count; a receipt clears it.
@@ -321,16 +353,47 @@ export class UnreadAggregatorService {
     // Encrypted rooms count a message only once it decrypts, after its Sync; the
     // client re-emits Decrypted then. Without it the badge waits for the next sync.
     client.on(MatrixEventEvent.Decrypted, onRoom);
+    // The rail draws the room's name, and its activity time moves when a local echo is
+    // replaced by the server's copy.
+    client.on(RoomEvent.Name, onRoom);
+    client.on(RoomEvent.LocalEchoUpdated, onRoom);
   }
 
-  private detach({ client, onRoom, onList, onSync }: AccountListener): void {
+  private detach({
+    client,
+    onRoom,
+    onList,
+    onSync,
+    onAccountData,
+  }: AccountListener): void {
     client.off(ClientEvent.Sync, onSync);
+    client.off(ClientEvent.AccountData, onAccountData);
     client.off(ClientEvent.Room, onList);
     client.off(RoomEvent.MyMembership, onList);
     client.off(RoomEvent.Timeline, onRoom);
     client.off(RoomEvent.Receipt, onRoom);
     client.off(RoomEvent.AccountData, onRoom);
     client.off(MatrixEventEvent.Decrypted, onRoom);
+    client.off(RoomEvent.Name, onRoom);
+    client.off(RoomEvent.LocalEchoUpdated, onRoom);
+  }
+}
+
+/**
+ * Mark every room whose count no longer matches its entry. A sync can change a count with
+ * no event this service hears: one carrying only the counts, or the SDK's start-up fix-up
+ * (`fixupRoomNotifications`), which zeroes rooms whose last message is your own. The SDK
+ * announces these with `RoomEvent.UnreadNotifications`, but only on the room, not the client.
+ * Reading one count per room is cheap next to building every entry.
+ */
+function markChangedCounts(client: MatrixClient, state: AccountUnread): void {
+  for (const room of client.getRooms()) {
+    const count =
+      room.getUnreadNotificationCount(NotificationCountType.Total) ?? 0;
+    const entry = state.cache.get(room.roomId);
+    if (entry ? entry.unreadCount !== count : count > 0) {
+      state.dirty.add(room.roomId);
+    }
   }
 }
 
@@ -346,13 +409,24 @@ function sameCounts(
   return true;
 }
 
+/**
+ * The same entries in any order: a full recount lists rooms in the client's order, while a
+ * touched room keeps its place or joins the end. The rail sorts them itself.
+ */
 function sameUnreadRooms(
   a: readonly UnreadRoom[],
   b: readonly UnreadRoom[],
 ): boolean {
-  return (
-    a.length === b.length && a.every((room, i) => sameUnreadRoom(room, b[i]))
-  );
+  if (a.length !== b.length) return false;
+  const byKey = new Map(b.map((room) => [unreadKey(room), room]));
+  return a.every((room) => {
+    const other = byKey.get(unreadKey(room));
+    return other !== undefined && sameUnreadRoom(room, other);
+  });
+}
+
+function unreadKey(room: UnreadRoom): string {
+  return `${room.accountId}\n${room.roomId}`;
 }
 
 function sameUnreadRoom(a: UnreadRoom, b: UnreadRoom): boolean {

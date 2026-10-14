@@ -46,7 +46,7 @@ import {
   isMarkedUnread,
   roomActivityTs,
 } from './room-projection';
-import { roomIdOf } from './room-event-target';
+import { FULL_REFRESH_MS, roomIdOf } from './room-event-target';
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   assertRoomLibraryGovernance,
@@ -148,15 +148,6 @@ const ROOM_EVENTS = [
 ] as const;
 
 /**
- * A safety net for summary changes the SDK applies without any room event this service
- * hears. Count changes are already caught by comparing counts after each sync, so what is
- * left is rare (a new thread's bundled latest reply, say). A refresh at least this long
- * after the last full rebuild rebuilds everything. Refreshes follow syncs, so on an idle
- * account the real bound is about the long-poll interval (~30 s), not this value.
- */
-const FULL_REBUILD_MS = 15_000;
-
-/**
  * `next`, or `previous` when it describes the room identically.
  *
  * A full rebuild builds every joined room's summary, and an incremental one the rooms an event
@@ -242,7 +233,7 @@ export class RoomLibraryService {
    */
   private dirtyRooms = new Set<string>();
   private fullRebuild = true;
-  /** When the list was last rebuilt in full; see {@link FULL_REBUILD_MS}. */
+  /** When the list was last rebuilt in full; see {@link FULL_REFRESH_MS}. */
   private lastFullRebuild = 0;
 
   /** Mark one room for the next rebuild and schedule it (coalesced per microtask). */
@@ -977,7 +968,7 @@ export class RoomLibraryService {
     const client = this.matrix.instance;
     const accountId = this.matrix.activeUserId() ?? client.getUserId?.() ?? '';
     const now = Date.now();
-    if (!this.fullRebuild && now - this.lastFullRebuild < FULL_REBUILD_MS) {
+    if (!this.fullRebuild && now - this.lastFullRebuild < FULL_REFRESH_MS) {
       this.refreshTouched(client, accountId);
       return;
     }
