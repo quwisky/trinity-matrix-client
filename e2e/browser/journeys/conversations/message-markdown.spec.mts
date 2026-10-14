@@ -271,8 +271,8 @@ test.describe('Message markdown', () => {
 
 // Sender colours (spec A1): computed colours in both themes, and the 3:1 guard dropping a
 // colour or background that stops being readable when the theme changes. Values chosen from
-// the shipped themes: #e03030 reads on every canvas; #202020 text and a #ffeb3b background
-// read only in the light theme.
+// the shipped themes: #e03030 reads on every shipped pane (narrowest: Classic dark, 3.22:1);
+// #202020 text and a #ffeb3b background read only in the light theme.
 test.describe('Sender colours', () => {
   test.skip(!session.available, 'needs a homeserver');
 
