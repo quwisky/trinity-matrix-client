@@ -3,6 +3,7 @@ import {
   test,
   expect,
   type APIRequestContext,
+  type Locator,
   type Route,
 } from '../../../fixtures.mts';
 import {
@@ -508,5 +509,65 @@ test.describe('Inline images', () => {
     await expect(image).toHaveAttribute('src', /^blob:/, { timeout: 30_000 });
     await expect(image).toBeVisible();
     await expect.poll(lineHeight, { timeout: 15_000 }).toBeGreaterThan(150);
+  });
+
+  // A spoiler holding only an image, with no reason, would collapse to nothing; it still
+  // draws a "Spoiler" bar to click, nested ones one at a time.
+  test('draws a bar for a spoiler holding only an image, and reveals it', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'inline-image-only');
+    const alone = await uploadPng(request, hs, room, 300, 200, 'alone.png');
+    const nested = await uploadPng(request, hs, room, 300, 200, 'nested.png');
+    await sendMessage(request, hs, room, {
+      body: 'spoilers holding only images',
+      html: `<p>alone: <span data-mx-spoiler><img src="${alone}" width="300" height="200" alt="An image-only spoiler"></span></p><p>nested: <span data-mx-spoiler><span data-mx-spoiler><img src="${nested}" width="300" height="200" alt="A nested spoiler image"></span></span></p>`,
+    });
+    await signInAndOpen(page, room);
+
+    const bar = async (spoiler: Locator) => {
+      const box = await spoiler.boundingBox();
+      return (box?.width ?? 0) > 0 && (box?.height ?? 0) > 0;
+    };
+    const label = (spoiler: Locator) =>
+      spoiler.evaluate(
+        (element) => getComputedStyle(element, '::before').content,
+      );
+
+    const single = page
+      .locator('.scroll p', { hasText: 'alone:' })
+      .locator('.mx-spoiler');
+    await expect(single).toHaveCount(1, { timeout: 20_000 });
+    await expect.poll(() => bar(single), { timeout: 15_000 }).toBe(true);
+    expect(await label(single)).toBe('"Spoiler"');
+    await single.click();
+    const singleImage = page.getByRole('button', {
+      name: 'View image: An image-only spoiler',
+    });
+    await expect(singleImage).toHaveAttribute('src', /^blob:/, {
+      timeout: 30_000,
+    });
+    await expect(singleImage).toBeVisible();
+
+    const nestedSpoilers = page
+      .locator('.scroll p', { hasText: 'nested:' })
+      .locator('.mx-spoiler');
+    await expect(nestedSpoilers).toHaveCount(2);
+    const [outer, inner] = [nestedSpoilers.nth(0), nestedSpoilers.nth(1)];
+    await expect.poll(() => bar(outer), { timeout: 15_000 }).toBe(true);
+    await outer.click();
+    await expect(outer).toHaveClass(/is-revealed/);
+    await expect.poll(() => bar(inner), { timeout: 15_000 }).toBe(true);
+    expect(await label(inner)).toBe('"Spoiler"');
+    await inner.click();
+    const nestedImage = page.getByRole('button', {
+      name: 'View image: A nested spoiler image',
+    });
+    await expect(nestedImage).toHaveAttribute('src', /^blob:/, {
+      timeout: 30_000,
+    });
+    await expect(nestedImage).toBeVisible();
   });
 });
