@@ -619,6 +619,13 @@
  * exactly 24 lines is never cut. There is no transition, so reduced motion needs nothing. Kept
  * here rather than in message-row.component.scss, which is at its component style budget; the
  * build adds `-webkit-mask-image` for the Chrome 119 floor.
+ *
+ * Only the block axis is clipped, with `clip` rather than `hidden`, so the wrapper is never a
+ * scroll container and a focus ring at the inline-start edge stays whole. The rings of links
+ * on the first and last lines get a ring-sized block padding inside the clip, which the
+ * negative margin takes back so the body sits where it did, and the max-heights add back
+ * (border-box sizing). `overflow-clip-margin` would do this without padding, but it is not
+ * on the Safari 17 floor.
  */
   .msg__clamp {
     font-size: var(--trinity-type-message-size);
@@ -626,17 +633,30 @@
 
   .msg__clamp--capped,
   .msg__clamp--collapsed {
-    overflow: hidden;
+    --trinity-message-clamp-ring: calc(
+      var(--trinity-focus-ring-width) + var(--trinity-focus-ring-offset)
+    );
+    --trinity-message-clamp-rings: calc(2 * var(--trinity-message-clamp-ring));
+
+    overflow: visible clip;
+    max-height: calc(
+      var(--trinity-message-clamp-lines) + var(--trinity-message-clamp-rings)
+    );
+    padding-block: var(--trinity-message-clamp-ring);
+    margin-block: calc(-1 * var(--trinity-message-clamp-ring));
   }
 
   .msg__clamp--capped {
-    max-height: calc(
+    --trinity-message-clamp-lines: calc(
       24em * var(--trinity-type-message-line-height) + var(--trinity-space-3)
     );
   }
 
   .msg__clamp--collapsed {
-    max-height: calc(20em * var(--trinity-type-message-line-height));
+    --trinity-message-clamp-lines: calc(
+      20em * var(--trinity-type-message-line-height)
+    );
+
     mask-image: linear-gradient(to bottom, black 75%, transparent);
   }
 
