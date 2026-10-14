@@ -323,6 +323,12 @@ const NON_TEXT_ROLES = [
       '--trinity-surface-raised',
     ],
   },
+  // A loading inline image's outline (rendered-markdown.scss, `.mx-image--loading`): on every
+  // message surface around it, since its raised fill alone barely differs from the dark panes.
+  {
+    foreground: '--trinity-border-control',
+    on: ['--trinity-surface-workspace', '--trinity-surface-overlay'],
+  },
 ];
 
 /**

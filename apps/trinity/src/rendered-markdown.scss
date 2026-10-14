@@ -409,18 +409,22 @@
         object-fit: contain;
       }
 
-      // Reserved but not loaded yet: a box in the raised surface colour, alt text hidden.
+      // Reserved but not loaded yet: a box in the raised surface colour, drawn around the
+      // directive's transparent placeholder, so no broken-image icon or alt text shows. The
+      // raised fill alone barely differs from the dark panes, so the box carries the control
+      // border (3:1 on every message surface, scripts/contrast-matrix.spec.mjs). Border-box, so
+      // the border sits inside the reserved box and the loaded image does not shift.
       &.mx-image--loading {
+        box-sizing: border-box;
         min-width: 4rem;
         min-height: 4rem;
+        border: 1px solid var(--trinity-border-control);
         background: var(--trinity-surface-raised);
         color: transparent;
 
-        // High Contrast drops the fill, which would leave nothing where the image is coming.
-        // Outline the box and show its alt text instead.
+        // High Contrast drops the fill; keep the outline in the system text colour.
         @media (forced-colors: active) {
-          border: 1px solid CanvasText;
-          color: CanvasText;
+          border-color: CanvasText;
         }
       }
 
