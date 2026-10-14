@@ -116,7 +116,10 @@ type NegotiatedOperation =
   | 'secure-store'
   | 'lifecycle'
   | 'updates'
-  | 'title-bar';
+  | 'title-bar'
+  | 'user-presence'
+  | 'lock-integration'
+  | 'screen-privacy';
 
 const unavailableGrant = () =>
   ({ kind: 'unavailable', reason: 'host-rejected' }) as const;

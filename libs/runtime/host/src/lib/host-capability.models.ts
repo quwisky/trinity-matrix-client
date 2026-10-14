@@ -13,6 +13,9 @@ export const HOST_OPERATIONS = [
   'lifecycle',
   'updates',
   'title-bar',
+  'user-presence',
+  'lock-integration',
+  'screen-privacy',
 ] as const;
 
 export type HostOperation = (typeof HOST_OPERATIONS)[number];
@@ -126,6 +129,110 @@ export interface HostUpdatesOperation {
   check(): Observable<HostOperationOutcome>;
 }
 
+/** What kind of system prompt confirms presence; `passcode-only` has no biometric sensor. */
+export type HostPresenceBiometry =
+  'face' | 'fingerprint' | 'touch-id' | 'windows-hello' | 'passcode-only';
+
+/** Why the system prompt cannot run now. Stable codes only, never OS text. */
+export type HostSystemPresenceUnavailableReason =
+  | 'not-supported'
+  | 'no-device-credential'
+  | 'not-enrolled'
+  | 'not-configured'
+  | 'disabled-by-policy'
+  | 'windows-version'
+  | 'addon-unavailable'
+  | 'locked-out';
+
+export type HostSystemPresence =
+  | { readonly kind: 'available'; readonly biometry: HostPresenceBiometry }
+  | {
+      readonly kind: 'unavailable';
+      readonly reason: HostSystemPresenceUnavailableReason;
+    };
+
+/**
+ * The Trinity PIN backup (spec decision 23). `set` says whether a verifier is stored;
+ * `nextAttemptAt` (epoch ms) is the end of a failure wait still running, else null.
+ */
+export type HostPinPresence =
+  | {
+      readonly kind: 'available';
+      readonly set: boolean;
+      readonly nextAttemptAt: number | null;
+    }
+  | {
+      readonly kind: 'unavailable';
+      readonly reason: 'not-supported' | 'secure-storage-unavailable';
+    };
+
+/** Read again at every unlock: a passcode or Windows Hello can be turned off at any time. */
+export interface HostUserPresenceSupport {
+  readonly system: HostSystemPresence;
+  readonly pin: HostPinPresence;
+}
+
+/** `cancelled` is not a failure: it never counts toward the PIN-style delay. */
+export type HostPresenceOutcome =
+  | { readonly kind: 'verified' }
+  | { readonly kind: 'cancelled' }
+  | { readonly kind: 'failed' }
+  | { readonly kind: 'locked-out' }
+  | {
+      readonly kind: 'unavailable';
+      readonly reason: HostSystemPresenceUnavailableReason;
+    }
+  | { readonly kind: 'rejected'; readonly diagnostic: HostDiagnostic };
+
+/**
+ * A PIN attempt. `invalid` is a PIN the host refused to hash (not 4–16 ASCII digits);
+ * `failed` carries the wait the failure started, `delayed` a wait still running.
+ */
+export type HostPinOutcome =
+  | { readonly kind: 'verified' }
+  | { readonly kind: 'failed'; readonly nextAttemptAt: number | null }
+  | { readonly kind: 'delayed'; readonly nextAttemptAt: number }
+  | { readonly kind: 'invalid' }
+  | { readonly kind: 'unavailable' }
+  | { readonly kind: 'rejected'; readonly diagnostic: HostDiagnostic };
+
+/**
+ * App lock's "prove it's you": the system prompt and the Trinity PIN. The PIN, its hash
+ * and its salt never leave the host's verifier and never appear in an outcome.
+ */
+export interface HostUserPresenceOperation {
+  support(): Observable<HostUserPresenceSupport>;
+  verify(request: { readonly reason: string }): Observable<HostPresenceOutcome>;
+  setPin(pin: string): Observable<HostOperationOutcome>;
+  verifyPin(pin: string): Observable<HostPinOutcome>;
+  clearPin(): Observable<HostOperationOutcome>;
+}
+
+/** Why the desktop shell asks the app to lock: its menu item, the OS locking, or sleep. */
+export type HostLockRequest = 'menu' | 'system-locked' | 'suspended';
+
+export interface HostLockState {
+  readonly enabled: boolean;
+  readonly locked: boolean;
+  /** The bound "Lock Trinity" shortcut as an Electron accelerator, or null when unassigned. */
+  readonly accelerator: string | null;
+}
+
+/** The desktop shell's part of App lock. Only Electron implements it. */
+export interface HostLockIntegrationOperation {
+  readonly requests: Observable<HostLockRequest>;
+  setState(state: HostLockState): Observable<HostOperationOutcome>;
+  /** The cover has painted; a window held hidden for it may be shown. */
+  coverPainted(): Observable<HostOperationOutcome>;
+}
+
+/** The mobile app-switcher cover (iOS blur, Android FLAG_SECURE). */
+export interface HostScreenPrivacyOperation {
+  set(enabled: boolean): Observable<HostOperationOutcome>;
+  /** Dismiss native UI Trinity presented over the web view (iOS). */
+  dismissPresented(): Observable<HostOperationOutcome>;
+}
+
 export function unavailableHostManifest(
   reason: HostUnavailableReason,
   diagnostic?: HostDiagnostic,
@@ -149,6 +256,9 @@ export function unavailableHostManifest(
       lifecycle: support,
       updates: support,
       'title-bar': support,
+      'user-presence': support,
+      'lock-integration': support,
+      'screen-privacy': support,
     },
   };
 }

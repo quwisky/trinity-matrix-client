@@ -47,6 +47,25 @@ describe('host capability negotiation', () => {
     });
   });
 
+  it('knows the App lock operations and supports none of them yet', () => {
+    const result = negotiateHostCapabilities({
+      protocolVersion: 1,
+      operations: HOST_OPERATIONS,
+    });
+    expect(result.kind).toBe('accepted');
+    if (result.kind !== 'accepted') return;
+    for (const operation of [
+      'user-presence',
+      'lock-integration',
+      'screen-privacy',
+    ] as const) {
+      expect(result.operations[operation]).toEqual({
+        kind: 'unavailable',
+        reason: 'not-implemented',
+      });
+    }
+  });
+
   it('rejects mismatched protocol versions and hostile operation names', () => {
     expect(
       negotiateHostCapabilities({ protocolVersion: 2, operations: [] }),

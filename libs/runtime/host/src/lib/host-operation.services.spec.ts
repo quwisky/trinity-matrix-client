@@ -1,16 +1,22 @@
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom, of } from 'rxjs';
+import { NEVER, firstValueFrom, of, toArray } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   HOST_AUTHENTICATION_HANDOFF_OPERATION,
   HOST_FILE_EXPORT_OPERATION,
   HOST_LIFECYCLE_OPERATION,
   HOST_UPDATES_OPERATION,
+  HOST_USER_PRESENCE_OPERATION,
   HostAuthenticationHandoffService,
   HostFileExportService,
   HostLifecycleService,
+  HostLockIntegrationService,
+  HostScreenPrivacyService,
   HostUpdatesService,
+  HostUserPresenceService,
+  NO_USER_PRESENCE,
 } from './host-operation.services';
+import { HostSystemUiService } from './host-system-ui.service';
 
 describe('remaining host operation services', () => {
   afterEach(() => TestBed.resetTestingModule());
@@ -126,5 +132,100 @@ describe('HostAuthenticationHandoffService device display name', () => {
     expect(
       TestBed.inject(HostAuthenticationHandoffService).deviceDisplayName(),
     ).toBe('Trinity Next');
+  });
+});
+
+describe('app lock host services without an adapter', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('reports no system prompt and no PIN, and verifies nothing', async () => {
+    const presence = TestBed.inject(HostUserPresenceService);
+    await expect(firstValueFrom(presence.support())).resolves.toEqual(
+      NO_USER_PRESENCE,
+    );
+    await expect(
+      firstValueFrom(presence.verify({ reason: 'Unlock Trinity' })),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'not-supported' });
+    await expect(firstValueFrom(presence.verifyPin('1234'))).resolves.toEqual({
+      kind: 'unavailable',
+    });
+    await expect(firstValueFrom(presence.setPin('1234'))).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+    await expect(firstValueFrom(presence.clearPin())).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+  });
+
+  it('has no lock requests and accepts no state or cover', async () => {
+    const lock = TestBed.inject(HostLockIntegrationService);
+    await expect(
+      firstValueFrom(lock.requests.pipe(toArray())),
+    ).resolves.toEqual([]);
+    await expect(
+      firstValueFrom(
+        lock.setState({ enabled: true, locked: true, accelerator: null }),
+      ),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'not-supported' });
+    await expect(firstValueFrom(lock.coverPainted())).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+  });
+
+  it('has no screen privacy', async () => {
+    const privacy = TestBed.inject(HostScreenPrivacyService);
+    await expect(firstValueFrom(privacy.set(true))).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+    await expect(firstValueFrom(privacy.dismissPresented())).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+  });
+
+  it('counts a system prompt as Trinity’s own system UI while it is open', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: HOST_USER_PRESENCE_OPERATION,
+          useValue: {
+            support: () => of(NO_USER_PRESENCE),
+            verify: () => NEVER,
+            setPin: () => NEVER,
+            verifyPin: () => NEVER,
+            clearPin: () => NEVER,
+          },
+        },
+      ],
+    });
+    const ui = TestBed.inject(HostSystemUiService);
+    const prompt = TestBed.inject(HostUserPresenceService)
+      .verify({ reason: 'Unlock Trinity' })
+      .subscribe();
+    expect(ui.active()).toBe(true);
+    prompt.unsubscribe();
+    expect(ui.active()).toBe(false);
+  });
+
+  it('counts a native save sheet as Trinity’s own system UI', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: HOST_FILE_EXPORT_OPERATION,
+          useValue: { support: () => NEVER, save: () => NEVER },
+        },
+      ],
+    });
+    const ui = TestBed.inject(HostSystemUiService);
+    const save = TestBed.inject(HostFileExportService)
+      .save({ bytes: new Blob(['x']), filename: 'x.txt' })
+      .subscribe();
+    expect(ui.active()).toBe(true);
+    save.unsubscribe();
+    expect(ui.active()).toBe(false);
   });
 });

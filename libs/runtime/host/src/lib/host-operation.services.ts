@@ -9,9 +9,18 @@ import {
   type HostFileExportOperation,
   type HostFileExportOutcome,
   type HostLifecycleOperation,
+  type HostLockIntegrationOperation,
+  type HostLockRequest,
+  type HostLockState,
   type HostOperationOutcome,
+  type HostPinOutcome,
+  type HostPresenceOutcome,
+  type HostScreenPrivacyOperation,
   type HostUpdatesOperation,
+  type HostUserPresenceOperation,
+  type HostUserPresenceSupport,
 } from './host-capability.models';
+import { HostSystemUiService } from './host-system-ui.service';
 
 export const HOST_AUTHENTICATION_HANDOFF_OPERATION =
   new InjectionToken<HostAuthenticationHandoffOperation>(
@@ -33,6 +42,24 @@ export const HOST_LIFECYCLE_OPERATION =
 export const HOST_UPDATES_OPERATION = new InjectionToken<HostUpdatesOperation>(
   'HOST_UPDATES_OPERATION',
 );
+export const HOST_USER_PRESENCE_OPERATION =
+  new InjectionToken<HostUserPresenceOperation>('HOST_USER_PRESENCE_OPERATION');
+/** Null where the host has no lock integration (everything but Electron). */
+export const HOST_LOCK_INTEGRATION_OPERATION =
+  new InjectionToken<HostLockIntegrationOperation | null>(
+    'HOST_LOCK_INTEGRATION_OPERATION',
+  );
+/** Null where the host has no app-switcher cover (web, Electron). */
+export const HOST_SCREEN_PRIVACY_OPERATION =
+  new InjectionToken<HostScreenPrivacyOperation | null>(
+    'HOST_SCREEN_PRIVACY_OPERATION',
+  );
+
+/** Neither a system prompt nor a PIN: App lock is not offered. */
+export const NO_USER_PRESENCE: HostUserPresenceSupport = {
+  system: { kind: 'unavailable', reason: 'not-supported' },
+  pin: { kind: 'unavailable', reason: 'not-supported' },
+};
 
 const unavailableSupport = (): Extract<
   HostCapabilitySupport,
@@ -115,6 +142,7 @@ export class HostFileExportService implements HostFileExportOperation {
   private readonly adapter = inject(HOST_FILE_EXPORT_OPERATION, {
     optional: true,
   });
+  private readonly systemUi = inject(HostSystemUiService);
 
   support(): Observable<HostCapabilitySupport> {
     return defer(() => this.adapter?.support() ?? of(unavailableSupport()));
@@ -123,7 +151,9 @@ export class HostFileExportService implements HostFileExportOperation {
   save(
     request: Parameters<HostFileExportOperation['save']>[0],
   ): Observable<HostFileExportOutcome> {
-    return defer(() => this.adapter?.save(request) ?? of(unavailableOutcome()));
+    return this.systemUi.track(
+      defer(() => this.adapter?.save(request) ?? of(unavailableOutcome())),
+    );
   }
 }
 
@@ -178,5 +208,89 @@ export class HostUpdatesService implements HostUpdatesOperation {
 
   check(): Observable<HostOperationOutcome> {
     return defer(() => this.adapter?.check() ?? of(unavailableOutcome()));
+  }
+}
+
+@Injectable({ providedIn: 'root' })
+export class HostUserPresenceService implements HostUserPresenceOperation {
+  private readonly adapter = inject(HOST_USER_PRESENCE_OPERATION, {
+    optional: true,
+  });
+  private readonly systemUi = inject(HostSystemUiService);
+
+  support(): Observable<HostUserPresenceSupport> {
+    return defer(() => this.adapter?.support() ?? of(NO_USER_PRESENCE));
+  }
+
+  /** The system prompt; counted as Trinity's own system UI while it is open. */
+  verify(request: {
+    readonly reason: string;
+  }): Observable<HostPresenceOutcome> {
+    return this.systemUi.track(
+      defer(
+        () =>
+          this.adapter?.verify(request) ??
+          of<HostPresenceOutcome>({
+            kind: 'unavailable',
+            reason: 'not-supported',
+          }),
+      ),
+    );
+  }
+
+  setPin(pin: string): Observable<HostOperationOutcome> {
+    return defer(() => this.adapter?.setPin(pin) ?? of(unavailableOutcome()));
+  }
+
+  verifyPin(pin: string): Observable<HostPinOutcome> {
+    return defer(
+      () =>
+        this.adapter?.verifyPin(pin) ??
+        of<HostPinOutcome>({ kind: 'unavailable' }),
+    );
+  }
+
+  clearPin(): Observable<HostOperationOutcome> {
+    return defer(() => this.adapter?.clearPin() ?? of(unavailableOutcome()));
+  }
+}
+
+@Injectable({ providedIn: 'root' })
+export class HostLockIntegrationService implements HostLockIntegrationOperation {
+  private readonly adapter = inject(HOST_LOCK_INTEGRATION_OPERATION, {
+    optional: true,
+  });
+
+  readonly requests: Observable<HostLockRequest> = defer(
+    () => this.adapter?.requests ?? EMPTY,
+  );
+
+  setState(state: HostLockState): Observable<HostOperationOutcome> {
+    return defer(
+      () => this.adapter?.setState(state) ?? of(unavailableOutcome()),
+    );
+  }
+
+  coverPainted(): Observable<HostOperationOutcome> {
+    return defer(
+      () => this.adapter?.coverPainted() ?? of(unavailableOutcome()),
+    );
+  }
+}
+
+@Injectable({ providedIn: 'root' })
+export class HostScreenPrivacyService implements HostScreenPrivacyOperation {
+  private readonly adapter = inject(HOST_SCREEN_PRIVACY_OPERATION, {
+    optional: true,
+  });
+
+  set(enabled: boolean): Observable<HostOperationOutcome> {
+    return defer(() => this.adapter?.set(enabled) ?? of(unavailableOutcome()));
+  }
+
+  dismissPresented(): Observable<HostOperationOutcome> {
+    return defer(
+      () => this.adapter?.dismissPresented() ?? of(unavailableOutcome()),
+    );
   }
 }

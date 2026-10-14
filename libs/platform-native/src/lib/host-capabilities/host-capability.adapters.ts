@@ -116,6 +116,9 @@ function normalizeElectronManifest(value: unknown): HostCapabilityManifest {
       lifecycle: safeSupport(result.operations.lifecycle),
       updates: safeSupport(result.operations.updates),
       'title-bar': safeSupport(result.operations['title-bar']),
+      'user-presence': safeSupport(result.operations['user-presence']),
+      'lock-integration': safeSupport(result.operations['lock-integration']),
+      'screen-privacy': safeSupport(result.operations['screen-privacy']),
     },
   };
 }
@@ -199,6 +202,15 @@ function manifest(
         ? { kind: 'supported' }
         : { kind: 'unavailable', reason: unavailableReason },
       'title-bar': supports.has('title-bar')
+        ? { kind: 'supported' }
+        : { kind: 'unavailable', reason: unavailableReason },
+      'user-presence': supports.has('user-presence')
+        ? { kind: 'supported' }
+        : { kind: 'unavailable', reason: unavailableReason },
+      'lock-integration': supports.has('lock-integration')
+        ? { kind: 'supported' }
+        : { kind: 'unavailable', reason: unavailableReason },
+      'screen-privacy': supports.has('screen-privacy')
         ? { kind: 'supported' }
         : { kind: 'unavailable', reason: unavailableReason },
     },

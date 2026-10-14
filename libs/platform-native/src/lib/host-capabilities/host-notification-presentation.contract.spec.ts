@@ -76,6 +76,9 @@ function manifest(
       lifecycle: { kind: 'unavailable', reason: 'not-supported' },
       updates: { kind: 'unavailable', reason: 'not-supported' },
       'title-bar': { kind: 'unavailable', reason: 'not-supported' },
+      'user-presence': { kind: 'unavailable', reason: 'not-supported' },
+      'lock-integration': { kind: 'unavailable', reason: 'not-supported' },
+      'screen-privacy': { kind: 'unavailable', reason: 'not-supported' },
     },
   };
 }
