@@ -347,6 +347,85 @@ describe('RoomLibraryService', () => {
     });
   });
 
+  describe('rebuilding only the rooms a sync touched (#1292)', () => {
+    function setupTracked() {
+      const unread: Record<string, number> = { '!a:hs': 0, '!b:hs': 0 };
+      const reads: Record<string, number> = {};
+      const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
+      const rooms = new Map<string, ReturnType<typeof fakeRoom>>();
+      const make = (roomId: string, name: string) => {
+        const room = fakeRoom({ roomId, name });
+        room.getUnreadNotificationCount = () => {
+          reads[roomId] = (reads[roomId] ?? 0) + 1;
+          return unread[roomId] ?? 0;
+        };
+        rooms.set(roomId, room);
+        return room;
+      };
+      make('!a:hs', 'A');
+      make('!b:hs', 'B');
+      const client = {
+        baseUrl: 'https://hs.example',
+        getRooms: () => [...rooms.values()],
+        getRoom: (id: string) => rooms.get(id) ?? null,
+        on: (event: string, handler: (...args: unknown[]) => void) => {
+          listeners.set(event, [...(listeners.get(event) ?? []), handler]);
+        },
+      };
+      const { svc } = provideRooms(client);
+      svc.runProjection().subscribe();
+      const emit = async (event: string, ...args: unknown[]) => {
+        for (const handler of listeners.get(event) ?? []) handler(...args);
+        await Promise.resolve(); // the rebuild is coalesced into a microtask
+      };
+      const resetReads = () => {
+        for (const key of Object.keys(reads)) delete reads[key];
+      };
+      return { svc, unread, reads, rooms, make, emit, resetReads };
+    }
+    const unreadOf = (svc: RoomLibraryService, id: string) =>
+      svc.rooms().find((r) => r.id === id)?.unreadCount;
+
+    it('rebuilds only the room a sync touched', async () => {
+      const t = setupTracked();
+      t.resetReads();
+
+      t.unread['!a:hs'] = 3;
+      await t.emit(RoomEvent.Timeline, {}, t.rooms.get('!a:hs'));
+      await t.emit(ClientEvent.Sync);
+
+      expect(unreadOf(t.svc, '!a:hs')).toBe(3);
+      // At 300 rooms, rebuilding every summary on every sync was most of the room list's cost.
+      expect(t.reads['!b:hs'] ?? 0).toBe(0);
+    });
+
+    it('rebuilds everything when a room joins the list', async () => {
+      const t = setupTracked();
+      const room = t.make('!c:hs', 'C');
+
+      await t.emit(ClientEvent.Room, room);
+
+      expect(t.svc.rooms().map((r) => r.id)).toContain('!c:hs');
+    });
+
+    it('still picks up a change no event announced, within the safety interval', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        const t = setupTracked();
+        t.unread['!b:hs'] = 5; // nothing announces this
+
+        await t.emit(ClientEvent.Sync);
+        expect(unreadOf(t.svc, '!b:hs')).toBe(0);
+
+        vi.advanceTimersByTime(16_000);
+        await t.emit(ClientEvent.Sync);
+        expect(unreadOf(t.svc, '!b:hs')).toBe(5);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   describe('marked unread', () => {
     it('reads the flag as unread even with nothing new in the room', () => {
       // The whole point: the read receipt does not move, so the server's counts stay at
@@ -387,18 +466,28 @@ describe('RoomLibraryService', () => {
     /** A client that records account-data writes and can hold rooms per account. */
     function setupWritable(rooms: ReturnType<typeof fakeRoom>[]) {
       const setRoomAccountData = vi.fn(() => Promise.resolve({}));
+      const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
       const client = {
         baseUrl: 'https://hs.example',
         getRooms: () => rooms,
         getRoom: (id: string) => rooms.find((r) => r.roomId === id),
         setRoomAccountData,
-        on: () => {},
+        on: (event: string, handler: (...args: unknown[]) => void) => {
+          listeners.set(event, [...(listeners.get(event) ?? []), handler]);
+        },
       };
       const { svc, matrix } = provideRooms(client);
       ngMocks.stubMember(matrix, 'accountIds', signal(['@me:hs']).asReadonly());
       ngMocks.stubMember(matrix, 'clientFor', (() => client) as never);
       svc.runProjection().subscribe();
-      return { svc, client, setRoomAccountData };
+      /** The room's own account data changed, as the SDK reports a sync echo. */
+      const accountDataChanged = async (room: ReturnType<typeof fakeRoom>) => {
+        for (const handler of listeners.get(RoomEvent.AccountData) ?? []) {
+          handler({ getType: () => 'm.marked_unread' }, room);
+        }
+        await Promise.resolve(); // coalesced into a microtask
+      };
+      return { svc, client, setRoomAccountData, accountDataChanged };
     }
 
     it('writes the STABLE event type when flagging a room', async () => {
@@ -453,7 +542,7 @@ describe('RoomLibraryService', () => {
       // room says the same thing, the overlay is dropped so a change made on another
       // device is not fought by a stale local guess.
       const room = fakeRoom({ roomId: '!r:hs', name: 'R' });
-      const { svc } = setupWritable([room]);
+      const { svc, accountDataChanged } = setupWritable([room]);
       await firstValueFrom(svc.setMarkedUnread('!r:hs', true));
 
       // The sync echo lands: the room itself now says flagged, matching the overlay.
@@ -461,12 +550,12 @@ describe('RoomLibraryService', () => {
         type === 'm.marked_unread'
           ? { getContent: () => ({ unread: true }) }
           : undefined;
-      await firstValueFrom(svc.setMarkedUnread('!r:hs', true)); // any rebuild
+      await accountDataChanged(room);
       expect(svc.rooms()[0].markedUnread).toBe(true);
 
       // Another device clears it. With the overlay dropped, the server wins.
       room.getAccountData = () => undefined;
-      await firstValueFrom(svc.setMarkedUnread('!other:hs', true));
+      await accountDataChanged(room);
       expect(svc.rooms()[0].markedUnread).toBe(false);
     });
 
