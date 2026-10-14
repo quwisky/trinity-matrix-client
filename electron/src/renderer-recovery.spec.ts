@@ -36,6 +36,7 @@ function fakeWindow(onScreen = true) {
     }),
     isVisible: vi.fn(() => onScreen),
     isMinimized: vi.fn(() => false),
+    getOpacity: vi.fn(() => 1),
     webContents: contents,
   };
   return {
@@ -43,6 +44,9 @@ function fakeWindow(onScreen = true) {
     contents,
     setVisible: (value: boolean) => win.isVisible.mockReturnValue(value),
     setMinimized: (value: boolean) => win.isMinimized.mockReturnValue(value),
+    /** App lock's show hold keeps the window transparent (lock-integration.ts). */
+    setConcealed: (value: boolean) =>
+      win.getOpacity.mockReturnValue(value ? 0 : 1),
     gone: (reason: string) =>
       contentsListeners['render-process-gone']?.({}, { reason, exitCode: 1 }),
     loaded: () => contentsListeners['did-finish-load']?.(),
@@ -366,6 +370,75 @@ describe('renderer recovery', () => {
       fake.emit('show');
       expect(mocks.showMessageBox).not.toHaveBeenCalled();
       expect(fake.contents.reload).toHaveBeenCalledTimes(1);
+    });
+  });
+  describe('while App lock keeps the window transparent', () => {
+    it('asks about a hang in a box of its own, which a transparent window cannot hide', async () => {
+      mocks.showMessageBox.mockResolvedValue({ response: 1 });
+      const fake = fakeWindow();
+      fake.setConcealed(true);
+      watchRendererRecovery(fake.win, () => now);
+      fake.emit('unresponsive');
+      await settle();
+      expect(mocks.showMessageBox).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          message: 'Trinity Next isn’t responding',
+          buttons: ['Reload', 'Keep Waiting'],
+        }),
+      );
+    });
+
+    it('asks about a repeated crash in a box of its own', async () => {
+      mocks.showMessageBox.mockResolvedValue({ response: 0 });
+      const fake = fakeWindow();
+      fake.setConcealed(true);
+      watchRendererRecovery(fake.win, () => now);
+      fake.gone('crashed');
+      fake.gone('crashed');
+      await settle();
+      expect(mocks.showMessageBox).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ message: 'Trinity Next stopped working' }),
+      );
+    });
+
+    it('attaches the question to the window again once it is shown', async () => {
+      mocks.showMessageBox.mockResolvedValue({ response: 1 });
+      const fake = fakeWindow();
+      watchRendererRecovery(fake.win, () => now);
+      fake.emit('unresponsive');
+      await settle();
+      expect(mocks.showMessageBox).toHaveBeenCalledWith(
+        fake.win,
+        expect.objectContaining({ message: 'Trinity Next isn’t responding' }),
+      );
+    });
+
+    it('closes a box of its own when the window responds again', async () => {
+      // Stays open until aborted; a sheet on the window would answer Reload at once.
+      mocks.showMessageBox.mockImplementation(
+        (
+          options: { signal: AbortSignal; cancelId: number },
+          sheet?: unknown,
+        ) =>
+          sheet === undefined
+            ? new Promise((resolve) =>
+                options.signal.addEventListener('abort', () =>
+                  resolve({ response: options.cancelId }),
+                ),
+              )
+            : Promise.resolve({ response: 0 }),
+      );
+      const fake = fakeWindow();
+      fake.setConcealed(true);
+      watchRendererRecovery(fake.win, () => now);
+      fake.emit('unresponsive');
+      fake.emit('unresponsive');
+      expect(mocks.showMessageBox).toHaveBeenCalledOnce();
+      fake.emit('responsive');
+      await settle();
+      expect(fake.contents.forcefullyCrashRenderer).not.toHaveBeenCalled();
+      fake.emit('unresponsive');
+      expect(mocks.showMessageBox).toHaveBeenCalledTimes(2);
     });
   });
 });

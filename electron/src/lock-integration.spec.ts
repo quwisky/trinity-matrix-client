@@ -25,7 +25,12 @@ import {
   registerLockIntegration,
 } from './lock-integration';
 
-const contents = { send: vi.fn() };
+/** The main window's WebContents; fresh per test, as it records renderer exits. */
+let contents = fakeContents();
+
+function fakeContents() {
+  return Object.assign(new EventEmitter(), { send: vi.fn() });
+}
 
 function fakeWindow() {
   const events = new EventEmitter();
@@ -83,7 +88,7 @@ describe('registerLockIntegration', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     handlers.clear();
     buildMenu.mockClear();
-    contents.send.mockClear();
+    contents = fakeContents();
     win = fakeWindow();
     power = new EventEmitter();
     registerLockIntegration({
@@ -270,5 +275,71 @@ describe('registerLockIntegration', () => {
       throw new Error('Object has been destroyed');
     });
     expect(() => win.emit('hide')).not.toThrow();
+  });
+  describe('when the renderer cannot report', () => {
+    const hold = () => {
+      setState({ enabled: true, locked: true, accelerator: null });
+      win.emit('hide');
+      win.emit('show');
+    };
+
+    it('keeps a held window hidden past the timeout while its renderer is not responding', () => {
+      hold();
+      win.emit('unresponsive');
+      vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS * 10);
+      expect(win.setOpacity.mock.calls).toEqual([[0]]);
+      paint();
+      expect(win.setOpacity).toHaveBeenLastCalledWith(1);
+    });
+
+    it('keeps it hidden after the renderer has gone, until the new renderer paints', () => {
+      hold();
+      contents.emit('render-process-gone', {}, { reason: 'crashed' });
+      vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS * 10);
+      // The reloaded renderer reports its state before its cover has painted.
+      setState({ enabled: true, locked: true, accelerator: null });
+      vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS * 10);
+      expect(win.setOpacity.mock.calls).toEqual([[0]]);
+      paint();
+      expect(win.setOpacity).toHaveBeenLastCalledWith(1);
+    });
+
+    it('applies the usual timeout again once a hung renderer responds', () => {
+      hold();
+      win.emit('unresponsive');
+      vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS * 10);
+      win.emit('responsive');
+      vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS - 1);
+      expect(win.setOpacity.mock.calls).toEqual([[0]]);
+      vi.advanceTimersByTime(1);
+      expect(win.setOpacity).toHaveBeenLastCalledWith(1);
+    });
+
+    it('holds a window shown while its renderer is still gone', () => {
+      setState({ enabled: true, locked: true, accelerator: null });
+      win.emit('hide');
+      contents.emit('render-process-gone', {}, { reason: 'oom' });
+      win.emit('show');
+      vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS * 10);
+      expect(win.setOpacity.mock.calls).toEqual([[0]]);
+    });
+
+    it('shows the window once the reloaded renderer reports the lock is off', () => {
+      hold();
+      contents.emit('render-process-gone', {}, { reason: 'crashed' });
+      vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS);
+      setState({ enabled: false, locked: false, accelerator: null });
+      expect(win.setOpacity).toHaveBeenLastCalledWith(1);
+    });
+
+    it('reveals on the timeout as before once the new renderer has reported', () => {
+      setState({ enabled: true, locked: true, accelerator: null });
+      win.emit('hide');
+      contents.emit('render-process-gone', {}, { reason: 'crashed' });
+      setState({ enabled: true, locked: true, accelerator: null });
+      win.emit('show');
+      vi.advanceTimersByTime(SHOW_HOLD_TIMEOUT_MS);
+      expect(win.setOpacity).toHaveBeenLastCalledWith(1);
+    });
   });
 });
