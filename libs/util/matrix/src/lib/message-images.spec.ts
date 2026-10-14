@@ -61,7 +61,14 @@ describe('inline images in formatted bodies', () => {
     'blob:https://example.org/1',
     'https://tracker.example/pixel.png',
     'mxc://no-media-id',
-  ])('turns an image from %s into its alt text', (source) => {
+    'javascript:x',
+    '//host/x',
+    'MXC://hs/x',
+    ' mxc://hs/x',
+    '\u0001mxc://hs/x',
+    'mxc://hs/a/b',
+    'mxc://hs/../x',
+  ])('turns an image from %j into its alt text', (source) => {
     const clean = sanitizeMatrixHtml(
       `<img src="${source}" alt="what it showed">`,
     );
@@ -69,6 +76,53 @@ describe('inline images in formatted bodies', () => {
     expect(parse(clean).querySelector('img')).toBeNull();
     expect(clean).toContain('what it showed');
     expect(clean).not.toContain(source);
+  });
+
+  it('keeps none of the render markup a sender forges', () => {
+    const forged =
+      '<img src="mxc://hs/a" class="mx-image" data-mx-src="mxc://other/b" role="button" aria-label="x">';
+    const alone = parse(sanitizeMatrixHtml(forged)).querySelector('img');
+    const linked = parse(
+      sanitizeMatrixHtml(`<a href="https://example.org/">${forged}</a>`),
+    ).querySelector('img');
+
+    expect(alone?.getAttribute('data-mx-src')).toBe('mxc://hs/a');
+    expect(alone?.getAttribute('aria-label')).toBe('View image');
+    expect(linked?.getAttribute('data-mx-src')).toBe('mxc://hs/a');
+    expect(linked?.hasAttribute('role')).toBe(false);
+    expect(linked?.hasAttribute('aria-label')).toBe(false);
+  });
+
+  it('treats an image in an anchor without href as outside a link', () => {
+    const image = parse(
+      sanitizeMatrixHtml('<a><img src="mxc://hs/pic" alt="p"></a>'),
+    ).querySelector('img');
+
+    expect(image?.getAttribute('role')).toBe('button');
+    expect(image?.getAttribute('tabindex')).toBe('0');
+  });
+
+  it.each(['100%', '1e9', '-5', '123456', ' '])(
+    'drops a sender size of %j',
+    (size) => {
+      const image = parse(
+        sanitizeMatrixHtml(
+          `<img src="mxc://hs/pic" width="${size}" height="${size}" alt="p">`,
+        ),
+      ).querySelector('img');
+
+      expect(image?.hasAttribute('width')).toBe(false);
+      expect(image?.hasAttribute('height')).toBe(false);
+    },
+  );
+
+  it('names an image with whitespace-only alt text "Image"', () => {
+    const image = parse(
+      sanitizeMatrixHtml('<img src="mxc://hs/pic" alt="   ">'),
+    ).querySelector('img');
+
+    expect(image?.getAttribute('alt')).toBe('Image');
+    expect(image?.getAttribute('aria-label')).toBe('View image');
   });
 
   it('shows at most 10 inline images and the rest as their alt text', () => {

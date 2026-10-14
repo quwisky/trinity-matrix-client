@@ -89,8 +89,9 @@ describe('the Matrix HTML allowlist (spec v1.19)', () => {
   });
 
   // Spec v1.19 allows `width`/`height` on `img` only. A sender's size reserves the image's box;
-  // the renderer caps an inline image at 300px tall and the body's width, so even a huge size
-  // cannot open an arbitrarily tall empty box.
+  // the feature layer draws an inline image at most 300px tall and the body's width
+  // (InlineMxcImagesDirective and rendered-markdown.scss), so even a huge size cannot open an
+  // arbitrarily tall empty box.
   it.each([
     ['render', sanitizeMatrixHtml],
     ['send', sanitizeOutgoingHtml],

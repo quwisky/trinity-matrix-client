@@ -536,8 +536,10 @@ const MATRIX_URI_SAFE_ATTR = ['color', 'start', 'width', 'height'];
  * a tag missing here keeps no attribute. `font` is deprecated (v1.10) and kept only so older
  * messages still read as their sender meant; `sanitizeOutgoingHtml` never sends it. `input` is
  * the render path's GFM checkbox, read by {@link normaliseTaskItems} and then removed. An
- * image's `width`/`height` reserve its box; the renderer caps inline images at 300px tall and
- * the body's width, so a sender's size cannot open an arbitrarily large empty box.
+ * image's `width`/`height` reserve its box: {@link normaliseImages} keeps only plain 1–5 digit
+ * values, and the feature layer draws an inline image no taller than 300px and no wider than the
+ * body (`IMAGE_MAX_HEIGHT_PX` in InlineMxcImagesDirective, `img.mx-image` in
+ * `apps/trinity/src/rendered-markdown.scss`), so a sender's size cannot open a huge empty box.
  */
 const MATRIX_TAG_ATTRIBUTES: ReadonlyMap<string, ReadonlySet<string>> = new Map<
   string,
@@ -571,6 +573,18 @@ const NO_ATTRIBUTES: ReadonlySet<string> = new Set();
 // tracking pixel nor embed a `data:` payload; such an image becomes its alt text.
 const MXC_SCHEME = /^mxc:\/\//i;
 
+// A sender's `<img src>` must BE an `mxc://` URI, not merely become one. DOMPurify trims every
+// attribute value before its attribute hooks see it, so the raw value is checked here, first:
+// ` mxc://…` or `\u0001mxc://…` loses its source instead of being trimmed into a valid one.
+DOMPurify.addHook('beforeSanitizeAttributes', (node) => {
+  if (
+    node.nodeName === 'IMG' &&
+    !MXC_SCHEME.test(node.getAttribute('src') ?? '')
+  ) {
+    node.removeAttribute('src');
+  }
+});
+
 // The only `class` tokens Matrix sanctions: `language-*`, on `code` (syntax highlighting). Every
 // class the renderer needs (mx-spoiler, mx-emoticon, colour tokens, …) is added after this
 // filter by a render-only pass, so a sender can borrow none of them, nor app/Ionic classes.
@@ -578,8 +592,8 @@ const ALLOWED_CLASS = /^language-[\w-]+$/;
 
 // A sender's `formatted_body` can embed `<img src="https://attacker/x.gif">`,
 // which the browser would fetch on render — leaking the viewer's IP and acting
-// as a read receipt. So strip the `src` of any non-`mxc:` image. The hook also enforces the
-// per-tag attribute list above and filters `class` to the Matrix-sanctioned tokens.
+// as a read receipt. So the hook above strips the `src` of any non-`mxc:` image. This one
+// enforces the per-tag attribute list above and filters `class` to the Matrix-sanctioned tokens.
 //
 // Registered once at module load, and it applies to BOTH entry points — incoming
 // {@link sanitizeMatrixHtml} and outgoing {@link sanitizeOutgoingHtml}. Only
@@ -593,12 +607,6 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   const allowed = MATRIX_TAG_ATTRIBUTES.get(node.nodeName) ?? NO_ATTRIBUTES;
   for (const name of node.getAttributeNames()) {
     if (!allowed.has(name)) node.removeAttribute(name);
-  }
-  if (node.nodeName === 'IMG' && node.hasAttribute('src')) {
-    const src = node.getAttribute('src') ?? '';
-    if (!MXC_SCHEME.test(src)) {
-      node.removeAttribute('src');
-    }
   }
   if (node.hasAttribute('class')) {
     const kept = (node.getAttribute('class') ?? '')
@@ -868,8 +876,11 @@ function linkifyMessageText(text: string): string | null {
 /** Images one message may show inline (spec A2); past it the rest read as their alt text. */
 const MAX_INLINE_IMAGES = 10;
 
-/** An `mxc://server/media-id` URI. */
-const MXC_IMAGE_SOURCE = /^mxc:\/\/[^/\s]+\/[^\s]+$/;
+/** A plain `mxc://server/media-id`, the shape the SDK accepts (as InlineMxcImagesDirective). */
+const MXC_IMAGE_SOURCE = /^mxc:\/\/[^/\s]+\/[\w-]+$/;
+
+/** A sender `width`/`height` the leaf may trust to reserve a box: 1–5 digits, nothing else. */
+const SENDER_SIZE = /^\d{1,5}$/;
 
 /**
  * Prepare every image for the render leaf. A valid `mxc://` source moves to `data-mx-src`:
@@ -881,7 +892,8 @@ const MXC_IMAGE_SOURCE = /^mxc:\/\/[^/\s]+\/[^\s]+$/;
  * MSC2545 custom emoji (`data-mx-emoticon`) are sized as before and capped at the leaf (50).
  * Other images are marked `mx-image`, the first {@link MAX_INLINE_IMAGES} only, so a crafted
  * message cannot fire many downloads; outside a link they are buttons that open the viewer,
- * named after their alt text ("Image" without one). Inside a link they follow the link.
+ * named after their alt text ("Image" without one). Inside a link they follow the link. Their
+ * `width`/`height` survive only as plain digits; the leaf caps the drawn size (300px tall).
  */
 function normaliseImages(root: ParentNode): void {
   let inline = 0;
@@ -905,14 +917,20 @@ function normaliseImages(root: ParentNode): void {
       continue;
     }
     inline += 1;
+    for (const size of ['width', 'height']) {
+      if (!SENDER_SIZE.test(image.getAttribute(size) ?? '')) {
+        image.removeAttribute(size);
+      }
+    }
+    const name = alt?.trim();
     image.classList.add('mx-image');
-    image.setAttribute('alt', alt || 'Image');
-    if (!image.closest('a')) {
+    image.setAttribute('alt', name || 'Image');
+    if (!image.closest('a[href]')) {
       image.setAttribute('role', 'button');
       image.setAttribute('tabindex', '0');
       image.setAttribute(
         'aria-label',
-        alt ? `View image: ${alt}` : 'View image',
+        name ? `View image: ${name}` : 'View image',
       );
     }
   }
