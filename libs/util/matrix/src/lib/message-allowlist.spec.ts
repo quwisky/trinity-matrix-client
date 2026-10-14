@@ -187,4 +187,28 @@ describe('the Matrix HTML allowlist (spec v1.19)', () => {
       sanitizeOutgoingHtml('<font color="#112233">f</font><strike>s</strike>'),
     ).toBe('f<del>s</del>');
   });
+
+  it.each([
+    ['<ol start="100000"><li>a</li><li>b</li></ol>', 'mx-ol-long'],
+    ['<ol start="98"><li>a</li><li>b</li><li>c</li></ol>', 'mx-ol-long'],
+    ['<ol start="-10"><li>a</li></ol>', 'mx-ol-long'],
+    ['<ol start="97"><li>a</li><li>b</li><li>c</li></ol>', 'mx-ol-wide'],
+    ['<ol start="-9"><li>a</li></ol>', 'mx-ol-wide'],
+    ['<ol start="8"><li>a</li><li>b</li></ol>', ''],
+    ['<ol start="8"><li>a</li><li>b</li><li>c</li></ol>', 'mx-ol-wide'],
+    ['<ol start="x"><li>a</li></ol>', ''],
+    [`<ol>${'<li>i</li>'.repeat(9)}</ol>`, ''],
+    [`<ol>${'<li>i</li>'.repeat(99)}</ol>`, 'mx-ol-wide'],
+    [`<ol>${'<li>i</li>'.repeat(100)}</ol>`, 'mx-ol-long'],
+  ])('marks %s by how far its numbers reach', (html, mark) => {
+    const list = parse(sanitizeMatrixHtml(html)).querySelector('ol');
+
+    expect(list?.className).toBe(mark);
+  });
+
+  it('never sends the wide-list mark', () => {
+    expect(
+      sanitizeOutgoingHtml('<ol start="100000"><li>a</li></ol>'),
+    ).not.toMatch(/mx-ol-/);
+  });
 });

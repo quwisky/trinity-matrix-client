@@ -786,6 +786,7 @@ export function sanitizeMatrixHtml(
   normaliseImages(body);
   normaliseMaths(body);
   normaliseTaskItems(body);
+  markWideLists(body);
   renderCodeBlocks(body);
   markMentionPills(body, addressesViewer);
   const clean = body.innerHTML;
@@ -1176,6 +1177,29 @@ function normaliseTaskItems(root: ParentNode): void {
   for (const item of root.querySelectorAll('li')) {
     if (TASK_GLYPH.test(item.textContent ?? '')) {
       item.classList.add('mx-task');
+    }
+  }
+}
+
+/**
+ * Mark ordered lists whose numbers are too long for the list's usual indent: `mx-ol-wide` when
+ * the longest number has two characters (`10`, `-9`), which a wider indent holds, and
+ * `mx-ol-long` past that (`100`, or a sender's `start="100000"`), whose numbers the stylesheet
+ * puts inside the items. Otherwise they would hang out of the message body, which clips
+ * anything beside it. Render-only, like {@link normaliseTaskItems}; one pass over the lists
+ * and their direct items.
+ */
+function markWideLists(root: ParentNode): void {
+  for (const list of root.querySelectorAll('ol')) {
+    const parsed = Number.parseInt(list.getAttribute('start') ?? '', 10);
+    const first = Number.isFinite(parsed) ? parsed : 1;
+    const items = list.querySelectorAll(':scope > li').length;
+    const last = first + Math.max(items - 1, 0);
+    const widest = Math.max(String(first).length, String(last).length);
+    if (widest > 2) {
+      list.classList.add('mx-ol-long');
+    } else if (widest === 2) {
+      list.classList.add('mx-ol-wide');
     }
   }
 }
