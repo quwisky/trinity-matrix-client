@@ -67,6 +67,7 @@ import {
   CONVERSATION_MESSAGE_ADAPTER,
   CONVERSATION_MESSAGE_POLICY,
 } from './conversation-message-adapter.service';
+import { onWindowFocus, windowHasFocus } from './window-focus';
 
 const SCROLLBACK = 30;
 const RETAINED_EVENT_BYTES = 64;
@@ -418,6 +419,7 @@ export class TimelineService {
    * held back while unfocused, so the open room's badge clears now the user is
    * actually looking at it. */
   private readonly onFocus = (): void => this.markRead();
+  private stopFocusListener: (() => void) | null = null;
 
   /**
    * Resolved authenticity shields per shield-subject id (a row's latest edit, else the
@@ -479,9 +481,7 @@ export class TimelineService {
     this.updateRedactOthersPermission(room);
     // Re-ack the open room on refocus: while unfocused markRead holds the receipt
     // so its unread accrues, so we mark it read again when the window returns.
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', this.onFocus);
-    }
+    this.stopFocusListener = onWindowFocus(this.onFocus);
     // Projects the timeline and sends the initial read receipt; subsequent live
     // messages re-ack through the same path (see {@link markRead}).
     this.refresh();
@@ -531,9 +531,8 @@ export class TimelineService {
     // typing into a room the new account may not be in, and leaves the outgoing account
     // marked typing until the server's own timeout expires.
     this.stopTypingOnConnectedClient();
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('focus', this.onFocus);
-    }
+    this.stopFocusListener?.();
+    this.stopFocusListener = null;
     this.room?.off(RoomEvent.Timeline, this.onTimeline);
     this.room?.off(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
     this.room?.off(RoomEvent.Receipt, this.onReceipt);
@@ -1118,7 +1117,7 @@ export class TimelineService {
     }
     // The room is open, but the user isn't looking if the window is unfocused —
     // hold the receipt so its unread accumulates; onFocus re-acks on return.
-    if (typeof document !== 'undefined' && !document.hasFocus()) {
+    if (!windowHasFocus()) {
       return;
     }
     const list = events ?? this.room.getLiveTimeline().getEvents();

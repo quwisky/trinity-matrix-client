@@ -13,7 +13,15 @@ import {
   EventShieldColour,
   EventShieldReason,
 } from 'matrix-js-sdk/lib/crypto-api';
-import { describe, expect, it, type Mock, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import { ThreadsService } from './threads.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
@@ -316,6 +324,13 @@ function setup(
 }
 
 describe('ThreadsService', () => {
+  beforeEach(() => {
+    // Viewing a thread = the window is focused (the normal case). Thread receipts only go
+    // out while focused; the unfocused and refocus paths are exercised explicitly below.
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
   it('projects a room’s threads into summaries keyed by root id', () => {
     const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
     const reply = fakeEvent({
@@ -1679,6 +1694,104 @@ describe('ThreadsService', () => {
       room.emit(RoomEvent.Receipt);
 
       expect(acknowledge).toHaveBeenCalledTimes(1);
+    });
+
+    it('holds the thread receipt while the window is unfocused (#1356)', () => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false); // app not in focus
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'reply' });
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, reply],
+      });
+      const { svc, acknowledge } = setup([thread]);
+
+      svc.attachThreadRoot('$root');
+      // A live reply while still unfocused is held back too.
+      thread.events.push(
+        fakeEvent({ id: '$r2', sender: '@b:hs', body: 'another' }),
+      );
+      thread.emit(ThreadEvent.NewReply);
+
+      expect(acknowledge).not.toHaveBeenCalled();
+    });
+
+    it('sends the held thread receipt once, for the latest reply, when focus returns (#1356)', () => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false); // start unfocused
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'reply' });
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, reply],
+      });
+      const { svc, acknowledge } = setup([thread]);
+      svc.attachThreadRoot('$root');
+      // A newer reply lands while unfocused, with no refresh before focus returns.
+      thread.events.push(
+        fakeEvent({ id: '$r2', sender: '@b:hs', body: 'another' }),
+      );
+
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true); // the person returns
+      window.dispatchEvent(new Event('focus'));
+      window.dispatchEvent(new Event('focus')); // already acked: not re-sent
+
+      expect(acknowledge).toHaveBeenCalledTimes(1);
+      expect(acknowledge).toHaveBeenCalledWith({
+        key: { accountId: '@me:hs', roomId: '!r:hs' },
+        messageId: '$r2',
+        threadRootId: '$root',
+      });
+    });
+
+    it('does not ack a closed thread when the window regains focus (#1356)', () => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false); // start unfocused
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'reply' });
+      const { svc, acknowledge } = setup([
+        fakeThread({ id: '$root', rootEvent: root, events: [root, reply] }),
+      ]);
+      const add = vi.spyOn(window, 'addEventListener');
+      const remove = vi.spyOn(window, 'removeEventListener');
+      svc.attachThreadRoot('$root');
+      const focusListeners = add.mock.calls
+        .filter(([type]) => type === 'focus')
+        .map(([, listener]) => listener);
+      expect(focusListeners).toHaveLength(1);
+
+      // Closing the thread (or hiding its Conversation, which closes it) stops listening.
+      svc.closeThread();
+      expect(remove).toHaveBeenCalledWith('focus', focusListeners[0]);
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      expect(() => window.dispatchEvent(new Event('focus'))).not.toThrow();
+
+      expect(acknowledge).not.toHaveBeenCalled();
+      expect(svc.resources().listenerCount).toBe(8); // summaries only
+    });
+
+    it('acks only the thread open now when focus returns after a switch (#1356)', () => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false); // start unfocused
+      const rootA = fakeEvent({ id: '$a', sender: '@a:hs', body: 'root a' });
+      const replyA = fakeEvent({ id: '$a1', sender: '@b:hs', body: 'reply a' });
+      const rootB = fakeEvent({ id: '$b', sender: '@a:hs', body: 'root b' });
+      const replyB = fakeEvent({ id: '$b1', sender: '@b:hs', body: 'reply b' });
+      const { svc, acknowledge } = setup([
+        fakeThread({ id: '$a', rootEvent: rootA, events: [rootA, replyA] }),
+        fakeThread({ id: '$b', rootEvent: rootB, events: [rootB, replyB] }),
+      ]);
+      svc.attachThreadRoot('$a');
+      svc.attachThreadRoot('$b'); // switched while still unfocused
+
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true); // the person returns
+      window.dispatchEvent(new Event('focus'));
+
+      expect(acknowledge).toHaveBeenCalledTimes(1);
+      expect(acknowledge).toHaveBeenCalledWith({
+        key: { accountId: '@me:hs', roomId: '!r:hs' },
+        messageId: '$b1',
+        threadRootId: '$b',
+      });
     });
 
     it('does not throw when the message adapter rejects the acknowledgement', () => {
