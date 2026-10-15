@@ -3,6 +3,7 @@ import { toObservable } from '@angular/core/rxjs-interop';
 import {
   ClientEvent,
   SyncState,
+  type EventTimeline,
   type SyncStateData,
   type Room,
 } from 'matrix-js-sdk';
@@ -61,6 +62,11 @@ export class LiveTimelineTrimmer {
       return new Observable<never>(() => {
         // A room that failed once is reported once, not on every later sync.
         const failed = new WeakSet<Room>();
+        // What each live timeline looked like when last examined. A sync that brought a
+        // room nothing new leaves it as it was, so a room that could not be trimmed is not
+        // scanned again until it receives an event. A trim or a gappy sync replaces the
+        // timeline, which starts unseen.
+        const seen = new WeakMap<EventTimeline, TimelineMark>();
         const onSync = (
           state: SyncState,
           _previous: SyncState | null,
@@ -76,13 +82,17 @@ export class LiveTimelineTrimmer {
           for (const room of client.getRooms()) {
             if (failed.has(room)) continue;
             try {
+              const timeline = room.getLiveTimeline();
+              if (sameAs(seen.get(timeline), timeline)) continue;
               noteSyncPosition(room, token);
               if (
-                room.getLiveTimeline().getEvents().length > TRIM_HIGH_WATER &&
+                timeline.getEvents().length > TRIM_HIGH_WATER &&
                 !this.conversations.holds(accountId, room.roomId)
               ) {
                 trimLiveTimeline(room, accountId);
               }
+              const now = room.getLiveTimeline();
+              seen.set(now, markOf(now));
             } catch (error: unknown) {
               // Never into the SDK's sync loop: the room just keeps its events.
               failed.add(room);
@@ -95,4 +105,24 @@ export class LiveTimelineTrimmer {
       });
     });
   }
+}
+
+/** How many events a live timeline held and which came last. */
+interface TimelineMark {
+  readonly length: number;
+  readonly lastEventId: string | undefined;
+}
+
+function markOf(timeline: EventTimeline): TimelineMark {
+  const events = timeline.getEvents();
+  return { length: events.length, lastEventId: events.at(-1)?.getId() };
+}
+
+function sameAs(
+  mark: TimelineMark | undefined,
+  timeline: EventTimeline,
+): boolean {
+  if (!mark) return false;
+  const now = markOf(timeline);
+  return now.length === mark.length && now.lastEventId === mark.lastEventId;
 }

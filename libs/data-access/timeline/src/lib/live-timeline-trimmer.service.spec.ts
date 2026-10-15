@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import {
   ClientEvent,
   Direction,
+  EventType,
   MatrixEvent,
   Room,
   SyncState,
@@ -151,6 +152,39 @@ describe('LiveTimelineTrimmer', () => {
     for (let i = 0; i < 30; i++) await sync(client);
 
     expect(loaded('!busy:hs')).toBe(300);
+    running.unsubscribe();
+  });
+
+  it('does not rescan a room a sync brought nothing new', async () => {
+    const { client, trimmer, accountIds, sync, loaded } = setup();
+    const busy = client.getRoom('!busy:hs')!;
+    const running = trimmer.run().subscribe();
+    accountIds.set([ALICE]);
+    TestBed.tick();
+    await sync();
+    // Read once, then left: the receipt keeps everything after it below the ceiling.
+    busy.addReceipt(
+      new MatrixEvent({
+        type: EventType.Receipt,
+        room_id: busy.roomId,
+        content: {
+          [message(busy.roomId, 1).getId()!]: {
+            'm.read': { [ALICE]: { ts: 1 } },
+          },
+        },
+      }),
+    );
+    for (let i = 0; i < 25; i++) await sync();
+    expect(loaded('!busy:hs')).toBe(260);
+    const attempts = vi.spyOn(busy, 'getEventReadUpTo');
+
+    client.emit(ClientEvent.Sync, SyncState.Syncing, SyncState.Syncing, {
+      nextSyncToken: 's-idle',
+    });
+    expect(attempts).not.toHaveBeenCalled();
+
+    await sync();
+    expect(attempts).toHaveBeenCalled();
     running.unsubscribe();
   });
 
