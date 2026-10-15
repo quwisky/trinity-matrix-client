@@ -1,5 +1,12 @@
-import { computed, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  signal,
+} from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { provideTrnIcons } from '@trinity/components/foundations';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   AppLockService,
@@ -47,6 +54,51 @@ const NO_PIN_STORE_ONLY: HostUserPresenceSupport = {
 /** A fixture PIN; R8 allows it in call assertions against mocks, never in rendered text. */
 const FIXTURE_PIN = '482913';
 
+/** Stands in for `trn-root`: a `<body>` child holding the workspace and the cover. */
+@Component({
+  selector: 'trn-test-root',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [AppLockCoverComponent],
+  template: `
+    <div data-testid="workspace">
+      <button type="button">Open room</button>
+    </div>
+    <trn-app-lock-cover />
+  `,
+})
+class RootLikeHostComponent {}
+
+/** A CDK dialog opened by the app, as Settings or an app-initiated dialog would be. */
+@Component({
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `<button type="button">Close settings</button>`,
+})
+class SettingsProbeComponent {}
+
+/** Whether `element` or an ancestor hides it from assistive technology. */
+function hiddenFromAssistiveTechnology(element: Element): boolean {
+  for (let node: Element | null = element; node; node = node.parentElement) {
+    if (
+      node.getAttribute('aria-hidden') === 'true' ||
+      node.hasAttribute('inert')
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Each `<body>` child's `aria-hidden`, but CDK's overlay container and the cover's host. */
+function bodyAriaHidden(): (string | null)[] {
+  return [...document.body.children]
+    .filter(
+      (child) =>
+        !child.classList.contains('cdk-overlay-container') &&
+        child.localName !== 'trn-app-lock-cover',
+    )
+    .map((child) => child.getAttribute('aria-hidden'));
+}
+
 function pinStateOf(support: HostUserPresenceSupport): AppLockPinState {
   const pin = support.pin;
   if (pin.kind === 'available') return pin.set ? 'ready' : 'not-set';
@@ -84,6 +136,8 @@ async function setup(
     refresh?: 'immediate' | 'held';
     /** The desktop title row is showing (a frameless Electron window). */
     titleRow?: boolean;
+    /** Mount the cover inside a root-like host, as `trn-root` does. */
+    inRoot?: boolean;
   } = {},
 ) {
   const locked = signal(options.locked ?? true);
@@ -124,40 +178,43 @@ async function setup(
     options.reset ?? (() => of({ kind: 'ready' as const })),
   );
   const restart = vi.fn();
-  const rendered = await render(AppLockCoverComponent, {
-    providers: [
-      provideTrnIcons(),
-      MockProvider(AppLockService, {
-        appName: options.appName ?? 'Trinity',
-        locked: locked.asReadonly(),
-        support: support.asReadonly(),
-        systemAvailable,
-        pinState,
-        recoveryOnly: computed(
-          () => locked() && !systemAvailable() && pinState() !== 'ready',
-        ),
-        systemWaitUntil: systemWaitUntil.asReadonly(),
-        refreshSupport,
-        retry,
-        unlockWithSystem,
-        unlockWithPin,
-      }),
-      MockProvider(AppLockLifecycleBinding, { visits }),
-      MockProvider(TitleBarState, {
-        active: signal(options.titleRow ?? false).asReadonly(),
-      }),
-      MockProvider(HostLockIntegrationService, { coverPainted }),
-      MockProvider(HostSystemUiService, {
-        active: systemUiActive.asReadonly(),
-      }),
-      MockProvider(AccountRuntimeService, {
-        resetInstallation: resetInstallation as never,
-      }),
-      MockProvider(AppRestartService, { restart }),
-    ],
-  });
-  const dialog = rendered.container.querySelector(
-    'dialog',
+  const rendered = await render<unknown>(
+    options.inRoot ? RootLikeHostComponent : AppLockCoverComponent,
+    {
+      providers: [
+        provideTrnIcons(),
+        MockProvider(AppLockService, {
+          appName: options.appName ?? 'Trinity',
+          locked: locked.asReadonly(),
+          support: support.asReadonly(),
+          systemAvailable,
+          pinState,
+          recoveryOnly: computed(
+            () => locked() && !systemAvailable() && pinState() !== 'ready',
+          ),
+          systemWaitUntil: systemWaitUntil.asReadonly(),
+          refreshSupport,
+          retry,
+          unlockWithSystem,
+          unlockWithPin,
+        }),
+        MockProvider(AppLockLifecycleBinding, { visits }),
+        MockProvider(TitleBarState, {
+          active: signal(options.titleRow ?? false).asReadonly(),
+        }),
+        MockProvider(HostLockIntegrationService, { coverPainted }),
+        MockProvider(HostSystemUiService, {
+          active: systemUiActive.asReadonly(),
+        }),
+        MockProvider(AccountRuntimeService, {
+          resetInstallation: resetInstallation as never,
+        }),
+        MockProvider(AppRestartService, { restart }),
+      ],
+    },
+  );
+  const dialog = document.querySelector(
+    'dialog[data-testid="app-lock-cover"]',
   ) as HTMLDialogElement;
   const settle = async (): Promise<void> => {
     rendered.fixture.detectChanges();
@@ -293,6 +350,80 @@ describe('AppLockCoverComponent', () => {
       await setup();
       const region = screen.getByTestId('app-lock-above-lock');
       expect(region.textContent?.trim()).toBe('');
+    });
+  });
+
+  describe('assistive technology over CDK dialogs', () => {
+    /** Opens a CDK dialog and waits for CDK to hide the rest of `<body>` from assistive tech. */
+    async function openCdkDialog(root: Element) {
+      // The app's surfaces are CDK dialogs underneath.
+      const ref = TestBed.inject(TrnSurfaceService).open(
+        SettingsProbeComponent,
+        { ariaLabel: 'Settings' },
+      );
+      await vi.waitFor(() =>
+        expect(root.getAttribute('aria-hidden')).toBe('true'),
+      );
+      return ref;
+    }
+
+    it('lives in its own <body> child, outside the root', async () => {
+      const { fixture } = await setup({ inRoot: true, locked: false });
+      const host = document.querySelector('trn-app-lock-cover');
+      expect(host?.parentElement).toBe(document.body);
+      expect(fixture.nativeElement.contains(host)).toBe(false);
+    });
+
+    it('stays exposed when it locks over an open dialog', async () => {
+      const { fixture, locked, settle, dialog } = await setup({
+        inRoot: true,
+        locked: false,
+      });
+      await openCdkDialog(fixture.nativeElement);
+      locked.set(true);
+      await settle();
+      expect(dialog.hasAttribute('open')).toBe(true);
+      expect(hiddenFromAssistiveTechnology(dialog)).toBe(false);
+      expect(screen.getByRole('dialog', { name: 'Trinity is locked' })).toBe(
+        dialog,
+      );
+      expect(screen.queryByRole('button', { name: 'Open room' })).toBeNull();
+    });
+
+    it('stays exposed when a dialog opens while locked', async () => {
+      const { fixture, dialog } = await setup({ inRoot: true });
+      expect(dialog.hasAttribute('open')).toBe(true);
+      await openCdkDialog(fixture.nativeElement);
+      expect(hiddenFromAssistiveTechnology(dialog)).toBe(false);
+      expect(screen.getByRole('dialog', { name: 'Trinity is locked' })).toBe(
+        dialog,
+      );
+      expect(screen.queryByRole('button', { name: 'Open room' })).toBeNull();
+    });
+
+    it('leaves CDK’s aria-hidden as CDK set it, through unlock and the dialog closing', async () => {
+      const { fixture, locked, settle } = await setup({
+        inRoot: true,
+        locked: false,
+      });
+      const before = bodyAriaHidden();
+      const settings = await openCdkDialog(fixture.nativeElement);
+      locked.set(true);
+      await settle();
+      locked.set(false);
+      await settle();
+      // The dialog is still open beneath, so the root stays hidden as CDK left it.
+      expect(fixture.nativeElement.getAttribute('aria-hidden')).toBe('true');
+      settings.close();
+      await settle();
+      expect(bodyAriaHidden()).toEqual(before);
+      expect(fixture.nativeElement.hasAttribute('aria-hidden')).toBe(false);
+    });
+
+    it('leaves nothing in <body> once destroyed', async () => {
+      const { fixture } = await setup({ inRoot: true });
+      fixture.destroy();
+      expect(document.querySelector('trn-app-lock-cover')).toBeNull();
     });
   });
 

@@ -34,6 +34,14 @@ export { unlockLabel, useMethodLabel } from './app-lock-cover.copy';
  * name and the unlock control; nothing about accounts or rooms. It stays mounted for the app's
  * lifetime and is open exactly while App lock is `locked`. This component owns the dialog,
  * the shell signals and focus; {@link AppLockCoverState} owns what it shows and does.
+ *
+ * Its host moves to its own `<body>` child when it is created, before any render, so a modal
+ * opened later is never moved (moving an open modal would take it out of the top layer). An
+ * open CDK dialog marks every other `<body>` child `aria-hidden`, the root included; CDK skips
+ * a child with `aria-live`, so the host carries `aria-live="off"` (no announcements of its own)
+ * and the cover stays exposed to assistive technology over any CDK dialog, without touching
+ * CDK's own record of what it hid. Mount it as a static child of the root, never inside a
+ * control-flow block, which would re-insert the host where the block is.
  */
 @Component({
   selector: 'trn-app-lock-cover',
@@ -41,11 +49,13 @@ export { unlockLabel, useMethodLabel } from './app-lock-cover.copy';
   templateUrl: './app-lock-cover.component.html',
   imports: [FormField, FormRoot, TrnButton, TrnFieldImports, TrnInput],
   providers: [AppLockCoverState],
+  host: { 'aria-live': 'off' },
 })
 export class AppLockCoverComponent {
   private readonly appLock = inject(AppLockService);
   private readonly lockIntegration = inject(HostLockIntegrationService);
-  private readonly window = inject(DOCUMENT).defaultView;
+  private readonly document = inject(DOCUMENT);
+  private readonly window = this.document.defaultView;
   private readonly injector = inject(Injector);
   private readonly dialog =
     viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
@@ -58,6 +68,8 @@ export class AppLockCoverComponent {
   protected readonly titleRow = inject(TitleBarState).active;
 
   constructor() {
+    const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+    this.document.body.appendChild(host);
     // Open exactly while locked, after the view exists, so it is in the first painted frame.
     afterRenderEffect(() => {
       const locked = this.appLock.locked();
@@ -81,7 +93,10 @@ export class AppLockCoverComponent {
         if (visit === 'away') this.state.left();
         else if (this.appLock.locked()) this.state.visit(true);
       });
-    inject(DestroyRef).onDestroy(() => this.painted?.unsubscribe());
+    inject(DestroyRef).onDestroy(() => {
+      this.painted?.unsubscribe();
+      host.remove();
+    });
   }
 
   /** Escape asks the dialog to close; it never may while locked. */
