@@ -23,6 +23,7 @@ Start with the behavior's owner, not the screen where it appears. A capability o
 | Verification and encryption health                                           | Trust                                                        |
 | Context-keyed persisted settings                                             | Preferences Runtime plus contributing capability descriptors |
 | App lock settings, lock state, unlock, and the Trinity PIN                   | App lock data access, with Host Runtime user presence        |
+| App lock's away timer, lock lifecycle and lock screen                        | Application Runtime                                          |
 | Matrix client, sync, SDK persistence, and SDK event adaptation               | Matrix Client data access                                    |
 | Platform support and host operations                                         | Host Runtime contracts and selected host adapters            |
 

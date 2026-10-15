@@ -133,9 +133,11 @@ Settings › Keyboard shortcuts; it has none until you choose one.
 opens by itself when you come back to the window, and offers **Use Password…** for your Mac's
 password. Choose **Use PIN instead** to type your Trinity PIN. If Touch ID stops being
 available, the lock screen asks for your PIN. While Trinity is locked, the window title shows
-only the app's name, keyboard shortcuts do nothing, and messages stay unread: Trinity sends no
-read receipts until you unlock. Notifications still arrive, including for the room you left
-open, and a notification or link you open while locked opens once you unlock.
+only the app's name and messages stay unread: Trinity sends no read receipts until you unlock.
+Trinity's own shortcuts, such as the quick switcher, do nothing; the menu's window and system
+commands, such as Quit, Close, Edit, zoom and full screen, still work. Notifications still
+arrive, including for the room you left open, and a notification or link you open while
+locked opens once you unlock.
 
 **Wrong PINs.** After 5 wrong PINs in a row, Trinity makes you wait before the next try:
 30 seconds, then 1 minute, 5 minutes, 15 minutes, and then 1 hour after each further wrong
