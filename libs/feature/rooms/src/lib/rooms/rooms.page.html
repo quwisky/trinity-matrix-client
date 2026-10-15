@@ -198,6 +198,7 @@
             [jumpToId]="roomSurfaces.jumpTarget()"
             [jumpToNonce]="roomSurfaces.jumpRevision()"
             (loadOlder)="messageActions.loadOlder()"
+            (liveView)="timeline.setLiveView($event)"
             (openThread)="messageActions.onOpenThread($event)"
             (togglePin)="messageActions.onTogglePin($event)"
             (send)="messageActions.onSend($event)"

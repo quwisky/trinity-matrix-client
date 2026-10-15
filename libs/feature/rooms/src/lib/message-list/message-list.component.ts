@@ -11,6 +11,7 @@ import {
   effect,
   inject,
   input,
+  output,
   signal,
   untracked,
   viewChildren,
@@ -29,6 +30,7 @@ import { TypingIndicatorComponent } from './typing-indicator/typing-indicator.co
 import {
   buildPrefixSums,
   computeWindow,
+  firstRowWithin,
   offsetOf,
   scrollCompensation,
   type HeightChange,
@@ -103,6 +105,8 @@ const SCROLL_IDLE_MS = 150;
 })
 export class MessageListComponent extends MessageListBase {
   private lastId = '';
+  /** The first row as last rendered, to tell rows trimmed away above the reader. */
+  private lastFirstRowId: string | null = null;
   /** Whether the user is scrolled to (or near) the bottom — gates auto-scroll and
    * pins the window to the newest row. A signal so windowing reacts to it. */
   private readonly atBottomSig = signal(true);
@@ -212,10 +216,32 @@ export class MessageListComponent extends MessageListBase {
   /** Reactive mirror of `!atBottom` for the template's jump-to-latest pill. */
   protected readonly notAtBottom = computed(() => !this.atBottomSig());
 
+  /**
+   * The oldest event the list keeps on screen while it follows the newest message: the
+   * first event of the oldest row within the viewport and its overscan of the end, as a
+   * pinned window renders them. Null while the reader is scrolled back or history is being
+   * paged in. The host passes it to the Conversation, which while the window is hidden
+   * trims the room no further back than this (#1366), so the list looks the same when the
+   * window is shown again.
+   */
+  readonly liveView = output<string | null>();
+
+  private readonly liveViewFrom = computed(() => {
+    const rows = this.rows();
+    if (!this.atBottomSig() || this.loadingOlder() || rows.length === 0) {
+      return null;
+    }
+    const row =
+      rows[firstRowWithin(this.prefix(), this.viewportH() + OVERSCAN_PX)];
+    return row.systemRun?.events[0]?.id ?? row.id;
+  });
+
   private lastChrome = '';
 
   constructor() {
     super();
+
+    effect(() => this.liveView.emit(this.liveViewFrom()));
 
     effect(() => {
       const msgs = this.messages();
@@ -231,6 +257,9 @@ export class MessageListComponent extends MessageListBase {
       if (!el) {
         return;
       }
+      const ids = untracked(() => this.ids());
+      const firstBefore = this.lastFirstRowId;
+      this.lastFirstRowId = ids[0] ?? null;
 
       if (this.pendingPrepend) {
         // The viewport moves before the browser delivers its scroll event. Capture
@@ -296,6 +325,14 @@ export class MessageListComponent extends MessageListBase {
         ) {
           this.announcement.set(`${latest.senderName}: ${latest.body}`);
         }
+      }
+      if (
+        !newestChanged &&
+        firstBefore !== null &&
+        firstBefore !== ids[0] &&
+        !ids.includes(firstBefore)
+      ) {
+        this.keepPlaceAfterTrim(el, ids);
       }
       // Read the at-bottom signal untracked so this effect keeps firing only on
       // messages().
@@ -382,6 +419,7 @@ export class MessageListComponent extends MessageListBase {
   protected override resetOnRoomChange(): void {
     super.resetOnRoomChange();
     this.lastId = '';
+    this.lastFirstRowId = null;
     this.lastBackfillOldestId = null;
     this.backfillRounds = 0;
     this.pendingPrepend = false;
@@ -395,6 +433,31 @@ export class MessageListComponent extends MessageListBase {
     this.bodyOverflow.clear();
     this.scrollTop.set(0);
     this.heightVersion.update((v) => v + 1);
+  }
+
+  /**
+   * Older rows were trimmed away above the reader while nothing arrived below (the room's
+   * history released while the window was hidden, #1366). Everything from the rows on
+   * screen down stays, so keeping the same distance from the end keeps the reader exactly
+   * where they were; left alone, a reader just above the bottom would be moved by the
+   * browser clamping the shorter list. Measured heights of the trimmed rows go too.
+   */
+  private keepPlaceAfterTrim(el: HTMLElement, ids: readonly string[]): void {
+    const fromEnd = el.scrollHeight - el.scrollTop;
+    const kept = new Set(ids);
+    for (const id of [...this.measured.keys()]) {
+      if (!kept.has(id)) this.measured.delete(id);
+    }
+    untracked(() =>
+      afterNextRender(
+        () => {
+          if (this.destroyRef.destroyed) return;
+          el.scrollTop = Math.max(0, el.scrollHeight - fromEnd);
+          this.scrollTop.set(el.scrollTop);
+        },
+        { injector: this.injector },
+      ),
+    );
   }
 
   /** Auto-load older history once the user scrolls near the top. */

@@ -862,6 +862,81 @@ describe('MessageListComponent', () => {
     expect(cmp.bottomPad()).toBe(0);
   });
 
+  describe('a room trimmed while the window is hidden (#1366)', () => {
+    /** Geometry from the rendered DOM, as a browser would lay it out: spacers plus rows. */
+    function laidOut(scroll: HTMLElement, at: { st: number }) {
+      const height = () =>
+        [...scroll.querySelectorAll<HTMLElement>('.vpad')].reduce(
+          (sum, pad) => sum + (parseFloat(pad.style.height) || 0),
+          0,
+        ) +
+        scroll.querySelectorAll('.msg').length * EST;
+      Object.defineProperty(scroll, 'scrollTop', {
+        get: () => at.st,
+        set: (v: number) => (at.st = v),
+        configurable: true,
+      });
+      Object.defineProperty(scroll, 'clientHeight', {
+        value: 600,
+        configurable: true,
+      });
+      Object.defineProperty(scroll, 'scrollHeight', {
+        get: height,
+        configurable: true,
+      });
+      return height;
+    }
+
+    it('reports the oldest row it keeps on screen while it follows the newest message', async () => {
+      const liveView = vi.fn();
+      const { fixture, container } = await render(MessageListComponent, {
+        inputs: { messages: many(200) },
+        on: { liveView },
+        imports: [MockComponent(MessageComposerComponent)],
+      });
+      const cmp = fixture.componentInstance;
+      // Everything within the viewport and its overscan of the end: 13 estimated rows.
+      expect(liveView).toHaveBeenLastCalledWith('$187');
+
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const at = { st: 1000 };
+      laidOut(scroll, at);
+      cmp.onScroll();
+      fixture.detectChanges();
+      expect(liveView).toHaveBeenLastCalledWith(null);
+
+      at.st = scroll.scrollHeight - 600;
+      cmp.onScroll();
+      fixture.detectChanges();
+      expect(liveView).toHaveBeenLastCalledWith('$187');
+    });
+
+    it('keeps the reader where they were when older rows are trimmed away above them', async () => {
+      const { fixture, container } = await renderList({
+        messages: many(200),
+      });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const at = { st: 0 };
+      const height = laidOut(scroll, at);
+      // Near the bottom, but not exactly on it.
+      at.st = height() - 600 - 50;
+      cmp.onScroll();
+      fixture.detectChanges();
+      const first = scroll.querySelector('.msg')?.getAttribute('data-mid');
+
+      fixture.componentRef.setInput('messages', many(200).slice(100));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(height() - at.st).toBe(600 + 50);
+      expect(scroll.querySelector('.msg')?.getAttribute('data-mid')).toBe(
+        first,
+      );
+      expect(notAtBottom(cmp)).toBe(false);
+    });
+  });
+
   // Fire the (controllable) ResizeObserver so onRowsResized actually runs.
   describe('height measurement (ResizeObserver fires)', () => {
     it('measures a row and re-sticks to the bottom while pinned', async () => {
