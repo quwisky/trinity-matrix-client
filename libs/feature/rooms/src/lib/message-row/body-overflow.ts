@@ -25,6 +25,17 @@ export const BODY_LIMIT_LINES = 24;
  */
 export const REMEMBERED_LONG_ROWS = 500;
 
+/** A row's hold on its body measurement ({@link BodyOverflowObserver.hold}). */
+export interface BodyOverflowHold {
+  /**
+   * Whether the body is taller than {@link BODY_LIMIT_LINES}; false until measured, unless the
+   * row was measured long before.
+   */
+  readonly long: Signal<boolean>;
+  /** Let go of the measurement; later calls do nothing. */
+  release(): void;
+}
+
 /** A row's live measurement, and who still needs it. */
 interface Entry {
   readonly long: WritableSignal<boolean>;
@@ -55,26 +66,24 @@ export class BodyOverflowObserver implements OnDestroy {
   private observer: ResizeObserver | null = null;
 
   /**
-   * Whether row `id`'s body is taller than the limit; false until measured, unless the row was
-   * measured long before. Read it only while holding the row ({@link hold}), or a later
-   * measurement may write a signal the reader no longer has.
+   * Keep row `id`'s measurement while a row reads it. The measurement comes only with a hold,
+   * so nothing can read one that no row lets go of; call `release` when the row goes.
    */
-  overflowing(id: string): Signal<boolean> {
-    return this.entry(id).long.asReadonly();
-  }
-
-  /** Keep row `id`'s measurement while a row reads it; call the returned function to let go. */
-  hold(id: string): () => void {
-    this.entry(id).holds++;
+  hold(id: string): BodyOverflowHold {
+    const entry = this.entry(id);
+    entry.holds++;
     let held = true;
-    return () => {
-      if (!held) return;
-      held = false;
-      const entry = this.entries.get(id);
-      if (entry) {
-        entry.holds--;
-        this.release(id, entry);
-      }
+    return {
+      long: entry.long.asReadonly(),
+      release: () => {
+        if (!held) return;
+        held = false;
+        const entry = this.entries.get(id);
+        if (entry) {
+          entry.holds--;
+          this.release(id, entry);
+        }
+      },
     };
   }
 
