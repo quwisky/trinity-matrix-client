@@ -10,7 +10,15 @@
       max(var(--trinity-space-6), env(safe-area-inset-right))
       max(var(--trinity-space-6), env(safe-area-inset-bottom))
       max(var(--trinity-space-6), env(safe-area-inset-left));
+
+    /* The image on its own, as video is letterboxed: the half-strength dialog scrim let the app
+     * show through, and a banner's button there sat right under the viewer's own (#1338). */
+    background: var(--trinity-media-matte);
     cursor: zoom-out;
+
+    /* The link-coloured ring falls under 3:1 on black in the light themes. The matte is a dark
+     * ground like an attention surface, so it takes that surface's pale ring. */
+    --trinity-focus-ring: var(--trinity-focus-ring-on-attention);
   }
 
   .lightbox__actions {
@@ -22,9 +30,10 @@
     gap: var(--trinity-space-3);
   }
 
+  /* A control's own border, so a dark theme's chip still has an edge on the matte; a shadow
+   * has nothing to fall on there. */
   .lightbox__action {
-    border: 1px solid var(--trinity-border-subtle);
-    box-shadow: var(--trinity-shadow-floating);
+    border: 1px solid var(--trinity-border-control);
   }
 
   .lightbox__image {

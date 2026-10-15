@@ -61,6 +61,45 @@ describe('MediaSaveService', () => {
     expect(service.isSaving(m)).toBe(false);
   });
 
+  it('names a file whose name has no extension after the type its bytes declare', async () => {
+    // An inline image's name is its alt text, and its event says nothing about its type.
+    const gif = new Blob(
+      [new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0])],
+      {
+        type: 'application/octet-stream',
+      },
+    );
+    downloadMedia.mockReturnValue(of({ blob: gif, filename: 'x' }));
+    const service = TestBed.inject(MediaSaveService);
+
+    service.save({
+      ...media(),
+      filename: 'A party parrot',
+      mimeType: 'application/octet-stream',
+    });
+
+    await vi.waitFor(() => expect(save).toHaveBeenCalled());
+    const [{ bytes, filename }] = save.mock.calls[0] as [
+      { bytes: Blob; filename: string },
+    ];
+    expect(filename).toBe('A party parrot.gif');
+    expect(bytes.type).toBe('image/gif');
+  });
+
+  it('falls back to the media kind for a nameless file it cannot recognise', async () => {
+    downloadMedia.mockReturnValue(
+      of({ blob: new Blob(['plain text']), filename: 'x' }),
+    );
+    const service = TestBed.inject(MediaSaveService);
+
+    service.save({ ...media(), filename: '' });
+
+    await vi.waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ filename: 'image' }),
+    );
+  });
+
   it('ignores a repeat request for an item while it is saving', () => {
     const pending = new Subject<{ blob: Blob; filename: string }>();
     downloadMedia.mockReturnValue(pending);
