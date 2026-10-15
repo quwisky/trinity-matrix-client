@@ -600,7 +600,9 @@ function setupHierarchy(opts: {
     getUserId: () => '@me:hs',
     getRooms: () => joinedRooms,
     getRoom: (id: string) =>
-      joined.has(id) ? { getMyMembership: () => 'join' } : null,
+      joined.has(id)
+        ? { getMyMembership: () => 'join', isSpaceRoom: () => spaceIds.has(id) }
+        : null,
     getRoomHierarchy,
     on: vi.fn(),
     off: vi.fn(),
@@ -919,7 +921,9 @@ describe('SpacesService hierarchy', () => {
       getRooms: () => [],
       // The account holds the space it opens; only a held space's hierarchy is fetched.
       getRoom: (id: string) =>
-        id === '!s:hs' ? { getMyMembership: () => 'join' } : null,
+        id === '!s:hs'
+          ? { getMyMembership: () => 'join', isSpaceRoom: () => true }
+          : null,
       getRoomHierarchy,
       on: vi.fn(),
       off: vi.fn(),
@@ -966,19 +970,38 @@ describe('SpacesService hierarchy', () => {
   });
 
   it('skips the hierarchy of a space the active account has left', async () => {
-    // The SDK keeps a left room in its store; only a joined or invited space is read.
+    // The SDK keeps a left room in its store; only a joined space is read.
     const { svc, getRoomHierarchy, client } = setupHierarchy({
       rooms: [],
       holdsSpace: false,
     });
     client.getRoom = (id: string) =>
-      id === '!s:hs' ? { getMyMembership: () => 'leave' } : null;
+      id === '!s:hs'
+        ? { getMyMembership: () => 'leave', isSpaceRoom: () => true }
+        : null;
 
     void svc.openSpace('!s:hs').subscribe();
     await flush();
 
     expect(getRoomHierarchy).not.toHaveBeenCalled();
     expect(svc.childrenError()).toBeNull();
+  });
+
+  it('skips the hierarchy of a space the active account is only invited to', async () => {
+    // Held means joined: a space opens once the join has synced (RoomReadinessService).
+    const { svc, getRoomHierarchy, client } = setupHierarchy({
+      rooms: [],
+      holdsSpace: false,
+    });
+    client.getRoom = (id: string) =>
+      id === '!s:hs'
+        ? { getMyMembership: () => 'invite', isSpaceRoom: () => true }
+        : null;
+
+    void svc.openSpace('!s:hs').subscribe();
+    await flush();
+
+    expect(getRoomHierarchy).not.toHaveBeenCalled();
   });
 
   it('surfaces a hierarchy fetch failure in childrenError', async () => {

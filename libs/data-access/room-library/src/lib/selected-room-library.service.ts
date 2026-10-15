@@ -18,10 +18,10 @@ import { ownedProjection } from '@trinity/runtime/projection';
 import { AccountScopeService } from './account-scope.service';
 import { InvitesService, type PendingInvite } from './invites.service';
 import { RoomLibraryService, type RoomSummary } from './room-library.service';
+import { isJoinedSpace } from './room-projection';
 import {
   ALL_SELECTED_PROJECTION_DOMAINS,
   SelectedAccountSourceRegistry,
-  isJoinedSpace,
   projectSelectedInvitations,
   projectSelectedRooms,
   projectSelectedSpaces,
@@ -156,28 +156,25 @@ export class SelectedRoomLibraryService {
   /**
    * Whether Workspace may keep a Space selected while acting as `accountId`.
    *
-   * The Account holding the Space itself is enough: it has joined it, or holds an
-   * invitation to it, since an accepted invitation keeps that membership until the join
-   * syncs and the invitation flows open the Space at once. A Space it has left or was
-   * removed from stays in the client's store and does not count. In the mixed view, a
-   * Space another selected Account has joined is listed too, with its pill in the rail
-   * and its children in the sidebar, so any selected Account may keep it while opening
-   * one of those Rooms. Read from the live selection and clients rather than the
-   * published {@link view}, so the answer never waits for a projection flush.
+   * The Account having joined the Space is enough. In the mixed view, a Space another
+   * selected Account has joined is listed too, with its pill in the rail and its children
+   * in the sidebar, so any selected Account may keep it while opening one of those Rooms.
+   * A Space left, or only invited to, does not count (see {@link isJoinedSpace}); flows
+   * that open a Space they just joined wait for the join first. Read from the live
+   * selection and clients rather than the published {@link view}, so the answer never
+   * waits for a projection flush.
    */
   spaceSelectable(accountId: string, spaceId: string): boolean {
-    const own = this.matrix.clientFor(accountId)?.getRoom(spaceId);
-    if (own && (isJoinedSpace(own) || own.getMyMembership() === 'invite')) {
-      return true;
-    }
+    const holds = (id: string): boolean => {
+      const space = this.matrix.clientFor(id)?.getRoom(spaceId);
+      return !!space && isJoinedSpace(space);
+    };
+    if (holds(accountId)) return true;
     const accountIds = this.scope.selected();
     return (
       accountIds.size > 1 &&
       accountIds.has(accountId) &&
-      [...accountIds].some((id) => {
-        const space = this.matrix.clientFor(id)?.getRoom(spaceId);
-        return !!space && isJoinedSpace(space);
-      })
+      [...accountIds].some(holds)
     );
   }
 

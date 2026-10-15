@@ -17,7 +17,7 @@ const session = homeserverSession();
 test.describe('Space directory', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('finds a public space in the directory and joins it', async ({
+  test('finds a public space in the directory and joins it, again after leaving it', async ({
     page,
     request,
   }) => {
@@ -60,28 +60,48 @@ test.describe('Space directory', () => {
       pass: joinerPass,
     } as HomeserverSession);
 
-    // Home "+" → the new-message menu → Explore public rooms.
-    await page.click('button[aria-label="New room or direct message"]');
-    const menu = page.getByRole('menu', { name: 'New message' });
-    await menu.waitFor({ state: 'visible', timeout: 15_000 });
-    await menu.getByRole('menuitem', { name: 'Explore public rooms' }).click();
+    const pill = page.locator(`nav.rail button[aria-label="${spaceName}"]`);
+    /** Home "+" → the new-message menu → Explore public rooms → join the space. */
+    const joinFromDirectory = async (): Promise<void> => {
+      await page.click('button[aria-label="New room or direct message"]');
+      const menu = page.getByRole('menu', { name: 'New message' });
+      await menu.waitFor({ state: 'visible', timeout: 15_000 });
+      await menu
+        .getByRole('menuitem', { name: 'Explore public rooms' })
+        .click();
 
-    // The directory dialog opens; switch to Spaces and search by name.
-    await expect(page.getByTestId('room-directory')).toBeVisible({
-      timeout: 15_000,
-    });
-    await page.getByTestId('directory-mode-spaces').click();
-    await page.getByTestId('directory-search').fill(spaceName);
-    await page.getByTestId('directory-search-btn').click();
+      // The directory dialog opens; switch to Spaces and search by name.
+      await expect(page.getByTestId('room-directory')).toBeVisible({
+        timeout: 15_000,
+      });
+      await page.getByTestId('directory-mode-spaces').click();
+      await page.getByTestId('directory-search').fill(spaceName);
+      await page.getByTestId('directory-search-btn').click();
 
-    const row = page
-      .getByTestId('directory-room')
-      .filter({ hasText: spaceName });
-    await expect(row).toBeVisible({ timeout: 20_000 });
+      const row = page
+        .getByTestId('directory-room')
+        .filter({ hasText: spaceName });
+      await expect(row).toBeVisible({ timeout: 20_000 });
+      await row.getByTestId('directory-join').click();
+    };
 
     // Join it; the dialog closes and the space lands in the rail as the active space.
-    await row.getByTestId('directory-join').click();
-    const pill = page.locator(`nav.rail button[aria-label="${spaceName}"]`);
+    await joinFromDirectory();
+    await expect(pill).toBeVisible({ timeout: 30_000 });
+    await expect(pill).toHaveAttribute('aria-current', 'true', {
+      timeout: 30_000,
+    });
+
+    // Leave it, then join it again. The client keeps the left space with a `leave`
+    // membership until the join syncs, and the space must still open once it has.
+    await page.getByTestId('space-header').click();
+    await page.getByTestId('space-leave').click();
+    await page
+      .getByRole('dialog', { name: 'Leave space' })
+      .getByRole('button', { name: 'Leave' })
+      .click();
+    await expect(pill).toHaveCount(0, { timeout: 30_000 });
+    await joinFromDirectory();
     await expect(pill).toBeVisible({ timeout: 30_000 });
     await expect(pill).toHaveAttribute('aria-current', 'true', {
       timeout: 30_000,

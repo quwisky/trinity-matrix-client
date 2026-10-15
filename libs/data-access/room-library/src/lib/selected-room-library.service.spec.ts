@@ -704,9 +704,9 @@ describe('SelectedRoomLibraryService', () => {
       expect(service.spaceSelectable('@b:hs', '!s:hs')).toBe(false);
     });
 
-    // Accepting an invitation keeps the invite membership until the join syncs, and the
-    // invitation flows open the space straight away.
-    it('accepts a space the Account itself is invited to', () => {
+    // An accepted invitation keeps `invite` until the join syncs; the flows that open a
+    // space they just joined wait for the join (RoomReadinessService) instead.
+    it('rejects a space the Account is only invited to', () => {
       const service = setup({
         clients: new Map([
           [
@@ -716,7 +716,26 @@ describe('SelectedRoomLibraryService', () => {
         ]),
       }).service;
 
-      expect(service.spaceSelectable('@active:hs', '!s:hs')).toBe(true);
+      expect(service.spaceSelectable('@active:hs', '!s:hs')).toBe(false);
+    });
+
+    it("does not count another selected Account's invitation", () => {
+      const service = setup({
+        selected: new Set(['@a:hs', '@b:hs']),
+        live: ['@a:hs', '@b:hs'],
+        active: '@b:hs',
+        clients: new Map([
+          [
+            '@a:hs',
+            fakeClient('@a:hs', [
+              fakeRoom('!s:hs', { kind: 'space', membership: 'invite' }),
+            ]),
+          ],
+          ['@b:hs', fakeClient('@b:hs', [fakeRoom('!r:hs')])],
+        ]),
+      }).service;
+
+      expect(service.spaceSelectable('@b:hs', '!s:hs')).toBe(false);
     });
 
     it('rejects a room that is not a joined space', () => {

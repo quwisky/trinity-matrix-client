@@ -4,7 +4,6 @@ import {
   RoomEvent,
   RoomStateEvent,
   type MatrixClient,
-  type Room,
 } from 'matrix-js-sdk';
 import { type MatrixClientService } from '@trinity/data-access/matrix-client';
 import { buildInvite, type PendingInvite } from './invites.service';
@@ -13,6 +12,7 @@ import {
   compareRoomSummaries,
   directMapOf,
   initialOf,
+  isJoinedSpace,
   spaceChildIdsOf,
 } from './room-projection';
 import { type RoomSummary } from './room-library.service';
@@ -181,11 +181,6 @@ export function projectSelectedRooms(
   }
 
   return [...byRoomId.values()].sort(compareRoomSummaries);
-}
-
-/** A Space this Account has joined: what puts it in the selected view's {@link projectSelectedSpaces}. */
-export function isJoinedSpace(room: Room): boolean {
-  return room.isSpaceRoom() && room.getMyMembership() === 'join';
 }
 
 export interface SelectedSpacesProjection {

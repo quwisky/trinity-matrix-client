@@ -26,14 +26,14 @@ const invite: PendingInvite = {
 function setup(result: unknown) {
   const openAndWait$ = vi.fn(() => of(result));
   const onSelectRoomSelection = vi.fn();
-  const onSelectSpaceRow = vi.fn();
+  const openConfirmedLinkedRoom = vi.fn();
   TestBed.configureTestingModule({
     providers: [
       InviteActionsService,
       MockProvider(TrnSurfaceService, { openAndWait$ } as never),
       MockProvider(AccountRoutingService, {
         onSelectRoomSelection,
-        onSelectSpaceRow,
+        openConfirmedLinkedRoom,
       } as never),
       MockProvider(ShellStatusService),
       MockProvider(InvitesService),
@@ -43,7 +43,7 @@ function setup(result: unknown) {
     svc: TestBed.inject(InviteActionsService),
     openAndWait$,
     onSelectRoomSelection,
-    onSelectSpaceRow,
+    openConfirmedLinkedRoom,
   };
 }
 
@@ -85,13 +85,15 @@ describe('InviteActionsService.onPreviewInvite', () => {
     );
   });
 
+  // Through the confirmed path, which waits for the join to sync before selecting it.
   it('opens an accepted space as the invited account', () => {
-    const { svc, onSelectRoomSelection, onSelectSpaceRow } = setup({
+    const { svc, onSelectRoomSelection, openConfirmedLinkedRoom } = setup({
       membershipChanged: true,
     });
     svc.onPreviewInvite({ ...invite, isSpace: true });
-    expect(onSelectSpaceRow).toHaveBeenCalledWith({
-      spaceId: '!inv:hs',
+    expect(openConfirmedLinkedRoom).toHaveBeenCalledWith({
+      kind: 'space',
+      roomId: '!inv:hs',
       accountId: '@work:hs',
     });
     expect(onSelectRoomSelection).not.toHaveBeenCalled();

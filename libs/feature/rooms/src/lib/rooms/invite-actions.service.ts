@@ -49,10 +49,12 @@ export class InviteActionsService {
         // Only the preview's Open step returns a result. It also offers Open when the invite
         // was already accepted elsewhere (`membershipChanged` false), so that opens too.
         if (!result) return;
-        // The preview's Open step is an explicit request, so a joined space opens too.
+        // The preview's Open step is an explicit request, so a joined space opens too, once
+        // its join has synced.
         if (invite.isSpace) {
-          this.routing.onSelectSpaceRow({
-            spaceId: invite.roomId,
+          this.routing.openConfirmedLinkedRoom({
+            kind: 'space',
+            roomId: invite.roomId,
             accountId: invite.accountId,
           });
           return;
