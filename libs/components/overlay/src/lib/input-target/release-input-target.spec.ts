@@ -2,7 +2,10 @@ import { Component, signal } from '@angular/core';
 import { InputModalityDetector } from '@angular/cdk/a11y';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
-import { releaseInputTargetOnDestroy } from './release-input-target';
+import {
+  lastInputTarget,
+  releaseInputTargetOnDestroy,
+} from './release-input-target';
 
 @Component({
   selector: 'trn-test-panel',
@@ -68,6 +71,20 @@ describe('releaseInputTargetOnDestroy', () => {
     fixture.detectChanges();
 
     expect(detector._mostRecentTarget).toBeNull();
+  });
+
+  // Feature specs may not reach the CDK, so they read the detector through this.
+  it('reads the element the detector last recorded', () => {
+    const { fixture, query } = render();
+    const close = query('trn-test-panel button');
+    const last = () => TestBed.runInInjectionContext(lastInputTarget);
+
+    press(close);
+    expect(last()).toBe(close);
+
+    fixture.componentInstance.open.set(false);
+    fixture.detectChanges();
+    expect(last()).toBeNull();
   });
 
   it('leaves a pressed element outside the component alone', () => {

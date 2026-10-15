@@ -5,6 +5,7 @@ import {
   TrnAlertService,
   TrnSurfaceService,
   TrnToastService,
+  lastInputTarget,
 } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import type {
@@ -31,20 +32,7 @@ function belowMembers(matches: boolean): void {
     removeEventListener: () => undefined,
   }));
 }
-/** The hosts that asked to let go of the last pressed element when they go (#1361). */
-const inputTargets = vi.hoisted(() => ({ hosts: [] as Element[] }));
-vi.mock('@trinity/components/overlay', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('@trinity/components/overlay')>();
-  const { ElementRef, inject: injectToken } = await import('@angular/core');
-  return {
-    ...actual,
-    releaseInputTargetOnDestroy: () => {
-      inputTargets.hosts.push(injectToken(ElementRef).nativeElement as Element);
-      actual.releaseInputTargetOnDestroy();
-    },
-  };
-});
+
 vi.mock('@trinity/platform-native', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@trinity/platform-native')>()),
   isMobileOs: () => platform.mobile,
@@ -327,10 +315,19 @@ describe('ThreadViewComponent', () => {
   // A thread closed with a press on its close button left the CDK's input-modality detector
   // holding that button, and through it the whole detached panel (#1361).
   it('lets go of the last pressed element inside it when it closes', async () => {
-    inputTargets.hosts.length = 0;
     const { fixture } = await build();
+    const close = (fixture.nativeElement as HTMLElement).querySelector(
+      'button[aria-label="Close thread"]',
+    ) as HTMLButtonElement;
+    const last = () => TestBed.runInInjectionContext(lastInputTarget);
+    close.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, buttons: 1, detail: 1 }),
+    );
+    expect(last()).toBe(close);
 
-    expect(inputTargets.hosts).toEqual([fixture.nativeElement]);
+    fixture.destroy();
+
+    expect(last()).toBeNull();
   });
 
   it('marks its named close button as the panel focus target', async () => {
