@@ -163,6 +163,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
+  '@capacitor/privacy-screen@2.0.1': f2f986331ec9f771718d52fed87b9d5ae7fa7f85c90fdf4667eee575a3d84b37
   '@spartan-ng/brain@1.5.0': f5a9a83fc956920a8fb59f2aac3080ca7237b5cd65f6fb2b6a6e93db8f729ed9
   matrix-js-sdk@43.0.0: 49c223fc3e94854c8e78e24b86e0ef02d559bc2005bcc38b16fbed3660a17b90
   matrix-widget-api@1.20.0: 91cea261f6205a2447b8841d35ae12e99d438546e56e4aeffe6bf8d7acd1a79c
@@ -240,7 +241,7 @@ importers:
         version: 8.0.1(@capacitor/core@8.5.3)
       '@capacitor/privacy-screen':
         specifier: 2.0.1
-        version: 2.0.1(@capacitor/core@8.5.3)
+        version: 2.0.1(patch_hash=f2f986331ec9f771718d52fed87b9d5ae7fa7f85c90fdf4667eee575a3d84b37)(@capacitor/core@8.5.3)
       '@capacitor/push-notifications':
         specifier: ^8.1.3
         version: 8.1.3(@capacitor/core@8.5.3)
@@ -15676,7 +15677,7 @@ snapshots:
     dependencies:
       '@capacitor/core': 8.5.3
 
-  '@capacitor/privacy-screen@2.0.1(@capacitor/core@8.5.3)':
+  '@capacitor/privacy-screen@2.0.1(patch_hash=f2f986331ec9f771718d52fed87b9d5ae7fa7f85c90fdf4667eee575a3d84b37)(@capacitor/core@8.5.3)':
     dependencies:
       '@capacitor/core': 8.5.3
 

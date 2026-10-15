@@ -1,0 +1,15 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index c227d8bdce4ec14758db4063840ec75a3d766423..6bfb80c0eadab8c95e2397b267a70bf67ebdaf56 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -20,7 +20,9 @@ buildscript {
+ }
+ 
+ apply plugin: 'com.android.library'
+-apply plugin: 'org.jetbrains.kotlin.android'
++if (project.extensions.findByName('kotlin') == null) {
++    apply plugin: 'org.jetbrains.kotlin.android'
++}
+ 
+ android {
+     namespace = "com.capacitorjs.plugins.privacyscreen"
