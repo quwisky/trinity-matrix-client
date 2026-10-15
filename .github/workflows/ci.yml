@@ -442,6 +442,7 @@ jobs:
       - uses: ./.github/actions/setup
       - run: pnpm electron:install
       - run: pnpm -C electron run build:windows-hello
+      - run: pnpm -C electron compile
       - name: Load the addon in Electron
         shell: bash
         env:

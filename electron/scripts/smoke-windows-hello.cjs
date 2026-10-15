@@ -1,6 +1,8 @@
 // CI smoke: load the built addon in Electron-as-Node and ask for availability twice. A hosted
 // runner has no Hello hardware, so any known availability string passes; a crash, a
-// missing export or an unknown answer fails.
+// missing export or an unknown answer fails. Then the compiled main-process loader
+// (dist/windows-hello.js, development path) must find the same addon.
+const os = require('node:os');
 const path = require('node:path');
 
 const addon = require(
@@ -31,5 +33,27 @@ async function main() {
     }
     console.log(`windows-hello availability (call ${attempt}): ${value}`);
   }
+  const hello = require(path.join(__dirname, '..', 'dist', 'windows-hello.js'));
+  const loaded = hello.loadWindowsHello({
+    packaged: false,
+    resourcesPath: '',
+    require,
+  });
+  const support = await hello
+    .windowsHelloDriver(loaded, hello.windowsBuild(os.release()))
+    .support();
+  console.log(
+    `windows-hello support on ${os.release()}: ${JSON.stringify(support)}`,
+  );
+  if (
+    support.kind === 'unavailable' &&
+    support.reason === 'addon-unavailable'
+  ) {
+    console.error('dist/windows-hello.js could not load the addon');
+    process.exit(1);
+  }
 }
-main().catch(() => process.exit(1));
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
