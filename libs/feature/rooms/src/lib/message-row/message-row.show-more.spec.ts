@@ -58,8 +58,10 @@ async function renderRow(options: {
   row?: Partial<MessageRow>;
 }) {
   const long = signal(options.long);
+  const release = vi.fn();
   const overflow = {
     overflowing: vi.fn(() => long.asReadonly()),
+    hold: vi.fn(() => release),
     observe: vi.fn(),
     unobserve: vi.fn(),
     clear: vi.fn(),
@@ -89,7 +91,7 @@ async function renderRow(options: {
     result.container.querySelector<HTMLButtonElement>(
       '[data-testid="msg-show-more"]',
     );
-  return { ...result, clamp, button };
+  return { ...result, clamp, button, overflow, release };
 }
 
 describe('MessageRowComponent — Show more', () => {
@@ -153,6 +155,19 @@ describe('MessageRowComponent — Show more', () => {
     fixture.detectChanges();
 
     expect(button()?.textContent?.trim()).toBe('Show less');
+  });
+
+  // The list's observer keeps a row's measurement only while something needs it, so the row
+  // holds its id for as long as it reads it, and lets go when it goes (#1361).
+  it('holds its measurement while rendered and lets go when it goes', async () => {
+    const { fixture, overflow, release } = await renderRow({ long: true });
+
+    expect(overflow.hold).toHaveBeenCalledWith('$1');
+    expect(release).not.toHaveBeenCalled();
+
+    fixture.destroy();
+
+    expect(release).toHaveBeenCalledTimes(1);
   });
 
   it('never clamps where no rooms page keeps the state', async () => {

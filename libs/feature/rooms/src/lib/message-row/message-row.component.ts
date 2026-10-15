@@ -245,6 +245,13 @@ export class MessageRowComponent {
     effect(() => {
       if (!this.toolbar()) this.menuOpen.set(false);
     });
+    // The list keeps a row's measurement only while something reads it (#1361). Keyed by the
+    // id alone, so a row update (a reaction, a receipt) does not let go and take it again.
+    const bodyOverflow = this.bodyOverflow;
+    if (this.bodyClampable && bodyOverflow) {
+      const id = computed(() => this.row().id);
+      effect((onCleanup) => onCleanup(bodyOverflow.hold(id())));
+    }
     this.destroyRef.onDestroy(() => {
       this.cancelLongPress();
       this.hideToolbar();

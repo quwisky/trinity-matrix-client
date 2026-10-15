@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BODY_LIMIT_LINES,
   BodyMeasureDirective,
+  REMEMBERED_LONG_ROWS,
   BodyOverflowObserver,
 } from './body-overflow';
 
@@ -72,6 +73,14 @@ function body(): HTMLElement {
   return element;
 }
 
+/** How many rows the observer keeps a live measurement for. */
+const tracked = (overflow: BodyOverflowObserver): number =>
+  overflow['entries'].size;
+
+/** How many rows the observer remembers as long. */
+const remembered = (overflow: BodyOverflowObserver): number =>
+  overflow['longIds'].size;
+
 describe('BodyOverflowObserver', () => {
   let overflow: BodyOverflowObserver;
 
@@ -111,6 +120,7 @@ describe('BodyOverflowObserver', () => {
   });
 
   it('re-measures a replaced body element for the same row', () => {
+    overflow.hold('$a');
     const tracked = overflow.overflowing('$a');
     const plain = body();
     overflow.observe(plain, '$a');
@@ -190,6 +200,7 @@ describe('BodyOverflowObserver', () => {
   });
 
   it('forgets a row no longer shown when cleared', () => {
+    overflow.hold('$a');
     const element = body();
     overflow.observe(element, '$a');
     report(observerOf(element), element, 40 * LINE_PX);
@@ -221,6 +232,118 @@ describe('BodyOverflowObserver', () => {
     // The observer goes on updating it.
     report(observer, element, 10 * LINE_PX);
     expect(tracked()).toBe(false);
+  });
+
+  it('drops the entry of a row once its body is gone and its row no longer reads it', () => {
+    const elements = ['$a', '$b', '$c'].map((id) => {
+      const element = body();
+      const release = overflow.hold(id);
+      overflow.overflowing(id);
+      overflow.observe(element, id);
+      return { element, release };
+    });
+    expect(tracked(overflow)).toBe(3);
+
+    for (const { element, release } of elements.slice(0, 2)) {
+      overflow.unobserve(element);
+      release();
+    }
+
+    expect(tracked(overflow)).toBe(1);
+  });
+
+  it('keeps the entry a row reads while its body is replaced', () => {
+    overflow.hold('$a');
+    const tracked = overflow.overflowing('$a');
+    const plain = body();
+    overflow.observe(plain, '$a');
+
+    overflow.unobserve(plain);
+    const formatted = body();
+    overflow.observe(formatted, '$a');
+    report(observerOf(formatted), formatted, 30 * LINE_PX);
+
+    expect(tracked()).toBe(true);
+  });
+
+  it('starts a long row that comes back collapsed, before it is measured again', () => {
+    const first = body();
+    let release = overflow.hold('$a');
+    overflow.observe(first, '$a');
+    report(observerOf(first), first, 40 * LINE_PX);
+    overflow.unobserve(first);
+    release();
+    expect(tracked(overflow)).toBe(0);
+
+    // The virtual timeline brings the row back: a new row, a new body element.
+    release = overflow.hold('$a');
+    expect(overflow.overflowing('$a')()).toBe(true);
+    release();
+  });
+
+  it('starts a short row that comes back whole', () => {
+    const first = body();
+    let release = overflow.hold('$a');
+    overflow.observe(first, '$a');
+    report(observerOf(first), first, 40 * LINE_PX);
+    report(observerOf(first), first, 10 * LINE_PX);
+    overflow.unobserve(first);
+    release();
+
+    release = overflow.hold('$a');
+    expect(overflow.overflowing('$a')()).toBe(false);
+    release();
+  });
+
+  it('remembers only rows it measured long, and only so many of them', () => {
+    const ids = Array.from(
+      { length: REMEMBERED_LONG_ROWS + 50 },
+      (_, i) => `$${i}`,
+    );
+    for (const id of ids) {
+      const element = body();
+      const release = overflow.hold(id);
+      overflow.observe(element, id);
+      report(observerOf(element), element, 40 * LINE_PX);
+      overflow.unobserve(element);
+      release();
+    }
+    const short = body();
+    const release = overflow.hold('$short');
+    overflow.observe(short, '$short');
+    report(observerOf(short), short, 10 * LINE_PX);
+    overflow.unobserve(short);
+    release();
+
+    expect(tracked(overflow)).toBe(0);
+    expect(remembered(overflow)).toBe(REMEMBERED_LONG_ROWS);
+    // The oldest go first.
+    expect(overflow.overflowing(ids[0])()).toBe(false);
+    expect(overflow.overflowing(ids[ids.length - 1])()).toBe(true);
+  });
+
+  it('forgets the rows of the room it left, keeping the rows still shown', () => {
+    const shown = body();
+    overflow.hold('$shown');
+    overflow.observe(shown, '$shown');
+    report(observerOf(shown), shown, 40 * LINE_PX);
+    for (const id of ['$a', '$b']) {
+      const element = body();
+      const release = overflow.hold(id);
+      overflow.observe(element, id);
+      report(observerOf(element), element, 40 * LINE_PX);
+      overflow.unobserve(element);
+      release();
+    }
+    // A row the list read but never measured.
+    overflow.overflowing('$unmeasured');
+
+    overflow.clear();
+
+    expect(tracked(overflow)).toBe(1);
+    expect(remembered(overflow)).toBe(1);
+    expect(overflow.overflowing('$shown')()).toBe(true);
+    expect(overflow.overflowing('$a')()).toBe(false);
   });
 
   it('lets go of every body when the list goes', () => {
@@ -341,6 +464,28 @@ describe('BodyMeasureDirective', () => {
     report(observerOf(element), element, 20 * LINE_PX);
 
     expect(overflow.overflowing('$a')()).toBe(false);
+  });
+
+  it('drops the entries of bodies the list no longer renders', () => {
+    @Component({
+      imports: [BodyMeasureDirective],
+      providers: [BodyOverflowObserver],
+      template: `@for (id of ids(); track id) {
+        <p class="body" [trnBodyMeasure]="id">text</p>
+      }`,
+    })
+    class WindowHostComponent {
+      readonly ids = signal(['$a', '$b', '$c', '$d']);
+    }
+    const fixture = TestBed.createComponent(WindowHostComponent);
+    fixture.detectChanges();
+    const overflow = fixture.debugElement.injector.get(BodyOverflowObserver);
+    expect(tracked(overflow)).toBe(4);
+
+    fixture.componentInstance.ids.set(['$c', '$d', '$e']);
+    fixture.detectChanges();
+
+    expect(tracked(overflow)).toBe(3);
   });
 
   it('measures nothing where no list provides an observer', () => {
