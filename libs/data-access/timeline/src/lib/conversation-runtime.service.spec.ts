@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { ErrorHandler, signal } from '@angular/core';
 import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -37,6 +37,14 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import type { MessageView } from './message-presentation';
 import type { ThreadsService } from './threads.service';
 import type { ConversationPinsController } from './conversation-pins.controller';
+import {
+  Direction,
+  MatrixEvent,
+  Room,
+  createClient,
+  type MatrixClient,
+} from 'matrix-js-sdk';
+import { TRIM_KEEP, noteSyncPosition } from './live-timeline-trim';
 
 const ALICE = '@alice:example.org';
 const BOB = '@bob:example.org';
@@ -44,6 +52,10 @@ const BOB = '@bob:example.org';
 interface TestConversationTimelineController extends ConversationTimelineController {
   readonly visible: ReturnType<typeof signal<boolean>>;
   readonly released: ReturnType<typeof signal<boolean>>;
+  /** Whether the SDK history was released, and if so whether after the listeners were. */
+  readonly history: ReturnType<
+    typeof signal<'kept' | 'released' | 'released-while-attached'>
+  >;
 }
 
 function timeline(
@@ -102,6 +114,9 @@ function setup(
     create: vi.fn((key) => {
       const visible = signal(false);
       const released = signal(false);
+      const history = signal<'kept' | 'released' | 'released-while-attached'>(
+        'kept',
+      );
       const threads = {
         summaries: signal({}).asReadonly(),
         threadList: signal([]).asReadonly(),
@@ -146,9 +161,13 @@ function setup(
           }
         },
         release: () => released.set(true),
+        releaseHistory: vi.fn(() =>
+          history.set(released() ? 'released' : 'released-while-attached'),
+        ),
         resources: () => ({ listenerCount: 11, retainedBytes: 64 }),
         visible,
         released,
+        history,
       };
       const created = controllers.get(key.roomId) ?? [];
       created.push(controller);
@@ -156,9 +175,11 @@ function setup(
       return controller;
     }),
   };
+  const errors = { handleError: vi.fn() };
   TestBed.configureTestingModule({
     providers: [
       ConversationRuntime,
+      { provide: ErrorHandler, useValue: errors },
       { provide: CONVERSATION_TIMELINE_FACTORY, useValue: factory },
       { provide: CONVERSATION_TEXT_SENDER, useValue: sender },
       { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: messageAdapter },
@@ -191,6 +212,7 @@ function setup(
     mediaPipeline,
     messageAdapter,
     keepPhotoMetadata,
+    errors,
   };
 }
 
@@ -301,6 +323,98 @@ describe('ConversationRuntime', () => {
     expect(runtime.timeline.loadState()).toEqual({ kind: 'ready' });
   });
 
+  describe("releasing a retired room's history", () => {
+    async function realFactory(liveClient: () => MatrixClient | null) {
+      const client = createClient({
+        baseUrl: 'https://hs',
+        userId: ALICE,
+        fetchFn: () => Promise.reject(new Error('no network in unit tests')),
+      });
+      const room = new Room('!a:example.org', client, ALICE);
+      client.store.storeRoom(room);
+      const message = (n: number) =>
+        new MatrixEvent({
+          event_id: `$${n}`,
+          room_id: room.roomId,
+          type: 'm.room.message',
+          sender: BOB,
+          origin_server_ts: n,
+          content: { msgtype: 'm.text', body: `${n}` },
+        });
+      room.getLiveTimeline().setPaginationToken('b1', Direction.Backward);
+      await room.addLiveEvents(
+        Array.from({ length: 100 }, (_, i) => message(i + 1)),
+        { addToState: false },
+      );
+      noteSyncPosition(room, 'b101');
+      await room.addLiveEvents(
+        Array.from({ length: 100 }, (_, i) => message(i + 101)),
+        { addToState: false },
+      );
+      vi.spyOn(TimelineService.prototype, 'open').mockImplementation(
+        () => undefined,
+      );
+      vi.spyOn(
+        ConversationTimelineReadiness.prototype,
+        'start',
+      ).mockImplementation(() => undefined);
+      vi.spyOn(RealThreadsService.prototype, 'attach').mockImplementation(
+        () => undefined,
+      );
+      vi.spyOn(RealPins.prototype, 'attach').mockImplementation(
+        () => undefined,
+      );
+      vi.spyOn(
+        ConversationSearchController.prototype,
+        'attach',
+      ).mockImplementation(() => undefined);
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: MatrixClientService,
+            useValue: {
+              clientFor: (accountId: string) =>
+                accountId === ALICE ? (liveClient() ?? client) : null,
+            },
+          },
+          { provide: MediaPipeline, useValue: {} },
+          { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: {} },
+        ],
+      });
+      const controller = TestBed.inject(CONVERSATION_TIMELINE_FACTORY).create({
+        accountId: ALICE,
+        roomId: room.roomId,
+      });
+      const loaded = () => room.getLiveTimeline().getEvents().length;
+      return { client, room, controller, loaded };
+    }
+
+    it('trims the room back to its latest events once the handle is released', async () => {
+      const { controller, loaded } = await realFactory(() => null);
+
+      controller.releaseHistory();
+      expect(loaded()).toBe(200);
+
+      controller.release();
+      controller.releaseHistory();
+
+      expect(loaded()).toBe(100);
+      expect(loaded()).toBeGreaterThanOrEqual(TRIM_KEEP);
+    });
+
+    it("leaves the history of a client that is no longer the Account's live one", async () => {
+      const replacement = createClient({ baseUrl: 'https://hs' });
+      let live: MatrixClient | null = null;
+      const { controller, loaded } = await realFactory(() => live);
+      live = replacement;
+
+      controller.release();
+      controller.releaseHistory();
+
+      expect(loaded()).toBe(200);
+    });
+  });
+
   it('shows the timeline before readiness resumes paging', () => {
     const calls: string[] = [];
     vi.spyOn(TimelineService.prototype, 'open').mockImplementation(
@@ -375,6 +489,9 @@ describe('ConversationRuntime', () => {
 
     expect(first.state()).toBe('retired');
     expect(controller('!a:example.org').released()).toBe(true);
+    expect(controller('!a:example.org').history()).toBe('released');
+    expect(controller('!b:example.org').history()).toBe('kept');
+    expect(controller('!c:example.org').history()).toBe('kept');
     expect(third.state()).toBe('focused');
     expect(runtime.diagnostics()).toMatchObject({
       activeHandles: 2,
@@ -401,6 +518,9 @@ describe('ConversationRuntime', () => {
     expect(bob.state()).toBe('retired');
     expect(controller('!a:example.org').released()).toBe(true);
     expect(controller('!bob:example.org').released()).toBe(true);
+    expect(controller('!a:example.org').history()).toBe('released');
+    expect(controller('!bob:example.org').history()).toBe('released');
+    expect(controller('!c:example.org').history()).toBe('kept');
     expect(focused.state()).toBe('focused');
     expect(runtime.focused()).toBe(focused);
     expect(controller('!c:example.org').released()).toBe(false);
@@ -410,6 +530,38 @@ describe('ConversationRuntime', () => {
       retainedHandles: 0,
       retiredHandles: 2,
     });
+  });
+
+  it('retires a handle even when releasing its history fails, and reports the failure', () => {
+    const { runtime, controller, errors } = setup();
+    const a = runtime.focus({ accountId: ALICE, roomId: '!a:example.org' });
+    runtime.focus({ accountId: ALICE, roomId: '!b:example.org' });
+    const failure = new Error('trim failed');
+    vi.mocked(controller('!a:example.org').releaseHistory).mockImplementation(
+      () => {
+        throw failure;
+      },
+    );
+
+    runtime.retireRetained();
+
+    expect(a.state()).toBe('retired');
+    expect(controller('!a:example.org').released()).toBe(true);
+    expect(errors.handleError).toHaveBeenCalledWith(failure);
+  });
+
+  it('says which rooms hold a live Conversation handle', () => {
+    const { runtime } = setup(1);
+    runtime.focus({ accountId: ALICE, roomId: '!a:example.org' });
+    runtime.focus({ accountId: ALICE, roomId: '!b:example.org' });
+
+    expect(runtime.holds(ALICE, '!a:example.org')).toBe(true);
+    expect(runtime.holds(ALICE, '!b:example.org')).toBe(true);
+    expect(runtime.holds(BOB, '!a:example.org')).toBe(false);
+
+    runtime.focus({ accountId: ALICE, roomId: '!c:example.org' });
+
+    expect(runtime.holds(ALICE, '!a:example.org')).toBe(false);
   });
 
   it('never reactivates an evicted handle when the same key is opened again', () => {
@@ -581,6 +733,9 @@ describe('ConversationRuntime', () => {
     expect(bob.state()).toBe('retired');
     expect(controller('!alice:example.org').released()).toBe(true);
     expect(controller('!bob:example.org').released()).toBe(true);
+    // Sign-out and teardown stop the client; there is no history left to keep small.
+    expect(controller('!alice:example.org').history()).toBe('kept');
+    expect(controller('!bob:example.org').history()).toBe('kept');
     expect(runtime.diagnostics()).toMatchObject({
       activeHandles: 0,
       focusedHandles: 0,

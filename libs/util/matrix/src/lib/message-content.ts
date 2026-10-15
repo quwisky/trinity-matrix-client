@@ -625,6 +625,10 @@ export function editMessageContent(
  * `<mx-reply>` block in `formatted_body`, so every client renders (and strips) it
  * correctly. When sent with a `threadId`, the SDK layers the `m.thread` relation on
  * top with `is_falling_back: false`, keeping this as a real in-thread reply.
+ *
+ * `target` defaults to the room's copy of `messageId`; pass one fetched from the server
+ * when the room no longer holds it. With no target at all, the reply keeps its relation
+ * but carries no quote: the fallback is optional, and an empty `> <>` one is worse.
  */
 export function replyMessageContent(
   room: Room,
@@ -632,31 +636,24 @@ export function replyMessageContent(
   text: string,
   md: RenderedMarkdown,
   mentions: Mention[] = [],
+  target: MatrixEvent | undefined = room.findEventById(messageId),
 ) {
-  const target = room.findEventById(messageId);
-  const sender = target?.getSender() ?? '';
-  const origBody = stripReplyFallbackText(
-    (target?.getContent()['body'] as string) ?? '',
-  );
-  const firstLine = origBody.split('\n')[0] ?? '';
   const replyHtml = applyMentionPills(
     md.formatted ? md.html : escapeInlineText(text),
     mentions,
   );
-  // Escape the ids interpolated into the href attributes — a hostile sender/room id
-  // must not break out of the attribute and inject markup into the reply we emit.
-  const roomLink = `https://matrix.to/#/${escapeHtml(room.roomId)}/${escapeHtml(messageId)}`;
-  const userLink = `https://matrix.to/#/${escapeHtml(sender)}`;
-  const mxReply =
-    `<mx-reply><blockquote>` +
-    `<a href="${roomLink}">In reply to</a> ` +
-    `<a href="${userLink}">${escapeHtml(sender)}</a><br>` +
-    `${escapeHtml(firstLine)}</blockquote></mx-reply>`;
+  const sender = target?.getSender() ?? '';
+  // A target that failed to decrypt still names its author, who is pinged, but its body
+  // is the SDK's "Unable to decrypt" placeholder, which is not worth quoting.
+  const quote =
+    target && sender && !target.isDecryptionFailure()
+      ? replyFallback(room, messageId, sender, target)
+      : null;
   return {
     msgtype: MsgType.Text,
-    body: `> <${sender}> ${firstLine}\n\n${text}`,
+    body: quote ? `${quote.body}${text}` : text,
     format: 'org.matrix.custom.html',
-    formatted_body: `${mxReply}${replyHtml}`,
+    formatted_body: `${quote?.html ?? ''}${replyHtml}`,
     'm.relates_to': { 'm.in_reply_to': { event_id: messageId } },
     // A reply pings the message's author, plus anyone @-mentioned in the reply. `text` is
     // the reply's own words — deliberately NOT the `body` above, whose `> <sender> …`
@@ -665,6 +662,31 @@ export function replyMessageContent(
       [sender, ...mentions.map((m) => m.userId)],
       mentionsRoom(text),
     ),
+  };
+}
+
+/** The `> <sender> …` body quote and `<mx-reply>` block a reply carries for `target`. */
+function replyFallback(
+  room: Room,
+  messageId: string,
+  sender: string,
+  target: MatrixEvent,
+): { body: string; html: string } {
+  const origBody = stripReplyFallbackText(
+    (target.getContent()['body'] as string) ?? '',
+  );
+  const firstLine = origBody.split('\n')[0] ?? '';
+  // Escape the ids interpolated into the href attributes — a hostile sender/room id
+  // must not break out of the attribute and inject markup into the reply we emit.
+  const roomLink = `https://matrix.to/#/${escapeHtml(room.roomId)}/${escapeHtml(messageId)}`;
+  const userLink = `https://matrix.to/#/${escapeHtml(sender)}`;
+  return {
+    body: `> <${sender}> ${firstLine}\n\n`,
+    html:
+      `<mx-reply><blockquote>` +
+      `<a href="${roomLink}">In reply to</a> ` +
+      `<a href="${userLink}">${escapeHtml(sender)}</a><br>` +
+      `${escapeHtml(firstLine)}</blockquote></mx-reply>`,
   };
 }
 

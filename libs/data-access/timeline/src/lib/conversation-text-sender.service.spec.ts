@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MatrixEvent, type IEvent } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 import { fakeEvent, fakeRoom } from './timeline.spec-harness';
@@ -16,12 +17,15 @@ function setup({
   accountId = KEY.accountId,
   pending = false,
   cancelable = false,
+  fetched = 'found',
 }: {
   localEcho?: boolean;
   rejected?: boolean;
   accountId?: string;
   pending?: boolean;
   cancelable?: boolean;
+  /** What the server returns for an event the room no longer holds. */
+  fetched?: 'found' | 'failed';
 } = {}) {
   const original = fakeEvent({
     id: '$original',
@@ -55,6 +59,20 @@ function setup({
     cancelPendingEvent: vi.fn(() => {
       if (!cancelable) throw new Error('already sending');
     }),
+    fetchRoomEvent: vi.fn((roomId: string, eventId: string) =>
+      fetched === 'failed'
+        ? Promise.reject(new Error('offline'))
+        : Promise.resolve({
+            event_id: eventId,
+            room_id: roomId,
+            type: 'm.room.message',
+            sender: '@bob:example.org',
+            origin_server_ts: 1,
+            content: { msgtype: 'm.text', body: 'trimmed text' },
+          }),
+    ),
+    getEventMapper: vi.fn(() => (raw: Partial<IEvent>) => new MatrixEvent(raw)),
+    decryptEventIfNeeded: vi.fn(() => Promise.resolve()),
     sendMessage: vi.fn((_roomId: string, _content: unknown) =>
       pending
         ? new Promise<never>(() => undefined)
@@ -199,6 +217,91 @@ describe('MatrixConversationTextSender', () => {
       event_id: '$original',
     });
     expect(edit['m.new_content']).toMatchObject({ body: 'edited **text**' });
+  });
+
+  it('fetches a reply target the room no longer holds before quoting it', async () => {
+    const { sender, client } = setup();
+
+    await firstValueFrom(
+      sender.send({
+        key: KEY,
+        body: 'reply text',
+        mentions: [],
+        intent: { kind: 'reply', eventId: '$trimmed' },
+      }).outcome,
+    );
+
+    expect(client.fetchRoomEvent).toHaveBeenCalledWith(KEY.roomId, '$trimmed');
+    const reply = client.sendMessage.mock.calls[0][1] as Record<
+      string,
+      unknown
+    >;
+    expect(reply['body']).toBe(
+      '> <@bob:example.org> trimmed text\n\nreply text',
+    );
+    expect(reply['m.mentions']).toEqual({ user_ids: ['@bob:example.org'] });
+    expect(reply['m.relates_to']).toEqual({
+      'm.in_reply_to': { event_id: '$trimmed' },
+    });
+  });
+
+  it('still sends a reply whose target cannot be fetched, without a quote', async () => {
+    const { sender, client } = setup({ fetched: 'failed' });
+
+    await expect(
+      firstValueFrom(
+        sender.send({
+          key: KEY,
+          body: 'reply text',
+          mentions: [],
+          intent: { kind: 'reply', eventId: '$trimmed' },
+        }).outcome,
+      ),
+    ).resolves.toEqual({ kind: 'accepted', eventId: '$event' });
+
+    const reply = client.sendMessage.mock.calls[0][1] as Record<
+      string,
+      unknown
+    >;
+    expect(reply['body']).toBe('reply text');
+    expect(reply['m.relates_to']).toEqual({
+      'm.in_reply_to': { event_id: '$trimmed' },
+    });
+  });
+
+  it('cancels a reply while its target is still being fetched and drops the late fetch', async () => {
+    const { sender, client } = setup();
+    let resolveFetch!: (
+      raw: Awaited<ReturnType<typeof client.fetchRoomEvent>>,
+    ) => void;
+    client.fetchRoomEvent.mockReturnValueOnce(
+      new Promise((resolve) => (resolveFetch = resolve)),
+    );
+    const operation = sender.send({
+      key: KEY,
+      body: 'reply text',
+      mentions: [],
+      intent: { kind: 'reply', eventId: '$trimmed' },
+    });
+    const outcomes: unknown[] = [];
+    const subscription = operation.outcome.subscribe((outcome) =>
+      outcomes.push(outcome),
+    );
+
+    expect(operation.cancel()).toBe(true);
+    subscription.unsubscribe();
+    resolveFetch({
+      event_id: '$trimmed',
+      room_id: KEY.roomId,
+      type: 'm.room.message',
+      sender: '@bob:example.org',
+      origin_server_ts: 1,
+      content: { msgtype: 'm.text', body: 'trimmed text' },
+    });
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(client.sendMessage).not.toHaveBeenCalled();
+    expect(outcomes).toEqual([]);
   });
 
   it('uses the error channel when an accepted event has no authoritative local echo', async () => {

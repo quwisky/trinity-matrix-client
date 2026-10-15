@@ -447,6 +447,7 @@ describe('mentions in content builders', () => {
       roomId: '!r:hs',
       findEventById: () => ({
         getSender: () => '@a"><img src=x>:hs',
+        isDecryptionFailure: () => false,
         getContent: () => ({ body: 'orig' }),
       }),
     } as unknown as Room;
@@ -471,6 +472,7 @@ describe('mentions in content builders', () => {
       roomId: '!r:hs',
       findEventById: () => ({
         getSender: () => '@bob:hs',
+        isDecryptionFailure: () => false,
         getContent: () => ({ body: 'original' }),
       }),
     } as unknown as Room;
@@ -488,6 +490,7 @@ describe('mentions in content builders', () => {
       roomId: '!r:hs',
       findEventById: () => ({
         getSender: () => '@bob:hs',
+        isDecryptionFailure: () => false,
         getContent: () => ({ body: 'original' }),
       }),
     } as unknown as Room;
@@ -504,6 +507,82 @@ describe('mentions in content builders', () => {
       expect.arrayContaining(['@bob:hs', '@alice:hs']),
     );
     expect(content.formatted_body).toContain('matrix.to/#/@alice:hs');
+  });
+
+  it('quotes a target the caller fetched when the room no longer holds it', () => {
+    const room = {
+      roomId: '!r:hs',
+      findEventById: () => undefined,
+    } as unknown as Room;
+    const target = {
+      getSender: () => '@bob:hs',
+      isDecryptionFailure: () => false,
+      getContent: () => ({ body: 'from the server' }),
+    } as unknown as MatrixEvent;
+
+    const content = replyMessageContent(
+      room,
+      '$t',
+      'yes',
+      renderMarkdown('yes'),
+      [],
+      target,
+    );
+
+    expect(content.body).toBe('> <@bob:hs> from the server\n\nyes');
+    expect(mentionIds(content)).toEqual(['@bob:hs']);
+  });
+
+  it('pings the author of a target that failed to decrypt without quoting it', () => {
+    const room = {
+      roomId: '!r:hs',
+      findEventById: () => undefined,
+    } as unknown as Room;
+    const target = {
+      getSender: () => '@bob:hs',
+      getContent: () => ({ body: '** Unable to decrypt: no key **' }),
+      isDecryptionFailure: () => true,
+    } as unknown as MatrixEvent;
+
+    const content = replyMessageContent(
+      room,
+      '$t',
+      'yes',
+      renderMarkdown('yes'),
+      [],
+      target,
+    );
+
+    expect(content.body).toBe('yes');
+    expect(content.formatted_body).not.toContain('<mx-reply>');
+    expect(content['m.relates_to']).toEqual({
+      'm.in_reply_to': { event_id: '$t' },
+    });
+    expect(mentionIds(content)).toEqual(['@bob:hs']);
+  });
+
+  it('sends a reply to an unknown target without an empty quote', () => {
+    const room = {
+      roomId: '!r:hs',
+      findEventById: () => undefined,
+    } as unknown as Room;
+    const text = 'thanks @Alice';
+
+    const content = replyMessageContent(
+      room,
+      '$t',
+      text,
+      renderMarkdown(text),
+      [ALICE],
+    );
+
+    expect(content.body).toBe(text);
+    expect(content.formatted_body).not.toContain('<mx-reply>');
+    expect(content.formatted_body).toContain('matrix.to/#/@alice:hs');
+    expect(content['m.relates_to']).toEqual({
+      'm.in_reply_to': { event_id: '$t' },
+    });
+    expect(mentionIds(content)).toEqual(['@alice:hs']);
   });
 
   it('pills and lists every mention in a multi-mention message', () => {
@@ -744,6 +823,7 @@ describe('m.mentions is always present', () => {
       roomId: '!r:hs',
       findEventById: () => ({
         getSender: () => '@bob:hs',
+        isDecryptionFailure: () => false,
         getContent: () => ({ body: '@room everyone look' }),
       }),
     } as unknown as Room;
