@@ -170,10 +170,11 @@ function targetOf(event: MatrixEvent): string | undefined {
  * or received is freed and is fetched again with `/messages` when the room is scrolled back.
  *
  * Call only for a room nobody has open. The room keeps at least {@link TRIM_KEEP} events,
- * cut at a recorded page boundary or sync position so the new back token lands exactly
- * before the first kept event: no gap and no duplicate when it is paged back again. Only
- * the main timeline is replaced, never the thread timelines, and the kept events are the
- * same objects. Unread counts, receipts and relations live on the room and are untouched.
+ * cut at a recorded page boundary or sync position so the new back token lands at or after
+ * the first kept event: no gap when it is paged back again, and the SDK drops by event id
+ * any kept event a page brings again. Only the main timeline is replaced, never the thread
+ * timelines, and the kept events are the same objects. Unread counts, receipts and
+ * relations live on the room and are untouched.
  *
  * Returns the number of events dropped: 0 when there was no safe place to cut.
  */
@@ -252,7 +253,10 @@ function rebase(
   // The room's current state already holds the kept state events. Wind the new start
   // state back over them, as paging them in would, so later pages get the senders and
   // state of their own time. Each event is backward-looking only while it is applied:
-  // the current state still reads it forwards.
+  // the current state still reads it forwards. That makes the start state approximate:
+  // names and membership come out as of the cut, but power levels and avatars, which the
+  // SDK reads lazily from the event, read forwards, so rows paged back in may show the
+  // current ones.
   const start = fresh.getState(EventTimeline.BACKWARDS);
   for (let i = kept.length - 1; i >= 0; i--) {
     const event = kept[i];
