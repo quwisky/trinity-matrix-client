@@ -57,6 +57,7 @@ import {
 import { projectMessage } from './project-message';
 import { isPresentableSystemEvent } from './normalize-timeline-event';
 import { scrollbackLive } from './live-scrollback';
+import type { TrimGuard } from './live-timeline-trim';
 import type {
   MessageShield,
   MessageView,
@@ -244,6 +245,12 @@ export class TimelineService {
 
   private roomId: string | null = null;
   private visible = true;
+
+  /**
+   * The oldest event the room's view shows while it follows the newest message, or null
+   * while it is scrolled back (or has not said). See {@link setLiveView}.
+   */
+  private liveViewFrom: string | null = null;
 
   /**
    * The client {@link open} attached its client-level listeners to. `matrix.instance`
@@ -487,10 +494,45 @@ export class TimelineService {
     this.refresh();
   }
 
+  /**
+   * Say where the room's view is: following the newest message and showing everything
+   * from `oldestShownId` on, or scrolled back (`null`). While the window is hidden, the
+   * focused room is trimmed only while its view follows the newest message, and never past
+   * what it shows (#1366). A hidden (blurred) Conversation has no view.
+   */
+  setLiveView(oldestShownId: string | null): void {
+    this.liveViewFrom = this.visible ? oldestShownId : null;
+  }
+
+  /**
+   * What a trim of this room must keep so its view looks the same afterwards, or null when
+   * it must not be trimmed: the view is scrolled back, or shows events this room's live
+   * timeline does not hold. Keeps what the view shows, and, like the read receipt, the
+   * event the "New messages" divider was drawn after.
+   */
+  liveTrimGuard(): TrimGuard | null {
+    const from = this.liveViewFrom;
+    const room = this.room;
+    if (
+      !this.visible ||
+      !room ||
+      !from ||
+      !room
+        .getLiveTimeline()
+        .getEvents()
+        .some((event) => event.getId() === from)
+    ) {
+      return null;
+    }
+    return { marked: [this._readMarker()], kept: [from] };
+  }
+
   /** Toggle foreground-only effects without detaching the warm timeline projection. */
   setVisible(visible: boolean): void {
     if (this.visible === visible) return;
     this.visible = visible;
+    // A view reports again once it shows this Conversation.
+    this.liveViewFrom = null;
     if (!visible) {
       this.stopTypingOnConnectedClient();
     }
@@ -553,6 +595,7 @@ export class TimelineService {
     this.room = null;
     this.roomId = null;
     this.lastReadEventId = null;
+    this.liveViewFrom = null;
     this._readMarker.set(null);
     this._firstUnreadId.set(null);
     this._oldestEventId.set(null);

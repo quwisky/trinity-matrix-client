@@ -46,6 +46,7 @@ function setup() {
   const live = new Map<string, MatrixClient>([[ALICE, client]]);
   const held = new Set(['!open:hs']);
   const errors = { handleError: vi.fn() };
+  const trimHeld = vi.fn();
   TestBed.configureTestingModule({
     providers: [
       {
@@ -60,6 +61,7 @@ function setup() {
         useValue: {
           holds: (accountId: string, roomId: string) =>
             accountId === ALICE && held.has(roomId),
+          trimHeld,
         },
       },
       { provide: ErrorHandler, useValue: errors },
@@ -90,6 +92,7 @@ function setup() {
     live,
     held,
     errors,
+    trimHeld,
     sync,
     loaded,
   };
@@ -118,6 +121,20 @@ describe('LiveTimelineTrimmer', () => {
     expect(loaded('!busy:hs')).toBeGreaterThanOrEqual(TRIM_KEEP);
     expect(loaded('!open:hs')).toBe(1000);
     expect(loaded('!quiet:hs')).toBe(0);
+    running.unsubscribe();
+  });
+
+  it('leaves a held room past the high-water mark to the Conversation runtime', async () => {
+    const { trimmer, accountIds, trimHeld, sync } = setup();
+    const running = trimmer.run().subscribe();
+    accountIds.set([ALICE]);
+    TestBed.tick();
+
+    for (let i = 0; i < 20; i++) await sync();
+    expect(trimHeld).not.toHaveBeenCalled();
+
+    await sync();
+    expect(trimHeld).toHaveBeenCalledExactlyOnceWith(ALICE, '!open:hs');
     running.unsubscribe();
   });
 

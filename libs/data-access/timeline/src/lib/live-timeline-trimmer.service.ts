@@ -30,13 +30,14 @@ import {
  * them on a gappy sync or a restart, so a busy room left in the tray grows for as long as
  * the app runs. After each sync this records where the sync left every room, which is
  * the only place a live event can later be cut from, and trims a room that has passed
- * {@link TRIM_HIGH_WATER} events back to its latest ones, unless a Conversation handle
- * holds it: a focused or retained room is trimmed when its handle retires instead.
+ * {@link TRIM_HIGH_WATER} events back to its latest ones. A room a Conversation handle
+ * holds is left to {@link ConversationRuntime.trimHeld}: a retained room is trimmed when
+ * its handle retires, and the focused room only while the window is hidden and its view
+ * follows the newest message, keeping what that view shows (#1366).
  *
- * Not bounded: the focused room. The release after the window has been hidden for a
- * minute retires only the retained handles and keeps the focused conversation on screen,
- * so a room left open in a hidden window keeps every event it receives until the person
- * moves to another room and its handle retires, or the app restarts (#1366).
+ * Not bounded: a focused room scrolled back, or whose composer replies to or edits an
+ * event, keeps what it holds from there on while the window is hidden, until the person
+ * moves to another room and its handle retires, or the app restarts.
  */
 @Injectable({ providedIn: 'root' })
 export class LiveTimelineTrimmer {
@@ -85,11 +86,12 @@ export class LiveTimelineTrimmer {
               const timeline = room.getLiveTimeline();
               if (sameAs(seen.get(timeline), timeline)) continue;
               noteSyncPosition(room, token);
-              if (
-                timeline.getEvents().length > TRIM_HIGH_WATER &&
-                !this.conversations.holds(accountId, room.roomId)
-              ) {
-                trimLiveTimeline(room, accountId);
+              if (timeline.getEvents().length > TRIM_HIGH_WATER) {
+                if (!this.conversations.holds(accountId, room.roomId)) {
+                  trimLiveTimeline(room, accountId);
+                } else {
+                  this.conversations.trimHeld(accountId, room.roomId);
+                }
               }
               const now = room.getLiveTimeline();
               seen.set(now, markOf(now));

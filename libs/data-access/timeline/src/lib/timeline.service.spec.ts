@@ -1915,6 +1915,74 @@ describe('TimelineService', () => {
     });
   });
 
+  describe('trimming the open room (#1366)', () => {
+    function open(fullyReadEventId: string | null = '$1') {
+      const room = fakeRoom(
+        [
+          fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+          fakeEvent({ id: '$2', sender: '@alice:hs', body: 'b' }),
+          fakeEvent({ id: '$3', sender: '@alice:hs', body: 'c' }),
+        ],
+        {},
+        false,
+        [],
+        fullyReadEventId,
+      );
+      TestBed.configureTestingModule({
+        providers: [
+          TimelineService,
+          matrixProvider(fakeClient(room, [])),
+          mediaProvider(),
+        ],
+      });
+      const svc = TestBed.inject(TimelineService);
+      svc.open('!r:hs');
+      return svc;
+    }
+
+    it('keeps what a view at the newest message shows, and where its divider was drawn', () => {
+      const svc = open();
+
+      svc.setLiveView('$2');
+
+      expect(svc.liveTrimGuard()).toEqual({ marked: ['$1'], kept: ['$2'] });
+    });
+
+    it('allows no trim while the view is scrolled back or has not reported', () => {
+      const svc = open();
+      expect(svc.liveTrimGuard()).toBeNull();
+
+      svc.setLiveView('$2');
+      svc.setLiveView(null);
+
+      expect(svc.liveTrimGuard()).toBeNull();
+    });
+
+    it('allows no trim when what the view shows is not in the live timeline', () => {
+      const svc = open();
+
+      svc.setLiveView('$other-room');
+
+      expect(svc.liveTrimGuard()).toBeNull();
+    });
+
+    it('forgets the view when the Conversation is hidden, shown again or closed', () => {
+      const svc = open();
+      svc.setLiveView('$2');
+      svc.setVisible(false);
+      expect(svc.liveTrimGuard()).toBeNull();
+
+      svc.setLiveView('$2');
+      expect(svc.liveTrimGuard()).toBeNull();
+      svc.setVisible(true);
+      expect(svc.liveTrimGuard()).toBeNull();
+
+      svc.setLiveView('$2');
+      svc.close();
+      expect(svc.liveTrimGuard()).toBeNull();
+    });
+  });
+
   describe('read receipts (seen by)', () => {
     function setupReceipts(
       events: ReturnType<typeof fakeEvent>[],

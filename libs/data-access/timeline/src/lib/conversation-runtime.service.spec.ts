@@ -81,6 +81,7 @@ function timeline(
     reactionDetails: () => [],
     loadState: signal<TimelineLoadState>({ kind: 'ready' }).asReadonly(),
     retryLoad: vi.fn(),
+    setLiveView: vi.fn(),
   };
 }
 
@@ -118,6 +119,7 @@ function setup(
         'kept',
       );
       const threads = {
+        openThreadRootId: signal<string | null>(null),
         summaries: signal({}).asReadonly(),
         threadList: signal([]).asReadonly(),
         threadMessages: signal([...messages]).asReadonly(),
@@ -164,6 +166,7 @@ function setup(
         releaseHistory: vi.fn(() =>
           history.set(released() ? 'released' : 'released-while-attached'),
         ),
+        trimWhileHidden: vi.fn(),
         resources: () => ({ listenerCount: 11, retainedBytes: 64 }),
         visible,
         released,
@@ -402,6 +405,52 @@ describe('ConversationRuntime', () => {
       expect(loaded()).toBeGreaterThanOrEqual(TRIM_KEEP);
     });
 
+    it('trims a focused room while hidden only as far as its live view allows', async () => {
+      const { room, controller, loaded } = await realFactory(() => null);
+      await room.addLiveEvents(
+        Array.from(
+          { length: 10 },
+          (_, i) =>
+            new MatrixEvent({
+              event_id: `$${i + 201}`,
+              room_id: room.roomId,
+              type: 'm.room.message',
+              sender: BOB,
+              origin_server_ts: i + 201,
+              content: { msgtype: 'm.text', body: `${i + 201}` },
+            }),
+        ),
+        { addToState: false },
+      );
+      const guard = vi.spyOn(TimelineService.prototype, 'liveTrimGuard');
+
+      // Scrolled back: no guard, nothing trimmed.
+      guard.mockReturnValue(null);
+      controller.trimWhileHidden([]);
+      expect(loaded()).toBe(210);
+
+      // A reply target before the only cut keeps everything.
+      guard.mockReturnValue({ marked: [], kept: ['$180'] });
+      controller.trimWhileHidden(['$50']);
+      expect(loaded()).toBe(210);
+
+      controller.trimWhileHidden([]);
+      expect(loaded()).toBe(110);
+      expect(room.findEventById('$180')).toBeDefined();
+    });
+
+    it('leaves a focused room at or under the high-water mark alone', async () => {
+      const { controller, loaded } = await realFactory(() => null);
+      vi.spyOn(TimelineService.prototype, 'liveTrimGuard').mockReturnValue({
+        marked: [],
+        kept: [],
+      });
+
+      controller.trimWhileHidden([]);
+
+      expect(loaded()).toBe(200);
+    });
+
     it("leaves the history of a client that is no longer the Account's live one", async () => {
       const replacement = createClient({ baseUrl: 'https://hs' });
       let live: MatrixClient | null = null;
@@ -548,6 +597,71 @@ describe('ConversationRuntime', () => {
     expect(a.state()).toBe('retired');
     expect(controller('!a:example.org').released()).toBe(true);
     expect(errors.handleError).toHaveBeenCalledWith(failure);
+  });
+
+  describe('while the window is hidden', () => {
+    const A = { accountId: ALICE, roomId: '!a:example.org' };
+    const B = { accountId: ALICE, roomId: '!b:example.org' };
+
+    it('trims the focused room right away and after each sync, and stops when shown', () => {
+      const { runtime, controller } = setup();
+      runtime.focus(B);
+      runtime.focus(A);
+      const trim = vi.mocked(controller(A.roomId).trimWhileHidden);
+
+      runtime.trimHeld(ALICE, A.roomId);
+      expect(trim).not.toHaveBeenCalled();
+
+      const hidden = runtime.trimFocusedWhileHidden().subscribe();
+      expect(trim).toHaveBeenCalledExactlyOnceWith([]);
+      runtime.trimHeld(ALICE, A.roomId);
+      expect(trim).toHaveBeenCalledTimes(2);
+
+      // A retained room, or the same room on another Account, waits for its handle to retire.
+      runtime.trimHeld(ALICE, B.roomId);
+      runtime.trimHeld(BOB, A.roomId);
+      expect(controller(B.roomId).trimWhileHidden).not.toHaveBeenCalled();
+
+      hidden.unsubscribe();
+      runtime.trimHeld(ALICE, A.roomId);
+      expect(trim).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the event the composer replies to or edits, and the open thread's root", () => {
+      const { runtime, controller } = setup(2, undefined, [message('$target')]);
+      const handle = runtime.focus(A);
+      const trim = vi.mocked(controller(A.roomId).trimWhileHidden);
+      const hidden = runtime.trimFocusedWhileHidden().subscribe();
+
+      handle.messages.beginReply('$target');
+      runtime.trimHeld(ALICE, A.roomId);
+      expect(trim).toHaveBeenLastCalledWith(['$target']);
+
+      handle.messages.beginEdit('$target', 'changed');
+      (
+        controller(A.roomId).threads.openThreadRootId as ReturnType<
+          typeof signal<string | null>
+        >
+      ).set('$root');
+      runtime.trimHeld(ALICE, A.roomId);
+      expect(trim).toHaveBeenLastCalledWith(['$target', '$root']);
+      hidden.unsubscribe();
+    });
+
+    it('reports a failed trim and keeps the room', () => {
+      const { runtime, controller, errors } = setup();
+      runtime.focus(A);
+      const failure = new Error('trim failed');
+      vi.mocked(controller(A.roomId).trimWhileHidden).mockImplementation(() => {
+        throw failure;
+      });
+
+      const hidden = runtime.trimFocusedWhileHidden().subscribe();
+
+      expect(errors.handleError).toHaveBeenCalledWith(failure);
+      expect(runtime.focused()?.key).toEqual(A);
+      hidden.unsubscribe();
+    });
   });
 
   it('says which rooms hold a live Conversation handle', () => {
