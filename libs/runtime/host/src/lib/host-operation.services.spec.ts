@@ -13,6 +13,7 @@ import {
   HostFileExportService,
   HostLifecycleService,
   HostLockIntegrationService,
+  HOST_SCREEN_PRIVACY_OPERATION,
   HostScreenPrivacyService,
   HostUpdatesService,
   HostUserPresenceService,
@@ -180,6 +181,10 @@ describe('app lock host services without an adapter', () => {
 
   it('has no screen privacy', async () => {
     const privacy = TestBed.inject(HostScreenPrivacyService);
+    await expect(firstValueFrom(privacy.support())).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
     await expect(firstValueFrom(privacy.set(true))).resolves.toEqual({
       kind: 'unavailable',
       reason: 'not-supported',
@@ -188,6 +193,24 @@ describe('app lock host services without an adapter', () => {
       kind: 'unavailable',
       reason: 'not-supported',
     });
+  });
+
+  it('passes on what the host’s app-switcher cover does', async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: HOST_SCREEN_PRIVACY_OPERATION,
+          useValue: {
+            support: () => of({ kind: 'supported', blocksCapture: true }),
+            set: () => NEVER,
+            dismissPresented: () => NEVER,
+          },
+        },
+      ],
+    });
+    await expect(
+      firstValueFrom(TestBed.inject(HostScreenPrivacyService).support()),
+    ).resolves.toEqual({ kind: 'supported', blocksCapture: true });
   });
 
   it('counts a system prompt as Trinity’s own system UI while it is open', () => {

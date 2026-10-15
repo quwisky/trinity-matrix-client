@@ -235,8 +235,18 @@ export interface HostLockIntegrationOperation {
   coverPainted(): Observable<HostOperationOutcome>;
 }
 
+/**
+ * What this host's app-switcher cover does. `blocksCapture`: it also blocks screenshots and
+ * screen recording, screen sharing included (Android FLAG_SECURE); without it the cover only
+ * hides the app-switcher snapshot (the iOS blur).
+ */
+export type HostScreenPrivacySupport =
+  | { readonly kind: 'supported'; readonly blocksCapture: boolean }
+  | Extract<HostCapabilitySupport, { readonly kind: 'unavailable' }>;
+
 /** The mobile app-switcher cover (iOS blur, Android FLAG_SECURE). */
 export interface HostScreenPrivacyOperation {
+  support(): Observable<HostScreenPrivacySupport>;
   set(enabled: boolean): Observable<HostOperationOutcome>;
   /** Dismiss native UI Trinity presented over the web view (iOS). */
   dismissPresented(): Observable<HostOperationOutcome>;

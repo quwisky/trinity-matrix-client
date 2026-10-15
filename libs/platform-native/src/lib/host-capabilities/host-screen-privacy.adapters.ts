@@ -10,6 +10,7 @@ import {
   HostDeepLinksService,
   type HostOperationOutcome,
   type HostScreenPrivacyOperation,
+  type HostScreenPrivacySupport,
 } from '@trinity/runtime/host';
 import {
   Observable,
@@ -55,6 +56,20 @@ const NOT_SUPPORTED: HostOperationOutcome = {
 export class CapacitorScreenPrivacyAdapter implements HostScreenPrivacyOperation {
   private readonly appLock = inject(AppLockPinBridge);
   private readonly deepLinks = inject(HostDeepLinksService);
+
+  /** Android's FLAG_SECURE also blocks capture; the iOS blur only covers the snapshot. */
+  support(): Observable<HostScreenPrivacySupport> {
+    return defer(() =>
+      of<HostScreenPrivacySupport>(
+        Capacitor.isPluginAvailable(PRIVACY_SCREEN_PLUGIN)
+          ? {
+              kind: 'supported',
+              blocksCapture: Capacitor.getPlatform() === 'android',
+            }
+          : { kind: 'unavailable', reason: 'not-supported' },
+      ),
+    );
+  }
 
   set(enabled: boolean): Observable<HostOperationOutcome> {
     return defer(() => {

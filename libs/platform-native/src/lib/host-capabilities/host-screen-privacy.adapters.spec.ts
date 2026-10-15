@@ -76,6 +76,32 @@ describe('CapacitorScreenPrivacyAdapter', () => {
     );
   });
 
+  it('says the Android cover also blocks screenshots and screen recording', async () => {
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('android');
+    const { adapter: screen } = adapter();
+    await expect(firstValueFrom(screen.support())).resolves.toEqual({
+      kind: 'supported',
+      blocksCapture: true,
+    });
+  });
+
+  it('says the iOS cover only hides the app-switcher snapshot', async () => {
+    const { adapter: screen } = adapter();
+    await expect(firstValueFrom(screen.support())).resolves.toEqual({
+      kind: 'supported',
+      blocksCapture: false,
+    });
+  });
+
+  it('reports no cover where the host lacks the plugin', async () => {
+    vi.mocked(Capacitor.isPluginAvailable).mockReturnValue(false);
+    const { adapter: screen } = adapter();
+    await expect(firstValueFrom(screen.support())).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+  });
+
   it('reports a refused cover with a stable code', async () => {
     privacy.enable.mockRejectedValue(new Error('activity gone'));
     const { adapter: screen } = adapter();

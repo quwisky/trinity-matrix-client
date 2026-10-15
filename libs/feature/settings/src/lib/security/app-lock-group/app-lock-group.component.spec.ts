@@ -14,6 +14,7 @@ import {
   HOST_OPERATIONS,
   HOST_USER_PRESENCE_OPERATION,
   HostCapabilitiesService,
+  HostScreenPrivacyService,
   type HostCapabilityManifest,
   type HostOperation,
   type HostOperationOutcome,
@@ -28,10 +29,7 @@ import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { APP_LOCK_MOBILE_OS } from './app-lock-flows';
-import {
-  APP_LOCK_NATIVE_IOS,
-  AppLockGroupComponent,
-} from './app-lock-group.component';
+import { AppLockGroupComponent } from './app-lock-group.component';
 
 const PIN = '482913';
 /** What the PIN dialog closes with. */
@@ -105,8 +103,8 @@ async function setup(
     hostPresence?: boolean;
     /** Whether the host has the app-switcher cover (iOS and Android). */
     screenPrivacy?: boolean;
-    /** The native iOS app, whose cover is a blur in the app switcher. */
-    ios?: boolean;
+    /** Whether that cover also blocks screenshots and screen recording (Android). */
+    blocksCapture?: boolean;
     /** What each PIN dialog closes with, in order. */
     dialogResults?: unknown[];
     guard?: GuardOutcome;
@@ -204,7 +202,20 @@ async function setup(
           ),
       }),
       { provide: APP_LOCK_MOBILE_OS, useValue: options.mobile ?? false },
-      { provide: APP_LOCK_NATIVE_IOS, useValue: options.ios ?? false },
+      MockProvider(HostScreenPrivacyService, {
+        support: () =>
+          of(
+            options.screenPrivacy
+              ? {
+                  kind: 'supported' as const,
+                  blocksCapture: options.blocksCapture ?? true,
+                }
+              : {
+                  kind: 'unavailable' as const,
+                  reason: 'not-supported' as const,
+                },
+          ),
+      }),
     ],
   });
   return { lock, open, view };
@@ -591,7 +602,7 @@ describe('AppLockGroupComponent', () => {
       expect(lockSwitch()).toBeTruthy();
     });
 
-    it('says what the app-switcher cover does on Android', async () => {
+    it('says the cover also blocks screenshots where the host’s does (Android)', async () => {
       await setup({ enabled: true, screenPrivacy: true });
       expect(
         screen.getByTestId('app-lock-screen-privacy').textContent?.trim(),
@@ -600,11 +611,11 @@ describe('AppLockGroupComponent', () => {
       );
     });
 
-    it('says what the app-switcher cover does on iOS, naming the running app', async () => {
+    it('says the app switcher shows a blurred cover where that is all the host’s does (iOS), naming the running app', async () => {
       await setup({
         enabled: true,
         screenPrivacy: true,
-        ios: true,
+        blocksCapture: false,
         appName: 'Trinity Next',
       });
       expect(
