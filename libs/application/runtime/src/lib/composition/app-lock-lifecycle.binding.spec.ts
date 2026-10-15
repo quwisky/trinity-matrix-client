@@ -643,14 +643,86 @@ describe('AppLockLifecycleBinding', () => {
       enabled.set(false);
       TestBed.tick();
       expect(privacySet).toHaveBeenLastCalledWith(false);
-      // Stable codes only: nothing from the error reaches diagnostics.
+      // Each lock also tries the cover again. Stable codes only: nothing from the error
+      // reaches diagnostics.
       expect(incident.mock.calls).toEqual([
         ['host', 'screen-privacy', 'screen-privacy-failed'],
+        ['host', 'screen-privacy', 'screen-privacy-failed'],
         ['host', 'screen-privacy', 'dismiss-failed'],
+        ['host', 'screen-privacy', 'screen-privacy-failed'],
         ['host', 'screen-privacy', 'dismiss-failed'],
         ['host', 'screen-privacy', 'screen-privacy-failed'],
       ]);
       lifetime.unsubscribe();
+    });
+
+    describe('when turning the cover on failed', () => {
+      const REFUSED: HostOperationOutcome = {
+        kind: 'rejected',
+        diagnostic: { code: 'screen-privacy-failed' },
+      };
+      /** Refuses the first `failures` calls, then completes. */
+      const refusing = (failures: number) => {
+        let calls = 0;
+        return () =>
+          of<HostOperationOutcome>(
+            (calls += 1) <= failures ? REFUSED : { kind: 'completed' },
+          );
+      };
+
+      it('tries again at the next lock, and stops once the cover is on', () => {
+        const { locked, privacySet, lifetime } = setup({
+          privacySet: refusing(1),
+        });
+        expect(privacySet.mock.calls).toEqual([[true]]);
+        locked.set(true);
+        TestBed.tick();
+        expect(privacySet.mock.calls).toEqual([[true], [true]]);
+        locked.set(false);
+        TestBed.tick();
+        locked.set(true);
+        TestBed.tick();
+        expect(privacySet).toHaveBeenCalledTimes(2);
+        lifetime.unsubscribe();
+      });
+
+      it('tries again when the app comes back to the front', () => {
+        const { lifecycle, privacySet, lifetime } = setup({
+          privacySet: refusing(2),
+        });
+        lifecycle.next({ kind: 'active' });
+        expect(privacySet.mock.calls).toEqual([[true], [true]]);
+        lifecycle.next({ kind: 'active' });
+        expect(privacySet).toHaveBeenCalledTimes(3);
+        lifecycle.next({ kind: 'active' });
+        expect(privacySet).toHaveBeenCalledTimes(3);
+        lifetime.unsubscribe();
+      });
+
+      it('does not try again on a host without a cover', () => {
+        const { lifecycle, locked, privacySet, lifetime } = setup({
+          privacySet: () =>
+            of<HostOperationOutcome>({
+              kind: 'unavailable',
+              reason: 'not-supported',
+            }),
+        });
+        lifecycle.next({ kind: 'active' });
+        locked.set(true);
+        TestBed.tick();
+        expect(privacySet).toHaveBeenCalledOnce();
+        lifetime.unsubscribe();
+      });
+
+      it('does not turn the cover on while App lock is off', () => {
+        const { lifecycle, privacySet, lifetime } = setup({
+          enabled: false,
+          privacySet: refusing(1),
+        });
+        lifecycle.next({ kind: 'active' });
+        expect(privacySet.mock.calls).toEqual([[false]]);
+        lifetime.unsubscribe();
+      });
     });
 
     it('reports a refused cover or dismissal, but not a host without one', () => {

@@ -127,28 +127,51 @@ export class AppLockLifecycleBinding {
    * The cover is on whenever App lock is on, locked or not (spec §4), and each lock takes
    * down native UI Trinity presented over the web view, which the DOM cover can't reach.
    * Both are best effort: an answer that never comes or a failure never holds up locking or
-   * unlocking, and a failure is recorded by its stable code only.
+   * unlocking, and a failure is recorded by its stable code only. A cover that failed to go
+   * on is tried again at the next lock and when the app comes back to the front, so it isn't
+   * left off while App lock is on.
    */
   private appSwitcherCover(): Observable<never> {
-    return merge(
-      this.changes(() => this.appLock.enabled()).pipe(
-        switchMap((enabled) =>
-          this.bestEffort(
-            () => this.screenPrivacy.set(enabled),
-            'screen-privacy-failed',
+    return defer(() => {
+      // The host has the cover on, or has none to put on: nothing to try again.
+      let settled = false;
+      const retry = merge(
+        this.changes(() => this.appLock.locked()).pipe(
+          filter((locked) => locked),
+        ),
+        this.lifecycle.events.pipe(filter((event) => event.kind === 'active')),
+      ).pipe(
+        filter(() => !settled && untracked(() => this.appLock.enabled())),
+        map(() => true),
+      );
+      return merge(
+        merge(
+          this.changes(() => this.appLock.enabled()),
+          retry,
+        ).pipe(
+          switchMap((enabled) => {
+            settled = false;
+            return this.bestEffort(
+              () => this.screenPrivacy.set(enabled),
+              'screen-privacy-failed',
+            ).pipe(
+              tap((outcome) => {
+                settled = failureCode(outcome) === null;
+              }),
+            );
+          }),
+        ),
+        this.changes(() => this.appLock.locked()).pipe(
+          filter((locked) => locked),
+          mergeMap(() =>
+            this.bestEffort(
+              () => this.screenPrivacy.dismissPresented(),
+              'dismiss-failed',
+            ),
           ),
         ),
-      ),
-      this.changes(() => this.appLock.locked()).pipe(
-        filter((locked) => locked),
-        mergeMap(() =>
-          this.bestEffort(
-            () => this.screenPrivacy.dismissPresented(),
-            'dismiss-failed',
-          ),
-        ),
-      ),
-    ).pipe(ignoreElements());
+      ).pipe(ignoreElements());
+    });
   }
 
   /** Runs a host call, recording anything but success or a host without it as an incident. */
