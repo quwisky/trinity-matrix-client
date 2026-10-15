@@ -643,8 +643,12 @@ export function replyMessageContent(
     mentions,
   );
   const sender = target?.getSender() ?? '';
+  // A target that failed to decrypt still names its author, who is pinged, but its body
+  // is the SDK's "Unable to decrypt" placeholder, which is not worth quoting.
   const quote =
-    target && sender ? replyFallback(room, messageId, sender, target) : null;
+    target && sender && !target.isDecryptionFailure()
+      ? replyFallback(room, messageId, sender, target)
+      : null;
   return {
     msgtype: MsgType.Text,
     body: quote ? `${quote.body}${text}` : text,
