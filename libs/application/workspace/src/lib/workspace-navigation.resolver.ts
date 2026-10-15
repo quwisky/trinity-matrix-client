@@ -32,6 +32,8 @@ function roomScope(
   }
   if (intent.scope) return intent.scope;
   // A row picked from the list on screen is in that list, so even a space stays (#1369).
+  // Only on the same Account: another Account may not hold the space, and Workspace
+  // repairs a space the Account lacks to Recent and drops the Room.
   // Opened from anywhere else, a space may not hold the Room, so Recent lists it instead.
   return current.scope.kind !== 'space' ||
     (intent.origin === 'room-list' && current.accountId === intent.accountId)

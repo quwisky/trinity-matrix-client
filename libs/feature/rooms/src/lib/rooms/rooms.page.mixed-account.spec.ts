@@ -326,10 +326,13 @@ describe('RoomsPage mixed-account view', () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
 
-    shell.routing.onSelectRoomSelection({
-      roomId: '!theirs:hs',
-      accountId: '@alt:hs',
-    });
+    shell.routing.onSelectRoomSelection(
+      {
+        roomId: '!theirs:hs',
+        accountId: '@alt:hs',
+      },
+      'room-list',
+    );
 
     await vi.waitFor(() =>
       expect(switchAccount).toHaveBeenCalledWith(
@@ -353,15 +356,21 @@ describe('RoomsPage mixed-account view', () => {
         accountIds: ['@me:hs', '@alt:hs'],
       },
     ]);
-    shell.routing.onSelectRoomSelection({
-      accountId: '@alt:hs',
-      roomId: '!shared:hs',
-    });
+    shell.routing.onSelectRoomSelection(
+      {
+        accountId: '@alt:hs',
+        roomId: '!shared:hs',
+      },
+      'room-list',
+    );
     await settleWorkspace();
-    shell.routing.onSelectRoomSelection({
-      accountId: '@me:hs',
-      roomId: '!mine:hs',
-    });
+    shell.routing.onSelectRoomSelection(
+      {
+        accountId: '@me:hs',
+        roomId: '!mine:hs',
+      },
+      'room-list',
+    );
     await settleWorkspace();
     switchAccount.mockClear();
 

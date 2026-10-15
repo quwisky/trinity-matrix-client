@@ -241,10 +241,13 @@ describe('RoomsPage space filtering', () => {
     await settleWorkspace();
 
     // What the sidebar's `(selectRoom)` binding calls for a clicked row.
-    shell.routing.onSelectRoomSelection({
-      roomId: '!b:hs',
-      accountId: '@me:hs',
-    });
+    shell.routing.onSelectRoomSelection(
+      {
+        roomId: '!b:hs',
+        accountId: '@me:hs',
+      },
+      'room-list',
+    );
     await settleWorkspace();
 
     expect(shell.store.activeRoomId()).toBe('!b:hs');

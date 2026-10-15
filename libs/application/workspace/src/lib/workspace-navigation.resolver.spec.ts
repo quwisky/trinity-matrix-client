@@ -221,19 +221,20 @@ describe('resolveWorkspaceNavigation — a room opened from a space', () => {
 });
 
 describe('resolveWorkspaceNavigation — a room picked from the list on screen', () => {
-  it.each([
-    { kind: 'recent' as const },
-    { kind: 'home' as const },
-    { kind: 'rooms' as const },
-  ])('keeps the $kind list', (scope) => {
-    for (const origin of ['room-list', 'shortcut'] as const) {
-      expect(
-        resolveWorkspaceNavigation(
-          { kind: 'room', accountId: '@a:hs', roomId: '!chat:hs', origin },
-          view({ scope }),
-        )?.destination.scope,
-      ).toEqual(scope);
-    }
+  it.each(
+    (['recent', 'home', 'rooms'] as const).flatMap((kind) =>
+      (['room-list', 'shortcut'] as const).map((origin) => ({
+        scope: { kind },
+        origin,
+      })),
+    ),
+  )('keeps the $scope.kind list for a $origin open', ({ scope, origin }) => {
+    expect(
+      resolveWorkspaceNavigation(
+        { kind: 'room', accountId: '@a:hs', roomId: '!chat:hs', origin },
+        view({ scope }),
+      )?.destination.scope,
+    ).toEqual(scope);
   });
 
   it("keeps the list on screen for another account's room, as before", () => {

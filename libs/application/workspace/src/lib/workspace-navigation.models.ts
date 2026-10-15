@@ -7,7 +7,7 @@ export type WorkspaceNavigationScope =
 
 /** Why the Room shell is opening an exact Account-and-Room identity. */
 export type WorkspaceRoomNavigationOrigin =
-  | /** A row of the sidebar list on screen, by click or the Alt+↑/↓ walk. */ 'room-list'
+  | /** A row of the sidebar list on screen, by click or the Alt+↑/↓ or Alt+Shift+↑/↓ walk. */ 'room-list'
   | 'room-action'
   | /** A visit-history jump (Ctrl/Cmd+digit), which may land outside the list on screen. */ 'shortcut'
   | 'room-hop'

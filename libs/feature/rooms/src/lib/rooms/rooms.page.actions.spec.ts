@@ -1178,10 +1178,13 @@ describe('RoomsPage room / DM / invite actions', () => {
     shell.members.onSelectMember(bob);
     ref.close('@bob:hs');
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
-    shell.routing.onSelectRoomSelection({
-      accountId: '@me:hs',
-      roomId: '!second:hs',
-    });
+    shell.routing.onSelectRoomSelection(
+      {
+        accountId: '@me:hs',
+        roomId: '!second:hs',
+      },
+      'room-list',
+    );
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-threads' });
 

@@ -131,13 +131,14 @@ export class AccountRoutingService {
   }
 
   /**
-   * Open the exact Account-and-Room identity emitted by a visible Room row. `onReady` runs
-   * once Workspace has opened it, for a caller that hands focus on from a control the open
-   * removes.
+   * Open an exact Account-and-Room identity. Callers name `origin` because it decides
+   * which list the Room opens in: `'room-list'` keeps a selected space, so only a row of
+   * the sidebar list on screen may use it. `onReady` runs once Workspace has opened it,
+   * for a caller that hands focus on from a control the open removes.
    */
   onSelectRoomSelection(
     selection: ExactRoomSelection,
-    origin: WorkspaceRoomNavigationOrigin = 'room-list',
+    origin: WorkspaceRoomNavigationOrigin,
     onReady?: () => void,
   ): void {
     this.openRoom(selection, origin, onReady);
