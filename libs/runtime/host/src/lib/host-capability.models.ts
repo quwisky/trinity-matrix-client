@@ -262,7 +262,11 @@ export type HostScreenPrivacySupport =
 export interface HostScreenPrivacyOperation {
   support(): Observable<HostScreenPrivacySupport>;
   set(enabled: boolean): Observable<HostOperationOutcome>;
-  /** Dismiss native UI Trinity presented over the web view (iOS). */
+  /**
+   * Dismiss native UI Trinity presented over the web view, best effort: on iOS the share sheet,
+   * browser sheet, camera or photo picker; on Android an open Custom Tab, which Android 10 and
+   * later refuse to close while Trinity is in the background.
+   */
   dismissPresented(): Observable<HostOperationOutcome>;
 }
 

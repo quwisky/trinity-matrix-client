@@ -4,7 +4,10 @@ import {
   PrivacyScreen,
   type PrivacyScreenConfig,
 } from '@capacitor/privacy-screen';
-import { AppLockPinBridge } from '@trinity/capacitor-app-lock';
+import {
+  AppLockPinBridge,
+  DISMISS_PRESENTED_TIMEOUT_MS,
+} from '@trinity/capacitor-app-lock';
 import {
   HOST_SCREEN_PRIVACY_OPERATION,
   HostDeepLinksService,
@@ -22,6 +25,7 @@ import {
   map,
   of,
   take,
+  timeout,
 } from 'rxjs';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
 
@@ -110,9 +114,14 @@ export class CapacitorScreenPrivacyAdapter implements HostScreenPrivacyOperation
     );
   }
 
+  /**
+   * Never holds up the dismissal's answer: a close that hasn't answered within the bridge's own
+   * 2 s cap is let go.
+   */
   private closeCustomTab(): Observable<unknown> {
     return this.deepLinks.closeAuthentication().pipe(
       take(1),
+      timeout({ first: DISMISS_PRESENTED_TIMEOUT_MS, with: () => of(null) }),
       defaultIfEmpty(null),
       catchError(() => of(null)),
     );

@@ -10,8 +10,16 @@ import {
   type HostOperationOutcome,
 } from '@trinity/runtime/host';
 import { desktopBridgeFixture } from '@trinity/testing';
-import { type Observable, firstValueFrom, of, throwError } from 'rxjs';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NEVER, type Observable, firstValueFrom, of, throwError } from 'rxjs';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from 'vitest';
 
 const privacy = vi.hoisted(() => ({ enable: vi.fn(), disable: vi.fn() }));
 vi.mock('@capacitor/privacy-screen', () => ({ PrivacyScreen: privacy }));
@@ -176,6 +184,29 @@ describe('CapacitorScreenPrivacyAdapter', () => {
     );
     await expect(firstValueFrom(screen.dismissPresented())).resolves.toEqual({
       kind: 'completed',
+    });
+  });
+
+  it('answers the dismissal on Android after 2 s when closing the Custom Tab never answers', async () => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('android');
+    const { adapter: screen } = adapter(
+      vi.fn(() => of<AppLockDismissal>('timed-out')),
+      vi.fn(() => NEVER),
+    );
+    const answer = vi.fn();
+    screen.dismissPresented().subscribe(answer);
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(answer).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(answer).toHaveBeenCalledExactlyOnceWith({
+      kind: 'rejected',
+      diagnostic: { code: 'dismiss-timeout' },
     });
   });
 
