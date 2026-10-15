@@ -617,7 +617,7 @@ describe('AppLockGroupComponent', () => {
       expect(
         screen.getByTestId('app-lock-screen-privacy').textContent?.trim(),
       ).toBe(
-        'While App lock is on, the app switcher shows a blurred cover instead of Trinity Next. On iPad, the cover also shows while you use another app beside Trinity Next.',
+        'While App lock is on, the app switcher shows a blurred cover instead of Trinity Next. On iPad, the cover may also show while you use another app beside Trinity Next.',
       );
     });
 

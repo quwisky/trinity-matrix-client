@@ -172,8 +172,8 @@ export function pinUnreadableNote(
 /**
  * What the host's app-switcher cover does while App lock is on (spec §4). A cover that also
  * blocks capture (Android's FLAG_SECURE) says so, as people would otherwise take it for a fault;
- * one that doesn't (the iOS blur) covers the snapshot, and on iPad Trinity's pane whenever another
- * app beside it has focus (Split View, Slide Over).
+ * one that doesn't (the iOS blur) covers the snapshot, and may also cover Trinity's pane on iPad
+ * while another app beside it has focus (unverified on device).
  */
 export function screenPrivacyNote(
   appName: string,
@@ -181,7 +181,7 @@ export function screenPrivacyNote(
 ): string {
   return blocksCapture
     ? `While App lock is on, ${appName} also blocks screenshots and screen recording, and hides its preview in recent apps.`
-    : `While App lock is on, the app switcher shows a blurred cover instead of ${appName}. On iPad, the cover also shows while you use another app beside ${appName}.`;
+    : `While App lock is on, the app switcher shows a blurred cover instead of ${appName}. On iPad, the cover may also show while you use another app beside ${appName}.`;
 }
 
 /** The lock is on with no PIN and no system prompt: nothing can confirm a change here. */
