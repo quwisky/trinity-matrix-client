@@ -36,7 +36,7 @@ import {
  * Not bounded: the focused room. The release after the window has been hidden for a
  * minute retires only the retained handles and keeps the focused conversation on screen,
  * so a room left open in a hidden window keeps every event it receives until the person
- * moves to another room and its handle retires, or the app restarts.
+ * moves to another room and its handle retires, or the app restarts (#1366).
  */
 @Injectable({ providedIn: 'root' })
 export class LiveTimelineTrimmer {

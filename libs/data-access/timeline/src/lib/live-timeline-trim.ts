@@ -28,6 +28,12 @@ export const TRIM_HIGH_WATER = 200;
  * marker stop protecting the events after them, about 2 MB. The room is then trimmed to
  * its latest events like any other. Unread counts live on the room and stay; what goes is
  * the "New messages" divider when the room is opened again, as after a restart.
+ *
+ * In an encrypted room, re-fetched events decrypt again, and the SDK counts those after a
+ * receipt it does not have loaded as unread a second time. That needs the room opened
+ * while the window has no focus, since `TimelineService.markRead` holds the receipt until
+ * then, and scrolled back past the kept events; focusing re-acks and the next sync resets
+ * the count. It also happens below this ceiling when the receipt was not loaded.
  */
 export const TRIM_CEILING = 1_000;
 
