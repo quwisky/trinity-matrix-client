@@ -55,7 +55,7 @@ interface Entry {
  * A row's signal lives while the row holds it or a body for it is observed: a body replaced by
  * an edit keeps feeding the same row, and the entries stay as many as the rendered rows (#1361).
  * Past that, only the ids of rows measured long are remembered, up to
- * {@link REMEMBERED_LONG_ROWS} and until the list moves to another room.
+ * {@link REMEMBERED_LONG_ROWS} and until the list moves to another room or closes.
  */
 @Injectable()
 export class BodyOverflowObserver implements OnDestroy {

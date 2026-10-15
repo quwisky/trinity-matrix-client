@@ -30,8 +30,8 @@ export function releaseInputTargetOnDestroy(): void {
 
 /**
  * The element the input-modality detector last recorded a press or key on, or `null`. Call it
- * in an injection context. For specs outside this library, which may not reach the CDK, that
- * check a component lets go of it ({@link releaseInputTargetOnDestroy}).
+ * in an injection context. It is for specs outside this library, which may not import the CDK,
+ * to check that a component let go of it ({@link releaseInputTargetOnDestroy}).
  */
 export function lastInputTarget(): Element | null {
   return inject(InputModalityDetector)._mostRecentTarget;
