@@ -1,6 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { lastInputTarget } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnTooltip } from '@trinity/components/generic-content';
@@ -88,6 +89,27 @@ describe('MemberListComponent', () => {
       .click();
 
     expect(dismissed).toHaveBeenCalledOnce();
+  });
+
+  // Closing the panel or replacing it with another destroys it; the CDK's input-modality
+  // detector kept the pressed row, and through it the whole detached roster (#1361).
+  it('lets go of the last pressed element inside it when it goes', async () => {
+    const { fixture, container } = await render(MemberListComponent, {
+      inputs: { members: MEMBERS },
+      ...opts,
+    });
+    const row = container.querySelector<HTMLElement>(
+      '[data-testid="member-row"]',
+    )!;
+    const last = () => TestBed.runInInjectionContext(lastInputTarget);
+    row.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, buttons: 1, detail: 1 }),
+    );
+    expect(last()).toBe(row);
+
+    fixture.destroy();
+
+    expect(last()).toBeNull();
   });
 
   it('omits the header in the settings reuse', async () => {

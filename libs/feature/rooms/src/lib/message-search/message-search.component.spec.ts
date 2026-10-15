@@ -1,5 +1,6 @@
 import { inject, signal } from '@angular/core';
-import { type ComponentFixture } from '@angular/core/testing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { lastInputTarget } from '@trinity/components/overlay';
 import { fireEvent, render } from '@trinity/testing';
 import {
   type LoadedMessageSearch,
@@ -94,6 +95,22 @@ describe('MessageSearchComponent', () => {
       of<ServerMessageSearch>({ hits: [], count: 0, nextBatch: null }),
     );
     loadMoreHistory = vi.fn(() => of(0));
+  });
+
+  // Closing the panel or replacing it with another destroys it; the CDK's input-modality
+  // detector kept the pressed field, and through it the whole detached panel (#1361).
+  it('lets go of the last pressed element inside it when it goes', async () => {
+    const { fixture, container } = await build(loaded());
+    const field = container.querySelector('[data-autofocus]') as HTMLElement;
+    const last = () => TestBed.runInInjectionContext(lastInputTarget);
+    field.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, buttons: 1, detail: 1 }),
+    );
+    expect(last()).toBe(field);
+
+    fixture.destroy();
+
+    expect(last()).toBeNull();
   });
 
   it('lands focus in the query field as soon as the panel renders', async () => {
