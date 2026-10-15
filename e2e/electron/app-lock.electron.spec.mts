@@ -311,11 +311,10 @@ test.describe('App lock in the desktop shell', () => {
       const cover = page.getByTestId('app-lock-cover');
       await page.keyboard.press('Control+Shift+L');
       await expect(cover).toHaveAttribute('open', '', { timeout: 15_000 });
-      // Over a dialog the heading is checked by its text: CDK marks trn-root aria-hidden
-      // while its dialog is open, which hides the cover from assistive technology too.
-      await expect(cover.locator('#app-lock-heading')).toHaveText(
-        `${appName} is locked`,
-      );
+      // Over the dialog, the cover is still named for assistive technology.
+      await expect(
+        page.getByRole('heading', { name: `${appName} is locked` }),
+      ).toBeVisible();
       // The title, the taskbar and window switchers show only the app's name.
       await expect(page).toHaveTitle(appName);
       expect(await windowTitle(app)).toBe(appName);
@@ -435,34 +434,91 @@ test.describe('App lock in the desktop shell', () => {
     }
   });
 
-  // Known defect: while a CDK dialog is open, CDK sets aria-hidden="true" on every child of
-  // <body> but its overlay container, trn-root included, so the cover inside it is hidden from
-  // assistive technology; showModal() makes the dialog beneath inert, which leaves a screen
-  // reader nothing. Turn this on with the cover's fix.
-  test.fixme('names the lock screen for assistive technology over an open dialog', async ({
+  // An open CDK dialog marks every <body> child but its overlay container aria-hidden. The
+  // cover lives in its own <body> child that CDK skips, so a screen reader still gets it, and
+  // CDK's own aria-hidden is as CDK left it after unlock.
+  async function pinOnlyAppLock(
+    request: APIRequestContext,
+    localpart: string,
+  ): Promise<{ app: ElectronApplication; page: Page; appName: string }> {
+    const hs = session.hs as string;
+    await registerUser(request, localpart, `${localpart}-pass`);
+    const app = await launchApp();
+    await installFakes(app);
+    await setFakes(app, { system: 'unavailable' });
+    const page = await app.firstWindow();
+    const appName = await appNameOf(page);
+    await login(
+      page,
+      { available: true, hs, user: localpart, pass: `${localpart}-pass` },
+      electronNavigate,
+    );
+    await turnOnAppLock(page, appName);
+    return { app, page, appName };
+  }
+
+  test('names the lock screen for assistive technology over an open dialog', async ({
     request,
     matrixResources,
   }) => {
-    const hs = session.hs as string;
-    const me = matrixResources.userLocalpart('app-lock-a11y');
-    await registerUser(request, me, `${me}-pass`);
-    const app = await launchApp();
+    const { app, page, appName } = await pinOnlyAppLock(
+      request,
+      matrixResources.userLocalpart('app-lock-a11y'),
+    );
     try {
-      await installFakes(app);
-      await setFakes(app, { system: 'unavailable' });
-      const page = await app.firstWindow();
-      const appName = await appNameOf(page);
-      await login(
-        page,
-        { available: true, hs, user: me, pass: `${me}-pass` },
-        electronNavigate,
-      );
-      await turnOnAppLock(page, appName);
+      const root = page.locator('trn-root');
+      const settings = page.getByTestId('settings-nav-security');
+      // Settings is still open from turning the lock on.
+      await expect(root).toHaveAttribute('aria-hidden', 'true');
       await lockFromMenu(app);
       await expect(
         page.getByRole('dialog', { name: `${appName} is locked` }),
       ).toBeVisible({ timeout: 15_000 });
+      await expect(
+        page.getByRole('heading', { name: `${appName} is locked` }),
+      ).toBeVisible();
       await expect(page.getByLabel(`${appName} PIN`)).toBeVisible();
+      await unlockWithPin(page, appName);
+      // Settings is still open beneath, and CDK still hides the rest as it set it.
+      await expect(settings).toBeVisible();
+      await expect(root).toHaveAttribute('aria-hidden', 'true');
+      await page.keyboard.press('Escape');
+      await expect(settings).toHaveCount(0);
+      await expect(root).not.toHaveAttribute('aria-hidden');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('names the lock screen for assistive technology over a dialog opened while locked', async ({
+    request,
+    matrixResources,
+  }) => {
+    const { app, page, appName } = await pinOnlyAppLock(
+      request,
+      matrixResources.userLocalpart('app-lock-a11y-late'),
+    );
+    try {
+      const root = page.locator('trn-root');
+      const settings = page.getByTestId('settings-nav-security');
+      await page.keyboard.press('Escape');
+      await expect(settings).toHaveCount(0);
+      await expect(root).not.toHaveAttribute('aria-hidden');
+      await lockFromMenu(app);
+      const cover = page.getByRole('dialog', { name: `${appName} is locked` });
+      await expect(cover).toBeVisible({ timeout: 15_000 });
+      // The app opens a dialog while locked: Settings, by a click dispatched to the hidden,
+      // inert button. CDK hides the root, not the cover, and focus stays in the cover.
+      await page.getByTestId('open-settings').dispatchEvent('click');
+      await expect(settings).toBeAttached();
+      await expect(root).toHaveAttribute('aria-hidden', 'true');
+      await expect(cover).toBeVisible();
+      await expect(page.getByLabel(`${appName} PIN`)).toBeFocused();
+      await unlockWithPin(page, appName);
+      await expect(settings).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(settings).toHaveCount(0);
+      await expect(root).not.toHaveAttribute('aria-hidden');
     } finally {
       await app.close();
     }
