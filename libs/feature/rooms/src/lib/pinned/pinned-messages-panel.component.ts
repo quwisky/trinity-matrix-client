@@ -14,6 +14,7 @@ import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   TrnOverlaySurfaceDirective,
   TrnToastService,
+  releaseInputTargetOnDestroy,
 } from '@trinity/components/overlay';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { TrnIconComponent } from '@trinity/components/foundations';
@@ -66,6 +67,9 @@ export class PinnedMessagesPanelComponent {
   constructor() {
     // Reopening the panel retries pins whose fetch failed.
     this.pins.retryFailed();
+    // Closed or replaced after a press or key inside it, the panel would otherwise stay in
+    // memory, detached, as the CDK's last input target until the next one (#1361).
+    releaseInputTargetOnDestroy();
   }
 
   /** Row tap: announce the chosen event id for a timeline jump. */

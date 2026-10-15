@@ -43,6 +43,10 @@ export {
 export { TrnToasterComponent } from './lib/toast/trn-toaster.component';
 export { TrnOverlaySurfaceDirective } from './lib/surface/trn-overlay-surface.directive';
 export {
+  lastInputTarget,
+  releaseInputTargetOnDestroy,
+} from './lib/input-target/release-input-target';
+export {
   TrnSettingsLayoutComponent,
   type TrnSettingsLayoutSection,
 } from './lib/settings-layout/trn-settings-layout.component';

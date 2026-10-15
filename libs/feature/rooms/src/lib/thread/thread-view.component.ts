@@ -39,6 +39,7 @@ import { TypingIndicatorComponent } from '../message-list/typing-indicator/typin
 import {
   TrnSurfaceService,
   TrnOverlaySurfaceDirective,
+  releaseInputTargetOnDestroy,
 } from '@trinity/components/overlay';
 import {
   ConversationRuntime,
@@ -219,6 +220,12 @@ export class ThreadViewComponent implements OnDestroy {
   readonly loadingOlder = computed(
     () => this.openedThread()?.loadingOlder() ?? false,
   );
+
+  constructor() {
+    // A thread closed by a press or key inside it (its close button, Escape) would otherwise
+    // stay in memory, detached, as the CDK's last input target until the next one (#1361).
+    releaseInputTargetOnDestroy();
+  }
 
   ngOnDestroy(): void {
     // The sheet is a modal over this panel; leaving it standing would dispatch against a

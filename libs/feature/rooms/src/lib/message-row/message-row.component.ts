@@ -12,6 +12,7 @@ import {
   output,
   signal,
   viewChild,
+  type Signal,
 } from '@angular/core';
 import { DateTimeFormatService, isMobileOs } from '@trinity/platform-native';
 import { AvatarComponent } from '@trinity/components/generic-content';
@@ -189,6 +190,8 @@ export class MessageRowComponent {
   private readonly bodyOverflow = inject(BodyOverflowObserver, {
     optional: true,
   });
+  /** The list's measurement of this row's body, held while the row is rendered. */
+  private readonly bodyMeasurement = signal<Signal<boolean> | null>(null);
   /** The list's scroll state; absent where a row renders outside the timeline. */
   private readonly scrollActivity = inject(TimelineScrollActivity, {
     optional: true,
@@ -245,6 +248,18 @@ export class MessageRowComponent {
     effect(() => {
       if (!this.toolbar()) this.menuOpen.set(false);
     });
+    // The list keeps a row's measurement only while the row holds it (#1361), and hands it out
+    // only with the hold. Keyed by the id alone, so a row update (a reaction, a receipt) does
+    // not let go and take it again.
+    const bodyOverflow = this.bodyOverflow;
+    if (this.bodyClampable && bodyOverflow) {
+      const id = computed(() => this.row().id);
+      effect((onCleanup) => {
+        const { long, release } = bodyOverflow.hold(id());
+        this.bodyMeasurement.set(long);
+        onCleanup(release);
+      });
+    }
     this.destroyRef.onDestroy(() => {
       this.cancelLongPress();
       this.hideToolbar();
@@ -743,11 +758,7 @@ export class MessageRowComponent {
   readonly bodyClampable = !!this.expandedBodies && !!this.bodyOverflow;
 
   /** Whether the body is taller than 24 lines, as the list last measured it. */
-  readonly bodyLong = computed(
-    () =>
-      this.bodyClampable &&
-      (this.bodyOverflow?.overflowing(this.row().id)() ?? false),
-  );
+  readonly bodyLong = computed(() => this.bodyMeasurement()?.() ?? false);
 
   readonly bodyExpanded = computed(
     () => this.expandedBodies?.expanded().has(this.row().id) ?? false,

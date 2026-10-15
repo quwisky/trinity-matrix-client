@@ -5,6 +5,7 @@ import {
   TrnAlertService,
   TrnSurfaceService,
   TrnToastService,
+  lastInputTarget,
 } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import type {
@@ -31,6 +32,7 @@ function belowMembers(matches: boolean): void {
     removeEventListener: () => undefined,
   }));
 }
+
 vi.mock('@trinity/platform-native', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@trinity/platform-native')>()),
   isMobileOs: () => platform.mobile,
@@ -310,6 +312,24 @@ async function build(
 }
 
 describe('ThreadViewComponent', () => {
+  // A thread closed with a press on its close button left the CDK's input-modality detector
+  // holding that button, and through it the whole detached panel (#1361).
+  it('lets go of the last pressed element inside it when it closes', async () => {
+    const { fixture } = await build();
+    const close = (fixture.nativeElement as HTMLElement).querySelector(
+      'button[aria-label="Close thread"]',
+    ) as HTMLButtonElement;
+    const last = () => TestBed.runInInjectionContext(lastInputTarget);
+    close.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, buttons: 1, detail: 1 }),
+    );
+    expect(last()).toBe(close);
+
+    fixture.destroy();
+
+    expect(last()).toBeNull();
+  });
+
   it('marks its named close button as the panel focus target', async () => {
     const { container } = await build();
 

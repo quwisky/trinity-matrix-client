@@ -49,17 +49,19 @@ const fileMedia = {
 
 /**
  * Render one row as a list would: its observer says whether the body is long. `store: false`
- * leaves out the rooms page and `observer: false` the list, as rows rendered elsewhere are.
+ * leaves out the rooms page and `observer: false` the list, as rows rendered elsewhere are;
+ * `observer: 'real'` gives the row the list's own observer instead of a stand-in.
  */
 async function renderRow(options: {
   long: boolean;
   store?: boolean;
-  observer?: boolean;
+  observer?: boolean | 'real';
   row?: Partial<MessageRow>;
 }) {
   const long = signal(options.long);
+  const release = vi.fn();
   const overflow = {
-    overflowing: vi.fn(() => long.asReadonly()),
+    hold: vi.fn(() => ({ long: long.asReadonly(), release })),
     observe: vi.fn(),
     unobserve: vi.fn(),
     clear: vi.fn(),
@@ -71,7 +73,9 @@ async function renderRow(options: {
       MockProvider(MediaPipeline, { resolveMedia: () => of('') }),
       ...(options.observer === false
         ? []
-        : [{ provide: BodyOverflowObserver, useValue: overflow }]),
+        : options.observer === 'real'
+          ? [BodyOverflowObserver]
+          : [{ provide: BodyOverflowObserver, useValue: overflow }]),
       ...(options.store === false
         ? []
         : [
@@ -89,7 +93,7 @@ async function renderRow(options: {
     result.container.querySelector<HTMLButtonElement>(
       '[data-testid="msg-show-more"]',
     );
-  return { ...result, clamp, button };
+  return { ...result, clamp, button, overflow, release };
 }
 
 describe('MessageRowComponent — Show more', () => {
@@ -153,6 +157,57 @@ describe('MessageRowComponent — Show more', () => {
     fixture.detectChanges();
 
     expect(button()?.textContent?.trim()).toBe('Show less');
+  });
+
+  // The list's observer keeps a row's measurement only while something needs it, so the row
+  // holds its id for as long as it reads it, and lets go when it goes (#1361).
+  it('holds its measurement while rendered and lets go when it goes', async () => {
+    const { fixture, overflow, release } = await renderRow({ long: true });
+
+    expect(overflow.hold).toHaveBeenCalledWith('$1');
+    expect(release).not.toHaveBeenCalled();
+
+    fixture.destroy();
+
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  // The list's own observer, not a stand-in: an edit swaps the plain body for a formatted one,
+  // and the row keeps following the measurement it holds, then leaves nothing behind.
+  it('follows its body through the list observer across an edit, and leaves no entry', async () => {
+    const { fixture, button } = await renderRow({
+      long: false,
+      observer: 'real',
+    });
+    const overflow = fixture.debugElement.injector.get(BodyOverflowObserver);
+    const report = (height: number) => {
+      const body = fixture.nativeElement.querySelector(
+        '.msg__clamp > .msg__text',
+      ) as HTMLElement;
+      const observer = (
+        ResizeObserver as unknown as {
+          instances: { observed: Set<Element>; emit(e: unknown[]): void }[];
+        }
+      ).instances.find((candidate) => candidate.observed.has(body));
+      observer?.emit([
+        { target: body, contentBoxSize: [{ blockSize: height }] },
+      ]);
+      fixture.detectChanges();
+    };
+
+    report(40 * 24);
+    expect(button()?.textContent?.trim()).toBe('Show more');
+
+    fixture.componentRef.setInput(
+      'row',
+      row({ html: '<p>short <strong>edit</strong></p>', body: 'short edit' }),
+    );
+    fixture.detectChanges();
+    report(2 * 24);
+    expect(button()).toBeNull();
+
+    fixture.destroy();
+    expect(overflow['entries'].size).toBe(0);
   });
 
   it('never clamps where no rooms page keeps the state', async () => {

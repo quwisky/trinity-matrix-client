@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BODY_LIMIT_LINES,
   BodyMeasureDirective,
+  REMEMBERED_LONG_ROWS,
   BodyOverflowObserver,
 } from './body-overflow';
 
@@ -72,6 +73,22 @@ function body(): HTMLElement {
   return element;
 }
 
+/** How many rows the observer keeps a live measurement for. */
+const tracked = (overflow: BodyOverflowObserver): number =>
+  overflow['entries'].size;
+
+/** How many rows the observer remembers as long. */
+const remembered = (overflow: BodyOverflowObserver): number =>
+  overflow['longIds'].size;
+
+/** Row `id`'s measurement, read as a row reads it: while holding it. */
+function longOf(overflow: BodyOverflowObserver, id: string): boolean {
+  const { long, release } = overflow.hold(id);
+  const value = long();
+  release();
+  return value;
+}
+
 describe('BodyOverflowObserver', () => {
   let overflow: BodyOverflowObserver;
 
@@ -86,7 +103,7 @@ describe('BodyOverflowObserver', () => {
 
     report(observerOf(element), element, BODY_LIMIT_LINES * LINE_PX);
 
-    expect(overflow.overflowing('$a')()).toBe(false);
+    expect(longOf(overflow, '$a')).toBe(false);
   });
 
   it('reports a body taller than 24 lines', () => {
@@ -95,7 +112,7 @@ describe('BodyOverflowObserver', () => {
 
     report(observerOf(element), element, 25 * LINE_PX);
 
-    expect(overflow.overflowing('$a')()).toBe(true);
+    expect(longOf(overflow, '$a')).toBe(true);
   });
 
   it('follows a body that grows later, as images and maths load', () => {
@@ -104,14 +121,14 @@ describe('BodyOverflowObserver', () => {
     const observer = observerOf(element);
 
     report(observer, element, 10 * LINE_PX);
-    expect(overflow.overflowing('$a')()).toBe(false);
+    expect(longOf(overflow, '$a')).toBe(false);
 
     report(observer, element, 40 * LINE_PX);
-    expect(overflow.overflowing('$a')()).toBe(true);
+    expect(longOf(overflow, '$a')).toBe(true);
   });
 
   it('re-measures a replaced body element for the same row', () => {
-    const tracked = overflow.overflowing('$a');
+    const tracked = overflow.hold('$a').long;
     const plain = body();
     overflow.observe(plain, '$a');
     report(observerOf(plain), plain, 30 * LINE_PX);
@@ -134,7 +151,7 @@ describe('BodyOverflowObserver', () => {
 
     report(observer, element, 40 * LINE_PX);
 
-    expect(overflow.overflowing('$a')()).toBe(false);
+    expect(longOf(overflow, '$a')).toBe(false);
   });
 
   // A formatted body pads itself by the focus-ring reach (so an overflow clip keeps rings
@@ -145,7 +162,7 @@ describe('BodyOverflowObserver', () => {
 
     report(observerOf(element), element, 24 * LINE_PX, 8);
 
-    expect(overflow.overflowing('$a')()).toBe(false);
+    expect(longOf(overflow, '$a')).toBe(false);
   });
 
   it('measures from the content height where an entry carries no box sizes', () => {
@@ -160,7 +177,7 @@ describe('BodyOverflowObserver', () => {
       { target: element } as unknown as ResizeObserverEntry,
     ]);
 
-    expect(overflow.overflowing('$a')()).toBe(true);
+    expect(longOf(overflow, '$a')).toBe(true);
   });
 
   it('leaves the block padding out where an entry carries no box sizes', () => {
@@ -186,14 +203,14 @@ describe('BodyOverflowObserver', () => {
       { target: element } as unknown as ResizeObserverEntry,
     ]);
 
-    expect(overflow.overflowing('$a')()).toBe(false);
+    expect(longOf(overflow, '$a')).toBe(false);
   });
 
   it('forgets a row no longer shown when cleared', () => {
+    const tracked = overflow.hold('$a').long;
     const element = body();
     overflow.observe(element, '$a');
     report(observerOf(element), element, 40 * LINE_PX);
-    const tracked = overflow.overflowing('$a');
     overflow.unobserve(element);
 
     overflow.clear();
@@ -202,11 +219,11 @@ describe('BodyOverflowObserver', () => {
   });
 
   it('keeps a row still shown long when cleared, without asking again', () => {
+    const tracked = overflow.hold('$a').long;
     const element = body();
     overflow.observe(element, '$a');
     const observer = observerOf(element) as TestResizeObserver & ResizeObserver;
     report(observer, element, 40 * LINE_PX);
-    const tracked = overflow.overflowing('$a');
     const observe = vi.spyOn(observer, 'observe');
     const unobserve = vi.spyOn(observer, 'unobserve');
 
@@ -221,6 +238,139 @@ describe('BodyOverflowObserver', () => {
     // The observer goes on updating it.
     report(observer, element, 10 * LINE_PX);
     expect(tracked()).toBe(false);
+  });
+
+  // A measurement comes only with a hold, so no reader can create an entry nothing lets go of.
+  it('hands a row its measurement with its hold, and forgets it once let go', () => {
+    const row = overflow.hold('$a');
+    const element = body();
+    overflow.observe(element, '$a');
+    report(observerOf(element), element, 30 * LINE_PX);
+    expect(row.long()).toBe(true);
+
+    overflow.unobserve(element);
+    row.release();
+
+    expect(tracked(overflow)).toBe(0);
+  });
+
+  it('counts a hold let go once, however often it is released', () => {
+    const first = overflow.hold('$a');
+    const second = overflow.hold('$a');
+
+    first.release();
+    first.release();
+    expect(tracked(overflow)).toBe(1);
+
+    second.release();
+    expect(tracked(overflow)).toBe(0);
+  });
+
+  it('drops the entry of a row once its body is gone and its row no longer reads it', () => {
+    const elements = ['$a', '$b', '$c'].map((id) => {
+      const element = body();
+      const { release } = overflow.hold(id);
+      overflow.observe(element, id);
+      return { element, release };
+    });
+    expect(tracked(overflow)).toBe(3);
+
+    for (const { element, release } of elements.slice(0, 2)) {
+      overflow.unobserve(element);
+      release();
+    }
+
+    expect(tracked(overflow)).toBe(1);
+  });
+
+  it('keeps the entry a row reads while its body is replaced', () => {
+    const tracked = overflow.hold('$a').long;
+    const plain = body();
+    overflow.observe(plain, '$a');
+
+    overflow.unobserve(plain);
+    const formatted = body();
+    overflow.observe(formatted, '$a');
+    report(observerOf(formatted), formatted, 30 * LINE_PX);
+
+    expect(tracked()).toBe(true);
+  });
+
+  it('starts a long row that comes back collapsed, before it is measured again', () => {
+    const first = body();
+    const held = overflow.hold('$a');
+    overflow.observe(first, '$a');
+    report(observerOf(first), first, 40 * LINE_PX);
+    overflow.unobserve(first);
+    held.release();
+    expect(tracked(overflow)).toBe(0);
+
+    // The virtual timeline brings the row back: a new row, a new body element.
+    const again = overflow.hold('$a');
+    expect(again.long()).toBe(true);
+    again.release();
+  });
+
+  it('starts a short row that comes back whole', () => {
+    const first = body();
+    const held = overflow.hold('$a');
+    overflow.observe(first, '$a');
+    report(observerOf(first), first, 40 * LINE_PX);
+    report(observerOf(first), first, 10 * LINE_PX);
+    overflow.unobserve(first);
+    held.release();
+
+    const again = overflow.hold('$a');
+    expect(again.long()).toBe(false);
+    again.release();
+  });
+
+  it('remembers only rows it measured long, and only so many of them', () => {
+    const ids = Array.from(
+      { length: REMEMBERED_LONG_ROWS + 50 },
+      (_, i) => `$${i}`,
+    );
+    for (const id of ids) {
+      const element = body();
+      const { release } = overflow.hold(id);
+      overflow.observe(element, id);
+      report(observerOf(element), element, 40 * LINE_PX);
+      overflow.unobserve(element);
+      release();
+    }
+    const short = body();
+    const { release } = overflow.hold('$short');
+    overflow.observe(short, '$short');
+    report(observerOf(short), short, 10 * LINE_PX);
+    overflow.unobserve(short);
+    release();
+
+    expect(tracked(overflow)).toBe(0);
+    expect(remembered(overflow)).toBe(REMEMBERED_LONG_ROWS);
+    // The oldest go first.
+    expect(longOf(overflow, ids[0])).toBe(false);
+    expect(longOf(overflow, ids[ids.length - 1])).toBe(true);
+  });
+
+  it('forgets the rows of the room it left, keeping the rows still shown', () => {
+    const shown = body();
+    overflow.hold('$shown');
+    overflow.observe(shown, '$shown');
+    report(observerOf(shown), shown, 40 * LINE_PX);
+    for (const id of ['$a', '$b']) {
+      const element = body();
+      const { release } = overflow.hold(id);
+      overflow.observe(element, id);
+      report(observerOf(element), element, 40 * LINE_PX);
+      overflow.unobserve(element);
+      release();
+    }
+    overflow.clear();
+
+    expect(tracked(overflow)).toBe(1);
+    expect(remembered(overflow)).toBe(1);
+    expect(longOf(overflow, '$shown')).toBe(true);
+    expect(longOf(overflow, '$a')).toBe(false);
   });
 
   it('lets go of every body when the list goes', () => {
@@ -290,7 +440,7 @@ describe('BodyMeasureDirective', () => {
     const overflow = fixture.debugElement.injector.get(BodyOverflowObserver);
 
     report(observerOf(element), element, 30 * LINE_PX);
-    expect(overflow.overflowing('$a')()).toBe(true);
+    expect(longOf(overflow, '$a')).toBe(true);
 
     fixture.componentInstance.shown.set(false);
     fixture.detectChanges();
@@ -308,39 +458,61 @@ describe('BodyMeasureDirective', () => {
       false,
     );
     report(observerOf(element), element, 10 * LINE_PX);
-    expect(overflow.overflowing('$a')()).toBe(false);
+    expect(longOf(overflow, '$a')).toBe(false);
 
     // The reserved box gives way to the loaded image, and the body grows past the limit.
     image.classList.remove('mx-image--loading');
     image.dispatchEvent(new Event('load'));
     report(observerOf(element), element, 10 * LINE_PX + 300);
 
-    expect(overflow.overflowing('$a')()).toBe(true);
+    expect(longOf(overflow, '$a')).toBe(true);
   });
 
   it('turns long when maths renders in place of its source', () => {
     const { element, overflow } = richBody();
     report(observerOf(element), element, 23 * LINE_PX);
-    expect(overflow.overflowing('$a')()).toBe(false);
+    expect(longOf(overflow, '$a')).toBe(false);
 
     const rendered = document.createElement('span');
     rendered.className = 'katex-display';
     element.querySelector('.mx-maths-source')?.replaceWith(rendered);
     report(observerOf(element), element, 23 * LINE_PX + 120);
 
-    expect(overflow.overflowing('$a')()).toBe(true);
+    expect(longOf(overflow, '$a')).toBe(true);
   });
 
   it('turns short again when the body shrinks within the limit', () => {
     const { element, overflow } = richBody();
     report(observerOf(element), element, 40 * LINE_PX);
-    expect(overflow.overflowing('$a')()).toBe(true);
+    expect(longOf(overflow, '$a')).toBe(true);
 
     // The image failed and fell back to its alt text, so the body is short again.
     element.querySelector('img')?.replaceWith('A chart');
     report(observerOf(element), element, 20 * LINE_PX);
 
-    expect(overflow.overflowing('$a')()).toBe(false);
+    expect(longOf(overflow, '$a')).toBe(false);
+  });
+
+  it('drops the entries of bodies the list no longer renders', () => {
+    @Component({
+      imports: [BodyMeasureDirective],
+      providers: [BodyOverflowObserver],
+      template: `@for (id of ids(); track id) {
+        <p class="body" [trnBodyMeasure]="id">text</p>
+      }`,
+    })
+    class WindowHostComponent {
+      readonly ids = signal(['$a', '$b', '$c', '$d']);
+    }
+    const fixture = TestBed.createComponent(WindowHostComponent);
+    fixture.detectChanges();
+    const overflow = fixture.debugElement.injector.get(BodyOverflowObserver);
+    expect(tracked(overflow)).toBe(4);
+
+    fixture.componentInstance.ids.set(['$c', '$d', '$e']);
+    fixture.detectChanges();
+
+    expect(tracked(overflow)).toBe(3);
   });
 
   it('measures nothing where no list provides an observer', () => {

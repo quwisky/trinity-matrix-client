@@ -19,26 +19,77 @@ import {
 export const BODY_LIMIT_LINES = 24;
 
 /**
+ * How many rows measured long a list remembers once they are no longer rendered, so a long
+ * row the virtual timeline brings back starts collapsed instead of whole for a frame. Long
+ * bodies are rare; past this many, the oldest are forgotten and measured again on return.
+ */
+export const REMEMBERED_LONG_ROWS = 500;
+
+/** A row's hold on its body measurement ({@link BodyOverflowObserver.hold}). */
+export interface BodyOverflowHold {
+  /**
+   * Whether the body is taller than {@link BODY_LIMIT_LINES}; false until measured, unless the
+   * row was measured long before.
+   */
+  readonly long: Signal<boolean>;
+  /** Let go of the measurement; later calls do nothing. */
+  release(): void;
+}
+
+/** A row's live measurement, and who still needs it. */
+interface Entry {
+  readonly long: WritableSignal<boolean>;
+  /** Rows reading the signal ({@link BodyOverflowObserver.hold}). */
+  holds: number;
+  /** Body elements observed for the row. */
+  bodies: number;
+}
+
+/**
  * Which message bodies are taller than {@link BODY_LIMIT_LINES}: one `ResizeObserver` per list,
  * provided by the timeline and the thread view. The comparison happens inside the observer's
  * callback, after layout, and writes one signal per row, so no render path reads layout. The
  * observed element is the uncapped body inside the clamp wrapper, so content that arrives later
- * (an image, maths) fires the observer again. Signals are keyed by row id and outlive the
- * element: a body replaced by an edit keeps feeding the same row.
+ * (an image, maths) fires the observer again.
+ *
+ * A row's signal lives while the row holds it or a body for it is observed: a body replaced by
+ * an edit keeps feeding the same row, and the entries stay as many as the rendered rows (#1361).
+ * Past that, only the ids of rows measured long are remembered, up to
+ * {@link REMEMBERED_LONG_ROWS} and until the list moves to another room or closes.
  */
 @Injectable()
 export class BodyOverflowObserver implements OnDestroy {
-  private readonly long = new Map<string, WritableSignal<boolean>>();
+  private readonly entries = new Map<string, Entry>();
+  /** Rows last measured long, oldest first. */
+  private readonly longIds = new Set<string>();
   private readonly rows = new Map<Element, string>();
   private observer: ResizeObserver | null = null;
 
-  /** Whether row `id`'s body is taller than the limit; false until measured. */
-  overflowing(id: string): Signal<boolean> {
-    return this.entry(id).asReadonly();
+  /**
+   * Keep row `id`'s measurement while a row reads it. The measurement comes only with a hold,
+   * so nothing can read one that no row lets go of; call `release` when the row goes.
+   */
+  hold(id: string): BodyOverflowHold {
+    const entry = this.entry(id);
+    entry.holds++;
+    let held = true;
+    return {
+      long: entry.long.asReadonly(),
+      release: () => {
+        if (!held) return;
+        held = false;
+        const entry = this.entries.get(id);
+        if (entry) {
+          entry.holds--;
+          this.release(id, entry);
+        }
+      },
+    };
   }
 
   observe(body: Element, id: string): void {
     this.rows.set(body, id);
+    this.entry(id).bodies++;
     if (!this.observer && typeof ResizeObserver !== 'undefined') {
       this.observer = new ResizeObserver((entries) => this.measure(entries));
     }
@@ -46,29 +97,41 @@ export class BodyOverflowObserver implements OnDestroy {
   }
 
   unobserve(body: Element): void {
+    const id = this.rows.get(body);
     this.rows.delete(body);
     this.observer?.unobserve(body);
+    const entry = id === undefined ? undefined : this.entries.get(id);
+    if (id !== undefined && entry) {
+      entry.bodies--;
+      this.release(id, entry);
+    }
   }
 
   /**
-   * Forget the measurements of rows no longer shown: the list moved to another room. Reset
-   * those signals rather than drop them, so a row that already read its signal keeps
-   * listening to the one that a later measurement writes. A body still shown (its room's rows
-   * arrived before the room id changed) keeps its measurement, which the observer goes on
-   * updating: row ids are event ids, unique across rooms, so the value is still that row's,
-   * and resetting it would show a long body uncollapsed for a frame.
+   * Forget the measurements of rows no longer shown: the list moved to another room. A row
+   * still holding its signal has it reset rather than dropped, so it keeps listening to the
+   * one that a later measurement writes. A body still shown (its room's rows arrived before
+   * the room id changed) keeps its measurement, which the observer goes on updating: row ids
+   * are event ids, unique across rooms, so the value is still that row's, and resetting it
+   * would show a long body uncollapsed for a frame.
    */
   clear(): void {
     const shown = new Set(this.rows.values());
-    for (const [id, flag] of this.long) {
-      if (!shown.has(id)) flag.set(false);
+    for (const id of this.longIds) {
+      if (!shown.has(id)) this.longIds.delete(id);
+    }
+    for (const [id, entry] of this.entries) {
+      if (shown.has(id)) continue;
+      entry.long.set(false);
+      if (entry.holds === 0) this.entries.delete(id);
     }
   }
 
   ngOnDestroy(): void {
     this.observer?.disconnect();
     this.rows.clear();
-    this.long.clear();
+    this.entries.clear();
+    this.longIds.clear();
   }
 
   private measure(entries: readonly ResizeObserverEntry[]): void {
@@ -76,15 +139,34 @@ export class BodyOverflowObserver implements OnDestroy {
       const id = this.rows.get(entry.target);
       if (id === undefined) continue;
       const limit = BODY_LIMIT_LINES * lineHeightOf(entry.target) + 1;
-      this.entry(id).set(heightOf(entry) > limit);
+      const long = heightOf(entry) > limit;
+      this.remember(id, long);
+      this.entry(id).long.set(long);
     }
   }
 
-  private entry(id: string): WritableSignal<boolean> {
-    let entry = this.long.get(id);
+  private remember(id: string, long: boolean): void {
+    this.longIds.delete(id);
+    if (!long) return;
+    this.longIds.add(id);
+    if (this.longIds.size > REMEMBERED_LONG_ROWS) {
+      const oldest = this.longIds.values().next().value;
+      if (oldest !== undefined) this.longIds.delete(oldest);
+    }
+  }
+
+  /** Drop row `id`'s entry once no row reads it and no body for it is observed. */
+  private release(id: string, entry: Entry): void {
+    if (entry.holds <= 0 && entry.bodies <= 0) {
+      this.entries.delete(id);
+    }
+  }
+
+  private entry(id: string): Entry {
+    let entry = this.entries.get(id);
     if (!entry) {
-      entry = signal(false);
-      this.long.set(id, entry);
+      entry = { long: signal(this.longIds.has(id)), holds: 0, bodies: 0 };
+      this.entries.set(id, entry);
     }
     return entry;
   }

@@ -1,4 +1,6 @@
 import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { lastInputTarget } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import {
   ConversationRuntime,
@@ -47,6 +49,22 @@ async function build(threads: ThreadSummary[] = []) {
 }
 
 describe('ThreadsListComponent', () => {
+  // Picking a thread replaces this list with the thread view; the CDK's input-modality
+  // detector kept the pressed row, and through it the whole detached list (#1361).
+  it('lets go of the last pressed element inside it when it goes', async () => {
+    const { fixture, container } = await build([summary()]);
+    const row = container.querySelector('.thread-item') as HTMLElement;
+    const last = () => TestBed.runInInjectionContext(lastInputTarget);
+    row.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, buttons: 1, detail: 1 }),
+    );
+    expect(last()).toBe(row);
+
+    fixture.destroy();
+
+    expect(last()).toBeNull();
+  });
+
   it('renders a row per thread with root preview, reply count, and last reply', async () => {
     const { container } = await build([
       summary({
