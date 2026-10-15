@@ -91,8 +91,11 @@ public class AppLockPlugin: CAPPlugin, CAPBridgedPlugin {
     ///
     /// A dismissal in code doesn't tell an SFSafariViewController's delegate it finished, so
     /// @capacitor/browser would keep it as open and refuse every later page. Its delegate hears
-    /// `safariViewControllerDidFinish`, as after Done, which only clears that state and sends
-    /// `browserFinished`; it presents and dismisses nothing, so it can't touch the cover.
+    /// `safariViewControllerDidFinish`, as after Done: that clears its state at once, and its
+    /// finished handler dismisses whatever the root presents (animated), then sends
+    /// `browserFinished`. That dismissal is a no-op here only because the presented stack is
+    /// already gone, so the call must stay before the cover is presented again; after it, the
+    /// handler would take the cover down and leave the app-switcher snapshot uncovered.
     @objc func dismissPresented(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             guard let root = self.bridge?.viewController,
