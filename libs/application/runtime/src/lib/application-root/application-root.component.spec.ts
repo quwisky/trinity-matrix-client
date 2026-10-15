@@ -181,7 +181,6 @@ describe('ApplicationRootComponent', () => {
     const workspace = container.querySelector('div') as HTMLElement;
     const cover = document.querySelector('trn-app-lock-cover');
     expect(cover).toBeTruthy();
-    expect(workspace.contains(cover)).toBe(false);
     // In its own <body> child, which an open CDK dialog's aria-hidden walk skips. A cover
     // inside a control-flow block would be put back into the root when the block renders.
     expect(cover?.parentElement).toBe(document.body);

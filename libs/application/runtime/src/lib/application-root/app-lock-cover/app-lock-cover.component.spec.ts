@@ -374,7 +374,7 @@ describe('AppLockCoverComponent', () => {
       expect(fixture.nativeElement.contains(host)).toBe(false);
     });
 
-    it('stays exposed when it locks over an open dialog', async () => {
+    it('stays exposed when it locks over an open dialog, as CDK skips [aria-live] body children', async () => {
       const { fixture, locked, settle, dialog } = await setup({
         inRoot: true,
         locked: false,
@@ -383,6 +383,14 @@ describe('AppLockCoverComponent', () => {
       locked.set(true);
       await settle();
       expect(dialog.hasAttribute('open')).toBe(true);
+      // Undocumented CDK behaviour this relies on: Dialog._hideNonDialogContentFromAssistive-
+      // Technology skips <body> children with aria-live. If a CDK upgrade drops that skip, the
+      // host itself gets aria-hidden here.
+      expect(
+        document
+          .querySelector('trn-app-lock-cover')
+          ?.getAttribute('aria-hidden'),
+      ).toBeNull();
       expect(hiddenFromAssistiveTechnology(dialog)).toBe(false);
       expect(screen.getByRole('dialog', { name: 'Trinity is locked' })).toBe(
         dialog,
@@ -390,10 +398,16 @@ describe('AppLockCoverComponent', () => {
       expect(screen.queryByRole('button', { name: 'Open room' })).toBeNull();
     });
 
-    it('stays exposed when a dialog opens while locked', async () => {
+    it('stays exposed when a dialog opens while locked, as CDK skips [aria-live] body children', async () => {
       const { fixture, dialog } = await setup({ inRoot: true });
       expect(dialog.hasAttribute('open')).toBe(true);
       await openCdkDialog(fixture.nativeElement);
+      // See above: CDK's aria-live skip keeps the host itself free of aria-hidden.
+      expect(
+        document
+          .querySelector('trn-app-lock-cover')
+          ?.getAttribute('aria-hidden'),
+      ).toBeNull();
       expect(hiddenFromAssistiveTechnology(dialog)).toBe(false);
       expect(screen.getByRole('dialog', { name: 'Trinity is locked' })).toBe(
         dialog,
@@ -1077,6 +1091,13 @@ describe('AppLockCoverComponent', () => {
       expect(screen.getByRole('status').textContent?.trim()).toBe(
         'Trinity can’t read your PIN right now. Try again.',
       );
+    });
+
+    it('describes the lock screen with why it can’t unlock', async () => {
+      await setup({ support: UNREADABLE_ONLY });
+      expect(
+        screen.getByRole('dialog', { name: 'Trinity is locked' }),
+      ).toHaveAccessibleDescription(/Trinity can’t read your PIN right now\./);
     });
 
     it('names Trinity Next when it is the app running', async () => {
