@@ -7,6 +7,7 @@ import {
   Injector,
   afterNextRender,
   afterRenderEffect,
+  computed,
   inject,
   untracked,
   viewChild,
@@ -25,7 +26,7 @@ import { shownError } from '@trinity/util/ui';
 import { EMPTY, Observable, type Subscription, take } from 'rxjs';
 import { AppLockDialogGate } from '../../composition/app-lock-dialog.gate';
 import { AppLockLifecycleBinding } from '../../composition/app-lock-lifecycle.binding';
-import { AppLockCoverState } from './app-lock-cover.state';
+import { AppLockCoverState, type CoverView } from './app-lock-cover.state';
 
 export { unlockLabel, useMethodLabel } from './app-lock-cover.copy';
 
@@ -66,6 +67,10 @@ export class AppLockCoverComponent {
 
   protected readonly state = inject(AppLockCoverState);
   protected readonly shownError = shownError;
+  /** The dialog's description: the view's own explanation, then the message line under it. */
+  protected readonly describedBy = computed(() =>
+    coverDescription(this.state.view()),
+  );
   /** A frameless desktop window keeps a drag strip where its title row was. */
   protected readonly titleRow = inject(TitleBarState).active;
 
@@ -191,5 +196,31 @@ export class AppLockCoverComponent {
       });
       return () => view.cancelAnimationFrame(frame);
     });
+  }
+}
+
+/**
+ * Ids of what explains `view` to a screen reader as the dialog gets focus. A view with no way to
+ * unlock says why in its own paragraph, which the name alone ("Trinity is locked") doesn't.
+ */
+function coverDescription(view: CoverView): string {
+  switch (view) {
+    case 'pin-unreadable':
+      return 'app-lock-unreadable-text app-lock-message';
+    case 'no-pin':
+    case 'no-pin-store':
+      return 'app-lock-recovery-text app-lock-message';
+    case 'forgot':
+      return 'app-lock-forgot-text app-lock-message';
+    case 'erase':
+      return 'app-lock-erase-text app-lock-message';
+    case 'system':
+    case 'pin':
+      return 'app-lock-message';
+    default: {
+      const unhandled: never = view;
+      void unhandled;
+      return 'app-lock-message';
+    }
   }
 }

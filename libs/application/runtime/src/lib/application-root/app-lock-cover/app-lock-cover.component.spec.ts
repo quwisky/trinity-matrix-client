@@ -1232,6 +1232,48 @@ describe('AppLockCoverComponent', () => {
       );
     });
 
+    it('describes the lock screen with why it can’t unlock when no PIN is stored', async () => {
+      await setup({ support: NO_PIN_ONLY });
+      expect(
+        screen.getByRole('dialog', { name: 'Trinity is locked' }),
+      ).toHaveAccessibleDescription(
+        /^Trinity has no PIN on this device, so it can’t unlock\. The only way back in is to erase all data on this device\./,
+      );
+    });
+
+    it('describes the lock screen where this device can’t keep a PIN', async () => {
+      await setup({ support: NO_PIN_STORE_ONLY });
+      expect(
+        screen.getByRole('dialog', { name: 'Trinity is locked' }),
+      ).toHaveAccessibleDescription(
+        /Trinity can’t check a PIN on this device, so it can’t unlock\./,
+      );
+    });
+
+    it('describes the system prompt’s button with why the PIN can’t unlock', async () => {
+      await setup({
+        support: { system: FACE.system, pin: NO_PIN_ONLY.pin },
+        system: () =>
+          of<UnlockOutcome>({ kind: 'use-pin', reason: 'locked-out' }),
+      });
+      const useSystem = await vi.waitFor(() =>
+        screen.getByRole('button', { name: 'Use Face ID' }),
+      );
+      expect(useSystem).toHaveAccessibleDescription(
+        /Trinity has no PIN on this device\./,
+      );
+    });
+
+    it('describes the erase confirmation with what erasing does', async () => {
+      await setup({ support: NO_PIN_ONLY });
+      await click(
+        screen.getByRole('button', { name: 'Erase all data on this device' }),
+      );
+      expect(
+        screen.getByRole('dialog', { name: 'Trinity is locked' }),
+      ).toHaveAccessibleDescription(/signs out every account/);
+    });
+
     it('offers only the reset where this device can’t keep a PIN', async () => {
       const { dialog } = await setup({
         support: NO_PIN_STORE_ONLY,

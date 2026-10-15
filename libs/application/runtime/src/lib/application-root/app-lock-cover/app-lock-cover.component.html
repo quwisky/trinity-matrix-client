@@ -8,11 +8,7 @@
   #dialog
   class="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-y-auto border-0 bg-[var(--trinity-surface-app)] pt-[max(var(--trinity-space-4),env(safe-area-inset-top))] pr-[max(var(--trinity-space-4),env(safe-area-inset-right))] pb-[max(var(--trinity-space-4),env(safe-area-inset-bottom))] pl-[max(var(--trinity-space-4),env(safe-area-inset-left))] text-foreground open:flex open:flex-col open:items-center open:justify-center-safe motion-safe:open:animate-in motion-safe:open:fade-in-0"
   aria-labelledby="app-lock-heading"
-  [attr.aria-describedby]="
-    state.view() === 'pin-unreadable'
-      ? 'app-lock-unreadable-text app-lock-message'
-      : 'app-lock-message'
-  "
+  [attr.aria-describedby]="describedBy()"
   data-testid="app-lock-cover"
   [attr.data-view]="state.view()"
   [style.padding-top]="
@@ -187,7 +183,10 @@
         </div>
       }
       @case ('forgot') {
-        <p class="m-0 text-sm text-[var(--trinity-text-muted)]">
+        <p
+          id="app-lock-forgot-text"
+          class="m-0 text-sm text-[var(--trinity-text-muted)]"
+        >
           {{ state.unlockText() }}, then change your PIN in Settings › Security.
         </p>
         <div class="grid w-full gap-2">
@@ -262,6 +261,7 @@
               type="button"
               data-testid="app-lock-use-system"
               data-autofocus
+              aria-describedby="app-lock-recovery-text"
               (click)="state.useSystem()"
             >
               {{ back }}
