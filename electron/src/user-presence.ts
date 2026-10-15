@@ -1,4 +1,5 @@
 import type { BrowserWindow, SystemPreferences } from 'electron';
+import { windowsHelloDriver, type WindowsHelloAddon } from './windows-hello';
 
 export type SystemPresenceUnavailableReason =
   | 'not-supported'
@@ -45,6 +46,10 @@ export interface SystemPresenceDeps {
     SystemPreferences,
     'canPromptTouchID' | 'promptTouchID'
   >;
+  /** Windows only: the loaded addon, or null when it is missing or broken. */
+  readonly windowsHello?: WindowsHelloAddon | null;
+  /** Windows only: the OS build number (Hello needs 22000, Windows 11). */
+  readonly windowsBuild?: number;
 }
 
 /** The prompt's reason, shown by the OS: 1–120 characters once cleaned and trimmed. */
@@ -109,7 +114,15 @@ export function systemPresenceDriver(
   platform: NodeJS.Platform,
   deps: SystemPresenceDeps,
 ): SystemPresenceDriver {
-  return platform === 'darwin'
-    ? touchIdDriver(deps.systemPreferences)
-    : NO_SYSTEM_PRESENCE;
+  switch (platform) {
+    case 'darwin':
+      return touchIdDriver(deps.systemPreferences);
+    case 'win32':
+      return windowsHelloDriver(
+        deps.windowsHello ?? null,
+        deps.windowsBuild ?? 0,
+      );
+    default:
+      return NO_SYSTEM_PRESENCE;
+  }
 }

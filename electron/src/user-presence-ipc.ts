@@ -1,5 +1,7 @@
 import { app, ipcMain, safeStorage, systemPreferences } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
+import { createRequire } from 'node:module';
+import { release } from 'node:os';
 import * as path from 'node:path';
 import { PIN_FILE_NAME, PinVerifier, type PinStatus } from './app-lock-pin';
 import {
@@ -8,6 +10,7 @@ import {
   type SystemPresenceDriver,
 } from './user-presence';
 import { getMainWindow } from './window';
+import { loadWindowsHello, windowsBuild } from './windows-hello';
 
 // preload.ts mirrors these by string value.
 export const USER_PRESENCE_SUPPORT_CHANNEL =
@@ -78,14 +81,35 @@ function pinSupport(pins: PinVerifier) {
 }
 
 /**
+ * This computer's system prompt: Touch ID on macOS, Windows Hello through the addon on
+ * Windows (a missing or broken addon leaves the Trinity PIN alone), none elsewhere.
+ */
+export function defaultPresenceDriver(
+  platform: NodeJS.Platform = process.platform,
+): SystemPresenceDriver {
+  return systemPresenceDriver(
+    platform,
+    platform === 'win32'
+      ? {
+          systemPreferences,
+          windowsHello: loadWindowsHello({
+            packaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            require: (file) => createRequire(__filename)(file),
+          }),
+          windowsBuild: windowsBuild(release()),
+        }
+      : { systemPreferences },
+  );
+}
+
+/**
  * Wire the `user-presence` host operation. Every channel serves only the main window's
  * renderer and validates its payload before native work; errors carry stable codes only,
  * and no answer carries the PIN, its hash or its salt.
  */
 export function registerUserPresenceIpc(
-  driver: SystemPresenceDriver = systemPresenceDriver(process.platform, {
-    systemPreferences,
-  }),
+  driver: SystemPresenceDriver = defaultPresenceDriver(),
   pins: PinVerifier = new PinVerifier({
     safeStorage,
     file: path.join(app.getPath('userData'), PIN_FILE_NAME),

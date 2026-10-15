@@ -60,16 +60,35 @@ describe('touchIdDriver', () => {
 });
 
 describe('systemPresenceDriver', () => {
-  it.each(['linux', 'win32'] as const)(
-    'has no system prompt on %s yet',
-    (platform) => {
-      expect(
-        systemPresenceDriver(platform, {
-          systemPreferences: prefs(true, () => Promise.resolve()),
-        }),
-      ).toBe(NO_SYSTEM_PRESENCE);
-    },
-  );
+  it('has no system prompt on linux', () => {
+    expect(
+      systemPresenceDriver('linux', {
+        systemPreferences: prefs(true, () => Promise.resolve()),
+      }),
+    ).toBe(NO_SYSTEM_PRESENCE);
+  });
+
+  it('offers Windows Hello on Windows 11 through the addon', async () => {
+    const windowsHello = {
+      availability: vi.fn(async () => 'available'),
+      verify: vi.fn(async () => 'verified'),
+    };
+    await expect(
+      systemPresenceDriver('win32', {
+        systemPreferences: prefs(true, () => Promise.resolve()),
+        windowsHello,
+        windowsBuild: 22631,
+      }).support(),
+    ).resolves.toEqual({ kind: 'available', biometry: 'windows-hello' });
+  });
+
+  it('leaves Windows on the PIN without the addon', async () => {
+    await expect(
+      systemPresenceDriver('win32', {
+        systemPreferences: prefs(true, () => Promise.resolve()),
+      }).support(),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'addon-unavailable' });
+  });
 });
 
 describe('presenceReason', () => {
