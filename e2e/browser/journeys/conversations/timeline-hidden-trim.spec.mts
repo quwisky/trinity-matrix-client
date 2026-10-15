@@ -19,8 +19,9 @@ import { registerUser } from '../../../support/account.mts';
 // the release delay. The first checks both halves of the rule: a room scrolled back keeps
 // its history, and a room at its newest message is trimmed at the release with its list
 // unchanged, then pages the trimmed history back in when scrolled up. The second trims
-// after the syncs that bring another member's messages, and checks that a reply's quote
-// and the "New messages" divider are still there when the window is shown.
+// after a sync and checks that the rows on screen, captured before the trim, are the same
+// after it and when the window is shown. The third checks that a reply's quote of an old
+// message and the "New messages" divider are still there when the window is shown.
 //
 // Rendering continues while "hidden" here, as on the desktop shell (`backgroundThrottling`
 // off); a really hidden web tab stops measuring rows, which the unit tests cover.
@@ -83,10 +84,11 @@ async function send(
   roomId: string,
   txn: string,
   content: Record<string, unknown>,
+  type = 'm.room.message',
 ): Promise<string> {
   return request
     .put(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/${type}/${txn}`,
       { headers: sender.headers, data: content },
     )
     .then((r) => r.json())
@@ -94,6 +96,27 @@ async function send(
 }
 
 const text = (body: string) => ({ msgtype: 'm.text', body });
+
+/** A room the reader owns and a second member writes in. */
+async function sharedRoom(
+  request: APIRequestContext,
+  hs: string,
+  runId: string,
+  name: string,
+): Promise<{ reader: ApiUser; writer: ApiUser; roomId: string }> {
+  const reader = await apiUser(request, hs, `trim-owner-${runId}`);
+  const writer = await apiUser(request, hs, `trim-writer-${runId}`);
+  const roomId = await createRoom(request, hs, reader, name);
+  await request.post(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/invite`,
+    { headers: reader.headers, data: { user_id: writer.userId } },
+  );
+  await request.post(
+    `${hs}/_matrix/client/v3/join/${encodeURIComponent(roomId)}`,
+    { headers: writer.headers, data: {} },
+  );
+  return { reader, writer, roomId };
+}
 
 /** Hide or show the window the way the web host sees it. */
 async function setHidden(page: Page, hidden: boolean): Promise<void> {
@@ -236,17 +259,6 @@ test.describe('Open room trimmed while the window is hidden', () => {
     ).toBeVisible({ timeout: 30_000 });
     await pageToStart(scroll);
     await drainHistory(scroll, historyRequests);
-    // The list counts a row it has not measured at 24 px, so that it never names fewer
-    // rows than will be on screen: no rendered row is shorter.
-    expect(
-      await scroll.evaluate((el) =>
-        Math.min(
-          ...[...el.querySelectorAll('.msg')].map(
-            (row) => row.getBoundingClientRect().height,
-          ),
-        ),
-      ),
-    ).toBeGreaterThanOrEqual(24);
 
     // Scrolled back: hidden past the release, the room keeps everything it paged in.
     await scroll.evaluate((el) => {
@@ -300,7 +312,118 @@ test.describe('Open room trimmed while the window is hidden', () => {
     expect(historyRequests.length).toBeGreaterThan(requestsAfterTrim);
   });
 
-  test('trims after a sync while others keep writing, keeping quotes and the unread divider', async ({
+  test('trims after a sync without changing the rows on screen', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(300_000);
+    // A window tall enough to show more than the 50 latest events a trim keeps anyway, so
+    // what the list reports for its view decides where the cut lands, just above the
+    // screen: a view report that named too little would lose rows on screen.
+    await page.setViewportSize({ width: 1280, height: 3000 });
+    const runId = `${testResourceId('run')}v`;
+    const hs = session.hs as string;
+    const roomName = `Hidden view trim E2E ${runId}`;
+    const { reader, writer, roomId } = await sharedRoom(
+      request,
+      hs,
+      runId,
+      roomName,
+    );
+    // Just under the high-water mark once the room's state events and the writer's
+    // messages below are counted.
+    const OWN = 175;
+    let lastOwn = '';
+    for (let i = 0; i < OWN; i++) {
+      lastOwn = await send(
+        request,
+        hs,
+        reader,
+        roomId,
+        `${runId}-${i}`,
+        text(`trim message ${i}`),
+      );
+    }
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/read_markers`,
+      {
+        headers: reader.headers,
+        data: { 'm.fully_read': lastOwn, 'm.read': lastOwn },
+      },
+    );
+    const historyRequests: string[] = [];
+    page.on('request', (req) => {
+      if (/\/rooms\/[^/]+\/messages\?/.test(req.url())) {
+        historyRequests.push(req.url());
+      }
+    });
+
+    await login(page, reader.session);
+    await page.getByTestId('rail-rooms').click();
+    await page.locator('.channel', { hasText: roomName }).first().click();
+    const scroll = page.locator('.scroll');
+    await expect(
+      scroll.getByText(`trim message ${OWN - 1}`, { exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+    await pageToStart(scroll);
+    await drainHistory(scroll, historyRequests);
+    await toNewest(scroll);
+    await settledRows(scroll);
+
+    // Hidden past the release; under the high-water mark, nothing is trimmed yet.
+    await setHidden(page, true);
+    await page.waitForTimeout(RELEASE_WAIT_MS);
+    for (let i = 0; i < 10; i++) {
+      await send(
+        request,
+        hs,
+        writer,
+        roomId,
+        `${runId}-w${i}`,
+        text(`writer message ${i}`),
+      );
+    }
+    await expect(
+      scroll.getByText('writer message 9', { exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+    const before = await settledRows(scroll);
+    const heightBefore = await scroll.evaluate((el) => el.scrollHeight);
+
+    // Events the list does not render take the room past the high-water mark, and the
+    // sync that brings them trims it: the rows above the screen go, those on it stay.
+    for (let i = 0; i < 12; i++) {
+      await send(
+        request,
+        hs,
+        writer,
+        roomId,
+        `${runId}-p${i}`,
+        { n: i },
+        'org.trinity.e2e.ping',
+      );
+    }
+    await expect
+      .poll(() => scroll.evaluate((el) => el.scrollHeight), {
+        timeout: 30_000,
+      })
+      .toBeLessThan(heightBefore);
+    expect(await settledRows(scroll)).toEqual(before);
+
+    await setHidden(page, false);
+    expect(await shownRows(scroll)).toEqual(before);
+    expect(
+      await scroll.evaluate(
+        (el) => el.scrollHeight - el.scrollTop - el.clientHeight,
+      ),
+    ).toBeLessThan(1);
+    await expect(page.getByTestId('new-messages-divider')).toBeVisible();
+
+    const requestsAfterTrim = historyRequests.length;
+    await pageToStart(scroll);
+    expect(historyRequests.length).toBeGreaterThan(requestsAfterTrim);
+  });
+
+  test('keeps a quoted message and the unread divider when trimmed after a sync', async ({
     page,
     request,
   }) => {
