@@ -558,7 +558,9 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     try {
       container.querySelector<HTMLElement>('.composer__emoji')!.click();
       TestBed.tick();
-      // The emoji grid loads behind `@defer`, so this waits for the vendor chunk.
+      // The emoji grid loads behind `@defer`, so this waits for the vendor chunk. Cold, that
+      // includes transforming emoji-mart and its data: about 13 s here, past 20 s on a loaded
+      // CI runner (#1339), so the limits are set by that cost rather than by the steps.
       await vi.waitFor(
         () => {
           TestBed.tick();
@@ -566,7 +568,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
             document.activeElement?.closest('.emoji-mart-search'),
           ).not.toBeNull();
         },
-        { timeout: 15_000 },
+        { timeout: 50_000 },
       );
     } finally {
       document.removeEventListener('focusin', record);
@@ -583,7 +585,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     expect(
       document.activeElement?.closest('.emoji-mart-search'),
     ).not.toBeNull();
-  }, 20_000);
+  }, 60_000);
 
   it('ends the sheet with one visually hidden Close button for screen readers', async () => {
     const { fixture, container } = await renderComposer();

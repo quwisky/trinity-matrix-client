@@ -292,8 +292,11 @@ test.describe('Who reacted', () => {
     ]);
     expect(sidebarBox).not.toBeNull();
     expect(detailBox).not.toBeNull();
+    // The panes share a one-pixel border, and sub-pixel layout can put the edges a few
+    // hundredths of a pixel further into each other (seen: 1.02 px on a loaded runner), so
+    // the bound allows half a pixel more than the border.
     expect(detailBox!.x).toBeGreaterThanOrEqual(
-      sidebarBox!.x + sidebarBox!.width - 1,
+      sidebarBox!.x + sidebarBox!.width - 1.5,
     );
     await expect
       .poll(async () =>
