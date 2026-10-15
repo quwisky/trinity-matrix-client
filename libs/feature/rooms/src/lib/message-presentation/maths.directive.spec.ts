@@ -2,6 +2,7 @@ import { Component, Injectable, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { sanitizeMatrixHtml } from '@trinity/util/matrix';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import { MathsLoader, type MathsRenderer } from './maths-loader';
 import {
   MAX_MATHS_PER_MESSAGE,
@@ -14,6 +15,20 @@ import {
   template: `<div class="body" [innerHTML]="html()" [trnMaths]="html()"></div>`,
 })
 class HostComponent {
+  readonly html = signal('');
+}
+
+/** The body as messages compose it: spoilers reveal on the same element. */
+@Component({
+  imports: [MathsDirective, SpoilerRevealDirective],
+  template: `<div
+    class="body"
+    [innerHTML]="html()"
+    trnSpoilerReveal
+    [trnMaths]="html()"
+  ></div>`,
+})
+class SpoilerHostComponent {
   readonly html = signal('');
 }
 
@@ -370,6 +385,38 @@ describe('MathsDirective', () => {
     await waitForCount(fixture, host, '.katex', 2);
 
     expect(annotations(host)).toEqual(['a', 'c']);
+  });
+
+  describe('inside a concealed spoiler', () => {
+    function renderWithSpoilers(formatted: string) {
+      const fixture = TestBed.createComponent(SpoilerHostComponent);
+      fixture.componentInstance.html.set(sanitizeMatrixHtml(formatted));
+      fixture.detectChanges();
+      const host = fixture.nativeElement.querySelector('.body') as HTMLElement;
+      return { fixture, host };
+    }
+
+    it('loads no KaTeX while all of a body’s maths is concealed, and loads it on reveal', async () => {
+      const { fixture, host } = renderWithSpoilers(
+        '<span data-mx-spoiler>answer <span data-mx-maths="x^2">x squared</span></span>',
+      );
+      await flush();
+      expect(stylesheet()).toBeNull();
+
+      host.querySelector<HTMLElement>('.mx-spoiler')!.click();
+      fixture.detectChanges();
+
+      await waitForCount(fixture, host, '.katex', 1);
+    });
+
+    it('loads KaTeX for maths outside a spoiler even when other maths is concealed', async () => {
+      const { fixture, host } = renderWithSpoilers(
+        '<span data-mx-maths="a">a</span> <span data-mx-spoiler><span data-mx-maths="b">b</span></span>',
+      );
+
+      // Both render once loaded: drawing a concealed formula costs nothing more.
+      await waitForCount(fixture, host, '.katex', 2);
+    });
   });
 
   it('neither parses nor loads anything for a body without maths', () => {

@@ -292,6 +292,38 @@ describe('InlineMxcImagesDirective', () => {
       expect(host.textContent).toBe('i10i11');
     });
 
+    it('fetches no emoji inside a concealed spoiler until it is revealed', async () => {
+      const { host } = await render(
+        sanitizeMatrixHtml(
+          '<span data-mx-spoiler>secret <img data-mx-emoticon src="mxc://hs/wave" alt=":wave:"></span>',
+        ),
+      );
+      // Hidden by the spoiler, but a fetch would still tell the media server it was shown.
+      expect(media.resolveMedia).not.toHaveBeenCalled();
+
+      host.querySelector<HTMLElement>('.mx-spoiler')!.click();
+
+      expect(media.resolveMedia).toHaveBeenCalledWith(
+        expect.objectContaining({ mxc: 'mxc://hs/wave' }),
+        'thumbnail',
+      );
+    });
+
+    it('fetches an emoji in nested spoilers only once the innermost is revealed', async () => {
+      const { host } = await render(
+        sanitizeMatrixHtml(
+          '<span data-mx-spoiler>outer <span data-mx-spoiler>inner <img data-mx-emoticon src="mxc://hs/wave" alt=":wave:"></span></span>',
+        ),
+      );
+      const [outer, inner] = host.querySelectorAll<HTMLElement>('.mx-spoiler');
+
+      outer.click();
+      expect(media.resolveMedia).not.toHaveBeenCalled();
+      inner.click();
+
+      expect(media.resolveMedia).toHaveBeenCalledTimes(1);
+    });
+
     it('does not fetch inside a concealed spoiler until it is revealed', async () => {
       const { host } = await render(
         sanitizeMatrixHtml(

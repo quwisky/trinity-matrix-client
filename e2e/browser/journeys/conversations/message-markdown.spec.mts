@@ -584,6 +584,56 @@ const KATEX_CSS = /\/katex\.css(?:\?|$)/;
 test.describe('Maths', () => {
   test.skip(!session.available, 'needs a homeserver');
 
+  // A concealed spoiler hides an emoji and a formula; neither is fetched until it is revealed
+  // (#1335): the emoji's request would tell the media server it was shown, and KaTeX is a
+  // download a reader who never reveals it does not need.
+  test('fetches no emoji or KaTeX for a concealed spoiler until it is revealed', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await seedFormattedRoom(request, hs, 'spoiler-emoji-maths');
+    const mxc = await uploadPng(request, hs, room, 32, 32, 'secret-emoji.png');
+    const mediaId = mxc.split('/').pop() as string;
+    await sendMessage(request, hs, room, {
+      body: 'a spoiler with an emoji and maths',
+      html: `<p>hidden: <span data-mx-spoiler><img data-mx-emoticon src="${mxc}" height="32" alt=":secret:"> <span data-mx-maths="x^2"><code>x^2</code></span></span></p>`,
+    });
+    const media: string[] = [];
+    const katex: string[] = [];
+    page.on('request', (outgoing) => {
+      const url = outgoing.url();
+      if (url.includes(mediaId)) media.push(url);
+      if (MATHS_CHUNK.test(url) || KATEX_CSS.test(url)) katex.push(url);
+    });
+
+    await signInAndOpen(page, room);
+    const spoiler = page.locator('.scroll .mx-spoiler').first();
+    await expect(spoiler).toBeVisible({ timeout: 20_000 });
+    // A negative check needs a window: let two frames pass, then hold for a second.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    await page.waitForTimeout(1_000);
+    expect(media).toEqual([]);
+    expect(katex).toEqual([]);
+
+    await spoiler.click();
+
+    await expect(spoiler.locator('img.mx-emoticon')).toHaveAttribute(
+      'src',
+      /^blob:/,
+      { timeout: 30_000 },
+    );
+    await expect(spoiler.locator('.mx-maths .katex')).toBeVisible({
+      timeout: 30_000,
+    });
+    expect(media.length).toBeGreaterThan(0);
+  });
+
   test('renders maths with KaTeX, loading it only once a room shows maths', async ({
     page,
     request,
