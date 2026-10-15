@@ -137,7 +137,9 @@ only the app's name and messages stay unread: Trinity sends no read receipts unt
 Trinity's own shortcuts, such as the quick switcher, do nothing; the menu's window and system
 commands, such as Quit, Close, Edit, zoom and full screen, still work. Notifications still
 arrive, including for the room you left open, and a notification or link you open while
-locked opens once you unlock.
+locked opens once you unlock. A verification request from another of your devices, or from
+someone else, also waits until you unlock; if it's cancelled or times out meanwhile, Trinity
+doesn't show it.
 
 **Wrong PINs.** After 5 wrong PINs in a row, Trinity makes you wait before the next try:
 30 seconds, then 1 minute, 5 minutes, 15 minutes, and then 1 hour after each further wrong

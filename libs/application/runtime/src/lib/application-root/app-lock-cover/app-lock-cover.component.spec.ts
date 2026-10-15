@@ -24,6 +24,7 @@ import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, type Observable } from 'rxjs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { AppLockDialogGate } from '../../composition/app-lock-dialog.gate';
 import { AppLockLifecycleBinding } from '../../composition/app-lock-lifecycle.binding';
 import { AppLockCoverComponent } from './app-lock-cover.component';
 
@@ -178,6 +179,16 @@ async function setup(
     options.reset ?? (() => of({ kind: 'ready' as const })),
   );
   const restart = vi.fn();
+  /** What the cover told the dialog gate, with whether its dialog was open at the time. */
+  const gateReports: { shown: boolean; dialogOpen: boolean }[] = [];
+  const coverShown = vi.fn((shown: boolean) => {
+    gateReports.push({
+      shown,
+      dialogOpen: !!document
+        .querySelector('dialog[data-testid="app-lock-cover"]')
+        ?.hasAttribute('open'),
+    });
+  });
   const rendered = await render<unknown>(
     options.inRoot ? RootLikeHostComponent : AppLockCoverComponent,
     {
@@ -199,6 +210,7 @@ async function setup(
           unlockWithPin,
         }),
         MockProvider(AppLockLifecycleBinding, { visits }),
+        MockProvider(AppLockDialogGate, { coverShown }),
         MockProvider(TitleBarState, {
           active: signal(options.titleRow ?? false).asReadonly(),
         }),
@@ -236,6 +248,7 @@ async function setup(
     coverPainted,
     resetInstallation,
     restart,
+    gateReports,
     settle,
   };
 }
@@ -309,6 +322,15 @@ describe('AppLockCoverComponent', () => {
       locked.set(false);
       await settle();
       expect(dialog.hasAttribute('open')).toBe(false);
+    });
+
+    it('tells the dialog gate it shows, and that it closed only once its dialog has', async () => {
+      const { locked, gateReports, settle } = await setup();
+      expect(gateReports.at(-1)).toEqual({ shown: true, dialogOpen: true });
+      locked.set(false);
+      await settle();
+      // Held dialogs open after the native close has put focus back, so they can take it.
+      expect(gateReports.at(-1)).toEqual({ shown: false, dialogOpen: false });
     });
 
     it('is a dialog named by its heading', async () => {

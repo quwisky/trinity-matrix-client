@@ -138,6 +138,9 @@ describe('ApplicationRootComponent', () => {
         MockProvider(AppLockService, {
           appName: 'Trinity',
           locked: signal(appLocked).asReadonly(),
+          status: signal(
+            appLocked ? ('locked' as const) : ('off' as const),
+          ).asReadonly(),
           support: signal(NO_USER_PRESENCE).asReadonly(),
           systemAvailable: signal(false).asReadonly(),
           pinState: signal<'ready'>('ready').asReadonly(),

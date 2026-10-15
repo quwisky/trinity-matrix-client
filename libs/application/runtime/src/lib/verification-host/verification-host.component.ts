@@ -5,9 +5,11 @@ import {
   ErrorHandler,
   effect,
   inject,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ENCRYPTION_DIALOG_COMPONENTS } from '../application-dialog-loaders';
+import { AppLockDialogGate } from '../composition/app-lock-dialog.gate';
 import {
   TrustVerificationService,
   type VerificationView,
@@ -18,7 +20,11 @@ import {
 } from '@trinity/components/overlay';
 import { defer, finalize, take } from 'rxjs';
 
-/** Route-independent presentation host for incoming and cross-user verification. */
+/**
+ * Route-independent presentation host for incoming and cross-user verification. A request
+ * that arrives while App lock covers the app waits for unlock (spec §2); one that is cancelled
+ * or times out while it waits is dropped unseen.
+ */
 @Component({
   selector: 'trn-verification-host',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -29,6 +35,7 @@ export class VerificationHostComponent {
   private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly errors = inject(ErrorHandler);
+  private readonly gate = inject(AppLockDialogGate);
   private readonly dialogComponents = inject(ENCRYPTION_DIALOG_COMPONENTS, {
     optional: true,
   });
@@ -38,12 +45,22 @@ export class VerificationHostComponent {
   constructor() {
     this.destroyRef.onDestroy(() => this.dismissModal());
     effect(() => {
-      const shouldShow = this.shouldPresent(this.verification.active());
-      if (shouldShow && !this.ref) {
-        this.present();
-      } else if (!shouldShow && this.ref) {
-        this.dismissModal();
-      }
+      const active = this.verification.active();
+      const clear = this.gate.clear();
+      const shouldShow = this.shouldPresent(active);
+      untracked(() => {
+        if (!shouldShow) {
+          if (this.ref) this.dismissModal();
+          return;
+        }
+        if (this.ref || this.presenting) return;
+        // Nobody saw it, and there is nothing left to answer: let it go.
+        if (active && ended(active)) {
+          this.verification.dismiss();
+          return;
+        }
+        if (clear) this.present();
+      });
     });
   }
 
@@ -64,7 +81,14 @@ export class VerificationHostComponent {
       )
       .subscribe({
         next: (DeviceVerificationPage) => {
-          if (!this.shouldPresent(this.verification.active())) return;
+          const active = this.verification.active();
+          if (!active || !this.shouldPresent(active)) return;
+          if (ended(active)) {
+            this.verification.dismiss();
+            return;
+          }
+          // Locked while the page loaded: the effect opens it once the gate clears.
+          if (!this.gate.clear()) return;
           const ref = this.dialog.open<void, unknown>(DeviceVerificationPage, {
             inputs: { asModal: true },
             disableClose: true,
@@ -85,4 +109,9 @@ export class VerificationHostComponent {
     this.ref = null;
     ref?.close();
   }
+}
+
+/** The request was cancelled, timed out or finished elsewhere. */
+function ended(active: VerificationView): boolean {
+  return active.stage === 'cancelled' || active.stage === 'done';
 }

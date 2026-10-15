@@ -23,6 +23,7 @@ import { AppLockService } from '@trinity/data-access/app-lock';
 import { HostLockIntegrationService } from '@trinity/runtime/host';
 import { shownError } from '@trinity/util/ui';
 import { EMPTY, Observable, type Subscription, take } from 'rxjs';
+import { AppLockDialogGate } from '../../composition/app-lock-dialog.gate';
 import { AppLockLifecycleBinding } from '../../composition/app-lock-lifecycle.binding';
 import { AppLockCoverState } from './app-lock-cover.state';
 
@@ -57,6 +58,7 @@ export class AppLockCoverComponent {
   private readonly document = inject(DOCUMENT);
   private readonly window = this.document.defaultView;
   private readonly injector = inject(Injector);
+  private readonly dialogGate = inject(AppLockDialogGate);
   private readonly dialog =
     viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
   private mounted = false;
@@ -124,6 +126,7 @@ export class AppLockCoverComponent {
   private open(firstRender: boolean): void {
     const dialog = this.dialog().nativeElement;
     if (!dialog.open) dialog.showModal();
+    this.dialogGate.coverShown(true);
     this.state.opened();
     this.focusPrimary();
     // Two frames: the first lays the cover out, the second has painted it. The shell keeps a
@@ -141,6 +144,8 @@ export class AppLockCoverComponent {
     this.painted = null;
     const dialog = this.dialog().nativeElement;
     if (dialog.open) dialog.close();
+    // After the native close has put focus back: a held dialog opens now and takes it.
+    this.dialogGate.coverShown(false);
     this.state.closed();
   }
 
