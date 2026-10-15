@@ -181,11 +181,21 @@ async function turnOnAppLock(page: Page, appName: string): Promise<void> {
 }
 
 /** Unlock with the PIN from the cover's PIN form. */
-async function unlockWithPin(page: Page, appName: string): Promise<void> {
+async function unlockWithPin(page: Page): Promise<void> {
   const cover = page.getByTestId('app-lock-cover');
   await cover.getByTestId('app-lock-pin').fill(PIN);
   await cover.getByTestId('app-lock-pin-submit').click();
   await expect(cover).not.toHaveAttribute('open', '', { timeout: 15_000 });
+}
+
+/** Two animation frames: anything a key press would open has rendered by then. */
+function afterTwoFrames(page: Page): Promise<void> {
+  return page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
 }
 
 let receiptChecks = 0;
@@ -270,6 +280,12 @@ test.describe('App lock in the desktop shell', () => {
       await installFakes(app);
       const page = await app.firstWindow();
       const appName = await appNameOf(page);
+      // Every read receipt and read marker the client sends, in order.
+      const acks: string[] = [];
+      page.on('request', (sent) => {
+        if (/\/receipt\/|\/read_markers/.test(sent.url()))
+          acks.push(sent.url());
+      });
       await login(
         page,
         { available: true, hs, user: me, pass: `${me}-pass` },
@@ -309,6 +325,9 @@ test.describe('App lock in the desktop shell', () => {
 
       // The shortcut locks over the open Settings dialog.
       const cover = page.getByTestId('app-lock-cover');
+      const editLockNow = page.getByTestId('shortcut-edit-lock.now');
+      await editLockNow.focus();
+      await expect(editLockNow).toBeFocused();
       await page.keyboard.press('Control+Shift+L');
       await expect(cover).toHaveAttribute('open', '', { timeout: 15_000 });
       // Over the dialog, the cover is still named for assistive technology.
@@ -319,28 +338,40 @@ test.describe('App lock in the desktop shell', () => {
       await expect(page).toHaveTitle(appName);
       expect(await windowTitle(app)).toBe(appName);
       expect((await lockMenuItem(app))?.enabled).toBe(false);
-      // App shortcuts do nothing while locked.
-      await page.keyboard.press('Control+K');
-      await expect(page.getByTestId('switcher-input')).toHaveCount(0);
       await expect(page.getByTestId('app-lock-unlock')).toHaveText(
         'Unlock with Touch ID',
       );
       await page.getByTestId('app-lock-use-pin').click();
-      await unlockWithPin(page, appName);
-      // The dialog was held beneath the lock, as it was.
+      await unlockWithPin(page);
+      // The dialog was held beneath the lock, as it was, with focus back where it was.
       await expect(page.getByTestId('shortcut-lock.now')).toBeVisible();
+      await expect(editLockNow).toBeFocused();
       await expect(page).toHaveTitle(new RegExp(roomName));
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('shortcut-lock.now')).toHaveCount(0);
 
+      // Unlocked, Ctrl+K opens the quick switcher; locked, the same chord does nothing.
+      const switcher = page.getByTestId('switcher-input');
+      await page.keyboard.press('Control+K');
+      await expect(switcher).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(switcher).toHaveCount(0);
+
       // File › Lock with the room open. A message for that room still notifies, and is not
       // marked read behind the cover.
+      const composer = page.getByTestId('composer-input');
+      await composer.focus();
+      await expect(composer).toBeFocused();
+      const acksBeforeLock = acks.length;
       await lockFromMenu(app);
       await expect(cover).toHaveAttribute('open', '', { timeout: 15_000 });
       // With no dialog beneath, the cover is a dialog named by its heading.
       await expect(
         page.getByRole('dialog', { name: `${appName} is locked` }),
       ).toBeVisible();
+      await page.keyboard.press('Control+K');
+      await afterTwoFrames(page);
+      await expect(switcher).toHaveCount(0);
       await page.bringToFront();
       // Without window focus nothing is marked read anyway, so the hold below proves nothing.
       expect(await page.evaluate(() => document.hasFocus())).toBe(true);
@@ -362,16 +393,6 @@ test.describe('App lock in the desktop shell', () => {
           { timeout: 30_000 },
         )
         .toBe(true);
-      expect(
-        await readReceiptBy(
-          request,
-          hs,
-          theirs.accessToken,
-          roomId,
-          eventId,
-          mine.userId,
-        ),
-      ).toBe(false);
 
       // A wrong PIN says so; the right one unlocks, and the held receipt goes out.
       await page.getByTestId('app-lock-use-pin').click();
@@ -381,17 +402,18 @@ test.describe('App lock in the desktop shell', () => {
         'That PIN isn’t right.',
       );
       await expect(cover).toHaveAttribute('open', '');
-      expect(
-        await readReceiptBy(
-          request,
-          hs,
-          theirs.accessToken,
-          roomId,
-          eventId,
-          mine.userId,
-        ),
-      ).toBe(false);
-      await unlockWithPin(page, appName);
+      // The client got the message (it notified), yet sent no receipt or read marker while
+      // locked.
+      expect(acks.slice(acksBeforeLock)).toEqual([]);
+      await unlockWithPin(page);
+      await expect(composer).toBeFocused();
+      await expect
+        .poll(() =>
+          acks
+            .slice(acksBeforeLock)
+            .some((url) => url.includes(encodeURIComponent(eventId))),
+        )
+        .toBe(true);
       await expect
         .poll(
           () =>
@@ -420,7 +442,7 @@ test.describe('App lock in the desktop shell', () => {
       await expect(page.getByTestId('app-lock-message')).toContainText(
         `Enter your ${appName} PIN`,
       );
-      await unlockWithPin(page, appName);
+      await unlockWithPin(page);
 
       // Back again, the system prompt unlocks.
       await setFakes(app, { system: 'available', answer: 'verified' });
@@ -478,7 +500,7 @@ test.describe('App lock in the desktop shell', () => {
         page.getByRole('heading', { name: `${appName} is locked` }),
       ).toBeVisible();
       await expect(page.getByLabel(`${appName} PIN`)).toBeVisible();
-      await unlockWithPin(page, appName);
+      await unlockWithPin(page);
       // Settings is still open beneath, and CDK still hides the rest as it set it.
       await expect(settings).toBeVisible();
       await expect(root).toHaveAttribute('aria-hidden', 'true');
@@ -514,7 +536,7 @@ test.describe('App lock in the desktop shell', () => {
       await expect(root).toHaveAttribute('aria-hidden', 'true');
       await expect(cover).toBeVisible();
       await expect(page.getByLabel(`${appName} PIN`)).toBeFocused();
-      await unlockWithPin(page, appName);
+      await unlockWithPin(page);
       await expect(settings).toBeVisible();
       await page.keyboard.press('Escape');
       await expect(settings).toHaveCount(0);
