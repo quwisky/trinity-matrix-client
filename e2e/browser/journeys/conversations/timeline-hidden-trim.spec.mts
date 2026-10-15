@@ -14,31 +14,37 @@ import {
 import { registerUser } from '../../../support/account.mts';
 
 // While the window is hidden, the open room's history is trimmed like a room nobody has
-// open, but only while its view follows the newest message (#1366). This journey pages a
-// busy room in completely, hides the window (the web host reads `visibilitychange`) for
-// the release delay, and checks both halves of that rule: a room scrolled back keeps its
-// history, and a room at its newest message is trimmed with its list unchanged, then
-// pages the trimmed history back in from the server when scrolled up.
+// open, but only while its view follows the newest message (#1366). These journeys page a
+// busy room in completely and hide the window (the web host reads `visibilitychange`) for
+// the release delay. The first checks both halves of the rule: a room scrolled back keeps
+// its history, and a room at its newest message is trimmed at the release with its list
+// unchanged, then pages the trimmed history back in when scrolled up. The second trims
+// after the syncs that bring another member's messages, and checks that a reply's quote
+// and the "New messages" divider are still there when the window is shown.
+//
+// Rendering continues while "hidden" here, as on the desktop shell (`backgroundThrottling`
+// off); a really hidden web tab stops measuring rows, which the unit tests cover.
 const session = homeserverSession();
 
 const MESSAGE_COUNT = 300;
 /** BackgroundMemoryRelease's delay, plus margin for the trim and the re-render. */
 const RELEASE_WAIT_MS = 62_000;
 
-interface Seeded {
-  readonly reader: HomeserverSession;
-  readonly roomName: string;
+interface ApiUser {
+  readonly session: HomeserverSession;
+  readonly userId: string;
+  readonly headers: Record<string, string>;
 }
 
-async function seedRoom(
+/** A throwaway account, signed in over the CS API. */
+async function apiUser(
   request: APIRequestContext,
   hs: string,
-  runId: string,
-): Promise<Seeded> {
-  const user = `trim-reader-${runId}`;
+  user: string,
+): Promise<ApiUser> {
   const pass = `${user}-pass`;
   await registerUser(request, user, pass);
-  const headers = await request
+  const json = await request
     .post(`${hs}/_matrix/client/v3/login`, {
       data: {
         type: 'm.login.password',
@@ -46,24 +52,48 @@ async function seedRoom(
         password: pass,
       },
     })
-    .then((r) => r.json())
-    .then((j) => ({ Authorization: `Bearer ${j.access_token}` }));
-  const roomName = `Hidden trim E2E ${runId}`;
-  const roomId = await request
+    .then((r) => r.json());
+  return {
+    session: { available: true, hs, user, pass },
+    userId: json.user_id as string,
+    headers: { Authorization: `Bearer ${json.access_token}` },
+  };
+}
+
+async function createRoom(
+  request: APIRequestContext,
+  hs: string,
+  owner: ApiUser,
+  name: string,
+): Promise<string> {
+  return request
     .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers,
-      data: { name: roomName, preset: 'private_chat' },
+      headers: owner.headers,
+      data: { name, preset: 'private_chat' },
     })
     .then((r) => r.json())
     .then((j) => j.room_id as string);
-  for (let i = 0; i < MESSAGE_COUNT; i++) {
-    await request.put(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}-${i}`,
-      { headers, data: { msgtype: 'm.text', body: `trim message ${i}` } },
-    );
-  }
-  return { reader: { available: true, hs, user, pass }, roomName };
 }
+
+/** Send `content` as `sender`; returns the event id. */
+async function send(
+  request: APIRequestContext,
+  hs: string,
+  sender: ApiUser,
+  roomId: string,
+  txn: string,
+  content: Record<string, unknown>,
+): Promise<string> {
+  return request
+    .put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
+      { headers: sender.headers, data: content },
+    )
+    .then((r) => r.json())
+    .then((j) => j.event_id as string);
+}
+
+const text = (body: string) => ({ msgtype: 'm.text', body });
 
 /** Hide or show the window the way the web host sees it. */
 async function setHidden(page: Page, hidden: boolean): Promise<void> {
@@ -133,6 +163,22 @@ async function drainHistory(
     .toBe(true);
 }
 
+/** Scroll to the newest message (the jump-to-latest button gives way to jump-to-unread). */
+async function toNewest(scroll: Locator): Promise<void> {
+  await expect
+    .poll(() =>
+      scroll.evaluate(async (el) => {
+        el.scrollTop = el.scrollHeight;
+        el.dispatchEvent(new Event('scroll'));
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+        return el.scrollHeight - el.scrollTop - el.clientHeight;
+      }),
+    )
+    .toBeLessThan(1);
+}
+
 /** The rows on screen once two looks a moment apart agree. */
 async function settledRows(scroll: Locator): Promise<string[]> {
   let previous: string[] = [];
@@ -159,11 +205,21 @@ test.describe('Open room trimmed while the window is hidden', () => {
   }) => {
     test.setTimeout(300_000);
     const runId = `${testResourceId('run')}h`;
-    const { reader, roomName } = await seedRoom(
-      request,
-      session.hs as string,
-      runId,
-    );
+    const hs = session.hs as string;
+    const owner = await apiUser(request, hs, `trim-reader-${runId}`);
+    const roomName = `Hidden trim E2E ${runId}`;
+    const roomId = await createRoom(request, hs, owner, roomName);
+    for (let i = 0; i < MESSAGE_COUNT; i++) {
+      await send(
+        request,
+        hs,
+        owner,
+        roomId,
+        `${runId}-${i}`,
+        text(`trim message ${i}`),
+      );
+    }
+    const reader = owner.session;
     const historyRequests: string[] = [];
     page.on('request', (req) => {
       if (/\/rooms\/[^/]+\/messages\?/.test(req.url())) {
@@ -180,6 +236,17 @@ test.describe('Open room trimmed while the window is hidden', () => {
     ).toBeVisible({ timeout: 30_000 });
     await pageToStart(scroll);
     await drainHistory(scroll, historyRequests);
+    // The list counts a row it has not measured at 24 px, so that it never names fewer
+    // rows than will be on screen: no rendered row is shorter.
+    expect(
+      await scroll.evaluate((el) =>
+        Math.min(
+          ...[...el.querySelectorAll('.msg')].map(
+            (row) => row.getBoundingClientRect().height,
+          ),
+        ),
+      ),
+    ).toBeGreaterThanOrEqual(24);
 
     // Scrolled back: hidden past the release, the room keeps everything it paged in.
     await scroll.evaluate((el) => {
@@ -228,6 +295,134 @@ test.describe('Open room trimmed while the window is hidden', () => {
     ).toBeLessThan(1);
 
     // Scrolling up fetches the trimmed history from the server again, back to the start.
+    const requestsAfterTrim = historyRequests.length;
+    await pageToStart(scroll);
+    expect(historyRequests.length).toBeGreaterThan(requestsAfterTrim);
+  });
+
+  test('trims after a sync while others keep writing, keeping quotes and the unread divider', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(300_000);
+    const runId = `${testResourceId('run')}s`;
+    const hs = session.hs as string;
+    const reader = await apiUser(request, hs, `trim-owner-${runId}`);
+    const writer = await apiUser(request, hs, `trim-writer-${runId}`);
+    const roomName = `Hidden sync trim E2E ${runId}`;
+    const roomId = await createRoom(request, hs, reader, roomName);
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/invite`,
+      { headers: reader.headers, data: { user_id: writer.userId } },
+    );
+    await request.post(
+      `${hs}/_matrix/client/v3/join/${encodeURIComponent(roomId)}`,
+      { headers: writer.headers, data: {} },
+    );
+    // Just under the high-water mark once the room's state events are counted.
+    const OWN = 185;
+    let quoted = '';
+    let readUpTo = '';
+    for (let i = 0; i < OWN; i++) {
+      if (i === 121) {
+        await send(
+          request,
+          hs,
+          writer,
+          roomId,
+          `${runId}-early`,
+          text('early writer message'),
+        );
+      }
+      const eventId = await send(
+        request,
+        hs,
+        reader,
+        roomId,
+        `${runId}-${i}`,
+        text(`trim message ${i}`),
+      );
+      if (i === 60) quoted = eventId;
+      if (i === 120) readUpTo = eventId;
+    }
+    // Read up to here: the writer's message after it is where the divider is drawn.
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/read_markers`,
+      {
+        headers: reader.headers,
+        data: { 'm.fully_read': readUpTo, 'm.read': readUpTo },
+      },
+    );
+    const historyRequests: string[] = [];
+    page.on('request', (req) => {
+      if (/\/rooms\/[^/]+\/messages\?/.test(req.url())) {
+        historyRequests.push(req.url());
+      }
+    });
+
+    await login(page, reader.session);
+    await page.getByTestId('rail-rooms').click();
+    await page.locator('.channel', { hasText: roomName }).first().click();
+    const scroll = page.locator('.scroll');
+    await expect(
+      scroll.getByText(`trim message ${OWN - 1}`, { exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+    await pageToStart(scroll);
+    await drainHistory(scroll, historyRequests);
+    await toNewest(scroll);
+    await settledRows(scroll);
+
+    // Hidden past the release: under the high-water mark, nothing is trimmed yet.
+    await setHidden(page, true);
+    await page.waitForTimeout(RELEASE_WAIT_MS);
+
+    // Someone replies to one of the reader's messages from well before the read marker,
+    // and the reply is on screen with its quote. A few more messages take the room past
+    // the high-water mark, and the sync that does trims it, with the reply still on screen.
+    await send(request, hs, writer, roomId, `${runId}-reply`, {
+      ...text('> <@x:hs> trim message 60\n\nreplying to an old one'),
+      'm.relates_to': { 'm.in_reply_to': { event_id: quoted } },
+    });
+    await expect(
+      scroll.locator('trn-message-reply-preview', {
+        hasText: 'trim message 60',
+      }),
+    ).toBeVisible({ timeout: 30_000 });
+    for (let i = 0; i < 8; i++) {
+      await send(
+        request,
+        hs,
+        writer,
+        roomId,
+        `${runId}-w${i}`,
+        text(`writer message ${i}`),
+      );
+    }
+    await expect(
+      scroll.getByText('writer message 7', { exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+    const hidden = await settledRows(scroll);
+
+    await setHidden(page, false);
+    expect(await shownRows(scroll)).toEqual(hidden);
+    expect(
+      await scroll.evaluate(
+        (el) => el.scrollHeight - el.scrollTop - el.clientHeight,
+      ),
+    ).toBeLessThan(1);
+    // The reply still quotes the old message.
+    await expect(
+      scroll.locator('trn-message-reply-preview', {
+        hasText: 'trim message 60',
+      }),
+    ).toBeVisible();
+    // The "New messages" divider is still where it was drawn, off screen above.
+    const jumpToUnread = page.getByTestId('jump-to-unread');
+    await expect(jumpToUnread).toBeVisible();
+    await jumpToUnread.click();
+    await expect(page.getByTestId('new-messages-divider')).toBeVisible();
+
+    // The room was trimmed after a sync: what it had paged in is fetched again.
     const requestsAfterTrim = historyRequests.length;
     await pageToStart(scroll);
     expect(historyRequests.length).toBeGreaterThan(requestsAfterTrim);
