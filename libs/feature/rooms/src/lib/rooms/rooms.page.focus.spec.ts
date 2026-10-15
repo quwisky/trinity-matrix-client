@@ -122,6 +122,7 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
     roomInvitePermission: signal({ available: false, reason: null }),
     spaceCuratePermission: signal({ available: false, reason: null }),
     spaceInvitePermission: signal({ available: false, reason: null }),
+    spaceMembershipPermission: signal({ available: false, reason: null }),
     defaultSpaceSortMode: signal('recent'),
     filteredRooms: signal<RoomSummary[]>([]),
     members: signal<MemberSummary[]>([BOB]),

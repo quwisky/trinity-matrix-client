@@ -10,6 +10,7 @@ import {
   RailUnreadChatsPreference,
   SpaceRoomOrderService,
   UnreadAggregatorService,
+  DEFAULT_ROOM_SORT,
   comparatorFor,
   filterRoomLibraryItems,
   type RoomSortMode,
@@ -109,9 +110,7 @@ export class RoomShellViewModel {
     const children = childIds
       .map((id) => byId.get(id))
       .filter((room): room is RoomSummary => room !== undefined);
-    return children.sort(
-      comparatorFor(this.spaceOrder.effectiveFor(spaceId), childIds),
-    );
+    return children.sort(comparatorFor(this.spaceSortMode(), childIds));
   });
 
   /**
@@ -156,11 +155,34 @@ export class RoomShellViewModel {
   );
 
   /**
-   * The ordering the open space's rooms are listed in — its own override, else the active
-   * account's default. Drives the sidebar header menu's radio checks.
+   * The account whose ordering the open space's list uses, and whose record the sort menu
+   * writes: the space's owner in the selected view. That is the active account whenever it
+   * holds the space. In the mixed view a space only another account holds keeps that
+   * account's ordering, so opening one of its rooms as a different account does not
+   * reorder the list.
    */
-  readonly spaceSortMode = computed<RoomSortMode>(() =>
-    this.spaceOrder.effectiveFor(this.store.activeSpaceId()),
+  readonly spaceOrderAccountId = computed(() => {
+    const spaceId = this.store.activeSpaceId();
+    const owner = spaceId
+      ? this.railSpaces().find((space) => space.id === spaceId)?.accountId
+      : undefined;
+    return owner ?? this.matrix.activeUserId();
+  });
+
+  private readonly spaceOrderSnapshot = computed(() => {
+    const accountId = this.spaceOrderAccountId();
+    return accountId
+      ? this.spaceOrder.snapshotFor(accountId, this.store.activeSpaceId())
+      : null;
+  });
+
+  /**
+   * The ordering the open space's rooms are listed in — its own override, else the
+   * account's default (see {@link spaceOrderAccountId}). Drives the sidebar header menu's
+   * radio checks.
+   */
+  readonly spaceSortMode = computed<RoomSortMode>(
+    () => this.spaceOrderSnapshot()?.effectiveMode ?? DEFAULT_ROOM_SORT,
   );
 
   /**
@@ -168,11 +190,13 @@ export class RoomShellViewModel {
    * what separates a checked "Recent activity" from a checked "Use my default".
    */
   readonly spaceSortOverridden = computed(
-    () => this.spaceOrder.overrideFor(this.store.activeSpaceId()) !== null,
+    () => (this.spaceOrderSnapshot()?.overrideMode ?? null) !== null,
   );
 
-  /** The active account's default ordering, named in the menu's "Use my default (…)" row. */
-  readonly defaultSpaceSortMode = this.spaceOrder.defaultMode;
+  /** That account's default ordering, named in the menu's "Use my default (…)" row. */
+  readonly defaultSpaceSortMode = computed<RoomSortMode>(
+    () => this.spaceOrderSnapshot()?.defaultMode ?? DEFAULT_ROOM_SORT,
+  );
 
   readonly activeSpaceName = computed(() => {
     const id = this.store.activeSpaceId();
@@ -440,6 +464,20 @@ export class RoomShellViewModel {
     }
     return this.permissions.room(spaceId).invite;
   });
+
+  /**
+   * Whether "Leave space" and "Members" are offered for the active space. Both act as the
+   * ACTIVE account, so it has to hold the space: in the mixed view it can be showing a
+   * space only another account holds, after opening one of that space's rooms.
+   */
+  readonly spaceMembershipPermission = computed(() =>
+    this.store.activeSpaceId() && this.ownsActiveSpace()
+      ? { available: true, reason: null }
+      : {
+          available: false,
+          reason: 'Switch to the account that owns this space.',
+        },
+  );
 
   /** Whether the active space belongs to the signed-in account. */
   private readonly ownsActiveSpace = computed(() => {

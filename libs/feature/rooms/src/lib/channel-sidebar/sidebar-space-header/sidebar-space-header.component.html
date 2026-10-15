@@ -125,6 +125,9 @@
     <button
       trnDropdownMenuItem
       (triggered)="spaceAction.emit({ kind: 'members' })"
+      [trnActionAllowed]="canUseSpaceMembership()"
+      [trnActionDisabledReason]="spaceMembershipReason()"
+      [trnTooltip]="spaceMembershipReason() ?? 'Members'"
       data-testid="open-space-members"
     >
       <trn-icon name="users" />
@@ -178,6 +181,9 @@
       trnDropdownMenuItem
       variant="danger"
       (triggered)="spaceAction.emit({ kind: 'leave' })"
+      [trnActionAllowed]="canUseSpaceMembership()"
+      [trnActionDisabledReason]="spaceMembershipReason()"
+      [trnTooltip]="spaceMembershipReason() ?? 'Leave space'"
       data-testid="space-leave"
     >
       <trn-icon name="log-out" />

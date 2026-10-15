@@ -17,6 +17,7 @@ import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import {
   RoomLibraryService,
   SelectedRoomLibraryService,
+  SpaceRoomOrderService,
   SpacesService,
   AccountScopeService,
   UnreadAggregatorService,
@@ -25,6 +26,7 @@ import {
 } from '@trinity/data-access/room-library';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
+  TrnAlertService,
   TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
@@ -115,6 +117,9 @@ describe('RoomsPage mixed-account view', () => {
   /** The picker's current selection, driven directly by the tests. */
   let shownAccounts: WritableSignal<ReadonlySet<string>>;
   let mixedRooms: WritableSignal<RoomSummary[]>;
+  /** What @me's own space lists in the mixed view; empty unless a test files rooms in it. */
+  let mineSpaceChildren: WritableSignal<string[]>;
+  let leaveSpace: Mock;
   let toggleAccount: Mock;
 
   function build(
@@ -137,7 +142,31 @@ describe('RoomsPage mixed-account view', () => {
     );
     shownAccounts = signal<ReadonlySet<string>>(new Set(['@me:hs']));
     mixedRooms = signal(mixedRoomList());
+    mineSpaceChildren = signal<string[]>([]);
+    leaveSpace = vi.fn(() => of(void 0));
     toggleAccount = vi.fn(() => of({ kind: 'completed' as const }));
+    const selectedView = computed(() => {
+      const accountIds = shownAccounts();
+      const mixing = accountIds.size > 1;
+      return {
+        accountIds,
+        mode: mixing ? ('mixed' as const) : ('active' as const),
+        rooms: mixing ? mixedRooms() : [room('!mine:hs', '@me:hs')],
+        spaces: mixing
+          ? [
+              space('!s-mine:hs', '@me:hs', mineSpaceChildren()),
+              space('!s-alt:hs', '@alt:hs', ['!child-theirs:hs']),
+            ]
+          : [space('!s-mine:hs', '@me:hs')],
+        spaceChildRoomIdsByAccount: mixing
+          ? new Map([
+              ['@me:hs', new Set<string>(mineSpaceChildren())],
+              ['@alt:hs', new Set(['!child-theirs:hs'])],
+            ])
+          : new Map([['@me:hs', new Set<string>()]]),
+        invitations: [],
+      };
+    });
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -152,6 +181,7 @@ describe('RoomsPage mixed-account view', () => {
           openSpace: () => of(void 0),
           spaces: signal([space('!s-mine:hs', '@me:hs')]),
           childRoomIds: vi.fn(() => []),
+          leaveSpace,
         }),
         MockProvider(AccountScopeService, {
           selected: shownAccounts.asReadonly(),
@@ -159,28 +189,17 @@ describe('RoomsPage mixed-account view', () => {
           toggle: toggleAccount,
         }),
         MockProvider(SelectedRoomLibraryService, {
-          view: computed(() => {
-            const accountIds = shownAccounts();
-            const mixing = accountIds.size > 1;
-            return {
-              accountIds,
-              mode: mixing ? ('mixed' as const) : ('active' as const),
-              rooms: mixing ? mixedRooms() : [room('!mine:hs', '@me:hs')],
-              spaces: mixing
-                ? [
-                    space('!s-mine:hs', '@me:hs'),
-                    space('!s-alt:hs', '@alt:hs', ['!child-theirs:hs']),
-                  ]
-                : [space('!s-mine:hs', '@me:hs')],
-              spaceChildRoomIdsByAccount: mixing
-                ? new Map([
-                    ['@me:hs', new Set<string>()],
-                    ['@alt:hs', new Set(['!child-theirs:hs'])],
-                  ])
-                : new Map([['@me:hs', new Set<string>()]]),
-              invitations: [],
-            };
-          }),
+          view: selectedView,
+          // Each space's own account holds it; the mixed view lists it for every selected one.
+          spaceSelectable: (accountId: string, spaceId: string) => {
+            const view = selectedView();
+            return view.spaces.some(
+              (candidate) =>
+                candidate.id === spaceId &&
+                (candidate.accountId === accountId ||
+                  (view.mode === 'mixed' && view.accountIds.has(accountId))),
+            );
+          },
           toggleAccount,
         }),
         MockProvider(TimelineActionsService),
@@ -546,6 +565,96 @@ describe('RoomsPage mixed-account view', () => {
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
       '!child-theirs:hs',
     ]);
+  });
+
+  // #1369 in the mixed view: a space's row can belong to an account that does not hold the
+  // space. A space lists the rooms its holders joined, so with two accounts only a rail chat
+  // gets here; with three, a holder that is not on screen can file a room @alt joined.
+  // Opening it acts as @alt and keeps the space, which the mixed view lists for @me.
+  it('keeps the space for a row of an account that does not hold it', async () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    mineSpaceChildren.set(['!theirs:hs']); // @me's space files a room whose row is @alt's
+    // @me orders the space alphabetically; @alt has no ordering of its own for it.
+    vi.spyOn(
+      TestBed.inject(SpaceRoomOrderService),
+      'snapshotFor',
+    ).mockImplementation((accountId) => ({
+      defaultMode: 'recent',
+      overrideMode: accountId === '@me:hs' ? 'alphabetical' : null,
+      effectiveMode: accountId === '@me:hs' ? 'alphabetical' : 'recent',
+    }));
+    shell.nav.onSelectSpace({ spaceId: '!s-mine:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!theirs:hs']);
+    expect(shell.vm.spaceSortMode()).toBe('alphabetical');
+
+    // What the sidebar's `(selectRoom)` binding calls for the clicked row.
+    shell.routing.onSelectRoomSelection(
+      { roomId: '!theirs:hs', accountId: '@alt:hs' },
+      'room-list',
+    );
+    await settleWorkspace();
+
+    expect(switchAccount).toHaveBeenCalledWith(
+      '@alt:hs',
+      expect.objectContaining({ prepare: expect.any(Function) }),
+    );
+    expect(shell.store.activeAccountId()).toBe('@alt:hs');
+    expect(shell.store.activeRoomId()).toBe('!theirs:hs');
+    expect(shell.store.activeSpaceId()).toBe('!s-mine:hs');
+    expect(shell.store.recentView()).toBe(false);
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!theirs:hs']);
+    // The list keeps the ordering of the account that holds the space, so the switch does
+    // not reorder it under the pointer.
+    expect(shell.vm.spaceOrderAccountId()).toBe('@me:hs');
+    expect(shell.vm.spaceSortMode()).toBe('alphabetical');
+  });
+
+  it('keeps the space when the other account holds it too', async () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    shell.nav.onSelectSpace({ spaceId: '!s-alt:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+
+    shell.routing.onSelectRoomSelection(
+      { roomId: '!child-theirs:hs', accountId: '@alt:hs' },
+      'room-list',
+    );
+    await settleWorkspace();
+
+    expect(shell.store.activeAccountId()).toBe('@alt:hs');
+    expect(shell.store.activeRoomId()).toBe('!child-theirs:hs');
+    expect(shell.store.activeSpaceId()).toBe('!s-alt:hs');
+    expect(shell.vm.spaceOrderAccountId()).toBe('@alt:hs');
+  });
+
+  // Leave and Members act as the active account, which here does not hold the space.
+  it('offers Leave and Members only as the account that holds the space', async () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    mineSpaceChildren.set(['!theirs:hs']);
+    shell.nav.onSelectSpace({ spaceId: '!s-mine:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+    expect(shell.vm.spaceMembershipPermission().available).toBe(true);
+
+    shell.routing.onSelectRoomSelection(
+      { roomId: '!theirs:hs', accountId: '@alt:hs' },
+      'room-list',
+    );
+    await settleWorkspace();
+
+    expect(shell.vm.spaceMembershipPermission()).toEqual({
+      available: false,
+      reason: 'Switch to the account that owns this space.',
+    });
+    const confirm = vi.spyOn(TestBed.inject(TrnAlertService), 'confirm$');
+    const surfaces = TestBed.inject(TrnSurfaceService);
+    shell.spaces.onLeaveSpace();
+    shell.spaces.onOpenSpaceMembers();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(leaveSpace).not.toHaveBeenCalled();
+    expect(surfaces.openAndWait$).not.toHaveBeenCalled();
   });
 
   // The space scope belongs to the outgoing account; the Recent/DMs/Rooms filter does not.

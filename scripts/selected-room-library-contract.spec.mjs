@@ -25,6 +25,7 @@ const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
   .sort();
 
 const selectedConsumers = [
+  'libs/application/workspace/src/lib/workspace-availability.ts',
   roomLibraryLifetime,
   'libs/data-access/room-library/src/lib/room-library-search.service.ts',
   'libs/feature/rooms/src/lib/account-picker/account-picker.component.ts',

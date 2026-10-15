@@ -87,7 +87,10 @@ export interface SpaceRoomOrderSnapshot {
  * preferring the active account, so "the owner" changes as you switch. The active account is
  * the one you are acting as and the one whose default Settings shows you. A corollary: an
  * override set as `@me` is invisible to `@alt` even for a space both have joined, which is
- * intended — it is that account's view preference.
+ * intended — it is that account's view preference. The rooms shell reads one exact record
+ * through {@link snapshotFor}: the space's owner in the selected view, which is the active
+ * account whenever it holds the space. A space the active account does not hold, shown
+ * because another mixed-in account does, keeps that account's ordering.
  *
  * Overrides for spaces you have **left are deliberately not pruned**, for the same reason
  * {@link AccountScopeService} keeps stale account ids: the space list is sync-derived and

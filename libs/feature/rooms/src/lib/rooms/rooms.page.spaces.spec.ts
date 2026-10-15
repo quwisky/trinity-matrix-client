@@ -114,8 +114,11 @@ describe('RoomsPage space filtering', () => {
           childRoomIds,
         }),
         MockProvider(SpaceRoomOrderService, {
-          effectiveFor: () => 'space',
-          overrideFor: () => null,
+          snapshotFor: () => ({
+            defaultMode: 'space' as const,
+            overrideMode: null,
+            effectiveMode: 'space' as const,
+          }),
           defaultMode: signal<RoomSortMode>('recent').asReadonly(),
           modes: TRINITY_ROOM_SORTS,
         }),
@@ -639,14 +642,17 @@ describe('RoomsPage space ordering', () => {
     };
   }
 
-  async function build(order: Partial<SpaceRoomOrderService> = {}) {
+  /** `effective` is the open space's resolved ordering, read for its owning account. */
+  async function build(
+    effective: (spaceId: string | null) => RoomSortMode = () => 'recent',
+  ) {
     const rooms = signal([
       orderedRoom('!z:hs', 'zulu', 200),
       orderedRoom('!a:hs', 'alpha', 100),
       orderedRoom('!m:hs', 'mike', 300),
     ]);
-    const setForSpace = vi.fn(() => of(void 0));
-    const clearForSpace = vi.fn(() => of(void 0));
+    const setForAccountSpace = vi.fn(() => of(void 0));
+    const clearForAccountSpace = vi.fn(() => of(void 0));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -665,13 +671,15 @@ describe('RoomsPage space ordering', () => {
             id === '!s:hs' ? CHILD_IDS : [],
         }),
         MockProvider(SpaceRoomOrderService, {
-          effectiveFor: () => 'recent',
-          overrideFor: () => null,
+          snapshotFor: (_accountId: string, spaceId: string | null) => ({
+            defaultMode: 'recent' as const,
+            overrideMode: null,
+            effectiveMode: effective(spaceId),
+          }),
           defaultMode: signal<RoomSortMode>('recent').asReadonly(),
           modes: TRINITY_ROOM_SORTS,
-          setForSpace,
-          clearForSpace,
-          ...order,
+          setForAccountSpace,
+          clearForAccountSpace,
         }),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
@@ -696,35 +704,34 @@ describe('RoomsPage space ordering', () => {
     const shell = shellFrom();
     shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
-    return { shell, rooms, setForSpace, clearForSpace };
+    return { shell, rooms, setForAccountSpace, clearForAccountSpace };
   }
 
   const names = (shell: ReturnType<typeof shellFrom>) =>
     shell.vm.visibleRooms().map((r) => r.name);
 
   it('orders by recent activity, ignoring the curated child order', async () => {
-    const { shell } = await build({ effectiveFor: () => 'recent' });
+    const { shell } = await build(() => 'recent');
 
     expect(names(shell)).toEqual(['mike', 'zulu', 'alpha']);
   });
 
   it('orders alphabetically, ignoring both activity and the curated order', async () => {
-    const { shell } = await build({ effectiveFor: () => 'alphabetical' });
+    const { shell } = await build(() => 'alphabetical');
 
     expect(names(shell)).toEqual(['alpha', 'mike', 'zulu']);
   });
 
   it('preserves the curated order under space mode', async () => {
-    const { shell } = await build({ effectiveFor: () => 'space' });
+    const { shell } = await build(() => 'space');
 
     expect(names(shell)).toEqual(['zulu', 'alpha', 'mike']);
   });
 
   it("uses a space's own override rather than the account default", async () => {
-    const { shell } = await build({
-      effectiveFor: (spaceId: string | null) =>
-        spaceId === '!s:hs' ? 'alphabetical' : 'recent',
-    });
+    const { shell } = await build((spaceId) =>
+      spaceId === '!s:hs' ? 'alphabetical' : 'recent',
+    );
 
     expect(names(shell)).toEqual(['alpha', 'mike', 'zulu']);
   });
@@ -733,7 +740,7 @@ describe('RoomsPage space ordering', () => {
     // The acceptance criterion: a new message reorders the space without reopening it.
     // No new listener is involved — `visibleRooms` already reads `rooms()`, which the
     // service re-snapshots on every sync.
-    const { shell, rooms } = await build({ effectiveFor: () => 'recent' });
+    const { shell, rooms } = await build(() => 'recent');
     expect(names(shell)).toEqual(['mike', 'zulu', 'alpha']);
 
     rooms.update((list) =>
@@ -746,7 +753,7 @@ describe('RoomsPage space ordering', () => {
   });
 
   it('keeps favourites first in every mode', async () => {
-    const { shell, rooms } = await build({ effectiveFor: () => 'space' });
+    const { shell, rooms } = await build(() => 'space');
     rooms.update((list) =>
       list.map((room) =>
         room.id === '!a:hs' ? { ...room, favourite: true } : room,
@@ -759,9 +766,7 @@ describe('RoomsPage space ordering', () => {
   });
 
   it('sorts a copy, never the array the rooms service handed out', async () => {
-    const { shell, rooms } = await build({
-      effectiveFor: () => 'alphabetical',
-    });
+    const { shell, rooms } = await build(() => 'alphabetical');
     const seeded = rooms();
 
     expect(names(shell)).toEqual(['alpha', 'mike', 'zulu']);
@@ -783,32 +788,36 @@ describe('RoomsPage space ordering', () => {
 
   describe('changing the order from the sidebar', () => {
     it('pins the open space to a mode', async () => {
-      const { shell, setForSpace } = await build();
+      const { shell, setForAccountSpace } = await build();
 
       shell.spaces.onSetSpaceSort('alphabetical');
 
-      expect(setForSpace).toHaveBeenCalledWith('!s:hs', 'alphabetical');
+      expect(setForAccountSpace).toHaveBeenCalledWith(
+        '@me:hs',
+        '!s:hs',
+        'alphabetical',
+      );
     });
 
     it('clears the override when asked to follow the default', async () => {
-      const { shell, clearForSpace, setForSpace } = await build();
+      const { shell, clearForAccountSpace, setForAccountSpace } = await build();
 
       shell.spaces.onSetSpaceSort(null);
 
-      expect(clearForSpace).toHaveBeenCalledWith('!s:hs');
-      expect(setForSpace).not.toHaveBeenCalled();
+      expect(clearForAccountSpace).toHaveBeenCalledWith('@me:hs', '!s:hs');
+      expect(setForAccountSpace).not.toHaveBeenCalled();
     });
 
     it('does nothing when no space is open', async () => {
-      const { shell, setForSpace, clearForSpace } = await build();
+      const { shell, setForAccountSpace, clearForAccountSpace } = await build();
       shell.nav.onSelectSpace({ spaceId: null, accountId: '@me:hs' });
       await settleWorkspace();
 
       shell.spaces.onSetSpaceSort('space');
       shell.spaces.onSetSpaceSort(null);
 
-      expect(setForSpace).not.toHaveBeenCalled();
-      expect(clearForSpace).not.toHaveBeenCalled();
+      expect(setForAccountSpace).not.toHaveBeenCalled();
+      expect(clearForAccountSpace).not.toHaveBeenCalled();
     });
   });
 });

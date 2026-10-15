@@ -171,10 +171,12 @@ describe('resolveWorkspaceNavigation — a room opened from a space', () => {
     ).toEqual(space);
   });
 
-  it("opens another account's room from the space's list in Recent, as before", () => {
-    expect(scopeFrom('room-list', view({ scope: space }), '@b:hs')).toEqual({
-      kind: 'recent',
-    });
+  // Mixed view: the space's list shows a room only another selected account has joined.
+  // Workspace keeps the space while some selected account holds it, else repairs it.
+  it("keeps the space for another account's room picked from the space's list", () => {
+    expect(scopeFrom('room-list', view({ scope: space }), '@b:hs')).toEqual(
+      space,
+    );
   });
 
   it.each<WorkspaceRoomNavigationOrigin>([

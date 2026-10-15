@@ -117,6 +117,8 @@ describe('RoomsPage quick switcher', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
+        // The Account holds every space these tests open, as `selectionAvailability` says.
+        selectedRoomLibraryProvider(),
         MockProvider(RoomLibraryService, {
           selectionAvailability,
           clearMarkedUnread: () => of(void 0),

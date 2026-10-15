@@ -92,6 +92,9 @@ export class ChannelSidebarComponent {
   readonly curateSpaceReason = input<string | null>(null);
   readonly canInviteToSpace = input(false);
   readonly inviteToSpaceReason = input<string | null>(null);
+  /** Whether "Leave space" and "Members" may act as the active account in this space. */
+  readonly canUseSpaceMembership = input(false);
+  readonly spaceMembershipReason = input<string | null>(null);
   /** Already narrowed by {@link filterQuery} — the shell filters, so that the Alt+↑/↓ room
    * walk steps through exactly what is on screen (`RoomShellStore.roomFilter`). */
   readonly rooms = input<readonly RoomSummary[]>([]);

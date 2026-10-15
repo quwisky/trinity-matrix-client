@@ -21,6 +21,7 @@ import { RoomLibraryService, type RoomSummary } from './room-library.service';
 import {
   ALL_SELECTED_PROJECTION_DOMAINS,
   SelectedAccountSourceRegistry,
+  isJoinedSpace,
   projectSelectedInvitations,
   projectSelectedRooms,
   projectSelectedSpaces,
@@ -150,6 +151,34 @@ export class SelectedRoomLibraryService {
   /** Toggle one Account's inclusion through the same cold finite preference command. */
   toggleAccount(accountId: string): Observable<PreferenceCommandOutcome> {
     return defer(() => this.scope.toggle(accountId));
+  }
+
+  /**
+   * Whether Workspace may keep a Space selected while acting as `accountId`.
+   *
+   * The Account holding the Space itself is enough: it has joined it, or holds an
+   * invitation to it, since an accepted invitation keeps that membership until the join
+   * syncs and the invitation flows open the Space at once. A Space it has left or was
+   * removed from stays in the client's store and does not count. In the mixed view, a
+   * Space another selected Account has joined is listed too, with its pill in the rail
+   * and its children in the sidebar, so any selected Account may keep it while opening
+   * one of those Rooms. Read from the live selection and clients rather than the
+   * published {@link view}, so the answer never waits for a projection flush.
+   */
+  spaceSelectable(accountId: string, spaceId: string): boolean {
+    const own = this.matrix.clientFor(accountId)?.getRoom(spaceId);
+    if (own && (isJoinedSpace(own) || own.getMyMembership() === 'invite')) {
+      return true;
+    }
+    const accountIds = this.scope.selected();
+    return (
+      accountIds.size > 1 &&
+      accountIds.has(accountId) &&
+      [...accountIds].some((id) => {
+        const space = this.matrix.clientFor(id)?.getRoom(spaceId);
+        return !!space && isJoinedSpace(space);
+      })
+    );
   }
 
   private scheduleProjection(

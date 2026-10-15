@@ -50,6 +50,7 @@ import {
 } from './workspace.models';
 import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 import { WorkspaceLocationAdapter } from './workspace-location.adapter';
+import { WorkspaceAvailability } from './workspace-availability';
 import { resolveWorkspaceNavigation } from './workspace-navigation.resolver';
 
 /**
@@ -67,6 +68,7 @@ export class WorkspaceNavigationService {
   private readonly conversations = inject(ConversationRuntime);
   private readonly media = inject(MediaPipeline);
   private readonly rooms = inject(RoomLibraryService);
+  private readonly availability = inject(WorkspaceAvailability);
   private readonly roomReadiness = inject(RoomReadinessService);
   private readonly invites = inject(InvitesService);
   private readonly spaces = inject(SpacesService);
@@ -434,25 +436,13 @@ export class WorkspaceNavigationService {
   private seedDestinationExists(destination: WorkspaceDestination): boolean {
     if (
       destination.scope.kind === 'space' &&
-      !this.spaceAvailable(destination.accountId, destination.scope.spaceId)
+      !this.availability.space(destination.accountId, destination.scope.spaceId)
     ) {
       return false;
     }
     return (
       !destination.roomId ||
-      this.roomKept(destination.accountId, destination.roomId)
-    );
-  }
-
-  /** A Space scope must be synced; an unsynced one is repaired to the list. */
-  private spaceAvailable(accountId: string, spaceId: string): boolean {
-    return this.rooms.selectionAvailability(accountId, spaceId) === 'available';
-  }
-
-  /** A Room the live client has not synced yet is kept; the Conversation decides. */
-  private roomKept(accountId: string, roomId: string): boolean {
-    return (
-      this.rooms.selectionAvailability(accountId, roomId) !== 'unavailable'
+      this.availability.roomKept(destination.accountId, destination.roomId)
     );
   }
 }

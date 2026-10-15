@@ -103,6 +103,9 @@ export class SidebarSpaceHeaderComponent {
   readonly curateSpaceReason = input<string | null>(null);
   readonly canInviteToSpace = input(false);
   readonly inviteToSpaceReason = input<string | null>(null);
+  /** Leave and Members act as the active account, which may not hold this space. */
+  readonly canUseSpaceMembership = input(false);
+  readonly spaceMembershipReason = input<string | null>(null);
   /** The ordering the open space's list is using (drives the radio checks). */
   readonly sortMode = input<RoomSortMode>(DEFAULT_ROOM_SORT);
   /** Whether that ordering is the space's own override rather than the account default. */

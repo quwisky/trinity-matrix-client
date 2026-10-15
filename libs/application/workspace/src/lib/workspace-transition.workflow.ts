@@ -3,7 +3,6 @@ import {
   AccountRuntimeService,
   type AccountSwitchOutcome,
 } from '@trinity/data-access/accounts';
-import { RoomLibraryService } from '@trinity/data-access/room-library';
 import {
   Observable,
   ReplaySubject,
@@ -26,6 +25,7 @@ import {
   workspaceViewOf,
 } from './workspace.models';
 import { WorkspaceLocationAdapter } from './workspace-location.adapter';
+import { WorkspaceAvailability } from './workspace-availability';
 
 interface WorkspaceAttempt {
   readonly destination: WorkspaceDestination;
@@ -51,7 +51,7 @@ class WorkspaceNavigationRejected extends Error {}
 export class WorkspaceTransitionWorkflow {
   private readonly location = inject(WorkspaceLocationAdapter);
   private readonly accounts = inject(AccountRuntimeService);
-  private readonly rooms = inject(RoomLibraryService);
+  private readonly availability = inject(WorkspaceAvailability);
   private attempt: WorkspaceAttempt | null = null;
 
   get projectingLocation(): boolean {
@@ -248,14 +248,14 @@ export class WorkspaceTransitionWorkflow {
     let repaired = false;
     if (
       scope.kind === 'space' &&
-      !this.spaceAvailable(requested.accountId, scope.spaceId)
+      !this.availability.space(requested.accountId, scope.spaceId)
     ) {
       scope = RECENT_WORKSPACE_SCOPE;
       roomId = null;
       pane = 'list';
       repaired = true;
     }
-    if (roomId && !this.roomKept(requested.accountId, roomId)) {
+    if (roomId && !this.availability.roomKept(requested.accountId, roomId)) {
       roomId = null;
       pane = 'list';
       repaired = true;
@@ -345,17 +345,5 @@ export class WorkspaceTransitionWorkflow {
         }
       };
     });
-  }
-
-  /** A Space scope must be synced; an unsynced one is repaired to the list. */
-  private spaceAvailable(accountId: string, spaceId: string): boolean {
-    return this.rooms.selectionAvailability(accountId, spaceId) === 'available';
-  }
-
-  /** A Room the live client has not synced yet is kept; the Conversation decides. */
-  private roomKept(accountId: string, roomId: string): boolean {
-    return (
-      this.rooms.selectionAvailability(accountId, roomId) !== 'unavailable'
-    );
   }
 }

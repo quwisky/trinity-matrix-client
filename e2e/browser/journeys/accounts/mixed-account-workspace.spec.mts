@@ -160,6 +160,109 @@ test.describe('Multiple accounts', () => {
       timeout: 20_000,
     });
   });
+  // #1369 in the mixed view. A and B both hold a space, and B has filed a room only B has
+  // joined, so the space's list shows B's row while A is the account on screen. Opening
+  // that row acts as B and keeps the space and its list, and a reload brings both back.
+  test('a space keeps its list when one of its rooms opens on the other account, across a reload', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}msr`;
+    const userA = `msr-a-${runId}`;
+    const passA = `msr-a-pass-${runId}`;
+    const userB = `msr-b-${runId}`;
+    const passB = `msr-b-pass-${runId}`;
+    const spaceName = `Shared space ${runId}`;
+    const bRoom = `B's room in the space ${runId}`;
+    const aRoom = `A's room in the space ${runId}`;
+    const outside = `B's room outside ${runId}`;
+
+    await registerUser(request, userA, passA);
+    await registerUser(request, userB, passB);
+    const a = await apiLogin(request, hs, userA, passA);
+    const b = await apiLogin(request, hs, userB, passB);
+    const create = async (
+      who: typeof a,
+      name: string,
+      extra: Record<string, unknown> = {},
+    ): Promise<string> => {
+      const res = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: who.headers,
+        data: { name, preset: 'private_chat', ...extra },
+      });
+      expect(res.ok(), `createRoom ${name}`).toBe(true);
+      return (await res.json()).room_id as string;
+    };
+    const spaceId = await create(a, spaceName, {
+      creation_content: { type: 'm.space' },
+      invite: [b.userId],
+    });
+    const joined = await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/join`,
+      { headers: b.headers },
+    );
+    expect(joined.ok(), 'B joins the space').toBe(true);
+    const aRoomId = await create(a, aRoom);
+    const bRoomId = await create(b, bRoom);
+    // A files both rooms. A space lists the children its holder has joined, so B's room
+    // reaches the list through B's copy of the space.
+    const serverName = a.userId.slice(a.userId.indexOf(':') + 1);
+    for (const childId of [aRoomId, bRoomId]) {
+      const linked = await request.put(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(
+          spaceId,
+        )}/state/m.space.child/${encodeURIComponent(childId)}`,
+        { headers: a.headers, data: { via: [serverName] } },
+      );
+      expect(linked.ok(), `m.space.child ${childId}`).toBe(true);
+    }
+    await create(b, outside);
+
+    // Sign in B, then add A: A is the account on screen, with B mixed in.
+    await login(page, { available: true, hs, user: userB, pass: passB });
+    await addAccountViaUi(page, hs, userA, passA);
+    const handle = page.locator('.userbar__handle');
+    await expect(handle).toContainText(`@${userA}:`);
+    await mixInAccount(page, userB);
+
+    const spacePill = page
+      .locator('trn-server-rail')
+      .getByRole('button', { name: spaceName });
+    const recent = page.getByTestId('rail-recent');
+    const row = (name: string) =>
+      page.locator('trn-channel-sidebar .channel', { hasText: name });
+    const selected = page.locator(
+      'trn-channel-sidebar .channel.channel--selected',
+    );
+    const expectSpaceList = async (): Promise<void> => {
+      await expect(spacePill).toHaveAttribute('aria-current', 'true', {
+        timeout: 30_000,
+      });
+      await expect(recent).not.toHaveAttribute('aria-current', 'true');
+      await expect(row(bRoom)).toBeVisible({ timeout: 30_000 });
+      await expect(row(aRoom)).toBeVisible();
+      await expect(row(outside)).toHaveCount(0);
+    };
+
+    await spacePill.click();
+    await expectSpaceList();
+    await expect(handle).toContainText(`@${userA}:`);
+    await expect(row(bRoom).getByTestId('account-badge')).toBeVisible();
+
+    // Opening B's row acts as B, and the space stays selected with its list.
+    await row(bRoom).click();
+    await expect(handle).toContainText(`@${userB}:`, { timeout: 20_000 });
+    await expect(selected).toHaveText(new RegExp(bRoom), { timeout: 15_000 });
+    await expectSpaceList();
+
+    // A reload restores the space and the room on B.
+    await page.reload();
+    await expect(handle).toContainText(`@${userB}:`, { timeout: 30_000 });
+    await expect(selected).toHaveText(new RegExp(bRoom), { timeout: 30_000 });
+    await expectSpaceList();
+  });
+
   // The picker's headline promises: the mix survives a restart, the account you're acting
   // as can't be dropped, and unticking really puts the view back to one account. Those are
   // all persisted/stateful behaviours that unit tests can only assert against a mock.

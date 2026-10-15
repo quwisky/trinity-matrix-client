@@ -19,6 +19,8 @@ type Listener = (...args: unknown[]) => void;
 
 interface FakeRoomOptions {
   readonly kind?: 'room' | 'space' | 'invite';
+  /** Overrides the membership `kind` implies, e.g. a space the Account has left. */
+  readonly membership?: 'join' | 'invite' | 'leave';
   readonly name?: string;
   readonly children?: readonly string[];
   readonly unread?: number;
@@ -34,7 +36,8 @@ function fakeRoom(id: string, options: FakeRoomOptions = {}) {
     roomId: id,
     name: options.name ?? id,
     isSpaceRoom: () => kind === 'space',
-    getMyMembership: () => (kind === 'invite' ? 'invite' : 'join'),
+    getMyMembership: () =>
+      options.membership ?? (kind === 'invite' ? 'invite' : 'join'),
     getMxcAvatarUrl: () => null,
     getAvatarFallbackMember: () => undefined,
     getJoinedMemberCount: () => 1,
@@ -97,6 +100,7 @@ function fakeClient(
       rooms.find((room) => room.roomId === roomId) ?? {
         roomId,
         name: roomId,
+        isSpaceRoom: () => false,
         getMyMembership: () => 'join',
       },
     getAccountData: (type: string) =>
@@ -629,6 +633,97 @@ describe('SelectedRoomLibraryService', () => {
     });
     expect(harness.setSelected).toHaveBeenCalledWith('@other:hs', true);
     expect(harness.service.view().accountIds).toEqual(new Set(['@active:hs']));
+  });
+
+  describe('spaceSelectable', () => {
+    // A holds the space; B has joined only a room that space lists.
+    const mixed = (selected: readonly string[]) =>
+      setup({
+        selected: new Set(selected),
+        live: ['@a:hs', '@b:hs', '@c:hs'],
+        active: '@b:hs',
+        clients: new Map([
+          [
+            '@a:hs',
+            fakeClient('@a:hs', [fakeRoom('!s:hs', { kind: 'space' })]),
+          ],
+          ['@b:hs', fakeClient('@b:hs', [fakeRoom('!r:hs')])],
+          ['@c:hs', fakeClient('@c:hs', [fakeRoom('!c:hs')])],
+        ]),
+      }).service;
+
+    it('accepts a space the Account itself holds', () => {
+      expect(mixed(['@b:hs']).spaceSelectable('@a:hs', '!s:hs')).toBe(true);
+    });
+
+    it('accepts a space another selected Account has joined, in the mixed view', () => {
+      expect(mixed(['@a:hs', '@b:hs']).spaceSelectable('@b:hs', '!s:hs')).toBe(
+        true,
+      );
+    });
+
+    it('rejects it once the Account holding it is no longer selected', () => {
+      expect(mixed(['@b:hs', '@c:hs']).spaceSelectable('@b:hs', '!s:hs')).toBe(
+        false,
+      );
+    });
+
+    it('rejects it for an Account outside the mixed view', () => {
+      expect(mixed(['@a:hs', '@b:hs']).spaceSelectable('@c:hs', '!s:hs')).toBe(
+        false,
+      );
+    });
+
+    it('rejects it outside the mixed view, where only the Account itself counts', () => {
+      expect(mixed(['@b:hs']).spaceSelectable('@b:hs', '!s:hs')).toBe(false);
+    });
+
+    // The SDK keeps a left or kicked room in its store, with a `leave` membership.
+    it('rejects a space the Account has left, though its client still stores it', () => {
+      const service = setup({
+        selected: new Set(['@a:hs', '@b:hs']),
+        live: ['@a:hs', '@b:hs'],
+        active: '@a:hs',
+        clients: new Map([
+          [
+            '@a:hs',
+            fakeClient('@a:hs', [
+              fakeRoom('!s:hs', { kind: 'space', membership: 'leave' }),
+            ]),
+          ],
+          [
+            '@b:hs',
+            fakeClient('@b:hs', [
+              fakeRoom('!s:hs', { kind: 'space', membership: 'leave' }),
+            ]),
+          ],
+        ]),
+      }).service;
+
+      expect(service.spaceSelectable('@a:hs', '!s:hs')).toBe(false);
+      expect(service.spaceSelectable('@b:hs', '!s:hs')).toBe(false);
+    });
+
+    // Accepting an invitation keeps the invite membership until the join syncs, and the
+    // invitation flows open the space straight away.
+    it('accepts a space the Account itself is invited to', () => {
+      const service = setup({
+        clients: new Map([
+          [
+            '@active:hs',
+            fakeClient('@active:hs', [fakeRoom('!s:hs', { kind: 'invite' })]),
+          ],
+        ]),
+      }).service;
+
+      expect(service.spaceSelectable('@active:hs', '!s:hs')).toBe(true);
+    });
+
+    it('rejects a room that is not a joined space', () => {
+      expect(mixed(['@a:hs', '@b:hs']).spaceSelectable('@a:hs', '!r:hs')).toBe(
+        false,
+      );
+    });
   });
 
   it('delegates toggle only on subscription', async () => {

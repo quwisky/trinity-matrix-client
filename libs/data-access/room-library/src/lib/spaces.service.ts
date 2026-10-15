@@ -324,7 +324,11 @@ export class SpacesService {
       this._openSpaceId.set(spaceId);
       this._childrenBase.set([]);
       this._childrenError.set(null);
-      if (!spaceId || !this.matrix.isInitialized) {
+      // In the mixed view the active Account can be showing a space only another Account
+      // holds, or one it has left. Its own `/hierarchy` read would fail for a private space,
+      // and joining a child from here would join as the wrong Account, so it lists the
+      // joined children alone.
+      if (!spaceId || !this.activeHolds(spaceId)) {
         this._childrenLoading.set(false);
         return of(void 0);
       }
@@ -506,6 +510,16 @@ export class SpacesService {
         client.sendStateEvent(spaceId, EventType.SpaceChild, {}, childId),
       ).pipe(map(() => void 0));
     });
+  }
+
+  /**
+   * Whether the active Account has joined a space, or is invited to it: an accepted
+   * invitation keeps that membership until the join syncs.
+   */
+  private activeHolds(spaceId: string): boolean {
+    if (!this.matrix.isInitialized) return false;
+    const membership = this.matrix.instance.getRoom(spaceId)?.getMyMembership();
+    return membership === 'join' || membership === 'invite';
   }
 
   /**

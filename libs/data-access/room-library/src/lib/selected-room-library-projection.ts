@@ -4,6 +4,7 @@ import {
   RoomEvent,
   RoomStateEvent,
   type MatrixClient,
+  type Room,
 } from 'matrix-js-sdk';
 import { type MatrixClientService } from '@trinity/data-access/matrix-client';
 import { buildInvite, type PendingInvite } from './invites.service';
@@ -182,6 +183,11 @@ export function projectSelectedRooms(
   return [...byRoomId.values()].sort(compareRoomSummaries);
 }
 
+/** A Space this Account has joined: what puts it in the selected view's {@link projectSelectedSpaces}. */
+export function isJoinedSpace(room: Room): boolean {
+  return room.isSpaceRoom() && room.getMyMembership() === 'join';
+}
+
 export interface SelectedSpacesProjection {
   readonly spaces: readonly SpaceSummary[];
   readonly childRoomIdsByAccount: ReadonlyMap<string, ReadonlySet<string>>;
@@ -199,7 +205,7 @@ export function projectSelectedSpaces(
   for (const { accountId, client } of sources) {
     const accountChildIds = new Set<string>();
     for (const room of client.getRooms()) {
-      if (!room.isSpaceRoom() || room.getMyMembership() !== 'join') continue;
+      if (!isJoinedSpace(room)) continue;
 
       const mergedChildren = childrenBySpace.get(room.roomId) ?? [];
       for (const childId of spaceChildIdsOf(client, room)) {

@@ -31,12 +31,11 @@ function roomScope(
       : RECENT_WORKSPACE_SCOPE;
   }
   if (intent.scope) return intent.scope;
-  // A row picked from the list on screen is in that list, so even a space stays (#1369).
-  // Only on the same Account: another Account may not hold the space, and Workspace
-  // repairs a space the Account lacks to Recent and drops the Room.
+  // A row picked from the list on screen is in that list, so even a space stays (#1369),
+  // also for another Account's row in the mixed view: that Account may keep a space any
+  // selected Account holds, and Workspace repairs one none of them holds to Recent.
   // Opened from anywhere else, a space may not hold the Room, so Recent lists it instead.
-  return current.scope.kind !== 'space' ||
-    (intent.origin === 'room-list' && current.accountId === intent.accountId)
+  return current.scope.kind !== 'space' || intent.origin === 'room-list'
     ? current.scope
     : RECENT_WORKSPACE_SCOPE;
 }
