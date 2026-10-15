@@ -112,6 +112,34 @@ describe('windowsHelloDriver', () => {
     },
   );
 
+  it('names Hello that went away after it was offered in this run', async () => {
+    const hello = addon('available');
+    const driver = windowsHelloDriver(hello, 22631);
+    await expect(driver.support()).resolves.toEqual({
+      kind: 'available',
+      biometry: 'windows-hello',
+    });
+    // A PC whose only Hello method was its Hello PIN may report no device once it is removed.
+    hello.availability.mockResolvedValue('device-not-present');
+    await expect(driver.support()).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-configured',
+    });
+  });
+
+  it('reads no Hello device as PIN-only until Hello has been offered', async () => {
+    const hello = addon('device-not-present');
+    const driver = windowsHelloDriver(hello, 22631);
+    await expect(driver.support()).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+    await expect(driver.support()).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+  });
+
   it('does not ask the addon on Windows 10', async () => {
     const hello = addon('available');
     await windowsHelloDriver(hello, 19045).support();

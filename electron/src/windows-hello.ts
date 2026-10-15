@@ -126,6 +126,8 @@ export function windowsHelloDriver(
     readonly reason: string;
     readonly outcome: Promise<PresenceOutcome>;
   } | null = null;
+  /** Hello was available at some support read since main started. */
+  let offered = false;
 
   async function prompt(
     hello: WindowsHelloAddon,
@@ -145,11 +147,20 @@ export function windowsHelloDriver(
     async support() {
       if (build < FIRST_SUPPORTED_BUILD) return WINDOWS_VERSION;
       if (!addon) return ADDON_UNAVAILABLE;
+      let value: string;
       try {
-        return availabilityOf(await addon.availability());
+        value = await addon.availability();
       } catch {
         return ADDON_UNAVAILABLE;
       }
+      if (value === 'available') offered = true;
+      // Hello removed while Trinity runs: a PC whose only Hello method was its Hello PIN may
+      // then report no device. Once Hello was offered, name it rather than read the PC as
+      // PIN-only. Main keeps this across renderer reloads; a restart forgets it.
+      if (value === 'device-not-present' && offered) {
+        return { kind: 'unavailable', reason: 'not-configured' };
+      }
+      return availabilityOf(value);
     },
     async verify(reason, window) {
       if (build < FIRST_SUPPORTED_BUILD) return WINDOWS_VERSION;
