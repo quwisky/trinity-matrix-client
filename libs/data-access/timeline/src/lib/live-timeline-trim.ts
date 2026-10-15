@@ -125,20 +125,20 @@ function indexOf(
 export interface TrimGuard {
   /**
    * Kept like the read receipt: only while the room holds at most {@link TRIM_CEILING}
-   * events. For the place the open room's "New messages" divider was drawn.
+   * events. For the open room's divider position, quoted messages and thread root.
    */
   readonly marked?: readonly (string | null | undefined)[];
-  /** Never cut, past the ceiling too: what the view shows, or a reply's target. */
+  /** Never cut, past the ceiling too: what the view shows, or the composer's target. */
   readonly kept?: readonly (string | null | undefined)[];
 }
 
 /**
  * The furthest a trim may cut and still change nothing the app reads from the timeline:
  * the room list's latest message, the person's read receipt and fully-read marker (below
- * {@link TRIM_CEILING}), what the caller's {@link TrimGuard} names, any local echo still being sent or retried, and the target of
- * every kept reaction, edit or redaction. The SDK keeps a relation out of the main
- * timeline while its target is missing, so cutting between them would drop the relation,
- * and with it maybe the room's latest event.
+ * {@link TRIM_CEILING}), what the caller's {@link TrimGuard} names, any local echo still
+ * being sent or retried, and the target of every kept reaction, edit or redaction. The
+ * SDK keeps a relation out of the main timeline while its target is missing, so cutting
+ * between them would drop the relation, and with it maybe the room's latest event.
  */
 function cutLimit(
   room: Room,

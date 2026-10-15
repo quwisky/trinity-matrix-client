@@ -506,25 +506,23 @@ export class TimelineService {
 
   /**
    * What a trim of this room must keep so its view looks the same afterwards, or null when
-   * it must not be trimmed: the view is scrolled back, or shows events this room's live
-   * timeline does not hold. Keeps what the view shows, and, like the read receipt, the
-   * event the "New messages" divider was drawn after.
+   * it must not be trimmed: the view is scrolled back, older history is being paged in, or
+   * the view shows events this room's live timeline does not hold. Keeps what the view
+   * shows; and, like the read receipt, the messages its rows quote and the event the
+   * "New messages" divider was drawn after.
    */
   liveTrimGuard(): TrimGuard | null {
     const from = this.liveViewFrom;
     const room = this.room;
-    if (
-      !this.visible ||
-      !room ||
-      !from ||
-      !room
-        .getLiveTimeline()
-        .getEvents()
-        .some((event) => event.getId() === from)
-    ) {
-      return null;
-    }
-    return { marked: [this._readMarker()], kept: [from] };
+    if (!this.visible || !room || !from || this._loadingOlder()) return null;
+    const events = room.getLiveTimeline().getEvents();
+    const start = events.findIndex((event) => event.getId() === from);
+    if (start === -1) return null;
+    const quoted = events
+      .slice(start)
+      .map((event) => event.replyEventId)
+      .filter((eventId): eventId is string => !!eventId);
+    return { marked: [this._readMarker(), ...quoted], kept: [from] };
   }
 
   /** Toggle foreground-only effects without detaching the warm timeline projection. */

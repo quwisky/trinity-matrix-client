@@ -1920,8 +1920,18 @@ describe('TimelineService', () => {
       const room = fakeRoom(
         [
           fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
-          fakeEvent({ id: '$2', sender: '@alice:hs', body: 'b' }),
-          fakeEvent({ id: '$3', sender: '@alice:hs', body: 'c' }),
+          fakeEvent({
+            id: '$2',
+            sender: '@alice:hs',
+            body: 'b',
+            replyTo: '$old',
+          }),
+          fakeEvent({
+            id: '$3',
+            sender: '@alice:hs',
+            body: 'c',
+            replyTo: '$1',
+          }),
         ],
         {},
         false,
@@ -1940,12 +1950,28 @@ describe('TimelineService', () => {
       return svc;
     }
 
-    it('keeps what a view at the newest message shows, and where its divider was drawn', () => {
+    it('keeps what a view at the newest message shows, the messages it quotes, and where its divider was drawn', () => {
       const svc = open();
 
       svc.setLiveView('$2');
 
-      expect(svc.liveTrimGuard()).toEqual({ marked: ['$1'], kept: ['$2'] });
+      // Quoted messages and the divider's place are kept like the read receipt: below the
+      // ceiling only.
+      expect(svc.liveTrimGuard()).toEqual({
+        marked: ['$1', '$old', '$1'],
+        kept: ['$2'],
+      });
+    });
+
+    it('allows no trim while older history is being paged in', async () => {
+      const svc = open();
+      svc.setLiveView('$2');
+
+      const paging = firstValueFrom(svc.loadOlder());
+      expect(svc.liveTrimGuard()).toBeNull();
+
+      await paging;
+      expect(svc.liveTrimGuard()).not.toBeNull();
     });
 
     it('allows no trim while the view is scrolled back or has not reported', () => {
