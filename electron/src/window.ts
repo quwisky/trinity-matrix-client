@@ -183,17 +183,35 @@ export function createWindow(): void {
   mainWindow.once('ready-to-show', () => mainWindow?.show());
 
   // backgroundThrottling keeps document.visibilityState 'visible', so tell the renderer
-  // itself when the window leaves or returns to the screen; it frees memory while hidden.
+  // itself when the window leaves or returns to the screen; it frees memory while hidden,
+  // and App lock counts the time away.
   const win = mainWindow;
-  const sendVisibility = (visibility: 'visible' | 'hidden') => () => {
+  // What the renderer was last told, so focus and maximize report a return only once. A
+  // renderer that starts while the window is hidden asks lifecycle-ipc.ts instead (#1351).
+  let visibility: 'visible' | 'hidden' = 'visible';
+  const sendVisibility = (next: 'visible' | 'hidden') => () => {
+    visibility = next;
     if (!win.webContents.isDestroyed()) {
-      win.webContents.send(VISIBILITY_CHANNEL, visibility);
+      win.webContents.send(VISIBILITY_CHANNEL, next);
     }
   };
   win.on('hide', sendVisibility('hidden'));
   win.on('minimize', sendVisibility('hidden'));
   win.on('show', sendVisibility('visible'));
   win.on('restore', sendVisibility('visible'));
+  // Some restores emit neither show nor restore (a minimised maximised window on Windows may
+  // emit only maximize and focus); report the window back once it is on screen again.
+  const maybeBack = (): void => {
+    try {
+      if (visibility === 'hidden' && win.isVisible() && !win.isMinimized()) {
+        sendVisibility('visible')();
+      }
+    } catch {
+      // A window being destroyed; nothing to report.
+    }
+  };
+  win.on('maximize', maybeBack);
+  win.on('focus', maybeBack);
 
   // Close-to-tray: a user-initiated window close hides the window instead of
   // destroying it, keeping the process, renderer, and `/sync` alive so
