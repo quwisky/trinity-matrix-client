@@ -31,6 +31,7 @@ import {
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
+import { releaseInputTargetOnDestroy } from '@trinity/components/overlay';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
@@ -99,6 +100,9 @@ export class MessageSearchComponent {
     viewChild<ElementRef<HTMLInputElement>>('queryField');
 
   constructor() {
+    // Closed or replaced after a press or key inside it, the panel would otherwise stay in
+    // memory, detached, as the CDK's last input target until the next one (#1361).
+    releaseInputTargetOnDestroy();
     // After the first render, not on construction: the input does not exist yet at
     // construction time, and `afterNextRender` is the zoneless-safe hook for reaching into
     // the DOM once.

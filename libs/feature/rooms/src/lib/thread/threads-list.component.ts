@@ -10,7 +10,10 @@ import { DateTimeFormatService } from '@trinity/platform-native';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnBadge } from '@trinity/components/generic-content';
-import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
+import {
+  TrnOverlaySurfaceDirective,
+  releaseInputTargetOnDestroy,
+} from '@trinity/components/overlay';
 import {
   ConversationRuntime,
   type ThreadSummary,
@@ -64,6 +67,12 @@ export class ThreadsListComponent {
 
   /** Avatars shown per row, capped — the rest collapse into a "+N" chip. */
   readonly maxAvatars = MAX_AVATARS;
+
+  constructor() {
+    // Closed or replaced after a press or key inside it, the panel would otherwise stay in
+    // memory, detached, as the CDK's last input target until the next one (#1361).
+    releaseInputTargetOnDestroy();
+  }
 
   /** Announce the chosen thread root; the page decides what the slot shows next. */
   openThread(rootEventId: string): void {

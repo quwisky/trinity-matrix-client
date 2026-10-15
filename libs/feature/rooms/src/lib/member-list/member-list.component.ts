@@ -29,6 +29,7 @@ import {
 } from '@trinity/components/foundations';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnButton, TrnInput } from '@trinity/components/controls';
+import { releaseInputTargetOnDestroy } from '@trinity/components/overlay';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   buildPrefixSums,
@@ -352,6 +353,9 @@ export class MemberListComponent {
   });
 
   constructor() {
+    // Closed or replaced after a press or key inside it, the roster would otherwise stay in
+    // memory, detached, as the CDK's last input target until the next one (#1361).
+    releaseInputTargetOnDestroy();
     // The viewport height is an input to the window, so it has to be watched rather than
     // read once: the members panel shares the right-hand slot with threads and search, and
     // it is resized by the split-pane drag as well as by the browser window.
