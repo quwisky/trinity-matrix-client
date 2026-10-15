@@ -749,6 +749,35 @@ describe('AppLockCoverComponent', () => {
       );
     });
 
+    it('says nothing about a system prompt this lock never offered', async () => {
+      // Windows 11 with Hello hardware that was never set up, or a phone with no screen lock.
+      await setup({
+        support: {
+          system: { kind: 'unavailable', reason: 'not-configured' },
+          pin: { kind: 'available', set: true, nextAttemptAt: null },
+        },
+      });
+      expect(pinField()).toBeTruthy();
+      expect(screen.getByTestId('app-lock-message').textContent?.trim()).toBe(
+        '',
+      );
+    });
+
+    it('names Windows Hello when it goes away as the person unlocks with it', async () => {
+      await setup({
+        support: {
+          system: { kind: 'available', biometry: 'windows-hello' },
+          pin: { kind: 'available', set: true, nextAttemptAt: null },
+        },
+        system: () =>
+          of<UnlockOutcome>({ kind: 'use-pin', reason: 'not-configured' }),
+      });
+      await vi.waitFor(() => expect(pinField()).toBeTruthy());
+      expect(screen.getByTestId('app-lock-message').textContent?.trim()).toBe(
+        'Windows Hello isn’t available. Enter your Trinity PIN.',
+      );
+    });
+
     it('waits out the system prompt’s delay with the button disabled', async () => {
       await setup({ systemWaitUntil: Date.now() + 30_000 });
       const unlock = screen.getByRole('button', {

@@ -69,8 +69,9 @@ export function useMethodLabel(biometry: HostPresenceBiometry): string {
 
 /**
  * Why the system prompt isn't offered, naming the method the cover last saw (`method`), with
- * no OS text. Null where the PIN is simply how this device unlocks (no system prompt here, or
- * Windows 10), which needs no explaining.
+ * no OS text. Null where the PIN is simply how this device unlocks, which needs no explaining:
+ * no system prompt here, Windows 10, or a prompt this lock never offered (`method` null, as on
+ * a phone with no screen lock or a PC whose Windows Hello was never set up).
  */
 export function fallbackLine(
   reason: HostSystemPresenceUnavailableReason,
@@ -88,7 +89,7 @@ export function fallbackLine(
     case 'not-enrolled':
     case 'not-configured':
     case 'disabled-by-policy':
-      return `${method ? methodName(method) : 'Your device’s unlock'} isn’t available.`;
+      return method ? `${methodName(method)} isn’t available.` : null;
     default: {
       const unhandled: never = reason;
       void unhandled;

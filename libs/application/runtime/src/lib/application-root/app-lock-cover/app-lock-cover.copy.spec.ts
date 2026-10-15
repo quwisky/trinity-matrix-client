@@ -41,7 +41,12 @@ describe('app lock cover copy', () => {
     ['not-configured', 'windows-hello', 'Windows Hello isn’t available.'],
     ['addon-unavailable', null, 'Windows Hello isn’t available.'],
     ['not-enrolled', 'touch-id', 'Touch ID isn’t available.'],
-    ['no-device-credential', null, 'Your device’s unlock isn’t available.'],
+    ['no-device-credential', 'face', 'Face ID isn’t available.'],
+    // Never offered on this lock: the PIN is simply how this device unlocks.
+    ['not-configured', null, null],
+    ['disabled-by-policy', null, null],
+    ['no-device-credential', null, null],
+    ['not-enrolled', null, null],
     [
       'disabled-by-policy',
       'fingerprint',
