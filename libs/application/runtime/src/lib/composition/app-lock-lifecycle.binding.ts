@@ -33,6 +33,7 @@ import {
   tap,
   timer,
 } from 'rxjs';
+import { afterPaint } from './after-paint';
 
 /**
  * `hidden`: away because the host hid or minimised the app, which the shell may hold.
@@ -264,24 +265,9 @@ export class AppLockLifecycleBinding {
   private revealHeldWindow(wasLocked: boolean): Observable<unknown> {
     if (!this.appLock.locked()) return this.lockIntegration.coverPainted();
     if (!wasLocked) return of(undefined);
-    return this.afterPaint().pipe(
-      switchMap(() => this.lockIntegration.coverPainted()),
-    );
-  }
-
-  /** Emits once the current frame has painted: the first frame lays out, the second paints. */
-  private afterPaint(): Observable<void> {
-    const view = this.window;
-    if (!view) return of(undefined);
-    return new Observable<void>((subscriber) => {
-      let frame = view.requestAnimationFrame(() => {
-        frame = view.requestAnimationFrame(() => {
-          subscriber.next();
-          subscriber.complete();
-        });
-      });
-      return () => view.cancelAnimationFrame(frame);
-    });
+    // No window to paint in: nothing to wait for.
+    const painted = this.window ? afterPaint(this.window) : of(undefined);
+    return painted.pipe(switchMap(() => this.lockIntegration.coverPainted()));
   }
 
   /** A signal read as a stream of its values, for as long as it is subscribed. */

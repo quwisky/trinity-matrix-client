@@ -23,7 +23,8 @@ import {
 import { AppLockService } from '@trinity/data-access/app-lock';
 import { HostLockIntegrationService } from '@trinity/runtime/host';
 import { shownError } from '@trinity/util/ui';
-import { EMPTY, Observable, type Subscription, take } from 'rxjs';
+import { EMPTY, type Subscription, take } from 'rxjs';
+import { afterPaint } from '../../composition/after-paint';
 import { AppLockDialogGate } from '../../composition/app-lock-dialog.gate';
 import { AppLockLifecycleBinding } from '../../composition/app-lock-lifecycle.binding';
 import { AppLockCoverState, type CoverView } from './app-lock-cover.state';
@@ -138,10 +139,11 @@ export class AppLockCoverComponent {
     this.dialogGate.coverShown(true);
     this.state.opened();
     this.focusPrimary();
-    // Two frames: the first lays the cover out, the second has painted it. The shell keeps a
-    // window it hid transparent until it hears this (a reloaded renderer included).
+    // The shell keeps a window it hid transparent until it hears the cover has painted (a
+    // reloaded renderer included). No window, no paint to report.
     this.painted?.unsubscribe();
-    this.painted = this.afterPaint().subscribe(() => {
+    const painted = this.window ? afterPaint(this.window) : EMPTY;
+    this.painted = painted.subscribe(() => {
       this.painted = null;
       this.lockIntegration.coverPainted().pipe(take(1)).subscribe();
     });
@@ -182,20 +184,6 @@ export class AppLockCoverComponent {
     dialog
       .querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled)')
       ?.focus();
-  }
-
-  private afterPaint(): Observable<void> {
-    const view = this.window;
-    if (!view) return EMPTY;
-    return new Observable<void>((subscriber) => {
-      let frame = view.requestAnimationFrame(() => {
-        frame = view.requestAnimationFrame(() => {
-          subscriber.next();
-          subscriber.complete();
-        });
-      });
-      return () => view.cancelAnimationFrame(frame);
-    });
   }
 }
 
