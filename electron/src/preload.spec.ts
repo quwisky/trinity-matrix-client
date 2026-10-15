@@ -511,6 +511,58 @@ describe('preload host capabilities', () => {
     );
   });
 
+  it('tells a new subscriber the window’s current visibility, unless a change came first', async () => {
+    await bridge.negotiate(['lifecycle']);
+    invoke.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'trinity:host:v1:lifecycle:visibility:current'
+          ? 'hidden'
+          : { kind: 'completed' },
+      ),
+    );
+    // A renderer reloaded while Trinity sits in the tray hears no change to tell it so.
+    const seen = vi.fn();
+    bridge.capabilities.lifecycle.subscribeVisibility(seen);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(invoke).toHaveBeenCalledWith(
+      'trinity:host:v1:lifecycle:visibility:current',
+    );
+    expect(seen.mock.calls).toEqual([['hidden']]);
+
+    // On screen is what a renderer assumes; repeating it would read as a return to the front.
+    invoke.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'trinity:host:v1:lifecycle:visibility:current'
+          ? 'visible'
+          : { kind: 'completed' },
+      ),
+    );
+    const onScreen = vi.fn();
+    bridge.capabilities.lifecycle.subscribeVisibility(onScreen);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onScreen).not.toHaveBeenCalled();
+
+    // The window came back before main's answer arrived: the answer is older, and dropped.
+    invoke.mockImplementation((channel: string) =>
+      Promise.resolve(
+        channel === 'trinity:host:v1:lifecycle:visibility:current'
+          ? 'hidden'
+          : { kind: 'completed' },
+      ),
+    );
+    const raced = vi.fn();
+    bridge.capabilities.lifecycle.subscribeVisibility(raced);
+    const listener = on.mock.calls
+      .filter(([channel]) => channel === 'trinity:host:v1:lifecycle:visibility')
+      .at(-1)?.[1] as (event: unknown, visibility: unknown) => void;
+    listener({}, 'visible');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(raced.mock.calls).toEqual([['visible']]);
+  });
+
   it('clears the Blink caches on request once lifecycle is granted', async () => {
     await bridge.negotiate(['lifecycle']);
 

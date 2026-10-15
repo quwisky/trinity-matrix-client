@@ -18,6 +18,7 @@ import {
 import { registerSecureStoreIpc } from './secure-store-ipc';
 import { registerCorsIpc } from './cors-ipc';
 import { registerGeolocationIpc } from './geolocation-ipc';
+import { registerLifecycleIpc } from './lifecycle-ipc';
 import { registerDockBadge } from './dock-badge';
 import { registerHostCapabilityHandshake } from './host-capabilities';
 import { registerTitleBarIpc } from './title-bar-ipc';
@@ -138,6 +139,8 @@ if (!mayStart) {
     // Approximate (IP-based) location lookup for the desktop location-share dialog;
     // Chromium's navigator.geolocation can't resolve without an embedded Google key.
     registerGeolocationIpc();
+    // The window's visibility on request, for a renderer that starts while it is hidden.
+    registerLifecycleIpc();
     // Dock/launcher unread badge: the renderer pushes its unread total, which
     // main validates + clamps before app.setBadgeCount. Drives the macOS dock
     // (and Linux launcher); a no-op on Windows without an overlay icon.
