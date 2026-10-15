@@ -95,9 +95,10 @@ function outcomeOf(value: string): PresenceOutcome {
       // Hello's own anti-hammering; the lock screen falls back to the PIN (decision 23).
       return { kind: 'locked-out' };
     case 'not-configured':
-      return { kind: 'unavailable', reason: 'not-configured' };
     case 'device-not-present':
-      return { kind: 'unavailable', reason: 'not-supported' };
+      // Hello was offered and has gone, so the lock screen names it. Support maps
+      // device-not-present to not-supported instead: no Hello on this PC at all.
+      return { kind: 'unavailable', reason: 'not-configured' };
     case 'disabled-by-policy':
       return { kind: 'unavailable', reason: 'disabled-by-policy' };
     default:

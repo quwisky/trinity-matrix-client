@@ -170,7 +170,8 @@ describe('windowsHelloDriver', () => {
     ['cancelled', { kind: 'cancelled' }],
     ['retries-exhausted', { kind: 'locked-out' }],
     ['not-configured', { kind: 'unavailable', reason: 'not-configured' }],
-    ['device-not-present', { kind: 'unavailable', reason: 'not-supported' }],
+    // Hello was offered and then went away: name it ("Windows Hello isn’t available.").
+    ['device-not-present', { kind: 'unavailable', reason: 'not-configured' }],
     [
       'disabled-by-policy',
       { kind: 'unavailable', reason: 'disabled-by-policy' },
