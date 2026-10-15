@@ -961,6 +961,52 @@ describe('AppLockService', () => {
       });
     });
 
+    it('keeps the PIN state when the host fails to store the PIN', async () => {
+      const { lock } = setup({
+        stored: {},
+        support: {
+          system: { kind: 'unavailable', reason: 'no-device-credential' },
+          pin: { kind: 'available', set: false, nextAttemptAt: null },
+        },
+        setPin: () =>
+          of<HostOperationOutcome>({
+            kind: 'rejected',
+            diagnostic: { code: 'pin-not-saved' },
+          }),
+      });
+      await hydrated(lock);
+      await expect(firstValueFrom(lock.enable('4829'))).resolves.toMatchObject({
+        kind: 'failed',
+      });
+      expect(lock.support().pin).toEqual({
+        kind: 'available',
+        set: false,
+        nextAttemptAt: null,
+      });
+    });
+
+    it('drops a support read that started before the PIN was stored', async () => {
+      const before: HostUserPresenceSupport = {
+        system: { kind: 'unavailable', reason: 'no-device-credential' },
+        pin: { kind: 'available', set: false, nextAttemptAt: null },
+      };
+      const { lock, adapter } = setup({ stored: {}, support: before });
+      await hydrated(lock);
+      const late = new Subject<HostUserPresenceSupport>();
+      vi.mocked(adapter.support).mockReturnValueOnce(late);
+      const reading = lock.refreshSupport().subscribe();
+      await expect(firstValueFrom(lock.enable('4829'))).resolves.toEqual({
+        kind: 'completed',
+      });
+      late.next(before);
+      late.complete();
+      reading.unsubscribe();
+      expect(lock.support().pin).toMatchObject({
+        kind: 'available',
+        set: true,
+      });
+    });
+
     it('knows the PIN is set as soon as it turns on with the PIN alone', async () => {
       // The host still reports its earlier read: the PIN it just stored must not wait for one.
       const { lock } = setup({

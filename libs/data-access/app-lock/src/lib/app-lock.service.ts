@@ -87,6 +87,8 @@ export class AppLockService {
   private readonly _lockAfter = signal<LockAfter>('1m');
   private readonly _support = signal<HostUserPresenceSupport>(NO_USER_PRESENCE);
   private verifiedAt: number | null = null;
+  /** Bumped on every PIN change the host confirmed; older support reads are dropped. */
+  private pinChanges = 0;
   /** The system prompt opened the guard window (not a PIN check, not setup). */
   private verifiedBySystem = false;
   /**
@@ -168,11 +170,14 @@ export class AppLockService {
    * {@link SUPPORT_TIMEOUT_MS}, it keeps and emits the support it had.
    */
   refreshSupport(): Observable<HostUserPresenceSupport> {
-    return defer(() =>
-      this.presence.support().pipe(
+    return defer(() => {
+      // A read that started before a PIN change answers with the store as it was then.
+      const pinChanges = this.pinChanges;
+      return this.presence.support().pipe(
         take(1),
         map((support) => withoutPastWait(support, this.now())),
         tap((support) => {
+          if (pinChanges !== this.pinChanges) return;
           this._support.set(support);
           if (
             this.settingUnreadable() &&
@@ -188,8 +193,8 @@ export class AppLockService {
         }),
         catchError(() => of(this._support())),
         defaultIfEmpty(this._support()),
-      ),
-    );
+      );
+    });
   }
 
   /**
@@ -551,6 +556,7 @@ export class AppLockService {
    * it changes nothing here; those callers read support again.
    */
   private pinStored(set: boolean): void {
+    this.pinChanges += 1;
     this._support.update((support) =>
       set || support.pin.kind === 'available'
         ? { ...support, pin: { kind: 'available', set, nextAttemptAt: null } }
