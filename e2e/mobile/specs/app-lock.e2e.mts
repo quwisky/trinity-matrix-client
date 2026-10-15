@@ -80,6 +80,9 @@ describe('App lock on Android', () => {
     await expect($('[data-testid="app-lock-after"]')).toBeDisplayed({
       wait: 20_000,
     });
+    // The new PIN counts at once: Change PIN works and no "no PIN" note shows.
+    await expect($('[data-testid="app-lock-change-pin"]')).toBeEnabled();
+    await expect($('[data-testid="app-lock-no-pin"]')).not.toExist();
     await expect(
       $('[data-testid="app-lock-screen-lock-hint"]'),
     ).toBeDisplayed();
@@ -107,7 +110,7 @@ describe('App lock on Android', () => {
 
     // Turning App lock off asks for the PIN again, then takes the cover down.
     await openSecuritySettings();
-    // Settings reads the stored PIN back as it opens; only then can it check one.
+    // Settings reads support again as it opens: wait for it before a guarded change.
     await expect($('[data-testid="app-lock-change-pin"]')).toBeEnabled({
       wait: 20_000,
     });
