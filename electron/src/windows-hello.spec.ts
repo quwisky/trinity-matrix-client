@@ -96,7 +96,7 @@ describe('windowsHelloDriver', () => {
   it.each([
     ['not-configured', 22631, 'not-configured'],
     ['disabled-by-policy', 22631, 'disabled-by-policy'],
-    ['device-not-present', 22631, 'not-configured'],
+    ['device-not-present', 22631, 'not-supported'],
     ['device-busy', 22631, 'not-supported'],
     ['unknown', 22631, 'not-supported'],
     ['available', 19045, 'windows-version'],
@@ -125,6 +125,16 @@ describe('windowsHelloDriver', () => {
     expect(hello.verify).not.toHaveBeenCalled();
   });
 
+  it('reports Windows 10 before a missing addon, so it never names Hello', async () => {
+    await expect(windowsHelloDriver(null, 19045).support()).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'windows-version',
+    });
+    await expect(
+      windowsHelloDriver(null, 19045).verify('Unlock Trinity', window as never),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'windows-version' });
+  });
+
   it('reports a missing addon, for support and for verify', async () => {
     await expect(windowsHelloDriver(null, 22631).support()).resolves.toEqual({
       kind: 'unavailable',
@@ -135,7 +145,7 @@ describe('windowsHelloDriver', () => {
     ).resolves.toEqual({ kind: 'unavailable', reason: 'addon-unavailable' });
   });
 
-  it('reads an addon that throws as unavailable', async () => {
+  it('reads an addon that throws as no Hello for support and a failed prompt for verify', async () => {
     const broken = {
       availability: vi.fn(() => Promise.reject(new Error('COM failure'))),
       verify: vi.fn(() => {
@@ -160,7 +170,7 @@ describe('windowsHelloDriver', () => {
     ['cancelled', { kind: 'cancelled' }],
     ['retries-exhausted', { kind: 'locked-out' }],
     ['not-configured', { kind: 'unavailable', reason: 'not-configured' }],
-    ['device-not-present', { kind: 'unavailable', reason: 'not-configured' }],
+    ['device-not-present', { kind: 'unavailable', reason: 'not-supported' }],
     [
       'disabled-by-policy',
       { kind: 'unavailable', reason: 'disabled-by-policy' },

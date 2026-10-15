@@ -82,12 +82,22 @@ describe('systemPresenceDriver', () => {
     ).resolves.toEqual({ kind: 'available', biometry: 'windows-hello' });
   });
 
-  it('leaves Windows on the PIN without the addon', async () => {
+  it('leaves Windows 11 on the PIN without the addon', async () => {
+    await expect(
+      systemPresenceDriver('win32', {
+        systemPreferences: prefs(true, () => Promise.resolve()),
+        windowsHello: null,
+        windowsBuild: 22631,
+      }).support(),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'addon-unavailable' });
+  });
+
+  it('reads an unknown Windows build as Windows 10', async () => {
     await expect(
       systemPresenceDriver('win32', {
         systemPreferences: prefs(true, () => Promise.resolve()),
       }).support(),
-    ).resolves.toEqual({ kind: 'unavailable', reason: 'addon-unavailable' });
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'windows-version' });
   });
 });
 

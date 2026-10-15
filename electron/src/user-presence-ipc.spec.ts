@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { handlers, mainWindowRef } = vi.hoisted(() => ({
+const { handlers, mainWindowRef, osRelease } = vi.hoisted(() => ({
+  osRelease: { current: '10.0.22631' },
   handlers: new Map<
     string,
     (event: { sender: unknown }, request?: unknown) => unknown
@@ -24,6 +25,10 @@ vi.mock('electron', () => ({
   },
 }));
 vi.mock('./window', () => ({ getMainWindow: () => mainWindowRef.current }));
+vi.mock('node:os', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:os')>()),
+  release: () => osRelease.current,
+}));
 
 import { PinVerifier, type PinFileIo } from './app-lock-pin';
 import {
@@ -468,12 +473,22 @@ describe('defaultPresenceDriver', () => {
     expect(defaultPresenceDriver('linux')).toBe(NO_SYSTEM_PRESENCE);
   });
 
-  // No windows-hello.node exists in this checkout's resources, as in a package built
-  // without the addon: Windows reports it missing and stays on the PIN.
-  it('reads a Windows install without the addon as no Windows Hello', async () => {
+  // Under Vitest `process.resourcesPath` is undefined, so building the addon's path throws
+  // inside the loader, as any load failure does: Windows 11 reports the addon missing and
+  // stays on the PIN.
+  it('reads Windows 11 whose addon cannot be loaded as no Windows Hello', async () => {
+    osRelease.current = '10.0.22631';
     await expect(defaultPresenceDriver('win32').support()).resolves.toEqual({
       kind: 'unavailable',
       reason: 'addon-unavailable',
+    });
+  });
+
+  it('reads Windows 10 as windows-version', async () => {
+    osRelease.current = '10.0.19045';
+    await expect(defaultPresenceDriver('win32').support()).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'windows-version',
     });
   });
 });

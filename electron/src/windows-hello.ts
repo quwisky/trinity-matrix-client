@@ -77,9 +77,9 @@ function availabilityOf(value: string): SystemPresence {
     case 'disabled-by-policy':
       return { kind: 'unavailable', reason: 'disabled-by-policy' };
     case 'not-configured':
-    case 'device-not-present':
       return { kind: 'unavailable', reason: 'not-configured' };
     default:
+      // device-not-present: no Hello on this PC, so the PIN is simply how it unlocks.
       // device-busy and unknown: the PIN this time; support is read again at every unlock.
       return { kind: 'unavailable', reason: 'not-supported' };
   }
@@ -95,8 +95,9 @@ function outcomeOf(value: string): PresenceOutcome {
       // Hello's own anti-hammering; the lock screen falls back to the PIN (decision 23).
       return { kind: 'locked-out' };
     case 'not-configured':
-    case 'device-not-present':
       return { kind: 'unavailable', reason: 'not-configured' };
+    case 'device-not-present':
+      return { kind: 'unavailable', reason: 'not-supported' };
     case 'disabled-by-policy':
       return { kind: 'unavailable', reason: 'disabled-by-policy' };
     default:
@@ -107,10 +108,14 @@ function outcomeOf(value: string): PresenceOutcome {
 /**
  * Windows Hello through the addon; the Trinity PIN covers everything it cannot.
  *
+ * The build is checked first, so Windows 10 reads as `windows-version` and never names Hello.
+ *
  * At most one Hello dialog is open at a time: the addon blocks a libuv pool thread (which
- * the PIN's scrypt also needs) for as long as the dialog is open. A second request for the
- * same reason shares the open dialog and its outcome; a request for another reason is
- * refused with `presence-busy`, so one verification never answers two different questions.
+ * the PIN's scrypt also needs) for as long as the dialog is open. The renderer already joins
+ * or waits for its own prompts; this guard covers a renderer reloaded or recovered from a
+ * crash while a dialog is still open. A request for the same reason shares the open dialog
+ * and its outcome; a request for another reason is refused with `presence-busy`, so one
+ * verification never answers two different questions.
  */
 export function windowsHelloDriver(
   addon: WindowsHelloAddon | null,
@@ -137,8 +142,8 @@ export function windowsHelloDriver(
 
   return {
     async support() {
-      if (!addon) return ADDON_UNAVAILABLE;
       if (build < FIRST_SUPPORTED_BUILD) return WINDOWS_VERSION;
+      if (!addon) return ADDON_UNAVAILABLE;
       try {
         return availabilityOf(await addon.availability());
       } catch {
@@ -146,8 +151,8 @@ export function windowsHelloDriver(
       }
     },
     async verify(reason, window) {
-      if (!addon) return ADDON_UNAVAILABLE;
       if (build < FIRST_SUPPORTED_BUILD) return WINDOWS_VERSION;
+      if (!addon) return ADDON_UNAVAILABLE;
       if (!window) return NO_WINDOW;
       if (open) return open.reason === reason ? open.outcome : PRESENCE_BUSY;
       const outcome = prompt(addon, reason, window).finally(() => {
