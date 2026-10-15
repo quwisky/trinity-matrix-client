@@ -56,12 +56,13 @@ const ESTIMATED_ROW_HEIGHT_PX = 64;
 const OVERSCAN_PX = 800;
 
 /**
- * The least an unmeasured row is counted at when the list says what it keeps on screen
- * (#1366). Rows that arrive while a web tab is hidden are rendered but never measured, and
- * a short row is well under the 64 px estimate, so counting them at the estimate could
- * name too few rows to fill the viewport when the window is shown again.
+ * What an unmeasured row is counted at when the list says what it keeps on screen (#1366):
+ * the shortest row it renders, a one-line system line in compact density at the small text
+ * scale. Rows that arrive while a web tab is hidden are rendered but never measured, and
+ * counting them at the 64 px estimate could name too few rows to fill the viewport when
+ * the window is shown again; at this height they can only name more.
  */
-const MIN_UNMEASURED_ROW_PX = 24;
+const MIN_UNMEASURED_ROW_PX = 16;
 
 /** At or below this many rows, render everything (windowing isn't worth it). */
 const SMALL_LIST_ROWS = 80;

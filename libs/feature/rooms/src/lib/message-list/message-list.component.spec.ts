@@ -913,13 +913,13 @@ describe('MessageListComponent', () => {
         reactions: [{ key: '👍', count: 2, reacted: false, reactors: [] }],
       }));
 
-    it('counts rows it has not measured at a minimum height, so it never names too few', async () => {
+    it('counts rows it has not measured at the shortest row height, so it never names too few', async () => {
       tallViewport();
       const { liveView } = await renderReporting(reacted(200));
 
-      // 600 px viewport + 800 px overscan at 24 px a row: 59 rows, though they would
+      // 600 px viewport + 800 px overscan at 16 px a row: 88 rows, though they would
       // render far taller.
-      expect(liveView).toHaveBeenLastCalledWith('$141');
+      expect(liveView).toHaveBeenLastCalledWith('$112');
     });
 
     it('counts measured rows at their height', async () => {
@@ -947,7 +947,7 @@ describe('MessageListComponent', () => {
     it('reports nothing while older history loads', async () => {
       tallViewport();
       const { fixture, liveView } = await renderReporting(many(200));
-      expect(liveView).toHaveBeenLastCalledWith('$141');
+      expect(liveView).toHaveBeenLastCalledWith('$112');
 
       fixture.componentRef.setInput('loadingOlder', true);
       fixture.detectChanges();
@@ -972,7 +972,7 @@ describe('MessageListComponent', () => {
       cmp.onScroll();
       fixture.detectChanges();
       await fixture.whenStable();
-      expect(liveView).toHaveBeenLastCalledWith('$141');
+      expect(liveView).toHaveBeenLastCalledWith('$112');
     });
 
     it('keeps the reader where they were when older rows are trimmed away above them', async () => {
