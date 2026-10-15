@@ -70,8 +70,10 @@ export function useMethodLabel(biometry: HostPresenceBiometry): string {
 /**
  * Why the system prompt isn't offered, naming the method the cover last saw (`method`), with
  * no OS text. Null where the PIN is simply how this device unlocks, which needs no explaining:
- * no system prompt here, Windows 10, or a prompt this lock never offered (`method` null, as on
- * a phone with no screen lock or a PC whose Windows Hello was never set up).
+ * no system prompt here, Windows 10, or a prompt not offered since the app started (`method`
+ * null, as on a phone with no screen lock or a PC whose Windows Hello was never set up). The
+ * cover remembers the method across locks until a restart, a crash reload, or the phone's OS
+ * ending the app; a method that went away while the app was closed is not named.
  */
 export function fallbackLine(
   reason: HostSystemPresenceUnavailableReason,

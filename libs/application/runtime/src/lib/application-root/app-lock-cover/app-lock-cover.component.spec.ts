@@ -749,7 +749,7 @@ describe('AppLockCoverComponent', () => {
       );
     });
 
-    it('says nothing about a system prompt this lock never offered', async () => {
+    it('says nothing about a system prompt not offered since the app started', async () => {
       // Windows 11 with Hello hardware that was never set up, or a phone with no screen lock.
       await setup({
         support: {
@@ -775,6 +775,18 @@ describe('AppLockCoverComponent', () => {
       await vi.waitFor(() => expect(pinField()).toBeTruthy());
       expect(screen.getByTestId('app-lock-message').textContent?.trim()).toBe(
         'Windows Hello isn’t available. Enter your Trinity PIN.',
+      );
+    });
+
+    it('says the device’s unlock isn’t available when the prompt was refused without a reason', async () => {
+      // A refused or failed Windows Hello request, or Touch ID gone at verify: not-supported.
+      await setup({
+        system: () =>
+          of<UnlockOutcome>({ kind: 'use-pin', reason: 'not-supported' }),
+      });
+      await vi.waitFor(() => expect(pinField()).toBeTruthy());
+      expect(screen.getByTestId('app-lock-message').textContent?.trim()).toBe(
+        'Your device’s unlock isn’t available. Enter your Trinity PIN.',
       );
     });
 
