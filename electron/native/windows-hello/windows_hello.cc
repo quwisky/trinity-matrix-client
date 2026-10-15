@@ -8,6 +8,7 @@
 #include <userconsentverifierinterop.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Security.Credentials.UI.h>
+#include <cstring>
 #include <string>
 
 namespace {
@@ -109,7 +110,8 @@ napi_value Verify(napi_env env, napi_callback_info info) {
   size_t length = 0;
   if (argc >= 1 && napi_get_buffer_info(env, argv[0], &handle, &length) == napi_ok &&
       length >= sizeof(HWND)) {
-    job->window = *static_cast<HWND*>(handle);
+    // memcpy: a sliced Buffer need not be aligned for an HWND read.
+    std::memcpy(&job->window, handle, sizeof(HWND));
   }
   if (argc >= 2) {
     size_t chars = 0;

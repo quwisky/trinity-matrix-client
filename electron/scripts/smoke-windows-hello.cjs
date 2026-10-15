@@ -1,4 +1,4 @@
-// CI smoke: load the built addon in Electron-as-Node and ask for availability. A hosted
+// CI smoke: load the built addon in Electron-as-Node and ask for availability twice. A hosted
 // runner has no Hello hardware, so any known availability string passes; a crash, a
 // missing export or an unknown answer fails.
 const path = require('node:path');
@@ -20,13 +20,16 @@ if (
   console.error('windows-hello.node lacks availability() or verify()');
   process.exit(1);
 }
-addon
-  .availability()
-  .then((value) => {
+// Twice in sequence: each call enters and leaves the MTA on a reused pool thread while
+// C++/WinRT caches the activation factory, and every unlock repeats the call.
+async function main() {
+  for (const attempt of [1, 2]) {
+    const value = await addon.availability();
     if (!known.has(value)) {
-      console.error(`unexpected availability: ${value}`);
+      console.error(`unexpected availability (call ${attempt}): ${value}`);
       process.exit(1);
     }
-    console.log(`windows-hello availability: ${value}`);
-  })
-  .catch(() => process.exit(1));
+    console.log(`windows-hello availability (call ${attempt}): ${value}`);
+  }
+}
+main().catch(() => process.exit(1));
