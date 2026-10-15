@@ -1,6 +1,9 @@
 import { Injectable, Provider, inject } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
-import { PrivacyScreen } from '@capacitor/privacy-screen';
+import {
+  PrivacyScreen,
+  type PrivacyScreenConfig,
+} from '@capacitor/privacy-screen';
 import { AppLockPinBridge } from '@trinity/capacitor-app-lock';
 import {
   HOST_SCREEN_PRIVACY_OPERATION,
@@ -17,6 +20,15 @@ const FAILED: HostOperationOutcome = {
   kind: 'rejected',
   diagnostic: { code: 'screen-privacy-failed' },
 };
+
+/**
+ * iOS blurs the app-switcher snapshot (spec §4). Android dims rather than drawing the splash,
+ * whose path looks up a `Splash` theme Trinity doesn't have; FLAG_SECURE is set either way.
+ */
+const COVER = {
+  ios: { blurEffect: 'dark' },
+  android: { dimBackground: true },
+} as const satisfies PrivacyScreenConfig;
 
 const NOT_SUPPORTED: HostOperationOutcome = {
   kind: 'unavailable',
@@ -38,7 +50,7 @@ export class CapacitorScreenPrivacyAdapter implements HostScreenPrivacyOperation
         return of(NOT_SUPPORTED);
       }
       return from(
-        enabled ? PrivacyScreen.enable() : PrivacyScreen.disable(),
+        enabled ? PrivacyScreen.enable(COVER) : PrivacyScreen.disable(),
       ).pipe(
         map((result: unknown): HostOperationOutcome =>
           typeof result === 'object' &&
@@ -52,9 +64,29 @@ export class CapacitorScreenPrivacyAdapter implements HostScreenPrivacyOperation
     });
   }
 
+  /** Best effort: a failure or a timeout is reported, never thrown. */
   dismissPresented(): Observable<HostOperationOutcome> {
     return defer(() => this.appLock.dismissPresented()).pipe(
-      map((): HostOperationOutcome => ({ kind: 'completed' })),
+      map((dismissal): HostOperationOutcome => {
+        switch (dismissal) {
+          case 'completed':
+            return { kind: 'completed' };
+          case 'failed':
+            return { kind: 'rejected', diagnostic: { code: 'dismiss-failed' } };
+          case 'timed-out':
+            return {
+              kind: 'rejected',
+              diagnostic: { code: 'dismiss-timeout' },
+            };
+          case 'unavailable':
+            return NOT_SUPPORTED;
+          default: {
+            const unhandled: never = dismissal;
+            void unhandled;
+            return { kind: 'rejected', diagnostic: { code: 'dismiss-failed' } };
+          }
+        }
+      }),
     );
   }
 }

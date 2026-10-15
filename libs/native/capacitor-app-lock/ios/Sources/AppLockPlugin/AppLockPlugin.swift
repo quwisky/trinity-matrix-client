@@ -85,7 +85,8 @@ public class AppLockPlugin: CAPPlugin, CAPBridgedPlugin {
     ///
     /// While Trinity is inactive, @capacitor/privacy-screen's app-switcher cover sits on top of
     /// the presented stack. Dismissing the stack takes the cover with it, so it goes back up at
-    /// once; that plugin still holds it and takes it down on becoming active.
+    /// once if Trinity is still inactive; that plugin still holds it and takes it down on
+    /// becoming active.
     @objc func dismissPresented(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             guard let root = self.bridge?.viewController,
@@ -103,7 +104,10 @@ public class AppLockPlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
             root.dismiss(animated: false) {
-                guard let cover, root.presentedViewController == nil else {
+                // Only while still inactive: once didBecomeActive has run, that plugin has let go
+                // of the cover, and putting it back would leave it over a running Trinity.
+                guard let cover, root.presentedViewController == nil,
+                      UIApplication.shared.applicationState != .active else {
                     call.resolve()
                     return
                 }

@@ -23,8 +23,6 @@ import org.json.JSONObject;
 public class AppLockPlugin extends Plugin {
     private static final String STORAGE_UNAVAILABLE = "storage-unavailable";
     private static final String UNAVAILABLE_MESSAGE = "Secure storage is unavailable";
-    private static final String DISMISS_FAILED = "dismiss-failed";
-    private static final String DISMISS_FAILED_MESSAGE = "Could not dismiss presented UI";
     private static final String PIN_INVALID = "pin-invalid";
     private final ExecutorService work = Executors.newSingleThreadExecutor();
     private PinVerifier verifier;
@@ -113,16 +111,12 @@ public class AppLockPlugin extends Plugin {
 
     /**
      * Android's presented UI (share sheet, Custom Tabs, camera) are separate activities, not
-     * views over the web view, so there is nothing here to take down. Catches Exception so the
-     * call is always answered, with a code only.
+     * views over the web view, and this plugin can't take them down; they can stay on top of
+     * Trinity's activity and come back in front of the lock screen. Resolves at once.
      */
     @PluginMethod
     public void dismissPresented(PluginCall call) {
-        try {
-            call.resolve();
-        } catch (Exception error) {
-            call.reject(DISMISS_FAILED_MESSAGE, DISMISS_FAILED);
-        }
+        call.resolve();
     }
 
     /**

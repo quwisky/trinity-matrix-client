@@ -1,9 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { Capacitor } from '@capacitor/core';
-import { AppLockPinBridge } from '@trinity/capacitor-app-lock';
+import {
+  AppLockPinBridge,
+  type AppLockDismissal,
+} from '@trinity/capacitor-app-lock';
 import { HOST_SCREEN_PRIVACY_OPERATION } from '@trinity/runtime/host';
 import { desktopBridgeFixture } from '@trinity/testing';
-import { firstValueFrom, of } from 'rxjs';
+import { type Observable, firstValueFrom, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const privacy = vi.hoisted(() => ({ enable: vi.fn(), disable: vi.fn() }));
@@ -26,7 +29,11 @@ describe('CapacitorScreenPrivacyAdapter', () => {
     TestBed.resetTestingModule();
   });
 
-  function adapter(dismissPresented = vi.fn(() => of(undefined))) {
+  function adapter(
+    dismissPresented = vi.fn((): Observable<AppLockDismissal> =>
+      of('completed'),
+    ),
+  ) {
     TestBed.configureTestingModule({
       providers: [
         CapacitorScreenPrivacyAdapter,
@@ -48,6 +55,10 @@ describe('CapacitorScreenPrivacyAdapter', () => {
     await expect(firstValueFrom(on)).resolves.toEqual({ kind: 'completed' });
     await expect(firstValueFrom(screen.set(false))).resolves.toEqual({
       kind: 'completed',
+    });
+    expect(privacy.enable).toHaveBeenCalledExactlyOnceWith({
+      ios: { blurEffect: 'dark' },
+      android: { dimBackground: true },
     });
     expect(privacy.disable).toHaveBeenCalledOnce();
     expect(Capacitor.isPluginAvailable).toHaveBeenCalledWith(
@@ -97,6 +108,23 @@ describe('CapacitorScreenPrivacyAdapter', () => {
     });
     expect(dismissPresented).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    ['failed', { kind: 'rejected', diagnostic: { code: 'dismiss-failed' } }],
+    [
+      'timed-out',
+      { kind: 'rejected', diagnostic: { code: 'dismiss-timeout' } },
+    ],
+    ['unavailable', { kind: 'unavailable', reason: 'not-supported' }],
+  ] as const)(
+    'reports the %s dismissal outcome as not completed',
+    async (dismissal, outcome) => {
+      const { adapter: screen } = adapter(vi.fn(() => of(dismissal)));
+      await expect(firstValueFrom(screen.dismissPresented())).resolves.toEqual(
+        outcome,
+      );
+    },
+  );
 });
 
 describe('screenPrivacyProvider', () => {
@@ -112,7 +140,7 @@ describe('screenPrivacyProvider', () => {
         screenPrivacyProvider(),
         {
           provide: AppLockPinBridge,
-          useValue: { dismissPresented: () => of(undefined) },
+          useValue: { dismissPresented: () => of('completed') },
         },
       ],
     });

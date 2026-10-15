@@ -149,6 +149,7 @@ describe('host adapter rejection semantics', () => {
     delete (navigator as { setAppBadge?: unknown }).setAppBadge;
     delete (navigator as { clearAppBadge?: unknown }).clearAppBadge;
     TestBed.resetTestingModule();
+    vi.restoreAllMocks();
   });
 
   it('reports an unavailable Web badge explicitly', async () => {

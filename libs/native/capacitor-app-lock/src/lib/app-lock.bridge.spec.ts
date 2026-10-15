@@ -204,17 +204,15 @@ describe('AppLockPinBridge', () => {
     plugin.dismissPresented.mockResolvedValueOnce(undefined);
     const dismissal = bridge().dismissPresented();
     expect(plugin.dismissPresented).not.toHaveBeenCalled();
-    await expect(
-      firstValueFrom(dismissal, { defaultValue: 'done' }),
-    ).resolves.toBeUndefined();
+    await expect(firstValueFrom(dismissal)).resolves.toBe('completed');
     expect(plugin.dismissPresented).toHaveBeenCalledOnce();
   });
 
-  it('dismisses presented native UI, and never fails the caller', async () => {
+  it('reports a failed dismissal, and never fails the caller', async () => {
     plugin.dismissPresented.mockRejectedValueOnce(new Error('no controller'));
-    await expect(
-      firstValueFrom(bridge().dismissPresented(), { defaultValue: 'done' }),
-    ).resolves.toBeUndefined();
+    await expect(firstValueFrom(bridge().dismissPresented())).resolves.toBe(
+      'failed',
+    );
   });
 
   it('stops waiting for a dismissal that never settles', async () => {
@@ -229,11 +227,9 @@ describe('AppLockPinBridge', () => {
     });
     try {
       plugin.dismissPresented.mockReturnValueOnce(new Promise(() => undefined));
-      const dismissal = firstValueFrom(bridge().dismissPresented(), {
-        defaultValue: 'done',
-      });
+      const dismissal = firstValueFrom(bridge().dismissPresented());
       await vi.advanceTimersByTimeAsync(DISMISS_PRESENTED_TIMEOUT_MS);
-      await expect(dismissal).resolves.toBeUndefined();
+      await expect(dismissal).resolves.toBe('timed-out');
     } finally {
       vi.useRealTimers();
     }
@@ -262,9 +258,9 @@ describe('AppLockPinBridge', () => {
     expect(plugin.setPin).not.toHaveBeenCalled();
     expect(plugin.verifyPin).not.toHaveBeenCalled();
     expect(plugin.clearPin).not.toHaveBeenCalled();
-    await expect(
-      firstValueFrom(pins.dismissPresented(), { defaultValue: 'done' }),
-    ).resolves.toBeUndefined();
+    await expect(firstValueFrom(pins.dismissPresented())).resolves.toBe(
+      'unavailable',
+    );
     expect(plugin.dismissPresented).not.toHaveBeenCalled();
     (Capacitor.isPluginAvailable as unknown as Mock).mockReturnValue(true);
   });

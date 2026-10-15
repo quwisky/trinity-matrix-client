@@ -21,6 +21,10 @@ export type AppLockPinCheck =
   | { readonly kind: 'invalid' }
   | { readonly kind: 'unavailable' };
 
+/** How a dismissal ended; locking goes on whatever it is (best effort). */
+export type AppLockDismissal =
+  'completed' | 'failed' | 'timed-out' | 'unavailable';
+
 type VerifyResult = Awaited<ReturnType<AppLockPlugin['verifyPin']>>['result'];
 
 const UNAVAILABLE = { kind: 'unavailable' } as const;
@@ -133,20 +137,21 @@ export class AppLockPinBridge {
   }
 
   /**
-   * Cold and finite; completes even when nothing was presented, the call failed or the
-   * host never answered.
+   * Cold and finite: one answer, never an error, even when the call failed or the host never
+   * answered. Completed also covers "nothing was presented".
    */
-  dismissPresented(): Observable<void> {
-    return defer(() =>
-      this.available ? from(appLock.dismissPresented()) : of(undefined),
-    ).pipe(
-      map((): void => undefined),
-      timeout({
-        first: DISMISS_PRESENTED_TIMEOUT_MS,
-        with: () => of(undefined),
-      }),
-      catchError(() => of(undefined)),
-    );
+  dismissPresented(): Observable<AppLockDismissal> {
+    return defer((): Observable<AppLockDismissal> => {
+      if (!this.available) return of('unavailable');
+      return from(appLock.dismissPresented()).pipe(
+        map((): AppLockDismissal => 'completed'),
+        timeout({
+          first: DISMISS_PRESENTED_TIMEOUT_MS,
+          with: () => of<AppLockDismissal>('timed-out'),
+        }),
+        catchError(() => of<AppLockDismissal>('failed')),
+      );
+    });
   }
 
   clear(): Observable<'completed' | 'unavailable'> {
