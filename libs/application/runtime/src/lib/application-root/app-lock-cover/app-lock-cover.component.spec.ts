@@ -1053,6 +1053,32 @@ describe('AppLockCoverComponent', () => {
       expect(unlockWithSystem).toHaveBeenCalledOnce();
     });
 
+    it('says it can’t read the PIN once when an attempt finds the store unreadable', async () => {
+      const { support, answerRefreshes, settle } = await setup({
+        support: PIN_ONLY,
+        refresh: 'held',
+        pin: () => of<UnlockOutcome>({ kind: 'unavailable' }),
+      });
+      answerRefreshes();
+      await settle();
+      await type(pinField(), '000000');
+      await click(screen.getByTestId('app-lock-pin-submit'));
+      // The attempt reads support again, and the store is unreadable now.
+      support.set(UNREADABLE_ONLY);
+      answerRefreshes();
+      await settle();
+      const dialog = screen.getByTestId('app-lock-cover');
+      expect(dialog.dataset['view']).toBe('pin-unreadable');
+      const visible = [...dialog.querySelectorAll('p:not(.sr-only)')]
+        .map((line) => line.textContent ?? '')
+        .join(' ');
+      expect(visible.split('can’t read your PIN').length - 1).toBe(1);
+      // Said once to a screen reader too, as the view changes under it.
+      expect(screen.getByRole('status').textContent?.trim()).toBe(
+        'Trinity can’t read your PIN right now. Try again.',
+      );
+    });
+
     it('names Trinity Next when it is the app running', async () => {
       await setup({ support: UNREADABLE_ONLY, appName: 'Trinity Next' });
       expect(

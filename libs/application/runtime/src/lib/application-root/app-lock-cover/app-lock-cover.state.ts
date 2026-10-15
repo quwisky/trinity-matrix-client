@@ -82,6 +82,8 @@ export class AppLockCoverState {
   /** The wait the last PIN answer started; the host's `nextAttemptAt` also counts. */
   private readonly answeredPinWait = signal<number | null>(null);
   private readonly message = signal<string | null>(null);
+  /** The view whose own text already says the message: there it is announced, not shown. */
+  private readonly messageShownBy = signal<CoverView | null>(null);
   private readonly focusRequests = signal(0);
   private readonly biometry = computed(() => {
     const system = this.appLock.support().system;
@@ -177,7 +179,8 @@ export class AppLockCoverState {
   });
   /** The method or reason line (`app-lock-message`), also the dialog's description. */
   readonly line = computed(() => {
-    const message = this.message();
+    const message =
+      this.messageShownBy() === this.view() ? null : this.message();
     const wait = this.waitText();
     if (message !== null || wait !== null) {
       return [message, wait].filter((part) => part !== null).join(' ');
@@ -441,7 +444,12 @@ export class AppLockCoverState {
         this.refocus();
         return;
       case 'unavailable':
-        this.say(`${this.appName} can’t read your PIN right now. Try again.`);
+        // The unreadable view says this sentence itself; the PIN form, if the store reads
+        // again, needs the line.
+        this.say(
+          `${this.appName} can’t read your PIN right now. Try again.`,
+          'pin-unreadable',
+        );
         this.refocus();
         this.visit(false);
         return;
@@ -452,9 +460,13 @@ export class AppLockCoverState {
     }
   }
 
-  /** Sets the visible line and announces it once, with any wait it started. */
-  private say(text: string | null): void {
+  /**
+   * Sets the visible line and announces it once, with any wait it started. `shownBy` names a
+   * view whose own text already says it, so the line doesn't repeat it there.
+   */
+  private say(text: string | null, shownBy: CoverView | null = null): void {
     this.message.set(text);
+    this.messageShownBy.set(shownBy);
     const announced = [text, this.waitText()].filter((part) => part !== null);
     this.announcement.set(announced.join(' '));
   }
