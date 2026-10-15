@@ -18,7 +18,7 @@ import {
   type SpaceSummary,
 } from '@trinity/data-access/room-library';
 import { initialOf } from '@trinity/util/matrix';
-import { type WorkspaceListedScopeKind } from '@trinity/application/workspace';
+import { type WorkspaceNavigationScope } from '@trinity/application/workspace';
 import { type ExactRoomSelection } from '../shared/exact-selection';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
@@ -114,23 +114,30 @@ export class RoomShellViewModel {
   });
 
   /**
-   * The sidebar lists that show one Room, by the rules {@link visibleRooms} applies. Recent
-   * lists every chat. A Room the selected library does not hold is claimed only by Recent,
-   * the one list that always has it.
+   * The sidebar lists that show one Room, by the rules {@link visibleRooms} applies, filter
+   * box aside. Recent lists every chat, and each space lists its children whatever their
+   * kind. A Room the selected library does not hold is claimed only by Recent, the one list
+   * that always has it.
    */
   listsShowing(
     selection: ExactRoomSelection,
-  ): readonly WorkspaceListedScopeKind[] {
-    const row = this.selectedLibrary
-      .view()
-      .rooms.find(
-        (room) =>
-          room.id === selection.roomId &&
-          room.accountIds.includes(selection.accountId),
-      );
-    if (!row) return ['recent'];
-    if (this.isDirectRow(row)) return ['recent', 'home'];
-    return this.isSpaceChild(row) ? ['recent'] : ['recent', 'rooms'];
+  ): readonly WorkspaceNavigationScope[] {
+    const view = this.selectedLibrary.view();
+    const row = view.rooms.find(
+      (room) =>
+        room.id === selection.roomId &&
+        room.accountIds.includes(selection.accountId),
+    );
+    if (!row) return [{ kind: 'recent' }];
+    const spaces = view.spaces
+      .filter((space) => space.childRoomIds.includes(row.id))
+      .map((space) => ({ kind: 'space', spaceId: space.id }) as const);
+    if (this.isDirectRow(row)) {
+      return [{ kind: 'recent' }, { kind: 'home' }, ...spaces];
+    }
+    return this.isSpaceChild(row)
+      ? [{ kind: 'recent' }, ...spaces]
+      : [{ kind: 'recent' }, { kind: 'rooms' }, ...spaces];
   }
 
   /**

@@ -53,7 +53,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
 
   function build(): AccountRoutingService {
     navigate = vi.fn(() => of({ kind: 'ready' }));
-    listsShowing = vi.fn(() => ['recent', 'home']);
+    listsShowing = vi.fn(() => [{ kind: 'recent' }, { kind: 'home' }]);
     showError = vi.fn();
     transition = vi.fn();
     loadEvent = vi.fn(() => of(true));
@@ -364,7 +364,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
       kind: 'room',
       ...chat,
       origin: 'rail-unread',
-      listedIn: ['recent', 'home'],
+      listedIn: [{ kind: 'recent' }, { kind: 'home' }],
     });
     expect(listsShowing).toHaveBeenCalledWith(chat);
     expect(onReady).toHaveBeenCalledOnce();

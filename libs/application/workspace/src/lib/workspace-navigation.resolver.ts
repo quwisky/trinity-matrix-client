@@ -1,6 +1,7 @@
 import type { WorkspaceNavigationIntent } from './workspace-navigation.models';
 import {
   RECENT_WORKSPACE_SCOPE,
+  sameWorkspaceScope,
   type WorkspaceDestination,
   type WorkspaceOpenOptions,
   type WorkspaceView,
@@ -24,9 +25,13 @@ function roomScope(
   }
   if (intent.origin === 'rail-unread') {
     // Keep the list on screen only while it shows the chat, so the row is there to select.
-    return current.accountId === intent.accountId &&
-      current.scope.kind !== 'space' &&
-      intent.listedIn?.includes(current.scope.kind)
+    // A space's list can show another Account's chat in the mixed view; as for a pick from
+    // that list, Workspace keeps the space while a selected Account holds it.
+    const listed = intent.listedIn?.some((scope) =>
+      sameWorkspaceScope(scope, current.scope),
+    );
+    return listed &&
+      (current.accountId === intent.accountId || current.scope.kind === 'space')
       ? current.scope
       : RECENT_WORKSPACE_SCOPE;
   }

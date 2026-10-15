@@ -277,6 +277,40 @@ describe('RoomsPage space filtering', () => {
     expect(shell.store.recentView()).toBe(false);
   });
 
+  // A chat picked from the rail's unread entries keeps the space when the space's list
+  // shows it, as Home and Rooms do, so its row is there to select; otherwise Recent.
+  it('keeps the space for a rail unread chat its list shows', async () => {
+    const shell = build();
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+
+    shell.routing.onSelectRoomSelection(
+      { roomId: '!a:hs', accountId: '@me:hs' },
+      'rail-unread',
+    );
+    await settleWorkspace();
+
+    expect(shell.store.activeRoomId()).toBe('!a:hs');
+    expect(shell.store.activeSpaceId()).toBe('!s:hs');
+    expect(shell.store.recentView()).toBe(false);
+  });
+
+  it('opens a rail unread chat the space does not list in Recent', async () => {
+    const shell = build();
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+
+    shell.routing.onSelectRoomSelection(
+      { roomId: '!c:hs', accountId: '@me:hs' },
+      'rail-unread',
+    );
+    await settleWorkspace();
+
+    expect(shell.store.activeRoomId()).toBe('!c:hs');
+    expect(shell.store.activeSpaceId()).toBeNull();
+    expect(shell.store.recentView()).toBe(true);
+  });
+
   it('the Rooms view shows non-DM rooms that do not belong to a space', async () => {
     const shell = build();
     shell.nav.onShowRooms();

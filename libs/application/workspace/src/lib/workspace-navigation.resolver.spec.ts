@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { resolveWorkspaceNavigation } from './workspace-navigation.resolver';
-import type { WorkspaceRoomNavigationOrigin } from './workspace-navigation.models';
+import type {
+  WorkspaceNavigationScope,
+  WorkspaceRoomNavigationOrigin,
+} from './workspace-navigation.models';
 import type { WorkspaceView } from './workspace.models';
 
 const view = (over: Partial<WorkspaceView> = {}): WorkspaceView => ({
@@ -12,11 +15,13 @@ const view = (over: Partial<WorkspaceView> = {}): WorkspaceView => ({
 });
 
 type ListKind = 'recent' | 'home' | 'rooms';
+/** A list by kind, or a space's own list. */
+type Listed = ListKind | WorkspaceNavigationScope;
 
 const open = (
   accountId: string,
   current: WorkspaceView,
-  listedIn: readonly ListKind[] = ['recent', 'home', 'rooms'],
+  listedIn: readonly Listed[] = ['recent', 'home', 'rooms'],
 ) =>
   resolveWorkspaceNavigation(
     {
@@ -24,12 +29,14 @@ const open = (
       accountId,
       roomId: '!chat:hs',
       origin: 'rail-unread',
-      listedIn,
+      listedIn: listedIn.map((list) =>
+        typeof list === 'string' ? { kind: list } : list,
+      ),
     },
     current,
   );
 
-const scopeOf = (current: WorkspaceView, listedIn: readonly ListKind[]) =>
+const scopeOf = (current: WorkspaceView, listedIn: readonly Listed[]) =>
   open('@a:hs', current, listedIn)?.destination.scope;
 
 describe("resolveWorkspaceNavigation — 'rail-unread'", () => {
@@ -101,6 +108,31 @@ describe("resolveWorkspaceNavigation — 'rail-unread'", () => {
       open('@a:hs', view({ scope: { kind: 'space', spaceId: '!s:hs' } }))
         ?.destination.scope,
     ).toEqual({ kind: 'recent' });
+  });
+
+  describe('from a space', () => {
+    const space = { kind: 'space', spaceId: '!s:hs' } as const;
+
+    it('keeps the space when its list shows the chat, like Home and Rooms do', () => {
+      expect(scopeOf(view({ scope: space }), ['recent', space])).toEqual(space);
+    });
+
+    it('opens in Recent when only another space lists the chat', () => {
+      expect(
+        scopeOf(view({ scope: space }), [
+          'recent',
+          { kind: 'space', spaceId: '!other:hs' },
+        ]),
+      ).toEqual({ kind: 'recent' });
+    });
+
+    // Mixed view: the space's list shows another account's chat, as for a pick from it.
+    it("keeps the space for another account's chat that its list shows", () => {
+      expect(
+        open('@b:hs', view({ scope: space }), ['recent', space])?.destination
+          .scope,
+      ).toEqual(space);
+    });
   });
 
   it("opens another account's chat in Recent even when its list would show it", () => {
