@@ -611,7 +611,7 @@ describe('RoomsPage mixed-account view', () => {
     expect(shell.vm.spaceSortMode()).toBe('alphabetical');
   });
 
-  it('keeps the space when the other account holds it too', async () => {
+  it('keeps the space when the opened row belongs to an account that holds it', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     shell.nav.onSelectSpace({ spaceId: '!s-alt:hs', accountId: '@me:hs' });
@@ -627,6 +627,35 @@ describe('RoomsPage mixed-account view', () => {
     expect(shell.store.activeRoomId()).toBe('!child-theirs:hs');
     expect(shell.store.activeSpaceId()).toBe('!s-alt:hs');
     expect(shell.vm.spaceOrderAccountId()).toBe('@alt:hs');
+  });
+
+  // Clicking the highlighted pill again, to get back to the list, stays on the account on
+  // screen and its room rather than switching to the account that holds the space.
+  it('keeps the account and its room when the selected space pill is clicked again', async () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    mineSpaceChildren.set(['!theirs:hs']);
+    shell.nav.onSelectSpace({ spaceId: '!s-mine:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+    shell.routing.onSelectRoomSelection(
+      { roomId: '!theirs:hs', accountId: '@alt:hs' },
+      'room-list',
+    );
+    await settleWorkspace();
+    expect(shell.store.activeAccountId()).toBe('@alt:hs');
+    switchAccount.mockClear();
+
+    // The pill names the account that holds the space.
+    shell.routing.onSelectSpaceRow({
+      spaceId: '!s-mine:hs',
+      accountId: '@me:hs',
+    });
+    await settleWorkspace();
+
+    expect(switchAccount).not.toHaveBeenCalled();
+    expect(shell.store.activeAccountId()).toBe('@alt:hs');
+    expect(shell.store.activeRoomId()).toBe('!theirs:hs');
+    expect(shell.store.activeSpaceId()).toBe('!s-mine:hs');
   });
 
   // Leave and Members act as the active account, which here does not hold the space.

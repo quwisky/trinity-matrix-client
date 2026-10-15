@@ -166,10 +166,22 @@ export class AccountRoutingService {
 
   /**
    * Select a space pill from the rail. In mixed mode a foreign account's space switches to
-   * that account first; Home (`null`) and same-account spaces select directly.
+   * that account first; Home (`null`) and same-account spaces select directly, and so does
+   * the pill already selected for the account on screen.
    */
-  onSelectSpaceRow({ spaceId, accountId }: ExactSpaceSelection): void {
-    const changesAccount = accountId !== this.workspace.activeAccountId();
+  onSelectSpaceRow(selection: ExactSpaceSelection): void {
+    const { spaceId } = selection;
+    const activeAccountId = this.workspace.activeAccountId();
+    // In the mixed view the account on screen can be showing another account's space, after
+    // opening one of its rooms. Its highlighted pill stays on that account and its room.
+    const accountId =
+      spaceId &&
+      activeAccountId &&
+      spaceId === this.workspace.activeSpaceId() &&
+      this.selected.spaceSelectable(activeAccountId, spaceId)
+        ? activeAccountId
+        : selection.accountId;
+    const changesAccount = accountId !== activeAccountId;
     this.navigate(
       {
         kind: 'scope',
