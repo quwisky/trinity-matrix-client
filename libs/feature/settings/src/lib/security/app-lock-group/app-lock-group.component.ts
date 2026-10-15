@@ -23,8 +23,11 @@ import {
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
 import { AppLockService, type LockAfter } from '@trinity/data-access/app-lock';
-import { HostCapabilitiesService } from '@trinity/runtime/host';
-import { Observable, catchError, defaultIfEmpty, map, of, take } from 'rxjs';
+import {
+  HostCapabilitiesService,
+  HostScreenPrivacyService,
+} from '@trinity/runtime/host';
+import { Observable, catchError, defaultIfEmpty, of, take } from 'rxjs';
 import { AppLockFlows, STOPPED, type AppLockFlowEnd } from './app-lock-flows';
 import {
   PIN_CHANGED,
@@ -34,6 +37,7 @@ import {
   noPinNote,
   methodShortName,
   pinUnreadableNote,
+  screenPrivacyNote,
   storedPinUnreadableNote,
   type AppLockChange,
 } from './app-lock-group.copy';
@@ -69,18 +73,23 @@ export class AppLockGroupComponent {
   private readonly injector = inject(Injector);
   private readonly document = inject(DOCUMENT);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
-  /** Whether this host has App lock at all; the web has not (decision 3). */
-  private readonly hostHasAppLock = toSignal(
+  /** The host's negotiated operations; none until it answers or if it can't. */
+  private readonly manifest = toSignal(
     inject(HostCapabilitiesService)
       .manifest()
-      .pipe(
-        map(
-          (manifest) =>
-            manifest.operations['user-presence'].kind === 'supported',
-        ),
-        catchError(() => of(false)),
-      ),
-    { initialValue: false },
+      .pipe(catchError(() => of(null))),
+    { initialValue: null },
+  );
+  /** What the host's app-switcher cover does; none until it answers or if it can't. */
+  private readonly screenPrivacy = toSignal(
+    inject(HostScreenPrivacyService)
+      .support()
+      .pipe(catchError(() => of(null))),
+    { initialValue: null },
+  );
+  /** Whether this host has App lock at all; the web has not (decision 3). */
+  private readonly hostHasAppLock = computed(
+    () => this.manifest()?.operations['user-presence'].kind === 'supported',
   );
 
   protected readonly appName = this.appLock.appName;
@@ -92,6 +101,14 @@ export class AppLockGroupComponent {
     storedPinUnreadableNote(this.appName, this.canClearPin()),
   );
   protected readonly noPinNote = noPinNote(this.appName);
+  /** What the app-switcher cover does, where the host has one (decision 13). */
+  protected readonly screenPrivacyNote = computed(() => {
+    const cover = this.screenPrivacy();
+    return this.manifest()?.operations['screen-privacy'].kind === 'supported' &&
+      cover?.kind === 'supported'
+      ? screenPrivacyNote(this.appName, cover.blocksCapture)
+      : null;
+  });
   protected readonly lockAfterOptions: readonly TrnSelectOption<LockAfter>[] = [
     {
       value: 'immediately',

@@ -1,10 +1,9 @@
-import { InjectionToken, Injectable, computed, inject } from '@angular/core';
+import { Injectable, computed, inject } from '@angular/core';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
   AppLockService,
   type AppLockCommandOutcome,
 } from '@trinity/data-access/app-lock';
-import { isMobileOs } from '@trinity/platform-native';
 import type { HostPresenceOutcome } from '@trinity/runtime/host';
 import {
   Observable,
@@ -36,15 +35,6 @@ export type AppLockFlowEnd =
 
 export const STOPPED: AppLockFlowEnd = { kind: 'stopped' };
 
-/**
- * Whether this is a phone or tablet, where Touch ID falls back to the device passcode; on a
- * Mac it falls back to the account password. Read once; replaced in tests.
- */
-export const APP_LOCK_MOBILE_OS = new InjectionToken<boolean>(
-  'APP_LOCK_MOBILE_OS',
-  { providedIn: 'root', factory: () => isMobileOs() },
-);
-
 type Guard = (
   command: () => Observable<AppLockFlowEnd>,
 ) => Observable<AppLockFlowEnd>;
@@ -58,14 +48,11 @@ type Guard = (
 export class AppLockFlows {
   private readonly appLock = inject(AppLockService);
   private readonly surfaces = inject(TrnSurfaceService);
-  private readonly mobile = inject(APP_LOCK_MOBILE_OS);
   private readonly appName = this.appLock.appName;
   /** Everything the system prompt accepts, for the forgotten-PIN warning. */
   private readonly warningMethod = computed(() => {
     const system = this.appLock.support().system;
-    return system.kind === 'available'
-      ? methodWarningName(system.biometry, this.mobile)
-      : null;
+    return system.kind === 'available' ? methodWarningName(system) : null;
   });
 
   /** The system prompt where available, then a new PIN, then on. */

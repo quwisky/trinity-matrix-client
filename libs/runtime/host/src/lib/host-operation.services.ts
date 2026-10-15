@@ -28,6 +28,7 @@ import {
   type HostPinOutcome,
   type HostPresenceOutcome,
   type HostScreenPrivacyOperation,
+  type HostScreenPrivacySupport,
   type HostUpdatesOperation,
   type HostUserPresenceOperation,
   type HostUserPresenceSupport,
@@ -347,6 +348,10 @@ export class HostScreenPrivacyService implements HostScreenPrivacyOperation {
   private readonly adapter = inject(HOST_SCREEN_PRIVACY_OPERATION, {
     optional: true,
   });
+
+  support(): Observable<HostScreenPrivacySupport> {
+    return defer(() => this.adapter?.support() ?? of(unavailableSupport()));
+  }
 
   set(enabled: boolean): Observable<HostOperationOutcome> {
     return defer(() => this.adapter?.set(enabled) ?? of(unavailableOutcome()));

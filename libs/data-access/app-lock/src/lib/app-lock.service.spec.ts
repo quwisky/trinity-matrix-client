@@ -408,7 +408,11 @@ describe('AppLockService', () => {
     it('keeps the system prompt as the way in when only the PIN record is unreadable', async () => {
       const { lock } = setup({
         support: {
-          system: { kind: 'available', biometry: 'touch-id' },
+          system: {
+            kind: 'available',
+            biometry: 'touch-id',
+            fallback: 'password',
+          },
           pin: { kind: 'unavailable', reason: 'secure-storage-unavailable' },
         },
       });
@@ -1080,7 +1084,11 @@ describe('AppLockService', () => {
       const { lock, adapter } = setup({
         stored: {},
         support: {
-          system: { kind: 'available', biometry: 'touch-id' },
+          system: {
+            kind: 'available',
+            biometry: 'touch-id',
+            fallback: 'password',
+          },
           pin: { kind: 'unavailable', reason: 'secure-storage-unavailable' },
         },
       });

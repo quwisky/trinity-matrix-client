@@ -78,7 +78,8 @@ export function systemPresenceOf(
     case BiometryType.faceAuthentication:
       return { kind: 'available', biometry: 'face' };
     case BiometryType.touchId:
-      return { kind: 'available', biometry: 'touch-id' };
+      // On iPhone and iPad, Touch ID falls back to the device passcode.
+      return { kind: 'available', biometry: 'touch-id', fallback: 'passcode' };
     case BiometryType.fingerprintAuthentication:
       return { kind: 'available', biometry: 'fingerprint' };
     case BiometryType.irisAuthentication:
@@ -309,7 +310,13 @@ function systemOf(raw: unknown): HostSystemPresence {
     kind === 'available' &&
     BIOMETRIES.includes(biometry as HostPresenceBiometry)
   ) {
-    return { kind, biometry: biometry as HostPresenceBiometry };
+    // The desktop shell reports Touch ID only on a Mac, whose sheet offers the account password.
+    return biometry === 'touch-id'
+      ? { kind, biometry, fallback: 'password' }
+      : {
+          kind,
+          biometry: biometry as Exclude<HostPresenceBiometry, 'touch-id'>,
+        };
   }
   if (
     kind === 'unavailable' &&

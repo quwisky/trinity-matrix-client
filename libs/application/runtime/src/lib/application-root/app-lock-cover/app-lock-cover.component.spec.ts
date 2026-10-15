@@ -784,7 +784,11 @@ describe('AppLockCoverComponent', () => {
       await setup({
         support: PIN_ONLY,
         refreshed: {
-          system: { kind: 'available', biometry: 'touch-id' },
+          system: {
+            kind: 'available',
+            biometry: 'touch-id',
+            fallback: 'password',
+          },
           pin: PIN_ONLY.pin,
         },
       });

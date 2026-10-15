@@ -2,7 +2,10 @@ import type {
   AppLockCommandOutcome,
   AppLockPinState,
 } from '@trinity/data-access/app-lock';
-import type { HostPresenceBiometry } from '@trinity/runtime/host';
+import type {
+  HostPresenceBiometry,
+  HostSystemPresence,
+} from '@trinity/runtime/host';
 
 // Settings › Security › App lock's words (spec §1). Copy that names the app takes the running
 // app's name. The method names repeat the lock screen's (features cannot import Application
@@ -41,18 +44,16 @@ export function methodShortName(biometry: HostPresenceBiometry): string {
 /**
  * Everything the system prompt accepts, for the forgotten-PIN warning: "If you can’t use Face
  * ID or your device passcode and you forget this PIN…". Windows Hello includes its own PIN.
- * `mobile` is a phone or tablet: Touch ID's fallback is a passcode there, a password on a Mac.
+ * Touch ID's fallback is the host's answer: a passcode on iPhone and iPad, a password on a Mac.
  */
 export function methodWarningName(
-  biometry: HostPresenceBiometry,
-  mobile: boolean,
+  system: Extract<HostSystemPresence, { kind: 'available' }>,
 ): string {
-  switch (biometry) {
+  switch (system.biometry) {
     case 'face':
       return 'Face ID or your device passcode';
     case 'touch-id':
-      // iPhone and iPad fall back to the passcode, a Mac to the account password.
-      return mobile
+      return system.fallback === 'passcode'
         ? 'Touch ID or your device passcode'
         : 'Touch ID or your device password';
     case 'fingerprint':
@@ -62,7 +63,7 @@ export function methodWarningName(
     case 'passcode-only':
       return 'your device passcode';
     default: {
-      const unhandled: never = biometry;
+      const unhandled: never = system;
       void unhandled;
       return 'your device’s unlock';
     }
@@ -166,6 +167,21 @@ export function pinUnreadableNote(
   return method
     ? `${appName} can’t read your PIN right now. Use ${method} to set a new PIN, which replaces the one it can’t read, or to turn App lock off.`
     : `${appName} can’t read your PIN right now. Try again. If that doesn’t help, lock ${appName} and choose Erase all data on this device on the lock screen.`;
+}
+
+/**
+ * What the host's app-switcher cover does while App lock is on (spec §4). A cover that also
+ * blocks capture (Android's FLAG_SECURE) says so, as people would otherwise take it for a fault;
+ * one that doesn't (the iOS blur) covers the snapshot, and may also cover Trinity's pane on iPad
+ * while another app beside it has focus (unverified on device).
+ */
+export function screenPrivacyNote(
+  appName: string,
+  blocksCapture: boolean,
+): string {
+  return blocksCapture
+    ? `While App lock is on, ${appName} also blocks screenshots and screen recording, and hides its preview in recent apps.`
+    : `While App lock is on, the app switcher shows a blurred cover instead of ${appName}. On iPad, the cover may also show while you use another app beside ${appName}.`;
 }
 
 /** The lock is on with no PIN and no system prompt: nothing can confirm a change here. */

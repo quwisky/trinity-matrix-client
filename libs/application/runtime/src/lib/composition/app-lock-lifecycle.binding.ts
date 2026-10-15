@@ -16,24 +16,31 @@ import {
 import {
   HostLifecycleService,
   HostLockIntegrationService,
+  HostScreenPrivacyService,
   HostSystemUiService,
+  type HostOperationOutcome,
 } from '@trinity/runtime/host';
 import {
   Observable,
   Subject,
   Subscription,
+  catchError,
   defer,
+  filter,
   finalize,
   fromEvent,
   ignoreElements,
   map,
   merge,
+  mergeMap,
   of,
+  skip,
   switchMap,
   tap,
   timer,
 } from 'rxjs';
 import { afterPaint } from './after-paint';
+import { HostSessionHealthService } from './host-session-health.service';
 
 /**
  * `hidden`: away because the host hid or minimised the app, which the shell may hold.
@@ -63,8 +70,9 @@ const SYSTEM_UI_CLOSED_GRACE_MS = DESKTOP_IMMEDIATE_GRACE_MS;
 /**
  * App lock's part of the shell (decision 14): the away timer over the host lifecycle and,
  * on desktop, window focus; the shell's lock requests; the state and accelerator the shell
- * shows; and the window title. Time in Trinity's own system UI is not "away" (Review
- * Focus 1): it never starts the timer, and it stops one that is running.
+ * shows; the window title; and the mobile app-switcher cover (decision 13). Time in
+ * Trinity's own system UI is not "away" (Review Focus 1): it never starts the timer, and it
+ * stops one that is running.
  */
 @Injectable({ providedIn: 'root' })
 export class AppLockLifecycleBinding {
@@ -72,6 +80,8 @@ export class AppLockLifecycleBinding {
   private readonly lifecycle = inject(HostLifecycleService);
   private readonly lockIntegration = inject(HostLockIntegrationService);
   private readonly systemUi = inject(HostSystemUiService);
+  private readonly screenPrivacy = inject(HostScreenPrivacyService);
+  private readonly hostHealth = inject(HostSessionHealthService);
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private readonly titleBar = inject(TitleBarState);
   private readonly injector = inject(Injector);
@@ -110,6 +120,81 @@ export class AppLockLifecycleBinding {
         tap((locked) => this.titleBar.setLocked(locked)),
         ignoreElements(),
       ),
+      this.appSwitcherCover(),
+    );
+  }
+
+  /**
+   * The cover is on whenever App lock is on, locked or not (spec §4), and each lock takes
+   * down native UI Trinity presented over the web view, which the DOM cover can't reach.
+   * Both are best effort: an answer that never comes or a failure never holds up locking or
+   * unlocking, and a failure is recorded by its stable code only. A cover that failed to go
+   * on is tried again at the next lock and when the app comes back to the front, so it doesn't
+   * stay off while App lock is on. A refused `set(false)` isn't tried again: the cover (and on
+   * Android the capture block) may stay on until App lock next changes or the app restarts,
+   * which fails closed.
+   */
+  private appSwitcherCover(): Observable<never> {
+    return defer(() => {
+      // The host has the cover on, or has none to put on: nothing to try again.
+      let settled = false;
+      const retry = merge(
+        // The first value is the starting state, which the first `set` already covers.
+        this.changes(() => this.appLock.locked()).pipe(
+          skip(1),
+          filter((locked) => locked),
+        ),
+        this.lifecycle.events.pipe(filter((event) => event.kind === 'active')),
+      ).pipe(
+        filter(() => !settled && untracked(() => this.appLock.enabled())),
+        map(() => true),
+      );
+      return merge(
+        merge(
+          this.changes(() => this.appLock.enabled()),
+          retry,
+        ).pipe(
+          switchMap((enabled) => {
+            settled = false;
+            return this.bestEffort(
+              () => this.screenPrivacy.set(enabled),
+              'screen-privacy-failed',
+            ).pipe(
+              tap((outcome) => {
+                settled = failureCode(outcome) === null;
+              }),
+            );
+          }),
+        ),
+        this.changes(() => this.appLock.locked()).pipe(
+          filter((locked) => locked),
+          mergeMap(() =>
+            this.bestEffort(
+              () => this.screenPrivacy.dismissPresented(),
+              'dismiss-failed',
+            ),
+          ),
+        ),
+      ).pipe(ignoreElements());
+    });
+  }
+
+  /** Runs a host call, recording anything but success or a host without it as an incident. */
+  private bestEffort(
+    call: () => Observable<HostOperationOutcome>,
+    errorCode: string,
+  ): Observable<HostOperationOutcome> {
+    return defer(call).pipe(
+      catchError(() =>
+        of<HostOperationOutcome>({
+          kind: 'rejected',
+          diagnostic: { code: errorCode },
+        }),
+      ),
+      tap((outcome) => {
+        const code = failureCode(outcome);
+        if (code) this.hostHealth.incident('host', 'screen-privacy', code);
+      }),
     );
   }
 
@@ -282,5 +367,25 @@ export class AppLockLifecycleBinding {
       );
       return () => ref.destroy();
     });
+  }
+}
+
+/** A stable code for an outcome that failed; null for success or a host that has none. */
+function failureCode(outcome: HostOperationOutcome): string | null {
+  switch (outcome.kind) {
+    case 'completed':
+      return null;
+    case 'rejected':
+      return outcome.diagnostic.code;
+    case 'unavailable':
+      return outcome.reason === 'not-supported' ||
+        outcome.reason === 'not-implemented'
+        ? null
+        : (outcome.diagnostic?.code ?? outcome.reason);
+    default: {
+      const unhandled: never = outcome;
+      void unhandled;
+      return null;
+    }
   }
 }

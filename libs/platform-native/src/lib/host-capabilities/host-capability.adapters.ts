@@ -35,6 +35,7 @@ import {
   hostOperationProviders,
 } from './host-operation.adapters';
 import { CapacitorNotificationPresentationAdapter } from './host-notification-presentation.adapters';
+import { PRIVACY_SCREEN_PLUGIN } from './host-screen-privacy.adapters';
 
 type HostAdapter = HostBadgeOperation & HostCapabilityNegotiator;
 
@@ -220,6 +221,7 @@ function manifest(
 function capacitorSupportedOperations(
   platform: string,
   notificationPresentation: HostCapabilitySupport,
+  screenPrivacy: boolean,
 ): readonly (keyof HostCapabilityManifest['operations'])[] {
   return [
     'authentication-handoff',
@@ -230,6 +232,7 @@ function capacitorSupportedOperations(
     'secure-store',
     'lifecycle',
     'user-presence',
+    ...(screenPrivacy ? (['screen-privacy'] as const) : []),
     ...(notificationPresentation.kind === 'supported'
       ? (['notification-presentation'] as const)
       : []),
@@ -318,6 +321,7 @@ export class CapacitorHostCapabilityAdapter implements HostAdapter {
           capacitorSupportedOperations(
             Capacitor.getPlatform(),
             notificationPresentation,
+            Capacitor.isPluginAvailable(PRIVACY_SCREEN_PLUGIN),
           ),
           'not-supported',
         ),

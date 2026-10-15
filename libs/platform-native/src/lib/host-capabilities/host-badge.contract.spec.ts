@@ -149,6 +149,7 @@ describe('host adapter rejection semantics', () => {
     delete (navigator as { setAppBadge?: unknown }).setAppBadge;
     delete (navigator as { clearAppBadge?: unknown }).clearAppBadge;
     TestBed.resetTestingModule();
+    vi.restoreAllMocks();
   });
 
   it('reports an unavailable Web badge explicitly', async () => {
@@ -206,6 +207,24 @@ describe('host adapter rejection semantics', () => {
     expect(manifest.operations['notification-presentation']).toEqual({
       kind: 'supported',
     });
+  });
+
+  it('advertises screen privacy only when the native host has the plugin', async () => {
+    const available = vi.spyOn(Capacitor, 'isPluginAvailable');
+    available.mockReturnValue(true);
+    const { adapter } = capacitorFixture();
+    await expect(
+      firstValueFrom(adapter.manifest()).then(
+        (value) => value.operations['screen-privacy'],
+      ),
+    ).resolves.toEqual({ kind: 'supported' });
+    expect(available).toHaveBeenCalledWith('PrivacyScreen');
+    available.mockReturnValue(false);
+    await expect(
+      firstValueFrom(adapter.manifest()).then(
+        (value) => value.operations['screen-privacy'],
+      ),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'not-supported' });
   });
 
   it('advertises Android Back while keeping updates explicitly unavailable', async () => {

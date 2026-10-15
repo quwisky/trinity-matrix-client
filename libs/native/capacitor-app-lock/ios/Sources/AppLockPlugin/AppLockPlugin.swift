@@ -1,4 +1,5 @@
 import Capacitor
+import SafariServices
 import TrinityAppLockCore
 import UIKit
 
@@ -20,6 +21,7 @@ public class AppLockPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setPin", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "verifyPin", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearPin", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "dismissPresented", returnType: CAPPluginReturnPromise),
     ]
     private let verifier = PinVerifier(store: KeychainPinStore())
     private let work = DispatchQueue(label: "dev.trinityproject.trinity.app-lock.plugin", qos: .userInitiated)
@@ -77,5 +79,62 @@ public class AppLockPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("Secure storage is unavailable", "storage-unavailable")
             }
         }
+    }
+
+    /// Locking: native UI Trinity presented over the web view (share sheet, browser sheet,
+    /// camera) is not under the web lock screen, so take it down. Always resolves.
+    ///
+    /// While Trinity is inactive, @capacitor/privacy-screen's app-switcher cover sits on top of
+    /// the presented stack. Dismissing the stack takes the cover with it, so it goes back up at
+    /// once if Trinity is still inactive; that plugin still holds it and takes it down on
+    /// becoming active.
+    ///
+    /// A dismissal in code doesn't tell an SFSafariViewController's delegate it finished, so
+    /// @capacitor/browser would keep it as open and refuse every later page. Its delegate hears
+    /// `safariViewControllerDidFinish`, as after Done: that clears its state at once, and its
+    /// finished handler dismisses whatever the root presents (animated), then sends
+    /// `browserFinished`. That dismissal is a no-op here only because the presented stack is
+    /// already gone, so the call must stay before the cover is presented again; after it, the
+    /// handler would take the cover down and leave the app-switcher snapshot uncovered.
+    @objc func dismissPresented(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let root = self.bridge?.viewController,
+                  let presented = root.presentedViewController else {
+                call.resolve()
+                return
+            }
+            var top = presented
+            var browserSheets = [presented].compactMap { $0 as? SFSafariViewController }
+            while let next = top.presentedViewController {
+                top = next
+                if let sheet = next as? SFSafariViewController {
+                    browserSheets.append(sheet)
+                }
+            }
+            let cover = Self.isPrivacyCover(top) ? top : nil
+            if cover === presented {
+                call.resolve()
+                return
+            }
+            root.dismiss(animated: false) {
+                for sheet in browserSheets {
+                    sheet.delegate?.safariViewControllerDidFinish?(sheet)
+                }
+                // Only while still inactive: once didBecomeActive has run, that plugin has let go
+                // of the cover, and putting it back would leave it over a running Trinity.
+                guard let cover, root.presentedViewController == nil,
+                      UIApplication.shared.applicationState != .active else {
+                    call.resolve()
+                    return
+                }
+                root.present(cover, animated: false) { call.resolve() }
+            }
+        }
+    }
+
+    /// The privacy screen plugin's cover: a plain full-screen controller it presents itself.
+    private static func isPrivacyCover(_ controller: UIViewController) -> Bool {
+        type(of: controller) == UIViewController.self
+            && controller.modalPresentationStyle == .overFullScreen
     }
 }

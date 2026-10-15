@@ -110,6 +110,16 @@ public class AppLockPlugin extends Plugin {
     }
 
     /**
+     * Android's presented UI (share sheet, Custom Tabs, camera) are separate activities, not
+     * views over the web view, and this plugin can't take them down; they can stay on top of
+     * Trinity's activity and come back in front of the lock screen. Resolves at once.
+     */
+    @PluginMethod
+    public void dismissPresented(PluginCall call) {
+        call.resolve();
+    }
+
+    /**
      * Runs a call on the worker. Anything unexpected is answered as `storage-unavailable` with
      * fixed text, never the error's own message, so no call is left waiting. It catches
      * Exception, not RuntimeException: Kotlin declares no checked exceptions, so a checked one

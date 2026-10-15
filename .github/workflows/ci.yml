@@ -582,6 +582,7 @@ jobs:
         include:
           - shard: 1
             specs: >-
+              ./specs/app-lock.e2e.mts,
               ./specs/app-shell.e2e.mts,
               ./specs/appearance.e2e.mts,
               ./specs/capture.e2e.mts,

@@ -11,10 +11,12 @@ import {
   type LockAfter,
 } from '@trinity/data-access/app-lock';
 import {
+  HOST_OPERATIONS,
   HOST_USER_PRESENCE_OPERATION,
   HostCapabilitiesService,
-  unavailableHostManifest,
+  HostScreenPrivacyService,
   type HostCapabilityManifest,
+  type HostOperation,
   type HostOperationOutcome,
   type HostPinOutcome,
   type HostPresenceOutcome,
@@ -26,7 +28,6 @@ import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { APP_LOCK_MOBILE_OS } from './app-lock-flows';
 import { AppLockGroupComponent } from './app-lock-group.component';
 
 const PIN = '482913';
@@ -75,16 +76,20 @@ function pinStateOf(support: HostUserPresenceSupport): AppLockPinState {
   return pin.reason === 'not-supported' ? 'not-supported' : 'unreadable';
 }
 
-function manifest(userPresence: boolean): HostCapabilityManifest {
-  const base = unavailableHostManifest('not-supported');
+/** A host manifest with only `supported` negotiated. */
+function manifestWith(
+  ...supported: readonly HostOperation[]
+): HostCapabilityManifest {
   return {
-    ...base,
-    operations: {
-      ...base.operations,
-      'user-presence': userPresence
-        ? { kind: 'supported' }
-        : base.operations['user-presence'],
-    },
+    protocolVersion: 1,
+    operations: Object.fromEntries(
+      HOST_OPERATIONS.map((operation) => [
+        operation,
+        supported.includes(operation)
+          ? { kind: 'supported' }
+          : { kind: 'unavailable', reason: 'not-supported' },
+      ]),
+    ) as HostCapabilityManifest['operations'],
   };
 }
 
@@ -95,6 +100,10 @@ async function setup(
     support?: HostUserPresenceSupport;
     /** Whether the host offers the user-presence operation (false on the web). */
     hostPresence?: boolean;
+    /** Whether the host has the app-switcher cover (iOS and Android). */
+    screenPrivacy?: boolean;
+    /** Whether that cover also blocks screenshots and screen recording (Android). */
+    blocksCapture?: boolean;
     /** What each PIN dialog closes with, in order. */
     dialogResults?: unknown[];
     guard?: GuardOutcome;
@@ -104,8 +113,6 @@ async function setup(
     appName?: string;
     /** What a successful clear of an unreadable PIN leaves the host reporting. */
     afterClear?: HostUserPresenceSupport;
-    /** A phone or tablet (Touch ID falls back to a passcode there, not a password). */
-    mobile?: boolean;
     /** The system-only guard's answer (replacing an unreadable PIN). */
     systemGuard?: GuardOutcome;
     /** Whether the service allows clearing an unreadable PIN (a setting that was read). */
@@ -181,9 +188,30 @@ async function setup(
       MockProvider(TrnSurfaceService, { open: open as never }),
       MockProvider(TrnToastService),
       MockProvider(HostCapabilitiesService, {
-        manifest: () => of(manifest(options.hostPresence ?? true)),
+        manifest: () =>
+          of(
+            manifestWith(
+              ...((options.hostPresence ?? true)
+                ? (['user-presence'] as const)
+                : []),
+              ...(options.screenPrivacy ? (['screen-privacy'] as const) : []),
+            ),
+          ),
       }),
-      { provide: APP_LOCK_MOBILE_OS, useValue: options.mobile ?? false },
+      MockProvider(HostScreenPrivacyService, {
+        support: () =>
+          of(
+            options.screenPrivacy
+              ? {
+                  kind: 'supported' as const,
+                  blocksCapture: options.blocksCapture ?? true,
+                }
+              : {
+                  kind: 'unavailable' as const,
+                  reason: 'not-supported' as const,
+                },
+          ),
+      }),
     ],
   });
   return { lock, open, view };
@@ -570,6 +598,41 @@ describe('AppLockGroupComponent', () => {
       expect(lockSwitch()).toBeTruthy();
     });
 
+    it('says the cover also blocks screenshots where the host’s does (Android)', async () => {
+      await setup({ enabled: true, screenPrivacy: true });
+      expect(
+        screen.getByTestId('app-lock-screen-privacy').textContent?.trim(),
+      ).toBe(
+        'While App lock is on, Trinity also blocks screenshots and screen recording, and hides its preview in recent apps.',
+      );
+    });
+
+    it('says the app switcher shows a blurred cover where that is all the host’s does (iOS), naming the running app', async () => {
+      await setup({
+        enabled: true,
+        screenPrivacy: true,
+        blocksCapture: false,
+        appName: 'Trinity Next',
+      });
+      expect(
+        screen.getByTestId('app-lock-screen-privacy').textContent?.trim(),
+      ).toBe(
+        'While App lock is on, the app switcher shows a blurred cover instead of Trinity Next. On iPad, the cover may also show while you use another app beside Trinity Next.',
+      );
+    });
+
+    it('says nothing of a cover where the host has none (desktop)', async () => {
+      await setup({ enabled: true, screenPrivacy: false });
+      expect(screen.getByTestId('app-lock-after')).toBeTruthy();
+      expect(screen.queryByTestId('app-lock-screen-privacy')).toBeNull();
+    });
+
+    it('says nothing of the cover while App lock is off', async () => {
+      await setup({ enabled: false, screenPrivacy: true });
+      expect(lockSwitch()).toBeTruthy();
+      expect(screen.queryByTestId('app-lock-screen-privacy')).toBeNull();
+    });
+
     it('explains a missing keyring instead of offering the switch', async () => {
       await setup({ support: NO_PIN_STORE, hostPresence: true });
       expect(screen.getByTestId('app-lock-group')).toBeTruthy();
@@ -803,9 +866,8 @@ describe('AppLockGroupComponent', () => {
           }),
           MockProvider(TrnToastService),
           MockProvider(HostCapabilitiesService, {
-            manifest: () => of(manifest(true)),
+            manifest: () => of(manifestWith('user-presence')),
           }),
-          { provide: APP_LOCK_MOBILE_OS, useValue: false },
         ],
       });
     }
@@ -835,16 +897,17 @@ describe('AppLockGroupComponent', () => {
     });
   });
 
-  describe('Touch ID’s fallback', () => {
-    const TOUCH: HostUserPresenceSupport = {
-      system: { kind: 'available', biometry: 'touch-id' },
+  describe('Touch ID’s fallback, as the host reports it', () => {
+    const touch = (
+      fallback: 'passcode' | 'password',
+    ): HostUserPresenceSupport => ({
+      system: { kind: 'available', biometry: 'touch-id', fallback },
       pin: { kind: 'available', set: false, nextAttemptAt: null },
-    };
+    });
 
     it('is the device passcode on iPhone and iPad', async () => {
       const { open } = await setup({
-        support: TOUCH,
-        mobile: true,
+        support: touch('passcode'),
         dialogResults: [NEW_PIN],
       });
       await click(lockSwitch());
@@ -856,8 +919,7 @@ describe('AppLockGroupComponent', () => {
 
     it('is the device password on a Mac', async () => {
       const { open } = await setup({
-        support: TOUCH,
-        mobile: false,
+        support: touch('password'),
         dialogResults: [NEW_PIN],
       });
       await click(lockSwitch());

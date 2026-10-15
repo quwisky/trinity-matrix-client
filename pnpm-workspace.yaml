@@ -45,6 +45,7 @@ allowBuilds:
   geckodriver: false
 
 patchedDependencies:
+  '@capacitor/privacy-screen@2.0.1': patches/@capacitor__privacy-screen@2.0.1.patch
   '@spartan-ng/brain@1.5.0': patches/@spartan-ng__brain@1.5.0.patch
   matrix-js-sdk@43.0.0: patches/matrix-js-sdk@43.0.0.patch
   matrix-widget-api@1.20.0: patches/matrix-widget-api@1.20.0.patch

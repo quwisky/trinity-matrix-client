@@ -35,6 +35,9 @@ project(':capacitor-local-notifications').projectDir = new File('../node_modules
 include ':capacitor-preferences'
 project(':capacitor-preferences').projectDir = new File('../node_modules/.pnpm/@capacitor+preferences@8.0.1_@capacitor+core@8.5.3/node_modules/@capacitor/preferences/android')
 
+include ':capacitor-privacy-screen'
+project(':capacitor-privacy-screen').projectDir = new File('../node_modules/.pnpm/@capacitor+privacy-screen@2.0.1_patch_hash=f2f986331ec9f771718d52fed87b9d5ae7fa7f85c90f_7544954b349ac498fbd72912022954fd/node_modules/@capacitor/privacy-screen/android')
+
 include ':capacitor-push-notifications'
 project(':capacitor-push-notifications').projectDir = new File('../node_modules/.pnpm/@capacitor+push-notifications@8.1.3_@capacitor+core@8.5.3/node_modules/@capacitor/push-notifications/android')
 

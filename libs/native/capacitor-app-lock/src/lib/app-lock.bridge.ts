@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { Observable, catchError, defer, from, map, of } from 'rxjs';
+import { Observable, catchError, defer, from, map, of, timeout } from 'rxjs';
 import { APP_LOCK_PLUGIN_NAME, type AppLockPlugin } from './definitions';
 
 const appLock = registerPlugin<AppLockPlugin>(APP_LOCK_PLUGIN_NAME);
@@ -21,9 +21,16 @@ export type AppLockPinCheck =
   | { readonly kind: 'invalid' }
   | { readonly kind: 'unavailable' };
 
+/** How a dismissal ended; locking goes on whatever it is (best effort). */
+export type AppLockDismissal =
+  'completed' | 'failed' | 'timed-out' | 'unavailable';
+
 type VerifyResult = Awaited<ReturnType<AppLockPlugin['verifyPin']>>['result'];
 
 const UNAVAILABLE = { kind: 'unavailable' } as const;
+
+/** How long locking waits for native UI to go before it carries on regardless. */
+export const DISMISS_PRESENTED_TIMEOUT_MS = 2_000;
 
 function codeOf(error: unknown): unknown {
   return typeof error === 'object' && error !== null && 'code' in error
@@ -125,6 +132,24 @@ export class AppLockPinBridge {
           }
         }),
         catchError(() => of<AppLockPinCheck>(UNAVAILABLE)),
+      );
+    });
+  }
+
+  /**
+   * Cold and finite: one answer, never an error, even when the call failed or the host never
+   * answered. Completed also covers "nothing was presented".
+   */
+  dismissPresented(): Observable<AppLockDismissal> {
+    return defer((): Observable<AppLockDismissal> => {
+      if (!this.available) return of('unavailable');
+      return from(appLock.dismissPresented()).pipe(
+        map((): AppLockDismissal => 'completed'),
+        timeout({
+          first: DISMISS_PRESENTED_TIMEOUT_MS,
+          with: () => of<AppLockDismissal>('timed-out'),
+        }),
+        catchError(() => of<AppLockDismissal>('failed')),
       );
     });
   }

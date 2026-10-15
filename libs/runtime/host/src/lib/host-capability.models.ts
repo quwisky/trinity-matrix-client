@@ -150,8 +150,22 @@ export type HostSystemPresenceUnavailableReason =
   | 'addon-unavailable'
   | 'locked-out';
 
+/**
+ * What a Touch ID sheet offers instead: the device passcode (iPhone, iPad) or the account
+ * password (Mac). Every other prompt's fallback follows from its kind.
+ */
+export type HostTouchIdFallback = 'passcode' | 'password';
+
 export type HostSystemPresence =
-  | { readonly kind: 'available'; readonly biometry: HostPresenceBiometry }
+  | {
+      readonly kind: 'available';
+      readonly biometry: Exclude<HostPresenceBiometry, 'touch-id'>;
+    }
+  | {
+      readonly kind: 'available';
+      readonly biometry: 'touch-id';
+      readonly fallback: HostTouchIdFallback;
+    }
   | {
       readonly kind: 'unavailable';
       readonly reason: HostSystemPresenceUnavailableReason;
@@ -235,10 +249,24 @@ export interface HostLockIntegrationOperation {
   coverPainted(): Observable<HostOperationOutcome>;
 }
 
+/**
+ * What this host's app-switcher cover does. `blocksCapture`: it also blocks screenshots and
+ * screen recording, screen sharing included (Android FLAG_SECURE); without it the cover only
+ * hides the app-switcher snapshot (the iOS blur).
+ */
+export type HostScreenPrivacySupport =
+  | { readonly kind: 'supported'; readonly blocksCapture: boolean }
+  | Extract<HostCapabilitySupport, { readonly kind: 'unavailable' }>;
+
 /** The mobile app-switcher cover (iOS blur, Android FLAG_SECURE). */
 export interface HostScreenPrivacyOperation {
+  support(): Observable<HostScreenPrivacySupport>;
   set(enabled: boolean): Observable<HostOperationOutcome>;
-  /** Dismiss native UI Trinity presented over the web view (iOS). */
+  /**
+   * Dismiss native UI Trinity presented over the web view, best effort: on iOS the share sheet,
+   * browser sheet, camera or photo picker; on Android an open Custom Tab, which Android 10 and
+   * later refuse to close while Trinity is in the background.
+   */
   dismissPresented(): Observable<HostOperationOutcome>;
 }
 

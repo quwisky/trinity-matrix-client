@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   KEYBOARD_SHOWN_COMMAND,
+  SECURE_WINDOW_COMMAND,
   SYSTEM_ERROR_DIALOGS_COMMAND,
   WEBVIEW_DEVTOOLS_UNFREEZE_COMMAND,
   parseKeyboardShown,
+  parseSecureWindow,
   parseSystemErrorDialogs,
   parseWebviewDevtoolsUnfreeze,
 } from '../e2e/mobile/support/android-shell.mts';
@@ -73,5 +75,22 @@ describe('mobile E2E Android shell probes', () => {
     expect(
       parseSystemErrorDialogs('/system/bin/sh: dumpsys: inaccessible'),
     ).toEqual([]);
+  });
+
+  it('counts windows with the SECURE flag, filtered on the device', () => {
+    expect(SECURE_WINDOW_COMMAND).toBe(
+      'dumpsys window windows | grep -cE "(fl=| )SECURE( |$)"; true',
+    );
+  });
+
+  it('parses the secure-window count and rejects anything else', () => {
+    expect(parseSecureWindow('1\n')).toBe(true);
+    expect(parseSecureWindow('2')).toBe(true);
+    expect(parseSecureWindow('0\n')).toBe(false);
+    expect(() => parseSecureWindow('')).toThrow(/secure-window count/);
+    expect(() =>
+      parseSecureWindow('/system/bin/sh: dumpsys: inaccessible'),
+    ).toThrow(/dumpsys: inaccessible/);
+    expect(() => parseSecureWindow('1 window')).toThrow(/secure-window count/);
   });
 });

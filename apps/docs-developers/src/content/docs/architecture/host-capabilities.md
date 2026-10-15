@@ -12,7 +12,7 @@ Trinity models platform behavior as narrow host operations. Application and feat
 
 ## Negotiate once, consume explicit support {#capability-manifest}
 
-The protocol-versioned host manifest covers authentication handoff, deep links, Back, file export, notification presentation, location, badges, secure storage, lifecycle, update checks, the desktop title bar (overlay colours, the application menu, the system-title-bar preference and relaunch), and App lock's user presence (the system prompt and the Trinity PIN), lock integration (the desktop menu item, power events and the hold before showing a window hidden while App lock is on) and screen privacy (the mobile app-switcher cover). Every operation reports `supported` or a stable unavailable reason such as `not-supported` or `protocol-mismatch`.
+The protocol-versioned host manifest covers authentication handoff, deep links, Back, file export, notification presentation, location, badges, secure storage, lifecycle, update checks, the desktop title bar (overlay colours, the application menu, the system-title-bar preference and relaunch), and App lock's user presence (the system prompt and the Trinity PIN), lock integration (the desktop menu item, power events and the hold before showing a window hidden while App lock is on) and screen privacy (the mobile app-switcher cover, which reports whether it also blocks screen capture, and the dismissal of native UI Trinity presented, on each lock). Every operation reports `supported` or a stable unavailable reason such as `not-supported` or `protocol-mismatch`.
 
 Unsupported and disabled behavior is an expected state. Do not infer support from the user agent, a global object, screen size, or the presence of one unrelated plugin.
 

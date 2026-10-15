@@ -10,13 +10,17 @@ import {
   vi,
   type Mock,
 } from 'vitest';
-import { AppLockPinBridge } from './app-lock.bridge';
+import {
+  AppLockPinBridge,
+  DISMISS_PRESENTED_TIMEOUT_MS,
+} from './app-lock.bridge';
 
 const plugin = vi.hoisted(() => ({
   pinStatus: vi.fn(),
   setPin: vi.fn(),
   verifyPin: vi.fn(),
   clearPin: vi.fn(),
+  dismissPresented: vi.fn(),
 }));
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
@@ -196,6 +200,41 @@ describe('AppLockPinBridge', () => {
     await expect(firstValueFrom(pins.clear())).resolves.toBe('unavailable');
   });
 
+  it('dismisses presented native UI, cold', async () => {
+    plugin.dismissPresented.mockResolvedValueOnce(undefined);
+    const dismissal = bridge().dismissPresented();
+    expect(plugin.dismissPresented).not.toHaveBeenCalled();
+    await expect(firstValueFrom(dismissal)).resolves.toBe('completed');
+    expect(plugin.dismissPresented).toHaveBeenCalledOnce();
+  });
+
+  it('reports a failed dismissal, and never fails the caller', async () => {
+    plugin.dismissPresented.mockRejectedValueOnce(new Error('no controller'));
+    await expect(firstValueFrom(bridge().dismissPresented())).resolves.toBe(
+      'failed',
+    );
+  });
+
+  it('stops waiting for a dismissal that never settles', async () => {
+    vi.useFakeTimers({
+      toFake: [
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+        'Date',
+      ],
+    });
+    try {
+      plugin.dismissPresented.mockReturnValueOnce(new Promise(() => undefined));
+      const dismissal = firstValueFrom(bridge().dismissPresented());
+      await vi.advanceTimersByTimeAsync(DISMISS_PRESENTED_TIMEOUT_MS);
+      await expect(dismissal).resolves.toBe('timed-out');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('is not supported off native', async () => {
     (Capacitor.isNativePlatform as unknown as Mock).mockReturnValue(false);
     await expect(firstValueFrom(bridge().status())).resolves.toEqual({
@@ -219,6 +258,10 @@ describe('AppLockPinBridge', () => {
     expect(plugin.setPin).not.toHaveBeenCalled();
     expect(plugin.verifyPin).not.toHaveBeenCalled();
     expect(plugin.clearPin).not.toHaveBeenCalled();
+    await expect(firstValueFrom(pins.dismissPresented())).resolves.toBe(
+      'unavailable',
+    );
+    expect(plugin.dismissPresented).not.toHaveBeenCalled();
     (Capacitor.isPluginAvailable as unknown as Mock).mockReturnValue(true);
   });
 });
