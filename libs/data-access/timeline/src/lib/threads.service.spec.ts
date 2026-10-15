@@ -1752,15 +1752,46 @@ describe('ThreadsService', () => {
       const { svc, acknowledge } = setup([
         fakeThread({ id: '$root', rootEvent: root, events: [root, reply] }),
       ]);
+      const add = vi.spyOn(window, 'addEventListener');
+      const remove = vi.spyOn(window, 'removeEventListener');
       svc.attachThreadRoot('$root');
+      const focusListeners = add.mock.calls
+        .filter(([type]) => type === 'focus')
+        .map(([, listener]) => listener);
+      expect(focusListeners).toHaveLength(1);
 
       // Closing the thread (or hiding its Conversation, which closes it) stops listening.
       svc.closeThread();
+      expect(remove).toHaveBeenCalledWith('focus', focusListeners[0]);
       vi.spyOn(document, 'hasFocus').mockReturnValue(true);
-      window.dispatchEvent(new Event('focus'));
+      expect(() => window.dispatchEvent(new Event('focus'))).not.toThrow();
 
       expect(acknowledge).not.toHaveBeenCalled();
       expect(svc.resources().listenerCount).toBe(8); // summaries only
+    });
+
+    it('acks only the thread open now when focus returns after a switch (#1356)', () => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false); // start unfocused
+      const rootA = fakeEvent({ id: '$a', sender: '@a:hs', body: 'root a' });
+      const replyA = fakeEvent({ id: '$a1', sender: '@b:hs', body: 'reply a' });
+      const rootB = fakeEvent({ id: '$b', sender: '@a:hs', body: 'root b' });
+      const replyB = fakeEvent({ id: '$b1', sender: '@b:hs', body: 'reply b' });
+      const { svc, acknowledge } = setup([
+        fakeThread({ id: '$a', rootEvent: rootA, events: [rootA, replyA] }),
+        fakeThread({ id: '$b', rootEvent: rootB, events: [rootB, replyB] }),
+      ]);
+      svc.attachThreadRoot('$a');
+      svc.attachThreadRoot('$b'); // switched while still unfocused
+
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true); // the person returns
+      window.dispatchEvent(new Event('focus'));
+
+      expect(acknowledge).toHaveBeenCalledTimes(1);
+      expect(acknowledge).toHaveBeenCalledWith({
+        key: { accountId: '@me:hs', roomId: '!r:hs' },
+        messageId: '$b1',
+        threadRootId: '$b',
+      });
     });
 
     it('does not throw when the message adapter rejects the acknowledgement', () => {
