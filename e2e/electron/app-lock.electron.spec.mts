@@ -40,7 +40,11 @@ interface FakeControls {
 }
 
 async function installFakes(app: ElectronApplication): Promise<void> {
-  await app.evaluate(({ ipcMain }) => {
+  await app.evaluate(({ ipcMain, Notification }) => {
+    // The notification fake owns support too. Without libnotify (Linux CI under xvfb) main
+    // reports notifications unsupported, the renderer is never granted the operation and
+    // never reaches the fake below. See grantNotifications for the renderer's side.
+    Notification.isSupported = () => true;
     let pin: string | null = null;
     const state = {
       system: 'available' as 'available' | 'unavailable',
@@ -106,6 +110,14 @@ async function installFakes(app: ElectronApplication): Promise<void> {
       return { kind: 'completed' };
     });
   });
+}
+
+/**
+ * Reload, so the renderer negotiates its host operations again, now with the faked
+ * notification support. The first negotiation can run before installFakes does.
+ */
+async function grantNotifications(page: Page): Promise<void> {
+  await page.reload({ waitUntil: 'domcontentloaded' });
 }
 
 function fakes(app: ElectronApplication): Promise<FakeReport> {
@@ -279,6 +291,7 @@ test.describe('App lock in the desktop shell', () => {
     try {
       await installFakes(app);
       const page = await app.firstWindow();
+      await grantNotifications(page);
       const appName = await appNameOf(page);
       // Every read receipt and read marker the client sends, in order.
       const acks: string[] = [];
