@@ -1,4 +1,5 @@
 import Capacitor
+import SafariServices
 import TrinityAppLockCore
 import UIKit
 
@@ -87,6 +88,11 @@ public class AppLockPlugin: CAPPlugin, CAPBridgedPlugin {
     /// the presented stack. Dismissing the stack takes the cover with it, so it goes back up at
     /// once if Trinity is still inactive; that plugin still holds it and takes it down on
     /// becoming active.
+    ///
+    /// A dismissal in code doesn't tell an SFSafariViewController's delegate it finished, so
+    /// @capacitor/browser would keep it as open and refuse every later page. Its delegate hears
+    /// `safariViewControllerDidFinish`, as after Done, which only clears that state and sends
+    /// `browserFinished`; it presents and dismisses nothing, so it can't touch the cover.
     @objc func dismissPresented(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             guard let root = self.bridge?.viewController,
@@ -95,8 +101,12 @@ public class AppLockPlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
             var top = presented
+            var browserSheets = [presented].compactMap { $0 as? SFSafariViewController }
             while let next = top.presentedViewController {
                 top = next
+                if let sheet = next as? SFSafariViewController {
+                    browserSheets.append(sheet)
+                }
             }
             let cover = Self.isPrivacyCover(top) ? top : nil
             if cover === presented {
@@ -104,6 +114,9 @@ public class AppLockPlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
             root.dismiss(animated: false) {
+                for sheet in browserSheets {
+                    sheet.delegate?.safariViewControllerDidFinish?(sheet)
+                }
                 // Only while still inactive: once didBecomeActive has run, that plugin has let go
                 // of the cover, and putting it back would leave it over a running Trinity.
                 guard let cover, root.presentedViewController == nil,
