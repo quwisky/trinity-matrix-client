@@ -33,7 +33,10 @@ import {
   ConversationRuntime,
   LiveTimelineTrimmer,
 } from '@trinity/data-access/timeline';
-import { AppLockService } from '@trinity/data-access/app-lock';
+import {
+  AppLockService,
+  type AppLockStatus,
+} from '@trinity/data-access/app-lock';
 import {
   IdentityLifetime,
   type IdentityLifetimeEvent,
@@ -94,6 +97,7 @@ interface SessionHarness {
   readonly closeAuthentication: ReturnType<typeof vi.fn>;
   readonly locationBack: ReturnType<typeof vi.fn>;
   readonly background: ReturnType<typeof vi.fn>;
+  readonly appLockStatus: ReturnType<typeof signal<AppLockStatus>>;
   readonly dialogOpen: ReturnType<typeof signal<boolean>>;
   readonly hasDialog: ReturnType<typeof vi.fn>;
   readonly closeTopmost: ReturnType<typeof vi.fn>;
@@ -146,6 +150,7 @@ function setup(
   const closeAuthentication = vi.fn(() => of({ kind: 'completed' as const }));
   const locationBack = vi.fn();
   const background = vi.fn(() => of({ kind: 'completed' as const }));
+  const appLockStatus = signal<AppLockStatus>('off');
   const dialogOpen = signal(false);
   const hasDialog = vi.fn(() => dialogOpen());
   const closeTopmost = vi.fn(() => false);
@@ -266,7 +271,7 @@ function setup(
       MockProvider(TrnToastService, { show: showToast }),
       // App lock is off: taps open at once (its waiting is NotificationSessionService's).
       MockProvider(AppLockService, {
-        status: signal('off').asReadonly() as never,
+        status: appLockStatus.asReadonly(),
         whenUnlocked: () => of(undefined),
       }),
     ],
@@ -285,6 +290,7 @@ function setup(
     closeAuthentication,
     locationBack,
     background,
+    appLockStatus,
     dialogOpen,
     hasDialog,
     closeTopmost,
@@ -1240,6 +1246,61 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     test.backIntents.next({ canGoBack: false });
     expect(test.background).toHaveBeenCalledOnce();
+    lifetime.unsubscribe();
+  });
+
+  it.each<AppLockStatus>(['locked', 'unknown'])(
+    'sends the app to the background on Back while App lock covers it (%s)',
+    (status) => {
+      const test = setup();
+      test.appLockStatus.set(status);
+      const lifetime = test.adapter.run(of(void 0)).subscribe();
+
+      // A dialog, a Workspace surface and history are all behind the lock screen.
+      test.dialogOpen.set(true);
+      test.workspaceActive.set(true);
+      test.backIntents.next({ canGoBack: true });
+
+      expect(test.closeTopmost).not.toHaveBeenCalled();
+      expect(test.workspaceBack).not.toHaveBeenCalled();
+      expect(test.locationBack).not.toHaveBeenCalled();
+      expect(test.background).toHaveBeenCalledOnce();
+      lifetime.unsubscribe();
+    },
+  );
+
+  it('drops Back while locked where the host cannot background the app', () => {
+    const test = setup();
+    test.appLockStatus.set('locked');
+    test.background.mockReturnValueOnce(
+      of({ kind: 'unavailable', reason: 'not-supported' }),
+    );
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+
+    test.dialogOpen.set(true);
+    test.backIntents.next({ canGoBack: true });
+
+    expect(test.closeTopmost).not.toHaveBeenCalled();
+    expect(test.locationBack).not.toHaveBeenCalled();
+    expect(test.health.incidents()).toEqual([]);
+    expect(lifetime.closed).toBe(false);
+    lifetime.unsubscribe();
+  });
+
+  it('handles Back as before once App lock is unlocked', () => {
+    const test = setup();
+    test.appLockStatus.set('unlocked');
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+
+    test.dialogOpen.set(true);
+    test.backIntents.next({ canGoBack: true });
+    expect(test.closeTopmost).toHaveBeenCalledOnce();
+    expect(test.background).not.toHaveBeenCalled();
+
+    test.dialogOpen.set(false);
+    test.backIntents.next({ canGoBack: true });
+    expect(test.locationBack).toHaveBeenCalledOnce();
+    expect(test.background).not.toHaveBeenCalled();
     lifetime.unsubscribe();
   });
 

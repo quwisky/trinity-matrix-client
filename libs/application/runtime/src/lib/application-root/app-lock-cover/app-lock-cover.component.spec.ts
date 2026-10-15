@@ -543,6 +543,18 @@ describe('AppLockCoverComponent', () => {
       expect(dialog.hasAttribute('open')).toBe(true);
     });
 
+    it('stays open on Android Back, which a WebView sends as a cancel', async () => {
+      const { dialog, settle } = await setup();
+      await click(screen.getByRole('button', { name: 'Use PIN instead' }));
+      // Chromium turns the system back gesture into the modal's close request: a cancel.
+      const back = new Event('cancel', { cancelable: true });
+      dialog.dispatchEvent(back);
+      await settle();
+      expect(back.defaultPrevented).toBe(true);
+      expect(dialog.hasAttribute('open')).toBe(true);
+      expect(pinField()).toBeTruthy();
+    });
+
     it('opens again where it was if anything closes it while locked', async () => {
       const { dialog, settle } = await setup();
       await click(screen.getByRole('button', { name: 'Use PIN instead' }));

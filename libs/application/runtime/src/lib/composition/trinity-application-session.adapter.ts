@@ -1,5 +1,5 @@
 import { Location } from '@angular/common';
-import { Injectable, Injector, effect, inject } from '@angular/core';
+import { Injectable, Injector, effect, inject, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
 import type { ApplicationSessionEvent } from '../application-runtime.models';
@@ -7,6 +7,7 @@ import { CapabilityHealthService } from '../capability-health.service';
 import { NavigationFocusService } from '../navigation-focus.service';
 import { BadgeCoordinator } from '@trinity/application/badge';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import {
   InboundRoomLinkService,
   WorkspaceBackService,
@@ -80,6 +81,7 @@ import { HostSessionHealthService } from './host-session-health.service';
 import { NotificationSessionService } from './notification-session.service';
 import { BackgroundMemoryRelease } from './background-memory-release.service';
 import { DeviceConfirmationCoordinator } from './device-confirmation.coordinator';
+import { appLockCovers } from './app-lock.providers';
 
 /** Owns every live host and Workspace subscription for one Application Runtime session. */
 @Injectable({ providedIn: 'root' })
@@ -96,6 +98,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly nativeNavigation = inject(NativeNavigationService);
   private readonly hostDeepLinks = inject(HostDeepLinksService);
   private readonly hostBack = inject(HostBackService);
+  private readonly appLock = inject(AppLockService);
   private readonly hostLifecycle = inject(HostLifecycleService);
   private readonly memoryRelease = inject(BackgroundMemoryRelease);
   private readonly timelineTrimmer = inject(LiveTimelineTrimmer);
@@ -394,6 +397,12 @@ export class TrinityApplicationSessionAdapter {
           repeat({ delay: 1_000 }),
           concatMap(({ canGoBack }) =>
             defer(() => {
+              // Android Back reaches here past the lock screen's inert dialog. While App
+              // lock covers the app it never acts on what is behind the cover: it sends
+              // the app to the background, like the system lock screen does.
+              if (appLockCovers(untracked(this.appLock.status))) {
+                return this.backgroundApp();
+              }
               if (
                 this.dialog.hasOpen() &&
                 !this.workspaceBack.activeOwnsTopmostOverlay()
@@ -418,17 +427,22 @@ export class TrinityApplicationSessionAdapter {
                 this.location.back();
                 return of(void 0);
               }
-              return this.hostBack.background().pipe(
-                take(1),
-                switchMap((outcome) =>
-                  hostOutcomeFailed(outcome)
-                    ? this.hostIncident('back', 'host-background-failed')
-                    : of(void 0),
-                ),
-              );
+              return this.backgroundApp();
             }),
           ),
         ),
+    );
+  }
+
+  /** A host that can't background the app drops the intent; a failure is an incident. */
+  private backgroundApp(): Observable<void> {
+    return this.hostBack.background().pipe(
+      take(1),
+      switchMap((outcome) =>
+        hostOutcomeFailed(outcome)
+          ? this.hostIncident('back', 'host-background-failed')
+          : of(void 0),
+      ),
     );
   }
 
