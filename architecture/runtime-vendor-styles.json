@@ -3,7 +3,7 @@
     {
       "id": "cdk-overlay-static",
       "package": "@angular/cdk",
-      "version": "22.2.0",
+      "version": "22.2.2",
       "source": "../../../node_modules/@angular/cdk/overlay-prebuilt.css",
       "layer": "vendor"
     },
@@ -19,7 +19,7 @@
     {
       "id": "codemirror-style-module",
       "package": "@codemirror/view",
-      "version": "6.43.13",
+      "version": "6.43.14",
       "mechanism": "style-mod mounts CodeMirror base and theme modules in the editor document root",
       "seam": "libs/feature/settings/src/lib/advanced/config-editor/config-editor-theme.ts",
       "importPrefixes": ["@codemirror/", "@lezer/highlight"],
@@ -43,7 +43,7 @@
     {
       "id": "cdk-overlay-loader",
       "package": "@angular/cdk",
-      "version": "22.2.0",
+      "version": "22.2.2",
       "mechanism": "CDK creates global overlay and visually-hidden style-loader components and writes overlay geometry inline",
       "seam": "libs/components/overlay/src/index.ts",
       "importPrefixes": [
@@ -127,7 +127,7 @@
     {
       "id": "brain-sonner-component",
       "package": "@spartan-ng/brain",
-      "version": "1.5.0",
+      "version": "1.6.3",
       "mechanism": "Brain Sonner injects its global Angular component stylesheet and writes layout and swipe custom properties inline",
       "seam": "libs/components/overlay/src/lib/toast/trn-toaster.component.ts",
       "importPrefixes": ["@spartan-ng/brain/sonner"],
