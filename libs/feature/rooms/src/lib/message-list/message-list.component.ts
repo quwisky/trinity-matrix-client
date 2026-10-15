@@ -11,11 +11,11 @@ import {
   effect,
   inject,
   input,
-  output,
   signal,
   untracked,
   viewChildren,
 } from '@angular/core';
+import { outputFromObservable, toObservable } from '@angular/core/rxjs-interop';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageRowComponent } from '../message-row/message-row.component';
 import { BodyOverflowObserver } from '../message-row/body-overflow';
@@ -54,6 +54,14 @@ const ESTIMATED_ROW_HEIGHT_PX = 64;
 
 /** Extra pixels rendered above and below the viewport to hide window-boundary churn. */
 const OVERSCAN_PX = 800;
+
+/**
+ * The least an unmeasured row is counted at when the list says what it keeps on screen
+ * (#1366). Rows that arrive while a web tab is hidden are rendered but never measured, and
+ * a short row is well under the 64 px estimate, so counting them at the estimate could
+ * name too few rows to fill the viewport when the window is shown again.
+ */
+const MIN_UNMEASURED_ROW_PX = 24;
 
 /** At or below this many rows, render everything (windowing isn't worth it). */
 const SMALL_LIST_ROWS = 80;
@@ -184,6 +192,33 @@ export class MessageListComponent extends MessageListBase {
     ),
   );
 
+  /**
+   * The oldest event the list keeps on screen while it follows the newest message: the
+   * first event of the oldest row within the viewport and its overscan of the end, counting
+   * a row not yet measured at {@link MIN_UNMEASURED_ROW_PX}. Null while the reader is
+   * scrolled back, history is being paged in, or the viewport has no height (a window
+   * shrunk to nothing would otherwise keep only the overscan).
+   */
+  private readonly liveViewFrom = computed(() => {
+    const rows = this.rows();
+    const viewport = this.viewportH();
+    if (
+      !this.atBottomSig() ||
+      this.loadingOlder() ||
+      rows.length === 0 ||
+      viewport <= 0
+    ) {
+      return null;
+    }
+    this.heightVersion();
+    const prefix = buildPrefixSums(this.ids(), {
+      measured: this.measured,
+      estimate: MIN_UNMEASURED_ROW_PX,
+    });
+    const row = rows[firstRowWithin(prefix, viewport + OVERSCAN_PX)];
+    return row.systemRun?.events[0]?.id ?? row.id;
+  });
+
   /** Render only the rows near the viewport. Off (Settings → Experimental) renders every loaded row. */
   readonly windowed = input(true);
 
@@ -192,6 +227,13 @@ export class MessageListComponent extends MessageListBase {
    * to the same condition as the `[trnMessageListIntro]` content: projection cannot report it.
    */
   readonly introShown = input(false);
+
+  /**
+   * {@link liveViewFrom} as it changes. The host passes it to the Conversation, which while
+   * the window is hidden trims the room no further back than this (#1366), so the list
+   * looks the same when the window is shown again.
+   */
+  readonly liveView = outputFromObservable(toObservable(this.liveViewFrom));
 
   /** The rows actually rendered — the full list sliced to the window. */
   readonly windowedRows = computed(() => {
@@ -216,32 +258,10 @@ export class MessageListComponent extends MessageListBase {
   /** Reactive mirror of `!atBottom` for the template's jump-to-latest pill. */
   protected readonly notAtBottom = computed(() => !this.atBottomSig());
 
-  /**
-   * The oldest event the list keeps on screen while it follows the newest message: the
-   * first event of the oldest row within the viewport and its overscan of the end, as a
-   * pinned window renders them. Null while the reader is scrolled back or history is being
-   * paged in. The host passes it to the Conversation, which while the window is hidden
-   * trims the room no further back than this (#1366), so the list looks the same when the
-   * window is shown again.
-   */
-  readonly liveView = output<string | null>();
-
-  private readonly liveViewFrom = computed(() => {
-    const rows = this.rows();
-    if (!this.atBottomSig() || this.loadingOlder() || rows.length === 0) {
-      return null;
-    }
-    const row =
-      rows[firstRowWithin(this.prefix(), this.viewportH() + OVERSCAN_PX)];
-    return row.systemRun?.events[0]?.id ?? row.id;
-  });
-
   private lastChrome = '';
 
   constructor() {
     super();
-
-    effect(() => this.liveView.emit(this.liveViewFrom()));
 
     effect(() => {
       const msgs = this.messages();

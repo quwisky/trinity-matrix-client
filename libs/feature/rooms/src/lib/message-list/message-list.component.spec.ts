@@ -887,28 +887,92 @@ describe('MessageListComponent', () => {
       return height;
     }
 
-    it('reports the oldest row it keeps on screen while it follows the newest message', async () => {
+    /** A 600 px viewport from the first render, as a browser lays the scroller out. */
+    function tallViewport(): void {
+      const spy = vi
+        .spyOn(Element.prototype, 'clientHeight', 'get')
+        .mockReturnValue(600);
+      onTestFinished(() => spy.mockRestore());
+    }
+
+    async function renderReporting(messages: MessageView[]) {
       const liveView = vi.fn();
-      const { fixture, container } = await render(MessageListComponent, {
-        inputs: { messages: many(200) },
+      const result = await render(MessageListComponent, {
+        inputs: { messages },
         on: { liveView },
         imports: [MockComponent(MessageComposerComponent)],
       });
-      const cmp = fixture.componentInstance;
-      // Everything within the viewport and its overscan of the end: 13 estimated rows.
-      expect(liveView).toHaveBeenLastCalledWith('$187');
+      await result.fixture.whenStable();
+      return { ...result, liveView };
+    }
 
+    /** Taller, unmeasured rows: reactions under each body. */
+    const reacted = (n: number) =>
+      many(n).map((m) => ({
+        ...m,
+        reactions: [{ key: '👍', count: 2, reacted: false, reactors: [] }],
+      }));
+
+    it('counts rows it has not measured at a minimum height, so it never names too few', async () => {
+      tallViewport();
+      const { liveView } = await renderReporting(reacted(200));
+
+      // 600 px viewport + 800 px overscan at 24 px a row: 59 rows, though they would
+      // render far taller.
+      expect(liveView).toHaveBeenLastCalledWith('$141');
+    });
+
+    it('counts measured rows at their height', async () => {
+      tallViewport();
+      const { fixture, container, liveView } = await renderReporting(many(200));
+      rowObserver().emit(
+        [...container.querySelectorAll('.msg')].map((row) =>
+          resizeEntry(row, 100),
+        ),
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      // The 22 rendered rows now measure 100 px each: 14 of them cover 1,400 px.
+      expect(liveView).toHaveBeenLastCalledWith('$186');
+    });
+
+    it('reports nothing while its viewport has no height', async () => {
+      const { liveView } = await renderReporting(many(200));
+
+      expect(liveView).toHaveBeenLastCalledWith(null);
+      expect(liveView).not.toHaveBeenCalledWith(expect.any(String));
+    });
+
+    it('reports nothing while older history loads', async () => {
+      tallViewport();
+      const { fixture, liveView } = await renderReporting(many(200));
+      expect(liveView).toHaveBeenLastCalledWith('$141');
+
+      fixture.componentRef.setInput('loadingOlder', true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(liveView).toHaveBeenLastCalledWith(null);
+    });
+
+    it('reports nothing while scrolled back, and again once back at the bottom', async () => {
+      tallViewport();
+      const { fixture, container, liveView } = await renderReporting(many(200));
+      const cmp = fixture.componentInstance;
       const scroll = container.querySelector('.scroll') as HTMLElement;
       const at = { st: 1000 };
       laidOut(scroll, at);
       cmp.onScroll();
       fixture.detectChanges();
+      await fixture.whenStable();
       expect(liveView).toHaveBeenLastCalledWith(null);
 
       at.st = scroll.scrollHeight - 600;
       cmp.onScroll();
       fixture.detectChanges();
-      expect(liveView).toHaveBeenLastCalledWith('$187');
+      await fixture.whenStable();
+      expect(liveView).toHaveBeenLastCalledWith('$141');
     });
 
     it('keeps the reader where they were when older rows are trimmed away above them', async () => {
