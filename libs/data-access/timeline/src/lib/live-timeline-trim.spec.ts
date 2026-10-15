@@ -312,6 +312,50 @@ describe('trimLiveTimeline', () => {
     expect(room.findEventById(id(110))).toBeDefined();
   });
 
+  it('keeps an event the caller marks as read up to, below the ceiling', async () => {
+    const { client, room } = setup(330);
+    await startedAt(room, 311, 330);
+    await pageToStart(client, room);
+
+    trimLiveTimeline(room, ME, { marked: [id(150), null] });
+
+    // The page boundary just before it.
+    expect(ids(room)).toEqual(range(131, 330));
+  });
+
+  it('trims past an event the caller marks once the room passes the ceiling', async () => {
+    const last = TRIM_CEILING + 200;
+    const { room } = setup(last);
+    await startedAt(room, 101, 120);
+    noteSyncPosition(room, before(121));
+    for (let at = 120; at < last; at += 10) {
+      await receive(room, at + 1, at + 10);
+      noteSyncPosition(room, before(at + 11));
+    }
+
+    trimLiveTimeline(room, ME, { marked: [id(110)] });
+
+    expect(room.findEventById(id(110))).toBeUndefined();
+    expect(ids(room).length).toBeLessThanOrEqual(2 * TRIM_KEEP + 10);
+  });
+
+  it('keeps an event the caller must keep, past the ceiling too', async () => {
+    const last = TRIM_CEILING + 200;
+    const { room } = setup(last);
+    await startedAt(room, 101, 120);
+    noteSyncPosition(room, before(121));
+    for (let at = 120; at < last; at += 10) {
+      await receive(room, at + 1, at + 10);
+      noteSyncPosition(room, before(at + 11));
+    }
+
+    const dropped = trimLiveTimeline(room, ME, { kept: [id(905), '$absent'] });
+
+    expect(dropped).toBeGreaterThan(0);
+    // The sync position just before it.
+    expect(ids(room)).toEqual(range(871, last));
+  });
+
   it('keeps the latest message the room list previews', async () => {
     const notice = (n: number): IRoomEvent =>
       n > 200

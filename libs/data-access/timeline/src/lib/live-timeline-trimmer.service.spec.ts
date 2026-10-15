@@ -46,6 +46,11 @@ function setup() {
   const live = new Map<string, MatrixClient>([[ALICE, client]]);
   const held = new Set(['!open:hs']);
   const errors = { handleError: vi.fn() };
+  const trimHeld = vi.fn();
+  const windowHidden = signal(false);
+  const focused = signal<{ key: { accountId: string; roomId: string } } | null>(
+    { key: { accountId: ALICE, roomId: '!open:hs' } },
+  );
   TestBed.configureTestingModule({
     providers: [
       {
@@ -60,6 +65,9 @@ function setup() {
         useValue: {
           holds: (accountId: string, roomId: string) =>
             accountId === ALICE && held.has(roomId),
+          trimHeld,
+          windowHidden: windowHidden.asReadonly(),
+          focused: focused.asReadonly(),
         },
       },
       { provide: ErrorHandler, useValue: errors },
@@ -90,6 +98,8 @@ function setup() {
     live,
     held,
     errors,
+    trimHeld,
+    windowHidden,
     sync,
     loaded,
   };
@@ -118,6 +128,73 @@ describe('LiveTimelineTrimmer', () => {
     expect(loaded('!busy:hs')).toBeGreaterThanOrEqual(TRIM_KEEP);
     expect(loaded('!open:hs')).toBe(1000);
     expect(loaded('!quiet:hs')).toBe(0);
+    running.unsubscribe();
+  });
+
+  it('leaves a held room past the high-water mark to the Conversation runtime', async () => {
+    const { trimmer, accountIds, trimHeld, sync } = setup();
+    const running = trimmer.run().subscribe();
+    accountIds.set([ALICE]);
+    TestBed.tick();
+
+    for (let i = 0; i < 20; i++) await sync();
+    expect(trimHeld).not.toHaveBeenCalled();
+
+    await sync();
+    expect(trimHeld).toHaveBeenCalledExactlyOnceWith(ALICE, '!open:hs');
+    running.unsubscribe();
+  });
+
+  it('trims the focused room as soon as the window is hidden, without waiting for a sync', async () => {
+    const { trimmer, accountIds, trimHeld, windowHidden, sync } = setup();
+    const running = trimmer.run().subscribe();
+    accountIds.set([ALICE]);
+    TestBed.tick();
+    for (let i = 0; i < 21; i++) await sync();
+    expect(trimHeld).toHaveBeenCalledOnce();
+
+    windowHidden.set(true);
+    TestBed.tick();
+
+    expect(trimHeld).toHaveBeenCalledTimes(2);
+    expect(trimHeld).toHaveBeenLastCalledWith(ALICE, '!open:hs');
+    running.unsubscribe();
+  });
+
+  it('reports a failing open room once, and trims it like any other once nobody has it open', async () => {
+    const {
+      trimmer,
+      accountIds,
+      errors,
+      trimHeld,
+      windowHidden,
+      held,
+      sync,
+      loaded,
+    } = setup();
+    const failure = new Error('broken open room');
+    trimHeld.mockImplementation(() => {
+      throw failure;
+    });
+    const running = trimmer.run().subscribe();
+    accountIds.set([ALICE]);
+    TestBed.tick();
+
+    for (let i = 0; i < 25; i++) await sync();
+    // A later hidden period does not try it again.
+    windowHidden.set(true);
+    TestBed.tick();
+    windowHidden.set(false);
+    TestBed.tick();
+    windowHidden.set(true);
+    TestBed.tick();
+    expect(trimHeld).toHaveBeenCalledOnce();
+    expect(errors.handleError).toHaveBeenCalledExactlyOnceWith(failure);
+
+    held.delete('!open:hs');
+    for (let i = 0; i < 30; i++) await sync();
+
+    expect(loaded('!open:hs')).toBeLessThanOrEqual(TRIM_HIGH_WATER + 10);
     running.unsubscribe();
   });
 

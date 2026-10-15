@@ -862,6 +862,145 @@ describe('MessageListComponent', () => {
     expect(cmp.bottomPad()).toBe(0);
   });
 
+  describe('a room trimmed while the window is hidden (#1366)', () => {
+    /** Geometry from the rendered DOM, as a browser would lay it out: spacers plus rows. */
+    function laidOut(scroll: HTMLElement, at: { st: number }) {
+      const height = () =>
+        [...scroll.querySelectorAll<HTMLElement>('.vpad')].reduce(
+          (sum, pad) => sum + (parseFloat(pad.style.height) || 0),
+          0,
+        ) +
+        scroll.querySelectorAll('.msg').length * EST;
+      Object.defineProperty(scroll, 'scrollTop', {
+        get: () => at.st,
+        set: (v: number) => (at.st = v),
+        configurable: true,
+      });
+      Object.defineProperty(scroll, 'clientHeight', {
+        value: 600,
+        configurable: true,
+      });
+      Object.defineProperty(scroll, 'scrollHeight', {
+        get: height,
+        configurable: true,
+      });
+      return height;
+    }
+
+    /** A 600 px viewport from the first render, as a browser lays the scroller out. */
+    function tallViewport(): void {
+      const spy = vi
+        .spyOn(Element.prototype, 'clientHeight', 'get')
+        .mockReturnValue(600);
+      onTestFinished(() => spy.mockRestore());
+    }
+
+    async function renderReporting(messages: MessageView[]) {
+      const liveView = vi.fn();
+      const result = await render(MessageListComponent, {
+        inputs: { messages },
+        on: { liveView },
+        imports: [MockComponent(MessageComposerComponent)],
+      });
+      await result.fixture.whenStable();
+      return { ...result, liveView };
+    }
+
+    /** Taller, unmeasured rows: reactions under each body. */
+    const reacted = (n: number) =>
+      many(n).map((m) => ({
+        ...m,
+        reactions: [{ key: '👍', count: 2, reacted: false, reactors: [] }],
+      }));
+
+    it('counts rows it has not measured at the shortest row height, so it never names too few', async () => {
+      tallViewport();
+      const { liveView } = await renderReporting(reacted(200));
+
+      // 600 px viewport + 800 px overscan at 16 px a row: 88 rows, though they would
+      // render far taller.
+      expect(liveView).toHaveBeenLastCalledWith('$112');
+    });
+
+    it('counts measured rows at their height', async () => {
+      tallViewport();
+      const { fixture, container, liveView } = await renderReporting(many(200));
+      rowObserver().emit(
+        [...container.querySelectorAll('.msg')].map((row) =>
+          resizeEntry(row, 100),
+        ),
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      // The 22 rendered rows now measure 100 px each: 14 of them cover 1,400 px.
+      expect(liveView).toHaveBeenLastCalledWith('$186');
+    });
+
+    it('reports nothing while its viewport has no height', async () => {
+      const { liveView } = await renderReporting(many(200));
+
+      expect(liveView).toHaveBeenLastCalledWith(null);
+      expect(liveView).not.toHaveBeenCalledWith(expect.any(String));
+    });
+
+    it('reports nothing while older history loads', async () => {
+      tallViewport();
+      const { fixture, liveView } = await renderReporting(many(200));
+      expect(liveView).toHaveBeenLastCalledWith('$112');
+
+      fixture.componentRef.setInput('loadingOlder', true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(liveView).toHaveBeenLastCalledWith(null);
+    });
+
+    it('reports nothing while scrolled back, and again once back at the bottom', async () => {
+      tallViewport();
+      const { fixture, container, liveView } = await renderReporting(many(200));
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const at = { st: 1000 };
+      laidOut(scroll, at);
+      cmp.onScroll();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(liveView).toHaveBeenLastCalledWith(null);
+
+      at.st = scroll.scrollHeight - 600;
+      cmp.onScroll();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(liveView).toHaveBeenLastCalledWith('$112');
+    });
+
+    it('keeps the reader where they were when older rows are trimmed away above them', async () => {
+      const { fixture, container } = await renderList({
+        messages: many(200),
+      });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const at = { st: 0 };
+      const height = laidOut(scroll, at);
+      // Near the bottom, but not exactly on it.
+      at.st = height() - 600 - 50;
+      cmp.onScroll();
+      fixture.detectChanges();
+      const first = scroll.querySelector('.msg')?.getAttribute('data-mid');
+
+      fixture.componentRef.setInput('messages', many(200).slice(100));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(height() - at.st).toBe(600 + 50);
+      expect(scroll.querySelector('.msg')?.getAttribute('data-mid')).toBe(
+        first,
+      );
+      expect(notAtBottom(cmp)).toBe(false);
+    });
+  });
+
   // Fire the (controllable) ResizeObserver so onRowsResized actually runs.
   describe('height measurement (ResizeObserver fires)', () => {
     it('measures a row and re-sticks to the bottom while pinned', async () => {

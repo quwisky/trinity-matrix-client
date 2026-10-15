@@ -15,6 +15,7 @@ import {
   untracked,
   viewChildren,
 } from '@angular/core';
+import { outputFromObservable, toObservable } from '@angular/core/rxjs-interop';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageRowComponent } from '../message-row/message-row.component';
 import { BodyOverflowObserver } from '../message-row/body-overflow';
@@ -29,6 +30,7 @@ import { TypingIndicatorComponent } from './typing-indicator/typing-indicator.co
 import {
   buildPrefixSums,
   computeWindow,
+  firstRowWithin,
   offsetOf,
   scrollCompensation,
   type HeightChange,
@@ -52,6 +54,15 @@ const ESTIMATED_ROW_HEIGHT_PX = 64;
 
 /** Extra pixels rendered above and below the viewport to hide window-boundary churn. */
 const OVERSCAN_PX = 800;
+
+/**
+ * What an unmeasured row is counted at when the list says what it keeps on screen (#1366):
+ * the shortest row it renders, a one-line system line in compact density at the small text
+ * scale. Rows that arrive while a web tab is hidden are rendered but never measured, and
+ * counting them at the 64 px estimate could name too few rows to fill the viewport when
+ * the window is shown again; at this height they can only name more.
+ */
+const MIN_UNMEASURED_ROW_PX = 16;
 
 /** At or below this many rows, render everything (windowing isn't worth it). */
 const SMALL_LIST_ROWS = 80;
@@ -103,6 +114,8 @@ const SCROLL_IDLE_MS = 150;
 })
 export class MessageListComponent extends MessageListBase {
   private lastId = '';
+  /** The first row as last rendered, to tell rows trimmed away above the reader. */
+  private lastFirstRowId: string | null = null;
   /** Whether the user is scrolled to (or near) the bottom — gates auto-scroll and
    * pins the window to the newest row. A signal so windowing reacts to it. */
   private readonly atBottomSig = signal(true);
@@ -180,6 +193,33 @@ export class MessageListComponent extends MessageListBase {
     ),
   );
 
+  /**
+   * The oldest event the list keeps on screen while it follows the newest message: the
+   * first event of the oldest row within the viewport and its overscan of the end, counting
+   * a row not yet measured at {@link MIN_UNMEASURED_ROW_PX}. Null while the reader is
+   * scrolled back, history is being paged in, or the viewport has no height (a window
+   * shrunk to nothing would otherwise keep only the overscan).
+   */
+  private readonly liveViewFrom = computed(() => {
+    const rows = this.rows();
+    const viewport = this.viewportH();
+    if (
+      !this.atBottomSig() ||
+      this.loadingOlder() ||
+      rows.length === 0 ||
+      viewport <= 0
+    ) {
+      return null;
+    }
+    this.heightVersion();
+    const prefix = buildPrefixSums(this.ids(), {
+      measured: this.measured,
+      estimate: MIN_UNMEASURED_ROW_PX,
+    });
+    const row = rows[firstRowWithin(prefix, viewport + OVERSCAN_PX)];
+    return row.systemRun?.events[0]?.id ?? row.id;
+  });
+
   /** Render only the rows near the viewport. Off (Settings → Experimental) renders every loaded row. */
   readonly windowed = input(true);
 
@@ -188,6 +228,13 @@ export class MessageListComponent extends MessageListBase {
    * to the same condition as the `[trnMessageListIntro]` content: projection cannot report it.
    */
   readonly introShown = input(false);
+
+  /**
+   * {@link liveViewFrom} as it changes. The host passes it to the Conversation, which while
+   * the window is hidden trims the room no further back than this (#1366), so the list
+   * looks the same when the window is shown again.
+   */
+  readonly liveView = outputFromObservable(toObservable(this.liveViewFrom));
 
   /** The rows actually rendered — the full list sliced to the window. */
   readonly windowedRows = computed(() => {
@@ -231,6 +278,9 @@ export class MessageListComponent extends MessageListBase {
       if (!el) {
         return;
       }
+      const ids = untracked(() => this.ids());
+      const firstBefore = this.lastFirstRowId;
+      this.lastFirstRowId = ids[0] ?? null;
 
       if (this.pendingPrepend) {
         // The viewport moves before the browser delivers its scroll event. Capture
@@ -296,6 +346,14 @@ export class MessageListComponent extends MessageListBase {
         ) {
           this.announcement.set(`${latest.senderName}: ${latest.body}`);
         }
+      }
+      if (
+        !newestChanged &&
+        firstBefore !== null &&
+        firstBefore !== ids[0] &&
+        !ids.includes(firstBefore)
+      ) {
+        this.keepPlaceAfterTrim(el, ids);
       }
       // Read the at-bottom signal untracked so this effect keeps firing only on
       // messages().
@@ -382,6 +440,7 @@ export class MessageListComponent extends MessageListBase {
   protected override resetOnRoomChange(): void {
     super.resetOnRoomChange();
     this.lastId = '';
+    this.lastFirstRowId = null;
     this.lastBackfillOldestId = null;
     this.backfillRounds = 0;
     this.pendingPrepend = false;
@@ -395,6 +454,31 @@ export class MessageListComponent extends MessageListBase {
     this.bodyOverflow.clear();
     this.scrollTop.set(0);
     this.heightVersion.update((v) => v + 1);
+  }
+
+  /**
+   * Older rows were trimmed away above the reader while nothing arrived below (the room's
+   * history released while the window was hidden, #1366). Everything from the rows on
+   * screen down stays, so keeping the same distance from the end keeps the reader exactly
+   * where they were; left alone, a reader just above the bottom would be moved by the
+   * browser clamping the shorter list. Measured heights of the trimmed rows go too.
+   */
+  private keepPlaceAfterTrim(el: HTMLElement, ids: readonly string[]): void {
+    const fromEnd = el.scrollHeight - el.scrollTop;
+    const kept = new Set(ids);
+    for (const id of [...this.measured.keys()]) {
+      if (!kept.has(id)) this.measured.delete(id);
+    }
+    untracked(() =>
+      afterNextRender(
+        () => {
+          if (this.destroyRef.destroyed) return;
+          el.scrollTop = Math.max(0, el.scrollHeight - fromEnd);
+          this.scrollTop.set(el.scrollTop);
+        },
+        { injector: this.injector },
+      ),
+    );
   }
 
   /** Auto-load older history once the user scrolls near the top. */

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPrefixSums,
   computeWindow,
+  firstRowWithin,
   indexAtOffset,
   offsetOf,
   rowHeight,
@@ -70,6 +71,20 @@ describe('virtual-window', () => {
     });
     it('is empty-safe', () => {
       expect(indexAtOffset(buildPrefixSums([], heights({})), 5)).toBe(0);
+    });
+  });
+
+  describe('firstRowWithin', () => {
+    const p = buildPrefixSums(ids(5), heights({ $3: 30 }, 10)); // 10, 10, 10, 30, 10
+    it('finds the oldest row needed to cover a height up from the end', () => {
+      expect(firstRowWithin(p, 1)).toBe(4);
+      expect(firstRowWithin(p, 11)).toBe(3);
+      expect(firstRowWithin(p, 40)).toBe(3);
+      expect(firstRowWithin(p, 41)).toBe(2);
+    });
+    it('is the first row when the list is shorter, and empty-safe', () => {
+      expect(firstRowWithin(p, 1_000)).toBe(0);
+      expect(firstRowWithin(buildPrefixSums([], heights({})), 5)).toBe(0);
     });
   });
 

@@ -4,7 +4,7 @@ import { AvatarService, MediaService } from '@trinity/data-access/media';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { HostLifecycleService } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
-import { Subject, of } from 'rxjs';
+import { Observable, Subject, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BACKGROUND_RELEASE_DELAY_MS,
@@ -17,7 +17,19 @@ describe('BackgroundMemoryRelease', () => {
   >();
   const media = { releaseUnpinned: vi.fn() };
   const avatars = { releaseUnpinned: vi.fn() };
-  const conversations = { retireRetained: vi.fn() };
+  let hidden = 0;
+  const conversations = {
+    retireRetained: vi.fn(),
+    trimFocusedWhileHidden: vi.fn(
+      () =>
+        new Observable<never>(() => {
+          hidden += 1;
+          return () => {
+            hidden -= 1;
+          };
+        }),
+    ),
+  };
   const hostRelease = vi.fn(() => of({ kind: 'completed' as const }));
   const handleError = vi.fn();
 
@@ -38,6 +50,7 @@ describe('BackgroundMemoryRelease', () => {
   });
 
   afterEach(() => {
+    hidden = 0;
     vi.useRealTimers();
     vi.clearAllMocks();
     TestBed.resetTestingModule();
@@ -60,6 +73,25 @@ describe('BackgroundMemoryRelease', () => {
     vi.advanceTimersByTime(1);
     expect(released()).toEqual([1, 1, 1, 1]);
     run.unsubscribe();
+  });
+
+  it('lets the focused room be trimmed from the release until the app comes back', () => {
+    const run = TestBed.inject(BackgroundMemoryRelease).run().subscribe();
+
+    events.next({ kind: 'background' });
+    vi.advanceTimersByTime(BACKGROUND_RELEASE_DELAY_MS - 1);
+    expect(hidden).toBe(0);
+    vi.advanceTimersByTime(1);
+    expect(hidden).toBe(1);
+
+    events.next({ kind: 'active' });
+    expect(hidden).toBe(0);
+
+    events.next({ kind: 'background' });
+    vi.advanceTimersByTime(BACKGROUND_RELEASE_DELAY_MS);
+    expect(hidden).toBe(1);
+    run.unsubscribe();
+    expect(hidden).toBe(0);
   });
 
   it('cancels the release when the app comes back first', () => {

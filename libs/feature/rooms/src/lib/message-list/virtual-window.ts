@@ -134,6 +134,20 @@ export function indexAtOffset(prefix: Float64Array, y: number): number {
 }
 
 /**
+ * Index of the oldest row needed to cover `px` up from the end of the list: the window a
+ * view pinned to the newest row renders. 0 when the whole list is shorter than that.
+ */
+export function firstRowWithin(prefix: Float64Array, px: number): number {
+  const n = prefix.length - 1;
+  const total = prefix[n];
+  let index = Math.max(0, n - 1);
+  while (index > 0 && total - prefix[index] < px) {
+    index--;
+  }
+  return index;
+}
+
+/**
  * Resolve the render window and spacer heights. `prefix` must be
  * {@link buildPrefixSums} for the same ids/heights (passed in so the caller can
  * memoize and reuse it across window/offset queries).
@@ -181,11 +195,7 @@ export function computeWindow(
     // viewport plus overscan. Keeps the bottom spacer at 0 so `scrollTop =
     // scrollHeight` lands on real content (no blank space) for live/own messages.
     const endIndex = n - 1;
-    let startIndex = n - 1;
-    const target = viewportHeight + overscanPx;
-    while (startIndex > 0 && total - prefix[startIndex] < target) {
-      startIndex--;
-    }
+    const startIndex = firstRowWithin(prefix, viewportHeight + overscanPx);
     return {
       startIndex,
       endIndex,

@@ -8,6 +8,7 @@ import {
   catchError,
   defer,
   ignoreElements,
+  merge,
   switchMap,
   timer,
 } from 'rxjs';
@@ -24,6 +25,10 @@ export const BACKGROUND_RELEASE_DELAY_MS = 60_000;
  * non-focused conversations and, on the desktop shell, Blink's resource caches. On-screen
  * media, held avatars and the focused conversation stay, so showing the app again needs no
  * reload; everything else comes back lazily on its next use, as after eviction.
+ *
+ * From then until the app is shown again, the focused room's history is trimmed as it
+ * grows, while its view follows the newest message
+ * ({@link ConversationRuntime.trimFocusedWhileHidden}).
  */
 @Injectable({ providedIn: 'root' })
 export class BackgroundMemoryRelease {
@@ -39,7 +44,12 @@ export class BackgroundMemoryRelease {
       switchMap((event) =>
         event.kind === 'background'
           ? timer(BACKGROUND_RELEASE_DELAY_MS).pipe(
-              switchMap(() => this.release()),
+              switchMap(() =>
+                merge(
+                  this.release(),
+                  this.conversations.trimFocusedWhileHidden(),
+                ),
+              ),
             )
           : EMPTY,
       ),

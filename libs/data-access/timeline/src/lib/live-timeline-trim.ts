@@ -14,8 +14,9 @@ import {
 export const TRIM_KEEP = 50;
 
 /**
- * How many events a room nobody has open may hold before it is trimmed. Each event costs
- * about 2 KB of heap, so a trimmable room stays under roughly 0.4 MB.
+ * How many events a room nobody has open may hold before it is trimmed; also the open
+ * room's, while the window is hidden and its view follows the newest message. Each event
+ * costs about 2 KB of heap, so a trimmable room stays under roughly 0.4 MB.
  *
  * A trim never cuts past the person's read receipt or fully-read marker, so a room that
  * keeps receiving events after it was last read can grow past this until
@@ -118,27 +119,43 @@ function indexOf(
 }
 
 /**
+ * Events a caller needs kept beyond what the room itself protects: the open room's view
+ * and composer (#1366). Ids that are null or not loaded are ignored.
+ */
+export interface TrimGuard {
+  /**
+   * Kept like the read receipt: only while the room holds at most {@link TRIM_CEILING}
+   * events. For the open room's divider position, quoted messages and thread root.
+   */
+  readonly marked?: readonly (string | null | undefined)[];
+  /** Never cut, past the ceiling too: what the view shows, or the composer's target. */
+  readonly kept?: readonly (string | null | undefined)[];
+}
+
+/**
  * The furthest a trim may cut and still change nothing the app reads from the timeline:
  * the room list's latest message, the person's read receipt and fully-read marker (below
- * {@link TRIM_CEILING}), any local echo still being sent or retried, and the target of
- * every kept reaction, edit or redaction. The SDK keeps a relation out of the main
- * timeline while its target is missing, so cutting between them would drop the relation,
- * and with it maybe the room's latest event.
+ * {@link TRIM_CEILING}), what the caller's {@link TrimGuard} names, any local echo still
+ * being sent or retried, and the target of every kept reaction, edit or redaction. The
+ * SDK keeps a relation out of the main timeline while its target is missing, so cutting
+ * between them would drop the relation, and with it maybe the room's latest event.
  */
 function cutLimit(
   room: Room,
   userId: string,
   events: readonly MatrixEvent[],
   indexById: ReadonlyMap<string, number>,
+  guard: TrimGuard,
 ): number {
-  const protectedIds =
-    events.length > TRIM_CEILING
-      ? []
-      : [
-          room.getEventReadUpTo(userId, false),
-          room.getEventReadUpTo(userId, true),
-          room.getAccountData(EventType.FullyRead)?.getContent()['event_id'],
-        ];
+  const protectedIds: unknown[] = [...(guard.kept ?? [])];
+  if (events.length <= TRIM_CEILING) {
+    protectedIds.push(
+      room.getEventReadUpTo(userId, false),
+      room.getEventReadUpTo(userId, true),
+      room.getAccountData(EventType.FullyRead)?.getContent()['event_id'],
+      ...(guard.marked ?? []),
+    );
+  }
   let limit = events.length - TRIM_KEEP;
   for (const eventId of protectedIds) {
     const index =
@@ -175,7 +192,8 @@ function targetOf(event: MatrixEvent): string | undefined {
  * Trim a room's SDK live timeline back to its latest events, so history that was paged in
  * or received is freed and is fetched again with `/messages` when the room is scrolled back.
  *
- * Call only for a room nobody has open. The room keeps at least {@link TRIM_KEEP} events,
+ * Call for a room nobody has open, or for the open room with a {@link TrimGuard} naming
+ * what its view and composer need. The room keeps at least {@link TRIM_KEEP} events,
  * cut at a recorded page boundary or sync position so the new back token lands at or after
  * the first kept event: no gap when it is paged back again, and the SDK drops by event id
  * any kept event a page brings again. Only the main timeline is replaced, never the thread
@@ -184,7 +202,11 @@ function targetOf(event: MatrixEvent): string | undefined {
  *
  * Returns the number of events dropped: 0 when there was no safe place to cut.
  */
-export function trimLiveTimeline(room: Room, userId: string): number {
+export function trimLiveTimeline(
+  room: Room,
+  userId: string,
+  guard: TrimGuard = {},
+): number {
   const timelineSet = room.getUnfilteredTimelineSet();
   const live = timelineSet.getLiveTimeline();
   const events = live.getEvents();
@@ -195,7 +217,7 @@ export function trimLiveTimeline(room: Room, userId: string): number {
     const eventId = event.getId();
     if (eventId) indexById.set(eventId, i);
   });
-  const limit = cutLimit(room, userId, events, indexById);
+  const limit = cutLimit(room, userId, events, indexById, guard);
   let chosen: { index: number; cut: Cut } | null = null;
   for (const cut of recorded) {
     const at = indexById.get(cut.eventId);
