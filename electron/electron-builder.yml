@@ -124,6 +124,12 @@ mac:
 win:
   target:
     - nsis
+  # App lock's Windows Hello addon (PR 5): built by `pnpm -C electron run build:windows-hello`
+  # on the Windows runner, loaded from process.resourcesPath. Outside the asar like the
+  # tray icons; unsigned until Authenticode lands (TODO(signing) below).
+  extraResources:
+    - from: build/windows-hello.node
+      to: windows-hello.node
   # Unsigned NSIS installers may be published; SmartScreen warns on first run (see the
   # private release guide). TODO(signing): Authenticode / Azure Trusted Signing.
   #   e.g. signtoolOptions / azureSignOptions, or CSC_LINK + CSC_KEY_PASSWORD env.

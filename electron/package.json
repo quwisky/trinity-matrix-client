@@ -18,6 +18,7 @@
     "compile": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.spec.json --noEmit",
     "build": "node scripts/copy-www.mjs && tsc -p tsconfig.json",
+    "build:windows-hello": "node scripts/build-windows-hello.mjs",
     "test": "vitest run",
     "start": "electron .",
     "package": "electron-builder --config electron-builder.config.ts",
@@ -33,6 +34,7 @@
     "@types/node": "^24.13.3",
     "electron": "44.6.0",
     "electron-builder": "26.17.0",
+    "node-gyp": "13.1.0",
     "typescript": "6.0.3",
     "vitest": "^5.0.0",
     "yaml": "^2.9.1"
