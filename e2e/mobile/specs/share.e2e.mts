@@ -13,8 +13,10 @@ import { onlyOn } from '../support/platform.mts';
 const CHOOSER_PACKAGE = 'com.android.intentresolver';
 
 const uiSelector = (selector: string) => $(`android=${selector}`);
+// The chooser is system UI with dozens of nodes in its package (50 on API 36); `instance(0)`
+// is its first node, the one WebdriverIO 9 used before `$` became strict.
 const chooser = () =>
-  uiSelector(`new UiSelector().packageName("${CHOOSER_PACKAGE}")`);
+  uiSelector(`new UiSelector().packageName("${CHOOSER_PACKAGE}").instance(0)`);
 
 /** Upload a small text file and post it to the room as an unencrypted `m.file`. */
 async function sendFile(
@@ -92,9 +94,9 @@ describe('mobile share sheet', () => {
 
     await native();
     await expect(chooser()).toBeDisplayed({ wait: 30_000 });
-    // The chooser previews a shared file by its name.
+    // The chooser previews a shared file by its name; any one system node showing it will do.
     await expect(
-      uiSelector(`new UiSelector().textContains("${filename}")`),
+      uiSelector(`new UiSelector().textContains("${filename}").instance(0)`),
     ).toBeDisplayed();
 
     await browser.pressKeyCode(4);
