@@ -131,20 +131,20 @@ lock the screen.
 
 **In the Android and iOS apps (still in development).** Turning App lock on asks for Face ID,
 Touch ID or your fingerprint first, or for your passcode on a phone with no face or fingerprint
-set up, with your phone's passcode or screen lock offered in the same prompt; then for a Trinity
-PIN. If your phone has no screen lock, the PIN is the only way to unlock; Settings suggests
-setting one. **Immediately** locks as soon as you leave the app. Time in Trinity's own camera,
-photo picker, share sheet or browser doesn't count as away, even if you leave Trinity from
-there: the timer starts once you're back in Trinity.
+set up (the prompt also offers your passcode or screen lock); then for a Trinity PIN. If your
+phone has no screen lock, the PIN is the only way to unlock; Settings suggests setting one.
+**Immediately** locks as soon as you leave the app. Time in Trinity's own camera, photo picker,
+share sheet or browser doesn't count as away, even if you leave Trinity from there: the timer
+starts once that view closes.
 
 While App lock is on, the app switcher on iPhone and iPad shows a blurred cover instead of
-Trinity. On iPad, the cover also shows over Trinity in Split View or Slide Over while you use
-the other app, until you tap Trinity again. On Android, Trinity's preview in recent apps is
-blank, and screenshots, screen recording and screen sharing can't capture Trinity;
-Settings › Security says so. Turning App lock off brings all of these back. If Trinity locks while one of
-its own sheets is still open, on iPhone and iPad it closes it: the share sheet, the camera or a
-page in its browser. On Android it closes a page open in its browser, though Android 10 and
-later don't allow that once Trinity is in the background.
+Trinity. On iPad, the cover may also show over Trinity in Split View or Slide Over while you use
+the other app. On Android, Trinity's preview in recent apps is blank, and screenshots, screen
+recording and screen sharing can't capture Trinity; Settings › Security says so. Turning App
+lock off brings all of these back. If Trinity locks while one of its own sheets is still open,
+on iPhone and iPad it closes it: the share sheet, the camera or a page in its browser. On
+Android it closes a page open in its browser, though Android 10 and later don't allow that once
+Trinity is in the background.
 
 **Lock now.** Choose **Lock Trinity** from the account menu (select your name at the bottom of
 the sidebar), or, on a computer, from the **File** menu. You can also give it a shortcut in
@@ -168,7 +168,8 @@ work.
 30 seconds, then 1 minute, 5 minutes, 15 minutes, and then 1 hour after each further wrong
 PIN. The wait keeps counting if you quit and reopen Trinity. Nothing is erased. On a phone, too
 many failed Face ID, Touch ID or fingerprint tries make the phone itself wait or ask for its
-passcode, as it does for any app; the lock screen then asks for your Trinity PIN.
+passcode, as it does for any app. If the phone reports too many tries, the lock screen asks for
+your Trinity PIN.
 
 **Forgot PIN?** If you have a system prompt (Face ID, Touch ID, your fingerprint or your
 phone's passcode), unlock with it and set a new PIN with **Change PIN** in Settings › Security.
