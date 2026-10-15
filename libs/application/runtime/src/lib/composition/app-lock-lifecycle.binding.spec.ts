@@ -708,6 +708,23 @@ describe('AppLockLifecycleBinding', () => {
         lifetime.unsubscribe();
       });
 
+      it('tries again after a refusal at a cold start that begins locked', () => {
+        const { lifecycle, locked, privacySet, lifetime } = setup({
+          locked: true,
+          privacySet: refusing(2),
+        });
+        expect(privacySet.mock.calls).toEqual([[true]]);
+        lifecycle.next({ kind: 'active' });
+        expect(privacySet.mock.calls).toEqual([[true], [true]]);
+        // Only the starting locked state is skipped: a later lock tries again too.
+        locked.set(false);
+        TestBed.tick();
+        locked.set(true);
+        TestBed.tick();
+        expect(privacySet.mock.calls).toEqual([[true], [true], [true]]);
+        lifetime.unsubscribe();
+      });
+
       it('ends with the cover off when App lock is turned off during a retry', () => {
         const answers: Subject<HostOperationOutcome>[] = [];
         const { enabled, lifecycle, locked, privacySet, lifetime } = setup({
