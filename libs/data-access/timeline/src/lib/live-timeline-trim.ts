@@ -14,8 +14,9 @@ import {
 export const TRIM_KEEP = 50;
 
 /**
- * How many events a room nobody has open may hold before it is trimmed. Each event costs
- * about 2 KB of heap, so a trimmable room stays under roughly 0.4 MB.
+ * How many events a room nobody has open may hold before it is trimmed; also the open
+ * room's, while the window is hidden and its view follows the newest message. Each event
+ * costs about 2 KB of heap, so a trimmable room stays under roughly 0.4 MB.
  *
  * A trim never cuts past the person's read receipt or fully-read marker, so a room that
  * keeps receiving events after it was last read can grow past this until
