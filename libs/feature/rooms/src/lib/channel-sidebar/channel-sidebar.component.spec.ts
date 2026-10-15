@@ -112,6 +112,7 @@ async function renderSidebar(
       sortMode?: RoomSortMode;
       sortOverridden?: boolean;
       defaultSortMode?: RoomSortMode;
+      defaultSortOwner?: string | null;
       canCurateSpace?: boolean;
       curateSpaceReason?: string | null;
       canInviteToSpace?: boolean;
@@ -1552,6 +1553,7 @@ describe('ChannelSidebarComponent space sort menu', () => {
       sortMode?: RoomSortMode;
       sortOverridden?: boolean;
       defaultSortMode?: RoomSortMode;
+      defaultSortOwner?: string | null;
     } = {},
   ) {
     const rendered = await renderSidebar({
@@ -1633,6 +1635,18 @@ describe('ChannelSidebarComponent space sort menu', () => {
 
     expect(row('space-sort-default')?.textContent).toContain(
       'Use my default (Space order)',
+    );
+  });
+
+  // Mixed view: a space only another account holds follows that account's ordering.
+  it("names the account whose default it is when that is not the account on screen's", async () => {
+    const { row } = await openSortMenu({
+      defaultSortMode: 'alphabetical',
+      defaultSortOwner: 'Alpha',
+    });
+
+    expect(row('space-sort-default')?.textContent).toContain(
+      'Use Alpha’s default (Alphabetical)',
     );
   });
 

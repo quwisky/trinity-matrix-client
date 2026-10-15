@@ -202,7 +202,7 @@
         data-testid="space-sort-default"
       >
         <trn-dropdown-menu-radio-indicator />
-        Use my default ({{ labelFor(defaultSortMode()) }})
+        {{ defaultSortLabel() }}
       </button>
       <div trnDropdownMenuSeparator></div>
       @for (option of sortModes; track option.id) {

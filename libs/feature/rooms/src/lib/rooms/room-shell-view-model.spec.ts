@@ -308,6 +308,14 @@ describe('RoomShellViewModel.listsShowing', () => {
     ]);
   });
 
+  // The resolver keeps a listed space for any account, so a row must not be claimed for an
+  // account it does not carry: Workspace would repair that space and drop the chat.
+  it('claims only Recent for an account the row does not carry', () => {
+    expect(lists({ accountId: '@other:hs', roomId: '!child:hs' })).toEqual([
+      { kind: 'recent' },
+    ]);
+  });
+
   it('claims only Recent for a room the selected library does not hold', () => {
     expect(lists({ accountId: '@me:hs', roomId: '!gone:hs' })).toEqual([
       { kind: 'recent' },

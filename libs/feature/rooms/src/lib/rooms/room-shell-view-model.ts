@@ -76,8 +76,8 @@ export class RoomShellViewModel {
    * messages (`m.direct`) in recency order. The Rooms view shows every non-DM joined
    * room that does not belong to any space (space-owned rooms live under their space).
    * A selected space shows only its joined child rooms, in the ordering that space resolves
-   * to — its own override, else the active account's default (recent activity out of the
-   * box). All read live signals, so the list reacts to sync, membership, `m.space.child`
+   * to — its own override, else the account's default (recent activity out of the box), for
+   * the account {@link spaceOrderAccountId} names. All read live signals, so the list reacts to sync, membership, `m.space.child`
    * changes, and to the ordering being changed from the sidebar or Settings.
    *
    * Every list reads one selected Room Library generation. Room ownership, deduplication,
@@ -200,10 +200,20 @@ export class RoomShellViewModel {
     () => (this.spaceOrderSnapshot()?.overrideMode ?? null) !== null,
   );
 
-  /** That account's default ordering, named in the menu's "Use my default (…)" row. */
+  /** That account's default ordering, named in the menu's "Use … default" row. */
   readonly defaultSpaceSortMode = computed<RoomSortMode>(
     () => this.spaceOrderSnapshot()?.defaultMode ?? DEFAULT_ROOM_SORT,
   );
+
+  /**
+   * The name of the account whose ordering the space follows, when it is not the account
+   * on screen, so the menu says whose default it offers; `null` when it is "my" default.
+   */
+  readonly spaceOrderOwnerName = computed(() => {
+    const accountId = this.spaceOrderAccountId();
+    if (!accountId || accountId === this.matrix.activeUserId()) return null;
+    return this.accountBadges().get(accountId)?.name ?? accountId;
+  });
 
   readonly activeSpaceName = computed(() => {
     const id = this.store.activeSpaceId();
@@ -478,7 +488,7 @@ export class RoomShellViewModel {
    * space only another account holds, after opening one of that space's rooms.
    */
   readonly spaceMembershipPermission = computed(() =>
-    this.store.activeSpaceId() && this.ownsActiveSpace()
+    this.ownsActiveSpace()
       ? { available: true, reason: null }
       : {
           available: false,
