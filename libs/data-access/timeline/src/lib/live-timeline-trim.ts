@@ -201,14 +201,23 @@ export function trimLiveTimeline(room: Room, userId: string): number {
   const stillValid = recorded.filter(
     (cut) => cut !== used && (indexById.get(cut.eventId) ?? -1) >= index,
   );
-  rebase(room, timelineSet, events.slice(index), used.token);
-  cuts.set(timelineSet.getLiveTimeline(), stillValid);
+  try {
+    rebase(room, timelineSet, events.slice(index), used.token);
+  } finally {
+    if (timelineSet.getLiveTimeline() !== live) {
+      cuts.set(timelineSet.getLiveTimeline(), stillValid);
+    }
+  }
   return index;
 }
 
 /**
  * Replace the live timeline with one holding only `kept`, paging back from `token`: what
  * the SDK does on a gappy sync, except that the kept events (the same objects) carry over.
+ *
+ * The SDK emits to listeners synchronously as it swaps the timeline and adds each event.
+ * One that throws must not cost the room its newest events, which nothing could page back
+ * in, so every step runs and the first failure is rethrown once the timeline is whole.
  */
 function rebase(
   room: Room,
@@ -216,16 +225,29 @@ function rebase(
   kept: readonly MatrixEvent[],
   token: string,
 ): void {
-  timelineSet.resetLiveTimeline(token);
+  const failures: unknown[] = [];
+  const attempt = (step: () => void): void => {
+    try {
+      step();
+    } catch (error: unknown) {
+      failures.push(error);
+    }
+  };
+  const previous = timelineSet.getLiveTimeline();
+  attempt(() => timelineSet.resetLiveTimeline(token));
   const fresh = timelineSet.getLiveTimeline();
+  // The swap itself failed: nothing has changed.
+  if (fresh === previous) throw failures[0];
   // Oldest first, so each relation finds its target already back in the timeline. As in
   // a restore from the sync store, they are not live events: nothing notifies for them.
   for (const event of kept) {
-    timelineSet.addEventToTimeline(event, fresh, {
-      toStartOfTimeline: false,
-      fromCache: true,
-      addToState: false,
-    });
+    attempt(() =>
+      timelineSet.addEventToTimeline(event, fresh, {
+        toStartOfTimeline: false,
+        fromCache: true,
+        addToState: false,
+      }),
+    );
   }
   // The room's current state already holds the kept state events. Wind the new start
   // state back over them, as paging them in would, so later pages get the senders and
@@ -237,12 +259,18 @@ function rebase(
     if (!event.isState() || !start) continue;
     const forwardLooking = event.forwardLooking;
     event.forwardLooking = false;
-    start.setStateEvents([event]);
+    attempt(() => start.setStateEvents([event]));
     event.forwardLooking = forwardLooking;
   }
   // `Room.resetLiveTimeline` would also reset every thread's timeline, so only the main
-  // timeline set is reset and the room's `oldState` is repointed at its new start.
-  (room as unknown as LegacyTimelineFields).fixUpLegacyTimelineFields?.();
+  // timeline set is reset and the room's `oldState` is repointed at its new start. The SDK
+  // keeps this method private; if a release renames it, the `oldState` assertion in
+  // live-timeline-trim.spec.ts ("changes no unread count, receipt, relation or summary
+  // the room list reads") fails.
+  attempt(() =>
+    (room as unknown as LegacyTimelineFields).fixUpLegacyTimelineFields?.(),
+  );
+  if (failures.length > 0) throw failures[0];
 }
 
 interface LegacyTimelineFields {

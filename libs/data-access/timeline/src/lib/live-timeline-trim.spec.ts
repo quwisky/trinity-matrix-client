@@ -6,6 +6,7 @@ import {
   NotificationCountType,
   RelationType,
   Room,
+  RoomEvent,
   createClient,
   type IRoomEvent,
   type MatrixClient,
@@ -163,6 +164,36 @@ describe('trimLiveTimeline', () => {
 
     expect(ids(room)).toEqual(range(1, 400));
   });
+
+  it.each([
+    ['the reset', RoomEvent.TimelineReset],
+    ['a kept event', RoomEvent.Timeline],
+  ] as const)(
+    'keeps every kept event when a listener throws on %s',
+    async (_, emitted) => {
+      const { client, room } = setup(330);
+      await startedAt(room, 311, 330);
+      await pageToStart(client, room);
+      const failure = new Error('listener failed');
+      let calls = 0;
+      room.on(emitted, () => {
+        if (++calls === 3 || emitted === RoomEvent.TimelineReset) throw failure;
+      });
+
+      expect(() => trimLiveTimeline(room, ME)).toThrow(failure);
+
+      const kept = ids(room);
+      expect(kept.length).toBeGreaterThanOrEqual(TRIM_KEEP);
+      expect(kept).toEqual(range(331 - kept.length, 330));
+      expect(room.oldState).toBe(
+        room.getLiveTimeline().getState(Direction.Backward),
+      );
+
+      await pageToStart(client, room);
+
+      expect(ids(room)).toEqual(range(1, 330));
+    },
+  );
 
   it('leaves a timeline alone when it has no position to page back from', async () => {
     const { room } = setup(300);
