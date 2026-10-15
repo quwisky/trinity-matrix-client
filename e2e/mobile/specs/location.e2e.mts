@@ -25,6 +25,14 @@ const CONTROLLER = 'com.android.permissioncontroller:id';
 const permissionButton = (id: string) =>
   $(`android=new UiSelector().resourceId("${CONTROLLER}/${id}")`);
 
+/**
+ * The toast a denied prompt raises. Scoped to the toast element: matching any element whose
+ * text contains the message also matches every ancestor up to <html>, which strict `$`
+ * rejects, and a body-level live-announcer copy of the text while a modal is open.
+ */
+const DENIED_TOAST =
+  '//*[@data-sonner-toast][contains(normalize-space(.),"Location permission request was denied.")]';
+
 /** Signed in, in a fresh room, with a deterministic fix and no location permission. */
 async function seedLocationRoom(): Promise<{ token: string; roomId: string }> {
   const user = uniqueId('android-location');
@@ -111,9 +119,7 @@ async function dismissStuckPrompt(): Promise<void> {
     wait: 10_000,
   });
   await webview();
-  const cancelled = $(
-    '//*[contains(normalize-space(.),"Location permission request was denied.")]',
-  );
+  const cancelled = $(DENIED_TOAST);
   await cancelled.waitForExist({ timeout: 10_000 }).catch(() => undefined);
   await cancelled.waitForExist({ timeout: 15_000, reverse: true });
 }
@@ -199,11 +205,7 @@ describe('mobile location', () => {
     await answerPrompt('permission_deny_button');
     await webview();
 
-    await expect(
-      $(
-        '//*[contains(normalize-space(.),"Location permission request was denied.")]',
-      ),
-    ).toBeDisplayed({ wait: 20_000 });
+    await expect($(DENIED_TOAST)).toBeDisplayed({ wait: 20_000 });
     await expect($('[data-testid="location-card"]')).not.toExist();
     await expect($('[data-testid="composer-input"]')).toBeDisplayed();
     await expect(sentGeoUri(token, roomId)).rejects.toThrow('no m.location');

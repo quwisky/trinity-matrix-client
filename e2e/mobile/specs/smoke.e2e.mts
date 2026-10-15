@@ -36,8 +36,10 @@ describe('mobile smoke', () => {
       await browser.keys(body);
       await browser.keys('Enter');
     }
+    // The row itself (class token `msg`): `contains(@class,"msg")` also matches its
+    // msg__* descendants, which strict `$` rejects.
     const row = $(
-      `//*[contains(@class,"scroll")]//*[contains(@class,"msg")][contains(.,"${body}")]`,
+      `//*[contains(@class,"scroll")]//*[contains(concat(" ",normalize-space(@class)," ")," msg ")][contains(.,"${body}")]`,
     );
     await expect(row).toBeDisplayed({ wait: 20_000 });
     // Mirrors waitForSent: the local echo's `~` id is replaced by the server's `$` id.

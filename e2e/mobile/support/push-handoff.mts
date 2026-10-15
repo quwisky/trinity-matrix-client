@@ -11,8 +11,8 @@ const UNREACHABLE_HOMESERVER = 'https://unreachable.invalid';
  * WebView context.
  */
 export async function storeExpiredPushAccount(userId: string): Promise<void> {
-  const result = await browser.executeAsync(
-    (id: string, homeserverUrl: string, done: (value: unknown) => void) => {
+  const result = await browser.execute(
+    async (id: string, homeserverUrl: string): Promise<string | null> => {
       const handoff = (
         window as typeof window & {
           Capacitor?: {
@@ -25,21 +25,20 @@ export async function storeExpiredPushAccount(userId: string): Promise<void> {
         }
       ).Capacitor?.Plugins?.PushHandoff;
       if (!handoff) {
-        done('PushHandoff is unavailable');
-        return;
+        return 'PushHandoff is unavailable';
       }
-      handoff
-        .setAccount({
+      try {
+        await handoff.setAccount({
           userId: id,
           homeserverUrl,
           accessToken: 'expired-token',
           sound: true,
           accessTokenExpiresAt: Date.now() - 60_000,
-        })
-        .then(
-          () => done(null),
-          (error: unknown) => done(String(error)),
-        );
+        });
+        return null;
+      } catch (error: unknown) {
+        return String(error);
+      }
     },
     userId,
     UNREACHABLE_HOMESERVER,

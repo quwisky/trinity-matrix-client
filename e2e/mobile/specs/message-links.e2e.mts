@@ -97,8 +97,8 @@ const SETTLE_WINDOW_MS = 750;
 async function waitForSettledTimeline(xpath: string): Promise<void> {
   await browser.waitUntil(
     () =>
-      browser.executeAsync(
-        (path: string, windowMs: number, done: (settled: boolean) => void) => {
+      browser.execute(
+        async (path: string, windowMs: number): Promise<boolean> => {
           const find = (): Element | null =>
             document.evaluate(
               path,
@@ -111,17 +111,16 @@ async function waitForSettledTimeline(xpath: string): Promise<void> {
             document.querySelector('.load-older') !== null;
           const before = find()?.getBoundingClientRect();
           const loadingBefore = loading();
-          setTimeout(() => {
-            const after = find()?.getBoundingClientRect();
-            done(
-              !!before &&
-                !!after &&
-                !loadingBefore &&
-                !loading() &&
-                before.x === after.x &&
-                before.y === after.y,
-            );
-          }, windowMs);
+          await new Promise((resolve) => setTimeout(resolve, windowMs));
+          const after = find()?.getBoundingClientRect();
+          return (
+            !!before &&
+            !!after &&
+            !loadingBefore &&
+            !loading() &&
+            before.x === after.x &&
+            before.y === after.y
+          );
         },
         xpath,
         SETTLE_WINDOW_MS,

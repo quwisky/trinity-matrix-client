@@ -38,7 +38,8 @@ export const config = mobileWdioConfig({
   connectionRetryTimeout: 900_000,
   // One hung request must fail once, not 3 x 15 min.
   connectionRetryCount: 0,
-  // XCUITest's default script timeout is 0; executeAsync needs one. Set per session here.
+  // XCUITest's default script timeout is 0. execute() with an async function runs as an
+  // async script, which needs one. Set per session here.
   async before() {
     await browser.setTimeout({ script: 30_000 });
   },

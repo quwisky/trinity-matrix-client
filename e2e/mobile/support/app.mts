@@ -82,15 +82,16 @@ async function discoveryDiagnostics(): Promise<string> {
     probeHandshake('127.0.0.1', ca),
   ]);
   const webview = await browser
-    .executeAsync((url: string, done: (result: string) => void) => {
+    .execute(async (url: string) => {
       const started = Date.now();
-      fetch(`${url}/.well-known/matrix/client`, {
-        signal: AbortSignal.timeout(15_000),
-      })
-        .then((res) => done(`fetch ${res.status} ${Date.now() - started} ms`))
-        .catch((error: unknown) =>
-          done(`fetch ${String(error)} after ${Date.now() - started} ms`),
-        );
+      try {
+        const res = await fetch(`${url}/.well-known/matrix/client`, {
+          signal: AbortSignal.timeout(15_000),
+        });
+        return `fetch ${res.status} ${Date.now() - started} ms`;
+      } catch (error: unknown) {
+        return `fetch ${String(error)} after ${Date.now() - started} ms`;
+      }
     }, HS_TLS)
     .catch((error: unknown) => `webview probe failed: ${String(error)}`);
   return `host ${v6}; host ${v4}; webview ${webview}`;
@@ -144,45 +145,40 @@ async function waitUntilTappable(
   try {
     await browser.waitUntil(
       async () => {
-        reason = await browser.executeAsync(
-          (target: HTMLElement, done: (reason: string) => void) => {
+        reason = await browser.execute(
+          async (target: HTMLElement) => {
+            const nextFrame = (): Promise<void> =>
+              new Promise((resolve) => requestAnimationFrame(() => resolve()));
             const first = target.getBoundingClientRect();
-            requestAnimationFrame(() =>
-              requestAnimationFrame(() => {
-                const second = target.getBoundingClientRect();
-                if (
-                  first.x !== second.x ||
-                  first.y !== second.y ||
-                  first.width !== second.width ||
-                  first.height !== second.height
-                ) {
-                  done(
-                    `did not hold still (moved from ${first.x},${first.y} ${first.width}×${first.height} to ${second.x},${second.y} ${second.width}×${second.height})`,
-                  );
-                  return;
-                }
-                if (second.width <= 0) {
-                  done('has no width');
-                  return;
-                }
-                const x = second.x + second.width / 2;
-                const y = second.y + second.height / 2;
-                const hit = document.elementFromPoint(x, y);
-                if (hit && target.contains(hit)) {
-                  done('');
-                  return;
-                }
-                const name = hit
-                  ? hit.tagName.toLowerCase() +
-                    (hit.id ? `#${hit.id}` : '') +
-                    [...hit.classList].map((c) => `.${c}`).join('') +
-                    (hit.getAttribute('aria-label')
-                      ? `[aria-label="${hit.getAttribute('aria-label')}"]`
-                      : '')
-                  : 'nothing';
-                done(`is covered by ${name} at its tap point (${x},${y})`);
-              }),
-            );
+            await nextFrame();
+            await nextFrame();
+            const second = target.getBoundingClientRect();
+            if (
+              first.x !== second.x ||
+              first.y !== second.y ||
+              first.width !== second.width ||
+              first.height !== second.height
+            ) {
+              return `did not hold still (moved from ${first.x},${first.y} ${first.width}×${first.height} to ${second.x},${second.y} ${second.width}×${second.height})`;
+            }
+            if (second.width <= 0) {
+              return 'has no width';
+            }
+            const x = second.x + second.width / 2;
+            const y = second.y + second.height / 2;
+            const hit = document.elementFromPoint(x, y);
+            if (hit && target.contains(hit)) {
+              return '';
+            }
+            const name = hit
+              ? hit.tagName.toLowerCase() +
+                (hit.id ? `#${hit.id}` : '') +
+                [...hit.classList].map((c) => `.${c}`).join('') +
+                (hit.getAttribute('aria-label')
+                  ? `[aria-label="${hit.getAttribute('aria-label')}"]`
+                  : '')
+              : 'nothing';
+            return `is covered by ${name} at its tap point (${x},${y})`;
           },
           element as unknown as HTMLElement,
         );
