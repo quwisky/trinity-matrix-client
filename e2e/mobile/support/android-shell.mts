@@ -81,3 +81,22 @@ export const HIDE_ERROR_DIALOGS_SETTING = 'hide_error_dialogs';
 /** The focused window and app: who receives Back and the IME when a spec fails. */
 export const WINDOW_FOCUS_COMMAND =
   'dumpsys window | grep -E "mCurrentFocus|mFocusedApp"; true';
+
+/**
+ * How many windows carry FLAG_SECURE, which App lock's app-switcher cover sets on Trinity's
+ * activity (blank recents preview, no screenshots or screen recording). Dumpsys lists a
+ * window's flags as `fl=A B C`; the emulator shows no other secure window, so a count above
+ * zero is Trinity's.
+ */
+export const SECURE_WINDOW_COMMAND =
+  'dumpsys window windows | grep -cE "(fl=| )SECURE( |$)"; true';
+
+export function parseSecureWindow(output: string): boolean {
+  const count = output.trim();
+  if (!/^\d+$/u.test(count)) {
+    throw new Error(
+      `Unreadable secure-window count: ${JSON.stringify(output)}`,
+    );
+  }
+  return Number(count) > 0;
+}

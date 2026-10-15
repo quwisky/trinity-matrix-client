@@ -168,6 +168,16 @@ export function pinUnreadableNote(
     : `${appName} can’t read your PIN right now. Try again. If that doesn’t help, lock ${appName} and choose Erase all data on this device on the lock screen.`;
 }
 
+/**
+ * What the app-switcher cover does while App lock is on (spec §4). Android's FLAG_SECURE also
+ * blocks screenshots and screen recording, which people would otherwise take for a fault.
+ */
+export function screenPrivacyNote(appName: string, ios: boolean): string {
+  return ios
+    ? `While App lock is on, the app switcher shows a blurred cover instead of ${appName}.`
+    : `While App lock is on, ${appName} also blocks screenshots and screen recording, and hides its preview in recent apps.`;
+}
+
 /** The lock is on with no PIN and no system prompt: nothing can confirm a change here. */
 export function noPinNote(appName: string): string {
   return `There’s no ${appName} PIN on this device, so ${appName} can’t confirm changes to App lock. To turn it off, erase all data on this device: choose Add account, then Erase all data on this device on the sign-in page.`;

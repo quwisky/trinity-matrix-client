@@ -4,9 +4,13 @@ import {
   AppLockPinBridge,
   type AppLockDismissal,
 } from '@trinity/capacitor-app-lock';
-import { HOST_SCREEN_PRIVACY_OPERATION } from '@trinity/runtime/host';
+import {
+  HOST_SCREEN_PRIVACY_OPERATION,
+  HostDeepLinksService,
+  type HostOperationOutcome,
+} from '@trinity/runtime/host';
 import { desktopBridgeFixture } from '@trinity/testing';
-import { type Observable, firstValueFrom, of } from 'rxjs';
+import { type Observable, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const privacy = vi.hoisted(() => ({ enable: vi.fn(), disable: vi.fn() }));
@@ -21,6 +25,7 @@ import {
 describe('CapacitorScreenPrivacyAdapter', () => {
   beforeEach(() => {
     vi.spyOn(Capacitor, 'isPluginAvailable').mockReturnValue(true);
+    vi.spyOn(Capacitor, 'getPlatform').mockReturnValue('ios');
   });
 
   afterEach(() => {
@@ -33,16 +38,21 @@ describe('CapacitorScreenPrivacyAdapter', () => {
     dismissPresented = vi.fn((): Observable<AppLockDismissal> =>
       of('completed'),
     ),
+    closeAuthentication = vi.fn((): Observable<HostOperationOutcome> =>
+      of({ kind: 'completed' }),
+    ),
   ) {
     TestBed.configureTestingModule({
       providers: [
         CapacitorScreenPrivacyAdapter,
         { provide: AppLockPinBridge, useValue: { dismissPresented } },
+        { provide: HostDeepLinksService, useValue: { closeAuthentication } },
       ],
     });
     return {
       adapter: TestBed.inject(CapacitorScreenPrivacyAdapter),
       dismissPresented,
+      closeAuthentication,
     };
   }
 
@@ -107,6 +117,40 @@ describe('CapacitorScreenPrivacyAdapter', () => {
       kind: 'completed',
     });
     expect(dismissPresented).toHaveBeenCalledOnce();
+  });
+
+  it('leaves the browser sheet on iOS to the dismissal', async () => {
+    // The Browser plugin's close dismisses whatever the root presents, the privacy cover too.
+    const { adapter: screen, closeAuthentication } = adapter();
+    await firstValueFrom(screen.dismissPresented());
+    expect(closeAuthentication).not.toHaveBeenCalled();
+  });
+
+  it('also closes a Custom Tab on Android, which the bridge can’t reach', async () => {
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('android');
+    const {
+      adapter: screen,
+      dismissPresented,
+      closeAuthentication,
+    } = adapter();
+    const dismissal = screen.dismissPresented();
+    expect(closeAuthentication).not.toHaveBeenCalled();
+    await expect(firstValueFrom(dismissal)).resolves.toEqual({
+      kind: 'completed',
+    });
+    expect(dismissPresented).toHaveBeenCalledOnce();
+    expect(closeAuthentication).toHaveBeenCalledOnce();
+  });
+
+  it('answers the dismissal on Android even when closing the Custom Tab fails', async () => {
+    vi.mocked(Capacitor.getPlatform).mockReturnValue('android');
+    const { adapter: screen } = adapter(
+      vi.fn(() => of<AppLockDismissal>('completed')),
+      vi.fn(() => throwError(() => new Error('background activity start'))),
+    );
+    await expect(firstValueFrom(screen.dismissPresented())).resolves.toEqual({
+      kind: 'completed',
+    });
   });
 
   it.each([

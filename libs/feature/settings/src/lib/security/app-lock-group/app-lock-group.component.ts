@@ -4,6 +4,7 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  InjectionToken,
   Injector,
   afterNextRender,
   computed,
@@ -23,8 +24,9 @@ import {
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
 import { AppLockService, type LockAfter } from '@trinity/data-access/app-lock';
+import { isNativeIos } from '@trinity/platform-native';
 import { HostCapabilitiesService } from '@trinity/runtime/host';
-import { Observable, catchError, defaultIfEmpty, map, of, take } from 'rxjs';
+import { Observable, catchError, defaultIfEmpty, of, take } from 'rxjs';
 import { AppLockFlows, STOPPED, type AppLockFlowEnd } from './app-lock-flows';
 import {
   PIN_CHANGED,
@@ -34,9 +36,19 @@ import {
   noPinNote,
   methodShortName,
   pinUnreadableNote,
+  screenPrivacyNote,
   storedPinUnreadableNote,
   type AppLockChange,
 } from './app-lock-group.copy';
+
+/**
+ * Whether this is the native iOS app, whose app-switcher cover is a blur; Android's blocks
+ * screenshots too. Read once; replaced in tests.
+ */
+export const APP_LOCK_NATIVE_IOS = new InjectionToken<boolean>(
+  'APP_LOCK_NATIVE_IOS',
+  { providedIn: 'root', factory: () => isNativeIos() },
+);
 
 /** Which App lock group to show; `hidden` where the host has no App lock (the web). */
 type AppLockView = 'controls' | 'pin-unreadable' | 'keyring' | 'hidden';
@@ -69,18 +81,17 @@ export class AppLockGroupComponent {
   private readonly injector = inject(Injector);
   private readonly document = inject(DOCUMENT);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
-  /** Whether this host has App lock at all; the web has not (decision 3). */
-  private readonly hostHasAppLock = toSignal(
+  private readonly nativeIos = inject(APP_LOCK_NATIVE_IOS);
+  /** The host's negotiated operations; none until it answers or if it can't. */
+  private readonly manifest = toSignal(
     inject(HostCapabilitiesService)
       .manifest()
-      .pipe(
-        map(
-          (manifest) =>
-            manifest.operations['user-presence'].kind === 'supported',
-        ),
-        catchError(() => of(false)),
-      ),
-    { initialValue: false },
+      .pipe(catchError(() => of(null))),
+    { initialValue: null },
+  );
+  /** Whether this host has App lock at all; the web has not (decision 3). */
+  private readonly hostHasAppLock = computed(
+    () => this.manifest()?.operations['user-presence'].kind === 'supported',
   );
 
   protected readonly appName = this.appLock.appName;
@@ -92,6 +103,12 @@ export class AppLockGroupComponent {
     storedPinUnreadableNote(this.appName, this.canClearPin()),
   );
   protected readonly noPinNote = noPinNote(this.appName);
+  /** What the app-switcher cover does, where the host has one (decision 13). */
+  protected readonly screenPrivacyNote = computed(() =>
+    this.manifest()?.operations['screen-privacy'].kind === 'supported'
+      ? screenPrivacyNote(this.appName, this.nativeIos)
+      : null,
+  );
   protected readonly lockAfterOptions: readonly TrnSelectOption<LockAfter>[] = [
     {
       value: 'immediately',

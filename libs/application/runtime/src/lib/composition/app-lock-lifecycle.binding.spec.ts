@@ -21,18 +21,28 @@ import {
   HostFileExportService,
   HostLifecycleService,
   HostLockIntegrationService,
+  HostScreenPrivacyService,
   HostSystemUiService,
   HostUserPresenceService,
   type HostAuthenticationHandoffOperation,
   type HostFileExportOperation,
   type HostLockRequest,
+  type HostOperationOutcome,
   type HostUserPresenceOperation,
 } from '@trinity/runtime/host';
 import { desktopBridgeFixture } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
+import {
+  NEVER,
+  Subject,
+  firstValueFrom,
+  of,
+  throwError,
+  type Observable,
+} from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppLockLifecycleBinding } from './app-lock-lifecycle.binding';
+import { HostSessionHealthService } from './host-session-health.service';
 
 // The media picker runs for real; only the platform check and the camera plugin are replaced.
 const native = vi.hoisted(() => ({
@@ -95,6 +105,9 @@ function setup(
     enabled?: boolean;
     /** The real system-UI count, for the producers that report to it. */
     systemUi?: 'mock' | 'real';
+    /** What the app-switcher cover answers; it completes unless a test says otherwise. */
+    privacySet?: () => Observable<HostOperationOutcome>;
+    dismissPresented?: () => Observable<HostOperationOutcome>;
     providers?: Provider[];
   } = {},
 ) {
@@ -103,9 +116,9 @@ function setup(
       desktopBridgeFixture();
   }
   let now = 1_000_000;
-  const enabled = options.enabled ?? true;
+  const enabled = signal(options.enabled ?? true);
   const status = signal<'off' | 'locked' | 'unlocked'>(
-    !enabled ? 'off' : options.locked ? 'locked' : 'unlocked',
+    !enabled() ? 'off' : options.locked ? 'locked' : 'unlocked',
   );
   const locked = signal(options.locked ?? false);
   const lifecycle = new Subject<LifecycleEvent>();
@@ -118,6 +131,12 @@ function setup(
   const setState = vi.fn(() => of({ kind: 'completed' as const }));
   const coverPainted = vi.fn(() => of({ kind: 'completed' as const }));
   const setLocked = vi.fn();
+  const completed = () => of<HostOperationOutcome>({ kind: 'completed' });
+  const privacySet = vi.fn<(on: boolean) => Observable<HostOperationOutcome>>(
+    options.privacySet ?? completed,
+  );
+  const dismissPresented = vi.fn(options.dismissPresented ?? completed);
+  const incident = vi.fn();
   TestBed.configureTestingModule({
     providers: [
       AppLockLifecycleBinding,
@@ -125,7 +144,7 @@ function setup(
       MockProvider(AppLockService, {
         status: status.asReadonly(),
         locked: locked.asReadonly(),
-        enabled: signal(enabled).asReadonly(),
+        enabled: enabled.asReadonly(),
         lockAfter: signal(options.lockAfter ?? '1m').asReadonly() as never,
         lockNow,
       }),
@@ -140,6 +159,11 @@ function setup(
         : MockProvider(HostSystemUiService, {
             active: systemUiActive.asReadonly(),
           }),
+      MockProvider(HostScreenPrivacyService, {
+        set: privacySet,
+        dismissPresented,
+      }),
+      MockProvider(HostSessionHealthService, { incident }),
       MockProvider(KeyboardShortcutsService, { binding: () => null }),
       MockProvider(TitleBarState, { setLocked }),
       ...(options.providers ?? []),
@@ -152,9 +176,13 @@ function setup(
     requests,
     systemUiActive,
     status,
+    enabled,
     locked,
     lockNow,
     setState,
+    privacySet,
+    dismissPresented,
+    incident,
     coverPainted,
     setLocked,
     lifetime,
@@ -536,6 +564,118 @@ describe('AppLockLifecycleBinding', () => {
     TestBed.tick();
     expect(setLocked).toHaveBeenLastCalledWith(true);
     lifetime.unsubscribe();
+  });
+
+  describe('the app-switcher cover', () => {
+    it('covers the app switcher whenever App lock is on, and takes down native UI on lock', () => {
+      const { enabled, locked, privacySet, dismissPresented, lifetime } =
+        setup();
+      expect(privacySet).toHaveBeenLastCalledWith(true);
+      locked.set(true);
+      TestBed.tick();
+      expect(dismissPresented).toHaveBeenCalledOnce();
+      enabled.set(false);
+      TestBed.tick();
+      expect(privacySet).toHaveBeenLastCalledWith(false);
+      lifetime.unsubscribe();
+    });
+
+    it('leaves the cover off while App lock is off', () => {
+      const { privacySet, lifetime } = setup({ enabled: false });
+      expect(privacySet).toHaveBeenCalledExactlyOnceWith(false);
+      lifetime.unsubscribe();
+    });
+
+    it('takes down native UI each time the app locks, and never on unlock', () => {
+      const { locked, dismissPresented, lifetime } = setup();
+      expect(dismissPresented).not.toHaveBeenCalled();
+      locked.set(true);
+      TestBed.tick();
+      locked.set(false);
+      TestBed.tick();
+      expect(dismissPresented).toHaveBeenCalledOnce();
+      locked.set(true);
+      TestBed.tick();
+      expect(dismissPresented).toHaveBeenCalledTimes(2);
+      lifetime.unsubscribe();
+    });
+
+    it('turns the cover off even while turning it on has not answered', () => {
+      const { enabled, privacySet, lifetime } = setup({
+        privacySet: () => NEVER,
+      });
+      enabled.set(false);
+      TestBed.tick();
+      expect(privacySet.mock.calls).toEqual([[true], [false]]);
+      lifetime.unsubscribe();
+    });
+
+    it('locks, unlocks and keeps covering when the cover fails', () => {
+      const failed = () =>
+        throwError(() => new Error('bridge gone with secret detail'));
+      const {
+        lifecycle,
+        enabled,
+        locked,
+        status,
+        lockNow,
+        setLocked,
+        privacySet,
+        dismissPresented,
+        incident,
+        lifetime,
+      } = setup({
+        lockAfter: 'immediately',
+        privacySet: failed,
+        dismissPresented: failed,
+      });
+      lifecycle.next({ kind: 'background' });
+      TestBed.tick();
+      expect(lockNow).toHaveBeenCalledOnce();
+      expect(setLocked).toHaveBeenLastCalledWith(true);
+      status.set('unlocked');
+      locked.set(false);
+      TestBed.tick();
+      expect(setLocked).toHaveBeenLastCalledWith(false);
+      locked.set(true);
+      TestBed.tick();
+      expect(dismissPresented).toHaveBeenCalledTimes(2);
+      enabled.set(false);
+      TestBed.tick();
+      expect(privacySet).toHaveBeenLastCalledWith(false);
+      // Stable codes only: nothing from the error reaches diagnostics.
+      expect(incident.mock.calls).toEqual([
+        ['host', 'screen-privacy', 'screen-privacy-failed'],
+        ['host', 'screen-privacy', 'dismiss-failed'],
+        ['host', 'screen-privacy', 'dismiss-failed'],
+        ['host', 'screen-privacy', 'screen-privacy-failed'],
+      ]);
+      lifetime.unsubscribe();
+    });
+
+    it('reports a refused cover or dismissal, but not a host without one', () => {
+      const { locked, incident, lifetime } = setup({
+        privacySet: () =>
+          of<HostOperationOutcome>({
+            kind: 'unavailable',
+            reason: 'not-supported',
+          }),
+        dismissPresented: () =>
+          of<HostOperationOutcome>({
+            kind: 'rejected',
+            diagnostic: { code: 'dismiss-timeout' },
+          }),
+      });
+      expect(incident).not.toHaveBeenCalled();
+      locked.set(true);
+      TestBed.tick();
+      expect(incident).toHaveBeenCalledExactlyOnceWith(
+        'host',
+        'screen-privacy',
+        'dismiss-timeout',
+      );
+      lifetime.unsubscribe();
+    });
   });
 
   describe('with Trinity’s own system UI open', () => {

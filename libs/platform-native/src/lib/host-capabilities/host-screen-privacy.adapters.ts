@@ -7,10 +7,21 @@ import {
 import { AppLockPinBridge } from '@trinity/capacitor-app-lock';
 import {
   HOST_SCREEN_PRIVACY_OPERATION,
+  HostDeepLinksService,
   type HostOperationOutcome,
   type HostScreenPrivacyOperation,
 } from '@trinity/runtime/host';
-import { Observable, catchError, defer, from, map, of } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  concatMap,
+  defaultIfEmpty,
+  defer,
+  from,
+  map,
+  of,
+  take,
+} from 'rxjs';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
 
 /** The name `@capacitor/privacy-screen` registers in both native hosts. */
@@ -43,6 +54,7 @@ const NOT_SUPPORTED: HostOperationOutcome = {
 @Injectable({ providedIn: 'root' })
 export class CapacitorScreenPrivacyAdapter implements HostScreenPrivacyOperation {
   private readonly appLock = inject(AppLockPinBridge);
+  private readonly deepLinks = inject(HostDeepLinksService);
 
   set(enabled: boolean): Observable<HostOperationOutcome> {
     return defer(() => {
@@ -64,8 +76,34 @@ export class CapacitorScreenPrivacyAdapter implements HostScreenPrivacyOperation
     });
   }
 
-  /** Best effort: a failure or a timeout is reported, never thrown. */
+  /**
+   * Best effort: a failure or a timeout is reported, never thrown. On Android a Custom Tab is
+   * its own activity, out of the bridge's reach, so it is closed through the browser sheet's
+   * own close too; Android 10 and later refuse that while Trinity is in the background. Not on
+   * iOS, where the Browser plugin's close dismisses whatever the root presents, the privacy
+   * cover included, and the bridge's dismissal already takes the browser sheet down.
+   */
   dismissPresented(): Observable<HostOperationOutcome> {
+    return defer(() =>
+      Capacitor.getPlatform() === 'android'
+        ? this.dismissal().pipe(
+            concatMap((outcome) =>
+              this.closeCustomTab().pipe(map(() => outcome)),
+            ),
+          )
+        : this.dismissal(),
+    );
+  }
+
+  private closeCustomTab(): Observable<unknown> {
+    return this.deepLinks.closeAuthentication().pipe(
+      take(1),
+      defaultIfEmpty(null),
+      catchError(() => of(null)),
+    );
+  }
+
+  private dismissal(): Observable<HostOperationOutcome> {
     return defer(() => this.appLock.dismissPresented()).pipe(
       map((dismissal): HostOperationOutcome => {
         switch (dismissal) {

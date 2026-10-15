@@ -103,8 +103,9 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
   the pinned XCUITest driver. The first session builds
   WebDriverAgent (about 7 minutes) into `dist/ios-wda`. Artifacts land under `mobile.ios/`.
 - Platform-only tests call `onlyOn('android' | 'ios', reason)`, which skips with the reason in
-  the run log; Back for open panels, attachments, location, notifications and share are
-  Android-only.
+  the run log; Back for open panels, attachments, location, notifications, share and App
+  lock's app-switcher cover (`app-lock.e2e.mts` reads `FLAG_SECURE` from the window manager)
+  are Android-only.
 - Device-rendered push: `push-render-ios.e2e.mts` (iOS only) drives the extension's rendering
   path through a debug-only `PushHandoff.renderProbe` call inside the app, because the Simulator
   neither launches notification service extensions for `xcrun simctl push` nor completes APNs

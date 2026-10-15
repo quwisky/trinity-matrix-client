@@ -55,6 +55,14 @@
           </button>
         </trn-settings-row>
 
+        @if (screenPrivacyNote(); as note) {
+          <p
+            class="m-0 py-3 text-sm text-muted-foreground"
+            data-testid="app-lock-screen-privacy"
+          >
+            {{ note }}
+          </p>
+        }
         @if (noScreenLock()) {
           <p
             class="m-0 py-3 text-sm text-muted-foreground"

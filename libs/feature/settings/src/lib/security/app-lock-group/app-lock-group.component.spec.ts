@@ -11,10 +11,11 @@ import {
   type LockAfter,
 } from '@trinity/data-access/app-lock';
 import {
+  HOST_OPERATIONS,
   HOST_USER_PRESENCE_OPERATION,
   HostCapabilitiesService,
-  unavailableHostManifest,
   type HostCapabilityManifest,
+  type HostOperation,
   type HostOperationOutcome,
   type HostPinOutcome,
   type HostPresenceOutcome,
@@ -27,7 +28,10 @@ import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { APP_LOCK_MOBILE_OS } from './app-lock-flows';
-import { AppLockGroupComponent } from './app-lock-group.component';
+import {
+  APP_LOCK_NATIVE_IOS,
+  AppLockGroupComponent,
+} from './app-lock-group.component';
 
 const PIN = '482913';
 /** What the PIN dialog closes with. */
@@ -75,16 +79,20 @@ function pinStateOf(support: HostUserPresenceSupport): AppLockPinState {
   return pin.reason === 'not-supported' ? 'not-supported' : 'unreadable';
 }
 
-function manifest(userPresence: boolean): HostCapabilityManifest {
-  const base = unavailableHostManifest('not-supported');
+/** A host manifest with only `supported` negotiated. */
+function manifestWith(
+  ...supported: readonly HostOperation[]
+): HostCapabilityManifest {
   return {
-    ...base,
-    operations: {
-      ...base.operations,
-      'user-presence': userPresence
-        ? { kind: 'supported' }
-        : base.operations['user-presence'],
-    },
+    protocolVersion: 1,
+    operations: Object.fromEntries(
+      HOST_OPERATIONS.map((operation) => [
+        operation,
+        supported.includes(operation)
+          ? { kind: 'supported' }
+          : { kind: 'unavailable', reason: 'not-supported' },
+      ]),
+    ) as HostCapabilityManifest['operations'],
   };
 }
 
@@ -95,6 +103,10 @@ async function setup(
     support?: HostUserPresenceSupport;
     /** Whether the host offers the user-presence operation (false on the web). */
     hostPresence?: boolean;
+    /** Whether the host has the app-switcher cover (iOS and Android). */
+    screenPrivacy?: boolean;
+    /** The native iOS app, whose cover is a blur in the app switcher. */
+    ios?: boolean;
     /** What each PIN dialog closes with, in order. */
     dialogResults?: unknown[];
     guard?: GuardOutcome;
@@ -181,9 +193,18 @@ async function setup(
       MockProvider(TrnSurfaceService, { open: open as never }),
       MockProvider(TrnToastService),
       MockProvider(HostCapabilitiesService, {
-        manifest: () => of(manifest(options.hostPresence ?? true)),
+        manifest: () =>
+          of(
+            manifestWith(
+              ...((options.hostPresence ?? true)
+                ? (['user-presence'] as const)
+                : []),
+              ...(options.screenPrivacy ? (['screen-privacy'] as const) : []),
+            ),
+          ),
       }),
       { provide: APP_LOCK_MOBILE_OS, useValue: options.mobile ?? false },
+      { provide: APP_LOCK_NATIVE_IOS, useValue: options.ios ?? false },
     ],
   });
   return { lock, open, view };
@@ -568,6 +589,41 @@ describe('AppLockGroupComponent', () => {
         screen.getByTestId('app-lock-screen-lock-hint').textContent,
       ).toContain('This device has no screen lock');
       expect(lockSwitch()).toBeTruthy();
+    });
+
+    it('says what the app-switcher cover does on Android', async () => {
+      await setup({ enabled: true, screenPrivacy: true });
+      expect(
+        screen.getByTestId('app-lock-screen-privacy').textContent?.trim(),
+      ).toBe(
+        'While App lock is on, Trinity also blocks screenshots and screen recording, and hides its preview in recent apps.',
+      );
+    });
+
+    it('says what the app-switcher cover does on iOS, naming the running app', async () => {
+      await setup({
+        enabled: true,
+        screenPrivacy: true,
+        ios: true,
+        appName: 'Trinity Next',
+      });
+      expect(
+        screen.getByTestId('app-lock-screen-privacy').textContent?.trim(),
+      ).toBe(
+        'While App lock is on, the app switcher shows a blurred cover instead of Trinity Next.',
+      );
+    });
+
+    it('says nothing of a cover where the host has none (desktop)', async () => {
+      await setup({ enabled: true, screenPrivacy: false });
+      expect(screen.getByTestId('app-lock-after')).toBeTruthy();
+      expect(screen.queryByTestId('app-lock-screen-privacy')).toBeNull();
+    });
+
+    it('says nothing of the cover while App lock is off', async () => {
+      await setup({ enabled: false, screenPrivacy: true });
+      expect(lockSwitch()).toBeTruthy();
+      expect(screen.queryByTestId('app-lock-screen-privacy')).toBeNull();
     });
 
     it('explains a missing keyring instead of offering the switch', async () => {
