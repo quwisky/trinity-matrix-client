@@ -349,13 +349,15 @@ export class ConversationRuntime {
   private readonly lastAttachDurationMs = signal<number | null>(null);
   private focusOrder = 0;
   /** How many {@link trimFocusedWhileHidden} lifetimes are running. */
-  private hiddenWindows = 0;
+  private readonly hiddenWindows = signal(0);
 
   constructor() {
     this.destroyRef.onDestroy(() => this.retireAll());
   }
 
   readonly focused = this.focusedHandle.asReadonly();
+  /** Whether {@link trimFocusedWhileHidden} is running: the window has been hidden a while. */
+  readonly windowHidden = computed(() => this.hiddenWindows() > 0);
   readonly timeline = this.focusedTimeline();
   readonly search = this.focusedSearch();
   readonly compose = this.focusedCompose();
@@ -441,25 +443,19 @@ export class ConversationRuntime {
   }
 
   /**
-   * For as long as it is subscribed, the window is hidden: the focused room is trimmed
-   * right away, and again by {@link trimHeld} after each sync, like a room nobody has
-   * open, but only while its view follows the newest message (#1366). A trim never cuts
-   * past what that view shows or the event the composer replies to or edits; below
-   * the 1,000-event ceiling it also keeps the open thread's root. Showing the window again
-   * ends it. Owned by the Application Runtime's hidden-window release.
+   * For as long as it is subscribed, the window is hidden ({@link windowHidden}): the
+   * `LiveTimelineTrimmer` trims the focused room through {@link trimHeld} right away and
+   * after each sync, like a room nobody has open, but only while its view follows the
+   * newest message (#1366). A trim never cuts past what that view shows or the event the
+   * composer replies to or edits; below the 1,000-event ceiling it also keeps the open
+   * thread's root. Showing the window again ends it. Owned by the Application Runtime's
+   * hidden-window release.
    */
   trimFocusedWhileHidden(): Observable<never> {
     return new Observable<never>(() => {
-      this.hiddenWindows += 1;
-      const handle = this.focusedHandle();
-      try {
-        if (handle) this.trimHeld(handle.key.accountId, handle.key.roomId);
-      } catch (error: unknown) {
-        // Best effort: the room keeps its events.
-        this.errors.handleError(error);
-      }
+      this.hiddenWindows.update((count) => count + 1);
       return () => {
-        this.hiddenWindows -= 1;
+        this.hiddenWindows.update((count) => count - 1);
       };
     });
   }
@@ -472,7 +468,7 @@ export class ConversationRuntime {
   trimHeld(accountId: string, roomId: string): void {
     const handle = this.focusedHandle();
     if (
-      this.hiddenWindows === 0 ||
+      this.hiddenWindows() === 0 ||
       !handle ||
       handle.key.accountId !== accountId ||
       handle.key.roomId !== roomId

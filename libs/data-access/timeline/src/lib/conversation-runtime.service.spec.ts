@@ -643,7 +643,7 @@ describe('ConversationRuntime', () => {
     const A = { accountId: ALICE, roomId: '!a:example.org' };
     const B = { accountId: ALICE, roomId: '!b:example.org' };
 
-    it('trims the focused room right away and after each sync, and stops when shown', () => {
+    it('trims the focused room only while the window is hidden', () => {
       const { runtime, controller } = setup();
       runtime.focus(B);
       runtime.focus(A);
@@ -652,10 +652,11 @@ describe('ConversationRuntime', () => {
       runtime.trimHeld(ALICE, A.roomId);
       expect(trim).not.toHaveBeenCalled();
 
+      expect(runtime.windowHidden()).toBe(false);
       const hidden = runtime.trimFocusedWhileHidden().subscribe();
-      expect(trim).toHaveBeenCalledExactlyOnceWith({ kept: [], marked: [] });
+      expect(runtime.windowHidden()).toBe(true);
       runtime.trimHeld(ALICE, A.roomId);
-      expect(trim).toHaveBeenCalledTimes(2);
+      expect(trim).toHaveBeenCalledExactlyOnceWith({ kept: [], marked: [] });
 
       // A retained room, or the same room on another Account, waits for its handle to retire.
       runtime.trimHeld(ALICE, B.roomId);
@@ -663,8 +664,9 @@ describe('ConversationRuntime', () => {
       expect(controller(B.roomId).trimWhileHidden).not.toHaveBeenCalled();
 
       hidden.unsubscribe();
+      expect(runtime.windowHidden()).toBe(false);
       runtime.trimHeld(ALICE, A.roomId);
-      expect(trim).toHaveBeenCalledTimes(2);
+      expect(trim).toHaveBeenCalledOnce();
     });
 
     it("keeps the event the composer replies to or edits, and the open thread's root below the ceiling", () => {
@@ -691,21 +693,18 @@ describe('ConversationRuntime', () => {
       hidden.unsubscribe();
     });
 
-    it('reports a failed trim and keeps the room', () => {
+    it('leaves a failed trim to the trimmer to report, and keeps the room', () => {
       const { runtime, controller, errors } = setup();
       runtime.focus(A);
       const failure = new Error('trim failed');
       vi.mocked(controller(A.roomId).trimWhileHidden).mockImplementation(() => {
         throw failure;
       });
-
       const hidden = runtime.trimFocusedWhileHidden().subscribe();
 
-      expect(errors.handleError).toHaveBeenCalledExactlyOnceWith(failure);
-      expect(runtime.focused()?.key).toEqual(A);
-      // After a sync the trimmer reports it, once per room.
       expect(() => runtime.trimHeld(ALICE, A.roomId)).toThrow(failure);
-      expect(errors.handleError).toHaveBeenCalledOnce();
+      expect(errors.handleError).not.toHaveBeenCalled();
+      expect(runtime.focused()?.key).toEqual(A);
       hidden.unsubscribe();
     });
   });

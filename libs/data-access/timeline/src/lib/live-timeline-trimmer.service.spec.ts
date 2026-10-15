@@ -47,6 +47,10 @@ function setup() {
   const held = new Set(['!open:hs']);
   const errors = { handleError: vi.fn() };
   const trimHeld = vi.fn();
+  const windowHidden = signal(false);
+  const focused = signal<{ key: { accountId: string; roomId: string } } | null>(
+    { key: { accountId: ALICE, roomId: '!open:hs' } },
+  );
   TestBed.configureTestingModule({
     providers: [
       {
@@ -62,6 +66,8 @@ function setup() {
           holds: (accountId: string, roomId: string) =>
             accountId === ALICE && held.has(roomId),
           trimHeld,
+          windowHidden: windowHidden.asReadonly(),
+          focused: focused.asReadonly(),
         },
       },
       { provide: ErrorHandler, useValue: errors },
@@ -93,6 +99,7 @@ function setup() {
     held,
     errors,
     trimHeld,
+    windowHidden,
     sync,
     loaded,
   };
@@ -138,8 +145,33 @@ describe('LiveTimelineTrimmer', () => {
     running.unsubscribe();
   });
 
-  it('reports a held room it fails to trim once and leaves it alone', async () => {
-    const { trimmer, accountIds, errors, trimHeld, sync } = setup();
+  it('trims the focused room as soon as the window is hidden, without waiting for a sync', async () => {
+    const { trimmer, accountIds, trimHeld, windowHidden, sync } = setup();
+    const running = trimmer.run().subscribe();
+    accountIds.set([ALICE]);
+    TestBed.tick();
+    for (let i = 0; i < 21; i++) await sync();
+    expect(trimHeld).toHaveBeenCalledOnce();
+
+    windowHidden.set(true);
+    TestBed.tick();
+
+    expect(trimHeld).toHaveBeenCalledTimes(2);
+    expect(trimHeld).toHaveBeenLastCalledWith(ALICE, '!open:hs');
+    running.unsubscribe();
+  });
+
+  it('reports a failing open room once, and trims it like any other once nobody has it open', async () => {
+    const {
+      trimmer,
+      accountIds,
+      errors,
+      trimHeld,
+      windowHidden,
+      held,
+      sync,
+      loaded,
+    } = setup();
     const failure = new Error('broken open room');
     trimHeld.mockImplementation(() => {
       throw failure;
@@ -148,10 +180,21 @@ describe('LiveTimelineTrimmer', () => {
     accountIds.set([ALICE]);
     TestBed.tick();
 
-    for (let i = 0; i < 30; i++) await sync();
-
+    for (let i = 0; i < 25; i++) await sync();
+    // A later hidden period does not try it again.
+    windowHidden.set(true);
+    TestBed.tick();
+    windowHidden.set(false);
+    TestBed.tick();
+    windowHidden.set(true);
+    TestBed.tick();
     expect(trimHeld).toHaveBeenCalledOnce();
     expect(errors.handleError).toHaveBeenCalledExactlyOnceWith(failure);
+
+    held.delete('!open:hs');
+    for (let i = 0; i < 30; i++) await sync();
+
+    expect(loaded('!open:hs')).toBeLessThanOrEqual(TRIM_HIGH_WATER + 10);
     running.unsubscribe();
   });
 

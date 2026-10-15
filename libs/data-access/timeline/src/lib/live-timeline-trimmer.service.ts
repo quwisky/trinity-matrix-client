@@ -33,7 +33,10 @@ import {
  * {@link TRIM_HIGH_WATER} events back to its latest ones. A room a Conversation handle
  * holds is left to {@link ConversationRuntime.trimHeld}: a retained room is trimmed when
  * its handle retires, and the focused room only while the window is hidden and its view
- * follows the newest message, keeping what that view shows (#1366).
+ * follows the newest message, keeping what that view shows (#1366). That room is tried as
+ * soon as the window has been hidden a while, then after each sync. If its trim fails it
+ * is reported once and not tried again while open; once nobody has it open, it is trimmed
+ * like any other room.
  *
  * Not bounded: a focused room scrolled back, or whose composer replies to or edits an
  * event, keeps what it holds from there on while the window is hidden, until the person
@@ -63,6 +66,23 @@ export class LiveTimelineTrimmer {
       return new Observable<never>(() => {
         // A room that failed once is reported once, not on every later sync.
         const failed = new WeakSet<Room>();
+        // Likewise an open room whose hidden-window trim failed: it is not tried again
+        // while open, but it is still trimmed like any other once nobody has it open.
+        const failedOpen = new WeakSet<Room>();
+        const trimHeld = (room: Room): void => {
+          if (
+            failedOpen.has(room) ||
+            room.getLiveTimeline().getEvents().length <= TRIM_HIGH_WATER
+          ) {
+            return;
+          }
+          try {
+            this.conversations.trimHeld(accountId, room.roomId);
+          } catch (error: unknown) {
+            failedOpen.add(room);
+            this.errors.handleError(error);
+          }
+        };
         // What each live timeline looked like when last examined. A sync that brought a
         // room nothing new leaves it as it was, so a room that could not be trimmed is not
         // scanned again until it receives an event. A trim or a gappy sync replaces the
@@ -86,12 +106,12 @@ export class LiveTimelineTrimmer {
               const timeline = room.getLiveTimeline();
               if (sameAs(seen.get(timeline), timeline)) continue;
               noteSyncPosition(room, token);
-              if (timeline.getEvents().length > TRIM_HIGH_WATER) {
-                if (!this.conversations.holds(accountId, room.roomId)) {
+              if (!this.conversations.holds(accountId, room.roomId)) {
+                if (timeline.getEvents().length > TRIM_HIGH_WATER) {
                   trimLiveTimeline(room, accountId);
-                } else {
-                  this.conversations.trimHeld(accountId, room.roomId);
                 }
+              } else {
+                trimHeld(room);
               }
               const now = room.getLiveTimeline();
               seen.set(now, markOf(now));
@@ -103,7 +123,22 @@ export class LiveTimelineTrimmer {
           }
         };
         client.on(ClientEvent.Sync, onSync);
-        return () => client.off(ClientEvent.Sync, onSync);
+        // The window has just been hidden for a while: trim the open room now rather than
+        // at its next event, which may be hours away.
+        const hidden = toObservable(this.conversations.windowHidden, {
+          injector: this.injector,
+        }).subscribe((isHidden) => {
+          const key = this.conversations.focused()?.key;
+          const room =
+            isHidden && key?.accountId === accountId
+              ? client.getRoom(key.roomId)
+              : null;
+          if (room) trimHeld(room);
+        });
+        return () => {
+          client.off(ClientEvent.Sync, onSync);
+          hidden.unsubscribe();
+        };
       });
     });
   }
