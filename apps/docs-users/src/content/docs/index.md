@@ -107,10 +107,10 @@ The desktop app always runs in one window, so this doesn't apply to it.
 
 ## Lock Trinity on this device {#app-lock}
 
-App lock hides the desktop app behind a lock screen until you unlock it. It's a privacy
-screen for when someone else uses your computer: it doesn't encrypt Trinity's data on disk,
-and it doesn't sign you out. Sync and notifications keep working while Trinity is locked.
-App lock isn't available in the web app. Trinity Next has its own App lock, with its own PIN.
+App lock hides the desktop or mobile app behind a lock screen until you unlock it. It's a
+privacy screen for when someone else uses your computer or phone: it doesn't encrypt
+Trinity's data on disk, and it doesn't sign you out. Sync and notifications keep working while
+Trinity is locked. App lock isn't available in the web app. Trinity Next has its own App lock, with its own PIN.
 
 **Turn it on.** Open Settings › Security and turn on **Lock Trinity**. On a Mac with Touch
 ID, confirm with Touch ID first. Then choose a Trinity PIN of 4 to 16 digits (6 or more is
@@ -124,6 +124,16 @@ or your PIN again; one check covers further changes for a minute while Settings 
 **Immediately** (10 seconds after the window loses focus, is minimized or is hidden),
 **After 1 minute** (the default), 5 minutes, 15 minutes or 1 hour. Trinity also locks at once
 when your computer goes to sleep, and on macOS and Windows when you lock the screen.
+
+**On iPhone and Android.** Turning App lock on asks for Face ID, Touch ID or your fingerprint
+first, with your phone's passcode or screen lock offered in the same prompt, then for a Trinity
+PIN. If your phone has no screen lock, the PIN is the only way to unlock; Settings suggests
+setting one. **Immediately** locks as soon as you leave the app. While App lock is on, the iPhone
+app switcher shows a blurred cover instead of Trinity. On Android, Trinity's preview in recent
+apps is blank, and screenshots, screen recording and screen sharing can't capture Trinity;
+Settings › Security says so. Turning App lock off brings all of these back. When Trinity locks,
+it also closes what it opened over itself, such as the share sheet, the camera or a page in its
+browser, where the system allows it.
 
 **Lock now.** Choose **Lock Trinity** from the account menu (select your name at the bottom
 of the sidebar), or from the **File** menu. You can also give it a shortcut in
