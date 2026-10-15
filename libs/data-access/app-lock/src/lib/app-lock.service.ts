@@ -290,7 +290,7 @@ export class AppLockService {
               }
               // Not on after all: take the PIN back so nothing half-set remains. A readable
               // "off" wins over a PIN left behind, so a failed clear changes nothing.
-              return this.clearPin().pipe(map(() => saved));
+              return this.clearHostPin().pipe(map(() => saved));
             }),
           );
         }),
@@ -350,7 +350,15 @@ export class AppLockService {
           this.settingUnreadable.set(false);
           this.release();
           // A readable "off" wins over a leftover PIN, so a failed clear is not an error.
-          return this.clearPin().pipe(map(() => saved));
+          return this.clearHostPin().pipe(
+            switchMap((cleared) =>
+              // A clear can't say whether a record that couldn't be read is readable now.
+              this.pinState() === 'unreadable'
+                ? this.thenRefresh(cleared)
+                : of(cleared),
+            ),
+            map(() => saved),
+          );
         }),
       ),
     );
@@ -509,6 +517,9 @@ export class AppLockService {
       }),
       catchError(() => of(PIN_NOT_SAVED)),
       defaultIfEmpty(PIN_NOT_SAVED),
+      tap((outcome) => {
+        if (outcome.kind === 'completed') this.pinStored(true);
+      }),
     );
   }
 
@@ -526,6 +537,24 @@ export class AppLockService {
       ),
       catchError(() => of(PIN_NOT_CLEARED)),
       defaultIfEmpty(PIN_NOT_CLEARED),
+      tap((outcome) => {
+        if (outcome.kind === 'completed') this.pinStored(false);
+      }),
+    );
+  }
+
+  /**
+   * Record a PIN change the host completed, so `pinState` shows it as the command answers
+   * rather than after another support read (which a slow or failing host may never give).
+   * A stored PIN means a readable store holding a PIN with no failures counted. A clear over
+   * a record that couldn't be read says nothing about whether the store can be read now, so
+   * it changes nothing here; those callers read support again.
+   */
+  private pinStored(set: boolean): void {
+    this._support.update((support) =>
+      set || support.pin.kind === 'available'
+        ? { ...support, pin: { kind: 'available', set, nextAttemptAt: null } }
+        : support,
     );
   }
 
@@ -537,15 +566,6 @@ export class AppLockService {
       take(1),
       map(() => outcome),
       defaultIfEmpty(outcome),
-    );
-  }
-
-  private clearPin(): Observable<void> {
-    return this.presence.clearPin().pipe(
-      take(1),
-      map(() => undefined),
-      catchError(() => of(undefined)),
-      defaultIfEmpty(undefined),
     );
   }
 

@@ -45,6 +45,12 @@ const PIN_ONLY: HostUserPresenceSupport = {
   pin: { kind: 'available', set: true, nextAttemptAt: null },
 };
 
+/** A host that keeps only a PIN, before one is set. */
+const NO_PIN_YET: HostUserPresenceSupport = {
+  ...PIN_ONLY,
+  pin: { kind: 'available', set: false, nextAttemptAt: null },
+};
+
 /** What the host answers for support: `never` never answers. */
 type HostReport =
   HostUserPresenceSupport | 'never' | Observable<HostUserPresenceSupport>;
@@ -955,6 +961,56 @@ describe('AppLockService', () => {
       });
     });
 
+    it('knows the PIN is set as soon as it turns on with the PIN alone', async () => {
+      // The host still reports its earlier read: the PIN it just stored must not wait for one.
+      const { lock } = setup({
+        stored: {},
+        support: {
+          system: { kind: 'unavailable', reason: 'no-device-credential' },
+          pin: { kind: 'available', set: false, nextAttemptAt: null },
+        },
+      });
+      await hydrated(lock);
+      expect(lock.pinState()).toBe('not-set');
+      await firstValueFrom(lock.enable('4829'));
+      expect(lock.pinState()).toBe('ready');
+      expect(lock.support().pin).toEqual({
+        kind: 'available',
+        set: true,
+        nextAttemptAt: null,
+      });
+    });
+
+    it('knows the PIN is gone when turning on is taken back', async () => {
+      const { lock } = setup({
+        stored: {},
+        support: NO_PIN_YET,
+        writeFails: true,
+      });
+      await hydrated(lock);
+      await expect(firstValueFrom(lock.enable('4829'))).resolves.toEqual({
+        kind: 'failed',
+        reason: 'setting-not-saved',
+      });
+      expect(lock.pinState()).toBe('not-set');
+    });
+
+    it('keeps the PIN known as set when turning on is taken back but the host keeps it', async () => {
+      const { lock } = setup({
+        stored: {},
+        support: NO_PIN_YET,
+        writeFails: true,
+        clearPin: () =>
+          of<HostOperationOutcome>({
+            kind: 'rejected',
+            diagnostic: { code: 'pin-clear-failed' },
+          }),
+      });
+      await hydrated(lock);
+      await firstValueFrom(lock.enable('4829'));
+      expect(lock.pinState()).toBe('ready');
+    });
+
     it('is not offered, and cannot turn on, where the host reports neither method', async () => {
       // The host negotiated user-presence, but its support has nothing to offer.
       const { lock, adapter } = setup({
@@ -1074,6 +1130,29 @@ describe('AppLockService', () => {
       });
     });
 
+    it('knows a new PIN is set, with no wait, once Change PIN stores it', async () => {
+      // On, with no PIN stored yet: the system prompt confirms the change.
+      const { lock } = setup({
+        support: {
+          ...FACE_AND_PIN,
+          pin: { kind: 'available', set: false, nextAttemptAt: null },
+        },
+      });
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithSystem());
+      // Settings' own check; an unlock opens no guard window.
+      await firstValueFrom(lock.verifyForChange());
+      expect(lock.pinState()).toBe('not-set');
+      await expect(firstValueFrom(lock.changePin('7777'))).resolves.toEqual({
+        kind: 'completed',
+      });
+      expect(lock.support().pin).toEqual({
+        kind: 'available',
+        set: true,
+        nextAttemptAt: null,
+      });
+    });
+
     it('turns off and clears the PIN', async () => {
       const { lock, adapter } = setup();
       await hydrated(lock);
@@ -1085,6 +1164,7 @@ describe('AppLockService', () => {
       });
       expect(adapter.clearPin).toHaveBeenCalledOnce();
       expect(lock.status()).toBe('off');
+      expect(lock.pinState()).toBe('not-set');
       lock.lockNow();
       expect(lock.status()).toBe('off');
     });
@@ -1105,6 +1185,7 @@ describe('AppLockService', () => {
         kind: 'completed',
       });
       expect(lock.status()).toBe('off');
+      expect(lock.pinState()).toBe('ready');
     });
   });
 
@@ -1376,6 +1457,44 @@ describe('AppLockService', () => {
         reason: 'pin-not-cleared',
       });
       expect(adapter.setPin).not.toHaveBeenCalled();
+    });
+
+    it('knows the new PIN is set once it replaced the record', async () => {
+      const { lock, report } = setup({
+        support: FACE_UNREADABLE,
+        clearPin: () => {
+          report({ ...PIN_NOT_SET, system: FACE_UNREADABLE.system });
+          return of<HostOperationOutcome>({ kind: 'completed' });
+        },
+        setPin: () => {
+          report({ ...FACE_AND_PIN });
+          return of<HostOperationOutcome>({ kind: 'completed' });
+        },
+      });
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithSystem());
+      await firstValueFrom(lock.verifyForChange());
+      await firstValueFrom(lock.changePin('7777'));
+      expect(lock.pinState()).toBe('ready');
+    });
+
+    it('reads the store again after turning off clears a record it could not read', async () => {
+      const { lock, report } = setup({
+        support: FACE_UNREADABLE,
+        clearPin: () => {
+          report({ ...PIN_NOT_SET, system: FACE_UNREADABLE.system });
+          return of<HostOperationOutcome>({ kind: 'completed' });
+        },
+      });
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithSystem());
+      await firstValueFrom(lock.verifyForChange());
+      await expect(firstValueFrom(lock.disable())).resolves.toEqual({
+        kind: 'completed',
+      });
+      expect(lock.status()).toBe('off');
+      expect(lock.pinState()).toBe('not-set');
+      expect(lock.offered()).toBe(true);
     });
   });
 

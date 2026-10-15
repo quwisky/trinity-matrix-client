@@ -11,12 +11,17 @@ import {
   type LockAfter,
 } from '@trinity/data-access/app-lock';
 import {
+  HOST_USER_PRESENCE_OPERATION,
   HostCapabilitiesService,
   unavailableHostManifest,
   type HostCapabilityManifest,
+  type HostOperationOutcome,
+  type HostPinOutcome,
   type HostPresenceOutcome,
+  type HostUserPresenceOperation,
   type HostUserPresenceSupport,
 } from '@trinity/runtime/host';
+import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -760,6 +765,64 @@ describe('AppLockGroupComponent', () => {
       expect(alertText()).toBe(
         'There’s no Trinity Next PIN on this device to confirm it’s you. To turn App lock off, choose Add account, then Erase all data on this device on the sign-in page.',
       );
+    });
+  });
+
+  describe('with the App lock service itself', () => {
+    /** The real service over a host that keeps only a PIN (Linux, Android with no screen lock). */
+    async function setupWithService(): Promise<void> {
+      const host: HostUserPresenceOperation = {
+        // The host's earlier read: no PIN yet. Only the service's own commands change it.
+        support: () =>
+          of<HostUserPresenceSupport>({
+            system: { kind: 'unavailable', reason: 'no-device-credential' },
+            pin: { kind: 'available', set: false, nextAttemptAt: null },
+          }),
+        verify: () =>
+          of<HostPresenceOutcome>({
+            kind: 'unavailable',
+            reason: 'no-device-credential',
+          }),
+        setPin: () => of<HostOperationOutcome>({ kind: 'completed' }),
+        verifyPin: () => of<HostPinOutcome>({ kind: 'verified' }),
+        clearPin: () => of<HostOperationOutcome>({ kind: 'completed' }),
+      };
+      const results: unknown[] = [NEW_PIN];
+      await render(AppLockGroupComponent, {
+        providers: [
+          { provide: HOST_USER_PRESENCE_OPERATION, useValue: host },
+          {
+            provide: PREFERENCE_STORAGE_ADAPTER,
+            useValue: {
+              read: () => of({ kind: 'missing' }),
+              write: () => of({ kind: 'completed' }),
+            },
+          },
+          MockProvider(TrnSurfaceService, {
+            open: (() => ({ closed: of(results.shift()) })) as never,
+          }),
+          MockProvider(TrnToastService),
+          MockProvider(HostCapabilitiesService, {
+            manifest: () => of(manifest(true)),
+          }),
+          { provide: APP_LOCK_MOBILE_OS, useValue: false },
+        ],
+      });
+    }
+
+    it('offers Change PIN, with no "no PIN" note, right after turning on with the PIN alone', async () => {
+      await setupWithService();
+      await click(lockSwitch());
+      expect(lockSwitch().checked).toBe(true);
+      expect(screen.queryByTestId('app-lock-no-pin')).toBeNull();
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Change PIN',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+      expect(alertText()).toBeUndefined();
     });
   });
 
