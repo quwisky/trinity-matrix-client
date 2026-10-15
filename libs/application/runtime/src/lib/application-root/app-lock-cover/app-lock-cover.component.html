@@ -1,0 +1,297 @@
+<!--
+  A native modal dialog: `showModal()` puts it in the top layer above every overlay and makes
+  the rest of the page inert. The dialog itself fills the viewport with an opaque surface, so
+  the `::backdrop` needs no colour (custom properties reach it only from Chromium 122 and
+  Safari 17.4). Content centres safely, so a short or zoomed screen scrolls from the top.
+-->
+<dialog
+  #dialog
+  class="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-y-auto border-0 bg-[var(--trinity-surface-app)] pt-[max(var(--trinity-space-4),env(safe-area-inset-top))] pr-[max(var(--trinity-space-4),env(safe-area-inset-right))] pb-[max(var(--trinity-space-4),env(safe-area-inset-bottom))] pl-[max(var(--trinity-space-4),env(safe-area-inset-left))] text-foreground open:flex open:flex-col open:items-center open:justify-center-safe motion-safe:open:animate-in motion-safe:open:fade-in-0"
+  aria-labelledby="app-lock-heading"
+  [attr.aria-describedby]="describedBy()"
+  data-testid="app-lock-cover"
+  [attr.data-view]="state.view()"
+  [style.padding-top]="
+    titleRow()
+      ? 'calc(env(titlebar-area-height, var(--trinity-title-bar-height)) + var(--trinity-space-4))'
+      : null
+  "
+  (cancel)="$event.preventDefault()"
+  (close)="onClose()"
+  (keydown)="onKeydown($event)"
+>
+  @if (titleRow()) {
+    <!-- The frameless window's title row is hidden with the workspace; this strip keeps the
+         locked window draggable. No controls sit in it. -->
+    <div
+      class="fixed inset-x-0 top-0 h-[env(titlebar-area-height,var(--trinity-title-bar-height))] [-webkit-app-region:drag]"
+      aria-hidden="true"
+      data-testid="app-lock-drag-region"
+    ></div>
+  }
+
+  <!-- Reserved for a future incoming-call UI (spec decision 19): a call rings and shows here,
+       above the lock, without unlocking the rest of the app. Nothing projects into it yet. -->
+  <div class="w-full max-w-sm empty:hidden" data-testid="app-lock-above-lock">
+    <ng-content select="[trnAboveLock]" />
+  </div>
+
+  <div class="flex w-full max-w-sm flex-col items-center gap-4 text-center">
+    <img
+      class="size-12"
+      src="assets/icon/icon-plated.svg"
+      alt=""
+      aria-hidden="true"
+    />
+    <h1 id="app-lock-heading" class="m-0 text-xl font-semibold">
+      {{ state.appName }} is locked
+    </h1>
+
+    @switch (state.view()) {
+      @case ('system') {
+        <div class="grid w-full gap-2">
+          <button
+            trnBtn
+            size="lg"
+            type="button"
+            data-testid="app-lock-unlock"
+            data-autofocus
+            [disabled]="state.busy() || state.waiting()"
+            (click)="state.unlockWithSystem()"
+          >
+            {{ state.unlockText() }}
+          </button>
+          @if (state.pinOffered()) {
+            <button
+              trnBtn
+              presentation="ghost"
+              type="button"
+              data-testid="app-lock-use-pin"
+              (click)="state.usePin()"
+            >
+              Use PIN instead
+            </button>
+          }
+        </div>
+      }
+      @case ('pin') {
+        @let pinError = shownError(state.pinForm.pin);
+        <form
+          class="grid w-full gap-2 text-start"
+          [formRoot]="state.pinForm"
+          (submit)="state.submitPin()"
+        >
+          <trn-field [invalid]="!!pinError">
+            <trn-field-label controlId="app-lock-pin" [invalid]="!!pinError">
+              {{ state.appName }} PIN
+            </trn-field-label>
+            <input
+              trnInput
+              size="lg"
+              id="app-lock-pin"
+              type="password"
+              inputmode="numeric"
+              autocomplete="off"
+              [formField]="state.pinForm.pin"
+              [aria-describedby]="
+                pinError
+                  ? 'app-lock-pin-error app-lock-message'
+                  : 'app-lock-message'
+              "
+              data-testid="app-lock-pin"
+              data-autofocus
+            />
+            @if (pinError) {
+              <p id="app-lock-pin-error" class="m-0 text-sm text-danger">
+                {{ pinError.message }}
+              </p>
+            }
+          </trn-field>
+          <button
+            trnBtn
+            size="lg"
+            type="submit"
+            data-testid="app-lock-pin-submit"
+            [disabled]="state.busy() || state.waiting()"
+          >
+            Unlock
+          </button>
+        </form>
+        <div class="grid w-full gap-2">
+          @if (state.backText(); as back) {
+            <button
+              trnBtn
+              presentation="ghost"
+              type="button"
+              data-testid="app-lock-use-system"
+              (click)="state.useSystem()"
+            >
+              {{ back }}
+            </button>
+          }
+          <button
+            trnBtn
+            presentation="ghost"
+            type="button"
+            data-testid="app-lock-forgot"
+            (click)="state.showForgot()"
+          >
+            Forgot PIN?
+          </button>
+        </div>
+      }
+      @case ('pin-unreadable') {
+        <p
+          id="app-lock-unreadable-text"
+          class="m-0 text-sm text-[var(--trinity-text-muted)]"
+        >
+          {{ state.appName }} can’t read your PIN right now.
+        </p>
+        <div class="grid w-full gap-2">
+          <button
+            trnBtn
+            size="lg"
+            type="button"
+            data-testid="app-lock-retry"
+            data-autofocus
+            [disabled]="state.busy()"
+            (click)="state.retry()"
+          >
+            Retry
+          </button>
+          @if (state.backText(); as back) {
+            <button
+              trnBtn
+              presentation="ghost"
+              type="button"
+              data-testid="app-lock-use-system"
+              (click)="state.useSystem()"
+            >
+              {{ back }}
+            </button>
+          }
+          <button
+            trnBtn
+            variant="danger"
+            presentation="outline"
+            type="button"
+            data-testid="app-lock-reset"
+            (click)="state.confirmErase()"
+          >
+            Erase all data on this device
+          </button>
+        </div>
+      }
+      @case ('forgot') {
+        <p
+          id="app-lock-forgot-text"
+          class="m-0 text-sm text-[var(--trinity-text-muted)]"
+        >
+          {{ state.unlockText() }}, then change your PIN in Settings › Security.
+        </p>
+        <div class="grid w-full gap-2">
+          @if (state.backText(); as back) {
+            <button
+              trnBtn
+              size="lg"
+              type="button"
+              data-testid="app-lock-use-system"
+              data-autofocus
+              (click)="state.useSystem()"
+            >
+              {{ back }}
+            </button>
+          }
+          <button
+            trnBtn
+            presentation="ghost"
+            type="button"
+            (click)="state.cancelPanel()"
+          >
+            Cancel
+          </button>
+        </div>
+      }
+      @case ('erase') {
+        <p
+          id="app-lock-erase-text"
+          class="m-0 text-sm text-[var(--trinity-text-muted)]"
+        >
+          {{ state.eraseText() }}
+        </p>
+        <div class="grid w-full gap-2">
+          <button
+            trnBtn
+            size="lg"
+            variant="danger"
+            type="button"
+            data-testid="app-lock-erase"
+            aria-describedby="app-lock-erase-text"
+            [disabled]="state.erasing()"
+            (click)="state.erase()"
+          >
+            Erase all data on this device
+          </button>
+          <button
+            trnBtn
+            presentation="ghost"
+            type="button"
+            data-autofocus
+            [disabled]="state.erasing()"
+            (click)="state.cancelPanel()"
+          >
+            Cancel
+          </button>
+        </div>
+      }
+      @default {
+        <!-- `no-pin` / `no-pin-store`: no PIN can unlock here. Say so, and offer the system
+             prompt where there is one; the reset is always there, so it is never a dead end. -->
+        <p
+          id="app-lock-recovery-text"
+          class="m-0 text-sm text-[var(--trinity-text-muted)]"
+        >
+          {{ state.recoveryText() }}
+        </p>
+        <div class="grid w-full gap-2">
+          @if (state.backText(); as back) {
+            <button
+              trnBtn
+              size="lg"
+              type="button"
+              data-testid="app-lock-use-system"
+              data-autofocus
+              aria-describedby="app-lock-recovery-text"
+              (click)="state.useSystem()"
+            >
+              {{ back }}
+            </button>
+          }
+          <button
+            trnBtn
+            variant="danger"
+            presentation="outline"
+            type="button"
+            data-testid="app-lock-reset"
+            data-autofocus
+            aria-describedby="app-lock-recovery-text"
+            (click)="state.confirmErase()"
+          >
+            Erase all data on this device
+          </button>
+        </div>
+      }
+    }
+
+    <p
+      id="app-lock-message"
+      class="m-0 min-h-5 text-sm text-[var(--trinity-text-muted)]"
+      data-testid="app-lock-message"
+    >
+      {{ state.line() }}
+    </p>
+    <p class="sr-only" role="status" aria-live="polite">
+      {{ state.announcement() }}
+    </p>
+  </div>
+</dialog>

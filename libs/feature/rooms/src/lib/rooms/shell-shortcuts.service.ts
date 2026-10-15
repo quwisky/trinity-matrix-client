@@ -2,6 +2,7 @@ import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, switchMap } from 'rxjs';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import type { RoomSummary } from '@trinity/data-access/room-library';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
@@ -35,12 +36,14 @@ export class ShellShortcutsService {
   private readonly switcher = inject(QuickSwitcherService);
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private readonly dialog = inject(TrnSurfaceService);
+  private readonly appLock = inject(AppLockService);
   private readonly destroyRef = inject(DestroyRef);
 
   /**
    * Global keyboard shortcuts (issues #12/#13). One listener rather than many host
-   * bindings: it bails unless a modifier is held (so plain typing is untouched) and no
-   * overlay owns the screen (mirrors {@link openSwitcher}'s guard), then asks
+   * bindings: it bails unless a modifier is held (so plain typing is untouched) and, for
+   * every shortcut but Lock Trinity, no overlay owns the screen (mirrors
+   * {@link openSwitcher}'s guard), then asks
    * {@link KeyboardShortcutsService} which shortcut the chord triggers — honouring the
    * user's custom bindings and the desktop-only gate — and dispatches it. The bindings
    * themselves live in the registry (and the settings page); this only maps an id to its
@@ -54,11 +57,26 @@ export class ShellShortcutsService {
    * the timeline, not something over it, and hopping rooms with it open has always worked.
    */
   onGlobalKeydown(event: Event): void {
+    // Locked: the cover stops keys at its dialog, and this guard covers anything that
+    // still reaches the document.
+    if (this.appLock.locked()) return;
     const e = event as KeyboardEvent;
-    if ((!e.ctrlKey && !e.metaKey && !e.altKey) || this.dialog.hasOpen()) {
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
       return;
     }
     const hit = this.shortcuts.resolve(e);
+    // Lock Trinity works over any dialog, Settings included. While App lock is off the
+    // chord is not ours, so it falls through to the browser untouched.
+    if (hit?.id === 'lock.now') {
+      if (this.appLock.enabled()) {
+        e.preventDefault();
+        this.appLock.lockNow();
+      }
+      return;
+    }
+    if (this.dialog.hasOpen()) {
+      return;
+    }
     // Search is the one chord that is still wanted with a panel open: it refocuses the
     // header field, which is how a reader edits the query of the panel they are looking at.
     if (!hit || (this.panelOwnsTheScreen() && hit.id !== 'room.search')) {

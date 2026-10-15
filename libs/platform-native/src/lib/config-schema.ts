@@ -221,6 +221,7 @@ export type ConfigOwner =
   | 'data-access/notifications'
   | 'data-access/room-library'
   | 'data-access/diagnostic-log'
+  | 'data-access/app-lock'
   | 'data-access/trust'
   | 'runtime/projection'
   | 'feature/settings';
@@ -518,6 +519,24 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'A per-installation privacy choice about what this device records. A pasted or ' +
       'imported document must not switch logging on for another device, and an unreadable ' +
       'value already means off.',
+  },
+
+  // — data-access/app-lock —
+  {
+    disposition: 'excluded',
+    key: 'trinity.app-lock.enabled',
+    owner: 'data-access/app-lock',
+    reason:
+      'A per-device privacy choice; an imported document must not turn a lock on or off ' +
+      'on another device, which may not even have the PIN it would need.',
+  },
+  {
+    disposition: 'excluded',
+    key: 'trinity.app-lock.lock-after',
+    owner: 'data-access/app-lock',
+    reason:
+      'A per-device privacy choice that only means something while that device has App ' +
+      'lock on; it stays with the device like the lock itself.',
   },
 
   // — data-access/trust —

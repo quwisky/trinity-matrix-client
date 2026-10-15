@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **74 Nx projects** and **288 dependencies**. No project cycles detected.
+This snapshot contains **75 Nx projects** and **293 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -33,7 +33,7 @@ Capability-to-capability dependencies are valid only inside the same named capab
 | -------------------- | -------: | ------------------------------------------------------------------------------------------------------ |
 | `role:app`           |        5 | `role:app`, `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system` |
 | `role:application`   |        7 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
-| `role:capability`    |       15 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
+| `role:capability`    |       16 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
 | `role:kernel`        |        5 | `role:kernel`                                                                                          |
 | `role:adapter`       |        9 | `role:adapter`, `role:kernel`                                                                          |
 | `role:design-system` |       19 | `role:design-system`, `role:kernel`, `role:adapter`                                                    |
@@ -71,6 +71,7 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `components-navigation-layout`    | `@trinity/components/navigation-layout`    | `./libs/components/navigation-layout/src/index.ts`    |
 | `components-overlay`              | `@trinity/components/overlay`              | `./libs/components/overlay/src/index.ts`              |
 | `data-access-accounts`            | `@trinity/data-access/accounts`            | `./libs/data-access/accounts/src/index.ts`            |
+| `data-access-app-lock`            | `@trinity/data-access/app-lock`            | `./libs/data-access/app-lock/src/index.ts`            |
 | `data-access-auth`                | `@trinity/data-access/auth`                | `./libs/data-access/auth/src/index.ts`                |
 | `data-access-diagnostic-log`      | `@trinity/data-access/diagnostic-log`      | `./libs/data-access/diagnostic-log/src/index.ts`      |
 | `data-access-discovery`           | `@trinity/data-access/discovery`           | `./libs/data-access/discovery/src/index.ts`           |
@@ -122,7 +123,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | ----------------------------------- | ---------------------------------------- | ----------------------------------------------- | ------------------: |
 | `application-appearance`            | `libs/application/appearance`            | role:application; capability:design-system      |                   4 |
 | `application-badge`                 | `libs/application/badge`                 | role:application; capability:badge              |                   2 |
-| `application-runtime`               | `libs/application/runtime`               | role:application; capability:runtime            |                  29 |
+| `application-runtime`               | `libs/application/runtime`               | role:application; capability:runtime            |                  30 |
 | `application-search`                | `libs/application/search`                | role:application; capability:search             |                   5 |
 | `application-workspace`             | `libs/application/workspace`             | role:application; capability:workspace          |                   7 |
 | `avatar`                            | `libs/spartan/avatar`                    | role:design-system; capability:design-system    |                   1 |
@@ -135,6 +136,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `components-overlay`                | `libs/components/overlay`                | role:design-system; capability:design-system    |                   8 |
 | `components-storybook-host`         | `libs/components/storybook-host`         | role:design-system; capability:design-system    |                   1 |
 | `data-access-accounts`              | `libs/data-access/accounts`              | role:capability; capability:accounts            |                   4 |
+| `data-access-app-lock`              | `libs/data-access/app-lock`              | role:capability; capability:app-lock            |                   2 |
 | `data-access-auth`                  | `libs/data-access/auth`                  | role:capability; capability:accounts            |                   7 |
 | `data-access-diagnostic-log`        | `libs/data-access/diagnostic-log`        | role:capability; capability:diagnostics         |                   2 |
 | `data-access-discovery`             | `libs/data-access/discovery`             | role:capability; capability:discovery           |                   3 |
@@ -156,8 +158,8 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `dropdown-menu`                     | `libs/spartan/dropdown-menu`             | role:design-system; capability:design-system    |                   1 |
 | `feature-auth`                      | `libs/feature/auth`                      | role:capability; capability:accounts            |                  11 |
 | `feature-crypto`                    | `libs/feature/crypto`                    | role:capability; capability:trust               |                  11 |
-| `feature-rooms`                     | `libs/feature/rooms`                     | role:application; capability:workspace          |                  25 |
-| `feature-settings`                  | `libs/feature/settings`                  | role:application; capability:settings           |                  24 |
+| `feature-rooms`                     | `libs/feature/rooms`                     | role:application; capability:workspace          |                  26 |
+| `feature-settings`                  | `libs/feature/settings`                  | role:application; capability:settings           |                  25 |
 | `label`                             | `libs/spartan/label`                     | role:design-system; capability:design-system    |                   1 |
 | `native-capacitor-app-lock`         | `libs/native/capacitor-app-lock`         | role:adapter; capability:host                   |                   0 |
 | `native-capacitor-app-lock-android` | `libs/native/capacitor-app-lock/android` | role:adapter; capability:host                   |                   0 |

@@ -53,7 +53,10 @@ sealed class PinCheck {
  * The mobile Trinity PIN: one PBKDF2-HMAC-SHA256 record. Never logs, and no result carries
  * the PIN, its hash or its salt. A record that exists but cannot be read is unavailable,
  * never "no PIN": treating it as absent would let a damaged entry open the lock, and setting
- * a new PIN over it would skip the full reset. Only `clear` removes it.
+ * a new PIN over it would skip the full reset, so `set` refuses it. Only `clear` removes it:
+ * the full reset, turning the lock off, and Settings, which the renderer allows only while
+ * App lock is readably off or after a fresh system-prompt check (`AppLockService`
+ * `clearUnreadablePin` and `changePin`).
  *
  * Every call holds one process-wide lock and saves its record before it answers, so two
  * quick submits (even through two plugin instances) cannot both pass a wait, and a crash
@@ -135,7 +138,7 @@ class PinVerifier internal constructor(
         }
     }
 
-    /** Remove the record, readable or not; the full reset's way past a damaged entry. */
+    /** Remove the record, readable or not; the way past a damaged entry (see the class doc). */
     fun clear(): Boolean {
         synchronized(LOCK) {
             return try {

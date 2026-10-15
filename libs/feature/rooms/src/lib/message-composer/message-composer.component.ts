@@ -26,6 +26,7 @@ import {
   DraftStoreService,
   KeyboardShortcutsService,
   type CaptureKind,
+  TrackFileChooserDirective,
 } from '@trinity/platform-native';
 import { type GifResult } from '@trinity/data-access/gif';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
@@ -94,6 +95,7 @@ let nextPickerId = 0;
   selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrackFileChooserDirective,
     BannerComponent,
     ComposerBannerComponent,
     ComposerVoiceBarComponent,

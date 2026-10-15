@@ -1,3 +1,4 @@
+import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import {
   WorkspaceApplicationSurfaceService,
@@ -13,7 +14,10 @@ import {
   type TrustStatus,
 } from '@trinity/data-access/trust';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
-import { HostFileExportService } from '@trinity/runtime/host';
+import {
+  HostFileExportService,
+  HostSystemUiService,
+} from '@trinity/runtime/host';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SecuritySectionComponent } from './security-section.component';
 
@@ -117,6 +121,18 @@ function click(container: Element, testId: string): void {
 }
 
 describe('SecuritySectionComponent', () => {
+  it('counts the room key file chooser as Trinity’s own system UI while it is open', async () => {
+    const { container } = await build();
+    const ui = TestBed.inject(HostSystemUiService);
+    const input = container.querySelector<HTMLInputElement>(
+      'input[type=file]',
+    ) as HTMLInputElement;
+    input.click();
+    expect(ui.active()).toBe(true);
+    input.dispatchEvent(new Event('cancel'));
+    expect(ui.active()).toBe(false);
+  });
+
   it('offers verification and an explicit reset when the identity lives elsewhere', async () => {
     const { container, open } = await build({
       status: 'needs-verification',

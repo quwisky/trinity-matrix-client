@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { SwUpdate } from '@angular/service-worker';
 import {
+  HOST_AUTHENTICATION_HANDOFF_OPERATION,
   HOST_LIFECYCLE_OPERATION,
   HostAuthenticationHandoffService,
   HostCapabilitiesService,
@@ -32,9 +33,16 @@ const app = vi.hoisted(() => ({
   minimizeApp: vi.fn(),
 }));
 
+const browser = vi.hoisted(() => ({
+  open: vi.fn(),
+  close: vi.fn(),
+  addListener: vi.fn(),
+}));
+
 const cap = vi.hoisted(() => ({ native: true, platform: 'android' }));
 
 vi.mock('@capacitor/app', () => ({ App: app }));
+vi.mock('@capacitor/browser', () => ({ Browser: browser }));
 vi.mock('@capacitor/core', () => ({
   registerPlugin: vi.fn(() => ({})),
   Capacitor: {
@@ -166,6 +174,50 @@ describe('CapacitorHostOperationAdapter event streams', () => {
     await Promise.resolve();
 
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the sign-in sheet closed when the person closes it', async () => {
+    let finished: () => void = () => undefined;
+    const remove = vi.fn(() => Promise.resolve());
+    browser.addListener
+      .mockReset()
+      .mockImplementation((_event: string, listener: () => void) => {
+        finished = listener;
+        return Promise.resolve({ remove });
+      });
+    const closed = vi.fn();
+    const subscription =
+      new CapacitorHostOperationAdapter().sheetClosed.subscribe(closed);
+    await Promise.resolve();
+
+    expect(browser.addListener).toHaveBeenCalledWith(
+      'browserFinished',
+      expect.any(Function),
+    );
+    finished();
+    expect(closed).toHaveBeenCalledOnce();
+    subscription.unsubscribe();
+    expect(remove).toHaveBeenCalledOnce();
+  });
+
+  it('removes a browserFinished listener that resolves after teardown', async () => {
+    let resolveListener!: (value: { remove: () => Promise<void> }) => void;
+    const remove = vi.fn(() => Promise.resolve());
+    browser.addListener.mockReset().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveListener = resolve;
+        }),
+    );
+    const subscription =
+      new CapacitorHostOperationAdapter().sheetClosed.subscribe();
+
+    subscription.unsubscribe();
+    resolveListener({ remove });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(remove).toHaveBeenCalledOnce();
   });
 
   it('reports Back and backgrounding unavailable on iOS', async () => {
@@ -650,5 +702,44 @@ describe('device display name off the desktop shell', () => {
     expect(
       TestBed.inject(HostAuthenticationHandoffService).deviceDisplayName(),
     ).toBe('Trinity');
+  });
+});
+
+describe('sign-in sheet', () => {
+  afterEach(() => {
+    cap.native = true;
+    delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+    TestBed.resetTestingModule();
+  });
+
+  it('is a sheet of the host’s own on mobile', () => {
+    TestBed.configureTestingModule({ providers: [hostOperationProviders()] });
+    expect(
+      TestBed.inject(HOST_AUTHENTICATION_HANDOFF_OPERATION).sheetClosed,
+    ).toBeDefined();
+  });
+
+  it('is a page outside Trinity on the web', () => {
+    cap.native = false;
+    TestBed.configureTestingModule({ providers: [hostOperationProviders()] });
+    expect(
+      TestBed.inject(HOST_AUTHENTICATION_HANDOFF_OPERATION).sheetClosed,
+    ).toBeUndefined();
+  });
+
+  it('is the system browser, outside Trinity, on desktop', () => {
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture();
+    TestBed.configureTestingModule({
+      providers: [
+        hostOperationProviders(),
+        MockProvider(HostCapabilitiesService, {
+          manifest: () => of(unavailableHostManifest('not-implemented')),
+        }),
+      ],
+    });
+    expect(
+      TestBed.inject(HOST_AUTHENTICATION_HANDOFF_OPERATION).sheetClosed,
+    ).toBeUndefined();
   });
 });

@@ -22,6 +22,8 @@ Start with the behavior's owner, not the screen where it appears. A capability o
 | Messages, drafts, relations, threads, pins, and room media                   | Conversation data access                                     |
 | Verification and encryption health                                           | Trust                                                        |
 | Context-keyed persisted settings                                             | Preferences Runtime plus contributing capability descriptors |
+| App lock settings, lock state, unlock, and the Trinity PIN                   | App lock data access, with Host Runtime user presence        |
+| App lock's away timer, lock lifecycle, lock screen and held dialogs          | Application Runtime                                          |
 | Matrix client, sync, SDK persistence, and SDK event adaptation               | Matrix Client data access                                    |
 | Platform support and host operations                                         | Host Runtime contracts and selected host adapters            |
 

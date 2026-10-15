@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
@@ -23,6 +24,7 @@ import {
   vi,
 } from 'vitest';
 import { ThreadsService } from './threads.service';
+import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
 import { switchableMatrixProvider } from './timeline.spec-harness';
@@ -1671,6 +1673,86 @@ describe('ThreadsService', () => {
       expect(acknowledge).toHaveBeenCalledWith({
         key: { accountId: '@me:hs', roomId: '!r:hs' },
         messageId: '$r1',
+        threadRootId: '$root',
+      });
+    });
+
+    it('holds the thread receipt while App lock covers the app and sends it after unlock', () => {
+      const attentive = signal(false);
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: CONVERSATION_ATTENTION,
+            useValue: { attentive: attentive.asReadonly() },
+          },
+        ],
+      });
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'reply',
+        ts: 1000,
+      });
+      const { svc, acknowledge } = setup([
+        fakeThread({ id: '$root', rootEvent: root, events: [root, reply] }),
+      ]);
+
+      svc.attachThreadRoot('$root');
+      TestBed.tick();
+      expect(acknowledge).not.toHaveBeenCalled();
+
+      attentive.set(true);
+      TestBed.tick();
+      expect(acknowledge).toHaveBeenCalledExactlyOnceWith({
+        key: { accountId: '@me:hs', roomId: '!r:hs' },
+        messageId: '$r1',
+        threadRootId: '$root',
+      });
+    });
+
+    it('waits for both focus and unlock: unlocked in the background, then focus returns', () => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false); // locked, window unfocused
+      const attentive = signal(false);
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: CONVERSATION_ATTENTION,
+            useValue: { attentive: attentive.asReadonly() },
+          },
+        ],
+      });
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'reply' });
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, reply],
+      });
+      const { svc, acknowledge } = setup([thread]);
+      svc.attachThreadRoot('$root');
+      TestBed.tick();
+
+      // Focus alone is not enough: the cover still hides the thread.
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      window.dispatchEvent(new Event('focus'));
+      expect(acknowledge).not.toHaveBeenCalled();
+
+      // Unlocked in the background: nobody is looking at an unfocused window either.
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+      thread.events.push(
+        fakeEvent({ id: '$r2', sender: '@b:hs', body: 'another' }),
+      );
+      attentive.set(true);
+      TestBed.tick();
+      expect(acknowledge).not.toHaveBeenCalled();
+
+      // Focus returns: the held receipt goes out once, for the latest reply.
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      window.dispatchEvent(new Event('focus'));
+      expect(acknowledge).toHaveBeenCalledExactlyOnceWith({
+        key: { accountId: '@me:hs', roomId: '!r:hs' },
+        messageId: '$r2',
         threadRootId: '$root',
       });
     });

@@ -155,3 +155,34 @@ export function isBrowserReserved(chord: Chord): boolean {
   const devtools = ['i', 'j', 'k', 'c', 'e', 'm'];
   return [...window.filter((k) => k !== 'l'), ...devtools].includes(key);
 }
+
+const ACCELERATOR_KEYS: Readonly<Record<string, string>> = {
+  ArrowUp: 'Up',
+  ArrowDown: 'Down',
+  ArrowLeft: 'Left',
+  ArrowRight: 'Right',
+  ' ': 'Space',
+  Escape: 'Esc',
+  Enter: 'Enter',
+  Tab: 'Tab',
+};
+
+/**
+ * The chord in Electron accelerator syntax, for display in the desktop menu; null for a
+ * key Electron cannot name (the menu then shows no shortcut, and the key still works).
+ */
+export function chordToAccelerator(chord: Chord | null): string | null {
+  if (!chord) return null;
+  const key = /^[a-z]$/i.test(chord.key)
+    ? chord.key.toUpperCase()
+    : /^([0-9]|F([1-9]|1[0-9]|2[0-4]))$/.test(chord.key)
+      ? chord.key
+      : ACCELERATOR_KEYS[chord.key];
+  if (!key) return null;
+  return [
+    ...(chord.accel ? ['CommandOrControl'] : []),
+    ...(chord.alt ? ['Alt'] : []),
+    ...(chord.shift ? ['Shift'] : []),
+    key,
+  ].join('+');
+}

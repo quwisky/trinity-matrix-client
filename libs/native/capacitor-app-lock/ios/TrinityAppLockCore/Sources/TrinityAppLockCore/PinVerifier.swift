@@ -88,7 +88,10 @@ public enum PinCheck: Equatable {
 /// The mobile Trinity PIN: one PBKDF2-HMAC-SHA256 record. Never logs, and no result
 /// carries the PIN, its hash or its salt. A record that exists but cannot be read is
 /// `unavailable`, never "no PIN": treating it as absent would let a damaged item open the
-/// lock, and setting a new PIN over it would skip the full reset. Only `clear` removes it.
+/// lock, and setting a new PIN over it would skip the full reset, so `set` refuses it. Only
+/// `clear` removes it: the full reset, turning the lock off, and Settings, which the renderer
+/// allows only while App lock is readably off or after a fresh system-prompt check
+/// (`AppLockService` `clearUnreadablePin` and `changePin`).
 ///
 /// Every call runs on one serial queue and saves its record before it answers, so two
 /// quick submits cannot both pass a wait and a crash cannot forget a failure.
@@ -197,7 +200,7 @@ public final class PinVerifier {
         }
     }
 
-    /// Remove the record, readable or not; the full reset's way past a damaged item.
+    /// Remove the record, readable or not; the way past a damaged item (see the type doc).
     public func clear() -> Bool {
         queue.sync { (try? store.remove()) != nil }
     }

@@ -90,6 +90,16 @@ Dialogs, menus, tooltips, and other overlays use the Trinity overlay defaults an
 
 Open every modal surface through `TrnSurfaceService` from `@trinity/components/overlay`. It applies one rule: a bottom sheet on any phone or tablet and below `md`, a centred dialog otherwise, and an anchored menu for an action list opened from a button on a large screen. Use `kind: 'fullscreen'` or `'popover'` only for those explicit layouts; side panels keep their own non-modal components. `scripts/surface-service-usage.spec.mjs` keeps the dialog and action-sheet services it wraps inside the overlay library.
 
+App lock's cover (`trn-app-lock-cover` in Application Runtime) is the one exception. It is a native `<dialog>` opened with `showModal()`, not a `TrnSurfaceService` surface, because it has to do three things a surface can't:
+
+- paint in the first frame of a locked cold start, before any startup stage runs;
+- sit in the browser's top layer, above every CDK overlay, the toaster and open dialogs (the overlay defaults turn CDK's `usePopover` off, so those compete on `z-index` and lose to the top layer);
+- live outside the root's startup chain, so the boot spinner, startup recovery and routes all render beneath it.
+
+The cover also moves its host out of `trn-root` into its own `<body>` child as it is created, before it first opens, because moving an open modal dialog takes it out of the top layer. An open CDK dialog marks every other `<body>` child `aria-hidden`, `trn-root` included. CDK skips children that have `aria-live`, so the host has `aria-live="off"`. That skip is undocumented CDK behaviour (the toaster's `LiveAnnouncer` relies on it too), so the cover's "stays exposed … as CDK skips [aria-live] body children" tests and the Electron App lock journeys pin it: a CDK upgrade that drops it fails them. The cover stays exposed to assistive technology over any CDK dialog, and CDK's record of what it hid is left alone. Keep `<trn-app-lock-cover />` a static child of the root template: inside a control-flow block, the block would put the host back into `trn-root`.
+
+Don't copy this pattern for other surfaces. Anything that should appear above the lock, such as a future incoming call, renders inside the cover's reserved "above lock" region.
+
 ## Treat responsive layout as behavior {#responsive-layout}
 
 Wide and narrow surfaces can present the same Workspace destination differently. The owning layout component decides what is visible; Workspace continues to own the semantic destination. Preserve `data-testid` hooks used by browser journeys and visible focus states used by keyboard navigation.

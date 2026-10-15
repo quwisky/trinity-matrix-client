@@ -1,5 +1,13 @@
 import { APPEARANCE_PREFERENCE_DESCRIPTORS } from '@trinity/application/appearance';
-import { PRIVACY_PREFERENCE_DESCRIPTORS } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  PRIVACY_PREFERENCE_DESCRIPTORS,
+} from '@trinity/data-access/timeline';
+import {
+  AppLockService,
+  type AppLockStatus,
+} from '@trinity/data-access/app-lock';
+import { NOTIFICATION_VISIBILITY } from '@trinity/data-access/notifications';
 import { RAIL_UNREAD_CHATS_PREFERENCE } from '@trinity/data-access/room-library';
 import {
   AppConfigService,
@@ -230,6 +238,46 @@ describe('Trinity application provider composition', () => {
     } finally {
       TestBed.resetTestingModule();
       configureMatrixSdkLogging('debug');
+    }
+  });
+
+  it('tells notifications nobody is looking while App lock covers the app', () => {
+    const status = signal<AppLockStatus>('unknown');
+    const key = { accountId: '@me:hs', roomId: '!r:hs' };
+    const hidden = document.visibilityState === 'hidden';
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    try {
+      TestBed.configureTestingModule({
+        providers: [
+          ...applicationCapabilityProviders({
+            buildInfo: {} as BuildInfo,
+            pushConfig: null,
+          }),
+          MockProvider(AppLockService, {
+            status: status.asReadonly() as never,
+          }),
+          MockProvider(ConversationRuntime, {
+            focused: signal({ key }).asReadonly() as never,
+          }),
+        ],
+      });
+      const visibility = TestBed.inject(NOTIFICATION_VISIBILITY);
+      const nobody = { foreground: false, hidden, conversation: null };
+
+      expect(visibility.snapshot()).toEqual(nobody); // not known yet: fail closed
+      status.set('locked');
+      expect(visibility.snapshot()).toEqual(nobody);
+      status.set('unlocked');
+      expect(visibility.snapshot()).toEqual({
+        foreground: true,
+        hidden,
+        conversation: key,
+      });
+      status.set('off');
+      expect(visibility.snapshot().conversation).toEqual(key);
+    } finally {
+      vi.restoreAllMocks();
+      TestBed.resetTestingModule();
     }
   });
 

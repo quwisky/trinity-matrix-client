@@ -145,6 +145,24 @@ describe('the shortcut overrides entry', () => {
     ).toEqual({ id: 'format.bold' });
   });
 
+  it('carries a Lock Trinity binding out and back, and leaves it out while unassigned', () => {
+    const lock = { accel: true, alt: false, shift: true, key: 'l' };
+    const first = setup();
+    expect(first.entry.read()).toEqual({});
+    first.shortcuts.rebind('lock.now', lock);
+    const exported = first.entry.read();
+    expect(exported).toEqual({ 'lock.now': lock });
+    expect(validateShortcutOverrides(exported)).toEqual({
+      ok: true,
+      value: exported,
+    });
+
+    const second = setup();
+    second.entry.write(exported);
+
+    expect(second.shortcuts.binding('lock.now')).toEqual(lock);
+  });
+
   it('puts a shortcut the document does not mention back to its default', () => {
     const { entry, shortcuts } = setup();
     shortcuts.rebind('switcher.open', CTRL_J);

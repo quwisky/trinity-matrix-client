@@ -19,6 +19,7 @@ export const CRASH_LOOP_MS = 60_000;
  *   responds again or its renderer exits.
  * - Both questions wait until the window is on screen (shown, restored or focused), so a
  *   window hidden to the tray or minimised is asked when the person comes back to it.
+ * - While App lock holds the window transparent, the question opens in a box of its own.
  */
 export function watchRendererRecovery(
   win: BrowserWindow,
@@ -39,6 +40,17 @@ export function watchRendererRecovery(
   let renderer = 0;
 
   const onScreen = (): boolean => win.isVisible() && !win.isMinimized();
+  /**
+   * App lock's show hold keeps the window transparent until a renderer paints its cover
+   * (lock-integration.ts), and a sheet on a transparent window may not show on macOS.
+   */
+  const concealed = (): boolean => {
+    try {
+      return win.getOpacity() < 1;
+    } catch {
+      return false;
+    }
+  };
 
   const reload = (): void => {
     lastReload = now();
@@ -52,13 +64,17 @@ export function watchRendererRecovery(
   ): Promise<number | undefined> => {
     question = kind;
     stopAsking = new AbortController();
+    const box: MessageBoxOptions = {
+      ...options,
+      // Plain buttons on Windows, not command links.
+      noLink: true,
+      signal: stopAsking.signal,
+    };
     try {
-      const { response } = await dialog.showMessageBox(win, {
-        ...options,
-        // Plain buttons on Windows, not command links.
-        noLink: true,
-        signal: stopAsking.signal,
-      });
+      // While the window is held transparent, a box of its own, so the question shows.
+      const { response } = await (concealed()
+        ? dialog.showMessageBox(box)
+        : dialog.showMessageBox(win, box));
       return response;
     } catch {
       return undefined;

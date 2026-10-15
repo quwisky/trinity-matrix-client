@@ -22,6 +22,7 @@ import {
 } from '@trinity/data-access/accounts';
 import {
   ACCOUNT_REMOVAL_LAUNCHER,
+  KeyboardShortcutsService,
   type AccountRemovalOutcome,
 } from '@trinity/platform-native';
 import { ShellStatusService } from './shell-status.service';
@@ -57,6 +58,7 @@ import {
 } from '@trinity/platform-native';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { UserCardComponent } from '../user-card/user-card.component';
 import { MemberInfoComponent } from '../member-info/member-info.component';
@@ -845,6 +847,151 @@ describe('RoomsPage room / DM / invite actions', () => {
       'deep-link',
     );
     expect(inbound.pending()).toBeNull();
+  });
+
+  it('keeps a room link waiting while App lock is locked', () => {
+    const locked = signal(true);
+    TestBed.overrideProvider(AppLockService, {
+      useValue: { locked: locked.asReadonly(), lockNow: vi.fn() },
+    });
+    const shell = build();
+    const onMatrixLink = vi.spyOn(shell.messages, 'onMatrixLink');
+    const inbound = TestBed.inject(InboundRoomLinkService);
+    const link = { kind: 'room', roomIdOrAlias: '!b:hs' } as const;
+
+    inbound.offer(link);
+    TestBed.tick();
+    expect(onMatrixLink).not.toHaveBeenCalled();
+    expect(inbound.pending()).toEqual(link);
+
+    locked.set(false);
+    TestBed.tick();
+    expect(onMatrixLink).toHaveBeenCalledExactlyOnceWith(
+      { target: link },
+      'deep-link',
+    );
+  });
+
+  it('ignores global shortcuts while App lock is locked', () => {
+    const locked = signal(true);
+    TestBed.overrideProvider(AppLockService, {
+      useValue: { locked: locked.asReadonly(), lockNow: vi.fn() },
+    });
+    const shell = build();
+    const openSwitcher = vi
+      .spyOn(shell.shortcuts, 'openSwitcher')
+      .mockImplementation(() => undefined);
+    const chord = () =>
+      new KeyboardEvent('keydown', {
+        key: 'k',
+        ctrlKey: true,
+        cancelable: true,
+      });
+
+    const behindCover = chord();
+    shell.page.onGlobalKeydown(behindCover);
+    expect(behindCover.defaultPrevented).toBe(false);
+    expect(openSwitcher).not.toHaveBeenCalled();
+
+    locked.set(false);
+    const unlocked = chord();
+    shell.page.onGlobalKeydown(unlocked);
+    expect(unlocked.defaultPrevented).toBe(true);
+    expect(openSwitcher).toHaveBeenCalledOnce();
+  });
+
+  describe('Lock Trinity shortcut', () => {
+    const lockChord = () =>
+      new KeyboardEvent('keydown', {
+        key: 'l',
+        ctrlKey: true,
+        shiftKey: true,
+        cancelable: true,
+      });
+
+    function buildWithLock(state: { enabled: boolean; locked: boolean }) {
+      const lockNow = vi.fn();
+      TestBed.overrideProvider(AppLockService, {
+        useValue: {
+          enabled: signal(state.enabled).asReadonly(),
+          locked: signal(state.locked).asReadonly(),
+          lockNow,
+        },
+      });
+      const shell = build();
+      const shortcuts = TestBed.inject(KeyboardShortcutsService);
+      shortcuts.resetAll();
+      shortcuts.rebind('lock.now', {
+        accel: true,
+        alt: false,
+        shift: true,
+        key: 'l',
+      });
+      return { shell, lockNow, shortcuts };
+    }
+
+    it('locks with the bound shortcut even over an open dialog', () => {
+      const { shell, lockNow, shortcuts } = buildWithLock({
+        enabled: true,
+        locked: false,
+      });
+      vi.spyOn(TestBed.inject(TrnSurfaceService), 'hasOpen').mockReturnValue(
+        true,
+      );
+      const chord = lockChord();
+
+      shell.page.onGlobalKeydown(chord);
+
+      expect(lockNow).toHaveBeenCalledOnce();
+      expect(chord.defaultPrevented).toBe(true);
+      shortcuts.resetAll();
+    });
+
+    it('does nothing while already locked, since the cover owns the keys', () => {
+      const { shell, lockNow, shortcuts } = buildWithLock({
+        enabled: true,
+        locked: true,
+      });
+      const chord = lockChord();
+
+      shell.page.onGlobalKeydown(chord);
+
+      expect(lockNow).not.toHaveBeenCalled();
+      expect(chord.defaultPrevented).toBe(false);
+      shortcuts.resetAll();
+    });
+
+    it('leaves the chord to the browser while App lock is off', () => {
+      const { shell, lockNow, shortcuts } = buildWithLock({
+        enabled: false,
+        locked: false,
+      });
+      const chord = lockChord();
+
+      shell.page.onGlobalKeydown(chord);
+
+      expect(lockNow).not.toHaveBeenCalled();
+      expect(chord.defaultPrevented).toBe(false);
+      shortcuts.resetAll();
+    });
+  });
+
+  it('ignores Escape while App lock is locked', () => {
+    const locked = signal(true);
+    TestBed.overrideProvider(AppLockService, {
+      useValue: { locked: locked.asReadonly(), lockNow: vi.fn() },
+    });
+    const shell = build();
+    const transition = vi.spyOn(shell.surfaces, 'transition');
+    const escape = () =>
+      new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+
+    shell.page.onEscapeKey(escape());
+    expect(transition).not.toHaveBeenCalled();
+
+    locked.set(false);
+    shell.page.onEscapeKey(escape());
+    expect(transition).toHaveBeenCalledExactlyOnceWith({ kind: 'escape' });
   });
 
   it('reports a malformed Matrix link instead of opening an overlay', () => {

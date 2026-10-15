@@ -1,4 +1,5 @@
 import { IdentityPresenceService } from '@trinity/data-access/identity';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -245,6 +246,7 @@ export class RoomsPage {
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
   private readonly inboundRoomLink = inject(InboundRoomLinkService);
+  private readonly appLock = inject(AppLockService);
   readonly store = inject(RoomShellStore);
   readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   readonly status = inject(ShellStatusService);
@@ -389,9 +391,10 @@ export class RoomsPage {
       }
     });
     // A link handed over by the host (cold start or warm) opens like a tapped matrix.to link.
+    // It waits behind App lock and opens once the person unlocks (spec §2).
     effect(() => {
       const target = this.inboundRoomLink.pending();
-      if (!target) return;
+      if (!target || this.appLock.locked()) return;
       this.inboundRoomLink.clear();
       untracked(() =>
         this.messageActions.onMatrixLink({ target }, 'deep-link'),
@@ -538,8 +541,10 @@ export class RoomsPage {
    */
   onEscapeKey(event: Event): void {
     // A modal surface above the slot (member info over the drawer) already took this
-    // Escape, and an open native popover (the topic) takes it for itself.
+    // Escape, and an open native popover (the topic) takes it for itself. Behind App lock's
+    // cover nothing on the page reacts.
     if (
+      this.appLock.locked() ||
       event.defaultPrevented ||
       document.querySelector('[popover]:popover-open')
     ) {

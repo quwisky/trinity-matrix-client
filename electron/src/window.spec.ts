@@ -464,40 +464,83 @@ describe('createWindow visibility', () => {
   function create() {
     const listeners = new Map<string, () => void>();
     const send = vi.fn();
+    const win = {
+      webContents: {
+        setWindowOpenHandler: vi.fn(),
+        on: vi.fn(),
+        ipc: { on: vi.fn() },
+        send,
+        isDestroyed: () => false,
+      },
+      once: vi.fn(),
+      on: vi.fn((event: string, listener: () => void) =>
+        listeners.set(event, listener),
+      ),
+      loadURL: vi.fn(() => Promise.resolve()),
+      setMenuBarVisibility: vi.fn(),
+      isVisible: vi.fn(() => true),
+      isMinimized: vi.fn(() => false),
+    };
     vi.mocked(BrowserWindow).mockImplementation(function () {
-      return {
-        webContents: {
-          setWindowOpenHandler: vi.fn(),
-          on: vi.fn(),
-          ipc: { on: vi.fn() },
-          send,
-          isDestroyed: () => false,
-        },
-        once: vi.fn(),
-        on: vi.fn((event: string, listener: () => void) =>
-          listeners.set(event, listener),
-        ),
-        loadURL: vi.fn(() => Promise.resolve()),
-        setMenuBarVisibility: vi.fn(),
-      };
+      return win;
     } as never);
     createWindow();
-    return { listeners, send };
+    return {
+      emit: (event: string) => listeners.get(event)?.(),
+      send,
+      win,
+    };
   }
+
+  const visibility = (send: ReturnType<typeof vi.fn>) =>
+    send.mock.calls
+      .filter(([channel]) => channel === 'trinity:host:v1:lifecycle:visibility')
+      .map(([, value]) => value);
 
   it.each([
     ['hide', 'hidden'],
     ['minimize', 'hidden'],
     ['show', 'visible'],
     ['restore', 'visible'],
-  ])('tells the renderer it is %s', (event, visibility) => {
-    const { listeners, send } = create();
+  ])('tells the renderer it is %s', (event, expected) => {
+    const { emit, send } = create();
 
-    listeners.get(event)?.();
+    emit(event);
 
     expect(send).toHaveBeenCalledExactlyOnceWith(
       'trinity:host:v1:lifecycle:visibility',
-      visibility,
+      expected,
     );
+  });
+
+  it.each(['maximize', 'focus'])(
+    'tells the renderer a minimised window is back when it returns through %s alone',
+    (event) => {
+      // A Windows restore of a maximised window may emit only maximize and focus.
+      const { emit, send } = create();
+      emit('minimize');
+      emit(event);
+      expect(visibility(send)).toEqual(['hidden', 'visible']);
+    },
+  );
+
+  it('does not repeat visible on every focus of a window already on screen', () => {
+    const { emit, send } = create();
+    emit('focus');
+    emit('show');
+    emit('focus');
+    emit('maximize');
+    expect(visibility(send)).toEqual(['visible']);
+  });
+
+  it('waits for a window that is still minimised or hidden', () => {
+    const { emit, send, win } = create();
+    emit('minimize');
+    win.isMinimized.mockReturnValue(true);
+    emit('focus');
+    win.isMinimized.mockReturnValue(false);
+    win.isVisible.mockReturnValue(false);
+    emit('maximize');
+    expect(visibility(send)).toEqual(['hidden']);
   });
 });

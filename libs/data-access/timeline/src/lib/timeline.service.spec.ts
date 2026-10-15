@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -23,6 +24,7 @@ import {
   type Mock,
   vi,
 } from 'vitest';
+import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import { TimelineService, eventRevision } from './timeline.service';
 import { TYPING_REFRESH_MS, TYPING_TIMEOUT_MS } from '@trinity/util/matrix';
 import {
@@ -1046,6 +1048,235 @@ describe('TimelineService', () => {
     window.dispatchEvent(new Event('focus')); // → onFocus → markRead(live timeline)
 
     expect(received.map((e) => e.getId())).toEqual(['$b']); // targets the newer event
+  });
+
+  it('holds the read receipt while locked and sends it after unlock', () => {
+    const attentive = signal(false);
+    const received: { getId: () => string }[] = [];
+    const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
+    const room = {
+      roomId: '!r:hs',
+      hasEncryptionStateEvent: () => false,
+      loadMembersIfNeeded: () => Promise.resolve(true),
+      getLiveTimeline: () => ({
+        getEvents: () => events,
+        getPaginationToken: () => null,
+        getState: () => undefined,
+      }),
+      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+      relations: { getChildEventsForEvent: () => undefined },
+      on: () => {},
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: (e: { getId: () => string }) => {
+        received.push(e);
+        return Promise.resolve({});
+      },
+      scrollback: () => Promise.resolve(room),
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        matrixProvider(client),
+        {
+          provide: CONVERSATION_ATTENTION,
+          useValue: { attentive: attentive.asReadonly() },
+        },
+      ],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+    TestBed.tick();
+    expect(received).toHaveLength(0); // focused, but locked: nobody is looking
+
+    attentive.set(true); // unlocked
+    TestBed.tick();
+    expect(received.map((e) => e.getId())).toEqual(['$a']);
+  });
+
+  describe('while App lock covers the app', () => {
+    /**
+     * Rooms (id → first event id) whose live timelines grow on demand, a client that
+     * records every receipt it is asked to send, and the attention port App lock drives.
+     * With `hold`, each receipt stays in flight until the test releases it.
+     */
+    function covered(
+      rooms: Record<string, string>,
+      options: { attentive: boolean; hold?: boolean },
+    ) {
+      const attentive = signal(options.attentive);
+      const received: string[] = [];
+      const releases: (() => void)[] = [];
+      const live = new Map(
+        Object.entries(rooms).map(([roomId, firstId]) => {
+          const events = [
+            fakeEvent({ id: firstId, sender: '@a:hs', body: 'hi' }),
+          ];
+          const listeners = new Map<string, () => void>();
+          const room = {
+            roomId,
+            hasEncryptionStateEvent: () => false,
+            loadMembersIfNeeded: () => Promise.resolve(true),
+            getLiveTimeline: () => ({
+              getEvents: () => events,
+              getPaginationToken: () => null,
+              getState: () => undefined,
+            }),
+            getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+            getMembers: () => [],
+            relations: { getChildEventsForEvent: () => undefined },
+            on: (name: string, listener: () => void) =>
+              listeners.set(name, listener),
+            off: () => {},
+          };
+          return [roomId, { room, events, listeners }] as const;
+        }),
+      );
+      const client = {
+        baseUrl: 'https://hs',
+        getRoom: (roomId: string) => live.get(roomId)?.room ?? null,
+        getUserId: () => '@me:hs',
+        on: () => {},
+        off: () => {},
+        sendReadReceipt: (e: { getId: () => string }) => {
+          received.push(e.getId());
+          return options.hold
+            ? new Promise((resolve) => releases.push(() => resolve({})))
+            : Promise.resolve({});
+        },
+        scrollback: (room: unknown) => Promise.resolve(room),
+      };
+      TestBed.configureTestingModule({
+        providers: [
+          TimelineService,
+          matrixProvider(client),
+          {
+            provide: CONVERSATION_ATTENTION,
+            useValue: { attentive: attentive.asReadonly() },
+          },
+        ],
+      });
+      const svc = TestBed.inject(TimelineService);
+      /** A message arrives live in an open room; the SDK's Timeline event re-projects it. */
+      const arrive = async (roomId: string, id: string): Promise<void> => {
+        const entry = live.get(roomId);
+        entry?.events.push(fakeEvent({ id, sender: '@a:hs', body: 'new' }));
+        entry?.listeners.get(RoomEvent.Timeline)?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      };
+      const settle = (): Promise<void> =>
+        new Promise((resolve) => setTimeout(resolve, 0));
+      return { svc, attentive, received, releases, arrive, settle };
+    }
+
+    it('keeps messages that arrive behind the cover unread, and acks the newest on unlock', async () => {
+      const { svc, attentive, received, arrive } = covered(
+        { '!r:hs': '$a1' },
+        { attentive: true },
+      );
+      svc.open('!r:hs');
+      TestBed.tick();
+      expect(received).toEqual(['$a1']); // looking: read as it opens
+
+      attentive.set(false); // locked, with the room still open behind the cover
+      TestBed.tick();
+      await arrive('!r:hs', '$a2');
+      await arrive('!r:hs', '$a3');
+      expect(received).toEqual(['$a1']);
+
+      attentive.set(true);
+      TestBed.tick();
+      expect(received).toEqual(['$a1', '$a3']);
+    });
+
+    it('waits for window focus after an unlock in the background', () => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+      const { svc, attentive, received } = covered(
+        { '!r:hs': '$a1' },
+        { attentive: false },
+      );
+      svc.open('!r:hs');
+      TestBed.tick();
+
+      // Focus alone is not enough: the cover still hides the room.
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      window.dispatchEvent(new Event('focus'));
+      expect(received).toEqual([]);
+
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false); // the person switches away
+      attentive.set(true); // unlocked, but the window is behind another app
+      TestBed.tick();
+      expect(received).toEqual([]);
+
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      window.dispatchEvent(new Event('focus'));
+      expect(received).toEqual(['$a1']);
+    });
+
+    it('waits for the conversation to be visible after an unlock', () => {
+      const { svc, attentive, received } = covered(
+        { '!r:hs': '$a1' },
+        { attentive: false },
+      );
+      svc.open('!r:hs');
+      svc.setVisible(false);
+      TestBed.tick();
+
+      attentive.set(true);
+      TestBed.tick();
+      expect(received).toEqual([]);
+
+      svc.setVisible(true);
+      expect(received).toEqual(['$a1']);
+    });
+
+    it('lets a receipt sent before the lock finish, but holds what arrives after it', async () => {
+      const { svc, attentive, received, releases, arrive, settle } = covered(
+        { '!r:hs': '$a1' },
+        { attentive: true, hold: true },
+      );
+      svc.open('!r:hs');
+      TestBed.tick();
+      expect(received).toEqual(['$a1']); // in flight
+
+      attentive.set(false);
+      TestBed.tick();
+      await arrive('!r:hs', '$a2');
+      releases.shift()?.(); // the earlier receipt lands while locked
+      await settle();
+      await arrive('!r:hs', '$a3');
+      expect(received).toEqual(['$a1']);
+
+      attentive.set(true);
+      TestBed.tick();
+      expect(received).toEqual(['$a1', '$a3']);
+    });
+
+    it('does not mark a room selected while locked read until unlock', () => {
+      const { svc, attentive, received } = covered(
+        { '!a:hs': '$a1', '!b:hs': '$b1' },
+        { attentive: true },
+      );
+      svc.open('!a:hs');
+      TestBed.tick();
+      expect(received).toEqual(['$a1']);
+
+      attentive.set(false);
+      TestBed.tick();
+      svc.open('!b:hs');
+      TestBed.tick();
+      expect(received).toEqual(['$a1']);
+
+      attentive.set(true);
+      TestBed.tick();
+      expect(received).toEqual(['$a1', '$b1']);
+    });
   });
 
   it('detaches client listeners from the account it opened on, not the active one', async () => {

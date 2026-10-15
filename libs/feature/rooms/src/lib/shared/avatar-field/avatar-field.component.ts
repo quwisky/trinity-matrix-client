@@ -18,6 +18,7 @@ import {
   AvatarComponent,
   type AvatarShape,
 } from '@trinity/components/generic-content';
+import { TrackFileChooserDirective } from '@trinity/platform-native';
 
 /**
  * Matrix caps an avatar at the homeserver's upload limit; 8 MB is the common Synapse default and
@@ -42,7 +43,13 @@ const MAX_AVATAR_BYTES = 8 * 1024 * 1024;
 @Component({
   selector: 'trn-avatar-field',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnButton, TrnActionAvailability, TrnTooltip],
+  imports: [
+    TrackFileChooserDirective,
+    AvatarComponent,
+    TrnButton,
+    TrnActionAvailability,
+    TrnTooltip,
+  ],
   templateUrl: './avatar-field.component.html',
   styleUrl: './avatar-field.component.scss',
 })

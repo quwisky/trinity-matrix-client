@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import {
   KeyboardShortcutsService,
   chordFromEvent,
@@ -28,6 +29,8 @@ import {
 interface ShortcutRow extends ShortcutView {
   /** Key-cap labels for the current binding, or [] when unset/fixed. */
   caps: string[];
+  /** The line under the description, if any. */
+  hint: string | undefined;
 }
 
 /** One `category` heading and the shortcuts filed under it. */
@@ -57,17 +60,36 @@ export class ShortcutsSectionComponent {
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
+  private readonly appLock = inject(AppLockService);
   private readonly destroyRef = inject(DestroyRef);
+  /** Ends this section's hold on every shortcut; set only while a row captures. */
+  private releaseCapture: (() => void) | null = null;
 
   /** The shortcut currently in capture (edit) mode, or null. */
   readonly capturingId = signal<string | null>(null);
 
-  readonly rows = computed<ShortcutRow[]>(() =>
-    this.shortcuts.list().map((view) => ({
-      ...view,
-      caps: view.chord ? formatChord(view.chord) : [],
-    })),
-  );
+  /** Lock Trinity is named after the running app ("Lock Trinity Next" in the prerelease). */
+  readonly rows = computed<ShortcutRow[]>(() => {
+    const lockOn = this.appLock.enabled();
+    return this.shortcuts.list().map((view) => {
+      const lockNow = view.id === 'lock.now';
+      return {
+        ...view,
+        description: lockNow
+          ? `Lock ${this.appLock.appName}`
+          : view.description,
+        caps: view.chord ? formatChord(view.chord) : [],
+        hint:
+          lockNow && !lockOn
+            ? 'Available when App lock is on'
+            : view.desktopOnly
+              ? 'Desktop app only'
+              : view.desktopAlias
+                ? 'Also Ctrl+Tab in the desktop app'
+                : undefined,
+      };
+    });
+  });
 
   /**
    * The rows grouped under their category heading, in catalogue order — which is the order
@@ -78,8 +100,13 @@ export class ShortcutsSectionComponent {
    * being fine once the composer's formatting chords sit in the same catalogue.
    */
   readonly groups = computed<ShortcutGroup[]>(() => {
+    // Lock Trinity is listed only where App lock can be on (not on the web).
+    const lockOffered = this.appLock.enabled() || this.appLock.offered();
     const byCategory = new Map<string, ShortcutRow[]>();
     for (const row of this.rows()) {
+      if (row.id === 'lock.now' && !lockOffered) {
+        continue;
+      }
       const rows = byCategory.get(row.category);
       if (rows) {
         rows.push(row);
@@ -90,21 +117,29 @@ export class ShortcutsSectionComponent {
     return [...byCategory].map(([category, rows]) => ({ category, rows }));
   });
 
-  /** Whether any shortcut carries a custom binding (enables "Reset all"). */
+  /**
+   * Whether any listed shortcut carries a custom binding (enables "Reset all"). A hidden
+   * Lock Trinity binding (imported where App lock can't be on) doesn't count by itself.
+   */
   readonly hasCustomBindings = computed(() =>
-    this.rows().some((row) => !row.isDefault),
+    this.groups().some((group) => group.rows.some((row) => !row.isDefault)),
   );
+
+  constructor() {
+    // Closing Settings mid-capture must not leave every shortcut held.
+    this.destroyRef.onDestroy(() => this.setCapturing(null));
+  }
 
   /** Enter capture mode for a rebindable shortcut. */
   edit(row: ShortcutRow): void {
     if (row.rebindable) {
-      this.capturingId.set(row.id);
+      this.setCapturing(row.id);
     }
   }
 
   /** Leave capture mode without changing anything. */
   cancelCapture(): void {
-    this.capturingId.set(null);
+    this.setCapturing(null);
   }
 
   /** Restore one shortcut's default binding. */
@@ -127,7 +162,9 @@ export class ShortcutsSectionComponent {
   /** Capture the next chord while a row is in edit mode and apply it. */
   onCapture(event: Event): void {
     const id = this.capturingId();
-    if (!id) {
+    // Locked: keys typed at the lock screen never change a binding behind the cover. The
+    // row keeps waiting for a chord once the person unlocks.
+    if (!id || this.appLock.locked()) {
       return;
     }
     const e = event as KeyboardEvent;
@@ -150,16 +187,27 @@ export class ShortcutsSectionComponent {
     const result = this.shortcuts.rebind(id, chord);
     if (!result.ok) {
       // Keep capturing: the chord was refused, so the row is still waiting for a usable one.
-      const holder = this.shortcuts
-        .list()
-        .find((s) => s.id === result.conflict)?.description;
+      const holder = this.rows().find(
+        (row) => row.id === result.conflict,
+      )?.description;
       this.toast.show(`That chord is taken by “${holder}”, which is fixed.`, {
         variant: 'danger',
       });
       return;
     }
-    this.capturingId.set(null);
+    this.setCapturing(null);
     this.announce(chord, result.displaced);
+  }
+
+  /** Enter or leave capture mode; while capturing, no shortcut fires anywhere. */
+  private setCapturing(id: string | null): void {
+    this.capturingId.set(id);
+    if (id === null) {
+      this.releaseCapture?.();
+      this.releaseCapture = null;
+    } else {
+      this.releaseCapture ??= this.shortcuts.holdForCapture();
+    }
   }
 
   private announce(
@@ -168,9 +216,7 @@ export class ShortcutsSectionComponent {
   ): void {
     const parts: string[] = [];
     if (displaced) {
-      const name = this.shortcuts
-        .list()
-        .find((s) => s.id === displaced)?.description;
+      const name = this.rows().find((row) => row.id === displaced)?.description;
       parts.push(`Removed from “${name}” (now unset).`);
     }
     if (chord && isBrowserReserved(chord)) {

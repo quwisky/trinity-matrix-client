@@ -17,6 +17,7 @@ import {
   type UrlTree,
 } from '@angular/router';
 import { TrustService } from '@trinity/data-access/trust';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import {
   SessionLockService,
   type SessionLockState,
@@ -203,6 +204,11 @@ export const SHARED_MOCKS: Provider[] = [
   SessionActionsService,
   WorkspaceNavigationService,
   ConversationTimelineStub,
+  // App lock is off; a spec that locks it overrides this.
+  MockProvider(AppLockService, {
+    enabled: signal(false).asReadonly(),
+    locked: signal(false).asReadonly(),
+  }),
   // This tab holds the session; a spec that hands it over provides its own.
   MockProvider(SessionLockService, {
     state: signal<SessionLockState>('held').asReadonly(),

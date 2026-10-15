@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import {
   Observable,
   catchError,
@@ -9,6 +9,7 @@ import {
   throwError,
 } from 'rxjs';
 import { Capacitor } from '@capacitor/core';
+import { HostSystemUiService } from '@trinity/runtime/host';
 import { Filesystem } from '@capacitor/filesystem';
 import {
   Camera,
@@ -52,6 +53,8 @@ export interface PickedImages {
  */
 @Injectable({ providedIn: 'root' })
 export class MediaPickerService {
+  private readonly systemUi = inject(HostSystemUiService);
+
   /** True when the native gallery picker should be used instead of `<input>`. */
   readonly available = Capacitor.isNativePlatform();
 
@@ -105,33 +108,36 @@ export class MediaPickerService {
     if (!this.available) {
       return of({ files: [], oversized: 0 });
     }
-    return defer(() => from(this.ensurePhotoAccess())).pipe(
-      switchMap(() =>
-        from(
-          Camera.chooseFromGallery({
-            allowMultipleSelection: true,
-          }),
-        ),
-      ),
-      switchMap((res) =>
-        from(
-          Promise.resolve(maxBytes ?? null).then((limit) =>
-            materialize(res.results, limit),
+    // The photo picker is Trinity's own system UI: App lock's away timer ignores it.
+    return this.systemUi.track(
+      defer(() => from(this.ensurePhotoAccess())).pipe(
+        switchMap(() =>
+          from(
+            Camera.chooseFromGallery({
+              allowMultipleSelection: true,
+            }),
           ),
         ),
+        switchMap((res) =>
+          from(
+            Promise.resolve(maxBytes ?? null).then((limit) =>
+              materialize(res.results, limit),
+            ),
+          ),
+        ),
+        catchError((err: unknown) => {
+          // Dismissing the picker is a user choice, not a failure → null, no error.
+          if (errorCode(err) === CameraErrorCode.ChooseMediaCancelled) {
+            return of({ files: [], oversized: 0 });
+          }
+          // A denial raised at pick time (rather than the gate) normalizes to the
+          // same typed error, so there's a single clear message to show.
+          if (errorCode(err) === CameraErrorCode.GalleryPermissionDenied) {
+            return throwError(() => new GalleryPermissionDeniedError());
+          }
+          return throwError(() => err);
+        }),
       ),
-      catchError((err: unknown) => {
-        // Dismissing the picker is a user choice, not a failure → null, no error.
-        if (errorCode(err) === CameraErrorCode.ChooseMediaCancelled) {
-          return of({ files: [], oversized: 0 });
-        }
-        // A denial raised at pick time (rather than the gate) normalizes to the
-        // same typed error, so there's a single clear message to show.
-        if (errorCode(err) === CameraErrorCode.GalleryPermissionDenied) {
-          return throwError(() => new GalleryPermissionDeniedError());
-        }
-        return throwError(() => err);
-      }),
     );
   }
 
@@ -148,35 +154,38 @@ export class MediaPickerService {
     if (!this.captureSupported) {
       return of(null);
     }
-    return defer(() => from(this.ensureCameraAccess())).pipe(
-      switchMap(() => from(open())),
-      switchMap((result) =>
-        from(
-          // Awaited only now: a cancel rejects `open()` above and never reaches this.
-          Promise.resolve(options.maxBytes ?? null).then((maxBytes) =>
-            toCapturedMedia(kind, result, maxBytes),
+    // The camera is Trinity's own system UI: App lock's away timer ignores it.
+    return this.systemUi.track(
+      defer(() => from(this.ensureCameraAccess())).pipe(
+        switchMap(() => from(open())),
+        switchMap((result) =>
+          from(
+            // Awaited only now: a cancel rejects `open()` above and never reaches this.
+            Promise.resolve(options.maxBytes ?? null).then((maxBytes) =>
+              toCapturedMedia(kind, result, maxBytes),
+            ),
           ),
         ),
+        catchError((err: unknown): Observable<CapturedMedia | null> => {
+          const code = errorCode(err);
+          if (
+            code === CameraErrorCode.TakePhotoCancelled ||
+            code === CameraErrorCode.RecordVideoCancelled
+          ) {
+            return of(null);
+          }
+          if (code === CameraErrorCode.CameraPermissionDenied) {
+            return throwError(() => new CapturePermissionDeniedError('camera'));
+          }
+          if (code === CameraErrorCode.GalleryPermissionDenied) {
+            return throwError(() => new CapturePermissionDeniedError('photos'));
+          }
+          if (code === CameraErrorCode.NoCameraAvailable) {
+            return throwError(() => new NoCameraError());
+          }
+          return throwError(() => err);
+        }),
       ),
-      catchError((err: unknown): Observable<CapturedMedia | null> => {
-        const code = errorCode(err);
-        if (
-          code === CameraErrorCode.TakePhotoCancelled ||
-          code === CameraErrorCode.RecordVideoCancelled
-        ) {
-          return of(null);
-        }
-        if (code === CameraErrorCode.CameraPermissionDenied) {
-          return throwError(() => new CapturePermissionDeniedError('camera'));
-        }
-        if (code === CameraErrorCode.GalleryPermissionDenied) {
-          return throwError(() => new CapturePermissionDeniedError('photos'));
-        }
-        if (code === CameraErrorCode.NoCameraAvailable) {
-          return throwError(() => new NoCameraError());
-        }
-        return throwError(() => err);
-      }),
     );
   }
 

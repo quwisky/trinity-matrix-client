@@ -23,6 +23,7 @@
   },
   "capabilities": [
     "accounts",
+    "app-lock",
     "badge",
     "composition",
     "conversations",

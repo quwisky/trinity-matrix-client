@@ -1,6 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
+import { HostSystemUiService } from '@trinity/runtime/host';
 import { render } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -143,6 +144,18 @@ describe('ProfileSettingsComponent', () => {
       ?.click();
 
     expect(clickSpy).toHaveBeenCalled();
+  });
+
+  it('counts the profile picture chooser as Trinity’s own system UI while it is open', async () => {
+    const { container } = await renderPage();
+    const ui = TestBed.inject(HostSystemUiService);
+    const input = container.querySelector<HTMLInputElement>(
+      '[data-testid=avatar-input]',
+    ) as HTMLInputElement;
+    input.click();
+    expect(ui.active()).toBe(true);
+    input.dispatchEvent(new Event('cancel'));
+    expect(ui.active()).toBe(false);
   });
 
   it('rejects a non-image avatar file with an error', async () => {

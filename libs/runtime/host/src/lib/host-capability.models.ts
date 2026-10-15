@@ -61,6 +61,12 @@ export interface HostAuthenticationHandoffOperation {
    * client name. Optional: a host without one of its own is "Trinity".
    */
   deviceDisplayName?(): string;
+  /**
+   * Emits when the person closes the host's own sign-in sheet (Custom Tabs, Safari View
+   * Controller). Only a host that signs in through a sheet of its own has it: App lock counts
+   * that sheet as Trinity's system UI. A browser outside Trinity (desktop, web) has none.
+   */
+  readonly sheetClosed?: Observable<void>;
 }
 
 export interface HostDeepLinksOperation {

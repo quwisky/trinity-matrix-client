@@ -8,7 +8,10 @@ import {
   type ConfigEntry,
   type ConfigValidation,
 } from '@trinity/platform-native';
-import { HostFileExportService } from '@trinity/runtime/host';
+import {
+  HostFileExportService,
+  HostSystemUiService,
+} from '@trinity/runtime/host';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, of, throwError } from 'rxjs';
@@ -861,6 +864,18 @@ describe('AdvancedSettingsComponent', () => {
       button(container, 'advanced-import-file')?.click();
 
       expect(click).toHaveBeenCalled();
+    });
+
+    it('counts the import file chooser as Trinity’s own system UI while it is open', async () => {
+      const { container } = await open();
+      const ui = TestBed.inject(HostSystemUiService);
+      const input = container.querySelector<HTMLInputElement>(
+        '[data-testid=advanced-import-file-input]',
+      ) as HTMLInputElement;
+      input.click();
+      expect(ui.active()).toBe(true);
+      input.dispatchEvent(new Event('cancel'));
+      expect(ui.active()).toBe(false);
     });
 
     it('loads a document from a file into the box and checks it', async () => {

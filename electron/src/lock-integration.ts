@@ -55,8 +55,14 @@ export function registerLockIntegration(deps: LockIntegrationDeps): void {
   // The show hold: 'concealed' while hidden or minimised (a painted signal then is ignored,
   // as the frame may be replaced again before the window shows), 'revealing' once shown
   // again (the next painted signal or the timeout reveals it).
-  let hold: 'none' | 'concealed' | 'revealing' = 'none';
+  // 'stalled' once the timeout passed while the renderer could not report: the window then
+  // stays transparent until a renderer paints, responds again or reports the lock off.
+  let hold: 'none' | 'concealed' | 'revealing' | 'stalled' = 'none';
   let reveal: ReturnType<typeof setTimeout> | null = null;
+  // A hung renderer, or one that exited and whose replacement has not spoken yet, cannot say
+  // it painted; revealing on the timeout would show its last frame.
+  let unresponsive = false;
+  let gone = false;
   const watched = new WeakSet<BrowserWindow>();
 
   const trusted = (event: IpcMainEvent): BrowserWindow | null => {
@@ -85,6 +91,15 @@ export function registerLockIntegration(deps: LockIntegrationDeps): void {
     hold = 'none';
     setOpacity(win, 1);
   };
+  const startReveal = (win: BrowserWindow): void => {
+    cancelReveal();
+    hold = 'revealing';
+    reveal = setTimeout(() => {
+      reveal = null;
+      if (state.enabled && (unresponsive || gone)) hold = 'stalled';
+      else show(win);
+    }, SHOW_HOLD_TIMEOUT_MS);
+  };
   const watch = (win: BrowserWindow): void => {
     if (watched.has(win)) return;
     watched.add(win);
@@ -95,9 +110,7 @@ export function registerLockIntegration(deps: LockIntegrationDeps): void {
       setOpacity(win, 0);
     };
     const shown = (): void => {
-      if (hold !== 'concealed') return;
-      hold = 'revealing';
-      reveal = setTimeout(() => show(win), SHOW_HOLD_TIMEOUT_MS);
+      if (hold === 'concealed') startReveal(win);
     };
     // Some restores emit neither show nor restore (e.g. a minimised maximised window on
     // Windows may emit only maximize); start the reveal once the window is visible anyway.
@@ -114,6 +127,19 @@ export function registerLockIntegration(deps: LockIntegrationDeps): void {
     win.on('restore', shown);
     win.on('maximize', maybeShown);
     win.on('focus', maybeShown);
+    unresponsive = false;
+    gone = false;
+    win.on('unresponsive', () => {
+      unresponsive = true;
+    });
+    win.on('responsive', () => {
+      unresponsive = false;
+      if (hold === 'stalled' && !gone) startReveal(win);
+    });
+    win.webContents.on('render-process-gone', () => {
+      gone = true;
+      unresponsive = false;
+    });
   };
   const rebuild = (): void => {
     deps.buildMenu({
@@ -135,7 +161,11 @@ export function registerLockIntegration(deps: LockIntegrationDeps): void {
     const next = parseLockState(raw);
     if (!win || !next) return;
     watch(win);
+    // A renderer that reports is alive again; a stalled hold still waits for its paint.
+    gone = false;
     state = next;
+    // Nothing to cover any more: a hold must not outlive the lock.
+    if (!state.enabled && hold !== 'none') show(win);
     try {
       rebuild();
     } catch {
@@ -147,7 +177,9 @@ export function registerLockIntegration(deps: LockIntegrationDeps): void {
     const win = trusted(event);
     // Only once the window is showing again: a cover painted while hidden (an OS lock, sleep
     // or a renderer-recovery reload) says nothing about the frame the next show reveals.
-    if (win && hold === 'revealing') show(win);
+    if (!win) return;
+    gone = false;
+    if (hold === 'revealing' || hold === 'stalled') show(win);
   });
 
   deps.powerMonitor.on('lock-screen', () => request('system-locked'));

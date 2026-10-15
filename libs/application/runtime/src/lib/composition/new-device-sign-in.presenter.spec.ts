@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
@@ -8,16 +9,24 @@ import {
 } from '@trinity/application/workspace';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { ROOM_KEYS_AT_RISK } from '@trinity/data-access/accounts';
+import {
+  AppLockService,
+  type AppLockStatus,
+} from '@trinity/data-access/app-lock';
 import { NewDeviceSignInPresenter } from './new-device-sign-in.presenter';
 
 const REPLACES =
   'Signing in again starts a new session for @me:hs and deletes its old session’s keys from this device.';
 
 describe('NewDeviceSignInPresenter', () => {
+  let lockStatus: ReturnType<typeof signal<AppLockStatus>>;
+
   beforeEach(() => {
+    lockStatus = signal<AppLockStatus>('off');
     TestBed.configureTestingModule({
       providers: [
         MockProvider(TrnAlertService),
+        MockProvider(AppLockService, { status: lockStatus.asReadonly() }),
         MockProvider(WorkspaceNavigationService, {
           navigate: vi.fn(() =>
             of({ kind: 'ready' as const, change: 'committed' as const }),
@@ -97,5 +106,23 @@ describe('NewDeviceSignInPresenter', () => {
       confirmText: 'Sign in anyway',
       variant: 'danger',
     });
+  });
+
+  it('asks only once App lock is unlocked, when a sign-in completes behind the lock', async () => {
+    // A sign-in callback (OIDC, SSO) can complete while the app is locked (spec §2).
+    lockStatus.set('locked');
+    const alert = TestBed.inject(TrnAlertService);
+    vi.mocked(alert.confirm$).mockReturnValue(of(true));
+    let answer: boolean | null = null;
+    presenter()
+      .confirm({ userId: '@me:hs', roomKeysBackedUp: null })
+      .subscribe((confirmed) => (answer = confirmed));
+    TestBed.tick();
+    expect(alert.confirm$).not.toHaveBeenCalled();
+
+    lockStatus.set('unlocked');
+    TestBed.tick();
+    expect(alert.confirm$).toHaveBeenCalledOnce();
+    expect(answer).toBe(true);
   });
 });

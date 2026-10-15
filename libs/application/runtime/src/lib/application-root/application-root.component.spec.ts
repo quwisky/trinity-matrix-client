@@ -11,6 +11,8 @@ import {
   TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import {
   TrustService,
@@ -18,15 +20,20 @@ import {
   type TrustStatus,
 } from '@trinity/data-access/trust';
 import {
+  AppRestartService,
   BUG_REPORT_LAUNCHER,
   BUILD_INFO,
   SessionLockService,
   type SessionLockState,
 } from '@trinity/platform-native';
+import {
+  HostLockIntegrationService,
+  NO_USER_PRESENCE,
+} from '@trinity/runtime/host';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, firstValueFrom, of, type Observable } from 'rxjs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { EMPTY, NEVER, Observable, firstValueFrom, of } from 'rxjs';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type {
   ApplicationRecoveryOutcome,
   ApplicationRuntimeState,
@@ -36,6 +43,7 @@ import { SystemStatusVisibilityService } from '../system-status-visibility.servi
 import { CapabilityHealthService } from '../capability-health.service';
 import { ApplicationRootComponent } from './application-root.component';
 import { TrinityApplicationSessionAdapter } from '../composition/trinity-application-session.adapter';
+import { AppLockLifecycleBinding } from '../composition/app-lock-lifecycle.binding';
 
 @Component({
   standalone: true,
@@ -53,12 +61,21 @@ function settle(fixture: { detectChanges(): void }): void {
 }
 
 describe('ApplicationRootComponent', () => {
+  beforeAll(() => {
+    // jsdom has no top layer; record App lock's modal as an open attribute.
+    HTMLDialogElement.prototype.showModal ??= function (
+      this: HTMLDialogElement,
+    ) {
+      this.setAttribute('open', '');
+    };
+  });
   afterEach(() => vi.useRealTimers());
 
   async function setup(
     initial: ApplicationRuntimeState,
     routes: Routes = [],
     lock: SessionLockState = 'held',
+    appLocked = false,
   ) {
     const state = signal(initial);
     const trust = signal<TrustStatus>('ready');
@@ -71,6 +88,10 @@ describe('ApplicationRootComponent', () => {
     const openReport = vi.fn();
     const lockState = signal<SessionLockState>(lock);
     const requestHandover = vi.fn();
+    let lockLifetimeStarted = 0;
+    const lockLifetime = new Observable<never>(() => {
+      lockLifetimeStarted += 1;
+    });
     const rendered = await render(ApplicationRootComponent, {
       providers: [
         provideRouter(routes),
@@ -110,6 +131,28 @@ describe('ApplicationRootComponent', () => {
           state: lockState.asReadonly(),
           requestHandover,
         }),
+        MockProvider(AppLockLifecycleBinding, {
+          run: () => lockLifetime,
+          visits: EMPTY,
+        }),
+        MockProvider(AppLockService, {
+          appName: 'Trinity',
+          locked: signal(appLocked).asReadonly(),
+          status: signal(
+            appLocked ? ('locked' as const) : ('off' as const),
+          ).asReadonly(),
+          support: signal(NO_USER_PRESENCE).asReadonly(),
+          systemAvailable: signal(false).asReadonly(),
+          pinState: signal<'ready'>('ready').asReadonly(),
+          recoveryOnly: signal(false).asReadonly(),
+          systemWaitUntil: signal(null).asReadonly(),
+          refreshSupport: () => of(NO_USER_PRESENCE),
+        }),
+        MockProvider(HostLockIntegrationService, {
+          coverPainted: () => of({ kind: 'completed' as const }),
+        }),
+        MockProvider(AccountRuntimeService),
+        MockProvider(AppRestartService),
       ],
     });
     return {
@@ -123,12 +166,46 @@ describe('ApplicationRootComponent', () => {
       openReport,
       lockState,
       requestHandover,
+      lockLifetimeStarted: () => lockLifetimeStarted,
       router: rendered.fixture.debugElement.injector.get(Router),
       health: rendered.fixture.debugElement.injector.get(
         CapabilityHealthService,
       ),
     };
   }
+
+  it('runs App lock’s away timer from the first render, before anyone signs in', async () => {
+    const { lockLifetimeStarted } = await setup({ phase: 'stopped' });
+    expect(lockLifetimeStarted()).toBe(1);
+  });
+
+  it('mounts App lock’s cover outside the startup screens, closed while unlocked', async () => {
+    const { container } = await setup({ phase: 'stopped' });
+    const workspace = container.querySelector('div') as HTMLElement;
+    const cover = document.querySelector('trn-app-lock-cover');
+    expect(cover).toBeTruthy();
+    // In its own <body> child, which an open CDK dialog's aria-hidden walk skips. A cover
+    // inside a control-flow block would be put back into the root when the block renders.
+    expect(cover?.parentElement).toBe(document.body);
+    expect(container.contains(cover)).toBe(false);
+    expect(screen.getByTestId('app-lock-cover').hasAttribute('open')).toBe(
+      false,
+    );
+    expect(workspace.style.visibility).toBe('');
+  });
+
+  it('hides the workspace and opens the cover in the first frame when the app starts locked', async () => {
+    const { container } = await setup({ phase: 'stopped' }, [], 'held', true);
+    const workspace = container.querySelector('div') as HTMLElement;
+    expect(workspace.contains(screen.getByTestId('app-booting'))).toBe(true);
+    expect(workspace.style.visibility).toBe('hidden');
+    expect(screen.getByTestId('app-lock-cover').hasAttribute('open')).toBe(
+      true,
+    );
+    expect(workspace.contains(screen.getByTestId('app-lock-cover'))).toBe(
+      false,
+    );
+  });
 
   it('keeps the healthy fallback on login and removes it across every shell URL', async () => {
     const { fixture, router, getByTestId, queryByTestId } = await setup(

@@ -64,6 +64,14 @@ export function presenceReason(raw: unknown): string | null {
 }
 
 /**
+ * macOS shows the reason as "<App> is trying to <reason>", so "Unlock Trinity Next" must read
+ * "unlock Trinity Next" there. Only the first letter changes: the app's name keeps its case.
+ */
+export function touchIdReason(reason: string): string {
+  return reason.charAt(0).toLowerCase() + reason.slice(1);
+}
+
+/**
  * macOS Touch ID. Electron's prompt evaluates user presence, so the sheet also offers the
  * Mac's password. It rejects for a cancel and for a failed match alike, and macOS throttles
  * failures itself, so a rejection is `cancelled` and never feeds Trinity's delay.
@@ -82,7 +90,7 @@ export function touchIdDriver(
         return { kind: 'unavailable', reason: 'not-supported' };
       }
       try {
-        await prefs.promptTouchID(reason);
+        await prefs.promptTouchID(touchIdReason(reason));
         return { kind: 'verified' };
       } catch {
         return { kind: 'cancelled' };

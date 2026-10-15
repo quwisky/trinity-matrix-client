@@ -1,4 +1,6 @@
+import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
@@ -53,11 +55,20 @@ describe('ShortcutsSectionComponent', () => {
     delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
   });
 
-  async function setup() {
+  async function setup(
+    locked = signal(false),
+    lock: { enabled?: boolean; offered?: boolean; appName?: string } = {},
+  ) {
     const rendered = await render(ShortcutsSectionComponent, {
       providers: [
         MockProvider(TrnAlertService, { confirm$: confirm }),
         MockProvider(TrnToastService, { show: toast }),
+        MockProvider(AppLockService, {
+          locked: locked.asReadonly(),
+          enabled: signal(lock.enabled ?? false).asReadonly(),
+          offered: signal(lock.offered ?? true).asReadonly(),
+          appName: lock.appName ?? 'Trinity',
+        }),
       ],
     });
     const svc = rendered.fixture.debugElement.injector.get(
@@ -113,6 +124,25 @@ describe('ShortcutsSectionComponent', () => {
     });
   });
 
+  it('records no chord while App lock is locked', async () => {
+    const locked = signal(false);
+    const { container, fixture, svc } = await setup(locked);
+    container
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="shortcut-edit-switcher.open"]',
+      )!
+      .click();
+    fixture.detectChanges();
+
+    locked.set(true); // the lock arrives while the row is capturing
+    pressWindow({ key: 'p', code: 'KeyP', ctrlKey: true });
+    expect(svc.binding('switcher.open')?.key).toBe('k');
+
+    locked.set(false);
+    pressWindow({ key: 'p', code: 'KeyP', ctrlKey: true });
+    expect(svc.binding('switcher.open')?.key).toBe('p');
+  });
+
   it('rejects a modifier-less chord with a hint', async () => {
     const { container, fixture, svc } = await setup();
     container
@@ -144,6 +174,211 @@ describe('ShortcutsSectionComponent', () => {
     pressWindow({ key: 't', code: 'KeyT', ctrlKey: true }); // Ctrl+T is reserved
 
     expect(toast).toHaveBeenCalledWith(expect.stringContaining('desktop app'));
+  });
+
+  describe('Lock Trinity', () => {
+    const lockRow = (root: HTMLElement) =>
+      root.querySelector<HTMLElement>('[data-testid="shortcut-lock.now"]');
+
+    it('lists it under General, unset, with a hint while App lock is off', async () => {
+      const { container } = await setup();
+
+      const general = container.querySelector(
+        '[data-testid="shortcut-group-general"]',
+      );
+      expect(general?.textContent?.trim()).toBe('General');
+      const row = lockRow(container);
+      expect(general?.nextElementSibling?.contains(row)).toBe(true);
+      expect(row?.textContent).toContain('Lock Trinity');
+      expect(row?.textContent).toContain('Available when App lock is on');
+      expect(
+        row?.querySelector('[data-testid="shortcut-binding"]')?.textContent,
+      ).toContain('Unset');
+      expect(row?.querySelector('kbd')).toBeNull();
+      // Unassigned is its default, so there is nothing to reset.
+      expect(
+        container.querySelector('[data-testid="shortcut-reset-lock.now"]'),
+      ).toBeNull();
+      expect(
+        container.querySelector('[data-testid="shortcuts-reset-all"]'),
+      ).toBeNull();
+    });
+
+    it('names the running app and drops the hint while App lock is on', async () => {
+      const { container } = await setup(signal(false), {
+        enabled: true,
+        appName: 'Trinity Next',
+      });
+
+      const row = lockRow(container);
+      expect(row?.textContent).toContain('Lock Trinity Next');
+      expect(row?.textContent).not.toContain('Available when App lock is on');
+    });
+
+    it('is not listed where App lock is not offered', async () => {
+      const { container } = await setup(signal(false), { offered: false });
+
+      expect(lockRow(container)).toBeNull();
+      expect(
+        container.querySelector('[data-testid="shortcut-group-general"]'),
+      ).toBeNull();
+    });
+
+    it('offers no Reset all for an unlisted binding alone', async () => {
+      const { container, fixture, svc } = await setup(signal(false), {
+        offered: false,
+      });
+      // Arrived through a config import on a host without App lock.
+      svc.setOverrides({
+        'lock.now': { accel: true, alt: false, shift: true, key: 'l' },
+      });
+      fixture.detectChanges();
+
+      expect(
+        container.querySelector('[data-testid="shortcuts-reset-all"]'),
+      ).toBeNull();
+      svc.resetAll();
+    });
+
+    it('binds a chord, shows it, and Reset unassigns it again', async () => {
+      const { container, fixture, svc } = await setup();
+      container
+        .querySelector<HTMLButtonElement>(
+          '[data-testid="shortcut-edit-lock.now"]',
+        )!
+        .click();
+      fixture.detectChanges();
+
+      pressWindow({ key: 'l', code: 'KeyL', ctrlKey: true, shiftKey: true });
+      fixture.detectChanges();
+
+      expect(svc.binding('lock.now')).toEqual({
+        accel: true,
+        alt: false,
+        shift: true,
+        key: 'l',
+      });
+      expect(lockRow(container)?.querySelectorAll('kbd').length).toBe(3);
+      // The capture ended with the bind, so the new chord works at once.
+      expect(
+        svc.resolve(
+          new KeyboardEvent('keydown', {
+            key: 'l',
+            ctrlKey: true,
+            shiftKey: true,
+          }),
+        ),
+      ).toEqual({ id: 'lock.now' });
+
+      container
+        .querySelector<HTMLButtonElement>(
+          '[data-testid="shortcut-reset-lock.now"]',
+        )!
+        .click();
+      fixture.detectChanges();
+
+      expect(svc.binding('lock.now')).toBeNull();
+      expect(
+        lockRow(container)?.querySelector('[data-testid="shortcut-binding"]')
+          ?.textContent,
+      ).toContain('Unset');
+    });
+
+    it('names it by the running app when another shortcut takes its chord', async () => {
+      const { container, fixture, svc } = await setup(signal(false), {
+        enabled: true,
+        appName: 'Trinity Next',
+      });
+      svc.rebind('lock.now', {
+        accel: true,
+        alt: false,
+        shift: true,
+        key: 'l',
+      });
+      container
+        .querySelector<HTMLButtonElement>(
+          '[data-testid="shortcut-edit-room.search"]',
+        )!
+        .click();
+      fixture.detectChanges();
+
+      pressWindow({ key: 'l', code: 'KeyL', ctrlKey: true, shiftKey: true });
+      fixture.detectChanges();
+
+      expect(toast).toHaveBeenCalledWith(
+        'Removed from “Lock Trinity Next” (now unset).',
+      );
+      expect(
+        lockRow(container)?.querySelector('[data-testid="shortcut-binding"]')
+          ?.textContent,
+      ).toContain('Unset');
+    });
+  });
+
+  it('keeps every shortcut quiet while a row captures a chord', async () => {
+    const { container, fixture, svc } = await setup();
+    svc.rebind('lock.now', {
+      accel: true,
+      alt: false,
+      shift: true,
+      key: 'l',
+    });
+    const lockChord = new KeyboardEvent('keydown', {
+      key: 'l',
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    container
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="shortcut-edit-room.search"]',
+      )!
+      .click();
+    fixture.detectChanges();
+
+    // The page's handler would lock the app with this chord: while capturing it resolves
+    // to nothing, so pressing it rebinds instead.
+    expect(svc.resolve(lockChord)).toBeNull();
+
+    container
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="capture-hint"] + button',
+      )!
+      .click();
+    fixture.detectChanges();
+    expect(svc.resolve(lockChord)).toEqual({ id: 'lock.now' });
+  });
+
+  it('stops capturing on Escape', async () => {
+    const { container, fixture, svc } = await setup();
+    container
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="shortcut-edit-room.search"]',
+      )!
+      .click();
+    fixture.detectChanges();
+    const ctrlK = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true });
+    expect(svc.resolve(ctrlK)).toBeNull();
+
+    pressWindow({ key: 'Escape', code: 'Escape' });
+    fixture.detectChanges();
+
+    expect(container.querySelector('[data-testid="capture-hint"]')).toBeNull();
+    expect(svc.resolve(ctrlK)).toEqual({ id: 'switcher.open' });
+  });
+
+  it('stops capturing when the section closes mid-capture', async () => {
+    const { container, fixture, svc } = await setup();
+    container
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="shortcut-edit-room.search"]',
+      )!
+      .click();
+    fixture.detectChanges();
+
+    fixture.destroy();
+
+    const ctrlK = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true });
+    expect(svc.resolve(ctrlK)).toEqual({ id: 'switcher.open' });
   });
 
   it('resets one shortcut and, after confirm, all of them', async () => {

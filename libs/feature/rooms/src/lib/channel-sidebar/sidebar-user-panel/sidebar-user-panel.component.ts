@@ -9,6 +9,7 @@ import {
 import { TitleBarState } from '@trinity/application/workspace';
 import { AvatarComponent, TrnBadge } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { type IdentityProfile } from '@trinity/data-access/identity';
 import { type AccountTrustSummary } from '@trinity/data-access/trust';
@@ -69,8 +70,14 @@ const PRESENCE_NAMES = {
   styleUrl: './sidebar-user-panel.component.scss',
 })
 export class SidebarUserPanelComponent {
+  private readonly appLock = inject(AppLockService);
+
   /** The desktop title row carries system status itself, so the panel then drops it. */
   protected readonly titleBar = inject(TitleBarState);
+  /** "Lock Trinity" is offered only while App lock is on (decision 6). */
+  protected readonly appLockOn = this.appLock.enabled;
+  /** "Trinity", or "Trinity Next" in the desktop prerelease. */
+  protected readonly appName = this.appLock.appName;
 
   /** The signed-in user (name + handle + avatar) for the panel trigger. */
   readonly user = input<IdentityProfile>({
@@ -96,10 +103,11 @@ export class SidebarUserPanelComponent {
   /**
    * Present the account picker as a dialog rather than a submenu.
    *
-   * Set by the host from the layout, not read here: this component stays presentational
-   * (its only injection is the title-bar state). Below the `md` breakpoint the sidebar is a full-screen page and this
-   * panel is a bar across the bottom of the viewport, so a submenu flying out beside the
-   * account menu has nowhere to go and lands back on top of it.
+   * Set by the host from the layout, not read here: the component doesn't measure the
+   * viewport (it reads only the title-bar state and App lock). Below the `md` breakpoint the
+   * sidebar is a full-screen page and this panel is a bar across the bottom of the viewport,
+   * so a submenu flying out beside the account menu has nowhere to go and lands back on top
+   * of it.
    */
   readonly pickAccountsInDialog = input(false);
   /** The picker is only meaningful with more than one account signed in. */
@@ -144,6 +152,11 @@ export class SidebarUserPanelComponent {
   readonly logout = output<string>();
   /** Cap an unread count for a switcher badge, Discord-style ("99+"). */
   readonly badgeLabel = unreadBadgeLabel;
+
+  /** Lock now; the cover takes over at once. */
+  protected lockNow(): void {
+    this.appLock.lockNow();
+  }
 
   /** First letter of an account's display name, for its avatar fallback. */
   initialFor(account: AccountSummary): string {

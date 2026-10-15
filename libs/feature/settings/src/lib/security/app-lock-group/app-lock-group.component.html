@@ -1,0 +1,179 @@
+@switch (view()) {
+  @case ('controls') {
+    <trn-settings-group
+      title="App lock"
+      [description]="groupDescription"
+      data-testid="app-lock-group"
+    >
+      <trn-settings-row
+        [label]="'Lock ' + appName"
+        [description]="switchDescription()"
+        for="app-lock-switch"
+        [divider]="enabled()"
+        data-testid="app-lock-enabled"
+      >
+        <trn-switch
+          inputId="app-lock-switch"
+          aria-describedby="app-lock-switch-description"
+          [checked]="enabled()"
+          [disabled]="busy()"
+          (checkedChange)="toggle($event)"
+          data-testid="app-lock-switch"
+        />
+      </trn-settings-row>
+
+      @if (enabled()) {
+        <trn-settings-row
+          label="Lock after"
+          labelId="app-lock-after-label"
+          data-testid="app-lock-after"
+        >
+          <trn-select
+            aria-labelledby="app-lock-after-label"
+            [options]="lockAfterOptions"
+            [value]="shownLockAfter()"
+            [disabled]="busy()"
+            (valueChange)="changeLockAfter($event)"
+            data-testid="app-lock-after-select"
+          />
+        </trn-settings-row>
+        <trn-settings-row
+          [label]="appName + ' PIN'"
+          [description]="pinDescription()"
+          [divider]="false"
+        >
+          <button
+            trnBtn
+            size="sm"
+            presentation="outline"
+            type="button"
+            [disabled]="busy() || !canChangePin()"
+            (click)="changePin()"
+            data-testid="app-lock-change-pin"
+          >
+            Change PIN
+          </button>
+        </trn-settings-row>
+
+        @if (noScreenLock()) {
+          <p
+            class="m-0 py-3 text-sm text-muted-foreground"
+            data-testid="app-lock-screen-lock-hint"
+          >
+            This device has no screen lock, so {{ appName }} unlocks with your
+            PIN only. Setting a screen lock in your device’s settings protects
+            the rest of the device too.
+          </p>
+        }
+        @if (pinState() === 'unreadable') {
+          <ng-container
+            *ngTemplateOutlet="
+              retry;
+              context: { $implicit: pinUnreadableNote(), clear: false }
+            "
+          />
+        } @else if (noPinToCheck()) {
+          <p
+            class="m-0 py-3 text-sm text-muted-foreground"
+            data-testid="app-lock-no-pin"
+          >
+            {{ noPinNote }}
+          </p>
+        } @else if (pinState() === 'not-supported') {
+          <p
+            class="m-0 py-3 text-sm text-muted-foreground"
+            data-testid="app-lock-keyring"
+          >
+            {{ keyringNote }}
+          </p>
+        }
+      }
+
+      <ng-container *ngTemplateOutlet="messages" />
+    </trn-settings-group>
+  }
+  @case ('pin-unreadable') {
+    <!-- A PIN store that exists but can't be read (a damaged record, a locked keyring) while
+         App lock is off. The host refuses a new PIN over it, so there is no switch: Try again
+         first, then clearing it where the setting was read (ruling T16-1), else the reset. -->
+    <trn-settings-group title="App lock" data-testid="app-lock-group">
+      <ng-container
+        *ngTemplateOutlet="
+          retry;
+          context: {
+            $implicit: storedPinUnreadableNote(),
+            clear: canClearPin(),
+          }
+        "
+      />
+      <ng-container *ngTemplateOutlet="messages" />
+    </trn-settings-group>
+  }
+  @case ('keyring') {
+    <!-- No PIN store: a desktop without usable encryption (Linux `basic_text`). -->
+    <trn-settings-group title="App lock" data-testid="app-lock-group">
+      <p
+        class="m-0 py-3 text-sm text-muted-foreground"
+        data-testid="app-lock-keyring"
+      >
+        {{ keyringNote }}
+      </p>
+    </trn-settings-group>
+  }
+}
+
+<ng-template #retry let-note let-clear="clear">
+  <div
+    class="flex flex-col items-start gap-2 py-3"
+    data-testid="app-lock-pin-unreadable"
+  >
+    <p class="m-0 text-sm text-muted-foreground">{{ note }}</p>
+    <div class="flex flex-wrap gap-2">
+      <button
+        trnBtn
+        size="sm"
+        presentation="outline"
+        type="button"
+        [disabled]="busy()"
+        (click)="retryPin()"
+        data-testid="app-lock-retry"
+      >
+        Try again
+      </button>
+      @if (clear) {
+        <button
+          trnBtn
+          size="sm"
+          presentation="outline"
+          type="button"
+          [disabled]="busy()"
+          (click)="clearStoredPin()"
+          data-testid="app-lock-clear-pin"
+        >
+          Clear the stored PIN
+        </button>
+      }
+    </div>
+  </div>
+</ng-template>
+
+<ng-template #messages>
+  @if (error(); as message) {
+    <p
+      class="m-0 py-3 text-sm text-danger"
+      role="alert"
+      data-testid="app-lock-error"
+    >
+      {{ message }}
+    </p>
+  }
+  <!-- Present before it has anything to say, so the live region is heard; visible once it does. -->
+  <p
+    class="m-0 pb-3 text-sm text-muted-foreground"
+    [class.sr-only]="!status()"
+    role="status"
+    data-testid="app-lock-status"
+  >
+    {{ status() }}
+  </p>
+</ng-template>

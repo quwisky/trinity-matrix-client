@@ -236,9 +236,13 @@
     <input
       #keyFile
       type="file"
+      trnTrackFileChooser
       accept=".txt,text/plain"
       hidden
       (change)="onKeyFile($event)"
     />
   </trn-settings-group>
+
+  <!-- App lock: this device's privacy screen. Shown only where the host has it. -->
+  <trn-app-lock-group />
 </div>

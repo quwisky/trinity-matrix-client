@@ -40,6 +40,7 @@ import {
   desktopAppIdentity,
   getTrinityDesktopBridge,
 } from '../trinity-desktop-bridge';
+import { browserSheetClosed } from '../browser-sheet-closed';
 import { FileSaveService } from '../host-media/file-save.service';
 import { notificationPresentationProvider } from './host-notification-presentation.adapters';
 import { userPresenceProvider } from './host-user-presence.adapters';
@@ -132,6 +133,9 @@ export class CapacitorHostOperationAdapter implements HostOperationsAdapter {
       catchError(() => of(rejected('authentication-handoff-failed'))),
     );
   }
+
+  /** Custom Tabs and the Safari View Controller are the app's own sheet. */
+  readonly sheetClosed = browserSheetClosed;
 
   /**
    * The launch URL describes the process start; re-attached listeners must not replay it.

@@ -1,5 +1,9 @@
-import { signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TrnSurfaceService } from '@trinity/components/overlay';
+import {
+  AppLockService,
+  type AppLockStatus,
+} from '@trinity/data-access/app-lock';
 import {
   TrustVerificationService,
   type VerificationView,
@@ -9,7 +13,15 @@ import { MockProvider } from 'ng-mocks';
 import { Observable, of, Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ENCRYPTION_DIALOG_COMPONENTS } from '../application-dialog-loaders';
+import { AppLockDialogGate } from '../composition/app-lock-dialog.gate';
 import { VerificationHostComponent } from './verification-host.component';
+
+/** Stands in for the lazy verification page: one control to take focus. */
+@Component({
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `<button type="button">Accept</button>`,
+})
+class VerifyPageProbeComponent {}
 
 function incoming(): VerificationView {
   return {
@@ -30,15 +42,21 @@ function incoming(): VerificationView {
 
 async function setup(
   verify: () => Observable<unknown> = () => of(class StubVerify {}),
+  options: { status?: AppLockStatus; realSurfaces?: boolean } = {},
 ) {
   const active = signal<VerificationView | null>(null);
+  const status = signal<AppLockStatus>(options.status ?? 'off');
+  const dismiss = vi.fn(() => active.set(null));
   const closed = new Subject<void>();
   const close = vi.fn();
   const open = vi.fn().mockReturnValue({ closed, close });
   const { fixture } = await render(VerificationHostComponent, {
     providers: [
-      MockProvider(TrustVerificationService, { active }),
-      MockProvider(TrnSurfaceService, { open }),
+      MockProvider(TrustVerificationService, { active, dismiss }),
+      MockProvider(AppLockService, { status: status.asReadonly() }),
+      ...(options.realSurfaces
+        ? []
+        : [MockProvider(TrnSurfaceService, { open })]),
       {
         provide: ENCRYPTION_DIALOG_COMPONENTS,
         useValue: {
@@ -51,6 +69,9 @@ async function setup(
   return {
     fixture,
     active,
+    status,
+    dismiss,
+    gate: fixture.debugElement.injector.get(AppLockDialogGate),
     open,
     close,
   };
@@ -110,5 +131,119 @@ describe('VerificationHostComponent', () => {
     fixture.detectChanges();
 
     expect(close).toHaveBeenCalledOnce();
+  });
+
+  describe('while App lock covers the app', () => {
+    it('holds an incoming request until the person unlocks', async () => {
+      const { fixture, active, status, open } = await setup(undefined, {
+        status: 'locked',
+      });
+      active.set(incoming());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(open).not.toHaveBeenCalled();
+
+      status.set('unlocked');
+      fixture.detectChanges();
+      await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+    });
+
+    it('holds a cross-user request too', async () => {
+      const { fixture, active, status, open } = await setup(undefined, {
+        status: 'locked',
+      });
+      active.set({ ...incoming(), incoming: false, isSelfVerification: false });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(open).not.toHaveBeenCalled();
+
+      status.set('unlocked');
+      fixture.detectChanges();
+      await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+    });
+
+    it('opens only once the lock screen has closed', async () => {
+      const { fixture, active, status, gate, open } = await setup(undefined, {
+        status: 'locked',
+      });
+      gate.coverShown(true);
+      active.set(incoming());
+      status.set('unlocked');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(open).not.toHaveBeenCalled();
+
+      gate.coverShown(false);
+      fixture.detectChanges();
+      await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+    });
+
+    it('drops a held request that was cancelled or timed out meanwhile', async () => {
+      const { fixture, active, status, dismiss, open } = await setup(
+        undefined,
+        { status: 'locked' },
+      );
+      active.set(incoming());
+      fixture.detectChanges();
+      active.set({
+        ...incoming(),
+        stage: 'cancelled',
+        cancelReason: 'The verification timed out.',
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(dismiss).toHaveBeenCalledOnce();
+
+      status.set('unlocked');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(open).not.toHaveBeenCalled();
+    });
+
+    it('keeps a dialog already open when the app locks', async () => {
+      const { fixture, active, status, open, close } = await setup();
+      active.set(incoming());
+      fixture.detectChanges();
+      await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+
+      status.set('locked');
+      fixture.detectChanges();
+      active.set({ ...incoming(), stage: 'cancelled' });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      // An open dialog shows its own cancelled state; the person dismisses it after unlocking.
+      expect(close).not.toHaveBeenCalled();
+      expect(open).toHaveBeenCalledOnce();
+    });
+
+    it('moves focus into the dialog as it opens after unlock', async () => {
+      const { fixture, active, status, gate } = await setup(
+        () => of(VerifyPageProbeComponent),
+        { status: 'locked', realSurfaces: true },
+      );
+      const before = document.createElement('button');
+      before.textContent = 'Open room';
+      document.body.append(before);
+      gate.coverShown(true);
+      active.set(incoming());
+      status.set('unlocked');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(document.querySelector('.cdk-dialog-container')).toBeNull();
+
+      // The lock screen's native close puts focus back where it was before the lock.
+      before.focus();
+      gate.coverShown(false);
+      fixture.detectChanges();
+      await vi.waitFor(() =>
+        expect(
+          document
+            .querySelector('.cdk-dialog-container')
+            ?.contains(document.activeElement),
+        ).toBe(true),
+      );
+      expect(document.activeElement).not.toBe(before);
+      before.remove();
+    });
   });
 });

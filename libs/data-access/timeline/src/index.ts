@@ -60,3 +60,4 @@ export * from './lib/message-presentation';
 export * from './lib/privacy-preferences';
 export * from './lib/appearance-preferences';
 export * from './lib/composer-expression-tab.preference';
+export * from './lib/conversation-attention.port';

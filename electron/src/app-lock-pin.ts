@@ -358,7 +358,10 @@ const NO_STORE = { kind: 'not-supported' } as const;
  * The desktop Trinity PIN: one record, encrypted with safeStorage, read and written by
  * the main process only. A record that exists but cannot be read is `unavailable`, never
  * "no PIN": treating it as absent would let a damaged file open the lock, and setting a
- * new PIN over it would skip the full reset. Only {@link clear} removes it. Without usable
+ * new PIN over it would skip the full reset, so `set` refuses it. Only {@link clear} removes
+ * it: the full reset, turning the lock off, and Settings, which the renderer allows only
+ * while App lock is readably off or after a fresh system-prompt check (`AppLockService`
+ * `clearUnreadablePin` and `changePin`; ruling T16-1). Without usable
  * encryption (none at all, or Linux `basic_text`) and with no file, there is no PIN store
  * (`not-supported`), so a lock that cannot be read does not ask for a PIN never set.
  *
@@ -438,7 +441,7 @@ export class PinVerifier {
     });
   }
 
-  /** Remove the record, readable or not; the full reset's way past a damaged file. */
+  /** Remove the record, readable or not; the way past a damaged file (see the class doc). */
   clear(): 'completed' | 'unavailable' {
     this.generation += 1;
     try {

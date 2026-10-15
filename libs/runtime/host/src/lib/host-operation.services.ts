@@ -1,5 +1,17 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
-import { EMPTY, Observable, defer, of } from 'rxjs';
+import {
+  EMPTY,
+  NEVER,
+  Observable,
+  Subscription,
+  defer,
+  filter,
+  finalize,
+  merge,
+  of,
+  takeUntil,
+  tap,
+} from 'rxjs';
 import {
   type HostAuthenticationHandoffOperation,
   type HostBackOperation,
@@ -73,11 +85,45 @@ const unavailableOutcome = (): HostOperationOutcome => unavailableSupport();
 /** What a new Matrix device is called when the host does not name it. */
 const DEFAULT_DEVICE_DISPLAY_NAME = 'Trinity';
 
+/**
+ * Trinity's in-app browser sheet (Custom Tabs, Safari View Controller) as its own system UI,
+ * so App lock never locks behind it: sign-in, and the account provider's pages opened from
+ * Settings or an identity reset. The host shows one sheet at a time, so they share one count.
+ * It runs from the moment the sheet opens until the first of: a link arriving back, Trinity
+ * closing the sheet, `closed` (the host reporting the person closed it), or the app returning
+ * to the foreground, which also ends a count whose other ends were missed.
+ */
+@Injectable({ providedIn: 'root' })
+export class HostBrowserSheetService {
+  private readonly systemUi = inject(HostSystemUiService);
+  private readonly lifecycle = inject(HostLifecycleService);
+  private span: Subscription | null = null;
+
+  /** A sheet is opening; a sheet still counted is replaced. */
+  begin(closed: Observable<unknown>): void {
+    this.end();
+    const back = this.lifecycle.events.pipe(
+      filter((event) => event.kind === 'active'),
+    );
+    this.span = this.systemUi
+      .track(NEVER)
+      .pipe(takeUntil(merge(closed, back)))
+      .subscribe();
+  }
+
+  /** The sheet has closed, or never opened. */
+  end(): void {
+    this.span?.unsubscribe();
+    this.span = null;
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class HostAuthenticationHandoffService implements HostAuthenticationHandoffOperation {
   private readonly adapter = inject(HOST_AUTHENTICATION_HANDOFF_OPERATION, {
     optional: true,
   });
+  private readonly sheet = inject(HostBrowserSheetService);
 
   callback(request: { readonly webUrl: string; readonly appUrl: string }): {
     readonly url: string;
@@ -92,7 +138,22 @@ export class HostAuthenticationHandoffService implements HostAuthenticationHando
   }
 
   open(request: { readonly url: string }): Observable<HostOperationOutcome> {
-    return this.adapter?.open(request) ?? defer(() => of(unavailableOutcome()));
+    const adapter = this.adapter;
+    if (!adapter) return defer(() => of(unavailableOutcome()));
+    const closed = adapter.sheetClosed;
+    if (!closed) return adapter.open(request);
+    return defer(() => {
+      // From before the sheet shows: the host's open resolves only once it is up.
+      this.sheet.begin(closed);
+      return adapter.open(request).pipe(
+        tap({
+          next: (outcome) => {
+            if (outcome.kind !== 'completed') this.sheet.end();
+          },
+          error: () => this.sheet.end(),
+        }),
+      );
+    });
   }
 
   deviceDisplayName(): string {
@@ -105,6 +166,7 @@ export class HostDeepLinksService {
   private readonly adapter = inject(HOST_DEEP_LINKS_OPERATION, {
     optional: true,
   });
+  private readonly sheet = inject(HostBrowserSheetService);
 
   support(): Observable<HostCapabilitySupport> {
     return (
@@ -112,13 +174,15 @@ export class HostDeepLinksService {
     );
   }
 
-  readonly received = defer(() => this.adapter?.received ?? EMPTY);
+  /** A link arriving back (the sign-in callback among them) ends a sign-in sheet's count. */
+  readonly received = defer(() => this.adapter?.received ?? EMPTY).pipe(
+    tap(() => this.sheet.end()),
+  );
 
   closeAuthentication(): Observable<HostOperationOutcome> {
-    return (
-      this.adapter?.closeAuthentication() ??
-      defer(() => of(unavailableOutcome()))
-    );
+    return defer(
+      () => this.adapter?.closeAuthentication() ?? of(unavailableOutcome()),
+    ).pipe(finalize(() => this.sheet.end()));
   }
 }
 

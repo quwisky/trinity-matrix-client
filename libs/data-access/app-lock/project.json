@@ -1,0 +1,25 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "data-access-app-lock",
+  "projectType": "library",
+  "sourceRoot": "libs/data-access/app-lock/src",
+  "prefix": "trn",
+  "tags": [
+    "type:data-access",
+    "scope:shared",
+    "role:capability",
+    "capability:app-lock"
+  ],
+  "targets": {
+    "test": {
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/vite.base.config.ts",
+        "{workspaceRoot}/test-setup.base.ts",
+        "{workspaceRoot}/native/app-lock/**/*"
+      ]
+    },
+    "typecheck": {}
+  }
+}

@@ -28,12 +28,27 @@ describe('touchIdDriver', () => {
     await expect(
       touchIdDriver(ok).verify('Unlock Trinity', null),
     ).resolves.toEqual({ kind: 'verified' });
-    expect(ok.promptTouchID).toHaveBeenCalledWith('Unlock Trinity');
+    expect(ok.promptTouchID).toHaveBeenCalledWith('unlock Trinity');
     const no = prefs(true, () => Promise.reject(new Error('cancelled')));
     await expect(
       touchIdDriver(no).verify('Unlock Trinity', null),
     ).resolves.toEqual({ kind: 'cancelled' });
   });
+
+  // macOS shows "<App> is trying to <reason>", so the reason continues that sentence.
+  it.each([
+    ['Unlock Trinity Next', 'unlock Trinity Next'],
+    ['Turn on app lock', 'turn on app lock'],
+    ['Change app lock settings', 'change app lock settings'],
+    ['already lower case', 'already lower case'],
+  ])(
+    'lower-cases the first letter of %j for the macOS sentence',
+    async (reason, shown) => {
+      const ok = prefs(true, () => Promise.resolve());
+      await touchIdDriver(ok).verify(reason, null);
+      expect(ok.promptTouchID).toHaveBeenCalledWith(shown);
+    },
+  );
 
   it('does not prompt once Touch ID became unavailable', async () => {
     const gone = prefs(false, () => Promise.resolve());
