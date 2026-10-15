@@ -866,9 +866,8 @@ describe('AppLockGroupComponent', () => {
           }),
           MockProvider(TrnToastService),
           MockProvider(HostCapabilitiesService, {
-            manifest: () => of(manifest(true)),
+            manifest: () => of(manifestWith('user-presence')),
           }),
-          { provide: APP_LOCK_MOBILE_OS, useValue: false },
         ],
       });
     }
