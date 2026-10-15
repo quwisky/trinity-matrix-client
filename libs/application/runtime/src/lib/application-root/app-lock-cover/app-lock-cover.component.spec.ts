@@ -602,6 +602,26 @@ describe('AppLockCoverComponent', () => {
       await vi.waitFor(() => expect(unlockWithSystem).toHaveBeenCalledOnce());
     });
 
+    it('waits for the window to show when a locked app starts hidden', async () => {
+      // A crashed renderer reloads in a window hidden to the tray or minimised (#1342); the
+      // binding hears it is hidden (#1343) before the host answers the support read.
+      const { unlockWithSystem, visits, settle, answerRefreshes } = await setup(
+        {
+          refresh: 'held',
+        },
+      );
+      visits.next('away');
+      answerRefreshes();
+      await settle();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(unlockWithSystem).not.toHaveBeenCalled();
+      // The person shows (or restores, or focuses) the window: now the prompt opens.
+      visits.next('front');
+      answerRefreshes();
+      await settle();
+      await vi.waitFor(() => expect(unlockWithSystem).toHaveBeenCalledOnce());
+    });
+
     it('does not open it again after a cancel, until the app comes back to the front', async () => {
       const { unlockWithSystem, visits, settle } = await setup();
       await vi.waitFor(() => expect(unlockWithSystem).toHaveBeenCalledOnce());

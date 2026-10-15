@@ -92,8 +92,12 @@ export class AppLockCoverComponent {
     inject(AppLockLifecycleBinding)
       .visits.pipe(takeUntilDestroyed())
       .subscribe((visit) => {
-        if (visit === 'away') this.state.left();
-        else if (this.appLock.locked()) this.state.visit(true);
+        if (visit === 'away') {
+          this.state.left();
+          return;
+        }
+        this.state.returned();
+        if (this.appLock.locked()) this.state.visit(true);
       });
     inject(DestroyRef).onDestroy(() => {
       this.painted?.unsubscribe();

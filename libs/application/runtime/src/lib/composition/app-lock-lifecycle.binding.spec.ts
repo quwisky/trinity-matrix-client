@@ -420,6 +420,21 @@ describe('AppLockLifecycleBinding', () => {
     lifetime.unsubscribe();
   });
 
+  it('tells the cover a locked window that reloads hidden is away until it shows', () => {
+    // A crash reload in the tray: the host's one-time answer says hidden (#1343).
+    const { lifecycle, lifetime } = setup({ desktop: true, locked: true });
+    const seen: string[] = [];
+    const visits = TestBed.inject(AppLockLifecycleBinding).visits.subscribe(
+      (visit) => seen.push(visit),
+    );
+    lifecycle.next({ kind: 'background' });
+    expect(seen).toEqual(['away']);
+    lifecycle.next({ kind: 'active' });
+    expect(seen).toEqual(['away', 'front']);
+    visits.unsubscribe();
+    lifetime.unsubscribe();
+  });
+
   it('counts desktop window focus and blur as visits', () => {
     const { lifetime } = setup({ desktop: true });
     const seen: string[] = [];

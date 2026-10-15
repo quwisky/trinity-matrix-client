@@ -110,6 +110,11 @@ export class AppLockCoverState {
   private promptedThisVisit = false;
   /** A support read that should open the prompt is waiting; a later read keeps that intent. */
   private promptPending = false;
+  /**
+   * The lifecycle binding last said the app is on screen. Assumed at start, like the host
+   * does; a window that reloads hidden hears otherwise (#1343) before it may prompt.
+   */
+  private onScreen = true;
   private refreshing: Subscription | null = null;
 
   readonly appName = this.appLock.appName;
@@ -359,9 +364,21 @@ export class AppLockCoverState {
     this.say(null);
   }
 
-  /** The app left the front. Trinity's own system prompt sends it there; that isn't leaving. */
+  /**
+   * The app left the front (hidden, minimised or, on desktop, blurred). Trinity's own system
+   * prompt sends it there; that isn't leaving. A prompt still waiting for the support read is
+   * dropped: it opens on the return instead, never over a window nobody can see.
+   */
   left(): void {
-    if (!this.systemUi.active()) this.promptedThisVisit = false;
+    if (this.systemUi.active()) return;
+    this.onScreen = false;
+    this.promptPending = false;
+    this.promptedThisVisit = false;
+  }
+
+  /** The app is on screen again: shown, restored or focused. */
+  returned(): void {
+    this.onScreen = true;
   }
 
   /**
@@ -387,6 +404,7 @@ export class AppLockCoverState {
   private autoPrompt(): void {
     if (
       !this.appLock.locked() ||
+      !this.onScreen ||
       this.promptedThisVisit ||
       this.view() !== 'system' ||
       this.busy() ||
