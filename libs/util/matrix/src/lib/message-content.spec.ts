@@ -506,6 +506,53 @@ describe('mentions in content builders', () => {
     expect(content.formatted_body).toContain('matrix.to/#/@alice:hs');
   });
 
+  it('quotes a target the caller fetched when the room no longer holds it', () => {
+    const room = {
+      roomId: '!r:hs',
+      findEventById: () => undefined,
+    } as unknown as Room;
+    const target = {
+      getSender: () => '@bob:hs',
+      getContent: () => ({ body: 'from the server' }),
+    } as unknown as MatrixEvent;
+
+    const content = replyMessageContent(
+      room,
+      '$t',
+      'yes',
+      renderMarkdown('yes'),
+      [],
+      target,
+    );
+
+    expect(content.body).toBe('> <@bob:hs> from the server\n\nyes');
+    expect(mentionIds(content)).toEqual(['@bob:hs']);
+  });
+
+  it('sends a reply to an unknown target without an empty quote', () => {
+    const room = {
+      roomId: '!r:hs',
+      findEventById: () => undefined,
+    } as unknown as Room;
+    const text = 'thanks @Alice';
+
+    const content = replyMessageContent(
+      room,
+      '$t',
+      text,
+      renderMarkdown(text),
+      [ALICE],
+    );
+
+    expect(content.body).toBe(text);
+    expect(content.formatted_body).not.toContain('<mx-reply>');
+    expect(content.formatted_body).toContain('matrix.to/#/@alice:hs');
+    expect(content['m.relates_to']).toEqual({
+      'm.in_reply_to': { event_id: '$t' },
+    });
+    expect(mentionIds(content)).toEqual(['@alice:hs']);
+  });
+
   it('pills and lists every mention in a multi-mention message', () => {
     const text = 'hi @Alice and @Bob';
     const content = textMessageContent(text, renderMarkdown(text), [

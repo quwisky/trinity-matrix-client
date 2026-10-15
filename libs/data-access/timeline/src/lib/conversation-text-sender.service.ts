@@ -1,6 +1,17 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
-import { type Room } from 'matrix-js-sdk';
-import { catchError, defer, from, map, of, tap, throwError } from 'rxjs';
+import { type MatrixClient, type MatrixEvent, type Room } from 'matrix-js-sdk';
+import {
+  type Observable,
+  catchError,
+  defer,
+  finalize,
+  from,
+  map,
+  of,
+  switchMap,
+  tap,
+  throwError,
+} from 'rxjs';
 import {
   editMessageContent,
   renderMarkdown,
@@ -31,14 +42,18 @@ class MatrixConversationTextSender implements ConversationTextSender {
     if (!client || !room || client.getUserId() !== request.key.accountId) {
       return this.settled(of({ kind: 'rejected', retryable: false }));
     }
-    const content = this.content(request, room);
     let localEventId: string | null = null;
+    let fetchingTarget = false;
     let settled = false;
-    const outcome = defer(() => {
-      const txnId = client.makeTxnId();
-      localEventId = `~${room.roomId}:${txnId}`;
-      return from(client.sendMessage(room.roomId, content as never, txnId));
+    const outcome = this.replyTarget(client, room, request, (fetching) => {
+      fetchingTarget = fetching;
     }).pipe(
+      switchMap((target) => {
+        const content = this.content(request, room, target);
+        const txnId = client.makeTxnId();
+        localEventId = `~${room.roomId}:${txnId}`;
+        return from(client.sendMessage(room.roomId, content as never, txnId));
+      }),
       map(({ event_id }) => {
         if (!event_id || !room.findEventById(event_id)) {
           throw new MissingLocalEchoError();
@@ -59,6 +74,11 @@ class MatrixConversationTextSender implements ConversationTextSender {
       outcome,
       cancel: () => {
         if (settled) return false;
+        // Nothing has been sent while the reply target is still being fetched.
+        if (fetchingTarget) {
+          settled = true;
+          return true;
+        }
         const localEcho = localEventId
           ? room.findEventById(localEventId)
           : undefined;
@@ -82,7 +102,35 @@ class MatrixConversationTextSender implements ConversationTextSender {
     return { outcome, cancel: () => false };
   }
 
-  private content(request: ConversationTextSendRequest, room: Room): object {
+  /**
+   * The event a reply quotes. A reply can outlive its target in memory: the compose intent
+   * survives the handle, whose retirement trims the room's older history, and a draft
+   * survives a restart. Such a target is fetched from the server; when that fails the reply
+   * is still sent, keeping its relation but no quote.
+   */
+  private replyTarget(
+    client: MatrixClient,
+    room: Room,
+    request: ConversationTextSendRequest,
+    onFetching: (fetching: boolean) => void,
+  ): Observable<MatrixEvent | undefined> {
+    return defer(() => {
+      if (request.intent.kind !== 'reply') return of(undefined);
+      const { eventId } = request.intent;
+      const loaded = room.findEventById(eventId);
+      if (loaded) return of(loaded);
+      onFetching(true);
+      return from(fetchRoomEvent(client, room.roomId, eventId)).pipe(
+        finalize(() => onFetching(false)),
+      );
+    });
+  }
+
+  private content(
+    request: ConversationTextSendRequest,
+    room: Room,
+    target: MatrixEvent | undefined,
+  ): object {
     const mentions = [...request.mentions];
     switch (request.intent.kind) {
       case 'message':
@@ -101,6 +149,7 @@ class MatrixConversationTextSender implements ConversationTextSender {
           request.body,
           renderMarkdown(request.body),
           mentions,
+          target,
         );
       case 'edit':
         return editMessageContent(
@@ -110,6 +159,26 @@ class MatrixConversationTextSender implements ConversationTextSender {
           mentions,
         );
     }
+  }
+}
+
+/** `eventId` from the server, decrypted; undefined when it cannot be had. */
+async function fetchRoomEvent(
+  client: MatrixClient,
+  roomId: string,
+  eventId: string,
+): Promise<MatrixEvent | undefined> {
+  try {
+    const raw = await client.fetchRoomEvent(roomId, eventId);
+    if (raw.room_id && raw.room_id !== roomId) return undefined;
+    const event = client.getEventMapper({ decrypt: false })({
+      ...raw,
+      room_id: roomId,
+    });
+    if (event.isEncrypted()) await client.decryptEventIfNeeded(event);
+    return event;
+  } catch {
+    return undefined;
   }
 }
 
