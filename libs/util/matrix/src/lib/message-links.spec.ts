@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  linkifyMessageText,
   renderNormalizedTextBody,
   sanitizeMatrixHtml,
   sanitizeOutgoingHtml,
@@ -80,6 +81,8 @@ describe('message links that leave Trinity', () => {
 
     expect(link.hasAttribute('target')).toBe(false);
     expect(link.hasAttribute('rel')).toBe(false);
+    // Cleaned, so Angular does not mark it `unsafe:` and MatrixLinkDirective can route it.
+    expect(link.getAttribute('href')).toBe('https://matrix.to/#/!room:hs');
   });
 
   it('cleans an href with a long run of spaces inside it in linear time', () => {
@@ -118,6 +121,19 @@ describe('message links that leave Trinity', () => {
     expect(links[0].getAttribute('rel')).toBe('noopener noreferrer');
     expect(links[1].hasAttribute('target')).toBe(false);
     expect(links[1].hasAttribute('rel')).toBe(false);
+  });
+
+  it('linkifies any plain text as a message body, for topics and the composer preview', () => {
+    const links = parse(
+      linkifyMessageText(
+        'see https://example.org/x and https://matrix.to/#/!room:hs',
+      ) ?? '',
+    ).querySelectorAll('a');
+
+    expect(links[0].getAttribute('target')).toBe('_blank');
+    expect(links[0].getAttribute('rel')).toBe('noopener noreferrer');
+    expect(links[1].hasAttribute('target')).toBe(false);
+    expect(linkifyMessageText('no links here')).toBeNull();
   });
 
   it('keeps target and rel off the wire', () => {

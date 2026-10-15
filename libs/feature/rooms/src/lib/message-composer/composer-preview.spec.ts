@@ -34,4 +34,18 @@ describe('composerPreview', () => {
     const link = composerPreview('see https://example.org', [], false);
     expect(link.html).toContain('href="https://example.org');
   });
+
+  it('opens a plain-text preview link as the timeline will, out of the app', () => {
+    const element = document.createElement('div');
+    element.innerHTML = composerPreview(
+      'see https://example.org and https://matrix.to/#/!room:hs',
+      [],
+      false,
+    ).html;
+    const [external, permalink] = element.querySelectorAll('a');
+
+    expect(external.getAttribute('target')).toBe('_blank');
+    expect(external.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(permalink.hasAttribute('target')).toBe(false);
+  });
 });

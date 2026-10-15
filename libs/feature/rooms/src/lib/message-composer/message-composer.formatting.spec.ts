@@ -500,7 +500,10 @@ describe('MessageComposerComponent — quoting, the formatting actions and the p
 
         const preview = fixture.componentInstance.preview();
 
-        expect(preview.html).toContain('<a href="https://example.test/x">');
+        // Linkified as the timeline does, so the link opens out of the app as it will there.
+        expect(preview.html).toContain(
+          '<a href="https://example.test/x" target="_blank" rel="noopener noreferrer">',
+        );
         expect(preview.rich).toBe(true);
       });
 

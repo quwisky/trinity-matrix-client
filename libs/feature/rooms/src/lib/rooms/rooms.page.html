@@ -141,6 +141,7 @@
         [systemStatusProblems]="systemStatus.hasProblems()"
         [(searchQuery)]="searchQuery"
         (action)="onHeaderAction($event)"
+        (matrixLink)="messageActions.onMatrixLink($event)"
       />
 
       <!-- A room-level notice belongs in this COLUMN, above the row — not inside it. As a child

@@ -24,7 +24,11 @@ import {
 import { type ActionAvailability } from '@trinity/data-access/room-administration';
 import { type RoomSummary } from '@trinity/data-access/room-library';
 import { type RenderedRoomSurface } from '../rooms/room-surface-lifecycle';
-import { escapeHtml, linkifyText } from '@trinity/util/matrix';
+import { escapeHtml, linkifyMessageText } from '@trinity/util/matrix';
+import {
+  MatrixLinkDirective,
+  type MatrixLinkClick,
+} from '../matrix-link/matrix-link.directive';
 
 /** A user intent raised from the room header; the page decides what it does. */
 export type RoomHeaderAction =
@@ -56,6 +60,7 @@ export interface RoomHeaderActingAs {
   selector: 'trn-room-header',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    MatrixLinkDirective,
     PageHeaderComponent,
     TrnButton,
     TrnActionAvailability,
@@ -92,6 +97,8 @@ export class RoomHeaderComponent {
   readonly searchQuery = model('');
 
   readonly action = output<RoomHeaderAction>();
+  /** A `matrix.to` link in the topic, to route as a message's permalink would be. */
+  readonly matrixLink = output<MatrixLinkClick>();
 
   /** Doubles as tooltip, accessible name and phone menu label, so the count has no badge. */
   protected readonly pinnedLabel = computed(() =>
@@ -101,18 +108,20 @@ export class RoomHeaderComponent {
   );
 
   /**
-   * The full topic as HTML: text is escaped by `linkifyText`/`escapeHtml` first, then links
-   * are made to open outside the app (Angular's sanitiser keeps `target` and `rel`).
+   * The full topic as HTML, linkified as a plain-text message body is: an external link opens
+   * in a new tab with no opener, and a `matrix.to` permalink stays in Trinity. Text is escaped
+   * first (Angular's sanitiser keeps `target` and `rel`).
    */
   protected readonly topicHtml = computed(() => {
     const topic = this.room()?.topic ?? '';
-    return (
-      linkifyText(topic)?.replace(
-        /<a href=/g,
-        '<a target="_blank" rel="noopener noreferrer" href=',
-      ) ?? escapeHtml(topic)
-    );
+    return linkifyMessageText(topic) ?? escapeHtml(topic);
   });
+
+  /** Route a topic permalink, and close the topic so it does not linger over the room it opens. */
+  protected onTopicLink(click: MatrixLinkClick, popover: HTMLElement): void {
+    popover.hidePopover?.();
+    this.matrixLink.emit(click);
+  }
 
   focusSearch(): void {
     this.searchField()?.nativeElement.focus();

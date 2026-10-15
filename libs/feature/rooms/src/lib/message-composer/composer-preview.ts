@@ -1,6 +1,6 @@
 import {
   escapeHtml,
-  linkifyText,
+  linkifyMessageText,
   renderMarkdown,
   sanitizeMatrixHtml,
   slashCommandContent,
@@ -46,14 +46,15 @@ export function composerPreview(
   }
   // No formatted_body means it goes as plain text, which the timeline linkifies (falling
   // back to the raw body when there is no URL) — mirror both, including which container it
-  // lands in. `linkifyText` replaces newlines with `<br>`, so its output belongs in the
+  // lands in, and its links open as the timeline's do (an external one in a new tab with no
+  // opener). `linkifyText` replaces newlines with `<br>`, so its output belongs in the
   // rendered-markdown container the timeline uses at `message-row.component.html:88`;
   // without that class the link would render browser-blue instead of in the Theme.
   // The fallback keeps raw newlines and so needs `pre-wrap`, which is what `rich: false`
   // selects — hence `escapeHtml` and NOT `escapeInlineText`, whose `<br>`s would double
   // every line break under it.
   const body = content.body ?? text;
-  const linkified = linkifyText(body);
+  const linkified = linkifyMessageText(body);
   return linkified !== null
     ? { html: linkified, rich: true }
     : { html: escapeHtml(body), rich: false };
