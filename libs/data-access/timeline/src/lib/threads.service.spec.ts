@@ -1711,6 +1711,52 @@ describe('ThreadsService', () => {
       });
     });
 
+    it('waits for both focus and unlock: unlocked in the background, then focus returns', () => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false); // locked, window unfocused
+      const attentive = signal(false);
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: CONVERSATION_ATTENTION,
+            useValue: { attentive: attentive.asReadonly() },
+          },
+        ],
+      });
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'reply' });
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, reply],
+      });
+      const { svc, acknowledge } = setup([thread]);
+      svc.attachThreadRoot('$root');
+      TestBed.tick();
+
+      // Focus alone is not enough: the cover still hides the thread.
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      window.dispatchEvent(new Event('focus'));
+      expect(acknowledge).not.toHaveBeenCalled();
+
+      // Unlocked in the background: nobody is looking at an unfocused window either.
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+      thread.events.push(
+        fakeEvent({ id: '$r2', sender: '@b:hs', body: 'another' }),
+      );
+      attentive.set(true);
+      TestBed.tick();
+      expect(acknowledge).not.toHaveBeenCalled();
+
+      // Focus returns: the held receipt goes out once, for the latest reply.
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      window.dispatchEvent(new Event('focus'));
+      expect(acknowledge).toHaveBeenCalledExactlyOnceWith({
+        key: { accountId: '@me:hs', roomId: '!r:hs' },
+        messageId: '$r2',
+        threadRootId: '$root',
+      });
+    });
+
     it('does not acknowledge the same latest thread event twice', () => {
       const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
       const reply = fakeEvent({

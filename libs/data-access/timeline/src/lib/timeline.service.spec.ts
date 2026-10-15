@@ -1204,6 +1204,12 @@ describe('TimelineService', () => {
       svc.open('!r:hs');
       TestBed.tick();
 
+      // Focus alone is not enough: the cover still hides the room.
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      window.dispatchEvent(new Event('focus'));
+      expect(received).toEqual([]);
+
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false); // the person switches away
       attentive.set(true); // unlocked, but the window is behind another app
       TestBed.tick();
       expect(received).toEqual([]);
