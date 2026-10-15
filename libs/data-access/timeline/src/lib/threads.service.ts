@@ -39,6 +39,7 @@ import {
   unencryptedShieldFor,
 } from './shields';
 import { eventRevision } from './timeline.service';
+import { onWindowFocus, windowHasFocus } from './window-focus';
 import { projectMessage } from './project-message';
 import type { MessageShield, MessageView } from './message-presentation';
 import type { ConversationKey } from './conversation-messages';
@@ -119,6 +120,9 @@ export class ThreadsService {
   // arriving while the thread is open mark read without re-sending on every refresh.
   private lastReadEventId: string | null = null;
   private threadReceiptSubscription: Subscription | null = null;
+  // The window regained focus with a thread open: send the receipt held back meanwhile.
+  private readonly onThreadFocus = (): void => this.markThreadRead();
+  private stopThreadFocusListener: (() => void) | null = null;
 
   // --- Summaries (active room) ---------------------------------------------
   /**
@@ -253,13 +257,15 @@ export class ThreadsService {
     const threadRoomListeners = this.threadRoom ? 4 : 0;
     const threadClientListeners = this.threadClient ? 4 : 0;
     const threadListeners = this.thread ? 3 : 0;
+    const threadFocusListeners = this.stopThreadFocusListener ? 1 : 0;
     return {
       listenerCount:
         summaryListeners +
         summaryClientListeners +
         threadRoomListeners +
         threadClientListeners +
-        threadListeners,
+        threadListeners +
+        threadFocusListeners,
       retainedBytes:
         this._threadMessages().length * 8 +
         Object.keys(this._summaries()).length * 8,
@@ -366,6 +372,7 @@ export class ThreadsService {
     client.on(CryptoEvent.UserTrustStatusChanged, this.onThreadTrust);
     client.on(CryptoEvent.DevicesUpdated, this.onThreadTrust);
     client.on(CryptoEvent.KeysChanged, this.onThreadTrust);
+    this.stopThreadFocusListener = onWindowFocus(this.onThreadFocus);
     this.refreshThread();
   }
 
@@ -399,6 +406,8 @@ export class ThreadsService {
     this.threadRoomId = null;
     this.threadReceiptSubscription?.unsubscribe();
     this.threadReceiptSubscription = null;
+    this.stopThreadFocusListener?.();
+    this.stopThreadFocusListener = null;
     this.lastReadEventId = null;
     this.threadRelevantSenders.clear();
     this.threadShields.clear();
@@ -805,6 +814,11 @@ export class ThreadsService {
    * API is swallowed so viewing a thread never throws.
    */
   private markThreadRead(): void {
+    // Open, but nobody is looking at an unfocused window: hold the receipt so the thread
+    // stays unread; onThreadFocus sends it for the latest reply when focus returns.
+    if (!windowHasFocus()) {
+      return;
+    }
     const thread = this.thread;
     const key = this.conversationKey;
     const rootEventId = this._openThreadRootId();
