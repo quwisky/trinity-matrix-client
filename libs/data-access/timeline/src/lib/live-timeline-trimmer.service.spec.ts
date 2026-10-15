@@ -138,6 +138,23 @@ describe('LiveTimelineTrimmer', () => {
     running.unsubscribe();
   });
 
+  it('reports a held room it fails to trim once and leaves it alone', async () => {
+    const { trimmer, accountIds, errors, trimHeld, sync } = setup();
+    const failure = new Error('broken open room');
+    trimHeld.mockImplementation(() => {
+      throw failure;
+    });
+    const running = trimmer.run().subscribe();
+    accountIds.set([ALICE]);
+    TestBed.tick();
+
+    for (let i = 0; i < 30; i++) await sync();
+
+    expect(trimHeld).toHaveBeenCalledOnce();
+    expect(errors.handleError).toHaveBeenCalledExactlyOnceWith(failure);
+    running.unsubscribe();
+  });
+
   it('stops trimming when its run ends or the Account goes away', async () => {
     const { trimmer, accountIds, sync, loaded } = setup();
     accountIds.set([ALICE]);

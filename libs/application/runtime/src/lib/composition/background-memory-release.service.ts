@@ -27,7 +27,8 @@ export const BACKGROUND_RELEASE_DELAY_MS = 60_000;
  * reload; everything else comes back lazily on its next use, as after eviction.
  *
  * From then until the app is shown again, the focused room's history is trimmed as it
- * grows, while its view follows the newest message ({@link ConversationRuntime.trimFocusedWhileHidden}).
+ * grows, while its view follows the newest message
+ * ({@link ConversationRuntime.trimFocusedWhileHidden}).
  */
 @Injectable({ providedIn: 'root' })
 export class BackgroundMemoryRelease {

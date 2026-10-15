@@ -426,17 +426,57 @@ describe('ConversationRuntime', () => {
 
       // Scrolled back: no guard, nothing trimmed.
       guard.mockReturnValue(null);
-      controller.trimWhileHidden([]);
+      controller.trimWhileHidden({});
       expect(loaded()).toBe(210);
 
       // A reply target before the only cut keeps everything.
       guard.mockReturnValue({ marked: [], kept: ['$180'] });
-      controller.trimWhileHidden(['$50']);
+      controller.trimWhileHidden({ kept: ['$50'] });
       expect(loaded()).toBe(210);
 
-      controller.trimWhileHidden([]);
+      controller.trimWhileHidden({});
       expect(loaded()).toBe(110);
       expect(room.findEventById('$180')).toBeDefined();
+    });
+
+    it('keeps the messages the rows on screen quote', async () => {
+      const { client, room, controller, loaded } = await realFactory(
+        () => null,
+      );
+      const event = (n: number) =>
+        new MatrixEvent({
+          event_id: `$${n}`,
+          room_id: room.roomId,
+          type: 'm.room.message',
+          sender: BOB,
+          origin_server_ts: n,
+          content: {
+            msgtype: 'm.text',
+            body: `${n}`,
+            ...(n === 325
+              ? { 'm.relates_to': { 'm.in_reply_to': { event_id: '$150' } } }
+              : {}),
+          },
+        });
+      const receive = (from: number, to: number) =>
+        room.addLiveEvents(
+          Array.from({ length: to - from + 1 }, (_, i) => event(from + i)),
+          { addToState: false },
+        );
+      await receive(201, 260);
+      noteSyncPosition(room, 'b261');
+      await receive(261, 330);
+      vi.mocked(TimelineService.prototype.open).mockRestore();
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+      const timeline = controller.timeline as unknown as TimelineService;
+      timeline.open(room.roomId, client);
+      timeline.setLiveView('$320');
+
+      controller.trimWhileHidden({});
+
+      // Without the quote, the cut after $260 would take $150 and empty $325's preview.
+      expect(room.findEventById('$150')).toBeDefined();
+      expect(loaded()).toBe(230);
     });
 
     it('leaves a focused room at or under the high-water mark alone', async () => {
@@ -446,7 +486,7 @@ describe('ConversationRuntime', () => {
         kept: [],
       });
 
-      controller.trimWhileHidden([]);
+      controller.trimWhileHidden({});
 
       expect(loaded()).toBe(200);
     });
@@ -613,7 +653,7 @@ describe('ConversationRuntime', () => {
       expect(trim).not.toHaveBeenCalled();
 
       const hidden = runtime.trimFocusedWhileHidden().subscribe();
-      expect(trim).toHaveBeenCalledExactlyOnceWith([]);
+      expect(trim).toHaveBeenCalledExactlyOnceWith({ kept: [], marked: [] });
       runtime.trimHeld(ALICE, A.roomId);
       expect(trim).toHaveBeenCalledTimes(2);
 
@@ -627,7 +667,7 @@ describe('ConversationRuntime', () => {
       expect(trim).toHaveBeenCalledTimes(2);
     });
 
-    it("keeps the event the composer replies to or edits, and the open thread's root", () => {
+    it("keeps the event the composer replies to or edits, and the open thread's root below the ceiling", () => {
       const { runtime, controller } = setup(2, undefined, [message('$target')]);
       const handle = runtime.focus(A);
       const trim = vi.mocked(controller(A.roomId).trimWhileHidden);
@@ -635,7 +675,7 @@ describe('ConversationRuntime', () => {
 
       handle.messages.beginReply('$target');
       runtime.trimHeld(ALICE, A.roomId);
-      expect(trim).toHaveBeenLastCalledWith(['$target']);
+      expect(trim).toHaveBeenLastCalledWith({ kept: ['$target'], marked: [] });
 
       handle.messages.beginEdit('$target', 'changed');
       (
@@ -644,7 +684,10 @@ describe('ConversationRuntime', () => {
         >
       ).set('$root');
       runtime.trimHeld(ALICE, A.roomId);
-      expect(trim).toHaveBeenLastCalledWith(['$target', '$root']);
+      expect(trim).toHaveBeenLastCalledWith({
+        kept: ['$target'],
+        marked: ['$root'],
+      });
       hidden.unsubscribe();
     });
 
@@ -658,8 +701,11 @@ describe('ConversationRuntime', () => {
 
       const hidden = runtime.trimFocusedWhileHidden().subscribe();
 
-      expect(errors.handleError).toHaveBeenCalledWith(failure);
+      expect(errors.handleError).toHaveBeenCalledExactlyOnceWith(failure);
       expect(runtime.focused()?.key).toEqual(A);
+      // After a sync the trimmer reports it, once per room.
+      expect(() => runtime.trimHeld(ALICE, A.roomId)).toThrow(failure);
+      expect(errors.handleError).toHaveBeenCalledOnce();
       hidden.unsubscribe();
     });
   });

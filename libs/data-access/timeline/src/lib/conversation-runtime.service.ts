@@ -53,7 +53,11 @@ import { ConversationPinsController } from './conversation-pins.controller';
 import { createConversationThreadChildren } from './conversation-thread-children';
 import { ConversationSearchController } from './conversation-search.service';
 import { conversationDraftKey } from './conversation-draft-key';
-import { TRIM_HIGH_WATER, trimLiveTimeline } from './live-timeline-trim';
+import {
+  TRIM_HIGH_WATER,
+  trimLiveTimeline,
+  type TrimGuard,
+} from './live-timeline-trim';
 
 export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 export type {
@@ -143,9 +147,10 @@ export interface ConversationTimelineController {
   /**
    * While the window is hidden and the room stays focused: trim its SDK live timeline like
    * a room nobody has open once it passes {@link TRIM_HIGH_WATER} events, but only while
-   * its view follows the newest message, and never past what that view shows or `kept`.
+   * its view follows the newest message, never past what that view shows, and keeping
+   * what `guard` names as well.
    */
-  trimWhileHidden(kept: readonly string[]): void;
+  trimWhileHidden(guard: TrimGuard): void;
   resources(): ConversationResources;
 }
 
@@ -264,7 +269,7 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
           trimLiveTimeline(room, userId);
         }
       },
-      trimWhileHidden: (kept) => {
+      trimWhileHidden: (extra) => {
         const room = client.getRoom(key.roomId);
         const userId = client.getUserId();
         if (
@@ -279,8 +284,8 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
         const guard = timeline.liveTrimGuard();
         if (!guard) return;
         trimLiveTimeline(room, userId, {
-          marked: guard.marked,
-          kept: [...(guard.kept ?? []), ...kept],
+          marked: [...(guard.marked ?? []), ...(extra.marked ?? [])],
+          kept: [...(guard.kept ?? []), ...(extra.kept ?? [])],
         });
       },
     };
@@ -438,16 +443,21 @@ export class ConversationRuntime {
   /**
    * For as long as it is subscribed, the window is hidden: the focused room is trimmed
    * right away, and again by {@link trimHeld} after each sync, like a room nobody has
-   * open, but only while its view follows the newest message and never past what that
-   * view shows, the event the composer replies to or edits, or the open thread's root
-   * (#1366). Showing the window again ends it. Owned by the Application Runtime's
-   * hidden-window release.
+   * open, but only while its view follows the newest message (#1366). A trim never cuts
+   * past what that view shows or the event the composer replies to or edits; below
+   * the 1,000-event ceiling it also keeps the open thread's root. Showing the window again
+   * ends it. Owned by the Application Runtime's hidden-window release.
    */
   trimFocusedWhileHidden(): Observable<never> {
     return new Observable<never>(() => {
       this.hiddenWindows += 1;
       const handle = this.focusedHandle();
-      if (handle) this.trimHeld(handle.key.accountId, handle.key.roomId);
+      try {
+        if (handle) this.trimHeld(handle.key.accountId, handle.key.roomId);
+      } catch (error: unknown) {
+        // Best effort: the room keeps its events.
+        this.errors.handleError(error);
+      }
       return () => {
         this.hiddenWindows -= 1;
       };
@@ -456,8 +466,8 @@ export class ConversationRuntime {
 
   /**
    * Trim a room a handle holds, if it may be trimmed now: only the focused room, only while
-   * the window is hidden. A retained room waits for its handle to retire. A failed trim is
-   * reported and leaves the room as it was.
+   * the window is hidden. A retained room waits for its handle to retire. A failed trim
+   * throws and leaves the room as it was; the trimmer reports a room once.
    */
   trimHeld(accountId: string, roomId: string): void {
     const handle = this.focusedHandle();
@@ -472,15 +482,13 @@ export class ConversationRuntime {
     const entry = this.entry(handle.key);
     if (entry?.handle !== handle) return;
     const intent = entry.composeController.compose.intent();
-    const kept = [
-      intent.kind === 'message' ? null : intent.eventId,
-      entry.controller.threads.openThreadRootId(),
-    ].filter((eventId): eventId is string => !!eventId);
-    try {
-      entry.controller.trimWhileHidden(kept);
-    } catch (error: unknown) {
-      this.errors.handleError(error);
-    }
+    // The thread panel reads its root from the Thread, so the root needs no more than the
+    // receipt's protection.
+    const root = entry.controller.threads.openThreadRootId();
+    entry.controller.trimWhileHidden({
+      kept: intent.kind === 'message' ? [] : [intent.eventId],
+      marked: root ? [root] : [],
+    });
   }
 
   retireAll(): void {
