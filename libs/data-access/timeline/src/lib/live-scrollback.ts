@@ -1,4 +1,5 @@
 import { Direction, type MatrixClient, type Room } from 'matrix-js-sdk';
+import { noteScrollbackPosition } from './live-timeline-trim';
 
 /**
  * Page older history into the room's live timeline: `client.scrollback` without its race.
@@ -23,6 +24,8 @@ export async function scrollbackLive(
   if (token === null) {
     return; // already at the start of the room
   }
+  // Every page boundary is a place a later trim can cut this timeline back to.
+  noteScrollbackPosition(timeline, token);
   const res = await client.createMessagesRequest(
     room.roomId,
     token,

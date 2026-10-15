@@ -35,6 +35,7 @@ import {
   TrustAccountStatusService,
   TrustLifetime,
 } from '@trinity/data-access/trust';
+import { LiveTimelineTrimmer } from '@trinity/data-access/timeline';
 import { NativeNavigationService } from '@trinity/platform-native';
 import {
   HostBackService,
@@ -97,6 +98,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly hostBack = inject(HostBackService);
   private readonly hostLifecycle = inject(HostLifecycleService);
   private readonly memoryRelease = inject(BackgroundMemoryRelease);
+  private readonly timelineTrimmer = inject(LiveTimelineTrimmer);
   private readonly hostHealth = inject(HostSessionHealthService);
   private readonly navigationFocus = inject(NavigationFocusService);
   private readonly routedSurfaces = inject(WorkspaceRoutedSurfaceAdapter);
@@ -279,6 +281,7 @@ export class TrinityApplicationSessionAdapter {
       this.runInteractions(),
       this.runUpdates().pipe(ignoreElements()),
       this.memoryRelease.run(),
+      this.timelineTrimmer.run(),
     );
   }
 

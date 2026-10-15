@@ -1,6 +1,7 @@
 import {
   DestroyRef,
   EnvironmentInjector,
+  ErrorHandler,
   Injectable,
   InjectionToken,
   Signal,
@@ -52,6 +53,7 @@ import { ConversationPinsController } from './conversation-pins.controller';
 import { createConversationThreadChildren } from './conversation-thread-children';
 import { ConversationSearchController } from './conversation-search.service';
 import { conversationDraftKey } from './conversation-draft-key';
+import { trimLiveTimeline } from './live-timeline-trim';
 
 export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 export type {
@@ -132,6 +134,11 @@ export interface ConversationTimelineController {
   readonly search: ConversationSearch;
   setVisible(visible: boolean): void;
   release(): void;
+  /**
+   * Trim the room's SDK live timeline back to its latest events once the handle is
+   * released, so the history it paged in or received is freed until it is paged in again.
+   */
+  releaseHistory(): void;
   resources(): ConversationResources;
 }
 
@@ -236,6 +243,20 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
           injector.destroy();
         }
       },
+      releaseHistory: () => {
+        // Only on the client this handle was opened with, and only while it is still the
+        // Account's live client: a signed-out or restarted Account keeps no history here.
+        const room = client.getRoom(key.roomId);
+        const userId = client.getUserId();
+        if (
+          released &&
+          room &&
+          userId &&
+          this.matrix.clientFor(key.accountId) === client
+        ) {
+          trimLiveTimeline(room, userId);
+        }
+      },
     };
   }
 }
@@ -286,6 +307,7 @@ export class ConversationRuntime {
     inject(CONVERSATION_RETENTION_LIMIT),
   );
   private readonly destroyRef = inject(DestroyRef);
+  private readonly errors = inject(ErrorHandler);
   private readonly entries = new Map<string, Map<string, ConversationEntry>>();
   private readonly composeSnapshots = new Map<
     string,
@@ -368,13 +390,21 @@ export class ConversationRuntime {
     this.evictRetained(handle.key.accountId);
   }
 
-  /** Retire every warm, non-focused handle; reopening one later attaches it cold. */
+  /**
+   * Retire every warm, non-focused handle; reopening one later attaches it cold, and pages
+   * its older history in again.
+   */
   retireRetained(): void {
     for (const account of [...this.entries.values()]) {
       for (const entry of [...account.values()]) {
-        if (entry.state() === 'retained') this.retire(entry);
+        if (entry.state() === 'retained') this.retire(entry, 'release-history');
       }
     }
+  }
+
+  /** Whether the Account has a focused or retained handle for the room. */
+  holds(accountId: string, roomId: string): boolean {
+    return this.entries.get(accountId)?.has(roomId) ?? false;
   }
 
   retireAll(): void {
@@ -798,11 +828,18 @@ export class ConversationRuntime {
       .filter((entry) => entry.state() === 'retained')
       .sort((left, right) => left.lastFocused - right.lastFocused);
     while (retained.length > this.retainedPerAccount) {
-      this.retire(retained.shift()!);
+      this.retire(retained.shift()!, 'release-history');
     }
   }
 
-  private retire(entry: ConversationEntry): void {
+  /**
+   * Retire one handle. A handle retired while the Account stays signed in also releases
+   * its room's SDK history: nothing shows the room now, so only the latest events stay.
+   */
+  private retire(
+    entry: ConversationEntry,
+    history: 'keep-history' | 'release-history' = 'keep-history',
+  ): void {
     if (entry.state() === 'retired') return;
     if (this.focusedHandle() === entry.handle) {
       this.focusedHandle.set(null);
@@ -818,5 +855,13 @@ export class ConversationRuntime {
     entry.composeController.stopTyping();
     this.retiredHandles.update((count) => count + 1);
     entry.controller.release();
+    if (history === 'release-history') {
+      try {
+        entry.controller.releaseHistory();
+      } catch (error: unknown) {
+        // Best effort: the handle is already retired, and the history stays as it was.
+        this.errors.handleError(error);
+      }
+    }
   }
 }
