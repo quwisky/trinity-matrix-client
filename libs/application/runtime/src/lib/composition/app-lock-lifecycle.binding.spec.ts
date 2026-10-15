@@ -610,6 +610,15 @@ describe('AppLockLifecycleBinding', () => {
       lifetime.unsubscribe();
     });
 
+    it('asks once at a cold start that begins locked, while that call has not answered', () => {
+      const { privacySet, lifetime } = setup({
+        locked: true,
+        privacySet: () => NEVER,
+      });
+      expect(privacySet.mock.calls).toEqual([[true]]);
+      lifetime.unsubscribe();
+    });
+
     it('locks, unlocks and keeps covering when the cover fails', () => {
       const failed = () =>
         throwError(() => new Error('bridge gone with secret detail'));
@@ -695,6 +704,35 @@ describe('AppLockLifecycleBinding', () => {
         lifecycle.next({ kind: 'active' });
         expect(privacySet).toHaveBeenCalledTimes(3);
         lifecycle.next({ kind: 'active' });
+        expect(privacySet).toHaveBeenCalledTimes(3);
+        lifetime.unsubscribe();
+      });
+
+      it('ends with the cover off when App lock is turned off during a retry', () => {
+        const answers: Subject<HostOperationOutcome>[] = [];
+        const { enabled, lifecycle, locked, privacySet, lifetime } = setup({
+          privacySet: () => {
+            const answer = new Subject<HostOperationOutcome>();
+            answers.push(answer);
+            return answer;
+          },
+        });
+        answers[0].next(REFUSED);
+        locked.set(true);
+        TestBed.tick();
+        expect(privacySet.mock.calls).toEqual([[true], [true]]);
+        enabled.set(false);
+        TestBed.tick();
+        expect(privacySet.mock.calls).toEqual([[true], [true], [false]]);
+        // The dropped retry answers late; nothing follows it.
+        answers[1].next({ kind: 'completed' });
+        answers[2].next({ kind: 'completed' });
+        lifecycle.next({ kind: 'active' });
+        locked.set(false);
+        TestBed.tick();
+        locked.set(true);
+        TestBed.tick();
+        expect(privacySet).toHaveBeenLastCalledWith(false);
         expect(privacySet).toHaveBeenCalledTimes(3);
         lifetime.unsubscribe();
       });

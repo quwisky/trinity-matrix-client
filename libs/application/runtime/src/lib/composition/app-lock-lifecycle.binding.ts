@@ -34,6 +34,7 @@ import {
   merge,
   mergeMap,
   of,
+  skip,
   switchMap,
   tap,
   timer,
@@ -128,15 +129,19 @@ export class AppLockLifecycleBinding {
    * down native UI Trinity presented over the web view, which the DOM cover can't reach.
    * Both are best effort: an answer that never comes or a failure never holds up locking or
    * unlocking, and a failure is recorded by its stable code only. A cover that failed to go
-   * on is tried again at the next lock and when the app comes back to the front, so it isn't
-   * left off while App lock is on.
+   * on is tried again at the next lock and when the app comes back to the front, so it doesn't
+   * stay off while App lock is on. A refused `set(false)` isn't tried again: the cover (and on
+   * Android the capture block) may stay on until App lock next changes or the app restarts,
+   * which fails closed.
    */
   private appSwitcherCover(): Observable<never> {
     return defer(() => {
       // The host has the cover on, or has none to put on: nothing to try again.
       let settled = false;
       const retry = merge(
+        // The first value is the starting state, which the first `set` already covers.
         this.changes(() => this.appLock.locked()).pipe(
+          skip(1),
           filter((locked) => locked),
         ),
         this.lifecycle.events.pipe(filter((event) => event.kind === 'active')),
