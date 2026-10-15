@@ -20,6 +20,7 @@ public class AppLockPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setPin", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "verifyPin", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearPin", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "dismissPresented", returnType: CAPPluginReturnPromise),
     ]
     private let verifier = PinVerifier(store: KeychainPinStore())
     private let work = DispatchQueue(label: "dev.trinityproject.trinity.app-lock.plugin", qos: .userInitiated)
@@ -77,5 +78,43 @@ public class AppLockPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("Secure storage is unavailable", "storage-unavailable")
             }
         }
+    }
+
+    /// Locking: native UI Trinity presented over the web view (share sheet, browser sheet,
+    /// camera) is not under the web lock screen, so take it down. Always resolves.
+    ///
+    /// While Trinity is inactive, @capacitor/privacy-screen's app-switcher cover sits on top of
+    /// the presented stack. Dismissing the stack takes the cover with it, so it goes back up at
+    /// once; that plugin still holds it and takes it down on becoming active.
+    @objc func dismissPresented(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let root = self.bridge?.viewController,
+                  let presented = root.presentedViewController else {
+                call.resolve()
+                return
+            }
+            var top = presented
+            while let next = top.presentedViewController {
+                top = next
+            }
+            let cover = Self.isPrivacyCover(top) ? top : nil
+            if cover === presented {
+                call.resolve()
+                return
+            }
+            root.dismiss(animated: false) {
+                guard let cover, root.presentedViewController == nil else {
+                    call.resolve()
+                    return
+                }
+                root.present(cover, animated: false) { call.resolve() }
+            }
+        }
+    }
+
+    /// The privacy screen plugin's cover: a plain full-screen controller it presents itself.
+    private static func isPrivacyCover(_ controller: UIViewController) -> Bool {
+        type(of: controller) == UIViewController.self
+            && controller.modalPresentationStyle == .overFullScreen
     }
 }

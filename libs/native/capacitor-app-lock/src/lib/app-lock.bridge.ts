@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { Observable, catchError, defer, from, map, of } from 'rxjs';
+import { Observable, catchError, defer, from, map, of, timeout } from 'rxjs';
 import { APP_LOCK_PLUGIN_NAME, type AppLockPlugin } from './definitions';
 
 const appLock = registerPlugin<AppLockPlugin>(APP_LOCK_PLUGIN_NAME);
@@ -24,6 +24,9 @@ export type AppLockPinCheck =
 type VerifyResult = Awaited<ReturnType<AppLockPlugin['verifyPin']>>['result'];
 
 const UNAVAILABLE = { kind: 'unavailable' } as const;
+
+/** How long locking waits for native UI to go before it carries on regardless. */
+export const DISMISS_PRESENTED_TIMEOUT_MS = 2_000;
 
 function codeOf(error: unknown): unknown {
   return typeof error === 'object' && error !== null && 'code' in error
@@ -127,6 +130,23 @@ export class AppLockPinBridge {
         catchError(() => of<AppLockPinCheck>(UNAVAILABLE)),
       );
     });
+  }
+
+  /**
+   * Cold and finite; completes even when nothing was presented, the call failed or the
+   * host never answered.
+   */
+  dismissPresented(): Observable<void> {
+    return defer(() =>
+      this.available ? from(appLock.dismissPresented()) : of(undefined),
+    ).pipe(
+      map((): void => undefined),
+      timeout({
+        first: DISMISS_PRESENTED_TIMEOUT_MS,
+        with: () => of(undefined),
+      }),
+      catchError(() => of(undefined)),
+    );
   }
 
   clear(): Observable<'completed' | 'unavailable'> {

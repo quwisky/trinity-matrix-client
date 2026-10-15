@@ -208,6 +208,24 @@ describe('host adapter rejection semantics', () => {
     });
   });
 
+  it('advertises screen privacy only when the native host has the plugin', async () => {
+    const available = vi.spyOn(Capacitor, 'isPluginAvailable');
+    available.mockReturnValue(true);
+    const { adapter } = capacitorFixture();
+    await expect(
+      firstValueFrom(adapter.manifest()).then(
+        (value) => value.operations['screen-privacy'],
+      ),
+    ).resolves.toEqual({ kind: 'supported' });
+    expect(available).toHaveBeenCalledWith('PrivacyScreen');
+    available.mockReturnValue(false);
+    await expect(
+      firstValueFrom(adapter.manifest()).then(
+        (value) => value.operations['screen-privacy'],
+      ),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'not-supported' });
+  });
+
   it('advertises Android Back while keeping updates explicitly unavailable', async () => {
     const { adapter } = capacitorFixture(true, 'android');
     const value = await firstValueFrom(adapter.manifest());

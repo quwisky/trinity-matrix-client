@@ -10,4 +10,6 @@ export interface AppLockPlugin {
     nextAttemptAt: number | null;
   }>;
   clearPin(): Promise<void>;
+  /** iOS: dismiss whatever Trinity presented over the web view; Android resolves at once. */
+  dismissPresented(): Promise<void>;
 }
