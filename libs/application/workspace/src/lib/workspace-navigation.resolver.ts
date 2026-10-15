@@ -30,10 +30,13 @@ function roomScope(
       ? current.scope
       : RECENT_WORKSPACE_SCOPE;
   }
-  return (
-    intent.scope ??
-    (current.scope.kind === 'space' ? RECENT_WORKSPACE_SCOPE : current.scope)
-  );
+  if (intent.scope) return intent.scope;
+  // A row picked from the list on screen is in that list, so even a space stays (#1369).
+  // Opened from anywhere else, a space may not hold the Room, so Recent lists it instead.
+  return current.scope.kind !== 'space' ||
+    (intent.origin === 'room-list' && current.accountId === intent.accountId)
+    ? current.scope
+    : RECENT_WORKSPACE_SCOPE;
 }
 
 /** What browser history holds under the current entry, as far as Workspace knows. */

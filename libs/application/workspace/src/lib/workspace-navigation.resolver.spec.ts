@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveWorkspaceNavigation } from './workspace-navigation.resolver';
+import type { WorkspaceRoomNavigationOrigin } from './workspace-navigation.models';
 import type { WorkspaceView } from './workspace.models';
 
 const view = (over: Partial<WorkspaceView> = {}): WorkspaceView => ({
@@ -127,5 +128,125 @@ describe("resolveWorkspaceNavigation — 'rail-unread'", () => {
       { listBelow: false, compact: true },
     );
     expect(resolved?.options.overList).toBe(true);
+  });
+});
+
+describe('resolveWorkspaceNavigation — a room opened from a space', () => {
+  const space = { kind: 'space', spaceId: '!s:hs' } as const;
+
+  const scopeFrom = (
+    origin: WorkspaceRoomNavigationOrigin,
+    current: WorkspaceView,
+    accountId = '@a:hs',
+  ) =>
+    resolveWorkspaceNavigation(
+      { kind: 'room', accountId, roomId: '!chat:hs', origin },
+      current,
+    )?.destination.scope;
+
+  it("keeps the space for a room picked from the space's own list (#1369)", () => {
+    const resolved = resolveWorkspaceNavigation(
+      {
+        kind: 'room',
+        accountId: '@a:hs',
+        roomId: '!chat:hs',
+        origin: 'room-list',
+      },
+      view({ scope: space }),
+    );
+    expect(resolved?.destination).toEqual({
+      accountId: '@a:hs',
+      scope: space,
+      roomId: '!chat:hs',
+      pane: 'conversation',
+    });
+  });
+
+  it('keeps the space when switching from one of its rooms to another', () => {
+    expect(
+      scopeFrom(
+        'room-list',
+        view({ scope: space, roomId: '!x:hs', pane: 'conversation' }),
+      ),
+    ).toEqual(space);
+  });
+
+  it("opens another account's room from the space's list in Recent, as before", () => {
+    expect(scopeFrom('room-list', view({ scope: space }), '@b:hs')).toEqual({
+      kind: 'recent',
+    });
+  });
+
+  it.each<WorkspaceRoomNavigationOrigin>([
+    'room-action',
+    'global-search',
+    'deep-link',
+    'room-hop',
+    // A visit-history jump (Ctrl/Cmd+digit) can land on a room outside the space.
+    'shortcut',
+  ])(
+    'opens a %s room from a space in Recent, which lists every chat',
+    (origin) => {
+      expect(scopeFrom(origin, view({ scope: space }))).toEqual({
+        kind: 'recent',
+      });
+    },
+  );
+
+  it('opens a room invitation from a space in Recent, as before', () => {
+    expect(scopeFrom('room-invitation', view({ scope: space }))).toEqual({
+      kind: 'recent',
+    });
+  });
+
+  it('opens a direct invitation from a space in Home, as before', () => {
+    expect(scopeFrom('direct-invitation', view({ scope: space }))).toEqual({
+      kind: 'home',
+    });
+  });
+
+  it('honours a scope the intent names over the space on screen', () => {
+    const resolved = resolveWorkspaceNavigation(
+      {
+        kind: 'room',
+        accountId: '@a:hs',
+        roomId: '!chat:hs',
+        origin: 'room-list',
+        scope: { kind: 'rooms' },
+      },
+      view({ scope: space }),
+    );
+    expect(resolved?.destination.scope).toEqual({ kind: 'rooms' });
+  });
+});
+
+describe('resolveWorkspaceNavigation — a room picked from the list on screen', () => {
+  it.each([
+    { kind: 'recent' as const },
+    { kind: 'home' as const },
+    { kind: 'rooms' as const },
+  ])('keeps the $kind list', (scope) => {
+    for (const origin of ['room-list', 'shortcut'] as const) {
+      expect(
+        resolveWorkspaceNavigation(
+          { kind: 'room', accountId: '@a:hs', roomId: '!chat:hs', origin },
+          view({ scope }),
+        )?.destination.scope,
+      ).toEqual(scope);
+    }
+  });
+
+  it("keeps the list on screen for another account's room, as before", () => {
+    expect(
+      resolveWorkspaceNavigation(
+        {
+          kind: 'room',
+          accountId: '@b:hs',
+          roomId: '!chat:hs',
+          origin: 'room-list',
+        },
+        view({ scope: { kind: 'rooms' } }),
+      )?.destination.scope,
+    ).toEqual({ kind: 'rooms' });
   });
 });

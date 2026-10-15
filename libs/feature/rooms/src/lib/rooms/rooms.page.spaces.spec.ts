@@ -233,6 +233,44 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.activeSpaceName()).toBe('!s:hs');
   });
 
+  // #1369: the sidebar's row click and the Alt+↑/↓ walk pick from the list on screen, so
+  // the room is in the space and the space must stay selected, not fall back to Recent.
+  it("keeps the space selected when a room is opened from the space's list", async () => {
+    const shell = build();
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+
+    // What the sidebar's `(selectRoom)` binding calls for a clicked row.
+    shell.routing.onSelectRoomSelection({
+      roomId: '!b:hs',
+      accountId: '@me:hs',
+    });
+    await settleWorkspace();
+
+    expect(shell.store.activeRoomId()).toBe('!b:hs');
+    expect(shell.store.activeSpaceId()).toBe('!s:hs');
+    expect(shell.store.recentView()).toBe(false);
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
+      '!b:hs',
+      '!a:hs',
+    ]);
+
+    shell.shortcuts.onGlobalKeydown({
+      key: 'ArrowDown',
+      code: '',
+      ctrlKey: false,
+      metaKey: false,
+      altKey: true,
+      shiftKey: false,
+      preventDefault: vi.fn(),
+    } as unknown as KeyboardEvent);
+    await settleWorkspace();
+
+    expect(shell.store.activeRoomId()).toBe('!a:hs');
+    expect(shell.store.activeSpaceId()).toBe('!s:hs');
+    expect(shell.store.recentView()).toBe(false);
+  });
+
   it('the Rooms view shows non-DM rooms that do not belong to a space', async () => {
     const shell = build();
     shell.nav.onShowRooms();
