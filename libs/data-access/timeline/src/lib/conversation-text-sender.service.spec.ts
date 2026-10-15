@@ -269,10 +269,13 @@ describe('MatrixConversationTextSender', () => {
     });
   });
 
-  it('cancels a reply while its target is still being fetched', () => {
+  it('cancels a reply while its target is still being fetched and drops the late fetch', async () => {
     const { sender, client } = setup();
+    let resolveFetch!: (
+      raw: Awaited<ReturnType<typeof client.fetchRoomEvent>>,
+    ) => void;
     client.fetchRoomEvent.mockReturnValueOnce(
-      new Promise<never>(() => undefined),
+      new Promise((resolve) => (resolveFetch = resolve)),
     );
     const operation = sender.send({
       key: KEY,
@@ -280,11 +283,25 @@ describe('MatrixConversationTextSender', () => {
       mentions: [],
       intent: { kind: 'reply', eventId: '$trimmed' },
     });
-    const subscription = operation.outcome.subscribe();
+    const outcomes: unknown[] = [];
+    const subscription = operation.outcome.subscribe((outcome) =>
+      outcomes.push(outcome),
+    );
 
     expect(operation.cancel()).toBe(true);
     subscription.unsubscribe();
+    resolveFetch({
+      event_id: '$trimmed',
+      room_id: KEY.roomId,
+      type: 'm.room.message',
+      sender: '@bob:example.org',
+      origin_server_ts: 1,
+      content: { msgtype: 'm.text', body: 'trimmed text' },
+    });
+    await new Promise((resolve) => setTimeout(resolve));
+
     expect(client.sendMessage).not.toHaveBeenCalled();
+    expect(outcomes).toEqual([]);
   });
 
   it('uses the error channel when an accepted event has no authoritative local echo', async () => {
