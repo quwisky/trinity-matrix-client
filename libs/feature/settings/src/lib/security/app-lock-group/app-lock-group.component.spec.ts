@@ -28,7 +28,6 @@ import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { APP_LOCK_MOBILE_OS } from './app-lock-flows';
 import { AppLockGroupComponent } from './app-lock-group.component';
 
 const PIN = '482913';
@@ -114,8 +113,6 @@ async function setup(
     appName?: string;
     /** What a successful clear of an unreadable PIN leaves the host reporting. */
     afterClear?: HostUserPresenceSupport;
-    /** A phone or tablet (Touch ID falls back to a passcode there, not a password). */
-    mobile?: boolean;
     /** The system-only guard's answer (replacing an unreadable PIN). */
     systemGuard?: GuardOutcome;
     /** Whether the service allows clearing an unreadable PIN (a setting that was read). */
@@ -201,7 +198,6 @@ async function setup(
             ),
           ),
       }),
-      { provide: APP_LOCK_MOBILE_OS, useValue: options.mobile ?? false },
       MockProvider(HostScreenPrivacyService, {
         support: () =>
           of(
@@ -902,16 +898,17 @@ describe('AppLockGroupComponent', () => {
     });
   });
 
-  describe('Touch ID’s fallback', () => {
-    const TOUCH: HostUserPresenceSupport = {
-      system: { kind: 'available', biometry: 'touch-id' },
+  describe('Touch ID’s fallback, as the host reports it', () => {
+    const touch = (
+      fallback: 'passcode' | 'password',
+    ): HostUserPresenceSupport => ({
+      system: { kind: 'available', biometry: 'touch-id', fallback },
       pin: { kind: 'available', set: false, nextAttemptAt: null },
-    };
+    });
 
     it('is the device passcode on iPhone and iPad', async () => {
       const { open } = await setup({
-        support: TOUCH,
-        mobile: true,
+        support: touch('passcode'),
         dialogResults: [NEW_PIN],
       });
       await click(lockSwitch());
@@ -923,8 +920,7 @@ describe('AppLockGroupComponent', () => {
 
     it('is the device password on a Mac', async () => {
       const { open } = await setup({
-        support: TOUCH,
-        mobile: false,
+        support: touch('password'),
         dialogResults: [NEW_PIN],
       });
       await click(lockSwitch());

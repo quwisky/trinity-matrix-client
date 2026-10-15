@@ -58,7 +58,8 @@ describe('systemPresenceOf', () => {
     [check({}), { kind: 'available', biometry: 'face' }],
     [
       check({ biometryType: BiometryType.touchId }),
-      { kind: 'available', biometry: 'touch-id' },
+      // iPhone and iPad fall back to the device passcode.
+      { kind: 'available', biometry: 'touch-id', fallback: 'passcode' },
     ],
     [
       check({ biometryType: BiometryType.fingerprintAuthentication }),
@@ -390,7 +391,8 @@ describe('ElectronUserPresenceAdapter', () => {
     await expect(
       firstValueFrom(adapter(true, { support, verify: vi.fn() }).support()),
     ).resolves.toEqual({
-      system: { kind: 'available', biometry: 'touch-id' },
+      // A Mac's Touch ID sheet falls back to the account password.
+      system: { kind: 'available', biometry: 'touch-id', fallback: 'password' },
       pin: { kind: 'unavailable', reason: 'not-supported' },
     });
   });

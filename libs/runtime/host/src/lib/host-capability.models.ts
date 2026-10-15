@@ -150,8 +150,22 @@ export type HostSystemPresenceUnavailableReason =
   | 'addon-unavailable'
   | 'locked-out';
 
+/**
+ * What a Touch ID sheet offers instead: the device passcode (iPhone, iPad) or the account
+ * password (Mac). Every other prompt's fallback follows from its kind.
+ */
+export type HostTouchIdFallback = 'passcode' | 'password';
+
 export type HostSystemPresence =
-  | { readonly kind: 'available'; readonly biometry: HostPresenceBiometry }
+  | {
+      readonly kind: 'available';
+      readonly biometry: Exclude<HostPresenceBiometry, 'touch-id'>;
+    }
+  | {
+      readonly kind: 'available';
+      readonly biometry: 'touch-id';
+      readonly fallback: HostTouchIdFallback;
+    }
   | {
       readonly kind: 'unavailable';
       readonly reason: HostSystemPresenceUnavailableReason;
