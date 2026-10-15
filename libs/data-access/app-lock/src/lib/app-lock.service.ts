@@ -467,13 +467,19 @@ export class AppLockService {
     this.setStatus(enabled ? 'locked' : 'off');
   }
 
-  /** A prompt verified with no lock since it opened; only an answer that takes effect counts. */
+  /**
+   * A prompt verified with no lock since it opened; only an answer that takes effect counts.
+   * Only a check made in Settings opens the guard window: an unlock never does (spec §1,
+   * "while Settings stays open"), so Settings always asks at least once per visit.
+   */
   private presenceVerified(kind: SystemPromptKind): void {
-    if (kind === 'unlock' && this._status() !== 'locked') return; // A PIN unlocked first.
+    if (kind === 'unlock') {
+      if (this._status() === 'locked') this.setStatus('unlocked'); // Else a PIN unlocked first.
+      return;
+    }
     // A settings check never opens the guard window behind the lock.
-    if (kind !== 'unlock' && this._status() === 'locked') return;
+    if (this._status() === 'locked') return;
     this.openGuardWindow(true);
-    if (kind === 'unlock') this.setStatus('unlocked');
   }
 
   /** Off, with the setting as known (or unknown) as it was; see `settingUnreadable`. */
@@ -580,7 +586,8 @@ export class AppLockService {
             const behindLock = !unlocks && this._status() === 'locked';
             if (locks !== this.locks || behindLock)
               return { kind: 'cancelled' };
-            this.openGuardWindow(false);
+            // An unlock is not a Settings check: only a check for a change opens the window.
+            if (!unlocks) this.openGuardWindow(false);
             onVerified();
           } else if (result.kind === 'failed' || result.kind === 'delayed') {
             this.patchPinWait(futureOrNull(result.until, now));

@@ -615,7 +615,8 @@ describe('AppLockService', () => {
       prompt.next({ kind: 'verified' });
       prompt.complete();
       expect(lock.status()).toBe('unlocked');
-      expect(lock.recentlyVerified()).toBe(true);
+      // An unlock is not a Settings check.
+      expect(lock.recentlyVerified()).toBe(false);
     });
 
     it('stays locked when an abandoned prompt is verified after a newer lock', async () => {
@@ -896,6 +897,8 @@ describe('AppLockService', () => {
       const { lock } = setup();
       await hydrated(lock);
       await firstValueFrom(lock.unlockWithSystem());
+      // Settings' own check; an unlock opens no guard window.
+      await firstValueFrom(lock.verifyForChange());
       expect(lock.recentlyVerified()).toBe(true);
       lock.lockNow();
       expect(lock.status()).toBe('locked');
@@ -1006,6 +1009,8 @@ describe('AppLockService', () => {
       const { lock } = setup({ support: PIN_ONLY, setPin: () => saving });
       await hydrated(lock);
       await firstValueFrom(lock.unlockWithPin('482913'));
+      // Settings' own check; an unlock opens no guard window.
+      await firstValueFrom(lock.verifyPinForChange('482913'));
       const enabling = firstValueFrom(lock.enable('7777'));
       lock.lockNow();
       saving.next({ kind: 'completed' });
@@ -1031,6 +1036,8 @@ describe('AppLockService', () => {
       const { lock, advance } = setup();
       await hydrated(lock);
       await firstValueFrom(lock.unlockWithSystem());
+      // Settings' own check; an unlock opens no guard window.
+      await firstValueFrom(lock.verifyForChange());
       await expect(firstValueFrom(lock.setLockAfter('5m'))).resolves.toEqual({
         kind: 'completed',
       });
@@ -1071,6 +1078,8 @@ describe('AppLockService', () => {
       const { lock, adapter } = setup();
       await hydrated(lock);
       await firstValueFrom(lock.unlockWithPin('482913'));
+      // Settings' own check; an unlock opens no guard window.
+      await firstValueFrom(lock.verifyPinForChange('482913'));
       await expect(firstValueFrom(lock.disable())).resolves.toEqual({
         kind: 'completed',
       });
@@ -1090,6 +1099,8 @@ describe('AppLockService', () => {
       });
       await hydrated(lock);
       await firstValueFrom(lock.unlockWithPin('482913'));
+      // Settings' own check; an unlock opens no guard window.
+      await firstValueFrom(lock.verifyPinForChange('482913'));
       await expect(firstValueFrom(lock.disable())).resolves.toEqual({
         kind: 'completed',
       });
@@ -1287,6 +1298,8 @@ describe('AppLockService', () => {
       const { lock, adapter } = setup({ support: FACE_UNREADABLE });
       await hydrated(lock);
       await firstValueFrom(lock.unlockWithSystem());
+      // Settings' own check; an unlock opens no guard window.
+      await firstValueFrom(lock.verifyForChange());
       await expect(firstValueFrom(lock.changePin('7777'))).resolves.toEqual({
         kind: 'completed',
       });
@@ -1315,6 +1328,8 @@ describe('AppLockService', () => {
       const { lock, adapter, report } = setup();
       await hydrated(lock);
       await firstValueFrom(lock.unlockWithPin('482913'));
+      // Settings' own check; an unlock opens no guard window.
+      await firstValueFrom(lock.verifyPinForChange('482913'));
       expect(lock.recentlyVerified()).toBe(true);
       expect(lock.recentlySystemVerified()).toBe(false);
       report(FACE_UNREADABLE);
@@ -1354,6 +1369,8 @@ describe('AppLockService', () => {
       });
       await hydrated(lock);
       await firstValueFrom(lock.unlockWithSystem());
+      // Settings' own check; an unlock opens no guard window.
+      await firstValueFrom(lock.verifyForChange());
       await expect(firstValueFrom(lock.changePin('7777'))).resolves.toEqual({
         kind: 'failed',
         reason: 'pin-not-cleared',
@@ -1363,10 +1380,49 @@ describe('AppLockService', () => {
   });
 
   describe('the guard window', () => {
+    it('is not opened by an unlock with the system prompt', async () => {
+      const { lock, adapter } = setup();
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithSystem());
+      expect(lock.status()).toBe('unlocked');
+      expect(lock.recentlyVerified()).toBe(false);
+      expect(lock.recentlySystemVerified()).toBe(false);
+      await expect(firstValueFrom(lock.setLockAfter('5m'))).resolves.toEqual({
+        kind: 'failed',
+        reason: 'not-verified',
+      });
+      // Settings asks for its own check.
+      await expect(firstValueFrom(lock.verifyForChange())).resolves.toBe(
+        'verified',
+      );
+      expect(adapter.verify).toHaveBeenCalledTimes(2);
+      expect(adapter.verify).toHaveBeenLastCalledWith({
+        reason: PRESENCE_REASONS.change,
+      });
+      expect(lock.recentlyVerified()).toBe(true);
+    });
+
+    it('is not opened by an unlock with the PIN', async () => {
+      const { lock, adapter } = setup({ support: PIN_ONLY });
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithPin('482913'));
+      expect(lock.status()).toBe('unlocked');
+      expect(lock.recentlyVerified()).toBe(false);
+      await expect(firstValueFrom(lock.disable())).resolves.toEqual({
+        kind: 'failed',
+        reason: 'not-verified',
+      });
+      await firstValueFrom(lock.verifyPinForChange('482913'));
+      expect(adapter.verifyPin).toHaveBeenCalledTimes(2);
+      expect(lock.recentlyVerified()).toBe(true);
+      expect(lock.recentlySystemVerified()).toBe(false);
+    });
+
     it('ends when Settings is left', async () => {
       const { lock } = setup();
       await hydrated(lock);
       await firstValueFrom(lock.unlockWithSystem());
+      await firstValueFrom(lock.verifyForChange());
       expect(lock.recentlyVerified()).toBe(true);
       lock.endGuardWindow();
       expect(lock.recentlyVerified()).toBe(false);

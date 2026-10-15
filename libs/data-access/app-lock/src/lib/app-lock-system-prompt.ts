@@ -29,8 +29,8 @@ export interface SystemPromptHooks {
   readonly locks: () => number;
   /**
    * A current verification (no lock since the prompt opened), applied once whether or not
-   * anyone still waits: an `unlock` prompt unlocks. Opens the guard window only if it took
-   * effect.
+   * anyone still waits: an `unlock` prompt unlocks; a Settings prompt opens the guard window,
+   * only if it took effect.
    */
   readonly verified: (kind: SystemPromptKind) => void;
   /** The host says the system prompt cannot run now. */
