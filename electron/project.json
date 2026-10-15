@@ -42,6 +42,7 @@
     },
     "test": {
       "dependsOn": ["install-dependencies"],
+      "inputs": ["default", "{workspaceRoot}/native/app-lock/**/*"],
       "executor": "nx:run-commands",
       "options": {
         "command": "pnpm -C electron run test",

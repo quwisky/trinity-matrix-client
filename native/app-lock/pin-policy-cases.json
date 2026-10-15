@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "formats": [
+    { "name": "four digits", "pin": "1234", "valid": true },
+    { "name": "sixteen digits", "pin": "1234567890123456", "valid": true },
+    { "name": "leading zeros", "pin": "0007", "valid": true },
+    { "name": "three digits", "pin": "123", "valid": false },
+    { "name": "seventeen digits", "pin": "12345678901234567", "valid": false },
+    { "name": "empty", "pin": "", "valid": false },
+    { "name": "inner space", "pin": "12 34", "valid": false },
+    { "name": "trailing newline", "pin": "1234\n", "valid": false },
+    { "name": "Arabic-Indic digits", "pin": "١٢٣٤", "valid": false },
+    { "name": "full-width digits", "pin": "１２３４", "valid": false },
+    { "name": "letters", "pin": "12ab", "valid": false },
+    { "name": "plus sign", "pin": "+1234", "valid": false }
+  ],
+  "delays": [
+    { "failures": 0, "waitSeconds": 0 },
+    { "failures": 1, "waitSeconds": 0 },
+    { "failures": 4, "waitSeconds": 0 },
+    { "failures": 5, "waitSeconds": 30 },
+    { "failures": 6, "waitSeconds": 60 },
+    { "failures": 7, "waitSeconds": 300 },
+    { "failures": 8, "waitSeconds": 900 },
+    { "failures": 9, "waitSeconds": 3600 },
+    { "failures": 40, "waitSeconds": 3600 }
+  ],
+  "attempts": [
+    {
+      "name": "no failures",
+      "failures": 0,
+      "wallElapsedSeconds": 0,
+      "uptimeElapsedSeconds": 0,
+      "rebooted": false,
+      "allowed": true
+    },
+    {
+      "name": "four failures need no wait",
+      "failures": 4,
+      "wallElapsedSeconds": 0,
+      "uptimeElapsedSeconds": 0,
+      "rebooted": false,
+      "allowed": true
+    },
+    {
+      "name": "wait running",
+      "failures": 5,
+      "wallElapsedSeconds": 10,
+      "uptimeElapsedSeconds": 10,
+      "rebooted": false,
+      "allowed": false
+    },
+    {
+      "name": "wait over",
+      "failures": 5,
+      "wallElapsedSeconds": 30,
+      "uptimeElapsedSeconds": 30,
+      "rebooted": false,
+      "allowed": true
+    },
+    {
+      "name": "wall clock jumped forward",
+      "failures": 5,
+      "wallElapsedSeconds": 86400,
+      "uptimeElapsedSeconds": 10,
+      "rebooted": false,
+      "allowed": false
+    },
+    {
+      "name": "clock moved backwards",
+      "failures": 5,
+      "wallElapsedSeconds": -3600,
+      "uptimeElapsedSeconds": 60,
+      "rebooted": false,
+      "allowed": false
+    },
+    {
+      "name": "rebooted, wall wait over",
+      "failures": 6,
+      "wallElapsedSeconds": 61,
+      "uptimeElapsedSeconds": 0,
+      "rebooted": true,
+      "allowed": true
+    },
+    {
+      "name": "rebooted, wall wait running",
+      "failures": 6,
+      "wallElapsedSeconds": 20,
+      "uptimeElapsedSeconds": 0,
+      "rebooted": true,
+      "allowed": false
+    }
+  ]
+}

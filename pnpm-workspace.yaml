@@ -11,6 +11,8 @@
 #     `node_modules`, and `cap sync` wires its Android module and Swift package into the
 #     hosts. Its TypeScript is still imported through its `@trinity/*` alias, and it
 #     declares no dependencies, so it adds nothing to the install tree.
+#     `libs/native/capacitor-app-lock` (name `@trinity/capacitor-app-lock`) joins for the same
+#     reason.
 #   - `libs/spartan/*` carry a `package.json` (name `@trinity/helm/*`) only for the
 #     `@spartan-ng/cli` generator; they are consumed via the path aliases above.
 #   - `electron/` (name `trinity-desktop`) is a standalone app with its own dependency
@@ -20,6 +22,7 @@
 # to a parent dir); every other library stays out of `packages`.
 packages:
   - libs/native/capacitor-push
+  - libs/native/capacitor-app-lock
 minimumReleaseAge: 1440
 
 # Which dependencies may run install/build scripts. pnpm 11 removed

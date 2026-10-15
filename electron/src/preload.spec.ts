@@ -84,6 +84,9 @@ type ExposedBridge = {
     readonly userPresence: {
       readonly support: () => Promise<unknown>;
       readonly verify: (reason: unknown) => Promise<unknown>;
+      readonly setPin: (pin: unknown) => Promise<unknown>;
+      readonly verifyPin: (pin: unknown) => Promise<unknown>;
+      readonly clearPin: () => Promise<unknown>;
     };
     readonly lockIntegration: {
       readonly setState: (state: unknown) => void;
@@ -368,6 +371,50 @@ describe('preload host capabilities', () => {
       ['trinity:host:v1:user-presence:support'],
       ['trinity:host:v1:user-presence:verify', { reason: 'Unlock Trinity' }],
     ]);
+  });
+
+  it('forwards PIN commands only when granted, without reshaping the PIN', async () => {
+    await bridge.negotiate(['user-presence']);
+    invoke.mockClear();
+    await bridge.capabilities.userPresence.setPin('482913');
+    await bridge.capabilities.userPresence.verifyPin('482913');
+    await bridge.capabilities.userPresence.clearPin();
+    await expect(
+      bridge.capabilities.userPresence.verifyPin(482913),
+    ).resolves.toEqual({
+      kind: 'invalid',
+    });
+    await expect(
+      bridge.capabilities.userPresence.setPin(482913),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'pin-invalid' },
+    });
+    await expect(
+      bridge.capabilities.userPresence.verifyPin('1'.repeat(65)),
+    ).resolves.toEqual({ kind: 'invalid' });
+    expect(invoke.mock.calls).toEqual([
+      ['trinity:host:v1:user-presence:set-pin', { pin: '482913' }],
+      ['trinity:host:v1:user-presence:verify-pin', { pin: '482913' }],
+      ['trinity:host:v1:user-presence:clear-pin'],
+    ]);
+  });
+
+  it('answers PIN commands without main before user presence is granted', async () => {
+    invoke.mockClear();
+    const presence = bridge.capabilities.userPresence;
+    await expect(presence.setPin('482913')).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+    await expect(presence.verifyPin('482913')).resolves.toEqual({
+      kind: 'unavailable',
+    });
+    await expect(presence.clearPin()).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'not-supported',
+    });
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   it('sends lock state and accepts only known lock requests once granted', async () => {

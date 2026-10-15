@@ -1,0 +1,30 @@
+// The TrinityAppLock Capacitor plugin: the App lock PIN verifier. Built only inside the
+// Trinity Android host: `cap sync android` includes this directory as
+// :trinity-capacitor-app-lock, and the versions come from android/variables.gradle.
+apply plugin: 'com.android.library'
+
+android {
+    namespace = "dev.trinityproject.trinity.applock"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        minSdk = rootProject.ext.minSdkVersion
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:${rootProject.ext.junitVersion}"
+    // org.json is an Android framework API; JVM unit tests need a real implementation.
+    testImplementation "org.json:json:${rootProject.ext.orgJsonVersion}"
+}
+
+// PinPolicyTest runs the fixture it shares with the Swift and Electron suites.
+tasks.withType(Test).configureEach {
+    def cases = rootProject.file('../native/app-lock/pin-policy-cases.json')
+    inputs.file(cases)
+    systemProperty 'trinity.pinPolicyCases', cases.absolutePath
+}

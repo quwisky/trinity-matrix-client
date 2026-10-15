@@ -1,0 +1,10 @@
+# Gradle output of the :trinity-capacitor-app-lock module
+/android/build/
+
+# SwiftPM output of the TrinityCapacitorAppLock package
+/.build/
+/.swiftpm/
+
+# swift test output of the TrinityAppLockCore package
+/ios/TrinityAppLockCore/.build/
+/ios/TrinityAppLockCore/.swiftpm/

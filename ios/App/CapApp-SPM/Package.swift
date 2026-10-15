@@ -27,6 +27,7 @@ let package = Package(
         .package(name: "CapacitorShare", path: "../../../node_modules/.pnpm/@capacitor+share@8.0.3_@capacitor+core@8.5.3/node_modules/@capacitor/share"),
         .package(name: "CapacitorStatusBar", path: "../../../node_modules/.pnpm/@capacitor+status-bar@8.0.4_@capacitor+core@8.5.3/node_modules/@capacitor/status-bar"),
         .package(name: "CapawesomeCapacitorBadge", path: "../../../node_modules/.pnpm/@capawesome+capacitor-badge@8.0.3_@capacitor+core@8.5.3/node_modules/@capawesome/capacitor-badge"),
+        .package(name: "TrinityCapacitorAppLock", path: "../../../libs/native/capacitor-app-lock"),
         .package(name: "TrinityCapacitorPush", path: "../../../libs/native/capacitor-push")
     ],
     targets: [
@@ -50,6 +51,7 @@ let package = Package(
                 .product(name: "CapacitorShare", package: "CapacitorShare"),
                 .product(name: "CapacitorStatusBar", package: "CapacitorStatusBar"),
                 .product(name: "CapawesomeCapacitorBadge", package: "CapawesomeCapacitorBadge"),
+                .product(name: "TrinityCapacitorAppLock", package: "TrinityCapacitorAppLock"),
                 .product(name: "TrinityCapacitorPush", package: "TrinityCapacitorPush")
             ]
         )

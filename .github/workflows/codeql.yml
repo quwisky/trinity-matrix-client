@@ -86,12 +86,14 @@ jobs:
 
   # Builds only the Swift CodeQL can compile without the app: the TrinityPush package
   # (libs/native/capacitor-push/ios/TrinityPush, Foundation and Security only), the push
-  # rendering shared by the plugin and the NotificationService extension.
+  # rendering shared by the plugin and the NotificationService extension; and the
+  # TrinityAppLockCore package (libs/native/capacitor-app-lock/ios/TrinityAppLockCore,
+  # Foundation, Security and CommonCrypto only), the App lock PIN verifier.
   #
   # Not covered:
-  # - The PushHandoff plugin (libs/native/capacitor-push/ios/Sources). Its package depends on
-  #   capacitor-swift-pm's Capacitor product alone, and Capacitor's headers import Cordova, so
-  #   it compiles only inside the app, where CapApp-SPM also links Cordova.
+  # - The PushHandoff and AppLock plugins (libs/native/capacitor-*/ios/Sources). Their packages
+  #   depend on capacitor-swift-pm's Capacitor product alone, and Capacitor's headers import
+  #   Cordova, so they compile only inside the app, where CapApp-SPM also links Cordova.
   # - ios/App: the app target and the NotificationService extension. Building them needs the
   #   workspace's node_modules and `cap sync`; ci.yml's iOS Native Build job compiles them.
   swift:
@@ -120,6 +122,8 @@ jobs:
       # every source file compiles; host architecture only, as CodeQL recommends.
       - name: Build TrinityPush
         run: swift build --package-path libs/native/capacitor-push/ios/TrinityPush
+      - name: Build TrinityAppLockCore
+        run: swift build --package-path libs/native/capacitor-app-lock/ios/TrinityAppLockCore
       - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           category: /language:swift

@@ -58,6 +58,13 @@ const RELAUNCH_CHANNEL = 'trinity:host:v1:title-bar:relaunch';
 // Mirror user-presence-ipc.ts by string value; main re-validates every payload.
 const USER_PRESENCE_SUPPORT_CHANNEL = 'trinity:host:v1:user-presence:support';
 const USER_PRESENCE_VERIFY_CHANNEL = 'trinity:host:v1:user-presence:verify';
+const USER_PRESENCE_SET_PIN_CHANNEL = 'trinity:host:v1:user-presence:set-pin';
+const USER_PRESENCE_VERIFY_PIN_CHANNEL =
+  'trinity:host:v1:user-presence:verify-pin';
+const USER_PRESENCE_CLEAR_PIN_CHANNEL =
+  'trinity:host:v1:user-presence:clear-pin';
+// A bound on what crosses IPC, not the PIN rule: main alone checks 4–16 ASCII digits.
+const PIN_MAX_LENGTH = 64;
 // Mirror lock-integration.ts by string value; main re-validates every payload.
 const LOCK_SET_STATE_CHANNEL = 'trinity:host:v1:lock-integration:set-state';
 const LOCK_COVER_PAINTED_CHANNEL =
@@ -479,6 +486,38 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
           reason,
         }) as Promise<unknown>;
       },
+      // The PIN goes to main as typed; main alone validates and hashes it.
+      setPin: (pin: string): Promise<unknown> => {
+        if (!grantedOperations.has('user-presence')) {
+          return Promise.resolve(PRESENCE_NOT_SUPPORTED);
+        }
+        if (typeof pin !== 'string' || pin.length > PIN_MAX_LENGTH) {
+          return Promise.resolve({
+            kind: 'rejected',
+            diagnostic: { code: 'pin-invalid' },
+          });
+        }
+        return ipcRenderer.invoke(USER_PRESENCE_SET_PIN_CHANNEL, {
+          pin,
+        }) as Promise<unknown>;
+      },
+      verifyPin: (pin: string): Promise<unknown> => {
+        if (!grantedOperations.has('user-presence')) {
+          return Promise.resolve({ kind: 'unavailable' });
+        }
+        if (typeof pin !== 'string' || pin.length > PIN_MAX_LENGTH) {
+          return Promise.resolve({ kind: 'invalid' });
+        }
+        return ipcRenderer.invoke(USER_PRESENCE_VERIFY_PIN_CHANNEL, {
+          pin,
+        }) as Promise<unknown>;
+      },
+      clearPin: (): Promise<unknown> =>
+        grantedOperations.has('user-presence')
+          ? (ipcRenderer.invoke(
+              USER_PRESENCE_CLEAR_PIN_CHANNEL,
+            ) as Promise<unknown>)
+          : Promise.resolve(PRESENCE_NOT_SUPPORTED),
     },
     lockIntegration: {
       setState: (state: {

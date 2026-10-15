@@ -1,11 +1,13 @@
 import { Injectable, inject } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
+import { HostUserPresenceService } from '@trinity/runtime/host';
 import {
   rustCryptoStoreDbNames,
   syncStoreIndexedDbName,
 } from '@trinity/util/matrix';
 import { WRAPPING_KEY_DB_NAME } from './crypto-store-wrapping-keys';
 import { DIAGNOSTIC_LOG_DB_NAME } from './diagnostic-log-db-name';
+import { firstValueFrom } from 'rxjs';
 import { beginDatabaseDeletion, listDatabaseNames } from './indexed-db-wipe';
 import { SecureStorageService } from './secure-storage.service';
 import type { AccountRecord } from './session-storage.service';
@@ -51,6 +53,7 @@ export interface IndexedDbWipeAttempt {
 @Injectable({ providedIn: 'root' })
 export class LocalDataWipeService {
   private readonly secure = inject(SecureStorageService);
+  private readonly presence = inject(HostUserPresenceService);
 
   /**
    * Delete every IndexedDB database this app could own.
@@ -183,9 +186,23 @@ export class LocalDataWipeService {
     };
   }
 
-  /** Sweep secrets the Account registry can no longer name. */
-  wipeSecureStorage(): Promise<boolean> {
-    return attemptAsync(() => this.secure.clearAll());
+  /**
+   * Sweep secrets the Account registry can no longer name, and the App lock PIN, which
+   * lives in its host's verifier rather than in secure storage. A host without a PIN
+   * (`unavailable`) has nothing to clear. Both steps run whatever the other reports.
+   */
+  async wipeSecureStorage(): Promise<boolean> {
+    const secrets = await attemptAsync(() => this.secure.clearAll());
+    // Not attemptAsync: it reports any settled step as success, and a `rejected` outcome
+    // must read as a failed wipe.
+    let pin: boolean;
+    try {
+      pin =
+        (await firstValueFrom(this.presence.clearPin())).kind !== 'rejected';
+    } catch {
+      pin = false;
+    }
+    return secrets && pin;
   }
 
   /** Clear the app-scoped Preferences group. */

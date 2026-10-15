@@ -1,0 +1,7 @@
+{
+  "name": "native-capacitor-app-lock-android",
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "//": "The plugin's Kotlin and Java module, split from the TypeScript project as native-capacitor-push-android is, so a native-only edit marks the Android host rather than every TypeScript dependent.",
+  "projectType": "library",
+  "tags": ["type:platform", "scope:shared", "role:adapter", "capability:host"]
+}
