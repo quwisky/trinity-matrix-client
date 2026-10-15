@@ -31,6 +31,11 @@ import {
  * the only place a live event can later be cut from, and trims a room that has passed
  * {@link TRIM_HIGH_WATER} events back to its latest ones, unless a Conversation handle
  * holds it: a focused or retained room is trimmed when its handle retires instead.
+ *
+ * Not bounded: the focused room. The release after the window has been hidden for a
+ * minute retires only the retained handles and keeps the focused conversation on screen,
+ * so a room left open in a hidden window keeps every event it receives until the person
+ * moves to another room and its handle retires, or the app restarts.
  */
 @Injectable({ providedIn: 'root' })
 export class LiveTimelineTrimmer {

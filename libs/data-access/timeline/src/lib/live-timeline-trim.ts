@@ -15,9 +15,21 @@ export const TRIM_KEEP = 50;
 
 /**
  * How many events a room nobody has open may hold before it is trimmed. Each event costs
- * about 2 KB of heap, so this bounds a busy room at roughly 0.4 MB however long it runs.
+ * about 2 KB of heap, so a trimmable room stays under roughly 0.4 MB.
+ *
+ * A trim never cuts past the person's read receipt or fully-read marker, so a room that
+ * keeps receiving events after it was last read can grow past this until
+ * {@link TRIM_CEILING}.
  */
 export const TRIM_HIGH_WATER = 200;
+
+/**
+ * How many events a room nobody has open may hold before its read receipt and fully-read
+ * marker stop protecting the events after them, about 2 MB. The room is then trimmed to
+ * its latest events like any other. Unread counts live on the room and stay; what goes is
+ * the "New messages" divider when the room is opened again, as after a restart.
+ */
+export const TRIM_CEILING = 1_000;
 
 /**
  * A place a live timeline can be cut: the events after it stay, and `token` pages back from
@@ -101,11 +113,11 @@ function indexOf(
 
 /**
  * The furthest a trim may cut and still change nothing the app reads from the timeline:
- * the room list's latest message, the person's read receipt and fully-read marker, any
- * local echo still being sent or retried, and the target of every kept reaction, edit or
- * redaction. The SDK keeps a relation out of the main timeline while its target is
- * missing, so cutting between them would drop the relation, and with it maybe the room's
- * latest event.
+ * the room list's latest message, the person's read receipt and fully-read marker (below
+ * {@link TRIM_CEILING}), any local echo still being sent or retried, and the target of
+ * every kept reaction, edit or redaction. The SDK keeps a relation out of the main
+ * timeline while its target is missing, so cutting between them would drop the relation,
+ * and with it maybe the room's latest event.
  */
 function cutLimit(
   room: Room,
@@ -113,11 +125,14 @@ function cutLimit(
   events: readonly MatrixEvent[],
   indexById: ReadonlyMap<string, number>,
 ): number {
-  const protectedIds = [
-    room.getEventReadUpTo(userId, false),
-    room.getEventReadUpTo(userId, true),
-    room.getAccountData(EventType.FullyRead)?.getContent()['event_id'],
-  ];
+  const protectedIds =
+    events.length > TRIM_CEILING
+      ? []
+      : [
+          room.getEventReadUpTo(userId, false),
+          room.getEventReadUpTo(userId, true),
+          room.getAccountData(EventType.FullyRead)?.getContent()['event_id'],
+        ];
   let limit = events.length - TRIM_KEEP;
   for (const eventId of protectedIds) {
     const index =

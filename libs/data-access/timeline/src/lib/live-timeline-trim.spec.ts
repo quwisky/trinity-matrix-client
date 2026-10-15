@@ -13,6 +13,7 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 import { scrollbackLive } from './live-scrollback';
 import {
+  TRIM_CEILING,
   TRIM_KEEP,
   noteSyncPosition,
   trimLiveTimeline,
@@ -204,6 +205,80 @@ describe('trimLiveTimeline', () => {
     expect(room.findEventById(id(150))).toBeDefined();
     expect(room.getEventReadUpTo(ME)).toBe(id(200));
     expect(ids(room).length).toBeLessThan(330 - 120);
+  });
+
+  it('trims past the read receipt and fully-read marker once a room passes the ceiling', async () => {
+    const last = TRIM_CEILING + 200;
+    const { client, room } = setup(last);
+    await startedAt(room, 101, 120);
+    noteSyncPosition(room, before(121));
+    room.addReceipt(
+      new MatrixEvent({
+        type: EventType.Receipt,
+        room_id: ROOM,
+        content: { [id(110)]: { 'm.read': { [ME]: { ts: 110 } } } },
+      }),
+    );
+    room.addAccountData([
+      new MatrixEvent({
+        type: EventType.FullyRead,
+        room_id: ROOM,
+        content: { event_id: id(110) },
+      }),
+    ]);
+    // Received while nobody reads the room: everything after the receipt is unread.
+    for (let at = 120; at < last; at += 10) {
+      await receive(room, at + 1, at + 10);
+      noteSyncPosition(room, before(at + 11));
+    }
+    room.setUnreadNotificationCount(NotificationCountType.Total, last - 110);
+    room.setUnreadNotificationCount(NotificationCountType.Highlight, 3);
+    expect(room.getLiveTimeline().getEvents().length).toBeGreaterThan(
+      TRIM_CEILING,
+    );
+
+    trimLiveTimeline(room, ME);
+
+    const kept = ids(room);
+    expect(kept.length).toBeGreaterThanOrEqual(TRIM_KEEP);
+    expect(kept.length).toBeLessThanOrEqual(2 * TRIM_KEEP + 10);
+    expect(kept).toEqual(range(last + 1 - kept.length, last));
+    expect(room.getUnreadNotificationCount(NotificationCountType.Total)).toBe(
+      last - 110,
+    );
+    expect(
+      room.getUnreadNotificationCount(NotificationCountType.Highlight),
+    ).toBe(3);
+    // The receipt stays recorded; the SDK ignores it while its event is not loaded, as
+    // after a restart.
+    expect(room.getReadReceiptForUserId(ME)?.eventId).toBe(id(110));
+    // A kept event stays unread, as the encrypted-room count needs when it decrypts.
+    expect(room.hasUserReadEvent(ME, id(last))).toBe(false);
+
+    await pageToStart(client, room);
+
+    expect(ids(room)).toEqual(range(1, last));
+  });
+
+  it('keeps the read receipt below the ceiling', async () => {
+    const last = TRIM_CEILING - 100;
+    const { room } = setup(last);
+    await startedAt(room, 101, 120);
+    noteSyncPosition(room, before(121));
+    room.addReceipt(
+      new MatrixEvent({
+        type: EventType.Receipt,
+        room_id: ROOM,
+        content: { [id(110)]: { 'm.read': { [ME]: { ts: 110 } } } },
+      }),
+    );
+    for (let at = 120; at < last; at += 10) {
+      await receive(room, at + 1, at + 10);
+      noteSyncPosition(room, before(at + 11));
+    }
+
+    expect(trimLiveTimeline(room, ME)).toBe(0);
+    expect(room.findEventById(id(110))).toBeDefined();
   });
 
   it('keeps the latest message the room list previews', async () => {
