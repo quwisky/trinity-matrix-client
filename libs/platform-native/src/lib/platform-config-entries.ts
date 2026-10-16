@@ -28,6 +28,7 @@ import {
   isSwipeAction,
 } from './message-gesture-settings.service';
 import {
+  DEFAULT_DEFER_MEDIA_WHILE_SCROLLING,
   DEFAULT_VIRTUAL_TIMELINE,
   FeatureFlagsService,
 } from './feature-flags.service';
@@ -252,6 +253,16 @@ function flagEntries(flags: FeatureFlagsService): readonly ConfigEntry[] {
       read: () => flags.virtualTimeline(),
       reset: () => flags.setVirtualTimeline(DEFAULT_VIRTUAL_TIMELINE),
       ...flagSetting((on) => flags.setVirtualTimeline(on)),
+    },
+    {
+      path: 'flags.deferMediaWhileScrolling',
+      key: 'trinity.flags.defer-media-while-scrolling',
+      description:
+        'Whether images in the timeline wait to load until fast scrolling slows down, which uses less memory.',
+      read: () => flags.deferMediaWhileScrolling(),
+      reset: () =>
+        flags.setDeferMediaWhileScrolling(DEFAULT_DEFER_MEDIA_WHILE_SCROLLING),
+      ...flagSetting((on) => flags.setDeferMediaWhileScrolling(on)),
     },
   ];
 }

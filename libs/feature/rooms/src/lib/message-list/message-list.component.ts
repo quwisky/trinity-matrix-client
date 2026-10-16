@@ -22,6 +22,7 @@ import { BodyOverflowObserver } from '../message-row/body-overflow';
 import { MessageListBase, type JumpOptions } from './message-list-base';
 import { scrollToJumpTarget } from './jump-scroll';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
+import { TimelineMediaGate } from '../shared/timeline-media-gate';
 import { scrollBehavior } from '@trinity/util/ui';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { DropOverlayComponent } from './drop-overlay/drop-overlay.component';
@@ -106,9 +107,10 @@ const SCROLL_IDLE_MS = 150;
       outputs: [],
     },
   ],
-  // Rows read the scroll activity to hold their hover work back while the list scrolls, and
-  // share one ResizeObserver for every row body in this list (Show more).
-  providers: [TimelineScrollActivity, BodyOverflowObserver],
+  // Rows read the scroll activity to hold their hover work back while the list scrolls, wait
+  // on the media gate to load their images, and share one ResizeObserver for every row body
+  // in this list (Show more).
+  providers: [TimelineScrollActivity, TimelineMediaGate, BodyOverflowObserver],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss',
 })
@@ -159,6 +161,7 @@ export class MessageListComponent extends MessageListBase {
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly scrollActivity = inject(TimelineScrollActivity);
+  private readonly mediaGate = inject(TimelineMediaGate);
   private readonly bodyOverflow = inject(BodyOverflowObserver);
   private readonly rowHosts = viewChildren(MessageRowComponent, {
     read: ElementRef,
@@ -222,6 +225,12 @@ export class MessageListComponent extends MessageListBase {
 
   /** Render only the rows near the viewport. Off (Settings → Experimental) renders every loaded row. */
   readonly windowed = input(true);
+
+  /**
+   * Hold row images back until their row is near the viewport and the list is no longer
+   * flinging ("Load images after fast scrolling", Settings → Experimental). Off by default.
+   */
+  readonly deferMediaWhileScrolling = input(false);
 
   /**
    * The room already shows its own empty-room prompt, so the list adds no empty line. Bind it
@@ -406,6 +415,8 @@ export class MessageListComponent extends MessageListBase {
       }
     });
 
+    effect(() => this.mediaGate.setEnabled(this.deferMediaWhileScrolling()));
+
     // Keep the observed set of rendered rows in sync with the window.
     effect(() => {
       const hosts = this.rowHosts();
@@ -419,6 +430,7 @@ export class MessageListComponent extends MessageListBase {
         return;
       }
       this.viewportH.set(el.clientHeight);
+      this.mediaGate.connect(el);
       if (typeof ResizeObserver === 'undefined') {
         return; // jsdom / SSR — degrades to render-all via estimate heights.
       }
@@ -488,8 +500,17 @@ export class MessageListComponent extends MessageListBase {
       return;
     }
     this.markScrolling();
+    const ownRestore =
+      this.expectedProgrammaticScrollTop !== null &&
+      Math.abs(el.scrollTop - this.expectedProgrammaticScrollTop) < 1;
+    // How fast the reader moves the list; our own restore kept the rows put under them.
+    if (ownRestore) {
+      this.scrollActivity.corrected(el.scrollTop, performance.now());
+    } else {
+      this.scrollActivity.moved(el.scrollTop, performance.now());
+    }
     if (this.expectedProgrammaticScrollTop !== null) {
-      if (Math.abs(el.scrollTop - this.expectedProgrammaticScrollTop) < 1) {
+      if (ownRestore) {
         this.expectedProgrammaticScrollTop = null;
       } else {
         this.prependAnchorActive = false;

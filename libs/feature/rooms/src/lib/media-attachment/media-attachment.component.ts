@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   computed,
   effect,
   inject,
@@ -18,6 +19,7 @@ import {
   type PresentedMediaReference,
 } from '@trinity/data-access/media';
 import { MediaSaveService } from './media-save.service';
+import { TimelineMediaGate } from '../shared/timeline-media-gate';
 import {
   MediaViewerLauncher,
   type MediaViewerOutcome,
@@ -41,6 +43,11 @@ interface OpenRendition {
  * fetched, decrypted and pinned for every row on screen, so only a video's bundled thumbnail
  * (its poster) is resolved up front and the clip itself waits for {@link play}.
  *
+ * In a timeline that loads images after fast scrolling (Settings › Experimental), the
+ * thumbnail or poster waits for the list's {@link TimelineMediaGate}: until the row is near
+ * the viewport and the list is no longer flinging. One still loading when the row goes is
+ * cancelled, so a row the reader only passed leaves no blob, decode or upload behind.
+ *
  * Full-size renditions are large and rarely needed twice, so they are dropped from the media
  * cache as soon as they are closed instead of waiting for the LRU: the lightbox image when the
  * lightbox closes ({@link MediaViewerLauncher}'s job), a clip when its playback ends (the player
@@ -61,6 +68,9 @@ export class MediaAttachmentComponent {
   private readonly viewer = inject(MediaViewerLauncher);
   private readonly mediaSave = inject(MediaSaveService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  /** The timeline's gate for image loads; absent outside a message list. */
+  private readonly gate = inject(TimelineMediaGate, { optional: true });
 
   readonly src = signal<string | null>(null);
   /** A video's bundled thumbnail, shown behind its play button until the clip is played. */
@@ -73,6 +83,13 @@ export class MediaAttachmentComponent {
   private pinnedUrl: string | null = null;
   /** The thumbnail or poster resolve. */
   private mediaSub?: Subscription;
+  /** Withdraws the thumbnail or poster still waiting for the {@link gate}. */
+  private cancelWait: () => void = () => undefined;
+  /**
+   * The thumbnail or poster resolve still in flight while the {@link gate} is on, to cancel
+   * if its row goes first. Null once it has a URL (the cache keeps that for the next row).
+   */
+  private pending: PresentedMediaReference | null = null;
   /**
    * The played clip: the message it belongs to (rows are recycled, so not necessarily the
    * current one), its pinned URL once resolved, and the resolve.
@@ -84,7 +101,10 @@ export class MediaAttachmentComponent {
     // across `@for` rows, so each new `media` re-fetches and re-pins.
     effect(() => {
       const media = this.media();
-      this.mediaSub?.unsubscribe();
+      // A row that already shows its image is re-rendering its message (an edit, a receipt,
+      // a reaction): load at once rather than blank it mid-scroll. Read before the reset.
+      const shown = this.pinnedUrl !== null;
+      this.releaseThumbnail();
       // A clip playing in a recycled row belongs to the previous message: closing it.
       untracked(() => this.dropClip());
       this.src.set(null);
@@ -104,29 +124,33 @@ export class MediaAttachmentComponent {
       if (media.kind === 'image') {
         // Only an image may stand in with its thumbnail: a <video>/<audio> plays its src, and a
         // bundled thumbnail is a still JPEG.
-        this.mediaSub = this.resolve(media, 'thumbnail').subscribe((url) => {
-          this.repin(url);
-          this.src.set(url);
-        });
+        this.whenReady(shown, () =>
+          this.resolveThumbnail(
+            media,
+            this.resolve(media, 'thumbnail'),
+            (url) => this.src.set(url),
+          ),
+        );
       } else if (media.kind === 'video' && media.hasThumbnail) {
         // Never the 'thumbnail' variant without a bundled one: it would resolve the whole video.
         // A missing or broken poster is cosmetic, so its failure is not the bubble's error.
-        this.mediaSub = this.mediaPipeline
-          .resolveMedia(media, 'thumbnail')
-          .pipe(
-            takeUntilDestroyed(this.destroyRef),
-            catchError(() => EMPTY),
-          )
-          .subscribe((url) => {
-            this.repin(url);
-            this.poster.set(url);
-          });
+        this.whenReady(shown, () =>
+          this.resolveThumbnail(
+            media,
+            this.mediaPipeline.resolveMedia(media, 'thumbnail').pipe(
+              takeUntilDestroyed(this.destroyRef),
+              catchError(() => EMPTY),
+            ),
+            (url) => this.poster.set(url),
+          ),
+        );
       }
     });
 
     // The lightbox outlives this element; MediaViewerLauncher, provided here, closes it (or
     // cancels the full image still loading for it) when this component is destroyed.
     this.destroyRef.onDestroy(() => {
+      this.releaseThumbnail();
       this.repin(null);
       this.dropClip();
     });
@@ -197,6 +221,45 @@ export class MediaAttachmentComponent {
         void unhandled;
       }
     }
+  }
+
+  /** Start `load` now, or once the timeline's gate lets this row's image load. */
+  private whenReady(shown: boolean, load: () => void): void {
+    if (!this.gate || shown) {
+      load();
+      return;
+    }
+    this.cancelWait = this.gate.whenReady(this.host.nativeElement, load);
+  }
+
+  /** Resolve the thumbnail or poster, pin it and hand it to `show`. */
+  private resolveThumbnail(
+    media: PresentedMediaReference,
+    resolve: Observable<string>,
+    show: (url: string) => void,
+  ): void {
+    // Only with the gate on is a row that goes mid-load cancelled; off, it loads as before.
+    const cancellable = this.gate?.enabled ?? false;
+    this.pending = cancellable ? media : null;
+    this.mediaSub = resolve.subscribe((url) => {
+      this.pending = null;
+      this.repin(url);
+      show(url);
+    });
+  }
+
+  /**
+   * Stop waiting for or resolving the current thumbnail or poster. A resolve still in flight
+   * under the gate is dropped too, after letting go of it, so it is cancelled unless another
+   * row waits for the same bytes.
+   */
+  private releaseThumbnail(): void {
+    this.cancelWait();
+    this.cancelWait = () => undefined;
+    this.mediaSub?.unsubscribe();
+    const pending = this.pending;
+    this.pending = null;
+    if (pending) this.mediaPipeline.drop(pending, 'thumbnail', null);
   }
 
   /** Resolve one rendition with the busy/error convention. */

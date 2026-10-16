@@ -260,4 +260,29 @@ test.describe('Settings', () => {
       .click();
     await expect.poll(read).toBe('true');
   });
+
+  test('turns on loading images after fast scrolling and keeps the choice', async ({
+    page,
+  }) => {
+    await openSection(page, 'experimental');
+    const KEY = 'trinity.flags.defer-media-while-scrolling';
+    const read = () => readPreference(page, KEY);
+    const toggle = page.getByRole('switch', {
+      name: 'Load images after fast scrolling',
+    });
+
+    // An opt-in: off, with nothing stored, until the person turns it on.
+    await expect(toggle).not.toBeChecked();
+    expect(await read()).toBeNull();
+
+    await toggle.click();
+    await expect.poll(read).toBe('true');
+
+    await page.goto('/settings/experimental');
+    await page.reload();
+    await expect(toggle).toBeChecked({ timeout: 20_000 });
+
+    await toggle.click();
+    await expect.poll(read).toBe('false');
+  });
 });

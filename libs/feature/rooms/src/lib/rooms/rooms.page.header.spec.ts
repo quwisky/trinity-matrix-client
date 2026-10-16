@@ -113,6 +113,7 @@ let lastRender: {
 };
 let lastFixture: ComponentFixture<RoomsPage>;
 const windowingFlag = signal(false);
+const deferMediaFlag = signal(false);
 
 function renderHeader(
   pinCount: number,
@@ -124,6 +125,7 @@ function renderHeader(
   } = {},
 ) {
   windowingFlag.set(false);
+  deferMediaFlag.set(false);
   const presenceByUser = opts.presenceByUser ?? {};
   const pinMessages = signal<readonly unknown[]>(
     Array.from({ length: pinCount }, (_, id) => ({ id })),
@@ -222,7 +224,10 @@ function renderHeader(
       }),
       MockProvider(InvitesService),
       MockProvider(TimelineActionsService),
-      MockProvider(FeatureFlagsService, { virtualTimeline: windowingFlag }),
+      MockProvider(FeatureFlagsService, {
+        virtualTimeline: windowingFlag,
+        deferMediaWhileScrolling: deferMediaFlag,
+      }),
       MockProvider(MatrixClientService, {
         activeUserId: signal<string | null>('@me:hs'),
       }),
@@ -552,6 +557,20 @@ describe('RoomsPage timeline', () => {
     expect(lists()).toHaveLength(1);
     expect(lists()[0].componentInstance).toBe(list);
     expect(list.windowed()).toBe(true);
+  });
+
+  it('binds "Load images after fast scrolling" to the list as it flips', () => {
+    renderHeader(0);
+    const list = ngMocks.find(
+      lastFixture.debugElement,
+      MessageListComponent,
+    ).componentInstance;
+    expect(list.deferMediaWhileScrolling()).toBe(false);
+
+    deferMediaFlag.set(true);
+    lastFixture.detectChanges();
+
+    expect(list.deferMediaWhileScrolling()).toBe(true);
   });
 });
 

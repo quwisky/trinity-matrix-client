@@ -431,6 +431,11 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     key: 'trinity.flags.virtual-timeline',
     owner: 'platform-native',
   },
+  {
+    disposition: 'exported',
+    key: 'trinity.flags.defer-media-while-scrolling',
+    owner: 'platform-native',
+  },
 
   // — shortcuts/keyboard-shortcuts.service.ts —
   {

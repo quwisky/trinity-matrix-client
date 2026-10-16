@@ -14,4 +14,17 @@
       (checkedChange)="flags.setVirtualTimeline($event)"
     />
   </trn-settings-row>
+  <trn-settings-row
+    label="Load images after fast scrolling"
+    description="Images in the timeline wait until scrolling slows down, which uses less memory."
+    for="flag-defer-media-switch"
+    data-testid="flag-defer-media"
+  >
+    <trn-switch
+      inputId="flag-defer-media-switch"
+      aria-describedby="flag-defer-media-switch-description"
+      [checked]="flags.deferMediaWhileScrolling()"
+      (checkedChange)="flags.setDeferMediaWhileScrolling($event)"
+    />
+  </trn-settings-row>
 </trn-settings-group>

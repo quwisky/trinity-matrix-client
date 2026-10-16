@@ -11,6 +11,14 @@ const get = Preferences.get as unknown as Mock;
 const set = Preferences.set as unknown as Mock;
 
 const KEY = 'trinity.flags.virtual-timeline';
+const DEFER_MEDIA_KEY = 'trinity.flags.defer-media-while-scrolling';
+
+/** Answer `Preferences.get` from a key → stored value table; unlisted keys hold nothing. */
+function stored(values: Record<string, string>): void {
+  get.mockImplementation(async ({ key }: { key: string }) => ({
+    value: values[key] ?? null,
+  }));
+}
 
 describe('FeatureFlagsService', () => {
   beforeEach(() => {
@@ -70,5 +78,53 @@ describe('FeatureFlagsService', () => {
     svc.setVirtualTimeline(false);
     expect(svc.virtualTimeline()).toBe(false);
     expect(set).toHaveBeenLastCalledWith({ key: KEY, value: 'false' });
+  });
+
+  describe('defer media while scrolling', () => {
+    it('is off until the person opts in', async () => {
+      const svc = service();
+      expect(svc.deferMediaWhileScrolling()).toBe(false);
+      await expect(svc.init()).resolves.toEqual({ kind: 'ready' });
+      expect(svc.deferMediaWhileScrolling()).toBe(false);
+    });
+
+    it('restores a stored opt-in on init, independently of the other flags', async () => {
+      stored({ [DEFER_MEDIA_KEY]: 'true', [KEY]: 'false' });
+      const svc = service();
+
+      await expect(svc.init()).resolves.toEqual({ kind: 'ready' });
+
+      expect(svc.deferMediaWhileScrolling()).toBe(true);
+      expect(svc.virtualTimeline()).toBe(false);
+    });
+
+    it('keeps it off and reports an invalid stored value', async () => {
+      stored({ [DEFER_MEDIA_KEY]: 'yes', [KEY]: 'false' });
+      const svc = service();
+
+      await expect(svc.init()).resolves.toEqual({
+        kind: 'defaulted',
+        reason: 'invalid-stored-value',
+      });
+
+      expect(svc.deferMediaWhileScrolling()).toBe(false);
+      // The valid flag beside it is still applied.
+      expect(svc.virtualTimeline()).toBe(false);
+    });
+
+    it('persists a toggle and moves the signal at once', () => {
+      const svc = service();
+
+      svc.setDeferMediaWhileScrolling(true);
+      expect(svc.deferMediaWhileScrolling()).toBe(true);
+      expect(set).toHaveBeenCalledWith({ key: DEFER_MEDIA_KEY, value: 'true' });
+
+      svc.setDeferMediaWhileScrolling(false);
+      expect(svc.deferMediaWhileScrolling()).toBe(false);
+      expect(set).toHaveBeenLastCalledWith({
+        key: DEFER_MEDIA_KEY,
+        value: 'false',
+      });
+    });
   });
 });
