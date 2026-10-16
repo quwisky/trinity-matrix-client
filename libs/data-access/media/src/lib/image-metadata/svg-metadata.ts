@@ -45,24 +45,23 @@ export const SVG_SNIFF_BYTES = 4096;
 const MAX_SVG_BYTES = 16 * 1024 * 1024;
 
 /**
- * Upper bound on one element's attributes. Removing an attribute costs time proportional
- * to the element's attribute count in Blink, so stripping thousands from one element is
- * quadratic: 60,000 froze Chromium for 17 s. Real drawings have a few dozen at most.
+ * Upper bound on one element's attributes. Removing an attribute costs time proportional to
+ * the element's attribute count in Blink, so stripping thousands from one element is
+ * quadratic and freezes Chromium. Real drawings have a few dozen at most.
  */
 const MAX_ELEMENT_ATTRIBUTES = 1024;
 
 /**
  * Upper bound on attributes across the drawing, kept apart from the element walk
- * (`MAX_WALK_STEPS`): a large Inkscape drawing of 125,000 paths with 6 attributes each
- * stays well under it.
+ * (`MAX_WALK_STEPS`): a large Inkscape drawing (125,000 paths, 6 attributes each) stays
+ * well under it.
  */
 const MAX_ATTRIBUTES = 1 << 21;
 
 /**
  * Upper bound on attribute removal work: each removal counts the attributes its element
- * still has. Real editor files stay far below (a few removals from elements of a dozen
- * attributes); without it, 127 elements of 1,024 editor attributes, under the caps above,
- * still took 0.6 s in Chromium. 2^21 is about 20 ms there.
+ * still has. Real editor files stay far below it; without it, many elements near the
+ * per-element cap would still stall Chromium for a noticeable time.
  */
 const MAX_REMOVAL_WORK = 1 << 21;
 

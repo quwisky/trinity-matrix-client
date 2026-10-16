@@ -17,7 +17,7 @@ interface StoredSelection {
 @Injectable({ providedIn: 'root' })
 export class ImagePackSelectionStore {
   // One signal per client, created on first access, so a reader re-runs only for its own
-  // client's selection (the per-entity pattern of #121/#126; there is no shared revision).
+  // client's selection.
   private readonly selections = new WeakMap<
     MatrixClient,
     WritableSignal<StoredSelection | null>

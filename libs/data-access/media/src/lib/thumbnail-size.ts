@@ -4,12 +4,11 @@ import { DOCUMENT, inject, InjectionToken } from '@angular/core';
 const DISPLAY_THUMBNAIL_CSS_PX = 320;
 
 /**
- * Edges (px) a display thumbnail is rounded up to, one per 1x/2x/3x screen. Rounding to a
- * few buckets keeps cache keys and server thumbnail requests stable across slightly
- * different ratios (1.25x, 1.5x, 1.75x all share 640). The server answers a `scale` request
- * with its nearest configured size at least as large, or else the nearest smaller one.
- * Synapse's default `thumbnail_sizes` scale to 320×240, 640×480 and 800×600 (plus 32 and
- * 96 px crops), so a default Synapse serves 320 and 640 exactly and 960 from 800×600.
+ * Edges (px) a display thumbnail is rounded up to, one per 1x/2x/3x screen, so cache keys and
+ * server thumbnail requests stay stable across ratios (1.25x, 1.5x, 1.75x all share 640). The
+ * server answers a `scale` request with its nearest configured size at least as large, else
+ * the nearest smaller one. Synapse's default `thumbnail_sizes` scale to 320×240, 640×480 and 800×600 (plus
+ * 32 and 96 px crops), so it serves 320 and 640 exactly and 960 from 800×600.
  */
 const DISPLAY_THUMBNAIL_BUCKETS = [320, 640, 960] as const;
 
@@ -19,10 +18,9 @@ const MAX_DEVICE_PIXEL_RATIO = 3;
 export type DisplayThumbnailEdge = (typeof DISPLAY_THUMBNAIL_BUCKETS)[number];
 
 /**
- * Long edge (px) of a thumbnail generated when the media is sent. It is fixed rather than
- * sized to the sender's screen because other people's devices view it: 640 px (2 × 320)
- * stays sharp on the common 2x screens, and a 3x screen still asks the server for its own
- * size when the event ships none.
+ * Long edge (px) of a thumbnail generated when the media is sent. Fixed rather than sized to
+ * the sender's screen because other people's devices view it: 640 px (2 × 320) stays sharp on
+ * common 2x screens, and a 3x screen asks the server for its own size when the event ships none.
  */
 export const UPLOAD_THUMBNAIL_PX = 640;
 

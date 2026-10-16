@@ -40,9 +40,8 @@ import {
 export type MediaVariant = 'thumbnail' | 'full';
 
 /**
- * Everything {@link TimelineService} needs to build an outgoing media event from a
- * just-uploaded attachment. `mxc` is set for plaintext, `file` for encrypted (its
- * `url` already filled with the upload's `mxc://`); the `MsgType` stays inside core.
+ * Everything {@link TimelineService} needs to build an outgoing media event from an uploaded
+ * attachment. `mxc` is set for plaintext, `file` for encrypted (its `url` already filled).
  */
 export interface UploadedMedia {
   msgtype: MsgType;
@@ -74,7 +73,6 @@ export interface UploadedMedia {
   };
 }
 
-/** A client-rendered thumbnail blob plus its scaled dimensions. */
 interface GeneratedThumbnail {
   blob: Blob;
   w: number;
@@ -87,13 +85,11 @@ type ThumbnailInfo = Pick<
   'thumbnail_url' | 'thumbnail_file' | 'thumbnail_info'
 >;
 
-/** Probed dimensions/duration plus an optional rendered thumbnail for a picked file. */
 interface MediaAnalysis {
   dims: { w?: number; h?: number; durationMs?: number };
   thumbnail: GeneratedThumbnail | null;
 }
 
-/** Encoding for client-rendered thumbnails. */
 const THUMBNAIL_MIME = 'image/jpeg';
 const THUMBNAIL_QUALITY = 0.8;
 /** PNG sources re-encode as WebP instead, which keeps their transparency. */
@@ -106,25 +102,21 @@ const THUMBNAIL_ALPHA_MIME = 'image/webp';
  */
 const DOWNSCALED_MIMES = new Set(['image/jpeg', 'image/jpg', 'image/png']);
 
-/** How long to wait for an audio/video element to report its metadata. */
 const METADATA_TIMEOUT_MS = 5000;
 
-/** Seek offset (s) for the video poster frame — past any black/blank first frame. */
+/** Poster seek offset (s), past any black first frame. */
 const POSTER_SEEK_SECONDS = 1;
 
-/** How long to wait for the poster seek+decode before giving up (keeps the dims). */
 const POSTER_TIMEOUT_MS = 3000;
 
 /** Cap on cached object URLs; pinned (on-screen) entries are never evicted. */
 const CACHE_LIMIT = 64;
 
 /**
- * Cap on the blob bytes behind the cached URLs, enforced alongside {@link CACHE_LIMIT}.
- * The count alone says nothing about memory: 64 thumbnails are a few MB, but 64 full-size
- * photos (2-10 MB each) or videos are hundreds. 96 MB holds a dozen full-size photos or a
- * few hundred thumbnails, enough to scroll back through a conversation without refetching,
- * and still leaves a phone WebView room for the rest of the app. Pinned entries (on screen,
- * so the budget can be exceeded by what the user is actually looking at) are exempt.
+ * Cap on the blob bytes behind the cached URLs, alongside {@link CACHE_LIMIT}. The count says
+ * nothing about memory: 64 thumbnails are a few MB, 64 full-size photos or videos are hundreds.
+ * 96 MB holds a dozen full-size photos or a few hundred thumbnails and leaves a phone WebView
+ * room for the rest of the app. Pinned (on-screen) entries are exempt.
  */
 const CACHE_BYTE_LIMIT = 96 * 1024 * 1024;
 
@@ -137,9 +129,7 @@ interface CacheEntry {
 
 /** A resolution under way, shared by everyone resolving the same bytes meanwhile. */
 interface InFlight {
-  /** What {@link MediaService.resolveMedia} hands each caller. */
   readonly result: Observable<string>;
-  /** Callers currently subscribed to {@link result}. */
   waiters: number;
   /** Abandons the resolution before it stores anything (see {@link MediaService.drop}). */
   readonly cancel: Subject<void>;
@@ -156,30 +146,24 @@ interface MediaSource {
 }
 
 /**
- * Resolves Matrix media (`mxc://` plaintext or encrypted `content.file`) into
- * `blob:` object URLs the UI can bind to `<img>`/`<video>`/`<a download>`.
+ * Resolves Matrix media (`mxc://` plaintext or encrypted `content.file`) into `blob:` object
+ * URLs the UI can bind to `<img>`/`<video>`/`<a download>`.
  *
- * Owns the SDK + attachment-crypto boundary so no component touches
- * `matrix-js-sdk` directly, and owns the object-URL lifecycle: a bounded cache
- * keyed by source+variant, where URLs currently on screen are {@link pin}ned and
- * never evicted, and {@link releaseAll} revokes everything on room close / logout.
- *
- * Resolves both plaintext (`mxc`) and encrypted (`content.file`) attachments:
- * encrypted bytes are downloaded as ciphertext and decrypted in-memory with the
- * event's per-file AES-CTR key via the in-tree {@link decryptAttachment} helper,
- * which also verifies the SHA-256 hash so a tampered blob never reaches the DOM.
+ * Owns the SDK and attachment-crypto boundary and the object-URL lifecycle: a bounded cache
+ * keyed by source+variant, where on-screen URLs are {@link pin}ned and never evicted, and
+ * {@link releaseAll} revokes everything on room close / logout. Encrypted bytes are downloaded
+ * as ciphertext and decrypted in memory with the event's per-file AES-CTR key;
+ * {@link decryptAttachment} verifies the SHA-256 hash, so a tampered blob never reaches the DOM.
  */
 @Injectable({ providedIn: 'root' })
 export class MediaService {
   private readonly matrix = inject(MatrixClientService);
   private readonly devicePixelRatio = inject(DEVICE_PIXEL_RATIO);
 
-  /** Insertion-ordered cache of resolved object URLs (oldest first for LRU). */
+  /** Insertion-ordered cache of resolved object URLs (oldest first, for LRU). */
   private readonly cache = new Map<string, CacheEntry>();
-  /** Sum of {@link CacheEntry.bytes} over {@link cache}. */
   private cachedBytes = 0;
-  /** In-flight resolutions, keyed like {@link cache}, so concurrent subscribers
-   * to the same bytes share one fetch+decrypt instead of racing. */
+  /** In-flight resolutions keyed like {@link cache}, so concurrent subscribers share one fetch. */
   private readonly inFlight = new Map<string, InFlight>();
   /**
    * How many views have each object URL bound on screen; a URL with a count is exempt from
@@ -188,7 +172,6 @@ export class MediaService {
    * must not expose the URL the other still shows.
    */
   private readonly pinned = new Map<string, number>();
-  /** Fires on {@link releaseAll} to cancel in-flight resolutions before teardown. */
   private readonly release$ = new Subject<void>();
   /** Cached authenticated-media probe per exact client/account. */
   private authedMedia = new WeakMap<MatrixClient, Observable<boolean>>();
@@ -202,9 +185,8 @@ export class MediaService {
   private nextClientId = 0;
 
   /**
-   * Resolve a cached `blob:` URL for the thumbnail or full rendition of a media
-   * attachment. Re-resolving the same source+variant returns the cached URL
-   * without re-fetching.
+   * Resolve a cached `blob:` URL for the thumbnail or full rendition of an attachment; the same
+   * source+variant is not refetched.
    */
   resolveMedia(
     media: MediaPayload,
@@ -220,10 +202,9 @@ export class MediaService {
       this.cache.set(key, hit);
       return of(hit.url);
     }
-    // Share one fetch+decrypt across concurrent resolves of the same bytes — two
-    // rows showing the same attachment, or an encrypted image's thumbnail and
-    // lightbox (which resolve identical ciphertext) — instead of each fetching,
-    // decrypting, and storing (the loser of which would leak its object URL).
+    // Share one fetch+decrypt across concurrent resolves of the same bytes (two rows showing one
+    // attachment, or an encrypted image's thumbnail and lightbox, which resolve identical
+    // ciphertext); separate stores would leak the loser's object URL.
     const pending = this.inFlight.get(key);
     if (pending) {
       return pending.result;
@@ -264,19 +245,17 @@ export class MediaService {
   }
 
   /**
-   * Upload a picked file to the media repo, encrypting it first for E2EE rooms,
-   * and return the descriptor {@link TimelineService} turns into an event. A JPEG,
-   * PNG, WebP or HEIF image first loses its identifying metadata (location, camera,
-   * capture time; orientation is kept), and an MP4/MOV/3GP movie its location and
-   * device, on the plaintext before any encryption; anything else, or a file whose
-   * structure is in doubt, goes up as picked. In an
-   * encrypted room the ciphertext is uploaded with no filename/MIME (those leak),
-   * and `info.url` is filled with the resulting `mxc://`; otherwise the file itself
-   * is uploaded. `progress` reports an upload fraction in [0, 1].
-   * `hints` (from a camera capture) win over the probe, which then fills only
-   * what they leave out. `imageMetadata: 'keep'` (the person's opt-in for message
-   * attachments) skips stripping entirely, so a photo or video goes up byte for byte;
-   * a host-supplied thumbnail is still stripped, being a derived preview.
+   * Upload a picked file to the media repo, encrypting it first for E2EE rooms, and return the
+   * descriptor {@link TimelineService} turns into an event. A JPEG, PNG, WebP or HEIF image
+   * first loses its identifying metadata (location, camera, capture time; orientation is
+   * kept), and an MP4/MOV/3GP movie its location and device, on the plaintext before any
+   * encryption; anything else, or a file whose structure is in doubt, goes up as picked. An
+   * encrypted upload sends the ciphertext with no filename/MIME (those leak) and `info.url`
+   * is filled with the resulting `mxc://`. `progress` reports a fraction in [0, 1].
+   * `hints` (from a camera capture) win over the probe, which fills only what they leave out.
+   * `imageMetadata: 'keep'` (the person's opt-in for message attachments) skips stripping, so
+   * a photo or video goes up byte for byte; a host-supplied thumbnail is still stripped, being
+   * a derived preview.
    */
   uploadMedia(
     file: File,
@@ -342,9 +321,9 @@ export class MediaService {
   ): Promise<UploadedMedia> {
     abortController?.signal.throwIfAborted();
     const msgtype = msgTypeFor(file.type);
-    // What the capturing host already measured wins; the WebView probe runs only for what is
-    // missing, and not at all when nothing is. For E2EE rooms the thumbnail is the *only* one
-    // the timeline can show — the server can't scale an encrypted original.
+    // Host-measured values win; the WebView probe runs only for what is missing. For E2EE rooms
+    // the thumbnail is the only one the timeline can show: the server can't scale an encrypted
+    // original.
     const { dims, thumbnail } = await describeMedia(file, hints);
     abortController?.signal.throwIfAborted();
     const thumb = await this.uploadThumbnail(
@@ -358,11 +337,9 @@ export class MediaService {
           progress(p.total ? p.loaded / p.total : 0)
       : undefined;
 
-    // Photos leave without their location, camera and capture time (#1140); orientation is
-    // kept. Videos leave without their location and device (#1179), blanked in place.
-    // Stripping happens on the plaintext, before encryption, and anything it cannot handle
-    // with certainty is uploaded exactly as picked. Someone who chose to keep photo and
-    // video metadata (#1178) gets the file untouched, never a partial strip.
+    // Stripping happens on the plaintext, before encryption; anything it cannot handle with
+    // certainty uploads as picked. Keeping metadata (the opt-in) uploads the file untouched,
+    // never a partial strip.
     const keep = imageMetadata === 'keep';
     if (encrypt) {
       const plaintext = keep
@@ -406,11 +383,10 @@ export class MediaService {
   }
 
   /**
-   * Upload a freshly-rendered thumbnail — encrypting it for E2EE rooms with its
-   * own key/iv/hash — and return the `content.info` thumbnail fields, or null when
-   * there is no thumbnail. A thumbnail is an enhancement, never a gate: any failure
-   * here resolves to null so the attachment still sends. Uploaded before the main
-   * resource (it is small) so the `progress` callback tracks the dominant bytes.
+   * Upload a freshly-rendered thumbnail (encrypted with its own key/iv/hash for E2EE rooms)
+   * and return the `content.info` thumbnail fields, or null when there is none. Any failure
+   * resolves to null: a thumbnail is never a gate for sending. Uploaded before the main
+   * resource (it is small) so `progress` tracks the dominant bytes.
    */
   private async uploadThumbnail(
     client: MatrixClient,
@@ -422,10 +398,10 @@ export class MediaService {
       return null;
     }
     const { w, h } = thumbnail;
-    // A host-rendered thumbnail (a native camera capture) is an image file of its own, so it
-    // loses its metadata like any photo before it goes up, encrypted or not, even when the
-    // person keeps the video's own metadata: it is a derived preview, not their file. One
-    // rendered here on a canvas has none and comes back as it was.
+    // A host-rendered thumbnail (native camera capture) is an image file of its own: it loses
+    // its metadata like any photo before it goes up, encrypted or not, even when the person
+    // keeps the video's own, being a derived preview. One rendered on a canvas has none and
+    // comes back unchanged.
     const blob = await withoutImageMetadata(
       new File([thumbnail.blob], 'thumbnail', { type: thumbnail.blob.type }),
     );
@@ -451,7 +427,7 @@ export class MediaService {
       return { thumbnail_url: res.content_uri, thumbnail_info };
     } catch (error: unknown) {
       if (abortController?.signal.aborted) throw error;
-      return null; // a thumbnail upload failure must never block the attachment
+      return null;
     }
   }
 
@@ -481,17 +457,16 @@ export class MediaService {
 
   /**
    * Free one rendition now rather than when the LRU gets to it: for full-size media that has
-   * been closed (a lightbox image, a played clip), which is large and not needed again soon.
+   * been closed (a lightbox image, a played clip).
    *
-   * `url` is the object URL the caller resolved and pinned, or null when it has none yet.
-   * Its pin is released; only if no other view still pins it is the URL revoked and the
-   * entry removed. The URL is removed only while the cache still holds it for `rendition`,
-   * so a caller holding a URL from before a {@link releaseAll} cannot revoke its successor.
-   * A resolve of `rendition` still in flight is cancelled when no subscriber is waiting for
-   * it any more, so its late completion is never cached; the dropping caller must therefore
-   * unsubscribe from its own resolve first. Resolving again afterwards downloads afresh.
-   * An observable returned by {@link resolveMedia} before the drop is spent by it: subscribing
-   * to it later completes without a URL, so resolve again instead.
+   * `url` is the object URL the caller resolved and pinned, or null when it has none yet. Its
+   * pin is released; only if no other view still pins it is the URL revoked and the entry
+   * removed, and only while the cache still holds it for `rendition`, so a URL from before a
+   * {@link releaseAll} cannot revoke its successor. A resolve of `rendition` still in flight
+   * is cancelled when no subscriber is waiting for it any more, so the dropping caller must
+   * unsubscribe from its own resolve first. An observable returned by {@link resolveMedia}
+   * before the drop is spent by it: subscribing later completes without a URL, so resolve
+   * again.
    */
   drop(
     url: string | null,
@@ -537,9 +512,9 @@ export class MediaService {
 
   /** Revoke every cached object URL and clear the cache (room close / logout). */
   releaseAll(): void {
-    // Cancel in-flight resolutions first: with shareReplay(refCount:false) their
-    // fetch+decrypt would otherwise run to completion and re-`store()` a fresh
-    // object URL into the just-cleared cache, leaking decrypted bytes past teardown.
+    // Cancel in-flight resolutions first: with shareReplay(refCount:false) their fetch+decrypt
+    // would otherwise finish and re-`store()` an object URL into the cleared cache, leaking
+    // decrypted bytes past teardown.
     this.release$.next();
     for (const { url } of this.cache.values()) {
       URL.revokeObjectURL(url);
@@ -548,14 +523,12 @@ export class MediaService {
     this.cachedBytes = 0;
     this.inFlight.clear();
     this.pinned.clear();
-    // Re-probe authed-media support on the next request: after a logout→login the
-    // new account's homeserver may differ (e.g. legacy vs authenticated-only), and
-    // a stale `false` would keep requesting the unauthenticated endpoint (401/404
-    // with no fallback), breaking all media for the session.
+    // Re-probe authed-media support on the next request: after logout→login the new homeserver
+    // may differ, and a stale `false` would keep requesting the unauthenticated endpoint
+    // (401/404 with no fallback), breaking all media for the session.
     this.authedMedia = new WeakMap();
   }
 
-  /** Pick the bytes to fetch for a variant, preferring an event-supplied thumbnail. */
   private sourceFor(media: MediaPayload, variant: MediaVariant): MediaSource {
     if (variant === 'thumbnail') {
       if (media.thumbnailMxc || media.thumbnailFile) {
@@ -566,11 +539,10 @@ export class MediaService {
           resize: null,
         };
       }
-      // No bundled thumbnail: ask the server to scale the original (plaintext
-      // only — encrypted originals have no server-side thumbnail, so those images
-      // are shrunk client-side after decryption instead). Both are sized to the
-      // screen as it is now; thumbnails already resolved are not refetched when it
-      // changes, and the edge is part of the cache key so buckets never mix.
+      // No bundled thumbnail: ask the server to scale the original (plaintext only; encrypted
+      // originals have no server-side thumbnail and are shrunk client-side after decryption).
+      // Sizes follow the current screen; resolved thumbnails are not refetched when it changes,
+      // and the edge is part of the cache key so buckets never mix.
       const edge = displayThumbnailEdge(this.devicePixelRatio());
       return {
         mxc: media.mxc,
@@ -591,13 +563,10 @@ export class MediaService {
   }
 
   /**
-   * Key on the bytes actually fetched, not the requested variant: a server-scaled
-   * thumbnail genuinely differs from the original, but an encrypted attachment with
-   * no bundled thumbnail resolves the *same* ciphertext for both `thumbnail` and
-   * `full` — so they must share one cache entry (and one decrypt), not two. The
-   * exception is a downscaled thumbnail, which is a different blob from the original.
-   * Server-scaled and downscaled thumbnails carry their size bucket, so a 1x and a 2x
-   * thumbnail of the same media are separate entries.
+   * Key on the bytes actually fetched, not the requested variant: an encrypted attachment with
+   * no bundled thumbnail resolves the same ciphertext for `thumbnail` and `full`, so they share
+   * one cache entry (and one decrypt). Server-scaled and downscaled thumbnails differ from the
+   * original and carry their size bucket, so a 1x and a 2x thumbnail are separate entries.
    */
   private cacheKey(client: MatrixClient, source: MediaSource): string {
     const id = source.mxc ?? source.file?.url ?? '';
@@ -624,10 +593,9 @@ export class MediaService {
     source: MediaSource,
   ): Observable<Blob> {
     if (source.file) {
-      // Encrypted attachment: download the ciphertext (always the full resource —
-      // an encrypted original carries no server-side thumbnail) and decrypt it with
-      // the event's per-file AES-CTR key. decryptAttachment verifies the SHA-256
-      // hash and rejects on a mismatch, so tampered bytes never reach the DOM.
+      // Encrypted: download the full ciphertext (an encrypted original has no server-side
+      // thumbnail) and decrypt it with the event's per-file AES-CTR key. decryptAttachment
+      // verifies the SHA-256 hash and rejects on a mismatch, so tampered bytes never reach the DOM.
       const file = source.file;
       return this.fetchBytes(client, file.url, null).pipe(
         switchMap((ciphertext) => from(decryptAttachment(ciphertext, file))),
@@ -654,10 +622,9 @@ export class MediaService {
   }
 
   /**
-   * Fetch raw media bytes, choosing authenticated vs. legacy media based on
-   * homeserver support and falling back to the legacy endpoint if an
-   * authenticated request fails (older servers that advertise v1.11 but still
-   * serve legacy media).
+   * Fetch raw media bytes via authenticated or legacy media, by homeserver support, falling
+   * back to the legacy endpoint if an authenticated request fails (older servers that
+   * advertise v1.11 but still serve legacy media).
    */
   private fetchBytes(
     client: MatrixClient,
@@ -673,8 +640,6 @@ export class MediaService {
   private supportsAuthedMedia(client: MatrixClient): Observable<boolean> {
     let probe = this.authedMedia.get(client);
     if (!probe) {
-      // `shareReplay(1)` runs the version probe once and replays the result to
-      // every later subscriber — the Observable equivalent of the cached promise.
       probe = from(client.isVersionSupported('v1.11')).pipe(
         catchError(() => of(false)),
         shareReplay(1),
@@ -684,11 +649,9 @@ export class MediaService {
     return probe;
   }
 
-  /** Store a freshly-fetched blob under a cache key and return its object URL. */
   private store(key: string, blob: Blob): string {
-    // Defensive: if an unpinned entry already sits at this key, revoke it before
-    // replacing so its object URL can't leak. Pinned (on-screen) URLs are left for
-    // their owner to release.
+    // Defensive: revoke an unpinned entry already at this key before replacing it so its object
+    // URL can't leak. Pinned (on-screen) URLs are left for their owner to release.
     const prev = this.cache.get(key);
     if (prev) {
       this.cachedBytes -= prev.bytes;
@@ -727,7 +690,6 @@ export class MediaService {
   }
 }
 
-/** Map a MIME type to the Matrix message type for an attachment. */
 function msgTypeFor(mime: string): MsgType {
   if (mime.startsWith('image/')) {
     return MsgType.Image;
@@ -741,7 +703,6 @@ function msgTypeFor(mime: string): MsgType {
   return MsgType.File;
 }
 
-/** Build `content.info`: mimetype/size plus probed dims/duration and a thumbnail. */
 function mediaInfo(
   file: File,
   size: number,
@@ -811,7 +772,6 @@ function analysisFromHints(hints: MediaHints | undefined): MediaAnalysis {
   };
 }
 
-/** Whether hints already say everything analysis would for this kind of file. */
 function isCompleteFor(file: File, known: MediaAnalysis): boolean {
   const sized = known.dims.w !== undefined && known.dims.h !== undefined;
   if (file.type.startsWith('video/')) {
@@ -850,7 +810,6 @@ async function analyzeMedia(file: File): Promise<MediaAnalysis> {
   return { dims: {}, thumbnail: null };
 }
 
-/** Decode an image once: derive its dimensions and a scaled thumbnail. */
 async function analyzeImage(file: File): Promise<MediaAnalysis> {
   // SVG can't be safely rasterized to a thumbnail and renders as a file card
   // anyway; createImageBitmap is absent outside a real browser/WebView.
@@ -862,12 +821,11 @@ async function analyzeImage(file: File): Promise<MediaAnalysis> {
   }
   let bitmap: ImageBitmap;
   try {
-    // `from-image` applies EXIF orientation during decode, so the thumbnail and
-    // the recorded dimensions match the full image's orientation on every engine
-    // (some older WebViews default to `none`).
+    // `from-image` applies EXIF orientation during decode so the thumbnail and recorded
+    // dimensions match the full image on every engine (some older WebViews default to `none`).
     bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
   } catch {
-    return { dims: {}, thumbnail: null }; // undecodable — omit rather than fail
+    return { dims: {}, thumbnail: null };
   }
   try {
     const dims = { w: bitmap.width, h: bitmap.height };
@@ -875,7 +833,8 @@ async function analyzeImage(file: File): Promise<MediaAnalysis> {
     try {
       thumbnail = await renderThumbnail(bitmap);
     } catch {
-      thumbnail = null; // thumbnail is best-effort — a render error must not fail the send
+      // best-effort: a render error must not fail the send
+      thumbnail = null;
     }
     return { dims, thumbnail };
   } finally {
@@ -884,9 +843,9 @@ async function analyzeImage(file: File): Promise<MediaAnalysis> {
 }
 
 /**
- * Draw a decoded image onto a downscaled canvas and encode it as a JPEG. Returns
- * null when the image is already within the thumbnail bound (its original is a
- * fine thumbnail) or no 2D canvas is available.
+ * Draw a decoded image onto a downscaled canvas and encode it as a JPEG. Null when the image
+ * is already within the thumbnail bound (its original is a fine thumbnail) or no 2D canvas
+ * is available.
  */
 async function renderThumbnail(
   bitmap: ImageBitmap,
@@ -1018,15 +977,13 @@ function fitWithin(
     return { w, h };
   }
   const scale = Math.min(max / w, max / h);
-  // Clamp to >= 1 so an extreme aspect ratio (e.g. 10000×1) can't round an edge
-  // to 0 and yield a degenerate (zero-area) thumbnail descriptor.
+  // Clamp to >= 1 so an extreme aspect ratio (e.g. 10000×1) can't round an edge to 0.
   return {
     w: Math.max(1, Math.round(w * scale)),
     h: Math.max(1, Math.round(h * scale)),
   };
 }
 
-/** Promise wrapper around the callback-style `HTMLCanvasElement.toBlob`. */
 function canvasToBlob(
   canvas: HTMLCanvasElement,
   type: string,
@@ -1098,11 +1055,10 @@ function probeAudioDuration(file: File): Promise<{ durationMs?: number }> {
 }
 
 /**
- * Load a video off-screen to read its dimensions/duration and capture a poster
- * frame. Best-effort and non-blocking: metadata resolves first and is preserved
- * even if the poster seek/decode fails or times out ({@link POSTER_TIMEOUT_MS});
- * the whole probe is bounded by {@link METADATA_TIMEOUT_MS} so a corrupt file
- * can't stall the send.
+ * Load a video off-screen to read its dimensions/duration and capture a poster frame.
+ * Metadata resolves first and survives a poster seek/decode failure or timeout
+ * ({@link POSTER_TIMEOUT_MS}); the whole probe is bounded by {@link METADATA_TIMEOUT_MS} so a
+ * corrupt file can't stall the send.
  */
 function analyzeVideo(file: File): Promise<MediaAnalysis> {
   const EMPTY: MediaAnalysis = { dims: {}, thumbnail: null };
@@ -1148,9 +1104,9 @@ function analyzeVideo(file: File): Promise<MediaAnalysis> {
     video.muted = true;
     video.onerror = () => finish(EMPTY); // before metadata → total failure
     video.onloadedmetadata = () => {
-      // Metadata arrived: retire the metadata timeout so it can't later fire and
-      // discard the dims we now hold (a slow load + a longer poster wait could
-      // otherwise let metaTimer win the race). The poster timeout governs from here.
+      // Metadata arrived: retire the metadata timeout so it can't discard the dims we now hold
+      // (a slow load plus a longer poster wait could let it win). The poster timeout governs
+      // from here.
       clearTimeout(metaTimer);
       const dims = {
         w: video.videoWidth || undefined,
@@ -1191,7 +1147,6 @@ function analyzeVideo(file: File): Promise<MediaAnalysis> {
   });
 }
 
-/** Draw the video's current frame onto a downscaled canvas and encode it as JPEG. */
 function drawPoster(
   video: HTMLVideoElement,
 ): Promise<GeneratedThumbnail | null> {

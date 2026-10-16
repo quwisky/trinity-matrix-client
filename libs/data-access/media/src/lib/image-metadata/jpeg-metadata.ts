@@ -142,8 +142,8 @@ function classify(
  * marker, or another 0xFF (fill); anything else ends the scan.
  *
  * A plain byte loop rather than repeated `indexOf(0xFF)`: data crafted to be all stuffed
- * bytes would otherwise cost one native call per two bytes (~0.5 s per 50 MB); the loop
- * stays linear and cheap (~30 ms per 50 MB) for any content.
+ * bytes would otherwise cost one native call per two bytes; the loop stays linear for any
+ * content.
  */
 function nextMarkerAfterScan(bytes: Uint8Array, from: number): number {
   const last = bytes.length - 1;
