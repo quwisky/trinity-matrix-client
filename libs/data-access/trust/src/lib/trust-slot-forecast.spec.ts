@@ -260,6 +260,98 @@ describe('TrustSlotForecastService', () => {
     expect(harness.forecast.forecast()).toBeNull();
   });
 
+  it('does not record the previous Account’s live status for the Account it switches to', async () => {
+    const harness = setup();
+    harness.active.set('@a:hs');
+    await firstValueFrom(harness.forecast.hydrate('@a:hs'));
+    publish(harness, coherent('needs-recovery'));
+    expect(harness.store.get(`${FORECAST_KEY}|@a:hs`)).toBe(
+      record('needs-recovery'),
+    );
+
+    // Trust health still holds A's status for a moment after the switch.
+    harness.active.set('@b:hs');
+    TestBed.tick();
+
+    expect(harness.store.has(`${FORECAST_KEY}|@b:hs`)).toBe(false);
+  });
+
+  it('records the live status of the Account it switched to once that status changes', async () => {
+    const harness = setup();
+    harness.active.set('@a:hs');
+    publish(harness, coherent('needs-recovery'));
+    harness.active.set('@b:hs');
+    TestBed.tick();
+
+    publish(harness, coherent('needs-verification'));
+
+    expect(harness.store.get(`${FORECAST_KEY}|@b:hs`)).toBe(
+      record('needs-verification'),
+    );
+  });
+
+  it('holds an Account’s forecast afresh when it becomes active again', async () => {
+    vi.useFakeTimers();
+    const harness = setup(
+      new Map([[`${FORECAST_KEY}|@a:hs`, record('needs-setup')]]),
+    );
+    harness.active.set('@a:hs');
+    await firstValueFrom(harness.forecast.hydrate('@a:hs'));
+    publish(harness, UNAVAILABLE);
+    vi.advanceTimersByTime(FORECAST_HOLD_MS);
+    expect(harness.forecast.forecast()).toBeNull();
+
+    harness.active.set('@b:hs');
+    TestBed.tick();
+    harness.active.set('@a:hs');
+    TestBed.tick();
+    expect(harness.forecast.forecast()).toBe('needs-setup');
+
+    vi.advanceTimersByTime(FORECAST_HOLD_MS - 1);
+    expect(harness.forecast.forecast()).toBe('needs-setup');
+    vi.advanceTimersByTime(1);
+    expect(harness.forecast.forecast()).toBeNull();
+  });
+
+  it('hydrates an Account it switches to', async () => {
+    const harness = setup(
+      new Map([[`${FORECAST_KEY}|@b:hs`, record('needs-recovery')]]),
+    );
+    const hydrate = vi.spyOn(harness.forecast, 'hydrate');
+    harness.active.set('@a:hs');
+    TestBed.tick();
+    harness.active.set('@b:hs');
+    TestBed.tick();
+
+    expect(hydrate).toHaveBeenCalledWith('@b:hs');
+    await vi.waitFor(() =>
+      expect(harness.forecast.forecast()).toBe('needs-recovery'),
+    );
+  });
+
+  it('hydrates the active Account on request', async () => {
+    const harness = setup(
+      new Map([[`${FORECAST_KEY}|@a:hs`, record('needs-verification')]]),
+    );
+    harness.active.set('@a:hs');
+    const hydrate = vi.spyOn(harness.forecast, 'hydrate');
+
+    await firstValueFrom(harness.forecast.hydrateActive());
+
+    expect(hydrate).toHaveBeenCalledWith('@a:hs');
+    expect(harness.forecast.forecast()).toBe('needs-verification');
+  });
+
+  it('completes at once when asked to hydrate with no active Account', async () => {
+    const harness = setup();
+    const hydrate = vi.spyOn(harness.forecast, 'hydrate');
+
+    await expect(
+      firstValueFrom(harness.forecast.hydrateActive()),
+    ).resolves.toBeUndefined();
+    expect(hydrate).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['text that is not a record', '{not json'],
     ['an unknown prompt kind', record('needs-everything')],

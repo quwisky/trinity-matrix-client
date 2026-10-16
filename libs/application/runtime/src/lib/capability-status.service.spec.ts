@@ -1,7 +1,12 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
-import { TrustService, type TrustStatus } from '@trinity/data-access/trust';
+import {
+  TrustService,
+  TrustSlotForecastService,
+  type SlotForecast,
+  type TrustStatus,
+} from '@trinity/data-access/trust';
 import { BUILD_INFO } from '@trinity/platform-native';
 import type { CapabilityRecovery } from '@trinity/runtime/projection';
 import { firstValueFrom, of, toArray } from 'rxjs';
@@ -23,12 +28,14 @@ describe('CapabilityStatusService', () => {
   let trust: WritableSignal<TrustStatus>;
   let setupElsewhere: WritableSignal<boolean>;
   let pressed: WritableSignal<boolean>;
+  let forecast: WritableSignal<SlotForecast | null>;
 
   beforeEach(() => {
     runtimeState = signal({ phase: 'ready', attempt: 7, settlements: [] });
     trust = signal<TrustStatus>('ready');
     setupElsewhere = signal(false);
     pressed = signal(false);
+    forecast = signal<SlotForecast | null>(null);
     TestBed.configureTestingModule({
       providers: [
         CapabilityHealthService,
@@ -38,6 +45,7 @@ describe('CapabilityStatusService', () => {
           useValue: { status: trust, recoverySetupElsewhere: setupElsewhere },
         },
         { provide: PointerPressService, useValue: { pressed } },
+        { provide: TrustSlotForecastService, useValue: { forecast } },
         {
           provide: ApplicationRuntimeService,
           useValue: {
@@ -457,6 +465,41 @@ describe('CapabilityStatusService', () => {
       trust.set('needs-recovery');
       TestBed.tick();
       expect(status.bannerSlotReserved()).toBe(true);
+    });
+
+    it('claims the slot for a forecast prompt while the live status is unknown', () => {
+      trust.set('unknown');
+      forecast.set('needs-recovery');
+      expect(status.bannerSlot()).toBe('encryption');
+      expect(status.bannerForecast()).toBe('needs-recovery');
+
+      trust.set('needs-recovery');
+      forecast.set(null); // the service clears it once the live status is known
+      expect(status.bannerSlot()).toBe('encryption');
+      expect(status.bannerForecast()).toBeNull();
+    });
+
+    it('lets a forecast outrank a limited capability, as the live prompt would', () => {
+      report('@a:hs', 'accounts', 'restore');
+      trust.set('unknown');
+      forecast.set('needs-setup');
+      expect(status.bannerSlot()).toBe('encryption');
+    });
+
+    it('does not let a forecast of guidance for another device outrank a limited capability', () => {
+      report('@a:hs', 'accounts', 'restore');
+      trust.set('unknown');
+      forecast.set('setup-elsewhere');
+      expect(status.bannerSlot()).toBe('status');
+      expect(status.bannerForecast()).toBeNull();
+    });
+
+    it('releases the slot when the live status is ready', () => {
+      trust.set('unknown');
+      forecast.set('needs-setup');
+      trust.set('ready');
+      forecast.set(null);
+      expect(status.bannerSlot()).toBeNull();
     });
 
     it('names the limited capability instead of counting it', () => {

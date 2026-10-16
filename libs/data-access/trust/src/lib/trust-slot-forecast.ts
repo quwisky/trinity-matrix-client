@@ -124,6 +124,9 @@ export class TrustSlotForecastService {
   /** Accounts whose forecast has outlived FORECAST_HOLD_MS without a live status. */
   private readonly expired = signal<ReadonlySet<string>>(new Set());
   private readonly reads = new Map<string, Observable<void>>();
+  private readonly unavailable = computed(
+    () => this.health.health().availability === 'unavailable',
+  );
 
   /**
    * The active Account's expected encryption prompt while its live status is not known;
@@ -143,24 +146,43 @@ export class TrustSlotForecastService {
   });
 
   constructor() {
-    // Remember what the live status says, for the Account it belongs to.
+    // Remember what the live status says, for the Account it belongs to. Just after an
+    // Account switch, Trust health can still hold the previous Account's status, so the
+    // run that sees a new Account records nothing; the next status change records it.
+    let seenAccountId: string | null | undefined;
     effect(() => {
       const accountId = this.cryptoPort.activeAccountId();
       const current = this.health.health().current;
-      if (!accountId || !current) return;
+      const switched =
+        seenAccountId !== undefined && accountId !== seenAccountId;
+      seenAccountId = accountId;
+      if (switched || !accountId || !current) return;
       untracked(() => this.remember(accountId, forecastOf(current)));
     });
-    // A forecast must not reserve space for a status that never arrives.
+    // A forecast must not reserve space for a status that never arrives. Each hold starts
+    // afresh, so an Account that becomes active again forecasts again.
     effect((onCleanup) => {
       const accountId = this.cryptoPort.activeAccountId();
-      if (!accountId || this.health.health().availability !== 'unavailable') {
-        return;
-      }
+      if (!accountId || !this.unavailable()) return;
+      untracked(() => this.clearExpired(accountId));
       const timer = setTimeout(
         () => this.expired.update((ids) => new Set(ids).add(accountId)),
         FORECAST_HOLD_MS,
       );
       onCleanup(() => clearTimeout(timer));
+    });
+    // An Account switch does not pass through the route guard: read its forecast here.
+    effect(() => {
+      const accountId = this.cryptoPort.activeAccountId();
+      if (accountId) untracked(() => this.hydrate(accountId).subscribe());
+    });
+  }
+
+  /** Load the active Account's stored forecast; completes at once when there is none. */
+  hydrateActive(): Observable<void> {
+    return defer(() => {
+      const accountId = this.cryptoPort.activeAccountId();
+      return accountId ? this.hydrate(accountId) : of(undefined);
     });
   }
 
@@ -201,13 +223,7 @@ export class TrustSlotForecastService {
 
   private remember(accountId: string, kind: StoredForecast): void {
     // A live status ends any expired hold, so the next gap forecasts again.
-    if (this.expired().has(accountId)) {
-      this.expired.update((ids) => {
-        const next = new Set(ids);
-        next.delete(accountId);
-        return next;
-      });
-    }
+    this.clearExpired(accountId);
     if (this.stored().get(accountId) === kind) return;
     this.stored.update((known) => new Map(known).set(accountId, kind));
     // Best effort: a failed write only means the next start forecasts an older prompt.
@@ -215,5 +231,14 @@ export class TrustSlotForecastService {
       .setPreference(SLOT_FORECAST_PREFERENCE, accountContext(accountId), kind)
       .pipe(catchError(() => of(undefined)))
       .subscribe();
+  }
+
+  private clearExpired(accountId: string): void {
+    if (!this.expired().has(accountId)) return;
+    this.expired.update((ids) => {
+      const next = new Set(ids);
+      next.delete(accountId);
+      return next;
+    });
   }
 }

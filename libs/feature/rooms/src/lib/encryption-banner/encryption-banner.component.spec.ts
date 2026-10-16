@@ -35,6 +35,7 @@ function renderBanner() {
           show: vi.fn(),
           bannerSlot: slot,
           bannerSlotReserved: slotReserved,
+          bannerForecast: signal(null),
         },
       },
     ],

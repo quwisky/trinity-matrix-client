@@ -7,19 +7,31 @@ import {
   type RouterStateSnapshot,
 } from '@angular/router';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, firstValueFrom, of, throwError, type Observable } from 'rxjs';
+import {
+  NEVER,
+  Subject,
+  firstValueFrom,
+  of,
+  throwError,
+  type Observable,
+} from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEVICE_CONFIRMATION_SETTLE_MS,
   TrustDeviceConfirmationService,
+  TrustSlotForecastService,
   type DeviceConfirmationGate,
 } from '@trinity/data-access/trust';
-import { deviceConfirmationGuard } from './device-confirmation.guard';
+import {
+  FORECAST_HYDRATE_MS,
+  deviceConfirmationGuard,
+} from './device-confirmation.guard';
 
 function run(
   url: string,
   settledGate: () => Observable<DeviceConfirmationGate>,
   confirmRequired: () => Observable<boolean> = () => of(true),
+  hydrateActive: () => Observable<void> = () => of(undefined),
 ): Promise<boolean | UrlTree> {
   TestBed.configureTestingModule({
     providers: [
@@ -28,6 +40,7 @@ function run(
         settledGate,
         confirmRequired,
       }),
+      MockProvider(TrustSlotForecastService, { hydrateActive }),
     ],
   });
   return firstValueFrom(
@@ -113,6 +126,51 @@ describe('deviceConfirmationGuard', () => {
     });
 
     await vi.advanceTimersByTimeAsync(DEVICE_CONFIRMATION_SETTLE_MS - 1);
+    expect(settled).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(true);
+  });
+
+  it('loads the active Account’s banner forecast before letting Rooms through', async () => {
+    const read = new Subject<void>();
+    const hydrateActive = vi.fn(() => read.asObservable());
+    let settled: boolean | UrlTree | undefined;
+    void run(
+      '/rooms',
+      () => of({ kind: 'not-required' }),
+      undefined,
+      hydrateActive,
+    ).then((result) => {
+      settled = result;
+    });
+
+    await Promise.resolve();
+    expect(hydrateActive).toHaveBeenCalledOnce();
+    expect(settled).toBeUndefined();
+
+    read.next();
+    read.complete();
+    await Promise.resolve();
+    expect(settled).toBe(true);
+  });
+
+  it('does not wait more than 300 ms for the forecast', async () => {
+    // RxJS timers run on `setInterval`, so fake it along with `setTimeout`.
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
+    expect(FORECAST_HYDRATE_MS).toBe(300);
+    let settled: boolean | UrlTree | undefined;
+    void run(
+      '/rooms',
+      () => of({ kind: 'not-required' }),
+      undefined,
+      () => NEVER,
+    ).then((result) => {
+      settled = result;
+    });
+
+    await vi.advanceTimersByTimeAsync(FORECAST_HYDRATE_MS - 1);
     expect(settled).toBeUndefined();
     await vi.advanceTimersByTimeAsync(1);
     expect(settled).toBe(true);

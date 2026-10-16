@@ -7,7 +7,11 @@ import {
   signal,
 } from '@angular/core';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
-import { TrustService } from '@trinity/data-access/trust';
+import {
+  TrustService,
+  TrustSlotForecastService,
+  type SlotForecast,
+} from '@trinity/data-access/trust';
 import {
   BUILD_INFO,
   isElectronRenderer,
@@ -89,19 +93,38 @@ export class CapabilityStatusService {
   private readonly copied = signal(false);
   private readonly slotHeldStatus = signal(false);
   private readonly press = inject(PointerPressService);
+  private readonly slotForecast = inject(TrustSlotForecastService);
+  /** The trust state the slot is decided on: the live one, or the forecast until it arrives. */
+  private readonly slotTrust = computed(() => {
+    const live = this.trust.status();
+    if (live !== 'unknown') {
+      return {
+        status: live,
+        elsewhere: this.trust.recoverySetupElsewhere(),
+        forecast: false,
+      };
+    }
+    const forecast = this.slotForecast.forecast();
+    if (!forecast) return { status: live, elsewhere: false, forecast: false };
+    return forecast === 'setup-elsewhere'
+      ? { status: 'needs-setup' as const, elsewhere: true, forecast: true }
+      : { status: forecast, elsewhere: false, forecast: true };
+  });
   /**
    * The single global banner slot, by priority: a blocking capability error, then the
    * encryption prompt, then a limited capability. A limited capability is non-blocking
    * and reachable from System Status, while the encryption prompt is the user's one
    * pending setup step. Guidance to set up recovery on another device is no step on this
    * one, so it takes the slot only when nothing is limited. Per-room banners (offline,
-   * tombstone) sit outside this slot.
+   * tombstone) sit outside this slot. Until the live trust status arrives, the Account's
+   * forecast decides it the same way, so the banner that will appear holds its space
+   * from the first frame.
    */
   private readonly liveSlot = computed<'status' | 'encryption' | null>(() => {
     if (this.hasBlocking()) return 'status';
-    const trust = this.trust.status();
+    const { status: trust, elsewhere } = this.slotTrust();
     const limited = this.visibleEntries().length > 0;
-    if (trust === 'needs-setup' && this.trust.recoverySetupElsewhere())
+    if (trust === 'needs-setup' && elsewhere)
       return limited ? 'status' : 'encryption';
     if (
       trust === 'needs-setup' ||
@@ -137,6 +160,12 @@ export class CapabilityStatusService {
     computation: ({ live, pressed }, previous) =>
       pressed && previous ? previous.value : live,
   }).asReadonly();
+  /** The forecast the encryption slot is held for, while the live status is not known. */
+  readonly bannerForecast = computed<SlotForecast | null>(() =>
+    this.bannerSlot() === 'encryption' && this.slotTrust().forecast
+      ? this.slotForecast.forecast()
+      : null,
+  );
   /**
    * Whether the slot has held the status notice in this app session. Only then can a
    * prompt replace that two-action notice, so only then does the prompt keep the
