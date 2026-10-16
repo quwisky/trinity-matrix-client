@@ -144,6 +144,65 @@ describe('MessageListComponent and the images of its rows', () => {
     expect(activity.speed).toBeCloseTo(5_000);
   });
 
+  it('does not take its own height correction for the reader scrolling fast', async () => {
+    const messages = Array.from({ length: 200 }, (_, i) => message(`$${i}`));
+    const { fixture, container } = await renderList({ messages });
+    const activity = fixture.debugElement.injector.get(TimelineScrollActivity);
+    const scroll = scroller(container);
+    Object.defineProperty(scroll, 'clientHeight', {
+      value: 600,
+      configurable: true,
+    });
+    Object.defineProperty(scroll, 'scrollHeight', {
+      value: 200 * 64,
+      configurable: true,
+    });
+    // The rows' region starts at the top of the scroller's content.
+    scroll.getBoundingClientRect = () => ({ top: 0, bottom: 600 }) as DOMRect;
+    const vpad = scroll.querySelector('.vpad') as HTMLElement;
+    vpad.getBoundingClientRect = () =>
+      ({ top: -scroll.scrollTop, bottom: -scroll.scrollTop }) as DOMRect;
+    scrollTo(scroll, 5000, 1_000);
+    scrollTo(scroll, 5050, 1_100); // reading: 500 px/s
+    fixture.detectChanges();
+
+    // A row above the reader is measured 236 px taller than estimated; the list moves the
+    // scroll position by that much to keep the reader in place...
+    const row = container.querySelector('[data-mid="$70"]') as Element;
+    const [observer] = (
+      ResizeObserver as unknown as {
+        instances: { observed: Set<Element>; emit(e: unknown[]): void }[];
+      }
+    ).instances.filter((o) => o.observed.has(row));
+    observer.emit([
+      {
+        target: row,
+        borderBoxSize: [{ blockSize: 300, inlineSize: 0 }],
+        contentRect: { height: 300 },
+      },
+    ]);
+    expect(scroll.scrollTop).toBe(5050 + 236);
+    // ...and the browser reports that with the reader's next 50 px in one event.
+    scrollTo(scroll, 5050 + 236 + 50, 1_200);
+
+    expect(activity.speed).toBeCloseTo(500);
+  });
+
+  it('starts a new speed estimate in a new room', async () => {
+    const { fixture, container } = await renderList({
+      messages: [message('$1')],
+    });
+    const activity = fixture.debugElement.injector.get(TimelineScrollActivity);
+    const scroll = scroller(container);
+    scrollTo(scroll, 0, 1_000);
+    scrollTo(scroll, 800, 1_100);
+
+    fixture.componentRef.setInput('roomId', '!other:hs');
+    fixture.detectChanges();
+
+    expect(activity.speed).toBe(0);
+  });
+
   it('watches its rows against its own scroller', async () => {
     const { container } = await renderList({ messages: [message('$1')] });
 

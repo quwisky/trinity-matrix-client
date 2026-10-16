@@ -48,16 +48,50 @@ describe('TimelineScrollActivity', () => {
       expect(activity.speed).toBeCloseTo(400);
     });
 
-    it('does not count the list’s own corrections as movement', () => {
+    it('does not count the list’s own scroll writes as movement', () => {
       const activity = new TimelineScrollActivity();
       activity.moved(1_000, 0);
 
       // History landed above: the list moved the scroll position 3,000 px to keep the
       // reader's row in place. Nothing moved under the reader.
-      activity.corrected(4_000, 10);
-      activity.moved(4_010, 110);
+      activity.shifted(3_000);
+      activity.moved(4_010, 100);
 
       expect(activity.speed).toBeCloseTo(100);
+    });
+
+    it('takes only the list’s write out of a scroll event that also carries the reader’s movement', () => {
+      const activity = new TimelineScrollActivity();
+      activity.moved(0, 0);
+
+      // A row above grew by 236 px and the list compensated, while the reader kept scrolling:
+      // the browser reports both in one event.
+      activity.shifted(236);
+      activity.moved(236 + 130, 100);
+
+      expect(activity.speed).toBeCloseTo(1_300);
+    });
+
+    it('ignores a write while no estimate is running', () => {
+      const activity = new TimelineScrollActivity();
+      activity.shifted(500);
+      activity.moved(500, 0);
+      activity.moved(600, 100);
+
+      expect(activity.speed).toBeCloseTo(1_000);
+    });
+
+    it('forgets the estimate for a new room', () => {
+      const activity = new TimelineScrollActivity();
+      activity.moved(0, 0);
+      activity.moved(600, 100);
+
+      activity.reset();
+
+      expect(activity.speed).toBe(0);
+      // The new room's first position starts a new estimate.
+      activity.moved(9_000, 120);
+      expect(activity.speed).toBe(0);
     });
 
     it('drops to zero once the scroll settles', () => {
@@ -99,12 +133,14 @@ describe('TimelineScrollActivity', () => {
       expect(heard).toHaveBeenCalledTimes(3);
     });
 
-    it('does not tell watchers about a correction, which moves nothing', () => {
+    it('does not tell watchers about a write, which moves nothing', () => {
       const activity = new TimelineScrollActivity();
       const heard = vi.fn();
       activity.watch(heard);
+      activity.moved(0, 0);
+      heard.mockClear();
 
-      activity.corrected(500, 0);
+      activity.shifted(500);
 
       expect(heard).not.toHaveBeenCalled();
     });

@@ -20,8 +20,9 @@ const SAMPLE_GAP_MS = 150;
  *
  * The list also reports where the reader has moved it ({@link moved}), so work that only
  * a reader can use (an image) can wait while the list moves faster than anyone reads
- * ({@link speed}). Positions the list sets itself to keep the reader's row in place are
- * {@link corrected}, not movement.
+ * ({@link speed}). Scroll positions the list writes itself (a pin, a height correction, a
+ * jump) are taken out as they are written ({@link shifted}), so they never read as speed,
+ * even when the browser reports one together with the reader's own movement.
  *
  * Plain fields, not signals: nothing renders from this state, so scroll events must not
  * schedule change detection through it. Code that must act when the scroll slows down
@@ -69,9 +70,15 @@ export class TimelineScrollActivity {
     this.notify();
   }
 
-  /** The list set its own position to `top` at `at`, keeping the reader's row in place. */
-  corrected(top: number, at: number): void {
-    this.last = { top, at };
+  /** The list itself just moved the scroll position by `delta` px: not the reader's doing. */
+  shifted(delta: number): void {
+    if (this.last) this.last = { ...this.last, top: this.last.top + delta };
+  }
+
+  /** Forget the estimate: the list now shows another room. */
+  reset(): void {
+    this.speedPxPerS = 0;
+    this.last = null;
   }
 
   /** The scroll has been still for the idle window: run the hover it held back. */

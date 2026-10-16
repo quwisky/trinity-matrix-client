@@ -375,8 +375,7 @@ export class MessageListComponent extends MessageListBase {
 
       requestAnimationFrame(() => {
         if (stickToBottom) {
-          el.scrollTop = el.scrollHeight;
-          this.scrollTop.set(el.scrollTop);
+          this.writeScrollTop(el, el.scrollHeight);
         }
 
         const notFull = el.scrollHeight <= el.clientHeight + 1;
@@ -415,6 +414,8 @@ export class MessageListComponent extends MessageListBase {
       }
     });
 
+    // An effect, not a computed: turning the flag off must also release the loads the gate
+    // holds, and the gate is plain state that scroll events read without change detection.
     effect(() => this.mediaGate.setEnabled(this.deferMediaWhileScrolling()));
 
     // Keep the observed set of rendered rows in sync with the window.
@@ -464,6 +465,7 @@ export class MessageListComponent extends MessageListBase {
     // starts from the top with fresh estimates.
     this.measured.clear();
     this.bodyOverflow.clear();
+    this.scrollActivity.reset();
     this.scrollTop.set(0);
     this.heightVersion.update((v) => v + 1);
   }
@@ -485,8 +487,7 @@ export class MessageListComponent extends MessageListBase {
       afterNextRender(
         () => {
           if (this.destroyRef.destroyed) return;
-          el.scrollTop = Math.max(0, el.scrollHeight - fromEnd);
-          this.scrollTop.set(el.scrollTop);
+          this.writeScrollTop(el, Math.max(0, el.scrollHeight - fromEnd));
         },
         { injector: this.injector },
       ),
@@ -500,17 +501,11 @@ export class MessageListComponent extends MessageListBase {
       return;
     }
     this.markScrolling();
-    const ownRestore =
-      this.expectedProgrammaticScrollTop !== null &&
-      Math.abs(el.scrollTop - this.expectedProgrammaticScrollTop) < 1;
-    // How fast the reader moves the list; our own restore kept the rows put under them.
-    if (ownRestore) {
-      this.scrollActivity.corrected(el.scrollTop, performance.now());
-    } else {
-      this.scrollActivity.moved(el.scrollTop, performance.now());
-    }
+    // How fast the reader moves the list. The list's own writes were taken out as it made
+    // them (`writeScrollTop`), so this is the reader's movement alone.
+    this.scrollActivity.moved(el.scrollTop, performance.now());
     if (this.expectedProgrammaticScrollTop !== null) {
-      if (ownRestore) {
+      if (Math.abs(el.scrollTop - this.expectedProgrammaticScrollTop) < 1) {
         this.expectedProgrammaticScrollTop = null;
       } else {
         this.prependAnchorActive = false;
@@ -590,10 +585,7 @@ export class MessageListComponent extends MessageListBase {
     // Pin the window to the bottom, then scroll to the end once it has re-rendered
     // the newest rows (the spacer heights shift when the window moves).
     this.atBottomSig.set(true);
-    requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-      this.scrollTop.set(el.scrollTop);
-    });
+    requestAnimationFrame(() => this.writeScrollTop(el, el.scrollHeight));
   }
 
   /**
@@ -764,8 +756,7 @@ export class MessageListComponent extends MessageListBase {
     }
     if (atBottom) {
       // Stay pinned to the newest message as measured heights settle.
-      el.scrollTop = el.scrollHeight;
-      this.scrollTop.set(el.scrollTop);
+      this.writeScrollTop(el, el.scrollHeight);
     } else {
       // While scrolled up, a change to a row ABOVE the fold shoves the read
       // position (native anchoring is off) — a genuine reflow OR a first
@@ -779,12 +770,22 @@ export class MessageListComponent extends MessageListBase {
         this.rowsRegionTop(el),
       );
       if (delta !== 0) {
-        el.scrollTop = Math.max(0, st + delta);
-        this.scrollTop.set(el.scrollTop);
+        this.writeScrollTop(el, Math.max(0, st + delta));
       }
     }
     this.revealFocusIn(resized);
     this.heightVersion.update((v) => v + 1);
+  }
+
+  /**
+   * Set the scroll position from the list's own code (a pin, a correction, a restore, a
+   * jump), telling the scroll activity at once so the move never reads as the reader's.
+   */
+  private writeScrollTop(el: HTMLElement, top: number): void {
+    const before = el.scrollTop;
+    el.scrollTop = top;
+    this.scrollActivity.shifted(el.scrollTop - before);
+    this.scrollTop.set(el.scrollTop);
   }
 
   /**
@@ -838,20 +839,21 @@ export class MessageListComponent extends MessageListBase {
     const anchor = Array.from(
       el.querySelectorAll<HTMLElement>('.msg[data-mid]'),
     ).find((row) => row.getAttribute('data-mid') === anchorId);
+    let top: number;
     if (anchor) {
       const currentOffset =
         anchor.getBoundingClientRect().top - el.getBoundingClientRect().top;
-      el.scrollTop = Math.max(0, el.scrollTop + currentOffset - anchorOffset);
+      top = Math.max(0, el.scrollTop + currentOffset - anchorOffset);
     } else if (idx >= 0) {
-      el.scrollTop = Math.max(
+      top = Math.max(
         0,
         this.rowsRegionTop(el) + offsetOf(this.prefix(), idx) - anchorOffset,
       );
     } else {
-      el.scrollTop = el.scrollHeight - prevHeight + prevTop;
+      top = el.scrollHeight - prevHeight + prevTop;
     }
+    this.writeScrollTop(el, top);
     this.expectedProgrammaticScrollTop = el.scrollTop;
-    this.scrollTop.set(el.scrollTop);
     // A recent jump wins over the anchor: the page the jump's own scroll asked for keeps the
     // anchored row in place, which can leave the target off its aim (half-hidden at the top
     // when it is tall). Re-aim it; a no-op once the jump is old or the reader has moved.
@@ -906,13 +908,15 @@ export class MessageListComponent extends MessageListBase {
       }
       return;
     }
-    el.scrollTop = Math.max(
-      0,
-      this.rowsRegionTop(el) +
-        offsetOf(this.prefix(), idx) -
-        el.clientHeight / 2,
+    this.writeScrollTop(
+      el,
+      Math.max(
+        0,
+        this.rowsRegionTop(el) +
+          offsetOf(this.prefix(), idx) -
+          el.clientHeight / 2,
+      ),
     );
-    this.scrollTop.set(el.scrollTop);
     afterNextRender(() => this.revealRow(el, messageId), {
       injector: this.injector,
     });
