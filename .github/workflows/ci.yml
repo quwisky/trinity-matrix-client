@@ -831,11 +831,20 @@ jobs:
         if: ${{ !cancelled() }}
         run: git diff --exit-code
 
-      # The wrapper runs from the unpacked distribution once its .ok marker exists, so the
-      # downloaded zip beside it is dead weight in the entry. Sizes are logged for tuning.
+      # The restored entry carries every Gradle distribution an older key ever downloaded;
+      # only the one gradle-wrapper.properties names is used. The wrapper runs from the
+      # unpacked distribution once its .ok marker exists, so a downloaded zip beside it is dead
+      # weight too. Sizes are logged for tuning; this runs on every ref, saving only on main.
       - name: Prune the Gradle cache
         continue-on-error: true
         run: |
+          current=$(sed -n 's#^distributionUrl=.*/\(gradle-[^/]*\)\.zip$#\1#p' android/gradle/wrapper/gradle-wrapper.properties)
+          if [ -z "$current" ]; then echo 'No distributionUrl found; not pruning'; exit 0; fi
+          echo "Keeping $current"
+          du -sh ~/.gradle/wrapper/dists/*
+          for dist in ~/.gradle/wrapper/dists/*; do
+            if [ "$(basename "$dist")" != "$current" ]; then rm -rf "$dist"; fi
+          done
           find ~/.gradle/wrapper/dists -name '*.zip' -type f -print -delete
           du -sh ~/.gradle/caches ~/.gradle/wrapper
           du -sh ~/.gradle/caches/* | sort -h | tail -n 6
