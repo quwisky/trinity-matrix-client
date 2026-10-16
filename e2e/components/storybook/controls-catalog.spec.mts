@@ -135,9 +135,20 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
       );
     }
 
+    // A disabled solid primary or danger button draws its state with the disabled roles, not
+    // a fade (#1355); a solid secondary, outline, ghost or link button keeps the fade.
     for (const testId of [
       'catalog-button-loading',
+      'catalog-button-unavailable',
+    ]) {
+      expect(
+        await disabledContrast(page, testId, canvas),
+        testId,
+      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+    }
+    for (const testId of [
       'catalog-button-disabled',
+      'catalog-button-readonly',
       'catalog-input-disabled',
     ]) {
       expect(

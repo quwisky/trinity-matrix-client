@@ -273,6 +273,15 @@ export const CompleteCatalog: Story = {
             <button data-testid="catalog-button-loading" data-catalog-touch trnBtn loading disabled>Saving settings</button>
             <button data-testid="catalog-button-disabled" data-catalog-touch trnBtn variant="secondary" disabled>Disabled action</button>
             <button
+              data-testid="catalog-button-unavailable"
+              data-catalog-touch
+              trnBtn
+              [trnActionAllowed]="false"
+              trnActionDisabledReason="Wait before trying your PIN again."
+            >
+              Unlock
+            </button>
+            <button
               data-testid="catalog-button-readonly"
               data-catalog-touch
               trnBtn

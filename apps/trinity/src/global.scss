@@ -97,6 +97,30 @@
     opacity: 1;
   }
 
+  /* Fading a solid primary or danger button took its tinted fill and label toward the pane
+   * together, to 2.0:1 (#1355). It takes a neutral fill and the muted label instead, at full
+   * opacity: this selector out-ranks the fade above. Losing its tone marks the state. A solid
+   * secondary button already rests on that neutral fill, so it keeps the fade, as outline,
+   * ghost and link buttons do: their glyphs and emoji ignore a text colour. A focused
+   * `trnActionAllowed` button keeps its focus border. Forced colours replace these colours,
+   * so the system's disabled colour marks the state there instead of the fade. */
+  :is(button, a)[trnBtn][data-trn-presentation='solid']:not(
+      [data-trn-variant='secondary']
+    ):is(:disabled, [aria-disabled='true']) {
+    background-color: var(--trinity-disabled-surface);
+    color: var(--trinity-disabled-foreground);
+    opacity: 1;
+
+    &:not(:focus-visible) {
+      border-color: var(--trinity-disabled-border);
+    }
+
+    @media (forced-colors: active) {
+      border-color: GrayText;
+      color: GrayText;
+    }
+  }
+
   [data-trn-action-disabled] {
     cursor: not-allowed;
   }

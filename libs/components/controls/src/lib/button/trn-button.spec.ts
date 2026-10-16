@@ -42,6 +42,25 @@ class IconHostComponent {
 }
 
 @Component({
+  imports: [TrnButton],
+  template: `
+    <button trnBtn disabled>Solid</button>
+    <button
+      trnBtn
+      [presentation]="presentation()"
+      [variant]="variant()"
+      disabled
+    >
+      Dynamic
+    </button>
+  `,
+})
+class PresentationHostComponent {
+  readonly presentation = signal<TrnButtonPresentation>('outline');
+  readonly variant = signal<TrnButtonVariant>('danger');
+}
+
+@Component({
   imports: [TrnActionAvailability],
   template: `<button
     [trnActionAllowed]="allowed()"
@@ -371,6 +390,24 @@ describe('TrnButton', () => {
     await fixture.whenStable();
 
     expect(dynamic.hasAttribute('data-trn-icon-button')).toBe(true);
+  });
+
+  it('publishes its presentation and variant for the shared disabled treatment', async () => {
+    const { container, fixture } = await render(PresentationHostComponent);
+    const host = fixture.componentInstance;
+    const [solid, dynamic] = [...container.querySelectorAll('button')];
+
+    expect(solid.getAttribute('data-trn-presentation')).toBe('solid');
+    expect(solid.getAttribute('data-trn-variant')).toBe('primary');
+    expect(dynamic.getAttribute('data-trn-presentation')).toBe('outline');
+    expect(dynamic.getAttribute('data-trn-variant')).toBe('danger');
+
+    host.presentation.set('ghost');
+    host.variant.set('secondary');
+    await fixture.whenStable();
+
+    expect(dynamic.getAttribute('data-trn-presentation')).toBe('ghost');
+    expect(dynamic.getAttribute('data-trn-variant')).toBe('secondary');
   });
 
   it('keeps unavailable actions focusable and blocks pointer or keyboard activation', async () => {

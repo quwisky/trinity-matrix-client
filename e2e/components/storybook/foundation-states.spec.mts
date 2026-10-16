@@ -1282,23 +1282,85 @@ test.describe('semantic design foundations', () => {
     expect([cosy.gap, spacious.gap]).toEqual(['4px', '6px']);
   });
 
-  test('disabled controls retain native semantics and the shared disabled treatment', async ({
+  test('a disabled solid button keeps native semantics and draws the disabled roles', async ({
     page,
   }) => {
     await openStory(page, 'components-banner--disabled-action');
-    const action = page.getByRole('button', { name: 'Retry now' });
+    const action = page.getByTestId('banner-disabled-action');
     await expect(action).toBeDisabled();
     const opacity = await action.evaluate((element) =>
       Number.parseFloat(getComputedStyle(element).opacity),
     );
-    const token = await action.evaluate((element) =>
-      Number.parseFloat(
-        getComputedStyle(element).getPropertyValue(
-          '--trinity-disabled-opacity',
-        ),
-      ),
+    expect(opacity).toBe(1);
+    for (const [property, token] of [
+      ['background-color', '--trinity-disabled-surface'],
+      ['color', '--trinity-disabled-foreground'],
+      ['border-top-color', '--trinity-disabled-border'],
+    ] as const) {
+      expect(await computedColour(action, property), property).toEqual(
+        await resolveTokenSrgb(page, 'banner-disabled-action', token),
+      );
+    }
+    const { text, background } = await measureLocatorContrast(action);
+    expect(contrastRatio(text, background)).toBeGreaterThanOrEqual(
+      AA_NORMAL_TEXT,
     );
-    expect(opacity).toBe(token);
+  });
+
+  test('an unavailable solid button keeps the disabled roles on hover and its focus border', async ({
+    page,
+  }) => {
+    await openStory(page, 'components-control-recipe-matrix--complete-catalog');
+    const testId = 'catalog-button-unavailable';
+    const action = page.getByTestId(testId);
+    await expect(action).toHaveAttribute('aria-disabled', 'true');
+    const disabledSurface = await resolveTokenSrgb(
+      page,
+      testId,
+      '--trinity-disabled-surface',
+    );
+
+    await action.hover();
+    expect(await computedColour(action, 'background-color')).toEqual(
+      disabledSurface,
+    );
+    expect(
+      await action.evaluate((element) => getComputedStyle(element).opacity),
+    ).toBe('1');
+
+    await action.focus();
+    await expect(action).toBeFocused();
+    const focusRing = await resolveTokenSrgb(
+      page,
+      testId,
+      '--trinity-focus-ring',
+    );
+    await expect
+      .poll(() => computedColour(action, 'border-top-color'))
+      .toEqual(focusRing);
+  });
+
+  test('a disabled solid secondary or outline button keeps the shared fade', async ({
+    page,
+  }) => {
+    await openStory(page, 'components-control-recipe-matrix--complete-catalog');
+    for (const testId of [
+      'catalog-button-disabled',
+      'catalog-button-readonly',
+    ]) {
+      const [opacity, token] = await page
+        .getByTestId(testId)
+        .evaluate((element) => {
+          const style = getComputedStyle(element);
+          return [
+            Number.parseFloat(style.opacity),
+            Number.parseFloat(
+              style.getPropertyValue('--trinity-disabled-opacity'),
+            ),
+          ];
+        });
+      expect(opacity, testId).toBe(token);
+    }
   });
 
   for (const { theme, mode } of STORYBOOK_THEME_PREVIEWS) {

@@ -151,7 +151,7 @@ export const DisabledAction: Story = {
         <trn-icon trnBannerIcon name="cloud-off" />
         Reconnecting before this action becomes available.
         <span trnBannerActions>
-          <button trnBtn size="sm" disabled>Retry now</button>
+          <button data-testid="banner-disabled-action" trnBtn size="sm" disabled>Retry now</button>
         </span>
       </trn-banner>`,
   }),
