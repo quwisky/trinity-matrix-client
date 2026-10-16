@@ -397,6 +397,8 @@ export const SHARED_MOCKS: Provider[] = [
         return currentRouteUrl;
       },
       events: routerEvents,
+      // Navigations here settle at once, so none is ever in flight.
+      currentNavigation: signal(null).asReadonly(),
       parseUrl: (url: string) => urlSerializer.parse(url),
       // The Workspace location adapter serializes the list entry it rewrites under a
       // Conversation opened from it (#1113); build trees the way `navigate` reads them.

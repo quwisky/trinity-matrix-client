@@ -200,6 +200,8 @@ function harness(options: HarnessOptions = {}) {
           ),
         } as const);
   const listBelow = signal(false);
+  // A Router navigation Workspace did not start, such as one to Settings, still resolving.
+  const routerNavigating = signal(false);
   const projections: {
     readonly history: 'push' | 'replace' | 'back';
     readonly overList?: boolean;
@@ -208,6 +210,7 @@ function harness(options: HarnessOptions = {}) {
   const popHistory = vi.fn();
   const location = {
     listBelow: listBelow.asReadonly(),
+    navigating: routerNavigating.asReadonly(),
     get projecting() {
       return locationWrites > 0;
     },
@@ -316,6 +319,7 @@ function harness(options: HarnessOptions = {}) {
     synced,
     mixed,
     leaving,
+    routerNavigating,
   };
 }
 
@@ -1177,6 +1181,33 @@ describe('WorkspaceNavigationService', () => {
         await settle();
         open.finish(false);
         await open.opened;
+
+        await vi.waitFor(() => {
+          TestBed.tick();
+          expect(h.service.view()).toEqual({
+            accountId: ALICE,
+            scope: { kind: 'recent' },
+            roomId: ROOM,
+            pane: 'conversation',
+          });
+        });
+      });
+
+      // Repairing would cancel that navigation and land the person on Recent instead.
+      it('does not repair while a navigation the person started is in flight, and checks again once it settles', async () => {
+        const h = harness({ routeAccountId: ALICE, rooms });
+        await openInSpace(h);
+
+        h.routerNavigating.set(true);
+        drop(h, ALICE, SPACE);
+        await settle();
+        expect(h.navigate).not.toHaveBeenCalled();
+        expect(h.service.view().scope).toEqual({
+          kind: 'space',
+          spaceId: SPACE,
+        });
+
+        h.routerNavigating.set(false);
 
         await vi.waitFor(() => {
           TestBed.tick();

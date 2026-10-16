@@ -1,5 +1,5 @@
 import { Location } from '@angular/common';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   NavigationCancel,
@@ -57,6 +57,14 @@ export class WorkspaceLocationAdapter {
 
   /** The current history entry is a Conversation pushed straight over its list. */
   readonly listBelow = this.listBelowState.asReadonly();
+
+  /**
+   * A Router navigation is in flight, whoever started it: Workspace, or the person heading
+   * for another page such as Settings. Workspace leaves the view alone meanwhile.
+   */
+  readonly navigating = computed(
+    () => this.router.currentNavigation() !== null,
+  );
 
   constructor() {
     this.router.events

@@ -20,6 +20,7 @@ import {
 } from 'rxjs';
 import type { WorkspaceView } from './workspace-navigation.models';
 import { WorkspaceAvailability } from './workspace-availability';
+import { WorkspaceLocationAdapter } from './workspace-location.adapter';
 import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 
 /**
@@ -27,14 +28,16 @@ import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
  *
  * A view qualifies once its Space is unavailable: the Account has synced without it
  * (#1401), or it disappeared (#1402: removed, left elsewhere, or its holder unticked in
- * the mixed view). Nothing qualifies while a transition owns the view, while this app's
- * own leave of the Space is in flight (that flow navigates itself), or while the view's
- * Account is not the active one (a switch or sign-out is under way).
+ * the mixed view). Nothing qualifies while a transition owns the view, while any Router
+ * navigation is in flight, while this app's own leave of the Space is in flight (that flow
+ * navigates itself), or while the view's Account is not the active one (a switch or
+ * sign-out is under way).
  */
 @Injectable({ providedIn: 'root' })
 export class WorkspaceSpaceRepair {
   private readonly accounts = inject(AccountRuntimeService);
   private readonly workflow = inject(WorkspaceTransitionWorkflow);
+  private readonly location = inject(WorkspaceLocationAdapter);
   private readonly availability = inject(WorkspaceAvailability);
   private readonly spaces = inject(SpacesService);
   private readonly injector = inject(Injector);
@@ -48,7 +51,9 @@ export class WorkspaceSpaceRepair {
     const unavailable = computed(() => {
       const current = view();
       if (current.scope.kind !== 'space' || !current.accountId) return null;
-      if (this.workflow.busy()) return null;
+      // A transition owns the view; a Router navigation in flight may be the person
+      // leaving for another page, which a repair would cancel. Check again once it settles.
+      if (this.workflow.busy() || this.location.navigating()) return null;
       if (current.accountId !== this.accounts.activeAccountId()) return null;
       if (this.spaces.isLeaving(current.accountId, current.scope.spaceId)) {
         return null;
