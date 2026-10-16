@@ -12,7 +12,7 @@ let package = Package(
         .library(name: "TrinityCapacitorAppLock", targets: ["AppLockPlugin"])
     ],
     dependencies: [
-        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.0.0"),
+        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.5.3"),
         .package(path: "ios/TrinityAppLockCore"),
     ],
     targets: [
