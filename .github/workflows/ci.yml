@@ -660,9 +660,10 @@ jobs:
           test -r /dev/kvm -a -w /dev/kvm
 
       # Parallel steps: the app build and the homeserver image pull run while the emulator and
-      # its system image are restored or installed and the emulator boots (~1:50 measured). The
-      # emulator script's first line waits for the build's status file, so the suite's own sync
-      # and Gradle run find everything up to date and never race this build.
+      # its system image are restored or installed and the emulator boots (~2:30 measured, run
+      # 38852577922, with or without a cache hit). The emulator script's first line waits for
+      # the build's status file, so the suite's own sync and Gradle run find everything up to
+      # date and never race this build.
       - name: Build the Android app while the emulator boots
         id: android-prebuild
         background: true
