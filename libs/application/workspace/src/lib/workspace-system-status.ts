@@ -1,5 +1,11 @@
 import { InjectionToken, type Signal } from '@angular/core';
-import type { SlotForecast } from '@trinity/data-access/trust';
+
+/**
+ * Which encryption prompt the global banner slot holds. The same kinds as Trust's slot
+ * forecast; the application composition asserts that the two stay identical.
+ */
+export type SlotForecast =
+  'needs-setup' | 'needs-recovery' | 'needs-verification' | 'setup-elsewhere';
 
 /** The encryption prompt laid out in the global banner slot. */
 export interface BannerPrompt {

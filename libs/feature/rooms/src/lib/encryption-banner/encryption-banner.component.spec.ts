@@ -3,13 +3,10 @@ import {
   WORKSPACE_SYSTEM_STATUS,
   WorkspaceApplicationSurfaceService,
   type BannerPrompt,
+  type SlotForecast,
   type WorkspaceApplicationSurfaceRequest,
 } from '@trinity/application/workspace';
-import {
-  TrustService,
-  type SlotForecast,
-  type TrustStatus,
-} from '@trinity/data-access/trust';
+import { TrustService, type TrustStatus } from '@trinity/data-access/trust';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';

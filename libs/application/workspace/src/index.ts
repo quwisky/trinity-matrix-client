@@ -2,6 +2,7 @@ export * from './lib/workspace-application-surface.service';
 export {
   WORKSPACE_SYSTEM_STATUS,
   type BannerPrompt,
+  type SlotForecast,
   type WorkspaceSystemStatus,
 } from './lib/workspace-system-status';
 export * from './lib/workspace-back.service';
