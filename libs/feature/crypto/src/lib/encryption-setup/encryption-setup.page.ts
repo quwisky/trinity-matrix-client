@@ -109,7 +109,9 @@ export class EncryptionSetupPage {
    * Leaving mid-setup is the worse case: unsubscribing does not abort
    * {@link TrustService.setUp} (a promise behind `defer`), so it still provisions 4S and
    * a key backup whose only recovery key went to a gone subscriber, and Settings →
-   * Security then reports the account as secured.
+   * Security then reports the account as secured, and nothing ever prompts the user to
+   * fix it. A key already on screen is checked first only because it is one press from
+   * being saved.
    *
    * `busy` proxies "setup in flight" only because {@link setUp} is this page's only
    * action; the unlock page has two and needs a separate signal.
