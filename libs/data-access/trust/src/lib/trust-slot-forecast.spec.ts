@@ -200,20 +200,43 @@ describe('TrustSlotForecastService', () => {
     ]);
   });
 
-  it('uses a stale snapshot as the forecast', () => {
-    const { forecast, active, health } = setup();
-    active.set('@a:hs');
-    health.set({
+  it('forecasts nothing from a stale snapshot, even with a stored forecast', async () => {
+    // A stale snapshot means a read failed mid-session: the failure notice owns the slot,
+    // as without a forecast. Forecasting is for start-up only.
+    const harness = setup(
+      new Map([[`${FORECAST_KEY}|@a:hs`, record('needs-setup')]]),
+    );
+    harness.active.set('@a:hs');
+    await firstValueFrom(harness.forecast.hydrate('@a:hs'));
+    harness.health.set({
       availability: 'stale',
       current: null,
       stale: snapshot('needs-verification'),
     });
 
-    expect(forecast.forecast()).toBe('needs-verification');
+    expect(harness.forecast.forecast()).toBeNull();
   });
 
-  it('drops the forecast when the live status stays unavailable past the hold', async () => {
+  it('keeps the forecast while the live status is still loading after 5 s', async () => {
     vi.useFakeTimers();
+    const harness = setup(
+      new Map([[`${FORECAST_KEY}|@a:hs`, record('needs-setup')]]),
+    );
+    harness.active.set('@a:hs');
+    await firstValueFrom(harness.forecast.hydrate('@a:hs'));
+    publish(harness, UNAVAILABLE);
+
+    vi.advanceTimersByTime(5_000);
+    expect(harness.forecast.forecast()).toBe('needs-setup');
+
+    // The live status confirms it and governs from here.
+    publish(harness, coherent('needs-setup'));
+    expect(harness.forecast.forecast()).toBeNull();
+  });
+
+  it('drops the forecast at the 10 s backstop when the live status never arrives', async () => {
+    vi.useFakeTimers();
+    expect(FORECAST_HOLD_MS).toBe(10_000);
     const harness = setup(
       new Map([[`${FORECAST_KEY}|@a:hs`, record('needs-setup')]]),
     );

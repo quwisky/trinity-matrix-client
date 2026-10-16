@@ -549,6 +549,41 @@ describe('CapabilityStatusService', () => {
       expect(status.bannerPrompt()).toBeNull();
     });
 
+    it('drops the forecast at once when Trust reports a failure, so the notice shows', () => {
+      trust.set('unknown');
+      forecast.set('needs-setup');
+      expect(status.bannerSlot()).toBe('encryption');
+
+      reportTrustFailure();
+
+      expect(status.bannerSlot()).toBe('status');
+      expect(status.bannerPrompt()).toBeNull();
+      expect(status.bannerMessage()).toBe(
+        'Encryption trust status is unavailable.',
+      );
+    });
+
+    it('gives the slot to the trust failure notice over a stale snapshot’s prompt', () => {
+      // Mid-session read failure: the live status is unknown (only a stale snapshot is
+      // left) and Trust reports the failure. Whatever is forecast, the notice shows.
+      trust.set('unknown');
+      forecast.set('needs-setup');
+      reportTrustFailure();
+
+      expect(status.bannerSlot()).toBe('status');
+      expect(status.bannerPrompt()).toBeNull();
+    });
+
+    it('does not bring the forecast back when the trust failure notice is dismissed', () => {
+      trust.set('unknown');
+      forecast.set('needs-recovery');
+      reportTrustFailure();
+      status.dismiss(status.visibleEntries()[0]!);
+
+      expect(status.bannerSlot()).toBeNull();
+      expect(status.bannerPrompt()).toBeNull();
+    });
+
     describe('while a pointer is pressed', () => {
       /** Press with the slot already decided, as a tap on the page would. */
       function press(): void {
@@ -722,6 +757,26 @@ describe('CapabilityStatusService', () => {
       );
     });
   });
+
+  /** Trust's projection failed for the active Account, as TrustLifetime reports it. */
+  function reportTrustFailure(): void {
+    const context = Symbol('@a:hs');
+    health.presentForAccount(context, '@a:hs');
+    health.report(
+      {
+        capability: 'trust',
+        operation: 'projection',
+        context,
+        generation: 1,
+        demanded: true,
+        preparation: 'failed',
+        ownership: 'retained',
+        condition: 'degraded',
+        code: 'trust-reconciliation-failed',
+      },
+      () => of({ kind: 'success' as const }),
+    );
+  }
 
   function report(
     accountId: string,

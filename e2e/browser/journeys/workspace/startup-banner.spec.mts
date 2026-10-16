@@ -109,7 +109,7 @@ function revealBoxes(frames: readonly SlotFrame[]): {
     : { forecast: frames[shownAt - 1]!.banner, shown: frames[shownAt]!.banner };
 }
 
-/** How long a restart's status read is slowed: under the forecast's 3 s hold. */
+/** How long a restart's status read is slowed: well under the forecast's 10 s backstop. */
 const STATUS_DELAY_MS = 1_000;
 
 /**
@@ -371,10 +371,10 @@ test.describe('Global banner slot after sign-in', () => {
    * keyboard is tried. Once it is released the same prompt is revealed, and only then does
    * Tab reach its action.
    *
-   * Time budget: the forecast holds the slot for `FORECAST_HOLD_MS` (3 s, in
-   * `@trinity/data-access/trust`) while no status is available. Everything from the Account
-   * becoming active after the reload to the Tab checks below must fit in that window, or
-   * the stored forecast is dropped and there is no hidden prompt left to test.
+   * Time budget: while the status is loading, the forecast holds the slot until the
+   * `FORECAST_HOLD_MS` backstop (10 s, in `@trinity/data-access/trust`). Everything from
+   * the Account becoming active after the reload to the Tab checks below must fit in that
+   * window, or the stored forecast is dropped and there is no hidden prompt left to test.
    */
   test('after a restart the hidden prompt takes no focus until it is confirmed at 390px', async ({
     page,
@@ -394,7 +394,7 @@ test.describe('Global banner slot after sign-in', () => {
     await holdTrustStatus(page, () => released);
     await page.reload();
     try {
-      // From here to the Tab checks: within FORECAST_HOLD_MS (3 s) of the Account
+      // From here to the Tab checks: within FORECAST_HOLD_MS (10 s) of the Account
       // becoming active, while the forecast still holds the slot.
       await expect(page.locator('button.channel').first()).toBeVisible();
       await expect(

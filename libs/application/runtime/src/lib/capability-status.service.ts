@@ -115,6 +115,15 @@ export class CapabilityStatusService {
   private readonly slotHeldStatus = signal(false);
   private readonly press = inject(PointerPressService);
   private readonly slotForecast = inject(TrustSlotForecastService);
+  /** Trust has reported that it cannot read this Account's status (dismissed or not). */
+  private readonly trustFailed = computed(() =>
+    this.health
+      .problems()
+      .some(
+        ({ capability, operation }) =>
+          capability === 'trust' && operation === 'projection',
+      ),
+  );
   /** The trust state the slot is decided on: the live one, or the forecast until it arrives. */
   private readonly slotTrust = computed<SlotTrust>(() => {
     const live = this.trust.status();
@@ -125,7 +134,8 @@ export class CapabilityStatusService {
         forecast: false,
       };
     }
-    const forecast = this.slotForecast.forecast();
+    // A reported Trust failure ends the forecast at once: its notice takes the slot.
+    const forecast = this.trustFailed() ? null : this.slotForecast.forecast();
     if (!forecast) return { status: live, elsewhere: false, forecast: false };
     return forecast === 'setup-elsewhere'
       ? { status: 'needs-setup', elsewhere: true, forecast: true }

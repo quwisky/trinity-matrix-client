@@ -37,8 +37,12 @@ export type SlotForecast =
 
 type StoredForecast = SlotForecast | 'none';
 
-/** How long a forecast may hold the slot while the live status stays unavailable. */
-export const FORECAST_HOLD_MS = 3_000;
+/**
+ * Backstop: how long a forecast may hold the slot while the live status stays unavailable.
+ * A reported Trust failure ends it sooner (the slot owner drops the forecast at once), so
+ * this only bounds a start that neither finishes nor fails.
+ */
+export const FORECAST_HOLD_MS = 10_000;
 
 const KINDS: readonly StoredForecast[] = [
   'none',
@@ -101,8 +105,7 @@ function forecastOf(
     'status' | 'thisDeviceVerified' | 'identityElsewhere'
   >,
 ): StoredForecast {
-  // The same case as `TrustHealthService.recoverySetupElsewhere`, read from the snapshot so
-  // a stale snapshot forecasts it too.
+  // The same case as `TrustHealthService.recoverySetupElsewhere`, read from the snapshot.
   if (
     snapshot.status === 'needs-setup' &&
     snapshot.thisDeviceVerified &&
@@ -143,19 +146,17 @@ export class TrustSlotForecastService {
   );
 
   /**
-   * The active Account's expected encryption prompt while its live status is not known;
-   * null otherwise.
+   * The active Account's stored encryption prompt while its live status is still
+   * unavailable, as at start-up; null otherwise, including for a stale snapshot.
    */
   readonly forecast = computed<SlotForecast | null>(() => {
     const accountId = this.cryptoPort.activeAccountId();
     if (!accountId) return null;
-    const health = this.health.health();
-    if (health.current) return null;
-    const kind = health.stale
-      ? forecastOf(health.stale)
-      : this.expired().has(accountId)
-        ? 'none'
-        : (this.stored().get(accountId) ?? 'none');
+    // Only while the status is still unavailable, as at start-up. A stale snapshot means a
+    // read failed mid-session, and the failure notice owns the slot then.
+    if (this.health.health().availability !== 'unavailable') return null;
+    if (this.expired().has(accountId)) return null;
+    const kind = this.stored().get(accountId) ?? 'none';
     return kind === 'none' ? null : kind;
   });
 
