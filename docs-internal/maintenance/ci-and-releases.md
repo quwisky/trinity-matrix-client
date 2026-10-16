@@ -947,6 +947,13 @@ reviewing an update branch or diagnosing why it did not merge.
 | Native platform dependency    | Stays behind dashboard approval.                                                                                                                                                                                                                                                                                                                                                             | Use the evidence described in the developer native platform guides before approval.       |
 | TypeScript                    | Moves root and `electron/` manifests together in the `typescript` group, pinned below `6.1.0` for Angular 22's compiler window.                                                                                                                                                                                                                                                              | Widen that bound deliberately with an Angular upgrade; do not split the Electron version. |
 
+An agent asked to integrate open updates applies them on its own branches and pull requests
+rather than merging Renovate's. It gives each update that needs its own review a pull request of
+its own: a shipped runtime package, a major version, an Actions digest, a native dependency,
+`nx`, `pnpm` and lockfile maintenance. The rest go in one batch. Once the maintainer merges one,
+it closes each superseded Renovate pull request with "Integrated into main in #N.". It ticks
+Dependency Dashboard approvals only when the maintainer asks.
+
 ## Source of truth
 
 The executable contracts are [`ci.yml`](../../.github/workflows/ci.yml),
