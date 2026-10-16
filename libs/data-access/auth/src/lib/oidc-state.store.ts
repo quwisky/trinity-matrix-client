@@ -159,8 +159,9 @@ export class OidcStateStore {
       // Bin it rather than just refusing to serve it. The stash holds the PKCE
       // code_verifier — a secret — in plaintext, and the TTL is only enforced at READ
       // time, so an abandoned login would leave it on disk until something reads or
-      // overwrites it. Best-effort: a failed cleanup must not turn a "nothing stashed"
-      // answer into a rejection.
+      // overwrites it. It is spent either way; a secret should not outlive its purpose.
+      // Best-effort: a failed cleanup must not turn a "nothing stashed" answer into a
+      // rejection.
       //
       // This does NOT weaken the verify-before-clear contract: that exists so a forged
       // callback cannot wipe a LIVE stash, and this one is already dead.

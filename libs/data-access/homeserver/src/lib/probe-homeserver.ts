@@ -74,7 +74,8 @@ function probeDelegatedSoftware(
 ): Observable<ServerSoftware | null> {
   // Validated on the same rule as `m.server`, not interpolated raw: the mxid comes from the
   // homeserver's login response and is stored unvalidated, so `@u:good.example@evil.example`
-  // would otherwise address `evil.example`. No credentials ride on this request.
+  // would otherwise address `evil.example`. No credentials ride on this request, but it
+  // keeps the same rule as the `m.server` path.
   const origin = federationOrigin(serverName);
   const wellKnown = origin && safeUrl(`${origin}/.well-known/matrix/server`);
   if (!wellKnown) {
