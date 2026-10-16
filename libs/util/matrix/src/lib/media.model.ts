@@ -14,7 +14,7 @@ export interface EncryptedFileInfo {
   key: JsonWebKey;
   /** Base64 (unpadded) initialization vector. */
   iv: string;
-  /** Content hashes (notably `sha256`) verified after decryption. */
+  /** Content hashes (notably `sha256`) verified before decryption. */
   hashes: Record<string, string>;
   /** Encryption version (`"v2"`). */
   v: string;

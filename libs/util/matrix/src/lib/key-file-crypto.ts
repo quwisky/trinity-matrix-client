@@ -23,7 +23,7 @@ const DEFAULT_KEY_FILE_ITERATIONS = 500_000;
  * Upper bound on the iteration count we'll honor from an *imported* file. The count is an
  * attacker-controlled uint32 read before HMAC verification, so an uncapped value (up to
  * ~4.3 billion) would pin the main thread running PBKDF2 for minutes — a DoS. 10× the
- * default is far above any legitimate exporter.
+ * default is far above any legitimate exporter yet stays sub-second.
  */
 const MAX_KEY_FILE_ITERATIONS = 5_000_000;
 

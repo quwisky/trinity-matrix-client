@@ -1,6 +1,7 @@
 /**
  * How long the server keeps us marked as typing after a `sendTyping(true)`, in milliseconds.
- * Refreshed every {@link TYPING_REFRESH_MS}; the server clears it once it lapses.
+ * Refreshed while the user types (at most every {@link TYPING_REFRESH_MS}); the server
+ * clears it once it lapses, so a missed stop still clears.
  */
 export const TYPING_TIMEOUT_MS = 8000;
 

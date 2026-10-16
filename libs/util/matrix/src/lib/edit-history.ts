@@ -50,7 +50,8 @@ function revision(
   content: Record<string, unknown>,
   isOwn: boolean,
 ): MessageRevisionView {
-  // `isReply: false`: an edit carries no reply fallback to strip.
+  // `isReply: false`: an edit carries no reply fallback; the reply relation lives on the
+  // original event, whose body was already stripped when rendered.
   const { text, textHtml } = renderTextBody(content, false);
   return {
     id: event.getId() ?? '',
