@@ -582,7 +582,7 @@ export class MessageComposerComponent {
     const batch = this.editing() ? [] : this.attachments.staged();
     if (batch.length) {
       // Emptied BEFORE the dispatch, not after. A send can settle synchronously (a 0-byte file
-      // never reaches the network) and the batch gives the caption back when nothing carried it,
+      // never reaches the network) and the sender gives the caption back when nothing carried it,
       // so clearing afterwards would wipe what it had just restored.
       const typed = this.text();
       // Read BEFORE the box is emptied: `activeMentions()` matches the chosen users against the

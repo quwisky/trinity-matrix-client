@@ -51,7 +51,7 @@ interface OwnedSheet {
  * A dropdown tray when there is more than one action to offer, a plain attach button when
  * there is not (see {@link hasMenu}). Presentational; the workflows live in
  * `ComposerAttachmentsService`. The host is `display: contents` so the button stays a direct
- * flex item of the composer's input row.
+ * grid item of `.composer__field`.
  */
 @Component({
   selector: 'trn-composer-insert-menu',

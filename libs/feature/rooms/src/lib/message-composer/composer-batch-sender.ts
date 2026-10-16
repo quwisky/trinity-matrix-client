@@ -219,9 +219,9 @@ export class ComposerBatchSender {
       return;
     }
     if (!delivered && !this.ports.text().trim()) {
-      // Nothing carried it: a single file's caption rides its media event (MSC2530), and a batch
-      // caption is never sent when nothing was delivered. `submit()` cleared the box on dispatch,
-      // so restore it, unless something has been typed since.
+      // Nothing carried it: a single file's caption rides its media event (MSC2530) and failed
+      // with it, and a batch caption is never sent when nothing was delivered. `submit()` cleared
+      // the box on dispatch, so restore it, unless something has been typed since.
       this.ports.text.set(caption);
       this.ports.regrow();
     }
