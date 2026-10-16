@@ -16,15 +16,12 @@ import {
 import { trimTrailing } from './trim-trailing';
 
 /**
- * Send-side content builders shared by the main timeline ({@link TimelineService})
- * and the in-thread composer ({@link ThreadsService}) so both render markdown and
- * build edit/reply/reaction payloads identically — the outbound counterpart to
- * `message-view.ts` (which projects events *into* render models). No SDK types leak
- * to components; only core services call these.
+ * Send-side content builders shared by the main timeline and the in-thread composer, so both
+ * render markdown and build edit/reply/reaction payloads identically. No SDK types leak to
+ * components; only core services call these.
  *
- * The `m.thread` relation itself is NOT built here: the SDK adds it (with the right
- * `is_falling_back` and `m.in_reply_to`) when a `threadId` is passed to the send
- * call, so a thread send reuses the exact same content shape as the main timeline.
+ * The `m.thread` relation is not built here: the SDK adds it when a `threadId` is passed to
+ * the send call.
  */
 
 /** Result of rendering composer markdown to sanitized HTML. */
@@ -43,22 +40,17 @@ export interface Mention {
 }
 
 /**
- * `@room` as a WORD, matching the boundary the legacy `.m.rule.roomnotif` used: matrix-js-sdk
- * and Synapse wrap a body pattern in `(?<=^|\W)`/`(?=\W|$)`.
+ * `@room` as a word, matching the boundary of the legacy `.m.rule.roomnotif` (`(?<=^|\W)`
+ * and `(?=\W|$)`).
  *
- * A whitespace-only boundary is the obvious thing to write and is wrong, because sending
- * `m.mentions` SUPPRESSES the legacy rule — so any phrasing this fails to recognise loses its
- * room ping entirely rather than falling back to the old behaviour. `@room,` `@room!`
- * `(@room)` and `**@room**` are all ordinary ways to write it and all miss a `\s` boundary.
+ * Sending `m.mentions` suppresses that legacy rule, so a phrasing this misses (`@room,`,
+ * `(@room)`, `**@room**`) loses its room ping entirely. A whitespace-only boundary misses them.
  */
 const ROOM_MENTION = /(^|\W)@room(\W|$)/;
 
 /**
- * A deliberate `@room` in text the sender actually wrote — ignoring quoted lines.
- *
- * Quoting someone who wrote `@room` must not re-ping the room, which is the whole reason
- * `m.mentions` is now always sent (see {@link mentionsBlock}). Lines beginning with `>` are
- * somebody else's words being carried along, so they are not the quoter's intent.
+ * A deliberate `@room` in text the sender wrote, ignoring quoted `>` lines: quoting someone
+ * who wrote `@room` must not re-ping the room.
  */
 function mentionsRoom(body: string): boolean {
   return body
@@ -68,20 +60,12 @@ function mentionsRoom(body: string): boolean {
 }
 
 /**
- * The `m.mentions` block — ALWAYS present, even when it is empty.
+ * The `m.mentions` block, always present even when empty.
  *
- * Its presence is what makes a homeserver skip the legacy body-matching push rules
- * (`.m.rule.contains_display_name`, `.m.rule.roomnotif`), which match on the plain-text
- * `body` and therefore fire on words the sender merely QUOTED. Verified against Synapse
- * 1.119: an identical quoted body highlights the named user without this key and is silent
- * with it. Note the server's own rule JSON still lists those rules as enabled with their
- * original conditions — the exclusion lives in its push evaluator, so reading the rules
- * suggests the opposite of what actually happens.
- *
- * The trade is that mentioning someone now has to be deliberate: typing a display name in
- * passing no longer notifies them, and `@room` only counts when the sender wrote it
- * themselves. That is the intended shape of intentional mentions (MSC3952), and it is the
- * only way to stop a quote from notifying people who were never addressed.
+ * Its presence makes a homeserver skip the legacy body-matching push rules
+ * (`.m.rule.contains_display_name`, `.m.rule.roomnotif`), which would fire on words the sender
+ * merely quoted. Synapse's rule JSON still lists those rules as enabled; the exclusion lives
+ * in its push evaluator. Mentions are therefore deliberate only (MSC3952).
  */
 function mentionsBlock(
   userIds: string[],
@@ -97,22 +81,14 @@ function mentionsBlock(
 }
 
 /**
- * Turn each mention's plain `@display` in the already-sanitized HTML into a matrix.to pill
- * link — once per mention, at its first occurrence in the message's *text*.
+ * Turn each mention's plain `@display` in the sanitized HTML into a matrix.to pill link, once
+ * per mention, at its first occurrence in the message's text.
  *
- * Done over the parsed DOM rather than by searching the serialized string. A string search
- * has no idea what is text and what is markup, so a display name could match inside an
- * attribute — `@bob` inside an autolinked `https://x.test/@bob` href, or inside a pill this
- * function had just inserted — and splicing an `<a>` in there produces malformed markup on
- * the wire. Walking text nodes makes that unrepresentable, and sidesteps having to predict
- * how the serializer escapes a display name (DOMPurify leaves `'` and `"` raw in text, which
- * an `escapeHtml`-based needle silently failed to match).
- *
- * Code and existing links are skipped. A pill inside an anchor is invalid nesting, and a
- * display name that happens to appear in link text should stay link text — but the sharper
- * case is code: `const a = "@Bob"` in a fenced block is a string literal, not a mention, and
- * splicing an anchor into it corrupts the listing on the wire and costs the real mention
- * later in the message its pill.
+ * Works on the parsed DOM, not the serialized string: a string search could match inside an
+ * attribute (`@bob` in an autolinked `https://x.test/@bob`) or inside an earlier pill, and
+ * splicing an `<a>` there produces malformed markup. Existing links and code are skipped: a
+ * pill inside an anchor is invalid nesting, and `"@Bob"` in a code block is a string literal,
+ * not a mention.
  */
 function applyMentionPills(html: string, mentions: Mention[]): string {
   if (mentions.length === 0) {
@@ -136,8 +112,8 @@ function placeMentionPill(doc: Document, mention: Mention): void {
       const rest = target.splitText(at);
       rest.splitText(mention.display.length);
       const pill = doc.createElement('a');
-      // No manual escaping: setting the attribute and letting the serializer write it is
-      // what makes an id carrying `"` or `<` unable to break out.
+      // No manual escaping: the serializer writes the attribute, so an id carrying `"` or `<`
+      // cannot break out.
       pill.setAttribute('href', `https://matrix.to/#/${mention.userId}`);
       pill.textContent = mention.display;
       rest.replaceWith(pill);
@@ -150,14 +126,10 @@ function placeMentionPill(doc: Document, mention: Mention): void {
 /**
  * GFM task-list markers as text.
  *
- * marked renders `- [x] done` as `<input checked disabled type="checkbox">`, and `input`
- * is in neither the Matrix allowlist nor Angular's — so the checkbox was silently deleted
- * on the way out and the list arrived as bare items, losing the done/not-done state
- * entirely. A ballot-box glyph carries that state through every client, screen reader and
- * plain-text fallback without widening the allowlist.
- *
- * Deliberately not an `<input>`: making one interactive would mean editing and re-sending
- * the source event on each click, which is a feature rather than a render concern.
+ * marked renders `- [x] done` as an `<input type="checkbox">`, which neither the Matrix
+ * allowlist nor Angular's carries, so the done state would be lost. A ballot-box glyph keeps it
+ * through every client and plain-text fallback. Not an interactive `<input>`: that would mean
+ * editing and re-sending the source event on each click.
  */
 function checkbox({ checked }: Tokens.Checkbox): string {
   return taskGlyph(checked);
@@ -166,27 +138,22 @@ function checkbox({ checked }: Tokens.Checkbox): string {
 /**
  * A markdown image whose source the Matrix allowlist will not carry, rendered as a link.
  *
- * Matrix requires an `mxc:` source, so `![pic](https://x/y.png)` sanitizes down to a
- * src-less `<img>` — an empty box, with the URL nowhere to be seen, because every client
- * prefers `formatted_body` over the `body` that still holds it. A link keeps the address
- * usable and says what it was for.
+ * Matrix requires an `mxc:` source, so `![pic](https://x/y.png)` would sanitize to a src-less
+ * `<img>`, an empty box, while clients prefer `formatted_body` over the `body` holding the URL.
  *
- * **`mxc:` only.** `ALLOWED_URI_REGEXP` lists no other scheme an `<img>` could survive with,
- * and Matrix accepts no other: anything else loses its `src` and becomes the empty box this
- * exists to avoid. `blob:` is the obvious case. `data:` is the deceptive one — DOMPurify has a
- * built-in `DATA_URI_TAGS` exception that lets it through `<img>` regardless of our regexp, so
- * it *looked* carried while being just as unrenderable on arrival, after putting the whole
- * base64 payload on the wire. (The render path does allow `blob:`/`data:` on an INCOMING
- * `<img>`; the send path does not, and this follows the send path because that is where it
- * runs.)
+ * Only `mxc:` stays an `<img>`: `ALLOWED_URI_REGEXP` lists no other scheme, and Matrix accepts
+ * none. `data:` only looks carried: DOMPurify's built-in `DATA_URI_TAGS` exception lets it
+ * through `<img>` regardless of our regexp, yet it is unrenderable on arrival and puts the
+ * whole base64 payload on the wire. The render path allows `blob:`/`data:` on an incoming
+ * `<img>`; the send path does not, and this follows the send path.
  */
 function image({ href, title, text }: Tokens.Image): string {
   if (/^mxc:/i.test(href)) {
     const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
     return `<img src="${escapeHtml(href)}" alt="${escapeHtml(text)}"${titleAttr}>`;
   }
-  // A data: URI is its own payload, so it can be neither shown nor usefully linked — and it
-  // must not stand in as the link text either, or the blob goes out as the caption instead.
+  // A data: URI is its own payload: neither showable nor linkable, and it must not become the
+  // link text either, or the blob goes out as the caption.
   if (/^data:/i.test(href)) {
     return escapeHtml(text || 'image');
   }
@@ -196,16 +163,10 @@ function image({ href, title, text }: Tokens.Image): string {
 /**
  * A link, with any anchor {@link image} produced inside it unwrapped.
  *
- * `[![badge](https://img/b.svg)](https://target)` — a badge linking somewhere, the common
- * shape for this — makes the image renderer above emit an `<a>` *inside* the link's own
- * `<a>`. Nested anchors are not representable in HTML: the parser's adoption-agency step
- * splits them, so `sanitizeOutgoingHtml` returned an empty `<a>` followed by a link to the
- * IMAGE, and the target the user actually linked to was gone. Keeping the inner text and
- * dropping the inner wrapper leaves the one link that was meant.
- *
- * Delegates to marked's own renderer for everything else, so URL cleaning (and its
- * bare-text fallback for a URL that will not encode) stays exactly as marked defines it —
- * only the nesting is repaired.
+ * `[![badge](https://img/b.svg)](https://target)` makes the image renderer emit an `<a>`
+ * inside the link's `<a>`. Nested anchors are not representable in HTML: the parser splits
+ * them, and the user's real target is lost. Everything else is marked's own renderer, so URL
+ * cleaning stays as marked defines it.
  */
 function link(this: Renderer, token: Tokens.Link): string {
   const rendered = Renderer.prototype.link.call(this, token);
@@ -218,12 +179,11 @@ function link(this: Renderer, token: Tokens.Link): string {
 }
 
 /**
- * Escape text for embedding inline in `formatted_body`, keeping its line breaks.
+ * Escape text for inline use in `formatted_body`, keeping its line breaks.
  *
- * `escapeHtml` alone leaves a raw newline, which renders as a space under the rendered-HTML
- * container's `white-space: normal` — so a reply or a `/spoiler` written across two lines
- * arrived as one. Those paths always set `format: org.matrix.custom.html`, so unlike a plain
- * message they cannot fall back to the pre-wrap plain-text branch.
+ * A raw newline renders as a space under the rendered-HTML container's `white-space: normal`,
+ * and replies and `/spoiler` always set `format: org.matrix.custom.html`, so they cannot fall
+ * back to the pre-wrap plain-text branch.
  */
 function escapeInlineText(text: string): string {
   return escapeHtml(text).replace(/\r\n?|\n/g, '<br>');
@@ -232,30 +192,26 @@ function escapeInlineText(text: string): string {
 /**
  * The composer's markdown engine.
  *
- * A module-local instance, NOT the global `marked` singleton: `marked.use()` and
- * `marked.setOptions()` mutate process-wide state, so any transitive dependency calling
- * either could silently change the HTML we put on the wire. Every option marked exposes is
- * set explicitly — its defaults are not a contract we control.
+ * A module-local instance, not the global `marked` singleton: `marked.use()` and
+ * `marked.setOptions()` mutate process-wide state, so a transitive dependency could change the
+ * HTML we send. Every option is set explicitly because marked's defaults are not our contract.
  */
 const markdown = new Marked({
-  // Tables, ~~strikethrough~~, task lists, autolinks — and a prerequisite for `breaks`.
+  // Tables, strikethrough, task lists, autolinks; a prerequisite for `breaks`.
   gfm: true,
-  // A single newline is a line break. Chat convention (Enter sends, Shift+Enter inserts a
-  // newline), and it is what makes the plain and formatted render paths agree: the plain
-  // branch renders under `white-space: pre-wrap` and `linkifyText` already emits <br>,
-  // while markdown used to emit a bare \n that `white-space: normal` collapsed away.
+  // A single newline is a line break, so the plain branch (`white-space: pre-wrap`, with
+  // `linkifyText` emitting <br>) and the formatted branch render alike.
   breaks: true,
-  // Never emulate markdown.pl's original bugs.
   pedantic: false,
-  // Surface a parse failure as a throw. With `silent: true` marked returns
-  // "<p>An error occurred:</p><pre>…</pre>" — which we would then SEND as the message.
+  // Surface a parse failure as a throw: `silent: true` returns "<p>An error occurred:</p>..."
+  // markup, which would then be sent as the message.
   silent: false,
-  // parse() returns a string, never a Promise: the whole send path is synchronous.
+  // parse() must return a string: the whole send path is synchronous.
   async: false,
   renderer: { checkbox, image, link },
 });
 
-/** A run of at least this many spaces between two other characters is shielded (#1306). */
+/** A run of at least this many spaces between two other characters is shielded. */
 const SHIELDED_RUN = 32;
 /** Private-use characters that stand in for a shielded run: open, close, and ten digits. */
 const SHIELD_OPEN = '\uE000';
@@ -268,14 +224,12 @@ const SHIELD_MARK = /\uE000([\uE010-\uE019]+)\uE001/g;
  * Stand in for long runs of spaces between two words before marked sees them.
  *
  * marked's inline text rule looks ahead for "two or more spaces, then a newline" at every
- * position, so a run of n spaces costs O(n²): 20,000 spaces took ~200 ms and 60,000 about
- * 1.7 s, on every keystroke of the composer preview. The run is replaced by a space, a
- * private-use mark naming it, and a space, and put back verbatim in the HTML. The two real
- * spaces keep every rule that looks at a neighbour (emphasis flanking, autolinks) seeing the
- * whitespace it would have seen. Runs at the start of a line (indentation, code blocks) or
- * before a newline (a hard break) are left to marked, and so is text that already holds a
- * shield character. A scan, not a regex: ` {32,}(?=\S)` is quadratic itself on a run that
- * ends in a newline.
+ * position, so a run of n spaces costs O(n^2) on every composer-preview keystroke. The run
+ * becomes a space, a private-use mark naming it, and a space, and is restored verbatim in the
+ * HTML; the two real spaces keep neighbour-sensitive rules (emphasis flanking, autolinks)
+ * working. Runs at line start (indentation, code blocks) or before a newline (hard break), and
+ * text already holding a shield character, are left to marked. A scan, not a regex:
+ * ` {32,}(?=\S)` is itself quadratic on a run that ends in a newline.
  */
 function shieldSpaceRuns(
   text: string,
@@ -344,10 +298,10 @@ export function renderMarkdown(text: string): RenderedMarkdown {
   }
   const html = sanitizeOutgoingHtml(rendered);
   // Input whose every construct the allowlist strips (an HTML comment, a lone <script>)
-  // sanitizes to nothing; sending an empty formatted_body is worse than sending plain text.
-  // The callers check `html` as well as `formatted`, because a message with a mention
-  // takes the rich branch regardless and would otherwise send an empty formatted_body —
-  // which every client, Element included, prefers over `body`, rendering a blank message.
+  // sanitizes to nothing; an empty formatted_body is worse than plain text. Callers check `html`
+  // as well as `formatted`: a message with a mention takes the rich branch regardless, and an
+  // empty formatted_body renders as a blank message, since every client (Element included)
+  // prefers it over `body`.
   if (html.trim() === '') {
     return { formatted: false, html: '' };
   }
@@ -359,9 +313,8 @@ export function renderMarkdown(text: string): RenderedMarkdown {
 }
 
 /**
- * MSC2530 caption fields for a media message. With a caption, `body` carries the
- * caption text (rich when markdown formats it) and `filename` preserves the real
- * file name; without one, `body` is the file name (the pre-caption behaviour).
+ * MSC2530 caption fields for a media message. With a caption, `body` is the caption (rich when
+ * markdown formats it) and `filename` keeps the real name; without one, `body` is the name.
  */
 export function mediaCaptionFields(
   filename: string,
@@ -378,26 +331,24 @@ export function mediaCaptionFields(
     ...(md.formatted
       ? { format: 'org.matrix.custom.html', formatted_body: md.html }
       : {}),
-    // An MSC2530 caption REPLACES the filename as the body, so it is user-authored text a
-    // push rule will match on — the same exposure as a plain message.
+    // An MSC2530 caption replaces the filename as the body, so a push rule matches on it like
+    // on a plain message.
     ...mentionsBlock([], mentionsRoom(text)),
   };
 }
 
 /**
- * `m.text` content: rich (HTML) when markdown formatted it OR the message mentions
- * someone (mentions need a `formatted_body` for the pill), else plain text. Any
- * mentions add `m.mentions` (so modern homeservers notify) and matrix.to pills.
+ * `m.text` content: rich (HTML) when markdown formatted it or the message mentions someone
+ * (the pill needs a `formatted_body`), else plain text. Mentions add `m.mentions` and pills.
  */
 export function textMessageContent(
   text: string,
   md: RenderedMarkdown,
   mentions: Mention[] = [],
 ) {
-  // `m.mentions` does not depend on the HTML: it is what makes a modern homeserver notify
-  // the people named, and it has to outlive a message whose markup sanitized away to nothing
-  // (or whose parse threw — `renderMarkdown` returns `html: ''` for both). Dropping it with
-  // the empty `formatted_body` sent the message and quietly notified nobody.
+  // `m.mentions` must not depend on the HTML: it has to survive a message whose markup
+  // sanitized away or whose parse threw (`renderMarkdown` returns `html: ''` for both), or the
+  // message notifies nobody.
   const notified = mentionsBlock(
     mentions.map((m) => m.userId),
     mentionsRoom(text),
@@ -430,11 +381,8 @@ export interface SlashCommand {
 /**
  * The IRC-style commands the composer recognises, with the descriptions any UI should use.
  *
- * Exported as data rather than as a bare list of names because the two consumers need
- * different things from it and must not disagree: {@link parseSlashCommand} needs the names,
- * and the composer's autocomplete needs to say what each one does. Redeclaring the
- * descriptions in the feature would let a command be renamed here and go on being offered
- * under its old name there.
+ * Exported as data so {@link parseSlashCommand} (names) and the composer's autocomplete
+ * (descriptions) cannot disagree.
  */
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
   {
@@ -455,9 +403,8 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   },
 ];
 
-// Escaped, because the names are public API now. As a private tuple of four literals they
-// could only ever be `[a-z]+`; exported behind `name: string`, a future `foo.bar` would land
-// in this alternation as a wildcard and quietly widen what the parser accepts.
+// Escaped because the names are exported: a future `foo.bar` would otherwise act as a
+// wildcard in this alternation and widen what the parser accepts.
 const SLASH_RE = new RegExp(
   `^/(${SLASH_COMMANDS.map((command) =>
     command.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
@@ -466,9 +413,8 @@ const SLASH_RE = new RegExp(
 );
 
 /**
- * Parse a leading IRC-style slash command (`/me`, `/shrug`, `/plain`, `/spoiler`) into its
- * name + trimmed argument, or null when the text isn't one of them (so it sends literally —
- * `/method`, `/etc/passwd`, and unknown commands are all left as plain text).
+ * Parse a leading slash command into its name and trimmed argument, or null when the text
+ * isn't one (so `/method`, `/etc/passwd` and unknown commands send literally).
  */
 export function parseSlashCommand(
   text: string,
@@ -526,20 +472,18 @@ function spoilerMessageContent(text: string) {
     body: text,
     format: 'org.matrix.custom.html',
     formatted_body: `<span data-mx-spoiler>${escapeInlineText(text)}</span>`,
-    // A spoiler's body is the sender's own text, so it needs the marker like any other.
+    // The body is the sender's own text, so it needs the marker like any other.
     ...mentionsBlock([], mentionsRoom(text)),
   };
 }
 
 /**
  * Build the message content for a leading slash command, or null when the text isn't a
- * recognized command (send it as a normal message). Empty-argument `/me`/`/plain`/`/spoiler`
- * also return null — nothing to send — so the raw text isn't swallowed.
+ * recognized command. Empty-argument `/me`/`/plain`/`/spoiler` also return null, so the raw
+ * text isn't swallowed.
  *
- * `renderHtml` renders the argument's markdown. It was a parameter because
- * {@link renderMarkdown} needed a `DomSanitizer` injected; that is no longer true, and it
- * survives only as the seam the spec substitutes to test command parsing without exercising
- * the whole markdown pipeline. Both callers pass `renderMarkdown` itself.
+ * `renderHtml` is the markdown renderer for the argument; the spec substitutes it to test
+ * command parsing without the whole markdown pipeline. Both callers pass `renderMarkdown`.
  */
 export function slashCommandContent(
   text: string,
@@ -553,12 +497,10 @@ export function slashCommandContent(
   const { command, arg } = parsed;
   switch (command) {
     case 'me':
-      // `/me` is the emote path, so carry any @-mentions (pills + `m.mentions`)
-      // through — otherwise a `/me waves at @bob` wouldn't notify Bob.
+      // `/me` carries @-mentions (pills + `m.mentions`) so `/me waves at @bob` notifies Bob.
       return arg ? emoteMessageContent(arg, renderHtml(arg), mentions) : null;
     // The remaining commands emit a body the sender authored, so they need the same
-    // `m.mentions` marker as an ordinary message — otherwise `/plain > @room …` is a hole
-    // straight through the fix.
+    // `m.mentions` marker as an ordinary message (else `/plain > @room …` re-pings the room).
     case 'shrug':
       return {
         msgtype: MsgType.Text,
@@ -583,9 +525,8 @@ export function slashCommandContent(
 /**
  * `m.replace` edit content targeting `messageId`, with the leading `* ` fallback.
  *
- * `m.mentions` appears BOTH at the top level and in `m.new_content`. The nested copy is the
- * effective content; the top-level one is what stops the legacy body rules firing on the
- * `* …` fallback, which they do before `.m.rule.suppress_edits` is reached.
+ * `m.mentions` appears both at the top level and in `m.new_content`: the nested copy is
+ * effective, the top-level one stops legacy body rules firing on the `* …` fallback.
  */
 export function editMessageContent(
   messageId: string,
@@ -597,11 +538,9 @@ export function editMessageContent(
   return {
     msgtype: MsgType.Text,
     body: `* ${text}`,
-    // The TOP-LEVEL body is `* <the whole new text>`, and the legacy body-matching rules are
-    // evaluated against it before `.m.rule.suppress_edits` is ever reached — measured on
-    // Synapse 1.119, where an edit whose body quoted a display name highlighted the reader
-    // until this block was added. Without it, correcting one typo in a quote re-notifies
-    // everyone the quote names.
+    // The top-level body is `* <the whole new text>`, and legacy body-matching rules evaluate
+    // it before `.m.rule.suppress_edits`. Without this block, fixing a typo in a quote
+    // re-notifies everyone the quote names.
     ...mentionsBlock(
       mentions.map((m) => m.userId),
       mentionsRoom(text),
@@ -621,14 +560,13 @@ export function editMessageContent(
 }
 
 /**
- * Rich-reply content (`m.in_reply_to`): a plain `> …` quote in `body` and an
- * `<mx-reply>` block in `formatted_body`, so every client renders (and strips) it
- * correctly. When sent with a `threadId`, the SDK layers the `m.thread` relation on
- * top with `is_falling_back: false`, keeping this as a real in-thread reply.
+ * Rich-reply content (`m.in_reply_to`): a plain `> …` quote in `body` and an `<mx-reply>`
+ * block in `formatted_body`. With a `threadId` the SDK layers the `m.thread` relation on top
+ * with `is_falling_back: false`.
  *
- * `target` defaults to the room's copy of `messageId`; pass one fetched from the server
- * when the room no longer holds it. With no target at all, the reply keeps its relation
- * but carries no quote: the fallback is optional, and an empty `> <>` one is worse.
+ * `target` defaults to the room's copy of `messageId`; pass one fetched from the server when
+ * the room no longer holds it. With no target the reply keeps its relation but carries no
+ * quote: the fallback is optional, and an empty `> <>` one is worse.
  */
 export function replyMessageContent(
   room: Room,
@@ -643,8 +581,8 @@ export function replyMessageContent(
     mentions,
   );
   const sender = target?.getSender() ?? '';
-  // A target that failed to decrypt still names its author, who is pinged, but its body
-  // is the SDK's "Unable to decrypt" placeholder, which is not worth quoting.
+  // A target that failed to decrypt still names its author, who is pinged, but its body is
+  // the SDK's "Unable to decrypt" placeholder, which is not worth quoting.
   const quote =
     target && sender && !target.isDecryptionFailure()
       ? replyFallback(room, messageId, sender, target)
@@ -655,9 +593,8 @@ export function replyMessageContent(
     format: 'org.matrix.custom.html',
     formatted_body: `${quote?.html ?? ''}${replyHtml}`,
     'm.relates_to': { 'm.in_reply_to': { event_id: messageId } },
-    // A reply pings the message's author, plus anyone @-mentioned in the reply. `text` is
-    // the reply's own words — deliberately NOT the `body` above, whose `> <sender> …`
-    // fallback quotes the message being answered and would re-ping its @room.
+    // A reply pings the author plus anyone @-mentioned in the reply. `text` is the reply's own
+    // words, not `body`, whose quoted fallback would re-ping the quoted message's @room.
     ...mentionsBlock(
       [sender, ...mentions.map((m) => m.userId)],
       mentionsRoom(text),
@@ -676,8 +613,8 @@ function replyFallback(
     (target.getContent()['body'] as string) ?? '',
   );
   const firstLine = origBody.split('\n')[0] ?? '';
-  // Escape the ids interpolated into the href attributes — a hostile sender/room id
-  // must not break out of the attribute and inject markup into the reply we emit.
+  // Escape the ids interpolated into href attributes: a hostile sender/room id must not break
+  // out of the attribute and inject markup.
   const roomLink = `https://matrix.to/#/${escapeHtml(room.roomId)}/${escapeHtml(messageId)}`;
   const userLink = `https://matrix.to/#/${escapeHtml(sender)}`;
   return {
@@ -727,10 +664,9 @@ export function myReactionId(
 }
 
 /**
- * Short, single-line preview of a message event's text — feeds both the main
- * timeline's thread indicator and the room list's muted last-message line.
- * Handles undecryptable and redacted events, strips any rich-reply fallback quote,
- * collapses whitespace, and returns '…' when nothing renders.
+ * Short, single-line preview of a message event's text, for the thread indicator and the room
+ * list's muted last-message line. Handles undecryptable and redacted events, strips any
+ * reply-fallback quote, and returns '…' when nothing renders.
  */
 export function messagePreview(event: MatrixEvent): string {
   if (event.isDecryptionFailure()) {
@@ -745,12 +681,10 @@ export function messagePreview(event: MatrixEvent): string {
 }
 
 /**
- * Plain-text content of an HTML string, with `<br>` restored as a newline (to detect
- * whether markdown added formatting).
+ * Plain-text content of an HTML string, with `<br>` restored as a newline.
  *
- * Restoring `<br>` is load-bearing: `textContent` drops it entirely, so under
- * `breaks: true` every multi-line plain message would compare as though markdown had
- * rewritten it ("line one\nline two" against "line oneline two") and be sent as HTML.
+ * Load-bearing: `textContent` drops `<br>`, so under `breaks: true` every multi-line plain
+ * message would compare as rewritten by markdown and be sent as HTML.
  */
 function htmlToText(html: string): string {
   const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -761,20 +695,14 @@ function htmlToText(html: string): string {
 }
 
 /**
- * The form both sides of the "did markdown add anything?" comparison are reduced to.
- *
- * The question is whether the rendered HTML says something the plain text doesn't — not
- * whether it reproduces it byte for byte — so purely cosmetic whitespace is levelled out
- * first: CRLF so a pasted Windows line ending isn't read as formatting; trailing spaces
- * so markdown's two-space hard break (redundant now `breaks` is on) doesn't count; runs
- * of blank lines so a paragraph break stays a plain-text message. `body` always carries
- * the author's exact text, so nothing is lost by comparing loosely here.
+ * The form both sides of the "did markdown add anything?" comparison are reduced to, with
+ * cosmetic whitespace levelled out: CRLF, trailing spaces (markdown's two-space hard break),
+ * and runs of blank lines. `body` always carries the author's exact text.
  */
 function normaliseForCompare(value: string): string {
-  // Trailing blanks are trimmed per line by a linear walk, not `/[ \t]+$/gm`, which is
-  // quadratic on a long blank run that does not end its line. The capture group keeps
-  // the separators at odd indexes; they are the multiline `$` line terminators left
-  // once CR is folded into LF.
+  // Trailing blanks are trimmed by a linear walk, not `/[ \t]+$/gm`, which is quadratic on a
+  // long blank run that does not end its line. The capture group keeps the separators at odd
+  // indexes: the multiline `$` line terminators left once CR is folded into LF.
   const lines = value.replace(/\r\n?/g, '\n').split(/([\n\u2028\u2029])/);
   return lines
     .map((part, index) => (index % 2 === 0 ? trimTrailing(part, ' \t') : part))
