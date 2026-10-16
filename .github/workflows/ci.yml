@@ -607,6 +607,13 @@ jobs:
       contents: read
       actions: read
     timeout-minutes: 75
+    # The emulator action's api-level, target and arch. The cache and install steps derive the
+    # package names and cache key from these, so the packages they prepare are the ones the
+    # action looks for.
+    env:
+      TRINITY_EMULATOR_API_LEVEL: '36'
+      TRINITY_EMULATOR_TARGET: google_apis
+      TRINITY_EMULATOR_ARCH: x86_64
     strategy:
       fail-fast: false
       matrix:
@@ -705,15 +712,17 @@ jobs:
       # arrives corrupt ("Error on ZipFile unknown archive") fails the job before any spec runs.
       # These steps restore both packages from a cache, have sdkmanager install whatever is
       # missing or outdated with up to three attempts, and leave the action's own sdkmanager
-      # calls nothing to download. Keep the package names in step with the action's api-level,
-      # target and arch.
+      # calls nothing to download. The job's TRINITY_EMULATOR_* variables name the packages.
       - name: Locate the emulator packages
         id: emulator-packages
         run: |
+          variant="$TRINITY_EMULATOR_API_LEVEL-$TRINITY_EMULATOR_TARGET-$TRINITY_EMULATOR_ARCH"
           {
+            echo "image=system-images;android-$TRINITY_EMULATOR_API_LEVEL;$TRINITY_EMULATOR_TARGET;$TRINITY_EMULATOR_ARCH"
+            echo "key-prefix=android-emulator-$RUNNER_OS-$variant"
             echo 'paths<<EOF'
             echo "$ANDROID_HOME/emulator"
-            echo "$ANDROID_HOME/system-images/android-36/google_apis/x86_64"
+            echo "$ANDROID_HOME/system-images/android-$TRINITY_EMULATOR_API_LEVEL/$TRINITY_EMULATOR_TARGET/$TRINITY_EMULATOR_ARCH"
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
       - name: Restore the emulator and its system image
@@ -722,8 +731,8 @@ jobs:
         with:
           path: ${{ steps.emulator-packages.outputs.paths }}
           # Saved keys end in the installed versions; the newest one is restored.
-          key: android-emulator-${{ runner.os }}-36-google_apis-x86_64
-          restore-keys: android-emulator-${{ runner.os }}-36-google_apis-x86_64-
+          key: ${{ steps.emulator-packages.outputs.key-prefix }}
+          restore-keys: ${{ steps.emulator-packages.outputs.key-prefix }}-
       - name: Install the emulator and its system image
         id: emulator-install
         # Three attempts of at most 2 + 10 minutes each, plus the pauses between them.
@@ -731,7 +740,8 @@ jobs:
         env:
           PACKAGE_PATHS: ${{ steps.emulator-packages.outputs.paths }}
           RESTORED_KEY: ${{ steps.emulator-cache.outputs.cache-matched-key }}
-          SYSTEM_IMAGE: system-images;android-36;google_apis;x86_64
+          SYSTEM_IMAGE: ${{ steps.emulator-packages.outputs.image }}
+          KEY_PREFIX: ${{ steps.emulator-packages.outputs.key-prefix }}
         run: |
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           if [ -n "$RESTORED_KEY" ]; then
@@ -769,18 +779,18 @@ jobs:
           emulator=$(version emulator)
           image=$(version "$SYSTEM_IMAGE")
           echo "Installed emulator $emulator and system image revision $image"
-          echo "key=android-emulator-$RUNNER_OS-36-google_apis-x86_64-$emulator-r$image" >> "$GITHUB_OUTPUT"
+          echo "key=$KEY_PREFIX-$emulator-r$image" >> "$GITHUB_OUTPUT"
 
       - id: mobile
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         env:
           TRINITY_MOBILE_SPECS: ${{ matrix.specs }}
         with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
+          api-level: ${{ env.TRINITY_EMULATOR_API_LEVEL }}
+          target: ${{ env.TRINITY_EMULATOR_TARGET }}
+          arch: ${{ env.TRINITY_EMULATOR_ARCH }}
           profile: pixel_6
-          avd-name: trinity_api_36_ci
+          avd-name: trinity_api_${{ env.TRINITY_EMULATOR_API_LEVEL }}_ci
           # The AVD default left the emulator unresponsive after a WebView relaunch; local
           # runs that stay stable use 4 GB and 4 cores (the hosted runner has 16 GB, 4 vCPU).
           ram-size: 4096M
@@ -802,7 +812,8 @@ jobs:
         wait: [android-prebuild, homeserver-pull]
 
       # Saved only after the emulator booted from these packages (the script writes `started`
-      # after boot), so a cache entry cannot hold a package that does not work, and only when
+      # once the emulator has booted and the background app build has succeeded), so a cache
+      # entry cannot hold a package that does not work, and only when
       # the installed versions differ from the restored entry's. Only main saves: the entry is
       # 2 GB, and pull requests restore main's, so there is one entry rather than one per pull
       # request. A pull request run before main has an entry installs with the retry alone.

@@ -211,7 +211,13 @@ main has one for the current versions they install with the retry alone. Each at
 deletes both package directories. Packages are saved only after the
 emulator booted from them, and files left by a restore that failed part-way are deleted before
 the install, so a bad entry cannot reach the emulator. To force fresh downloads, delete the
-entries: `gh cache delete <key>`.
+entries: `gh cache delete <key>`. The job's `TRINITY_EMULATOR_*` variables set the API level,
+target and arch for both the emulator action and these steps.
+
+A new emulator or image release saves a second 2 GB entry beside the old one. The repository's
+Actions cache is capped at 10 GB and evicts the least recently used entries first, so delete the
+superseded entry once the new one exists (`gh cache list --key android-emulator-`, then
+`gh cache delete <old key>`).
 
 ## The CI jobs
 
