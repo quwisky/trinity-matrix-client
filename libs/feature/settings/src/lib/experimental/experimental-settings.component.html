@@ -27,4 +27,17 @@
       (checkedChange)="flags.setDeferMediaWhileScrolling($event)"
     />
   </trn-settings-row>
+  <trn-settings-row
+    label="Blank rows while scrolling fast"
+    description="Messages that fly past show as blank space until scrolling slows down, which uses less memory."
+    for="flag-fling-placeholders-switch"
+    data-testid="flag-fling-placeholders"
+  >
+    <trn-switch
+      inputId="flag-fling-placeholders-switch"
+      aria-describedby="flag-fling-placeholders-switch-description"
+      [checked]="flags.flingPlaceholders()"
+      (checkedChange)="flags.setFlingPlaceholders($event)"
+    />
+  </trn-settings-row>
 </trn-settings-group>

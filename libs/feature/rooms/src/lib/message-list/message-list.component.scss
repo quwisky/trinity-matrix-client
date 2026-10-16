@@ -19,4 +19,9 @@
   .vpad {
     flex: 0 0 auto;
   }
+
+  // A row flying past in a fling ("Blank rows while scrolling fast"): blank, at the row's height.
+  .row-placeholder {
+    flex: 0 0 auto;
+  }
 }

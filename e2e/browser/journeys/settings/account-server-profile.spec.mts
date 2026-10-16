@@ -285,4 +285,29 @@ test.describe('Settings', () => {
     await toggle.click();
     await expect.poll(read).toBe('false');
   });
+
+  test('turns on blank rows while scrolling fast and keeps the choice', async ({
+    page,
+  }) => {
+    await openSection(page, 'experimental');
+    const KEY = 'trinity.flags.fling-placeholders';
+    const read = () => readPreference(page, KEY);
+    const toggle = page.getByRole('switch', {
+      name: 'Blank rows while scrolling fast',
+    });
+
+    // An opt-in: off, with nothing stored, until the person turns it on.
+    await expect(toggle).not.toBeChecked();
+    expect(await read()).toBeNull();
+
+    await toggle.click();
+    await expect.poll(read).toBe('true');
+
+    await page.goto('/settings/experimental');
+    await page.reload();
+    await expect(toggle).toBeChecked({ timeout: 20_000 });
+
+    await toggle.click();
+    await expect.poll(read).toBe('false');
+  });
 });

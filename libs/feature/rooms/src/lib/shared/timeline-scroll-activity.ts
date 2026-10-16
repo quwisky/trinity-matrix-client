@@ -1,5 +1,11 @@
 import { Injectable } from '@angular/core';
 
+/**
+ * Faster than anyone reads: about two viewports a second. Below it the reader may be reading,
+ * so work held back during a fast scroll (images, full rows) goes ahead.
+ */
+export const READING_SPEED_PX_PER_S = 1_500;
+
 /** How quickly the speed estimate follows a change of speed: about one estimate per 100 ms. */
 const SPEED_SMOOTHING_MS = 100;
 

@@ -23,6 +23,7 @@ import { MessageListBase, type JumpOptions } from './message-list-base';
 import { scrollToJumpTarget } from './jump-scroll';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
 import { TimelineMediaGate } from '../shared/timeline-media-gate';
+import { FlingRows } from './fling-rows';
 import { scrollBehavior } from '@trinity/util/ui';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { DropOverlayComponent } from './drop-overlay/drop-overlay.component';
@@ -52,6 +53,15 @@ const MAX_BACKFILL_ROUNDS = 20;
  * height, used only to size the off-screen spacers until real heights are recorded.
  */
 const ESTIMATED_ROW_HEIGHT_PX = 64;
+
+/**
+ * With "Blank rows while scrolling fast" on, unmeasured rows are counted at the room's average
+ * measured row once this many rows are measured…
+ */
+const MIN_MEASURED_FOR_ESTIMATE = 20;
+
+/** …and only when that average has moved this far, so the estimate does not churn. */
+const ESTIMATE_STEP_PX = 4;
 
 /** Extra pixels rendered above and below the viewport to hide window-boundary churn. */
 const OVERSCAN_PX = 800;
@@ -158,6 +168,12 @@ export class MessageListComponent extends MessageListBase {
   private expectedProgrammaticScrollTop: number | null = null;
   /** Pending end of the current scroll; see {@link markScrolling}. */
   private scrollIdle: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * The height an unmeasured row is counted at: {@link ESTIMATED_ROW_HEIGHT_PX}, or with
+   * "Blank rows while scrolling fast" on, the room's average measured row
+   * ({@link adaptEstimate}), since placeholders and spacers stand in at it during a fling.
+   */
+  private readonly rowEstimate = signal(ESTIMATED_ROW_HEIGHT_PX);
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly scrollActivity = inject(TimelineScrollActivity);
@@ -175,7 +191,7 @@ export class MessageListComponent extends MessageListBase {
     this.heightVersion();
     return buildPrefixSums(this.ids(), {
       measured: this.measured,
-      estimate: ESTIMATED_ROW_HEIGHT_PX,
+      estimate: this.rowEstimate(),
     });
   });
 
@@ -184,7 +200,7 @@ export class MessageListComponent extends MessageListBase {
     computeWindow(
       {
         ids: this.ids(),
-        heights: { measured: this.measured, estimate: ESTIMATED_ROW_HEIGHT_PX },
+        heights: { measured: this.measured, estimate: this.rowEstimate() },
         scrollTop: this.scrollTop(),
         viewportHeight: this.viewportH(),
         overscanPx: OVERSCAN_PX,
@@ -233,6 +249,13 @@ export class MessageListComponent extends MessageListBase {
   readonly deferMediaWhileScrolling = input(false);
 
   /**
+   * While the reader flings the list, rows entering the window render as blank placeholders
+   * and the real rows mount once it slows down ("Blank rows while scrolling fast", Settings →
+   * Experimental). Off by default.
+   */
+  readonly flingPlaceholders = input(false);
+
+  /**
    * The room already shows its own empty-room prompt, so the list adds no empty line. Bind it
    * to the same condition as the `[trnMessageListIntro]` content: projection cannot report it.
    */
@@ -258,6 +281,23 @@ export class MessageListComponent extends MessageListBase {
       return all;
     }
     return all.slice(w.startIndex, w.endIndex + 1);
+  });
+
+  /** Rows of the window rendered as placeholders during a fling; see {@link FlingRows}. */
+  private readonly fling = new FlingRows(
+    () => this.flingPlaceholders() && this.windowed(),
+    computed(() => this.windowedRows().map((row) => row.id)),
+  );
+
+  /** Each placeholder's height: the row's measured height, else the estimate. */
+  protected readonly placeholderHeights = computed(() => {
+    const ids = this.fling.placeholderIds();
+    if (ids.size === 0) return new Map<string, number>();
+    this.heightVersion();
+    const estimate = this.rowEstimate();
+    return new Map(
+      [...ids].map((id) => [id, this.measured.get(id) ?? estimate] as const),
+    );
   });
 
   /** Height of the top spacer standing in for off-screen rows above the window. */
@@ -418,6 +458,17 @@ export class MessageListComponent extends MessageListBase {
     // holds, and the gate is plain state that scroll events read without change detection.
     effect(() => this.mediaGate.setEnabled(this.deferMediaWhileScrolling()));
 
+    // Turning "Blank rows while scrolling fast" off mounts every row and returns to the fixed
+    // estimate, exactly as with the flag never on.
+    effect(() => {
+      if (this.flingPlaceholders()) return;
+      untracked(() => {
+        this.fling.end();
+        const el = this.scrollEl()?.nativeElement;
+        if (el) this.shiftEstimate(el, ESTIMATED_ROW_HEIGHT_PX);
+      });
+    });
+
     // Keep the observed set of rendered rows in sync with the window.
     effect(() => {
       const hosts = this.rowHosts();
@@ -470,6 +521,8 @@ export class MessageListComponent extends MessageListBase {
     this.measured.clear();
     this.bodyOverflow.clear();
     this.scrollActivity.reset();
+    this.fling.end();
+    this.rowEstimate.set(ESTIMATED_ROW_HEIGHT_PX);
     this.scrollTop.set(0);
     this.heightVersion.update((v) => v + 1);
   }
@@ -508,6 +561,7 @@ export class MessageListComponent extends MessageListBase {
     // How fast the reader moves the list. The list's own writes were taken out as it made
     // them (`writeScrollTop`), so this is the reader's movement alone.
     this.scrollActivity.moved(el.scrollTop, performance.now());
+    this.fling.moved(this.scrollActivity.speed);
     if (this.expectedProgrammaticScrollTop !== null) {
       if (Math.abs(el.scrollTop - this.expectedProgrammaticScrollTop) < 1) {
         this.expectedProgrammaticScrollTop = null;
@@ -570,12 +624,14 @@ export class MessageListComponent extends MessageListBase {
     this.scrollIdle = setTimeout(() => {
       this.scrollIdle = null;
       this.scrollActivity.settle();
+      this.fling.end();
     }, SCROLL_IDLE_MS);
   }
 
   /** Jump back to the newest message (the jump-to-latest pill). */
   scrollToLatest(): void {
     this.cancelPendingJump();
+    this.fling.end();
     const el = this.scrollEl()?.nativeElement;
     if (!el) {
       return;
@@ -600,10 +656,16 @@ export class MessageListComponent extends MessageListBase {
   private capturePrependAnchor(el: HTMLElement): void {
     this.prependAnchorId = '';
     const top = el.getBoundingClientRect().top;
-    for (const m of Array.from(el.querySelectorAll('.msg'))) {
+    // A fling's placeholders stand where their rows are: they anchor as well as the rows.
+    for (const m of Array.from(
+      el.querySelectorAll('.msg, [data-placeholder-mid]'),
+    )) {
       const rect = m.getBoundingClientRect();
       if (rect.bottom > top) {
-        this.prependAnchorId = m.getAttribute('data-mid') ?? '';
+        this.prependAnchorId =
+          m.getAttribute('data-mid') ??
+          m.getAttribute('data-placeholder-mid') ??
+          '';
         this.prependAnchorOffset = rect.top - top;
         return;
       }
@@ -699,7 +761,7 @@ export class MessageListComponent extends MessageListBase {
         // `prior` is the pre-update height — the estimate for a first measurement.
         changes.push({
           index: idx,
-          prior: prior ?? ESTIMATED_ROW_HEIGHT_PX,
+          prior: prior ?? this.rowEstimate(),
           next: newH,
         });
       }
@@ -779,6 +841,45 @@ export class MessageListComponent extends MessageListBase {
     }
     this.revealFocusIn(resized);
     this.heightVersion.update((v) => v + 1);
+    if (!atBottom && this.flingPlaceholders()) this.adaptEstimate(el);
+  }
+
+  /**
+   * With "Blank rows while scrolling fast" on, count unmeasured rows at the room's average
+   * measured row. A fling never measures the rows it passes (they are placeholders), so at
+   * the fixed 64 px a long room would come out far shorter than it is, and every fling would
+   * cover more of it than the same gesture does with full rows.
+   */
+  private adaptEstimate(el: HTMLElement): void {
+    if (this.measured.size < MIN_MEASURED_FOR_ESTIMATE) return;
+    let sum = 0;
+    for (const height of this.measured.values()) sum += height;
+    const average = Math.round(sum / this.measured.size);
+    if (Math.abs(average - this.rowEstimate()) >= ESTIMATE_STEP_PX) {
+      this.shiftEstimate(el, average);
+    }
+  }
+
+  /**
+   * Count unmeasured rows at `next` px, keeping the reader in place: every unmeasured row
+   * wholly above the viewport changes height by the difference, so the position moves by
+   * that much times their number, as for a first measurement above the fold.
+   */
+  private shiftEstimate(el: HTMLElement, next: number): void {
+    const prev = this.rowEstimate();
+    if (next === prev) return;
+    const st = el.scrollTop;
+    const regionTop = this.rowsRegionTop(el);
+    const prefix = this.prefix();
+    const ids = this.ids();
+    let above = 0;
+    for (let i = 0; i < ids.length && regionTop + prefix[i + 1] <= st; i++) {
+      if (!this.measured.has(ids[i])) above++;
+    }
+    this.rowEstimate.set(next);
+    if (above > 0 && !untracked(() => this.atBottomSig())) {
+      this.writeScrollTop(el, Math.max(0, st + (next - prev) * above));
+    }
   }
 
   /**
@@ -847,8 +948,14 @@ export class MessageListComponent extends MessageListBase {
     }
     const idx = this.ids().indexOf(anchorId);
     const anchor = Array.from(
-      el.querySelectorAll<HTMLElement>('.msg[data-mid]'),
-    ).find((row) => row.getAttribute('data-mid') === anchorId);
+      el.querySelectorAll<HTMLElement>(
+        '.msg[data-mid], [data-placeholder-mid]',
+      ),
+    ).find(
+      (row) =>
+        (row.getAttribute('data-mid') ??
+          row.getAttribute('data-placeholder-mid')) === anchorId,
+    );
     let top: number;
     if (anchor) {
       const currentOffset =
@@ -889,6 +996,9 @@ export class MessageListComponent extends MessageListBase {
     // Remembered so a width change can re-aim it: every branch below ends in a measurement
     // that is only correct for the layout at this instant. See `notePendingJump`.
     this.notePendingJump(messageId);
+    // A jump ends a fling. A target still shown as a placeholder has no `data-mid` yet, so it
+    // takes the path below and is revealed after the render that mounts it.
+    this.fling.end();
     // The jump is the reader's new position. A correction queued for the history restore
     // before it (a date jump pages history in right before jumping) would otherwise scroll
     // back to the old anchor and cancel the smooth scroll below.

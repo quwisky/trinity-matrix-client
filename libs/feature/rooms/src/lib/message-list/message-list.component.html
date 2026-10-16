@@ -66,22 +66,32 @@
           "
         />
       }
-      <trn-message-row
-        [row]="row"
-        [threadSummary]="threadSummaries()[row.id] ?? null"
-        [threadContinues]="threadContinuationIds().has(row.id)"
-        [caps]="rowCaps(row)"
-        [undecryptableFix]="undecryptableFix()"
-        [runExpanded]="expandedRuns().has(row.id)"
-        (toggleRun)="toggleRun(row.id)"
-        (action)="onRowAction(row, $event)"
-        (longPress)="onRowLongPress(row, $event)"
-        [swipeDirection]="swipeDirection()"
-        (swipe)="onRowSwipe(row, $event)"
-        (matrixLink)="matrixLink.emit($event)"
-        (pollVote)="pollVote.emit($event)"
-        (pollEnd)="pollEnd.emit($event)"
-      />
+      @if (placeholderHeights().get(row.id); as height) {
+        <!-- A row flying past in a fling: its space, nothing to read or announce. -->
+        <div
+          class="row-placeholder"
+          aria-hidden="true"
+          [attr.data-placeholder-mid]="row.id"
+          [style.height.px]="height"
+        ></div>
+      } @else {
+        <trn-message-row
+          [row]="row"
+          [threadSummary]="threadSummaries()[row.id] ?? null"
+          [threadContinues]="threadContinuationIds().has(row.id)"
+          [caps]="rowCaps(row)"
+          [undecryptableFix]="undecryptableFix()"
+          [runExpanded]="expandedRuns().has(row.id)"
+          (toggleRun)="toggleRun(row.id)"
+          (action)="onRowAction(row, $event)"
+          (longPress)="onRowLongPress(row, $event)"
+          [swipeDirection]="swipeDirection()"
+          (swipe)="onRowSwipe(row, $event)"
+          (matrixLink)="matrixLink.emit($event)"
+          (pollVote)="pollVote.emit($event)"
+          (pollEnd)="pollEnd.emit($event)"
+        />
+      }
     } @empty {
       @if (settled() && !introShown()) {
         <trn-empty-state body="No messages yet." />

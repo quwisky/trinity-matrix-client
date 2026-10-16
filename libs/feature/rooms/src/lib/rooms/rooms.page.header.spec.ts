@@ -114,6 +114,7 @@ let lastRender: {
 let lastFixture: ComponentFixture<RoomsPage>;
 const windowingFlag = signal(false);
 const deferMediaFlag = signal(false);
+const flingPlaceholdersFlag = signal(false);
 
 function renderHeader(
   pinCount: number,
@@ -126,6 +127,7 @@ function renderHeader(
 ) {
   windowingFlag.set(false);
   deferMediaFlag.set(false);
+  flingPlaceholdersFlag.set(false);
   const presenceByUser = opts.presenceByUser ?? {};
   const pinMessages = signal<readonly unknown[]>(
     Array.from({ length: pinCount }, (_, id) => ({ id })),
@@ -229,6 +231,7 @@ function renderHeader(
       MockProvider(FeatureFlagsService, {
         virtualTimeline: windowingFlag,
         deferMediaWhileScrolling: deferMediaFlag,
+        flingPlaceholders: flingPlaceholdersFlag,
       }),
       MockProvider(MatrixClientService, {
         activeUserId: signal<string | null>('@me:hs'),
@@ -573,6 +576,20 @@ describe('RoomsPage timeline', () => {
     lastFixture.detectChanges();
 
     expect(list.deferMediaWhileScrolling()).toBe(true);
+  });
+
+  it('binds "Blank rows while scrolling fast" to the list as it flips', () => {
+    renderHeader(0);
+    const list = ngMocks.find(
+      lastFixture.debugElement,
+      MessageListComponent,
+    ).componentInstance;
+    expect(list.flingPlaceholders()).toBe(false);
+
+    flingPlaceholdersFlag.set(true);
+    lastFixture.detectChanges();
+
+    expect(list.flingPlaceholders()).toBe(true);
   });
 });
 

@@ -207,6 +207,7 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
       MockProvider(FeatureFlagsService, {
         virtualTimeline: signal(false),
         deferMediaWhileScrolling: signal(false),
+        flingPlaceholders: signal(false),
       }),
       MockProvider(MatrixClientService, {
         activeUserId: signal<string | null>('@me:hs'),

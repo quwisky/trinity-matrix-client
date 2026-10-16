@@ -12,6 +12,7 @@ const set = Preferences.set as unknown as Mock;
 
 const KEY = 'trinity.flags.virtual-timeline';
 const DEFER_MEDIA_KEY = 'trinity.flags.defer-media-while-scrolling';
+const FLING_PLACEHOLDERS_KEY = 'trinity.flags.fling-placeholders';
 
 /** Answer `Preferences.get` from a key → stored value table; unlisted keys hold nothing. */
 function stored(values: Record<string, string>): void {
@@ -123,6 +124,56 @@ describe('FeatureFlagsService', () => {
       expect(svc.deferMediaWhileScrolling()).toBe(false);
       expect(set).toHaveBeenLastCalledWith({
         key: DEFER_MEDIA_KEY,
+        value: 'false',
+      });
+    });
+  });
+
+  describe('fling placeholders', () => {
+    it('is off until the person opts in', async () => {
+      const svc = service();
+      expect(svc.flingPlaceholders()).toBe(false);
+      await expect(svc.init()).resolves.toEqual({ kind: 'ready' });
+      expect(svc.flingPlaceholders()).toBe(false);
+    });
+
+    it('restores a stored opt-in on init, independently of the other flags', async () => {
+      stored({ [FLING_PLACEHOLDERS_KEY]: 'true', [DEFER_MEDIA_KEY]: 'false' });
+      const svc = service();
+
+      await expect(svc.init()).resolves.toEqual({ kind: 'ready' });
+
+      expect(svc.flingPlaceholders()).toBe(true);
+      expect(svc.deferMediaWhileScrolling()).toBe(false);
+    });
+
+    it('keeps it off and reports an invalid stored value', async () => {
+      stored({ [FLING_PLACEHOLDERS_KEY]: '1', [DEFER_MEDIA_KEY]: 'true' });
+      const svc = service();
+
+      await expect(svc.init()).resolves.toEqual({
+        kind: 'defaulted',
+        reason: 'invalid-stored-value',
+      });
+
+      expect(svc.flingPlaceholders()).toBe(false);
+      expect(svc.deferMediaWhileScrolling()).toBe(true);
+    });
+
+    it('persists a toggle and moves the signal at once', () => {
+      const svc = service();
+
+      svc.setFlingPlaceholders(true);
+      expect(svc.flingPlaceholders()).toBe(true);
+      expect(set).toHaveBeenCalledWith({
+        key: FLING_PLACEHOLDERS_KEY,
+        value: 'true',
+      });
+
+      svc.setFlingPlaceholders(false);
+      expect(svc.flingPlaceholders()).toBe(false);
+      expect(set).toHaveBeenLastCalledWith({
+        key: FLING_PLACEHOLDERS_KEY,
         value: 'false',
       });
     });
