@@ -10,7 +10,9 @@ const MAX_DRAFTS = 200;
 /**
  * Per-conversation composer drafts, persisted across launches under an opaque conversation
  * key (an Account-and-Room key for the main composer, the root event id for the legacy
- * thread composer). Held in Capacitor `Preferences`, not secure storage.
+ * thread composer). Like the theme and feature flags these are non-secret UI state, so
+ * they live in Capacitor `Preferences` (localStorage on web, native KV on device), never
+ * secure storage.
  *
  * Read synchronously from memory; {@link init} must load the saved map before any
  * composer mounts. Writes are debounced.

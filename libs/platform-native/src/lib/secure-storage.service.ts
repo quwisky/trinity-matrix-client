@@ -110,7 +110,8 @@ function createElectronBackend(
  * `@aparajita/capacitor-secure-storage`. Every value belongs to this device's Matrix
  * session, so it stays on this device: `sync: false` keeps it out of iCloud Keychain, and
  * the iOS `whenUnlockedThisDeviceOnly` class keeps a backup restored onto another device
- * from bringing it along. An item written earlier keeps its old class until rewritten.
+ * from bringing it along. An item written before this class was set keeps its
+ * old class until it is next written.
  */
 function createNativeBackend(): SecureStorageBackend {
   return {

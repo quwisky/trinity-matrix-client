@@ -80,8 +80,9 @@ export class SessionStorageService {
    * Serializes registry read-modify-write cycles. The OIDC token refresher calls
    * {@link updateTokens} concurrently with user-driven `save`/`remove`/`clear`; without
    * this chain, overlapping cycles on the shared `matrix.accounts` blob lose an update
-   * (a refresh after a logout would resurrect the signed-out account). Reads stay off
-   * the chain: one `Preferences.get` + parse is already a consistent snapshot.
+   * (a refresh after a logout would resurrect the signed-out account). Every mutation
+   * must run through this chain so each sees the prior one's committed result. Reads
+   * stay off the chain: one `Preferences.get` + parse is already a consistent snapshot.
    */
   private writeQueue: Promise<unknown> = Promise.resolve();
 
@@ -366,7 +367,8 @@ export class SessionStorageService {
       // A new store's key is written BEFORE the tokens and the registry: a keyed record
       // without its key could never open its store, and a failure here must leave the
       // stored device's tokens as they were. A key left behind by a later failure is
-      // harmless.
+      // harmless. A same-device re-login keeps whatever its existing store has, including
+      // no key at all.
       await this.storeKeys.create(newPrefix);
     }
     await this.secure.set(this.tokenKey(incoming.userId), accessToken);
@@ -595,7 +597,10 @@ export class SessionStorageService {
     });
   }
 
-  /** Read the registry, migrating a legacy session on first run. Returns a fresh object. */
+  /**
+   * Read the registry, migrating a legacy session on first run. Returns a fresh object,
+   * so callers may mutate it safely.
+   */
   private async readRegistry(): Promise<AccountRegistry> {
     const { value } = await Preferences.get({ key: ACCOUNTS_KEY });
     if (value) {
@@ -605,9 +610,10 @@ export class SessionStorageService {
   }
 
   /**
-   * Fold the legacy `matrix.session` slot (its token is in secure storage or inline in
-   * the JSON) into the registry as the sole active account, then retire the legacy keys.
-   * Returns an empty registry when there is nothing complete to migrate.
+   * Fold the legacy `matrix.session` slot (its token is in secure storage or, in the
+   * oldest format, inline in the JSON) into the registry as the sole active account, then
+   * retire the legacy keys. Returns an empty registry when there is nothing complete to
+   * migrate.
    */
   private async migrateLegacy(): Promise<AccountRegistry> {
     const empty: AccountRegistry = { activeUserId: null, accounts: [] };
