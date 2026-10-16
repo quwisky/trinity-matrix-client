@@ -7,15 +7,23 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import { login } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import {
+  passwordLogin,
+  registerUser,
+  type AccountSession,
+} from '../../../support/account.mts';
 import {
   addAccountViaUi,
   apiLogin,
   configureMultiAccountSuite,
   mixInAccount,
   session,
-  type ApiUser,
 } from '../../support/multi-account-journey.mts';
+import {
+  createRoom,
+  linkChild,
+  membership,
+} from '../../support/space-journey.mts';
 
 /**
  * Resolves once every open menu has finished its entrance. A submenu is placed against its
@@ -38,7 +46,7 @@ interface SharedSpace {
   readonly passA: string;
   readonly userB: string;
   readonly passB: string;
-  readonly b: ApiUser;
+  readonly b: AccountSession;
   readonly spaceId: string;
   readonly spaceName: string;
   readonly aRoom: string;
@@ -68,44 +76,22 @@ async function seedSharedSpace(
 
   await registerUser(request, userA, passA);
   await registerUser(request, userB, passB);
-  const a = await apiLogin(request, hs, userA, passA);
-  const b = await apiLogin(request, hs, userB, passB);
-  const create = async (
-    who: typeof a,
-    name: string,
-    extra: Record<string, unknown> = {},
-  ): Promise<string> => {
-    const res = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: who.headers,
-      data: { name, preset: 'private_chat', ...extra },
-    });
-    expect(res.ok(), `createRoom ${name}`).toBe(true);
-    return (await res.json()).room_id as string;
-  };
-  const spaceId = await create(a, spaceName, {
-    creation_content: { type: 'm.space' },
+  const a = await passwordLogin(request, hs, userA, passA);
+  const b = await passwordLogin(request, hs, userB, passB);
+  const spaceId = await createRoom(request, hs, a, spaceName, {
+    space: true,
     invite: [b.userId],
   });
-  const joined = await request.post(
-    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/join`,
-    { headers: b.headers },
-  );
-  expect(joined.ok(), 'B joins the space').toBe(true);
-  const aRoomId = await create(a, aRoom);
-  const bRoomId = await create(b, bRoom);
+  await membership(request, hs, b, spaceId, 'join');
   // A files both rooms. A space lists the children its holder has joined, so B's room
   // reaches the list through B's copy of the space.
-  const serverName = a.userId.slice(a.userId.indexOf(':') + 1);
-  for (const childId of [aRoomId, bRoomId]) {
-    const linked = await request.put(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(
-        spaceId,
-      )}/state/m.space.child/${encodeURIComponent(childId)}`,
-      { headers: a.headers, data: { via: [serverName] } },
-    );
-    expect(linked.ok(), `m.space.child ${childId}`).toBe(true);
+  for (const childId of [
+    await createRoom(request, hs, a, aRoom),
+    await createRoom(request, hs, b, bRoom),
+  ]) {
+    await linkChild(request, hs, a, spaceId, childId);
   }
-  await create(b, outside);
+  await createRoom(request, hs, b, outside);
   return {
     hs,
     userA,
@@ -325,11 +311,7 @@ test.describe('Multiple accounts', () => {
     );
 
     // B leaves the space on another device; A, still ticked, holds it.
-    const left = await request.post(
-      `${f.hs}/_matrix/client/v3/rooms/${encodeURIComponent(f.spaceId)}/leave`,
-      { headers: f.b.headers },
-    );
-    expect(left.ok(), 'B leaves the space').toBe(true);
+    await membership(request, f.hs, f.b, f.spaceId, 'leave');
     // B's copy of the space filed B's room, so the list drops it; the room stays open.
     await expect(row(f.bRoom)).toHaveCount(0, { timeout: 30_000 });
     await expect(spacePill).toHaveAttribute('aria-current', 'true');
