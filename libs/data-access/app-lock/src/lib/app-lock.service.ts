@@ -69,6 +69,7 @@ import {
   type SystemPromptKind,
 } from './app-lock-system-prompt';
 import { APP_LOCK_CLOCK } from './app-lock.tokens';
+import { effectiveNotificationText } from './notification-text-policy';
 import { isValidPin } from './pin-policy';
 
 /**
@@ -126,16 +127,17 @@ export class AppLockService {
   /** The stored Notification text choice; kept, with no effect, while App lock is off. */
   readonly notificationText = this._notificationText.asReadonly();
   /**
-   * What notifications may show now (spec §5): Show while App lock is off; on a desktop, a
-   * stored "Hide on the lock screen" (never offered there) hides everything.
+   * What notifications may show now; see {@link effectiveNotificationText}. Always hide until
+   * `hydrate()` has decided, then Show while App lock is off.
    */
-  readonly effectiveNotificationText = computed((): NotificationText => {
-    if (!this._enabled()) return 'show';
-    const text = this._notificationText();
-    return text === 'hide-on-lock-screen' && !this.lockScreenTextOffered
-      ? 'always-hide'
-      : text;
-  });
+  readonly effectiveNotificationText = computed((): NotificationText =>
+    effectiveNotificationText({
+      known: this._status() !== 'unknown',
+      enabled: this._enabled(),
+      choice: this._notificationText(),
+      lockScreenOffered: this.lockScreenTextOffered,
+    }),
+  );
   readonly support = this._support.asReadonly();
   /** App lock can be on here: the host keeps a PIN (decisions 23 and 24). */
   readonly offered = computed(() => this._support().pin.kind === 'available');

@@ -107,6 +107,10 @@ export interface HostNotificationPresentationOperation {
     readonly body: string;
     readonly tag?: string;
     readonly silent?: boolean;
+    /** Always hide: the title is the app's name only; mobile hosts drop it (the OS shows it). */
+    readonly generic?: boolean;
+    /** Hide on the lock screen: redacted on the device lock screen where the host can. */
+    readonly hideOnLockScreen?: boolean;
     readonly destination: HostNotificationDestination;
   }): Observable<HostOperationOutcome>;
 }

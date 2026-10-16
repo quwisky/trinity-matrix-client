@@ -33,6 +33,11 @@ export interface NotificationIntent {
   readonly body: string;
   readonly tag: string;
   readonly silent: boolean;
+  /**
+   * `generic`: Always hide — title and body carry nothing about the message. `lock-screen`:
+   * full text, redacted by the OS on the lock screen where the host supports it.
+   */
+  readonly privacy?: 'generic' | 'lock-screen';
   readonly destination: NotificationDestination;
 }
 
@@ -73,6 +78,10 @@ export interface NotificationPolicyInput {
    * the native push renderer (`push`, Android once push is registered; see PushService).
    */
   readonly backgroundDelivery: 'app' | 'push';
+  /** App lock's Notification text; Show when absent. */
+  readonly textMode?: import('./notification-text.port').NotificationTextMode;
+  /** The running app's name, the title of a generic notification; "Trinity" when absent. */
+  readonly appName?: string;
 }
 
 export type NotificationPolicyDecision =

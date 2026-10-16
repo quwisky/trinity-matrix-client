@@ -483,6 +483,14 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'Unsent message text, not configuration. It must not appear in a document someone ' +
       'pastes into a support thread, and Reset must never destroy it.',
   },
+  {
+    disposition: 'internal',
+    key: 'trinity.message.private',
+    owner: 'platform-native',
+    reason:
+      'Not a stored key at all: the iOS notification category for App lock’s "Hide on the ' +
+      'lock screen", registered by AppDelegate with the placeholder "New message".',
+  },
 
   // — data-access/room-library, excluded —
   {

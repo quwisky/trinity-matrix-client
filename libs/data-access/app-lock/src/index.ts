@@ -3,6 +3,7 @@
 export * from './lib/app-lock.preferences';
 export * from './lib/away-policy';
 export * from './lib/pin-policy';
+export * from './lib/notification-text-policy';
 export * from './lib/app-lock.service';
 export {
   GUARD_WINDOW_MS,

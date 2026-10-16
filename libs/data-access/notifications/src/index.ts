@@ -24,6 +24,11 @@ export type {
   NotificationRuntimeEvent,
 } from './lib/notification-intent';
 export {
+  NOTIFICATION_TEXT,
+  type NotificationTextMode,
+  type NotificationTextPort,
+} from './lib/notification-text.port';
+export {
   NOTIFICATION_VISIBILITY,
   type NotificationVisibilityPort,
 } from './lib/notification-visibility.port';

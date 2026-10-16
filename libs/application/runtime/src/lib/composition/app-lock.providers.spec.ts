@@ -4,7 +4,9 @@ import { AppearanceEffects } from '@trinity/application/appearance';
 import {
   AppLockService,
   type AppLockStatus,
+  type NotificationText,
 } from '@trinity/data-access/app-lock';
+import { NOTIFICATION_TEXT } from '@trinity/data-access/notifications';
 import { CONVERSATION_ATTENTION } from '@trinity/data-access/timeline';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, Subject, of, tap, type Observable } from 'rxjs';
@@ -186,5 +188,30 @@ describe('conversation attention', () => {
     expect(attention.attentive()).toBe(false);
     state.set('off');
     expect(attention.attentive()).toBe(true);
+  });
+});
+
+describe('notification text port', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('reports the effective mode, as it changes', () => {
+    const mode = signal<NotificationText>('show');
+    TestBed.configureTestingModule({
+      providers: [
+        appLockProviders(),
+        MockProvider(AppLockService, {
+          hydrate: () => of(undefined),
+          status: signal<AppLockStatus>('off').asReadonly() as never,
+          effectiveNotificationText: mode.asReadonly() as never,
+        }),
+        MockProvider(AppearanceEffects, { applySaved: () => of(undefined) }),
+      ],
+    });
+    const port = TestBed.inject(NOTIFICATION_TEXT);
+    expect(port.mode()).toBe('show');
+    mode.set('always-hide');
+    expect(port.mode()).toBe('always-hide');
+    mode.set('hide-on-lock-screen');
+    expect(port.mode()).toBe('hide-on-lock-screen');
   });
 });

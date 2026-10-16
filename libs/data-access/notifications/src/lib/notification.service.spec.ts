@@ -26,9 +26,14 @@ import type {
 } from './notification-intent';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { NOTIFICATION_VISIBILITY } from './notification-visibility.port';
+import {
+  NOTIFICATION_TEXT,
+  type NotificationTextMode,
+} from './notification-text.port';
 import { provideHostCapabilities } from '@trinity/platform-native';
 import {
   HOST_OPERATIONS,
+  HostAuthenticationHandoffService,
   HostNotificationPresentationService,
   type HostCapabilitySupport,
 } from '@trinity/runtime/host';
@@ -90,6 +95,10 @@ function setup(
       HostNotificationPresentationService,
       'support' | 'activated' | 'requestPermission' | 'present'
     >;
+    /** App lock's effective Notification text, read for each notification. */
+    textMode?: () => NotificationTextMode;
+    /** The running app's name, as the host reports it. */
+    appName?: string;
   } = {},
 ) {
   const accounts = opts.accounts ?? ['@me:hs'];
@@ -135,6 +144,16 @@ function setup(
           }),
         },
       },
+      ...(opts.textMode
+        ? [{ provide: NOTIFICATION_TEXT, useValue: { mode: opts.textMode } }]
+        : []),
+      ...(opts.appName
+        ? [
+            MockProvider(HostAuthenticationHandoffService, {
+              deviceDisplayName: () => opts.appName as string,
+            }),
+          ]
+        : []),
       ...(opts.hostNotifications
         ? [
             {
@@ -371,6 +390,59 @@ describe('NotificationService', () => {
     expect(MockNotification.instances[0].options).toMatchObject({
       body: 'hello there',
       tag: '@me:hs !r:hs',
+    });
+  });
+
+  describe('notification text (App lock)', () => {
+    it('shows only “New message” while App lock hides notification text', () => {
+      const { svc, client } = setup({ textMode: () => 'always-hide' });
+      svc.connect();
+
+      timelineHandler(client)(event(), room, false, false, live);
+
+      expect(MockNotification.instances).toHaveLength(1);
+      expect(MockNotification.instances[0].title).toBe('Trinity');
+      expect(MockNotification.instances[0].options).toMatchObject({
+        body: 'New message',
+        tag: '@me:hs !r:hs',
+      });
+      const shown = JSON.stringify(MockNotification.instances[0]);
+      expect(shown.includes('hello there')).toBe(false);
+      expect(shown.includes('Alice')).toBe(false);
+      expect(shown.includes('General')).toBe(false);
+    });
+
+    it('names the running app in a hidden notification', () => {
+      const { svc, client } = setup({
+        textMode: () => 'always-hide',
+        appName: 'Trinity Next',
+      });
+      svc.connect();
+
+      timelineHandler(client)(event(), room, false, false, live);
+
+      expect(MockNotification.instances[0].title).toBe('Trinity Next');
+    });
+
+    it('reads the choice for each notification', () => {
+      let mode: NotificationTextMode = 'always-hide';
+      const { svc, client } = setup({ textMode: () => mode });
+      svc.connect();
+
+      timelineHandler(client)(event(), room, false, false, live);
+      mode = 'show';
+      timelineHandler(client)(
+        event({ id: '$second' }),
+        room,
+        false,
+        false,
+        live,
+      );
+
+      expect(MockNotification.instances.map((n) => n.title)).toEqual([
+        'Trinity',
+        'Alice · General',
+      ]);
     });
   });
 

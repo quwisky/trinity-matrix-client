@@ -99,4 +99,45 @@ describe('NotificationPresenterService', () => {
       diagnostic: { code: 'notification-presentation-failed' },
     });
   });
+
+  describe('notification text (App lock)', () => {
+    async function presented(
+      privacy: NotificationIntent['privacy'],
+    ): Promise<unknown> {
+      const present = vi.fn(() => of({ kind: 'completed' as const }));
+      TestBed.configureTestingModule({
+        providers: [
+          NotificationPresenterService,
+          {
+            provide: HostNotificationPresentationService,
+            useValue: { present, activated: new Subject() },
+          },
+        ],
+      });
+      await firstValueFrom(
+        TestBed.inject(NotificationPresenterService).present(
+          privacy ? { ...intent, privacy } : intent,
+        ),
+      );
+      return (present.mock.calls[0] as unknown[])[0];
+    }
+
+    it('asks the host for a generic notification under Always hide', async () => {
+      const request = await presented('generic');
+      expect(request).toMatchObject({ generic: true });
+      expect(request).not.toHaveProperty('hideOnLockScreen');
+    });
+
+    it('asks the host to hide it on the lock screen under Hide on the lock screen', async () => {
+      const request = await presented('lock-screen');
+      expect(request).toMatchObject({ hideOnLockScreen: true });
+      expect(request).not.toHaveProperty('generic');
+    });
+
+    it('asks for neither under Show', async () => {
+      const request = await presented(undefined);
+      expect(request).not.toHaveProperty('generic');
+      expect(request).not.toHaveProperty('hideOnLockScreen');
+    });
+  });
 });

@@ -1608,6 +1608,28 @@ describe('AppLockService', () => {
   });
 
   describe('notification text', () => {
+    it('hides everything until the settings have loaded', async () => {
+      const { lock } = setup({
+        stored: { 'trinity.app-lock.notification-text': 'show' },
+      });
+      // Before hydrate(), nothing is known: not the switch, not the choice.
+      expect(lock.effectiveNotificationText()).toBe('always-hide');
+      await hydrated(lock);
+      expect(lock.effectiveNotificationText()).toBe('show');
+    });
+
+    it('hides everything while the settings are still loading', async () => {
+      await withFakeTimers(async () => {
+        const { lock } = setup({ stored: 'never' });
+        const hydrating = hydrated(lock);
+        await vi.advanceTimersByTimeAsync(SETTINGS_TIMEOUT_MS - 1);
+        expect(lock.effectiveNotificationText()).toBe('always-hide');
+        await vi.advanceTimersByTimeAsync(1);
+        await hydrating;
+        expect(lock.effectiveNotificationText()).toBe('always-hide');
+      });
+    });
+
     it('is Show while App lock is off, whatever is stored', async () => {
       const { lock } = setup({
         stored: { 'trinity.app-lock.notification-text': 'always-hide' },

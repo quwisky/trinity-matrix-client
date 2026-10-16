@@ -4,6 +4,7 @@ import { Subject, firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CapacitorNotificationPresentationAdapter,
+  PRIVATE_NOTIFICATION_CATEGORY,
   WebNotificationPresentationAdapter,
 } from './host-notification-presentation.adapters';
 
@@ -200,6 +201,56 @@ describe('CapacitorNotificationPresentationAdapter', () => {
     expect(notification).toMatchObject({ foreground: true });
     expect(notification).not.toHaveProperty('sound');
     expect(notification).not.toHaveProperty('channelId');
+  });
+
+  describe('notification text (App lock)', () => {
+    async function scheduled(
+      platform: 'ios' | 'android',
+      extra: { generic?: boolean; hideOnLockScreen?: boolean },
+    ): Promise<Record<string, unknown>> {
+      cap.platform = platform;
+      await firstValueFrom(
+        new CapacitorNotificationPresentationAdapter().present({
+          ...request,
+          title: 'Trinity',
+          body: 'New message',
+          ...extra,
+        }),
+      );
+      return localNotifications.schedule.mock.calls[0][0].notifications[0];
+    }
+
+    it.each(['ios', 'android'] as const)(
+      'leaves the title to the OS for a generic notification on %s',
+      async (platform) => {
+        const notification = await scheduled(platform, { generic: true });
+        expect(notification).toMatchObject({ title: '', body: 'New message' });
+        expect(notification).not.toHaveProperty('actionTypeId');
+      },
+    );
+
+    it('puts a lock-screen notification in the private category on iOS', async () => {
+      const notification = await scheduled('ios', { hideOnLockScreen: true });
+      expect(notification).toMatchObject({
+        title: 'Trinity',
+        actionTypeId: PRIVATE_NOTIFICATION_CATEGORY,
+      });
+      expect(PRIVATE_NOTIFICATION_CATEGORY).toBe('trinity.message.private');
+    });
+
+    it('adds no category on Android, which already keeps it private', async () => {
+      const notification = await scheduled('android', {
+        hideOnLockScreen: true,
+      });
+      expect(notification).toMatchObject({ title: 'Trinity' });
+      expect(notification).not.toHaveProperty('actionTypeId');
+    });
+
+    it('changes nothing for a plain notification', async () => {
+      const notification = await scheduled('ios', {});
+      expect(notification).toMatchObject({ title: 'Trinity' });
+      expect(notification).not.toHaveProperty('actionTypeId');
+    });
   });
 
   it('maps native channel and scheduling failures to secret-safe typed outcomes', async () => {

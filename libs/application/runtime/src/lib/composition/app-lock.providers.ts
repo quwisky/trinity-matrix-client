@@ -10,7 +10,11 @@ import {
   AppLockService,
   type AppLockStatus,
 } from '@trinity/data-access/app-lock';
-import { type NotificationVisibilityPort } from '@trinity/data-access/notifications';
+import {
+  NOTIFICATION_TEXT,
+  type NotificationTextPort,
+  type NotificationVisibilityPort,
+} from '@trinity/data-access/notifications';
 import {
   CONVERSATION_ATTENTION,
   type ConversationAttention,
@@ -57,7 +61,8 @@ export function visibilityWhileLocked(
  * (Review Focus 3). Hydration never errors and waits for the host at most
  * SUPPORT_TIMEOUT_MS. A locked start then puts the saved Appearance on the document, so the
  * cover paints in the person's theme instead of flashing light. It also tells Conversations
- * whether anyone can be looking ({@link CONVERSATION_ATTENTION}).
+ * whether anyone can be looking ({@link CONVERSATION_ATTENTION}), and Notifications what
+ * notifications may say ({@link NOTIFICATION_TEXT}).
  */
 export function appLockProviders(): EnvironmentProviders {
   return makeEnvironmentProviders([
@@ -86,6 +91,14 @@ export function appLockProviders(): EnvironmentProviders {
         return {
           attentive: computed(() => !appLockCovers(appLock.status())),
         };
+      },
+    },
+    {
+      // App lock's Notification text (spec §5): Always hide until the settings are known.
+      provide: NOTIFICATION_TEXT,
+      useFactory: (): NotificationTextPort => {
+        const appLock = inject(AppLockService);
+        return { mode: () => appLock.effectiveNotificationText() };
       },
     },
   ]);
