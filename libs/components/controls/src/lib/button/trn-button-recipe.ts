@@ -75,7 +75,7 @@ const controlBorder =
  * neutral border and label all sit on the accent there, where the border falls near 1:1 and
  * the label below 4.5:1. It stays transparent with the attention control border and
  * foreground, also while it holds an open menu (Helm's `aria-expanded:` grey chip would
- * otherwise paint on the accent), and hovers like a solid action. The `dark:` copies out-rank
+ * otherwise paint on the accent), and hovers like a solid action. The shared focus border and ring already out-rank these classes. The `dark:` copies out-rank
  * Helm's and the control border's own `dark:` classes.
  */
 const outlineOnAttention =

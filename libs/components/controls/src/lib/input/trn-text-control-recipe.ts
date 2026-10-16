@@ -23,7 +23,7 @@ const base =
  * `trnOverlaySurface`, which mark themselves `data-trn-surface="attention"`) sits on the
  * accent, where the neutral value, placeholder and border colours fall near 1:1. There it
  * switches to the attention control roles, and a disabled field stays transparent instead of
- * nesting a neutral fill. An invalid field's border and ring take the attention danger role,
+ * nesting a neutral fill. Its focus ring already follows the surface's on-attention ring. An invalid field's border and ring take the attention danger role,
  * which keeps 3:1 against the accent where the neutral danger falls near 1.4:1; the 2px ring
  * is the cue that does not rely on hue. Focused, the ring turns to the surface's focus ring
  * and the danger border stays; without that override the danger ring out-ranks the focus ring.

@@ -40,7 +40,8 @@ export type TrnEmojiPickerLayout = 'fixed' | 'fill';
  *
  * `ViewEncapsulation.None` because the vendor's inner DOM carries no `_ngcontent` attribute,
  * so an encapsulated stylesheet cannot reach it. Scoped by the `.trn-emoji-picker` host
- * class so nothing leaks.
+ * class so nothing leaks, and loaded only with this component's chunk, which is why the
+ * override lives here and not beside `rendered-markdown.scss`.
  */
 @Component({
   selector: 'trn-emoji-picker',

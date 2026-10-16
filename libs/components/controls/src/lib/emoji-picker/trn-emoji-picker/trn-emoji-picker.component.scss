@@ -57,7 +57,7 @@
         }
 
         // The vendor sets `outline: 0` on this input unconditionally, so without a ring here
-        // it has no focus indicator at all.
+        // it has no focus indicator at all. Same shape as the rest of the app's.
         &:focus-visible {
           border-color: var(--trinity-accent);
           outline: 2px solid var(--trinity-accent);

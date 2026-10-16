@@ -14,8 +14,10 @@ import { TrnInput } from '../input/trn-input';
 
 /**
  * Wraps a projected `<input trnInput>` and shows its show/hide-password toggle inside the
- * field's trailing edge. The page keeps the input and its bindings; this component writes the
- * input's native `type` property from a content query, so the page must not bind `[type]`.
+ * field's trailing edge. The page keeps the input and its bindings (`[formField]`, `id`,
+ * `aria-describedby`); this component writes the input's native `type` property from a
+ * content query, so the page must not bind `[type]`. Signal Forms never writes `type`, so the
+ * two do not fight.
  * The button is `type="button"`, so Enter in the field still submits through the page.
  */
 @Component({
