@@ -19,40 +19,33 @@ const AVATAR_PX = 96;
 const DPR = 2;
 
 /**
- * Resolves `mxc://` avatars to `blob:` URLs the UI can bind to `<img>`, fetching
- * with the access token so they load on authenticated-media (v1.11+) homeservers —
- * a plain `<img src=mxcUrlToHttp(...)>` can't send the bearer header and 401s there.
+ * Resolves `mxc://` avatars to `blob:` URLs the UI can bind to `<img>`, fetching with the
+ * access token: a plain `<img src=mxcUrlToHttp(...)>` can't send the bearer header and 401s
+ * on authenticated-media (v1.11+) homeservers.
  *
- * We always attempt the authenticated endpoint and rely on {@link fetchMediaBytes}'s
- * built-in authed→legacy fallback, rather than probing `v1.11` first: a probe that
- * transiently failed would cache `authed=false` and then break every avatar on the
- * very authenticated-media-only servers this exists for.
+ * Always attempts the authenticated endpoint and relies on {@link fetchMediaBytes}'s
+ * authed→legacy fallback instead of probing `v1.11` first: a probe that transiently failed
+ * would cache `authed=false` and break every avatar on the authenticated-media-only servers
+ * this exists for.
  *
- * Avatars are small and reused across the app (sidebar, members, every timeline
- * sender), so successful resolutions are cached keyed by mxc+size+account and revoked
- * together on logout/login ({@link releaseAll}). Within a session the cache is an LRU
- * capped at {@link AVATAR_CACHE_LIMIT}; evicting revokes the object URL, but never one a
- * subscriber still holds (see {@link CacheEntry.holders}).
+ * Resolutions are cached by mxc+size+account and revoked together on logout/login
+ * ({@link releaseAll}); within a session the cache is an LRU capped at
+ * {@link AVATAR_CACHE_LIMIT}. Evicting revokes the object URL, but never one a subscriber
+ * still holds (see {@link CacheEntry.holders}).
  *
- * A failure is remembered only for {@link FAILURE_COOLDOWN_MS}. Never remembering it
- * pins nothing to initials for the session — the original reason — but it also means a
- * list that recreates its rows as you scroll starts a fresh attempt per row per
- * recreation, and each attempt is now several requests with backoff behind it. While a
- * device is offline that is a stampede against a network that is not there. Retrying
- * after a short pause keeps both properties: the avatar recovers on its own, and it
- * costs one attempt per avatar per cooldown rather than one per render.
+ * A failure is remembered only for {@link FAILURE_COOLDOWN_MS}. Forgetting it at once would
+ * start several backed-off requests per row per recreation in a scrolling list, a stampede
+ * while offline; remembering it for good would pin the avatar to initials for the session.
+ * The pause lets it recover on its own at one attempt per avatar per cooldown.
  */
 /** How long a failed avatar resolution is remembered before it may be retried. */
 const FAILURE_COOLDOWN_MS = 30_000;
 
 /**
- * Cap on cached avatar object URLs. What one screen shows at once: a timeline window of
- * roughly 40 rows (viewport plus 800px overscan) with at most as many distinct senders, a
- * virtualised member list of ~50 rows, a sidebar of ~100 room and space rows, and a handful
- * of account badges. That is about 200 at the very most, and those are held by their
- * subscribers regardless of the cap. 256 therefore keeps every avatar a user flicks between
- * warm, while bounding a long session (hundreds of rooms and members seen) at 256 thumbnails
- * of ~10-30 KB each, a few MB, instead of one per avatar ever seen.
+ * Cap on cached avatar object URLs. One screen shows about 200 at most (a ~40-row timeline
+ * window, ~50 member rows, ~100 sidebar rows, a few account badges) and subscribers hold
+ * those regardless of the cap. 256 keeps every avatar a user flicks between warm while
+ * bounding a long session at a few MB (256 thumbnails of ~10-30 KB).
  */
 const AVATAR_CACHE_LIMIT = 256;
 
@@ -91,9 +84,7 @@ export class AvatarService {
     if (!mxc) {
       return of(null);
     }
-    // Key by account too: the same mxc fetched through a different homeserver is a
-    // different request, and sharing one entry would defeat the point of routing a
-    // foreign account's media through its own client.
+    // Key by account too: the same mxc through a different homeserver is a different request.
     const key = `${mxc}|${sizePx}|${accountId ?? ''}`;
     return new Observable<string | null>((subscriber) => {
       const entry = this.entryFor(key, mxc, sizePx, accountId);
