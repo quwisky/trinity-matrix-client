@@ -22,11 +22,12 @@
             presentation="ghost"
             size="sm"
             class="min-w-8 px-0 text-lg"
-            [attr.aria-label]="'React with ' + reaction.key"
             [attr.data-testid]="'sheet-react-' + reaction.key"
             (click)="onReact(reaction)"
           >
-            {{ reaction.key }}
+            <!-- Named from content, not aria-label: the visible emoji is part of the name
+                 (WCAG 2.5.3 label in name), the hidden prefix says what it does. -->
+            <span class="sr-only">React with</span> {{ reaction.key }}
           </button>
         }
       </div>
@@ -80,11 +81,10 @@
             presentation="ghost"
             size="lg"
             class="min-h-11 min-w-11 px-0 text-xl"
-            [attr.aria-label]="'React with ' + reaction.key"
             [attr.data-testid]="'sheet-react-' + reaction.key"
             (click)="onReact(reaction)"
           >
-            {{ reaction.key }}
+            <span class="sr-only">React with</span> {{ reaction.key }}
           </button>
         }
       </div>

@@ -24,8 +24,10 @@ function listPhrase(items: readonly string[]): string {
 }
 
 /**
- * "👍 reacted by You, Alice and 4 others" — the projection names only the first few
+ * "👍 7, reacted by You, Alice and 4 others" — the projection names only the first few
  * reactors ({@link ReactionView.reactors}), so everyone past that is summarised by count.
+ * It is both the tooltip and the accessible name, and it starts with what the pill shows,
+ * its key and count (WCAG 2.5.3 label in name), so a speech-input user can say it.
  */
 function reactorsHint(reaction: ReactionView): string {
   const names = [...reaction.reactors];
@@ -33,7 +35,7 @@ function reactorsHint(reaction: ReactionView): string {
   if (others > 0) {
     names.push(`${others} other${others === 1 ? '' : 's'}`);
   }
-  return `${reaction.key} reacted by ${listPhrase(names)}`;
+  return `${reaction.key} ${reaction.count}, reacted by ${listPhrase(names)}`;
 }
 
 /**

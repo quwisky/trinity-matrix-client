@@ -141,7 +141,11 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     );
     expect(strip.length).toBe(2);
     const thumb = strip[0];
-    expect(thumb?.getAttribute('aria-label')).toBe('React with 👍');
+    // Named from content (WCAG 2.5.3 label in name): no aria-label hides the visible emoji.
+    expect(thumb?.hasAttribute('aria-label')).toBe(false);
+    expect(thumb?.textContent?.replace(/\s+/gu, ' ').trim()).toBe(
+      'React with 👍',
+    );
 
     thumb?.click();
     render();

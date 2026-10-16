@@ -32,6 +32,21 @@ function data(handler = vi.fn(), react = vi.fn()): ActionSheetData {
   };
 }
 
+/**
+ * WCAG 2.5.3 label in name: the reaction is named from its content, so the visible emoji is
+ * part of the accessible name, and no aria-label replaces it (an emoji-only visible label is
+ * something Axe cannot judge against an aria-label).
+ */
+function expectReactionNamedFromItsEmoji(): void {
+  const react = screen.getByRole('button', { name: 'React with 👍' });
+  expect(react.hasAttribute('aria-label')).toBe(false);
+  const hidden = react.querySelector('.sr-only');
+  expect(hidden?.textContent).toBe('React with');
+  expect(react.textContent?.replace(hidden?.textContent ?? '', '').trim()).toBe(
+    '👍',
+  );
+}
+
 describe('TrnActionListComponent', () => {
   let surfaces: TrnSurfaceService;
   let opener: HTMLButtonElement;
@@ -108,6 +123,13 @@ describe('TrnActionListComponent', () => {
       expect(row.closest('[role=menu]')).not.toBeNull();
       expect(react).toHaveBeenCalledOnce();
       expect(closed).toHaveBeenCalledOnce();
+    });
+
+    it('names each reaction from its visible emoji', () => {
+      surfaces.openActions(data(), { anchor: opener });
+      tick();
+
+      expectReactionNamedFromItsEmoji();
     });
 
     it('names the menu from ariaLabel when it has no header', () => {
@@ -210,6 +232,13 @@ describe('TrnActionListComponent', () => {
       );
       expect(screen.getByTestId('sheet-handle')).toBeTruthy();
       expect(screen.getByTestId('row-cancel')).toBeTruthy();
+    });
+
+    it('names each reaction from its visible emoji', () => {
+      surfaces.openActions(data());
+      tick();
+
+      expectReactionNamedFromItsEmoji();
     });
 
     it('appears in place, so the message viewport measures its final top', () => {
