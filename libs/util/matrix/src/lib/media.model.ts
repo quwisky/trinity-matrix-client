@@ -4,11 +4,8 @@
 export type MediaKind = 'image' | 'file' | 'video' | 'audio';
 
 /**
- * Encrypted-attachment descriptor — the `content.file` / `info.thumbnail_file`
- * object on an E2EE media event (AES-CTR key as JWK + iv + sha256 hashes).
- *
- * `matrix-js-sdk` defines this shape (`EncryptedFile`) as a *type* but does not
- * re-export it from the package root, so we model the fields we use locally.
+ * Encrypted-attachment descriptor: the `content.file` / `info.thumbnail_file` object on an
+ * E2EE media event. Modelled locally because matrix-js-sdk does not export `EncryptedFile`.
  */
 export interface EncryptedFileInfo {
   /** `mxc://` URL of the ciphertext. */
@@ -24,9 +21,8 @@ export interface EncryptedFileInfo {
 }
 
 /**
- * A media attachment projected from an `m.image` / `m.file` / `m.video` / `m.audio`
- * event — a plain view model that carries everything {@link MediaService} needs to
- * resolve the bytes (plaintext `mxc` or encrypted `file`) without leaking SDK types.
+ * A media attachment projected from an `m.image` / `m.file` / `m.video` / `m.audio` event,
+ * carrying what {@link MediaService} needs to resolve the bytes without leaking SDK types.
  */
 export interface MediaPayload {
   kind: MediaKind;

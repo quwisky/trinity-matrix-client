@@ -4,15 +4,13 @@ import { Observable, defer, from, map, shareReplay } from 'rxjs';
 /**
  * Preloads the Rust crypto WASM from a served asset path.
  *
- * matrix-js-sdk's default loader resolves the `.wasm` relative to its bundled JS
- * (`./pkg/...wasm`), which Angular's esbuild does not emit as an asset — so it 404s.
- * We instead ship the file via the build target's assets (apps/trinity/project.json)
- * to `assets/crypto/...` and call
- * `initAsync(url)` ourselves. The loader memoizes its module promise, so the call
- * matrix-js-sdk makes later inside `initRustCrypto()` reuses this instance.
+ * matrix-js-sdk's default loader resolves the `.wasm` relative to its bundled JS, which
+ * Angular's esbuild does not emit as an asset, so it 404s. The build ships the file to
+ * `assets/crypto/...` and we call `initAsync(url)` ourselves; the loader memoizes its module
+ * promise, so `initRustCrypto()` later reuses this instance.
  *
- * Must run before `MatrixClient.initRustCrypto()`. Safe to call multiple times —
- * `shareReplay(1)` runs `initAsync` once and replays to later subscribers.
+ * Must run before `MatrixClient.initRustCrypto()`. Safe to call repeatedly: `shareReplay(1)`
+ * runs `initAsync` once.
  */
 let preloaded$: Observable<void> | null = null;
 

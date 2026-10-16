@@ -1,16 +1,11 @@
 /**
  * The single engine behind every timestamp the app renders.
  *
- * Pure and DI-free: the preference arrives as a parameter, so the caller (a signal-driven
- * service) decides when values re-derive and a test can pin a format without any DI. The
- * injectable choke point that reads the stored preference is `DateTimeFormatService` in
- * `@trinity/platform-native`; this module holds the option catalogues, the formatting itself,
- * and the one `Intl.DateTimeFormat` cache.
+ * Pure and DI-free: the preference arrives as a parameter. Holds the option catalogues, the
+ * formatting itself and the one `Intl.DateTimeFormat` cache.
  *
- * Everything goes through `Intl`, never Angular's `DatePipe`. That is not a style preference:
- * `DatePipe` formats via Angular's own bundled locale data, so honouring the reader's actual
- * locale through it would throw NG0701 for every locale not passed to `registerLocaleData` —
- * i.e. it would mean shipping the world's CLDR data. `Intl` is already in every target.
+ * Everything goes through `Intl`, never Angular's `DatePipe`: `DatePipe` uses Angular's
+ * bundled locale data and throws NG0701 for any locale not passed to `registerLocaleData`.
  */
 
 /** How the clock is rendered. `system` lets the locale decide 12- vs 24-hour. */
@@ -41,17 +36,16 @@ export interface DateTimePrefs {
   /**
    * Locale chain, most-preferred first, or undefined to accept the runtime default.
    *
-   * `navigator.languages` rather than `navigator.language`: the full chain lets `Intl`
-   * negotiate down when the engine lacks data for the first entry, where a single tag would
-   * instead fall through to the *runtime* default — which is `en-US` under jsdom and in the
-   * Electron shell, quietly reinstating the bug this preference exists to fix.
+   * Use `navigator.languages`, not `navigator.language`: with a single tag `Intl` falls
+   * through to the runtime default (`en-US` under jsdom and in the Electron shell) when the
+   * engine lacks data for it.
    */
   readonly locales: readonly string[] | undefined;
   readonly time: TimeFormat;
   readonly date: DateFormat;
 }
 
-/** The distinct `Intl` option sets we ever build. Part of the cache key. */
+/** The distinct `Intl` option sets we build; part of the cache key. */
 type Shape =
   | 'clock'
   | 'clock-seconds'
@@ -61,23 +55,13 @@ type Shape =
   | 'day'
   | 'day-with-year';
 
-// Constructing an Intl.DateTimeFormat costs ~25µs and the timeline re-formats on every
-// incoming event, so instances are cached. Two things make the cache correct rather than
-// merely fast:
+// Formatters are cached because the timeline re-formats on every incoming event. The cache is
+// keyed by shape, both preferences and the locale chain, and dropped wholesale when the local
+// UTC offset moves: a DateTimeFormat resolves its time zone once at construction, so after a
+// zone change it would disagree with the `Date` arithmetic in day-separator.ts. The offset is
+// the key, not the zone name, because it decides the rendered value and is cheap to read.
 //
-//  - It is keyed by shape AND both preferences AND the locale chain, so changing a format in
-//    Settings cannot hand back a formatter built for the old one.
-//  - It is dropped wholesale when the local UTC offset moves. A DateTimeFormat resolves its
-//    time zone once, at construction, and never again; held across a zone change (a laptop
-//    opened in another country) it would render dates that disagree with the local-day
-//    arithmetic in day-separator.ts, which goes through `Date` and does re-resolve. The offset
-//    is the key rather than the zone name because it is what decides the rendered value, and
-//    reading it is ~430x cheaper (0.06µs vs 25µs) — probing the name per call would cost as
-//    much as the construction the cache exists to avoid.
-//
-// Each entry also remembers the strings it produced: the timeline formats the same few
-// instants whenever a row is built, and a row built again after scrolling away and back asks
-// for the same ones. Bounded, because history is unbounded.
+// Each entry also memoises the strings it produced, bounded because history is unbounded.
 const MAX_MEMOISED_STRINGS = 2000;
 
 interface CachedFormatter {
@@ -128,14 +112,10 @@ function clockOptions(
     minute: '2-digit',
     ...(withSeconds ? { second: '2-digit' as const } : {}),
   };
-  // `hourCycle`, not `hour12`. `hour12: false` selects the h24 cycle in several locales,
-  // which renders midnight as "24:00" — a real complaint against clients that use it. h23 is
-  // the 00–23 cycle every reader expects from a 24-hour clock.
-  //
-  // The hour width differs per choice because the conventions genuinely differ: someone who
-  // asked for a 24-hour clock means HH:mm, and `hour: 'numeric'` would give them "9:05" in
-  // every locale except en-US. A 12-hour clock is conventionally NOT padded ("9:05 AM", not
-  // "09:05 AM"). Under Match system the locale decides, which is the whole point.
+  // `hourCycle`, not `hour12`: `hour12: false` selects h24 in several locales, rendering
+  // midnight as "24:00". The hour width differs on purpose: 24-hour is padded (HH:mm, which
+  // `numeric` would not give outside en-US), 12-hour is not ("9:05 AM"), and Match system
+  // leaves it to the locale.
   switch (time) {
     case 'h12':
       return { ...base, hour: 'numeric', hourCycle: 'h12' };
@@ -168,8 +148,7 @@ function optionsFor(
       return { ...SYSTEM_DATE_OPTIONS, ...clockOptions(prefs.time, false) };
     case 'date-time-seconds':
       return { ...SYSTEM_DATE_OPTIONS, ...clockOptions(prefs.time, true) };
-    // The day-separator shapes: the weekday within the current year (how people locate a
-    // recent day), the year instead of it further back.
+    // The day-separator shapes: weekday within the current year, year further back.
     case 'day':
       return { weekday: 'long', month: 'long', day: 'numeric' };
     case 'day-with-year':
@@ -178,12 +157,8 @@ function optionsFor(
 }
 
 /**
- * A date in an explicitly chosen order, zero-padded with a four-digit year.
- *
- * Deliberately `/` and `-` rather than the locale's own separator: the reader has opted out
- * of their locale's convention, and this is exactly the string the Settings option previews.
- * Reordering locale-formatted parts instead would need `formatToParts` surgery for a case the
- * user has already told us to ignore.
+ * A date in an explicitly chosen order, zero-padded with a four-digit year. Uses `/` and `-`
+ * rather than the locale's separator: the reader has opted out of the locale's convention.
  */
 function explicitDate(ts: number, date: Exclude<DateFormat, 'system'>): string {
   const at = new Date(ts);
@@ -217,12 +192,8 @@ export function formatDateOnly(ts: number, prefs: DateTimePrefs): string {
 }
 
 /**
- * Date and time together — the shape most of the app shows.
- *
- * Under `system` this is ONE formatter carrying both option sets, so the *locale* supplies the
- * connector: "7/24/2026, 3:45 PM" (en-US), "24.07.2026, 15:45" (de-DE), "2026-07-24 15:45"
- * (sv-SE — note the space, which a hardcoded ", " would get wrong). Once the date half is
- * ours, so is the join.
+ * Date and time together. Under `system` one formatter carries both option sets so the
+ * locale supplies the connector (sv-SE uses a space, which a hardcoded ", " would get wrong).
  */
 export function formatDateTime(
   ts: number,
@@ -256,9 +227,8 @@ export function formatDaySeparator(
   return formatWith(withYear ? 'day-with-year' : 'day', prefs, ts);
 }
 
-// Both accept `undefined` as well as `null` so a caller can narrow the value it actually
-// holds. `hlm-select`'s valueChange is `string | null | undefined`, and narrowing a massaged
-// expression (`isTimeFormat(value ?? null)`) leaves the original binding un-narrowed — which
+// Both accept `undefined` as well as `null` so a caller can narrow the value it holds:
+// narrowing `isTimeFormat(value ?? null)` leaves the original binding un-narrowed, which
 // type-checks under vitest and fails only in the Angular build.
 export function isTimeFormat(
   value: string | null | undefined,

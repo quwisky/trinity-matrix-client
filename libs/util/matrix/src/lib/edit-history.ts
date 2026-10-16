@@ -3,8 +3,8 @@ import { UNDECRYPTABLE_BODY, renderTextBody } from './message-view';
 
 /**
  * The versions of an edited message, for the edit-history view. Kept out of
- * {@link MessageView} on purpose: history is fetched on demand, so folding it into the
- * timeline's view model would churn every row's identity for a screen nobody has opened.
+ * {@link MessageView} because history is fetched on demand and would churn every row's
+ * identity.
  */
 
 /** One version of a message — the original, or one `m.replace` applied to it. */
@@ -50,8 +50,7 @@ function revision(
   content: Record<string, unknown>,
   isOwn: boolean,
 ): MessageRevisionView {
-  // `isReply: false` — an edit carries no reply fallback to strip; the reply relation
-  // lives on the original event, and its own body was already stripped when rendered.
+  // `isReply: false`: an edit carries no reply fallback to strip.
   const { text, textHtml } = renderTextBody(content, false);
   return {
     id: event.getId() ?? '',
@@ -66,14 +65,13 @@ function revision(
 /**
  * Whether an `m.replace` may be shown as a version of `original`.
  *
- * The sender check is the security-relevant one: an edit only counts when it comes from
- * the account that sent the message, or anyone in the room could put words in someone
- * else's mouth. matrix-js-sdk's `relations()` applies the same rule, but only when it
- * managed to resolve the original event itself — so this is not redundant.
+ * The sender check is the security-relevant one: an edit only counts when it comes from the
+ * account that sent the message, or anyone in the room could put words in someone else's
+ * mouth. matrix-js-sdk's `relations()` applies the same rule only when it resolved the
+ * original event itself, so this is not redundant.
  *
- * Redacted edits are dropped rather than shown as a placeholder: in an encrypted room the
- * SDK never decrypts them, so they don't come back at all, and a rule that quietly depends
- * on whether the room is encrypted is worse than one that always hides them.
+ * Redacted edits are dropped, not shown as a placeholder: in an encrypted room the SDK never
+ * decrypts them, and the rule should not depend on whether the room is encrypted.
  */
 function isShowableEdit(edit: MatrixEvent, original: MatrixEvent): boolean {
   return (
@@ -90,12 +88,9 @@ function isShowableEdit(edit: MatrixEvent, original: MatrixEvent): boolean {
  * Project an edited message and its `m.replace` events into the versions to show, oldest
  * first: the original, then each valid edit in `origin_server_ts` order.
  *
- * The original always leads, rather than being sorted in with the rest — a server is free
- * to stamp an edit earlier than the event it replaces, and the first entry is the one the
- * UI labels "Original".
- *
- * Returns an empty list for a redacted original: its edits survive on the server, but
- * showing them would undo the deletion the sender asked for.
+ * The original always leads rather than being sorted in: a server may stamp an edit earlier
+ * than the event it replaces, and the first entry is labelled "Original". Returns an empty
+ * list for a redacted original, since showing its surviving edits would undo the deletion.
  */
 export function buildEditRevisions(
   original: MatrixEvent,
@@ -106,8 +101,7 @@ export function buildEditRevisions(
     return [];
   }
 
-  // Every valid edit shares the original's sender (isShowableEdit enforces it), so one
-  // check answers it for the whole list.
+  // Every valid edit shares the original's sender (isShowableEdit), so one check covers all.
   const isOwn = !!currentUserId && original.getSender() === currentUserId;
   const base = original.isDecryptionFailure()
     ? undecryptable(original, isOwn)

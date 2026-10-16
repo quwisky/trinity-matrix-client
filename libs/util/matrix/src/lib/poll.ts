@@ -11,9 +11,8 @@ import {
 } from 'matrix-js-sdk';
 
 /**
- * Cap on poll options we project/render. MSC3381 limits a poll to 20 answers; a
- * malicious `m.poll.start` could otherwise carry an unbounded array (one rendered
- * row each), so we bound it defensively on the receive side.
+ * Cap on poll options we project/render. MSC3381 limits a poll to 20 answers; a malicious
+ * `m.poll.start` could otherwise carry an unbounded array (one rendered row each).
  */
 const MAX_POLL_ANSWERS = 20;
 
@@ -162,12 +161,10 @@ export function pollEndContent(pollId: string): Record<string, unknown> {
 }
 
 /**
- * Project a poll-start event into a {@link PollView}: read its question/answers and
- * tally each voter's latest response cast before any end event. As in matrix-js-sdk, a
- * response naming any unknown answer id is spoiled, and a valid one is de-duplicated
- * and truncated to `max_selections`; a spoiled or empty latest response withdraws the
- * voter's earlier vote. Reads the reference relations the
- * same way reactions do, so it re-tallies live as responses arrive.
+ * Project a poll-start event into a {@link PollView}, tallying each voter's latest response
+ * cast before any end event. As in matrix-js-sdk, a response naming any unknown answer id is
+ * spoiled, a valid one is de-duplicated and truncated to `max_selections`, and a spoiled or
+ * empty latest response withdraws the voter's earlier vote.
  */
 export function buildPollView(
   client: MatrixClient,
@@ -179,10 +176,9 @@ export function buildPollView(
   const question = extensibleText(
     subtype?.['question'] as Record<string, unknown> | undefined,
   );
-  // `answers` is attacker-controlled event content: it must be an array (a scalar
-  // would throw on `.map` and, since the timeline projection isn't individually
-  // guarded, crash the whole room), and it's capped so a huge array can't drive
-  // unbounded rendering.
+  // `answers` is attacker-controlled event content: it must be an array (a scalar would
+  // throw on `.map` and, as the timeline projection isn't individually guarded, crash the
+  // whole room), and it's capped so a huge array can't drive unbounded rendering.
   const rawAnswers = subtype?.['answers'];
   const answers = (
     Array.isArray(rawAnswers) ? rawAnswers.slice(0, MAX_POLL_ANSWERS) : []
@@ -262,12 +258,9 @@ export function pollSignature(room: Room, startEvent: MatrixEvent): string {
     .filter((e) => !e.isRedacted())
     .map((e) => `${e.getSender()}:${responseAnswers(e).join(',')}:${e.getTs()}`)
     .sort();
-  // Mirror buildPollView's end handling EXACTLY: it ignores redacted end events and
-  // counts only votes cast before the earliest surviving one. A signature that merely
-  // asked "does any end event exist" would not move when a bogus end is redacted (the
-  // poll reopens and post-close votes start counting again) or when an earlier end
-  // arrives out of order (which changes the tally) — so the row would keep rendering
-  // closed with stale counts until some unrelated change happened to bump the revision.
+  // Mirror buildPollView's end handling EXACTLY (ignore redacted ends, earliest survivor
+  // wins): a signature that only asked "does any end event exist" would not move when a
+  // bogus end is redacted or an earlier end arrives out of order, leaving stale counts.
   const endTs = referenceRelations(room, pollId, END_TYPES)
     .filter((event) => !event.isRedacted())
     .reduce(
