@@ -7,6 +7,9 @@ export async function touchLongPress(
   page: Page,
   target: Locator,
 ): Promise<void> {
+  // A scroll during the 700ms hold cancels the long-press, and a timeline that has just
+  // opened is still settling at its bottom. Press only once the row has held its place.
+  await waitUntilStill(target);
   const box = await target.boundingBox();
   if (!box) throw new Error('no box for long-press target');
   const point = {
@@ -63,3 +66,34 @@ async function nextAnimationFrame(page: Page): Promise<void> {
       new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
   );
 }
+
+/**
+ * Resolve once `target` has kept the same box for {@link STILL_FRAMES} animation frames in a
+ * row, so a gesture that needs it to hold still is not cancelled by a scroll in progress.
+ */
+async function waitUntilStill(
+  target: Locator,
+  timeout = 10_000,
+): Promise<void> {
+  await target.evaluate(
+    (element, frames) =>
+      new Promise<void>((resolve) => {
+        let last = '';
+        let still = 0;
+        const frame = (): void => {
+          const { top, left, width, height } = element.getBoundingClientRect();
+          const box = `${top},${left},${width},${height}`;
+          still = box === last ? still + 1 : 0;
+          last = box;
+          if (still >= frames) resolve();
+          else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }),
+    STILL_FRAMES,
+    { timeout },
+  );
+}
+
+/** About 150ms at 60Hz: longer than a frame or two of smooth-scroll easing. */
+const STILL_FRAMES = 10;
