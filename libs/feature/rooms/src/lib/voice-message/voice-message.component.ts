@@ -123,12 +123,19 @@ export class VoiceMessageComponent {
    * (pinned while bound to `<audio>`), and the resolve.
    */
   private clip: OpenClip | null = null;
+  /** The message reference the row last showed. */
+  private shown: PresentedMediaReference | null = null;
 
   constructor() {
     effect(() => {
-      this.media();
-      // A reused row shows another message: the previous one's clip goes.
+      const media = this.media();
+      // A reused row shows another message: the previous one's clip and error go. A receipt,
+      // a reaction or the remote echo re-projects the same message with a new reference to the
+      // same file: its clip keeps loading or playing, and a failed load stays reported.
       untracked(() => {
+        const previous = this.shown;
+        this.shown = media;
+        if (previous && this.mediaPipeline.sameMedia(previous, media)) return;
         this.dropClip();
         this.failed.set(false);
       });

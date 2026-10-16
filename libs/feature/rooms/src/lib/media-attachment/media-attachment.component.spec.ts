@@ -310,9 +310,11 @@ describe('MediaAttachmentComponent', () => {
       fixture.componentInstance.play();
       mediaService.resolveMedia.mockClear();
 
-      fixture.componentRef.setInput('media', clip('video', { id: 'other' }));
+      const other = clip('video', { id: 'other', filename: 'other.mp4' });
+      fixture.componentRef.setInput('media', other);
       TestBed.tick();
 
+      expect(mediaService.sameMedia).toHaveBeenCalledWith(media, other);
       expect(fixture.componentInstance.src()).toBeNull();
       expect(mediaService.resolveMedia).not.toHaveBeenCalled();
       // The clip belonged to the previous message, so that is the rendition dropped.
@@ -321,6 +323,54 @@ describe('MediaAttachmentComponent', () => {
         'full',
         'blob:full',
       );
+    });
+
+    it.each(['video', 'audio'] as const)(
+      'keeps a playing %s when its message is re-projected (a receipt, a reaction)',
+      async (kind) => {
+        const media = clip(kind);
+        const { fixture } = await renderMedia(media);
+        fixture.componentInstance.play();
+        mediaService.resolveMedia.mockClear();
+
+        // The same file under a new reference, as every re-projection mints one.
+        const again = clip(kind, { id: 'presented-media-again' });
+        fixture.componentRef.setInput('media', again);
+        TestBed.tick();
+
+        expect(fixture.componentInstance.src()).toBe('blob:full');
+        expect(mediaService.drop).not.toHaveBeenCalled();
+        expect(mediaService.resolveMedia).not.toHaveBeenCalled();
+        expect(mediaService.sameMedia).toHaveBeenCalledWith(media, again);
+
+        fixture.componentInstance.playbackEnded();
+
+        // The rendition dropped is the one played, under the reference it was resolved for.
+        expect(mediaService.drop).toHaveBeenCalledExactlyOnceWith(
+          media,
+          'full',
+          'blob:full',
+        );
+      },
+    );
+
+    it('keeps a clip loading when its message is re-projected', async () => {
+      const full = new Subject<string>();
+      mediaService.resolveMedia.mockReturnValue(full.asObservable());
+      const media = clip('audio');
+      const { fixture } = await renderMedia(media);
+      fixture.componentInstance.play();
+
+      const again = clip('audio', { id: 'presented-media-again' });
+      fixture.componentRef.setInput('media', again);
+      TestBed.tick();
+
+      expect(full.observed).toBe(true);
+      expect(mediaService.drop).not.toHaveBeenCalled();
+      expect(mediaService.sameMedia).toHaveBeenCalledWith(media, again);
+      full.next('blob:full');
+      expect(fixture.componentInstance.src()).toBe('blob:full');
+      expect(mediaService.resolveMedia).toHaveBeenCalledTimes(1);
     });
 
     it.each(['video', 'audio'] as const)(
@@ -748,6 +798,40 @@ describe('MediaAttachmentComponent', () => {
       fixture.destroy();
 
       expect(mediaService.drop).not.toHaveBeenCalled();
+    });
+
+    it('keeps a playing video when its message is re-projected while the flag is off', async () => {
+      mediaService.resolveMedia.mockImplementation(
+        (_m: PresentedMediaReference, variant: string) =>
+          of(variant === 'full' ? 'blob:full' : 'blob:poster'),
+      );
+      const video = {
+        ...imageMedia(),
+        kind: 'video',
+        filename: 'clip.mp4',
+        mimeType: 'video/mp4',
+        hasThumbnail: true,
+      } as PresentedMediaReference;
+      const { fixture } = await renderInTimeline(video);
+      fixture.componentInstance.play();
+      expect(fixture.componentInstance.src()).toBe('blob:full');
+
+      const again = { ...video, id: 'presented-media-again' };
+      fixture.componentRef.setInput('media', again);
+      TestBed.tick();
+
+      expect(fixture.componentInstance.src()).toBe('blob:full');
+      expect(mediaService.drop).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'full',
+        expect.anything(),
+      );
+      expect(mediaService.sameMedia).toHaveBeenCalledWith(video, again);
+      // The poster is resolved again as before while the flag is off.
+      expect(mediaService.resolveMedia).toHaveBeenLastCalledWith(
+        again,
+        'thumbnail',
+      );
     });
 
     describe('with the flag on', () => {

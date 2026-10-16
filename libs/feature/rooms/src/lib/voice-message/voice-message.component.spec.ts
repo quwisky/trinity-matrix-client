@@ -9,10 +9,14 @@ import {
 } from '@trinity/data-access/media';
 import { VoiceMessageComponent } from './voice-message.component';
 
+/** The file each reference presents, as the pipeline knows it; references are opaque. */
+const fileOf = new WeakMap<PresentedMediaReference, string>();
+
 function voiceMedia(
   over: Partial<PresentedMediaReference> = {},
+  file = 'mxc://hs/voice',
 ): PresentedMediaReference {
-  return {
+  const media = {
     id: 'presented-media-voice',
     kind: 'audio',
     filename: 'Voice message',
@@ -22,6 +26,8 @@ function voiceMedia(
     waveform: [0, 256, 512, 1024],
     ...over,
   } as PresentedMediaReference;
+  fileOf.set(media, file);
+  return media;
 }
 
 async function build(
@@ -33,6 +39,10 @@ async function build(
     pin: vi.fn(),
     unpin: vi.fn(),
     drop: vi.fn(),
+    sameMedia: vi.fn(
+      (a: PresentedMediaReference, b: PresentedMediaReference) =>
+        a === b || (fileOf.has(a) && fileOf.get(a) === fileOf.get(b)),
+    ),
   };
   const { container, fixture } = await render(VoiceMessageComponent, {
     inputs: { media },
@@ -262,7 +272,10 @@ describe('VoiceMessageComponent', () => {
     const { fixture, pipeline, press, audio } = await build(media);
     press();
 
-    fixture.componentRef.setInput('media', voiceMedia({ id: 'other' }));
+    fixture.componentRef.setInput(
+      'media',
+      voiceMedia({ id: 'other' }, 'mxc://hs/other'),
+    );
     TestBed.tick();
 
     expect(pipeline.drop).toHaveBeenCalledExactlyOnceWith(
@@ -272,6 +285,83 @@ describe('VoiceMessageComponent', () => {
     );
     expect(audio()).toBeNull();
     expect(pipeline.resolveMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps playing when its message is re-projected (a receipt, a reaction, the remote echo)', async () => {
+    const media = voiceMedia();
+    const { fixture, pipeline, press, audio } = await build(media);
+    press();
+    const el = audio()!;
+    el.dispatchEvent(new Event('play'));
+    TestBed.tick();
+
+    // The same file under a new reference, as every re-projection mints one.
+    const again = voiceMedia({ id: 'presented-media-again' });
+    fixture.componentRef.setInput('media', again);
+    TestBed.tick();
+
+    expect(pipeline.drop).not.toHaveBeenCalled();
+    expect(audio()).toBe(el);
+    expect(fixture.componentInstance.playing()).toBe(true);
+    expect(pipeline.sameMedia).toHaveBeenCalledWith(media, again);
+
+    el.dispatchEvent(new Event('ended'));
+    TestBed.tick();
+
+    expect(pipeline.drop).toHaveBeenCalledExactlyOnceWith(
+      media,
+      'full',
+      'blob:clip',
+    );
+    expect(audio()).toBeNull();
+    expect(pipeline.resolveMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps fetching the clip when its message is re-projected meanwhile', async () => {
+    const clip = new Subject<string>();
+    const media = voiceMedia();
+    const { fixture, pipeline, press, audio } = await build(media, () =>
+      clip.asObservable(),
+    );
+    press();
+
+    const again = voiceMedia({ id: 'presented-media-again' });
+    fixture.componentRef.setInput('media', again);
+    TestBed.tick();
+    clip.next('blob:clip');
+    TestBed.tick();
+
+    expect(pipeline.drop).not.toHaveBeenCalled();
+    expect(audio()?.getAttribute('src')).toBe('blob:clip');
+    expect(pipeline.sameMedia).toHaveBeenCalledWith(media, again);
+    expect(pipeline.resolveMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps saying a clip could not load until the row shows another file', async () => {
+    const media = voiceMedia();
+    const { container, fixture, pipeline, press } = await build(media, () =>
+      throwError(() => new Error('offline')),
+    );
+    const error = () => container.querySelector('[data-testid=voice-error]');
+    press();
+    expect(error()).not.toBeNull();
+
+    // A receipt or a reaction re-projects the same message.
+    const again = voiceMedia({ id: 'presented-media-again' });
+    fixture.componentRef.setInput('media', again);
+    TestBed.tick();
+
+    expect(error()).not.toBeNull();
+    expect(pipeline.sameMedia).toHaveBeenCalledWith(media, again);
+
+    // The row is recycled for another message.
+    fixture.componentRef.setInput(
+      'media',
+      voiceMedia({ id: 'other' }, 'mxc://hs/other'),
+    );
+    TestBed.tick();
+
+    expect(error()).toBeNull();
   });
 
   describe('fitting the waveform to the space it has', () => {

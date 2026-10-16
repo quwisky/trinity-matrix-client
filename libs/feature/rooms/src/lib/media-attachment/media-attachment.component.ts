@@ -124,9 +124,14 @@ export class MediaAttachmentComponent {
       // a reaction): load at once rather than blank it mid-scroll. Read before the reset.
       const shown = this.pinnedUrl !== null;
       this.releaseThumbnail();
-      // A clip playing in a recycled row belongs to the previous message: closing it.
-      untracked(() => this.dropClip());
-      this.src.set(null);
+      // A clip playing in a recycled row belongs to the previous message: closing it. A
+      // re-projection of the same file, whatever the gate, keeps it loading or playing.
+      const keepClip =
+        !!this.clip && this.mediaPipeline.sameMedia(this.clip.media, media);
+      if (!keepClip) {
+        untracked(() => this.dropClip());
+        this.src.set(null);
+      }
       this.poster.set(null);
       this.errorMsg.set(null);
       this.repin(null);
