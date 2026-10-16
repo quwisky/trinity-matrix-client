@@ -18,6 +18,12 @@ export const config = mobileWdioConfig({
       '.appium/chromedriver',
     ),
     'appium:ensureWebviewsHavePages': true,
+    // Otherwise Appium keeps one chromedriver per context and restarts it in place after
+    // each app relaunch; if that restart fails ("chrome not reachable" after 60 s), the
+    // cached chromedriver stays offline and every later switch in the session fails with
+    // "Can't restart when we're not online". Leaving the WebView now stops chromedriver, so
+    // each switch starts one for the running app and wdio's request retry starts afresh.
+    'appium:recreateChromeDriverSessions': true,
     'appium:nativeWebScreenshot': true,
     acceptInsecureCerts: true,
   },
