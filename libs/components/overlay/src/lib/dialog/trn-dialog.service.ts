@@ -331,9 +331,9 @@ export class TrnDialogService {
    * open panel").
    *
    * This reads CDK's shared root stack, so it counts alerts and action sheets too, not only
-   * dialogs opened through {@link open}: {@link TrnAlertService} and
-   * {@link TrnActionSheetService} push onto the same `openDialogs`, and a guard that ignored
-   * them would let a dialog stack on top of an alert.
+   * dialogs opened through {@link open}. `Dialog` is `providedIn: 'root'`, so
+   * {@link TrnAlertService} and {@link TrnActionSheetService} push onto the same
+   * `openDialogs`, and a guard that ignored them would let a dialog stack on top of an alert.
    */
   hasOpen(): boolean {
     return this.dialog.openDialogs.length > 0;

@@ -89,7 +89,7 @@ export class TrnAnchoredOverlayDirective {
    *
    * Turn it off for a layer whose openness is DERIVED (a `computed`): the write-back has no
    * flag to land in, so the layer would disappear while the host still believes it is showing
-   * and answers Enter against a row nobody can see.
+   * and answers Enter and points `aria-activedescendant` at a row nobody can see.
    */
   readonly closeOnOutsidePress = input(true);
 
@@ -192,7 +192,8 @@ export class TrnAnchoredOverlayDirective {
   private attach(anchor: HTMLElement): void {
     const ref = this.overlay.create({
       // `createMenuPosition` returns the primary position AND its mirror, so a layer near the
-      // viewport edge flips to the other side instead of being pushed half off it.
+      // viewport edge flips to the other side instead of being pushed half off it. The kit's
+      // dropdown menu positions itself with the same helper.
       positionStrategy: this.positionStrategy(anchor),
       // Reposition, not close: an ancestor scrolling is not a decision to dismiss.
       scrollStrategy: this.overlay.scrollStrategies.reposition(),
@@ -222,7 +223,6 @@ export class TrnAnchoredOverlayDirective {
   }
 
   /**
-  /**
    * Keep the layer with its anchor when the anchor changes SHAPE.
    *
    * CDK recomputes a connected position only on scroll, and reads `width` once into the
@@ -238,7 +238,6 @@ export class TrnAnchoredOverlayDirective {
     ref.detachments().subscribe(() => watcher.disconnect());
   }
 
-  /**
   /**
    * The anchor moved or changed size: re-read it and re-run the position we already have.
    *
@@ -262,7 +261,6 @@ export class TrnAnchoredOverlayDirective {
     ref.updatePosition();
   }
 
-  /**
   /**
    * The requested side or alignment changed: swap the strategy, keeping the layer. Rare, so
    * rebuilding the strategy beats re-creating the view inside.
