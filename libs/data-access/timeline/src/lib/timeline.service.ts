@@ -151,6 +151,12 @@ export interface TimelineContext {
 }
 
 /**
+ * Which composer a typing report came from. `m.typing` is one flag per room, so the stop
+ * is sent only when every surface has gone quiet.
+ */
+export type TypingOwner = 'room' | 'thread';
+
+/**
  * Projects one immutable Conversation child's live timeline into a `messages` signal of
  * view models; `matrix-js-sdk` remains the source of truth. Re-maps on new events and on
  * async E2EE decryption.
@@ -166,12 +172,6 @@ export interface TimelineContext {
  * injector. Everything touching the client therefore addresses `connectedClient`, never
  * the mutable Active Account pointer. Only the shared `coalesce` is reused.
  */
-/**
- * Which composer a typing report came from. `m.typing` is one flag per room, so the stop
- * is sent only when every surface has gone quiet.
- */
-export type TypingOwner = 'room' | 'thread';
-
 @Injectable()
 export class TimelineService {
   private readonly matrix = inject(MatrixClientService);
@@ -260,11 +260,11 @@ export class TimelineService {
   /**
    * Coalesce listener-driven re-projections into one per microtask.
    *
-   * The SDK emits Timeline/Decrypted once **per event**, and {@link refresh} walks and
-   * fingerprints every loaded event, so refreshing per event is quadratic in a burst
-   * (paginating 30 messages, decrypting a backfilled room). Under zoneless, refresh()'s
-   * signal writes schedule change detection themselves, so typing and shield changes flush
-   * without an incidental tick.
+   * The SDK emits Timeline/Decrypted once **per event**, and {@link refresh} walks
+   * every loaded event, so refreshing per event is quadratic in a burst (paginating 30
+   * messages, decrypting a backfilled room). Under zoneless, refresh()'s signal writes
+   * schedule change detection themselves, so typing and shield changes flush without an
+   * incidental tick.
    *
    * Room-scoped, so it takes only the shared `coalesce` primitive; the `room` guard keeps
    * a queued pass from running against a closed room.
