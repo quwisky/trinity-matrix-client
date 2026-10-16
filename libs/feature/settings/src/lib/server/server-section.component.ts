@@ -24,21 +24,15 @@ import {
  * Server section: one block per signed-in account, saying what that account's homeserver is
  * running.
  *
- * The client's own build line is repeated here **only on narrow layouts**. The settings shell
- * renders it in the nav footer, which answers #155's "one screen for both versions" on a wide
- * layout — but that nav is hidden below 768px whenever a section is open
- * (`settings.page.scss`), so on a phone the two halves could never be seen together, which is
- * exactly the platform the ask came from. Duplicating it unconditionally would give one fact
- * two sources on the layout where the footer is already visible.
+ * The client's own build line is repeated here **only on narrow layouts**: the shell shows it
+ * in the nav footer, but that nav is hidden below 768px whenever a section is open
+ * (`settings.page.scss`). Duplicating it unconditionally would give one fact two sources where
+ * the footer is visible.
  *
- * A thin host over repeated child blocks, like the notifications section. What is section-
- * level rather than per-block is **Check again**: the value being watched is "did the deploy
- * land?", the answer is one glance, and one button that re-checks everything reads better
- * than a row of identical buttons — which for the single-account case is the same thing.
+ * **Check again** is section-level: one button re-checks every account.
  *
- * Signed-in means a **live client** (`accountIds()`). Accounts the server soft-logged-out
- * keep a stored record but have no client to ask, and are already surfaced as re-auth rows
- * in the account menu; listing them here with every row unknown would be noise.
+ * Signed-in means a **live client** (`accountIds()`). Soft-logged-out accounts have no client
+ * to ask and are already surfaced as re-auth rows in the account menu.
  */
 @Component({
   selector: 'trn-server-section',
@@ -67,18 +61,14 @@ export class ServerSectionComponent {
   protected readonly buildLabel = `Trinity v${this.build.version} · ${this.build.commit}`;
   protected readonly refreshing = signal(false);
   /**
-   * Unreachable by construction, like the per-block one: `refreshAll()` resolves rather
-   * than throws whatever the servers do, which its own spec asserts. Wired and rendered
-   * anyway so that a service which starts failing later says so rather than leaving the
-   * button to spin and stop with nothing changed.
+   * Unreachable by construction, like the per-block one: `refreshAll()` resolves rather than
+   * throws (its spec asserts this). Wired anyway so a service that starts failing says so.
    */
   protected readonly refreshError = signal<string | null>(null);
 
   /**
-   * Re-probe every account, ignoring the per-session cache.
-   *
-   * The blocks render from the service's signal, so nothing is passed down: each one
-   * updates as its own answer lands rather than all of them at the end.
+   * Re-probe every account, ignoring the per-session cache. Each block updates as its own
+   * answer lands, since it renders from the service's signal.
    */
   protected checkAgain(): void {
     runWithBusy(this.homeservers.refreshAll(), {

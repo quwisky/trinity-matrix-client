@@ -21,10 +21,9 @@ const TRINITY_JSON_HIGHLIGHT = HighlightStyle.define([
 /**
  * The CodeMirror-owned style module for Trinity's configuration editor.
  *
- * CodeMirror builds its own DOM and mounts style modules in the document root. Supplying its
- * supported `EditorView.theme()` extension keeps that runtime stylesheet ordered after the
- * vendor defaults without introducing a global, unlayered Trinity override. All colours remain
- * semantic tokens, so Mode and Theme changes apply without rebuilding the editor.
+ * CodeMirror mounts style modules in the document root. The supported `EditorView.theme()`
+ * keeps that stylesheet ordered after the vendor defaults without a global, unlayered
+ * override. Colours stay semantic tokens, so Mode and Theme changes apply without a rebuild.
  */
 const TRINITY_CONFIG_EDITOR_THEME = EditorView.theme({
   '&': {

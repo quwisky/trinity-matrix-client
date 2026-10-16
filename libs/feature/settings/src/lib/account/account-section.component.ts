@@ -43,18 +43,14 @@ const EMPTY_PASSWORDS: PasswordModel = {
 };
 
 /**
- * One message covers every "you haven't filled this in properly yet" case, because the
- * fields are masked — naming which of three hidden boxes is short tells the user little
- * that re-reading the box would not.
+ * One message covers every incomplete-field case: the fields are masked, so naming which
+ * hidden box is short tells the user little.
  */
 const INCOMPLETE = `Fill in every field (new password at least ${MIN_PASSWORD} characters).`;
 
 /**
- * Every rule the change-password form has, including the two that compare fields.
- *
- * Those two used to live in `submit()`, which meant the form could report itself valid
- * while the handler still refused to send it. Here validity is one answer: `submit()`
- * asks the form and reports what it says.
+ * Every rule the change-password form has, including the two that compare fields, so
+ * validity is one answer: `submit()` asks the form and reports what it says.
  */
 const passwordSchema = schema<PasswordModel>((path) => {
   required(path.currentPassword, { message: INCOMPLETE });
@@ -62,8 +58,7 @@ const passwordSchema = schema<PasswordModel>((path) => {
   minLength(path.newPassword, MIN_PASSWORD, { message: INCOMPLETE });
   required(path.confirmPassword, { message: INCOMPLETE });
 
-  // Cross-field, so it belongs to the tree rather than to either field: neither password
-  // is wrong on its own, it is the pair that disagrees.
+  // Cross-field, so it belongs to the tree: neither password is wrong alone, the pair disagrees.
   validateTree(path, ({ value }) => {
     const { currentPassword, newPassword, confirmPassword } = value();
     if (newPassword !== confirmPassword) {
@@ -149,11 +144,8 @@ export class AccountSectionComponent {
   readonly form = form(this.passwords, passwordSchema);
 
   /**
-   * The message to show for whatever is currently wrong.
-   *
-   * Field errors before tree errors, which preserves the order the checks used to run
-   * in: a short password reads as "fill this in properly", not as a mismatch it also
-   * happens to have.
+   * The message for whatever is currently wrong. Field errors come before tree errors, so a
+   * short password reads as "fill this in properly", not as a mismatch it also has.
    */
   private firstError(): string | null {
     const fields = [
@@ -183,10 +175,8 @@ export class AccountSectionComponent {
       error: this.error,
       destroyRef: this.destroyRef,
     }).subscribe(() => {
-      // reset(value), not a bare model set: it clears touched/dirty across the tree as
-      // well as the values, which is what FormControl.reset() used to do. Nothing reads
-      // those flags today, but leaving three required fields empty-and-touched is a
-      // primed error state waiting for the first thing that does.
+      // reset(value), not a bare model set: it clears touched/dirty across the tree too, so
+      // three required fields aren't left empty-and-touched, a primed error state.
       this.form().reset({ ...EMPTY_PASSWORDS });
       this.toast.show('Password changed.', {
         duration: 3000,

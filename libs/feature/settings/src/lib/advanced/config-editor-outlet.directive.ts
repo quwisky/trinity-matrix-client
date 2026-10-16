@@ -15,14 +15,12 @@ import type { ConfigEditorHost } from './config-editor-loader';
 /**
  * Puts the lazily-loaded editor on screen and wires it to the document the section holds.
  *
- * The editor cannot be named in a template — its type only exists once its chunk has arrived —
- * so it is created imperatively here rather than through `@if`. `NgComponentOutlet` would bind
- * the input but not the output, and the output is the whole point: the text coming back is what
- * makes the box dirty.
+ * The editor's type only exists once its chunk has arrived, so it is created imperatively
+ * rather than through `@if`. `NgComponentOutlet` would bind the input but not the output, and
+ * the output (the text coming back) is what makes the box dirty.
  *
- * One state, two views: the value flows in from the section's draft and the edit flows straight
- * back out, so the editor never holds a document of its own that could drift from the one Apply
- * would check.
+ * The value flows in from the section's draft and edits flow straight back out, so the editor
+ * never holds a document that could drift from the one Apply would check.
  */
 @Directive({ selector: '[trnConfigEditorOutlet]' })
 export class ConfigEditorOutletDirective {

@@ -52,28 +52,20 @@ const LINT_DELAY = 300;
 
 /**
  * The configuration document in a real editor: completion, hover text and live diagnostics,
- * all of them driven by this app's own settings registry.
+ * all driven by this app's own settings registry.
  *
- * **Loaded only through `config-editor-loader.ts`'s dynamic import**, which is what keeps
- * CodeMirror in a chunk of its own — nothing may import this module directly, or the editor
- * lands in the settings chunk and every visitor to any settings page pays for it.
+ * **Loaded only through `config-editor-loader.ts`'s dynamic import**, which keeps CodeMirror
+ * in a chunk of its own: nothing may import this module directly, or every settings page
+ * pays for the editor.
  *
- * ## Where the intelligence comes from
+ * The model comes from `configJsonSchema(entries)`, generated from the same `ConfigEntry`
+ * registry that reads the document and validates and writes an apply. The diagnostics are the
+ * plan Apply would build (`validateJson`), placed by the syntax tree, so the editor and the
+ * gate are the same check run twice and cannot disagree.
  *
- * Not from a JSON Schema fetched from anywhere, and not from a second description of the
- * settings written for the editor's benefit. `configJsonSchema(entries)` generates the model
- * from the same `ConfigEntry` registry that `read`s the document, `validate`s an import and
- * `write`s an applied one — so the values completion offers are the values Apply accepts, and
- * the diagnostics are literally the plan Apply would build (`validateJson`), placed on the
- * ranges the syntax tree says they belong to. The editor and the gate cannot disagree because
- * they are the same check run twice.
- *
- * ## One state, two views
- *
- * The section owns the text. `value` comes in, `edited` goes out, and the editor holds nothing
- * of its own: the document it shows is either the section's live export or the section's draft,
- * never a third thing. That is also why the update listener compares before it emits — a
- * document pushed in from outside must not come straight back out as if it had been typed.
+ * The section owns the text: `value` comes in, `edited` goes out, and the editor holds nothing
+ * of its own. The update listener therefore compares before emitting: a document pushed in
+ * from outside must not come back out as if it had been typed.
  */
 @Component({
   selector: 'trn-config-editor',
@@ -157,9 +149,8 @@ export class ConfigEditorComponent implements ConfigEditorHost {
           return;
         }
         const text = update.state.doc.toString();
-        // A document pushed in from the section arrives here as a change too. Emitting it
-        // would report the section's own text back to it as an edit, and mark a box dirty
-        // that nobody has touched.
+        // A document pushed in from the section arrives here as a change too; emitting it
+        // would report the section's own text back as an edit and mark an untouched box dirty.
         if (text !== this.value()) {
           this.edited.emit(text);
         }
@@ -185,9 +176,8 @@ export class ConfigEditorComponent implements ConfigEditorHost {
 }
 
 /**
- * The hover card: what this setting is, and — where it is a closed choice — everything it
- * accepts. Built as elements with `textContent` rather than markup, so a description can never
- * be read as HTML.
+ * The hover card: what this setting is and, for a closed choice, everything it accepts. Built
+ * with `textContent` rather than markup, so a description can never be read as HTML.
  */
 function hoverCard(info: ConfigHoverInfo): HTMLElement {
   const card = document.createElement('div');

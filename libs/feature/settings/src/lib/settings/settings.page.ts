@@ -35,21 +35,17 @@ import {
 import { SettingsDirectorySearchComponent } from '../shared/settings-directory-search/settings-directory-search.component';
 
 /**
- * Settings shell: a submenu of sections beside a routed detail outlet. On the wide
- * layout (≥768px) both panes show at once (two-pane) and the bare `/settings` index
- * auto-selects the first section; on narrow the index shows the category list and
- * opening one swaps to its sub-page (the header's back returns to the list).
+ * Settings shell: a section submenu beside a routed detail outlet. Wide (≥768px) shows both
+ * panes and the bare index auto-selects the first section; narrow shows the list and swaps
+ * to the section's sub-page.
  */
 @Component({
   selector: 'trn-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.page.html',
   styleUrl: './settings.page.scss',
-  // The page sits on the app's content surface, matching the rooms main pane and thread
-  // panels; painting the host covers the transparent header + panes (else it falls back to
-  // the darker shell background, which is wrong in dark mode). Its panes own scrolling, so
-  // clip their overflow at the shell: without this a framed Electron viewport can include
-  // descendant overflow in the document and paint a second scrollbar beside the detail pane.
+  // Painting the host on the content surface covers the transparent header and panes (else
+  // the darker shell background shows in dark mode). Overflow is clipped in the stylesheet.
   host: {
     class: 'settings-page',
     '(keydown.escape)': 'onEscape($event)',
@@ -107,9 +103,9 @@ export class SettingsPage {
   });
 
   /**
-   * The part to scroll to: the fragment, then whatever the user picked or scrolled to.
-   * The address bar mirrors it without telling the router, so a part result for the part
-   * the router still holds is set here directly instead of through a navigation.
+   * The part to scroll to: the fragment, then whatever the user picked or scrolled to. The
+   * address bar mirrors it without telling the router, so a hit for the part the router
+   * still holds is set here directly.
    */
   protected readonly partTarget = linkedSignal<string | null>(() =>
     this.fragment(),
@@ -126,18 +122,16 @@ export class SettingsPage {
   readonly sectionActive = computed(() => this.activePath() !== null);
 
   /**
-   * Wide layout: both panes show, the index auto-selects the first section, and
-   * section links replace rather than push (lateral switches must not stack history,
-   * so one Back leaves settings instead of retracing visited sections). Template-read.
-   * The same text-scaled 48rem signal as the settings dialog, so both presentations
-   * switch layout at the same width.
+   * Wide layout: both panes show, the index auto-selects the first section, and section
+   * links replace history so one Back leaves settings. Same text-scaled 48rem signal as the
+   * settings dialog, so both switch layout at the same width.
    */
   protected readonly wide = textScaledViewportSignal(48, this.destroyRef);
 
   constructor() {
-    // Browser Back, Android hardware Back and iOS history gestures bypass goBack(). When
-    // one of them pops a narrow drill-in back to the directory, clear the remembered push
-    // and mark its originating link before the shell's NavigationEnd focus pass runs.
+    // Browser Back, Android hardware Back and iOS history gestures bypass goBack(). When one
+    // pops a narrow drill-in to the directory, clear the push and mark its link before the
+    // shell's NavigationEnd focus pass runs.
     effect(() => {
       if (this.activePath() !== null || !this.narrowSectionPushed()) {
         return;
@@ -236,9 +230,9 @@ export class SettingsPage {
   }
 
   /**
-   * Mirror the current part (or clear an unknown one) in the URL without a history entry.
-   * This rewrites the address bar directly: a router navigation would run the shell's
-   * route-focus pass and pull focus off the heading the user just reached.
+   * Mirror the part (or clear an unknown one) in the URL without a history entry. Writes the
+   * address bar directly: a router navigation would run the route-focus pass and pull focus
+   * off the heading the user just reached.
    */
   protected setFragment(part: string | null): void {
     this.location.replaceState(
@@ -274,10 +268,9 @@ export class SettingsPage {
   }
 
   /**
-   * Header back/up. On the narrow single-pane layout the category list is hidden
-   * while a section is open, so this is the only route back to it — go up to the
-   * index explicitly (history may not hold it after a deep-link or reload). Otherwise
-   * (the list itself, or the desktop two-pane) step out of settings through history.
+   * Header back/up. On narrow the category list is hidden while a section is open, so go up
+   * to the index explicitly (history may not hold it after a deep link or reload). Otherwise
+   * step out of settings through history.
    */
   goBack(): void {
     if (!this.wide() && this.sectionActive()) {
@@ -299,10 +292,9 @@ export class SettingsPage {
     this.location.back();
   }
 
-  // Read the section from the router URL, not `route.firstChild`: on a deep link /
-  // reload the shell constructs before the child route activates, so `firstChild`
-  // is briefly null — which would make the wide effect wrongly redirect a directly
-  // opened section (e.g. /settings/devices) to the first one.
+  // Read the section from the router URL, not `route.firstChild`: on a deep link or reload the
+  // shell constructs before the child activates, so `firstChild` is briefly null and the wide
+  // effect would redirect a directly opened section to the first one.
   private currentSection(): string | null {
     return /^\/settings\/([^/?#]+)/.exec(this.router.url)?.[1] ?? null;
   }

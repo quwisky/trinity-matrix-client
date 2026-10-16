@@ -61,9 +61,8 @@ const reportSchema = schema<ReportModel>((path) => {
 /**
  * Report a bug, opened from Settings › Advanced, the sign-in screen, System status or the
  * desktop title bar: describe the problem, preview the redacted diagnostic log, save it as
- * `trinity-<date>.log`, and open a pre-filled GitHub issue. The description only pre-fills
- * the issue and is never stored. The preview and the saved file are the same text, from one
- * export.
+ * `trinity-<date>.log`, and open a pre-filled GitHub issue. The description only pre-fills the
+ * issue and is never stored; the preview and the saved file are the same export.
  */
 @Component({
   selector: 'trn-report-bug-dialog',
@@ -271,9 +270,8 @@ export class ReportBugDialogComponent {
   }
 
   /**
-   * The log the issue names: the built file when it has entries, or, while it is still
-   * being prepared, the name it will be saved under, so a log saved after GitHub opened is
-   * still named there.
+   * The log the issue names: the built file when it has entries, or, while it is still being
+   * prepared, the name it will be saved under.
    */
   private issueLogFileName(): string | null {
     if (this.loggingOff() || !this.includeLogs()) {

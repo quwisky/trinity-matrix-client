@@ -27,13 +27,10 @@ import { EmptyStateComponent } from '@trinity/components/generic-content';
 /**
  * The keyword list in Settings → Notifications: words that notify wherever they are said.
  *
- * Reads are synchronous snapshots off the synced push rules — the shape
- * {@link PushRulesService} and this section's toggles already use — and the service
- * re-reads them after every write, so the list is refreshed after each operation rather
- * than patched optimistically. A keyword write is a create or a delete against the server,
- * and showing a word that is not actually stored would be worse than a moment's latency.
- *
- * A pending sound change is held optimistically: see {@link optimisticSound}.
+ * Reads are synchronous snapshots off the synced push rules, re-read after every write rather
+ * than patched optimistically: a keyword write is a create or delete against the server, and
+ * showing a word that is not stored is worse than a moment's latency. A pending sound change
+ * is the exception: see {@link optimisticSound}.
  */
 @Component({
   selector: 'trn-keyword-rules',
@@ -58,9 +55,8 @@ export class KeywordRulesBlockComponent implements OnInit {
   readonly keywords = this.keywordList.asReadonly();
 
   /**
-   * Whether the account's rules have synced. "You have no keywords yet" is a positive
-   * claim, and before the first sync it is one we cannot make — the list is empty because
-   * nothing has arrived, not because the account holds none.
+   * Whether the account's rules have synced. "No keywords yet" is a claim we cannot make
+   * before the first sync: the list is empty because nothing has arrived.
    */
   private readonly loaded = signal(false);
   readonly isEmpty = computed(
@@ -73,20 +69,18 @@ export class KeywordRulesBlockComponent implements OnInit {
   /** Keywords with a write in flight, so their row's controls disable. */
   private readonly busy = signal<ReadonlySet<string>>(new Set());
   /**
-   * Sound states shown ahead of the server, keyed by rule id — the same optimistic shape
-   * the section's own toggles use (see NotificationsSectionComponent).
+   * Sound states shown ahead of the server, keyed by rule id (as the section's own toggles).
    *
    * `TrnSwitchComponent` flips itself on click and holds that in a `linkedSignal` over its
-   * `checked` input, which only recomputes when the INPUT changes. Binding the input to
-   * this map means a rejected write moves it back to the server's value, which IS a
-   * transition, so the control resyncs — without reaching into Helm internals or relying
-   * on a row's position, which any extra switch in this template would shift.
+   * `checked` input, which only recomputes when the INPUT changes. Binding the input to this
+   * map means a rejected write moves it back to the server's value, a real transition, so the
+   * control resyncs without reaching into Helm internals or depending on a row's position.
    */
   private readonly optimisticSound = signal<ReadonlyMap<string, boolean>>(
     new Map(),
   );
 
-  /** The word being added. Signal Forms, like every other form in the workspace. */
+  /** The word being added. */
   private readonly keywordModel = signal({ word: '' });
   readonly keywordForm = form(this.keywordModel);
   /** The trimmed word in the field. One accessor, so the button and the write agree. */
@@ -109,9 +103,8 @@ export class KeywordRulesBlockComponent implements OnInit {
   }
 
   /**
-   * Enter in the field adds the keyword. `preventDefault` is defensive rather than
-   * required — this block sits in no `<form>` today — but a bare Enter inside one submits
-   * it, and settings sections get moved.
+   * Enter in the field adds the keyword. `preventDefault` is defensive: this block sits in no
+   * `<form>` today, but a bare Enter inside one submits it.
    */
   onEnter(event: Event): void {
     event.preventDefault();
@@ -128,10 +121,9 @@ export class KeywordRulesBlockComponent implements OnInit {
       return; // nothing typed; no need to scold
     }
     const existing = this.keywordsSvc.find(word);
-    // Refuse only an exact repeat. A keyword another client switched off must be
-    // re-addable — that is the only way to switch it back on — and so must a different
-    // spelling of one, which the service re-points rather than duplicating; refusing that
-    // leaves someone unable to fix the casing of their own keyword except by removing it.
+    // Refuse only an exact repeat: a keyword another client switched off must be re-addable
+    // (the only way to switch it on), and so must a different spelling, which the service
+    // re-points rather than duplicates.
     if (existing?.enabled && existing.pattern === word) {
       this.toast.show(`“${word}” is already in your keywords.`, {
         duration: 3000,
@@ -199,8 +191,8 @@ export class KeywordRulesBlockComponent implements OnInit {
         },
         error: () => {
           this.setBusy(keyword.ruleId, false);
-          // Back to the server's value, and re-read: the write may have landed and only
-          // the response been lost, the same reasoning add and remove are written around.
+          // Back to the server's value and re-read: the write may have landed with only the
+          // response lost.
           this.setOptimisticSound(keyword.ruleId, keyword.sound);
           this.reload();
           this.toast.show(`Could not update “${keyword.pattern}”.`, {

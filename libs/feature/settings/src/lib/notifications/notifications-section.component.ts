@@ -61,9 +61,8 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   private readonly reactionAccountSwitches = new Subject<void>();
 
   /**
-   * Key for the sound switch in the same optimistic state/pending maps as the rule toggles.
-   * Not a rule id: it stands for the `sound` tweak across SEVEN predefined rules at once, so
-   * it cannot borrow any single one of theirs.
+   * Key for the sound switch in the same optimistic maps as the rule toggles. Not a rule id:
+   * it stands for the `sound` tweak across SEVEN predefined rules at once.
    */
   protected readonly soundKey = 'trinity.notification-sound';
   // Internal pending-map identity; the persisted account-data key belongs to the service.
@@ -110,9 +109,8 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * The optimistic value while a write is in flight, otherwise whatever the account says.
-   * Seeding once was not enough: on a cold load this page can render before the initial
-   * sync delivers account data.
+   * The optimistic value while a write is in flight, otherwise whatever the account says
+   * (seeding once isn't enough: on a cold load the page can render before the initial sync).
    */
   soundChecked(): boolean {
     return this.soundPending()

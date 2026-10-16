@@ -18,14 +18,13 @@ import { runWithBusy } from '@trinity/util/ui';
 /**
  * What one account's homeserver is running, as a block in the Server section.
  *
- * Loads on first render and reads from {@link HomeserverInfoService}'s per-session cache
- * afterwards, so switching sections does not re-probe; {@link HomeserverBlockComponent} has
- * no refresh of its own because the section header owns one for every account at once.
+ * Loads on first render and reads {@link HomeserverInfoService}'s per-session cache afterwards,
+ * so switching sections does not re-probe. There is no refresh here: the section header owns
+ * one for every account.
  *
- * **Every remote row degrades to "Unknown" rather than to an error.** The service resolves
- * a null-object instead of throwing, so `runWithBusy`'s error branch here is unreachable —
- * it is wired anyway, because a future service that *can* fail would otherwise fail
- * silently, and its own spec asserts the branch stays dead.
+ * **Every remote row degrades to "Unknown" rather than to an error.** The service resolves a
+ * null-object instead of throwing, so `runWithBusy`'s error branch is unreachable; it is wired
+ * so a future failing service does not fail silently (its spec asserts the branch stays dead).
  */
 @Component({
   selector: 'trn-homeserver-block',
@@ -83,8 +82,8 @@ export class HomeserverBlockComponent implements OnInit {
   });
 
   /**
-   * What the block's live region says. Written as one string that CHANGES rather than as
-   * text inserted with its region, which is what makes the answer announced at all.
+   * What the block's live region says. One string that CHANGES, rather than text inserted
+   * with its region, which is what makes the answer announced at all.
    */
   protected readonly announcement = computed(() => {
     const name = this.displayName();

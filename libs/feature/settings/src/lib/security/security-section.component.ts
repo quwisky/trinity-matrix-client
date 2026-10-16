@@ -24,11 +24,10 @@ import { TrackFileChooserDirective } from '@trinity/platform-native';
 import { AppLockGroupComponent } from './app-lock-group/app-lock-group.component';
 
 /**
- * Security settings sub-page: surfaces this account's end-to-end-encryption posture —
- * whether encryption/secure-backup is set up, whether this session is cross-signing
- * verified, and whether key backup is on — and launches the existing recovery/verify
- * flows to fix each. It owns no crypto logic; it reads {@link TrustService} status
- * signals and delegates presentation to the semantic Workspace application surface.
+ * Security settings sub-page: this account's end-to-end-encryption posture (secure backup
+ * set up, session cross-signing verified, key backup on), launching the existing recovery and
+ * verify flows to fix each. It owns no crypto logic: it reads {@link TrustService} status
+ * signals and delegates presentation to the Workspace application surface.
  */
 @Component({
   selector: 'trn-security-settings',
@@ -91,9 +90,8 @@ export class SecuritySectionComponent {
   }
 
   /**
-   * The escape hatch for someone with no key. Same screen as {@link unlock} — there is
-   * one implementation of an irreversible flow — but it arrives with the reset offered,
-   * rather than asking the user to find the same words a second time.
+   * The escape hatch for someone with no key. Same screen as {@link unlock} (one
+   * implementation of an irreversible flow), but it arrives with the reset offered.
    */
   resetRecovery(): void {
     this.openTrustSurface('unlock', true);

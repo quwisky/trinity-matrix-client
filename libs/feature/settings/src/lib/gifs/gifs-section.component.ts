@@ -56,10 +56,9 @@ export class GifsSectionComponent {
   readonly configured = this.settings.configured;
 
   /**
-   * The retired provider this device was moved off at startup, or null. Shown so the empty
-   * key box reads as "your old provider is gone" rather than "your key vanished" — the
-   * migration clears the key deliberately, because a key for a shut-down API cannot work
-   * against its replacement.
+   * The retired provider this device was moved off at startup, or null. Shown so the empty key
+   * box reads as "your old provider is gone", not "your key vanished": the migration clears
+   * the key because a key for a shut-down API cannot work against its replacement.
    */
   readonly migratedFrom = this.settings.migratedFrom;
 

@@ -48,56 +48,36 @@ function pad(value: number): string {
 }
 
 /**
- * Name of the downloaded file — dated, so two exports don't overwrite each other.
+ * Dated filename, so two exports don't overwrite each other.
  *
- * The date is the user's, read from the local calendar fields rather than
- * `toISOString()`: a UTC date is a day out either side of midnight for most of the world,
- * and this name is what someone scans a downloads folder for.
+ * Uses the local calendar fields, not `toISOString()`: a UTC date is a day out around midnight.
  */
 function exportFileName(now: Date): string {
   return `trinity-settings-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
 }
 
 /**
- * Advanced settings: the whole local preference layer as one pretty-printed JSON document,
- * which can be copied, exported, edited, imported and applied back.
+ * Advanced settings: the local preference layer as one pretty-printed JSON document that can
+ * be copied, exported, edited, imported and applied back.
  *
- * The document comes from {@link AppConfigService}, which builds it from the registered
- * settings only, so the omissions are structural rather than filtered: accounts, tokens,
- * drafts and anything the server keeps for you cannot reach it. Those omissions are stated
- * on the page ({@link CONFIG_EXCLUSION_NOTES}) rather than left to be discovered, because
- * someone copying this to a new device needs to know it is a preferences transfer, not a
- * sign-in.
+ * {@link AppConfigService} builds the document from registered settings only, so accounts,
+ * tokens, drafts and server-held data are structurally excluded. The page states this
+ * ({@link CONFIG_EXCLUSION_NOTES}) because it is a preferences transfer, not a sign-in.
  *
- * ## The two rules that keep this surface honest
+ * Two rules keep the editor honest:
+ * - The box detaches the moment it is dirty. The live document re-renders on any preference
+ *   change (theme following the system, another tab, an apply), which would overwrite typing.
+ *   So {@link draft} holds the user's text, and while it is non-null the box ignores the live
+ *   document; apply or discard resets it to null.
+ * - Nothing is written from unchecked text. Apply validates the whole document and writes the
+ *   resulting plan, not the text; any edit discards the plan on screen, so a summary never
+ *   describes a different document.
  *
- * **The editor detaches the moment it is dirty.** The document is derived from the owning
- * services' signals, so it re-renders whenever any preference changes — which is right for a
- * read-only view and fatal for an editable one, since a preference changing anywhere (a
- * theme following the system, another tab, an apply landing) would overwrite what is being
- * typed. So {@link draft} holds the user's own text, and while it is non-null the box shows
- * that and ignores the live document entirely. Applying or discarding puts it back to null,
- * and the view starts following the app again. There is no third state: the box is either
- * a window onto the app or the user's own text.
- *
- * **Nothing is written from text that was not checked.** Apply validates the whole document
- * first, and the plan it produces is what gets written — not the text. Editing the box
- * throws away any plan that was on screen, so a summary can never belong to a document other
- * than the one shown.
- *
- * ## Two boxes, one document
- *
- * On web and desktop the box is a real editor — completion over the settings the registry
- * knows, hover text from their descriptions, and the Apply gate's own verdict underlined as
- * you type. It arrives through {@link CONFIG_EDITOR_LOADER}, a dynamic import, so its ~430 kB
- * is a chunk of its own that nothing else on any settings page pays for.
- *
- * The `<textarea>` is not dead weight behind it. It is what renders while that chunk is in
- * flight, what renders if it never arrives — a service worker holding the editor lazily by
- * design means an offline first visit has no chunk to load — and what renders on the mobile
- * app, read-only, where a JSON editor over a phone keyboard is a worse way to change a setting
- * than the switch that owns it. Either way the text is this component's, not the box's, so
- * everything below works the same whichever one is on screen.
+ * On web and desktop the box is a rich editor from {@link CONFIG_EDITOR_LOADER}, a dynamic
+ * import of ~430 kB that no other settings page pays for. The `<textarea>` renders while that
+ * chunk loads, if it never arrives (a service worker holds it lazily, so an offline first
+ * visit has none), and read-only on the mobile app, where a phone keyboard is a worse way to
+ * change a setting than its own switch. The text belongs to this component either way.
  */
 @Component({
   selector: 'trn-advanced-settings',
@@ -123,11 +103,7 @@ export class AdvancedSettingsComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly files = inject(HostFileExportService);
 
-  /**
-   * The rich editor, where this platform offers one and the app wired it up. Optional in the
-   * `ENCRYPTION_DIALOG_COMPONENTS` idiom: without it the section still renders and still
-   * edits, in its textarea.
-   */
+  /** The rich editor where the platform offers one; without it the textarea still edits. */
   private readonly editorLoader = inject(CONFIG_EDITOR_LOADER, {
     optional: true,
   });
@@ -135,16 +111,10 @@ export class AdvancedSettingsComponent {
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('configFile');
 
-  /**
-   * The user's own text, or null while the box is following the app. See the class comment:
-   * this is the whole of the dirty-state rule.
-   */
+  /** The user's own text, or null while the box follows the app (the dirty-state rule). */
   private readonly draft = signal<string | null>(null);
 
-  /**
-   * The last plan {@link apply} produced, awaiting confirmation. Cleared by any edit, so the
-   * summary on screen always describes the text on screen.
-   */
+  /** The last plan {@link apply} produced, awaiting confirmation; any edit clears it. */
   private readonly reviewed = signal<ConfigApplyPlan | null>(null);
 
   /** What the export leaves out and why — the section's copy, not a hardcoded list. */
@@ -160,12 +130,9 @@ export class AdvancedSettingsComponent {
   );
 
   /**
-   * Whether this platform offers editing at all — web and desktop, not the mobile app. See
-   * {@link supportsConfigEditor} for why, and for why the Electron shell counts as desktop
-   * even though Capacitor calls it non-native.
-   *
-   * Read-only elsewhere rather than absent: the document, Copy and Reset are the useful half
-   * on a phone, and the section says why the other half is missing rather than leaving a gap.
+   * Whether this platform offers editing: web and desktop, not mobile (see
+   * {@link supportsConfigEditor}, which also explains why Electron counts as desktop).
+   * Read-only elsewhere, with the section saying why, since document, Copy and Reset still help.
    */
   readonly canEdit = supportsConfigEditor();
 
@@ -176,14 +143,10 @@ export class AdvancedSettingsComponent {
   readonly applying = signal(false);
 
   /**
-   * The document, live: `exportJson()` reads the owning services' signals, so a preference
-   * changed elsewhere (or reset here) re-renders this without a reload.
+   * The document, live: re-renders when a preference changes elsewhere or is reset here.
    *
-   * What is rendered, only. Copy and Export go through {@link outgoingDocument} instead of
-   * sending this string, because `exportedAt` is stamped at the moment of the read: memoized
-   * here it would freeze at the last re-render, and a file opened at 17:00 would claim it was
-   * taken at 09:00 while its own filename said today. The settings are identical either way —
-   * both reads go to the same signals.
+   * Display only. Copy and Export use {@link outgoingDocument}, because `exportedAt` is
+   * stamped at read time and a memoized string would freeze it at the last re-render.
    */
   readonly configJson = computed(() => this.config.exportJson());
 
@@ -201,11 +164,8 @@ export class AdvancedSettingsComponent {
 
   /**
    * Settings that will be applied but do nothing here, and paths this build does not have.
-   *
-   * Held separately from {@link reviewed} so they survive the apply that clears the summary:
-   * "this shortcut is desktop-only" is exactly the thing someone needs to still be able to
-   * read *after* pressing Apply. Decision 4 on the issue — warn and proceed, naming what
-   * will not apply here, rather than silently filtering.
+   * Held apart from {@link reviewed} so they survive the apply that clears the summary: a
+   * "desktop-only" warning is needed after pressing Apply. Warn and proceed; don't filter.
    */
   readonly warnings = signal<readonly string[]>([]);
 
@@ -228,10 +188,8 @@ export class AdvancedSettingsComponent {
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
           next: (component) => this.editor.set(component),
-          // The chunk did not arrive: offline on a first visit, since it is held lazily by the
-          // service worker precisely so it is not downloaded by people who never open this
-          // page, or a deploy that moved it. The textarea is a complete editing surface, so
-          // there is nothing to report and nothing to retry.
+          // Offline on a first visit (a service worker holds the chunk lazily) or a moved
+          // deploy. The textarea is a complete editing surface: nothing to report or retry.
           error: () => this.editor.set(null),
         });
     }
@@ -301,9 +259,8 @@ export class AdvancedSettingsComponent {
   }
 
   /**
-   * Check what is in the box and say what applying it would do. Writes nothing — this is
-   * what the Apply button runs, and the summary it produces has to be confirmed
-   * ({@link confirmApply}) before anything moves.
+   * Check what is in the box and say what applying it would do; writes nothing. The summary
+   * must be confirmed ({@link confirmApply}) before anything moves.
    */
   review(): void {
     const plan = this.config.validateJson(this.editorValue());
@@ -327,9 +284,8 @@ export class AdvancedSettingsComponent {
         next: () => {
           this.applying.set(false);
           this.reviewed.set(null);
-          // Back to following the app: the settings the document asked for are now the
-          // app's own, and anything a warning named is not — so the live document is the
-          // only honest thing to show.
+          // Follow the app again: applied settings are now the app's own, so the live
+          // document is the only honest view.
           this.draft.set(null);
           this.toast.show(
             count === 1 ? '1 setting applied.' : `${count} settings applied.`,
@@ -338,9 +294,8 @@ export class AdvancedSettingsComponent {
         },
         error: () => {
           this.applying.set(false);
-          // The edit is kept deliberately: some writes may have landed and some not, and
-          // pressing Apply again re-checks against the app as it now is, so the next
-          // summary names exactly what still has not gone in.
+          // Keep the edit: some writes may have landed, and Apply again re-checks against the
+          // app as it now is, so the next summary names what still hasn't gone in.
           this.reviewed.set(null);
           this.toast.show('Could not apply every setting.', {
             duration: 4000,
@@ -387,23 +342,15 @@ export class AdvancedSettingsComponent {
   }
 
   /**
-   * An imported document lands in the box like a paste — visible and editable before it is
-   * applied — and is checked straight away, so file and clipboard reach the same summary a
-   * hand edit does.
-   */
-  /**
-   * What leaves the app when Copy or Export is pressed.
-   *
-   * The two rules meet here. Once the box is dirty it is the user's own text, sent verbatim:
-   * re-reading would send the app's settings under the nose of someone who is looking at
-   * theirs, and there is nothing to re-stamp in text this component did not write. Until
-   * then it is a *fresh* read rather than {@link configJson}, whose `exportedAt` froze at the
-   * last re-render — see the note there.
+   * What leaves the app on Copy or Export. Dirty: the user's own text, verbatim (a re-read
+   * would send settings other than the ones on screen). Otherwise a fresh read, not
+   * {@link configJson}, whose `exportedAt` froze at the last re-render.
    */
   private outgoingDocument(): string {
     return this.draft() ?? this.config.exportJson();
   }
 
+  /** Imported text lands in the box like a paste and is checked at once, as a hand edit is. */
   private loadAndReview(text: string): void {
     this.draft.set(text);
     this.review();

@@ -61,10 +61,9 @@
           >
             Enter recovery key
           </button>
-          <!-- Subordinate, and deliberately the same destination: the unlock screen owns
-             the reset, so this is a second door to one implementation of an irreversible
-             flow, not a second copy of it. Someone who has lost their key would not
-             otherwise guess it lives behind "Enter recovery key". -->
+          <!-- A second door to the unlock screen, which owns the irreversible reset (one
+             implementation); someone who lost their key would not guess it lives behind
+             "Enter recovery key". -->
           <button
             trnBtn
             variant="danger"
