@@ -1,21 +1,10 @@
 // Bridges @ctrl/ngx-emoji-mart onto Trinity's design tokens.
-// ---
-// The vendor's picker.css is 453 lines with ZERO custom properties — every colour is a
-// literal (#fff, #222427, #d9d9d9, and an #ae65c5 accent). So this cannot be a variable
-// remap; it has to be an override sheet. And because the vendor's inner DOM carries no
-// `_ngcontent` attribute, an encapsulated stylesheet cannot reach it at all — hence
-// `ViewEncapsulation.None` on the component, scoped by the `.trn-emoji-picker` host class
-// so nothing leaks past this element.
-// ---
-// Every rule below is keyed on a token, never a literal, so the picker follows light/dark
-// AND the Theme. That is four combinations the vendor's own `darkMode` boolean could
-// never express — which is exactly why the template pins it to `false` (NOT merely leaves
-// it unbound, which would follow the OS): that keeps `.emoji-mart-dark` and its ten rules
-// off the element, so these only have to beat `.emoji-mart` base rules.
-// ---
-// What is NOT here is the accent. The vendor emits it as an inline style, which nothing
-// short of `!important` can outrank, so it is passed through its `color` input instead —
-// see the template.
+// The vendor stylesheet has no custom properties (every colour is a literal), so this is an
+// override sheet, and `ViewEncapsulation.None` is needed because the vendor DOM carries no
+// `_ngcontent` attribute. Scoped by the `.trn-emoji-picker` host class.
+// Every rule is keyed on a token so the picker follows Mode and Theme; the template pins the
+// vendor's `darkMode` to `false` so only `.emoji-mart` base rules need beating.
+// The accent is not here: the vendor emits it inline, so it goes in through its `color` input.
 
 @layer components {
   .trn-emoji-picker {
@@ -43,10 +32,8 @@
       box-shadow: var(--trinity-shadow-overlay);
     }
 
-    // Only the idle and hover states are ours to paint. The vendor inline-styles the anchor
-    // bar and the SELECTED anchor from its `color` input — which the template hands
-    // `var(--trinity-accent)` — so a rule for either would be outranked and, worse, would
-    // read as though it were doing the work.
+    // Only the idle and hover states are ours to paint: the vendor inline-styles the anchor
+    // bar and the selected anchor from its `color` input, so a rule for either is outranked.
     .emoji-mart-anchor {
       color: var(--muted-foreground);
 
@@ -70,7 +57,7 @@
         }
 
         // The vendor sets `outline: 0` on this input unconditionally, so without a ring here
-        // it has no focus indicator at all. Same shape as the rest of the app's.
+        // it has no focus indicator at all.
         &:focus-visible {
           border-color: var(--trinity-accent);
           outline: 2px solid var(--trinity-accent);
@@ -83,8 +70,8 @@
       fill: var(--muted-foreground);
     }
 
-    // Category headings are sticky and painted opaque by the vendor so rows do not show
-    // through; that opaque fill has to be OUR surface or a band of #fff crosses dark mode.
+    // The vendor paints sticky category headings opaque so rows do not show through; that
+    // fill has to be our surface or a band of #fff crosses dark mode.
     .emoji-mart-category-label span {
       background: var(--trinity-surface-floating);
       color: var(--foreground);
@@ -99,9 +86,8 @@
     }
 
     // Embedded in a surface that already draws the card (the composer's expression panel):
-    // the grid and its placeholder give up every part of their own frame, so the panel is
-    // one card. The sticky category labels still need an opaque fill, and it is the overlay
-    // surface the grid now sits on.
+    // the grid and its placeholder drop their own frame. The sticky category labels still
+    // need an opaque fill, the overlay surface the grid sits on.
     &.trn-emoji-picker--embedded {
       .emoji-mart,
       .trn-emoji-picker__placeholder {
@@ -119,9 +105,9 @@
       }
     }
 
-    // Filling the host's width (see `layout`): the vendor's 6px side insets go, so the
-    // category bar, the search and the section headers line up with the grid, edge to edge
-    // of the host. Each cell's padding is set from the measured row so whole cells share it.
+    // Filling the host's width (see `layout`): the vendor's 6px side insets go so the bar,
+    // search and section headers line up with the grid. Each cell's padding is set from the
+    // measured row so whole cells share it.
     &.trn-emoji-picker--fill {
       .trn-emoji-picker__placeholder {
         width: 100%;
@@ -138,9 +124,8 @@
         padding: var(--trn-emoji-cell-padding);
       }
 
-      // The vendor promotes its scroll area to a layer (`will-change: transform`). Filling,
-      // that layer left a hairline of stale paint under the sticky section headings in
-      // Chromium; painted with the page, it does not.
+      // The vendor promotes its scroll area to a layer (`will-change: transform`); filling,
+      // that left a hairline of stale paint under the sticky headings in Chromium.
       .emoji-mart-scroll {
         will-change: auto;
       }

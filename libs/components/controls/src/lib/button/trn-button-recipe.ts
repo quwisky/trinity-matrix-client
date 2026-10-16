@@ -47,12 +47,11 @@ const solidDangerTone =
 
 /**
  * A solid primary action on an attention surface (an accent `trn-banner`, `trn-page-header` or
- * `trnOverlaySurface`, which mark themselves `data-trn-surface="attention"`). Its own fill is
- * the accent, the same colour as that surface, so it would read as plain text with no visible
- * hover (#1217). There it inverts to the attention action roles, and its focus ring gains an
- * offset in the surface colour so the ring, which shares the fill's colour, stays distinct
- * from the button. Outside such a surface none of these classes match, so every other solid
- * primary button is unchanged.
+ * `trnOverlaySurface`, which mark themselves `data-trn-surface="attention"`). Its fill is the
+ * same accent as the surface, so it would read as plain text with no visible hover. There it
+ * inverts to the attention action roles, and its focus ring gains an offset in the surface
+ * colour so the ring, which shares the fill's colour, stays distinct from the button. Outside
+ * such a surface none of these classes match.
  *
  * Anchors need their own hover class: Helm's `[a]:hover:bg-primary/80` compiles to
  * `.cls:is(a):hover`, which outranks the plain attention hover. The `[a]:` copy has equal
@@ -72,13 +71,12 @@ const controlBorder =
   'border-[color:var(--trinity-border-control)] dark:border-[color:var(--trinity-border-control)]';
 
 /**
- * An outline button on an attention surface (#1244). Helm's light fill, its translucent dark
- * fill and the neutral border and label all sit on the accent there, where the border falls
- * near 1:1 and the label below 4.5:1. It stays transparent with the attention control border
- * and foreground, also while it holds an open menu (Helm's `aria-expanded:` grey chip would
- * otherwise paint on the accent), and hovers like a solid action. The shared focus border and
- * ring already out-rank these classes. The `dark:` copies out-rank Helm's and the control
- * border's own `dark:` classes.
+ * An outline button on an attention surface. Helm's light fill, translucent dark fill and the
+ * neutral border and label all sit on the accent there, where the border falls near 1:1 and
+ * the label below 4.5:1. It stays transparent with the attention control border and
+ * foreground, also while it holds an open menu (Helm's `aria-expanded:` grey chip would
+ * otherwise paint on the accent), and hovers like a solid action. The `dark:` copies out-rank
+ * Helm's and the control border's own `dark:` classes.
  */
 const outlineOnAttention =
   'in-data-[trn-surface=attention]:border-[color:var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:dark:border-[color:var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:bg-transparent in-data-[trn-surface=attention]:dark:bg-transparent in-data-[trn-surface=attention]:text-[color:var(--trinity-state-attention-control-foreground)] in-data-[trn-surface=attention]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:dark:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:hover:text-[color:var(--trinity-state-attention-action-foreground)] in-data-[trn-surface=attention]:aria-expanded:bg-transparent in-data-[trn-surface=attention]:aria-expanded:text-[color:var(--trinity-state-attention-control-foreground)]';
@@ -131,10 +129,8 @@ const shapeClasses: Record<TrnButtonShape, string> = {
 };
 
 /**
- * A private adapter from Trinity concepts to the current Helm class substrate.
- *
- * No Helm or CVA type crosses the public Controls entrypoint. When the substrate changes,
- * only this mapping changes; canonical component callers keep their semantic vocabulary.
+ * Private adapter from Trinity concepts to the Helm class substrate. No Helm or CVA type
+ * crosses the public Controls entrypoint.
  */
 export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
   const size =

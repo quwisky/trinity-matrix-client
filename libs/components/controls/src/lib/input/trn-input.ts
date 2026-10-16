@@ -19,16 +19,13 @@ import {
 export type { TrnTextControlSize } from './trn-text-control-recipe';
 
 /**
- * Trinity's form input.
- *
- * The exact native-input selector keeps focus, value, autofill and Signal Forms behavior on
- * the element the browser operates. Brain supplies field state and description wiring while
- * this directive owns the public size and validation vocabulary plus every appearance class.
- * Validation shows only once the user touched the control or tried to submit (`spartanInvalid`).
+ * Trinity's form input. The native-input selector keeps focus, value, autofill and Signal
+ * Forms behavior on the element the browser operates; this directive owns the size and
+ * validation vocabulary plus every appearance class. Validation shows only once the user
+ * touched the control or tried to submit (`spartanInvalid`).
  *
  * `aria-describedby` is published explicitly because `BrnFieldControlDescribedBy` otherwise
- * writes `null` over a consumer attribute. The unit and browser contracts pin the resulting
- * native description relationship.
+ * writes `null` over a consumer attribute.
  */
 @Directive({
   selector: 'input[trnInput]',

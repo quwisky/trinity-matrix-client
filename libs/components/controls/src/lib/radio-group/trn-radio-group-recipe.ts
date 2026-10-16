@@ -6,7 +6,7 @@ const selectedTone =
   'data-[state=selected]:bg-[var(--trinity-state-selected-surface)] data-[state=selected]:text-[var(--trinity-state-selected-foreground)]';
 
 /**
- * A segmented group on an attention surface (#1241). The neutral track would nest a light
+ * A segmented group on an attention surface. The neutral track would nest a light
  * floating fill in the accent, where the on-attention ring and the selected option both fail
  * against it. There the track keeps the surface colour with the attention control border,
  * the options take the attention foreground, and the selected option inverts like a solid
@@ -20,7 +20,7 @@ const segmentedOptionOnAttention =
   'in-data-[trn-surface=attention]:text-[var(--trinity-state-attention-control-foreground)] in-data-[trn-surface=attention]:hover:bg-[var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:hover:text-[var(--trinity-state-attention-action-foreground)] in-data-[trn-surface=attention]:data-[state=selected]:bg-[var(--trinity-state-attention-action-surface)] in-data-[trn-surface=attention]:data-[state=selected]:text-[var(--trinity-state-attention-action-foreground)] in-data-[trn-surface=attention]:has-[:focus-visible]:shadow-[0_0_0_var(--trinity-focus-ring-offset)_var(--trinity-state-attention-control-track-surface),0_0_0_calc(var(--trinity-focus-ring-offset)+var(--trinity-focus-ring-width))_var(--trinity-focus-ring)]';
 
 /**
- * A list option on an attention surface (#1244). Its label takes the attention foreground,
+ * A list option on an attention surface. Its label takes the attention foreground,
  * the indicator ring the attention control border, and the checked dot the attention
  * foreground. In an invalid group the indicator takes the attention danger border and the
  * same opaque 2px danger ring as an invalid field, the cue that does not rely on hue. The

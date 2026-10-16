@@ -7,29 +7,17 @@ import {
 } from '../field/trn-field-recipe';
 
 /**
- * Trinity's form label.
+ * Trinity's form label. An attribute directive, not an element, because the host carries the
+ * semantics: a native `<label for="…">` paired with an input's `id`, or a `<span>` group
+ * caption. A `<trn-label>` element would break the `for`/`id` association.
  *
- * An attribute directive, not an element, because the host carries the semantics: 15 of the
- * 16 call sites are a native `<label for="…">` paired with an input's `id`, and one is a
- * `<span>` used as a group caption. A `<trn-label>` element would break the `for`/`id`
- * association on the first and have no meaning on the second.
+ * The kit directive is composed through `hostDirectives`, so there is no second copy of its
+ * class list to drift from a `@spartan-ng/cli` re-sync.
  *
- * **Composed, not reimplemented.** The kit directive is applied through `hostDirectives`, so
- * there is no second copy of its class list to drift from a `@spartan-ng/cli` re-sync. What
- * this library owns is the API: the `trnLabel` selector and the two inputs below. Swapping
- * the library underneath is a change to this file's `hostDirectives` entry, and to nothing
- * else in the workspace.
- *
- * **`id` and `for` are deliberately not forwarded**, and the attempt to forward them is worth
- * recording. The kit publishes them by composing brain's own label directive, but
- * `hostDirectives` input forwarding does not chain: listing `inputs: ['id', 'for']` on an
- * entry whose target only *inherits* those inputs fails at runtime with
- * `NG0311: Directive HlmLabel does not have an input with a public name of id`.
- *
- * Which turned out not to matter. All 16 call sites write `for="…"` as the plain HTML
- * attribute the browser already understands — none binds `[for]` or `[id]` — so the input
- * was surface nobody used, and the label/control association works because it is native, not
- * because a directive re-published it.
+ * **`id` and `for` are deliberately not forwarded.** `hostDirectives` input forwarding does
+ * not chain: listing `inputs: ['id', 'for']` on an entry whose target only inherits those
+ * inputs fails at runtime with `NG0311`. The label/control association works because `for`
+ * is the plain HTML attribute, not a directive input.
  */
 @Directive({
   selector: 'label[trnLabel], span[trnLabel]',

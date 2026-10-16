@@ -1,20 +1,17 @@
 <!--
-  `isNative`, `showPreview`, and `useButton` are pinned, not inputs: native glyphs mean no
-  sprite-sheet requests, the preview row is dead weight in both call sites, and emoji are
-  actions rather than labelled generic spans. `title` and `emoji` are deliberately absent —
-  the vendor guards its preview with `*ngIf="showPreview"`, so with the preview off both were
-  inert, and a `title` that renders nowhere is a lie in the diff.
+  `isNative`, `showPreview` and `useButton` are pinned, not inputs: native glyphs mean no
+  sprite-sheet requests, the preview row is unused, and emoji are actions rather than
+  labelled generic spans. `title` and `emoji` are absent because the vendor renders them only
+  inside the preview.
 
-  `darkMode` is pinned OFF rather than left unbound, which is not the same thing: the
-  vendor defaults it to `matchMedia('(prefers-color-scheme: dark)').matches`, so an absent
-  binding means "follow the OS", not "off". Unbound, every user on a dark desktop would
-  carry `.emoji-mart-dark` whatever the Trinity theme said.
+  `darkMode` is pinned OFF, not left unbound: the vendor defaults it to
+  `matchMedia('(prefers-color-scheme: dark)').matches`, so an absent binding follows the OS
+  and would apply `.emoji-mart-dark` whatever the Trinity theme says.
 
-  `color` is the vendor's accent, and at both places it lands it is an INLINE style — the
-  anchor bar's background, and `color` on the selected category anchor, whose icon picks it
-  up through `fill: currentColor`. No rule in our stylesheet can outrank an inline style
-  without `!important`, so the token goes in through the vendor's own input instead of
-  being fought in CSS. See the component's note on theming.
+  `color` is the vendor's accent, written as an INLINE style (the anchor bar background and
+  the selected anchor's `color`, which its icon takes through `fill: currentColor`). No
+  stylesheet rule outranks that without `!important`, so the token goes in through the
+  vendor's own input.
 -->
 @if (ready()) {
   <emoji-mart

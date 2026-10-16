@@ -8,19 +8,13 @@ import {
 import { trnCheckboxRecipe } from '../choice-control/trn-choice-control-recipe';
 
 /**
- * Trinity's checkbox.
+ * Trinity's checkbox. A native checkbox stays the semantic and focusable control; the adjacent
+ * recipe span is presentation only, so checked, indeterminate, disabled and invalid state are
+ * reported on the element assistive technology and browser automation operate.
  *
- * A native checkbox remains the semantic and focusable control. The adjacent recipe span is
- * presentation only, so checked, indeterminate, disabled and invalid state are reported on the
- * element assistive technology and browser automation actually operate.
- *
- * The `ControlValueAccessor` in particular is deliberately not re-exposed: this workspace
- * uses Signal Forms only, no call site binds a checkbox to a form control, and re-publishing
- * a forms integration nobody uses would tie the public API to `@angular/forms` for nothing.
- *
- * Labelling is the caller's, and already works: every call site wraps the checkbox in its
- * own `<label>` carrying the text and the `data-testid`. `aria-label` is forwarded for the one
- * place that has no visible text, and `aria-describedby` connects validation help.
+ * No `ControlValueAccessor`: the workspace uses Signal Forms only. Labelling is the caller's
+ * (wrap in a `<label>`); `aria-label` covers a checkbox with no visible text and
+ * `aria-describedby` connects validation help.
  */
 @Component({
   selector: 'trn-checkbox',
