@@ -3,7 +3,7 @@ on:
   workflow_call:
     inputs:
       sha:
-        description: Exact full commit SHA to build.
+        description: The calling event's full commit SHA (github.sha); the job fails unless the checkout is that commit.
         required: true
         type: string
       artifact-name:
@@ -38,9 +38,12 @@ jobs:
       manifest-digest: ${{ steps.manifest.outputs.manifest-digest }}
       sha: ${{ steps.manifest.outputs.sha }}
     steps:
+      # The calling event's commit, which ci.yml passes as inputs.sha; `assert-source` fails
+      # unless HEAD equals it. No `ref:` input: CodeQL's cache-poisoning query reads a
+      # caller-supplied ref as untrusted code on the weekly schedule run, although that run
+      # skips this job and would build the default branch's own commit.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup
       - name: Validate renderer request

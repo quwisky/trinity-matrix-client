@@ -225,8 +225,9 @@ workspace with the host-side health check.
 ### The verified renderer artifact
 
 The reusable [`_renderer.yml`](../../.github/workflows/_renderer.yml) workflow checks
-out the exact full commit SHA requested by `ci.yml`, runs one production renderer
-compilation, and records `dist/web-bundle-manifest.json` version 2. The manifest binds
+out the calling event's commit, fails unless it is the exact full commit SHA requested by
+`ci.yml`, runs one production renderer compilation, and records
+`dist/web-bundle-manifest.json` version 2. The manifest binds
 the production configuration and every file's path, byte count, and SHA-256; its own
 SHA-256, source SHA, immutable artifact ID, and run-bound artifact name are passed to
 downstream jobs. The canonical verifier is `node scripts/web-bundle-manifest.mjs`,
@@ -240,6 +241,13 @@ does not replace `www/`. The `e2e` and `browser-e2e` jobs build the development 
 preparing Docker/browser prerequisites. In `e2e`, the production renderer step restores the
 verified artifact afterward, while styling uses the development server. The browser
 journeys use only the development server, so `browser-e2e` does not wait for the renderer.
+
+The renderer job and its consumers check out the event's commit without a `ref:` input.
+`renderer-artifact.mjs` binds that checkout to the renderer's SHA: every command fails
+unless `HEAD` equals `TRINITY_RENDERER_SHA`. CodeQL's
+`actions/cache-poisoning/poisonable-step` query treats a `ref:` taken from a workflow
+input or job output as untrusted code on `ci.yml`'s schedule trigger, and flags each
+local action or script that runs after it.
 
 For local host parity checks against an already recorded artifact, use:
 

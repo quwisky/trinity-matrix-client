@@ -33,7 +33,17 @@ describe('verified renderer workflow boundary', () => {
     const job = renderer.jobs.renderer;
     expect(job.uses).toBeUndefined();
     expect(job.permissions).toEqual({ contents: 'read' });
-    expect(job.steps[0].with.ref).toBe('${{ inputs.sha }}');
+    // The event's commit, bound to inputs.sha by `assert-source` before the build. An
+    // explicit `ref:` reopens CodeQL's cache-poisoning alert on the schedule trigger.
+    expect(job.steps[0].with).toEqual({ 'persist-credentials': false });
+    expect(job.env.TRINITY_RENDERER_SHA).toBe('${{ inputs.sha }}');
+    const assertSource = job.steps.findIndex(
+      (step) => step.run === 'node scripts/renderer-artifact.mjs assert-source',
+    );
+    expect(assertSource).toBeGreaterThan(0);
+    expect(assertSource).toBeLessThan(
+      job.steps.findIndex((step) => step.run?.includes('nx build trinity')),
+    );
     expect(
       job.steps.filter((step) => step.run?.includes('nx build trinity')),
     ).toEqual([
@@ -85,7 +95,8 @@ describe('verified renderer workflow boundary', () => {
         'manifest-digest': '${{ needs.renderer.outputs.manifest-digest }}',
         destination: 'dist/renderer-download',
       });
-      expect(job.steps[0].with.ref).toBe('${{ needs.renderer.outputs.sha }}');
+      // The restore action binds this checkout to the renderer's SHA (HEAD check).
+      expect(job.steps[0].with).toEqual({ 'persist-credentials': false });
     },
   );
 
@@ -96,8 +107,35 @@ describe('verified renderer workflow boundary', () => {
     expect(steps[1].with['run-id']).toBe('${{ inputs.source-run-id }}');
     expect(steps[1].with.name).toBeUndefined();
     expect(steps[2].run).toBe('node scripts/renderer-artifact.mjs restore');
+    // The consumer's checkout has no `ref:`; these bind it to the renderer's SHA.
+    expect(steps[0].env.TRINITY_RENDERER_SHA).toBe('${{ inputs.sha }}');
+    expect(steps[2].env.TRINITY_RENDERER_SHA).toBe('${{ inputs.sha }}');
     expect(JSON.stringify(restore)).not.toContain('TRINITY_E2E_PREBUILT_WWW=1');
   });
+
+  it.each(['assert-source', 'prepare', 'restore'])(
+    'refuses %s when the checkout is not the renderer commit',
+    (command) => {
+      let failure;
+      try {
+        execFileSync(
+          process.execPath,
+          [resolve(root, 'scripts/renderer-artifact.mjs'), command],
+          {
+            cwd: root,
+            env: { ...process.env, TRINITY_RENDERER_SHA: '0'.repeat(40) },
+            stdio: 'pipe',
+          },
+        );
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure?.status).toBe(1);
+      expect(String(failure?.stderr)).toContain(
+        'Renderer SHA differs from checked-out commit',
+      );
+    },
+  );
 
   it('restores production after development prerequisites and preserves development builds', () => {
     const steps = ci.jobs.e2e.steps;
