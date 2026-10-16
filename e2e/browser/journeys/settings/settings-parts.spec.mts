@@ -42,9 +42,13 @@ test.describe('Settings parts', () => {
     await expect(page.getByTestId('settings-part-code-blocks')).toBeVisible({
       timeout: 20_000,
     });
-    // Straight back to the top while the click's smooth scroll still holds the spy.
+    // Straight back to the top while the click's smooth scroll still holds the spy. Wait
+    // for that scroll to leave the top first: a wheel up that lands before it starts has
+    // nothing to scroll, so it is not the scroll this test is about.
     await page.getByTestId('settings-part-code-blocks').click();
-    await page.getByTestId('settings-detail').hover();
+    const detail = page.getByTestId('settings-detail');
+    await expect.poll(() => detail.evaluate(scrollerTop)).toBeGreaterThan(0);
+    await detail.hover();
     await page.mouse.wheel(0, -10_000);
     await expect(
       page.locator('.settings-layout__part[aria-current="location"]'),
@@ -141,3 +145,11 @@ test.describe('Settings parts', () => {
       .toBeCloseTo(titleBox?.x ?? -1, 0);
   });
 });
+
+/** How far the settings detail's scrolling column has scrolled. */
+function scrollerTop(detail: Element): number {
+  const scroller = [detail, ...detail.querySelectorAll('*')].find(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  );
+  return scroller?.scrollTop ?? 0;
+}
