@@ -1,32 +1,29 @@
 /**
  * One file staged in the composer, waiting to be sent.
  *
- * `id` exists so the strip can say WHICH one to remove. `track` alone would be satisfied by the
- * `File` reference — the list holds the same instances across renders — but the removal output
- * has to carry something, and an opaque string is a better payload for a presentational
- * component than the `File` itself. Two files picked from the same folder can also match on
- * name, size and type, so neither is a key.
+ * `id` lets the strip say WHICH one to remove: the removal output needs an opaque payload
+ * rather than the `File`, and two files picked from the same folder can match on name, size and
+ * type, so none of those is a key.
  */
 export interface StagedAttachment {
   readonly id: string;
   readonly media: StagedMediaReference;
-  /** Temporary thread compatibility; removed when #309 moves threads onto Conversation Runtime. */
+  /** Temporary thread compatibility; to be removed when threads move onto Conversation Runtime. */
   readonly file: File;
   /** Object URL previewing an image, else null. Revoked when the item leaves the strip. */
   readonly previewUrl: string | null;
   /**
    * Whether this file's last send attempt failed.
    *
-   * A batch reports per item rather than throwing, so one bad file leaves four delivered and
-   * itself still staged. Without this the survivor is indistinguishable from a file that was
-   * never sent, and the strip would quietly present a failure as a pending item.
+   * A batch reports per item rather than throwing, so one bad file stays staged while the rest
+   * are delivered; without this the strip would present a failure as a pending item.
    */
   readonly failed: boolean;
 }
 
 /**
- * Monotonic, not `crypto.randomUUID()`: the id never leaves the composer, so it needs to be
- * unique within one session rather than globally, and a counter keeps specs readable.
+ * Monotonic, not `crypto.randomUUID()`: the id never leaves the composer, so session-unique
+ * is enough.
  */
 let nextId = 0;
 

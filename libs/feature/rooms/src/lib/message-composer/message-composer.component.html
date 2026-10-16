@@ -66,8 +66,8 @@
        overlay container, anchored to the input row, so no `overflow: hidden` ancestor can cut
        it in half; where the app prefers sheets it opens as a bottom sheet instead (see
        `togglePicker`). An outside press closes the anchored panel and writes back `false`.
-       Its view is kept for a minute after closing, since the emoji grid is ~5,500 elements
-       (#1320); a different account releases it, so no search carries across accounts. -->
+       Its view is kept for a minute after closing because the emoji grid is thousands of
+       elements; a different account releases it, so no search carries across accounts. -->
   <ng-template
     [trnAnchoredOverlay]="composerField"
     [open]="pickerOpen() && !pickerSheet()"
@@ -99,7 +99,7 @@
     />
   }
   <!-- The option ids this stamps are what the textarea's `aria-activedescendant` below points
-       at, and what `scrollSuggestionIntoView` looks up — see the child's own note. -->
+       at, and what `scrollSuggestionIntoView` looks up. -->
   <trn-composer-suggestions
     [anchor]="composerField"
     [emojiOpen]="menus.emojiOpen()"
@@ -151,11 +151,9 @@
     hidden
     (change)="onCaptureInput($event, 'video')"
   />
-  <!-- The FIELD: one box holding the insert button, the input and the emoji/send buttons, and
+  <!-- The FIELD: one box holding the insert button, the input and the trailing buttons, and
        what all four floating layers anchor to. A grid rather than a flex row, so the preview
-       can occupy the textarea's own cell instead of standing beside it — see the stylesheet.
-
-       The layers anchor to the field and remain independent of the composer's layout. -->
+       can occupy the textarea's own cell instead of standing beside it. -->
   <div
     class="composer__field"
     #composerField
@@ -181,8 +179,7 @@
       (recordVideo)="onRecordVideo()"
     />
     <!-- The preview replaces the input rather than sitting beside it, so the composer keeps its
-       height and nothing below it moves. The textarea stays in the DOM (hidden) so its value,
-       caret and draft survive the round trip untouched. -->
+       height. The textarea stays in the DOM (hidden) so its value, caret and draft survive. -->
     @if (previewing()) {
       <!-- `msg__text--html` only for rendered markdown, mirroring the timeline and edit history:
          without it the container stays `pre-wrap`, which is what keeps a plain message's line
@@ -255,17 +252,16 @@
       (click)="togglePicker()"
     >
       <!-- A chosen GIF is fetched before its upload starts, and the panel closes once it
-           arrives. The trigger shows the wait meanwhile, as the `+` used to. -->
+           arrives; the trigger shows the wait meanwhile. -->
       @if (attachments.gifDownloading()) {
         <trn-spinner size="md" />
       } @else {
         <trn-icon name="smile" motion="pop" />
       }
     </button>
-    <!-- Shown at every width and pointer type: touch has no reliable Enter-to-send, and on
-       a pointer device it is still the discoverable way to send when Enter is ambiguous
-       (a draft holding newlines, IME composition). Withheld only while recording, where
-       the recording bar owns the send plane and two identical ones would be a coin-flip. -->
+    <!-- Shown at every width and pointer type: touch has no reliable Enter-to-send, and on a
+       pointer device Enter can be ambiguous (a draft holding newlines, IME composition).
+       Withheld only while recording, where the recording bar owns the send plane. -->
     @if (!attachments.recordingVoice()) {
       <button
         type="button"

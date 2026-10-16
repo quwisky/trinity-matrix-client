@@ -60,12 +60,9 @@ import {
 } from './upload-limit';
 
 /**
- * What the attachment workflows need back from the composer that owns them.
- *
- * Everything here is either a piece of the composer's own input state or an action only the
- * composer can take (it owns the textarea, the reply banner and the outputs). Passed once via
- * {@link ComposerAttachmentsService.connect} and called synchronously, so each workflow runs at
- * exactly the point in the tick it used to run at when it lived in the component.
+ * What the attachment workflows need back from the composer that owns them: its input state, and
+ * the actions only it can take (it owns the textarea, the reply banner and the outputs). Passed
+ * once via {@link ComposerAttachmentsService.connect} and called synchronously.
  */
 export interface ComposerAttachmentsHost {
   /** Active room/thread id — a recording is abandoned if it changes mid-acquisition. */
@@ -93,13 +90,13 @@ export interface ComposerAttachmentsHost {
 }
 
 /**
- * Every way something other than typed text gets into a message: a picked, pasted or
- * dropped-in file staged for a caption, a GIF, a poll, a location and a voice clip.
+ * Every way something other than typed text gets into a message: a picked, pasted or dropped
+ * file staged for a caption, a GIF, a poll, a location and a voice clip.
  *
- * Provided by {@link MessageComposerComponent} rather than in root: the room composer and the
- * thread composer are alive at once and each needs its own staged file, GIF grid and recording.
- * That component scope is also what makes `DestroyRef` here the composer's own, so the recording
- * timer, the mic and a staged image's object URL are all released when the composer goes away.
+ * Provided by {@link MessageComposerComponent}, not root: the room and thread composers are alive
+ * at once and each needs its own staged files, GIF grid and recording. The component scope also
+ * makes `DestroyRef` the composer's own, so the recording timer, the mic and staged object URLs
+ * are released with it.
  */
 @Injectable()
 export class ComposerAttachmentsService {
@@ -123,8 +120,7 @@ export class ComposerAttachmentsService {
 
   /**
    * The composer these workflows act on. Deliberately not optional: an unwired service throws
-   * here rather than silently swallowing a send, the same call the room shell's navigation
-   * service makes for its focus handoff.
+   * rather than silently swallowing a send.
    */
   private host!: ComposerAttachmentsHost;
 
@@ -139,12 +135,11 @@ export class ComposerAttachmentsService {
 
   private readonly _staged = signal<readonly StagedAttachment[]>([]);
   /**
-   * Picked/pasted/dropped attachments held for a caption, sent on the next submit (Enter /
-   * send button) — not uploaded immediately. In the order they were staged, which is the
-   * order they are sent in.
+   * Picked/pasted/dropped attachments held for a caption and sent on the next submit, not
+   * uploaded immediately; in staging order, which is the send order.
    *
-   * Read-only outward, unlike its scalar predecessors: the object URLs inside are owned by
-   * this service and a write from outside would leak them.
+   * Read-only outward: the object URLs inside are owned by this service and an outside write
+   * would leak them.
    */
   readonly staged = this._staged.asReadonly();
   /** Whether anything is staged — the question nearly every caller actually asks. */
@@ -179,8 +174,6 @@ export class ComposerAttachmentsService {
   readonly canOpenSettings = this.appSettings.available;
 
   constructor() {
-    // Revoke EVERY staged preview on teardown. The scalar version revoked exactly one, which
-    // was sufficient only because at most one URL could be live at a time.
     this.destroyRef.onDestroy(() => this.clearStaged());
     // Stop a running recording timer (and release the mic) if torn down mid-record.
     this.destroyRef.onDestroy(() => {
@@ -216,10 +209,9 @@ export class ComposerAttachmentsService {
   }
 
   /**
-   * Ask for the active account's upload limit as soon as it is known, so the lookup a pick or
-   * capture makes is normally already answered from the media service's per-client cache. Only
-   * warms that cache: the size checks still make their own bounded lookup, and a failure here
-   * is left for them to handle.
+   * Ask for the active account's upload limit as soon as it is known, so a pick or capture
+   * normally hits the media service's per-client cache. Only warms that cache: the size checks
+   * still make their own bounded lookup, and a failure here is left to them.
    */
   private prewarmUploadLimit(): void {
     toObservable(this.host.accountId, { injector: this.injector })
@@ -239,8 +231,8 @@ export class ComposerAttachmentsService {
   /** Attach button: native gallery picker on device, else the hidden file input. */
   attach(): void {
     if (this.picker.available) {
-      // The picker refuses an oversized photo by its reported size before reading it; the limit
-      // may still be resolving, as it is for a capture.
+      // The picker refuses an oversized photo by reported size before reading it; the limit may
+      // still be resolving.
       const limit = firstValueFrom(this.uploadLimit());
       this.picker
         .pickImages(limit.then((settled) => settled.bytes))
@@ -254,9 +246,8 @@ export class ComposerAttachmentsService {
             }
             this.stagePicked(files);
           },
-          // A user-cancel resolves to null above; this catches a denied photo
-          // permission (or a genuine picker failure) instead of leaving it
-          // unhandled, and shows the reason.
+          // A user-cancel resolves to null, so this is a denied photo permission or a picker
+          // failure.
           error: (err: unknown) => void this.showAttachError(err),
         });
     } else {
@@ -284,10 +275,9 @@ export class ComposerAttachmentsService {
     this.captureNotice.set(null);
     const roomAtStart = this.host.roomId();
     const saveToGallery = this.privacy.saveCapturesToGallery();
-    // The camera opens at once; the limit is looked up alongside it and the picker awaits it only
-    // once a capture comes back, so a slow media-config request never delays the viewfinder.
-    // The lookup always settles to a limit, so this promise never rejects unawaited when the
-    // capture is cancelled.
+    // The camera opens at once; the picker awaits the limit only once a capture comes back, so a
+    // slow media-config request never delays the viewfinder. The lookup always settles to a
+    // limit, so this promise never rejects unawaited when the capture is cancelled.
     const limit = firstValueFrom(this.uploadLimit());
     const options = {
       saveToGallery,
@@ -337,16 +327,14 @@ export class ComposerAttachmentsService {
   }
 
   /**
-   * Paste an image from the clipboard → send it as an attachment (Discord-style),
-   * via the same media path as the picker. Pasted images land in `files` on most
-   * engines; some (older WebKit) expose them only as `items` of kind `file`. Text
-   * paste is left untouched.
+   * Stage a pasted clipboard image through the same media path as the picker. Most engines put
+   * pasted images in `files`; some (older WebKit) expose them only as `items` of kind `file`.
+   * Text paste is left untouched.
    */
   paste(event: ClipboardEvent): void {
     // While editing, attachments are disabled (an edit can't become media), so let the paste
-    // fall through to the textarea. An upload in flight is NOT a reason to refuse any more:
-    // a send takes the whole batch at once, so anything staged during one simply waits for
-    // the next press instead of being lost to it.
+    // fall through to the textarea. An upload in flight is not a reason to refuse: a send takes
+    // the whole batch at once, so anything staged meanwhile waits for the next press.
     if (this.host.editing()) {
       return;
     }
@@ -379,14 +367,12 @@ export class ComposerAttachmentsService {
     this._staged.set([]);
   }
 
-  /** Drop one staged attachment (its × button), keeping the rest. */
   /**
    * Flag these items as failed. Anything not named keeps the flag it already has.
    *
-   * Scoped deliberately, because a caller only ever knows about its own send: reporting one
-   * retried file's outcome must say nothing about the other files that failed alongside it,
-   * and a GIF — dispatched with a synthetic id that matches nothing staged — must say nothing
-   * about any of them.
+   * Scoped deliberately, because a caller only knows its own send: one retried file's outcome
+   * must say nothing about other files that failed alongside it, and a GIF (synthetic id that
+   * matches nothing staged) must say nothing about any of them.
    */
   markFailed(ids: readonly string[]): void {
     this.setFailedFlag(ids, true);
@@ -414,6 +400,7 @@ export class ComposerAttachmentsService {
     );
   }
 
+  /** Drop one staged attachment (its × button), keeping the rest. */
   removeStaged(id: string): void {
     const current = this._staged();
     const doomed = current.find((attachment) => attachment.id === id);
@@ -424,8 +411,10 @@ export class ComposerAttachmentsService {
     this._staged.set(current.filter((attachment) => attachment !== doomed));
   }
 
-  /** A GIF was chosen → download it and send it through the media path (works in
-   * rooms and threads, encrypted or not). Sends immediately, like other GIF UIs. */
+  /**
+   * Download the chosen GIF and send it at once through the media path, which serves rooms and
+   * threads, encrypted or not.
+   */
   gifSelected(gif: GifResult): void {
     if (this.gifDownloading()) {
       return;
@@ -438,8 +427,8 @@ export class ComposerAttachmentsService {
         next: (file) => {
           this.gifDownloading.set(false);
           this.host.closePicker();
-          // A media send carries no reply relation (see the composer's submit());
-          // close any active reply so its banner doesn't linger over the next message.
+          // A media send carries no reply relation; end any active reply so its banner doesn't
+          // linger over the next message.
           this.host.endReply();
           const [attachment] = this.stageAll([file]);
           if (attachment) this.host.sendMedia(attachment, '');
@@ -469,9 +458,9 @@ export class ComposerAttachmentsService {
 
   /** Begin recording a voice message; toasts and resets if the mic is unavailable. */
   async startVoiceRecording(): Promise<void> {
-    // Guard re-entry: `recordingVoice` isn't set until the async mic acquisition
-    // resolves, so a second click before then would open a second mic stream and
-    // orphan the first. `voiceStarting` closes that window synchronously.
+    // Guard re-entry: `recordingVoice` isn't set until the async mic acquisition resolves, so a
+    // second click would open a second mic stream and orphan the first. `voiceStarting` closes
+    // that window synchronously.
     if (this.recordingVoice() || this.voiceStarting) {
       return;
     }
@@ -488,9 +477,8 @@ export class ComposerAttachmentsService {
       return;
     }
     this.voiceStarting = false;
-    // The view may have been torn down, or the room switched, during acquisition —
-    // don't leave a stream open / timer ticking (and never bind the clip to a room
-    // the user has since left).
+    // The view may have been torn down, or the room switched, during acquisition: don't leave
+    // a stream open, and never bind the clip to a room the user has since left.
     if (this.destroyed || this.host.roomId() !== roomAtStart) {
       this.voiceRecorder.cancel();
       return;
@@ -518,7 +506,7 @@ export class ComposerAttachmentsService {
         if (!recording || recording.blob.size === 0) {
           return;
         }
-        // A voice message is standalone; drop any active reply (as media does).
+        // A voice message is standalone: drop any active reply, as media does.
         this.host.endReply();
         this.timelineActions
           .sendVoiceMessage(recording)
@@ -558,14 +546,10 @@ export class ComposerAttachmentsService {
   }
 
   /**
-   * Hold picked/pasted files for a caption instead of sending immediately, appending to
-   * whatever is already staged so a second pick adds rather than replaces.
-   */
-  /**
    * Stage files from a source outside the composer's own controls (a drop on the room).
    *
    * Same refusal as {@link paste}: an edit cannot become media. An upload in flight is not a
-   * refusal — the batch goes out on the next press, so these simply join the queue.
+   * refusal; the batch goes out on the next press, so these join the queue.
    */
   stageExternal(files: readonly File[]): void {
     if (this.host.editing()) {
@@ -599,6 +583,7 @@ export class ComposerAttachmentsService {
       });
   }
 
+  /** Hold files for a caption instead of sending; appends, so a second pick adds, not replaces. */
   private stageAll(
     files: readonly File[],
     hints?: MediaHints,

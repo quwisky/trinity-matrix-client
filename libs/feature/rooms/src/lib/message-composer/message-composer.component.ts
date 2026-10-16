@@ -66,10 +66,7 @@ import {
 import { ComposerExpressionTabPreference } from '@trinity/data-access/timeline';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 
-/**
- * A room member offered by the @-mention autocomplete. Re-exported here because it is the
- * shape of this component's `members` input; the list itself lives with the engine.
- */
+/** A room member offered by the @-mention autocomplete; the shape of the `members` input. */
 export type { MentionMember };
 
 /** What the composer emits on submit: the message text plus any @-mentioned users. */
@@ -82,14 +79,13 @@ export interface ComposerSubmit {
 let nextPickerId = 0;
 
 /**
- * Discord-style composer: Enter sends, Shift+Enter inserts a newline. In edit mode
- * it is prefilled with the message draft and Esc cancels. The emoji button opens one
- * panel for GIFs, stickers and emoji; an emoji inserts at the cursor.
+ * Composer: Enter sends, Shift+Enter inserts a newline. In edit mode it is prefilled with the
+ * message draft and Esc cancels. The emoji button opens one panel for GIFs, stickers and emoji;
+ * an emoji inserts at the cursor.
  *
- * What it owns is the textarea: its value, its caret, the draft behind it and what a submit
- * makes of them. The two autocompletes ({@link EmojiAutocomplete}, {@link MentionAutocomplete})
- * and every non-text attachment ({@link ComposerAttachmentsService}) live beside it, and the
- * template's four child components render what they hold.
+ * It owns the textarea: its value, its caret, the draft behind it and what a submit makes of
+ * them. The autocompletes and every non-text attachment ({@link ComposerAttachmentsService})
+ * live beside it, and the template's child components render what they hold.
  */
 @Component({
   selector: 'trn-message-composer',
@@ -112,14 +108,13 @@ let nextPickerId = 0;
     ComposerSuggestionsComponent,
     TrnAnchoredOverlayDirective,
   ],
-  // Per composer instance, not per app: the room composer and the thread composer are alive
-  // at once and each needs its own staged file, GIF grid and recording.
+  // Per composer instance, not per app: the room and thread composers are alive at once and
+  // each needs its own staged file, GIF grid and recording.
   providers: [ComposerAttachmentsService],
-  // Escape is handled at the host, not on the textarea, because what it dismisses can be
-  // open without the textarea ever holding focus — the expression panel's own trigger, for
-  // one. The panel itself renders in the overlay container, outside this host, and asks to
-  // be dismissed through its own output. Bound once: a second binding on the textarea would
-  // double-fire and close two things per press.
+  // Escape is handled at the host, not on the textarea, because what it dismisses can be open
+  // without the textarea holding focus (the expression panel's own trigger, for one). The panel
+  // renders in the overlay container, outside this host, and asks to be dismissed through its
+  // own output. Bound once: a second binding on the textarea would close two things per press.
   host: { '(keydown.escape)': 'onEscape()' },
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
@@ -131,11 +126,9 @@ export class MessageComposerComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly expressionTab = inject(ComposerExpressionTabPreference);
   /**
-   * The expression panel's id. Unique per instance, because two composers are routinely
-   * alive at once: the room's own and the thread panel's. A shared literal put the same
-   * `id` on both open panels and left the trigger's `aria-controls` resolving to whichever
-   * the document reached first — the failure ARIA is least able to report, since the
-   * attribute is present and points at a real element either way.
+   * The expression panel's id. Unique per instance because the room's and the thread panel's
+   * composers are routinely alive at once; a shared id would leave the trigger's
+   * `aria-controls` resolving to whichever panel the document reached first.
    */
   protected readonly pickerId = `composer-expressions-${nextPickerId++}`;
 
@@ -146,7 +139,7 @@ export class MessageComposerComponent {
   readonly draft = input('');
   /**
    * Conversation-owned compose draft. Null keeps the legacy thread-local persistence path
-   * until thread state moves behind its Conversation child in the dedicated thread slice.
+   * until thread state moves behind its Conversation child.
    */
   readonly composeDraft = input<string | null>(null);
   /** A Conversation-owned text attempt is still resolving through the SDK. */
@@ -154,14 +147,16 @@ export class MessageComposerComponent {
   /** The Conversation is not ready to send (loading or failed); typing and drafts stay live. */
   readonly sendBlocked = input(false);
   /**
-   * Id of the message being edited (null when not editing). The prefill keys on
-   * this — not on {@link draft} — so re-targeting to a different message refreshes
-   * the field, while a mid-edit body change of the *same* target (redaction, a
-   * concurrent multi-device edit, a late echo) never clobbers in-progress text.
+   * Id of the message being edited (null when not editing). The prefill keys on this, not on
+   * {@link draft}, so re-targeting refreshes the field while a mid-edit body change of the
+   * *same* target (redaction, a concurrent multi-device edit, a late echo) never clobbers
+   * in-progress text.
    */
   readonly editTargetId = input<string | null>(null);
-  /** Active room/thread id. A change discards any staged (unsent) attachment —
-   * the composer instance is reused across rooms, so it must not leak. */
+  /**
+   * Active room/thread id. A change discards any staged (unsent) attachment: the composer
+   * instance is reused across rooms, so it must not leak.
+   */
   readonly roomId = input<string | null>(null);
   /** Account identity distinguishes two Conversations in the same Matrix Room. */
   readonly accountId = input<string | null>(null);
@@ -170,9 +165,9 @@ export class MessageComposerComponent {
   /** Room members, for the @-mention autocomplete (empty disables mentions). */
   readonly members = input<readonly MentionMember[]>([]);
   /**
-   * Whether to offer the room-scoped rich actions (poll, location, voice).
-   * These act on the *active room* via their own services, so they can't be routed
-   * into a thread — the thread composer sets this false to hide them.
+   * Whether to offer the room-scoped rich actions (poll, location, voice). They act on the
+   * *active room* via their own services and can't be routed into a thread, so the thread
+   * composer sets this false.
    */
   readonly richActions = input(true);
   /** MSC2545 packs available to this room. Empty in thread composers. */
@@ -184,25 +179,21 @@ export class MessageComposerComponent {
   /**
    * A batch caption, to be posted as its own message.
    *
-   * Separate from {@link submitText} because that one is routed by the composer's CURRENT
-   * edit/reply state, and this text was written before an upload that can take minutes. By the
-   * time it lands the user may be editing something else — and routing it then would apply the
-   * caption as that edit, rewriting a message already in the room.
+   * Separate from {@link submitText}, which is routed by the composer's CURRENT edit/reply
+   * state: this text was written before an upload that can take minutes, by when the user may
+   * be editing something else, and routing it then would apply the caption as that edit.
    */
   readonly submitBatchCaption = output<ComposerSubmit>();
-  /** A staged attachment plus its optional caption, emitted on submit. */
   /**
-   * Send these files, in this order, as N events.
+   * Send these files, in this order, as N events, with an optional caption.
    *
    * `onOutcomes` rather than a return value because an `output` cannot have one, and the
-   * composer has to learn which items failed: those stay staged so they can be retried,
-   * which is the whole reason the batch reports per-item rather than throwing.
+   * composer has to learn which items failed: those stay staged so they can be retried.
    *
-   * The host MUST call it when the batch settles — it also releases the one-at-a-time send
-   * latch, and being told is the point. Deriving that from `uploadProgress` is what broke
-   * before: a send can finish before the host's progress is ever observable, and a signal
-   * input, written only at change detection and skipped entirely when the value is
-   * `Object.is`-equal, never sees it move at all.
+   * The host MUST call it when the batch settles; it also releases the one-at-a-time send
+   * latch. Deriving that from `uploadProgress` cannot work: a send can finish before the host's
+   * progress is observable, and a signal input, written only at change detection and skipped
+   * when the value is `Object.is`-equal, never sees it move.
    */
   readonly submitMedia = output<{
     items: readonly BatchItem[];
@@ -213,10 +204,8 @@ export class MessageComposerComponent {
   readonly cancelReply = output<void>();
   readonly editLast = output<void>();
   /**
-   * The user typed something (or cleared the field). The host debounces this into a
-   * Matrix typing notification — `true` while there is text to send, `false` once the
-   * field is empty. The composer stays presentational; the room decides where the
-   * notification goes.
+   * The user typed something (or cleared the field): `true` while there is text to send,
+   * `false` once the field is empty. The host debounces it into a Matrix typing notification.
    */
   readonly typing = output<boolean>();
   readonly stickerSelect = output<ImagePackImage>();
@@ -237,8 +226,8 @@ export class MessageComposerComponent {
 
   /**
    * Every way something other than typed text gets into the message: a picked, pasted or
-   * dropped-in file, a GIF, a poll, a location, a voice clip. Its signals are bound from the
-   * template as `attachments.x`; its methods are wrapped below where they need composer state.
+   * dropped file, a GIF, a poll, a location, a voice clip. The template binds its signals as
+   * `attachments.x`; its methods are wrapped below where they need composer state.
    */
   protected readonly attachments = inject(ComposerAttachmentsService);
 
@@ -259,11 +248,10 @@ export class MessageComposerComponent {
     ),
   );
   /**
-   * Whether the `+` opens the insert tray rather than the file picker directly. With only
-   * one insert action left to offer — the thread composer — a one-item menu is pure
-   * friction, so `+` stays a plain attach button there; it becomes a tray when this host can
-   * capture, which is what gives the thread composer the tray on phones. GIFs and stickers
-   * live in the expression panel, not here.
+   * Whether the `+` opens the insert tray rather than the file picker directly. With only one
+   * insert action to offer (the thread composer) a one-item menu is friction, so `+` stays a
+   * plain attach button; it becomes a tray when this host can capture, which gives the thread
+   * composer the tray on phones. GIFs and stickers live in the expression panel, not here.
    */
   readonly hasInsertMenu = computed(
     () => this.richActions() || this.attachments.captureMode !== 'none',
@@ -272,16 +260,12 @@ export class MessageComposerComponent {
    * The three autocomplete menus: `:shortcode`, `@mention` and `/command`.
    *
    * Each engine owns its own trigger and list; the façade owns the caret handover and the
-   * order the three are consulted in. The template and the specs read its signals directly —
-   * forwarding them through this component would only restate them.
+   * order the three are consulted in.
    *
-   * PUBLIC rather than `protected`, which the template alone would have allowed. Three spec
-   * files assert on `menus.emojiOpen()`, `menus.slashMatches()` and the rest, and those read
-   * exactly what the menus decided; going through the DOM instead would assert something
-   * weaker at 44 call sites. It is also not a widening in practice — `text`, `previewing`,
-   * `pickerOpen`, `submit()` and most of the key handlers are already public, because this
-   * component is driven from its specs as much as from its template. Narrowing this one
-   * member would be a rule nothing else here follows.
+   * PUBLIC rather than `protected` because specs assert on `menus.emojiOpen()`,
+   * `menus.slashMatches()` and the rest, which read exactly what the menus decided; going
+   * through the DOM would assert something weaker. `text`, `previewing`, `pickerOpen`,
+   * `submit()` and most key handlers are public for the same reason.
    */
   readonly menus: ComposerAutocompletes;
   /** Staging → outgoing batches, and what comes back. */
@@ -323,11 +307,10 @@ export class MessageComposerComponent {
   /**
    * Whether a leading slash is READ as a command on the way out.
    *
-   * One computed read by BOTH {@link preview} and the slash menu (through the
-   * `commandsParsed` port), because the two disagreeing is the worst of the available
-   * answers: a preview that refuses to conceal a `/spoiler` while a menu offers to complete
-   * one. Only `send` and `sendThreadMessage` run `slashCommandContent`; a reply, an edit and
-   * an attachment caption never do.
+   * One computed read by BOTH {@link preview} and the slash menu (through the `commandsParsed`
+   * port), so they cannot disagree: a preview refusing to conceal a `/spoiler` while a menu
+   * offers to complete one. Only `send` and `sendThreadMessage` run `slashCommandContent`; a
+   * reply, an edit and an attachment caption never do.
    */
   private readonly parsesCommands = computed(
     () =>
@@ -370,8 +353,8 @@ export class MessageComposerComponent {
   constructor() {
     // Warm the lazy emoji index so a quickly typed `:shortcode:` still converts.
     void this.emojiIndex.load();
-    // Read the panel's last-used tab before anyone can open it, so it opens there rather
-    // than switching under the pointer. A failed read leaves Emoji, which is the default.
+    // Read the panel's last-used tab before anyone can open it, so it opens there rather than
+    // switching under the pointer. A failed read leaves Emoji, the default.
     this.expressionTab
       .restore()
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -402,8 +385,8 @@ export class MessageComposerComponent {
     this.contextUploadProgress = this.batches.uploadProgress;
     this.canSendMedia = this.batches.canSend;
 
-    // Before anything else: the attachment workflows call straight back through this, and
-    // the room-change effect below can already ask them to drop a staged file.
+    // Before anything else: the attachment workflows call back through this, and the
+    // room-change effect below can already ask them to drop a staged file.
     this.attachments.connect({
       roomId: this.roomId,
       accountId: this.accountId,
@@ -438,8 +421,7 @@ export class MessageComposerComponent {
         )?.nativeElement.click(),
     });
 
-    // Unassigned on purpose: its effects are its whole lifetime, and `drafts` is already taken
-    // by DraftStoreService.
+    // Unassigned on purpose: its effects are its whole lifetime.
     new ComposerDrafts({
       roomId: this.roomId,
       editing: this.editing,
@@ -454,9 +436,8 @@ export class MessageComposerComponent {
         if (prev !== undefined) {
           this.batches.release();
         }
-        // A recording belongs to the room it was started in — cancel it on a
-        // room/thread switch so the mic doesn't stay open and a later Send can't
-        // post the clip to the wrong room.
+        // A recording belongs to the room it was started in: cancel it on a room/thread switch
+        // so the mic doesn't stay open and a later Send can't post the clip to the wrong room.
         if (this.attachments.recordingVoice()) {
           this.cancelVoiceRecording();
         }
@@ -492,8 +473,8 @@ export class MessageComposerComponent {
       this.injector,
     );
 
-    // The sheet follows `pickerOpen` like the anchored panel does, so every path that closes
-    // the panel (a pick, a send, a room switch, Escape) closes the sheet too.
+    // The sheet follows `pickerOpen` like the anchored panel, so every path that closes the
+    // panel (a pick, a send, a room switch, Escape) closes the sheet too.
     effect(() => {
       const sheetOpen = this.pickerOpen() && this.pickerSheet();
       untracked(() =>
@@ -528,12 +509,11 @@ export class MessageComposerComponent {
     const value = (event.target as HTMLTextAreaElement).value;
     this.text.set(value);
     this.field.autoGrow();
-    // Broadcast typing while there's something to send; an empty field stops it. The
-    // host throttles the "start"s, so emitting on every keystroke is fine.
+    // The host throttles the "start"s, so emitting on every keystroke is fine.
     this.typing.emit(value.trim().length > 0);
-    // Don't touch the menu mid-IME-composition: the in-progress reading is
-    // transient ASCII that would mis-trigger `:shortcode` matching, and
-    // rewriting the value/caret during composition drops characters.
+    // Don't touch the menu mid-IME-composition: the in-progress reading is transient ASCII that
+    // would mis-trigger `:shortcode` matching, and rewriting the value/caret during composition
+    // drops characters.
     if (!(event as InputEvent).isComposing) {
       this.menus.sync();
     }
@@ -557,8 +537,8 @@ export class MessageComposerComponent {
 
   onEnter(event: Event): void {
     const keyEvent = event as KeyboardEvent;
-    // An Enter that confirms an IME candidate must reach neither send nor
-    // accept — let the composition commit normally.
+    // An Enter that confirms an IME candidate must reach neither send nor accept: let the
+    // composition commit normally.
     if (keyEvent.isComposing) {
       return;
     }
@@ -592,25 +572,25 @@ export class MessageComposerComponent {
     this.menus.closeAll();
   }
 
-  /** Send on Enter / the send button: a staged attachment (with the text as its
-   * caption) takes precedence, else the plain text message. */
+  /**
+   * Send on Enter / the send button: a staged attachment (with the text as its caption) takes
+   * precedence, else the plain text message.
+   */
   submit(): void {
     if (this.sendBlocked()) return;
-    // A staged attachment sends as media with the text as its caption. Never mixes
-    // with an edit (attach is disabled while editing), so edit mode ignores it.
+    // Never mixes with an edit (attach is disabled while editing), so edit mode ignores staging.
     const batch = this.editing() ? [] : this.attachments.staged();
     if (batch.length) {
-      // Emptied BEFORE the dispatch, not after. A send can settle synchronously — a 0-byte
-      // file never reaches the network — and `onBatchOutcomes` gives the caption back when
-      // nothing carried it, so clearing afterwards would wipe what it had just restored.
+      // Emptied BEFORE the dispatch, not after. A send can settle synchronously (a 0-byte file
+      // never reaches the network) and the batch gives the caption back when nothing carried it,
+      // so clearing afterwards would wipe what it had just restored.
       const typed = this.text();
-      // Read BEFORE the box is emptied: `activeMentions()` matches the chosen users against
-      // the current text, so computing it afterwards matches them against nothing.
+      // Read BEFORE the box is emptied: `activeMentions()` matches the chosen users against the
+      // current text, so afterwards it matches them against nothing.
       const mentions = this.menus.activeMentions();
       this.text.set('');
-      // One batch at a time — the check lives in `dispatchMedia`, so every route to a send is
-      // covered rather than just this one. Nothing below runs when it refuses: a blocked send
-      // must not clear the composer as though it had gone out.
+      // One batch at a time; the check lives in the sender, so every route to a send is covered.
+      // Nothing below runs when it refuses: a blocked send must not clear the composer.
       if (
         !this.batches.dispatch(
           batch.map(({ id, file, media }) => ({ id, file, media })),
@@ -621,14 +601,12 @@ export class MessageComposerComponent {
         this.text.set(typed); // refused, so nothing went out and nothing was cleared
         return;
       }
-      // A media send carries no reply relation, so end any active reply — else
-      // the banner lingers and the next plain message silently replies to a
-      // now-stale target.
+      // A media send carries no reply relation, so end any active reply, else the banner
+      // lingers and the next plain message silently replies to a now-stale target.
       if (this.replyingTo()) {
         this.cancelReply.emit();
       }
-      // The staged rows stay until their outcomes arrive: the ones that fail have to remain
-      // so they can be retried, which is the whole point of the batch reporting per item.
+      // The staged rows stay until their outcomes arrive: failed ones must remain to be retried.
       this.resetMenus();
       this.field.regrowAfterRender();
       return;
@@ -644,12 +622,11 @@ export class MessageComposerComponent {
     });
     this.typing.emit(false); // a sent message ends the typing notification
     this.resetMenus();
-    // Clear the saved Aa selection when the message is sent so it cannot be applied to a later
-    // draft.
+    // The saved Aa selection must not be applied to a later draft.
     this.formatting.clearSelection();
     if (!this.editing() && this.composeDraft() === null) {
-      // Conversation-owned text clears from the authoritative input signal. The legacy
-      // thread composer still owns its local draft and therefore clears it here.
+      // Conversation-owned text clears from the authoritative input signal; the legacy thread
+      // composer owns its local draft and clears it here.
       this.text.set('');
       this.field.regrowAfterRender();
     }
@@ -658,21 +635,18 @@ export class MessageComposerComponent {
   /** Close both autocomplete menus and forget the tracked mentions. */
   private resetMenus(): void {
     this.menus.reset();
-    // A GIF grid left open across a send is the one remaining route to two uploads at once:
-    // its items call `sendMedia` directly, and unlike the input button they are not disabled
-    // while an upload runs. `dispatchMedia` refuses it either way; closing the panel means the
-    // user does not lose a chosen GIF to that refusal.
+    // A GIF grid left open across a send is a route to two uploads at once: its items call
+    // `sendMedia` directly and are not disabled while an upload runs. The sender refuses it
+    // either way; closing the panel means the user does not lose a chosen GIF to that refusal.
     this.pickerOpen.set(false);
-    // Leaving the preview on is a trap rather than a preference: it hides the textarea, so a
-    // composer that lands in preview mode after a send or a room switch looks broken — an
-    // empty box that swallows typing until you notice the eye button.
+    // Leaving the preview on is a trap: it hides the textarea, so a composer that lands in
+    // preview mode after a send or a room switch looks like an empty box that swallows typing.
     this.previewing.set(false);
   }
 
   /** The emoji picker chose an emoji → insert its native character at the cursor. */
   onPickerSelect(pick: TrnEmojiPick): void {
-    // No emptiness check: the wrapper drops picks with no character, so anything that
-    // arrives here is insertable. This used to no-op silently on such an event.
+    // No emptiness check: the wrapper drops picks with no character.
     this.insertEmoji(pick.native);
   }
 
@@ -691,23 +665,20 @@ export class MessageComposerComponent {
   /**
    * A press on the field's own padding is a press on the input it draws.
    *
-   * The box belongs to the field now, and the field is bigger than the textarea: with
-   * `align-items: end` the buttons sit at the bottom, so a grown input leaves empty field
-   * above them — 87px of it on a five-line draft, measured. That area shares the input's
-   * background and reads as part of it, and before the box moved it was outside the box
-   * entirely. Every other chat client forwards the click; dropping it is the surprise.
+   * The box belongs to the field, which is bigger than the textarea: with `align-items: end`
+   * the buttons sit at the bottom, so a grown input leaves empty field above them that shares
+   * the input's background and reads as part of it.
    *
-   * `target === currentTarget` is what keeps this from stealing presses aimed at the buttons
-   * inside the field: only a press that landed on the field ITSELF gets forwarded.
+   * `target === currentTarget` keeps this from stealing presses aimed at the buttons inside
+   * the field: only a press that landed on the field ITSELF is forwarded.
    */
   protected onFieldPress(event: Event): void {
     if (event.target !== event.currentTarget) {
       return;
     }
-    // `preventDefault` before the focus, not after, and not optional: a press's DEFAULT action
-    // sets focus, and it runs after this handler — so focusing here and letting the default
-    // through moves focus straight back off the textarea and onto nothing. The suggestion
-    // options cancel their `mousedown` for the same reason.
+    // `preventDefault` is not optional: a press's DEFAULT action sets focus and runs after this
+    // handler, so focusing here and letting the default through moves focus straight back off
+    // the textarea. The suggestion options cancel their `mousedown` for the same reason.
     event.preventDefault();
     this.field.focus();
   }
@@ -741,8 +712,8 @@ export class MessageComposerComponent {
     };
     const ref = this.surfaces.open(ExpressionSheetComponent, {
       ariaLabel: 'Emoji, GIFs and stickers',
-      // The panel puts focus on its content itself, and the pickers move it on into their
-      // search fields; the dialog's own autofocus would run after them and take it back.
+      // The panel puts focus on its content itself and the pickers move it on into their search
+      // fields; the dialog's own autofocus would run after them and take it back.
       autoFocus: false,
       inputs: { bridge },
     });
@@ -825,9 +796,9 @@ export class MessageComposerComponent {
   }
 
   /**
-   * A GIF was chosen → download it and send it through the media path; the panel closes
-   * once it arrives. Refused while editing, while the Conversation cannot send or while
-   * another upload runs, which is when the `+` tray used to disable its GIF item.
+   * A GIF was chosen → download it and send it through the media path; the panel closes once
+   * it arrives. Refused while editing, while the Conversation cannot send or while another
+   * upload runs.
    */
   onGifSelect(gif: GifResult): void {
     if (
@@ -866,11 +837,9 @@ export class MessageComposerComponent {
   }
 
   /**
-   * Re-send one failed file on its own, leaving the rest of the batch staged.
-   *
-   * Pressing send again would also retry it — that is what the batch model gives you for
-   * free — but it retries *everything* staged, which is wrong when only one of five failed
-   * and the other four are files the user has since added.
+   * Re-send one failed file on its own, leaving the rest of the batch staged. Pressing send
+   * again would retry *everything* staged, which is wrong when only one failed and the others
+   * are files the user has since added.
    */
   protected retryStaged(id: string): void {
     const attachment = this.attachments
@@ -879,21 +848,19 @@ export class MessageComposerComponent {
     if (!attachment) {
       return;
     }
-    // The one-at-a-time check is repeated here rather than left to `dispatchMedia`, because
-    // the flag is cleared BEFORE dispatching — a refusal would otherwise leave the row
-    // looking like it had been sent.
+    // The one-at-a-time check is repeated here because the failed flag is cleared BEFORE
+    // dispatching; a refusal would otherwise leave the row looking like it had been sent.
     if (!this.canSendMedia()) {
       return;
     }
-    // So the row reads as uploading rather than as still-failed. Only this one: the others
-    // are still failed and have not been retried.
+    // So the row reads as uploading rather than still-failed. Only this one: the others have
+    // not been retried.
     this.attachments.clearFailed([id]);
-    // Clearing the flag unmounts the row's retry button — the element that currently has
-    // focus — which would strand a keyboard user at the top of the page. Same remedy, and the
-    // same reason, as `removeStaged`.
+    // Clearing the flag unmounts the row's retry button, which has focus, and would strand a
+    // keyboard user at the top of the page. Same remedy as `removeStaged`.
     queueMicrotask(() => this.field.focus());
-    // A retry is a send: it takes whatever caption is in the box and clears it the way
-    // `submit()` does, before dispatching and for the same reason.
+    // A retry is a send: it takes the caption in the box and clears it as `submit()` does,
+    // before dispatching and for the same reason.
     const typed = this.text();
     const mentions = this.menus.activeMentions(); // before the box is emptied, as in `submit()`
     this.text.set('');
@@ -917,18 +884,17 @@ export class MessageComposerComponent {
   /** Drop the staged attachment (× button, Escape, or after it's sent). */
   removeStaged(id: string): void {
     this.attachments.removeStaged(id);
-    // Whatever removed the row — its × or a send — the element that had focus is about to be
-    // destroyed, which drops focus to <body> and strands a keyboard user at the top of the
-    // page. The textarea is where they were heading either way. Queued, like the staging
-    // path's own focus call: the row is still in the DOM until CD runs.
+    // Whatever removed the row (its × or a send), the focused element is about to be destroyed,
+    // which drops focus to <body> and strands a keyboard user at the top of the page. Queued,
+    // like the staging path's own focus call: the row is in the DOM until change detection runs.
     queueMicrotask(() => this.field.focus());
   }
 
   /**
-   * Stage files that came from outside the composer — today, a drop on the conversation.
+   * Stage files that came from outside the composer, such as a drop on the conversation.
    *
-   * Public because the drop target is the whole room, which the message list owns; the
-   * refusal rules stay here so a drop cannot bypass what a paste respects.
+   * Public because the message list owns the drop target; the refusal rules stay here so a drop
+   * cannot bypass what a paste respects.
    */
   stageFiles(files: readonly File[]): void {
     this.attachments.stageExternal(files);
@@ -939,7 +905,7 @@ export class MessageComposerComponent {
     this.attachments.clearStaged();
   }
 
-  /** Paste an image from the clipboard → stage it as an attachment (Discord-style). */
+  /** Paste an image from the clipboard → stage it as an attachment. */
   onPaste(event: ClipboardEvent): void {
     this.attachments.paste(event);
   }
@@ -952,9 +918,9 @@ export class MessageComposerComponent {
       this.pickerOpen.set(false);
       return;
     }
-    // Not while a batch is going out: those rows are what its outcomes will report on, and
-    // clearing them means a failure has nowhere to land — the toast would then promise files
-    // are "still in the composer" that are not.
+    // Not while a batch is going out: those rows are what its outcomes report on, and clearing
+    // them leaves a failure nowhere to land, so the toast would promise files "still in the
+    // composer" that are not.
     if (this.attachments.hasStaged() && !this.batches.inFlight()) {
       this.clearStaged();
       return;
@@ -989,8 +955,8 @@ export class MessageComposerComponent {
       event.preventDefault();
       return;
     }
-    // Empty composer + Up arrow → edit the last message (Discord-style).
-    // Otherwise (editing, typed text, or a staged attachment) move the cursor.
+    // Empty composer + Up arrow edits the last message; otherwise (editing, typed text, or a
+    // staged attachment) the arrow moves the cursor.
     if (
       this.editing() ||
       this.text().length > 0 ||

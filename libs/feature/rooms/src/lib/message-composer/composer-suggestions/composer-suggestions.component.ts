@@ -14,20 +14,18 @@ import { type MentionMember } from '../mention-autocomplete';
 import { type SlashCommand } from '@trinity/util/matrix';
 
 /**
- * The two autocomplete menus floated above the composer input: `:shortcode` emoji and
- * `@mention` members.
+ * The autocomplete menus floated above the composer input: `:shortcode` emoji, `@mention`
+ * members and `/command`s.
  *
- * Presentational — the engines behind them live in `EmojiAutocomplete` /
- * `MentionAutocomplete` and the composer owns the caret. Both menus render in the CDK overlay
- * container, anchored to the composer's input row and matched to its width, so a menu reads as
- * part of the field it completes rather than as a popover beside it.
+ * Presentational; the engines live in `EmojiAutocomplete` / `MentionAutocomplete` and the
+ * composer owns the caret. The menus render in the CDK overlay container, anchored to the
+ * composer's input row and matched to its width.
  *
- * Neither closes itself on an outside press, and that is not an oversight: `emojiOpen` and
- * `mentionOpen` are `computed(() => matches().length > 0)` upstream, so there is no flag for a
- * self-close to write to. A menu that vanished on its own would leave the composer still
- * answering Enter for it and still pointing `aria-activedescendant` at a row nobody can see.
- * Clicking away closes them the way it always has — by blurring the textarea, which clears the
- * query.
+ * Neither the emoji nor the mention menu closes itself on an outside press, deliberately:
+ * `emojiOpen` and `mentionOpen` are `computed(() => matches().length > 0)` upstream, so there
+ * is no flag for a self-close to write to, and a menu that vanished on its own would leave the
+ * composer answering Enter for it and pointing `aria-activedescendant` at an invisible row.
+ * Clicking away closes them by blurring the textarea, which clears the query.
  *
  * **The element ids here are a contract with the composer's textarea**, which points
  * `aria-controls` at `emoji-suggestions` / `mention-suggestions` and `aria-activedescendant`
@@ -48,12 +46,8 @@ import { type SlashCommand } from '@trinity/util/matrix';
 })
 export class ComposerSuggestionsComponent {
   /**
-   * The composer's input row, which both menus sit above and match the width of.
-   *
-   * Optional rather than required: a menu with nowhere to anchor renders nothing, which is
-   * the right answer and is what the overlay does on its own. Required would make this
-   * component impossible to render on its own — including in its own spec, where the anchor
-   * is beside the point.
+   * The composer's input row, which the menus sit above and match the width of. Optional: a
+   * menu with nowhere to anchor renders nothing, which is what the overlay does on its own.
    */
   readonly anchor = input<HTMLElement | undefined>(undefined);
 

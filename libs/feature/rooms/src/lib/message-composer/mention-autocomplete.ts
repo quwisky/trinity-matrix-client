@@ -11,8 +11,8 @@ export interface MentionMember {
 }
 
 /**
- * An `@mention` being typed at the caret: `@` at a word boundary (so an email's
- * `a@b` doesn't trigger) followed by the query so far (may be empty right after `@`).
+ * An `@mention` being typed at the caret: `@` at a word boundary (so an email's `a@b` doesn't
+ * trigger) followed by the query so far (may be empty right after `@`).
  */
 const MENTION_TRIGGER = /(?:^|\s)@([^\s@]*)$/;
 /** How many member suggestions the mention menu offers at once. */
@@ -21,13 +21,11 @@ const MENTION_SUGGESTION_LIMIT = 8;
 /**
  * The composer's `@mention` autocomplete.
  *
- * Owns the trigger regex, the filtered member list, the highlighted index, the caret
- * splice an acceptance resolves to, and the set of members actually chosen so far (which
- * is what `m.mentions` is built from on submit) — everything except the textarea. A plain
- * class rather than an `@Injectable` for the same reasons as {@link EmojiAutocomplete},
- * plus one of its own: it reads the member list straight off the composer's `members`
- * input signal, so a membership change is visible in the same tick a keystroke sees it —
- * which copying the list into injectable state would not preserve.
+ * Owns the trigger regex, the filtered member list, the highlighted index, the caret splice an
+ * acceptance resolves to, and the members actually chosen so far (what `m.mentions` is built
+ * from on submit): everything except the textarea. It reads the member list straight off the
+ * composer's `members` input signal so a membership change is visible in the same tick a
+ * keystroke sees it; copying the list into injectable state would not preserve that.
  */
 export class MentionAutocomplete {
   /** The `@mention` query under the caret, or null when the menu is closed. */

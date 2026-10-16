@@ -43,22 +43,18 @@ export interface ComposerBatchPorts {
 }
 
 /**
- * Turns what is staged into outgoing batches, and reconciles what comes back.
- *
- * Pulled out of the component because it is a whole job on its own — the one-at-a-time latch,
- * the in-flight list the progress bar names, and the rules for what survives a partial
- * failure — and none of it touches the DOM or the template. A plain class, like the
- * autocomplete engines and {@link ComposerTextField} beside it.
+ * Turns what is staged into outgoing batches, and reconciles what comes back: the
+ * one-at-a-time latch, the in-flight list the progress bar names, and what survives a partial
+ * failure. A plain class that never touches the DOM.
  */
 export class ComposerBatchSender {
   /**
    * The batch currently going out.
    *
-   * The progress bar renders above the rows that are still staged, and without this it reads
-   * as though it describes them — it describes the one that just left the list. Written here
-   * rather than at the call site, because this is the single funnel every upload passes
-   * through: a GIF goes straight to it and never touches the composer's `submit()`, and
-   * naming the last *staged* file while a GIF uploads is worse than not naming anything.
+   * The progress bar renders above the rows still staged, so without this it reads as
+   * describing them. Written here rather than at the call site because this is the single
+   * funnel every upload passes through: a GIF never touches the composer's `submit()`, and
+   * naming the last *staged* file while a GIF uploads is worse than naming nothing.
    */
   private readonly sendingItems = signal<readonly BatchItem[]>([]);
 
@@ -66,11 +62,11 @@ export class ComposerBatchSender {
    * A media send has been dispatched and its upload has not finished.
    *
    * Separate from `uploadProgress` and written SYNCHRONOUSLY, which is the whole point:
-   * `uploadProgress` is a signal input fed from two component layers up, and a signal input
-   * is only written during the parent's change detection — which, zoneless, is scheduled on a
-   * rAF/timer race. Two `submit()` calls in one task (a held Enter key, while the first send's
-   * `encryptAttachment` janks the frame) would both read `null` and both dispatch. A local
-   * flag closes in the same statement that opens it, and is released by the outcomes.
+   * `uploadProgress` is a signal input, written only during the parent's change detection,
+   * which zoneless is scheduled on a rAF/timer race. Two `submit()` calls in one task (a held
+   * Enter key, while the first send's `encryptAttachment` janks the frame) would both read
+   * `null` and both dispatch. A local flag closes in the same statement that opens it, and is
+   * released by the outcomes.
    */
   private readonly sending = signal(false);
 
@@ -78,11 +74,10 @@ export class ComposerBatchSender {
    * Identity of the batch allowed to release {@link sending} when it settles.
    *
    * A room change deliberately releases the old room's latch before its upload finishes, so
-   * another batch can already own this sender when the old outcomes arrive. The identity keeps
-   * that stale callback useful for reconciling its own files and caption without letting it
-   * release the newer batch.
+   * another batch can already own this sender when the old outcomes arrive. The identity lets
+   * that stale callback still reconcile its own files and caption without releasing the newer
+   * batch; it is not a latest-wins guard.
    */
-  // "Release only if mine" latch: stale batches still reconcile, so this is not a latest-wins guard (#927).
   private nextBatchGeneration = 0;
   private activeBatchGeneration: number | null = null;
 
@@ -102,9 +97,8 @@ export class ComposerBatchSender {
   /**
    * Forget an in-flight batch without waiting for its outcomes.
    *
-   * For a room change only: the upload itself belongs to the page, not to this composer, and
-   * survives the switch — but nothing staged here does, so holding the latch would only mute
-   * the next room's composer.
+   * For a room change only: the upload belongs to the page and survives the switch, but
+   * nothing staged here does, so holding the latch would only mute the next room's composer.
    */
   release(): void {
     this.activeBatchGeneration = null;
@@ -113,9 +107,8 @@ export class ComposerBatchSender {
   }
 
   /**
-   * The name of the file currently uploading, taken from the batch's own position rather than
-   * remembered separately — so it follows the batch through file 2, 3, … instead of naming
-   * whatever was dispatched first.
+   * The name of the file currently uploading, taken from the batch's own position so it follows
+   * the batch through file 2, 3, … instead of naming whatever was dispatched first.
    */
   readonly uploadLabel = computed(() => {
     const progress = this.uploadProgress();
@@ -125,10 +118,10 @@ export class ComposerBatchSender {
   });
 
   /**
-   * Whether a media send would be accepted right now — the same condition {@link dispatch}
-   * enforces, exposed so the send button can SAY it is blocked rather than silently doing
-   * nothing. `sending` matters here and not just `uploadProgress`: the latch closes
-   * synchronously, while the input it mirrors lags by a change-detection tick.
+   * Whether a media send would be accepted right now: the condition {@link dispatch} enforces,
+   * exposed so the send button can SAY it is blocked. `sending` matters here and not just
+   * `uploadProgress`: the latch closes synchronously, while the input it mirrors lags by a
+   * change-detection tick.
    */
   readonly canSend = computed(
     () =>
@@ -138,13 +131,12 @@ export class ComposerBatchSender {
   );
 
   /**
-   * The single funnel every media send passes through: the composer's `submit()` for the
-   * staged batch, and the attachments service's `sendMedia` hook for a GIF. The in-flight
-   * list, the send latch and the one-at-a-time check all live here, so a path that does not
-   * go through `submit()` cannot miss any of them.
+   * The single funnel every media send passes through: `submit()` for the staged batch and the
+   * attachments service's `sendMedia` hook for a GIF. The in-flight list, send latch and
+   * one-at-a-time check live here, so a path that skips `submit()` cannot miss any of them.
    *
-   * Returns whether the batch was dispatched, so a caller with cleanup to do — `submit()`
-   * clears the text — can tell a refusal from a send.
+   * Returns whether the batch was dispatched, so a caller with cleanup (`submit()` clears the
+   * text) can tell a refusal from a send.
    */
   dispatch(
     items: readonly BatchItem[],
@@ -154,10 +146,9 @@ export class ComposerBatchSender {
     if (!items.length) {
       return false;
     }
-    // Guarded here rather than only on the send button, because `onEnter` calls `submit()`
-    // directly and never consults `[disabled]` — key auto-repeat alone is enough to fire it
-    // twice. Two batches in flight share one `uploadProgress` and interleave their events, so
-    // neither arrives in the order it was staged.
+    // Guarded here, not only on the send button: `onEnter` calls `submit()` directly and never
+    // consults `[disabled]`, so key auto-repeat alone can fire it twice. Two batches in flight
+    // share one `uploadProgress` and interleave their events.
     if (!this.canSend()) {
       return false;
     }
@@ -166,8 +157,7 @@ export class ComposerBatchSender {
     const generation = ++this.nextBatchGeneration;
     this.activeBatchGeneration = generation;
     this.sending.set(true);
-    // Stamped with the room, like the files themselves are by the owner: a batch settles long
-    // after it was pressed, and by then this composer may be showing a different conversation.
+    // A batch settles long after it was pressed, by when this composer may show another room.
     const roomAtDispatch = this.ports.roomId();
     this.ports.send({
       items,
@@ -179,11 +169,11 @@ export class ComposerBatchSender {
   }
 
   /**
-   * What survives a batch: successes leave the strip, failures stay in it so the next send
-   * retries exactly them. A caption typed for a batch goes out as its own message afterwards
-   * — Matrix has no multi-attachment event, so there is no first image for it to belong to,
-   * and repeating it on each would put the same sentence in the room N times. A single file
-   * keeps its MSC2530 caption, which is what `sendMediaBatch` decides.
+   * What survives a batch: successes leave the strip, failures stay so the next send retries
+   * exactly them. A batch caption goes out as its own message afterwards: Matrix has no
+   * multi-attachment event, so there is no first image for it to belong to, and repeating it on
+   * each would put the same sentence in the room N times. A single file keeps its MSC2530
+   * caption, which `sendMediaBatch` decides.
    */
   private reconcile(
     outcomes: readonly BatchOutcome[],
@@ -192,9 +182,8 @@ export class ComposerBatchSender {
     roomAtDispatch: string | null,
     generation: number,
   ): void {
-    // The batch is over the moment its outcomes land, and this is the ONLY release: inferring
-    // it from `uploadProgress` returning to null cannot work, because a send that completes
-    // synchronously is back to null before a signal input can ever observe it move.
+    // The ONLY release: inferring it from `uploadProgress` returning to null cannot work, as a
+    // send that completes synchronously is back to null before a signal input can observe it.
     if (this.activeBatchGeneration === generation) {
       this.activeBatchGeneration = null;
       this.sending.set(false);
@@ -204,9 +193,8 @@ export class ComposerBatchSender {
         this.ports.removeStaged(outcome.id);
       }
     }
-    // A staged file and a failed one look identical in the strip, so mark them rather than
-    // leaving the user to guess. Only this batch's failures — these outcomes say nothing
-    // about files that failed in an earlier round and have not been retried yet.
+    // Only this batch's failures: these outcomes say nothing about files that failed in an
+    // earlier round and have not been retried yet.
     this.ports.markFailed(
       outcomes.filter((outcome) => outcome.failed).map((outcome) => outcome.id),
     );
@@ -215,9 +203,8 @@ export class ComposerBatchSender {
     }
     if (this.ports.roomId() !== roomAtDispatch) {
       // The conversation moved on. Posting would put these words in a room they were not
-      // written for, and restoring would leave them in that room's composer — the same leak
-      // the composer's room-change effect exists to prevent. Parked as the draft of the room
-      // they belong to instead, so they are neither misdelivered nor destroyed.
+      // written for, and restoring would leave them in that room's composer, the same leak the
+      // room-change effect prevents. Park them as the draft of their own room instead.
       if (roomAtDispatch != null && !this.ports.drafts.get(roomAtDispatch)) {
         this.ports.drafts.set(roomAtDispatch, caption);
       }
@@ -225,19 +212,16 @@ export class ComposerBatchSender {
     }
     const delivered = outcomes.filter((outcome) => !outcome.failed).length;
     if (delivered && outcomes.length > 1) {
-      // No file for a batch caption to belong to, so it goes out on its own — after the
-      // files, and only if at least one of them actually arrived. On its OWN output: by now
-      // the user may be part-way into an edit or a reply, and the ordinary submit path would
-      // route this into it.
+      // Goes out after the files, and only if at least one arrived. On its OWN output: the user
+      // may by now be part-way into an edit or a reply, which the ordinary submit path would
+      // route this into.
       this.ports.sendCaption({ text: caption, mentions: [...mentions] });
       return;
     }
     if (!delivered && !this.ports.text().trim()) {
-      // Nothing carried it: a single file's caption rides its media event (MSC2530) and went
-      // down with it, and a batch caption is never sent when the batch delivered nothing.
-      // `submit()` cleared the box on dispatch, so without this the words are simply gone.
-      // Skipped when something has been typed since — restoring is for what was lost, not
-      // for overwriting what replaced it.
+      // Nothing carried it: a single file's caption rides its media event (MSC2530), and a batch
+      // caption is never sent when nothing was delivered. `submit()` cleared the box on dispatch,
+      // so restore it, unless something has been typed since.
       this.ports.text.set(caption);
       this.ports.regrow();
     }

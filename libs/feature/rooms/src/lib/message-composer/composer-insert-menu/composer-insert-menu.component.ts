@@ -49,9 +49,9 @@ interface OwnedSheet {
  * The composer's `+`: every way something other than typed text gets into a message.
  *
  * A dropdown tray when there is more than one action to offer, a plain attach button when
- * there is not (see {@link hasMenu}). Presentational — the workflows behind the actions live in
- * `ComposerAttachmentsService`, and the host is `display: contents` so the button stays a
- * direct flex item of the composer's input row.
+ * there is not (see {@link hasMenu}). Presentational; the workflows live in
+ * `ComposerAttachmentsService`. The host is `display: contents` so the button stays a direct
+ * flex item of the composer's input row.
  */
 @Component({
   selector: 'trn-composer-insert-menu',

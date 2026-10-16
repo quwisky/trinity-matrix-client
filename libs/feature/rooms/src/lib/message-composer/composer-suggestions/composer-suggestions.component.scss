@@ -1,14 +1,12 @@
 @layer components {
-  // No box of its own. Both menus render in the CDK overlay container now, so this host has
-  // nothing left in the composer's column to lay out — but it is still a flex item, and one
-  // that generated a box would put a gap in that column.
+  // No box of its own: the menus render in the CDK overlay container, but the host is still a
+  // flex item in the composer's column, and a generated box would put a gap there.
   :host {
     display: contents;
   }
 
-  // `:shortcode` suggestion list. Width and position come from the anchored overlay (matched to
-  // the input row). The public overlay recipe owns the surrounding surface; this list owns
-  // only its scrolling content.
+  // `:shortcode` suggestion list. Width and position come from the anchored overlay; the
+  // overlay recipe owns the surrounding surface, this list only its scrolling content.
   .composer__emoji-menu {
     max-height: 220px;
     margin: 0;
@@ -67,8 +65,8 @@
     white-space: nowrap;
   }
 
-  // The command's description, beside its name. Muted and pushed to the end, so the list reads
-  // as a column of commands with an explanation rather than two columns of equal weight.
+  // The command's description: muted and pushed to the end, so the list reads as a column of
+  // commands rather than two columns of equal weight.
   .composer__slash-description {
     margin-left: auto;
     padding-left: 12px;
