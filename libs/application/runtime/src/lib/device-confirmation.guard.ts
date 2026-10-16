@@ -31,7 +31,7 @@ function pathOf(url: string): string {
   return url.split(/[?#]/, 1)[0] ?? '';
 }
 
-/** Security settings stay reachable from the check (2026-10-12 decision 3). */
+/** Security settings stay reachable from the check. */
 export function isSecuritySettings(url: string): boolean {
   return pathOf(url) === '/settings/security';
 }
@@ -53,7 +53,7 @@ export function showsAccountContent(url: string): boolean {
 
 /**
  * Keeps Rooms and every Settings section but Security closed while the active Account's
- * new device still needs verifying (MSC4153 decision 2). Waits at most
+ * new device still needs verifying (MSC4153). Waits at most
  * `DEVICE_CONFIRMATION_SETTLE_MS` for the first status read, then lets the route through;
  * the session coordinator redirects if the check turns out to be required later. A
  * `required` gate is confirmed with a fresh read of that exact Account, because just after

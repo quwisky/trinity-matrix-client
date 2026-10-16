@@ -31,11 +31,8 @@ const FAILED: AccountRemovalOutcome = Object.freeze({ kind: 'failed' });
 
 /**
  * `ACCOUNT_REMOVAL_LAUNCHER`: the one "Remove account from this device" flow, for the
- * account menu and the new-device check. Asks the removal consequences, then the
- * room-key-loss step (offering the key export when backup is known to be incomplete),
- * signs the account out, says when cleanup is incomplete or still running, and goes to
- * sign-in when no account is left. Callers open Security settings for "Export keys" and
- * say when nothing could be removed, each in its own way.
+ * account menu and the new-device check. Callers open Security settings for "Export keys"
+ * and say when nothing could be removed, each in its own way.
  *
  * Once the sign-out has started, its messages and the move to sign-in belong to this flow,
  * not to the caller: the sign-out can end the surface that asked (the new-device check

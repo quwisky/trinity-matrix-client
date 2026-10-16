@@ -10,7 +10,7 @@ import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { SESSION_LOCK_UNAVAILABLE_COPY } from '../../application-runtime.models';
 import type { SessionLockNotice } from './session-lock-notice.model';
 
-/** The full-page notices of a tab that does not run Trinity (#1267). */
+/** The full-page notices of a tab that does not run Trinity. */
 @Component({
   selector: 'trn-session-lock-notice',
   changeDetection: ChangeDetectionStrategy.OnPush,

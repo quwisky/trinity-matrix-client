@@ -22,8 +22,8 @@ import { defer, finalize, take } from 'rxjs';
 
 /**
  * Route-independent presentation host for incoming and cross-user verification. A request
- * that arrives while App lock covers the app waits for unlock (spec §2); one that is cancelled
- * or times out while it waits is dropped unseen.
+ * that arrives while App lock covers the app waits for unlock; one that is cancelled or
+ * times out while it waits is dropped unseen.
  */
 @Component({
   selector: 'trn-verification-host',

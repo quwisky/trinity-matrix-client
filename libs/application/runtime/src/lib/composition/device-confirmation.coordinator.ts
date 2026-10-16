@@ -22,10 +22,10 @@ import {
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 
 /**
- * Cross-capability workflow (ADR 0001) for MSC4153 decision 2: Accounts reports new-device
- * sign-ins, Trust decides whether the active device still needs verifying, and this keeps
- * the app on the check until it does not. Owned by the Application Runtime session, which
- * subscribes before any sign-in can happen.
+ * Cross-capability workflow (ADR 0001) for MSC4153: Accounts reports new-device sign-ins,
+ * Trust decides whether the active device still needs verifying, and this keeps the app on
+ * the check until it does not. Owned by the Application Runtime session, which subscribes
+ * before any sign-in can happen.
  */
 @Injectable({ providedIn: 'root' })
 export class DeviceConfirmationCoordinator {
@@ -118,8 +118,8 @@ export class DeviceConfirmationCoordinator {
                 redirectRead.unsubscribe();
                 redirectRead = null;
               }
-              // Owner decision 2026-10-12 (2): let a trust flow finish; this effect runs
-              // again when it ends, and redirects only if the check is still required.
+              // Let a trust flow finish; this effect runs again when it ends, and
+              // redirects only if the check is still required.
               // Away from Rooms and Settings there is nothing to redirect; the guard
               // checks again on the way back.
               if (

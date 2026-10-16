@@ -137,13 +137,12 @@ export class CapabilityStatusService {
   });
   /**
    * The single global banner slot, by priority: a blocking capability error, then the
-   * encryption prompt, then a limited capability. A limited capability is non-blocking
-   * and reachable from System Status, while the encryption prompt is the user's one
-   * pending setup step. Guidance to set up recovery on another device is no step on this
-   * one, so it takes the slot only when nothing is limited. Per-room banners (offline,
-   * tombstone) sit outside this slot. Until the live trust status arrives, the Account's
-   * forecast decides it the same way, so the banner that will appear holds its space
-   * from the first frame.
+   * encryption prompt (the user's one pending setup step), then a limited capability
+   * (non-blocking, reachable from System Status). Guidance to set up recovery on another
+   * device is no step on this one, so it takes the slot only when nothing is limited.
+   * Per-room banners sit outside this slot. Until the live trust status arrives, the
+   * Account's forecast decides it the same way, so the banner that will appear holds its
+   * space from the first frame.
    */
   private readonly liveSlot = computed<'status' | 'encryption' | null>(() => {
     if (this.hasBlocking()) return 'status';
@@ -220,9 +219,8 @@ export class CapabilityStatusService {
   /**
    * Whether the slot has held the status notice in this app session. Only then can a
    * prompt replace that two-action notice, so only then does the prompt keep the
-   * notice's height (`placement="global"` on the banner). A prompt arriving in a slot
-   * that never held the notice replaces nothing and keeps its own height. Sticky: the
-   * notice can take the slot back at any time.
+   * notice's height (`placement="global"` on the banner). Sticky: the notice can take the
+   * slot back at any time.
    */
   readonly bannerSlotReserved = this.slotHeldStatus.asReadonly();
   /** Names what is limited: the one problem's heading, or up to two capability names. */

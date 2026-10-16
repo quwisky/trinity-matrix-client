@@ -28,23 +28,23 @@ import {
 } from 'rxjs';
 import { UnsentDraftsWriter } from './unsent-drafts.writer';
 
-/** Owner decision 2 of #1267: how long sends and uploads already on their way get. */
+/** How long sends and uploads already on their way get. */
 export const SESSION_HANDOVER_DRAIN_MS = 5_000;
 
 /** How often the drain looks at the clients' outgoing work. */
 const DRAIN_POLL_MS = 250;
 
 /**
- * Hands this tab's session to another tab that chose "Use here" (#1267, decisions 2 and 5):
- * after any erase or sign-out already running here has settled, stop syncing at once, give messages and uploads already on their way up to five seconds,
- * note the text still not on the server, stop every Matrix client through the ordinary stop
- * path, close dialogs, put that text back in its drafts and reload this page in place, so the
- * fresh document waits for the lock like any other tab and, when it takes the session again,
- * lands on the route it showed. The lock is not released early:
- * the browser frees it as this document unloads, so the other tab never opens a store while
- * anything here, a client start still running included, could still use it. A reload rather
- * than a return to waiting in place: this document has loaded preferences, accounts and room
- * state that a waiting tab must not have. Never wipes anything.
+ * Hands this tab's session to another tab that chose "Use here": after any erase or sign-out
+ * already running here has settled, stop syncing at once, give messages and uploads already
+ * on their way up to five seconds, note the text still not on the server, stop every Matrix
+ * client through the ordinary stop path, close dialogs, put that text back in its drafts and
+ * reload this page in place, so the fresh document waits for the lock like any other tab and,
+ * when it takes the session again, lands on the route it showed. The lock is not released
+ * early: the browser frees it as this document unloads, so the other tab never opens a store
+ * while anything here, a client start still running included, could still use it. A reload
+ * rather than a return to waiting in place: this document has loaded preferences, accounts
+ * and room state that a waiting tab must not have. Never wipes anything.
  */
 @Injectable({ providedIn: 'root' })
 export class SessionHandoverWorkflow {
@@ -102,7 +102,7 @@ export class SessionHandoverWorkflow {
       return this.drain();
     }).pipe(
       switchMap(() => {
-        // Before stop(): the pending local echoes go with the clients (owner decision 5).
+        // Before stop(): the pending local echoes go with the clients.
         unsent = this.readUnsent();
         return this.matrix.stop();
       }),
@@ -155,7 +155,7 @@ export class SessionHandoverWorkflow {
     }
   }
 
-  /** Rejected or thrown before it returns, a failed write must not stop the reload (ruling N7). */
+  /** Rejected or thrown before it returns, a failed write must not stop the reload. */
   private writeDrafts(unsent: readonly PendingTextMessage[]): Promise<void> {
     try {
       return this.unsentDrafts.writeBack(unsent);

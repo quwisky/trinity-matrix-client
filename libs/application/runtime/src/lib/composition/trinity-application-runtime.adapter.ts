@@ -113,7 +113,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly appearance = inject(AppearanceEffects);
   private savedAppearanceApplied = false;
   private readonly healthContexts = new Map<string, CapabilityContext>();
-  // Version stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard (#927).
+  // Version stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard.
   private readonly healthGenerations = new Map<string, number>();
   private manifest: HostCapabilityManifest | null = null;
   private accountRecoveryId: string | null = null;
@@ -189,7 +189,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
           }
         }
       }),
-      // Never start without the lock (owner decision 1).
+      // Never start without the lock.
       catchError(() => of({ kind: 'unavailable' } as const)),
     );
   }

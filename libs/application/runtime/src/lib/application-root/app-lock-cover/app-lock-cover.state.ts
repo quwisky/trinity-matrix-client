@@ -63,7 +63,7 @@ interface PinModel {
 }
 
 /**
- * The lock screen's unlock state (spec §2), scoped to `trn-app-lock-cover`: which view shows,
+ * The lock screen's unlock state, scoped to `trn-app-lock-cover`: which view shows,
  * the waits and lines, the commands, and the once-per-visit system prompt. The component owns
  * the dialog, the host signals and focus. Never logs, shows or keeps a PIN after a submit.
  */
@@ -112,7 +112,7 @@ export class AppLockCoverState {
   private promptPending = false;
   /**
    * The lifecycle binding last said the app is on screen. Assumed at start, like the host
-   * does; a window that reloads hidden hears otherwise (#1343) before it may prompt.
+   * does; a window that reloads hidden hears otherwise before it may prompt.
    */
   private onScreen = true;
   private refreshing: Subscription | null = null;
@@ -382,10 +382,10 @@ export class AppLockCoverState {
   }
 
   /**
-   * The locked app is on screen: read the host's support again (decision 23), so a changed
-   * biometry or a newly available system prompt shows. `prompt` opens the system prompt once
-   * per visit (a cold start or reload, or the app coming back to the front); never right
-   * after the person locked it in front of them. A later read never drops a pending prompt.
+   * The locked app is on screen: read the host's support again, so a changed biometry or a
+   * newly available system prompt shows. `prompt` opens the system prompt once per visit (a
+   * cold start or reload, or the app coming back to the front); never right after the person
+   * locked it in front of them. A later read never drops a pending prompt.
    */
   visit(prompt: boolean): void {
     this.promptPending ||= prompt;

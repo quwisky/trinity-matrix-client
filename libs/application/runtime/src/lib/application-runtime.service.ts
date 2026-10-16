@@ -380,7 +380,7 @@ export class ApplicationRuntimeService {
               onPreferencesHydrated,
             );
           case 'unavailable':
-            // Owner decision 1: never start without the lock. The root shows the
+            // Never start without the lock. The root shows the
             // secure-connection notice for this code instead of the recovery page.
             return this.advanceStage(
               attempt,
