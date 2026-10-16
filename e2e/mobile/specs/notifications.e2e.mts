@@ -121,8 +121,11 @@ describe('mobile local notifications', () => {
         `/rooms/${roomSegment(roomId)}`,
       { timeout: 30_000, timeoutMsg: `the tap never opened room ${roomId}` },
     );
+    // The message row (class token `msg`), not its msg__* descendants too.
     await expect(
-      $(`//*[contains(@class,"msg")][contains(.,"${text}")]`),
+      $(
+        `//*[contains(concat(" ",normalize-space(@class)," ")," msg ")][contains(.,"${text}")]`,
+      ),
     ).toBeDisplayed({
       wait: 30_000,
     });

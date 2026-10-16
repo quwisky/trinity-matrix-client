@@ -84,9 +84,12 @@ describe('device-rendered push on Android', () => {
     await browser.execute('mobile: openNotifications');
     // Native code does not trust this run's Caddy CA, so the fetch fails and the renderer
     // shows the stored room name with its fetch-failure text. The message text is proven by
-    // the shared render fixture (JUnit) and the iOS spec.
+    // the shared render fixture (JUnit) and the iOS spec. The room name shows twice in a
+    // conversation notification (header and title), so take its first node.
     await expect(
-      uiSelector(`new UiSelector().textContains("${room.roomName}")`),
+      uiSelector(
+        `new UiSelector().textContains("${room.roomName}").instance(0)`,
+      ),
     ).toBeDisplayed({ wait: 30_000 });
     // Tap the message text, as the local-notification spec taps its body. The room name
     // resolves to the conversation header (`header_text_secondary`, not clickable); a tap
@@ -157,9 +160,11 @@ describe('device-rendered push on Android', () => {
 
     await browser.execute('mobile: openNotifications');
     // No network is involved, so unlike the test above this needs no trusted CA. The title
-    // is the stored room name.
+    // is the stored room name, shown in the header and the title: take its first node.
     await expect(
-      uiSelector(`new UiSelector().textContains("${room.roomName}")`),
+      uiSelector(
+        `new UiSelector().textContains("${room.roomName}").instance(0)`,
+      ),
     ).toBeDisplayed({ wait: 30_000 });
     await expect(
       uiSelector(

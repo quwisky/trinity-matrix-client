@@ -58,11 +58,8 @@ const gatewayPush = (userId: string, roomId: string, eventId: string) => ({
 async function renderProbe(
   payload: Readonly<Record<string, unknown>>,
 ): Promise<RenderedPush> {
-  const result = await browser.executeAsync(
-    (
-      push: Readonly<Record<string, unknown>>,
-      done: (value: unknown) => void,
-    ) => {
+  const result = await browser.execute(
+    async (push: Readonly<Record<string, unknown>>): Promise<unknown> => {
       const handoff = (
         window as typeof window & {
           Capacitor?: {
@@ -75,12 +72,13 @@ async function renderProbe(
         }
       ).Capacitor?.Plugins?.PushHandoff;
       if (!handoff?.renderProbe) {
-        done({ error: 'PushHandoff.renderProbe is unavailable' });
-        return;
+        return { error: 'PushHandoff.renderProbe is unavailable' };
       }
-      handoff
-        .renderProbe({ payload: push })
-        .then(done, (e: unknown) => done({ error: String(e) }));
+      try {
+        return await handoff.renderProbe({ payload: push });
+      } catch (e: unknown) {
+        return { error: String(e) };
+      }
     },
     payload,
   );

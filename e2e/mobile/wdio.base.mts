@@ -36,8 +36,8 @@ export function mobileWdioConfig(options: {
   const outputDir = wdioOutputDir(suite);
   return {
     runner: 'local',
-    // Appium drives the device; no display is needed, and wdio's xvfb-run wrapper breaks the worker IPC channel.
-    autoXvfb: false,
+    // Appium drives the device, so no display is needed: don't start Weston or Xvfb for the run.
+    displayServerEnabled: false,
     specs: selectedSpecs(),
     maxInstances: 1,
     logLevel: 'warn',

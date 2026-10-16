@@ -13,26 +13,25 @@ interface NativeStatusBarInfo {
 
 /** The Capacitor StatusBar plugin's native state, read through the real bridge. */
 async function readNativeStatusBar(): Promise<NativeStatusBarInfo> {
-  const result = await browser.executeAsync(
-    (done: (value: unknown) => void) => {
-      const statusBar = (
-        window as typeof window & {
-          Capacitor?: {
-            Plugins?: {
-              StatusBar?: { getInfo(): Promise<unknown> };
-            };
+  const result = await browser.execute(async (): Promise<unknown> => {
+    const statusBar = (
+      window as typeof window & {
+        Capacitor?: {
+          Plugins?: {
+            StatusBar?: { getInfo(): Promise<unknown> };
           };
-        }
-      ).Capacitor?.Plugins?.StatusBar;
-      if (!statusBar) {
-        done({ error: 'Capacitor StatusBar plugin is unavailable' });
-        return;
+        };
       }
-      statusBar
-        .getInfo()
-        .then(done, (e: unknown) => done({ error: String(e) }));
-    },
-  );
+    ).Capacitor?.Plugins?.StatusBar;
+    if (!statusBar) {
+      return { error: 'Capacitor StatusBar plugin is unavailable' };
+    }
+    try {
+      return await statusBar.getInfo();
+    } catch (e: unknown) {
+      return { error: String(e) };
+    }
+  });
   const info = result as NativeStatusBarInfo & { error?: string };
   if (info.error) throw new Error(info.error);
   return info;
