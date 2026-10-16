@@ -314,6 +314,34 @@ describe('Synapse adapter config generation', () => {
     expect(yaml.match(/^rc_room_creation:/gm)).toHaveLength(1);
   });
 
+  it('turns off the sync response cache, also on an existing config', async () => {
+    stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
+    const { ensureConfig } = await adapterIn(stateDir);
+    const ctx = { log: () => undefined, generate: generateInto(stateDir) };
+    const config = join(stateDir, 'data/homeserver.yaml');
+    const syncCache = /^caches:\n {2}sync_response_cache_duration: 0$/m;
+
+    await ensureConfig(ctx);
+    expect(readFileSync(config, 'utf8')).toMatch(syncCache);
+    await ensureConfig(ctx);
+    expect(readFileSync(config, 'utf8').match(/^caches:/gm)).toHaveLength(1);
+
+    // A config that already has a caches block gets the key inside it, not a second block.
+    writeFileSync(
+      config,
+      readFileSync(config, 'utf8').replace(
+        syncCache,
+        'caches:\n  global_factor: 1.0',
+      ),
+    );
+    await ensureConfig(ctx);
+    const yaml = readFileSync(config, 'utf8');
+    expect(yaml.match(/^caches:/gm)).toHaveLength(1);
+    expect(yaml).toMatch(
+      /^caches:\n {2}sync_response_cache_duration: 0\n {2}global_factor: 1\.0$/m,
+    );
+  });
+
   it('keeps the Dex block for the Docker runtime', async () => {
     stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
     const { ensureConfig } = await adapterIn(stateDir);
