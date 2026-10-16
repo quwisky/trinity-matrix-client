@@ -115,8 +115,8 @@ export const SAVE_CAPTURES_TO_GALLERY_PREFERENCE = definePreference({
 
 /**
  * Whether photos and videos sent as message attachments go out exactly as picked, metadata
- * included, instead of without their location and camera or device details (#1140, #1179).
- * Profile and room photos are public and stay up, so they are stripped whatever this says.
+ * included, instead of without their location and camera or device details. Profile and
+ * room photos are public and stay up, so they are stripped whatever this says.
  */
 export const KEEP_PHOTO_METADATA_PREFERENCE = definePreference({
   id: 'conversations.privacy.keep-photo-metadata',
@@ -136,7 +136,7 @@ export const KEEP_PHOTO_METADATA_PREFERENCE = definePreference({
     testId: 'privacy-keep-photo-metadata',
   },
   persistence: {
-    // Named before the setting covered videos; renaming it would orphan stored choices.
+    // Persisted key: renaming it would orphan stored choices.
     key: 'trinity.privacy.keep-photo-metadata',
     migration: booleanMigration(),
   },

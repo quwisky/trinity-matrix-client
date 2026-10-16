@@ -70,20 +70,19 @@ const MAX_PARTICIPANTS = 8;
 const THREAD_SCROLLBACK = 30;
 
 /**
- * Projects a room's threads into render-ready signals — mirroring
- * {@link TimelineService}'s shape (instance-keyed connect/disconnect, defensive
- * event handlers, async-decryption re-mapping). Two independent views:
+ * Projects a room's threads into render-ready signals, mirroring {@link TimelineService}'s
+ * shape (instance-keyed connect/disconnect, defensive handlers, async-decryption
+ * re-mapping). Two independent views:
  *
- *  - {@link summaries}: a map of thread-root id → {@link ThreadSummary} for the
- *    exact room, bound with {@link attach}/{@link close}, feeding the main
- *    timeline's thread indicators.
- *  - {@link threadMessages}: the live, decrypted {@link MessageView}s of a *single*
- *    opened thread (root first, then replies), bound with
- *    {@link attachThreadRoot}/{@link closeThread} when a thread view is presented.
+ *  - {@link summaries}: thread-root id to {@link ThreadSummary} for the exact room, bound
+ *    with {@link attach}/{@link close}, feeding the main timeline's thread indicators.
+ *  - {@link threadMessages}: the live, decrypted {@link MessageView}s of a *single* opened
+ *    thread (root first, then replies), bound with {@link attachThreadRoot}/
+ *    {@link closeThread}.
  *
  * Text send/reply/edit are the package-internal SDK adapter for the public exact-root
- * child. Message relations and staged media use the shared Conversation adapters, so
- * no second public action facade can drift from the room path.
+ * child. Message relations and staged media use the shared Conversation adapters, so no
+ * second public action facade can drift from the room path.
  */
 @Injectable()
 export class ThreadsService {
@@ -99,9 +98,8 @@ export class ThreadsService {
   readonly summaries = this._summaries.asReadonly();
 
   /**
-   * The active room's threads as a flat list, newest activity first — drives the
-   * threads-list panel. Derived from {@link summaries}, so it reacts to new
-   * threads, replies, and unread changes without a separate projection.
+   * The active room's threads as a flat list, newest activity first (drives the threads-list
+   * panel); derived from {@link summaries}.
    */
   readonly threadList = computed<ThreadSummary[]>(() =>
     Object.values(this._summaries()).sort(
@@ -137,19 +135,17 @@ export class ThreadsService {
 
   // --- Summaries (active room) ---------------------------------------------
   /**
-   * The exact Account client {@link attach} bound. Re-reading a mutable active pointer
-   * on close would detach from the new client and leak this listener on the old one.
+   * The exact Account client {@link attach} bound; re-reading a mutable active pointer on
+   * close would detach from the new client and leak this listener on the old one.
    */
   private summariesClient: MatrixClient | null = null;
   private summariesRoom: Room | null = null;
   private summariesRoomId: string | null = null;
 
-  // Per-thread summary cache keyed by thread-root id. Each entry stores the summary
-  // and a `rev` fingerprint of everything {@link summaryFor} reads that can change
-  // (reply count, root/latest reply, unread counts — see {@link threadSummaryRevision}).
-  // A summary is rebuilt only when its fingerprint changes, so a message in one
-  // thread no longer rebuilds every other thread's summary — and unchanged
-  // thread-root rows keep their object identity and aren't re-rendered.
+  // Per-thread summary cache by thread-root id: the summary plus a `rev` fingerprint of
+  // everything {@link summaryFor} reads (see {@link threadSummaryRevision}). A summary is
+  // rebuilt only when its fingerprint changes, so a message in one thread doesn't rebuild
+  // the others and unchanged thread-root rows keep their identity.
   private readonly summaryCache = new Map<
     string,
     { rev: string; summary: ThreadSummary }
@@ -161,14 +157,11 @@ export class ThreadsService {
       this.refreshSummaries();
     }
   };
-  // A summary renders each participant's name + avatar (and the root/latest sender
-  // names), all resolved from room membership — which can arrive (lazy loading) or
-  // change after the summary was built. The revision fingerprint deliberately does
-  // NOT walk participant avatars (that would cost a member scan on every refresh),
-  // so instead drop the summaries the changed member takes part in and let
-  // refreshSummaries rebuild just those with the resolved profile. The cached
-  // participant list is the gate: an unreferenced member matches nothing and no
-  // rebuild happens.
+  // A summary renders participant and root/latest sender names + avatars resolved from
+  // membership, which can arrive (lazy loading) or change later. The revision deliberately
+  // does NOT walk participant avatars (a member scan on every refresh), so drop the
+  // summaries the changed member takes part in and let refreshSummaries rebuild just those.
+  // The cached participant list is the gate: an unreferenced member matches nothing.
   private readonly onSummariesMember = (
     _event: MatrixEvent,
     _state: RoomState,
@@ -198,10 +191,9 @@ export class ThreadsService {
   private threadRoom: Room | null = null;
   private threadRoomId: string | null = null;
 
-  // User ids the opened thread renders a member for: each message's sender plus
-  // each reply's quoted sender. Recomputed on every refresh; the member listener
-  // re-maps only when one of these members loads/changes, so a lazy member-load
-  // doesn't re-project the thread once per member.
+  // Users the opened thread renders a member for (each sender plus each reply's quoted
+  // sender), recomputed every refresh so the member listener re-maps only for these, not
+  // once per member of a lazy member-load.
   private threadRelevantSenders = new Set<string>();
 
   /**
@@ -212,20 +204,19 @@ export class ThreadsService {
   /** Whether the opened thread's room counts as encrypted: its state, or else its crypto store. */
   private threadEncryption = new RoomEncryptionFlags();
   /**
-   * Per-reply projection cache keyed by event id, mirroring TimelineService.viewCache:
-   * `rev` fingerprints everything Message Presentation reads that can change while the
-   * thread is open (the shield folded in, since it resolves asynchronously). Without it
-   * every refresh re-ran a markdown render + DOMPurify sanitize for EVERY reply — and
-   * refreshThread is driven by Timeline/LocalEcho/Decrypted/Members, so a keystroke
-   * echo rebuilt the whole thread and handed every OnPush row a new identity.
+   * Per-reply projection cache by event id, mirroring TimelineService's row cache: `rev`
+   * fingerprints everything Message Presentation reads that can change while the thread is
+   * open (the async shield folded in). refreshThread is driven by Timeline/LocalEcho/
+   * Decrypted/Members, so without it a keystroke echo re-ran markdown + DOMPurify for EVERY
+   * reply and gave every OnPush row a new identity.
    */
   private threadViewCache = new Map<
     string,
     { rev: string; view: MessageView }
   >();
 
-  // Cross-signing / device trust changed: a thread message's shield may flip, so
-  // force a full re-resolve of the opened thread's shields (mirrors TimelineService).
+  // Trust changed: a thread message's shield may flip, so force a full re-resolve of the
+  // opened thread's shields (mirrors TimelineService).
   private readonly onThreadTrust = (): void => {
     if (this.threadRoom) {
       void this.resolveThreadShields(this.threadRoom, true);
@@ -238,9 +229,9 @@ export class ThreadsService {
       this.refreshThread();
     }
   };
-  // A quoted sender's name/avatar can arrive after its reply (lazy loading),
-  // otherwise leaving the in-thread reply preview stuck on the raw mxid + initials.
-  // Re-map when a member the thread actually references loads or changes.
+  // A quoted sender's name/avatar can arrive after its reply (lazy loading), leaving the
+  // reply preview on the raw mxid + initials; re-map when a member the thread references
+  // loads or changes.
   private readonly onThreadMember = (
     _event: MatrixEvent,
     _state: RoomState,
@@ -365,26 +356,23 @@ export class ThreadsService {
     this.threadRoomId = room.roomId;
     this.threadClient = client;
     this._openThreadRootId.set(rootEventId);
-    // Attach an already-aggregated Thread (e.g. opening from a "N replies"
-    // indicator). When none exists — opening a *new* thread via "Reply in thread"
-    // on a plain message — leave the view root-only and do NOT create a Thread yet:
-    // creating one on open would leave an empty 0-reply thread if the user never
-    // sends. The Thread is created lazily on the first send (see `ensureThread`),
-    // and `ThreadEvent.New` still attaches it if a remote reply forms it meanwhile.
+    // Attach an already-aggregated Thread (e.g. from a "N replies" indicator). When none
+    // exists ("Reply in thread" on a plain message), leave the view root-only and do NOT
+    // create one: it would leave an empty 0-reply thread if the user never sends. It is
+    // created lazily on the first send (`ensureThread`); `ThreadEvent.New` still attaches
+    // it if a remote reply forms it meanwhile.
     const thread = room.getThread(rootEventId);
     if (thread) {
       this.attachThread(thread);
     }
-    // New replies + reply-count changes arrive on the thread; the local echo's
-    // send-status transitions (sending → sent/failed) arrive at the room level, so
-    // listen there too to re-map the optimistic echo just like the main timeline.
+    // New replies and reply-count changes arrive on the thread; the local echo's send-status
+    // transitions arrive at the room level, so listen there too.
     room.on(ThreadEvent.New, this.onThreadCreated);
     room.on(RoomEvent.LocalEchoUpdated, this.onThreadChanged);
     room.on(RoomStateEvent.Members, this.onThreadMember);
     // A reply's "seen by" avatars follow the read markers, and a receipt is none of the
-    // thread-level events above — the summaries projection binds this for the same
-    // reason, and the main timeline does too (timeline.service.ts). Without it a
-    // receipt only surfaced when some unrelated event happened to re-refresh.
+    // thread-level events above; the summaries and main timeline bind it too. Without it a
+    // receipt surfaces only when an unrelated event re-refreshes.
     room.on(RoomEvent.Receipt, this.onThreadChanged);
     client.on(MatrixEventEvent.Decrypted, this.onThreadDecrypted);
     client.on(CryptoEvent.UserTrustStatusChanged, this.onThreadTrust);
@@ -446,11 +434,9 @@ export class ThreadsService {
   }
 
   /**
-   * Page in older replies for the opened thread (backward pagination over the
-   * thread's own live timeline), mirroring {@link TimelineService.loadOlder}. A
-   * `Thread` owns a {@link EventTimeline} via `thread.liveTimeline`; paginating it
-   * backwards prepends older replies, which are re-mapped into
-   * {@link threadMessages} exactly like the live path. The `loadingOlder` flag is
+   * Page in older replies for the opened thread (backward pagination over the thread's own
+   * live timeline), mirroring {@link TimelineService.loadOlder}. Prepended replies are
+   * re-mapped into {@link threadMessages} like the live path. The `loadingOlder` flag is
    * reset on success *or* error so a failed page can't wedge pagination off.
    */
   paginateOpenThread(): Observable<void> {
@@ -493,18 +479,16 @@ export class ThreadsService {
   }
 
   // --- In-thread composing --------------------------------------------------
-  // Each action mirrors the matching TimelineService method (sharing the content
-  // builders in message-content.ts) but passes the opened thread's root id as the
-  // SDK `threadId`, so the message stays in the thread and its optimistic echo +
-  // failed/retry state surface through `threadMessages` exactly like the timeline.
+  // Each action mirrors the matching TimelineService method (sharing the content builders)
+  // but passes the opened thread's root id as the SDK `threadId`, so the message stays in
+  // the thread and its echo and failed/retry state surface through `threadMessages`.
 
   /**
-   * Create + attach the Thread just before the first reply is sent, if one doesn't
-   * exist yet. matrix-js-sdk doesn't form a Thread from the sender's own first reply
-   * — the echo is treated as threaded (so it's kept out of the main timeline) but no
-   * Thread is created, so the reply would vanish. Creating it here, only when the user
-   * actually sends, gives the reply a home without leaving an empty 0-reply thread
-   * when a thread is merely opened then abandoned. No-op once attached/aggregated.
+   * Create + attach the Thread just before the first reply is sent, if none exists.
+   * matrix-js-sdk doesn't form a Thread from the sender's own first reply: the echo is
+   * treated as threaded (kept out of the main timeline) but no Thread is created, so the
+   * reply would vanish. Creating it only on send avoids an empty 0-reply thread when a
+   * thread is merely opened then abandoned. No-op once attached/aggregated.
    */
   private ensureThread(room: Room, rootEventId: string): Observable<void> {
     if (this.thread) {
@@ -520,11 +504,10 @@ export class ThreadsService {
       this.createThreadFromRoot(room, rootEventId, local);
       return of(void 0);
     }
-    // The root isn't in memory (e.g. an old thread that scrolled out of the live
-    // timeline). The SDK would still route a threaded send out, but with no local
-    // Thread the optimistic echo has nowhere to land and vanishes. Fetch the root
-    // so the Thread can be created; if it can't be fetched, surface the error
-    // rather than sending a reply that won't show.
+    // The root isn't in memory (e.g. an old thread scrolled out of the live timeline). The
+    // SDK would still route a threaded send, but with no local Thread the echo has nowhere
+    // to land and vanishes. Fetch the root to create the Thread; if that fails, surface the
+    // error rather than send a reply that won't show.
     const client = this.threadClient;
     if (!client) return of(void 0);
     return from(client.fetchRoomEvent(room.roomId, rootEventId)).pipe(
@@ -555,9 +538,9 @@ export class ThreadsService {
         return of(void 0);
       }
       const { client, room, roomId, threadId } = ctx;
-      // A leading slash command (/me, /shrug, /plain, /spoiler) rewrites the content
-      // just like the main composer; otherwise build the normal text content so
-      // mentions carry `m.mentions` + matrix.to pills.
+      // A leading slash command (/me, /shrug, /plain, /spoiler) rewrites the content as in
+      // the main composer; otherwise build normal text content so mentions carry
+      // `m.mentions` + matrix.to pills.
       const content =
         slashCommandContent(text, renderMarkdown, mentions) ??
         textMessageContent(text, renderMarkdown(text), mentions);
@@ -763,9 +746,9 @@ export class ThreadsService {
         loadedReplies < (thread?.length ?? 0),
     );
 
-    // The opened thread is being viewed, so mark its latest reply read (a
-    // thread-scoped receipt). Deduped, so live replies mark read but paginating
-    // older history — which leaves the latest unchanged — does not re-send.
+    // The opened thread is being viewed, so mark its latest reply read (thread-scoped
+    // receipt). Deduped, so paginating older history, which leaves the latest unchanged,
+    // doesn't re-send.
     this.markThreadRead();
   }
 
@@ -910,11 +893,11 @@ export class ThreadsService {
 }
 
 /**
- * A compact fingerprint of every input {@link ThreadsService.summaryFor} reads
- * that can change for a thread: its reply count (which also tracks new
- * participants), its root and latest-reply events (id/timestamp/redaction/
- * decryption/body/sender + resolved name, so edits and redactions are caught), and
- * its unread counts. The summary is rebuilt only when this changes.
+ * A compact fingerprint of every input {@link ThreadsService.summaryFor} reads that can
+ * change for a thread: its reply count (also tracks new participants), its root and
+ * latest-reply events (id/timestamp/redaction/decryption/body/sender + resolved name, so
+ * edits and redactions are caught) and its unread counts. The summary is rebuilt only
+ * when this changes.
  */
 function threadSummaryRevision(room: Room, thread: Thread): string {
   const latest = thread.replyToEvent;

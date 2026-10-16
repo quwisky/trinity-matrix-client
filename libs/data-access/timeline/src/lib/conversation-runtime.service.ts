@@ -446,7 +446,7 @@ export class ConversationRuntime {
    * For as long as it is subscribed, the window is hidden ({@link windowHidden}): the
    * `LiveTimelineTrimmer` trims the focused room through {@link trimHeld} right away and
    * after each sync, like a room nobody has open, but only while its view follows the
-   * newest message (#1366). A trim never cuts past what that view shows or the event the
+   * newest message. A trim never cuts past what that view shows or the event the
    * composer replies to or edits; below the 1,000-event ceiling it also keeps the open
    * thread's root. Showing the window again ends it. Owned by the Application Runtime's
    * hidden-window release.
@@ -706,9 +706,8 @@ export class ConversationRuntime {
     const scoped = this.drafts.get(draftKey);
     if (scoped) return scoped;
 
-    // Before Conversation Runtime, the main composer persisted by Room only. Let the first
-    // exact Account-and-Room handle claim that legacy draft, then remove the ambiguous key so
-    // another Account in the same Room cannot inherit it.
+    // The first exact Account-and-Room handle claims the legacy Room-only draft, then the
+    // ambiguous key is removed so another Account in the same Room cannot inherit it.
     const legacy = this.drafts.get(key.roomId);
     if (!legacy) return '';
     this.drafts.clear(key.roomId);
