@@ -70,27 +70,43 @@ async function nextAnimationFrame(page: Page): Promise<void> {
 /**
  * Resolve once `target` has kept the same box for {@link STILL_FRAMES} animation frames in a
  * row, so a gesture that needs it to hold still is not cancelled by a scroll in progress.
+ * Bounded inside the page (`Locator.evaluate`'s timeout only covers finding the element):
+ * a target that never holds still fails after `timeout`.
  */
-async function waitUntilStill(
+export async function waitUntilStill(
   target: Locator,
   timeout = 10_000,
 ): Promise<void> {
   await target.evaluate(
-    (element, frames) =>
-      new Promise<void>((resolve) => {
+    (element, { frames, limit }) =>
+      new Promise<void>((resolve, reject) => {
         let last = '';
         let still = 0;
+        let frameId = 0;
+        // A timer, not a frame count: frames stop in a hidden page, and this must still end.
+        const timer = setTimeout(() => {
+          cancelAnimationFrame(frameId);
+          reject(
+            new Error(
+              `The long-press target kept moving for ${limit}ms (last box ${last})`,
+            ),
+          );
+        }, limit);
         const frame = (): void => {
           const { top, left, width, height } = element.getBoundingClientRect();
           const box = `${top},${left},${width},${height}`;
           still = box === last ? still + 1 : 0;
           last = box;
-          if (still >= frames) resolve();
-          else requestAnimationFrame(frame);
+          if (still >= frames) {
+            clearTimeout(timer);
+            resolve();
+          } else {
+            frameId = requestAnimationFrame(frame);
+          }
         };
-        requestAnimationFrame(frame);
+        frameId = requestAnimationFrame(frame);
       }),
-    STILL_FRAMES,
+    { frames: STILL_FRAMES, limit: timeout },
     { timeout },
   );
 }

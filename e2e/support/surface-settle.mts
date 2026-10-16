@@ -8,26 +8,49 @@ import type { Locator } from '@playwright/test';
  * press lands where Close or Cancel was a frame ago and hits the sheet body instead. The
  * controls work during the entrance (a DOM click there closes the dialog); only a pointer
  * aimed at a moving box misses. Infinite animations, such as a spinner, are ignored.
+ *
+ * Bounded inside the page: `Locator.evaluate`'s own timeout only covers finding the element,
+ * so an animation that never finishes fails here after `timeout` with its name.
  */
 export async function settleSurface(
   target: Locator,
-  timeout = 30_000,
+  timeout = 10_000,
 ): Promise<void> {
   await target.evaluate(
-    (element) => {
+    (element, limit) => {
       const surface =
         element.closest('[role="dialog"], [role="alertdialog"]') ?? element;
-      return Promise.all(
-        surface
-          .getAnimations({ subtree: true })
-          .filter(
-            (animation) =>
-              animation.effect?.getComputedTiming().endTime !== Infinity,
-          )
-          .map((animation) => animation.finished.catch(() => undefined)),
-      );
+      const running = surface
+        .getAnimations({ subtree: true })
+        .filter(
+          (animation) =>
+            animation.effect?.getComputedTiming().endTime !== Infinity,
+        );
+      return new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          const names = running
+            .filter((animation) => animation.playState !== 'finished')
+            .map(
+              (animation) =>
+                (animation as CSSAnimation).animationName ??
+                animation.id ??
+                'transition',
+            );
+          reject(
+            new Error(
+              `The surface was still animating after ${limit}ms: ${names.join(', ')}`,
+            ),
+          );
+        }, limit);
+        void Promise.all(
+          running.map((animation) => animation.finished.catch(() => undefined)),
+        ).then(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
     },
-    undefined,
+    timeout,
     { timeout },
   );
 }
