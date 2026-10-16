@@ -94,6 +94,9 @@ export const LongMessage: Story = {
  * never moves the page below.
  */
 export const GlobalSlot: Story = {
+  // Full width, as in the app: the padded canvas would narrow the banners by 2rem and wrap
+  // the prompt's action at 320px, a layout the app never shows.
+  parameters: { layout: 'fullscreen' },
   render: () => ({
     template: `
       <div class="grid gap-4">
