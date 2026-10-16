@@ -1,7 +1,12 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
-import { TrustService, type TrustStatus } from '@trinity/data-access/trust';
+import {
+  TrustService,
+  TrustSlotForecastService,
+  type SlotForecast,
+  type TrustStatus,
+} from '@trinity/data-access/trust';
 import { BUILD_INFO } from '@trinity/platform-native';
 import type { CapabilityRecovery } from '@trinity/runtime/projection';
 import { firstValueFrom, of, toArray } from 'rxjs';
@@ -14,6 +19,7 @@ import {
 } from './capability-status.catalog';
 import { CapabilityHealthService } from './capability-health.service';
 import { CapabilityStatusService } from './capability-status.service';
+import { PointerPressService } from './pointer-press.service';
 
 describe('CapabilityStatusService', () => {
   let health: CapabilityHealthService;
@@ -21,11 +27,15 @@ describe('CapabilityStatusService', () => {
   let runtimeState: WritableSignal<ApplicationRuntimeState>;
   let trust: WritableSignal<TrustStatus>;
   let setupElsewhere: WritableSignal<boolean>;
+  let pressed: WritableSignal<boolean>;
+  let forecast: WritableSignal<SlotForecast | null>;
 
   beforeEach(() => {
     runtimeState = signal({ phase: 'ready', attempt: 7, settlements: [] });
     trust = signal<TrustStatus>('ready');
     setupElsewhere = signal(false);
+    pressed = signal(false);
+    forecast = signal<SlotForecast | null>(null);
     TestBed.configureTestingModule({
       providers: [
         CapabilityHealthService,
@@ -34,6 +44,8 @@ describe('CapabilityStatusService', () => {
           provide: TrustService,
           useValue: { status: trust, recoverySetupElsewhere: setupElsewhere },
         },
+        { provide: PointerPressService, useValue: { pressed } },
+        { provide: TrustSlotForecastService, useValue: { forecast } },
         {
           provide: ApplicationRuntimeService,
           useValue: {
@@ -357,6 +369,26 @@ describe('CapabilityStatusService', () => {
   });
 
   describe('global banner slot', () => {
+    it('holds a slot change while a pointer is pressed and applies it on release', () => {
+      report('@a:hs', 'accounts', 'restore');
+      expect(status.bannerSlot()).toBe('status');
+
+      pressed.set(true);
+      trust.set('needs-setup');
+      TestBed.tick();
+      expect(status.bannerSlot()).toBe('status');
+
+      pressed.set(false);
+      TestBed.tick();
+      expect(status.bannerSlot()).toBe('encryption');
+    });
+
+    it('changes at once when nothing is pressed', () => {
+      trust.set('needs-setup');
+      TestBed.tick();
+      expect(status.bannerSlot()).toBe('encryption');
+    });
+
     it('is empty when nothing is limited and encryption needs nothing', () => {
       expect(status.bannerSlot()).toBeNull();
       expect(status.bannerMessage()).toBe('');
@@ -435,6 +467,277 @@ describe('CapabilityStatusService', () => {
       expect(status.bannerSlotReserved()).toBe(true);
     });
 
+    it('claims the slot for a forecast prompt while the live status is unknown', () => {
+      trust.set('unknown');
+      forecast.set('needs-recovery');
+      expect(status.bannerSlot()).toBe('encryption');
+      expect(status.bannerPrompt()).toEqual({
+        kind: 'needs-recovery',
+        placeholder: true,
+      });
+
+      trust.set('needs-recovery');
+      forecast.set(null); // the service clears it once the live status is known
+      expect(status.bannerSlot()).toBe('encryption');
+      expect(status.bannerPrompt()).toEqual({
+        kind: 'needs-recovery',
+        placeholder: false,
+      });
+    });
+
+    it('names the live prompt it holds the slot for', () => {
+      trust.set('needs-setup');
+      expect(status.bannerPrompt()).toEqual({
+        kind: 'needs-setup',
+        placeholder: false,
+      });
+      trust.set('needs-verification');
+      expect(status.bannerPrompt()).toEqual({
+        kind: 'needs-verification',
+        placeholder: false,
+      });
+      trust.set('needs-setup');
+      setupElsewhere.set(true);
+      expect(status.bannerPrompt()).toEqual({
+        kind: 'setup-elsewhere',
+        placeholder: false,
+      });
+    });
+
+    it('holds no prompt while the slot holds the status notice or nothing', () => {
+      expect(status.bannerPrompt()).toBeNull();
+      trust.set('needs-setup');
+      health.report(
+        {
+          capability: 'host',
+          operation: 'contract',
+          context: Symbol('host'),
+          generation: 1,
+          demanded: true,
+          preparation: 'failed',
+          ownership: 'retained',
+          condition: 'blocked',
+          code: 'host-contract-unavailable',
+        },
+        () => of({ kind: 'success' as const }),
+      );
+      expect(status.bannerSlot()).toBe('status');
+      expect(status.bannerPrompt()).toBeNull();
+    });
+
+    it('lets a forecast outrank a limited capability, as the live prompt would', () => {
+      report('@a:hs', 'accounts', 'restore');
+      trust.set('unknown');
+      forecast.set('needs-setup');
+      expect(status.bannerSlot()).toBe('encryption');
+    });
+
+    it('does not let a forecast of guidance for another device outrank a limited capability', () => {
+      report('@a:hs', 'accounts', 'restore');
+      trust.set('unknown');
+      forecast.set('setup-elsewhere');
+      expect(status.bannerSlot()).toBe('status');
+      expect(status.bannerPrompt()).toBeNull();
+    });
+
+    it('releases the slot when the live status is ready', () => {
+      trust.set('unknown');
+      forecast.set('needs-setup');
+      trust.set('ready');
+      forecast.set(null);
+      expect(status.bannerSlot()).toBeNull();
+      expect(status.bannerPrompt()).toBeNull();
+    });
+
+    it('drops the forecast at once when Trust reports a failure, so the notice shows', () => {
+      trust.set('unknown');
+      forecast.set('needs-setup');
+      expect(status.bannerSlot()).toBe('encryption');
+
+      reportTrustFailure();
+
+      expect(status.bannerSlot()).toBe('status');
+      expect(status.bannerPrompt()).toBeNull();
+      expect(status.bannerMessage()).toBe(
+        'Encryption trust status is unavailable.',
+      );
+    });
+
+    it('gives the slot to the trust failure notice over a stale snapshot’s prompt', () => {
+      // Mid-session read failure: the live status is unknown (only a stale snapshot is
+      // left) and Trust reports the failure. Whatever is forecast, the notice shows.
+      trust.set('unknown');
+      forecast.set('needs-setup');
+      reportTrustFailure();
+
+      expect(status.bannerSlot()).toBe('status');
+      expect(status.bannerPrompt()).toBeNull();
+    });
+
+    it('does not bring the forecast back when the trust failure notice is dismissed', () => {
+      trust.set('unknown');
+      forecast.set('needs-recovery');
+      reportTrustFailure();
+      status.dismiss(status.visibleEntries()[0]!);
+
+      expect(status.bannerSlot()).toBeNull();
+      expect(status.bannerPrompt()).toBeNull();
+    });
+
+    describe('while a pointer is pressed', () => {
+      /** Press with the slot already decided, as a tap on the page would. */
+      function press(): void {
+        TestBed.tick();
+        pressed.set(true);
+        TestBed.tick();
+      }
+
+      function release(): void {
+        pressed.set(false);
+        TestBed.tick();
+      }
+
+      it('holds the forecast prompt’s kind when the forecast changes kind', () => {
+        trust.set('unknown');
+        forecast.set('needs-setup');
+        press();
+
+        forecast.set('needs-recovery');
+        expect(status.bannerSlot()).toBe('encryption');
+        expect(status.bannerPrompt()).toEqual({
+          kind: 'needs-setup',
+          placeholder: true,
+        });
+
+        release();
+        expect(status.bannerPrompt()).toEqual({
+          kind: 'needs-recovery',
+          placeholder: true,
+        });
+      });
+
+      it('keeps the forecast prompt’s placeholder when the live status turns out ready', () => {
+        trust.set('unknown');
+        forecast.set('needs-recovery');
+        press();
+
+        trust.set('ready');
+        forecast.set(null);
+        expect(status.bannerSlot()).toBe('encryption');
+        expect(status.bannerPrompt()).toEqual({
+          kind: 'needs-recovery',
+          placeholder: true,
+        });
+
+        release();
+        expect(status.bannerSlot()).toBeNull();
+        expect(status.bannerPrompt()).toBeNull();
+      });
+
+      it('keeps the forecast prompt’s placeholder when the forecast expires', () => {
+        trust.set('unknown');
+        forecast.set('needs-setup');
+        press();
+
+        forecast.set(null); // FORECAST_HOLD_MS passed with no live status
+        expect(status.bannerSlot()).toBe('encryption');
+        expect(status.bannerPrompt()).toEqual({
+          kind: 'needs-setup',
+          placeholder: true,
+        });
+
+        release();
+        expect(status.bannerSlot()).toBeNull();
+        expect(status.bannerPrompt()).toBeNull();
+      });
+
+      it('reveals a confirmed forecast prompt only on release', () => {
+        trust.set('unknown');
+        forecast.set('needs-recovery');
+        press();
+
+        trust.set('needs-recovery');
+        forecast.set(null);
+        expect(status.bannerPrompt()).toEqual({
+          kind: 'needs-recovery',
+          placeholder: true,
+        });
+
+        release();
+        expect(status.bannerPrompt()).toEqual({
+          kind: 'needs-recovery',
+          placeholder: false,
+        });
+      });
+
+      it('hides a shown prompt the live status no longer supports, keeping its kind until release', () => {
+        trust.set('needs-setup');
+        press();
+        expect(status.bannerPrompt()).toEqual({
+          kind: 'needs-setup',
+          placeholder: false,
+        });
+
+        trust.set('ready');
+        expect(status.bannerSlot()).toBe('encryption');
+        expect(status.bannerPrompt()).toEqual({
+          kind: 'needs-setup',
+          placeholder: true,
+        });
+
+        release();
+        expect(status.bannerSlot()).toBeNull();
+        expect(status.bannerPrompt()).toBeNull();
+      });
+
+      it('holds a shown prompt’s kind when the live status changes kind', () => {
+        trust.set('needs-setup');
+        press();
+
+        trust.set('needs-recovery');
+        expect(status.bannerPrompt()).toEqual({
+          kind: 'needs-setup',
+          placeholder: true,
+        });
+
+        release();
+        expect(status.bannerPrompt()).toEqual({
+          kind: 'needs-recovery',
+          placeholder: false,
+        });
+      });
+
+      it('keeps a shown prompt the live status still supports', () => {
+        trust.set('needs-setup');
+        press();
+
+        health.report(
+          {
+            capability: 'host',
+            operation: 'contract',
+            context: Symbol('host'),
+            generation: 1,
+            demanded: true,
+            preparation: 'failed',
+            ownership: 'retained',
+            condition: 'blocked',
+            code: 'host-contract-unavailable',
+          },
+          () => of({ kind: 'success' as const }),
+        );
+        // The slot change waits for the release; the prompt it holds is still true.
+        expect(status.bannerSlot()).toBe('encryption');
+        expect(status.bannerPrompt()).toEqual({
+          kind: 'needs-setup',
+          placeholder: false,
+        });
+
+        release();
+        expect(status.bannerSlot()).toBe('status');
+        expect(status.bannerPrompt()).toBeNull();
+      });
+    });
+
     it('names the limited capability instead of counting it', () => {
       report('@a:hs', 'accounts', 'restore');
       expect(status.bannerMessage()).toBe(
@@ -454,6 +757,26 @@ describe('CapabilityStatusService', () => {
       );
     });
   });
+
+  /** Trust's projection failed for the active Account, as TrustLifetime reports it. */
+  function reportTrustFailure(): void {
+    const context = Symbol('@a:hs');
+    health.presentForAccount(context, '@a:hs');
+    health.report(
+      {
+        capability: 'trust',
+        operation: 'projection',
+        context,
+        generation: 1,
+        demanded: true,
+        preparation: 'failed',
+        ownership: 'retained',
+        condition: 'degraded',
+        code: 'trust-reconciliation-failed',
+      },
+      () => of({ kind: 'success' as const }),
+    );
+  }
 
   function report(
     accountId: string,

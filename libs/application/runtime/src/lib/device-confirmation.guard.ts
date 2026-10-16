@@ -5,11 +5,23 @@ import {
   type RouterStateSnapshot,
   type UrlTree,
 } from '@angular/router';
-import { Observable, catchError, map, of, switchMap, timeout } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  forkJoin,
+  map,
+  of,
+  switchMap,
+  timeout,
+} from 'rxjs';
 import {
   DEVICE_CONFIRMATION_SETTLE_MS,
   TrustDeviceConfirmationService,
+  TrustSlotForecastService,
 } from '@trinity/data-access/trust';
+
+/** The longest the guard waits for the active Account's banner forecast. */
+export const FORECAST_HYDRATE_MS = 300;
 
 /** Where a new device is verified before the app opens. */
 export const DEVICE_CONFIRMATION_URL = '/encryption/confirm';
@@ -46,8 +58,10 @@ export function showsAccountContent(url: string): boolean {
  * the session coordinator redirects if the check turns out to be required later. A
  * `required` gate is confirmed with a fresh read of that exact Account, because just after
  * an Account switch it can still reflect the previous Account's status. A failed read, or
- * one that takes longer than the settle time, lets the route through too. Use it after
- * `authGuard` and the Back guard.
+ * one that takes longer than the settle time, lets the route through too. Meanwhile it
+ * loads the active Account's banner forecast, so Rooms first renders with the global
+ * banner slot already sized; that read waits at most `FORECAST_HYDRATE_MS` and fails
+ * open. Use it after `authGuard` and the Back guard.
  */
 export function deviceConfirmationGuard(
   _route: ActivatedRouteSnapshot,
@@ -56,7 +70,13 @@ export function deviceConfirmationGuard(
   if (isSecuritySettings(state.url)) return of(true);
   const confirmation = inject(TrustDeviceConfirmationService);
   const router = inject(Router);
-  return confirmation.settledGate().pipe(
+  const forecastRead = inject(TrustSlotForecastService)
+    .hydrateActive()
+    .pipe(
+      timeout({ first: FORECAST_HYDRATE_MS, with: () => of(undefined) }),
+      catchError(() => of(undefined)),
+    );
+  const decision = confirmation.settledGate().pipe(
     switchMap((gate) =>
       gate.kind === 'required'
         ? confirmation.confirmRequired().pipe(
@@ -72,4 +92,5 @@ export function deviceConfirmationGuard(
     ),
     catchError(() => of(true)),
   );
+  return forkJoin([forecastRead, decision]).pipe(map(([, result]) => result));
 }

@@ -12,3 +12,8 @@ export {
 } from './lib/trust-provider-recovery.port';
 export * from './lib/trust-account-status.service';
 export * from './lib/trust-device-confirmation.service';
+export {
+  TrustSlotForecastService,
+  FORECAST_HOLD_MS,
+  type SlotForecast,
+} from './lib/trust-slot-forecast';

@@ -6,6 +6,7 @@ import {
   provideBrowserGlobalErrorListeners,
   provideZonelessChangeDetection,
   type EnvironmentProviders,
+  type Signal,
 } from '@angular/core';
 import {
   PreloadAllModules,
@@ -18,6 +19,8 @@ import {
 import {
   WORKSPACE_APPLICATION_SURFACE_PRESENTER,
   WORKSPACE_SYSTEM_STATUS,
+  type BannerPrompt,
+  type SlotForecast as WorkspaceSlotForecast,
   type WorkspaceSystemStatus,
 } from '@trinity/application/workspace';
 import { provideTrnIcons } from '@trinity/components/foundations';
@@ -30,6 +33,7 @@ import type { PushConfig } from '@trinity/data-access/notifications';
 import {
   DEVICE_CONFIRMATION_POLICY,
   type DeviceConfirmationPolicy,
+  type SlotForecast as TrustSlotForecast,
 } from '@trinity/data-access/trust';
 import {
   ACCOUNT_REMOVAL_LAUNCHER,
@@ -83,6 +87,9 @@ export interface TrinityApplicationProviderOptions {
   readonly deviceConfirmation?: DeviceConfirmationPolicy;
 }
 
+/** `A` when the two unions have exactly the same members; `never` otherwise. */
+type SameUnion<A, B> = [A] extends [B] ? ([B] extends [A] ? A : never) : never;
+
 /**
  * Compose the host-neutral Trinity application behind one deep provider interface.
  *
@@ -134,6 +141,16 @@ export function provideTrinityApplication(
           hasProblems: computed(() => health.problems().length > 0),
           bannerSlot: status.bannerSlot,
           bannerSlotReserved: status.bannerSlotReserved,
+          // Fails to compile when the port's prompt kinds and Trust's diverge.
+          bannerPrompt: status.bannerPrompt satisfies Signal<
+            | (BannerPrompt & {
+                readonly kind: SameUnion<
+                  TrustSlotForecast,
+                  WorkspaceSlotForecast
+                >;
+              })
+            | null
+          >,
           show: () => visibility.show(),
         };
       },

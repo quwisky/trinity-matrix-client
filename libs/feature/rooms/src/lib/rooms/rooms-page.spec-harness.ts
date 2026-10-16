@@ -176,6 +176,7 @@ export const SYSTEM_STATUS_PROVIDER: Provider = {
     show: vi.fn(),
     bannerSlot: signal<'status' | 'encryption' | null>('encryption'),
     bannerSlotReserved: signal(false),
+    bannerPrompt: signal(null),
   }),
 };
 
