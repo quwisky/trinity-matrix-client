@@ -188,6 +188,8 @@ interface AccountClient {
   readonly syncState: WritableSignal<SyncState | null>;
   /** Whether this client has completed a sync with its homeserver ({@link isServerSync}). */
   readonly serverSynced: WritableSignal<boolean>;
+  /** Whether this client has prepared its rooms, from its sync cache or its homeserver. */
+  readonly roomsPrepared: WritableSignal<boolean>;
   /** Projection Runtime lease owning sync-state attachment and reset. */
   readonly syncProjection: ProjectionLease;
   /** Its `HttpApiEvent.SessionLoggedOut` listener (server-side token revocation). */
@@ -390,6 +392,17 @@ export class MatrixClientService {
     // Re-bind after a same-id client replacement, like {@link syncState}.
     this._accountIds();
     return this.clients.get(userId)?.serverSynced() ?? false;
+  }
+
+  /**
+   * Whether `userId`'s live client has prepared its rooms at least once: from the sync it
+   * replays from its IndexedDB cache, or from its homeserver. False while the client is
+   * still loading even its cache, and when no client is live for the account. Unlike
+   * {@link serverSynced}, rooms from a cache can be minutes stale.
+   */
+  roomsPrepared(userId: string): boolean {
+    this._accountIds();
+    return this.clients.get(userId)?.roomsPrepared() ?? false;
   }
 
   /** The live client for a specific account, or null (e.g. per-account server logout). */
@@ -770,6 +783,8 @@ export class MatrixClientService {
       let latestSyncState: SyncState | null = null;
       const serverSynced = signal(false);
       let latestServerSynced = false;
+      const roomsPrepared = signal(false);
+      let latestRoomsPrepared = false;
       const onLoggedOut = (err: MatrixError): void =>
         this.handleServerLogout(session.userId, err);
       // Not detached on teardown: it only updates this start's own counter. Null until the
@@ -866,6 +881,8 @@ export class MatrixClientService {
               ): void => {
                 latestSyncState = state;
                 latestServerSynced ||= isServerSync(state, data);
+                latestRoomsPrepared ||=
+                  state === SyncState.Prepared || state === SyncState.Syncing;
                 invalidate();
               };
               client.on(ClientEvent.Sync, onSync);
@@ -876,12 +893,14 @@ export class MatrixClientService {
                 publish(() => {
                   syncState.set(latestSyncState);
                   serverSynced.set(latestServerSynced);
+                  roomsPrepared.set(latestRoomsPrepared);
                 });
                 return of(void 0);
               }),
             reset: () => {
               syncState.set(null);
               serverSynced.set(false);
+              roomsPrepared.set(false);
             },
             resources: () => ({
               listenerCount:
@@ -930,6 +949,7 @@ export class MatrixClientService {
             syncStore: store,
             syncState,
             serverSynced,
+            roomsPrepared,
             syncProjection,
             onLoggedOut,
             holder,

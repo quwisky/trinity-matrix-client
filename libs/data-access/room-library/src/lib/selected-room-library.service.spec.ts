@@ -142,6 +142,8 @@ function setup(
     clients?: ReadonlyMap<string, FakeClient>;
     /** Accounts whose client has synced with its homeserver; every live one unless named. */
     synced?: ReadonlySet<string>;
+    /** Accounts whose client has prepared its rooms, from cache or server; every live one. */
+    prepared?: ReadonlySet<string>;
     connect?: boolean;
   } = {},
 ) {
@@ -151,6 +153,9 @@ function setup(
   const accountIds = signal<readonly string[]>(options.live ?? ['@active:hs']);
   const synced = signal<ReadonlySet<string>>(
     options.synced ?? new Set(accountIds()),
+  );
+  const prepared = signal<ReadonlySet<string>>(
+    options.prepared ?? new Set(accountIds()),
   );
   const activeSpaces = signal<SpaceSummary[]>([ACTIVE_SPACE]);
   const activeUserId = signal<string | null>(
@@ -169,6 +174,7 @@ function setup(
     clientFor: (accountId: string) =>
       (clients.get(accountId) as unknown as MatrixClient | undefined) ?? null,
     serverSynced: (accountId: string) => synced().has(accountId),
+    roomsPrepared: (accountId: string) => prepared().has(accountId),
   } as unknown as MatrixClientService;
 
   TestBed.configureTestingModule({
@@ -192,6 +198,7 @@ function setup(
     selected: selected as WritableSignal<ReadonlySet<string>>,
     accountIds,
     synced,
+    prepared,
     activeSpaces,
     activeUserId,
     clients,
@@ -649,11 +656,14 @@ describe('SelectedRoomLibraryService', () => {
     const mixed = (
       selected: readonly string[],
       synced: readonly string[] = ['@a:hs', '@b:hs', '@c:hs'],
+      prepared: readonly string[] = ['@a:hs', '@b:hs', '@c:hs'],
+      live: readonly string[] = ['@a:hs', '@b:hs', '@c:hs'],
     ) =>
       setup({
         selected: new Set(selected),
-        live: ['@a:hs', '@b:hs', '@c:hs'],
+        live,
         synced: new Set(synced),
+        prepared: new Set(prepared),
         active: '@b:hs',
         clients: new Map([
           [
@@ -693,13 +703,47 @@ describe('SelectedRoomLibraryService', () => {
       );
     });
 
-    it('stays unconfirmed in the mixed view while a selected Account that could hold it has not synced', () => {
+    it('stays unconfirmed in the mixed view while another selected Account has not loaded even its cache', () => {
       expect(
-        mixed(['@b:hs', '@c:hs'], ['@b:hs']).spaceAvailability(
+        mixed(['@b:hs', '@c:hs'], ['@b:hs'], ['@b:hs']).spaceAvailability(
           '@b:hs',
           '!s:hs',
         ),
       ).toBe('unconfirmed');
+    });
+
+    // An offline Account lives on its cache; waiting for its homeserver would keep a space
+    // it does not hold "Loading…" for as long as the server is unreachable.
+    it('makes it unavailable once another selected Account has replayed its cache without it', () => {
+      expect(
+        mixed(
+          ['@b:hs', '@c:hs'],
+          ['@b:hs'],
+          ['@b:hs', '@c:hs'],
+        ).spaceAvailability('@b:hs', '!s:hs'),
+      ).toBe('unavailable');
+    });
+
+    it('keeps the acting Account unconfirmed until its own server sync, whatever the others have', () => {
+      expect(
+        mixed(
+          ['@b:hs', '@c:hs'],
+          ['@c:hs'],
+          ['@b:hs', '@c:hs'],
+        ).spaceAvailability('@b:hs', '!s:hs'),
+      ).toBe('unconfirmed');
+    });
+
+    // A selected Account that failed to start lists none of its rooms either.
+    it('does not count a space held by a selected Account whose client is not live', () => {
+      expect(
+        mixed(
+          ['@a:hs', '@b:hs'],
+          ['@b:hs'],
+          ['@b:hs'],
+          ['@b:hs', '@c:hs'],
+        ).spaceAvailability('@b:hs', '!s:hs'),
+      ).toBe('unavailable');
     });
 
     it('makes it unavailable once the Account holding it is no longer selected', () => {
@@ -843,11 +887,12 @@ describe('SelectedRoomLibraryService', () => {
         expect(availability()).toBe('unavailable');
       });
 
-      it('follows the first server sync and the selection', async () => {
+      it('follows the first server sync, the cache replay and the selection', async () => {
         const harness = setup({
           selected: new Set(['@a:hs', '@b:hs']),
           live: ['@a:hs', '@b:hs'],
-          synced: new Set(['@b:hs']),
+          synced: new Set(),
+          prepared: new Set(['@b:hs']),
           active: '@b:hs',
           clients: new Map([
             [
@@ -862,10 +907,13 @@ describe('SelectedRoomLibraryService', () => {
         );
         expect(availability()).toBe('unconfirmed');
 
-        harness.synced.set(new Set(['@a:hs', '@b:hs']));
+        harness.synced.set(new Set(['@b:hs']));
+        expect(availability()).toBe('unconfirmed'); // A has not loaded its cache
+
+        harness.prepared.set(new Set(['@a:hs', '@b:hs']));
         expect(availability()).toBe('unavailable');
 
-        harness.synced.set(new Set(['@b:hs']));
+        harness.prepared.set(new Set(['@b:hs']));
         harness.selected.set(new Set(['@b:hs']));
         expect(availability()).toBe('unavailable');
       });

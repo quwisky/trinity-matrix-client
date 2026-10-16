@@ -164,11 +164,15 @@ export class SelectedRoomLibraryService {
    *   another selected Account has. That Space is listed, with its pill in the rail and its
    *   children in the sidebar, so any selected Account may keep it while opening one of
    *   those Rooms.
-   * - `unconfirmed`: none of them holds it yet and at least one has not completed a sync
-   *   with its homeserver (a cache replay only, offline, or still starting). Keep it, as a
-   *   Room the client has not synced yet is kept.
-   * - `unavailable`: every one of them has synced without it, the Account's client is not
-   *   live, or the id is not a Room id.
+   * - `unconfirmed`: none of them holds it yet, and either the Account itself has not
+   *   completed a sync with its homeserver (a cache replay only, offline, or still
+   *   starting), or another selected Account has not loaded even its sync cache yet. Keep
+   *   it, as a Room the client has not synced yet is kept. Another Account counts once it
+   *   has replayed its cache: one whose homeserver is unreachable lives on that cache, and
+   *   waiting for its server would keep a Space it does not hold loading indefinitely.
+   * - `unavailable`: none of them holds it once that is settled, the Account's client is
+   *   not live, or the id is not a Room id. A selected Account whose client is not live (it
+   *   failed to start) does not count as holding it: none of its Rooms can be listed either.
    *
    * A Space left, or only invited to, is not held (see {@link isJoinedSpace}); flows that
    * open a Space they just joined wait for the join first. The answer comes from the live
@@ -193,7 +197,10 @@ export class SelectedRoomLibraryService {
       return !!space && isJoinedSpace(space);
     };
     if (shown.some(holds)) return 'available';
-    return shown.some((id) => !this.matrix.serverSynced(id))
+    if (!this.matrix.serverSynced(accountId)) return 'unconfirmed';
+    return shown.some(
+      (id) => id !== accountId && !this.matrix.roomsPrepared(id),
+    )
       ? 'unconfirmed'
       : 'unavailable';
   }

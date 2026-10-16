@@ -1372,6 +1372,42 @@ describe('MatrixClientService', () => {
       expect(svc.serverSynced('@nobody:hs')).toBe(false);
     });
 
+    it('reports rooms prepared once the cache replays, before any server sync', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+      await firstValueFrom(svc.init(SESSION));
+      const prepared = TestBed.runInInjectionContext(() =>
+        computed(() => svc.roomsPrepared('@me:hs')),
+      );
+      expect(prepared()).toBe(false);
+
+      syncWithDataOf(client)(SyncState.Prepared, null, { fromCache: true });
+      await Promise.resolve();
+      expect(prepared()).toBe(true);
+      expect(svc.serverSynced('@me:hs')).toBe(false);
+
+      syncWithDataOf(client)(SyncState.Error, SyncState.Prepared, {});
+      await Promise.resolve();
+      expect(prepared()).toBe(true);
+      expect(svc.roomsPrepared('@nobody:hs')).toBe(false);
+    });
+
+    it('reports rooms prepared after a first server sync without a cache', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+      await firstValueFrom(svc.init(SESSION));
+
+      syncWithDataOf(client)(SyncState.Error, null, {});
+      await Promise.resolve();
+      expect(svc.roomsPrepared('@me:hs')).toBe(false);
+
+      syncWithDataOf(client)(SyncState.Prepared, SyncState.Error, {});
+      await Promise.resolve();
+      expect(svc.roomsPrepared('@me:hs')).toBe(true);
+    });
+
     it('still uses one listener and the same retained bytes per live account', async () => {
       const client = fakeClient();
       vi.mocked(createClient).mockReturnValue(client as never);

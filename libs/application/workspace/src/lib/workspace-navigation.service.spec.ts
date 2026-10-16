@@ -158,7 +158,7 @@ function harness(options: HarnessOptions = {}) {
     },
   };
   // SelectedRoomLibraryService's rule: held by the Account, or listed in its mixed view; else
-  // unconfirmed until every Account that could hold it has synced.
+  // unconfirmed until the Account has synced (the others count as having loaded their cache).
   const selectedRooms = {
     spaceAvailability: (accountId: string, spaceId: string) => {
       if (!clients.has(accountId) || !spaceId.startsWith('!')) {
@@ -175,9 +175,9 @@ function harness(options: HarnessOptions = {}) {
       ) {
         return 'available' as const;
       }
-      return shown.some((id) => !synced().has(id))
-        ? ('unconfirmed' as const)
-        : ('unavailable' as const);
+      return synced().has(accountId)
+        ? ('unavailable' as const)
+        : ('unconfirmed' as const);
     },
   };
   const spaces = {
