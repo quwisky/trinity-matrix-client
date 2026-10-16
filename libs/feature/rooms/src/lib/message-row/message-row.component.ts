@@ -9,6 +9,7 @@ import {
   effect,
   inject,
   input,
+  linkedSignal,
   output,
   signal,
   viewChild,
@@ -219,8 +220,16 @@ export class MessageRowComponent {
    * Whether the toolbar's quick reactions or overflow menu is open. It keeps the bar mounted
    * ({@link releaseToolbar}) and visible (`.msg--menu-open`) while the pointer or focus is
    * elsewhere: WebKit doesn't focus a clicked button, so `:has(:focus)` alone can't.
+   *
+   * Reset whenever the toolbar mounts or unmounts: a toolbar removed with a menu open (a
+   * revealed bar hidden by a scroll or an outside tap) never reports the menu closed, and a
+   * stale flag would pin every later bar. Derived rather than an effect, which every row
+   * would otherwise create and schedule.
    */
-  protected readonly menuOpen = signal(false);
+  protected readonly menuOpen = linkedSignal({
+    source: this.toolbar,
+    computation: () => false,
+  });
 
   /** The clamp wrapper's id, which the Show more button names in `aria-controls`. */
   protected readonly bodyId = `msg-body-${++nextBodyId}`;
@@ -243,11 +252,6 @@ export class MessageRowComponent {
   readonly revealed = signal(false);
 
   constructor() {
-    // A toolbar removed with a menu open (a revealed bar hidden by a scroll or an outside
-    // tap) never reports the menu closed, and a stale flag would pin every later bar.
-    effect(() => {
-      if (!this.toolbar()) this.menuOpen.set(false);
-    });
     // The list keeps a row's measurement only while the row holds it (#1361), and hands it out
     // only with the hold. Keyed by the id alone, so a row update (a reaction, a receipt) does
     // not let go and take it again.

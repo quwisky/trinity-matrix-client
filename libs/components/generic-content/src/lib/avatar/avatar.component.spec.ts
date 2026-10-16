@@ -1,8 +1,18 @@
 import { render } from '@trinity/testing';
+import { classes } from '@trinity/helm/utils';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
+import { By } from '@angular/platform-browser';
+import type { ComponentFixture } from '@angular/core/testing';
 import { AvatarComponent } from './avatar.component';
+import { AvatarAccountBadgeDirective } from './avatar-account-badge.directive';
 import { AVATAR_RESOLVER } from './avatar-resolver';
+
+// Spied so a spec can tell whether an avatar registers runtime class managers.
+vi.mock('@trinity/helm/utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@trinity/helm/utils')>();
+  return { ...actual, classes: vi.fn(actual.classes) };
+});
 
 // The image-shows-once-loaded / falls-back-on-error swap is BrnAvatar's job (and
 // needs a real image load, which jsdom can't do), so these cover the component's
@@ -10,6 +20,15 @@ import { AVATAR_RESOLVER } from './avatar-resolver';
 // there's no image. The rendered image path is verified in the browser (e2e).
 // Name prefix kept out of a literal var(...) so the token guard sweep does not read it as a token.
 const AVATAR_TOKEN = '--trinity-avatar-';
+
+/** The account badge an avatar renders, when it renders one. */
+function accountBadgeOf(
+  fixture: ComponentFixture<AvatarComponent>,
+): AvatarAccountBadgeDirective | undefined {
+  return fixture.debugElement
+    .query(By.directive(AvatarAccountBadgeDirective))
+    ?.injector.get(AvatarAccountBadgeDirective);
+}
 
 describe('AvatarComponent', () => {
   const fallback = (host: HTMLElement) =>
@@ -43,6 +62,61 @@ describe('AvatarComponent', () => {
     fixture.componentRef.setInput('initial', 'S');
     await fixture.whenStable();
     expect(host.getAttribute('data-shape')).toBe('place');
+  });
+
+  it('styles its parts with the Helm avatar classes', async () => {
+    const { container } = await render(AvatarComponent, {
+      inputs: { initial: 'A', url: 'https://example.org/a.png' },
+    });
+    const classesOf = (selector: string) =>
+      [...(container.querySelector(selector)?.classList ?? [])].sort();
+
+    expect(classesOf('hlm-avatar')).toEqual(
+      [
+        'size-8',
+        'rounded-[var(--trn-avatar-radius,var(--radius-full))]',
+        'after:rounded-[var(--trn-avatar-radius,var(--radius-full))]',
+        'data-[size=lg]:size-10',
+        'data-[size=sm]:size-6',
+        'group/avatar',
+        'after:border-foreground/10',
+        'relative',
+        'flex',
+        'shrink-0',
+        'select-none',
+        'after:absolute',
+        'after:inset-0',
+        'after:border',
+      ].sort(),
+    );
+    expect(classesOf('[data-slot="avatar-fallback"]')).toEqual(
+      [
+        'bg-muted',
+        'text-muted-foreground',
+        'rounded-[var(--trn-avatar-radius,var(--radius-full))]',
+        'flex',
+        'size-full',
+        'items-center',
+        'justify-center',
+        'text-sm',
+        'group-data-[size=sm]/avatar:text-xs',
+        'leading-none',
+        'font-semibold',
+      ].sort(),
+    );
+  });
+
+  it('gives each avatar fixed classes, with no class manager to run per avatar', async () => {
+    vi.mocked(classes).mockClear();
+
+    await render(AvatarComponent, {
+      inputs: { initial: 'A', url: 'https://example.org/a.png' },
+    });
+
+    // Every class manager adds an effect, a registration with a document-wide observer
+    // and an inline transition override to an element, and a fast scroll builds an
+    // avatar for most rows it passes.
+    expect(classes).not.toHaveBeenCalled();
   });
 
   it('shows the initials fallback when no image source is given', async () => {
@@ -188,14 +262,15 @@ describe('AvatarComponent', () => {
         accountBadge: { id: '@work:hs', initial: 'W', name: 'Work' },
       },
     });
-    const avatar = fixture.componentInstance;
-    const badgeColor = avatar.badgeColor();
+    const badge = accountBadgeOf(fixture)!;
+    const badgeColor = badge.badgeColor();
     const slot = /^var\(--trinity-avatar-([1-6])\)$/u.exec(badgeColor)?.[1];
     expect(slot).toBeDefined();
-    expect(avatar.badgeInk()).toBe(`var(${AVATAR_TOKEN}${slot}-ink)`);
+    expect(badge.badgeInk()).toBe(`var(${AVATAR_TOKEN}${slot}-ink)`);
 
     fixture.componentRef.setInput('name', 'A completely different room');
-    expect(avatar.badgeColor()).toBe(badgeColor);
+    fixture.detectChanges();
+    expect(accountBadgeOf(fixture)!.badgeColor()).toBe(badgeColor);
   });
 
   it('spreads names over all six themed avatar slots, each with its own ink', async () => {
@@ -283,7 +358,7 @@ describe('AvatarComponent', () => {
     // Resolved through the OWNING account's client, not the active one.
     expect(resolver).toHaveBeenCalledWith(
       'mxc://hs/work',
-      fixture.componentInstance.badgeSize(),
+      accountBadgeOf(fixture)!.badgeSize(),
       '@work:hs',
     );
     const img = badgeImg(container)!;
@@ -377,7 +452,7 @@ describe('AvatarComponent', () => {
       avatarMxc: null,
     });
     fixture.detectChanges();
-    expect(fixture.componentInstance.badgeSrc()).toBeNull();
+    expect(accountBadgeOf(fixture)!.badgeSrc()).toBeNull();
     expect(badgeImg(container)).toBeNull();
     expect(badge(container)?.textContent?.trim()).toBe('A');
 
