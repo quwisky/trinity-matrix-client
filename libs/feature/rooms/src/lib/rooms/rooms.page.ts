@@ -75,8 +75,8 @@ import { SessionActionsService } from './session-actions.service';
 import { ExpandedBodiesStore } from './expanded-bodies.store';
 
 /**
- * Authenticated shell: server rail + channel sidebar (static column at md+, slide-in below),
- * the timeline, and a member list, wired to live synced rooms.
+ * Authenticated shell: server rail + channel sidebar (static column at md+, separate pages
+ * below md), the timeline, and a member list, wired to live synced rooms.
  */
 /**
  * The drawer widths at the `members` breakpoint, mirroring `rooms.page.scss`.

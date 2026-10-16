@@ -93,7 +93,8 @@ export class DrawerSwipeDirective {
     const distanceFromRight = window.innerWidth - event.clientX;
     // Native navigation owns the extreme edge: WebKit Forward on iOS, and the OS back
     // recogniser on gesture-navigation Android. The drawer begins immediately inside it on
-    // every touch platform. Once open, `onDrawer` below accepts a closing drag anywhere.
+    // every touch platform, so real-touch browser coverage can prove it never steals the
+    // platform edge. Once open, `onDrawer` below accepts a closing drag anywhere.
     const nativeInset = NATIVE_HISTORY_EDGE_PX;
     const fromEdge =
       !this.drawerOpen() &&
