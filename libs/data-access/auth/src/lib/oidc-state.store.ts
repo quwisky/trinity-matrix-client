@@ -15,10 +15,9 @@ const DEVICE_ID_KEY = 'oidc.deviceId';
 const CODE_VERIFIER_KEY = 'oidc.codeVerifier';
 const EXPECTED_USER_ID_KEY = 'oidc.expectedUserId';
 /**
- * Written by versions before matrix-js-sdk 42, when the SDK kept the sign-in state in
- * sessionStorage and this store shuttled an opaque copy of it. Nothing writes them now,
- * and the blob held a PKCE code_verifier in plaintext — so {@link OidcStateStore.clear}
- * purges them rather than leaving an abandoned one on disk forever. Drop in a later release.
+ * Keys of an older format whose blob held a PKCE code_verifier in plaintext. Nothing
+ * writes them now; {@link OidcStateStore.clear} purges them rather than leaving an
+ * abandoned one on disk. Drop in a later release.
  */
 const LEGACY_KEYS = ['oidc.ssKey', 'oidc.ssBlob'] as const;
 
@@ -78,23 +77,20 @@ const EMPTY_STASH: OidcStateStash = {
  * Persists the OIDC PKCE round-trip state across the authorization redirect via Capacitor
  * Preferences (localStorage on web, native key-value on device).
  *
- * **This store is now the sole custodian of that state.** matrix-js-sdk 42 dropped
- * `oidc-client-ts`, and its replacement persists nothing at all — where this store
- * previously shuttled a copy of the SDK's `mx_oidc_<state>` sessionStorage entry, there is
- * no longer anything to copy. Preferences also survives a native/Electron process eviction
- * and reaches the app's WebView after a system-browser round-trip, so a cold-start
- * deep-link callback can still complete the token exchange.
+ * This store is the sole custodian of that state: the SDK persists nothing. Preferences
+ * also survives a native/Electron process eviction and reaches the app's WebView after a
+ * system-browser round-trip, so a cold-start deep-link callback can still complete the
+ * token exchange.
  *
  * SECURITY: unlike {@link SsoStateStore} (which holds only a non-secret nonce),
  * `codeVerifier` here is the PKCE **code_verifier** — a short-lived secret. It is
  * single-use ({@link peek} then {@link clear}, only once the callback's state matches),
  * time-boxed (10 min), and never logged. Do not extend the TTL or reuse the stash.
  *
- * It is now written on **every** platform, not just native/Electron. Before, web relied on
- * the SDK's own sessionStorage copy; with that gone, skipping the write would simply break
- * web login. On web that means localStorage — accepted, because the single-use + TTL
- * discipline above is the mitigation, and script that can read localStorage can read
- * sessionStorage in the same document anyway.
+ * It is written on **every** platform, because skipping the write would break web login.
+ * On web that means localStorage — accepted, because the single-use + TTL discipline
+ * above is the mitigation, and script that can read localStorage can read sessionStorage
+ * in the same document anyway.
  */
 @Injectable({ providedIn: 'root' })
 export class OidcStateStore {
@@ -161,10 +157,10 @@ export class OidcStateStore {
     const fresh = isFresh(startedAt);
     if (!fresh) {
       // Bin it rather than just refusing to serve it. The stash holds the PKCE
-      // code_verifier — a secret — in plaintext, and the TTL is only enforced here at READ
-      // time, so an abandoned login leaves it on disk until something reads or overwrites
-      // it. It is spent either way; a secret should not outlive its purpose. Best-effort:
-      // a failed cleanup must not turn a "nothing stashed" answer into a rejection.
+      // code_verifier — a secret — in plaintext, and the TTL is only enforced at READ
+      // time, so an abandoned login would leave it on disk until something reads or
+      // overwrites it. Best-effort: a failed cleanup must not turn a "nothing stashed"
+      // answer into a rejection.
       //
       // This does NOT weaken the verify-before-clear contract: that exists so a forged
       // callback cannot wipe a LIVE stash, and this one is already dead.

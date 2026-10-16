@@ -90,11 +90,10 @@ export class AuthService {
   }
 
   /**
-   * Discover a homeserver's delegated OIDC ("next-gen auth", MSC2965) provider config,
-   * or `null` when the homeserver doesn't delegate authentication. `getAuthMetadata()`
-   * throws on a non-OIDC homeserver, so we map that to `null` — letting the login page
-   * probe for OIDC in parallel with {@link getSupportedFlows} without a legacy
-   * homeserver ever being slowed or broken by the extra round-trip.
+   * Discover a homeserver's delegated OIDC (MSC2965) provider config, or `null` when it
+   * doesn't delegate authentication. `getAuthMetadata()` throws on a non-OIDC homeserver,
+   * mapped to `null` so the login page can probe in parallel with {@link getSupportedFlows}
+   * without slowing or breaking a legacy homeserver.
    */
   getDelegatedAuthConfig(
     baseUrl: string,
@@ -105,12 +104,11 @@ export class AuthService {
   }
 
   /**
-   * Log in with username + password. `replace` (default) makes it the sole account;
-   * `add` keeps the other signed-in accounts and adds this one alongside. Passing
-   * `deviceId` re-authenticates that EXISTING device (re-auth of a soft-logged-out
-   * account) so its crypto store is reused and no re-verification is needed. Re-auth
-   * also passes `expectedUserId`, the account being reconnected: a login that returns
-   * anyone else is refused before anything is persisted.
+   * Log in with username + password. `replace` (default) makes it the sole account; `add`
+   * keeps the other signed-in accounts. `deviceId` re-authenticates that EXISTING device
+   * (soft-logged-out account) so its crypto store is reused and no re-verification is
+   * needed. Re-auth also passes `expectedUserId`: a login that returns anyone else is
+   * refused before anything is persisted.
    */
   loginWithPassword(
     baseUrl: string,
@@ -144,7 +142,6 @@ export class AuthService {
 
   /**
    * Complete an SSO/CAS login by exchanging the returned `loginToken` for a session.
-   * Called from the SSO callback route after the homeserver redirects back.
    * `deviceId` and `expectedUserId` are set only by re-auth, as for {@link loginWithPassword}.
    */
   completeSsoLogin(
@@ -171,9 +168,8 @@ export class AuthService {
   }
 
   /**
-   * Build the OIDC ("next-gen auth") authorization URL to redirect to, plus the PKCE
-   * sign-in state the caller must durably stash so a cold-start / off-origin callback
-   * can complete the grant. Thin facade over {@link OidcClientService}.
+   * Build the OIDC ("next-gen auth") authorization URL, plus the PKCE sign-in state the
+   * caller must durably stash so a cold-start / off-origin callback can complete the grant.
    */
   buildOidcAuthorizationRequest(
     params: OidcAuthorizationParams,
@@ -191,14 +187,12 @@ export class AuthService {
   }
 
   /**
-   * Complete an OIDC login: exchange the returned `code` for tokens, resolve the
-   * account identity, and establish the session. Called from the callback route after
-   * the provider redirects back (and after the stashed sign-in state was re-seeded).
-   * `redirectUri` is the one used to build the request — needed to rebuild the token
-   * refresher on restore.
+   * Complete an OIDC login: exchange the returned `code` for tokens, resolve the account
+   * identity, and establish the session. `redirectUri` is the one used to build the
+   * request, needed to rebuild the token refresher on restore.
    *
-   * `expectedUserId` is set only by re-auth, and is what binds the grant to the account
-   * the user asked to reconnect — see {@link rejectMismatchedGrant}.
+   * `expectedUserId` is set only by re-auth and binds the grant to the account the user
+   * asked to reconnect — see {@link rejectMismatchedGrant}.
    */
   completeOidcLogin(
     code: string,
@@ -261,10 +255,10 @@ export class AuthService {
 
   /**
    * The active account's provider-hosted account management, or `null` when it isn't an
-   * OIDC account (or the provider exposes none). OIDC-native servers own credentials +
-   * device management at the provider, so the in-app password form is replaced by a link
-   * to this URL. The URL is validated as https before it is surfaced (it comes from
-   * homeserver-controlled metadata, so a non-https value is rejected, not opened).
+   * OIDC account (or the provider exposes none). OIDC-native servers own credentials and
+   * device management at the provider, so the in-app password form is replaced by a link.
+   * The URL comes from homeserver-controlled metadata, so it is validated as https before
+   * it is surfaced; a non-https value is rejected, not opened.
    */
   getAccountManagement(): Observable<AccountManagement | null> {
     return this.storage.load().pipe(

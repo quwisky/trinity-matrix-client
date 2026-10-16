@@ -11,24 +11,21 @@ import type {
  * `fetch`. DI-free and client-free so they can be tested against real fixtures without a
  * TestBed; `HomeserverInfoService` owns the per-account fan-out and cache.
  *
- * **Everything here resolves — nothing throws.** The whole surface is best-effort by
- * requirement (#155: "show unknown or hide the row — never an error toast"), so a failure
- * is a `null` value rather than an error the caller has to remember to catch. That is what
- * makes the section's error branch provably dead rather than merely unused.
+ * **Everything here resolves — nothing throws.** The surface is best-effort by requirement
+ * ("show unknown or hide the row — never an error toast"), so a failure is a `null` value
+ * rather than an error the caller has to remember to catch.
  *
  * **Every request is built inside `defer()`.** Calling `fetch()` eagerly to hand `from()` a
- * promise looks identical and silently breaks two things: the observable stops being cold,
- * so merely *building* one issues a request nobody subscribed to, and a re-subscribe replays
- * the settled promise rather than re-asking. Same trap documented at `@trinity/util/matrix`'s
- * `fetchMediaBytes`.
+ * promise looks identical but breaks two things: merely *building* the observable issues a
+ * request nobody subscribed to, and a re-subscribe replays the settled promise rather than
+ * re-asking. Same trap documented at `@trinity/util/matrix`'s `fetchMediaBytes`.
  */
 
 /**
  * Per-request budget. Short on purpose: the software probe alone is up to three SEQUENTIAL
- * hops, so this is the per-hop budget and 3x it is the per-account ceiling — the section is
- * a glance, and a homeserver that has not answered in this long is "unknown" for the
- * reader's purposes anyway. Without it a hung connection leaves the block spinning and the
- * "Check again" button disabled indefinitely.
+ * hops, so this is the per-hop budget and 3x it is the per-account ceiling. A homeserver
+ * that has not answered this long is "unknown" anyway; without a timeout a hung connection
+ * leaves the block spinning and the "Check again" button disabled indefinitely.
  */
 const TIMEOUT_MS = 8_000;
 
@@ -41,15 +38,14 @@ const FEDERATION_VERSION_PATH = '/_matrix/federation/v1/version';
  * 1. The account's own client base URL.
  * 2. The federation host named by `https://<serverName>/.well-known/matrix/server`.
  *
- * The issue that asked for this called attempt 2 "a reasonable second attempt". Measured,
- * it is the attempt that works on the largest homeserver in the network: matrix.org's
- * client base URL is `matrix-client.matrix.org`, which answers **404 with an HTML body and
- * no CORS header** — so a browser does not even see the status, it sees a rejected fetch —
- * while `matrix.org/.well-known/matrix/server` points at `matrix-federation.matrix.org`,
- * which answers correctly. Single-host deployments are the ones attempt 1 covers.
+ * Attempt 2 is what works on delegating deployments: matrix.org's client base URL is
+ * `matrix-client.matrix.org`, which answers **404 with an HTML body and no CORS header** —
+ * so a browser does not even see the status, it sees a rejected fetch — while
+ * `matrix.org/.well-known/matrix/server` points at `matrix-federation.matrix.org`, which
+ * answers correctly. Single-host deployments are the ones attempt 1 covers.
  *
- * Note attempt 2 keys on the **server name from the mxid**, not on the base URL: in exactly
- * the delegating case those are different hosts, and the base URL is the wrong one.
+ * Attempt 2 keys on the **server name from the mxid**, not on the base URL: in exactly the
+ * delegating case those are different hosts, and the base URL is the wrong one.
  */
 export function probeServerSoftware(
   baseUrl: string,
@@ -76,11 +72,9 @@ function probeDelegatedSoftware(
   serverName: string,
   alreadyTried: string | null,
 ): Observable<ServerSoftware | null> {
-  // Validated on the same rule as `m.server`, rather than interpolated raw. It is derived
-  // from the account's own mxid, which comes from the homeserver's login response and is
-  // stored unvalidated — so `@u:good.example@evil.example` would otherwise address
-  // `evil.example`. No credentials ride on this request, but the asymmetry with the
-  // `m.server` path is not worth keeping.
+  // Validated on the same rule as `m.server`, not interpolated raw: the mxid comes from the
+  // homeserver's login response and is stored unvalidated, so `@u:good.example@evil.example`
+  // would otherwise address `evil.example`. No credentials ride on this request.
   const origin = federationOrigin(serverName);
   const wellKnown = origin && safeUrl(`${origin}/.well-known/matrix/server`);
   if (!wellKnown) {
@@ -114,10 +108,10 @@ function fetchFederationVersion(
 /**
  * The spec versions and enabled unstable features this server advertises.
  *
- * A raw request rather than `client.getVersions()`, and that is load-bearing rather than
- * stylistic: the SDK memoises that call on the client forever and already awaited it inside
- * `startClient()`, so a "Check again" routed through it would re-issue **no HTTP** and
- * replay the value fetched at login — defeating the one requirement the button exists for.
+ * A raw request rather than `client.getVersions()`, and that is load-bearing: the SDK
+ * memoises that call on the client forever and already awaited it inside `startClient()`,
+ * so a "Check again" routed through it would re-issue **no HTTP** and replay the value
+ * fetched at login.
  */
 export function fetchSpecVersions(
   baseUrl: string,
@@ -144,11 +138,10 @@ export function fetchSpecVersions(
 /**
  * The capabilities Trinity reads. Authenticated, unlike the other two probes.
  *
- * Raw, like {@link fetchSpecVersions}, but for a weaker reason worth stating precisely:
- * `client.getCapabilities()` reads a six-hour poller cache, and while `fetchCapabilities()`
- * *does* force a refetch, routing through either would give up the two properties the rest
- * of this module is built on — it resolves rather than throwing, and it carries a timeout.
- * Keeping all three probes on one code path is worth more here than reusing the SDK call.
+ * Raw, like {@link fetchSpecVersions}: `client.getCapabilities()` reads a six-hour poller
+ * cache, and routing through it (or `fetchCapabilities()`, which does force a refetch) would
+ * give up the two properties the rest of this module is built on — it resolves rather than
+ * throwing, and it carries a timeout.
  */
 export function fetchCapabilities(
   baseUrl: string,
@@ -167,10 +160,10 @@ export function fetchCapabilities(
  * One GET that resolves `unknown` on success and `null` on every kind of failure.
  *
  * The three failures are deliberately collapsed because a browser cannot tell them apart
- * anyway: a non-2xx **without** a CORS header (which is what both measured failing servers
- * return) arrives as a rejected fetch carrying no status, indistinguishable from being
- * offline. Reading the body is a second, separate failure — an HTML error page under a 200,
- * or a truncated stream — so it gets its own guard rather than riding on `res.ok`.
+ * anyway: a non-2xx **without** a CORS header arrives as a rejected fetch carrying no
+ * status, indistinguishable from being offline. Reading the body is a second, separate
+ * failure — an HTML error page under a 200, or a truncated stream — so it gets its own
+ * guard rather than riding on `res.ok`.
  *
  * `credentials: 'omit'` and `redirect: 'error'` are the security posture: the well-known and
  * federation hosts are named by data the *server* controls, so no cookie, no token and no
@@ -211,11 +204,12 @@ function getJson(url: URL, accessToken?: string | null): Observable<unknown> {
  * names" 3.3-3.5 says resolve `_matrix-fed._tcp` and otherwise use 8448. Deliberate — a
  * browser cannot do SRV, and a 8448 listener essentially never sends CORS headers, so the
  * spec-correct guess would cost a request and a timeout to arrive at the same "Unknown".
- * Deployments that want to be reachable here publish the port (matrix.org sends `:443`). Prefixing `https://` and trusting
- * `new URL` is not enough: `https://` + `http://evil.example` parses perfectly happily into
- * the host `http` with `//evil.example` as its path, which would spend a request on a host
- * nobody named. Requiring an empty path, no query, no fragment and no userinfo is what
- * turns those into "no answer" instead.
+ * Deployments that want to be reachable here publish the port (matrix.org sends `:443`).
+ *
+ * Prefixing `https://` and trusting `new URL` is not enough: `https://` +
+ * `http://evil.example` parses into the host `http` with `//evil.example` as its path,
+ * which would spend a request on a host nobody named. Requiring an empty path, no query,
+ * no fragment and no userinfo turns those into "no answer" instead.
  */
 function federationOrigin(mServer: string): string | null {
   const url = safeUrl(`https://${mServer}`);
@@ -238,10 +232,9 @@ function federationOrigin(mServer: string): string | null {
  * Not `new URL(path, baseUrl)`: an absolute path REPLACES the base's path, and a homeserver
  * may legitimately publish a base URL that carries one —
  * `{"m.homeserver":{"base_url":"https://example.org/matrix"}}`. `AutoDiscovery` preserves
- * that path, the SDK concatenates the same way (`MatrixHttpApi.getUrl`), and
- * `AuthService.discoverHomeserver` stores it verbatim, so such a deployment syncs normally —
- * while a resolved URL would silently address the apex instead, permanently answering
- * "Unknown" and putting the account's bearer token on a path its homeserver does not own.
+ * that path and the SDK concatenates the same way (`MatrixHttpApi.getUrl`), while a resolved
+ * URL would silently address the apex instead, permanently answering "Unknown" and putting
+ * the account's bearer token on a path its homeserver does not own.
  *
  * {@link fetchFederationVersion} deliberately does the opposite and resolves against the
  * origin: the federation API is served at the root, never under the client path.
@@ -270,8 +263,7 @@ function toSoftware(
   const name = server && readString(server, 'name');
   const version = server && readString(server, 'version');
   // Both halves required: a server that names itself but not its version answers nothing
-  // useful for "is my deploy live?", and rendering "Synapse undefined" would be worse than
-  // the honest "Unknown".
+  // useful for "is my deploy live?", and "Synapse undefined" would be worse than "Unknown".
   return name && version ? { name, version, source, host } : null;
 }
 
