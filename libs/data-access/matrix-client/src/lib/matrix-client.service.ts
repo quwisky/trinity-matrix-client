@@ -423,7 +423,8 @@ export class MatrixClientService {
    *
    * `timeoutMs` bounds the token grant this call starts, counted from the call; past it the
    * grant is aborted and fails like a network error. Without it the patched SDK's own bound
-   * ({@link MATRIX_REQUEST_TIMEOUT_MS}) applies. A refresh already in flight keeps its own.
+   * ({@link MATRIX_REQUEST_TIMEOUT_MS}, from the grant's start) applies. A refresh already
+   * in flight keeps its own bound.
    */
   refreshAccessToken(
     userId: string,
@@ -1158,7 +1159,8 @@ export class MatrixClientService {
 
   /**
    * Delete a NON-live account's IndexedDB by name: its sync store, plus the Rust crypto
-   * pair derived from the registry record's `cryptoPrefix`. Without a record only the
+   * pair derived from the registry record's `cryptoPrefix` (the same prefix the live path
+   * hands `clearStores`). Without a record only the
    * sync-store name is known; the SDK-default crypto pair may belong to a migrated legacy
    * account, so it is left for the cold-start orphan sweep rather than guessed at.
    *
@@ -1184,7 +1186,7 @@ export class MatrixClientService {
 
   /**
    * Track an in-flight store wipe, pruning the entry once it settles (unless a newer wipe
-   * replaced it).
+   * replaced it) so the map doesn't grow across logout/login cycles.
    */
   private trackWipe(userId: string, wipeDone: Promise<void>): void {
     this.wipes.set(userId, wipeDone);
@@ -1249,6 +1251,7 @@ export class MatrixClientService {
     }
     return new IndexedDBStore({
       indexedDB: globalThis.indexedDB,
+      // Per-account database so accounts on one device don't share a cache.
       // The SDK prepends `matrix-js-sdk:` to this; anything deleting the database by name
       // must use syncStoreIndexedDbName.
       dbName: syncStoreDbName(userId),

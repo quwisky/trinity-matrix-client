@@ -111,6 +111,7 @@ export function provideMatrixSdkLogging(
 function govern(logger: SdkLoglevelLogger): void {
   logger.methodFactory = sinkAware(logger.methodFactory);
   // `persist: false` keeps the level out of localStorage, as the SDK does.
+  // setLevel rebuilds the methods through the (wrapped) factory, so wrap first.
   logger.setLevel(sdkSink ? 'debug' : sdkLogLevel, false);
   if (governed.has(logger)) {
     return;
