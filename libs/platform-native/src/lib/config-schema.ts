@@ -559,6 +559,14 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'elsewhere would hold another device at the new-device check, and dropping it ' +
       'would let this one skip the check.',
   },
+  {
+    disposition: 'excluded',
+    key: 'trinity.trust.slot-forecast',
+    owner: 'data-access/trust',
+    reason:
+      'Per-device memory of which encryption prompt this device last needed, used only to ' +
+      'reserve the banner space at start-up. Another device has its own trust state.',
+  },
 
   // — runtime/projection —
   {

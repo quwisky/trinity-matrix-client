@@ -1,0 +1,219 @@
+import {
+  Injectable,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
+import { Observable, catchError, defer, map, of, shareReplay } from 'rxjs';
+import { TrustCryptoPort } from '@trinity/data-access/matrix-client';
+import {
+  PreferenceStoreService,
+  definePreference,
+  type PreferenceContext,
+  type PreferenceValidation,
+  type StoredPreference,
+} from '@trinity/runtime/preferences';
+import {
+  TrustHealthService,
+  type TrustHealthSnapshot,
+} from './trust-health.service';
+
+/** Which encryption prompt an Account's device last needed. Layout only — never a decision. */
+export type SlotForecast =
+  'needs-setup' | 'needs-recovery' | 'needs-verification' | 'setup-elsewhere';
+
+type StoredForecast = SlotForecast | 'none';
+
+/** How long a forecast may hold the slot while the live status stays unavailable. */
+export const FORECAST_HOLD_MS = 3_000;
+
+const KINDS: readonly StoredForecast[] = [
+  'none',
+  'needs-setup',
+  'needs-recovery',
+  'needs-verification',
+  'setup-elsewhere',
+];
+
+function isStoredForecast(value: unknown): value is StoredForecast {
+  return KINDS.some((kind) => kind === value);
+}
+
+function validateForecast(
+  value: unknown,
+): PreferenceValidation<StoredForecast | null> {
+  return value === null || isStoredForecast(value)
+    ? { kind: 'accepted', value }
+    : {
+        kind: 'rejected',
+        diagnostic: { code: 'trust-slot-forecast-rejected' },
+      };
+}
+
+function migrateForecast(
+  stored: StoredPreference,
+): PreferenceValidation<StoredForecast | null> {
+  return stored.version === 1
+    ? validateForecast(stored.value)
+    : {
+        kind: 'rejected',
+        diagnostic: { code: 'trust-slot-forecast-migration-rejected' },
+      };
+}
+
+/** The prompt kind this device last needed for an Account; null when never recorded. */
+export const SLOT_FORECAST_PREFERENCE = definePreference<StoredForecast | null>(
+  {
+    id: 'trust.slot-forecast',
+    owner: 'trust',
+    section: 'trust',
+    order: 20,
+    scope: 'account',
+    defaultValue: null,
+    sensitivity: 'private',
+    storage: 'device-preferences',
+    export: 'excluded',
+    editor: { kind: 'none' },
+    persistence: {
+      key: 'trinity.trust.slot-forecast',
+      migration: { currentVersion: 1, migrate: migrateForecast },
+    },
+    validate: validateForecast,
+  },
+);
+
+function forecastOf(
+  snapshot: Pick<
+    TrustHealthSnapshot,
+    'status' | 'thisDeviceVerified' | 'identityElsewhere'
+  >,
+): StoredForecast {
+  // The same case as `TrustHealthService.recoverySetupElsewhere`, read from the snapshot so
+  // a stale snapshot forecasts it too.
+  if (
+    snapshot.status === 'needs-setup' &&
+    snapshot.thisDeviceVerified &&
+    snapshot.identityElsewhere
+  ) {
+    return 'setup-elsewhere';
+  }
+  return snapshot.status === 'ready' ? 'none' : snapshot.status;
+}
+
+function accountContext(accountId: string): PreferenceContext {
+  return { kind: 'account', accountId };
+}
+
+/**
+ * Remembers, per Account on this device, which encryption prompt its device last needed, so
+ * the global banner slot can reserve exactly that banner's space before the live status
+ * arrives on the next start. It never stands in for the status: Trust decisions and flows
+ * read {@link TrustHealthService} only. Reads and writes are best effort and fail open.
+ */
+@Injectable({ providedIn: 'root' })
+export class TrustSlotForecastService {
+  private readonly health = inject(TrustHealthService);
+  private readonly cryptoPort = inject(TrustCryptoPort);
+  private readonly preferences = inject(PreferenceStoreService);
+  /** Account id → the prompt kind last read from storage or seen live. */
+  private readonly stored = signal<ReadonlyMap<string, StoredForecast>>(
+    new Map(),
+  );
+  /** Accounts whose forecast has outlived FORECAST_HOLD_MS without a live status. */
+  private readonly expired = signal<ReadonlySet<string>>(new Set());
+  private readonly reads = new Map<string, Observable<void>>();
+
+  /**
+   * The active Account's expected encryption prompt while its live status is not known;
+   * null otherwise.
+   */
+  readonly forecast = computed<SlotForecast | null>(() => {
+    const accountId = this.cryptoPort.activeAccountId();
+    if (!accountId) return null;
+    const health = this.health.health();
+    if (health.current) return null;
+    const kind = health.stale
+      ? forecastOf(health.stale)
+      : this.expired().has(accountId)
+        ? 'none'
+        : (this.stored().get(accountId) ?? 'none');
+    return kind === 'none' ? null : kind;
+  });
+
+  constructor() {
+    // Remember what the live status says, for the Account it belongs to.
+    effect(() => {
+      const accountId = this.cryptoPort.activeAccountId();
+      const current = this.health.health().current;
+      if (!accountId || !current) return;
+      untracked(() => this.remember(accountId, forecastOf(current)));
+    });
+    // A forecast must not reserve space for a status that never arrives.
+    effect((onCleanup) => {
+      const accountId = this.cryptoPort.activeAccountId();
+      if (!accountId || this.health.health().availability !== 'unavailable') {
+        return;
+      }
+      const timer = setTimeout(
+        () => this.expired.update((ids) => new Set(ids).add(accountId)),
+        FORECAST_HOLD_MS,
+      );
+      onCleanup(() => clearTimeout(timer));
+    });
+  }
+
+  /**
+   * Load an Account's stored forecast once (later calls share the read). It never errors;
+   * the caller bounds how long it waits.
+   */
+  hydrate(accountId: string): Observable<void> {
+    return defer(() => {
+      let read = this.reads.get(accountId);
+      if (!read) {
+        const context = accountContext(accountId);
+        read = this.preferences
+          .hydrateDescriptors(context, [SLOT_FORECAST_PREFERENCE])
+          .pipe(
+            map(
+              () =>
+                this.preferences.stateFor(SLOT_FORECAST_PREFERENCE, context)()
+                  .value,
+            ),
+            // An unreadable record forecasts nothing (fails open).
+            catchError(() => of(null)),
+            map((value) => {
+              // A live status seen while the read was in flight wins.
+              if (value && !this.stored().has(accountId)) {
+                this.stored.update((known) =>
+                  new Map(known).set(accountId, value),
+                );
+              }
+            }),
+            shareReplay({ bufferSize: 1, refCount: false }),
+          );
+        this.reads.set(accountId, read);
+      }
+      return read;
+    });
+  }
+
+  private remember(accountId: string, kind: StoredForecast): void {
+    // A live status ends any expired hold, so the next gap forecasts again.
+    if (this.expired().has(accountId)) {
+      this.expired.update((ids) => {
+        const next = new Set(ids);
+        next.delete(accountId);
+        return next;
+      });
+    }
+    if (this.stored().get(accountId) === kind) return;
+    this.stored.update((known) => new Map(known).set(accountId, kind));
+    // Best effort: a failed write only means the next start forecasts an older prompt.
+    this.preferences
+      .setPreference(SLOT_FORECAST_PREFERENCE, accountContext(accountId), kind)
+      .pipe(catchError(() => of(undefined)))
+      .subscribe();
+  }
+}
