@@ -92,12 +92,8 @@ export class ShortcutsSectionComponent {
   });
 
   /**
-   * The rows grouped under their category heading, in catalogue order — which is the order
-   * `SHORTCUTS` documents itself as rendering in, so a group appears where its first shortcut
-   * does and the rows inside it keep their relative order.
-   *
-   * The list is otherwise flat, which was fine while every shortcut was navigation; it stops
-   * being fine once the composer's formatting chords sit in the same catalogue.
+   * The rows grouped under their category heading, in catalogue order (the order `SHORTCUTS`
+   * documents itself as rendering in): a group appears where its first shortcut does.
    */
   readonly groups = computed<ShortcutGroup[]>(() => {
     // Lock Trinity is listed only where App lock can be on (not on the web).

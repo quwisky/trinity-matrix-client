@@ -6,11 +6,8 @@ import {
 } from './appearance-preference-field/appearance-preference-field.component';
 
 /**
- * How code inside messages is displayed, as its own block on the Appearance page.
- *
- * Split out rather than appended: the page's template was already at the size this repo
- * refactors at (.claude/rules/code-quality.md), and code display is a coherent group of its
- * own rather than another loose control among the mode and format pickers.
+ * How code inside messages is displayed, as its own block on the Appearance page: a coherent
+ * group rather than another loose control among the mode and format pickers.
  */
 @Component({
   selector: 'trn-code-appearance-block',

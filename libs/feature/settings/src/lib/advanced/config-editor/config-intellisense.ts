@@ -14,17 +14,12 @@ import type {
 } from '@trinity/platform-native';
 
 /**
- * What the editor knows about the document, and where in the text it applies.
+ * Editor intelligence for the config document: completions, hover text and diagnostics.
  *
- * Everything here is driven by {@link ConfigJsonSchema} — which is generated from the live
- * `ConfigEntry` registry — and by the plan `AppConfigService` builds from that same registry.
- * Nothing about a setting is described twice: the completion list, the hover text and the
- * diagnostics are three views of the one place a setting declares itself, so the editor cannot
- * offer a value Apply would then refuse.
- *
- * Pure on purpose: every function here takes an `EditorState` and returns data. No `EditorView`,
- * no DOM, no injector — so the behaviour that actually matters (which values are offered where,
- * and which range a problem lands on) is testable without mounting an editor.
+ * All three derive from {@link ConfigJsonSchema} (generated from the live `ConfigEntry`
+ * registry) and the plan `AppConfigService` builds from it, so the editor cannot offer a
+ * value Apply would refuse. Pure: functions take an `EditorState` and return data, so they
+ * are testable without mounting an editor.
  */
 
 /** Lezer's node names for the JSON grammar, spelled once. */
@@ -38,11 +33,8 @@ const NODE = {
 const VALUE_NODES = ['String', 'Number', 'True', 'False', 'Null', 'Object'];
 
 /**
- * The value nodes a hover resolves on.
- *
- * `Object` is left out although it is a value: an object spans every line of its group, so
- * hovering anywhere inside `settings` would pop the envelope's own description over whatever
- * the pointer is actually on. The group's key still hovers, which is where someone points.
+ * The value nodes a hover resolves on. `Object` is left out: it spans every line of its
+ * group, so hovering inside `settings` would show the envelope's description everywhere.
  */
 const HOVERABLE_VALUES = ['String', 'Number', 'True', 'False', 'Null'];
 
@@ -70,12 +62,8 @@ export interface ConfigHoverInfo extends TextRange {
 }
 
 /**
- * Where the cursor is, in the document's own terms.
- *
- * `key` and `value` are the only two positions worth completing in a settings document, and
- * they want opposite things — the names a group offers, or the values one setting accepts.
- * `quoted` says whether the completion has to bring its own quotes, which is the difference
- * between typing inside `"…"` and typing into empty space after a `{` or a `:`.
+ * Where the cursor is: a `key` (names a group offers) or a `value` (values one setting
+ * accepts). `quoted` says whether the completion must bring its own quotes (not inside `"…"`).
  */
 type CursorPlace =
   | {
@@ -96,12 +84,8 @@ type CursorPlace =
     };
 
 /**
- * Completions for the document: the names a group offers at a key position, and the values a
- * setting accepts at a value position.
- *
- * The value half is the one that earns the feature: a Theme or a date format is a closed set
- * the registry already declares, and picking from it is the difference between a document that
- * applies and one Apply refuses.
+ * Completions: the names a group offers at a key position, and the values a setting accepts
+ * at a value position (closed sets such as Theme come from the registry).
  */
 export function configCompletionSource(
   schema: ConfigJsonSchema,
@@ -155,10 +139,9 @@ export function configHoverInfo(
 /**
  * The plan's problems and warnings, each on the range of the setting it is about.
  *
- * The plan is the authority on *what* is wrong — it comes from `AppConfigService.validateJson`,
- * so the editor's red underline and the Apply gate are the same check and can never disagree —
- * and the syntax tree is the authority on *where*. Matching the two by path is what keeps this
- * from being a second implementation of the rules.
+ * The plan (`AppConfigService.validateJson`) decides what is wrong, so the underline and the
+ * Apply gate cannot disagree; the syntax tree decides where. Matching by path avoids a
+ * second implementation of the rules.
  */
 export function configDiagnostics(
   state: EditorState,
@@ -241,8 +224,7 @@ function keyOptions(
     const group = !!child.properties;
     options.push({
       label: name,
-      // A group is a container, a setting is a value: separate icons so the shape of the
-      // document is readable from the list itself.
+      // Separate icons for groups and settings, so the document's shape reads from the list.
       type: group ? 'namespace' : 'property',
       detail: group ? groupDetail(child) : describeType(child),
       info: child.description,
@@ -308,10 +290,9 @@ function literalsFor(types: readonly string[]): readonly string[] {
 /**
  * Resolve the cursor to a key or a value position.
  *
- * Two shapes have to be told apart: sitting *inside* a string, where the range to replace is
- * the text between the quotes and the completion must not bring its own; and sitting in empty
- * space, where the last piece of punctuation is the only thing that says whether a name or a
- * value is expected — `{` and `,` open a key, `:` opens a value.
+ * Inside a string the range is the text between the quotes and the completion brings no
+ * quotes of its own. In empty space the last punctuation decides: `{` and `,` open a key,
+ * `:` opens a value.
  */
 function cursorPlace(state: EditorState, pos: number): CursorPlace | null {
   const node = syntaxTree(state).resolveInner(pos, -1);
@@ -384,11 +365,9 @@ function stringPlace(state: EditorState, node: SyntaxNode): CursorPlace | null {
 }
 
 /**
- * The text between a string's quotes.
- *
- * The closing quote is only dropped when it is actually there: half-typed `"ame` is the state
- * the editor spends most of its time in, and treating its last character as a quote would eat
- * a letter out of the range being completed.
+ * The text between a string's quotes. The closing quote is dropped only when present:
+ * half-typed `"ame` is the usual state, and treating its last character as a quote would eat
+ * a letter.
  */
 function insideQuotes(state: EditorState, node: SyntaxNode): TextRange {
   const text = state.sliceDoc(node.from, node.to);
@@ -424,8 +403,8 @@ function objectPath(state: EditorState, object: SyntaxNode): string[] {
     }
     const name = propertyName(state, current);
     if (name === null) {
-      // An unreadable ancestor makes everything below it a guess, and a guessed path would
-      // offer the wrong settings with full confidence. Better to offer nothing.
+      // An unreadable ancestor makes the path a guess, which would offer the wrong settings
+      // with full confidence; offer nothing.
       return [];
     }
     segments.push(name);
@@ -504,11 +483,8 @@ function lastMeaningfulChar(
 }
 
 /**
- * The setting or group a node names, for the hover card.
- *
- * Both halves of a property answer: the name, because that is what someone points at when they
- * are asking "what is this setting?", and the value, because that is what they point at when
- * they are asking "what else could this be?".
+ * The setting or group a node names, for the hover card. Both halves of a property answer:
+ * the name ("what is this setting?") and the value ("what else could this be?").
  */
 function namedNode(
   state: EditorState,
@@ -545,9 +521,9 @@ interface SettingRange {
 /**
  * Every path the *document* writes, keyed the way the plan names it.
  *
- * The plan's paths are relative to the settings block (`appearance.theme`), so the walk drops that
- * one prefix and keeps everything else verbatim — including a path this build has never heard
- * of, which is exactly the one an "unknown setting" warning needs a range for.
+ * The plan's paths are relative to the settings block, so the walk drops that one prefix and
+ * keeps the rest verbatim, including paths this build doesn't know (an "unknown setting"
+ * warning needs a range for those).
  */
 function settingRanges(state: EditorState): ReadonlyMap<string, SettingRange> {
   const ranges = new Map<string, SettingRange>();
@@ -636,11 +612,9 @@ function syntaxDiagnostics(state: EditorState): readonly Diagnostic[] {
 /**
  * Put one of the plan's lines on the range it is about.
  *
- * A line names its path first (`appearance.theme: 'mauve' is not …`, `appearance.mauve is not a
- * setting …`), so the longest path the document actually writes that the line starts with is
- * the one it belongs to. A line about the document as a whole — a missing version, unreadable
- * JSON — has no path, and lands on the first line unless the parser has already underlined the
- * real spot, in which case saying it twice only buries the useful one.
+ * A line starts with its path (`appearance.theme: 'mauve' is not …`), so the longest written
+ * path it starts with owns it. A line with no path (missing version, unreadable JSON) lands
+ * on the first line, unless the parser has already underlined the real spot.
  */
 function place(
   diagnostics: Diagnostic[],

@@ -31,10 +31,9 @@ export interface SettingsSectionDefinition {
   readonly group: SettingsSectionGroup;
   readonly component: Type<unknown>;
   /**
-   * The groups the section renders, in order. A section whose whole page is one group
-   * (untitled; the section name is the page's h1) declares none. Kept equal to what the section renders by
-   * `settings-sections.parts.spec.ts`; a part that is only sometimes shown (Window, on
-   * desktop) is declared anyway.
+   * The groups the section renders, in order; none for a section whose whole page is one
+   * untitled group. `settings-sections.parts.spec.ts` keeps it equal to what renders; a part
+   * only sometimes shown (Window, on desktop) is declared anyway.
    */
   readonly parts: readonly SettingsSectionPart[];
 }

@@ -23,11 +23,10 @@
   </h2>
 
   <!--
-    Persistent, and the reason it is persistent is the whole point: this block's value
-    arrives seconds after it renders, and a live region that is INSERTED with its text (and
-    then removed when the rows replace it) announces the arrival unreliably and the result
-    never. Same rule the banner component states for its consumers. The visible lines below
-    are `aria-hidden` so they do not double-announce.
+    Persistent on purpose: this block's value arrives seconds after it renders, and a live
+    region INSERTED with its text (then removed when the rows replace it) announces the
+    arrival unreliably and the result never. The visible lines are `aria-hidden` so they do
+    not double-announce.
   -->
   <p class="sr-only" role="status" aria-live="polite" data-testid="hs-status">
     {{ announcement() }}
@@ -53,10 +52,9 @@
 
       @if (server.discovered) {
         <!--
-          Stated as an observation rather than as ".well-known delegation": Trinity does not
-          record how the URL was arrived at, and a hand-typed address that happens to differ
-          from the server name looks identical from here. Showing both values says what is
-          true without claiming a mechanism.
+          Stated as an observation, not ".well-known delegation": Trinity does not record how
+          the URL was arrived at, and a hand-typed address that differs from the server name
+          looks identical. Showing both values claims no mechanism.
         -->
         <trn-settings-row label="Server name">
           <span [class]="valueClass" data-testid="hs-server-name">
@@ -102,9 +100,8 @@
       @if (server.unstableFeatures?.length) {
         <trn-settings-row label="Unstable features">
           <!--
-            Behind a disclosure: a server advertises dozens of these and almost nobody wants
-            the list, but the count answers "is this server running anything unusual?" at a
-            glance, which is the same question the version row answers.
+            Behind a disclosure: a server advertises dozens, and almost nobody wants the list,
+            but the count answers "is this server running anything unusual?" at a glance.
           -->
           <!--
             Not `valueClass`: its 16rem cap leaves room for one flag per line, since flags run to
@@ -140,10 +137,9 @@
     </p>
   } @else {
     <!--
-      The third state, which used to render a bare heading and nothing else: the probe
-      finished without storing anything. Unreachable from the app today — every account the
-      section lists has a live client — but this is the branch that would actually produce
-      the silent blank the error branch below is wired to prevent.
+      The probe finished without storing anything. Unreachable today (every listed account
+      has a live client), but this branch would produce the silent blank the error branch
+      below is wired to prevent.
     -->
     <p
       class="m-0 pt-1 text-13 text-[var(--trinity-text-muted)]"

@@ -16,10 +16,9 @@ export const settingsRoutes: Routes = [
       component: section.component,
       ...(section.path === 'advanced'
         ? {
-            // The rich editor is offered by the route rather than reached from the component, so
-            // the one dynamic import that pulls CodeMirror in is wired where the platform question
-            // is answered — and a section rendered without this route (a spec) still edits, in its
-            // textarea, without ever touching that chunk.
+            // Offered by the route, where the platform question is answered, so the one dynamic
+            // import that pulls CodeMirror in is wired here; a section rendered without this
+            // route (a spec) still edits in its textarea without touching that chunk.
             providers: [provideConfigEditor()],
           }
         : {}),

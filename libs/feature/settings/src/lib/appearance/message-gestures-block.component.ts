@@ -15,10 +15,7 @@ import {
 /**
  * How a touch gesture acts on a message, as its own block on the Appearance page.
  *
- * Split out rather than appended, for the reason the code block beside it was: the page's
- * template was already at the size this repo refactors at (`.agents/rules/code-quality.md`).
- * It is also not an appearance axis — nothing here reaches the token layer — so grouping it
- * separately is what stops it reading as one.
+ * Not an appearance axis (nothing here reaches the token layer), so it is grouped apart.
  */
 @Component({
   selector: 'trn-message-gestures-block',
@@ -34,9 +31,8 @@ export class MessageGesturesBlockComponent {
   readonly gestures = inject(MessageGestureSettingsService);
 
   /**
-   * The choices, in the shape the wrapper takes. A stable field rather than an inline arrow,
-   * which would be a new reference every change detection — the wrapper takes `options` as
-   * an input, so a fresh array each pass would re-render the list.
+   * The choices, in the shape the wrapper takes. A stable field, not an inline arrow: the
+   * wrapper takes `options` as an input, so a fresh array each pass would re-render the list.
    */
   readonly swipeOptions: readonly TrnSelectOption<string>[] =
     this.gestures.swipeActions.map((action) => ({
@@ -46,11 +42,9 @@ export class MessageGesturesBlockComponent {
     }));
 
   /**
-   * Apply + persist which way a message is dragged.
-   *
-   * The guard is called directly, with no cast: `isSwipeAction` takes
-   * `string | null | undefined`, which is exactly what `valueChange` gives — narrowing a
-   * massaged expression instead would type-check under vitest and fail in the Angular build.
+   * Apply + persist which way a message is dragged. Call `isSwipeAction` directly with the
+   * `valueChange` value, no cast: narrowing a massaged expression type-checks under vitest
+   * but fails in the Angular build.
    */
   onMessageSwipeChange(value: string | null | undefined): void {
     if (isSwipeAction(value)) {

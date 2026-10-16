@@ -40,12 +40,8 @@ import { SaveFailureComponent } from './save-failure/save-failure.component';
 import { PreferenceCatalogSectionComponent } from '../shared/preference-catalog-section/preference-catalog-section.component';
 
 /**
- * Appearance settings sub-page: Mode, Theme, text and code size,
- * how dates and times are written, how rooms are ordered inside a space, and which system
- * lines (joins, profile changes, room changes) the timeline shows.
- *
- * Code display lives in its own child block — it is a coherent group, and this template was
- * already at the size the repo refactors at.
+ * Appearance settings sub-page: Mode, Theme, text and code size, how dates and times are
+ * written, how rooms are ordered inside a space, and which system lines the timeline shows.
  */
 @Component({
   selector: 'trn-appearance-settings',
@@ -107,11 +103,10 @@ export class AppearanceSettingsComponent {
   readonly spaceOrder = inject(SpaceRoomOrderService);
 
   /**
-   * The instant every format option is previewed against.
-   *
-   * A fixed afternoon rather than `Date.now()`, so the samples are stable while the page is
-   * open and each option differs only by its format. Mid-afternoon on a two-digit day of a
-   * single-digit month, so 12- vs 24-hour and every date order are all visibly distinct.
+   * The instant every format option is previewed against: a fixed afternoon rather than
+   * `Date.now()`, so samples are stable and each option differs only by its format. The
+   * afternoon keeps 12/24-hour distinct, and a two-digit day in a single-digit month keeps
+   * every date order distinct.
    */
   readonly sample = new Date(2026, 6, 24, 15, 45).getTime();
 
@@ -126,14 +121,12 @@ export class AppearanceSettingsComponent {
     this.appearance.update('mode', value);
   }
   /**
-   * `computed`, not a field initializer, because the format sample text is not static.
+   * `computed`, not a field initializer, because the sample text is not static.
    *
-   * `sample` is a fixed instant on purpose, but `sampleTime` formats it through
-   * `format.prefs()` — whose locales come from a `languagechange` listener. Android keeps
-   * the WebView alive across an OS language change (`locale` is in the Activity's
-   * `configChanges`), so the paragraph below, still a live template call, re-renders in the
-   * new locale while a list built once at construction would keep showing the old one — the
-   * same screen previewing "Match system" two contradictory ways.
+   * `sampleTime` formats through `format.prefs()`, whose locales come from a `languagechange`
+   * listener. Android keeps the WebView alive across an OS language change (`locale` is in the
+   * Activity's `configChanges`), so a list built once at construction would keep the old
+   * locale while the live template re-renders in the new one.
    */
   readonly timeFormatOptions = computed<readonly TrnSelectOption<string>[]>(
     () =>

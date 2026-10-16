@@ -6,9 +6,8 @@
     flex: 1 1 0;
     flex-direction: column;
 
-    // The layout's panes own scrolling, so clip their overflow at the shell: without this
-    // a framed Electron viewport can include descendant overflow in the document and paint
-    // a second scrollbar beside the detail pane.
+    // The panes own scrolling, so clip their overflow at the shell: a framed Electron viewport
+    // can otherwise paint a second scrollbar beside the detail pane.
     contain: layout paint;
     overflow: hidden;
   }

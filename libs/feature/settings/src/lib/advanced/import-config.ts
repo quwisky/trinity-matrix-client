@@ -1,14 +1,11 @@
 /**
  * Getting a settings document from outside the app into the editor.
  *
- * Both routes are here rather than in the component because both are DOM plumbing with one
- * job — hand back text, or nothing — and because the clipboard route is the *primary* one on
- * mobile, where there is no file picker worth using and no automated harness in this repo
- * covers it. Keeping it a few lines apart from the component means it can be read on its own.
+ * Both routes are DOM plumbing that hands back text, or nothing. The clipboard route is the
+ * primary one on mobile, where no file picker is worth using and no harness here covers it.
  *
- * Neither route parses or validates: what they return goes into the editor and through the
- * same check a hand edit does, so an imported document is never applied on a path a typed one
- * could not reach.
+ * Neither route parses or validates: results go through the same check a hand edit does, so
+ * an imported document is never applied on a path a typed one could not reach.
  */
 import { catchError, defer, from, of, type Observable } from 'rxjs';
 
