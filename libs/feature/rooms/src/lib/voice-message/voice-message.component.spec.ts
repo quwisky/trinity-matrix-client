@@ -33,6 +33,9 @@ async function build(
     pin: vi.fn(),
     unpin: vi.fn(),
     drop: vi.fn(),
+    sameMedia: vi.fn(
+      (a: PresentedMediaReference, b: PresentedMediaReference) => a === b,
+    ),
   };
   const { container, fixture } = await render(VoiceMessageComponent, {
     inputs: { media },
@@ -271,6 +274,59 @@ describe('VoiceMessageComponent', () => {
       'blob:clip',
     );
     expect(audio()).toBeNull();
+    expect(pipeline.resolveMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps playing when its message is re-projected (a receipt, a reaction, the remote echo)', async () => {
+    const media = voiceMedia();
+    const { fixture, pipeline, press, audio } = await build(media);
+    press();
+    const el = audio()!;
+    el.dispatchEvent(new Event('play'));
+    TestBed.tick();
+
+    // The same file under a new reference, as every re-projection mints one.
+    pipeline.sameMedia.mockReturnValue(true);
+    fixture.componentRef.setInput(
+      'media',
+      voiceMedia({ id: 'presented-media-again' }),
+    );
+    TestBed.tick();
+
+    expect(pipeline.drop).not.toHaveBeenCalled();
+    expect(audio()).toBe(el);
+    expect(fixture.componentInstance.playing()).toBe(true);
+
+    el.dispatchEvent(new Event('ended'));
+    TestBed.tick();
+
+    expect(pipeline.drop).toHaveBeenCalledExactlyOnceWith(
+      media,
+      'full',
+      'blob:clip',
+    );
+    expect(audio()).toBeNull();
+    expect(pipeline.resolveMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps fetching the clip when its message is re-projected meanwhile', async () => {
+    const clip = new Subject<string>();
+    const { fixture, pipeline, press, audio } = await build(voiceMedia(), () =>
+      clip.asObservable(),
+    );
+    press();
+
+    pipeline.sameMedia.mockReturnValue(true);
+    fixture.componentRef.setInput(
+      'media',
+      voiceMedia({ id: 'presented-media-again' }),
+    );
+    TestBed.tick();
+    clip.next('blob:clip');
+    TestBed.tick();
+
+    expect(pipeline.drop).not.toHaveBeenCalled();
+    expect(audio()?.getAttribute('src')).toBe('blob:clip');
     expect(pipeline.resolveMedia).toHaveBeenCalledTimes(1);
   });
 

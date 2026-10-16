@@ -126,9 +126,13 @@ export class VoiceMessageComponent {
 
   constructor() {
     effect(() => {
-      this.media();
-      // A reused row shows another message: the previous one's clip goes.
+      const media = this.media();
+      // A reused row shows another message: the previous one's clip goes. A receipt, a
+      // reaction or the remote echo re-projects the same message with a new reference to the
+      // same file: its clip keeps loading or playing.
       untracked(() => {
+        const clip = this.clip;
+        if (clip && this.mediaPipeline.sameMedia(clip.media, media)) return;
         this.dropClip();
         this.failed.set(false);
       });
