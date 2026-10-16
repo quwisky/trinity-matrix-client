@@ -1,24 +1,36 @@
 <!-- Always-mounted live region: a role="status" node inserted at the same moment
      its text appears (as the @if banner below is) is not reliably announced, so
-     mirror the message here where the region already exists when the text changes. -->
+     mirror the message here where the region already exists when the text changes.
+     A forecast prompt is never announced: only the confirmed one fills the region. -->
 <span class="sr-only" role="status" aria-live="polite">
-  {{ visible() ? message() : '' }}
+  {{ visible() && !pending() ? message() : '' }}
 </span>
 @if (visible()) {
-  <trn-banner variant="accent" [placement]="placement()">
-    <trn-icon trnBannerIcon name="lock" />
-    {{ message() }}
-    <span trnBannerActions>
-      @for (action of actions(); track action.kind) {
-        <button
-          trnBtn
-          class="banner__action"
-          size="sm"
-          (click)="run(action.kind)"
-        >
-          {{ action.label }}
-        </button>
-      }
-    </span>
-  </trn-banner>
+  <!-- A forecast prompt is laid out to hold its space, but hidden, out of the
+       accessibility tree and inert; when the live status confirms it, this same frame
+       and banner are revealed in place. `inert` is bound as an attribute: jsdom has no
+       `inert` property to reflect it, and the attribute is what the browser reads. -->
+  <div
+    class="encryption-banner__frame"
+    [attr.data-forecast]="pending() ? '' : null"
+    [attr.aria-hidden]="pending() ? 'true' : null"
+    [attr.inert]="pending() ? '' : null"
+  >
+    <trn-banner variant="accent" [placement]="placement()">
+      <trn-icon trnBannerIcon name="lock" />
+      {{ message() }}
+      <span trnBannerActions>
+        @for (action of actions(); track action.kind) {
+          <button
+            trnBtn
+            class="banner__action"
+            size="sm"
+            (click)="run(action.kind)"
+          >
+            {{ action.label }}
+          </button>
+        }
+      </span>
+    </trn-banner>
+  </div>
 }

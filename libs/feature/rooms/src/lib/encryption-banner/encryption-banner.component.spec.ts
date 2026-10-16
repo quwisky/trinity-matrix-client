@@ -4,8 +4,12 @@ import {
   WorkspaceApplicationSurfaceService,
   type WorkspaceApplicationSurfaceRequest,
 } from '@trinity/application/workspace';
-import { TrustService, type TrustStatus } from '@trinity/data-access/trust';
-import { fireEvent, render } from '@trinity/testing';
+import {
+  TrustService,
+  type SlotForecast,
+  type TrustStatus,
+} from '@trinity/data-access/trust';
+import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +19,7 @@ const status = signal<TrustStatus>('unknown');
 const setupElsewhere = signal(false);
 const slot = signal<'status' | 'encryption' | null>('encryption');
 const slotReserved = signal(false);
+const forecast = signal<SlotForecast | null>(null);
 const open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
   of({ kind: 'presented' as const, surface: request.surface }),
 );
@@ -35,7 +40,7 @@ function renderBanner() {
           show: vi.fn(),
           bannerSlot: slot,
           bannerSlotReserved: slotReserved,
-          bannerForecast: signal(null),
+          bannerForecast: forecast,
         },
       },
     ],
@@ -47,6 +52,7 @@ beforeEach(() => {
   setupElsewhere.set(false);
   slot.set('encryption');
   slotReserved.set(false);
+  forecast.set(null);
   open.mockClear();
 });
 
@@ -182,6 +188,111 @@ describe('EncryptionBannerComponent', () => {
     clickAction(container, 'Security settings');
     expect(open).toHaveBeenCalledExactlyOnceWith({
       surface: { kind: 'settings', section: 'security' },
+    });
+  });
+
+  describe('while the slot is held for a forecast prompt', () => {
+    beforeEach(() => {
+      status.set('unknown');
+      slot.set('encryption');
+      forecast.set('needs-recovery');
+    });
+
+    it('lays out the forecast prompt without showing, announcing or enabling it', async () => {
+      const { container } = await renderBanner();
+      const banner = container.querySelector('trn-banner')!;
+      expect(banner).not.toBeNull();
+      expect(banner.closest('[data-forecast]')).not.toBeNull();
+      expect(banner.closest('[aria-hidden="true"]')).not.toBeNull();
+      expect(banner.closest('[inert]')).not.toBeNull();
+      expect(banner.textContent).toContain('unlock your encrypted messages');
+      // Not in the accessibility tree.
+      expect(
+        screen.queryByRole('button', { name: 'Use recovery key' }),
+      ).toBeNull();
+      expect(
+        container.querySelector('[role="status"]')!.textContent!.trim(),
+      ).toBe('');
+    });
+
+    it('reveals the same banner in place when the live status confirms it', async () => {
+      const { container, fixture } = await renderBanner();
+      const before = container.querySelector('trn-banner');
+      expect(before).not.toBeNull();
+
+      status.set('needs-recovery');
+      forecast.set(null);
+      fixture.detectChanges();
+
+      const after = container.querySelector('trn-banner');
+      // The same node, not a new one in the same place: nothing is laid out again.
+      expect(after).toBe(before);
+      expect(after!.closest('[data-forecast]')).toBeNull();
+      expect(after!.closest('[aria-hidden="true"]')).toBeNull();
+      expect(after!.closest('[inert]')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Use recovery key' }),
+      ).toBeTruthy();
+      expect(container.querySelector('[role="status"]')!.textContent).toContain(
+        'unlock your encrypted messages',
+      );
+    });
+
+    it('shows the setup-elsewhere guidance for that forecast', async () => {
+      forecast.set('setup-elsewhere');
+      const { container } = await renderBanner();
+      const banner = container.querySelector('trn-banner')!;
+
+      expect(banner.closest('[data-forecast]')).not.toBeNull();
+      expect(banner.textContent).toContain(
+        'Set up recovery on the device where you first set up encryption.',
+      );
+      const labels = [...banner.querySelectorAll('button')].map((button) =>
+        button.textContent?.trim(),
+      );
+      expect(labels).toEqual(['Security settings']);
+    });
+
+    it('keeps the forecast prompt’s buttons out of reach until it is confirmed', async () => {
+      const { container, fixture } = await renderBanner();
+      const buttons = () => [
+        ...container.querySelectorAll<HTMLButtonElement>('trn-banner button'),
+      ];
+
+      // jsdom does not apply inert to focus, so assert the attribute the browser
+      // applies it from: every button sits inside an inert subtree.
+      expect(buttons().length).toBe(2);
+      for (const button of buttons()) {
+        expect(button.closest('[inert]')).not.toBeNull();
+      }
+
+      status.set('needs-recovery');
+      forecast.set(null);
+      fixture.detectChanges();
+
+      expect(buttons().length).toBe(2);
+      for (const button of buttons()) {
+        expect(button.closest('[inert]')).toBeNull();
+      }
+    });
+
+    it('keeps the live region empty for the forecast and fills it once it is real', async () => {
+      const { container, fixture } = await renderBanner();
+      const liveRegion = () =>
+        container.querySelector('.sr-only[role="status"]');
+
+      // The region is mounted from the start, so the confirmed message is a change to
+      // an existing region and is announced; the forecast itself is never announced.
+      expect(liveRegion()).not.toBeNull();
+      expect(liveRegion()!.textContent!.trim()).toBe('');
+
+      status.set('needs-recovery');
+      forecast.set(null);
+      fixture.detectChanges();
+
+      expect(liveRegion()!.textContent).toContain(
+        'unlock your encrypted messages',
+      );
     });
   });
 });

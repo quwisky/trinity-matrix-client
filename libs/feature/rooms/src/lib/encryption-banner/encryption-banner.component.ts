@@ -39,7 +39,10 @@ interface BannerAction {
  * sent to the device that holds them; its only action opens Security settings. The
  * banner cannot be dismissed, so it never offers the irreversible reset itself — that
  * stays in Security settings, behind its typed confirmation.
- * Renders nothing when crypto is `ready` or still `unknown`. Its status is the ACTIVE
+ * Renders nothing when crypto is `ready` or still `unknown` — except while the global slot
+ * is held for the prompt this device last needed (`bannerForecast`): that prompt is laid
+ * out hidden, unannounced and inert, so it holds its exact space, and the same element is
+ * revealed in place when the live status confirms it. Its status is the ACTIVE
  * account's, re-projected on an account switch. Lives in feature-rooms (not
  * feature-crypto) because the module boundary forbids feature→feature dependencies.
  */
@@ -57,14 +60,32 @@ export class EncryptionBannerComponent {
   );
   private readonly systemStatus = inject(WORKSPACE_SYSTEM_STATUS);
   private readonly destroyRef = inject(DestroyRef);
+  /** The prompt the slot is held for while the live status is still on its way. */
+  private readonly forecast = this.systemStatus.bannerForecast;
+
+  /** The prompt the banner lays out: the live one, or the slot's forecast until it arrives. */
+  private readonly shownStatus = computed(() => {
+    const forecast = this.forecast();
+    if (!forecast) return this.status();
+    return forecast === 'setup-elsewhere' ? 'needs-setup' : forecast;
+  });
+
+  private readonly shownElsewhere = computed(
+    () =>
+      this.forecast() === 'setup-elsewhere' ||
+      (!this.forecast() && this.setupElsewhere()),
+  );
 
   readonly status = this.crypto.status;
   /** Verified here, but only the device holding the identity can set up recovery. */
   readonly setupElsewhere = this.crypto.recoverySetupElsewhere;
 
+  /** A forecast prompt: laid out to hold its space, but hidden, unannounced and inert. */
+  readonly pending = computed(() => this.forecast() !== null);
+
   /** Only prompt for the actionable states, and only while it owns the global banner slot. */
   readonly visible = computed(() => {
-    const status = this.status();
+    const status = this.shownStatus();
     return (
       (status === 'needs-setup' ||
         status === 'needs-recovery' ||
@@ -82,10 +103,10 @@ export class EncryptionBannerComponent {
   );
 
   readonly message = computed(() => {
-    if (this.setupElsewhere()) {
+    if (this.shownElsewhere()) {
       return 'Set up recovery on the device where you first set up encryption.';
     }
-    switch (this.status()) {
+    switch (this.shownStatus()) {
       case 'needs-recovery':
         return 'This device isn’t verified yet — unlock your encrypted messages.';
       case 'needs-verification':
@@ -96,12 +117,12 @@ export class EncryptionBannerComponent {
   });
 
   readonly actions = computed<BannerAction[]>(() => {
-    if (this.setupElsewhere()) {
+    if (this.shownElsewhere()) {
       // No "Set up": it would replace the identity the other device holds. Security
       // settings explains the way out, including the confirmed reset.
       return [{ label: 'Security settings', kind: 'security' }];
     }
-    switch (this.status()) {
+    switch (this.shownStatus()) {
       case 'needs-setup':
         return [{ label: 'Set up', kind: 'setup' }];
       case 'needs-recovery':
