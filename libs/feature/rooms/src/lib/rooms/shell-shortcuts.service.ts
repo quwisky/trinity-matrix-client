@@ -40,21 +40,19 @@ export class ShellShortcutsService {
   private readonly destroyRef = inject(DestroyRef);
 
   /**
-   * Global keyboard shortcuts (issues #12/#13). One listener rather than many host
-   * bindings: it bails unless a modifier is held (so plain typing is untouched) and, for
-   * every shortcut but Lock Trinity, no overlay owns the screen (mirrors
-   * {@link openSwitcher}'s guard), then asks
-   * {@link KeyboardShortcutsService} which shortcut the chord triggers — honouring the
-   * user's custom bindings and the desktop-only gate — and dispatches it. The bindings
-   * themselves live in the registry (and the settings page); this only maps an id to its
-   * action.
+   * Global keyboard shortcuts. One listener rather than many host bindings: it bails unless a
+   * modifier is held (so plain typing is untouched) and, for every shortcut but Lock Trinity,
+   * no overlay owns the screen (mirrors {@link openSwitcher}'s guard), then asks
+   * {@link KeyboardShortcutsService} which shortcut the chord triggers, honouring the user's
+   * custom bindings and the desktop-only gate. The bindings live in the registry (and the
+   * settings page); this only maps an id to its action.
    *
-   * "An overlay owns the screen" is two questions since the shell grew its right-hand slot.
-   * `hasOpen()` used to answer both, because threads, pinned messages and in-room search
-   * were dialogs; they are plain components in the slot now, so a chord fired while typing
-   * in the search field would walk to another room — leaving a panel behind that is about
-   * the room you just left. The roster is deliberately NOT counted: it is a column beside
-   * the timeline, not something over it, and hopping rooms with it open has always worked.
+   * "An overlay owns the screen" is two questions: `hasOpen()` for dialogs, and
+   * `panelOwnsTheScreen()` for the right-hand slot, where threads, pinned messages and in-room
+   * search are plain components. A chord fired while typing in the search field would
+   * otherwise walk to another room and leave behind a panel about the room just left. The
+   * roster is deliberately NOT counted: it is a column beside the timeline, not over it, and
+   * hopping rooms with it open works.
    */
   onGlobalKeydown(event: Event): void {
     // Locked: the cover stops keys at its dialog, and this guard covers anything that
@@ -82,10 +80,10 @@ export class ShellShortcutsService {
     if (!hit || (this.panelOwnsTheScreen() && hit.id !== 'room.search')) {
       return;
     }
-    // preventDefault belongs to the branches that act, NOT to "the catalogue matched". The
-    // catalogue also holds the composer's formatting shortcuts, which this handler knows
-    // nothing about — blocking those here would swallow Ctrl+B app-wide and do nothing with
-    // it. An id we do not handle must fall through to the browser untouched.
+    // preventDefault belongs to the branches that act, NOT to "the catalogue matched": the
+    // catalogue also holds the composer's formatting shortcuts, and blocking those here would
+    // swallow Ctrl+B app-wide. An id we do not handle must fall through to the browser
+    // untouched.
     switch (hit.id) {
       case 'switcher.open':
         e.preventDefault();
@@ -181,7 +179,7 @@ export class ShellShortcutsService {
   /**
    * Open a list-walk target when it still belongs to the visible Account projection. The
    * walk steps only through the list on screen, so it opens the room as a pick from that
-   * list: a space stays selected rather than falling back to Recent (#1369).
+   * list: a space stays selected rather than falling back to Recent.
    */
   private openShortcutTarget(room: ExactRoomSelection | null): void {
     if (!room) return;
@@ -246,10 +244,9 @@ export class ShellShortcutsService {
    * Open the switcher and offer its fully qualified selection to Workspace. Also the
    * header search button's handler.
    *
-   * Bail when an overlay already owns the screen: the Cmd/Ctrl+K shortcut fires even while
-   * a verification or settings modal is open (RoomsPage isn't destroyed), so without this it
-   * would stack the switcher over that modal — and picking a result runs onSelectRoom() →
-   * media.releaseAll(), revoking the open modal's pinned blobs.
+   * Bail when an overlay already owns the screen: Cmd/Ctrl+K fires even while a verification
+   * or settings modal is open (RoomsPage isn't destroyed), and picking a result runs
+   * onSelectRoom() → media.releaseAll(), revoking the open modal's pinned blobs.
    *
    * The right-hand slot is deliberately not part of this guard, unlike
    * {@link onGlobalKeydown}'s: this is also the header search button's handler, reachable

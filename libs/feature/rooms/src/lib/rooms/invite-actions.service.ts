@@ -82,12 +82,10 @@ export class InviteActionsService {
     ).subscribe(() => {
       // Open what was just joined. A joined space needs nothing — it appears in the rail.
       //
-      // Only a DM switches view. `onSelectSpace(null)` lands on the Home view, which lists
-      // DIRECT MESSAGES ONLY (see `visibleRooms`) — right for a DM, and wrong for anything
-      // else: a joined ROOM would be opened in the timeline while vanishing from the sidebar,
-      // measurably so (the row count dropped from 2 to 1). That was correct before the rail
-      // split in bd16dc25, when Home listed everything. A room is instead left on whatever
-      // view the user was already on — Recent activity by default, which lists everything.
+      // Only a DM switches view. The Home view lists DIRECT MESSAGES ONLY (see
+      // `visibleRooms`), so a joined ROOM would open in the timeline while vanishing from the
+      // sidebar. A room is instead left on whatever view the user was already on — Recent
+      // activity by default, which lists everything.
       if (invite.isSpace) {
         return;
       }

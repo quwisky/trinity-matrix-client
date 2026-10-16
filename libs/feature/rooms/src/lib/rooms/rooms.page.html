@@ -7,8 +7,8 @@
 
   <!-- `data-shell-root` is what a pane handle writes its custom property on during a drag.
        The two properties are seeded from the persisted widths and read by rooms.page.scss;
-       a drag overrides one inline for the length of the gesture and removes it on release,
-       so the committed value below is what the layout goes back to reading. -->
+       a drag overrides one inline, and its commit then arrives through these bindings with
+       the value already in place. -->
   <div
     class="rooms-workspace flex min-h-0 flex-1"
     data-shell-root
@@ -21,10 +21,10 @@
          At md+ both are static columns side by side. -->
     <!-- 352px, NOT `md:w-88` (22rem). The rail (72px) and the sidebar (280px) inside are
          hand-authored px, so a rem slot scales with the root font size while its contents do
-         not: at the Small text setting the slot shrank to 308px and the chat column painted
-         over the room list, clipping the filter box and each row's ⋮ button; at Larger it
-         left an 88px dead strip. Keep this equal to `.rail` + `.sidebar` — text-scaling.spec.mts
-         asserts the two edges meet at every text size. -->
+         not: at the Small text setting the chat column painted over the room list, clipping
+         the filter box and each row's ⋮ button; at Larger it left a dead strip. Keep this
+         equal to `.rail` + `.sidebar` — text-scaling.spec.mts asserts the two edges meet at
+         every text size. -->
     <!-- The rule below only sees that 352px equals w-88's 22rem at the default root size;
          the paragraph above is why the two are not interchangeable here. -->
     <aside #listView tabindex="-1" class="shell-side">
@@ -144,11 +144,9 @@
         (matrixLink)="messageActions.onMatrixLink($event)"
       />
 
-      <!-- A room-level notice belongs in this COLUMN, above the row — not inside it. As a child
-           of `.chat-body`, which is a flex row of [timeline, panel], it was a third item
-           competing for horizontal space: measured at 779px of a 928px row, leaving the
-           timeline 149px and the composer's text column nothing at all. It only rendered in a
-           tombstoned room, which is why it survived so long. -->
+      <!-- A room-level notice belongs in this COLUMN, above the row, not inside `.chat-body`:
+           that is a flex row of [timeline, panel], and a third item there competes for
+           horizontal space and squeezes the timeline and the composer's text column. -->
       @if (vm.activeRoom()) {
         <trn-tombstone-banner
           (goToRoom)="roomActions.onGoToUpgradedRoom($event)"
@@ -171,8 +169,8 @@
              room stays behind activeRoom(): the composer (composerEnabled) and the panels.
 
              The experimental flags only switch windowing, when row images load and whether
-             rows flying past render as placeholders. Flipping any of them changes this same
-             list in place, so the reader keeps their position. -->
+             rows flying past render as placeholders. Flipping one changes this same list in
+             place, so the reader keeps their position. -->
           <trn-message-list
             [windowed]="flags.virtualTimeline()"
             [deferMediaWhileScrolling]="flags.deferMediaWhileScrolling()"
@@ -240,15 +238,14 @@
             @if (roomSurfaces.renderedSurface(); as panel) {
               @if (panel.kind !== 'members') {
                 <!-- Between the timeline and the slot. Hidden below the `members` breakpoint,
-                   where the slot is an overlay drawer rather than a column sharing the row —
-                   there is nothing to trade width with. `invert` because this handle grows
-                   the pane to its RIGHT: dragging left makes the panel wider.
+                   where the slot is an overlay drawer rather than a column sharing the row.
+                   `invert` because this handle grows the pane to its RIGHT: dragging left
+                   makes the panel wider.
 
                    Not for the roster: `.chat-members` is a fixed 240px navigation column
                    that does not read `--shell-right-panel-w` (and 240 is below this
-                   handle's own minimum). Rendered there it was a divider that highlighted,
-                   moved its `aria-valuenow` and rewrote the stored width while the pane
-                   beside it stayed put. -->
+                   handle's own minimum), so a handle there would move its `aria-valuenow`
+                   and rewrite the stored width while the pane beside it stayed put. -->
                 <trn-pane-handle
                   class="hidden members:block"
                   cssVariable="--shell-right-panel-w"
@@ -265,11 +262,10 @@
                column and the backdrop is display:none. One backdrop for every surface,
                because there is one slot.
 
-               Each surface names itself with role/aria-label: these are plain components
-               now, so the `ariaLabel` the deleted dialog services passed has to come from
-               somewhere. `complementary` rather than `dialog` — nothing here traps focus or
-               marks the rest of the page inert, and claiming modality a screen reader then
-               cannot rely on is worse than not claiming it. -->
+               Each surface names itself with role/aria-label. `complementary` rather than
+               `dialog` — nothing here traps focus or marks the rest of the page inert, and
+               claiming modality a screen reader then cannot rely on is worse than not
+               claiming it. -->
               <div
                 class="fixed inset-0 top-[var(--trinity-title-row-inset,0px)] z-[var(--trinity-z-scrim)] hidden bg-overlay-scrim max-members:block"
                 (click)="clearRightPanel()"
@@ -338,8 +334,7 @@
           }
         } @else {
           <!-- The centring wrapper stays at the call site: filling the pane and centring in
-               it is this container's job, not the panel's — the same split `.chat-empty`
-               around `.hero` already had. `titleAs="h2"` because the toolbar
+               it is this container's job, not the panel's. `titleAs="h2"` because the toolbar
                (trn-page-header) already owns the page's single <h1> ("Trinity" here when no
                room is active). -->
           <div class="flex flex-1 items-center justify-center p-6">

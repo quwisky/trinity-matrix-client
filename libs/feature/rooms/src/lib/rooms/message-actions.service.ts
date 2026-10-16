@@ -36,9 +36,8 @@ import {
  * Everything done to or from a message: sending, editing, deleting, reacting, replying,
  * polls, attachments, threads, pins, in-room search, and following a matrix.to link.
  *
- * `uploadProgress` lives here rather than in the store because nothing outside this
- * cluster writes it — the composer binds it through the page's alias while an attachment
- * is in flight.
+ * `uploadProgress` lives here rather than in the store because nothing outside this cluster
+ * writes it; the composer binds it through the page's alias while an attachment is in flight.
  */
 @Injectable()
 export class MessageActionsService {
@@ -60,8 +59,8 @@ export class MessageActionsService {
   /**
    * Which file of how many is uploading, and how far along, or null when idle.
    *
-   * A record rather than a bare fraction because a send is now a batch: without the position
-   * the bar restarts from zero per file with nothing saying it is the third of five.
+   * A record rather than a bare fraction because a send is a batch: without the position the
+   * bar restarts from zero per file with nothing saying it is the third of five.
    */
   readonly uploadProgress = signal<BatchProgress | null>(null);
 
@@ -150,11 +149,8 @@ export class MessageActionsService {
   /**
    * Open the thread rooted at `rootEventId` (raised by a message's indicator).
    *
-   * Writes the shell's one right-hand slot rather than opening a dialog. The three
-   * services that used to wrap `TrnSurfaceService` for these surfaces are gone: with the
-   * presentation decided by the slot, their whole remaining job was indirection, and each
-   * carried a re-entrancy guard that only existed because two dialogs could stack. One
-   * slot makes "only one at a time" structural — there is one value.
+   * Writes the shell's one right-hand slot rather than opening a dialog; one slot makes
+   * "only one at a time" structural, with no re-entrancy guards.
    */
   onOpenThread(rootEventId: string): void {
     this.roomSurfaces.transition({
@@ -171,11 +167,8 @@ export class MessageActionsService {
   }
 
   /**
-   * A row picked in the threads list: show that thread.
-   *
-   * The list and the view never stack — picking a row REPLACES the list in the slot, which
-   * is what the old `openAndWait`-then-open dance achieved by closing one dialog before
-   * opening the next.
+   * A row picked in the threads list: show that thread. The list and the view never stack;
+   * picking a row REPLACES the list in the slot.
    */
   onThreadPicked(rootEventId: string): void {
     this.onOpenThread(rootEventId);
@@ -187,17 +180,15 @@ export class MessageActionsService {
    * Bumping the lifecycle's jump revision guarantees the list effect re-fires when the same
    * message is picked twice — the target alone would not change, so nothing would happen.
    *
-   * The slot CLOSES on a pick, which is what the dialog it replaced did. Leaving it open was
-   * tried and is wrong: below the `members` breakpoint the slot is a full-width drawer over
-   * the timeline, so jumping with it open scrolls a message the user cannot see — the jump
-   * appears to do nothing. Closing is also what `pin-messages.spec.mts` has always asserted.
+   * The slot CLOSES on a pick: below the `members` breakpoint it is a full-width drawer over
+   * the timeline, so jumping with it open scrolls a message the user cannot see and the jump
+   * appears to do nothing. `pin-messages.spec.mts` asserts the close.
    *
    * CLOSE FIRST, THEN JUMP, and the order is load-bearing. The list scrolls by looking the
    * row up in the DOM, so a jump issued while the panel is still laid out measures a
    * timeline that is about to get ~480px wider — the row is scrolled to a position it no
-   * longer occupies once the panel goes, and lands off screen with only its flash to show
-   * for it. `afterNextRender` puts the jump after the layout it depends on. The dialog got
-   * this for free: `openAndWait` resolved a microtask AFTER the overlay was torn down.
+   * longer occupies once the panel goes, and lands off screen. `afterNextRender` puts the
+   * jump after the layout it depends on.
    */
   onPanelJump(eventId: string): void {
     // A pin or hit may be older than the loaded timeline; page it in first, or the
@@ -304,8 +295,8 @@ export class MessageActionsService {
    * The upload phase has no echo, so the batch drives a determinate bar from each file's
    * fraction; once an event is sent the SDK's echo + retry path takes over (like `onSend`).
    * `sendMediaBatch` resolves rather than throwing, so per-item failures arrive as outcomes
-   * and the composer keeps those files staged for a retry — nothing is lost by a bad third
-   * file, and `runAction`'s blanket toast would have told the user nothing about which.
+   * and the composer keeps those files staged for a retry; `runAction`'s blanket toast would
+   * not say which file failed.
    */
   onSendMedia({
     items,
@@ -326,9 +317,9 @@ export class MessageActionsService {
       }
       this.uploadProgress.set(progress);
     };
-    // Pin the immutable Account-and-Room handle for the whole batch. The focused proxy resolves
-    // on SUBSCRIBE — right for a single press, but item N subscribes minutes later. Room id alone
-    // is insufficient because two Accounts can share the same Matrix room id.
+    // Pin the immutable Account-and-Room handle for the whole batch: the focused proxy
+    // resolves on SUBSCRIBE, which suits a single press but not item N, subscribed minutes
+    // later. Room id alone is insufficient because two Accounts can share a Matrix room id.
     const pinnedConversation = this.conversations.focused();
     let abandoned = 0;
     sendMediaBatch(
@@ -423,14 +414,13 @@ export class MessageActionsService {
    * Ask for a date, then scroll the timeline to the first message on it.
    *
    * The jump reuses the lifecycle's target and revision pair as in-room search, so there is
-   * one definition of "scroll the list to this event". What is different is
-   * everything before that: `TimelineService.jumpToDate` has to page history in until the
-   * event is actually loaded, because the list scrolls by DOM lookup and an id it has
-   * never rendered is a silent no-op.
+   * one definition of "scroll the list to this event". `TimelineService.jumpToDate` has to
+   * page history in until the event is actually loaded, because the list scrolls by DOM
+   * lookup and an id it has never rendered is a silent no-op.
    *
-   * Each unhappy outcome says its own thing. "Too far back" is not "no messages that day",
-   * and neither is "your server cannot do this" — collapsing them into one message would
-   * send people looking for a problem that is not theirs.
+   * Each unhappy outcome says its own thing: "too far back", "no messages that day" and "your
+   * server cannot do this" would send people looking for a problem that is not theirs if
+   * collapsed into one message.
    */
   jumpToDate(): void {
     if (!this.store.activeRoomId()) {

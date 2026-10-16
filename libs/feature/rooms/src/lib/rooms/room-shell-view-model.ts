@@ -76,9 +76,8 @@ export class RoomShellViewModel {
    * messages (`m.direct`) in recency order. The Rooms view shows every non-DM joined
    * room that does not belong to any space (space-owned rooms live under their space).
    * A selected space shows only its joined child rooms, in the ordering that space resolves
-   * to — its own override, else the account's default (recent activity out of the box), for
-   * the account {@link spaceOrderAccountId} names. All read live signals, so the list reacts to sync, membership, `m.space.child`
-   * changes, and to the ordering being changed from the sidebar or Settings.
+   * to — its own override, else the account's default — for the account
+   * {@link spaceOrderAccountId} names.
    *
    * Every list reads one selected Room Library generation. Room ownership, deduplication,
    * and active-versus-mixed source choice are already resolved by that boundary.
@@ -243,7 +242,6 @@ export class RoomShellViewModel {
     () => !!this.store.activeSpaceId() && !this.activeSpaceListed(),
   );
 
-  /** Channel-sidebar header: Recent activity, the Rooms view, a selected space, else the direct messages. */
   readonly sidebarTitle = computed(() => {
     if (this.store.recentView()) {
       return 'Recent activity';
@@ -259,7 +257,6 @@ export class RoomShellViewModel {
       : this.activeSpaceName();
   });
 
-  /** Whether the Rooms view lists a row: a non-DM room that belongs to no space. */
   private isRoomsViewRow(room: RoomSummary): boolean {
     return !this.isDirectRow(room) && !this.isSpaceChild(room);
   }
@@ -420,7 +417,6 @@ export class RoomShellViewModel {
     return !!roomId && this.rooms.directRoomIds().has(roomId);
   });
 
-  /** The active account's user id — recomputes when the account is switched. */
   readonly userId = computed(() => this.matrix.activeUserId() ?? '');
 
   // Both read the projection rather than the client: it is a declared dependency, so these
@@ -433,10 +429,8 @@ export class RoomShellViewModel {
     () => this.identities.identityOf(this.userId()).avatarMxc,
   );
 
-  /** First letter of the active account's display name, for the header chip's avatar. */
   readonly userInitial = computed(() => initialOf(this.userName()));
 
-  /** The signed-in user's profile, bundled for the channel sidebar's user panel. */
   readonly userProfile = computed<IdentityProfile>(() => ({
     userId: this.userId(),
     displayName: this.userName(),
@@ -460,7 +454,6 @@ export class RoomShellViewModel {
     });
   });
 
-  /** The account currently in view — marks the active row in the switcher. */
   readonly activeAccountId = this.matrix.activeUserId;
 
   /**
@@ -516,7 +509,6 @@ export class RoomShellViewModel {
         },
   );
 
-  /** Whether the active space belongs to the signed-in account. */
   private readonly ownsActiveSpace = computed(() => {
     const spaceId = this.store.activeSpaceId();
     if (!spaceId) {

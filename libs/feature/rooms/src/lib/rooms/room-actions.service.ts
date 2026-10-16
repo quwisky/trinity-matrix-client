@@ -32,9 +32,7 @@ import { EMPTY, filter, forkJoin, map, switchMap, type Observable } from 'rxjs';
  * The life of a room: creating one, starting a DM, joining from the directory, inviting
  * people, opening its settings, and leaving.
  *
- * `invitePeople` lives here and is shared with `onInviteToSpace`, which is why that space
- * handler moved into this cluster rather than staying with the other space workflows —
- * one helper, one owner, no duplicate.
+ * `invitePeople` lives here and is shared with `onInviteToSpace`: one helper, one owner.
  */
 @Injectable()
 export class RoomActionsService {
@@ -169,9 +167,9 @@ export class RoomActionsService {
       .pipe(
         filter((joined): joined is DirectoryJoin => joined !== null),
         switchMap((joined) => {
-          // The join endpoint can close the dialog before /sync publishes the Room. Workspace
-          // correctly rejects an unavailable destination, so cross that finite readiness
-          // barrier before asking it to select the new Room or Space.
+          // The join endpoint can close the dialog before /sync publishes the Room, and
+          // Workspace rejects an unavailable destination, so wait for readiness before
+          // selecting the new Room or Space.
           return this.roomReadiness
             .waitForRoom(joined.accountId, joined.roomId)
             .pipe(map(() => joined));

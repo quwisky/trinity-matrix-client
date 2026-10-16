@@ -2,11 +2,10 @@ import { Injectable, inject, linkedSignal } from '@angular/core';
 import { RoomShellStore } from './room-shell-store';
 
 /**
- * Which long message bodies the reader has expanded (spec C, owner decision 5). Provided by
- * the rooms page and shared by the timeline and the thread view, so a row keeps its state as
- * the windowed list lets it go and brings it back. Keyed by the original event id, so an edit
- * keeps the state. Every change of the selected account or room starts from an empty set:
- * leaving a room and opening it again collapses its messages.
+ * Which long message bodies the reader has expanded. Provided by the rooms page and shared by
+ * the timeline and the thread view, so a row keeps its state as the windowed list lets it go
+ * and brings it back. Keyed by the original event id, so an edit keeps the state. Every change
+ * of the selected account or room starts from an empty set.
  */
 @Injectable()
 export class ExpandedBodiesStore {

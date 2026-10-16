@@ -4,15 +4,14 @@ import { WorkspaceNavigationService } from '@trinity/application/workspace';
 /**
  * The rooms shell's own selection and pane state.
  *
- * Deliberately `@Injectable()` with no `providedIn`: this is listed in `RoomsPage`'s
- * `providers:` array so it shares the page's lifetime and its `DestroyRef`. Making it
- * `providedIn: 'root'` would keep selection alive across navigations — you would return
- * to `/rooms` with a room still marked active but its panes already closed by
- * `ngOnDestroy` — and would leak every `runWithBusy` subscription that later coordinators
- * tie to the page's DestroyRef. `shell-invariants.spec.ts` pins that distinction.
+ * `@Injectable()` with no `providedIn`: it is listed in `RoomsPage`'s `providers:` so it
+ * shares the page's lifetime and its `DestroyRef`. `providedIn: 'root'` would keep selection
+ * alive across navigations (returning to `/rooms` with a room marked active but its panes
+ * already closed by `ngOnDestroy`) and would leak every `runWithBusy` subscription that later
+ * coordinators tie to the page's DestroyRef. `shell-invariants.spec.ts` pins that distinction.
  *
- * Signals only. Nothing here derives, fetches or subscribes, which is what lets the view
- * model and the workflow coordinators both depend on it without a cycle.
+ * Signals only. Nothing here derives, fetches or subscribes, which lets the view model and
+ * the workflow coordinators both depend on it without a cycle.
  */
 @Injectable()
 export class RoomShellStore {
@@ -33,21 +32,16 @@ export class RoomShellStore {
   readonly roomsView = this.workspace.roomsView;
 
   /**
-   * The selected room — DERIVED from the Workspace URL, never assigned.
+   * The selected room, DERIVED from the Workspace URL and never assigned.
    *
-   * `/rooms/:roomId` is the single source of truth, which is what makes a room linkable,
-   * bookmarkable and survivable across a reload. The pane coordinate separately decides
-   * whether compact layouts show that Conversation or the list, so returning to the list can
-   * retain selection without losing addressability. Selecting a room is therefore a NAVIGATION
-   * (`RoomShellNavigationService.onSelectRoom`), and this follows; nothing writes it directly.
+   * `/rooms/:roomId` is the single source of truth, which keeps a room linkable, bookmarkable
+   * and survivable across a reload. The pane coordinate separately decides whether compact
+   * layouts show that Conversation or the list, so returning to the list can retain selection.
+   * Selecting a room is therefore a NAVIGATION (`RoomShellNavigationService.onSelectRoom`) and
+   * this follows; a writable signal let the URL and the selected room disagree.
    *
-   * That direction matters beyond tidiness. When this was a writable signal the URL and the
-   * selected room could disagree, and did: a notification tap wrote `?room=` and the page then
-   * stripped the param back off, so the address bar described a room the shell was not
-   * showing for as long as the strip took to land.
-   *
-   * `decodeRoomSegment` answers `null` for a segment that is not one of ours — a hand-typed
-   * or truncated URL — so a bad link lands on the room list rather than asking the SDK for a
+   * `decodeRoomSegment` answers `null` for a segment that is not one of ours (a hand-typed or
+   * truncated URL), so a bad link lands on the room list rather than asking the SDK for a
    * room id that cannot exist.
    */
   readonly activeRoomId = this.workspace.activeRoomId;
