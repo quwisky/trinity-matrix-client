@@ -182,6 +182,8 @@ export class MessageListComponent extends MessageListBase {
    * settles: its smooth scroll is the list's doing, not the reader flinging.
    */
   private jumping = false;
+  /** Ends {@link jumping} once the jump has been still for the idle window. */
+  private jumpIdle: ReturnType<typeof setTimeout> | null = null;
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly scrollActivity = inject(TimelineScrollActivity);
@@ -510,6 +512,7 @@ export class MessageListComponent extends MessageListBase {
     this.destroyRef.onDestroy(() => {
       this.ro?.disconnect();
       if (this.scrollIdle !== null) clearTimeout(this.scrollIdle);
+      if (this.jumpIdle !== null) clearTimeout(this.jumpIdle);
     });
   }
 
@@ -531,6 +534,8 @@ export class MessageListComponent extends MessageListBase {
     this.scrollActivity.reset();
     this.fling.end();
     this.jumping = false;
+    if (this.jumpIdle !== null) clearTimeout(this.jumpIdle);
+    this.jumpIdle = null;
     this.rowEstimate.set(ESTIMATED_ROW_HEIGHT_PX);
     this.scrollTop.set(0);
     this.heightVersion.update((v) => v + 1);
@@ -570,7 +575,11 @@ export class MessageListComponent extends MessageListBase {
     // How fast the reader moves the list. The list's own writes were taken out as it made
     // them (`writeScrollTop`), so this is the reader's movement alone.
     this.scrollActivity.moved(el.scrollTop, performance.now());
-    if (!this.jumping) this.fling.moved(this.scrollActivity.speed);
+    if (this.jumping) {
+      this.armJumpEnd(); // the jump is still animating
+    } else {
+      this.fling.moved(this.scrollActivity.speed);
+    }
     if (this.expectedProgrammaticScrollTop !== null) {
       if (Math.abs(el.scrollTop - this.expectedProgrammaticScrollTop) < 1) {
         this.expectedProgrammaticScrollTop = null;
@@ -632,20 +641,30 @@ export class MessageListComponent extends MessageListBase {
     }
     this.scrollIdle = setTimeout(() => {
       this.scrollIdle = null;
-      this.jumping = false;
       this.scrollActivity.settle();
       this.fling.end();
     }, SCROLL_IDLE_MS);
   }
 
   /**
-   * Start a jump: end any fling and start none until the list settles. Arms the settle timer
-   * too, so a jump that scrolls nothing still ends.
+   * Start a jump: end any fling, and with blank rows on, start none until the jump has been
+   * still for the idle window (its own timer, so a jump that scrolls nothing ends too). With
+   * the flag off this is the plain `fling.end()` no-op: the scroll activity, which holds row
+   * hover work back, is left alone.
    */
   private beginJump(): void {
     this.fling.end();
+    if (!this.flingPlaceholders()) return;
     this.jumping = true;
-    this.markScrolling();
+    this.armJumpEnd();
+  }
+
+  private armJumpEnd(): void {
+    if (this.jumpIdle !== null) clearTimeout(this.jumpIdle);
+    this.jumpIdle = setTimeout(() => {
+      this.jumpIdle = null;
+      this.jumping = false;
+    }, SCROLL_IDLE_MS);
   }
 
   /** Jump back to the newest message (the jump-to-latest pill). */
@@ -904,7 +923,13 @@ export class MessageListComponent extends MessageListBase {
     untracked(() =>
       afterNextRender(
         () => {
-          if (this.destroyRef.destroyed) return;
+          // The reader may have reached the newest message since: they stay there.
+          if (
+            this.destroyRef.destroyed ||
+            untracked(() => this.atBottomSig())
+          ) {
+            return;
+          }
           this.writeScrollTop(el, Math.max(0, el.scrollTop + delta));
         },
         { injector: this.injector },

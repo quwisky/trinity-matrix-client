@@ -12,6 +12,7 @@ import {
   ConversationMessagesStub,
 } from '../testing/conversation-timeline.stub';
 import { MessageListComponent } from './message-list.component';
+import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
 
 /** The fixed estimate an unmeasured row is counted at with the flag off. */
 const EST = 64;
@@ -72,6 +73,7 @@ function resizeEntry(target: Element, height: number): ResizeObserverEntry {
 describe('MessageListComponent: blank rows while scrolling fast', () => {
   let clock: number;
   let st: number;
+  const ownScrollIntoView = Element.prototype.scrollIntoView;
 
   beforeEach(() => {
     const compose = new ConversationComposeStub();
@@ -88,6 +90,7 @@ describe('MessageListComponent: blank rows while scrolling fast', () => {
   });
 
   afterEach(() => {
+    Element.prototype.scrollIntoView = ownScrollIntoView;
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -161,6 +164,27 @@ describe('MessageListComponent: blank rows while scrolling fast', () => {
 
     expect(placeholderIds(container)).toEqual([]);
     expect(realIds(container)).toEqual(range(75, 100));
+  });
+
+  it('leaves the scroll activity alone across jumps, with the flag off', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const { fixture, scroll } = await renderList();
+    const activity = fixture.debugElement.injector.get(TimelineScrollActivity);
+    scrollTo(fixture, scroll, 5000, 0);
+    vi.advanceTimersByTime(150);
+    fixture.detectChanges();
+    expect(activity.active).toBe(false);
+    layOutRegion(scroll);
+
+    // A jump to a row on screen scrolls nothing; one off screen writes the position itself;
+    // neither is the reader scrolling, so hover work (the row toolbar) is not held back.
+    fixture.componentInstance.jumpTo('$80');
+    fixture.componentInstance.jumpTo('$150');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.componentInstance.scrollToLatest();
+
+    expect(activity.active).toBe(false);
   });
 
   describe('with the flag on', () => {
@@ -469,6 +493,30 @@ describe('MessageListComponent: blank rows while scrolling fast', () => {
         // $173–$184 grew above the reader (12 × 36 px), then the 173 unmeasured rows above
         // them came to count at the 100 px average (173 × 36 px): 11900 + 432 + 6228.
         expect(st).toBe(18_560);
+      });
+
+      it('leaves a reader who reached the bottom before the render where they are', async () => {
+        const { fixture, container, scroll } = await renderList({
+          flingPlaceholders: true,
+        });
+        scrollTo(fixture, scroll, 5000, 0);
+        layOutRegion(scroll);
+        rowObserver().emit(
+          range(65, 84).map((id) =>
+            resizeEntry(
+              container.querySelector(`[data-mid="${id}"]`) as Element,
+              100,
+            ),
+          ),
+        );
+        // Before the render applies the correction, the reader reaches the newest message.
+        clock = 50;
+        st = 200 * EST - 600;
+        scroll.dispatchEvent(new Event('scroll'));
+        fixture.detectChanges();
+        await fixture.whenStable();
+
+        expect(st).toBe(200 * EST - 600);
       });
 
       it('stays at the fixed estimate with the flag off', async () => {

@@ -202,15 +202,21 @@ test.describe('Rows in a fast-scrolled timeline', () => {
       });
       if (!row) return null;
       row.focus();
-      // A short fling at 8,000 px/s, timed by the clock rather than the frame rate so it is a
-      // fling on a slow machine too: 600 px, within the window's overscan.
+      // A fling at 8,000 px/s, timed by the clock rather than the frame rate. The speed
+      // estimate reads 0 on the first event and then moves dt/100 ms of the way to the true
+      // speed per event, and a fling starts at 3,000 px/s:
+      //   60 fps (133 px steps): 0, 1,333, 2,444, 3,370 → flinging from the 4th event (533 px)
+      //   30 fps (267 px steps): 0, 2,667, 4,444 → flinging from the 3rd event (800 px)
+      //   20 fps (400 px steps): 0, 4,000 → flinging from the 2nd event (800 px)
+      // 1,000 px leaves at least one more step for rows to enter as placeholders, and keeps
+      // the focused row (chosen near the top of the view) inside the window's 800 px overscan.
       let placeholders = 0;
       let moved = 0;
       let last = performance.now();
-      while (moved < 600) {
+      while (moved < 1000) {
         await new Promise((r) => requestAnimationFrame(r));
         const now = performance.now();
-        const step = Math.min(600 - moved, (8000 * (now - last)) / 1000);
+        const step = Math.min(1000 - moved, (8000 * (now - last)) / 1000);
         last = now;
         el.scrollTop -= step;
         moved += step;
@@ -255,20 +261,51 @@ test.describe('Rows in a fast-scrolled timeline', () => {
         ?.focus(),
     );
     const placeholders = timeline.locator('[data-placeholder-mid]');
+    // Count placeholders as they mount, so the test proves the keys actually flung the list.
+    await timeline.evaluate((el) => {
+      const seen = { count: 0 };
+      (window as unknown as { __placeholders: typeof seen }).__placeholders =
+        seen;
+      new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of Array.from(record.addedNodes)) {
+            if (
+              node instanceof Element &&
+              node.matches('[data-placeholder-mid]')
+            ) {
+              seen.count += 1;
+            }
+          }
+        }
+      }).observe(el, { childList: true, subtree: true });
+    });
+    const scrollTop = () => timeline.evaluate((el) => el.scrollTop);
     // Blank rows are gone within the settle window after the scroll stops (allowing for the
     // browser's smooth-scroll animation and a frame or two).
     const settledSoon = () =>
       expect(placeholders).toHaveCount(0, { timeout: 1_500 });
 
     // PageUp held down: the key repeats while the list keeps scrolling.
+    const atNewest = await scrollTop();
     for (let i = 0; i < 12; i += 1) await page.keyboard.press('PageUp');
     await settledSoon();
+    expect(await scrollTop()).toBeLessThan(atNewest);
     // Home and End scroll the whole room smoothly.
     await page.keyboard.press('Home');
     await settledSoon();
+    expect(await scrollTop()).toBeLessThan(5);
     await page.keyboard.press('End');
     await settledSoon();
+    expect(await scrollTop()).toBeGreaterThan(0);
     await expectRealRowsOnScreen(page);
+    // And the keys did fling it: rows entered as placeholders on the way.
+    expect(
+      await page.evaluate(
+        () =>
+          (window as unknown as { __placeholders: { count: number } })
+            .__placeholders.count,
+      ),
+    ).toBeGreaterThan(0);
   });
 
   test('with the flag off, every row mounts in full as it passes', async ({
