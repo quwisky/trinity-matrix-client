@@ -6,6 +6,7 @@ import {
   linkedSignal,
   signal,
 } from '@angular/core';
+import type { BannerPrompt } from '@trinity/application/workspace';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import {
   TrustService,
@@ -51,13 +52,6 @@ export interface CapabilityStatusEntry {
     readonly initial: string;
   } | null;
   readonly recovery: CapabilityRecoveryOutcome | null;
-}
-
-/** The encryption prompt the global banner slot holds. */
-export interface HeldBannerPrompt {
-  readonly kind: SlotForecast;
-  /** Laid out to hold its space, but hidden, unannounced and inert. */
-  readonly placeholder: boolean;
 }
 
 /** The trust state the slot is decided on, and whether it is only the forecast. */
@@ -204,7 +198,7 @@ export class CapabilityStatusService {
    * kind and the slot is not held: a forecast, and a held prompt the live status no longer
    * supports, are placeholders of the same kind and height until the press ends.
    */
-  readonly bannerPrompt = computed<HeldBannerPrompt | null>(
+  readonly bannerPrompt = computed<BannerPrompt | null>(
     () => {
       const { slot, trust } = this.slotState();
       const kind = promptKind(trust);
