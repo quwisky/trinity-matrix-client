@@ -56,12 +56,18 @@ async function framesWithRow(page: Page): Promise<SlotFrame[]> {
 
 /*
  * Signing in at phone width, the global banner slot first holds the "Protected browser
- * storage is unavailable" notice (the browser declines persistent storage) and swaps it for
+ * storage is unavailable" notice and swaps it for
  * the "Set up encryption" prompt once the trust status arrives, a fraction of a second after
  * Rooms renders. The notice's two actions wrap under its message there and the prompt's one
  * action does not, so the swap used to move the room list up by about 26px, under a tap
  * already in flight: the tap was lost or opened the next room. Every frame from the first
  * room row until the prompt is up has to show the row in the same place.
+ *
+ * This relies on headless Chromium declining `navigator.storage.persist()`, as it does
+ * here and in CI: that limitation is what puts the notice in the slot first. The test
+ * checks the swap really happened while the row was on screen, so a browser that grants
+ * persistence, or a trust status that arrives before the first row, fails it plainly
+ * instead of letting it pass without measuring anything.
  */
 test.describe('Global banner slot after sign-in', () => {
   test.skip(
@@ -103,7 +109,7 @@ test.describe('Global banner slot after sign-in', () => {
     }
   });
 
-  for (const width of [320, 390, 1280]) {
+  for (const width of [320, 390, 600, 1280]) {
     test(`the room list stays put while the slot settles at ${width}px`, async ({
       page,
     }) => {
@@ -126,6 +132,11 @@ test.describe('Global banner slot after sign-in', () => {
       const swaps = frames.filter(
         (frame, index) => index === 0 || frame.slot !== frames[index - 1]!.slot,
       );
+      expect(
+        swaps.map(({ slot }) => slot),
+        'the notice held the slot when the first row was drawn, then gave way to the ' +
+          `prompt; slot changes: ${JSON.stringify(swaps)}`,
+      ).toEqual(['status', 'encryption']);
       expect(
         moved,
         `row first drawn at y=${first.row}; slot changes: ${JSON.stringify(swaps)}`,
