@@ -335,14 +335,13 @@ test.describe('Multiple accounts', () => {
     await expect(spacePill).toHaveAttribute('aria-current', 'true');
     await expect(page.getByTestId('composer-input')).toBeVisible();
 
+    // Untick A in the picker. The view changes under the open menu, so nothing here waits
+    // on the menu itself.
     await page.getByTestId('user-menu-trigger').click();
     await page.getByTestId('show-accounts').click();
     const rowA = page.locator(`[data-testid^="show-account-@${f.userA}:"]`);
     await expect(rowA).toHaveAttribute('aria-checked', 'true');
     await rowA.click();
-    await expect(rowA).toHaveAttribute('aria-checked', 'false');
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('Escape');
 
     await expect(recent).toHaveAttribute('aria-current', 'true', {
       timeout: 30_000,
