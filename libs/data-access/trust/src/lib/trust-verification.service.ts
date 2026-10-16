@@ -78,7 +78,7 @@ export interface VerificationView {
   stage: VerificationStage;
   otherUserId: string | null;
   otherDeviceId: string | null;
-  /** Verifying our own other device (vs another user). MVP only does self. */
+  /** Verifying our own other device (vs another user). */
   isSelfVerification: boolean;
   /** The other side initiated the request (we should offer accept/decline). */
   incoming: boolean;
@@ -122,8 +122,7 @@ const QR_SHOW_METHOD = 'm.qr_code.show.v1';
  * Drives interactive device verification (QR or emoji SAS). Wraps the SDK's
  * `VerificationRequest`/`Verifier` so the UI never touches matrix-js-sdk: a single
  * `active` signal exposes the current verification as a {@link VerificationView},
- * and cold Observables perform the actions. Mirrors {@link TrustService}'s shape
- * (instance-keyed idempotent `connect()`/`disconnect()`).
+ * and cold Observables perform the actions.
  *
  * QR is self-device-only. SAS verification also supports another user over a DM via
  * {@link startUserVerification}.
@@ -220,9 +219,9 @@ export class TrustVerificationService {
   });
 
   /**
-   * The projection. There is no coalescing to configure because the one event is bound by
-   * hand below — it carries the incoming request, which a no-arg listener could not read —
-   * and an incoming verification is human-initiated, so bursts are not a thing.
+   * The one event is bound by hand because it carries the incoming request, which a no-arg
+   * listener could not read, so there is no coalescing to configure. An incoming
+   * verification is human-initiated, so bursts are not a concern.
    */
   private readonly projection = this.cryptoPort.project({
     id: 'crypto.verification-requests',
@@ -279,7 +278,7 @@ export class TrustVerificationService {
   /**
    * Request cross-user verification of `userId` over a direct-message room (emoji SAS).
    * Capture the Account before subscribing to the cold, finite DM acquisition. The
-   * verification is adopted so the app's host presents the SAS UI. Cold — runs on subscribe.
+   * verification is adopted so the app's host presents the SAS UI.
    */
   startUserVerification(
     userId: string,
@@ -482,8 +481,6 @@ export class TrustVerificationService {
     this.clearRequest();
     this._active.set(null);
   }
-
-  // ── internals ──────────────────────────────────────────────────────────────
 
   private sendUserVerification(
     client: TrustMatrixClient,

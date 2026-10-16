@@ -39,7 +39,8 @@ export class TrustLifetime {
   private readonly health = inject(TrustService);
   private readonly verification = inject(TrustVerificationService);
   private readonly changes = new Subject<TrustCapabilityHealth>();
-  // Published as fact.generation; recover() filters obsolete generations. Not a latest-wins guard (#927).
+  // Published as fact.generation; recover() filters obsolete generations.
+  // Not a latest-wins guard.
   private generation = 0;
   private current: TrustCapabilityHealth | null = null;
   private retry: (() => void) | null = null;

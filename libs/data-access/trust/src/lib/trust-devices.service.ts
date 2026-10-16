@@ -126,7 +126,6 @@ export class TrustDevicesService {
         };
       }),
     );
-    // Current device first, then most-recently-seen.
     result.sort((a, b) => {
       if (a.isCurrent !== b.isCurrent) {
         return a.isCurrent ? -1 : 1;

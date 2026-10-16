@@ -92,9 +92,9 @@ function gateFor(
       return REQUIRED_VERIFICATION;
     case 'needs-setup':
       if (server === undefined) return PENDING;
-      // `absent` has already dropped the record (owner decision 2026-10-12 (1)). `unknown`
-      // falls back to the local status, since blocking an Account that may have no
-      // identity would trap the user: every way out needs one.
+      // `absent` has already dropped the record. `unknown` falls back to the local status,
+      // since blocking an Account that may have no identity would trap the user: every way
+      // out needs one.
       return server === 'present' ? REQUIRED_VERIFICATION : NOT_REQUIRED;
     case 'ready':
       return NOT_REQUIRED;
@@ -156,15 +156,15 @@ function accountContext(accountId: string): PreferenceContext {
 }
 
 /**
- * MSC4153 decision 2: a new device of an Account that has an identity is verified (with
- * another device or the recovery key) or the identity is reset before the app opens.
- * Existing devices are never blocked (decision 3); they keep the banner.
+ * MSC4153: a new device of an Account that has an identity is verified (with another
+ * device or the recovery key) or the identity is reset before the app opens. Existing
+ * devices are never blocked; they keep the banner.
  *
  * The record is written synchronously when Accounts reports a new-device sign-in, so the
  * sign-in page's navigation already sees it, and persisted per Account so a restart does
  * not skip the check. It is cleared when a fresh read on that exact Account says the device
  * is verified, by the debug-build skip, or as soon as the homeserver says the Account has
- * no identity (owner decision 2026-10-12 (1)); a server that cannot be asked keeps it.
+ * no identity; a server that cannot be asked keeps it.
  */
 @Injectable({ providedIn: 'root' })
 export class TrustDeviceConfirmationService {
@@ -339,9 +339,8 @@ export class TrustDeviceConfirmationService {
           merge(
             this.hydrate(accountId).pipe(ignoreElements()),
             // Read now: a computed is fresh on read, while `gate$` re-emits only after its
-            // effect runs, so it could still hold a value from before the record loaded.
-            // `gate$` only signals a change: it replays its last value, which can predate
-            // the record or the Account, so every emission re-reads the computed.
+            // effect runs. `gate$` only signals a change (it replays its last value, which
+            // can predate the record or the Account), so every emission re-reads the computed.
             concat(of(undefined), gate$).pipe(map(() => this.gate())),
           ),
         ),
@@ -416,12 +415,11 @@ export class TrustDeviceConfirmationService {
   }
 
   /**
-   * Owner decision 2026-10-12 (1): a device that signs in while its Account has no identity
-   * is an existing device from then on, never sent to the check, even if an identity is set
-   * up elsewhere later; it keeps the banner. Only the homeserver's answer proves that. A
-   * server that cannot be asked proves nothing, so the record stays and the gate follows
-   * this device's own status (the spec's fallback, failing open while it reads
-   * `needs-setup`).
+   * A device that signs in while its Account has no identity is an existing device from then
+   * on, never sent to the check, even if an identity is set up elsewhere later; it keeps the
+   * banner. Only the homeserver's answer proves that. A server that cannot be asked proves
+   * nothing, so the record stays and the gate follows this device's own status (failing
+   * open while it reads `needs-setup`).
    */
   private keepOnlyWithIdentity(
     accountId: string,

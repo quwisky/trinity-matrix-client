@@ -152,8 +152,7 @@ export class TrustSlotForecastService {
   readonly forecast = computed<SlotForecast | null>(() => {
     const accountId = this.cryptoPort.activeAccountId();
     if (!accountId) return null;
-    // Only while the status is still unavailable, as at start-up. A stale snapshot means a
-    // read failed mid-session, and the failure notice owns the slot then.
+    // A stale snapshot means a read failed mid-session; the failure notice owns the slot then.
     if (this.health.health().availability !== 'unavailable') return null;
     if (this.expired().has(accountId)) return null;
     const kind = this.stored().get(accountId) ?? 'none';
