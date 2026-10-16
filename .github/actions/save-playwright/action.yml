@@ -1,0 +1,70 @@
+name: Save Playwright browsers
+description: On main, save the browser and apt caches that setup-playwright restores, when missing.
+inputs:
+  browsers:
+    description: Space-separated Playwright browser names, as given to setup-playwright.
+    default: chromium webkit
+  with-deps:
+    description: As given to setup-playwright.
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    # Every step is gated on main: other refs restore main's entries and never write their
+    # own. A lookup finds entries main already holds, so nothing is archived twice. Keys and
+    # paths must match setup-playwright's exactly.
+    - id: keys
+      if: github.ref == 'refs/heads/main'
+      shell: bash
+      run: |
+        version=$(pnpm exec playwright --version | awk '{print $2}')
+        # An empty or odd version would key an entry that every later version hits.
+        if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::could not read the Playwright version (got '$version')"
+          exit 1
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "image=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+    - id: chromium
+      if: github.ref == 'refs/heads/main'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cache/ms-playwright/chromium-*
+          ~/.cache/ms-playwright/chromium_headless_shell-*
+          ~/.cache/ms-playwright/ffmpeg-*
+        key: playwright-${{ runner.os }}-chromium-${{ steps.keys.outputs.version }}
+        lookup-only: true
+    - if: github.ref == 'refs/heads/main' && steps.chromium.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cache/ms-playwright/chromium-*
+          ~/.cache/ms-playwright/chromium_headless_shell-*
+          ~/.cache/ms-playwright/ffmpeg-*
+        key: playwright-${{ runner.os }}-chromium-${{ steps.keys.outputs.version }}
+    - id: webkit
+      if: github.ref == 'refs/heads/main' && contains(inputs.browsers, 'webkit')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright/webkit-*
+        key: playwright-${{ runner.os }}-webkit-${{ steps.keys.outputs.version }}
+        lookup-only: true
+    - if: github.ref == 'refs/heads/main' && contains(inputs.browsers, 'webkit') && steps.webkit.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright/webkit-*
+        key: playwright-${{ runner.os }}-webkit-${{ steps.keys.outputs.version }}
+    # apt is saved for the default set only (see setup-playwright).
+    - id: apt
+      if: github.ref == 'refs/heads/main' && runner.os == 'Linux' && inputs.with-deps == 'true' && inputs.browsers == 'chromium webkit'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/apt-archives/*.deb
+        key: apt-${{ runner.os }}-${{ steps.keys.outputs.image }}-${{ steps.keys.outputs.version }}-${{ inputs.browsers }}
+        lookup-only: true
+    - if: github.ref == 'refs/heads/main' && runner.os == 'Linux' && inputs.with-deps == 'true' && inputs.browsers == 'chromium webkit' && steps.apt.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/apt-archives/*.deb
+        key: apt-${{ runner.os }}-${{ steps.keys.outputs.image }}-${{ steps.keys.outputs.version }}-${{ inputs.browsers }}

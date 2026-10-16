@@ -1,0 +1,30 @@
+name: Cache cleanup
+
+# Deletes the Actions caches a pull request's runs left under refs/pull/<n>/merge once it
+# closes, merged or not: only that pull request's runs could read them. Caches are saved
+# from main only, so these are entries saved before that rule or by a tool that saves on
+# its own. pull_request_target gives a token that may delete caches for
+# pull requests from forks too; the job never checks out or runs the pull request's code,
+# it only calls the cache API with the pull request's number from the event.
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  delete:
+    name: Delete the pull request's caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: |
+          gh cache list --ref "$REF" --limit 100 --json key,sizeInBytes \
+            --jq '.[] | "\(.sizeInBytes / 1048576 | floor) MB \(.key)"'
+          gh cache delete --all --ref "$REF" --succeed-on-no-caches

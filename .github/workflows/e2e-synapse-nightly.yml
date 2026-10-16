@@ -45,6 +45,7 @@ jobs:
       - name: Prepare e2e prerequisites
         id: prerequisites
         run: node scripts/ci-prerequisites.mjs
+      - uses: ./.github/actions/save-playwright
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
         with:
@@ -76,12 +77,20 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Same entry as ci.yml's Desktop job: one per Electron version, saved on main.
+      - id: electron-version
+        run: echo "version=$(node -p "require('./electron/package.json').devDependencies.electron")" >> "$GITHUB_OUTPUT"
+      - id: electron-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/electron
-          key: electron-${{ runner.os }}-${{ hashFiles('electron/pnpm-lock.yaml') }}
-          restore-keys: electron-${{ runner.os }}-
+          key: electron-${{ runner.os }}-${{ steps.electron-version.outputs.version }}
       - run: pnpm electron:install
+      - if: github.ref == 'refs/heads/main' && steps.electron-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ steps.electron-version.outputs.version }}
       # `full` builds the renderer and the desktop host itself; no verified renderer here.
       - id: electron
         run: |
