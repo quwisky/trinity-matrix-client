@@ -136,12 +136,14 @@ test.describe('Jump to date', () => {
         expect(await page.locator('.scroll .msg').count()).toBeGreaterThan(100);
       }
       // Rendered is not yet in view: with windowing off the jump scrolls through all ~121
-      // rows, which can take longer than one check. Wait for it to arrive, then stay in view
-      // past JUMP_REAPPLY_MS (3s), when a re-aim or a snap-back can happen.
+      // rows, which can take longer than one check. Give it no longer than JUMP_REAPPLY_MS
+      // (3s, message-list-base.ts) to arrive, so a first aim that misses and is only fixed
+      // by a later re-aim still fails. Then stay in view past that window, when a re-aim or
+      // a snap-back can happen.
       const markerRow = page
         .locator('.scroll .msg', { hasText: marker })
         .first();
-      await expect(markerRow).toBeInViewport({ timeout: 10_000 });
+      await expect(markerRow).toBeInViewport({ timeout: 3_000 });
       for (let i = 0; i < 14; i++) {
         await page.waitForTimeout(250);
         await expect(markerRow).toBeInViewport({ timeout: 250 });
