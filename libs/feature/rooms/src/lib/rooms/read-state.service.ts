@@ -133,20 +133,17 @@ export class ReadStateService {
 
   /**
    * Mark the currently-visible unread rooms read (header action). Scoped to the sidebar's
-   * rooms so it matches the button, which is gated on their unread state — and acked per
-   * owning account, since in the mixed view the button is offered for rooms belonging to
-   * accounts other than the active one (acking those through the active client would
-   * silently do nothing).
+   * rooms so it matches the button, and acked per owning account: in the mixed view the
+   * button covers rooms of non-active accounts, which acking through the active client would
+   * silently do nothing for.
    */
   onMarkAllRead(): void {
     const unread = this.vm.visibleRooms().filter((room) => room.hasUnread);
     if (unread.length === 0) {
       return;
     }
-    // Acked on every account joined to the row, exactly as the ⋮ path does: a merged
-    // mixed-account row can be flagged on the account that did NOT win the merge, and
-    // acking only the winner leaves the row unread with the button still offering to
-    // clear it.
+    // Every account joined to the row, as the ⋮ path does: a merged mixed-account row can be
+    // flagged on the account that did NOT win the merge.
     forkJoin(unread.map((room) => this.ackRead(room.id, room.accountIds)))
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({

@@ -28,7 +28,7 @@ import {
 import { Observable, defer, map, of } from 'rxjs';
 import type { ExactRoomSelection } from '../shared/exact-selection';
 
-/** Member info is not here: it opens as a modal surface over the roster (#1041). */
+/** Member info is not here: it opens as a modal surface over the roster. */
 type TemporaryRoomSurface = Extract<
   WorkspaceRoomSurface,
   { readonly kind: 'threads' | 'thread' | 'pinned' | 'search' }

@@ -28,12 +28,10 @@ import { ShellStatusService } from './shell-status.service';
  * Creating, curating, configuring and leaving spaces.
  *
  * The `on*` methods own the prompt and confirmation copy and the power-level gating; the
- * matching `apply*` methods own the write and the navigation that follows it. That split
- * is the existing shape and is kept deliberately — it is what lets a spec drive the write
- * without standing up a dialog.
+ * matching `apply*` methods own the write and the navigation that follows it, so a spec can
+ * drive the write without standing up a dialog.
  *
- * `onInviteToSpace` is not here: it shares `invitePeople` with the room cluster, so it
- * moves with that one rather than duplicating the helper or reaching back into the page.
+ * `onInviteToSpace` is not here: it shares `invitePeople` with the room cluster.
  */
 @Injectable()
 export class SpaceActionsService {
@@ -169,12 +167,12 @@ export class SpaceActionsService {
   }
 
   /**
-   * Create the space first, then link it into its parent — two writes, in that order,
-   * because the child link needs an id that does not exist until the room does.
+   * Create the space first, then link it into its parent: two writes in that order, because
+   * the child link needs an id that does not exist until the room does.
    *
-   * A failure of the second leaves a real, usable space that is simply not nested, which
-   * is why the error is surfaced rather than swallowed: the user can add it to the parent
-   * from "Add existing rooms" without having lost anything.
+   * A failure of the second leaves a real, usable space that is simply not nested, which is
+   * why the error is surfaced rather than swallowed: the user can add it to the parent from
+   * "Add existing rooms" without having lost anything.
    */
   private applyCreateSubspace(
     parentId: string,
@@ -242,8 +240,7 @@ export class SpaceActionsService {
   /** Sidebar "Join" on a not-yet-joined child: join it (via its routing servers). */
   onJoinChild(child: SpaceChildRoom): void {
     this.status.error.set(null);
-    // On success the child lands in the synced read model — a room moves into the
-    // joined channel list, a space into the rail — and its `joined` flag flips live,
+    // On success the child lands in the synced read model and its `joined` flag flips live,
     // dropping it from the "more channels"/Spaces lists. No manual selection here.
     runWithBusy(
       this.spaces.joinRoom(child.accountId, child.roomId, child.via),

@@ -4,36 +4,30 @@ import { prefersReducedMotion } from '@trinity/util/ui';
 /**
  * Swipe the right-hand drawer open, and swipe it away again.
  *
- * ## What this is, and is not, for
- *
  * Only the layout below the `members` breakpoint has a drawer: there the right-hand slot is a
- * fixed overlay over the timeline. Above it the slot is a column sharing the row, and there is
- * nothing to swipe.
+ * fixed overlay over the timeline. Above it the slot is a column sharing the row.
  *
- * The room list is deliberately NOT handled here. Below `md` it is not a drawer at all — it is
- * a separate page keyed off the open room, which lives in the URL, so "swipe back to the room
- * list" is the platform's own back gesture: Android routes it to `backButton` and iOS has it
- * since `MainViewController` enabled it. Re-implementing that in JavaScript would compete with
- * a gesture the OS already does better.
+ * The room list is deliberately NOT handled here. Below `md` it is a separate page keyed off
+ * the open room in the URL, so "swipe back to the room list" is the platform's own back
+ * gesture: Android routes it to `backButton` and iOS has it since `MainViewController`
+ * enabled it.
  *
  * ## Why the drag writes CSS
  *
- * The same reason `PaneHandleComponent` does. The finger is dragging a surface laid over the
- * timeline — a custom virtual scroller with per-row measured heights and two `ResizeObserver`s
- * — and a signal write per `pointermove` would put an Angular render between every frame of a
- * gesture. So the drag writes one custom property and nothing else; the slot's own state is
- * written once, at the end, when the gesture has decided.
+ * For the same reason `PaneHandleComponent` does: the drawer is laid over the virtual-scroller
+ * timeline, and a signal write per `pointermove` would put an Angular render between every
+ * frame. So the drag writes one custom property, and the slot's own state is written once, at
+ * the end.
  *
- * The property only has a consumer in the CLOSING direction: an opening swipe is measured
- * before the slot holds anything, so there is no drawer on screen to translate and it arrives
- * at the end of the gesture instead of tracking the finger. Recorded on the rule that reads
- * it, in `rooms.page.scss`.
+ * The property only has a consumer in the CLOSING direction (see `rooms.page.scss`): an
+ * opening swipe starts before the slot holds anything, so there is no drawer to translate and
+ * it arrives at the end of the gesture instead of tracking the finger.
  *
  * ## Deciding
  *
- * Distance OR speed, because both are things people mean. A slow deliberate drag past the
- * halfway point is a decision; so is a quick flick that never gets there. Requiring distance
- * alone makes flicking feel broken, and speed alone makes a careful drag impossible to abort.
+ * Distance OR speed: a slow drag past the halfway point is a decision, and so is a quick flick
+ * that never gets there. Distance alone makes flicking feel broken, and speed alone makes a
+ * careful drag impossible to abort.
  */
 
 /**
@@ -99,9 +93,8 @@ export class DrawerSwipeDirective {
     const distanceFromRight = window.innerWidth - event.clientX;
     // Native navigation owns the extreme edge: WebKit Forward on iOS, and the OS back
     // recogniser on gesture-navigation Android. The drawer begins immediately inside it on
-    // every touch platform, which is consistent and lets real-touch browser coverage prove
-    // that it never steals the platform edge. Once open, `onDrawer` below accepts a closing
-    // drag anywhere.
+    // every touch platform, so real-touch browser coverage can prove it never steals the
+    // platform edge. Once open, `onDrawer` below accepts a closing drag anywhere.
     const nativeInset = NATIVE_HISTORY_EDGE_PX;
     const fromEdge =
       !this.drawerOpen() &&
@@ -117,14 +110,12 @@ export class DrawerSwipeDirective {
     this.startY = event.clientY;
     this.startedAt = event.timeStamp;
     this.latest = 0;
-    // Captured, for the same two reasons `PaneHandleComponent` captures: a drag that leaves
-    // this element keeps reporting here rather than to whatever it crossed, and `pointerup`
-    // arrives unconditionally. Without it a gesture released outside the host — sideways into
-    // the sidebar column, which is a sibling between `md` and `members` — never completes,
-    // and the drawer is left translated mid-drag until the next press.
-    //
-    // Capture also binds the gesture to ONE pointer, which the `pointerId` guards below
-    // finish: a second finger landing mid-drag must not be read as the same swipe.
+    // Captured so a drag that leaves this element keeps reporting here, and `pointerup`
+    // arrives unconditionally. Without it a gesture released outside the host (sideways into
+    // the sidebar column, a sibling between `md` and `members`) never completes and the drawer
+    // is left translated mid-drag until the next press. Capture also binds the gesture to ONE
+    // pointer, which the `pointerId` guards finish: a second finger must not read as the same
+    // swipe.
     this.host.nativeElement.setPointerCapture?.(event.pointerId);
     this.host.nativeElement.addEventListener('pointermove', this.onPointerMove);
     this.host.nativeElement.addEventListener('pointerup', this.onPointerUp);
@@ -135,15 +126,15 @@ export class DrawerSwipeDirective {
   }
 
   /**
-   * Arrow properties, not methods: these are added and removed by reference, and a bare method
-   * would be a new function object each time and so could never be removed.
+   * Arrow properties, not methods: the listeners are added and removed by reference, so they
+   * need one stable function object.
    */
   private readonly onPointerMove = (event: PointerEvent): void => {
     if (!this.tracking || event.pointerId !== this.pointerId) {
       return;
     }
     if (Math.abs(event.clientY - this.startY) > VERTICAL_SLOP_PX) {
-      // Turned into a scroll. Abandon rather than fight it — the drawer's content scrolls.
+      // Turned into a scroll: abandon rather than fight the drawer's own content scroll.
       this.cancel();
       return;
     }
@@ -162,9 +153,9 @@ export class DrawerSwipeDirective {
     if (!this.tracking || event.pointerId !== this.pointerId) {
       return;
     }
-    // The release point is the final position, not just the last move: a fast gesture can end
-    // with the pointer well past wherever the last `pointermove` was delivered, and judging it
-    // on the stale figure reads a decisive swipe as a hesitant one.
+    // The release point is the final position: a fast gesture can end well past the last
+    // delivered `pointermove`, and judging on the stale figure reads a decisive swipe as a
+    // hesitant one.
     this.track(event);
     const elapsed = Math.max(1, event.timeStamp - this.startedAt);
     const velocity = this.latest / elapsed;
@@ -208,10 +199,8 @@ export class DrawerSwipeDirective {
   /**
    * The whole gesture, as one custom property on the shell.
    *
-   * Skipped entirely under `prefers-reduced-motion`: someone who asked for less movement did
-   * not ask for a surface that tracks their finger. The gesture still WORKS — the commit below
-   * is unaffected — it simply arrives without the drag following it, which is the same bargain
-   * the reduced-motion reset makes everywhere else.
+   * Skipped under `prefers-reduced-motion`: the gesture still WORKS and commits, it just
+   * arrives without the drawer tracking the finger.
    */
   private paint(px: number | null): void {
     if (prefersReducedMotion()) {

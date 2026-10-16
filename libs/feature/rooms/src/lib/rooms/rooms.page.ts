@@ -75,16 +75,14 @@ import { SessionActionsService } from './session-actions.service';
 import { ExpandedBodiesStore } from './expanded-bodies.store';
 
 /**
- * Discord-style authenticated shell: server rail + channel sidebar (in a
- * responsive Tailwind drawer — static column at md+, slide-in below), the read
- * timeline, and a member list.
- * Wired to live synced rooms via `RoomLibraryService` + `ConversationRuntime`.
+ * Authenticated shell: server rail + channel sidebar (static column at md+, separate pages
+ * below md), the timeline, and a member list, wired to live synced rooms.
  */
 /**
  * The drawer widths at the `members` breakpoint, mirroring `rooms.page.scss`.
  *
  * Duplicated rather than read from CSS because a gesture threshold has to exist before the
- * drawer does — the opening swipe is measured while there is nothing on screen to measure.
+ * drawer does: the opening swipe is measured while there is nothing on screen to measure.
  * The stylesheet is the one that renders them, so these two must not drift from it.
  */
 const MEMBERS_DRAWER_PX = 240;
@@ -124,7 +122,7 @@ const PANEL_DRAWER_PX = 480;
     MemberListComponent,
     // The temporary surfaces the right-hand slot can show. Imported by the page rather
     // than opened by a service: presentation is the shell's decision, and each panel just
-    // announces what the user did. Member info is a modal surface instead (#1041).
+    // announces what the user did. Member info is a modal surface instead.
     ThreadsListComponent,
     ThreadViewComponent,
     PinnedMessagesPanelComponent,
@@ -137,20 +135,19 @@ const PANEL_DRAWER_PX = 480;
     TombstoneBannerComponent,
   ],
   host: {
-    // One delegating listener for every global shortcut: the quick switcher and the
-    // room-switching keys all resolve through KeyboardShortcutsService, so a binding is
-    // defined (and configurable) in one place. It bails on the first line unless a
-    // modifier is held, so plain typing pays almost nothing. Escape stays a dedicated
-    // binding — it's a contextual dismiss, not a configurable navigation shortcut.
+    // One delegating listener for every global shortcut, all resolved through
+    // KeyboardShortcutsService so a binding is defined (and configurable) in one place. It
+    // bails unless a modifier is held, so plain typing pays almost nothing. Escape stays a
+    // dedicated binding: it's a contextual dismiss, not a configurable navigation shortcut.
     '(document:keydown)': 'onGlobalKeydown($event)',
     '(document:keydown.escape)': 'onEscapeKey($event)',
   },
 })
 export class RoomsPage {
   /**
-   * The two viewport predicates the shell branches on, live for the page's lifetime.
+   * The viewport predicate the shell branches on, live for the page's lifetime.
    *
-   * Fields rather than call-time reads: `mediaQuerySignal` registers a listener bound to the
+   * A field rather than a call-time read: `mediaQuerySignal` registers a listener bound to the
    * `DestroyRef` handed to it, so creating one per call would leak one per invocation.
    */
   protected readonly mobileMasterDetail = mediaQuerySignal(
@@ -158,18 +155,15 @@ export class RoomsPage {
     inject(DestroyRef),
   );
   /**
-   * Which way a message row is dragged to act on it, HERE and not in the list.
-   *
-   * The preference is only half the answer, and this page is the only place that knows the
-   * other halves — which is why it resolves the direction rather than passing the preference
-   * through.
+   * Which way a message row is dragged to act on it, resolved HERE because the preference is
+   * only half the answer and this page is the only place that knows the other halves.
    *
    * `roomSurfaces.renderedSurface()` is the expression `[drawerOpen]` is bound to below, so
-   * the two cannot drift. It is NOT what stops the row gesture competing with the drawer: while
-   * a panel is open a `fixed inset-0` backdrop covers the viewport, so no `pointerdown`
-   * reaches a timeline row in that state at all. This clause is a mirror of the drawer's own
-   * arming condition, kept because a gesture that is off should be off for a stated reason
-   * rather than by a side effect of somebody else's markup.
+   * the two cannot drift. It is NOT what stops the row gesture competing with the drawer:
+   * while a panel is open a `fixed inset-0` backdrop covers the viewport, so no `pointerdown`
+   * reaches a timeline row at all. The clause mirrors the drawer's own arming condition, so a
+   * gesture that is off is off for a stated reason rather than by a side effect of somebody
+   * else's markup.
    *
    * The thread panel is the deliberate exception and is handled at the row: it only EXISTS
    * while the drawer is open, so this rule would make the gesture permanently dead there. It
@@ -190,10 +184,8 @@ export class RoomsPage {
     return this.gestures.messageSwipe();
   });
 
-  /** Which way a message row is dragged, as the reader set it. */
   private readonly gestures = inject(MessageGestureSettingsService);
 
-  /** Persisted pane widths, bound into the shell's CSS custom properties. */
   readonly layout = inject(ShellLayoutService);
 
   /** A tick when a drag lands, on a phone. Silent everywhere else. */
@@ -202,11 +194,10 @@ export class RoomsPage {
   /**
    * How wide the drawer actually is at the drawer breakpoint, for the swipe's threshold.
    *
-   * NOT `layout.rightPanelWidth()`, which is the width the pane handle drags on a DESKTOP and
-   * which `rooms.page.scss` deliberately ignores below the `members` breakpoint. Passing it
-   * made the gesture measure a 240px roster against a 480px default — 80% of its travel to
-   * commit, where the rule is 40% — and a user who had dragged the panel to its 720px maximum
-   * made the distance threshold unreachable on a phone, leaving only the flick.
+   * NOT `layout.rightPanelWidth()`: that is the width the pane handle drags on a DESKTOP, and
+   * `rooms.page.scss` ignores it below the `members` breakpoint. Using it would measure the
+   * 240px roster against the desktop width, so the 40% commit distance would be wrong, and
+   * unreachable once the panel was dragged wide, leaving only the flick.
    *
    * A method rather than a computed: it reads `innerWidth`, which is not a signal, and a
    * template call is re-evaluated each pass so a rotation is picked up.
@@ -225,9 +216,9 @@ export class RoomsPage {
   private readonly conversations = inject(ConversationRuntime);
   readonly timeline = this.conversations.timeline;
   /**
-   * A joined room, or a linked room still loading or unavailable (#968). A room the client
-   * holds but the user has not joined (kicked, banned, left, invited) settles ready or
-   * empty and falls back to the "Select a room" hero.
+   * A joined room, or a linked room still loading or unavailable. A room the client holds
+   * but the user has not joined (kicked, banned, left, invited) settles ready or empty and
+   * falls back to the "Select a room" hero.
    */
   protected readonly showTimeline = computed(() => {
     if (this.vm.activeRoom()) return true;
@@ -359,9 +350,9 @@ export class RoomsPage {
   }
 
   constructor() {
-    // The service cannot read the page's viewChild refs, so hand it the focus call.
-    // In the constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle
-    // hooks, so binding there left the callback unset for all 170 unit tests.
+    // The service cannot read the page's viewChild refs, so hand it the focus call. In the
+    // constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle hooks, so
+    // binding there leaves the callback unset in unit tests.
     this.nav.bindFocus(() => this.focusActiveView());
     this.shortcutActions.bindSearchFocus(() => {
       if (!this.vm.activeRoom()) return false;
@@ -375,13 +366,13 @@ export class RoomsPage {
       }
       return true;
     });
-    // ShellStatusService presents runWithBusy failures directly. In the zoneless app,
-    // a component effect that only reads the error signal is not a reliable render
-    // trigger when the failed action changes no template-read state.
+    // ShellStatusService presents runWithBusy failures directly. In the zoneless app, a
+    // component effect that only reads the error signal is not a reliable render trigger
+    // when the failed action changes no template-read state.
     // If every account is gone (e.g. a server-side soft-logout of the last one), the
     // shell has nothing to show — return to login instead of leaving it broken. Not while
     // handing the session to another tab: that stops every client and reloads this URL, and
-    // a redirect racing the reload could leave the tab on the sign-in page (#1267).
+    // a redirect racing the reload could leave the tab on the sign-in page.
     effect(() => {
       if (
         !this.matrix.activeUserId() &&
@@ -391,7 +382,7 @@ export class RoomsPage {
       }
     });
     // A link handed over by the host (cold start or warm) opens like a tapped matrix.to link.
-    // It waits behind App lock and opens once the person unlocks (spec §2).
+    // It waits behind App lock and opens once the person unlocks.
     effect(() => {
       const target = this.inboundRoomLink.pending();
       if (!target || this.appLock.locked()) return;
@@ -450,7 +441,7 @@ export class RoomsPage {
    * (keyed off Workspace pane); at md+ both columns are static and this is unused.
    */
   backToList(): void {
-    // Focus is not handed off here: closing navigates, and `projectOpenRoom` focuses the
+    // Focus is not handed off here: closing navigates, and `projectPaneFocus` focuses the
     // pane that became visible once the URL lands. Doing it here as well would schedule a
     // second `afterNextRender` against the page we are leaving.
     this.nav.closeOpenRoom();
@@ -500,7 +491,6 @@ export class RoomsPage {
     );
   }
 
-  /** Show/hide the member list from the toolbar / overflow menu. */
   toggleMembers(): void {
     if (this.roomSurfaces.membersVisible()) {
       this.roomSurfaces.transition({ kind: 'toggle-members' });
