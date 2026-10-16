@@ -1,0 +1,29 @@
+# Files that run with release credentials. "Protect main" and "Protect release branches"
+# require a code owner's review, so a writer cannot merge a change that reads the release
+# App key, the macOS signing secrets, the Homebrew deploy key or the Renovate App key
+# without the maintainer. GitHub reads this file from the pull request's base branch, so
+# every release branch needs it too.
+# See docs-internal/maintenance/ci-and-releases.md#release-credentials.
+
+# Workflows, the setup action, Renovate's policy and this file.
+/.github/ @quwisky
+
+# Scripts the release, back-merge, backport and Homebrew jobs run.
+/scripts/ @quwisky
+/tools/release-please/ @quwisky
+
+# What release-please reads while it holds the release App token.
+/release-please-config.json @quwisky
+/release-please-config.next.json @quwisky
+/.release-please-manifest.json @quwisky
+/.release-please-manifest.next.json @quwisky
+
+# packageManager picks the pnpm that pnpm/action-setup installs in credentialed jobs.
+/package.json @quwisky
+/.nvmrc @quwisky
+
+# What the macOS signing job installs and loads next to the signing certificate. Every
+# file directly in electron/, so a new one (.pnpmfile.cjs, electron-builder.env) is owned.
+/electron/* @quwisky
+/electron/build/ @quwisky
+/electron/src/release-channel.ts @quwisky
