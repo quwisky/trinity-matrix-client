@@ -43,12 +43,20 @@ test.describe('Settings parts', () => {
       timeout: 20_000,
     });
     // Straight back to the top while the click's smooth scroll still holds the spy. Wait
-    // for that scroll to leave the top first: a wheel up that lands before it starts has
-    // nothing to scroll, so it is not the scroll this test is about.
+    // (every frame, so the scroll is still running) for it to leave the top first: a wheel
+    // up that lands before it starts has nothing to scroll, so it is not the scroll this
+    // test is about. Keep the hover() before the wheel: in probes a synthetic wheel sent
+    // without it, mid-animation, was absorbed and Chromium carried on to Code blocks (the
+    // app called scrollTo once only), while after hover() it scrolled back up every time.
     await page.getByTestId('settings-part-code-blocks').click();
-    const detail = page.getByTestId('settings-detail');
-    await expect.poll(() => detail.evaluate(scrollerTop)).toBeGreaterThan(0);
-    await detail.hover();
+    await page.waitForFunction(
+      () =>
+        (document.querySelector('[data-testid="settings-detail"]')?.scrollTop ??
+          0) > 0,
+      undefined,
+      { polling: 'raf', timeout: 5_000 },
+    );
+    await page.getByTestId('settings-detail').hover();
     await page.mouse.wheel(0, -10_000);
     await expect(
       page.locator('.settings-layout__part[aria-current="location"]'),
@@ -145,11 +153,3 @@ test.describe('Settings parts', () => {
       .toBeCloseTo(titleBox?.x ?? -1, 0);
   });
 });
-
-/** How far the settings detail's scrolling column has scrolled. */
-function scrollerTop(detail: Element): number {
-  const scroller = [detail, ...detail.querySelectorAll('*')].find(
-    (element) => element.scrollHeight > element.clientHeight + 1,
-  );
-  return scroller?.scrollTop ?? 0;
-}
