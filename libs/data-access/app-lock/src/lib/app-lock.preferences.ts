@@ -163,21 +163,24 @@ export interface StoredAppLock {
   readonly enabled: boolean | 'unreadable';
   /** The saved delay, or the default (`1m`) when it did not load as `ready`. */
   readonly lockAfter: LockAfter;
-  /** The saved choice, or the default (`show`) when it did not load as `ready`. */
+  /**
+   * The saved choice, or `always-hide` when it did not load as `ready` (fail closed, like the
+   * push renderers' mirror, spec §5). Nothing saved is `show`, the default.
+   */
   readonly notificationText: NotificationText;
 }
 
 const UNREADABLE: StoredAppLock = {
   enabled: 'unreadable',
   lockAfter: '1m',
-  notificationText: 'show',
+  notificationText: 'always-hide',
 };
 
 /**
  * Read the settings from installation storage. Cold; emits once and never errors. Each
- * setting is judged on its own load state: a switch that is not `ready` is `unreadable`;
- * a delay or a notification text that is not `ready` falls back to its default, and never
- * makes the switch unreadable.
+ * setting is judged on its own load state, and never makes another one unreadable: a switch
+ * that is not `ready` is `unreadable`, a delay falls back to its default, and a notification
+ * text hides everything (`always-hide`).
  */
 export function readAppLockSettings(
   preferences: PreferenceStoreService,

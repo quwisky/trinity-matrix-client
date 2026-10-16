@@ -39,6 +39,7 @@
         </trn-settings-row>
         <trn-app-lock-notification-text
           [value]="shownNotificationText()"
+          [lockScreenOffered]="lockScreenTextOffered"
           [disabled]="busy()"
           (valueChange)="changeNotificationText($event)"
         />

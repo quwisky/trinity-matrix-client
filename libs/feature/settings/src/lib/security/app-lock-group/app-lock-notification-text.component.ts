@@ -3,6 +3,7 @@ import {
   Component,
   DestroyRef,
   booleanAttribute,
+  computed,
   inject,
   input,
   output,
@@ -14,10 +15,7 @@ import {
   type TrnRadioOption,
 } from '@trinity/components/controls';
 import { TrnSettingsRowComponent } from '@trinity/components/overlay';
-import {
-  AppLockService,
-  type NotificationText,
-} from '@trinity/data-access/app-lock';
+import type { NotificationText } from '@trinity/data-access/app-lock';
 import { AppSettingsService } from '@trinity/platform-native';
 import { HostLifecycleService } from '@trinity/runtime/host';
 import { EMPTY, catchError, filter, map, of, startWith, switchMap } from 'rxjs';
@@ -27,7 +25,8 @@ import { EMPTY, catchError, filter, map, of, startWith, switchMap } from 'rxjs';
  * screen (phones only) and Always hide. "Hide on the lock screen" follows the phone's own
  * lock-screen notification setting (decision 16), so it says so, links to that setting where
  * the host can open it, and on iOS says when Show Previews is Always. The App lock group runs
- * the guarded change and decides which choice is shown.
+ * the guarded change and decides which choice is shown, and whether the lock-screen one is
+ * offered.
  */
 @Component({
   selector: 'trn-app-lock-notification-text',
@@ -41,35 +40,34 @@ export class AppLockNotificationTextComponent {
   private readonly lifecycle = inject(HostLifecycleService);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** Phones only: a desktop has no lock-screen notification setting to follow. */
-  protected readonly lockScreenOffered =
-    inject(AppLockService).lockScreenTextOffered;
-  protected readonly options: readonly TrnRadioOption<NotificationText>[] = [
-    {
-      value: 'show',
-      label: 'Show',
-      description:
-        'Notifications show who wrote, in which room, and the message.',
-      testId: 'app-lock-text-show',
-    },
-    ...(this.lockScreenOffered
-      ? [
-          {
-            value: 'hide-on-lock-screen' as const,
-            label: 'Hide on the lock screen',
-            description:
-              'The lock screen says only “New message”; the full text shows once your phone is unlocked. Follows your phone’s lock-screen notification setting.',
-            testId: 'app-lock-text-lock-screen',
-          },
-        ]
-      : []),
-    {
-      value: 'always-hide',
-      label: 'Always hide',
-      description: 'Notifications say only “New message”, everywhere.',
-      testId: 'app-lock-text-always',
-    },
-  ];
+  protected readonly options = computed(
+    (): readonly TrnRadioOption<NotificationText>[] => [
+      {
+        value: 'show',
+        label: 'Show',
+        description:
+          'Notifications show who wrote, in which room, and the message.',
+        testId: 'app-lock-text-show',
+      },
+      ...(this.lockScreenOffered()
+        ? [
+            {
+              value: 'hide-on-lock-screen' as const,
+              label: 'Hide on the lock screen',
+              description:
+                'The lock screen says only “New message”; the full text shows once your phone is unlocked. Follows your phone’s lock-screen notification setting.',
+              testId: 'app-lock-text-lock-screen',
+            },
+          ]
+        : []),
+      {
+        value: 'always-hide',
+        label: 'Always hide',
+        description: 'Notifications say only “New message”, everywhere.',
+        testId: 'app-lock-text-always',
+      },
+    ],
+  );
   /** Whether the host can open its notification settings (iOS and Android). */
   protected readonly canOpenSettings = this.appSettings.available;
   /**
@@ -93,6 +91,8 @@ export class AppLockNotificationTextComponent {
   /** The choice to show: the stored one, or one whose change is being confirmed. */
   readonly value = input.required<NotificationText>();
   readonly disabled = input(false, { transform: booleanAttribute });
+  /** Phones only: a desktop has no lock-screen notification setting to follow. */
+  readonly lockScreenOffered = input.required<boolean>();
   readonly valueChange = output<NotificationText>();
 
   protected openSettings(): void {

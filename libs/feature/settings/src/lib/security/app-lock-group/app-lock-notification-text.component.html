@@ -6,12 +6,12 @@
   <div class="flex flex-col items-start gap-3">
     <trn-radio-group
       aria-labelledby="app-lock-text-label"
-      [options]="options"
+      [options]="options()"
       [value]="value()"
       [disabled]="disabled()"
       (valueChange)="valueChange.emit($event)"
     />
-    @if (lockScreenOffered) {
+    @if (lockScreenOffered()) {
       @if (previewsShown()) {
         <p
           class="m-0 text-sm text-muted-foreground"

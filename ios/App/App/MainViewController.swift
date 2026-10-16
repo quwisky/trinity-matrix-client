@@ -93,15 +93,16 @@ class AppSettingsPlugin: CAPInstancePlugin, CAPBridgedPlugin {
         }
     }
 
-    /// Show Previews for Trinity: "always", "whenUnlocked" or "never".
+    /// Show Previews for Trinity: "always", "whenUnlocked" or "never"; null for a value this
+    /// build doesn't know.
     @objc func notificationPreviewSetting(_ call: CAPPluginCall) {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
-            let value: String
+            let value: Any
             switch settings.showPreviewsSetting {
             case .always: value = "always"
             case .whenAuthenticated: value = "whenUnlocked"
             case .never: value = "never"
-            @unknown default: value = "whenUnlocked"
+            @unknown default: value = NSNull()
             }
             call.resolve(["value": value])
         }

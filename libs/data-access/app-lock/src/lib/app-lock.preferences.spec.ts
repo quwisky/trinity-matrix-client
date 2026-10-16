@@ -93,7 +93,7 @@ describe('App lock preferences', () => {
     ).resolves.toEqual({
       enabled: 'unreadable',
       lockAfter: '1m',
-      notificationText: 'show',
+      notificationText: 'always-hide',
     });
   });
 
@@ -121,7 +121,7 @@ describe('App lock preferences', () => {
     ).resolves.toEqual({
       enabled: 'unreadable',
       lockAfter: '1m',
-      notificationText: 'show',
+      notificationText: 'always-hide',
     });
   });
 
@@ -133,11 +133,11 @@ describe('App lock preferences', () => {
     ).resolves.toEqual({
       enabled: 'unreadable',
       lockAfter: '1m',
-      notificationText: 'show',
+      notificationText: 'always-hide',
     });
   });
 
-  it('read as off when nothing is stored', async () => {
+  it('read as off, with notification text shown, when nothing is stored', async () => {
     await expect(
       firstValueFrom(readAppLockSettings(store(stored({})))),
     ).resolves.toEqual({
@@ -186,7 +186,7 @@ describe('App lock preferences', () => {
     });
   });
 
-  it('keep the stored switch and delay when only the notification text is unreadable', async () => {
+  it('keep the stored switch and delay, and hide notification text, when only that choice is unreadable', async () => {
     await expect(
       firstValueFrom(
         readAppLockSettings(
@@ -202,9 +202,46 @@ describe('App lock preferences', () => {
     ).resolves.toEqual({
       enabled: false,
       lockAfter: '5m',
-      notificationText: 'show',
+      notificationText: 'always-hide',
     });
   });
+
+  it.each([
+    ['damaged', 'not json'],
+    [
+      'from an unsupported version',
+      JSON.stringify({ version: 9, value: 'show' }),
+    ],
+  ])(
+    'hide notification text when its stored value is %s',
+    async (_name, payload) => {
+      const values: Record<string, unknown> = {
+        'trinity.app-lock.enabled': true,
+        'trinity.app-lock.lock-after': '5m',
+      };
+      const adapter: PreferenceStorageAdapter = {
+        read: ({ key }) =>
+          of(
+            key === 'trinity.app-lock.notification-text'
+              ? { kind: 'found', payload }
+              : key in values
+                ? {
+                    kind: 'found',
+                    payload: JSON.stringify({ version: 1, value: values[key] }),
+                  }
+                : { kind: 'missing' },
+          ),
+        write: () => of({ kind: 'completed' }),
+      };
+      await expect(
+        firstValueFrom(readAppLockSettings(store(adapter))),
+      ).resolves.toEqual({
+        enabled: true,
+        lockAfter: '5m',
+        notificationText: 'always-hide',
+      });
+    },
+  );
 
   describe('with a store that reports an unexpected load state', () => {
     /** A store whose hydration succeeds but whose cells hold `state`, whatever its kind. */
@@ -229,7 +266,7 @@ describe('App lock preferences', () => {
         ).resolves.toEqual({
           enabled: 'unreadable',
           lockAfter: '1m',
-          notificationText: 'show',
+          notificationText: 'always-hide',
         });
       },
     );
@@ -244,7 +281,7 @@ describe('App lock preferences', () => {
       ).resolves.toEqual({
         enabled: 'unreadable',
         lockAfter: '1m',
-        notificationText: 'show',
+        notificationText: 'always-hide',
       });
     });
   });

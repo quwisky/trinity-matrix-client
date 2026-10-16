@@ -137,6 +137,8 @@ export class AppLockGroupComponent {
   protected readonly shownLockAfter = linkedSignal(() =>
     this.appLock.lockAfter(),
   );
+  /** Phones only offer "Hide on the lock screen" (decision 9). */
+  protected readonly lockScreenTextOffered = this.appLock.lockScreenTextOffered;
   /** What the Notification text choice shows; like Lock after, back to the stored value. */
   protected readonly shownNotificationText = linkedSignal(() =>
     this.appLock.notificationText(),

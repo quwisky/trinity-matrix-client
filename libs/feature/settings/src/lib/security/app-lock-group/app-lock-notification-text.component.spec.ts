@@ -1,7 +1,4 @@
-import {
-  AppLockService,
-  type NotificationText,
-} from '@trinity/data-access/app-lock';
+import type { NotificationText } from '@trinity/data-access/app-lock';
 import {
   AppSettingsService,
   type NotificationPreviewSetting,
@@ -48,12 +45,10 @@ async function setup(
     inputs: {
       value: options.value ?? 'show',
       disabled: options.disabled ?? false,
+      lockScreenOffered: options.lockScreenOffered ?? true,
     },
     on: { valueChange: chosen },
     providers: [
-      MockProvider(AppLockService, {
-        lockScreenTextOffered: options.lockScreenOffered ?? true,
-      }),
       MockProvider(AppSettingsService, appSettings as never),
       MockProvider(HostLifecycleService, {
         events: options.lifecycle ?? of<LifecycleEvent>(),
