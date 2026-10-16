@@ -1,4 +1,5 @@
 import { Location } from '@angular/common';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   DefaultUrlSerializer,
@@ -8,6 +9,7 @@ import {
 } from '@angular/router';
 import { Subject, firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { BACKGROUND_NAVIGATION_INFO } from '@trinity/util/ui';
 import { WorkspaceLocationAdapter } from './workspace-location.adapter';
 import { workspaceUrlOf } from './workspace-url';
 
@@ -21,6 +23,7 @@ function setup(initialUrl: string) {
   const events = new Subject<NavigationEnd>();
   const serializer = new DefaultUrlSerializer();
   const navigate = vi.fn(() => Promise.resolve(true));
+  const currentNavigation = signal<object | null>(null);
   const location = {
     getState: () => state,
     replaceState: vi.fn((next: string) => {
@@ -40,6 +43,7 @@ function setup(initialUrl: string) {
           },
           events,
           navigate,
+          currentNavigation: currentNavigation.asReadonly(),
           parseUrl: (value: string) => serializer.parse(value),
           createUrlTree: (
             commands: readonly string[],
@@ -57,6 +61,7 @@ function setup(initialUrl: string) {
     adapter: TestBed.inject(WorkspaceLocationAdapter),
     navigate,
     location,
+    currentNavigation,
     url: () => url,
     moveTo(next: string, nextState: unknown = null) {
       url = next;
@@ -122,6 +127,34 @@ describe('WorkspaceLocationAdapter', () => {
       replaceUrl: true,
     });
     expect(test.adapter.projecting).toBe(false);
+  });
+
+  it('reports a Router navigation in flight, whoever started it', () => {
+    const test = setup(`/rooms?account=${encodeURIComponent(ALICE)}`);
+    expect(test.adapter.navigating()).toBe(false);
+
+    test.currentNavigation.set({ id: 3 });
+    expect(test.adapter.navigating()).toBe(true);
+
+    test.currentNavigation.set(null);
+    expect(test.adapter.navigating()).toBe(false);
+  });
+
+  it('marks a background projection with Router info, so focus stays where it is', async () => {
+    const test = setup(`/rooms?account=${encodeURIComponent(ALICE)}`);
+
+    await firstValueFrom(
+      test.adapter.project(conversation, {
+        history: 'replace',
+        background: true,
+      }),
+    );
+
+    expect(test.navigate).toHaveBeenCalledWith(['/rooms', expect.any(String)], {
+      queryParams: { account: ALICE },
+      replaceUrl: true,
+      info: BACKGROUND_NAVIGATION_INFO,
+    });
   });
 
   it('rewrites the list it leaves and marks a Conversation pushed over it (#1113)', async () => {

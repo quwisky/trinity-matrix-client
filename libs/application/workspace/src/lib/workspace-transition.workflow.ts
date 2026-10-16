@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   AccountRuntimeService,
   type AccountSwitchOutcome,
@@ -52,7 +52,10 @@ export class WorkspaceTransitionWorkflow {
   private readonly location = inject(WorkspaceLocationAdapter);
   private readonly accounts = inject(AccountRuntimeService);
   private readonly availability = inject(WorkspaceAvailability);
-  private attempt: WorkspaceAttempt | null = null;
+  private readonly attempt = signal<WorkspaceAttempt | null>(null);
+
+  /** Whether a transition is in flight; it owns the view until it settles. */
+  readonly busy = computed(() => this.attempt() !== null);
 
   get projectingLocation(): boolean {
     return this.location.projecting;
@@ -65,13 +68,14 @@ export class WorkspaceTransitionWorkflow {
     callbacks: WorkspaceTransitionCallbacks,
   ): Observable<WorkspaceOpenOutcome> {
     return defer(() => {
-      if (this.attempt) {
-        return sameWorkspaceDestination(this.attempt.destination, requested) &&
-          this.attempt.options.source === options.source &&
-          this.attempt.options.history === options.history &&
-          this.attempt.options.eventId === options.eventId &&
-          this.attempt.options.force === options.force
-          ? this.attempt.outcome
+      const attempt = this.attempt();
+      if (attempt) {
+        return sameWorkspaceDestination(attempt.destination, requested) &&
+          attempt.options.source === options.source &&
+          attempt.options.history === options.history &&
+          attempt.options.eventId === options.eventId &&
+          attempt.options.force === options.force
+          ? attempt.outcome
           : of({
               kind: 'transition-in-progress',
               destination: requested,
@@ -122,6 +126,8 @@ export class WorkspaceTransitionWorkflow {
         history: resolved.repaired ? 'replace' : options.history,
         overList: options.overList === true && !resolved.repaired,
         eventId: options.eventId,
+        // A repair is not the person's navigation, so it leaves their focus alone.
+        ...(options.source === 'repair' ? { background: true } : {}),
       });
     };
 
@@ -199,10 +205,10 @@ export class WorkspaceTransitionWorkflow {
           catchError(() => of(false)),
         ),
       () => {
-        if (this.attempt?.outcome === outcome) this.attempt = null;
+        if (this.attempt()?.outcome === outcome) this.attempt.set(null);
       },
     );
-    this.attempt = { destination: requested, options, outcome };
+    this.attempt.set({ destination: requested, options, outcome });
     return outcome;
   }
 
@@ -246,13 +252,15 @@ export class WorkspaceTransitionWorkflow {
     let roomId = requested.roomId;
     let pane = requested.pane;
     let repaired = false;
+    // A Space its Accounts have not synced yet is kept, like a Room; the navigation service
+    // repairs it once it turns out unavailable. Recent lists every Room, so the Room and
+    // pane are judged on their own below.
     if (
       scope.kind === 'space' &&
-      !this.availability.space(requested.accountId, scope.spaceId)
+      this.availability.space(requested.accountId, scope.spaceId) ===
+        'unavailable'
     ) {
       scope = RECENT_WORKSPACE_SCOPE;
-      roomId = null;
-      pane = 'list';
       repaired = true;
     }
     if (roomId && !this.availability.roomKept(requested.accountId, roomId)) {

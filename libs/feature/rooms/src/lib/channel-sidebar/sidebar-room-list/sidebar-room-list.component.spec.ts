@@ -364,3 +364,32 @@ describe('SidebarRoomListComponent windowing (#1312)', () => {
     expect(rows(container).length).toBe(120);
   });
 });
+
+describe('SidebarRoomListComponent empty state', () => {
+  it("says 'Loading rooms…' instead of 'No rooms here yet.' while loading", async () => {
+    const { container, fixture } = await renderRows([], null, 'all', 'rich', {
+      loading: true,
+    });
+    const empty = () =>
+      container
+        .querySelector('[data-testid=room-list-empty]')!
+        .textContent!.trim();
+
+    expect(empty()).toBe('Loading rooms…');
+
+    fixture.componentRef.setInput('loading', false);
+    fixture.detectChanges();
+    expect(empty()).toBe('No rooms here yet.');
+  });
+
+  it('still says nothing matched a filter while loading', async () => {
+    const { container } = await renderRows([], null, 'all', 'rich', {
+      loading: true,
+      filterActive: true,
+    });
+
+    expect(
+      container.querySelector('[data-testid=room-list-empty]')!.textContent,
+    ).toContain('No rooms match your filter.');
+  });
+});

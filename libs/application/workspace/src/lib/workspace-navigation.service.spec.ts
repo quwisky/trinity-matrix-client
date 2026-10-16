@@ -34,6 +34,7 @@ import {
 } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeRoomSegment } from '@trinity/util/matrix';
+import type { WorkspaceNavigationScope } from './workspace-navigation.models';
 import { WorkspaceNavigationService } from './workspace-navigation.service';
 import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 import { WorkspaceVisitHistoryService } from './workspace-visit-history.service';
@@ -60,6 +61,8 @@ interface HarnessOptions {
   };
   /** Conversations' attention port (App lock); absent means only the Workspace decides. */
   readonly attentive?: WritableSignal<boolean>;
+  /** Accounts whose client has synced with its homeserver; every live one unless named. */
+  readonly synced?: readonly string[];
 }
 
 function harness(options: HarnessOptions = {}) {
@@ -84,20 +87,27 @@ function harness(options: HarnessOptions = {}) {
   const locationMode = new BehaviorSubject<'workspace' | 'outside'>(
     'workspace',
   );
+  // What each live client holds, Rooms and Spaces alike; a test changes it as a sync would.
+  const held = signal<Readonly<Record<string, readonly string[]>>>(
+    options.rooms ?? {
+      [ALICE]: [ROOM],
+      [BOB]: [ROOM],
+    },
+  );
   const clients = new Map(
-    Object.entries(
-      options.rooms ?? {
-        [ALICE]: [ROOM],
-        [BOB]: [ROOM],
-      },
-    ).map(([accountId, roomIds]) => [
+    Object.keys(held()).map((accountId) => [
       accountId,
       {
         getRoom: (roomId: string) =>
-          roomIds.includes(roomId) ? { roomId } : null,
+          held()[accountId]?.includes(roomId) ? { roomId } : null,
       },
     ]),
   );
+  const synced = signal<ReadonlySet<string>>(
+    new Set(options.synced ?? clients.keys()),
+  );
+  const mixed = signal(options.mixed ?? null);
+  const leaving = signal<ReadonlySet<string>>(new Set());
   const navigate = vi.fn(
     (
       commands: readonly string[],
@@ -148,14 +158,34 @@ function harness(options: HarnessOptions = {}) {
         : ('unconfirmed' as const);
     },
   };
+  // SelectedRoomLibraryService's rule: held by the Account, or listed in its mixed view; else
+  // unconfirmed until the Account has synced (the others count as having loaded their cache).
   const selectedRooms = {
-    spaceSelectable: (accountId: string, spaceId: string) =>
-      rooms.selectionAvailability(accountId, spaceId) === 'available' ||
-      (!!options.mixed &&
-        options.mixed.accountIds.includes(accountId) &&
-        options.mixed.spaceIds.includes(spaceId)),
+    spaceAvailability: (accountId: string, spaceId: string) => {
+      if (!clients.has(accountId) || !spaceId.startsWith('!')) {
+        return 'unavailable' as const;
+      }
+      const view = mixed();
+      const shown =
+        view && view.accountIds.includes(accountId)
+          ? view.accountIds
+          : [accountId];
+      if (
+        rooms.selectionAvailability(accountId, spaceId) === 'available' ||
+        (shown.length > 1 && !!view?.spaceIds.includes(spaceId))
+      ) {
+        return 'available' as const;
+      }
+      return synced().has(accountId)
+        ? ('unavailable' as const)
+        : ('unconfirmed' as const);
+    },
   };
-  const spaces = { openSpace: vi.fn(() => of(void 0)) };
+  const spaces = {
+    openSpace: vi.fn((_spaceId: string | null): Observable<void> => of(void 0)),
+    isLeaving: (accountId: string, spaceId: string) =>
+      leaving().has(`${accountId} ${spaceId}`),
+  };
   const waitForRoom = vi.fn(() => of(void 0));
   const acceptInvite = vi.fn(() => of(void 0));
   let locationWrites = 0;
@@ -171,13 +201,17 @@ function harness(options: HarnessOptions = {}) {
           ),
         } as const);
   const listBelow = signal(false);
+  // A Router navigation Workspace did not start, such as one to Settings, still resolving.
+  const routerNavigating = signal(false);
   const projections: {
     readonly history: 'push' | 'replace' | 'back';
     readonly overList?: boolean;
+    readonly background?: boolean;
   }[] = [];
   const popHistory = vi.fn();
   const location = {
     listBelow: listBelow.asReadonly(),
+    navigating: routerNavigating.asReadonly(),
     get projecting() {
       return locationWrites > 0;
     },
@@ -192,12 +226,14 @@ function harness(options: HarnessOptions = {}) {
         readonly history: 'push' | 'replace' | 'back';
         readonly overList?: boolean;
         readonly eventId?: string | null;
+        readonly background?: boolean;
       },
     ) =>
       defer(() => {
         projections.push({
           history: projectionOptions.history,
           overList: projectionOptions.overList,
+          ...(projectionOptions.background ? { background: true } : {}),
         });
         if (projectionOptions.history === 'back') {
           popHistory();
@@ -280,7 +316,32 @@ function harness(options: HarnessOptions = {}) {
     spaces,
     waitForRoom,
     acceptInvite,
+    held,
+    synced,
+    mixed,
+    leaving,
+    routerNavigating,
   };
+}
+
+/** Let effects, Router promises and Workspace commits settle. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 4; i += 1) {
+    TestBed.tick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+/** The client of `accountId` no longer holds `roomId`, as after a sync dropping it. */
+function drop(
+  h: ReturnType<typeof harness>,
+  accountId: string,
+  roomId: string,
+): void {
+  h.held.update((held) => ({
+    ...held,
+    [accountId]: (held[accountId] ?? []).filter((id) => id !== roomId),
+  }));
 }
 
 afterEach(() => TestBed.resetTestingModule());
@@ -858,7 +919,7 @@ describe('WorkspaceNavigationService', () => {
         });
       });
 
-      it('repairs the space, as before, once no selected Account holds it', async () => {
+      it('repairs the space to Recent, keeping the room, once no selected Account holds it', async () => {
         const h = harness({
           accountId: BOB,
           routeAccountId: BOB,
@@ -872,10 +933,444 @@ describe('WorkspaceNavigationService', () => {
           expect(h.service.view()).toEqual({
             accountId: BOB,
             scope: { kind: 'recent' },
-            roomId: null,
-            pane: 'list',
+            roomId: ROOM,
+            pane: 'conversation',
           }),
         );
+      });
+
+      it('returns BOB to Recent with his room once the Account holding the space is unticked (#1402)', async () => {
+        const h = harness({
+          accountId: BOB,
+          routeAccountId: BOB,
+          routeSpaceId: SPACE,
+          routeRoomId: ROOM,
+          rooms,
+          mixed,
+        });
+        await vi.waitFor(() =>
+          expect(h.service.view().scope).toEqual({
+            kind: 'space',
+            spaceId: SPACE,
+          }),
+        );
+        h.navigate.mockClear();
+
+        h.mixed.set({ accountIds: [BOB], spaceIds: [] });
+
+        await vi.waitFor(() => {
+          TestBed.tick();
+          expect(h.service.view()).toEqual({
+            accountId: BOB,
+            scope: { kind: 'recent' },
+            roomId: ROOM,
+            pane: 'conversation',
+          });
+        });
+        expect(h.navigate).toHaveBeenCalledExactlyOnceWith(
+          ['/rooms', encodeRoomSegment(ROOM)],
+          { queryParams: { account: BOB }, replaceUrl: true },
+        );
+      });
+    });
+
+    // SpacesService.openSpace can wait for the Account to join the space; that wait is a
+    // lifetime, owned by the committed view rather than finishing on its own.
+    it('holds the open space for the committed view only: a new view, leaving Workspace and teardown end it', async () => {
+      const SPACE = '!space:example.org';
+      const h = harness({
+        routeAccountId: ALICE,
+        rooms: { [ALICE]: [ROOM, SPACE], [BOB]: [ROOM] },
+      });
+      await settle();
+      const lifetimes: { spaceId: string | null; ended: boolean }[] = [];
+      h.spaces.openSpace.mockImplementation(
+        (spaceId) =>
+          new Observable<void>(() => {
+            const lifetime = { spaceId, ended: false };
+            lifetimes.push(lifetime);
+            return () => (lifetime.ended = true);
+          }),
+      );
+      const open = (scope: WorkspaceNavigationScope) =>
+        firstValueFrom(
+          h.service.navigate({ kind: 'scope', accountId: ALICE, scope }),
+        );
+
+      await open({ kind: 'space', spaceId: SPACE });
+      expect(lifetimes).toEqual([{ spaceId: SPACE, ended: false }]);
+
+      await open({ kind: 'recent' });
+      expect(lifetimes[0].ended).toBe(true);
+      await open({ kind: 'space', spaceId: SPACE });
+      expect(lifetimes.at(-1)).toEqual({ spaceId: SPACE, ended: false });
+
+      h.locationMode.next('outside');
+      await settle();
+      expect(lifetimes.at(-1)?.ended).toBe(true);
+
+      h.locationMode.next('workspace');
+      await settle();
+      expect(lifetimes.at(-1)).toEqual({ spaceId: SPACE, ended: false });
+
+      TestBed.resetTestingModule();
+      expect(lifetimes.every((lifetime) => lifetime.ended)).toBe(true);
+    });
+
+    describe('a space its Account has not synced yet (#1401)', () => {
+      const SPACE = '!space:example.org';
+      const restored = {
+        routeAccountId: ALICE,
+        routeSpaceId: SPACE,
+        routeRoomId: ROOM,
+        rooms: { [ALICE]: [ROOM], [BOB]: [ROOM] },
+        synced: [BOB],
+      } as const;
+      const inSpace = {
+        accountId: ALICE,
+        scope: { kind: 'space', spaceId: SPACE },
+        roomId: ROOM,
+        pane: 'conversation',
+      } as const;
+
+      it('seeds a cold start naming an unconfirmed space', () => {
+        const h = harness(restored);
+
+        expect(h.service.view()).toEqual(inSpace);
+      });
+
+      it('keeps a restored space its Account has not confirmed, with its room, writing no URL', async () => {
+        const h = harness(restored);
+
+        await vi.waitFor(() =>
+          expect(h.conversations.focus).toHaveBeenCalledWith({
+            accountId: ALICE,
+            roomId: ROOM,
+          }),
+        );
+        await settle();
+        expect(h.service.view()).toEqual(inSpace);
+        expect(h.navigate).not.toHaveBeenCalled();
+        expect(h.spaces.openSpace).toHaveBeenLastCalledWith(SPACE);
+      });
+
+      it('keeps it once the Account syncs and holds it', async () => {
+        const h = harness(restored);
+        await settle();
+
+        h.held.update((held) => ({ ...held, [ALICE]: [ROOM, SPACE] }));
+        h.synced.set(new Set([ALICE, BOB]));
+        await settle();
+
+        expect(h.service.view()).toEqual(inSpace);
+        expect(h.navigate).not.toHaveBeenCalled();
+      });
+
+      it('falls back to Recent once synced without it, keeping the room, replacing history, recording no visit', async () => {
+        const h = harness(restored);
+        await settle();
+        const record = vi.spyOn(
+          TestBed.inject(WorkspaceVisitHistoryService),
+          'record',
+        );
+
+        h.synced.set(new Set([ALICE, BOB]));
+
+        await vi.waitFor(() => {
+          TestBed.tick();
+          expect(h.service.view()).toEqual({
+            ...inSpace,
+            scope: { kind: 'recent' },
+          });
+        });
+        expect(h.navigate).toHaveBeenCalledExactlyOnceWith(
+          ['/rooms', encodeRoomSegment(ROOM)],
+          { queryParams: { account: ALICE }, replaceUrl: true },
+        );
+        expect(record).not.toHaveBeenCalled();
+        expect(h.conversations.focus).toHaveBeenLastCalledWith({
+          accountId: ALICE,
+          roomId: ROOM,
+        });
+      });
+    });
+
+    describe('a selected space that disappears (#1402)', () => {
+      const SPACE = '!space:example.org';
+      const OTHER = '!other:example.org';
+      const rooms = { [ALICE]: [ROOM, OTHER, SPACE], [BOB]: [ROOM] };
+
+      async function openInSpace(h: ReturnType<typeof harness>) {
+        await firstValueFrom(
+          h.service.navigate({
+            kind: 'room',
+            accountId: ALICE,
+            roomId: ROOM,
+            scope: { kind: 'space', spaceId: SPACE },
+            origin: 'room-action',
+          }),
+        );
+        await settle();
+        h.navigate.mockClear();
+      }
+
+      it('returns the rail to Recent and keeps the open room, replacing history', async () => {
+        const h = harness({ routeAccountId: ALICE, rooms });
+        await openInSpace(h);
+
+        drop(h, ALICE, SPACE);
+
+        await vi.waitFor(() => {
+          TestBed.tick();
+          expect(h.service.view()).toEqual({
+            accountId: ALICE,
+            scope: { kind: 'recent' },
+            roomId: ROOM,
+            pane: 'conversation',
+          });
+        });
+        expect(h.navigate).toHaveBeenCalledExactlyOnceWith(
+          ['/rooms', encodeRoomSegment(ROOM)],
+          { queryParams: { account: ALICE }, replaceUrl: true },
+        );
+      });
+
+      // The person did not make this navigation, so it must not move their focus.
+      it('projects its repair as a background navigation, unlike a navigation the person made', async () => {
+        const h = harness({ routeAccountId: ALICE, rooms });
+        await openInSpace(h);
+        expect(h.projections.at(-1)).toEqual({
+          history: 'push',
+          overList: false,
+        });
+
+        drop(h, ALICE, SPACE);
+
+        await vi.waitFor(() => {
+          TestBed.tick();
+          expect(h.service.view().scope).toEqual({ kind: 'recent' });
+        });
+        expect(h.projections.at(-1)).toEqual({
+          history: 'replace',
+          overList: false,
+          background: true,
+        });
+      });
+
+      it('does not repair while the space is unconfirmed', async () => {
+        const h = harness({ routeAccountId: ALICE, rooms });
+        await openInSpace(h);
+
+        // A replacement client that has only replayed a cache without the space.
+        h.synced.set(new Set([BOB]));
+        drop(h, ALICE, SPACE);
+        await settle();
+
+        expect(h.service.view().scope).toEqual({
+          kind: 'space',
+          spaceId: SPACE,
+        });
+        expect(h.navigate).not.toHaveBeenCalled();
+      });
+
+      /** Open OTHER from the space's list, its Router navigation held until `finish`. */
+      function openHeld(h: ReturnType<typeof harness>) {
+        const project = h.navigate.getMockImplementation()!;
+        let finish!: (navigated: boolean) => void;
+        h.navigate.mockImplementationOnce((commands, extras) => {
+          void project(commands, extras);
+          return new Promise<boolean>((resolve) => (finish = resolve));
+        });
+        const opened = firstValueFrom(
+          h.service.navigate({
+            kind: 'room',
+            accountId: ALICE,
+            roomId: OTHER,
+            origin: 'room-list',
+          }),
+        );
+        return { opened, finish: (navigated: boolean) => finish(navigated) };
+      }
+
+      it('does not repair mid-transition, and checks the view it commits', async () => {
+        const h = harness({ routeAccountId: ALICE, rooms });
+        await openInSpace(h);
+        const open = openHeld(h);
+
+        drop(h, ALICE, SPACE);
+        await settle();
+        expect(h.navigate).toHaveBeenCalledOnce();
+        expect(h.service.view().roomId).toBe(ROOM);
+
+        open.finish(true);
+        await open.opened;
+        await vi.waitFor(() => {
+          TestBed.tick();
+          expect(h.service.view()).toEqual({
+            accountId: ALICE,
+            scope: { kind: 'recent' },
+            roomId: OTHER,
+            pane: 'conversation',
+          });
+        });
+        expect(h.navigate).toHaveBeenCalledTimes(2);
+      });
+
+      it('checks the view again once a transition that did not commit settles', async () => {
+        const h = harness({ routeAccountId: ALICE, rooms });
+        await openInSpace(h);
+        const open = openHeld(h);
+
+        drop(h, ALICE, SPACE);
+        await settle();
+        open.finish(false);
+        await open.opened;
+
+        await vi.waitFor(() => {
+          TestBed.tick();
+          expect(h.service.view()).toEqual({
+            accountId: ALICE,
+            scope: { kind: 'recent' },
+            roomId: ROOM,
+            pane: 'conversation',
+          });
+        });
+      });
+
+      // Repairing would cancel that navigation and land the person on Recent instead.
+      it('does not repair while a navigation the person started is in flight, and checks again once it settles', async () => {
+        const h = harness({ routeAccountId: ALICE, rooms });
+        await openInSpace(h);
+
+        h.routerNavigating.set(true);
+        drop(h, ALICE, SPACE);
+        await settle();
+        expect(h.navigate).not.toHaveBeenCalled();
+        expect(h.service.view().scope).toEqual({
+          kind: 'space',
+          spaceId: SPACE,
+        });
+
+        h.routerNavigating.set(false);
+
+        await vi.waitFor(() => {
+          TestBed.tick();
+          expect(h.service.view()).toEqual({
+            accountId: ALICE,
+            scope: { kind: 'recent' },
+            roomId: ROOM,
+            pane: 'conversation',
+          });
+        });
+      });
+
+      it("does not repair a space this app is leaving; the leave flow's Home is the only navigation", async () => {
+        const h = harness({ routeAccountId: ALICE, rooms });
+        await openInSpace(h);
+
+        h.leaving.set(new Set([`${ALICE} ${SPACE}`]));
+        drop(h, ALICE, SPACE);
+        await settle();
+        expect(h.navigate).not.toHaveBeenCalled();
+
+        // What the leave flow does once its request settles: navigate, then clear the mark.
+        const home = firstValueFrom(
+          h.service.navigate({
+            kind: 'scope',
+            accountId: ALICE,
+            scope: { kind: 'home' },
+          }),
+        );
+        h.leaving.set(new Set());
+        await home;
+        await settle();
+
+        expect(h.service.view().scope).toEqual({ kind: 'home' });
+        expect(h.navigate).toHaveBeenCalledOnce();
+      });
+
+      it('does not repair outside Workspace; the return repairs through restoration', async () => {
+        const h = harness({ routeAccountId: ALICE, rooms });
+        await openInSpace(h);
+
+        h.locationMode.next('outside');
+        drop(h, ALICE, SPACE);
+        await settle();
+        expect(h.navigate).not.toHaveBeenCalled();
+
+        h.locationMode.next('workspace');
+
+        await vi.waitFor(() =>
+          expect(h.service.view()).toEqual({
+            accountId: ALICE,
+            scope: { kind: 'recent' },
+            roomId: ROOM,
+            pane: 'conversation',
+          }),
+        );
+        expect(h.navigate).toHaveBeenCalledExactlyOnceWith(
+          ['/rooms', encodeRoomSegment(ROOM)],
+          { queryParams: { account: ALICE }, replaceUrl: true },
+        );
+      });
+
+      it('does not repair for an Account that is not the active one', async () => {
+        const h = harness({ routeAccountId: ALICE, rooms });
+        await openInSpace(h);
+
+        // An Account switch or sign-out moves the active Account before Workspace commits.
+        h.activeAccountId.set(BOB);
+        drop(h, ALICE, SPACE);
+        await settle();
+
+        expect(h.service.view().scope).toEqual({
+          kind: 'space',
+          spaceId: SPACE,
+        });
+        expect(h.navigate).not.toHaveBeenCalled();
+      });
+
+      it('makes one attempt per committed view when the Router rejects the repair', async () => {
+        const h = harness({ routeAccountId: ALICE, rooms });
+        await openInSpace(h);
+        h.navigate.mockImplementation(() => Promise.resolve(false));
+
+        drop(h, ALICE, SPACE);
+        await settle();
+        expect(h.navigate).toHaveBeenCalledOnce();
+
+        // Unconfirmed, then unavailable again: the same committed view is not retried.
+        h.synced.set(new Set([BOB]));
+        await settle();
+        h.synced.set(new Set([ALICE, BOB]));
+        await settle();
+
+        expect(h.navigate).toHaveBeenCalledOnce();
+        expect(h.service.view().scope).toEqual({
+          kind: 'space',
+          spaceId: SPACE,
+        });
+      });
+
+      it('keeps the open room when a navigation names a space no Account holds', async () => {
+        const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM, rooms });
+        await settle();
+
+        await expect(
+          firstValueFrom(
+            h.service.navigate({
+              kind: 'scope',
+              accountId: ALICE,
+              scope: { kind: 'space', spaceId: '!gone:example.org' },
+            }),
+          ),
+        ).resolves.toMatchObject({ kind: 'ready', change: 'committed' });
+        expect(h.service.view()).toEqual({
+          accountId: ALICE,
+          scope: { kind: 'recent' },
+          roomId: ROOM,
+          pane: 'conversation',
+        });
       });
     });
 

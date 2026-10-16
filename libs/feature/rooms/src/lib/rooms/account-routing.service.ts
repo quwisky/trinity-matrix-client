@@ -178,7 +178,7 @@ export class AccountRoutingService {
       spaceId &&
       activeAccountId &&
       spaceId === this.workspace.activeSpaceId() &&
-      this.selected.spaceSelectable(activeAccountId, spaceId)
+      this.selected.spaceAvailability(activeAccountId, spaceId) === 'available'
         ? activeAccountId
         : selection.accountId;
     const changesAccount = accountId !== activeAccountId;

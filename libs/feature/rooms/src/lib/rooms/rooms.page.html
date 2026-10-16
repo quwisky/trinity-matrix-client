@@ -48,11 +48,8 @@
         class="shell-side__rooms"
         [showSwitcher]="!titleBar.active()"
         [spaceName]="vm.sidebarTitle()"
-        [spaceActive]="
-          !store.recentView() &&
-          !store.roomsView() &&
-          store.activeSpaceId() !== null
-        "
+        [spaceActive]="vm.activeSpaceListed()"
+        [spaceLoading]="vm.activeSpacePending()"
         [canConfigureSpace]="vm.canConfigureSpace()"
         [canCurateSpace]="vm.canCurateSpace()"
         [curateSpaceReason]="vm.spaceCuratePermission().reason"

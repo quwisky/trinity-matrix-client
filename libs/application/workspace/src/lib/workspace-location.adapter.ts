@@ -1,5 +1,5 @@
 import { Location } from '@angular/common';
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   NavigationCancel,
@@ -21,6 +21,7 @@ import {
   startWith,
   timer,
 } from 'rxjs';
+import { BACKGROUND_NAVIGATION_INFO } from '@trinity/util/ui';
 import type { WorkspaceDestination } from './workspace.models';
 import {
   parseWorkspaceUrl,
@@ -36,6 +37,8 @@ interface WorkspaceLocationProjection {
   readonly history: 'push' | 'replace' | 'back';
   readonly overList?: boolean;
   readonly eventId?: string | null;
+  /** The person did not make this navigation (a repair): their focus stays where it is. */
+  readonly background?: boolean;
 }
 
 /** History-state key on a Conversation entry pushed straight over its list (#1113). */
@@ -54,6 +57,14 @@ export class WorkspaceLocationAdapter {
 
   /** The current history entry is a Conversation pushed straight over its list. */
   readonly listBelow = this.listBelowState.asReadonly();
+
+  /**
+   * A Router navigation is in flight, whoever started it: Workspace, or the person heading
+   * for another page such as Settings. Workspace leaves the view alone meanwhile.
+   */
+  readonly navigating = computed(
+    () => this.router.currentNavigation() !== null,
+  );
 
   constructor() {
     this.router.events
@@ -140,6 +151,7 @@ export class WorkspaceLocationAdapter {
       queryParams: { ...projection.queryParams },
       replaceUrl: options.history === 'replace',
       ...(overList ? { state: { [LIST_BELOW]: true } } : {}),
+      ...(options.background ? { info: BACKGROUND_NAVIGATION_INFO } : {}),
     });
   }
 

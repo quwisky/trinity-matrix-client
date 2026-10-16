@@ -96,6 +96,7 @@ function build(
   const placement = signal<'list' | 'conversation' | 'split'>('split');
   const recentView = signal(true);
   const roomsView = signal(false);
+  const activeSpaceId = signal<string | null>(null);
   const selectedView = signal<SelectedRoomLibraryView>(
     opts.selectedView ?? {
       accountIds: new Set(['@me:hs']),
@@ -162,7 +163,7 @@ function build(
         provide: WorkspaceNavigationService,
         useValue: {
           activeAccountId: activeUserId.asReadonly(),
-          activeSpaceId: signal<string | null>(null).asReadonly(),
+          activeSpaceId: activeSpaceId.asReadonly(),
           activeRoomId: activeRoomId.asReadonly(),
           recentView: recentView.asReadonly(),
           roomsView: roomsView.asReadonly(),
@@ -199,6 +200,10 @@ function build(
       recentView.set(false);
       roomsView.set(true);
     },
+    selectSpace: (spaceId: string) => {
+      recentView.set(false);
+      activeSpaceId.set(spaceId);
+    },
   };
 }
 
@@ -227,6 +232,52 @@ function room(
     lowPriority: false,
   };
 }
+
+describe('RoomShellViewModel selected space', () => {
+  const team = {
+    id: '!s:hs',
+    accountId: '@me:hs',
+    name: 'Team',
+    initial: 'T',
+    avatarMxc: null,
+    childRoomIds: [],
+  };
+
+  // #1401: a restored space can be named before the account's sync lists it.
+  it("titles a selected space it cannot list yet 'Loading space…', never 'Direct messages'", () => {
+    const { vm, selectSpace, selectedView } = build();
+
+    selectSpace('!s:hs');
+    expect(vm.activeSpacePending()).toBe(true);
+    expect(vm.sidebarTitle()).toBe('Loading space…');
+
+    selectedView.update((view) => ({ ...view, spaces: [team] }));
+    expect(vm.activeSpacePending()).toBe(false);
+    expect(vm.sidebarTitle()).toBe('Team');
+  });
+
+  it('lists the selected space only once the selected view does', () => {
+    const { vm, selectSpace, selectedView } = build({
+      selectedView: {
+        accountIds: new Set(['@me:hs']),
+        mode: 'active',
+        rooms: [],
+        spaces: [team],
+        spaceChildRoomIdsByAccount: new Map(),
+        invitations: [],
+      },
+    });
+    expect(vm.activeSpaceListed()).toBe(false); // Recent activity
+
+    selectSpace('!s:hs');
+    expect(vm.activeSpaceListed()).toBe(true);
+    expect(vm.activeSpacePending()).toBe(false);
+
+    selectedView.update((view) => ({ ...view, spaces: [] }));
+    expect(vm.activeSpaceListed()).toBe(false);
+    expect(vm.activeSpacePending()).toBe(true);
+  });
+});
 
 describe('RoomShellViewModel selected hierarchy', () => {
   it('uses the winning Account hierarchy for a shared Room', () => {

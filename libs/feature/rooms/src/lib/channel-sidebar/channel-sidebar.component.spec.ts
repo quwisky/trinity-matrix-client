@@ -105,6 +105,7 @@ async function renderSidebar(
       hasAnyUnread?: boolean;
       filterQuery?: string;
       spaceActive?: boolean;
+      spaceLoading?: boolean;
       spaceName?: string;
       showSwitcher?: boolean;
       activeRoomId?: string | null;
@@ -1783,6 +1784,47 @@ describe('ChannelSidebarComponent room filter', () => {
     expect(
       container.querySelector('[data-testid=room-list-empty]')!.textContent,
     ).toContain('No rooms match');
+  });
+
+  it('says the rooms of a space it is still loading are loading, not missing', async () => {
+    const { container } = await renderSidebar({
+      inputs: { rooms: [], spaceLoading: true, spaceName: 'Loading space…' },
+    });
+
+    expect(
+      container.querySelector('[data-testid=room-list-empty]')!.textContent,
+    ).toContain('Loading rooms…');
+    expect(container.textContent).toContain('Loading space…');
+    expect(container.textContent).not.toContain('No rooms here yet');
+  });
+
+  it('marks the list busy and says "Loading rooms…" once, politely, while the space loads', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { rooms: [], spaceLoading: true, spaceName: 'Loading space…' },
+    });
+    const list = () => container.querySelector('trn-sidebar-room-list')!;
+    const status = () =>
+      container.querySelector<HTMLElement>(
+        '[data-testid=sidebar-loading-status]',
+      )!;
+    const announcer = status();
+
+    expect(list().getAttribute('aria-busy')).toBe('true');
+    expect(announcer.getAttribute('role')).toBe('status');
+    expect(announcer.getAttribute('aria-live')).toBe('polite');
+    expect(announcer.textContent!.trim()).toBe('Loading rooms…');
+
+    // Re-rendering the list while it loads does not announce it again.
+    fixture.componentRef.setInput('rooms', [room({ id: '!x:hs', name: 'x' })]);
+    fixture.detectChanges();
+    expect(status()).toBe(announcer);
+    expect(announcer.textContent!.trim()).toBe('Loading rooms…');
+
+    fixture.componentRef.setInput('spaceLoading', false);
+    fixture.detectChanges();
+    expect(list().hasAttribute('aria-busy')).toBe(false);
+    expect(status()).toBe(announcer);
+    expect(announcer.textContent!.trim()).toBe('');
   });
 
   it('still says the space is empty when nothing is filtered', async () => {

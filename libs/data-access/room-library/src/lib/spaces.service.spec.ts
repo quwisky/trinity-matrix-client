@@ -474,6 +474,51 @@ describe('SpacesService writes', () => {
     expect(leave).not.toHaveBeenCalled();
   });
 
+  it('marks a space leaving until its leave request settles', async () => {
+    const { svc, leave } = setupWrites();
+    let settle!: () => void;
+    leave.mockReturnValue(new Promise<void>((resolve) => (settle = resolve)));
+    const leaving = svc.leaveSpace('@me:hs', '!s:hs');
+    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(false); // cold
+
+    const done = firstValueFrom(leaving);
+    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(true);
+    expect(svc.isLeaving('@other:hs', '!s:hs')).toBe(false);
+    expect(svc.isLeaving('@me:hs', '!t:hs')).toBe(false);
+
+    settle();
+    await done;
+    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(false);
+  });
+
+  it('keeps the leaving mark until the last of two overlapping leaves settles', async () => {
+    const { svc, leave } = setupWrites();
+    const settles: (() => void)[] = [];
+    leave.mockImplementation(
+      () => new Promise<void>((resolve) => settles.push(resolve)),
+    );
+
+    const first = firstValueFrom(svc.leaveSpace('@me:hs', '!s:hs'));
+    const second = firstValueFrom(svc.leaveSpace('@me:hs', '!s:hs'));
+    settles[0]();
+    await first;
+    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(true);
+
+    settles[1]();
+    await second;
+    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(false);
+  });
+
+  it('clears the leaving mark when the leave fails', async () => {
+    const { svc, leave } = setupWrites();
+    leave.mockRejectedValue(new Error('forbidden'));
+
+    await expect(
+      firstValueFrom(svc.leaveSpace('@me:hs', '!s:hs')),
+    ).rejects.toThrow('forbidden');
+    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(false);
+  });
+
   it('joinRoom routes through the via servers when provided', async () => {
     const { svc, joinRoom } = setupWrites();
 
@@ -592,7 +637,8 @@ function setupHierarchy(opts: {
    * views the fake client offers, for the same reason the harness seeds both: a room
    * `getRooms()` lists and `getRoom()` denies is a state the real client cannot be in.
    */
-  const join = (id: string) => {
+  const join = (id: string, options: { readonly space?: boolean } = {}) => {
+    if (options.space) spaceIds.add(id);
     joined.add(id);
     joinedRooms.push(joinedRoom(id));
   };
@@ -1002,6 +1048,81 @@ describe('SpacesService hierarchy', () => {
     await flush();
 
     expect(getRoomHierarchy).not.toHaveBeenCalled();
+  });
+
+  // A restored space can be named before the account's first sync brings it.
+  it('waits for the active account to join a space before fetching its hierarchy', async () => {
+    const { svc, getRoomHierarchy, client, join } = setupHierarchy({
+      rooms: [hroom({ roomId: '!s:hs', name: 'Space', isSpace: true })],
+      holdsSpace: false,
+    });
+
+    void svc.openSpace('!s:hs').subscribe();
+    await flush();
+    expect(getRoomHierarchy).not.toHaveBeenCalled();
+    expect(svc.childrenLoading()).toBe(false);
+
+    join('!s:hs', { space: true });
+    handlerFor(client, 'sync')?.();
+    await flush();
+
+    expect(getRoomHierarchy).toHaveBeenCalledOnce();
+    expect(getRoomHierarchy.mock.calls[0][0]).toBe('!s:hs');
+  });
+
+  it('stops waiting for a space once another one is opened', async () => {
+    const { svc, getRoomHierarchy, client, join } = setupHierarchy({
+      rooms: [],
+      holdsSpace: false,
+    });
+
+    void svc.openSpace('!s:hs').subscribe();
+    void svc.openSpace(null).subscribe();
+    join('!s:hs', { space: true });
+    handlerFor(client, 'sync')?.();
+    await flush();
+
+    expect(getRoomHierarchy).not.toHaveBeenCalled();
+  });
+
+  it('never fetches a space the active account has left, even after a sync', async () => {
+    const { svc, getRoomHierarchy, client } = setupHierarchy({
+      rooms: [],
+      holdsSpace: false,
+    });
+    client.getRoom = (id: string) =>
+      id === '!s:hs'
+        ? { getMyMembership: () => 'leave', isSpaceRoom: () => true }
+        : null;
+
+    void svc.openSpace('!s:hs').subscribe();
+    handlerFor(client, 'sync')?.();
+    await flush();
+
+    expect(getRoomHierarchy).not.toHaveBeenCalled();
+  });
+
+  // The wait is a lifetime: the next openSpace call ends it (above), and so does a reset
+  // of the active-Account projection, as on an account switch.
+  it('ends the wait for a space to be joined when the active account switches', () => {
+    const { svc, matrix } = setup([]);
+    activeUserId.set('@a:hs');
+    TestBed.inject(ApplicationRef).tick();
+    let ended = false;
+    svc.openSpace('!s:hs').subscribe({ complete: () => (ended = true) });
+    expect(ended).toBe(false);
+
+    ngMocks.stubMember(matrix, 'instance', {
+      getRooms: () => [],
+      getRoom: () => null,
+      on: vi.fn(),
+      off: vi.fn(),
+    } as unknown as MatrixClient);
+    activeUserId.set('@b:hs');
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(ended).toBe(true);
+    expect(svc.childrenLoading()).toBe(false);
   });
 
   it('surfaces a hierarchy fetch failure in childrenError', async () => {

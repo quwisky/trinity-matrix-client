@@ -22,6 +22,8 @@ One-shot actions return cold, finite RxJS Observables. Calling a method describe
 
 Ongoing streams belong to the runtime or capability that owns their lifetime. Application Runtime starts one retained process lifetime. An account capability owns account-scoped listeners; a conversation capability owns the exact account-and-room timeline handle.
 
+A wait that lasts as long as what it serves is a lifetime too, not a one-shot command. `SpacesService.openSpace` reads the open space's hierarchy, but first waits for the active account to join the space, which may never happen while the view lasts. Workspace subscribes it for each committed view and unsubscribes it when another view is projected, when it leaves `/rooms`, and on teardown; the next `openSpace` call and an account switch end it as well. Name such a wait's owner in its documentation, and test that each of these ends it.
+
 ## Projection Runtime owns reconciliation mechanics {#projection-runtime}
 
 `libs/runtime/projection` provides reusable listener attachment, invalidation coalescing, generation control, cancellation, reset, and readiness barriers. A capability still defines what its projection means and which source events invalidate it.

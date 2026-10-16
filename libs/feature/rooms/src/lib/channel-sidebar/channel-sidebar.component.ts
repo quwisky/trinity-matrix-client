@@ -75,6 +75,8 @@ export class ChannelSidebarComponent {
   readonly spaceName = input('Direct messages');
   /** Whether a space (not Home) is selected — gates the header space actions. */
   readonly spaceActive = input(false);
+  /** A space is selected that is not listed yet; its list says it is loading. */
+  readonly spaceLoading = input(false);
   /** Desktop's title row owns the quick switcher; the sidebar button then steps aside. */
   readonly showSwitcher = input(true);
   /**

@@ -5,7 +5,13 @@
 // fork crossed the 2 GB heap ceiling around test 77 and died mid-run. vitest isolates per
 // FILE, so splitting the describes across files is what bounds the peak; this holds the
 // pieces they all shared.
-import { computed, inject, signal, type Provider } from '@angular/core';
+import {
+  computed,
+  inject,
+  signal,
+  type Provider,
+  type Signal,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   ActivatedRoute,
@@ -121,17 +127,26 @@ export function flushPanelJump(): void {
   TestBed.tick();
 }
 
-export function setRouteRoom(roomId: string | null): void {
+export function setRouteRoom(
+  roomId: string | null,
+  options: { readonly space?: string } = {},
+): void {
   // Page-level specs start from the canonical Active Account coordinate. Legacy URLs
   // without `account` are covered by Workspace's adapter suite; leaving it absent here
   // starts an asynchronous canonicalization before each test can issue its own command.
-  queryParamMap.next(convertToParamMap({ account: '@me:hs' }));
+  const queryParams: Record<string, string> = {
+    account: '@me:hs',
+    ...(options.space ? { space: encodeRoomSegment(options.space) } : {}),
+  };
+  queryParamMap.next(convertToParamMap(queryParams));
   paramMap.next(
     convertToParamMap(roomId ? { roomId: encodeRoomSegment(roomId) } : {}),
   );
-  moveRoute(
-    `/rooms${roomId ? `/${encodeRoomSegment(roomId)}` : ''}?account=${encodeURIComponent('@me:hs')}`,
+  const tree = urlSerializer.parse(
+    roomId ? `/rooms/${encodeRoomSegment(roomId)}` : '/rooms',
   );
+  tree.queryParams = queryParams;
+  moveRoute(urlSerializer.serialize(tree));
 }
 
 /**
@@ -382,6 +397,8 @@ export const SHARED_MOCKS: Provider[] = [
         return currentRouteUrl;
       },
       events: routerEvents,
+      // Navigations here settle at once, so none is ever in flight.
+      currentNavigation: signal(null).asReadonly(),
       parseUrl: (url: string) => urlSerializer.parse(url),
       // The Workspace location adapter serializes the list entry it rewrites under a
       // Conversation opened from it (#1113); build trees the way `navigate` reads them.
@@ -465,8 +482,15 @@ export function invitesProvider(over: Partial<InvitesService> = {}) {
   });
 }
 
-/** Keep single-Account page tests on their directly driven projection signals. */
-export function selectedRoomLibraryProvider(): Provider {
+/**
+ * Keep single-Account page tests on their directly driven projection signals.
+ *
+ * A space its client does not hold is unavailable, unless `synced` says the Account has not
+ * synced with its homeserver yet: then it is unconfirmed.
+ */
+export function selectedRoomLibraryProvider(
+  options: { readonly synced?: Signal<boolean> } = {},
+): Provider {
   return {
     provide: SelectedRoomLibraryService,
     useFactory: () => {
@@ -495,9 +519,13 @@ export function selectedRoomLibraryProvider(): Provider {
             invitations: invites.pendingInvites(),
           };
         }),
-        // One Account: a space is selectable exactly when its client holds it.
-        spaceSelectable: (accountId: string, spaceId: string) =>
-          rooms.selectionAvailability(accountId, spaceId) === 'available',
+        // One Account: a space is available exactly when its client holds it.
+        spaceAvailability: (accountId: string, spaceId: string) =>
+          rooms.selectionAvailability(accountId, spaceId) === 'available'
+            ? ('available' as const)
+            : options.synced && !options.synced()
+              ? ('unconfirmed' as const)
+              : ('unavailable' as const),
       };
     },
   };

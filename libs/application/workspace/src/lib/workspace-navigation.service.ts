@@ -28,6 +28,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import {
+  EMPTY,
   Observable,
   type Subscription,
   concatMap,
@@ -52,6 +53,7 @@ import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 import { WorkspaceLocationAdapter } from './workspace-location.adapter';
 import { WorkspaceAvailability } from './workspace-availability';
 import { resolveWorkspaceNavigation } from './workspace-navigation.resolver';
+import { WorkspaceSpaceRepair } from './workspace-space-repair';
 
 /**
  * The application workflow that owns the semantic Workspace destination.
@@ -69,6 +71,7 @@ export class WorkspaceNavigationService {
   private readonly media = inject(MediaPipeline);
   private readonly rooms = inject(RoomLibraryService);
   private readonly availability = inject(WorkspaceAvailability);
+  private readonly spaceRepair = inject(WorkspaceSpaceRepair);
   private readonly roomReadiness = inject(RoomReadinessService);
   private readonly invites = inject(InvitesService);
   private readonly spaces = inject(SpacesService);
@@ -82,7 +85,11 @@ export class WorkspaceNavigationService {
   private readonly compact = mediaQuerySignal(BELOW_MD_QUERY, this.destroyRef);
   private readonly workspaceView = signal<WorkspaceView>(this.seedView());
   private readonly eventTargetState = signal<WorkspaceEventTarget | null>(null);
-  private hierarchySubscription: Subscription | null = null;
+  /**
+   * The open space ({@link SpacesService.openSpace}) for the committed view, a lifetime it
+   * owns: replaced when another view is projected, ended outside Workspace and on teardown.
+   */
+  private openSpaceLifetime: Subscription | null = null;
   /** A marked-unread clear waiting for someone to look (see {@link clearMarkedUnread}). */
   private markedUnreadWait: Subscription | null = null;
   private projectionsActive = false;
@@ -142,6 +149,31 @@ export class WorkspaceNavigationService {
         }),
         takeUntilDestroyed(this.destroyRef),
       )
+      .subscribe();
+    this.repairUnavailableSpace();
+  }
+
+  /**
+   * Return the selected Space to Recent once it is unavailable ({@link WorkspaceSpaceRepair}),
+   * keeping the open Room, which Recent lists and the transition judges on its own. Outside
+   * Workspace nothing is repaired here; the return restores through the same repair.
+   */
+  private repairUnavailableSpace(): void {
+    this.spaceRepair
+      .run(this.view, (view) =>
+        this.projectionsActive && this.view() === view && view.accountId
+          ? this.transition(
+              {
+                accountId: view.accountId,
+                scope: RECENT_WORKSPACE_SCOPE,
+                roomId: view.roomId,
+                pane: view.pane,
+              },
+              { source: 'repair', history: 'replace' },
+            )
+          : EMPTY,
+      )
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
   }
 
@@ -358,8 +390,8 @@ export class WorkspaceNavigationService {
     if (!this.projectionsActive) return;
     this.projectionsActive = false;
     this.markedUnreadWait?.unsubscribe();
-    this.hierarchySubscription?.unsubscribe();
-    this.hierarchySubscription = null;
+    this.openSpaceLifetime?.unsubscribe();
+    this.openSpaceLifetime = null;
     this.conversations.blur();
     this.media.releaseAll();
     this.eventTargetState.set(null);
@@ -368,8 +400,8 @@ export class WorkspaceNavigationService {
   private project(view: WorkspaceView, initial = false): void {
     this.markedUnreadWait?.unsubscribe();
     if (!initial) this.media.releaseAll();
-    this.hierarchySubscription?.unsubscribe();
-    this.hierarchySubscription = this.spaces
+    this.openSpaceLifetime?.unsubscribe();
+    this.openSpaceLifetime = this.spaces
       .openSpace(view.scope.kind === 'space' ? view.scope.spaceId : null)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({ error: () => undefined });
@@ -436,7 +468,10 @@ export class WorkspaceNavigationService {
   private seedDestinationExists(destination: WorkspaceDestination): boolean {
     if (
       destination.scope.kind === 'space' &&
-      !this.availability.space(destination.accountId, destination.scope.spaceId)
+      this.availability.space(
+        destination.accountId,
+        destination.scope.spaceId,
+      ) === 'unavailable'
     ) {
       return false;
     }

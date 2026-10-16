@@ -191,14 +191,16 @@ describe('RoomsPage mixed-account view', () => {
         MockProvider(SelectedRoomLibraryService, {
           view: selectedView,
           // Each space's own account holds it; the mixed view lists it for every selected one.
-          spaceSelectable: (accountId: string, spaceId: string) => {
+          spaceAvailability: (accountId: string, spaceId: string) => {
             const view = selectedView();
             return view.spaces.some(
               (candidate) =>
                 candidate.id === spaceId &&
                 (candidate.accountId === accountId ||
                   (view.mode === 'mixed' && view.accountIds.has(accountId))),
-            );
+            )
+              ? 'available'
+              : 'unavailable';
           },
           toggleAccount,
         }),
@@ -609,6 +611,30 @@ describe('RoomsPage mixed-account view', () => {
     // not reorder it under the pointer.
     expect(shell.vm.spaceOrderAccountId()).toBe('@me:hs');
     expect(shell.vm.spaceSortMode()).toBe('alphabetical');
+  });
+
+  // #1402: unticking the account that holds the space leaves no shown account holding it.
+  it('unticking the account that holds the selected space returns to Recent with the room open', async () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    mineSpaceChildren.set(['!theirs:hs']);
+    shell.nav.onSelectSpace({ spaceId: '!s-mine:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+    shell.routing.onSelectRoomSelection(
+      { roomId: '!theirs:hs', accountId: '@alt:hs' },
+      'room-list',
+    );
+    await settleWorkspace();
+    expect(shell.store.activeSpaceId()).toBe('!s-mine:hs');
+
+    shownAccounts.set(new Set(['@alt:hs']));
+
+    await vi.waitFor(() => {
+      TestBed.tick();
+      expect(shell.store.recentView()).toBe(true);
+    });
+    expect(shell.store.activeAccountId()).toBe('@alt:hs');
+    expect(shell.store.activeRoomId()).toBe('!theirs:hs');
   });
 
   it('keeps the space when the opened row belongs to an account that holds it', async () => {

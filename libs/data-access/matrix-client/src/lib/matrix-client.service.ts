@@ -16,6 +16,7 @@ import {
   type AccessTokens,
   type ICreateClientOpts,
   type MatrixError,
+  type SyncStateData,
 } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
@@ -66,6 +67,21 @@ import {
  * spec pins the two together.
  */
 export const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Whether a sync state reports a sync completed with the homeserver. The SDK also emits
+ * PREPARED for the sync it replays from its IndexedDB cache (`fromCache`), which can be
+ * minutes stale, so that one does not count.
+ */
+export function isServerSync(
+  state: SyncState | null,
+  data?: Pick<SyncStateData, 'fromCache'> | null,
+): boolean {
+  return (
+    state === SyncState.Syncing ||
+    (state === SyncState.Prepared && !data?.fromCache)
+  );
+}
 
 /** Resource ceiling for the first production Projection Runtime adapter. */
 export const MATRIX_SYNC_PROJECTION_BASELINE = {
@@ -170,6 +186,10 @@ interface AccountClient {
   readonly syncStore: IndexedDBStore | null;
   /** This account's coarse sync state (null until its first sync transition). */
   readonly syncState: WritableSignal<SyncState | null>;
+  /** Whether this client has completed a sync with its homeserver ({@link isServerSync}). */
+  readonly serverSynced: WritableSignal<boolean>;
+  /** Whether this client has prepared its rooms, from its sync cache or its homeserver. */
+  readonly roomsPrepared: WritableSignal<boolean>;
   /** Projection Runtime lease owning sync-state attachment and reset. */
   readonly syncProjection: ProjectionLease;
   /** Its `HttpApiEvent.SessionLoggedOut` listener (server-side token revocation). */
@@ -360,6 +380,29 @@ export class MatrixClientService {
   /** The active account's 4S key holder (populated by the crypto-setup UI), or null. */
   activeHolder(): SecretStorageKeyHolder | null {
     return this.active()?.holder ?? null;
+  }
+
+  /**
+   * Whether `userId`'s live client has completed a sync with its homeserver since it
+   * started. A PREPARED replayed from the IndexedDB cache does not count: it can be
+   * minutes stale. Stays true through RECONNECTING, ERROR and STOPPED; a replacement
+   * client starts false; false when no client is live for the account.
+   */
+  serverSynced(userId: string): boolean {
+    // Re-bind after a same-id client replacement, like {@link syncState}.
+    this._accountIds();
+    return this.clients.get(userId)?.serverSynced() ?? false;
+  }
+
+  /**
+   * Whether `userId`'s live client has prepared its rooms at least once: from the sync it
+   * replays from its IndexedDB cache, or from its homeserver. False while the client is
+   * still loading even its cache, and when no client is live for the account. Unlike
+   * {@link serverSynced}, rooms from a cache can be minutes stale.
+   */
+  roomsPrepared(userId: string): boolean {
+    this._accountIds();
+    return this.clients.get(userId)?.roomsPrepared() ?? false;
   }
 
   /** The live client for a specific account, or null (e.g. per-account server logout). */
@@ -738,6 +781,10 @@ export class MatrixClientService {
       let syncProjection: ProjectionLease | null = null;
       const syncState = signal<SyncState | null>(null);
       let latestSyncState: SyncState | null = null;
+      const serverSynced = signal(false);
+      let latestServerSynced = false;
+      const roomsPrepared = signal(false);
+      let latestRoomsPrepared = false;
       const onLoggedOut = (err: MatrixError): void =>
         this.handleServerLogout(session.userId, err);
       // Not detached on teardown: it only updates this start's own counter. Null until the
@@ -827,8 +874,15 @@ export class MatrixClientService {
             id: 'matrix.sync-state',
             scope: { kind: 'exact-account', accountId: session.userId },
             attach: (invalidate) => {
-              const onSync = (state: SyncState): void => {
+              const onSync = (
+                state: SyncState,
+                _previous: SyncState | null,
+                data?: SyncStateData,
+              ): void => {
                 latestSyncState = state;
+                latestServerSynced ||= isServerSync(state, data);
+                latestRoomsPrepared ||=
+                  state === SyncState.Prepared || state === SyncState.Syncing;
                 invalidate();
               };
               client.on(ClientEvent.Sync, onSync);
@@ -836,10 +890,18 @@ export class MatrixClientService {
             },
             reconcile: ({ publish }) =>
               defer(() => {
-                publish(() => syncState.set(latestSyncState));
+                publish(() => {
+                  syncState.set(latestSyncState);
+                  serverSynced.set(latestServerSynced);
+                  roomsPrepared.set(latestRoomsPrepared);
+                });
                 return of(void 0);
               }),
-            reset: () => syncState.set(null),
+            reset: () => {
+              syncState.set(null);
+              serverSynced.set(false);
+              roomsPrepared.set(false);
+            },
             resources: () => ({
               listenerCount:
                 MATRIX_SYNC_PROJECTION_BASELINE.listenerCountPerLiveAccount,
@@ -886,6 +948,8 @@ export class MatrixClientService {
             cryptoStoreEncrypted: session.cryptoStoreKeyed === true,
             syncStore: store,
             syncState,
+            serverSynced,
+            roomsPrepared,
             syncProjection,
             onLoggedOut,
             holder,

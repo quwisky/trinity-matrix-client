@@ -17,7 +17,11 @@ import { type PreferenceCommandOutcome } from '@trinity/runtime/preferences';
 import { ownedProjection } from '@trinity/runtime/projection';
 import { AccountScopeService } from './account-scope.service';
 import { InvitesService, type PendingInvite } from './invites.service';
-import { RoomLibraryService, type RoomSummary } from './room-library.service';
+import {
+  RoomLibraryService,
+  type RoomLibrarySelectionAvailability,
+  type RoomSummary,
+} from './room-library.service';
 import { isJoinedSpace } from './room-projection';
 import {
   ALL_SELECTED_PROJECTION_DOMAINS,
@@ -156,26 +160,49 @@ export class SelectedRoomLibraryService {
   /**
    * Whether Workspace may keep a Space selected while acting as `accountId`.
    *
-   * The Account having joined the Space is enough. In the mixed view, a Space another
-   * selected Account has joined is listed too, with its pill in the rail and its children
-   * in the sidebar, so any selected Account may keep it while opening one of those Rooms.
-   * A Space left, or only invited to, does not count (see {@link isJoinedSpace}); flows
-   * that open a Space they just joined wait for the join first. Read from the live
-   * selection and clients rather than the published {@link view}, so the answer never
-   * waits for a projection flush.
+   * - `available`: the Account has joined the Space, or, in the mixed view it is part of,
+   *   another selected Account has. That Space is listed, with its pill in the rail and its
+   *   children in the sidebar, so any selected Account may keep it while opening one of
+   *   those Rooms.
+   * - `unconfirmed`: none of them holds it yet, and either the Account itself has not
+   *   completed a sync with its homeserver (a cache replay only, offline, or still
+   *   starting), or another selected Account has not loaded even its sync cache yet. Keep
+   *   it, as a Room the client has not synced yet is kept. Another Account counts once it
+   *   has replayed its cache: one whose homeserver is unreachable lives on that cache, and
+   *   waiting for its server would keep a Space it does not hold loading indefinitely.
+   * - `unavailable`: none of them holds it once that is settled, the Account's client is
+   *   not live, or the id is not a Room id. A selected Account whose client is not live (it
+   *   failed to start) does not count as holding it: none of its Rooms can be listed either.
+   *
+   * A Space left, or only invited to, is not held (see {@link isJoinedSpace}); flows that
+   * open a Space they just joined wait for the join first. The answer comes from the live
+   * selection and clients, so it never waits for a projection flush and an empty republish
+   * never reads as "gone". It reads {@link view} only to re-run when the shown Accounts'
+   * Rooms or memberships change.
    */
-  spaceSelectable(accountId: string, spaceId: string): boolean {
+  spaceAvailability(
+    accountId: string,
+    spaceId: string,
+  ): RoomLibrarySelectionAvailability {
+    this._view();
+    const live = new Set(this.matrix.accountIds());
+    if (!live.has(accountId) || !spaceId.startsWith('!')) return 'unavailable';
+    const selected = this.scope.selected();
+    const shown =
+      selected.size > 1 && selected.has(accountId)
+        ? [...selected].filter((id) => live.has(id))
+        : [accountId];
     const holds = (id: string): boolean => {
       const space = this.matrix.clientFor(id)?.getRoom(spaceId);
       return !!space && isJoinedSpace(space);
     };
-    if (holds(accountId)) return true;
-    const accountIds = this.scope.selected();
-    return (
-      accountIds.size > 1 &&
-      accountIds.has(accountId) &&
-      [...accountIds].some(holds)
-    );
+    if (shown.some(holds)) return 'available';
+    if (!this.matrix.serverSynced(accountId)) return 'unconfirmed';
+    return shown.some(
+      (id) => id !== accountId && !this.matrix.roomsPrepared(id),
+    )
+      ? 'unconfirmed'
+      : 'unavailable';
   }
 
   private scheduleProjection(
