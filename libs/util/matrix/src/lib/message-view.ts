@@ -765,7 +765,7 @@ export function sanitizeMatrixHtml(
  * Angular sanitizes `[innerHTML]` after this sanitizer and does not trust custom URI schemes, so
  * convert valid `matrix:` links to their HTTPS matrix.to form first. Malformed Matrix URIs
  * become a deliberately invalid permalink that the click directive intercepts to explain the
- * error.
+ * error, rather than leaving a dead or externally navigable link.
  */
 function normaliseMatrixUris(body: HTMLElement): void {
   for (const anchor of body.querySelectorAll('a[href]')) {
@@ -838,7 +838,7 @@ export function linkifyMessageText(text: string): string | null {
   );
 }
 
-/** Images one message may show inline (spec A2); past it the rest read as their alt text. */
+/** Images one message may show inline; past it the rest read as their alt text. */
 const MAX_INLINE_IMAGES = 10;
 
 /** A plain `mxc://server/media-id`, the shape the SDK accepts (as InlineMxcImagesDirective). */

@@ -17,7 +17,8 @@ import { trimTrailing } from './trim-trailing';
 
 /**
  * Send-side content builders shared by the main timeline and the in-thread composer, so both
- * render markdown and build edit/reply/reaction payloads identically.
+ * render markdown and build edit/reply/reaction payloads identically. No SDK types leak to
+ * components; only core services call these.
  *
  * The `m.thread` relation is not built here: the SDK adds it when a `threadId` is passed to
  * the send call.
@@ -299,7 +300,8 @@ export function renderMarkdown(text: string): RenderedMarkdown {
   // Input whose every construct the allowlist strips (an HTML comment, a lone <script>)
   // sanitizes to nothing; an empty formatted_body is worse than plain text. Callers check `html`
   // as well as `formatted`: a message with a mention takes the rich branch regardless, and an
-  // empty formatted_body renders as a blank message in clients that prefer it over `body`.
+  // empty formatted_body renders as a blank message, since every client (Element included)
+  // prefers it over `body`.
   if (html.trim() === '') {
     return { formatted: false, html: '' };
   }
