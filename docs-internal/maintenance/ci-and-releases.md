@@ -360,8 +360,9 @@ Prerequisites for a cut:
 The workflow refuses, and creates nothing, when `from` is not a published prerelease on
 `main`'s history, when `release/X.Y.x` already exists (land fixes on it; its next stable
 release is a patch release), or when a `vX.Y.Z` tag exists. It also refuses a prerelease
-whose commit predates `release-stable.yml`, because a release branch inherits the
-workflows of the commit it is cut from: cut a new prerelease from `main` first.
+whose commit predates `release-stable.yml` or has no `.github/CODEOWNERS`, because a
+release branch inherits the workflows and code owners of the commit it is cut from: cut a
+new prerelease from `main` first.
 
 It pushes with the release App's installation token, not `GITHUB_TOKEN`: pushes made with
 `GITHUB_TOKEN` trigger no workflows, so `release.yml` would never run on the new branch.
@@ -403,14 +404,17 @@ rules on those refs decide who can reach the credentials:
 - `Protect main` and `Protect release branches` require one approval from someone other
   than the last pusher, dismiss approvals when new commits arrive, and require a code
   owner's review. [`CODEOWNERS`](../../.github/CODEOWNERS) assigns the workflows, the
-  scripts the release jobs run, the release-please tooling and the files electron-builder
-  loads while signing to the maintainer. The release App and the maintainer bypass both
-  rulesets, so release PRs, back-merges and the maintainer's own pull requests merge as
-  before.
+  scripts the release jobs run, the release-please tooling and configuration, the root
+  `package.json` (its `packageManager` picks the pnpm those jobs install) and every file
+  directly in `electron/` to the maintainer. The release App and the maintainer bypass
+  both rulesets, so release PRs, back-merges and the maintainer's own pull requests merge
+  as before. GitHub reads `CODEOWNERS` from the pull request's base branch, so each
+  `release/X.Y.x` branch carries its own copy; `Release stable` refuses a prerelease
+  without one.
 - `release` and `homebrew` require the maintainer's approval for each deployment, so every
   signed macOS build and every tap update waits for it. `release-app` runs on every push
-  to `main` and `renovate` runs daily, so neither has reviewers; the approval rule on
-  `main` guards them instead.
+  to `main` and `release/**` and `renovate` runs daily, so neither has reviewers; the
+  approval rules on those branches guard them instead.
 
 When a release job starts running a new script or configuration file, add it to
 `CODEOWNERS`.
@@ -770,7 +774,7 @@ commit predates `homebrew.yml` never triggers it; dispatch it from `main` instea
 2. Create the public repository `quwisky/homebrew-trinity` **with an initial commit**
    (a README is enough); checkout and push fail on an empty repository.
 3. Create the environment `homebrew` in this repository. Under deployment branches
-   and tags, allow only `main`, `release/**` and tags matching `v*`, and add the
+   and tags, allow only `main` and tags matching `v*`, and add the
    maintainer as a required reviewer (see [Release credentials](#release-credentials)).
 4. Run `ssh-keygen -t ed25519 -C homebrew-trinity -f homebrew-trinity`. Add
    `homebrew-trinity.pub` to the tap as a deploy key **with write access**, and store

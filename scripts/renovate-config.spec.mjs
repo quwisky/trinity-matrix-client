@@ -17,6 +17,7 @@ const PATCH_RULE = config.packageRules.findIndex(
 
 const RUNTIME = [
   'dompurify',
+  'katex',
   '@matrix-org/matrix-sdk-crypto-wasm',
   'matrix-js-sdk',
   'matrix-widget-api',
@@ -27,7 +28,12 @@ describe('Renovate update policy', () => {
   it('automerges nothing, because Renovate is not a bypass actor on main', () => {
     // 'Protect main' requires an approval, so a Renovate merge could never complete.
     expect(config.automerge).toBe(false);
-    for (const rule of [config.vulnerabilityAlerts, ...config.packageRules]) {
+    for (const rule of [
+      config,
+      config.vulnerabilityAlerts,
+      config.lockFileMaintenance,
+      ...config.packageRules,
+    ]) {
       expect(rule.automerge).not.toBe(true);
       expect(rule).not.toHaveProperty('automergeType');
       expect(rule).not.toHaveProperty('platformAutomerge');

@@ -38,6 +38,9 @@ describe('Release stable workflow', () => {
       'contents/.github/workflows/release-stable.yml?ref=$FROM',
     );
     expect(resolveRun).toContain('predates the release-branch workflows');
+    // Code-owner review on the new branch reads that branch's own CODEOWNERS.
+    expect(resolveRun).toContain('contents/.github/CODEOWNERS?ref=$FROM');
+    expect(resolveRun).toContain('has no .github/CODEOWNERS');
     expect(resolveRun).toContain('compare/$FROM...main');
     expect(resolveRun).toContain('echo "branch=release/$major.$minor.x"');
     expect(index('Resolve the prerelease')).toBeLessThan(

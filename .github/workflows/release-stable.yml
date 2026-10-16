@@ -63,6 +63,16 @@ jobs:
             fi
             exit 1
           fi
+          # Code-owner review on release/** reads the branch's own CODEOWNERS; without it, a
+          # writer could merge a change that runs with the release App key on that branch.
+          if ! err=$(gh api "repos/$GH_REPO/contents/.github/CODEOWNERS?ref=$FROM" 2>&1 >/dev/null); then
+            if [[ "$err" == *"HTTP 404"* ]]; then
+              echo "::error::$FROM has no .github/CODEOWNERS; cut a new prerelease from main first."
+            else
+              echo "::error::Could not look up CODEOWNERS at $FROM: $err"
+            fi
+            exit 1
+          fi
           # The tag must be an ancestor of main (compare status ahead or identical).
           status=$(gh api "repos/$GH_REPO/compare/$FROM...main" -q .status)
           if [ "$status" != ahead ] && [ "$status" != identical ]; then

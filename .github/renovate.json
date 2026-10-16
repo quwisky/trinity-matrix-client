@@ -39,13 +39,11 @@
   "vulnerabilityAlerts": {
     "description": [
       "A security fix must never sit behind a tick nobody has looked at, so this opts out of the dashboard gate and shortens the three-day soak to one day, the same minimumReleaseAge pnpm applies to every install. A delay is a risk here, but so is a release minutes old: one day still keeps out a version that is pulled within hours of publishing.",
-      "Security updates keep a pull request, so the `security` label below is applied and the CVE detail Renovate writes into prBodyNotes is kept. They do not automerge: 'Protect main' requires an approval and Renovate is not one of its bypass actors, so Renovate cannot complete a merge; a maintainer reviews and merges every update.",
-      "The empty additionalBranchPrefix keeps them on renovate/<dependency> branches, apart from the routine renovate/patch-* ones. Renovate injects each vulnerability as a package rule carrying this object as `force`, which outranks the ordinary rules, but only for the keys it contains, so the patch rule's prefix would otherwise apply to a security fix that is also a patch."
+      "Security updates keep a pull request, so the `security` label below is applied and the CVE detail Renovate writes into prBodyNotes is kept. They do not automerge: 'Protect main' requires an approval and Renovate is not one of its bypass actors, so Renovate cannot complete a merge; a maintainer reviews and merges every update."
     ],
     "labels": ["security"],
     "minimumReleaseAge": "1 day",
-    "dependencyDashboardApproval": false,
-    "additionalBranchPrefix": ""
+    "dependencyDashboardApproval": false
   },
   "packageRules": [
     {
