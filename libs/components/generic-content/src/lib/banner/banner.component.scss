@@ -49,14 +49,21 @@
     justify-content: flex-end;
   }
 
-  // The app's global slot holds one banner at a time and replaces it as statuses settle:
-  // the storage notice gives way to the encryption prompt a moment after sign-in. Below md
-  // the notice's two actions wrap under its message (#1221) and the prompt's one action
-  // does not, so every global banner reserves the wrapped height (padding, a line of text,
-  // the row gap and a row of small actions, at least the touch target). The swap then moves
-  // nothing below the slot, where a tap in flight would otherwise land on the wrong row.
-  // Content stays centred in the reserved height. `1.75rem` is the small `trnBtn` height.
-  @media (max-width: 767.98px) {
+  // Banners that replace one another in a single slot (`placement="global"`) keep one
+  // height wherever a two-action banner wraps its actions under the message (#1221): a
+  // replacement then moves nothing below the slot, where a tap in flight would land on the
+  // wrong row. The slot measures its own width, so a layout wide enough for one row
+  // reserves nothing. The reserved height is the wrapped banner's: padding, a line of
+  // text, the row gap and a row of small actions (the `trnBtn` `sm` height, `h-7` on the
+  // spacing scale, or the touch target). Content stays centred in it.
+  :host([data-placement='global']) {
+    container-type: inline-size;
+  }
+
+  // Up to where the two-action banner fits on one row with a one-line message: below it
+  // either its actions or its message wrap and the one-action banner does not. Measured
+  // near 31rem; the margin covers wider fonts. The banner stories sweep the widths.
+  @container (width < 34rem) {
     .banner[data-placement='global'] {
       --trn-banner-pad: calc(2 * var(--trinity-density-row-padding-block));
       --trn-banner-line: calc(
@@ -66,7 +73,7 @@
         var(--trn-banner-line) + var(--trinity-density-row-gap)
       );
       --trn-banner-act: max(
-        1.75rem,
+        calc(var(--spacing) * 7),
         var(--trinity-interaction-target-min-size)
       );
 

@@ -9,8 +9,8 @@ import type { TrnVariant } from '@trinity/components/foundations';
 export type TrnBannerVariant = Extract<TrnVariant, 'neutral' | 'accent'>;
 
 /**
- * `inline`: a banner in its own place in the page. `global`: one of the banners that take
- * turns in the app's single global banner slot, replaced by another as statuses settle.
+ * `inline`: a banner in its own place in the page. `global`: one of several banners that
+ * take turns in a single slot, each replacing the last as the state behind it changes.
  */
 export type TrnBannerPlacement = 'inline' | 'global';
 
@@ -38,15 +38,16 @@ export type TrnBannerPlacement = 'inline' | 'global';
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './banner.component.scss',
   templateUrl: './banner.component.html',
+  host: { '[attr.data-placement]': 'placement()' },
 })
 export class BannerComponent {
   /** Semantic treatment: `neutral` status or `accent` call-to-action. */
   readonly variant = input<TrnBannerVariant>('neutral');
 
   /**
-   * Below md a two-action banner wraps its actions under the message, so a `global` banner
-   * keeps that two-row height whichever banner holds the slot: replacing one with another
-   * then never moves the page below it, where a tap in flight would land on the wrong row.
+   * Where the slot is narrow enough for a two-action banner to wrap its actions under the
+   * message, a `global` banner keeps that two-row height whichever banner holds the slot:
+   * replacing one with another then never moves the page below it.
    */
   readonly placement = input<TrnBannerPlacement>('inline');
 

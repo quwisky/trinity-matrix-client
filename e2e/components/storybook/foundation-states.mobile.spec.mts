@@ -81,7 +81,7 @@ test('a lone banner action leaves no blank message row (#1221)', async ({
 // The app's global banner slot swaps the two-action status notice for the one-action
 // encryption prompt a moment after sign-in. If they differ in height the page below jumps
 // and a tap in flight lands on the wrong room, so below md both keep one height.
-for (const width of [320, 393]) {
+for (const width of [320, 360, 393, 430]) {
   test(`global-slot banners keep one height at ${width}px`, async ({
     page,
   }) => {
