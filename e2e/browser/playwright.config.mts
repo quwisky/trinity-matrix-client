@@ -56,10 +56,14 @@ export default defineConfig({
   use: {
     ...appE2EConfig(baseURL).use,
     screenshot: 'only-on-failure',
-    // Bound every action (click, tap, fill, getAttribute, waitFor) that names no timeout of
-    // its own. Without it such an action waits for the whole test budget, so one lost tap
-    // turned into a 150s hang instead of a short failure at the step that went wrong.
-    actionTimeout: 20_000,
+    // Bound every action and wait that names no timeout of its own: clicks, taps, fills,
+    // getAttribute and locator waitFor, and also waitForResponse, waitForEvent and
+    // waitForFunction. Without it such a call waits for the whole test budget, so one lost
+    // tap turned into a 150s hang instead of a failure at the step that went wrong. 30s
+    // matches the explicit bounds in login() and touchPlatform.tap, and leaves room for a
+    // first /sync under load. Navigations (goto, waitForURL) are not covered: they use
+    // navigationTimeout, which stays unset.
+    actionTimeout: 30_000,
   },
   // Chromium only: the app ships to Capacitor/Electron (Blink/WebKit) WebViews;
   // these UI journeys are representative in Chromium, matching the legacy harness.
