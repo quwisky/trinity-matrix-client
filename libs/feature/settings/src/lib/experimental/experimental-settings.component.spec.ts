@@ -94,7 +94,7 @@ describe('ExperimentalSettingsComponent', () => {
       name: 'Blank rows while scrolling fast',
     });
     expect(control).toHaveAccessibleDescription(
-      'Messages that fly past show as blank space until scrolling slows down, which uses less memory.',
+      'Messages that fly past show as blank space until scrolling slows down, which uses less memory. Needs Virtualized timeline.',
     );
     const toggle = switchIn(fixture, 'flag-fling-placeholders');
     expect(toggle.checked()).toBe(false);

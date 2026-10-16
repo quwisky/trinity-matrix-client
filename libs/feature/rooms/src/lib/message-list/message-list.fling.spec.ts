@@ -278,6 +278,51 @@ describe('MessageListComponent: blank rows while scrolling fast', () => {
       expect(container.querySelector('.msg[data-mid="$150"]')).not.toBeNull();
     });
 
+    it('never takes a smooth jump for a fling', async () => {
+      Element.prototype.scrollIntoView = vi.fn();
+      const { fixture, container, scroll } = await flingFrom5000();
+      layOutRegion(scroll);
+
+      fixture.componentInstance.jumpTo('$88');
+      // The browser animates the jump: about 12,000 px/s at its fastest.
+      scrollTo(fixture, scroll, 5200, 16);
+      scrollTo(fixture, scroll, 5400, 32);
+      scrollTo(fixture, scroll, 5600, 48);
+
+      expect(placeholderIds(container)).toEqual([]);
+    });
+
+    it('lets a fling start again once a jump has settled', async () => {
+      Element.prototype.scrollIntoView = vi.fn();
+      const { fixture, container, scroll } = await flingFrom5000();
+      layOutRegion(scroll);
+      scrollTo(fixture, scroll, 5640, 100);
+      fixture.componentInstance.jumpTo('$88');
+      scrollTo(fixture, scroll, 5840, 116); // the jump's animation
+      expect(placeholderIds(container)).toEqual([]);
+
+      vi.advanceTimersByTime(150);
+      scrollTo(fixture, scroll, 5840, 1_000);
+      scrollTo(fixture, scroll, 6480, 1_100); // the reader flings again
+
+      expect(placeholderIds(container).length).toBeGreaterThan(0);
+    });
+
+    it('does not take a height correction under steady reading for a fling', async () => {
+      const { fixture, container, scroll } = await flingFrom5000();
+      layOutRegion(scroll);
+      scrollTo(fixture, scroll, 5120, 100); // 1,200 px/s
+
+      // A row above the reader is measured 236 px taller; the list corrects, and the browser
+      // reports that together with the reader's next 120 px.
+      const row = container.querySelector('[data-mid="$70"]') as Element;
+      rowObserver().emit([resizeEntry(row, 300)]);
+      expect(st).toBe(5120 + 236);
+      scrollTo(fixture, scroll, 5120 + 236 + 120, 200);
+
+      expect(placeholderIds(container)).toEqual([]);
+    });
+
     it('ends the fling when the reader jumps to the newest message', async () => {
       const { fixture, container, scroll } = await flingFrom5000();
       scrollTo(fixture, scroll, 5640, 100);
@@ -369,6 +414,61 @@ describe('MessageListComponent: blank rows while scrolling fast', () => {
           '[data-placeholder-mid="$90"]',
         ) as HTMLElement;
         expect(placeholder.style.height).toBe('100px');
+      });
+
+      it('keeps the reader in place near the bottom, where the browser would clamp an early correction', async () => {
+        const rendered = await renderList({ flingPlaceholders: true });
+        const { fixture, container, scroll } = rendered;
+        const measuredAt100 = new Set(range(173, 192));
+        // A browser-like scroller: its height is what is rendered (spacers, rows at their
+        // real heights), and the position is clamped to it.
+        const px = (el: Element | null) =>
+          parseFloat((el as HTMLElement | null)?.style.height ?? '') || 0;
+        const scrollHeight = () => {
+          const [top, bottom] = Array.from(scroll.querySelectorAll('.vpad'));
+          let rows = 0;
+          for (const row of Array.from(
+            scroll.querySelectorAll('.msg[data-mid]'),
+          )) {
+            rows += measuredAt100.has(row.getAttribute('data-mid') ?? '')
+              ? 100
+              : EST;
+          }
+          for (const ph of Array.from(
+            scroll.querySelectorAll('[data-placeholder-mid]'),
+          )) {
+            rows += px(ph);
+          }
+          return px(top) + rows + px(bottom);
+        };
+        Object.defineProperty(scroll, 'scrollHeight', {
+          get: scrollHeight,
+          configurable: true,
+        });
+        Object.defineProperty(scroll, 'scrollTop', {
+          get: () => st,
+          set: (value: number) =>
+            (st = Math.max(0, Math.min(value, scrollHeight() - 600))),
+          configurable: true,
+        });
+        // 300 px above the bottom: rows $173–$199 in the window.
+        scrollTo(fixture, scroll, 200 * EST - 600 - 300, 0);
+        layOutRegion(scroll);
+
+        rowObserver().emit(
+          [...measuredAt100].map((id) =>
+            resizeEntry(
+              container.querySelector(`[data-mid="${id}"]`) as Element,
+              100,
+            ),
+          ),
+        );
+        fixture.detectChanges();
+        await fixture.whenStable();
+
+        // $173–$184 grew above the reader (12 × 36 px), then the 173 unmeasured rows above
+        // them came to count at the 100 px average (173 × 36 px): 11900 + 432 + 6228.
+        expect(st).toBe(18_560);
       });
 
       it('stays at the fixed estimate with the flag off', async () => {

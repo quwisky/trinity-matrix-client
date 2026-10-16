@@ -192,7 +192,7 @@ test.describe('Rows in a fast-scrolled timeline', () => {
     await loadWholeRoom(page);
 
     const timeline = page.locator('[data-message-scroller]');
-    const focused = await timeline.evaluate(async (el) => {
+    const result = await timeline.evaluate(async (el) => {
       const view = el.getBoundingClientRect();
       const row = Array.from(
         el.querySelectorAll<HTMLElement>('.msg[data-mid][tabindex]'),
@@ -202,19 +202,73 @@ test.describe('Rows in a fast-scrolled timeline', () => {
       });
       if (!row) return null;
       row.focus();
-      // A short, fast fling: 600 px in four frames, within the window's overscan.
-      for (let i = 0; i < 4; i += 1) {
-        el.scrollTop -= 150;
+      // A short fling at 8,000 px/s, timed by the clock rather than the frame rate so it is a
+      // fling on a slow machine too: 600 px, within the window's overscan.
+      let placeholders = 0;
+      let moved = 0;
+      let last = performance.now();
+      while (moved < 600) {
         await new Promise((r) => requestAnimationFrame(r));
+        const now = performance.now();
+        const step = Math.min(600 - moved, (8000 * (now - last)) / 1000);
+        last = now;
+        el.scrollTop -= step;
+        moved += step;
+        placeholders = Math.max(
+          placeholders,
+          el.querySelectorAll('[data-placeholder-mid]').length,
+        );
       }
-      return row.getAttribute('data-mid');
+      await new Promise((r) => requestAnimationFrame(r));
+      placeholders = Math.max(
+        placeholders,
+        el.querySelectorAll('[data-placeholder-mid]').length,
+      );
+      return { id: row.getAttribute('data-mid'), placeholders };
     });
-    expect(focused).not.toBeNull();
+    expect(result).not.toBeNull();
+    // It was a fling: rows entered as placeholders while the focused row stayed.
+    expect(result!.placeholders).toBeGreaterThan(0);
+    const focused = result!.id;
 
     // Through the fling and after it settles, the same row element keeps focus.
     await expect(timeline.locator(`.msg[data-mid="${focused}"]`)).toBeFocused();
     await expectRealRowsOnScreen(page);
     await expect(timeline.locator(`.msg[data-mid="${focused}"]`)).toBeFocused();
+  });
+
+  test('with the flag on, keyboard scrolling leaves no blank rows once it stops', async ({
+    page,
+    request,
+  }) => {
+    const runId = `${testResourceId('run')}keys`;
+    const seeded = await seedLongRoom(request, session.hs as string, runId);
+    await seedPreference(page, FLAG_KEY, 'true');
+    await login(page, seeded.credentials);
+    await openRoom(page, seeded.roomName);
+    await loadWholeRoom(page);
+    const timeline = page.locator('[data-message-scroller]');
+    // Keyboard focus in the timeline, on a row, as after tabbing to it.
+    await timeline.evaluate((el) =>
+      Array.from(el.querySelectorAll<HTMLElement>('.msg[data-mid][tabindex]'))
+        .at(-1)
+        ?.focus(),
+    );
+    const placeholders = timeline.locator('[data-placeholder-mid]');
+    // Blank rows are gone within the settle window after the scroll stops (allowing for the
+    // browser's smooth-scroll animation and a frame or two).
+    const settledSoon = () =>
+      expect(placeholders).toHaveCount(0, { timeout: 1_500 });
+
+    // PageUp held down: the key repeats while the list keeps scrolling.
+    for (let i = 0; i < 12; i += 1) await page.keyboard.press('PageUp');
+    await settledSoon();
+    // Home and End scroll the whole room smoothly.
+    await page.keyboard.press('Home');
+    await settledSoon();
+    await page.keyboard.press('End');
+    await settledSoon();
+    await expectRealRowsOnScreen(page);
   });
 
   test('with the flag off, every row mounts in full as it passes', async ({

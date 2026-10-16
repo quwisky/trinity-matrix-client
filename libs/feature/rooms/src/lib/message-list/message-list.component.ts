@@ -63,6 +63,9 @@ const MIN_MEASURED_FOR_ESTIMATE = 20;
 /** …and only when that average has moved this far, so the estimate does not churn. */
 const ESTIMATE_STEP_PX = 4;
 
+/** No row is a placeholder: one shared map, so the rows' reads stay stable between flings. */
+const NO_PLACEHOLDERS: ReadonlyMap<string, number> = new Map();
+
 /** Extra pixels rendered above and below the viewport to hide window-boundary churn. */
 const OVERSCAN_PX = 800;
 
@@ -174,6 +177,11 @@ export class MessageListComponent extends MessageListBase {
    * ({@link adaptEstimate}), since placeholders and spacers stand in at it during a fling.
    */
   private readonly rowEstimate = signal(ESTIMATED_ROW_HEIGHT_PX);
+  /**
+   * A jump (to an event, to unread, to the newest message) is scrolling until the list
+   * settles: its smooth scroll is the list's doing, not the reader flinging.
+   */
+  private jumping = false;
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly scrollActivity = inject(TimelineScrollActivity);
@@ -292,7 +300,7 @@ export class MessageListComponent extends MessageListBase {
   /** Each placeholder's height: the row's measured height, else the estimate. */
   protected readonly placeholderHeights = computed(() => {
     const ids = this.fling.placeholderIds();
-    if (ids.size === 0) return new Map<string, number>();
+    if (ids.size === 0) return NO_PLACEHOLDERS;
     this.heightVersion();
     const estimate = this.rowEstimate();
     return new Map(
@@ -522,6 +530,7 @@ export class MessageListComponent extends MessageListBase {
     this.bodyOverflow.clear();
     this.scrollActivity.reset();
     this.fling.end();
+    this.jumping = false;
     this.rowEstimate.set(ESTIMATED_ROW_HEIGHT_PX);
     this.scrollTop.set(0);
     this.heightVersion.update((v) => v + 1);
@@ -561,7 +570,7 @@ export class MessageListComponent extends MessageListBase {
     // How fast the reader moves the list. The list's own writes were taken out as it made
     // them (`writeScrollTop`), so this is the reader's movement alone.
     this.scrollActivity.moved(el.scrollTop, performance.now());
-    this.fling.moved(this.scrollActivity.speed);
+    if (!this.jumping) this.fling.moved(this.scrollActivity.speed);
     if (this.expectedProgrammaticScrollTop !== null) {
       if (Math.abs(el.scrollTop - this.expectedProgrammaticScrollTop) < 1) {
         this.expectedProgrammaticScrollTop = null;
@@ -623,15 +632,26 @@ export class MessageListComponent extends MessageListBase {
     }
     this.scrollIdle = setTimeout(() => {
       this.scrollIdle = null;
+      this.jumping = false;
       this.scrollActivity.settle();
       this.fling.end();
     }, SCROLL_IDLE_MS);
   }
 
+  /**
+   * Start a jump: end any fling and start none until the list settles. Arms the settle timer
+   * too, so a jump that scrolls nothing still ends.
+   */
+  private beginJump(): void {
+    this.fling.end();
+    this.jumping = true;
+    this.markScrolling();
+  }
+
   /** Jump back to the newest message (the jump-to-latest pill). */
   scrollToLatest(): void {
     this.cancelPendingJump();
-    this.fling.end();
+    this.beginJump();
     const el = this.scrollEl()?.nativeElement;
     if (!el) {
       return;
@@ -863,7 +883,9 @@ export class MessageListComponent extends MessageListBase {
   /**
    * Count unmeasured rows at `next` px, keeping the reader in place: every unmeasured row
    * wholly above the viewport changes height by the difference, so the position moves by
-   * that much times their number, as for a first measurement above the fold.
+   * that much times their number, as for a first measurement above the fold. The move is
+   * made after the render that resizes the spacers: before it, the scroller is still its
+   * old height, and the browser would clamp a position near its bottom.
    */
   private shiftEstimate(el: HTMLElement, next: number): void {
     const prev = this.rowEstimate();
@@ -877,9 +899,17 @@ export class MessageListComponent extends MessageListBase {
       if (!this.measured.has(ids[i])) above++;
     }
     this.rowEstimate.set(next);
-    if (above > 0 && !untracked(() => this.atBottomSig())) {
-      this.writeScrollTop(el, Math.max(0, st + (next - prev) * above));
-    }
+    if (above === 0 || untracked(() => this.atBottomSig())) return;
+    const delta = (next - prev) * above;
+    untracked(() =>
+      afterNextRender(
+        () => {
+          if (this.destroyRef.destroyed) return;
+          this.writeScrollTop(el, Math.max(0, el.scrollTop + delta));
+        },
+        { injector: this.injector },
+      ),
+    );
   }
 
   /**
@@ -996,9 +1026,10 @@ export class MessageListComponent extends MessageListBase {
     // Remembered so a width change can re-aim it: every branch below ends in a measurement
     // that is only correct for the layout at this instant. See `notePendingJump`.
     this.notePendingJump(messageId);
-    // A jump ends a fling. A target still shown as a placeholder has no `data-mid` yet, so it
-    // takes the path below and is revealed after the render that mounts it.
-    this.fling.end();
+    // A jump ends a fling and starts none while it scrolls. A target still shown as a
+    // placeholder has no `data-mid` yet, so it takes the path below and is revealed after the
+    // render that mounts it.
+    this.beginJump();
     // The jump is the reader's new position. A correction queued for the history restore
     // before it (a date jump pages history in right before jumping) would otherwise scroll
     // back to the old anchor and cancel the smooth scroll below.
@@ -1047,6 +1078,7 @@ export class MessageListComponent extends MessageListBase {
    * flash it; a no-op when it is not rendered.
    */
   private revealRow(el: HTMLElement, messageId: string): void {
+    this.beginJump();
     const target = el.querySelector(`[data-mid="${messageId}"]`);
     if (target) scrollToJumpTarget(target, el);
     this.flash(target);

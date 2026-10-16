@@ -269,7 +269,7 @@ function flagEntries(flags: FeatureFlagsService): readonly ConfigEntry[] {
       path: 'flags.flingPlaceholders',
       key: 'trinity.flags.fling-placeholders',
       description:
-        'Whether messages that fly past in a fast scroll show as blank rows until scrolling slows down, which uses less memory.',
+        'Whether messages that fly past in a fast scroll show as blank rows until scrolling slows down, which uses less memory. Works only with flags.virtualTimeline on.',
       read: () => flags.flingPlaceholders(),
       reset: () => flags.setFlingPlaceholders(DEFAULT_FLING_PLACEHOLDERS),
       ...flagSetting((on) => flags.setFlingPlaceholders(on)),
