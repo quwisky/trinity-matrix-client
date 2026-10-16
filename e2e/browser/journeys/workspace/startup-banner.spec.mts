@@ -370,6 +370,11 @@ test.describe('Global banner slot after sign-in', () => {
    * confirms it. Holding the secret-storage key read keeps the prompt a forecast while the
    * keyboard is tried. Once it is released the same prompt is revealed, and only then does
    * Tab reach its action.
+   *
+   * Time budget: the forecast holds the slot for `FORECAST_HOLD_MS` (3 s, in
+   * `@trinity/data-access/trust`) while no status is available. Everything from the Account
+   * becoming active after the reload to the Tab checks below must fit in that window, or
+   * the stored forecast is dropped and there is no hidden prompt left to test.
    */
   test('after a restart the hidden prompt takes no focus until it is confirmed at 390px', async ({
     page,
@@ -389,6 +394,8 @@ test.describe('Global banner slot after sign-in', () => {
     await holdTrustStatus(page, () => released);
     await page.reload();
     try {
+      // From here to the Tab checks: within FORECAST_HOLD_MS (3 s) of the Account
+      // becoming active, while the forecast still holds the slot.
       await expect(page.locator('button.channel').first()).toBeVisible();
       await expect(
         page.locator('trn-encryption-banner [data-forecast]'),
