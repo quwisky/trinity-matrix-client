@@ -826,12 +826,13 @@ export abstract class MessageListBase {
    */
   protected watchScrollerHeight(
     resized?: (height: number, scrollTop: number) => void,
+    wrote?: (delta: number) => void,
   ): void {
     const el = this.scrollEl()?.nativeElement;
     if (!el || this.stopHeightWatcher) {
       return;
     }
-    this.stopHeightWatcher = observeScrollerHeight(el, resized);
+    this.stopHeightWatcher = observeScrollerHeight(el, resized, wrote);
     this.listDestroyRef.onDestroy(() => this.stopHeightWatcher?.());
   }
 

@@ -22,6 +22,7 @@ import { BodyOverflowObserver } from '../message-row/body-overflow';
 import { MessageListBase, type JumpOptions } from './message-list-base';
 import { scrollToJumpTarget } from './jump-scroll';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
+import { TimelineMediaGate } from '../shared/timeline-media-gate';
 import { scrollBehavior } from '@trinity/util/ui';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { DropOverlayComponent } from './drop-overlay/drop-overlay.component';
@@ -106,9 +107,10 @@ const SCROLL_IDLE_MS = 150;
       outputs: [],
     },
   ],
-  // Rows read the scroll activity to hold their hover work back while the list scrolls, and
-  // share one ResizeObserver for every row body in this list (Show more).
-  providers: [TimelineScrollActivity, BodyOverflowObserver],
+  // Rows read the scroll activity to hold their hover work back while the list scrolls, wait
+  // on the media gate to load their images, and share one ResizeObserver for every row body
+  // in this list (Show more).
+  providers: [TimelineScrollActivity, TimelineMediaGate, BodyOverflowObserver],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss',
 })
@@ -159,6 +161,7 @@ export class MessageListComponent extends MessageListBase {
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly scrollActivity = inject(TimelineScrollActivity);
+  private readonly mediaGate = inject(TimelineMediaGate);
   private readonly bodyOverflow = inject(BodyOverflowObserver);
   private readonly rowHosts = viewChildren(MessageRowComponent, {
     read: ElementRef,
@@ -222,6 +225,12 @@ export class MessageListComponent extends MessageListBase {
 
   /** Render only the rows near the viewport. Off (Settings → Experimental) renders every loaded row. */
   readonly windowed = input(true);
+
+  /**
+   * Hold row images back until their row is near the viewport and the list is no longer
+   * flinging ("Load images after fast scrolling", Settings → Experimental). Off by default.
+   */
+  readonly deferMediaWhileScrolling = input(false);
 
   /**
    * The room already shows its own empty-room prompt, so the list adds no empty line. Bind it
@@ -366,8 +375,7 @@ export class MessageListComponent extends MessageListBase {
 
       requestAnimationFrame(() => {
         if (stickToBottom) {
-          el.scrollTop = el.scrollHeight;
-          this.scrollTop.set(el.scrollTop);
+          this.writeScrollTop(el, el.scrollHeight);
         }
 
         const notFull = el.scrollHeight <= el.clientHeight + 1;
@@ -406,6 +414,10 @@ export class MessageListComponent extends MessageListBase {
       }
     });
 
+    // An effect, not a computed: turning the flag off must also release the loads the gate
+    // holds, and the gate is plain state that scroll events read without change detection.
+    effect(() => this.mediaGate.setEnabled(this.deferMediaWhileScrolling()));
+
     // Keep the observed set of rendered rows in sync with the window.
     effect(() => {
       const hosts = this.rowHosts();
@@ -419,14 +431,19 @@ export class MessageListComponent extends MessageListBase {
         return;
       }
       this.viewportH.set(el.clientHeight);
+      this.mediaGate.connect(el);
       if (typeof ResizeObserver === 'undefined') {
         return; // jsdom / SSR — degrades to render-all via estimate heights.
       }
       this.ro = new ResizeObserver((entries) => this.onRowsResized(entries));
-      this.watchScrollerHeight((height, scrollTop) => {
-        this.viewportH.set(height);
-        this.scrollTop.set(scrollTop);
-      });
+      this.watchScrollerHeight(
+        (height, scrollTop) => {
+          this.viewportH.set(height);
+          this.scrollTop.set(scrollTop);
+        },
+        // The keyboard or composer pin is the list's own write, like `writeScrollTop`.
+        (delta) => this.scrollActivity.shifted(delta),
+      );
       this.watchScrollerWidth();
       this.reconcileObserved(this.rowHosts());
     });
@@ -452,6 +469,7 @@ export class MessageListComponent extends MessageListBase {
     // starts from the top with fresh estimates.
     this.measured.clear();
     this.bodyOverflow.clear();
+    this.scrollActivity.reset();
     this.scrollTop.set(0);
     this.heightVersion.update((v) => v + 1);
   }
@@ -473,8 +491,7 @@ export class MessageListComponent extends MessageListBase {
       afterNextRender(
         () => {
           if (this.destroyRef.destroyed) return;
-          el.scrollTop = Math.max(0, el.scrollHeight - fromEnd);
-          this.scrollTop.set(el.scrollTop);
+          this.writeScrollTop(el, Math.max(0, el.scrollHeight - fromEnd));
         },
         { injector: this.injector },
       ),
@@ -488,6 +505,9 @@ export class MessageListComponent extends MessageListBase {
       return;
     }
     this.markScrolling();
+    // How fast the reader moves the list. The list's own writes were taken out as it made
+    // them (`writeScrollTop`), so this is the reader's movement alone.
+    this.scrollActivity.moved(el.scrollTop, performance.now());
     if (this.expectedProgrammaticScrollTop !== null) {
       if (Math.abs(el.scrollTop - this.expectedProgrammaticScrollTop) < 1) {
         this.expectedProgrammaticScrollTop = null;
@@ -569,10 +589,7 @@ export class MessageListComponent extends MessageListBase {
     // Pin the window to the bottom, then scroll to the end once it has re-rendered
     // the newest rows (the spacer heights shift when the window moves).
     this.atBottomSig.set(true);
-    requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-      this.scrollTop.set(el.scrollTop);
-    });
+    requestAnimationFrame(() => this.writeScrollTop(el, el.scrollHeight));
   }
 
   /**
@@ -743,8 +760,7 @@ export class MessageListComponent extends MessageListBase {
     }
     if (atBottom) {
       // Stay pinned to the newest message as measured heights settle.
-      el.scrollTop = el.scrollHeight;
-      this.scrollTop.set(el.scrollTop);
+      this.writeScrollTop(el, el.scrollHeight);
     } else {
       // While scrolled up, a change to a row ABOVE the fold shoves the read
       // position (native anchoring is off) — a genuine reflow OR a first
@@ -758,12 +774,28 @@ export class MessageListComponent extends MessageListBase {
         this.rowsRegionTop(el),
       );
       if (delta !== 0) {
-        el.scrollTop = Math.max(0, st + delta);
-        this.scrollTop.set(el.scrollTop);
+        this.writeScrollTop(el, Math.max(0, st + delta));
       }
     }
     this.revealFocusIn(resized);
     this.heightVersion.update((v) => v + 1);
+  }
+
+  /**
+   * Set the scroll position from the list's own code (a pin, a correction, a restore, a
+   * jump), telling the scroll activity at once so the move never reads as the reader's. The
+   * keyboard/composer pin (`observeScrollerHeight`) reports its write the same way.
+   *
+   * Known exceptions, which the speed estimate sees as movement: smooth `scrollIntoView`
+   * calls (`scrollToJumpTarget`, `revealFocusIn`, a row's Show less), whose browser animation
+   * has no single write to take out, and the mobile action sheet's own viewport writes
+   * (`MessageSheetViewportSession`), which run while a modal sheet covers the list.
+   */
+  private writeScrollTop(el: HTMLElement, top: number): void {
+    const before = el.scrollTop;
+    el.scrollTop = top;
+    this.scrollActivity.shifted(el.scrollTop - before);
+    this.scrollTop.set(el.scrollTop);
   }
 
   /**
@@ -817,20 +849,21 @@ export class MessageListComponent extends MessageListBase {
     const anchor = Array.from(
       el.querySelectorAll<HTMLElement>('.msg[data-mid]'),
     ).find((row) => row.getAttribute('data-mid') === anchorId);
+    let top: number;
     if (anchor) {
       const currentOffset =
         anchor.getBoundingClientRect().top - el.getBoundingClientRect().top;
-      el.scrollTop = Math.max(0, el.scrollTop + currentOffset - anchorOffset);
+      top = Math.max(0, el.scrollTop + currentOffset - anchorOffset);
     } else if (idx >= 0) {
-      el.scrollTop = Math.max(
+      top = Math.max(
         0,
         this.rowsRegionTop(el) + offsetOf(this.prefix(), idx) - anchorOffset,
       );
     } else {
-      el.scrollTop = el.scrollHeight - prevHeight + prevTop;
+      top = el.scrollHeight - prevHeight + prevTop;
     }
+    this.writeScrollTop(el, top);
     this.expectedProgrammaticScrollTop = el.scrollTop;
-    this.scrollTop.set(el.scrollTop);
     // A recent jump wins over the anchor: the page the jump's own scroll asked for keeps the
     // anchored row in place, which can leave the target off its aim (half-hidden at the top
     // when it is tall). Re-aim it; a no-op once the jump is old or the reader has moved.
@@ -885,13 +918,15 @@ export class MessageListComponent extends MessageListBase {
       }
       return;
     }
-    el.scrollTop = Math.max(
-      0,
-      this.rowsRegionTop(el) +
-        offsetOf(this.prefix(), idx) -
-        el.clientHeight / 2,
+    this.writeScrollTop(
+      el,
+      Math.max(
+        0,
+        this.rowsRegionTop(el) +
+          offsetOf(this.prefix(), idx) -
+          el.clientHeight / 2,
+      ),
     );
-    this.scrollTop.set(el.scrollTop);
     afterNextRender(() => this.revealRow(el, messageId), {
       injector: this.injector,
     });

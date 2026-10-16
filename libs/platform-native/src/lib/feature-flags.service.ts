@@ -1,15 +1,22 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, type WritableSignal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
 import {
+  combinePreferenceInitialization,
   preferenceInitializationDefaulted,
   preferenceInitializationReady,
   type PreferenceInitializationOutcome,
+  type PreferenceInitializationRead,
 } from './preference-initialization';
 
 const VIRTUAL_TIMELINE_KEY = 'trinity.flags.virtual-timeline';
+const DEFER_MEDIA_WHILE_SCROLLING_KEY =
+  'trinity.flags.defer-media-while-scrolling';
 
 /** The windowed timeline is on unless the user opts out. */
 export const DEFAULT_VIRTUAL_TIMELINE = true;
+
+/** Timeline images load as their rows mount unless the user opts in to waiting. */
+export const DEFAULT_DEFER_MEDIA_WHILE_SCROLLING = false;
 
 /**
  * User-toggleable experimental feature flags, persisted across launches.
@@ -23,6 +30,10 @@ export const DEFAULT_VIRTUAL_TIMELINE = true;
 @Injectable({ providedIn: 'root' })
 export class FeatureFlagsService {
   private readonly _virtualTimeline = signal(DEFAULT_VIRTUAL_TIMELINE);
+  private readonly _deferMediaWhileScrolling = signal(
+    DEFAULT_DEFER_MEDIA_WHILE_SCROLLING,
+  );
+
   /**
    * Windowed (virtualized) message timeline: render only the on-screen rows plus
    * spacers so the DOM stays bounded in long rooms.
@@ -35,28 +46,76 @@ export class FeatureFlagsService {
    */
   readonly virtualTimeline = this._virtualTimeline.asReadonly();
 
+  /**
+   * Timeline images (and video posters) wait to load until their row is near the
+   * viewport and the list is no longer scrolling fast. A fast scroll otherwise fetches,
+   * decodes and uploads to the GPU every image it passes. OFF by default: an opt-in in
+   * Settings → Experimental.
+   */
+  readonly deferMediaWhileScrolling =
+    this._deferMediaWhileScrolling.asReadonly();
+
   /** Read the saved flags and apply them. Call once at app startup. */
   async init(): Promise<PreferenceInitializationOutcome> {
-    try {
-      const { value } = await Preferences.get({ key: VIRTUAL_TIMELINE_KEY });
-      if (value !== null) {
-        if (value !== 'true' && value !== 'false') {
-          return preferenceInitializationDefaulted('invalid-stored-value');
-        }
-        this._virtualTimeline.set(value === 'true');
-      }
-      return preferenceInitializationReady;
-    } catch {
-      return preferenceInitializationDefaulted('storage-unavailable');
-    }
+    const outcomes = await Promise.all([
+      this.restore(VIRTUAL_TIMELINE_KEY, this._virtualTimeline),
+      this.restore(
+        DEFER_MEDIA_WHILE_SCROLLING_KEY,
+        this._deferMediaWhileScrolling,
+      ),
+    ]);
+    return combinePreferenceInitialization(outcomes);
   }
 
   /** Toggle + persist the virtualized-timeline flag. */
   setVirtualTimeline(on: boolean): void {
     this._virtualTimeline.set(on);
-    void Preferences.set({
-      key: VIRTUAL_TIMELINE_KEY,
-      value: String(on),
-    }).catch(() => undefined);
+    this.persist(VIRTUAL_TIMELINE_KEY, on);
+  }
+
+  /** Toggle + persist whether timeline images wait for a fast scroll to slow down. */
+  setDeferMediaWhileScrolling(on: boolean): void {
+    this._deferMediaWhileScrolling.set(on);
+    this.persist(DEFER_MEDIA_WHILE_SCROLLING_KEY, on);
+  }
+
+  /** Apply one stored flag, keeping its default when nothing valid is stored. */
+  private async restore(
+    key: string,
+    flag: WritableSignal<boolean>,
+  ): Promise<PreferenceInitializationOutcome> {
+    const { value, outcome } = await this.read(key);
+    if (value !== null) flag.set(value);
+    return outcome;
+  }
+
+  private async read(
+    key: string,
+  ): Promise<PreferenceInitializationRead<boolean | null>> {
+    try {
+      const { value } = await Preferences.get({ key });
+      if (value === null) {
+        return { value: null, outcome: preferenceInitializationReady };
+      }
+      if (value !== 'true' && value !== 'false') {
+        return {
+          value: null,
+          outcome: preferenceInitializationDefaulted('invalid-stored-value'),
+        };
+      }
+      return {
+        value: value === 'true',
+        outcome: preferenceInitializationReady,
+      };
+    } catch {
+      return {
+        value: null,
+        outcome: preferenceInitializationDefaulted('storage-unavailable'),
+      };
+    }
+  }
+
+  private persist(key: string, on: boolean): void {
+    void Preferences.set({ key, value: String(on) }).catch(() => undefined);
   }
 }

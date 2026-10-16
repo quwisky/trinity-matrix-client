@@ -324,6 +324,83 @@ describe('MediaPipeline', () => {
     );
   });
 
+  describe('sameMedia', () => {
+    const photo = {
+      kind: 'image' as const,
+      mxc: 'mxc://example.org/photo',
+      file: null,
+      filename: 'photo.png',
+      mimeType: 'image/png',
+      thumbnailMxc: null,
+      thumbnailFile: null,
+    };
+
+    it('tells one message presented twice (a receipt or reaction re-projected it) as the same media', () => {
+      const { pipeline, client } = setup();
+      const first = pipeline.present(photo, client as never);
+      const again = pipeline.present({ ...photo }, client as never);
+
+      expect(first).not.toBe(again);
+      expect(pipeline.sameMedia(first, again)).toBe(true);
+    });
+
+    it('tells an edit that swapped the file, its thumbnail, or its account apart', () => {
+      const { pipeline, client } = setup();
+      const first = pipeline.present(photo, client as never);
+
+      expect(
+        pipeline.sameMedia(
+          first,
+          pipeline.present(
+            { ...photo, mxc: 'mxc://example.org/other' },
+            client as never,
+          ),
+        ),
+      ).toBe(false);
+      expect(
+        pipeline.sameMedia(
+          first,
+          pipeline.present(
+            { ...photo, thumbnailMxc: 'mxc://example.org/thumb' },
+            client as never,
+          ),
+        ),
+      ).toBe(false);
+      expect(
+        pipeline.sameMedia(first, pipeline.present(photo, {} as never)),
+      ).toBe(false);
+    });
+
+    it('compares encrypted media by the file it points at', () => {
+      const { pipeline, client } = setup();
+      const file = { url: 'mxc://example.org/cipher' } as never;
+      const encrypted = { ...photo, mxc: null, file };
+      const first = pipeline.present(encrypted, client as never);
+
+      expect(
+        pipeline.sameMedia(
+          first,
+          pipeline.present(
+            {
+              ...encrypted,
+              file: { url: 'mxc://example.org/cipher' } as never,
+            },
+            client as never,
+          ),
+        ),
+      ).toBe(true);
+      expect(
+        pipeline.sameMedia(
+          first,
+          pipeline.present(
+            { ...encrypted, file: { url: 'mxc://example.org/other' } as never },
+            client as never,
+          ),
+        ),
+      ).toBe(false);
+    });
+  });
+
   it('drops a rendition from the cache under the client that presented it', () => {
     const { pipeline, bytes, client, matrix } = setup();
     const media = {

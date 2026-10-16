@@ -1,3 +1,4 @@
+import { Injector, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   TrnSurfaceService,
@@ -25,6 +26,12 @@ import {
   HostFileExportService,
   type HostOperationOutcome,
 } from '@trinity/runtime/host';
+import { TimelineMediaGate } from '../shared/timeline-media-gate';
+import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
+import {
+  TestIntersectionObserver,
+  stubIntersectionObserver,
+} from '../testing/intersection-observer.stub';
 
 function imageMedia(): PresentedMediaReference {
   return {
@@ -42,6 +49,7 @@ interface MediaServiceStub {
   unpin: Mock;
   drop: Mock;
   releaseAll: Mock;
+  sameMedia: Mock;
 }
 
 /** The lightbox renders into the CDK overlay container, outside the fixture's own DOM. */
@@ -71,6 +79,11 @@ describe('MediaAttachmentComponent', () => {
       unpin: vi.fn(),
       drop: vi.fn(),
       releaseAll: vi.fn(),
+      // Same bytes when the file is the same: one message projected twice.
+      sameMedia: vi.fn(
+        (a: PresentedMediaReference, b: PresentedMediaReference) =>
+          a.kind === b.kind && a.filename === b.filename,
+      ),
     };
     // HostFileExportService owns the host contract; stub it so the component test
     // doesn't touch the object-URL API / native plugins.
@@ -85,7 +98,10 @@ describe('MediaAttachmentComponent', () => {
    * configured on the `mediaService` / `fileSave` stubs *before* calling this
    * (render triggers the initial change detection that fires the resolve effect).
    */
-  function renderMedia(media: PresentedMediaReference) {
+  function renderMedia(
+    media: PresentedMediaReference,
+    extraProviders: Provider[] = [],
+  ) {
     return render(MediaAttachmentComponent, {
       inputs: { media },
       // MockProvider auto-mocks the service; the second arg wires our spies in
@@ -94,6 +110,7 @@ describe('MediaAttachmentComponent', () => {
         MockProvider(MediaPipeline, mediaService),
         MockProvider(HostFileExportService, fileSave),
         MockProvider(TrnToastService, toast),
+        ...extraProviders,
       ],
     });
   }
@@ -670,5 +687,256 @@ describe('MediaAttachmentComponent', () => {
     saveStream.complete();
     fixture.componentInstance.download();
     expect(fileSave.save).toHaveBeenCalledTimes(2);
+  });
+
+  describe('in a timeline that loads images after fast scrolling', () => {
+    let activity: TimelineScrollActivity;
+    let gate: TimelineMediaGate;
+
+    beforeEach(() => {
+      stubIntersectionObserver();
+      // The list's own pair, as its rows find them; built before render configures TestBed.
+      const list = Injector.create({
+        providers: [TimelineScrollActivity, TimelineMediaGate],
+      });
+      activity = list.get(TimelineScrollActivity);
+      gate = list.get(TimelineMediaGate);
+      gate.connect(document.createElement('div'));
+    });
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    /** Render inside that timeline. */
+    function renderInTimeline(media: PresentedMediaReference) {
+      return renderMedia(media, [
+        { provide: TimelineScrollActivity, useValue: activity },
+        { provide: TimelineMediaGate, useValue: gate },
+      ]);
+    }
+
+    /** The list moves at `pxPerS` (one 100 ms sample replaces the estimate outright). */
+    function fling(pxPerS = 8_000): void {
+      activity.start();
+      activity.moved(0, 0);
+      activity.moved(pxPerS / 10, 100);
+    }
+
+    /** The gate's observer reports the attachment within reach of the viewport. */
+    function comesNear(host: Element): void {
+      const [observer] = TestIntersectionObserver.instances;
+      observer.report(host, true);
+    }
+
+    it('loads on render as before while the flag is off', async () => {
+      fling();
+      const media = imageMedia();
+
+      const { fixture } = await renderInTimeline(media);
+
+      expect(mediaService.resolveMedia).toHaveBeenCalledExactlyOnceWith(
+        media,
+        'thumbnail',
+      );
+      expect(fixture.componentInstance.src()).toBe('blob:thumb');
+    });
+
+    it('leaves a thumbnail still loading to finish while the flag is off', async () => {
+      const thumb = new Subject<string>();
+      mediaService.resolveMedia.mockReturnValue(thumb.asObservable());
+      const { fixture } = await renderInTimeline(imageMedia());
+
+      fixture.destroy();
+
+      expect(mediaService.drop).not.toHaveBeenCalled();
+    });
+
+    describe('with the flag on', () => {
+      beforeEach(() => gate.setEnabled(true));
+
+      it('shows the skeleton while the list flings, and loads once the scroll settles', async () => {
+        fling();
+        const media = imageMedia();
+        const { fixture, container } = await renderInTimeline(media);
+        comesNear(fixture.nativeElement);
+
+        expect(mediaService.resolveMedia).not.toHaveBeenCalled();
+        expect(container.querySelector('.media__skeleton')).not.toBeNull();
+
+        activity.settle();
+        fixture.detectChanges();
+
+        expect(mediaService.resolveMedia).toHaveBeenCalledExactlyOnceWith(
+          media,
+          'thumbnail',
+        );
+        expect(fixture.componentInstance.src()).toBe('blob:thumb');
+        expect(container.querySelector('img.media__img')).not.toBeNull();
+      });
+
+      it('loads at once when the list is still and the row is near the viewport', async () => {
+        const { fixture } = await renderInTimeline(imageMedia());
+
+        comesNear(fixture.nativeElement);
+
+        expect(fixture.componentInstance.src()).toBe('blob:thumb');
+      });
+
+      it('never loads a row that is gone before the scroll settles', async () => {
+        fling();
+        const { fixture } = await renderInTimeline(imageMedia());
+        comesNear(fixture.nativeElement);
+
+        fixture.destroy();
+        activity.settle();
+
+        expect(mediaService.resolveMedia).not.toHaveBeenCalled();
+      });
+
+      it('cancels a thumbnail still loading when its row is destroyed', async () => {
+        const thumb = new Subject<string>();
+        mediaService.resolveMedia.mockReturnValue(thumb.asObservable());
+        const observedAtDrop: boolean[] = [];
+        mediaService.drop.mockImplementation(() =>
+          observedAtDrop.push(thumb.observed),
+        );
+        const media = imageMedia();
+        const { fixture } = await renderInTimeline(media);
+        comesNear(fixture.nativeElement);
+        expect(thumb.observed).toBe(true);
+
+        fixture.destroy();
+
+        // Let go first: MediaService cancels a resolve only once nobody waits for it.
+        expect(mediaService.drop).toHaveBeenCalledExactlyOnceWith(
+          media,
+          'thumbnail',
+          null,
+        );
+        expect(observedAtDrop).toEqual([false]);
+      });
+
+      it('does not cancel a thumbnail that already loaded when its row is destroyed', async () => {
+        const { fixture } = await renderInTimeline(imageMedia());
+        comesNear(fixture.nativeElement);
+
+        fixture.destroy();
+
+        // The cached URL stays for the next row that shows it; only the pin goes.
+        expect(mediaService.drop).not.toHaveBeenCalled();
+        expect(mediaService.unpin).toHaveBeenCalledWith('blob:thumb');
+      });
+
+      it('keeps showing a loaded image when its message is re-projected mid-fling', async () => {
+        const { fixture } = await renderInTimeline(imageMedia());
+        comesNear(fixture.nativeElement);
+        mediaService.resolveMedia.mockClear();
+        fling();
+
+        const reprojected = { ...imageMedia(), id: 'presented-media-again' };
+        fixture.componentRef.setInput('media', reprojected);
+        TestBed.tick();
+
+        expect(mediaService.resolveMedia).not.toHaveBeenCalled();
+        expect(fixture.componentInstance.src()).toBe('blob:thumb');
+      });
+
+      it('keeps a thumbnail loading when its message is re-projected (a receipt, a reaction)', async () => {
+        const thumb = new Subject<string>();
+        mediaService.resolveMedia.mockReturnValue(thumb.asObservable());
+        const { fixture } = await renderInTimeline(imageMedia());
+        comesNear(fixture.nativeElement);
+
+        fixture.componentRef.setInput('media', {
+          ...imageMedia(),
+          id: 'presented-media-again',
+        });
+        TestBed.tick();
+
+        // Neither cancelled nor started again: the one download carries on.
+        expect(mediaService.drop).not.toHaveBeenCalled();
+        expect(mediaService.resolveMedia).toHaveBeenCalledTimes(1);
+        expect(thumb.observed).toBe(true);
+        thumb.next('blob:thumb');
+        expect(fixture.componentInstance.src()).toBe('blob:thumb');
+      });
+
+      it('retries a failed thumbnail when its message is re-projected', async () => {
+        mediaService.resolveMedia.mockReturnValueOnce(
+          throwError(() => new Error('offline')),
+        );
+        const { fixture } = await renderInTimeline(imageMedia());
+        comesNear(fixture.nativeElement);
+        expect(fixture.componentInstance.hasError()).toBe(true);
+
+        fixture.componentRef.setInput('media', {
+          ...imageMedia(),
+          id: 'presented-media-again',
+        });
+        TestBed.tick();
+        comesNear(fixture.nativeElement);
+
+        expect(mediaService.resolveMedia).toHaveBeenCalledTimes(2);
+        expect(fixture.componentInstance.hasError()).toBe(false);
+        expect(fixture.componentInstance.src()).toBe('blob:thumb');
+      });
+
+      it('swaps the load when an edit changes the image', async () => {
+        const thumb = new Subject<string>();
+        mediaService.resolveMedia.mockReturnValueOnce(thumb.asObservable());
+        const first = imageMedia();
+        const { fixture } = await renderInTimeline(first);
+        comesNear(fixture.nativeElement);
+
+        const edited = {
+          ...imageMedia(),
+          id: 'presented-media-edited',
+          filename: 'other.png',
+        };
+        fixture.componentRef.setInput('media', edited);
+        TestBed.tick();
+        comesNear(fixture.nativeElement);
+
+        expect(mediaService.drop).toHaveBeenCalledExactlyOnceWith(
+          first,
+          'thumbnail',
+          null,
+        );
+        expect(mediaService.resolveMedia).toHaveBeenLastCalledWith(
+          edited,
+          'thumbnail',
+        );
+      });
+
+      it('holds a video poster the same way', async () => {
+        fling();
+        const video = {
+          ...imageMedia(),
+          kind: 'video',
+          filename: 'clip.mp4',
+          mimeType: 'video/mp4',
+          hasThumbnail: true,
+        } as PresentedMediaReference;
+        const { fixture } = await renderInTimeline(video);
+        comesNear(fixture.nativeElement);
+        expect(mediaService.resolveMedia).not.toHaveBeenCalled();
+
+        activity.settle();
+
+        expect(mediaService.resolveMedia).toHaveBeenCalledExactlyOnceWith(
+          video,
+          'thumbnail',
+        );
+        expect(fixture.componentInstance.poster()).toBe('blob:thumb');
+      });
+
+      it('loads what it held once the flag is turned off', async () => {
+        fling();
+        const { fixture } = await renderInTimeline(imageMedia());
+
+        gate.setEnabled(false);
+
+        expect(fixture.componentInstance.src()).toBe('blob:thumb');
+      });
+    });
   });
 });

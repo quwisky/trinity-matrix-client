@@ -170,10 +170,11 @@
              shows the skeleton, or the unavailable error with Retry. Everything needing a real
              room stays behind activeRoom(): the composer (composerEnabled) and the panels.
 
-             The experimental flag only switches windowing. Flipping it re-windows this same
-             list in place, so the reader keeps their position. -->
+             The experimental flags only switch windowing and when row images load. Flipping
+             either changes this same list in place, so the reader keeps their position. -->
           <trn-message-list
             [windowed]="flags.virtualTimeline()"
+            [deferMediaWhileScrolling]="flags.deferMediaWhileScrolling()"
             [introShown]="roomIntro()"
             [messages]="timeline.messages()"
             [threadSummaries]="threads.summaries()"

@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { render } from '@trinity/testing';
+import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { TrnSwitchComponent } from '@trinity/components/controls';
@@ -10,15 +10,32 @@ import { ExperimentalSettingsComponent } from './experimental-settings.component
 
 describe('ExperimentalSettingsComponent', () => {
   let virtualTimeline: ReturnType<typeof signal<boolean>>;
+  let deferMediaWhileScrolling: ReturnType<typeof signal<boolean>>;
 
   beforeEach(() => {
     virtualTimeline = signal(false);
+    deferMediaWhileScrolling = signal(false);
   });
 
   function renderPage() {
     return render(ExperimentalSettingsComponent, {
-      providers: [MockProvider(FeatureFlagsService, { virtualTimeline })],
+      providers: [
+        MockProvider(FeatureFlagsService, {
+          virtualTimeline,
+          deferMediaWhileScrolling,
+        }),
+      ],
     });
+  }
+
+  /** The switch inside one flag's row. */
+  function switchIn(
+    fixture: Awaited<ReturnType<typeof renderPage>>['fixture'],
+    testId: string,
+  ): TrnSwitchComponent {
+    return fixture.debugElement
+      .query(By.css(`[data-testid=${testId}]`))
+      .query(By.directive(TrnSwitchComponent)).componentInstance;
   }
 
   it('reflects and toggles the virtualized-timeline flag', async () => {
@@ -41,6 +58,29 @@ describe('ExperimentalSettingsComponent', () => {
     control.componentInstance.checkedChange.emit(false);
     expect(
       TestBed.inject(FeatureFlagsService).setVirtualTimeline,
+    ).toHaveBeenCalledWith(false);
+  });
+
+  it('offers loading images after fast scrolling as an opt-in, and toggles it', async () => {
+    const { fixture } = await renderPage();
+
+    // Named by its own label, with the description that says what it is for.
+    const control = screen.getByRole('switch', {
+      name: 'Load images after fast scrolling',
+    });
+    expect(control).toHaveAccessibleDescription(
+      'Images in the timeline wait until scrolling slows down, which uses less memory.',
+    );
+    const toggle = switchIn(fixture, 'flag-defer-media');
+    expect(toggle.checked()).toBe(false);
+
+    deferMediaWhileScrolling.set(true);
+    fixture.detectChanges();
+    expect(toggle.checked()).toBe(true);
+
+    toggle.checkedChange.emit(false);
+    expect(
+      TestBed.inject(FeatureFlagsService).setDeferMediaWhileScrolling,
     ).toHaveBeenCalledWith(false);
   });
 });

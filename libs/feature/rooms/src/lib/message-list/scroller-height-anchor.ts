@@ -8,6 +8,8 @@
 export function observeScrollerHeight(
   element: HTMLElement,
   resized?: (height: number, scrollTop: number) => void,
+  /** Told how far the pin moved the scroll position, as it moves it (not the reader's doing). */
+  wrote?: (delta: number) => void,
 ): () => void {
   let lastHeight = element.clientHeight;
   let pendingFrame: number | null = null;
@@ -50,7 +52,9 @@ export function observeScrollerHeight(
         resized?.(element.clientHeight, element.scrollTop);
         return;
       }
+      const before = element.scrollTop;
       element.scrollTop = element.scrollHeight - element.clientHeight;
+      wrote?.(element.scrollTop - before);
       pendingScrollTop = null;
       resized?.(element.clientHeight, element.scrollTop);
     });

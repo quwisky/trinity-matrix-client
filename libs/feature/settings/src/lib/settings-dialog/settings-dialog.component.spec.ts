@@ -127,7 +127,12 @@ describe('SettingsDialogComponent', () => {
 
   it('titles the page with the open section, not with Settings', async () => {
     TestBed.overrideProvider(FeatureFlagsService, {
-      useValue: { virtualTimeline: signal(false), setVirtualTimeline: vi.fn() },
+      useValue: {
+        virtualTimeline: signal(false),
+        setVirtualTimeline: vi.fn(),
+        deferMediaWhileScrolling: signal(false),
+        setDeferMediaWhileScrolling: vi.fn(),
+      },
     });
     const fixture = TestBed.createComponent(SettingsDialogComponent);
     fixture.componentRef.setInput('initialSection', 'experimental');
@@ -144,7 +149,12 @@ describe('SettingsDialogComponent', () => {
 
   it('renders a section inside the layout, so its groups register as parts', async () => {
     TestBed.overrideProvider(FeatureFlagsService, {
-      useValue: { virtualTimeline: signal(false), setVirtualTimeline: vi.fn() },
+      useValue: {
+        virtualTimeline: signal(false),
+        setVirtualTimeline: vi.fn(),
+        deferMediaWhileScrolling: signal(false),
+        setDeferMediaWhileScrolling: vi.fn(),
+      },
     });
     const fixture = TestBed.createComponent(SettingsDialogComponent);
     fixture.componentRef.setInput('initialSection', 'experimental');
