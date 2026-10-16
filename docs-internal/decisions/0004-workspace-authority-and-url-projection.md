@@ -17,7 +17,10 @@ pane is showing. Room and Space identifiers use the existing base64url encoding 
 work through the PWA and Electron fallbacks. A deep-linked Account overrides Account Runtime's
 persisted Active selection. Addressable Workspace coordinates are never recovered from a second
 preference store; persistence may fill only non-addressable presentation preferences. Invalid
-combinations and unavailable Rooms or Spaces repair to a safe, canonical list destination.
+combinations and unavailable Rooms repair to a safe, canonical list destination. An unavailable
+Space repairs to Recent, keeping a Room its Account holds; a Space its Accounts have not synced
+with their homeserver yet is kept until they have, and a selected Space that becomes unavailable
+later is repaired the same way.
 
 Every transition is a cold, finite RxJS command. It resolves the destination against the exact
 Account and writes the canonical URL as Account Runtime preparation, so a rejected route cancels
