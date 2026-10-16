@@ -75,18 +75,16 @@ export function sameAccountSet(
 }
 
 /**
- * Which signed-in accounts the room list, rail and space pills draw from — the user's
- * mixed-account selection.
+ * Which signed-in accounts the room list, rail and space pills draw from (the mixed-account
+ * selection).
  *
- * The **active** account is always included: it is the one every action runs as (sending,
- * creating rooms, receipts), so hiding its rooms while still posting as it would be
- * incoherent, and it rules out an empty selection. Everything else is opt-in.
+ * The **active** account is always included: every action runs as it, so hiding its rooms
+ * would be incoherent, and it rules out an empty selection.
  *
- * The stored selection is kept raw and intersected with the live accounts on read, so an
- * account that is signed out simply stops contributing (and returns to the mix if it is
- * added back) rather than being silently forgotten mid-session. Stale ids are deliberately
- * NOT pruned on write — a soft-logged-out account is absent from `accountIds()`, and
- * dropping it there would discard the user's pick for good.
+ * The stored selection is kept raw and intersected with the live accounts on read, so a
+ * signed-out account stops contributing and returns if added back. Stale ids are NOT pruned
+ * on write: a soft-logged-out account is absent from `accountIds()`, and pruning would
+ * discard the user's pick for good.
  */
 @Injectable({ providedIn: 'root' })
 export class AccountScopeService {
@@ -104,10 +102,9 @@ export class AccountScopeService {
   );
 
   /**
-   * The accounts actually shown: the stored selection ∩ signed-in accounts, plus the active
-   * account. Carries a set-equality check so a recompute that yields the same members does
-   * not churn its consumers — the projections below re-attach per-account listeners on every
-   * emission, and the badge lookup is rebuilt from it.
+   * Stored selection ∩ signed-in accounts, plus the active account. The set-equality check
+   * matters: the projections re-attach per-account listeners on every emission and rebuild
+   * the badge lookup from it.
    */
   readonly selected = computed<ReadonlySet<string>>(
     () => {
@@ -153,14 +150,11 @@ export class AccountScopeService {
   }
 
   /**
-   * Include or exclude an account. The active account is always shown, so a request to drop
-   * it is ignored rather than producing a view that hides the account you're acting as.
+   * Include or exclude an account; a request to drop the active account is ignored.
    *
-   * Including an account also *materialises* the current active account into the stored set.
-   * The active account is only unioned in at read time, so without this the mix would
-   * collapse the moment you used it: opening a mixed-in account's room switches to that
-   * account, and the account you were mixing *from* — never stored, only implied — would
-   * drop straight back out.
+   * Including also materialises the active account into the stored set. It is otherwise only
+   * unioned in at read time, so opening a mixed-in account's room (which switches the active
+   * account) would drop the account you were mixing from.
    */
   setSelected(
     userId: string,
@@ -179,9 +173,8 @@ export class AccountScopeService {
         }
       } else {
         next.delete(userId);
-        // Turning the mix off must clear the stored active account too. Leaving it behind
-        // means the set is still "one explicit member", so the next time the user switches
-        // accounts that member plus the new active account would silently re-enable mixing.
+        // Turning the mix off must clear the stored active account too, or the next account
+        // switch leaves two members and silently re-enables mixing.
         if (active && next.size === 1 && next.has(active)) {
           next.clear();
         }

@@ -77,26 +77,21 @@ export interface SpaceRoomOrderSnapshot {
 /**
  * How rooms are ordered inside a space: a per-account default plus per-space overrides.
  *
- * **Per account, device-scoped.** Unlike the other `trinity.*` preferences, both keys are
- * suffixed with the user id, so two accounts on one device keep separate orderings. Nothing is
- * written to Matrix account data — the ordering does not follow the account to another device.
+ * **Per account, device-scoped.** Both keys are suffixed with the user id, so two accounts on
+ * one device keep separate orderings. Nothing is written to Matrix account data.
  *
- * **Resolution: a space's own override wins, otherwise the account's default**, read from one
- * account's record. The rooms shell reads it through {@link snapshotFor} for the space's
- * owner in the selected view. The mixed projection makes the active account the owner
- * whenever it holds the space, so a space you hold follows your own ordering, the one
- * Settings shows you, and the owner changes as you switch between accounts that both hold
- * it. A corollary: an override set as `@me` is invisible to `@alt` even for a space both
- * have joined, which is intended — it is that account's view preference. Only a space the
- * active account does not hold, shown because another mixed-in account does, keeps that
- * account's ordering. {@link effectiveFor} and {@link overrideFor} read the active
- * account's record.
+ * **A space's own override wins, otherwise the account's default**, read from one account's
+ * record. The rooms shell reads it through {@link snapshotFor} for the space's owner in the
+ * selected view. The mixed projection makes the active account the owner whenever it holds the
+ * space, so an override set as `@me` is invisible to `@alt` even for a shared space (intended:
+ * it is that account's view preference). Only a space the active account does not hold keeps
+ * the other mixed-in account's ordering. {@link effectiveFor} and {@link overrideFor} read the
+ * active account's record.
  *
- * Overrides for spaces you have **left are deliberately not pruned**, for the same reason
+ * Overrides for spaces you have **left are deliberately not pruned**, as
  * {@link AccountScopeService} keeps stale account ids: the space list is sync-derived and
- * momentarily empty on a cold start and on every account switch, so pruning against it would
- * discard a pick for a space that simply had not synced yet. The map is bounded by the number
- * of spaces the user has ever re-ordered.
+ * momentarily empty on a cold start and on every account switch, so pruning would discard a
+ * pick for a space that had not synced yet. The map is bounded by the spaces ever re-ordered.
  */
 @Injectable({ providedIn: 'root' })
 export class SpaceRoomOrderService {
@@ -116,14 +111,10 @@ export class SpaceRoomOrderService {
   private readonly loaded = new Set<string>();
 
   /**
-   * Edits made before an account's stored value arrived, in order, to be replayed onto it.
-   *
-   * A read is async, so a choice made while one is in flight is applied to a record derived
-   * from all-defaults. Persisting *that* would drop every preference already on disk, and
-   * merging the two records afterwards cannot express a {@link clearForSpace} (an absent key
-   * is indistinguishable from one the merge should restore). Keeping the edits themselves
-   * sidesteps both: replaying them onto the stored value yields exactly what the user asked
-   * for, whichever edits they were.
+   * Edits made before an account's stored value arrived, replayed onto it in order. Persisting
+   * an edit applied to all-defaults would drop every preference on disk, and merging records
+   * afterwards cannot express a {@link clearForSpace} (an absent key is indistinguishable from
+   * one the merge should restore).
    */
   private readonly pending = new Map<string, Change[]>();
 
@@ -274,9 +265,8 @@ export class SpaceRoomOrderService {
   }
 
   /**
-   * Drop a space's override so it follows the account default again. Deleting the entry rather
-   * than storing whatever the default happens to be right now is what makes "Use my default"
-   * keep tracking a *later* change to that default.
+   * Drop a space's override so it follows the account default. Deleting rather than storing
+   * the current default keeps "Use my default" tracking a later change to that default.
    */
   clearForSpace(spaceId: string): Observable<void> {
     return this.writeActive('overrides', (order) => {
@@ -337,10 +327,10 @@ export class SpaceRoomOrderService {
         return from(persistHalf(this.storage, accountId, key, next));
       }
 
-      // `next` was derived from all-defaults, so writing it now would erase whatever is on
-      // disk. Hold the edit instead; {@link hydrate} replays it onto the stored value and
-      // persists the result. Joining hydration makes completion and failure observable to
-      // the command's subscriber without giving up the optimistic in-memory choice.
+      // `next` was derived from all-defaults, so writing it would erase what is on disk. Hold
+      // the edit; {@link hydrate} replays it onto the stored value and persists. Joining
+      // hydration reports completion and failure to the subscriber while keeping the optimistic
+      // in-memory choice.
       this.pending.set(accountId, [
         ...(this.pending.get(accountId) ?? []),
         change,

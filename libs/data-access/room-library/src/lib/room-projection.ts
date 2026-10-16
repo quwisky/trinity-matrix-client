@@ -46,24 +46,21 @@ export function isMarkedUnread(room: Room): boolean {
   return false;
 }
 
-/** Internal scratch shape used while sorting a space's children. */
 interface ChildEntry {
   id: string;
   order: string;
   name: string;
 }
 
-/** First visible character (sans leading `#`/`@`), uppercased, for fallback avatars. */
+/** First visible character (sans leading `#`/`@`/`!`), uppercased, for fallback avatars. */
 export function initialOf(name: string): string {
   const stripped = name.replace(/^[#@!]+/, '').trim();
   return (stripped[0] ?? '?').toUpperCase();
 }
 
 /**
- * Single-line preview of the room's most recent `m.room.message`, or `''` when the
- * room has no message in its live timeline. Walked back-to-front so state events between
- * messages are skipped. `getLiveTimeline` is called optionally — not every Room stub
- * (unit fakes) exposes it.
+ * Single-line preview of the room's most recent `m.room.message`, or `''`. Walked back-to-front
+ * to skip state events. `getLiveTimeline` is optional: not every Room stub exposes it.
  */
 function lastMessageOf(room: Room): string {
   const events = room.getLiveTimeline?.()?.getEvents() ?? [];
@@ -81,9 +78,8 @@ function lastMessageOf(room: Room): string {
  *
  * The client runs with `threadSupport`, so a thread reply lives in its thread's timeline and
  * `getLastActiveTimestamp()` alone never sees it. As in Element Web, any thread's latest reply
- * counts, whether or not it would count as unread. Unlike Element, the main-timeline part is
- * left as the SDK reports it, so reactions and profile changes still move a room.
- * `getThreads` is called optionally, like `getLiveTimeline` above, for Room stubs without it.
+ * counts, read or not; unlike Element, the main-timeline part stays as the SDK reports it, so
+ * reactions and profile changes still move a room. `getThreads` is optional for Room stubs.
  *
  * Only threads the client has loaded count: one whose replies fell outside the initial sync
  * window moves the room once it is fetched (the threads panel) or gets a new reply.
@@ -128,9 +124,9 @@ export function directMapOf(client: MatrixClient): {
 }
 
 /**
- * Project one {@link Room} into a {@link RoomSummary}, tagged with the account it belongs
- * to. Pure read of the room — shared by {@link RoomLibraryService} (single active account) and
- * the selected-Account projector so both build identical rows.
+ * Project one {@link Room} into a {@link RoomSummary} tagged with its account. Pure read, shared
+ * by {@link RoomLibraryService} (active account) and the selected-Account projector so both
+ * build identical rows.
  */
 export function buildRoomSummary(
   room: Room,
@@ -152,9 +148,9 @@ export function buildRoomSummary(
     accountIds: [accountId],
     name,
     initial: initialOf(name),
-    // `m.direct` is the authoritative answer to "is this a DM", and it is already in
-    // hand — the SDK's own member-count heuristic would also claim a two-person named
-    // group room, and dress it in that member's face until a third person joined.
+    // `m.direct` is the authoritative answer to "is this a DM", and it is already in hand: the
+    // SDK's own member-count heuristic would also claim a two-person named group room and dress
+    // it in that member's face until a third person joined.
     avatarMxc: roomAvatarMxc(room, directUserId !== undefined),
     topic: (topicEvent?.getContent()?.['topic'] as string) ?? '',
     memberCount: room.getJoinedMemberCount(),
@@ -162,8 +158,8 @@ export function buildRoomSummary(
     unreadCount,
     highlightCount,
     markedUnread,
-    // A flagged room reads as unread even with nothing new in it — that is the whole
-    // point of flagging it — so the badge and the sidebar's unread filter both follow.
+    // A flagged room reads as unread even with nothing new in it, so the badge and the
+    // sidebar's unread filter both follow.
     hasUnread: unreadCount > 0 || markedUnread,
     lastMessage: lastMessageOf(room),
     activityTs: roomActivityTs(room),
@@ -174,13 +170,12 @@ export function buildRoomSummary(
 }
 
 /**
- * Favourite-first, low-priority-last, then most recently active, then name — the room list
+ * Favourite-first, low-priority-last, then most recently active, then name: the room list
  * ordering.
  *
- * A room tagged BOTH `m.favourite` and `m.lowpriority` sorts as a favourite. Matrix permits
- * both tags at once and says nothing about precedence, so this is a choice: favouriting is
- * the deliberate act, and a room you have starred should not sink out of sight because it
- * was demoted at some point.
+ * A room tagged BOTH `m.favourite` and `m.lowpriority` sorts as a favourite. Matrix permits both
+ * and says nothing about precedence, so this is a choice: a starred room should not sink out of
+ * sight because it was demoted at some point.
  */
 export function compareRoomSummaries(a: RoomSummary, b: RoomSummary): number {
   return (
@@ -234,9 +229,9 @@ export function spaceChildIdsOf(client: MatrixClient, space: Room): string[] {
 }
 
 /**
- * The orderings a space's room list can be shown in, as `{ id, label, description }` for the
- * UI. The descriptions are not decoration: "Space order" is meaningless without being told
- * whose order it is, and both surfaces let you pick an ordering without seeing its effect.
+ * The orderings a space's room list can be shown in, as `{ id, label, description }` for the UI.
+ * The descriptions are needed: "Space order" is meaningless without saying whose order it is,
+ * and both surfaces let you pick an ordering without seeing its effect.
  */
 export const TRINITY_ROOM_SORTS = [
   {
@@ -280,24 +275,18 @@ export function isRoomSortMode(
 const UNRANKED = Number.MAX_SAFE_INTEGER;
 
 /**
- * Favourite-first, shared by every ordering.
- *
- * The sidebar renders favourites as their own group, so this term does not change what is on
- * screen. It is not a no-op for the array itself, which is what the keyboard walk and "mark
- * all read" iterate — without it those would walk a different order from the one rendered.
+ * Favourite-first, shared by every ordering. The sidebar renders favourites as their own group,
+ * but the array itself is what the keyboard walk and "mark all read" iterate; without this term
+ * they would walk a different order from the one rendered.
  */
 function favouriteFirst(a: RoomSummary, b: RoomSummary): number {
   return Number(b.favourite) - Number(a.favourite);
 }
 
 /**
- * Low-priority-last, shared by every ordering, and applied AFTER {@link favouriteFirst} so a
- * room carrying both tags stays with the favourites.
- *
- * Same reason as favouriteFirst for existing at all: the sidebar renders low-priority as its
- * own group, so this term does not change what is on screen — but the keyboard walk and
- * "mark all read" iterate the array, and without it they would walk a different order from
- * the one rendered.
+ * Low-priority-last, shared by every ordering and applied AFTER {@link favouriteFirst} so a
+ * room carrying both tags stays with the favourites. It exists for the same reason as
+ * favouriteFirst: the iterated array must match the rendered order.
  */
 function lowPriorityLast(a: RoomSummary, b: RoomSummary): number {
   return Number(a.lowPriority) - Number(b.lowPriority);
@@ -308,10 +297,8 @@ function lowPriorityLast(a: RoomSummary, b: RoomSummary): number {
  * curated child order.
  *
  * Built from the id list the rows were mapped from, because a child's `m.space.child` `order`
- * belongs to the *space*, not to a {@link RoomSummary} — there is nothing on the row itself to
- * sort by. First occurrence wins, so the result is well defined for any input, though neither
- * producer emits a repeat today (`spaceChildIdsOf` reads one state event per child, and
- * the selected-Account projector dedupes as it concatenates).
+ * belongs to the *space*, not to a {@link RoomSummary}. First occurrence wins, so any input is
+ * well defined.
  *
  * **Selected Accounts see an approximation.** The selected projector builds its child list by
  * concatenating each account's children in sorted-user-id order rather than merge-sorting by
@@ -332,13 +319,12 @@ export function spaceRankOf(
 }
 
 /**
- * The comparator for one ordering. A factory rather than `compare(a, b, mode)` so the mode
- * switch is resolved — and the rank map built — once per sort, not once per comparison.
+ * The comparator for one ordering. A factory so the mode switch is resolved, and the rank map
+ * built, once per sort rather than once per comparison.
  *
- * `childIds` is the space's curated order, read only by `'space'`; the other modes never walk
- * it, which is why the rank map is built inside that branch rather than by the caller (this
- * runs on every sync, and the shipped default is `'recent'`). An id the list does not hold
- * sorts last rather than yielding `NaN`, which would make `sort` implementation-defined.
+ * `childIds` is the space's curated order, read only by `'space'`; the rank map is built inside
+ * that branch because this runs on every sync and the default is `'recent'`. An id the list does
+ * not hold sorts last rather than yielding `NaN`, which would make `sort` implementation-defined.
  *
  * NOTE: `Array.prototype.sort` mutates, and Room Library projections hand out their array by
  * identity — sort a copy you own, never the signal's value.

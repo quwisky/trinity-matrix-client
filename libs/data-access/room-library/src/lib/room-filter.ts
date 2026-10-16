@@ -1,9 +1,7 @@
 /**
- * Room Library's stable, case- and accent-insensitive filtering contract.
- *
- * This deliberately uses substring matching rather than fuzzy scoring: filtering narrows
- * a list in place, so predictable membership matters more than ranked guesses that reorder
- * while the user types.
+ * Room Library's case- and accent-insensitive filtering contract. Substring matching, not
+ * fuzzy scoring: filtering narrows a list in place, so predictable membership beats ranked
+ * guesses that reorder while the user types.
  */
 
 /** Unicode combining marks, stripped after NFD so `Café` matches a typed `cafe`. */
@@ -33,11 +31,8 @@ export function matchesRoomFilter(
 }
 
 /**
- * Project named Room Library rows through the canonical filtering rule.
- *
- * The input is returned by identity when the query is blank, keeping the common unfiltered
- * path allocation-free. The generic covers room summaries, invitations, and hierarchy
- * children without leaking their distinct models into Feature.
+ * Project named Room Library rows through the canonical filtering rule. A blank query returns
+ * the input by identity, keeping the unfiltered path allocation-free.
  */
 export function filterRoomLibraryItems<T extends { readonly name: string }>(
   items: T[],
