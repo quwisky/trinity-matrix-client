@@ -49,6 +49,7 @@ interface MediaServiceStub {
   unpin: Mock;
   drop: Mock;
   releaseAll: Mock;
+  sameMedia: Mock;
 }
 
 /** The lightbox renders into the CDK overlay container, outside the fixture's own DOM. */
@@ -78,6 +79,11 @@ describe('MediaAttachmentComponent', () => {
       unpin: vi.fn(),
       drop: vi.fn(),
       releaseAll: vi.fn(),
+      // Same bytes when the file is the same: one message projected twice.
+      sameMedia: vi.fn(
+        (a: PresentedMediaReference, b: PresentedMediaReference) =>
+          a.kind === b.kind && a.filename === b.filename,
+      ),
     };
     // HostFileExportService owns the host contract; stub it so the component test
     // doesn't touch the object-URL API / native plugins.
@@ -830,11 +836,55 @@ describe('MediaAttachmentComponent', () => {
         fixture.componentRef.setInput('media', reprojected);
         TestBed.tick();
 
-        expect(mediaService.resolveMedia).toHaveBeenCalledExactlyOnceWith(
-          reprojected,
+        expect(mediaService.resolveMedia).not.toHaveBeenCalled();
+        expect(fixture.componentInstance.src()).toBe('blob:thumb');
+      });
+
+      it('keeps a thumbnail loading when its message is re-projected (a receipt, a reaction)', async () => {
+        const thumb = new Subject<string>();
+        mediaService.resolveMedia.mockReturnValue(thumb.asObservable());
+        const { fixture } = await renderInTimeline(imageMedia());
+        comesNear(fixture.nativeElement);
+
+        fixture.componentRef.setInput('media', {
+          ...imageMedia(),
+          id: 'presented-media-again',
+        });
+        TestBed.tick();
+
+        // Neither cancelled nor started again: the one download carries on.
+        expect(mediaService.drop).not.toHaveBeenCalled();
+        expect(mediaService.resolveMedia).toHaveBeenCalledTimes(1);
+        expect(thumb.observed).toBe(true);
+        thumb.next('blob:thumb');
+        expect(fixture.componentInstance.src()).toBe('blob:thumb');
+      });
+
+      it('swaps the load when an edit changes the image', async () => {
+        const thumb = new Subject<string>();
+        mediaService.resolveMedia.mockReturnValueOnce(thumb.asObservable());
+        const first = imageMedia();
+        const { fixture } = await renderInTimeline(first);
+        comesNear(fixture.nativeElement);
+
+        const edited = {
+          ...imageMedia(),
+          id: 'presented-media-edited',
+          filename: 'other.png',
+        };
+        fixture.componentRef.setInput('media', edited);
+        TestBed.tick();
+        comesNear(fixture.nativeElement);
+
+        expect(mediaService.drop).toHaveBeenCalledExactlyOnceWith(
+          first,
+          'thumbnail',
+          null,
+        );
+        expect(mediaService.resolveMedia).toHaveBeenLastCalledWith(
+          edited,
           'thumbnail',
         );
-        expect(fixture.componentInstance.src()).toBe('blob:thumb');
       });
 
       it('holds a video poster the same way', async () => {

@@ -368,6 +368,19 @@ export class MediaPipeline {
     return reference;
   }
 
+  /**
+   * Whether two references present the same bytes for the same account: one message projected
+   * twice (a receipt or reaction re-projects it, minting a new reference) rather than an edit
+   * that changed its file. A reference whose source is gone matches only itself.
+   */
+  sameMedia(a: PresentedMediaReference, b: PresentedMediaReference): boolean {
+    if (a === b) return true;
+    const x = this.presented.get(a);
+    const y = this.presented.get(b);
+    if (!x || !y || x.client !== y.client) return false;
+    return mediaIdentity(x.media) === mediaIdentity(y.media);
+  }
+
   resolveMedia(
     reference: PresentedMediaReference,
     variant: 'thumbnail' | 'full',
@@ -447,4 +460,16 @@ export class MediaPipeline {
       ...(media.file ? { file: media.file } : { url: media.mxc }),
     };
   }
+}
+
+/** What a rendition is fetched from: the media, its bundled thumbnail and their kind. */
+function mediaIdentity(media: MediaPayload): string {
+  return JSON.stringify([
+    media.kind,
+    media.mimeType,
+    media.mxc,
+    media.file?.url ?? null,
+    media.thumbnailMxc,
+    media.thumbnailFile?.url ?? null,
+  ]);
 }

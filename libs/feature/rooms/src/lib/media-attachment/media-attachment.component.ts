@@ -90,6 +90,8 @@ export class MediaAttachmentComponent {
    * if its row goes first. Null once it has a URL (the cache keeps that for the next row).
    */
   private pending: PresentedMediaReference | null = null;
+  /** The media the effect last set this row up for. */
+  private current: PresentedMediaReference | null = null;
   /**
    * The played clip: the message it belongs to (rows are recycled, so not necessarily the
    * current one), its pinned URL once resolved, and the resolve.
@@ -101,6 +103,18 @@ export class MediaAttachmentComponent {
     // across `@for` rows, so each new `media` re-fetches and re-pins.
     effect(() => {
       const media = this.media();
+      const previous = this.current;
+      this.current = media;
+      // Under the gate, a receipt or reaction re-projects the message with a new reference to
+      // the same file: keep the thumbnail shown or still loading rather than cancel and fetch it
+      // again (an encrypted original is a full download and decrypt each time).
+      if (
+        previous &&
+        this.gate?.enabled &&
+        this.mediaPipeline.sameMedia(previous, media)
+      ) {
+        return;
+      }
       // A row that already shows its image is re-rendering its message (an edit, a receipt,
       // a reaction): load at once rather than blank it mid-scroll. Read before the reset.
       const shown = this.pinnedUrl !== null;
