@@ -16,6 +16,7 @@ export {
 } from './lib/badge/trn-badge-recipe';
 export {
   BannerComponent,
+  type TrnBannerPlacement,
   type TrnBannerVariant,
 } from './lib/banner/banner.component';
 export {

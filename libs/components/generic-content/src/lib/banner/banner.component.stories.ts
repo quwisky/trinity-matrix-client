@@ -87,6 +87,34 @@ export const LongMessage: Story = {
   }),
 };
 
+/**
+ * The two banners that take turns in the app's global slot: the limited-capability notice
+ * (two actions) and the encryption prompt (one). `placement="global"` gives them one height
+ * below md, where the two actions wrap under the message, so replacing one with the other
+ * never moves the page below.
+ */
+export const GlobalSlot: Story = {
+  render: () => ({
+    template: `
+      <div class="grid gap-4">
+        <trn-banner variant="neutral" placement="global" data-testid="global-status">
+          Protected browser storage is unavailable.
+          <span trnBannerActions>
+            <button trnBtn presentation="outline" size="sm">System status</button>
+            <button trnBtn presentation="ghost" size="sm">Dismiss</button>
+          </span>
+        </trn-banner>
+        <trn-banner variant="accent" placement="global" data-testid="global-prompt">
+          <trn-icon trnBannerIcon name="lock" />
+          Set up encryption to secure your messages.
+          <span trnBannerActions>
+            <button trnBtn size="sm">Set up</button>
+          </span>
+        </trn-banner>
+      </div>`,
+  }),
+};
+
 /** Message search's server-search prompt: a lone action, with no icon or message. */
 export const ActionOnly: Story = {
   render: () => ({

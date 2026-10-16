@@ -246,3 +246,18 @@ test('banner actions share the message row when there is room (#1221)', async ({
   // Left-to-right: Storybook renders LTR, so the actions sit after the message.
   expect(actionsBox.x).toBeGreaterThanOrEqual(textBox.x + textBox.width);
 });
+
+test('global-slot banners take no reserved height on a wide screen', async ({
+  page,
+}) => {
+  await page.goto(story('components-banner--global-slot'));
+  const status = page.getByTestId('global-status');
+  const prompt = page.getByTestId('global-prompt').locator('.banner');
+  const text = (await status.locator('.banner__text').boundingBox())!;
+  const actions = (await status.locator('.banner__actions').boundingBox())!;
+  // One row: the two actions sit beside the message, so there is nothing to reserve and
+  // the two banners match without it.
+  expect(actions.y).toBeLessThan(text.y + text.height);
+  const statusBox = (await status.locator('.banner').boundingBox())!;
+  expect((await prompt.boundingBox())!.height).toBeCloseTo(statusBox.height, 1);
+});

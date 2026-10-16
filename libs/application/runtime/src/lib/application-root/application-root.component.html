@@ -76,7 +76,11 @@
     </main>
   } @else {
     @if (status.bannerSlot() === 'status') {
-      <trn-banner variant="neutral" data-testid="app-capability-summary">
+      <trn-banner
+        variant="neutral"
+        placement="global"
+        data-testid="app-capability-summary"
+      >
         <span
           [attr.role]="status.hasBlocking() ? 'alert' : 'status'"
           [attr.aria-live]="status.hasBlocking() ? 'assertive' : 'polite'"

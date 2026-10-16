@@ -135,4 +135,16 @@ describe('BannerComponent', () => {
     fixture.detectChanges();
     expect(banner()?.getAttribute('data-trn-surface')).toBe('attention');
   });
+
+  // The app's global banner slot swaps one banner for another as statuses settle; below md
+  // its banners keep one reserved height (the stylesheet), so a swap never moves the page.
+  it('marks a banner that holds the global slot, and only that one', async () => {
+    const { fixture, container } = await render(BannerComponent);
+    const banner = () => container.querySelector('.banner');
+    expect(banner()?.getAttribute('data-placement')).toBe('inline');
+
+    fixture.componentRef.setInput('placement', 'global');
+    fixture.detectChanges();
+    expect(banner()?.getAttribute('data-placement')).toBe('global');
+  });
 });
