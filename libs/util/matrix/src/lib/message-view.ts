@@ -116,13 +116,10 @@ function coordsFromMapUrl(text: string): { lat: number; lng: number } | null {
 }
 
 /**
- * Parse a human-entered location into coordinates, trying in order:
- *  - a `geo:lat,lng` URI,
- *  - a plain `lat, lng` (comma- or space-separated),
- *  - an OpenStreetMap link (`?mlat=&mlon=` or the `#map=zoom/lat/lng` fragment),
- *  - a Google / Apple Maps link (`?q=`/`?query=`/`?ll=` or an `@lat,lng` segment).
- * Returns null when no in-range coordinate can be extracted. Backs the desktop
- * manual-location dialog, where Chromium can't resolve a real device position.
+ * Parse a human-entered location into coordinates: a `geo:` URI, a plain `lat, lng`, an
+ * OpenStreetMap link, or a Google / Apple Maps link. Returns null when no in-range coordinate
+ * can be extracted. Backs the desktop manual-location dialog, where Chromium can't resolve a
+ * real device position.
  */
 export function parseLocationInput(
   input: unknown,
@@ -159,11 +156,9 @@ export interface ReactionView {
   /** Whether the current user is among them (their reaction can be toggled off). */
   reacted: boolean;
   /**
-   * The first few reactors by display name, for the pill's "reacted by …" hint —
-   * `'You'` first when {@link reacted}. Capped at {@link MAX_NAMED_REACTORS}: the
-   * hint only ever shows a handful, and this list is fingerprinted per event on
-   * every projection (see `reactionSignature` in `TimelineService`), so it has to
-   * stay bounded. The full list is read on demand by {@link reactionDetailsFor}.
+   * The first few reactors by display name for the pill's hint, `'You'` first when
+   * {@link reacted}. Capped at {@link MAX_NAMED_REACTORS} because the list is fingerprinted per
+   * event on every projection; the full list is read on demand by {@link reactionDetailsFor}.
    */
   reactors: string[];
 }
@@ -289,16 +284,13 @@ export function replyPreview(room: Room, eventId: string): ReplyPreview | null {
 }
 
 /**
- * Add the user ids whose room membership a rendered message depends on into `into`:
- * the sender shown in the header, the quoted sender in a reply preview, the reactors a
- * pill names, and the readers whose "seen by" receipts sit on the event. A projection
- * uses this to re-map only when a member it actually references loads or changes its
- * name/avatar, rather than on every member update in a large room.
+ * Add the user ids whose room membership a rendered message depends on into `into`: the sender,
+ * the quoted sender in a reply preview, the reactors a pill names, and the readers behind its
+ * "seen by" receipts. A projection re-maps only when one of these members loads or changes, not
+ * on every member update in a large room.
  *
- * Each group is bounded — the reply target's sender counts only while the target is
- * loaded (exactly when a possibly-stale preview renders), reactors stop at
- * `MAX_NAMED_REACTORS`, and readers at `MAX_RECEIPTS` — so the set stays proportional to
- * what is on screen rather than to the room's membership.
+ * Each group is bounded (the reply target only while loaded, reactors at `MAX_NAMED_REACTORS`,
+ * readers at `MAX_RECEIPTS`), so the set tracks what is on screen, not the room's membership.
  */
 export function collectMessageSenders(
   client: MatrixClient,
@@ -306,9 +298,8 @@ export function collectMessageSenders(
   event: MatrixEvent,
   into: Set<string>,
   /**
-   * Pass `{ receipts: false }` for a row that renders no "seen by" avatars — a system
-   * line, whose view is built with `readReceipts: []`. Collecting its readers would
-   * admit members nothing on screen depends on, widening the very gate this feeds.
+   * Pass `{ receipts: false }` for a row that renders no "seen by" avatars (a system line, built
+   * with `readReceipts: []`): collecting its readers would widen the gate this feeds.
    */
   options: { receipts?: boolean } = {},
 ): void {
@@ -323,8 +314,7 @@ export function collectMessageSenders(
       into.add(targetSender);
     }
   }
-  // The reactors a pill names, whose display names can also arrive late. Only the
-  // named ones: nobody beyond the cap renders, so nobody beyond it needs to re-map.
+  // Only the named reactors: nobody beyond the cap renders, so nobody beyond it needs re-mapping.
   for (const [, reactions] of reactionEventsFor(room, event)) {
     for (const reaction of reactions.slice(0, MAX_NAMED_REACTORS)) {
       const reactor = reaction.getSender();
@@ -333,10 +323,8 @@ export function collectMessageSenders(
       }
     }
   }
-  // The "seen by" readers, who render as avatars just like the sender does. A reader
-  // who has never posted in the loaded window is reachable ONLY here — they are
-  // nobody's sender, reply target or reactor — so without this their member event is
-  // discarded at the gate and their avatar never arrives.
+  // Readers render as avatars like the sender. One who never posted in the loaded window is
+  // reachable only here, so without this their member event is discarded at the gate.
   if (options.receipts !== false) {
     for (const reader of readReceiptUserIds(client, room, event)) {
       into.add(reader);
@@ -345,9 +333,8 @@ export function collectMessageSenders(
 }
 
 /**
- * An event's live reactions grouped by key in the SDK's order (count, then first
- * seen), with redacted ones dropped and empty keys omitted. Shared by the pill
- * projection and the full "who reacted" list so both read the same set.
+ * An event's live reactions grouped by key in the SDK's order (count, then first seen), with
+ * redacted ones and empty keys dropped. Shared by the pills and the "who reacted" list.
  */
 function reactionEventsFor(
   room: Room,
@@ -417,10 +404,9 @@ function namedReactors(
 }
 
 /**
- * Every reactor of every reaction on an event, grouped by key — the full list behind
- * a pill's capped {@link ReactionView.reactors} hint. Read on demand (when the "who
- * reacted" dialog opens) rather than carried on every {@link MessageView}, so a
- * heavily-reacted message costs nothing until someone asks.
+ * Every reactor of every reaction on an event, grouped by key: the full list behind a pill's
+ * capped {@link ReactionView.reactors}. Read on demand (when the "who reacted" dialog opens),
+ * not carried on every {@link MessageView}.
  */
 export function reactionDetailsFor(
   client: MatrixClient,
@@ -524,9 +510,9 @@ const MATRIX_ALLOWED_ATTR = [
 ];
 
 /**
- * Attributes whose values are not URIs. DOMPurify tests the value of every attribute it does
- * not consider URI-safe against ALLOWED_URI_REGEXP, and ours admits only Matrix's schemes, so
- * without this `color="#ff0000"`, `start="3"` and an image's `width`/`height` were dropped.
+ * Attributes whose values are not URIs. DOMPurify tests every attribute it doesn't consider
+ * URI-safe against ALLOWED_URI_REGEXP, which admits only Matrix's schemes, so without this
+ * `color="#ff0000"`, `start="3"` and an image's `width`/`height` would be dropped.
  */
 const MATRIX_URI_SAFE_ATTR = ['color', 'start', 'width', 'height'];
 
@@ -590,19 +576,17 @@ DOMPurify.addHook('beforeSanitizeAttributes', (node) => {
 // filter by a render-only pass, so a sender can borrow none of them, nor app/Ionic classes.
 const ALLOWED_CLASS = /^language-[\w-]+$/;
 
-// A sender's `formatted_body` can embed `<img src="https://attacker/x.gif">`,
-// which the browser would fetch on render — leaking the viewer's IP and acting
-// as a read receipt. So the hook above strips the `src` of any non-`mxc:` image. This one
-// enforces the per-tag attribute list above and filters `class` to the Matrix-sanctioned tokens.
+// A sender's `formatted_body` can embed `<img src="https://attacker/x.gif">`, which the browser
+// would fetch on render, leaking the viewer's IP and acting as a read receipt. The hook above
+// strips the `src` of any non-`mxc:` image; this one enforces the per-tag attribute list and
+// filters `class` to the Matrix-sanctioned tokens.
 //
-// Registered once at module load, and it applies to BOTH entry points — incoming
-// {@link sanitizeMatrixHtml} and outgoing {@link sanitizeOutgoingHtml}. Only
-// security belongs here for that reason: attributes set inside
-// `afterSanitizeAttributes` are not re-filtered against ALLOWED_ATTR, so anything
-// added here would ride out onto the wire too. Render-only normalisation lives in
-// {@link normaliseSpoilers} and the other passes instead. It sits on the default DOMPurify
-// instance, so any other sanitizer in the app must create its own (`DOMPurify(window)`), as
-// the maths renderer does, or this per-tag table would strip its markup too.
+// Registered once at module load and shared by BOTH {@link sanitizeMatrixHtml} and
+// {@link sanitizeOutgoingHtml}, so only security belongs here: attributes set in
+// `afterSanitizeAttributes` are not re-filtered against ALLOWED_ATTR and would ride out onto
+// the wire. It sits on the default DOMPurify instance, so any other sanitizer in the app must
+// create its own (`DOMPurify(window)`), as the maths renderer does, or this per-tag table would
+// strip its markup too.
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   const allowed = MATRIX_TAG_ATTRIBUTES.get(node.nodeName) ?? NO_ATTRIBUTES;
   for (const name of node.getAttributeNames()) {
@@ -620,12 +604,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 });
 
-// Memoize sanitization by raw input: DOMPurify is a pure function of the html
-// string (the config + hook are constant), so the same `formatted_body` always
-// yields the same scrubbed output. Caching it means the timeline/thread
-// projections can re-derive a view (status flip, edit, decryption) without paying
-// for DOMPurify again, and identical bodies across messages are scrubbed once.
-// Bounded with FIFO eviction so a long-lived session can't grow it unboundedly.
+// Pure in its inputs (`html`, `addressesViewer`); FIFO-bounded so a long session can't grow it.
 const SANITIZED_HTML_CACHE_MAX = 1000;
 const sanitizedHtmlCache = new Map<string, string>();
 
@@ -639,58 +618,46 @@ const MATRIX_PURIFY_CONFIG = {
 
 /**
  * The render-side config: the Matrix allowlist plus `input` and the two attributes needed to
- * read a GFM checkbox other clients send. Nothing here reaches the output —
- * {@link normaliseTaskItems} replaces every input with its glyph and sweeps both attributes
- * off the tree before it is serialized. **Render only**: `sanitizeOutgoingHtml` keeps
- * {@link MATRIX_PURIFY_CONFIG} untouched, so none of this can widen what we send.
+ * read a GFM checkbox other clients send. {@link normaliseTaskItems} replaces every input with
+ * its glyph and sweeps both attributes off the tree before serialization. **Render only**:
+ * `sanitizeOutgoingHtml` keeps {@link MATRIX_PURIFY_CONFIG}, so none of this widens what we send.
  */
 const RENDER_PURIFY_CONFIG = {
   ...MATRIX_PURIFY_CONFIG,
   ADD_TAGS: ['input'],
   ADD_ATTR: ['type', 'checked'],
-  // `type` needs this and `checked` does not, which is not obvious: DOMPurify tests the VALUE
-  // of any attribute it does not consider URI-safe against ALLOWED_URI_REGEXP, and ours only
-  // admits Matrix's schemes — so `type="checkbox"` failed that test and was dropped while the
-  // valueless `checked` came through, leaving every incoming box indistinguishable and
-  // unchecked. Marking it URI-safe skips the scheme test; the attribute is swept off the tree
-  // either way before anything is serialized.
+  // `type` needs this and `checked` does not: DOMPurify tests the value of any attribute it
+  // doesn't consider URI-safe against ALLOWED_URI_REGEXP, so `type="checkbox"` would be dropped
+  // while the valueless `checked` came through, leaving every incoming box unchecked. The
+  // attribute is swept off the tree before serialization either way.
   ADD_URI_SAFE_ATTR: [...MATRIX_URI_SAFE_ATTR, 'type'],
-  // No `as const` here, unlike the config above: it would make these three readonly tuples,
-  // which do not satisfy DOMPurify's `string[]` config — the overload stops matching and the
-  // `HTMLElement` downcast at the call site fails to compile. Vitest does not typecheck, so
-  // this only surfaces in `nx build`.
+  // No `as const`, unlike the config above: it would make these readonly tuples, which don't
+  // satisfy DOMPurify's `string[]` config, so the overload stops matching and the `HTMLElement`
+  // downcast at the call site fails to compile. Vitest does not typecheck; only `nx build` does.
 };
 
 /** Class on each wrapped line of a code block; the numbering gutter hangs off it. */
 const CODE_LINE_CLASS = 'code-line';
 
 /**
- * Lines a block must EXCEED before it is marked for numbering.
- *
- * A gutter on a two-line snippet is noise, and most code in a conversation is a snippet.
- * The line-number setting's automatic mode — its default — shows numbers only past this;
- * "Always" ignores it, in CSS, since a preference must not reach the memoized markup.
+ * Lines a block must EXCEED before it is marked for numbering: a gutter on a snippet is noise.
+ * The line-number setting's automatic mode (default) shows numbers only past this; "Always"
+ * ignores it, in CSS, since a preference must not reach the memoized markup.
  */
 const LINE_NUMBER_THRESHOLD = 5;
 
 /**
- * Lines beyond which a single block is left unwrapped entirely.
- *
- * Wrapping runs on every block of every message, including a back-pagination's worth, and a
- * sender controls block size up to the event limit. Past this the block renders normally,
- * just without numbers — cheaper than thousands of synchronous DOM nodes for a listing
- * nobody is counting lines in.
+ * Lines beyond which a single block is left unwrapped entirely. Wrapping runs on every block of
+ * every message and a sender controls block size up to the event limit, so past this the block
+ * renders normally, without numbers, instead of as thousands of synchronous DOM nodes.
  */
 const MAX_NUMBERED_LINES = 500;
 
 /**
- * Lines one message may have wrapped in total.
- *
- * The per-block cap above is defeated by splitting, exactly as the tokenization cap is:
- * 125 blocks each one line under it is 62,000 spans and a two-megabyte serialization from a
- * single 64 KiB event — and that string is what {@link sanitizedHtmlCache} then retains,
- * bounded by entry count rather than bytes. This bounds their sum, so how the sender
- * arranges the lines stops mattering.
+ * Lines one message may have wrapped in total. The per-block cap is defeated by splitting (125
+ * blocks each one line under it is 62,000 spans and a two-megabyte serialization from a single
+ * 64 KiB event, which {@link sanitizedHtmlCache} then retains, bounded by entry count rather
+ * than bytes), so this bounds their sum.
  */
 const MAX_NUMBERED_LINES_PER_MESSAGE = 2_000;
 
@@ -741,39 +708,33 @@ function replaceDeprecatedTags(root: ParentNode): void {
 }
 
 /**
- * Sanitize sender-provided HTML (`formatted_body`) for RENDERING, against the Matrix
- * allowlist. Federated, end-to-end-encrypted content is untrusted and can't be scanned
- * server-side, so it is scrubbed here *explicitly* rather than relying on Angular's
- * implicit `[innerHTML]` sanitization at the render leaf. Never wrap the result in
- * `bypassSecurityTrust*`. The result is memoized by raw input (see
- * {@link sanitizedHtmlCache}); the scrubbed output is identical regardless.
+ * Sanitize sender-provided HTML (`formatted_body`) for RENDERING, against the Matrix allowlist.
+ * Federated, end-to-end-encrypted content is untrusted and can't be scanned server-side, so it
+ * is scrubbed here explicitly rather than relying on Angular's implicit `[innerHTML]`
+ * sanitization at the render leaf. Never wrap the result in `bypassSecurityTrust*`.
  *
- * Also applies render-only normalisation — spoiler tagging and syntax highlighting —
- * which is why {@link sanitizeOutgoingHtml} exists separately for the send path.
+ * Also applies render-only normalisation (spoilers, syntax highlighting), which is why
+ * {@link sanitizeOutgoingHtml} exists separately for the send path. Memoized by input (see
+ * {@link sanitizedHtmlCache}).
  */
 export function sanitizeMatrixHtml(
   html: string,
-  /** Set only when the event's `m.mentions` actually names the viewer — see
-   * {@link markMentionPills} for why the href alone is not enough. */
+  /** Set only when the event's `m.mentions` names the viewer; see {@link markMentionPills}. */
   addressesViewer = false,
 ): string {
-  // Whether this event addresses the viewer is part of the OUTPUT, so it has to be part of
-  // the key. Keying on the html alone would hand one event's marking to another with the
-  // same body — and, across an account switch, keep highlighting a mention of somebody you
-  // are no longer signed in as.
+  // Whether the event addresses the viewer is part of the OUTPUT, so it is part of the key:
+  // otherwise one event's marking leaks to another with the same body, and survives an account
+  // switch.
   const cacheKey = `${addressesViewer ? '1' : '0'}\u0000${html}`;
   const memoized = sanitizedHtmlCache.get(cacheKey);
   if (memoized !== undefined) {
     return memoized;
   }
-  // RETURN_DOM hands back the scrubbed <body> rather than a string, so the passes
-  // below run on the tree DOMPurify already built: one parse, one serialize, and no
-  // re-parsing of a fragment outside its original context.
-  // `as const` on RETURN_DOM keeps DOMPurify's typed overload: spread into a plain object it
-  // widens to `boolean` and the return type falls back to `string`. That matters because the
-  // downcast below is then a compile ERROR rather than a silent lie — without it, dropping
-  // RETURN_DOM in a later edit would still compile and leave `innerHTML` undefined at
-  // runtime, rendering every message body as the literal string "undefined".
+  // RETURN_DOM hands back the scrubbed <body>, so the passes below run on the tree DOMPurify
+  // built: one parse, one serialize.
+  // `as const` keeps DOMPurify's typed overload (spread into a plain object it widens to
+  // `boolean` and the return falls back to `string`), so dropping RETURN_DOM later is a compile
+  // error rather than `innerHTML` being undefined and every body rendering as "undefined".
   const body = DOMPurify.sanitize(html, {
     ...RENDER_PURIFY_CONFIG,
     RETURN_DOM: true as const,
@@ -801,11 +762,10 @@ export function sanitizeMatrixHtml(
 }
 
 /**
- * Angular sanitizes `[innerHTML]` after this framework-free Matrix sanitizer and does not
- * trust custom URI schemes. Convert valid `matrix:` links to their equivalent HTTPS
- * matrix.to form before that second boundary. Malformed Matrix URIs become a deliberately
- * invalid Matrix permalink so the click directive can intercept them and explain the error
- * rather than leaving a dead or externally navigable link.
+ * Angular sanitizes `[innerHTML]` after this sanitizer and does not trust custom URI schemes, so
+ * convert valid `matrix:` links to their HTTPS matrix.to form first. Malformed Matrix URIs
+ * become a deliberately invalid permalink that the click directive intercepts to explain the
+ * error.
  */
 function normaliseMatrixUris(body: HTMLElement): void {
   for (const anchor of body.querySelectorAll('a[href]')) {
@@ -838,14 +798,13 @@ const URL_LEADING_CONTROLS = /^[\u0000- ]+/;
 const URL_TAB_OR_NEWLINE = /[\t\n\r]/g;
 
 /**
- * Give every link that leaves Trinity `target="_blank"` and `rel="noopener noreferrer"`, so a
- * middle-click, a modifier-click, a context-menu open or a drag behaves like the plain click
- * `MatrixLinkDirective` already intercepts. Runs after {@link normaliseMatrixUris}, so a
- * `matrix:` link has become its `matrix.to` form and is skipped with the other permalinks,
- * which stay routed in Trinity.
+ * Give every link that leaves Trinity `target="_blank"` and `rel="noopener noreferrer"`, so
+ * middle-click, modifier-click, context-menu and drag behave like the plain click
+ * `MatrixLinkDirective` intercepts. Runs after {@link normaliseMatrixUris}, so `matrix:` links
+ * are already permalinks and stay routed in Trinity.
  *
- * Render-only, like every pass after DOMPurify: `target` is in neither allowlist, so a
- * sender's own `target` never survives, and attributes set here never reach the wire.
+ * Render-only: `target` is in neither allowlist, so a sender's own `target` never survives and
+ * attributes set here never reach the wire.
  */
 function markExternalLinks(root: ParentNode): void {
   for (const anchor of root.querySelectorAll('a[href]')) {
@@ -853,9 +812,9 @@ function markExternalLinks(root: ParentNode): void {
       .replace(URL_LEADING_CONTROLS, '')
       .replace(URL_TAB_OR_NEWLINE, '');
     if (!EXTERNAL_LINK.test(href)) continue;
-    // Write back the href the browser would open, so Angular's URL check sees it too. A
-    // permalink needs it as much as an external link: left with its leading control
-    // character, Angular marks it `unsafe:` and MatrixLinkDirective cannot route it.
+    // Write back the href the browser would open so Angular's URL check sees it too: a permalink
+    // left with a leading control character is marked `unsafe:` and MatrixLinkDirective can't
+    // route it.
     anchor.setAttribute('href', href);
     if (isMatrixLinkHref(href)) continue;
     anchor.setAttribute('target', '_blank');
@@ -865,9 +824,9 @@ function markExternalLinks(root: ParentNode): void {
 
 /**
  * {@link linkifyText}, with each link that leaves Trinity marked as {@link markExternalLinks}
- * marks it. `linkifyText` emits exactly `<a href="…">` with an escaped URL, so this matches only
- * its own output; the pattern is fixed, never built from the text. For any plain text shown as a
- * message is (a body, a room topic, the composer's preview), so its links open alike.
+ * marks it. `linkifyText` emits exactly `<a href="…">` with an escaped URL, so the fixed pattern
+ * matches only its own output. Use it for any plain text shown as a message (body, room topic,
+ * composer preview) so its links open alike.
  */
 export function linkifyMessageText(text: string): string | null {
   return (
@@ -891,16 +850,14 @@ const SENDER_SIZE = /^\d{1,5}$/;
 /**
  * Prepare every image for the render leaf. A valid `mxc://` source moves to `data-mx-src`:
  * Angular strips `data-*` at the leaf, so the browser never sees an `mxc:` URL (the CSP would
- * block it as a broken image), and InlineMxcImagesDirective re-reads the source from this string
- * and resolves it through authenticated media. Any other image (no source, `data:`, `blob:`,
- * remote), and every image over the cap, becomes its alt text here, never a fetch; without
- * one it reads "Image", so the reader still sees that something was there.
+ * block it), and InlineMxcImagesDirective re-reads it and resolves it through authenticated
+ * media. Any other image (no source, `data:`, `blob:`, remote), and every image over the cap,
+ * becomes its alt text here, never a fetch; without one it reads "Image".
  *
- * MSC2545 custom emoji (`data-mx-emoticon`) are sized as before and capped at the leaf (50).
- * Other images are marked `mx-image`, the first {@link MAX_INLINE_IMAGES} only, so a crafted
- * message cannot fire many downloads; outside a link they are buttons that open the viewer,
- * named after their alt text ("Image" without one). Inside a link they follow the link. Their
- * `width`/`height` survive only as plain digits; the leaf caps the drawn size (300px tall).
+ * MSC2545 custom emoji (`data-mx-emoticon`) are capped at the leaf (50). Other images are marked
+ * `mx-image`, the first {@link MAX_INLINE_IMAGES} only, so a crafted message cannot fire many
+ * downloads; outside a link they are buttons that open the viewer, named after their alt text.
+ * Their `width`/`height` survive only as plain digits; the leaf caps the drawn size (300px tall).
  */
 function normaliseImages(root: ParentNode): void {
   let inline = 0;
@@ -951,9 +908,9 @@ function normaliseImages(root: ParentNode): void {
  * stays until MathsDirective has KaTeX render the LaTeX it re-reads from this string (Angular
  * strips `data-*` at the leaf). Empty maths keeps its fallback.
  *
- * An image in a marked fallback becomes its alt text. KaTeX replaces the fallback, so an image
- * there would leave the inline images {@link normaliseImages} counts and the leaf pairs in
- * document order out of step: the next image would get its source. Runs before it.
+ * An image in a marked fallback becomes its alt text: KaTeX replaces the fallback, so the inline
+ * images {@link normaliseImages} counts and the leaf pairs in document order would fall out of
+ * step. Runs before it.
  */
 function normaliseMaths(root: ParentNode): void {
   for (const node of root.querySelectorAll(
@@ -969,25 +926,18 @@ function normaliseMaths(root: ParentNode): void {
 }
 
 /**
- * Tag `matrix.to` user links so a mention reads as a mention rather than as an ordinary
- * link, and mark them as addressed to the viewer when the event says so.
+ * Tag `matrix.to` user links as mentions, and mark them as addressed to the viewer when the
+ * event says so.
  *
- * `.mention` is keyed off the href, which is right: a link to a user IS a mention of them,
- * and it makes mentions written in Element and other clients render the same as ours.
+ * `.mention` is keyed off the href, so mentions written in other clients render like ours.
+ * `.mention--self` is NOT: `formatted_body` is sender-written, so anyone could put
+ * `<a href="…/@you">` in a message and get the "addressed to you" treatment without addressing
+ * you. It is gated on the event's `m.mentions`, so the strong visual means what a notification
+ * means.
  *
- * `.mention--self` is NOT keyed off the href, and that is the point. `formatted_body` is
- * written by the sender, so anyone can put `<a href="…/@you">whatever</a>` in a message and
- * would otherwise get the solid "this is addressed to you" treatment without addressing you
- * at all. It is gated on the event's `m.mentions` instead, so the strong visual means
- * exactly what a notification means — which is the whole point of intentional mentions.
- *
- * A render-only pass, deliberately not in the `afterSanitizeAttributes` hook: attributes set
- * there are not re-filtered and would ride out onto the wire, so a sent message would carry
- * viewer-specific classes to everyone else.
- *
- * Running AFTER DOMPurify is what stops the CLASS being injected directly: `class` is
- * filtered to {@link ALLOWED_CLASS}, so by the time this adds one, anything the sender wrote
- * is already gone.
+ * Render-only, not in the `afterSanitizeAttributes` hook: attributes set there are not
+ * re-filtered and would ride out onto the wire. Running after DOMPurify also means any `class`
+ * the sender wrote is already gone ({@link ALLOWED_CLASS}).
  */
 function markMentionPills(body: HTMLElement, addressesViewer: boolean): void {
   for (const anchor of body.querySelectorAll('a[href]')) {
@@ -1003,15 +953,12 @@ function markMentionPills(body: HTMLElement, addressesViewer: boolean): void {
 }
 
 /**
- * Sanitize HTML we are about to SEND, against the same Matrix allowlist the incoming
- * path uses — so the client can never emit a `formatted_body` its own renderer would
- * strip.
+ * Sanitize HTML we are about to SEND against the same Matrix allowlist the incoming path uses,
+ * so the client never emits a `formatted_body` its own renderer would strip.
  *
- * Deliberately applies none of {@link sanitizeMatrixHtml}'s render-only normalisation:
- * spoiler `class`/`tabindex`/`role` and syntax-highlight spans are presentation, and
- * putting them on the wire would bloat every event with markup other clients neither
- * expect nor keep. Not memoized either — every composed message is a distinct string,
- * so caching sends would only evict useful timeline entries.
+ * Applies none of {@link sanitizeMatrixHtml}'s render-only normalisation (spoiler attributes,
+ * highlight spans): that is presentation other clients neither expect nor keep. Not memoized:
+ * every composed message is distinct, so caching would only evict useful timeline entries.
  */
 export function sanitizeOutgoingHtml(html: string): string {
   const body = DOMPurify.sanitize(html, {
@@ -1028,12 +975,9 @@ export function sanitizeOutgoingHtml(html: string): string {
  * Reduce every `<img>` we would send whose source is not `mxc:` to its alt text.
  *
  * Matrix accepts no other source, so anything else is an empty box on arrival. The markdown
- * renderer already turns such an image into a link or its caption (see `image()` in
- * message-content.ts) — but it only sees markdown image *tokens*, and marked hands raw HTML
- * straight through. So `<img src="data:image/png;base64,…">` typed into the composer walked
- * out the other door with its whole payload, and `<img src="https://…">` shipped as the
- * src-less box the renderer exists to avoid. Enforcing it here catches both, on the one path
- * everything outgoing shares.
+ * renderer (`image()` in message-content.ts) only sees markdown image tokens and marked passes
+ * raw HTML through, so a typed `<img src="data:…">` would ship its whole payload and
+ * `<img src="https://…">` a src-less box. This is the one path everything outgoing shares.
  */
 function enforceMxcImages(root: ParentNode): void {
   for (const img of root.querySelectorAll('img')) {
@@ -1044,22 +988,20 @@ function enforceMxcImages(root: ParentNode): void {
 }
 
 /**
- * Tag spoilers for the renderer. `data-mx-spoiler` marks one in Matrix HTML, but
- * Angular's `[innerHTML]` sanitizer (the defence-in-depth re-scrub at the render leaf)
- * drops all `data-*` attributes — so mirror it onto the sanctioned `mx-spoiler` class
- * instead (class/tabindex/role all survive that pass). Focusable + role=button so
- * keyboard users can reveal it too (pointer users get click-to-reveal).
+ * Tag spoilers for the renderer. `data-mx-spoiler` marks one in Matrix HTML, but Angular's
+ * `[innerHTML]` sanitizer (the re-scrub at the render leaf) drops all `data-*`, so mirror it onto
+ * the sanctioned `mx-spoiler` class (class/tabindex/role survive that pass). Focusable with
+ * role=button so keyboard users can reveal it too.
  *
- * Render-side only, and deliberately not in the DOMPurify hook: the hook runs on the
- * send path as well, and attributes it sets are not re-filtered against ALLOWED_ATTR —
- * so from there `tabindex`/`role` (in neither allowlist) would end up in outgoing
- * `formatted_body`.
+ * Render-side only, not in the DOMPurify hook: the hook also runs on the send path, and
+ * attributes it sets are not re-filtered against ALLOWED_ATTR, so `tabindex`/`role` (in neither
+ * allowlist) would end up in outgoing `formatted_body`.
  *
- * The reason is copied into `label`, which Angular keeps and which is inert on `span`; CSS
- * shows it as generated content on the concealed bar (rendered-markdown.scss), so it stays
- * out of `textContent`, copies and the edit-history diff. `aria-label` names the concealed
- * spoiler for screen readers instead of its hidden text; SpoilerRevealDirective removes it
- * and the role on reveal, and the tab stop once the revealed spoiler does not hold focus.
+ * The reason is copied into `label`, which Angular keeps and which is inert on `span`; CSS shows
+ * it as generated content on the concealed bar (rendered-markdown.scss), keeping it out of
+ * `textContent`, copies and the edit-history diff. `aria-label` names the concealed spoiler for
+ * screen readers instead of its hidden text; SpoilerRevealDirective removes it and the role on
+ * reveal, and the tab stop once the revealed spoiler does not hold focus.
  */
 function normaliseSpoilers(root: ParentNode): void {
   for (const node of root.querySelectorAll('[data-mx-spoiler]')) {
@@ -1101,19 +1043,19 @@ function spoilerReason(raw: string): string {
     .trimEnd();
 }
 
-/** `#` and exactly six hex digits: the only sender colour Trinity applies (owner decision 2). */
+/** `#` and exactly six hex digits: the only sender colour Trinity applies. */
 const SENDER_COLOUR = /^#([0-9a-f]{6})$/i;
 
 /**
  * Turn sender colours into class tokens the render leaf can read: `mx-fg-rrggbb` from
  * `data-mx-color` (or a `font`'s deprecated `color`), `mx-bg-rrggbb` from `data-mx-bg-color`.
- * Angular's `[innerHTML]` sanitizer strips `data-*` and `style` but keeps `class`, and the
- * colour is applied only after the leaf has checked its contrast against the current theme
+ * Angular's `[innerHTML]` sanitizer strips `data-*` and `style` but keeps `class`, and the colour
+ * is applied only after the leaf checks its contrast against the current theme
  * (`SenderColoursDirective`), which this memoized, theme-free string cannot know. `color` is
- * removed so no browser paints a colour that has not been checked.
+ * removed so no browser paints an unchecked colour.
  *
- * Render-only and after DOMPurify: the allowlist hook has already removed every sender `class`
- * outside `code` (see {@link ALLOWED_CLASS}), so a sender cannot write a token directly.
+ * Render-only and after DOMPurify: the hook removed every sender `class` outside `code`
+ * ({@link ALLOWED_CLASS}), so a sender cannot write a token directly.
  */
 function normaliseColours(root: ParentNode): void {
   for (const node of root.querySelectorAll(
@@ -1138,10 +1080,10 @@ function normaliseColours(root: ParentNode): void {
 const TASK_GLYPH = /^[☑☐]\s/;
 
 /**
- * A GFM checkbox as text, done or not. The single definition of what a task item looks like:
- * the markdown renderer writes it on the way out, {@link normaliseTaskItems} writes it for
- * checkboxes arriving from other clients, and {@link TASK_GLYPH} matches it. The trailing
- * space separates it from the item's text and is what that pattern keys on.
+ * A GFM checkbox as text, done or not. The single definition of a task item's look: the markdown
+ * renderer writes it, {@link normaliseTaskItems} writes it for checkboxes from other clients,
+ * and {@link TASK_GLYPH} matches it. The trailing space separates it from the item's text and
+ * is what that pattern keys on.
  */
 export function taskGlyph(checked: boolean): string {
   return checked ? '☑ ' : '☐ ';
@@ -1150,22 +1092,17 @@ export function taskGlyph(checked: boolean): string {
 /**
  * Turn every GFM checkbox into its glyph, and mark the items that carry one.
  *
- * Two sources, one result. Our own sends already carry ☑/☐ as text (the `checkbox` renderer
- * in message-content.ts — `input` is in neither allowlist, and a glyph is what survives into
- * every client, screen reader and plain-text fallback). **Everyone else sends the `<input>`**,
- * which the allowlist dropped on arrival — so an Element checklist rendered as bare items with
- * the done/not-done state simply gone. Converting it here makes both render identically.
+ * Our own sends already carry ☑/☐ as text (`checkbox` in message-content.ts); other clients send
+ * an `<input>`, which the allowlist drops, so this converts it and both render alike.
  *
  * That is why {@link RENDER_PURIFY_CONFIG} lets `input` (and the two attributes needed to read
- * it) past DOMPurify: this pass is what removes them again. Every input is replaced or deleted
- * and both attributes are swept off the whole tree before anything is serialized, so neither
- * can reach the output — pinned by tests. The widening is render-only; `sanitizeOutgoingHtml`
- * keeps the untouched allowlist and still drops the tag outright.
+ * it) past DOMPurify: every input is replaced or deleted and both attributes are swept off the
+ * whole tree before serialization, so neither can reach the output (pinned by tests).
+ * `sanitizeOutgoingHtml` keeps the untouched allowlist and still drops the tag.
  *
- * The `mx-task` class is keyed on the glyph OPENING the item: anywhere else it is a character
- * someone typed, and that item is a normal one that keeps its bullet. Presentational and
- * render-side only, exactly as {@link normaliseSpoilers} is — putting it in outgoing
- * `formatted_body` would be markup no other client asked for.
+ * `mx-task` is keyed on the glyph OPENING the item: anywhere else it is a typed character and
+ * the item keeps its bullet. Render-side only, like {@link normaliseSpoilers}: in outgoing
+ * `formatted_body` it would be markup no other client asked for.
  */
 function normaliseTaskItems(root: ParentNode): void {
   for (const box of root.querySelectorAll('input')) {
@@ -1194,11 +1131,9 @@ function normaliseTaskItems(root: ParentNode): void {
 
 /**
  * Mark ordered lists whose numbers are too long for the list's usual indent: `mx-ol-wide` when
- * the longest number has two characters (`10`, `-9`), which a wider indent holds, and
- * `mx-ol-long` past that (`100`, or a sender's `start="100000"`), whose numbers the stylesheet
- * puts inside the items. Otherwise they would hang out of the message body, which clips
- * anything beside it. Render-only, like {@link normaliseTaskItems}; one pass over the lists
- * and their direct items.
+ * the longest number has two characters (`10`, `-9`), `mx-ol-long` past that (`100`, or a
+ * sender's `start="100000"`), whose numbers the stylesheet puts inside the items. Otherwise they
+ * would hang out of the message body, which clips anything beside it. Render-only.
  */
 function markWideLists(root: ParentNode): void {
   for (const list of root.querySelectorAll('ol')) {
@@ -1226,30 +1161,24 @@ function fencedLanguage(code: Element): string | null {
 
 /**
  * Prepare every fenced code block for rendering: caption it with the language it declares,
- * and wrap its lines for numbering. Syntax colouring is NOT done here: it happens at the
- * render leaf, only for rendered rows (see CodeHighlightDirective in the rooms feature).
+ * and wrap its lines for numbering. Syntax colouring happens at the render leaf, not here (see
+ * CodeHighlightDirective in the rooms feature), from DOM nodes after DOMPurify and Angular's own
+ * scrub, so nothing it produces can be re-parsed as markup.
  *
- * **The caption is an attribute, not an element.** `language` is read back by CSS
+ * The caption is an attribute, not an element: `language` is read back by CSS
  * (`pre[language]::after`, see rendered-markdown.scss). Generated content is not part of
- * `textContent`, which matters well beyond tidiness: the edit-history diff compares the text
- * of two rendered revisions, so an inserted caption node would make a fence-language-only
- * edit read as a text change, and would show up in every diff of a message containing code.
- * `data-lang` would have been the obvious attribute, but Angular's `[innerHTML]` sanitizer
- * strips all `data-*` — `language` is on its allowlist and carries no semantics of its own
- * (unlike `lang`, which declares a *natural* language to screen readers and translators).
+ * `textContent`, so an inserted caption node would make a fence-language-only edit read as a
+ * text change in the edit-history diff. `data-lang` would be stripped by Angular's `[innerHTML]`
+ * sanitizer; `language` is on its allowlist and, unlike `lang`, declares no natural language to
+ * screen readers.
  *
- * Captioning runs for EVERY block that declares a language, including ones no grammar is
- * loaded for: knowing a block is `elixir` is useful even when we cannot colour it.
- *
- * Colouring is applied after DOMPurify and Angular's own `[innerHTML]` scrub, from DOM
- * nodes, so nothing it produces can be re-parsed as markup.
+ * Captioning runs for every block that declares a language, even without a loaded grammar.
  */
 function renderCodeBlocks(root: ParentNode): void {
   // A per-block cap is defeated by splitting, so line wrapping also has a per-message sum.
   let lineBudget = MAX_NUMBERED_LINES_PER_MESSAGE;
-  // Iterating `pre` rather than `pre > code[class]` because not every pass below needs a
-  // language: a bare fence produces a `<code>` with no class at all, so a code-first query
-  // cannot see it. Captioning and highlighting stay gated on the language individually.
+  // Iterate `pre`, not `pre > code[class]`: a bare fence yields a `<code>` with no class, which a
+  // code-first query would miss. Captioning is gated on the language separately.
   for (const pre of root.querySelectorAll('pre')) {
     for (const code of pre.querySelectorAll(':scope > code')) {
       const lang = fencedLanguage(code);
@@ -1266,24 +1195,19 @@ function renderCodeBlocks(root: ParentNode): void {
  * Wrap each line of a block in `<span class="code-line">` and record how many there are, so
  * CSS can number them.
  *
- * The numbers themselves are generated content keyed off these wrappers, never text — the
- * same rule the language caption follows, and for the same reasons: digits in the DOM would
- * be selectable, would land in the clipboard when someone copies a pasted file, and would
- * be read by the edit-history diff, which compares the *text* of two rendered revisions.
- * The wrappers add no characters, so `textContent` is byte-identical to the sender's source.
+ * The numbers are generated content keyed off these wrappers, never text (like the language
+ * caption): digits in the DOM would be selectable, land in the clipboard, and be read by the
+ * edit-history diff. The wrappers add no characters, so `textContent` is byte-identical.
  *
- * The newlines stay OUTSIDE the wrappers, as siblings. Under `pre`'s `white-space: pre` they
- * are what break the lines, so the wrappers can remain inline and this becomes a
- * zero-layout-change transform; block-level wrappers would turn every one of those newlines
- * into a blank line of its own.
+ * The newlines stay OUTSIDE the wrappers, as siblings: under `pre`'s `white-space: pre` they
+ * break the lines, so the wrappers stay inline; block-level wrappers would turn every newline
+ * into a blank line.
  *
- * `rows` rather than an invented attribute name: Angular's `[innerHTML]` sanitizer runs
- * again at the render leaf against a fixed allowlist, which admits `rows` and `language` but
- * would silently drop `numbered` or `data-lines`. It carries no meaning on `<pre>`, and the
- * count is what a threshold rule would want anyway. The threshold is applied HERE, from the
- * content, rather than in CSS, because `:has()` is below this app's browser floor — and
- * because a preference must never reach the markup, which is memoized per message and not
- * per viewer.
+ * The count goes in `rows`, not an invented attribute: Angular's `[innerHTML]` sanitizer runs
+ * again at the render leaf against a fixed allowlist that admits `rows` and `language` but would
+ * drop `numbered` or `data-lines`. The threshold is applied here, from the content, not in CSS,
+ * because `:has()` is below this app's browser floor and a preference must never reach the
+ * markup, which is memoized per message and not per viewer.
  */
 function markCodeLines(
   code: Element,
@@ -1299,15 +1223,13 @@ function markCodeLines(
     return 0;
   }
   const lines = source.split('\n');
-  // marked puts a trailing newline inside `<code>`, and so does commonmark, so very nearly
-  // every real fence ends with one — from this client and from Element alike. Counting it
-  // would number a phantom blank row at the end of every block and fire the threshold a
-  // line early, numbering a five-line block under a setting labelled "over 5 lines".
+  // marked and commonmark put a trailing newline inside `<code>`, so nearly every fence ends
+  // with one. Counting it would number a phantom blank row and fire the threshold a line early
+  // (a five-line block under a setting labelled "over 5 lines").
   const trailingNewline = source.endsWith('\n');
   const count = trailingNewline ? lines.length - 1 : lines.length;
-  // Two bounds, because a sender controls both the size of a block and how many of them a
-  // message contains. Declining, not truncating: half a numbered listing would be worse
-  // than an unnumbered one, and the block still renders normally either way.
+  // Two bounds, because a sender controls both block size and block count. Decline rather than
+  // truncate: half a numbered listing is worse than an unnumbered one.
   if (count > MAX_NUMBERED_LINES || count > lineBudget) {
     return 0;
   }
@@ -1341,29 +1263,26 @@ function markCodeLines(
       }
     });
   }
-  // Skipped for a trailing newline: its final segment is empty, and flushing it would be
-  // the phantom row. The `\n` text node itself has already been emitted, so `textContent`
-  // stays byte-identical either way.
+  // Skipped for a trailing newline: its final segment is empty and flushing it would be the
+  // phantom row. The `\n` text node is already emitted, so `textContent` is unchanged.
   if (!trailingNewline) {
     flush();
   }
 
   code.replaceChildren(...wrapped);
   if (count > LINE_NUMBER_THRESHOLD) {
-    // On the `code`, not the `pre`. The Matrix allowlist lets a sender put two `<code>`
-    // children in one `<pre>`: writing to the block would be last-writer-wins, so a long
-    // listing followed by a short one kept a stale count, and the threshold gate applied to
-    // both blocks from whichever wrote last. Per-`code` makes each block answer for itself,
-    // and matches where the counter is reset.
+    // On the `code`, not the `pre`: the Matrix allowlist lets a sender put two `<code>` children
+    // in one `<pre>`, so writing to the block would be last-writer-wins and the threshold gate
+    // would apply to both from whichever wrote last. This also matches where the counter resets.
     code.setAttribute('rows', String(count));
   }
   return count;
 }
 
 /**
- * Shown in place of a body we hold no key for. Exported so every surface that can render
- * an undecryptable message says the same thing — never the SDK's internal
- * `** Unable to decrypt: <reason> **`, which is a diagnostic, not a message to a user.
+ * Shown in place of a body we hold no key for. Exported so every surface that renders an
+ * undecryptable message says the same thing, never the SDK's internal
+ * `** Unable to decrypt: <reason> **` diagnostic.
  */
 export const UNDECRYPTABLE_BODY = '⚠️ Unable to decrypt this message';
 
@@ -1395,13 +1314,10 @@ export interface RenderedText {
 }
 
 /**
- * Render a message content block's text into its three forms. The distinction between
- * `html` and `textHtml` is load-bearing and not interchangeable: a text/emote/notice body
- * renders `textHtml` (so bare URLs are clickable), while an MSC2530 media caption renders
- * `html` — deliberately un-linkified, since a caption is a label rather than prose.
- *
- * Shared by Message Presentation and the edit-history projection so a past revision
- * renders exactly as the live message does.
+ * Render a message content block's text into its three forms. `html` and `textHtml` are not
+ * interchangeable: a text/emote/notice body renders `textHtml` (bare URLs clickable), while an
+ * MSC2530 media caption renders `html`, deliberately un-linkified because a caption is a label.
+ * Shared with the edit-history projection so a past revision renders as the live message does.
  */
 export function renderTextBody(
   content: Record<string, unknown>,
