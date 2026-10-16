@@ -244,15 +244,15 @@ jobs:
         with:
           path: ~/.cache/electron
           key: electron-${{ runner.os }}-${{ steps.electron-version.outputs.version }}
+      # Fetch it here rather than letting `electron:e2e` trip the package's lazy download
+      # mid-run: this is the step that populates the cache above, and a wedged @electron/get
+      # should fail as itself, not as a Playwright launch timeout.
       - run: pnpm electron:install
       - if: github.ref == 'refs/heads/main' && steps.electron-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/electron
           key: electron-${{ runner.os }}-${{ steps.electron-version.outputs.version }}
-      # Fetch it here rather than letting `electron:e2e` trip the package's lazy download
-      # mid-run: this is the step that populates the cache above, and a wedged @electron/get
-      # should fail as itself, not as a Playwright launch timeout.
       - run: pnpm electron:compile
       # `compile` type-checks the main-process sources only — electron/tsconfig.json
       # excludes `src/**/*.spec.ts`. This is the same gate for the specs (see
@@ -848,14 +848,15 @@ jobs:
           find ~/.gradle/wrapper/dists -name '*.zip' -type f -print -delete
           du -sh ~/.gradle/caches ~/.gradle/wrapper
           du -sh ~/.gradle/caches/* | sort -h | tail -n 6
-      - if: github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
+      # Shard 1 saves both, so the shards don't race to upload the same entries.
+      - if: github.ref == 'refs/heads/main' && matrix.shard == 1 && steps.gradle-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
-      - if: github.ref == 'refs/heads/main' && steps.appium-cache.outputs.cache-hit != 'true'
+      - if: github.ref == 'refs/heads/main' && matrix.shard == 1 && steps.appium-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .appium

@@ -31,7 +31,14 @@ runs:
     # update reuses the same entries. Only `main` saves (save-playwright); other refs restore.
     - id: playwright
       shell: bash
-      run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      run: |
+        version=$(pnpm exec playwright --version | awk '{print $2}')
+        # An empty or odd version would key an entry that every later version hits.
+        if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::could not read the Playwright version (got '$version')"
+          exit 1
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
     # Only the .debs are cached: partial/ belongs to _apt and lock is root-only, so tar
     # cannot read either. One entry is saved, for the default `chromium webkit` set; the other
     # sets restore it through the prefix and apt downloads only what it lacks.

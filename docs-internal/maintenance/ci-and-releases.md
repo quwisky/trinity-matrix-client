@@ -139,7 +139,7 @@ CI validation jobs and release verification/package jobs use the shared
 and container-action setup; the draft-release job consumes artifacts without installing
 the workspace, and the macOS signing job installs only `electron/`'s lockfile, with
 `--ignore-scripts`.
-It installs pinned pnpm first, so the store steps can ask pnpm for the store path.
+It installs pinned pnpm before Node.
 The pnpm version comes from `packageManager`; Node follows `.nvmrc`; and installation
 uses a frozen lockfile. A dependency or lockfile mismatch therefore fails at setup,
 before the task that exposed it.
@@ -147,26 +147,30 @@ before the task that exposed it.
 Every Actions cache this repository controls is saved from `main` only. Each job restores with
 `actions/cache/restore` and saves with `actions/cache/save` under
 `github.ref == 'refs/heads/main'`, skipping the save when the exact key was restored. Any branch
-can read the default branch's entries, so pull requests restore main's and add none of their own;
-a pull request that changes a key (a new lockfile, say) restores the newest entry through its
-prefix and downloads the difference. The
+can read the default branch's entries, so pull requests restore main's and add none of their own.
+When a pull request changes a key, the Gradle, Appium, apt and emulator caches restore main's
+newest entry through their prefix and download the difference; Playwright and Electron use exact
+keys, so a new version downloads in full until `main` saves it. Release branches never save
+either: a `release/**` push or backport pull request on another Playwright or Electron version
+than `main` downloads them in full on every job, an accepted cost for keeping one copy of each
+entry. In `mobile-e2e` only shard 1 saves, so the two shards do not upload the same entry. The
 [cache cleanup workflow](../../.github/workflows/cache-cleanup.yml) deletes whatever is left
 under `refs/pull/<n>/merge` when a pull request closes. CodeQL manages its own caches. The
 iOS nightly's caches (WebDriverAgent, pip, Appium, Caddy) still use `actions/cache`, which saves
 from whatever ref runs it, because that workflow runs on its schedule from `main` or by dispatch.
 
-| Entry                                                          | Saved by                                      | Key changes when                       |
-| -------------------------------------------------------------- | --------------------------------------------- | -------------------------------------- |
-| `pnpm-store-<OS>-<arch>-<hash>`                                | The setup action, right after `pnpm install`  | `pnpm-lock.yaml` changes               |
-| `playwright-Linux-chromium-<version>`, `-webkit-`              | `save-playwright`, after the browsers install | Playwright's version changes           |
-| `apt-Linux-<ImageOS>-<ImageVersion>-<version>-chromium webkit` | `save-playwright`, for that set only          | The runner image or Playwright changes |
-| `electron-Linux-<electron version>`                            | Desktop jobs, after `pnpm electron:install`   | `electron/package.json`'s Electron pin |
-| `gradle-Linux-<hash>`, `appium-Linux-<hash>`                   | `mobile-e2e`, at the end of a successful run  | The lockfile or Gradle files change    |
-| `android-emulator-Linux-36-google_apis-x86_64-…`               | `mobile-e2e`, after the emulator booted       | The emulator or image version changes  |
+| Entry                                                          | Saved by                                        | Key changes when                       |
+| -------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------- |
+| `playwright-Linux-chromium-<version>`, `-webkit-`              | `save-playwright`, after the browsers install   | Playwright's version changes           |
+| `apt-Linux-<ImageOS>-<ImageVersion>-<version>-chromium webkit` | `save-playwright`, for that set only            | The runner image or Playwright changes |
+| `electron-Linux-<electron version>`                            | Desktop jobs, after `pnpm electron:install`     | `electron/package.json`'s Electron pin |
+| `gradle-Linux-<hash>`, `appium-Linux-<hash>`                   | `mobile-e2e` shard 1, after a successful run    | The lockfile or Gradle files change    |
+| `android-emulator-Linux-36-google_apis-x86_64-…`               | `mobile-e2e` shard 1, after the emulator booted | The emulator or image version changes  |
 
-The pnpm store key covers the root lockfile only. `electron/` is a second pnpm project that
-`pnpm electron:install` installs after the store is saved, so its packages were never reliably
-in the entry. There is deliberately no Nx cache sharing
+The pnpm store is not cached: installing from the registry measured as fast as restoring the
+store (13–19 s on Linux, 36 s on macOS and 50 s on Windows), and the entries took about 1 GB.
+The setup action sets setup-node's `package-manager-cache: false` so nothing caches it
+implicitly. There is deliberately no Nx cache sharing
 between hosted runners: Nx's local result index is machine-specific, and this
 repository has no remote Nx cache. Treat a repeated build in another CI job as
 an independent build, not a cache regression. Pull requests instead save

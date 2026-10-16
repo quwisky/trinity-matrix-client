@@ -17,7 +17,13 @@ runs:
       if: github.ref == 'refs/heads/main'
       shell: bash
       run: |
-        echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+        version=$(pnpm exec playwright --version | awk '{print $2}')
+        # An empty or odd version would key an entry that every later version hits.
+        if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::could not read the Playwright version (got '$version')"
+          exit 1
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
         echo "image=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
     - id: chromium
       if: github.ref == 'refs/heads/main'
