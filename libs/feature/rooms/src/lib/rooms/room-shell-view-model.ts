@@ -226,6 +226,23 @@ export class RoomShellViewModel {
     );
   });
 
+  /**
+   * Whether the selected space is listed: its pill is in the rail and its children are in
+   * the sidebar. Its space actions and child list are offered only then.
+   */
+  readonly activeSpaceListed = computed(() => {
+    const spaceId = this.store.activeSpaceId();
+    return !!spaceId && this.railSpaces().some((space) => space.id === spaceId);
+  });
+
+  /**
+   * A space is selected that the selected view does not list yet: restored before the
+   * account's sync brings it, or about to be repaired to Recent once it turns out gone.
+   */
+  readonly activeSpacePending = computed(
+    () => !!this.store.activeSpaceId() && !this.activeSpaceListed(),
+  );
+
   /** Channel-sidebar header: Recent activity, the Rooms view, a selected space, else the direct messages. */
   readonly sidebarTitle = computed(() => {
     if (this.store.recentView()) {
@@ -234,9 +251,12 @@ export class RoomShellViewModel {
     if (this.store.roomsView()) {
       return 'Rooms';
     }
-    return this.store.activeSpaceId()
-      ? this.activeSpaceName()
-      : 'Direct messages';
+    if (!this.store.activeSpaceId()) {
+      return 'Direct messages';
+    }
+    return this.activeSpacePending()
+      ? 'Loading space…'
+      : this.activeSpaceName();
   });
 
   /** Whether the Rooms view lists a row: a non-DM room that belongs to no space. */

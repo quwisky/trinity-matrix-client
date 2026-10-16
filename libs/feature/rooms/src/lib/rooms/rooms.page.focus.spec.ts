@@ -116,6 +116,8 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
     activeAccountId: signal<string | null>('@me:hs'),
     activeRoom: signal<RoomSummary | null>(ROOM),
     activeRoomIsDirect: signal(false),
+    activeSpaceListed: signal(false),
+    activeSpacePending: signal(false),
     anyRoomUnread: signal(false),
     canConfigureSpace: signal(false),
     canCurateSpace: signal(false),

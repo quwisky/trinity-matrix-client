@@ -105,6 +105,7 @@ async function renderSidebar(
       hasAnyUnread?: boolean;
       filterQuery?: string;
       spaceActive?: boolean;
+      spaceLoading?: boolean;
       spaceName?: string;
       showSwitcher?: boolean;
       activeRoomId?: string | null;
@@ -1783,6 +1784,18 @@ describe('ChannelSidebarComponent room filter', () => {
     expect(
       container.querySelector('[data-testid=room-list-empty]')!.textContent,
     ).toContain('No rooms match');
+  });
+
+  it('says the rooms of a space it is still loading are loading, not missing', async () => {
+    const { container } = await renderSidebar({
+      inputs: { rooms: [], spaceLoading: true, spaceName: 'Loading space…' },
+    });
+
+    expect(
+      container.querySelector('[data-testid=room-list-empty]')!.textContent,
+    ).toContain('Loading rooms…');
+    expect(container.textContent).toContain('Loading space…');
+    expect(container.textContent).not.toContain('No rooms here yet');
   });
 
   it('still says the space is empty when nothing is filtered', async () => {

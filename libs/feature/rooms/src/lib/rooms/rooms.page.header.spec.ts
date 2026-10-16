@@ -136,6 +136,8 @@ function renderHeader(
       opts.room === undefined ? ROOM : opts.room,
     ),
     activeRoomIsDirect: signal(false),
+    activeSpaceListed: signal(false),
+    activeSpacePending: signal(false),
     anyRoomUnread: signal(false),
     canConfigureSpace: signal(false),
     canCurateSpace: signal(false),

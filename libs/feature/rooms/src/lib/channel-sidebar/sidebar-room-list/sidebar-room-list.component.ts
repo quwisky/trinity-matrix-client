@@ -170,6 +170,8 @@ export class SidebarRoomListComponent {
    * nothing.
    */
   readonly filterActive = input(false);
+  /** The rooms are still loading (a selected space not listed yet): the empty state says so. */
+  readonly loading = input(false);
   /**
    * The element that scrolls this list. With one, a long list renders only the lines in and
    * near its viewport, plus spacers, so the sidebar's DOM stays bounded however many rooms

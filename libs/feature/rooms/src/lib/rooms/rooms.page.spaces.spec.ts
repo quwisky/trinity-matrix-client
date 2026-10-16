@@ -81,7 +81,14 @@ describe('RoomsPage space filtering', () => {
     };
   }
 
-  function build() {
+  function build(
+    initial: {
+      /** Whether the account's client holds the space and lists it yet. */
+      readonly spaceHeld?: boolean;
+      /** Whether the account has synced with its homeserver. */
+      readonly synced?: boolean;
+    } = {},
+  ) {
     // Home recency order is c, a, b. The space orders its children b, a — deliberately NOT
     // alphabetical, because every room here has activityTs 0: with a name tiebreak, a
     // curated order of a, b would be indistinguishable from the default recency ordering,
@@ -97,14 +104,16 @@ describe('RoomsPage space filtering', () => {
     const childRoomIds = vi.fn((id: string | null) =>
       id === '!s:hs' ? ['!b:hs', '!a:hs'] : [],
     );
-    const spaces = signal([spaceSummary('!s:hs', ['!b:hs', '!a:hs'])]);
-    // Whether the account's client holds the space; a sync can drop it.
-    const spaceHeld = signal(true);
+    const space = spaceSummary('!s:hs', ['!b:hs', '!a:hs']);
+    // Whether the account's client holds the space; a sync can bring or drop it.
+    const spaceHeld = signal(initial.spaceHeld ?? true);
+    const spaces = signal(spaceHeld() ? [space] : []);
+    const synced = signal(initial.synced ?? true);
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
-        selectedRoomLibraryProvider(),
+        selectedRoomLibraryProvider({ synced }),
         MockProvider(RoomLibraryService, {
           selectionAvailability: (_accountId: string, roomId: string) =>
             roomId === '!s:hs' && !spaceHeld() ? 'unavailable' : 'available',
@@ -146,7 +155,7 @@ describe('RoomsPage space filtering', () => {
         MockProvider(TrnToastService),
       ],
     });
-    return { ...shellFrom(), spaces, spaceHeld };
+    return { ...shellFrom(), space, spaces, spaceHeld, synced };
   }
 
   it('names the title row after the open room', async () => {
@@ -303,6 +312,35 @@ describe('RoomsPage space filtering', () => {
     expect(shell.store.activeSpaceId()).toBeNull();
     expect(shell.store.activeRoomId()).toBe('!b:hs');
     expect(shell.vm.sidebarTitle()).toBe('Recent activity');
+  });
+
+  // #1401: a room opened from a space is reloaded before the account's first sync brings
+  // the space. The sidebar says it is loading rather than "Direct messages", then lists it.
+  it('a restored space the account has not synced shows Loading, then its rooms', async () => {
+    setRouteRoom('!b:hs', { space: '!s:hs' });
+    const shell = build({ spaceHeld: false, synced: false });
+    await settleWorkspace();
+
+    expect(shell.store.activeSpaceId()).toBe('!s:hs');
+    expect(shell.store.activeRoomId()).toBe('!b:hs');
+    expect(shell.store.recentView()).toBe(false);
+    expect(shell.vm.sidebarTitle()).toBe('Loading space…');
+    expect(shell.vm.activeSpaceListed()).toBe(false);
+    expect(shell.vm.activeSpacePending()).toBe(true);
+
+    shell.spaceHeld.set(true);
+    shell.spaces.set([shell.space]);
+    shell.synced.set(true);
+    await settleWorkspace();
+
+    expect(shell.store.activeSpaceId()).toBe('!s:hs');
+    expect(shell.store.activeRoomId()).toBe('!b:hs');
+    expect(shell.vm.sidebarTitle()).toBe('!s:hs');
+    expect(shell.vm.activeSpaceListed()).toBe(true);
+    expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
+      '!b:hs',
+      '!a:hs',
+    ]);
   });
 
   // A chat picked from the rail's unread entries keeps the space when the space's list
