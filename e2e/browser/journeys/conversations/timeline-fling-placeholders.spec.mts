@@ -254,12 +254,18 @@ test.describe('Rows in a fast-scrolled timeline', () => {
     await openRoom(page, seeded.roomName);
     await loadWholeRoom(page);
     const timeline = page.locator('[data-message-scroller]');
-    // Keyboard focus in the timeline, on a row, as after tabbing to it.
-    await timeline.evaluate((el) =>
-      Array.from(el.querySelectorAll<HTMLElement>('.msg[data-mid][tabindex]'))
-        .at(-1)
-        ?.focus(),
-    );
+    // Keyboard focus in the timeline, on a row on screen, as after tabbing to it. A long
+    // keyboard scroll windows that row away, so each phase starts by focusing one again.
+    const focusRowInView = () =>
+      timeline.evaluate((el) => {
+        const view = el.getBoundingClientRect();
+        Array.from(el.querySelectorAll<HTMLElement>('.msg[data-mid][tabindex]'))
+          .find((row) => {
+            const box = row.getBoundingClientRect();
+            return box.top >= view.top && box.bottom <= view.bottom;
+          })
+          ?.focus();
+      });
     const placeholders = timeline.locator('[data-placeholder-mid]');
     // Count placeholders as they mount, so the test proves the keys actually flung the list.
     await timeline.evaluate((el) => {
@@ -287,16 +293,19 @@ test.describe('Rows in a fast-scrolled timeline', () => {
 
     // PageUp held down: the key repeats while the list keeps scrolling.
     const atNewest = await scrollTop();
+    await focusRowInView();
     for (let i = 0; i < 12; i += 1) await page.keyboard.press('PageUp');
+    await expect.poll(scrollTop).toBeLessThan(atNewest - 1_000);
     await settledSoon();
-    expect(await scrollTop()).toBeLessThan(atNewest);
     // Home and End scroll the whole room smoothly.
+    await focusRowInView();
     await page.keyboard.press('Home');
+    await expect.poll(scrollTop).toBeLessThan(5);
     await settledSoon();
-    expect(await scrollTop()).toBeLessThan(5);
+    await focusRowInView();
     await page.keyboard.press('End');
+    await expect.poll(scrollTop).toBeGreaterThan(atNewest - 200);
     await settledSoon();
-    expect(await scrollTop()).toBeGreaterThan(0);
     await expectRealRowsOnScreen(page);
     // And the keys did fling it: rows entered as placeholders on the way.
     expect(
