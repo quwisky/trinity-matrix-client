@@ -1,4 +1,4 @@
-import { signal, type WritableSignal } from '@angular/core';
+import { computed, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   NotificationCountType,
@@ -140,6 +140,8 @@ function setup(
     live?: readonly string[];
     active?: string | null;
     clients?: ReadonlyMap<string, FakeClient>;
+    /** Accounts whose client has synced with its homeserver; every live one unless named. */
+    synced?: ReadonlySet<string>;
     connect?: boolean;
   } = {},
 ) {
@@ -147,6 +149,10 @@ function setup(
     options.selected ?? new Set(['@active:hs']),
   );
   const accountIds = signal<readonly string[]>(options.live ?? ['@active:hs']);
+  const synced = signal<ReadonlySet<string>>(
+    options.synced ?? new Set(accountIds()),
+  );
+  const activeSpaces = signal<SpaceSummary[]>([ACTIVE_SPACE]);
   const activeUserId = signal<string | null>(
     options.active === undefined ? '@active:hs' : options.active,
   );
@@ -162,6 +168,7 @@ function setup(
     activeUserId: activeUserId.asReadonly(),
     clientFor: (accountId: string) =>
       (clients.get(accountId) as unknown as MatrixClient | undefined) ?? null,
+    serverSynced: (accountId: string) => synced().has(accountId),
   } as unknown as MatrixClientService;
 
   TestBed.configureTestingModule({
@@ -170,7 +177,7 @@ function setup(
       { provide: MatrixClientService, useValue: matrix },
       MockProvider(AccountScopeService, { selected, setSelected, toggle }),
       MockProvider(RoomLibraryService, { rooms: signal([ACTIVE_ROOM]) }),
-      MockProvider(SpacesService, { spaces: signal([ACTIVE_SPACE]) }),
+      MockProvider(SpacesService, { spaces: activeSpaces }),
       MockProvider(InvitesService, {
         pendingInvites: signal([ACTIVE_INVITE]),
       }),
@@ -184,6 +191,8 @@ function setup(
     service,
     selected: selected as WritableSignal<ReadonlySet<string>>,
     accountIds,
+    synced,
+    activeSpaces,
     activeUserId,
     clients,
     setSelected,
@@ -635,12 +644,16 @@ describe('SelectedRoomLibraryService', () => {
     expect(harness.service.view().accountIds).toEqual(new Set(['@active:hs']));
   });
 
-  describe('spaceSelectable', () => {
+  describe('spaceAvailability', () => {
     // A holds the space; B has joined only a room that space lists.
-    const mixed = (selected: readonly string[]) =>
+    const mixed = (
+      selected: readonly string[],
+      synced: readonly string[] = ['@a:hs', '@b:hs', '@c:hs'],
+    ) =>
       setup({
         selected: new Set(selected),
         live: ['@a:hs', '@b:hs', '@c:hs'],
+        synced: new Set(synced),
         active: '@b:hs',
         clients: new Map([
           [
@@ -652,34 +665,74 @@ describe('SelectedRoomLibraryService', () => {
         ]),
       }).service;
 
-    it('accepts a space the Account itself holds', () => {
-      expect(mixed(['@b:hs']).spaceSelectable('@a:hs', '!s:hs')).toBe(true);
-    });
-
-    it('accepts a space another selected Account has joined, in the mixed view', () => {
-      expect(mixed(['@a:hs', '@b:hs']).spaceSelectable('@b:hs', '!s:hs')).toBe(
-        true,
+    it('makes a space the Account itself has joined available', () => {
+      expect(mixed(['@b:hs']).spaceAvailability('@a:hs', '!s:hs')).toBe(
+        'available',
       );
     });
 
-    it('rejects it once the Account holding it is no longer selected', () => {
-      expect(mixed(['@b:hs', '@c:hs']).spaceSelectable('@b:hs', '!s:hs')).toBe(
-        false,
+    it('makes a space another selected Account has joined available, in the mixed view', () => {
+      expect(
+        mixed(['@a:hs', '@b:hs']).spaceAvailability('@b:hs', '!s:hs'),
+      ).toBe('available');
+    });
+
+    it('leaves a space it does not hold unconfirmed until the Account syncs with its homeserver', () => {
+      // Only a cache replay so far: the space may have been joined since that was saved.
+      expect(
+        mixed(['@b:hs'], ['@a:hs', '@c:hs']).spaceAvailability(
+          '@b:hs',
+          '!s:hs',
+        ),
+      ).toBe('unconfirmed');
+    });
+
+    it('makes it unavailable once the Account has synced without it', () => {
+      expect(mixed(['@b:hs']).spaceAvailability('@b:hs', '!s:hs')).toBe(
+        'unavailable',
       );
     });
 
-    it('rejects it for an Account outside the mixed view', () => {
-      expect(mixed(['@a:hs', '@b:hs']).spaceSelectable('@c:hs', '!s:hs')).toBe(
-        false,
+    it('stays unconfirmed in the mixed view while a selected Account that could hold it has not synced', () => {
+      expect(
+        mixed(['@b:hs', '@c:hs'], ['@b:hs']).spaceAvailability(
+          '@b:hs',
+          '!s:hs',
+        ),
+      ).toBe('unconfirmed');
+    });
+
+    it('makes it unavailable once the Account holding it is no longer selected', () => {
+      expect(
+        mixed(['@b:hs', '@c:hs']).spaceAvailability('@b:hs', '!s:hs'),
+      ).toBe('unavailable');
+    });
+
+    it('makes it unavailable for an Account outside the mixed view', () => {
+      expect(
+        mixed(['@a:hs', '@b:hs']).spaceAvailability('@c:hs', '!s:hs'),
+      ).toBe('unavailable');
+    });
+
+    it('makes it unavailable outside the mixed view, where only the Account itself counts', () => {
+      expect(mixed(['@b:hs']).spaceAvailability('@b:hs', '!s:hs')).toBe(
+        'unavailable',
       );
     });
 
-    it('rejects it outside the mixed view, where only the Account itself counts', () => {
-      expect(mixed(['@b:hs']).spaceSelectable('@b:hs', '!s:hs')).toBe(false);
+    it('makes it unavailable for an Account whose client is not live, or a malformed id', () => {
+      const service = mixed(['@a:hs', '@b:hs'], []);
+
+      expect(service.spaceAvailability('@gone:hs', '!s:hs')).toBe(
+        'unavailable',
+      );
+      expect(service.spaceAvailability('@a:hs', '#alias:hs')).toBe(
+        'unavailable',
+      );
     });
 
     // The SDK keeps a left or kicked room in its store, with a `leave` membership.
-    it('rejects a space the Account has left, though its client still stores it', () => {
+    it('makes a space the Account has left unavailable, though its client still stores it', () => {
       const service = setup({
         selected: new Set(['@a:hs', '@b:hs']),
         live: ['@a:hs', '@b:hs'],
@@ -700,13 +753,13 @@ describe('SelectedRoomLibraryService', () => {
         ]),
       }).service;
 
-      expect(service.spaceSelectable('@a:hs', '!s:hs')).toBe(false);
-      expect(service.spaceSelectable('@b:hs', '!s:hs')).toBe(false);
+      expect(service.spaceAvailability('@a:hs', '!s:hs')).toBe('unavailable');
+      expect(service.spaceAvailability('@b:hs', '!s:hs')).toBe('unavailable');
     });
 
     // An accepted invitation keeps `invite` until the join syncs; the flows that open a
     // space they just joined wait for the join (RoomReadinessService) instead.
-    it('rejects a space the Account is only invited to', () => {
+    it('does not count a space the Account is only invited to', () => {
       const service = setup({
         clients: new Map([
           [
@@ -716,7 +769,9 @@ describe('SelectedRoomLibraryService', () => {
         ]),
       }).service;
 
-      expect(service.spaceSelectable('@active:hs', '!s:hs')).toBe(false);
+      expect(service.spaceAvailability('@active:hs', '!s:hs')).toBe(
+        'unavailable',
+      );
     });
 
     it("does not count another selected Account's invitation", () => {
@@ -735,13 +790,85 @@ describe('SelectedRoomLibraryService', () => {
         ]),
       }).service;
 
-      expect(service.spaceSelectable('@b:hs', '!s:hs')).toBe(false);
+      expect(service.spaceAvailability('@b:hs', '!s:hs')).toBe('unavailable');
     });
 
-    it('rejects a room that is not a joined space', () => {
-      expect(mixed(['@a:hs', '@b:hs']).spaceSelectable('@a:hs', '!r:hs')).toBe(
-        false,
-      );
+    it('does not count a room that is not a joined space', () => {
+      expect(
+        mixed(['@a:hs', '@b:hs']).spaceAvailability('@a:hs', '!r:hs'),
+      ).toBe('unavailable');
+    });
+
+    describe('as a reactive read', () => {
+      it('follows a membership change of a selected Account in the mixed view', async () => {
+        const space = fakeRoom('!s:hs', { kind: 'space' });
+        const a = fakeClient('@a:hs', [space]);
+        const harness = setup({
+          selected: new Set(['@a:hs', '@b:hs']),
+          live: ['@a:hs', '@b:hs'],
+          active: '@b:hs',
+          clients: new Map([
+            ['@a:hs', a],
+            ['@b:hs', fakeClient('@b:hs', [fakeRoom('!r:hs')])],
+          ]),
+        });
+        const availability = TestBed.runInInjectionContext(() =>
+          computed(() => harness.service.spaceAvailability('@b:hs', '!s:hs')),
+        );
+        expect(availability()).toBe('available');
+
+        space.getMyMembership = () => 'leave';
+        a.emit(RoomEvent.MyMembership);
+        await flushProjection();
+
+        expect(availability()).toBe('unavailable');
+      });
+
+      it("follows the active Account's spaces in the single-Account view", () => {
+        const space = fakeRoom('!s:hs', { kind: 'space' });
+        const harness = setup({
+          clients: new Map([['@active:hs', fakeClient('@active:hs', [space])]]),
+        });
+        const availability = TestBed.runInInjectionContext(() =>
+          computed(() =>
+            harness.service.spaceAvailability('@active:hs', '!s:hs'),
+          ),
+        );
+        expect(availability()).toBe('available');
+
+        space.getMyMembership = () => 'leave';
+        harness.activeSpaces.set([]);
+        TestBed.tick();
+
+        expect(availability()).toBe('unavailable');
+      });
+
+      it('follows the first server sync and the selection', async () => {
+        const harness = setup({
+          selected: new Set(['@a:hs', '@b:hs']),
+          live: ['@a:hs', '@b:hs'],
+          synced: new Set(['@b:hs']),
+          active: '@b:hs',
+          clients: new Map([
+            [
+              '@a:hs',
+              fakeClient('@a:hs', [fakeRoom('!s:hs', { kind: 'space' })]),
+            ],
+            ['@b:hs', fakeClient('@b:hs', [fakeRoom('!r:hs')])],
+          ]),
+        });
+        const availability = TestBed.runInInjectionContext(() =>
+          computed(() => harness.service.spaceAvailability('@b:hs', '!t:hs')),
+        );
+        expect(availability()).toBe('unconfirmed');
+
+        harness.synced.set(new Set(['@a:hs', '@b:hs']));
+        expect(availability()).toBe('unavailable');
+
+        harness.synced.set(new Set(['@b:hs']));
+        harness.selected.set(new Set(['@b:hs']));
+        expect(availability()).toBe('unavailable');
+      });
     });
   });
 

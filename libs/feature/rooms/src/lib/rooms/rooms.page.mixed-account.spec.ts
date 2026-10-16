@@ -191,14 +191,16 @@ describe('RoomsPage mixed-account view', () => {
         MockProvider(SelectedRoomLibraryService, {
           view: selectedView,
           // Each space's own account holds it; the mixed view lists it for every selected one.
-          spaceSelectable: (accountId: string, spaceId: string) => {
+          spaceAvailability: (accountId: string, spaceId: string) => {
             const view = selectedView();
             return view.spaces.some(
               (candidate) =>
                 candidate.id === spaceId &&
                 (candidate.accountId === accountId ||
                   (view.mode === 'mixed' && view.accountIds.has(accountId))),
-            );
+            )
+              ? 'available'
+              : 'unavailable';
           },
           toggleAccount,
         }),

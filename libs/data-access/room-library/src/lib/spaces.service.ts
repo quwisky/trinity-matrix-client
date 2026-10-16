@@ -14,11 +14,13 @@ import {
   Observable,
   Subject,
   defer,
+  filter,
   finalize,
   from,
   map,
   of,
   switchMap,
+  take,
   takeUntil,
   tap,
   throwError,
@@ -185,6 +187,10 @@ export class SpacesService {
 
   /** Cancels the previous cold hierarchy command when selection or Account changes. */
   private readonly hierarchyCancelled = new Subject<void>();
+  /** Each rebuild of the joined model, for a hierarchy waiting for its space to be joined. */
+  private readonly refreshed = new Subject<void>();
+  /** The Account-and-space pairs a {@link leaveSpace} is in flight for. */
+  private readonly _leaving = signal<ReadonlySet<string>>(new Set());
 
   /**
    * The open space's full child set, with each child's `joined` flag derived live
@@ -324,15 +330,25 @@ export class SpacesService {
       this._openSpaceId.set(spaceId);
       this._childrenBase.set([]);
       this._childrenError.set(null);
-      // In the mixed view the active Account can be showing a space only another Account
-      // holds. Its own `/hierarchy` read would fail for a private space, and joining a child
-      // from here would join as the wrong Account, so it lists the joined children alone.
-      if (!spaceId || !this.activeHolds(spaceId)) {
-        this._childrenLoading.set(false);
-        return of(void 0);
-      }
-      this._childrenLoading.set(true);
-      return this.fetchHierarchy(spaceId).pipe(
+      this._childrenLoading.set(false);
+      if (!spaceId) return of(void 0);
+      // The hierarchy is read as the active Account, so it waits until that Account has
+      // joined the space. A restored space can be named before the Account's first sync
+      // brings it. In the mixed view the active Account can be showing a space only another
+      // Account holds: its own `/hierarchy` read would fail for a private space, and joining
+      // a child from here would join as the wrong Account, so it lists the joined children
+      // alone. A left space never fetches.
+      const joined = this.activeHolds(spaceId)
+        ? of(void 0)
+        : this.refreshed.pipe(
+            filter(() => this.activeHolds(spaceId)),
+            take(1),
+          );
+      return joined.pipe(
+        switchMap(() => {
+          this._childrenLoading.set(true);
+          return this.fetchHierarchy(spaceId);
+        }),
         takeUntil(this.hierarchyCancelled),
         tap({
           next: (children) => {
@@ -456,8 +472,29 @@ export class SpacesService {
     return defer(() => {
       const client = this.matrix.clientFor(accountId);
       if (!client) return throwError(() => new Error('Account unavailable.'));
-      return from(client.leave(spaceId)).pipe(map(() => void 0));
+      const key = leavingKey(accountId, spaceId);
+      this._leaving.update((keys) => new Set(keys).add(key));
+      return from(client.leave(spaceId)).pipe(
+        map(() => void 0),
+        finalize(() =>
+          this._leaving.update((keys) => {
+            const next = new Set(keys);
+            next.delete(key);
+            return next;
+          }),
+        ),
+      );
     });
+  }
+
+  /**
+   * Whether a {@link leaveSpace} this app started for that Account and space is still in
+   * flight. The sync that drops the space can arrive before the request settles, and the
+   * leave flow navigates away itself once it does, so Workspace leaves that space alone
+   * meanwhile. Every leave of a space has to go through {@link leaveSpace} for this to hold.
+   */
+  isLeaving(accountId: string, spaceId: string): boolean {
+    return this._leaving().has(leavingKey(accountId, spaceId));
   }
 
   /**
@@ -644,6 +681,7 @@ export class SpacesService {
           .map((r) => r.roomId),
       ),
     );
+    this.refreshed.next();
   }
 
   private toSpace(client: MatrixClient, room: Room): SpaceSummary {
@@ -657,6 +695,11 @@ export class SpacesService {
       childRoomIds: spaceChildIdsOf(client, room),
     };
   }
+}
+
+/** One Account's leave of one space, as a single set key. */
+function leavingKey(accountId: string, spaceId: string): string {
+  return JSON.stringify([accountId, spaceId]);
 }
 
 /**

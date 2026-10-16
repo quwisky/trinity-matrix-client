@@ -18,7 +18,9 @@ export class WorkspaceAvailability {
    * any other is repaired to the list.
    */
   space(accountId: string, spaceId: string): boolean {
-    return this.selectedRooms.spaceSelectable(accountId, spaceId);
+    return (
+      this.selectedRooms.spaceAvailability(accountId, spaceId) === 'available'
+    );
   }
 
   /** A Room the live client has not synced yet is kept; the Conversation decides. */

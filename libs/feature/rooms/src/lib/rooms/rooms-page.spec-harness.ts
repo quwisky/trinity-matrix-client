@@ -495,9 +495,11 @@ export function selectedRoomLibraryProvider(): Provider {
             invitations: invites.pendingInvites(),
           };
         }),
-        // One Account: a space is selectable exactly when its client holds it.
-        spaceSelectable: (accountId: string, spaceId: string) =>
-          rooms.selectionAvailability(accountId, spaceId) === 'available',
+        // One Account: a space is available exactly when its client holds it.
+        spaceAvailability: (accountId: string, spaceId: string) =>
+          rooms.selectionAvailability(accountId, spaceId) === 'available'
+            ? ('available' as const)
+            : ('unavailable' as const),
       };
     },
   };

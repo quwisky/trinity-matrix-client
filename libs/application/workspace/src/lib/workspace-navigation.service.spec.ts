@@ -149,11 +149,13 @@ function harness(options: HarnessOptions = {}) {
     },
   };
   const selectedRooms = {
-    spaceSelectable: (accountId: string, spaceId: string) =>
+    spaceAvailability: (accountId: string, spaceId: string) =>
       rooms.selectionAvailability(accountId, spaceId) === 'available' ||
       (!!options.mixed &&
         options.mixed.accountIds.includes(accountId) &&
-        options.mixed.spaceIds.includes(spaceId)),
+        options.mixed.spaceIds.includes(spaceId))
+        ? ('available' as const)
+        : ('unavailable' as const),
   };
   const spaces = { openSpace: vi.fn(() => of(void 0)) };
   const waitForRoom = vi.fn(() => of(void 0));
