@@ -659,10 +659,10 @@ jobs:
           sudo udevadm settle --timeout=30
           test -r /dev/kvm -a -w /dev/kvm
 
-      # Parallel steps: the app build and the homeserver image pull run while the emulator
-      # action installs its system image and boots (~1:50 measured). The emulator script's
-      # first line waits for the build's status file, so the suite's own sync and Gradle
-      # run find everything up to date and never race this build.
+      # Parallel steps: the app build and the homeserver image pull run while the emulator and
+      # its system image are restored or installed and the emulator boots (~1:50 measured). The
+      # emulator script's first line waits for the build's status file, so the suite's own sync
+      # and Gradle run find everything up to date and never race this build.
       - name: Build the Android app while the emulator boots
         id: android-prebuild
         background: true
@@ -680,6 +680,71 @@ jobs:
         # Optional, like the browser prerequisites' pre-pull: the suite pulls what is missing.
         continue-on-error: true
         run: docker compose -f e2e/support/homeserver/docker-compose.yml -f e2e/support/homeserver/tuwunel/docker-compose.yml pull -q
+
+      # The runner image ships neither the emulator nor the system image, and the emulator
+      # action installs both with sdkmanager on every run, once and silently: a download that
+      # arrives corrupt ("Error on ZipFile unknown archive") fails the job before any spec runs.
+      # These steps restore both packages from a cache, have sdkmanager install whatever is
+      # missing or outdated with up to three attempts, and leave the action's own sdkmanager
+      # calls nothing to download. Keep the package names in step with the action's api-level,
+      # target and arch.
+      - name: Locate the emulator packages
+        id: emulator-packages
+        run: |
+          {
+            echo 'paths<<EOF'
+            echo "$ANDROID_HOME/emulator"
+            echo "$ANDROID_HOME/system-images/android-36/google_apis/x86_64"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+      - name: Restore the emulator and its system image
+        id: emulator-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.emulator-packages.outputs.paths }}
+          # Saved keys end in the installed versions; the newest one is restored.
+          key: android-emulator-${{ runner.os }}-36-google_apis-x86_64
+          restore-keys: android-emulator-${{ runner.os }}-36-google_apis-x86_64-
+      - name: Install the emulator and its system image
+        id: emulator-install
+        env:
+          PACKAGE_PATHS: ${{ steps.emulator-packages.outputs.paths }}
+          RESTORED_KEY: ${{ steps.emulator-cache.outputs.cache-matched-key }}
+          SYSTEM_IMAGE: system-images;android-36;google_apis;x86_64
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ -n "$RESTORED_KEY" ]; then
+            echo "Restored $RESTORED_KEY"
+          else
+            # A restore that failed part-way leaves files behind; sdkmanager must not see them.
+            while read -r dir; do rm -rf "$dir"; done <<< "$PACKAGE_PATHS"
+          fi
+          version() {
+            "$sdkmanager" --list_installed 2> /dev/null |
+              awk -F '|' -v pkg="$1" '{ gsub(/ /, "", $1); gsub(/ /, "", $2) } $1 == pkg { print $2; exit }'
+          }
+          # sdkmanager exits non-zero when a download is corrupt; its partial files are deleted
+          # before the next attempt so that attempt downloads afresh.
+          for attempt in 1 2 3; do
+            start=$SECONDS
+            if yes | "$sdkmanager" --licenses > /dev/null &&
+              timeout 600 "$sdkmanager" --install emulator "$SYSTEM_IMAGE" --channel=0 > /dev/null &&
+              [ -n "$(version emulator)" ] && [ -n "$(version "$SYSTEM_IMAGE")" ]; then
+              echo "sdkmanager attempt $attempt succeeded in $((SECONDS - start))s"
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "::error::sdkmanager could not install the emulator and $SYSTEM_IMAGE in 3 attempts"
+              exit 1
+            fi
+            echo "::warning::sdkmanager attempt $attempt failed after $((SECONDS - start))s; retrying"
+            rm -rf "$ANDROID_HOME/.temp" "$ANDROID_HOME/.downloadIntermediates"
+            sleep $((attempt * 15))
+          done
+          emulator=$(version emulator)
+          image=$(version "$SYSTEM_IMAGE")
+          echo "Installed emulator $emulator and system image revision $image"
+          echo "key=android-emulator-$RUNNER_OS-36-google_apis-x86_64-$emulator-r$image" >> "$GITHUB_OUTPUT"
 
       - id: mobile
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
@@ -710,6 +775,16 @@ jobs:
 
       - name: Wait for the background build and image pull
         wait: [android-prebuild, homeserver-pull]
+
+      # Saved only after the emulator booted from these packages (the script writes `started`
+      # after boot), so a cache entry cannot hold a package that does not work, and only when
+      # the installed versions differ from the restored entry's.
+      - name: Save the emulator and its system image
+        if: ${{ !cancelled() && steps.mobile.outputs.started == 'true' && steps.emulator-install.outputs.key != steps.emulator-cache.outputs.cache-matched-key }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.emulator-packages.outputs.paths }}
+          key: ${{ steps.emulator-install.outputs.key }}
 
       # Also covers dist/.ci (full run stdout) and a run killed before its own cleanup.
       - name: Scrub identifiers from mobile artifacts

@@ -163,6 +163,20 @@ version starts a new cache. Each `playwright install` attempt (in the action and
 through `with-deps: 'false'` and `TRINITY_PLAYWRIGHT_WITH_DEPS`, because the hosted Ubuntu image
 already ships Chrome's libraries; every job that installs WebKit keeps the system packages.
 
+The hosted Ubuntu image ships neither the Android emulator nor the API 36 system image, and the
+emulator action installs both with one sdkmanager call each, without a retry, so a download that
+arrives corrupt (`Error on ZipFile unknown archive`) would fail a `mobile-e2e` job before any
+spec runs. The job therefore restores both packages from a cache first; the
+`Install the emulator and its system image` step then has sdkmanager install whatever is missing
+or outdated, in up to three attempts that each discard the partial download, and checks the
+result with `sdkmanager --list_installed`. The action's own sdkmanager calls find both packages
+current and download nothing. Cache keys end in the installed emulator version and image revision
+(`android-emulator-Linux-36-google_apis-x86_64-<emulator>-r<revision>`) and the newest is restored
+by prefix, so a new release is downloaded once and saved under a new key. Packages are saved only
+after the emulator booted from them, and files left by a restore that failed part-way are deleted
+before the install, so a bad entry cannot reach the emulator. To force fresh downloads, delete
+the entries: `gh cache delete <key>`.
+
 ## The CI jobs
 
 Open the newest workflow run, then start with the first failing step and its
