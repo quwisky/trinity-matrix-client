@@ -21,12 +21,9 @@ import { HostLifecycleService } from '@trinity/runtime/host';
 import { EMPTY, catchError, filter, map, of, startWith, switchMap } from 'rxjs';
 
 /**
- * Settings › Security › App lock › Notification text (decision 9): Show, Hide on the lock
- * screen (phones only) and Always hide. "Hide on the lock screen" follows the phone's own
- * lock-screen notification setting (decision 16), so it says so, links to that setting where
- * the host can open it, and on iOS says when Show Previews is Always. The App lock group runs
- * the guarded change and decides which choice is shown, and whether the lock-screen one is
- * offered.
+ * Settings › Security › App lock › Notification text. "Hide on the lock screen" (phones only)
+ * follows the phone's own lock-screen setting, so it says so and links to it. The group runs
+ * the guarded change and passes the choice to show.
  */
 @Component({
   selector: 'trn-app-lock-notification-text',
@@ -55,7 +52,7 @@ export class AppLockNotificationTextComponent {
               value: 'hide-on-lock-screen' as const,
               label: 'Hide on the lock screen',
               description:
-                'The lock screen says only “New message”; the full text shows once your phone is unlocked. Follows your phone’s lock-screen notification setting.',
+                'The lock screen hides who wrote and what; the full text shows once your phone is unlocked. Follows your phone’s lock-screen notification setting.',
               testId: 'app-lock-text-lock-screen',
             },
           ]

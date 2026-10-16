@@ -1691,7 +1691,7 @@ describe('AppLockService', () => {
     it('is a guarded change', async () => {
       const { lock, writes } = setup();
       await hydrated(lock);
-      // An unlock opens no guard window (ruling T-PR3-1): Settings asks for its own check.
+      // An unlock opens no guard window: Settings asks for its own check.
       await firstValueFrom(lock.unlockWithSystem());
       await expect(
         firstValueFrom(lock.setNotificationText('always-hide')),

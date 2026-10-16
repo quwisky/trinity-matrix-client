@@ -122,7 +122,7 @@ export class AppLockService {
   readonly locked = computed(() => this._status() === 'locked');
   readonly enabled = this._enabled.asReadonly();
   readonly lockAfter = this._lockAfter.asReadonly();
-  /** Phones only: a desktop has no lock-screen notification setting to follow (decision 9). */
+  /** Phones only: a desktop has no lock-screen notification setting to follow. */
   readonly lockScreenTextOffered = !getTrinityDesktopBridge();
   /** The stored Notification text choice; kept, with no effect, while App lock is off. */
   readonly notificationText = this._notificationText.asReadonly();
@@ -400,7 +400,7 @@ export class AppLockService {
     );
   }
 
-  /** A guarded change, like Lock after (decision 7). */
+  /** A guarded change, like Lock after. */
   setNotificationText(
     text: NotificationText,
   ): Observable<AppLockCommandOutcome> {

@@ -7,7 +7,7 @@ private struct FakeStore: HandoffReading {
     var rooms: [String: [String: HandoffRoom]] = [:]
     func account(_ userId: String) -> HandoffAccount? { accounts[userId] }
     func room(_ userId: String, _ roomId: String) -> HandoffRoom? { rooms[userId]?[roomId] }
-    /// The resolver doesn't read the mirror yet (PR 7); the fake answers explicitly.
+    /// The resolver doesn't read the mirror yet; the fake answers explicitly.
     func notificationText() -> NotificationTextMode { .show }
 }
 

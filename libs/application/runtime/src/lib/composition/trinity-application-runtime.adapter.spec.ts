@@ -256,6 +256,9 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(PushHandoffService, {
           run: () => EMPTY,
           clearRoom: () => of(void 0),
+          writeNotificationText: () => of(void 0),
+          clearDelivered: () => of(void 0),
+          notificationTextLost: EMPTY,
         }),
         MockProvider(BadgeCoordinator, { run: () => badgeSession }),
         MockProvider(NotificationService, { run: () => notificationSession }),

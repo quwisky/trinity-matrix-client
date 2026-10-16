@@ -16,8 +16,8 @@ import org.json.JSONException
 import org.json.JSONObject
 
 /**
- * App lock's Notification text as the app mirrored it (spec §5); see the Swift
- * `NotificationTextMode`. Missing reads as [SHOW]; anything unreadable as [ALWAYS_HIDE].
+ * App lock's Notification text as the app mirrored it; see the Swift `NotificationTextMode`.
+ * Missing reads as [SHOW]; anything unreadable as [ALWAYS_HIDE].
  */
 object NotificationTextMode {
     const val SHOW = "show"

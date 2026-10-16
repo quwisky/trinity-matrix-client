@@ -228,6 +228,22 @@ describe('PushHandoffService', () => {
       );
     });
 
+    it('reports a mirror it could not write again after emptying the store', async () => {
+      const h = setup();
+      const lost: void[] = [];
+      h.service.notificationTextLost.subscribe(() => lost.push(undefined));
+      await firstValueFrom(h.service.writeNotificationText('always-hide'), {
+        defaultValue: undefined,
+      });
+      h.bridge.setNotificationText.mockReturnValueOnce(
+        throwError(() => new Error('refused')),
+      );
+      await firstValueFrom(h.service.forget());
+      await flush();
+      expect(h.bridge.setNotificationText).toHaveBeenCalledTimes(2);
+      expect(lost).toHaveLength(1);
+    });
+
     it('writes nothing after emptying the store when it never mirrored', async () => {
       const h = setup();
       await firstValueFrom(h.service.forget());

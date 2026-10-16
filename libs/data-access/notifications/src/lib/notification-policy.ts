@@ -51,8 +51,8 @@ export class NotificationPolicy {
     });
     const textMode = input.textMode ?? 'show';
     if (textMode === 'always-hide') {
-      // Built before anything reads the event's text, sender or room (spec §5); the tag and
-      // destination are identifiers that are never shown.
+      // Built before anything reads the event's text, sender or room; the tag and destination
+      // are identifiers that are never shown.
       return {
         kind: 'present',
         intent: Object.freeze({

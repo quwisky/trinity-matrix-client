@@ -77,6 +77,7 @@ describe('NotificationSessionService', () => {
       status?: AppLockStatus;
       text?: NotificationText;
       writeNotificationText?: (mode: NotificationText) => Observable<void>;
+      notificationTextLost?: Observable<void>;
     } = {},
   ) {
     const appLock = fakeAppLock(options.status ?? 'off', options.text);
@@ -102,6 +103,7 @@ describe('NotificationSessionService', () => {
           refreshBeforeBackground,
           writeNotificationText,
           clearDelivered,
+          notificationTextLost: options.notificationTextLost ?? EMPTY,
         }),
         MockProvider(ConversationRuntime, {
           focused: focused.asReadonly() as never,
@@ -215,6 +217,21 @@ describe('NotificationSessionService', () => {
       appLock.set('unlocked');
       TestBed.tick();
       expect(writeNotificationText).toHaveBeenCalledTimes(2);
+      lifetime.unsubscribe();
+    });
+
+    it('writes the mode again after the store lost it', () => {
+      const lost = new Subject<void>();
+      const { appLock, writeNotificationText, lifetime } = setup({
+        notificationTextLost: lost,
+      });
+      expect(writeNotificationText).toHaveBeenCalledOnce();
+      lost.next();
+
+      appLock.set('locked');
+      TestBed.tick();
+      expect(writeNotificationText).toHaveBeenCalledTimes(2);
+      expect(writeNotificationText).toHaveBeenLastCalledWith('show');
       lifetime.unsubscribe();
     });
 
@@ -386,6 +403,7 @@ describe('NotificationSessionService', () => {
             refreshBeforeBackground: () => of(void 0),
             writeNotificationText: () => of(void 0),
             clearDelivered: () => of(void 0),
+            notificationTextLost: EMPTY,
           }),
           MockProvider(ConversationRuntime, {
             focused: focused.asReadonly() as never,

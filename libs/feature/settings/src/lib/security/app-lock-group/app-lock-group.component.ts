@@ -51,11 +51,9 @@ import {
 type AppLockView = 'controls' | 'pin-unreadable' | 'keyring' | 'hidden';
 
 /**
- * Settings › Security › App lock (spec §1): the switch, Lock after, Notification text and
- * Change PIN, or why App lock can't be used here. Turning it on runs the system prompt where
- * available, then the PIN dialog (decision 23). Every later change needs a fresh verification
- * (decision 7): the system prompt, or the current PIN. Every outcome is shown; a control
- * always shows the stored value, so nothing is left half-changed.
+ * Settings › Security › App lock: the switch, Lock after, Notification text and Change PIN,
+ * or why App lock can't be used here. Every change after setup needs a fresh verification,
+ * and a control always shows the stored value, so nothing is left half-changed.
  */
 @Component({
   selector: 'trn-app-lock-group',
@@ -137,7 +135,7 @@ export class AppLockGroupComponent {
   protected readonly shownLockAfter = linkedSignal(() =>
     this.appLock.lockAfter(),
   );
-  /** Phones only offer "Hide on the lock screen" (decision 9). */
+  /** Phones only offer "Hide on the lock screen". */
   protected readonly lockScreenTextOffered = this.appLock.lockScreenTextOffered;
   /** What the Notification text choice shows; like Lock after, back to the stored value. */
   protected readonly shownNotificationText = linkedSignal(() =>

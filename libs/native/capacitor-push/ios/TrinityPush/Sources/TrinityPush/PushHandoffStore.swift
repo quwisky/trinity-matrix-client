@@ -39,9 +39,9 @@ public struct HandoffAccount: Codable, Equatable {
     }
 }
 
-/// App lock's Notification text as the app mirrored it (spec §5): the effective mode, written
-/// on every change. Missing reads as `show` (nothing written yet, or cleared by the full
-/// reset); anything unreadable reads as `alwaysHide`, so a damaged file never reveals text.
+/// App lock's effective Notification text as the app mirrored it. Missing reads as `show`
+/// (nothing written yet); anything unreadable reads as `alwaysHide`, so a damaged file never
+/// reveals text.
 public enum NotificationTextMode: String, Codable, Equatable {
     case show
     case hideOnLockScreen = "hide-on-lock-screen"

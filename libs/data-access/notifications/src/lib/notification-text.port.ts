@@ -1,6 +1,6 @@
 import { InjectionToken } from '@angular/core';
 
-/** What notifications may say (App lock's Notification text, spec decision 9). */
+/** What notifications may say (App lock's Notification text). */
 export type NotificationTextMode =
   'show' | 'hide-on-lock-screen' | 'always-hide';
 

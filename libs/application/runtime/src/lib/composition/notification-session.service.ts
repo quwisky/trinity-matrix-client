@@ -81,11 +81,9 @@ export class NotificationSessionService {
   }
 
   /**
-   * Keep the push renderers' copy of App lock's effective Notification text current (spec
-   * §5): once App lock has loaded, then on every change; nothing while its state is unknown.
-   * A change to something more private writes the mirror first, then clears what was already
-   * delivered, even if the write failed. A refused write is tried again the next time App lock
-   * reports in. Best effort; inert off native mobile.
+   * Mirror App lock's effective Notification text for the push renderers once it has loaded,
+   * then on each change. A more private mode also clears delivered notifications (even if the
+   * write failed), so no earlier text stays on screen; a refused write is retried. Best effort.
    */
   private mirrorNotificationText(): Observable<never> {
     return new Observable<never>(() => {
@@ -94,6 +92,10 @@ export class NotificationSessionService {
       /** The last mode the store accepted (or is writing); null after a refusal. */
       let written: NotificationTextMode | null = null;
       const writes = new Subscription();
+      // The store lost the mirror (emptied, then refused): the next report writes it again.
+      writes.add(
+        this.handoff.notificationTextLost.subscribe(() => (written = null)),
+      );
       const watch = effect(
         () => {
           if (this.appLock.status() === 'unknown') return;

@@ -92,7 +92,7 @@ describe('AppLockNotificationTextComponent', () => {
     await setup({ value: 'show' });
     const option = choice(/^Hide on the lock screen/).closest('label');
     expect(option?.textContent).toMatch(
-      /The lock screen says only “New message”; the full text shows once your phone is unlocked\./,
+      /The lock screen hides who wrote and what; the full text shows once your phone is unlocked\./,
     );
     expect(option?.textContent).toMatch(HINT);
     expect(settingsLink()).toBeTruthy();

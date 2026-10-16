@@ -196,6 +196,7 @@ function setup(
         clearRoom: () => of(void 0),
         writeNotificationText: () => of(void 0),
         clearDelivered: () => of(void 0),
+        notificationTextLost: EMPTY,
       }),
       MockProvider(ConversationRuntime, {
         focused: signal(null).asReadonly() as never,

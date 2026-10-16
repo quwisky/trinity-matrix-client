@@ -30,7 +30,7 @@ export const NOTIFICATION_TEXT_CHOICES = [
   'hide-on-lock-screen',
   'always-hide',
 ] as const;
-/** What notifications may say while App lock is on (decision 9). */
+/** What notifications may say while App lock is on. */
 export type NotificationText = (typeof NOTIFICATION_TEXT_CHOICES)[number];
 
 function validateEnabled(value: unknown): PreferenceValidation<boolean> {
@@ -121,8 +121,8 @@ export const APP_LOCK_LOCK_AFTER_PREFERENCE = definePreference<LockAfter>({
 });
 
 /**
- * Settings › Security › App lock › Notification text (decision 9). Kept while App lock is off,
- * when it has no effect; "Hide on the lock screen" is offered on phones only.
+ * Settings › Security › App lock › Notification text. Kept while App lock is off, when it has
+ * no effect; "Hide on the lock screen" is offered on phones only.
  */
 export const APP_LOCK_NOTIFICATION_TEXT_PREFERENCE =
   definePreference<NotificationText>({
@@ -165,7 +165,7 @@ export interface StoredAppLock {
   readonly lockAfter: LockAfter;
   /**
    * The saved choice, or `always-hide` when it did not load as `ready` (fail closed, like the
-   * push renderers' mirror, spec §5). Nothing saved is `show`, the default.
+   * push renderers' mirror). Nothing saved is `show`, the default.
    */
   readonly notificationText: NotificationText;
 }
@@ -177,10 +177,9 @@ const UNREADABLE: StoredAppLock = {
 };
 
 /**
- * Read the settings from installation storage. Cold; emits once and never errors. Each
- * setting is judged on its own load state, and never makes another one unreadable: a switch
- * that is not `ready` is `unreadable`, a delay falls back to its default, and a notification
- * text hides everything (`always-hide`).
+ * Read the settings from installation storage. Cold; emits once and never errors. Each is
+ * judged on its own load state: a switch not `ready` is `unreadable` (fail closed), a delay
+ * falls back to its default and a notification text to `always-hide`.
  */
 export function readAppLockSettings(
   preferences: PreferenceStoreService,

@@ -16,9 +16,8 @@ import org.json.JSONObject;
 
 /**
  * Opens Trinity's page in the system settings, where a permission the user refused for good
- * can be turned back on. The composer offers it after camera access is denied (#919). App
- * lock's "Hide on the lock screen" opens the Messages channel's settings, whose lock-screen
- * setting that choice follows (decision 16).
+ * can be turned back on, and the Messages channel's settings, whose lock-screen setting App
+ * lock's "Hide on the lock screen" follows.
  */
 @CapacitorPlugin(name = "AppSettings")
 public class AppSettingsPlugin extends Plugin {
@@ -32,9 +31,8 @@ public class AppSettingsPlugin extends Plugin {
 
     /**
      * The Messages channel's page, where people can hide sensitive content for Trinity alone.
-     * That channel exists once push is set up; before then (and the Settings app closes a
-     * channel page for a channel that doesn't exist) Trinity's notification page, and before
-     * Android 8, which has no channels, Trinity's page.
+     * Settings closes the page of a channel that doesn't exist yet (push not set up), so then
+     * Trinity's notification page; before Android 8, which has no channels, Trinity's page.
      */
     @PluginMethod
     public void openNotificationSettings(PluginCall call) {

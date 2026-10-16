@@ -55,9 +55,8 @@ export class AppSettingsService {
   }
 
   /**
-   * Cold; true once the system's notification settings were asked to open: on iOS 16 and
-   * later Trinity's notification page, on Android the Messages channel's page (or Trinity's
-   * notification page before that channel exists). False where they could not be.
+   * Cold; true once the system's notification settings were asked to open (iOS: Trinity's
+   * page; Android: the Messages channel's, or Trinity's before that channel exists).
    */
   openNotificationSettings(): Observable<boolean> {
     return defer(() =>

@@ -21,11 +21,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             FirebaseApp.configure()
             firebaseConfigured = true
         }
-        // App lock's "Hide on the lock screen" (spec §5): notifications in this category show
-        // "New message" while iOS hides previews. Registered before any push or local
-        // notification can use it. Nothing else in Trinity registers categories (Capacitor's
-        // LocalNotifications replaces the set only in registerActionTypes, which Trinity never
-        // calls), so this set is the whole set.
+        // App lock's "Hide on the lock screen": iOS shows this placeholder while it hides
+        // previews, and only for a category registered before the notification arrives.
+        // This set replaces all categories; Trinity registers no others (Capacitor's
+        // LocalNotifications would only through registerActionTypes, which Trinity never calls).
         UNUserNotificationCenter.current().setNotificationCategories([
             UNNotificationCategory(
                 identifier: "trinity.message.private",

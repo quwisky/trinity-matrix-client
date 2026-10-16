@@ -48,7 +48,7 @@ class NativeNavigationPlugin: CAPInstancePlugin, CAPBridgedPlugin {
  * Opens Trinity's page in the Settings app, where a permission the user refused can be turned
  * back on. The composer offers it after camera or photo-library access is denied (#919).
  * App lock's "Hide on the lock screen" opens Trinity's notification page and reads its Show
- * Previews setting, which that choice follows (decision 16).
+ * Previews setting, which that choice follows.
  */
 @objc(AppSettingsPlugin)
 class AppSettingsPlugin: CAPInstancePlugin, CAPBridgedPlugin {

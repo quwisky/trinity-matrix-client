@@ -16,6 +16,7 @@ import {
 } from '@trinity/capacitor-push';
 import {
   Observable,
+  Subject,
   catchError,
   concat,
   defaultIfEmpty,
@@ -113,11 +114,15 @@ export class PushHandoffService {
   private readonly rotatedAt = new Map<string, number>();
   private tail: Promise<void> = Promise.resolve();
   /**
-   * The Notification text last mirrored, written again after the store is emptied: a sign-in
-   * that replaces every account empties it while App lock stays on, and a missing mirror
-   * reads as Show. Null until the first write.
+   * The Notification text last mirrored, written again after the store is emptied (a sign-in
+   * replacing every account, App lock still on): a missing mirror would read as Show.
    */
   private notificationText: NotificationTextMode | null = null;
+  private readonly mirrorLost = new Subject<void>();
+
+  /** Emits when the store was emptied and the mirror couldn't be written again. */
+  readonly notificationTextLost: Observable<void> =
+    this.mirrorLost.asObservable();
 
   /** Own the handoff for one Application Runtime session. Never emits. */
   run(): Observable<never> {
@@ -175,7 +180,7 @@ export class PushHandoffService {
         // Best effort, after the clear whatever it answered; the reset restarts the app,
         // whose session then writes the true mode.
         void this.schedule(() => this.bridge.setNotificationText(text)).catch(
-          () => undefined,
+          () => this.mirrorLost.next(),
         );
       }
       return from(emptied);

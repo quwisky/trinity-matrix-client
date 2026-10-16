@@ -94,7 +94,7 @@ export function appLockProviders(): EnvironmentProviders {
       },
     },
     {
-      // App lock's Notification text (spec §5): Always hide until the settings are known.
+      // Always hide until App lock's settings are known (see effectiveNotificationText).
       provide: NOTIFICATION_TEXT,
       useFactory: (): NotificationTextPort => {
         const appLock = inject(AppLockService);
