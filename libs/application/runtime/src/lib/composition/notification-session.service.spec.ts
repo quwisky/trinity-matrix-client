@@ -197,6 +197,44 @@ describe('NotificationSessionService', () => {
       expect(writeNotificationText).toHaveBeenCalledOnce();
     });
 
+    it('writes a refused mode again when App lock reports in again', async () => {
+      let refuse = true;
+      const { appLock, writeNotificationText, lifetime } = setup({
+        writeNotificationText: () =>
+          refuse ? throwError(() => new Error('refused')) : of(void 0),
+      });
+      expect(writeNotificationText).toHaveBeenCalledOnce();
+      refuse = false;
+      await Promise.resolve();
+
+      appLock.set('locked');
+      TestBed.tick();
+      expect(writeNotificationText).toHaveBeenCalledTimes(2);
+      expect(writeNotificationText).toHaveBeenLastCalledWith('show');
+
+      appLock.set('unlocked');
+      TestBed.tick();
+      expect(writeNotificationText).toHaveBeenCalledTimes(2);
+      lifetime.unsubscribe();
+    });
+
+    it('still clears on a more private change after an earlier write was refused', async () => {
+      let refuse = true;
+      const { appLock, writeNotificationText, clearDelivered, lifetime } =
+        setup({
+          writeNotificationText: () =>
+            refuse ? throwError(() => new Error('refused')) : of(void 0),
+        });
+      refuse = false;
+      await Promise.resolve();
+
+      appLock.mode.set('always-hide');
+      TestBed.tick();
+      expect(writeNotificationText).toHaveBeenLastCalledWith('always-hide');
+      expect(clearDelivered).toHaveBeenCalledOnce();
+      lifetime.unsubscribe();
+    });
+
     it('still clears delivered notifications, and keeps mirroring, after a write fails', () => {
       let fail = false;
       const { appLock, writeNotificationText, clearDelivered, lifetime } =

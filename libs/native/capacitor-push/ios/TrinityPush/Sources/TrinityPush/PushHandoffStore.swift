@@ -56,13 +56,9 @@ private struct HandoffSettings: Codable {
 public protocol HandoffReading {
     func account(_ userId: String) -> HandoffAccount?
     func room(_ userId: String, _ roomId: String) -> HandoffRoom?
-    /// What a rendered push may show; see ``NotificationTextMode``.
+    /// What a rendered push may show; see ``NotificationTextMode``. No default: every reader,
+    /// a wrapper included, must answer, so none can fall open to `show` by forgetting to.
     func notificationText() -> NotificationTextMode
-}
-
-public extension HandoffReading {
-    /// A reader with no mirror has nothing written: `show`, as a missing mirror reads.
-    func notificationText() -> NotificationTextMode { .show }
 }
 
 public enum PushHandoffStoreError: Error {

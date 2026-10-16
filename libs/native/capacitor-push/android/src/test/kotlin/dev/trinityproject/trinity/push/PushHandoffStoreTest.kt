@@ -118,13 +118,21 @@ class PushHandoffStoreTest {
     }
 
     @Test
-    fun aReaderThatPredatesTheMirrorShowsText() {
-        val old = object : HandoffReader {
-            override fun account(userId: String): HandoffAccount? = null
-
-            override fun room(userId: String, roomId: String): HandoffRoom? = null
+    fun aMissingMirrorShowsTextAndADamagedOrUnknownOneHidesEverything() {
+        val preferences = MemoryPreferences()
+        val crypto = FakeCrypto()
+        val store = PushHandoffStore(preferences, crypto)
+        assertEquals(NotificationTextMode.SHOW, store.notificationText())
+        for (damaged in listOf("", "null", "[]", """{"notificationText":null}""", """{"notificationText":"Show"}""")) {
+            preferences.values["settings:notification-text"] = crypto.encrypt(damaged)
+            assertEquals(damaged, NotificationTextMode.ALWAYS_HIDE, store.notificationText())
         }
-        assertEquals(NotificationTextMode.SHOW, old.notificationText())
+        preferences.values["settings:notification-text"] = "not sealed"
+        crypto.failing = true
+        assertEquals(NotificationTextMode.ALWAYS_HIDE, store.notificationText())
+        crypto.failing = false
+        preferences.values.remove("settings:notification-text")
+        assertEquals(NotificationTextMode.SHOW, store.notificationText())
     }
 
     @Test

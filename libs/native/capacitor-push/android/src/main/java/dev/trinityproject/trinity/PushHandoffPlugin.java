@@ -118,14 +118,16 @@ public class PushHandoffPlugin extends Plugin {
 
     /**
      * The text became more private: cancel every notification Trinity posted, the pushes
-     * TrinityMessagingService rendered and the running app's own alike. Best effort.
+     * TrinityMessagingService rendered and the running app's own alike. Rejects when the
+     * notification manager refuses; the app treats that as best effort.
      */
     @PluginMethod
     public void clearDelivered(PluginCall call) {
         try {
             NotificationManagerCompat.from(getContext()).cancelAll();
         } catch (RuntimeException error) {
-            // Leaving a notification behind must not fail the change that asked.
+            call.reject("Could not clear the delivered notifications");
+            return;
         }
         call.resolve();
     }

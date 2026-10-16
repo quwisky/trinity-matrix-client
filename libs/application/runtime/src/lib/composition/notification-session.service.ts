@@ -84,26 +84,35 @@ export class NotificationSessionService {
    * Keep the push renderers' copy of App lock's effective Notification text current (spec
    * §5): once App lock has loaded, then on every change; nothing while its state is unknown.
    * A change to something more private writes the mirror first, then clears what was already
-   * delivered, even if the write failed. Best effort; inert off native mobile.
+   * delivered, even if the write failed. A refused write is tried again the next time App lock
+   * reports in. Best effort; inert off native mobile.
    */
   private mirrorNotificationText(): Observable<never> {
     return new Observable<never>(() => {
-      let previous: NotificationTextMode | null = null;
+      /** The last mode notifications followed, which the privacy rank compares against. */
+      let seen: NotificationTextMode | null = null;
+      /** The last mode the store accepted (or is writing); null after a refusal. */
+      let written: NotificationTextMode | null = null;
       const writes = new Subscription();
       const watch = effect(
         () => {
           if (this.appLock.status() === 'unknown') return;
           const mode = this.appLock.effectiveNotificationText();
           untracked(() => {
-            if (mode === previous) return;
             const morePrivate =
-              previous !== null && TEXT_PRIVACY[mode] > TEXT_PRIVACY[previous];
-            previous = mode;
+              seen !== null && TEXT_PRIVACY[mode] > TEXT_PRIVACY[seen];
+            seen = mode;
+            if (mode === written && !morePrivate) return;
+            written = mode;
             writes.add(
               this.handoff
                 .writeNotificationText(mode)
                 .pipe(
-                  catchError(() => of(void 0)),
+                  catchError(() => {
+                    // Not de-duplicated away: the next report writes it again.
+                    if (written === mode) written = null;
+                    return of(void 0);
+                  }),
                   switchMap(() =>
                     morePrivate ? this.handoff.clearDelivered() : EMPTY,
                   ),

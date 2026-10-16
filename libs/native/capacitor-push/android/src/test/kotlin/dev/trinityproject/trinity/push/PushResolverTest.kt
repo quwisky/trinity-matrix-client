@@ -12,6 +12,9 @@ class PushResolverTest {
     ) : HandoffReader {
         override fun account(userId: String) = accounts[userId]
         override fun room(userId: String, roomId: String) = rooms[userId to roomId]
+
+        // The resolver doesn't read the mirror yet (PR 7); the fake answers explicitly.
+        override fun notificationText() = NotificationTextMode.SHOW
     }
 
     private class FakeApi(

@@ -22,8 +22,11 @@ interface HandoffReader {
     fun account(userId: String): HandoffAccount?
     fun room(userId: String, roomId: String): HandoffRoom?
 
-    /** What a rendered push may show ([NotificationTextMode]); a reader with no mirror shows. */
-    fun notificationText(): String = NotificationTextMode.SHOW
+    /**
+     * What a rendered push may show ([NotificationTextMode]). No default: every reader, a
+     * wrapper included, must answer, so none can fall open to Show by forgetting to.
+     */
+    fun notificationText(): String
 }
 
 /** The client-server reads the renderer makes; every failure reads as null. */

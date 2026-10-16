@@ -60,12 +60,18 @@ final class PushHandoffStoreTests: XCTestCase {
         XCTAssertEqual(store.notificationText(), .show)
     }
 
-    func testAReaderThatPredatesTheMirrorShowsText() {
-        struct OldReader: HandoffReading {
-            func account(_ userId: String) -> HandoffAccount? { nil }
-            func room(_ userId: String, _ roomId: String) -> HandoffRoom? { nil }
+    func testAMissingMirrorShowsTextAndADamagedOrUnknownOneHidesEverything() throws {
+        XCTAssertEqual(store.notificationText(), .show)
+        try FileManager.default.createDirectory(
+            at: settingsFile.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        for damaged in ["", "null", "[]", #"{"notificationText":null}"#, #"{"notificationText":"Show"}"#] {
+            try Data(damaged.utf8).write(to: settingsFile)
+            XCTAssertEqual(store.notificationText(), .alwaysHide, damaged)
         }
-        XCTAssertEqual(OldReader().notificationText(), .show)
+        try FileManager.default.removeItem(at: settingsFile)
+        XCTAssertEqual(store.notificationText(), .show)
     }
 
     func testMergesRoomsPerAccountAndKeepsTheOnesNotListed() throws {
