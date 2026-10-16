@@ -19,15 +19,12 @@ let mainWindow: BrowserWindow | null = null;
 // The mode the current window was created with; the saved pref applies only after a relaunch.
 let systemTitleBarActive = false;
 
-// Set only on the explicit Quit path (tray "Quit", app menu / Cmd+Q, or any
-// app.quit()). Until then, closing the window hides it to the tray instead of
-// destroying it, so the renderer + `/sync` long-poll stay alive in the
-// background and notifications keep firing.
+// Set only on the explicit Quit path (tray "Quit", app menu / Cmd+Q, or any app.quit()).
+// Until then, closing the window hides it to the tray, so the renderer and `/sync` stay
+// alive and notifications keep firing.
 let isQuitting = false;
 
-/** Live accessor for the shared main window (other modules use it, e.g. for
- * IPC sender validation), so they never have to reach back into this module's
- * mutable state directly. Returns `null` while no window exists. */
+/** The shared main window (also used for IPC sender validation), or `null` while none exists. */
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow;
 }
@@ -38,21 +35,20 @@ export function isSystemTitleBarActive(): boolean {
 }
 
 /**
- * Arm the explicit-quit flag without quitting. Wired to `app.on('before-quit')`
- * so any quit path (app menu / Cmd+Q, OS shutdown) lets the window `close`
- * handler stop hiding-to-tray and the process actually exit.
+ * Arm the explicit-quit flag without quitting. Wired to `before-quit`, so any quit path
+ * (app menu / Cmd+Q, OS shutdown) lets the window `close` handler stop hiding to the tray.
  */
 export function setQuitting(): void {
   isQuitting = true;
 }
 
-/** Explicit quit: arm the flag, then quit (used by the tray "Quit" item). */
+/** Explicit quit, for the tray "Quit" item. */
 export function requestQuit(): void {
   isQuitting = true;
   app.quit();
 }
 
-/** Block in-app navigation/popups to anything that isn't our app origin. */
+/** Block in-app navigation and popups to anything that isn't our app origin. */
 export function hardenContents(contents: Electron.WebContents): void {
   contents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) {
@@ -70,7 +66,7 @@ export function hardenContents(contents: Electron.WebContents): void {
     }
   });
 
-  // Defense in depth: never attach a webview / open a privileged child frame.
+  // Defense in depth: never attach a webview.
   contents.on('will-attach-webview', (event) => event.preventDefault());
 }
 
@@ -86,13 +82,11 @@ function isAllowedAppPermission(permission: string): boolean {
 }
 
 /**
- * Restrict renderer permission requests to the capabilities the app actually uses —
- * media (microphone for voice messages, camera for QR verification), geolocation
- * (location sharing), persistent storage (local data durability), sanitized clipboard
- * writes for explicit copy actions, and element fullscreen (the video player's fullscreen
- * button). Electron's
- * default grants requests that reach `whenReady`; without a handler, every other powerful
- * permission would be auto-approved too. Clipboard reads remain denied.
+ * Restrict renderer permission requests to what the app uses: media (microphone for voice
+ * messages, camera for QR verification), geolocation (location sharing), persistent
+ * storage, sanitized clipboard writes for explicit copy actions, and element fullscreen
+ * (the video player). Without a handler Electron would auto-approve every other powerful
+ * permission. Clipboard reads remain denied.
  */
 export function installPermissionPolicy(session: Electron.Session): void {
   session.setPermissionRequestHandler(
@@ -133,18 +127,18 @@ export function createWindow(): void {
     minHeight: 600,
     show: false,
     backgroundColor: GRAPHITE_DARK_SURFACE_APP,
-    // Windows/Linux taskbar and window icon (packaged builds also embed it; dev runs
-    // would otherwise show Electron's default). macOS uses the bundle's .icns.
+    // Windows/Linux taskbar and window icon; dev runs would otherwise show Electron's
+    // default. macOS uses the bundle's .icns.
     ...windowIconOptions(process.platform),
     // Trinity draws its own 32px title row unless the user opted into the OS bar.
     ...titleBarOptions(process.platform, prefs),
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      // The running title-bar mode and release channel, read synchronously by preload so
-      // the first render knows whether to draw the title row and which app it runs in.
+      // Read synchronously by preload, so the first render knows whether to draw the title
+      // row and which app it runs in.
       additionalArguments: [titleBarArgument(prefs), releaseChannelArgument()],
-      // Hardened defaults — see .agents/skills/electron/ipc-security.md.
+      // Hardened defaults; see .agents/skills/electron/ipc-security.md.
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -152,16 +146,12 @@ export function createWindow(): void {
       // Renderer must never reach Node directly; preload is the only bridge.
       nodeIntegrationInWorker: false,
       nodeIntegrationInSubFrames: false,
-      // Keep the renderer running at full speed when the window is hidden,
-      // minimized, or occluded. Chromium otherwise throttles background pages
-      // (timers, rAF, and — critically — the matrix-js-sdk `/sync` long-poll),
-      // which would stall live events and delay/suppress the renderer-driven
-      // background notifications. This is the key enabler for "notify while in
-      // the background" alongside close-to-tray below.
+      // Chromium otherwise throttles a hidden, minimized or occluded renderer (timers, rAF
+      // and the matrix-js-sdk `/sync` long-poll), which would stall live events and
+      // suppress background notifications. Needed with close-to-tray below.
       backgroundThrottling: false,
-      // Decision 20: a packaged release build (Trinity or Trinity Next) refuses developer
-      // tools; development runs and the Electron journeys (which launch dist/main.js
-      // unpackaged) keep them.
+      // A packaged release build refuses developer tools; development runs and the Electron
+      // journeys (which launch dist/main.js unpackaged) keep them.
       devTools: !app.isPackaged,
     },
   });
@@ -176,8 +166,7 @@ export function createWindow(): void {
   // Release builds have no View › Reload; recover a crashed or hung renderer instead.
   watchRendererRecovery(mainWindow);
 
-  // Flush any deep links buffered before the renderer was ready to receive them
-  // (cold start, or a load/reload that was in flight when the link arrived).
+  // Flush deep links buffered while the renderer could not receive them.
   mainWindow.webContents.on('did-finish-load', () => processDeepLinkQueue());
 
   mainWindow.once('ready-to-show', () => mainWindow?.show());
@@ -187,7 +176,7 @@ export function createWindow(): void {
   // and App lock counts the time away.
   const win = mainWindow;
   // What the renderer was last told, so focus and maximize report a return only once. A
-  // renderer that starts while the window is hidden asks lifecycle-ipc.ts instead (#1351).
+  // renderer that starts while the window is hidden asks lifecycle-ipc.ts instead.
   let visibility: 'visible' | 'hidden' = 'visible';
   const sendVisibility = (next: 'visible' | 'hidden') => () => {
     visibility = next;
@@ -213,10 +202,8 @@ export function createWindow(): void {
   win.on('maximize', maybeBack);
   win.on('focus', maybeBack);
 
-  // Close-to-tray: a user-initiated window close hides the window instead of
-  // destroying it, keeping the process, renderer, and `/sync` alive so
-  // background notifications keep working. An explicit Quit sets `isQuitting`
-  // first, letting the close proceed and the window actually be destroyed.
+  // Close-to-tray: a user close hides the window, keeping the renderer and `/sync` alive for
+  // background notifications. An explicit Quit sets `isQuitting` first, so the close proceeds.
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
@@ -246,8 +233,8 @@ export function focusMainWindow(): void {
   if (mainWindow.isMinimized()) {
     mainWindow.restore();
   }
-  // The window may be hidden in the tray rather than minimized/closed — show()
-  // is a no-op if already visible and reveals it if it was hidden-to-tray.
+  // The window may be hidden in the tray rather than minimized; show() reveals it and is a
+  // no-op when already visible.
   mainWindow.show();
   mainWindow.focus();
 }

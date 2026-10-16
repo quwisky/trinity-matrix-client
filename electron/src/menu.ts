@@ -5,7 +5,7 @@ import { checkForUpdates } from './update-check';
 
 /** What the application menu depends on at build time. */
 export interface MenuOptions {
-  /** A packaged release build: no developer tools (decision 20). */
+  /** A packaged release build: no developer tools. */
   readonly packaged: boolean;
   /** App lock's menu item; absent until the renderer reports its state. */
   readonly lock?: LockMenuItem;
@@ -36,9 +36,8 @@ export function buildMenu(options: MenuOptions): void {
                 ...(options.lock.accelerator
                   ? { accelerator: options.lock.accelerator }
                   : {}),
-                // Shown only: the renderer's shortcut service handles the key on
-                // Windows and Linux (macOS registers it regardless, and the click
-                // locks the same way).
+                // Shown only: the renderer's shortcut service handles the key on Windows
+                // and Linux (macOS registers it regardless; the click locks the same way).
                 registerAccelerator: false,
                 click: () => options.lock?.onLock(),
               },

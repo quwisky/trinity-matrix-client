@@ -4,16 +4,14 @@ import { iconCandidatePaths, trayIconFile } from './icons';
 import { focusMainWindow, requestQuit } from './window';
 import { appIdentity } from './app-identity';
 
-// The reference is held in module scope so the tray is not garbage-collected
-// (which would make it vanish).
+// Held in module scope so the tray is not garbage-collected (it would vanish).
 let tray: Tray | null = null;
 
 /**
- * Resolve the platform tray icon as a NativeImage.
- *
- * macOS uses a monochrome *template* image (`…Template.png`, black + alpha) that
- * the system recolors for light/dark menubars; Windows uses a 16 px colored PNG and
- * Linux a 32 px one (AppIndicators draw larger), each with an @2x sibling. Never throws if the asset is missing.
+ * Resolve the platform tray icon. macOS uses a monochrome template image (black + alpha)
+ * that the system recolors for light and dark menubars; Windows uses a 16 px colored PNG
+ * and Linux a 32 px one (AppIndicators draw larger), each with an @2x sibling. Never throws
+ * if the asset is missing.
  */
 function resolveTrayIcon(): Electron.NativeImage {
   const isMac = process.platform === 'darwin';
@@ -44,10 +42,8 @@ function resolveTrayIcon(): Electron.NativeImage {
 }
 
 /**
- * System tray so the app keeps running (and syncing, and notifying) in the
- * background after the window is closed to tray. Click / double-click reveals
- * the window; the context menu offers an explicit "Quit" that sets `isQuitting`
- * (via requestQuit) so the app really exits.
+ * System tray, so the app keeps syncing and notifying after the window is closed to tray.
+ * The context menu's explicit "Quit" goes through requestQuit so the app really exits.
  */
 export function createTray(): void {
   if (tray) {

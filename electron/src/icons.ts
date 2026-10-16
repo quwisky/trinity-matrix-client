@@ -3,13 +3,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 /**
- * Candidate on-disk locations for an icon asset shipped in `electron/build/`.
- * The asset is made available at runtime via electron-builder `extraResources`
- * (Resources/build) when packaged. We probe a small set of locations so it
- * resolves in dev (run from `electron/`), when packaged (asar app root +
- * extracted resources), or if ever copied beside the compiled main.
- *
- * Shared by the tray + notification icon resolvers.
+ * Candidate locations for an icon asset in `electron/build/`, so it resolves in dev (run
+ * from `electron/`), packaged (electron-builder `extraResources`, or the asar app root),
+ * or copied beside the compiled main. Shared by the tray and notification icon resolvers.
  */
 export function iconCandidatePaths(fileName: string): string[] {
   return [
@@ -33,9 +29,8 @@ export function trayIconFile(platform: NodeJS.Platform): string {
   return platform === 'linux' ? 'trinityTrayLinux.png' : 'trinityTray.png';
 }
 
-// The 256 px app icon (notificationIcon.png), decoded once and shared by every
-// BrowserWindow and by Linux notifications. `undefined` => not yet resolved;
-// `null` => none found.
+// The 256 px app icon (notificationIcon.png), decoded once for every BrowserWindow and Linux
+// notifications. `undefined` not yet resolved, `null` none found.
 let appIconCache: Electron.NativeImage | null | undefined;
 
 /** The shared 256 px app icon image, or `undefined` when the asset can't be found. */

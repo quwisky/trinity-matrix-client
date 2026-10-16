@@ -1,9 +1,7 @@
 /**
- * Validation + coercion for the UNTRUSTED `show-notification` IPC payload.
- *
- * Side-effect-free and dependency-free (no `electron` import), so it can be unit
- * tested in plain node. `main.ts` calls {@link coerceNotificationPayload} before
- * constructing any OS `Notification`.
+ * Validation and coercion for the untrusted `show-notification` IPC payload, run by
+ * {@link coerceNotificationPayload} before any OS `Notification` is built. Has no
+ * `electron` import, so it runs in plain Node tests.
  */
 
 export const NOTIFICATION_TITLE_LIMIT = 120;
@@ -27,8 +25,8 @@ export interface NotificationRequest {
 }
 
 /**
- * Clamp an untrusted IPC string: it must be a string; strip control characters
- * (defends against terminal/markup injection in the toast), trim, and cap length.
+ * Clamp an untrusted IPC string: it must be a string; control characters are stripped
+ * (against terminal/markup injection in the toast), then trimmed and length-capped.
  */
 function sanitizeNotificationText(value: unknown, limit: number): string {
   if (typeof value !== 'string') {
@@ -41,10 +39,9 @@ function sanitizeNotificationText(value: unknown, limit: number): string {
 }
 
 /**
- * Validate + coerce the UNTRUSTED `show-notification` payload. Returns `null`
- * (so the caller shows nothing) for anything malformed: a non-object, a missing
- * room id, or an empty title+body. A string `tag` is passed through; any other
- * type is omitted.
+ * Validate and coerce the untrusted `show-notification` payload. Returns `null` (show
+ * nothing) for a non-object, a missing destination id, or an empty title and body. A
+ * string `tag` is passed through; any other type is omitted.
  */
 export function coerceNotificationPayload(
   raw: unknown,
@@ -75,7 +72,7 @@ export function coerceNotificationPayload(
   );
   const body = sanitizeNotificationText(rec['body'], NOTIFICATION_BODY_LIMIT);
   if (!title && !body) {
-    return null; // empty notification => ignore
+    return null;
   }
   const request: NotificationRequest = {
     title,

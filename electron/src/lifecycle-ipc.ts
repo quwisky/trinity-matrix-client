@@ -14,13 +14,11 @@ export function windowVisibility(window: {
 }
 
 /**
- * Answer the renderer's question "is the window on screen now?".
- *
- * Main announces each change of visibility as it happens (see `window.ts`), but a renderer
- * that starts while the window is already hidden (one reloaded, or recovered after a crash,
- * while Trinity sits in the tray) would hear none and act as foreground until the next
- * change. It asks once when it subscribes instead. Only the main window's own renderer is
- * answered.
+ * Answer "is the window on screen now?". Main announces each visibility change (see
+ * `window.ts`), but a renderer that starts while the window is already hidden (reloaded or
+ * crash-recovered while Trinity sits in the tray) would hear none and act as foreground
+ * until the next change, so it asks once when it subscribes. Only the main window's own
+ * renderer is answered.
  */
 export function registerLifecycleIpc(): void {
   ipcMain.handle(VISIBILITY_QUERY_CHANNEL, (event) => {

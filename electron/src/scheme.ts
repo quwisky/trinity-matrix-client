@@ -4,15 +4,14 @@ import * as path from 'node:path';
 import { Readable } from 'node:stream';
 
 /**
- * The custom *privileged* app scheme + file server for the Angular `www/` build.
- *
- * The build is served over a custom *privileged* scheme (registered as
- * standard + secure + fetch + stream) instead of raw `file://`, so that:
- *   - the renderer is a SECURE CONTEXT (required by WebCrypto SubtleCrypto and
- *     IndexedDB, which Matrix crypto + storage rely on),
- *   - the crypto WASM can be loaded with `WebAssembly.instantiateStreaming`
- *     (needs `Content-Type: application/wasm` + a streamable fetch Response),
- *   - `<base href="/">` and the app's absolute asset paths resolve cleanly,
+ * The privileged app scheme and file server for the Angular `www/` build. It is served over
+ * a privileged scheme (standard + secure + fetch + stream) instead of raw `file://`, so
+ * that:
+ *   - the renderer is a secure context (WebCrypto SubtleCrypto and IndexedDB, which Matrix
+ *     crypto and storage rely on, require it),
+ *   - the crypto WASM loads with `WebAssembly.instantiateStreaming` (needs
+ *     `Content-Type: application/wasm` and a streamable fetch Response),
+ *   - `<base href="/">` and absolute asset paths resolve,
  *   - the strict CSP in index.html (`'self'`) binds to a stable app origin.
  */
 
@@ -21,9 +20,8 @@ const APP_HOST = 'app';
 export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
 export const START_URL = `${APP_ORIGIN}/`;
 
-// In dev (compiled to electron/dist/main.js) and when packaged inside app.asar,
-// the copied web build sits at electron/www (i.e. one level up from dist/).
-// fs reads are asar-aware in Electron, so this path works in both cases.
+// In dev (electron/dist/main.js) and packaged (app.asar) the web build sits one level up
+// from dist/; fs reads are asar-aware, so the path works in both.
 export const WWW_ROOT = path.resolve(__dirname, '..', 'www');
 export const INDEX_HTML = path.join(WWW_ROOT, 'index.html');
 
@@ -74,11 +72,10 @@ function opened(stream: fs.ReadStream): Promise<void> {
 }
 
 /**
- * Stream a file to the renderer instead of buffering it: the bytes flow from
- * disk to the response without being held whole (or copied) in the main
- * process. A file that cannot be opened (removed after the caller's `stat`,
- * unreadable) is a 404; a failure once streaming has begun errors the web
- * stream, which the renderer sees as a network error.
+ * Stream a file to the renderer without buffering it whole in the main process. A file
+ * that cannot be opened (removed after the caller's `stat`, unreadable) is a 404; a
+ * failure once streaming has begun errors the web stream, which the renderer sees as a
+ * network error.
  */
 async function fileResponse(
   filePath: string,
@@ -98,8 +95,8 @@ async function fileResponse(
     'content-length': String(size),
   };
   if (path.extname(filePath).toLowerCase() === '.html') {
-    // The app permits remote HTTPS widget frames. Prevent one from navigating its
-    // subframe back to the privileged app document and obtaining a same-origin page.
+    // The app permits remote HTTPS widget frames. Stop one from navigating its subframe
+    // back to the privileged app document and obtaining a same-origin page.
     headers['content-security-policy'] = "frame-ancestors 'none'";
     headers['x-frame-options'] = 'DENY';
   }
@@ -126,13 +123,9 @@ export function isAppUrl(url: string): boolean {
 }
 
 /**
- * Custom-scheme file server for the Angular build.
- *
- * - Maps `<scheme>://app/<path>` -> `www/<path>` (so `/assets/...` ->
- *   `www/assets/...` and the crypto WASM is served as `application/wasm`).
- * - SPA fallback: extensionless paths (Angular client routes) serve index.html
- *   so a reload on e.g. `/rooms` boots the app instead of 404ing.
- * - Path-traversal hardened: a resolved path that escapes WWW_ROOT is rejected.
+ * Custom-scheme file server: maps `<scheme>://app/<path>` to `www/<path>`. Extensionless
+ * paths (Angular client routes) fall back to index.html so a reload boots the app. A
+ * resolved path that escapes WWW_ROOT is rejected (path traversal).
  */
 export function registerAppProtocol(): void {
   protocol.handle(APP_SCHEME, async (request) => {
@@ -141,8 +134,7 @@ export function registerAppProtocol(): void {
       const { pathname } = new URL(request.url);
       rel = decodeURIComponent(pathname).replace(/^\/+/, '');
     } catch {
-      // Malformed percent-encoding in the path (e.g. `%` or `%zz`) makes
-      // decodeURIComponent throw — reject rather than crash the handler.
+      // Malformed percent-encoding (e.g. `%zz`) makes decodeURIComponent throw.
       return new Response('Bad Request', { status: 400 });
     }
     if (rel === '') {
@@ -163,8 +155,7 @@ export function registerAppProtocol(): void {
       // fall through to SPA fallback / 404
     }
 
-    // No file on disk: serve index.html for client routes (no extension),
-    // otherwise it's a genuinely missing asset.
+    // No file on disk: an extensionless path is a client route, anything else a missing asset.
     if (path.extname(rel) === '') {
       try {
         const { size } = await fs.promises.stat(INDEX_HTML);
@@ -178,9 +169,9 @@ export function registerAppProtocol(): void {
 }
 
 /**
- * Register the app scheme as privileged. MUST be called BEFORE the app is ready.
- * standard + secure => stable origin + secure context (WebCrypto/IndexedDB);
- * supportFetchAPI + stream => `fetch()` works and the WASM can stream-instantiate.
+ * Register the app scheme as privileged; must be called before the app is ready.
+ * standard + secure give a stable origin and secure context; supportFetchAPI + stream let
+ * `fetch()` work and the WASM stream-instantiate.
  */
 export function registerPrivilegedScheme(): void {
   protocol.registerSchemesAsPrivileged([

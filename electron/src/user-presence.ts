@@ -104,7 +104,7 @@ export function touchIdDriver(
   };
 }
 
-/** No system prompt: the Trinity PIN is App lock's only method here (decision 15). */
+/** No system prompt: the Trinity PIN is App lock's only method here. */
 export const NO_SYSTEM_PRESENCE: SystemPresenceDriver = {
   support: async () => ({ kind: 'unavailable', reason: 'not-supported' }),
   verify: async () => ({ kind: 'unavailable', reason: 'not-supported' }),

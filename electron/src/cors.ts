@@ -3,80 +3,67 @@ import { APP_ORIGIN } from './scheme';
 /**
  * Main-process CORS shim for Matrix homeserver traffic.
  *
- * The renderer is served from the privileged custom scheme `trinity://app`
- * (see scheme.ts), so every request matrix-js-sdk makes to a homeserver at
- * `https://<host>` is cross-origin. Many homeservers / reverse-proxies don't
- * reliably emit `Access-Control-Allow-Origin`, so Chromium blocks those
- * responses (`No 'Access-Control-Allow-Origin' header` -> net::ERR_FAILED),
- * intermittently breaking `/sync`, relations, account-data, cross-signing, etc.
+ * The renderer is served from the privileged scheme `trinity://app` (see scheme.ts), so
+ * every matrix-js-sdk request to a homeserver is cross-origin. Many homeservers and
+ * reverse proxies don't reliably emit `Access-Control-Allow-Origin`, so Chromium blocks
+ * those responses (net::ERR_FAILED), intermittently breaking `/sync`, relations,
+ * account-data, cross-signing and more.
  *
- * Because the desktop renderer is TRUSTED first-party native code (not an
- * arbitrary web page), we inject permissive CORS response headers on the app
- * session's OUTBOUND REMOTE http(s) responses only — the Element-Desktop
- * approach. This does NOT weaken the renderer's security posture: `webSecurity`,
- * `contextIsolation`, `sandbox`, and `nodeIntegration: false` are all untouched,
- * and the shim is scoped to remote http(s) URLs so it never touches the
- * `trinity://app` scheme itself.
+ * The desktop renderer is trusted first-party code, so the shim injects CORS response
+ * headers on the app session's outbound remote http(s) responses only (the Element
+ * Desktop approach). `webSecurity`, `contextIsolation`, `sandbox` and
+ * `nodeIntegration: false` stay untouched, and `trinity://app` itself is never rewritten.
  *
- * SCOPE — the rewrite is narrowed further, to the origins the renderer has declared
- * over IPC ({@link setAllowedCorsOrigins} / {@link allowCorsOrigin}): the signed-in
- * homeservers plus whatever `.well-known` discovery and login are currently probing.
- * The main process cannot know those on its own — the renderer picks the homeserver at
- * login, multi-account means several at once, each may use a separate media/identity
- * host, and discovery probes an origin the user typed before any account exists — so the
- * renderer publishes its live set and this module gates on it ({@link isAllowed}).
+ * SCOPE: the rewrite is narrowed to the origins the renderer declared over IPC
+ * ({@link setAllowedCorsOrigins} / {@link allowCorsOrigin}): the signed-in homeservers
+ * plus whatever `.well-known` discovery and login are probing. Main cannot know those
+ * itself (the renderer picks the homeserver at login, multi-account means several, each
+ * may use a separate media/identity host, and discovery probes an origin typed before any
+ * account exists), so the renderer publishes its live set and {@link isAllowed} gates on it.
  *
- * RESIDUAL — the renderer can still read cross-origin response bodies from the origins it
- * declared, i.e. its own homeservers. That is inherent (it must talk to them), and it
- * bounds the XSS amplification: a future sanitizer bypass on untrusted federated message
- * HTML gains reads against the declared homeservers, not against arbitrary https origins.
- * Undeclared origins pass through with the server's own headers untouched, which costs
- * nothing — the Matrix spec requires CS API and `.well-known` responses to send
- * `Access-Control-Allow-Origin: *`, so only proxies that strip it need this shim at all.
+ * RESIDUAL: the renderer can still read cross-origin response bodies from its declared
+ * homeservers. That is inherent, and it bounds the XSS amplification: a future sanitizer
+ * bypass on untrusted federated message HTML gains reads against the declared homeservers,
+ * not arbitrary https origins. Undeclared origins pass through with the server's own
+ * headers, which costs nothing: the Matrix spec requires CS API and `.well-known`
+ * responses to send `Access-Control-Allow-Origin: *`, so only proxies that strip it need
+ * this shim at all.
  */
 
-// Only remote http(s) responses are rewritten — never the `trinity://app`
-// scheme (which this pattern deliberately does not match).
+// The pattern deliberately does not match the `trinity://app` scheme.
 const REMOTE_URLS = ['https://*/*', 'http://*/*'] as const;
 
-// Response headers Electron hands us are keyed however the origin server cased
-// them, so all matching/removal below is case-insensitive (lowercased).
+// Electron keys response headers however the origin server cased them, so matching and
+// removal below lowercase.
 const ACAO = 'access-control-allow-origin';
 const ACAM = 'access-control-allow-methods';
 const ACAH = 'access-control-allow-headers';
 const ACMA = 'access-control-max-age';
 const ACAC = 'access-control-allow-credentials';
 
-// The CORS keys we own: any of these the server already sent are stripped
-// before we set ours, so a duplicate Access-Control-Allow-Origin can never be
-// emitted (Chromium rejects a response that carries two ACAO values).
-// ACAC is managed (and never re-set) so a third-party origin cannot opt ITSELF into
-// credentialed cross-origin reads by returning `access-control-allow-credentials: true`
-// alongside the ACAO we inject. matrix-js-sdk authenticates with a bearer header, not
-// cookies, so nothing here needs credentialed CORS.
+// The CORS keys we own: any the server already sent are stripped before we set ours, since
+// Chromium rejects a response carrying two ACAO values. ACAC is managed and never re-set,
+// so an origin cannot opt itself into credentialed cross-origin reads by returning
+// `access-control-allow-credentials: true` next to our ACAO. matrix-js-sdk authenticates
+// with a bearer header, not cookies, so nothing needs credentialed CORS.
 const MANAGED = [ACAO, ACAM, ACAH, ACMA, ACAC];
 
 /**
- * Origins the renderer has declared it legitimately talks to — the signed-in
- * homeservers, plus any origin currently being probed by `.well-known` discovery.
- * Populated over IPC ({@link setAllowedCorsOrigins}); empty until the renderer says
- * otherwise, which is the safe direction (see below).
+ * Origins the renderer declared it talks to: the signed-in homeservers plus any origin
+ * `.well-known` discovery is probing. Populated over IPC ({@link setAllowedCorsOrigins});
+ * empty until the renderer says otherwise, which is the safe direction.
  *
- * Anything NOT in here is passed through untouched rather than rewritten. That is a
- * safe default, not a lax one: the Matrix spec REQUIRES CS API and `.well-known`
- * responses to carry `Access-Control-Allow-Origin: *`, so a compliant server needs no
- * help from us. This shim exists only for deployments whose reverse proxy strips it —
- * and for those, the renderer names the origin.
+ * Anything not in here passes through untouched. That is safe, not lax: the Matrix spec
+ * requires CS API and `.well-known` responses to carry `Access-Control-Allow-Origin: *`,
+ * so a compliant server needs no help, and for a proxy that strips it the renderer names
+ * the origin.
  */
 const allowedOrigins = new Set<string>();
 
 /**
- * Replace the set of origins the shim will rewrite for. Called by the renderer (over
- * IPC) whenever its live origin set changes: sign-in, sign-out, account switch, and
- * around a `.well-known` probe of a server it has not yet joined.
- *
- * Invalid entries are dropped rather than throwing — this is a trust boundary, and a
- * malformed payload must not take the shim (or the main process) down.
+ * Replace the set of origins the shim will rewrite for. Invalid entries are dropped
+ * rather than throwing: this is a trust boundary, and a malformed payload must not take
+ * the shim (or the main process) down.
  */
 export function setAllowedCorsOrigins(origins: readonly string[]): void {
   allowedOrigins.clear();
@@ -85,8 +72,8 @@ export function setAllowedCorsOrigins(origins: readonly string[]): void {
       continue;
     }
     try {
-      // Normalise via URL so 'https://hs.example/' and 'https://hs.example:443/foo'
-      // both reduce to the same origin the interceptor will compare against.
+      // Normalise so 'https://hs.example/' and 'https://hs.example:443/foo' reduce to the
+      // same origin the interceptor compares against.
       allowedOrigins.add(new URL(raw).origin);
     } catch {
       // Not a URL — ignore it.
@@ -95,13 +82,10 @@ export function setAllowedCorsOrigins(origins: readonly string[]): void {
 }
 
 /**
- * Additively allow one origin, without disturbing the rest.
- *
- * Discovery and login both talk to a homeserver BEFORE any account exists to declare
- * it: `.well-known` probes the domain the user typed, then login POSTs to the resolved
- * base URL. Those origins are allowed as they come into play, and the next
- * {@link setAllowedCorsOrigins} (fired whenever the account set changes) replaces the
- * whole set — so a probe of a server never signed into is dropped rather than lingering.
+ * Additively allow one origin. Discovery and login talk to a homeserver before any
+ * account exists to declare it; the next {@link setAllowedCorsOrigins} (fired whenever
+ * the account set changes) replaces the whole set, so a probe of a server never signed
+ * into is dropped rather than lingering.
  */
 export function allowCorsOrigin(origin: string): void {
   try {
@@ -138,18 +122,16 @@ function isAllowed(url: string): boolean {
 }
 
 /**
- * Register an `onHeadersReceived` interceptor that makes any Matrix homeserver
- * respond CORS-clean to the `trinity://app` renderer. Call ONCE, on the session
- * the main window uses, BEFORE the window loads its URL.
+ * Register an `onHeadersReceived` interceptor that makes declared Matrix homeservers
+ * respond CORS-clean to the `trinity://app` renderer. Call once, on the session the main
+ * window uses, before the window loads its URL.
  */
 export function installMatrixCors(session: Electron.Session): void {
   session.webRequest.onHeadersReceived(
     { urls: [...REMOTE_URLS] },
     (details, callback) => {
-      // Only rewrite for origins the renderer has declared. Everything else passes
-      // through with the server's own headers intact — so a sanitizer bypass in the
-      // renderer cannot borrow this shim as a read-anywhere primitive against
-      // arbitrary https origins.
+      // Undeclared origins keep the server's own headers, so a sanitizer bypass in the
+      // renderer cannot borrow this shim as a read-anywhere primitive.
       if (!isAllowed(details.url)) {
         callback({});
         return;
@@ -158,18 +140,14 @@ export function installMatrixCors(session: Electron.Session): void {
         ...(details.responseHeaders ?? {}),
       };
 
-      // Strip whatever CORS headers the origin sent, then set exactly one of
-      // each of ours — never a duplicate.
       deleteHeaders(responseHeaders, MANAGED);
 
       // Exact origin (never `*`) so credentialed requests are permitted.
       responseHeaders[ACAO] = [APP_ORIGIN];
 
-      // Preflight: answer the OPTIONS probe with the verbs + request headers
-      // matrix-js-sdk uses. `Authorization` MUST be listed explicitly — the
-      // `*` wildcard never covers it. onHeadersReceived details carry no
-      // request headers, so there's nothing to echo; this allow-list suffices
-      // (matrix-js-sdk only sends Authorization + Content-Type).
+      // Preflight: `Authorization` must be listed explicitly, as the `*` wildcard never
+      // covers it. onHeadersReceived details carry no request headers to echo; this
+      // allow-list suffices since matrix-js-sdk only sends Authorization + Content-Type.
       if (details.method === 'OPTIONS') {
         responseHeaders[ACAM] = ['GET, POST, PUT, DELETE, PATCH, OPTIONS'];
         responseHeaders[ACAH] = ['Authorization, Content-Type'];
