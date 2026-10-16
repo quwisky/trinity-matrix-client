@@ -78,7 +78,8 @@ export const routes: Routes = [
     canActivate: [authGuard],
     // Same shown-once key as the unlock route below, on the path EVERY new account takes:
     // first-run setup displays the recovery key once and never persists it, and the
-    // browser's back button would drop it without a word.
+    // browser's back button would drop it without a word. These guards need the router's
+    // canceledNavigationResolution: 'computed' (trinity-application.providers.ts).
     canDeactivate: [(page: EncryptionSetupPage) => page.confirmLeave()],
     loadComponent: () =>
       import('@trinity/feature/crypto').then((m) => m.EncryptionSetupPage),

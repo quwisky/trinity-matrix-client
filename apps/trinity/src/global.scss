@@ -91,9 +91,9 @@
 
   /* A faded solid primary or danger button loses contrast (fill and label both fade toward
    * the pane), so it takes a neutral fill and the muted label at full opacity; this selector
-   * out-ranks the fade above. A solid secondary button already rests on that neutral fill,
-   * so it keeps the fade, as outline, ghost and link buttons do: their glyphs and emoji
-   * ignore a text colour. A focused `trnActionAllowed` button keeps its focus border. Forced
+   * out-ranks the fade above. Losing its tone marks the state. A solid secondary button
+   * already rests on that neutral fill, so it keeps the fade, as outline, ghost and link
+   * buttons do: their glyphs and emoji ignore a text colour. A focused `trnActionAllowed` button keeps its focus border. Forced
    * colours replace these colours, so the system's disabled colour marks the state there. */
   :is(button, a)[trnBtn][data-trn-presentation='solid']:not(
       [data-trn-variant='secondary']

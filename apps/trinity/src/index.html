@@ -69,7 +69,8 @@
       (`boot-splash.spec.mjs` pins that). Keying the light rule on `:root:not(.dark)` would
       match before the Appearance document effect stamps anything and flash white at every
       system-dark user; a marker stamped during Application Runtime startup only covers the
-      app-initializer-to-root-render window, not the part that hurts.
+      app-initializer-to-root-render window, not the part that hurts. A splash that is
+      occasionally the wrong colour beats a blank screen.
 
       The values are duplicated from Theme Foundation's `--background` / `--trinity-text`
       defaults on purpose: a stylesheet import would be another request to wait for.
