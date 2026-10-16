@@ -51,7 +51,7 @@ import {
   type TrnActionSheetRef,
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
-import { defer, map, of, Subject, tap, throwError } from 'rxjs';
+import { defer, finalize, map, of, Subject, tap, throwError } from 'rxjs';
 import { MatrixError } from '@trinity/util/matrix';
 import {
   SessionLockService,
@@ -81,6 +81,10 @@ describe('RoomsPage space actions', () => {
   let createRoomInSpace: Mock;
   let leaveSpace: Mock;
   let waitForRoom: Mock;
+  /** Whether @me still holds '!s:hs', as its client says; a sync can drop it. */
+  let spaceHeld: WritableSignal<boolean>;
+  /** SpacesService's mark for a leave this app started that has not settled yet. */
+  let leaving: WritableSignal<boolean>;
 
   function build(
     activeUserId: string | null = '@me:hs',
@@ -100,6 +104,8 @@ describe('RoomsPage space actions', () => {
     );
     leaveSpace = vi.fn(() => of(undefined));
     waitForRoom = vi.fn(() => of(void 0));
+    spaceHeld = signal(true);
+    leaving = signal(false);
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
@@ -111,7 +117,8 @@ describe('RoomsPage space actions', () => {
         // The Account holds every space these actions open, as `selectionAvailability` says.
         selectedRoomLibraryProvider(),
         MockProvider(RoomLibraryService, {
-          selectionAvailability: () => 'available',
+          selectionAvailability: (_accountId: string, roomId: string) =>
+            roomId === '!s:hs' && !spaceHeld() ? 'unavailable' : 'available',
           clearMarkedUnread: () => of(void 0),
           // ng-mocks >= 14.18 no longer stubs signal fields; the selected-library
           // projection reads this one.
@@ -132,6 +139,7 @@ describe('RoomsPage space actions', () => {
           ]),
           createSpace,
           leaveSpace,
+          isLeaving: () => leaving(),
         }),
         MockProvider(SpaceContentsService, { create: createRoomInSpace }),
         MockProvider(TimelineActionsService),
@@ -302,6 +310,45 @@ describe('RoomsPage space actions', () => {
       }),
     );
     await vi.waitFor(() => expect(shell.store.activeSpaceId()).toBeNull());
+  });
+
+  // The sync carrying the leave can land before the leave request answers. Workspace leaves
+  // the space to the leave flow meanwhile, so the flow's Home is the only navigation.
+  it('leaving the space navigates Home once, even when the sync drops the space first', async () => {
+    const shell = build();
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+    const request = new Subject<void>();
+    leaveSpace.mockImplementation(() =>
+      defer(() => {
+        leaving.set(true);
+        return request.pipe(finalize(() => leaving.set(false)));
+      }),
+    );
+    alertConfirm.mockReturnValue(of(true));
+    const navigate = vi.mocked(TestBed.inject(Router).navigate);
+
+    shell.spaces.onLeaveSpace();
+    spaceHeld.set(false);
+    await settleWorkspace();
+    await settleWorkspace();
+    expect(shell.store.activeSpaceId()).toBe('!s:hs');
+    navigate.mockClear();
+
+    request.next();
+    request.complete();
+    await vi.waitFor(() => expect(shell.store.activeSpaceId()).toBeNull());
+    await settleWorkspace();
+
+    expect(shell.store.recentView()).toBe(false);
+    expect(shell.vm.sidebarTitle()).toBe('Direct messages');
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith(
+      ['/rooms'],
+      expect.objectContaining({
+        queryParams: { account: '@me:hs', view: 'home' },
+      }),
+    );
   });
 
   it('does not leave when the confirm is cancelled', async () => {

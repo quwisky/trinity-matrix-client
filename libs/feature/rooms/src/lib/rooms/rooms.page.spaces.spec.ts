@@ -97,20 +97,24 @@ describe('RoomsPage space filtering', () => {
     const childRoomIds = vi.fn((id: string | null) =>
       id === '!s:hs' ? ['!b:hs', '!a:hs'] : [],
     );
+    const spaces = signal([spaceSummary('!s:hs', ['!b:hs', '!a:hs'])]);
+    // Whether the account's client holds the space; a sync can drop it.
+    const spaceHeld = signal(true);
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
         selectedRoomLibraryProvider(),
         MockProvider(RoomLibraryService, {
-          selectionAvailability: () => 'available',
+          selectionAvailability: (_accountId: string, roomId: string) =>
+            roomId === '!s:hs' && !spaceHeld() ? 'unavailable' : 'available',
           clearMarkedUnread: () => of(void 0),
           rooms: signal(rooms),
           directRoomIds: signal<ReadonlySet<string>>(new Set(['!a:hs'])), // '!a:hs' is a DM
         }),
         MockProvider(SpacesService, {
           openSpace: () => of(void 0),
-          spaces: signal([spaceSummary('!s:hs', ['!b:hs', '!a:hs'])]),
+          spaces,
           childRoomIds,
         }),
         MockProvider(SpaceRoomOrderService, {
@@ -142,7 +146,7 @@ describe('RoomsPage space filtering', () => {
         MockProvider(TrnToastService),
       ],
     });
-    return shellFrom();
+    return { ...shellFrom(), spaces, spaceHeld };
   }
 
   it('names the title row after the open room', async () => {
@@ -275,6 +279,30 @@ describe('RoomsPage space filtering', () => {
     expect(shell.store.activeRoomId()).toBe('!a:hs');
     expect(shell.store.activeSpaceId()).toBe('!s:hs');
     expect(shell.store.recentView()).toBe(false);
+  });
+
+  // #1402: removed from the space, it deleted or left on another device. Workspace returns
+  // the rail to Recent instead of an empty list titled "Direct messages".
+  it('a selected space that disappears returns the rail to Recent activity and keeps the open room', async () => {
+    const shell = build();
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+    shell.routing.onSelectRoomSelection(
+      { roomId: '!b:hs', accountId: '@me:hs' },
+      'room-list',
+    );
+    await settleWorkspace();
+
+    shell.spaces.set([]);
+    shell.spaceHeld.set(false);
+
+    await vi.waitFor(() => {
+      TestBed.tick();
+      expect(shell.store.recentView()).toBe(true);
+    });
+    expect(shell.store.activeSpaceId()).toBeNull();
+    expect(shell.store.activeRoomId()).toBe('!b:hs');
+    expect(shell.vm.sidebarTitle()).toBe('Recent activity');
   });
 
   // A chat picked from the rail's unread entries keeps the space when the space's list

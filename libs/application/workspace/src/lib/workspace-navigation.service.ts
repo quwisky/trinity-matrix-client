@@ -28,10 +28,13 @@ import {
 } from '@trinity/data-access/timeline';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import {
+  EMPTY,
   Observable,
   type Subscription,
+  catchError,
   concatMap,
   defer,
+  distinctUntilChanged,
   filter,
   last,
   map,
@@ -140,6 +143,61 @@ export class WorkspaceNavigationService {
             canonical: parsed.canonical,
           });
         }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe();
+    this.repairUnavailableSpace();
+  }
+
+  /**
+   * Return the selected Space to Recent once it is unavailable, keeping the open Room:
+   * the Account has synced without it (#1401), or it disappeared (#1402: removed, left
+   * elsewhere, or its holder unticked in the mixed view). Recent lists every Room, so the
+   * Room is then judged on its own. It stays quiet while a transition owns the view, while
+   * this app's own leave of the Space is in flight (that flow navigates itself), while the
+   * view's Account is not the active one (a switch or sign-out is under way), and outside
+   * Workspace, where the return restores through the same repair. One attempt per
+   * committed view, so a rejected Router navigation is not retried in a loop.
+   */
+  private repairUnavailableSpace(): void {
+    const unavailable = computed(() => {
+      const view = this.view();
+      if (view.scope.kind !== 'space' || !view.accountId) return null;
+      if (this.workflow.busy()) return null;
+      if (view.accountId !== this.accounts.activeAccountId()) return null;
+      if (this.spaces.isLeaving(view.accountId, view.scope.spaceId)) {
+        return null;
+      }
+      return this.availability.space(view.accountId, view.scope.spaceId) ===
+        'unavailable'
+        ? view
+        : null;
+    });
+    toObservable(unavailable, { injector: this.injector })
+      .pipe(
+        filter((view): view is WorkspaceView => view !== null),
+        distinctUntilChanged(),
+        concatMap((view) =>
+          defer(() => {
+            if (
+              !this.projectionsActive ||
+              this.view() !== view ||
+              !view.accountId
+            ) {
+              return EMPTY;
+            }
+            // A failed repair leaves the view as it is; the watch must outlive it.
+            return this.transition(
+              {
+                accountId: view.accountId,
+                scope: RECENT_WORKSPACE_SCOPE,
+                roomId: view.roomId,
+                pane: view.pane,
+              },
+              { source: 'repair', history: 'replace' },
+            ).pipe(catchError(() => EMPTY));
+          }),
+        ),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe();
@@ -436,7 +494,10 @@ export class WorkspaceNavigationService {
   private seedDestinationExists(destination: WorkspaceDestination): boolean {
     if (
       destination.scope.kind === 'space' &&
-      !this.availability.space(destination.accountId, destination.scope.spaceId)
+      this.availability.space(
+        destination.accountId,
+        destination.scope.spaceId,
+      ) === 'unavailable'
     ) {
       return false;
     }
