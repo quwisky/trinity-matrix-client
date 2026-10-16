@@ -74,9 +74,8 @@ const SIGN_IN_FALLBACK = "We couldn't sign you in. Try again.";
 
 /**
  * Plain-language text for a failed discovery or sign-in request. A 401/403 from the
- * login endpoint means the credentials were refused, not "no permission", so it is
- * mapped here rather than by the shared formatter. Anything unrecognised gets the
- * fallback: raw SDK messages carry status lines and request URLs.
+ * login endpoint means refused credentials, not "no permission", so it is mapped here.
+ * Anything unrecognised gets the fallback: raw SDK messages carry status lines and URLs.
  */
 function describeSignInError(error: unknown, fallback: string): string {
   if (
@@ -136,29 +135,24 @@ export class LoginPage {
   /** Report a bug needs the app's launcher; a host without one leaves it out. */
   readonly canReportBug = this.bugReport !== null;
   /** `/login?reauth=<userId>` — re-authenticate a soft-logged-out account (add mode,
-   * reusing its existing device so no re-verification is needed). */
+   * reusing its device so no re-verification is needed). */
   readonly reauthUserId = signal<string | null>(
     this.route.snapshot.queryParamMap.get('reauth'),
   );
-  /** The device id to re-authenticate (from the stored record), when in re-auth mode. */
+  /** The stored device id to re-authenticate, in re-auth mode. */
   private reauthDeviceId: string | null = null;
 
   /**
-   * Accounts currently stored on this device, for the erase confirmation to name.
-   * `/login?add` is reachable while accounts are live, and someone who came here to ADD an
-   * account needs to be told what erasing would take with it.
+   * Accounts stored on this device, for the erase confirmation to name: `/login?add` is
+   * reachable while accounts are live, so erasing would take them with it.
    */
   private readonly storedUserIds = signal<readonly string[] | null>(null);
 
   constructor() {
-    // Sweep an abandoned OIDC stash. `peek()` bins one that has outlived its TTL, and the
-    // TTL is only ever enforced on read — so a login the user walked away from leaves a
-    // PKCE code_verifier on disk until something reads it, and only the callback page
-    // otherwise does. Landing on /login means no round-trip is completing here, so this is
-    // the natural place. It cannot disturb a live login: a stash inside its TTL is left
-    // untouched, including one started in another tab. Best-effort like every other
-    // cleanup on this path: a storage read that rejects must not take the page down with
-    // an unhandled rejection when nothing here depends on the answer.
+    // Sweep an abandoned OIDC stash: the TTL is only enforced on read, so an abandoned
+    // login leaves a PKCE code_verifier on disk until something peeks. A stash inside its
+    // TTL (even from another tab) is untouched. Best-effort: a rejected read must not
+    // surface as an unhandled rejection.
     void this.oidcState.peek().catch(() => undefined);
 
     this.storage
@@ -167,15 +161,13 @@ export class LoginPage {
       .subscribe({
         next: (records) => this.storedUserIds.set(records.map((r) => r.userId)),
         // Stays null on failure, which the confirmation renders as "any accounts signed in
-        // will be signed out" rather than as silence. A registry too broken to read is
-        // itself one of the states this button exists for, and silence there is
-        // indistinguishable from "nothing is signed in".
+        // will be signed out": an unreadable registry is a state this button exists for,
+        // and silence would read as "nothing is signed in".
         error: () => undefined,
       });
 
     const reauth = this.reauthUserId();
     if (reauth) {
-      // Skip the homeserver step: load the stored record and discover its flows.
       this.credentials.update((current) => ({ ...current, username: reauth }));
       this.withBusy(
         this.storage.record(reauth).pipe(
@@ -201,9 +193,8 @@ export class LoginPage {
       );
     }
 
-    // The username/password step is inserted after homeserver discovery, so the
-    // field's static `autofocus` is ignored (a document flushes autofocus once — on
-    // the homeserver step). Move focus there programmatically when it appears.
+    // The username step appears after discovery, and a document flushes `autofocus` only
+    // once (on the homeserver step), so focus it programmatically.
     effect(() => {
       if (this.passwordSupported()) {
         afterNextRender(() => this.usernameInput()?.nativeElement.focus(), {
@@ -218,13 +209,11 @@ export class LoginPage {
     return this.addMode || this.reauthUserId() ? 'add' : 'replace';
   }
 
-  // Resolved homeserver + capabilities after discovery.
   readonly baseUrl = signal<string | null>(null);
   readonly ssoSupported = signal(false);
   readonly passwordSupported = signal(false);
   readonly registrationAvailability =
     signal<RegistrationAvailability>('unknown');
-  /** The delegated OIDC provider config, when the homeserver uses next-gen auth. */
   readonly oidcMetadata = signal<AuthMetadata | null>(null);
   readonly oidcSupported = computed(() => this.oidcMetadata() !== null);
   /** Whether the OIDC provider supports account creation (MSC2965 `prompt=create`). */
@@ -241,35 +230,31 @@ export class LoginPage {
   /** Why sign-in failed, shown beside the password field. */
   readonly credentialsError = signal<string | null>(null);
   /**
-   * The factory reset in flight, separate from {@link busy} on purpose.
-   *
-   * `busy` is the page-wide discovery/login flag, and the escape hatch must stay reachable
-   * exactly when that is stuck — someone whose homeserver is unreachable sits in `busy` for
-   * the whole HTTP timeout, and on `/login?reauth=` it is set from first paint.
+   * The factory reset in flight, separate from {@link busy} on purpose: the escape hatch
+   * must stay reachable while `busy` is stuck (unreachable homeserver; set from first
+   * paint on `/login?reauth=`).
    */
   readonly erasing = signal(false);
 
-  // Form state. Two forms, not one, because the page is two steps: the homeserver is
-  // resolved first, and the credentials step only exists once discovery reports a
-  // password flow. Declared after `busy` because the schemas below read it.
+  // Two forms because the page is two steps; the credentials step only exists once
+  // discovery reports a password flow. Declared after `busy`, which the schemas read.
   //
-  // The disabled rules live in the schema rather than as [disabled] on the inputs:
-  // Signal Forms owns a field's disabled state, and binding [disabled] on a [formField]
-  // node is a compile error (NG8022).
+  // Disabled rules live in the schema: Signal Forms owns disabled state, and binding
+  // [disabled] on a [formField] node is a compile error (NG8022).
   private readonly homeserverModel = signal({ homeserver: 'matrix.org' });
   readonly homeserverForm = form(this.homeserverModel, (path) => {
     disabled(path.homeserver, { when: () => this.busy() });
   });
   private readonly credentials = signal({ username: '', password: '' });
   readonly credentialsForm = form(this.credentials, (path) => {
-    // In re-auth the account is fixed: the username is pre-filled and must stay put.
+    // In re-auth the pre-filled username must stay fixed.
     disabled(path.username, {
       when: () => this.busy() || !!this.reauthUserId(),
     });
     disabled(path.password, { when: () => this.busy() });
   });
 
-  /** Step 1: resolve the homeserver and discover its login flows (+ OIDC, in parallel). */
+  /** Step 1: resolve the homeserver and discover its login flows and OIDC config. */
   discover(): void {
     this.withBusy(
       this.discovery
@@ -290,10 +275,9 @@ export class LoginPage {
   }
 
   /**
-   * Discover the login flows and delegated OIDC config in parallel. A failing
-   * `loginFlows()` must NOT hide an available OIDC provider (an OIDC-native homeserver
-   * may not serve the legacy `/login` flows at all), so its error degrades to "no
-   * flows" rather than aborting the whole discovery.
+   * Discover login flows and OIDC config in parallel. A failing `loginFlows()` must not
+   * hide an OIDC provider (an OIDC-native homeserver may not serve legacy `/login`), so
+   * its error degrades to "no flows".
    */
   private discoverCapabilities(baseUrl: string): Observable<{
     flows: string[];
@@ -307,8 +291,8 @@ export class LoginPage {
       oidc: this.auth.getDelegatedAuthConfig(baseUrl),
     }).pipe(
       switchMap(({ flows, oidc }) => {
-        // Delegated OIDC owns registration, while add/reauth gating is handled by the
-        // template. Only a legacy password homeserver needs the extra availability GET.
+        // Delegated OIDC owns registration; only a legacy password homeserver needs the
+        // availability GET.
         if (oidc || !flows.includes('m.login.password')) {
           return of({ flows, oidc, registration: 'unknown' as const });
         }
@@ -320,9 +304,9 @@ export class LoginPage {
   }
 
   /**
-   * Apply the discovered capabilities. An OIDC-native homeserver owns credentials at the
-   * provider, so prefer its "Continue" button and suppress the legacy password/SSO ones
-   * (a homeserver mid-migration may still advertise m.login.sso for compatibility).
+   * An OIDC-native homeserver owns credentials at the provider, so prefer its "Continue"
+   * button and suppress password/SSO (a mid-migration homeserver may still advertise
+   * m.login.sso).
    */
   private applyFlows(
     flows: string[],
@@ -333,8 +317,6 @@ export class LoginPage {
     this.registrationAvailability.set(registration);
     this.passwordSupported.set(!oidc && flows.includes('m.login.password'));
     this.ssoSupported.set(!oidc && flows.includes('m.login.sso'));
-    // No OIDC, password, or SSO flow — surface a clear message instead of leaving the
-    // user on a blank card with no sign-in control and no explanation.
     if (!oidc && !this.passwordSupported() && !this.ssoSupported()) {
       this.error.set(
         "This homeserver doesn't offer a sign-in method Trinity supports.",
@@ -401,11 +383,7 @@ export class LoginPage {
     ).subscribe();
   }
 
-  /**
-   * Step 2c: OIDC ("next-gen auth") — hand off to the provider's authorization page.
-   * Pass `prompt` (`'create'`) to send the user to the provider's registration flow
-   * instead of login.
-   */
+  /** Step 2c: OIDC — hand off to the provider; `prompt: 'create'` opens its registration. */
   startOidc(prompt?: string): void {
     const baseUrl = this.baseUrl();
     const metadata = this.oidcMetadata();
@@ -418,8 +396,8 @@ export class LoginPage {
         metadata,
         mode: this.loginMode(),
         ...(prompt ? { prompt } : {}),
-        // Re-auth reuses the stored device so the account comes back without needing a
-        // fresh verification, and the callback must see this same account return.
+        // Re-auth reuses the stored device (no fresh verification); the callback must see
+        // this same account return.
         ...(this.reauthDeviceId ? { deviceId: this.reauthDeviceId } : {}),
         expectedUserId: this.reauthUserId(),
       }),
@@ -428,31 +406,24 @@ export class LoginPage {
     ).subscribe();
   }
 
-  /**
-   * Report a bug without signing in: the way to send a diagnostic log when signing in is
-   * what fails. It lives here for the same reason as the erase button: Settings is behind
-   * `authGuard`. Opens the same dialog as Settings › Advanced, through the app's launcher.
-   */
+  /** Report a bug without signing in; here because Settings is behind `authGuard`. */
   reportBug(): void {
     this.bugReport?.open();
   }
 
   /**
    * Erase everything Trinity has stored on this device, then restart into a clean app.
+   * Lives here because Settings is behind `authGuard`.
    *
-   * The way out of a wedged install, which is why it lives on the login page: Settings is
-   * behind `authGuard`, and the whole point is to be reachable when you cannot sign in.
-   *
-   * Deliberately NOT wrapped in `withBusy`. `runWithBusy` turns a failure into `EMPTY`, so
-   * its `next` never runs — here that would mean silently not restarting, leaving the user
-   * looking at an app whose data is already gone. Busy and error are set by hand instead.
+   * Not wrapped in `withBusy`: `runWithBusy` turns a failure into `EMPTY`, so `next` would
+   * never run and the app would silently not restart after its data is gone.
    */
   clearAllData(): void {
     confirmClearDataIntent(this.alert, this.storedUserIds())
       .pipe(take(1), takeUntilDestroyed(this.destroyRef))
       .subscribe((intent) => {
         if (intent === 'cancelled') {
-          return; // they stopped it themselves; saying anything would be nagging
+          return;
         }
         if (intent === 'mistyped') {
           this.error.set(CLEAR_DATA_MISTYPED_MESSAGE);
@@ -466,8 +437,8 @@ export class LoginPage {
   private beginInstallationReset(): void {
     this.error.set(null);
     this.erasing.set(true);
-    // Account Runtime owns the accepted attempt. This observer may detach with the page;
-    // cleanup continues and a reopened surface joins or observes the same attempt.
+    // Account Runtime owns the attempt: it continues if this observer detaches, and a
+    // reopened surface joins it.
     this.accounts
       .resetInstallation()
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -483,8 +454,7 @@ export class LoginPage {
         }
         const failure = installationResetFailureMessage(outcome);
         if (failure === null) {
-          // `erasing` stays true: the app is about to be replaced, and releasing the button
-          // now would let a second press race the navigation.
+          // `erasing` stays true: a second press would race the restart.
           this.restart.restart();
           return;
         }

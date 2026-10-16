@@ -34,11 +34,8 @@
       @switch (v.stage) {
         @case ('requested') {
           @if (v.incoming && v.newSession; as session) {
-            <!--
-              Another of YOUR sessions is asking this trusted one for access, so the
-              request reads as a new sign-in: name the session and make declining the
-              default.
-            -->
+            <!-- Another of YOUR sessions is asking for access, so this reads as a new
+                 sign-in: name the session and make declining the default. -->
             <h2
               #stageHeading
               id="new-session-title"
@@ -381,7 +378,6 @@
         }
       }
     } @else {
-      <!-- Routed entry: nothing in flight yet — offer to start. -->
       <h2 #stageHeading class="heading" tabindex="-1">
         Verify with another device
       </h2>
@@ -403,7 +399,7 @@
 
     @if (offerSecuritySettings()) {
       <!-- A way on, not the reset: Security settings keeps it behind its typed
-           confirmation (#1214 R5). -->
+           confirmation. -->
       <p
         id="verify-no-other-device"
         class="mt-6 text-muted-foreground"

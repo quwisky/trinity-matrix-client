@@ -17,11 +17,9 @@ import { HostFileExportService } from '@trinity/runtime/host';
 const COPIED_FEEDBACK_MS = 2000;
 
 /**
- * Presents an encoded recovery key for the user to save: a selectable monospace
- * block with copy + download actions. Purely presentational — it takes the key as
- * an input and never touches the crypto layer, so the parent owns the "shown once,
- * confirm saved" gate. File export is host-selected and hidden only when the selected
- * host explicitly reports it unavailable.
+ * Presents an encoded recovery key: a selectable monospace block with copy and download
+ * actions. Purely presentational (the parent owns the "shown once" gate). File export is
+ * hidden only when the selected host explicitly reports it unavailable.
  */
 @Component({
   selector: 'trn-recovery-key-display',
@@ -35,16 +33,12 @@ export class RecoveryKeyDisplayComponent {
   private readonly files = inject(HostFileExportService);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** The encoded recovery key string to display. */
   readonly recoveryKey = input.required<string>();
 
-  /** Flips to true briefly after a successful copy, for the "Copied" affordance. */
   readonly copied = signal(false);
 
-  /** Set when the clipboard write fails, prompting a manual-copy fallback. */
   readonly copyFailed = signal(false);
 
-  /** Live-region message announcing copy/download outcomes to assistive tech. */
   readonly announcement = signal('');
 
   private readonly fileSupport = toSignal(this.files.support(), {
@@ -56,7 +50,6 @@ export class RecoveryKeyDisplayComponent {
     () => this.fileSupport().kind === 'supported',
   );
 
-  /** Copy the key to the clipboard, with transient + announced confirmation. */
   copy(): void {
     const clipboard = this.document.defaultView?.navigator.clipboard;
     if (!clipboard) {
@@ -75,7 +68,6 @@ export class RecoveryKeyDisplayComponent {
     );
   }
 
-  /** Save the key through the selected cold host operation. */
   download(): void {
     const blob = new Blob([this.recoveryKey()], { type: 'text/plain' });
     this.files

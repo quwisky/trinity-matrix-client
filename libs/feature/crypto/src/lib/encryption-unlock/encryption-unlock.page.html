@@ -16,7 +16,7 @@
 
 <ng-template #body>
   @if (newRecoveryKey(); as key) {
-    <!-- Post-reset: the account has a brand-new identity and this key is the only copy. -->
+    <!-- Post-reset: this key is the only copy for the account's new identity. -->
     <trn-recovery-key-save
       [recoveryKey]="key"
       heading="Save your new recovery key"
@@ -27,8 +27,8 @@
     />
   } @else {
     @if (identityWithoutRecovery()) {
-      <!-- No secret storage, so no recovery key to ask for: the identity lives on another
-           device, and this page is only the confirmed way to replace it. -->
+      <!-- No secret storage, so no recovery key to ask for: this page is only the
+           confirmed way to replace the identity. -->
       <h2 class="heading">There’s no recovery key to enter</h2>
       <p class="lead" data-testid="reset-identity-intro">
         Encryption for this account was set up on another device without a
@@ -95,8 +95,7 @@
         {{ message }}
       </p>
     }
-    <!-- A link, not only Browser.open: by the time the provider's page is known the
-         click is long over, so the popup is blocked and the message alone is a dead end. -->
+    <!-- A link, not only Browser.open: the click is long over, so the popup is blocked. -->
     @if (providerResetUrl(); as providerUrl) {
       <a
         trnBtn
@@ -112,8 +111,8 @@
     }
 
     @if (!identityWithoutRecovery()) {
-      <!-- Subordinate on purpose: this is the way out for someone who has no key, not an
-         alternative to entering one. -->
+      <!-- Subordinate on purpose: the way out for someone with no key, not an alternative
+         to entering one. -->
       <button
         trnBtn
         variant="danger"

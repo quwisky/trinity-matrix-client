@@ -9,11 +9,10 @@ import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { type SasEmoji } from '@trinity/data-access/trust';
 
 /**
- * The Short-Authentication-String emoji comparison: shows the seven emoji (glyph
- * + name) and asks the user whether they match the other device. Presentational —
- * it takes the emoji as an input and emits the user's decision; the host page owns
- * the verification lifecycle. Each emoji is announced by its **name** (the glyph is
- * decorative), since glyphs read inconsistently across screen readers.
+ * The Short-Authentication-String emoji comparison: the seven emoji (glyph + name) and a
+ * match decision. Presentational; the host page owns the lifecycle. Each emoji is
+ * announced by its **name** (the glyph is decorative), since glyphs read inconsistently
+ * across screen readers.
  */
 @Component({
   selector: 'trn-sas-compare',
@@ -23,9 +22,7 @@ import { type SasEmoji } from '@trinity/data-access/trust';
   templateUrl: './sas-compare.component.html',
 })
 export class SasCompareComponent {
-  /** The seven SAS emoji to compare. */
   readonly emoji = input.required<SasEmoji[]>();
-  /** Disables the actions while a decision is being submitted. */
   readonly busy = input(false);
   /**
    * We already answered "they match" and are waiting for the other side. The emoji stay

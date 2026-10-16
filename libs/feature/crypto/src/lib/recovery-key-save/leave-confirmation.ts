@@ -2,13 +2,10 @@ import type { TrnAlertService } from '@trinity/components/overlay';
 import { catchError, of, type Observable } from 'rxjs';
 
 /**
- * Why leaving right now would cost something.
- *
- * `unsaved-key` is the shown-once recovery key both crypto surfaces render through
- * {@link RecoveryKeySaveComponent}; the two `*-in-flight` variants are the operations
- * that mint one and cannot be cancelled once they are running. Named after the action
- * rather than shared, because "we are resetting your encryption" is a lie to someone
- * who is setting it up for the first time.
+ * Why leaving right now would cost something: `unsaved-key` is the shown-once recovery key
+ * rendered through {@link RecoveryKeySaveComponent}; the `*-in-flight` variants are the
+ * operations that mint one and cannot be cancelled. Named per action because "we are
+ * resetting your encryption" is wrong for a first-time setup.
  */
 export type LeaveRisk = 'unsaved-key' | 'setup-in-flight' | 'reset-in-flight';
 
@@ -31,15 +28,12 @@ const QUESTIONS: Record<LeaveRisk, { header: string; message: string }> = {
 };
 
 /**
- * Whether it is safe to leave, asking the user when it is not.
+ * Whether it is safe to leave, asking the user when it is not. Shared by setup and unlock,
+ * which both show a recovery key once and are dismissed by the browser's back button
+ * without asking.
  *
- * Lives here rather than on either page because setup and unlock ask the identical
- * question: both display a recovery key exactly once and never persist it, and both are
- * dismissed by the browser's own back button, which tears the component down without
- * asking anyone. One copy of the wording, so the two cannot drift apart again.
- *
- * Fails towards staying: if the confirmation itself cannot be shown there is nothing to
- * read, and refusing to leave loses nothing that cannot be retried.
+ * Fails towards staying: if the confirmation cannot be shown, refusing to leave loses
+ * nothing that cannot be retried.
  */
 export function confirmLeaving(
   alert: TrnAlertService,

@@ -1,27 +1,15 @@
-// The signed-out surface, shared by every leg of the auth flow.
+// The signed-out surface, shared by every leg of the auth flow. The page keeps its
+// FIELDS; the card keeps the SURFACE they sit on (the styling guard forbids styling a
+// class the component does not render).
 
-// Split out of login.page.scss when the redirect leg started wearing it too: the styling
-// guard forbids a component styling a class it does not render, and it is right to — two
-// components pointing at one stylesheet is how a rule outlives the markup it was written
-// for. Each half now owns what it draws. The page keeps its FIELDS; the card keeps the
-// SURFACE they sit on.
+// Mobile-first: from 480px up the card becomes a centred task card over the recessed app
+// frame. All colours come from Theme roles.
 
-// Mobile-first: the public card grows with the viewport. From 480px up it becomes a centred
-// task card over the recessed app frame. All colours come from Theme roles, so every Mode and
-// Theme follows automatically.
-
-// There is deliberately no `.login-page` rule. One lived here, setting `--background` per
-// breakpoint, and it was dead twice over: the class arrives via `host: { class: … }`, and
-// emulated encapsulation rewrites a stylesheet selector with the CONTENT attribute while
-// the host carries the HOST one — so `.login-page` could not match its own host. Styling
-// the host takes `:host`. And the token had no consumer either: the only `bg-background`
-// is the shell's root div, an ANCESTOR that resolved its value before this ever applied.
-// Restoring the intended two-tone page background is a visual change, not a port.
+// There is deliberately no `.login-page` rule: emulated encapsulation scopes selectors
+// with the CONTENT attribute, so it could not match the host (that takes `:host`).
 
 @layer components {
-  // Centering wrapper — stretches the full scroll-container height so the card
-  // can be vertically placed. On desktop the card is centered with comfortable
-  // padding.
+  // Stretches the full scroll-container height so the card can be centred.
   .login-wrapper {
     display: flex;
     flex-direction: column;
@@ -58,8 +46,6 @@
     }
   }
 
-  // Branding: Trinity wordmark + dynamic subtitle. Spacing to the form below is
-  // handled by the card's header↔content gap.
   .login-card__brand {
     padding-top: calc(var(--card-spacing) + var(--trinity-space-2));
     text-align: center;

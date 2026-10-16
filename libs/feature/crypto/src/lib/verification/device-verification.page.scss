@@ -45,8 +45,8 @@
   }
 
   .result--bad {
-    // Caution-toned so the glyph keeps contrast even when ⚠️ falls back to text
-    // presentation (no colour-emoji font) rather than inheriting the base on-green colour.
+    // Caution-toned so the glyph keeps contrast when ⚠️ falls back to text presentation
+    // (no colour-emoji font) instead of inheriting the base on-green colour.
     background: var(--warning);
     color: var(--warning-foreground);
   }
