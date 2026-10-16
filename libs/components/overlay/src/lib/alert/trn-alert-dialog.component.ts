@@ -38,7 +38,7 @@ export type AlertDialogResult = boolean | string | null;
 /**
  * The card shown inside a CDK dialog for {@link TrnAlertService}'s confirm/prompt.
  * Closes the {@link DialogRef} with the result; a backdrop/escape dismiss closes
- * with `undefined`, which the service maps to cancel. Replaces `<ion-alert>`.
+ * with `undefined`, which the service maps to cancel.
  */
 @Component({
   selector: 'trn-alert-dialog',

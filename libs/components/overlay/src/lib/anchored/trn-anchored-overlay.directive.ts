@@ -30,52 +30,23 @@ export type TrnAnchoredAlign = TrnOverlayAlign;
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
 /**
- * A floating layer positioned against an element, rendered outside the DOM it belongs to.
+ * A floating layer positioned against an element, rendered into CDK's overlay container so no
+ * `overflow: hidden` ancestor clips it. It flips at the viewport edge and follows the anchor
+ * when an ancestor scrolls.
  *
- * ## What this is for
+ * The host owns the open state through `open`, because a layer may have no trigger at all (a
+ * suggestion menu opens because of what was typed). What it deliberately leaves to the host:
  *
- * The alternative — and what the composer does today — is `position: absolute` inside the
- * thing the layer belongs to, which works right up until that thing has a
- * `overflow: hidden` ancestor, and then the layer is clipped by a box nobody was thinking
- * about. The composer's emoji picker, GIF grid and two suggestion menus are all pinned at
- * `bottom: calc(100% + 4px)` inside `.composer`, which is why `.composer` has to stay
- * `position: relative` and why the formatting toolbar has to live *inside* the composer just
- * to avoid being covered.
- *
- * Rendering into CDK's overlay container removes both constraints, and gives the layer the
- * two behaviours a floating thing needs and hand-rolled absolute positioning never has:
- * it flips to the other side rather than going off-screen, and it follows the anchor when an
- * ancestor scrolls.
- *
- * ## Why a template rather than a trigger
- *
- * CDK's own menus and this workspace's dropdown menu are TRIGGER-driven: a directive on a
- * button owns the open state. That is the wrong shape here — the composer's layers are opened
- * from four different places, their open state already lives in signals the component owns,
- * and one of them (a suggestion menu) has no trigger at all: it appears because of what was
- * typed. So `open` is a `model` the host drives, and the directive positions and renders.
- *
- * ## What it deliberately does not do
- *
- * **It does not take Escape.** A composer already has an Escape ladder — cancel the edit,
- * cancel the reply, close the picker, in that order — and a layer that swallowed the key
- * before that ladder ran would break it. Closing on Escape is the host's to decide, with the
- * context to decide it.
- *
- * **It has no backdrop.** A backdrop would steal the first click, which for a picker beside a
- * text field is usually the click that puts the caret back. An outside pointer press closes
- * it instead, and that click lands where it was aimed.
- *
- * **It labels nothing.** No `role` on the layer, and nothing is written to the anchor's
- * `aria-expanded` or `aria-controls`. A picker, a listbox and a menu want three different
- * roles, and the composer's suggestion menus already manage `aria-controls` and
- * `aria-activedescendant` against their textarea — a primitive guessing here would have to be
- * argued with. Naming the layer and announcing its expanded state belong to the host.
- *
- * **It is a z-index citizen, not a top-layer one.** `provideTrnOverlayDefaults()` turns off
- * CDK's `usePopover` app-wide so overlays stop covering the toaster, so this competes on
- * z-index like everything else. A layer that must sit above another overlay has to say so in
- * CSS; it will not be lifted for free.
+ * - **Escape.** The host's own Escape ladder (cancel edit, cancel reply, close picker) must run
+ *   first, so the layer never swallows the key.
+ * - **Backdrop.** There is none: it would steal the click that puts the caret back in the text
+ *   field. An outside pointer press closes the layer instead.
+ * - **Labelling.** No `role`, and nothing written to the anchor's `aria-expanded` or
+ *   `aria-controls`: a picker, a listbox and a menu need different roles, and the host already
+ *   manages `aria-controls` and `aria-activedescendant` against its field.
+ * - **Stacking.** It competes on z-index, not in the top layer, because
+ *   `provideTrnOverlayDefaults()` turns off CDK's `usePopover` so overlays stop covering the
+ *   toaster. A layer that must sit above another overlay has to say so in CSS.
  */
 @Directive({
   selector: 'ng-template[trnAnchoredOverlay]',
@@ -90,10 +61,8 @@ export class TrnAnchoredOverlayDirective {
   /**
    * The element the layer is positioned against.
    *
-   * Required AND `| undefined`, which reads as a contradiction and is not one: the binding
-   * has to be given, but the usual thing to give it is a `#ref` on a sibling element, and a
-   * template reference is undefined on the pass that creates it. Nothing opens until it
-   * resolves, which is the honest behaviour rather than a crash on the first render.
+   * Required AND `| undefined`: the binding must be given, but a `#ref` on a sibling is
+   * undefined on the pass that creates it. Nothing opens until it resolves.
    */
   readonly anchor = input.required<HTMLElement | undefined>({
     alias: 'trnAnchoredOverlay',
@@ -102,8 +71,7 @@ export class TrnAnchoredOverlayDirective {
   /**
    * Whether the layer is showing.
    *
-   * A `model`, so the directive can close it: an outside press has to be able to put the
-   * host's own signal back, or the host would render an open layer that is no longer there.
+   * A `model`, so an outside press can write the close back to the host's own signal.
    */
   readonly open = model(false);
 
@@ -111,23 +79,17 @@ export class TrnAnchoredOverlayDirective {
   readonly align = input<TrnAnchoredAlign>('end');
 
   /**
-   * Make the layer exactly as wide as its anchor.
-   *
-   * For a suggestion list that stands in for the field it completes, which reads as part of
-   * the field rather than as a popover beside it. Off by default: a picker has its own
-   * width and stretching it to the composer would be wrong.
+   * Make the layer exactly as wide as its anchor, for a list that stands in for the field it
+   * completes. Off by default: a picker keeps its own width.
    */
   readonly matchAnchorWidth = input(false);
 
   /**
    * Whether a press outside the layer closes it.
    *
-   * On for the layers a person opens and closes — a picker, a menu. Off for one whose
-   * openness is DERIVED: the composer's suggestion menus are open exactly when the current
-   * query has matches (`computed(() => this.matches().length > 0)`), so there is no flag for
-   * the write-back to land in. Bound one-way against a computed, a self-closing layer
-   * disappears while its host still believes it is showing — and the host is the one
-   * answering Enter and pointing `aria-activedescendant` at a row nobody can see.
+   * Turn it off for a layer whose openness is DERIVED (a `computed`): the write-back has no
+   * flag to land in, so the layer would disappear while the host still believes it is showing
+   * and answers Enter against a row nobody can see.
    */
   readonly closeOnOutsidePress = input(true);
 
@@ -135,22 +97,18 @@ export class TrnAnchoredOverlayDirective {
    * How long, in milliseconds, to keep the layer's view alive after it closes; 0 rebuilds it
    * on every open.
    *
-   * For a large layer opened again and again: the composer's emoji grid is about 5,500
-   * elements of a third-party picker, and creating it is most of the ~140 ms an open takes
-   * (#1320). Closed, the kept view is parked outside the document, so it adds nothing to the
-   * page's style and layout work, and its change detection is paused. It still holds its
-   * memory (about 23 MB and 11,000 listeners for that grid), so it is released once it has
-   * stayed closed this long: bursts of reopening are fast, and an idle layer costs nothing.
+   * For a large layer that is reopened often. Closed, the kept view is parked outside the
+   * document with change detection paused, but it still holds its memory, so it is released
+   * once it has stayed closed this long.
    *
-   * Its state carries over to a reopen within the window (a search, a tab), which suits a
-   * picker and would be wrong for a layer that must start fresh, so it is off by default. A
-   * scroll position does not: a scroll container taken out of the document and put back
-   * starts at the top. Work the content does once, when it is created, does not run again
-   * either (focusing a search, reading a list), so content that needs it on every open reads
-   * {@link shown}.
+   * State carries over a reopen within the window (a search, a tab), which would be wrong for
+   * a layer that must start fresh, so it is off by default. Scroll position does not carry
+   * over (a scroll container taken out of the document restarts at the top), and work the
+   * content does once at creation does not run again: content that needs it on every open
+   * reads {@link shown}.
    *
-   * Not a number, zero or less means off; anything past what `setTimeout` can wait (about 24
-   * days) waits that long. Turning it off while a view is kept releases that view.
+   * Zero, negative or non-numeric means off; anything past what `setTimeout` can wait (about
+   * 24 days) waits that long. Turning it off while a view is kept releases that view.
    */
   readonly retainFor = input(0);
 
@@ -165,9 +123,8 @@ export class TrnAnchoredOverlayDirective {
   private readonly shownCount = signal(0);
   /**
    * How many times the layer has been shown, counting the first. A kept view is not created
-   * again on a reopen, so content that has to act on every open (focus its search, refresh a
-   * list it read when it was created) reacts to this changing. Content can inject the
-   * directive: it is the template's own.
+   * again on a reopen, so content that must act on every open reacts to this changing. Content
+   * can inject the directive: it is the template's own.
    */
   readonly shown = this.shownCount.asReadonly();
 
@@ -183,9 +140,8 @@ export class TrnAnchoredOverlayDirective {
   private releaseOnClose = false;
 
   constructor() {
-    // WHETHER there is a layer, and what it is anchored to. Only these two re-create it,
-    // because re-creating destroys the view inside — an emoji picker would lose the text
-    // typed into its search field and the focus that was in it.
+    // Only whether there is a layer, and what it is anchored to, re-create it: re-creating
+    // destroys the view inside, and an emoji picker would lose its search text and focus.
     effect(() => {
       const open = this.open();
       const anchor = this.anchor();
@@ -197,9 +153,8 @@ export class TrnAnchoredOverlayDirective {
       });
     });
 
-    // WHERE it sits, which is a different question and is answered in place. A `side` that
-    // flips with the viewport, or a `matchAnchorWidth` that comes from a signal, moves the
-    // layer rather than replacing it.
+    // Where it sits is answered in place: a flipping `side` or a signal-driven
+    // `matchAnchorWidth` moves the layer rather than replacing it.
     effect(() => {
       this.side();
       this.align();
@@ -207,7 +162,7 @@ export class TrnAnchoredOverlayDirective {
       untracked(() => this.reposition());
     });
 
-    // Turning retention off, or the layer changing hands, while a view is kept.
+    // Retention turned off, or the layer changing hands, while a view is kept.
     effect(() => {
       const off = this.retainMs() === 0;
       untracked(() => {
@@ -236,13 +191,10 @@ export class TrnAnchoredOverlayDirective {
 
   private attach(anchor: HTMLElement): void {
     const ref = this.overlay.create({
-      // `createMenuPosition` rather than a hand-rolled ConnectedPosition[]: it returns the
-      // primary position AND its mirror, which is what makes a layer near the viewport edge
-      // flip to the other side instead of being pushed half off it. The kit's dropdown menu
-      // positions itself with the same helper.
+      // `createMenuPosition` returns the primary position AND its mirror, so a layer near the
+      // viewport edge flips to the other side instead of being pushed half off it.
       positionStrategy: this.positionStrategy(anchor),
-      // Reposition, not close: an ancestor scrolling is not a decision to dismiss, and the
-      // composer's layers sit above a timeline that scrolls constantly.
+      // Reposition, not close: an ancestor scrolling is not a decision to dismiss.
       scrollStrategy: this.overlay.scrollStrategies.reposition(),
       ...(this.matchAnchorWidth()
         ? { width: anchor.getBoundingClientRect().width }
@@ -250,18 +202,15 @@ export class TrnAnchoredOverlayDirective {
     });
     this.shownCount.update((count) => count + 1);
     ref.attach(this.portal());
-    // `outsidePointerEvents`, not a backdrop — see the class note. Written back through the
-    // model so the host's own signal agrees with what is on screen.
+    // No backdrop (see the class note). Written back through the model so the host's signal
+    // agrees with what is on screen.
     ref.outsidePointerEvents().subscribe((event) => {
       if (!this.closeOnOutsidePress()) {
         return;
       }
-      // A press on the ANCHOR is not an outside press, whatever CDK thinks. The anchor is
-      // where a trigger for this layer lives — the composer's emoji button sits in the row the
-      // picker is anchored to — and closing here would race that button's own click handler:
-      // one of them wins, and the layer either reopens immediately or ends up gone while its
-      // trigger still says `aria-expanded="true"`. CDK's own overlay triggers exclude their
-      // origin for the same reason.
+      // A press on the ANCHOR is not an outside press. A trigger for this layer usually lives
+      // there, and closing here would race that trigger's own click handler: the layer either
+      // reopens at once or ends up gone while the trigger still says `aria-expanded="true"`.
       const target = event.target;
       if (target instanceof Node && anchor.contains(target)) {
         return;
@@ -273,15 +222,12 @@ export class TrnAnchoredOverlayDirective {
   }
 
   /**
+  /**
    * Keep the layer with its anchor when the anchor changes SHAPE.
    *
-   * CDK recomputes a connected position on scroll and on nothing else — there is no observer
-   * on the origin — and `width` is read once into the config. So an anchor that grows in
-   * place takes the layer with it in neither respect, and absolute positioning, which this
-   * replaces, tracked both for free. It is not hypothetical for the first consumer: the
-   * composer's textarea auto-grows as you type, so a suggestion menu above it comes unstuck
-   * the moment the input wraps to a second line — measured at 162px of overlap — and a pane
-   * drag changes its width under an already-open layer.
+   * CDK recomputes a connected position only on scroll, and reads `width` once into the
+   * config, so an anchor that grows in place (an auto-growing textarea, a pane drag) would
+   * leave the layer behind.
    */
   private followResizes(ref: OverlayRef, anchor: HTMLElement): void {
     if (typeof ResizeObserver === 'undefined') {
@@ -293,11 +239,12 @@ export class TrnAnchoredOverlayDirective {
   }
 
   /**
+  /**
    * The anchor moved or changed size: re-read it and re-run the position we already have.
    *
-   * Separate from {@link reposition} because this one is on a hot path — a pane drag fires
-   * the observer at animation frequency — and `updatePositionStrategy` disposes and rebuilds
-   * the strategy each time, where `updatePosition` reuses it.
+   * Separate from {@link reposition} because this is a hot path (a pane drag fires the
+   * observer at animation frequency) and `updatePositionStrategy` rebuilds the strategy where
+   * `updatePosition` reuses it.
    */
   private remeasure(): void {
     const ref = this.ref;
@@ -305,10 +252,8 @@ export class TrnAnchoredOverlayDirective {
     if (!ref || !anchor) {
       return;
     }
-    // Both directions, not just the setting one: `updateSize` is the only thing that clears
-    // a width CDK has already been given, so skipping the call when matching is off would
-    // leave a layer pinned at whatever the anchor measured last — the setting turns off and
-    // nothing happens.
+    // Both directions: `updateSize` is the only thing that clears a width CDK was given, so
+    // skipping it when matching is off would leave the layer pinned at the last measured width.
     ref.updateSize({
       width: this.matchAnchorWidth()
         ? anchor.getBoundingClientRect().width
@@ -318,10 +263,9 @@ export class TrnAnchoredOverlayDirective {
   }
 
   /**
-   * The requested side or alignment changed: swap the strategy, keeping the layer.
-   *
-   * Rare — a responsive `side`, or a `matchAnchorWidth` driven by a signal — so the cost of
-   * rebuilding the strategy is the right trade against re-creating the view inside.
+  /**
+   * The requested side or alignment changed: swap the strategy, keeping the layer. Rare, so
+   * rebuilding the strategy beats re-creating the view inside.
    */
   private reposition(): void {
     const anchor = this.anchor();

@@ -66,7 +66,7 @@ export interface ActionSheetData {
  *
  * Picking a row closes the list, then runs its handler (a handler often opens another
  * surface). The sheet's rows scroll inside the frame's height cap, so a long list is never
- * clipped (geometry measured in `message-action-sheet.spec.mts`).
+ * clipped.
  */
 @Component({
   selector: 'trn-action-list',

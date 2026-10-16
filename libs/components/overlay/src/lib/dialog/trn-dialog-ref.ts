@@ -3,9 +3,8 @@ import type { Observable } from 'rxjs';
 /**
  * The two members of the vendor's ref this wraps, named structurally rather than imported.
  *
- * CDK's `DialogRef<R, C>` satisfies it for any component type `C`, which is what lets
- * `open()` hand one straight in; more to the point, this file then names no vendor at all,
- * so the seam a swap has to reach is two methods wide and stated here.
+ * CDK's `DialogRef<R, C>` satisfies it for any component type `C`. This file then names no
+ * vendor at all, so the seam a library swap has to reach is two methods wide.
  */
 export interface ClosableRef<R> {
   readonly closed: Observable<R | undefined>;
@@ -31,22 +30,17 @@ export type TrnDialogPresentation =
   'dialog' | 'sheet' | 'fullscreen' | 'popover';
 
 /**
- * The handle a modal'd component uses to close itself, and the handle {@link TrnDialogService.open}
- * returns to whoever opened it.
+ * The handle a dialog component uses to close itself, and the handle
+ * {@link TrnDialogService.open} returns to whoever opened it.
  *
- * Trinity's own type rather than a re-exported CDK `DialogRef`, which is what this
- * replaced. The barrel used to hand out the vendor class — one deliberate, documented
- * export — and that single line put `@angular/cdk` in the type signature of 24 feature
- * components. It made the boundary's own premise false: swapping the dialog library
- * would have meant editing every one of them, which is the cost the wrapper exists to
- * remove. `vendor-surface.spec.ts` now asserts the barrel leaks nothing at all.
+ * Trinity's own type rather than a re-exported CDK `DialogRef`, so `@angular/cdk` stays out of
+ * feature signatures and the dialog library can be swapped without editing them.
+ * `vendor-surface.spec.ts` asserts the barrel leaks nothing.
  *
- * Deliberately two methods wide. CDK's `DialogRef` carries `overlayRef`, `config`,
- * `componentInstance`, `keydownEvents`, `updatePosition` and more; exposing them would
- * re-create the leak in a different shape, since the next library will not have the same
- * ones. Everything the app actually used is here — 51 `close()` calls and one `closed`
- * subscription — and anything genuinely new should arrive as a named method on
- * {@link TrnDialogService}, where it can be given Trinity's semantics.
+ * Deliberately two methods wide: exposing more of CDK's `DialogRef` (`overlayRef`, `config`,
+ * `componentInstance`, ...) would re-create the leak, since the next library will not have the
+ * same members. Anything new should arrive as a named method on {@link TrnDialogService}, with
+ * Trinity's semantics.
  *
  * A thin, stateless delegate. The dialog service provides the same wrapper to the component and
  * opener so either owner can use its vendor-neutral `isTopmost()` query.

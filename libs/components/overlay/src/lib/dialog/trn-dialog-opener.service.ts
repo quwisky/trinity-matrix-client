@@ -8,10 +8,9 @@ const CONTROL =
 /**
  * Remembers the control that opened a dialog, so closing the dialog can hand focus back.
  *
- * CDK restores focus to whatever was focused when a dialog opened. Chrome focuses a button
- * as it is pressed, so that is the opener. WebKit never focuses a tapped button, so on iOS
- * it is whatever held focus before, and focus came back to the Settings container instead
- * of Security's Verify button (#1109).
+ * CDK restores focus to whatever was focused when a dialog opened. Chrome focuses a button as
+ * it is pressed, so that is the opener. WebKit never focuses a tapped button, so on iOS it is
+ * whatever held focus before, and focus would come back to the wrong place.
  *
  * The last pressed control is the opener while focus has not moved since the press; any
  * later focus change, including the browser's own on press, leaves CDK's capture in charge.

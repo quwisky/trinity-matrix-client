@@ -57,10 +57,8 @@ export interface PromptOptions extends ConfirmOptions {
 }
 
 /**
- * Confirm / prompt dialogs — the spartan replacement for Ionic's
- * `AlertController`. Opens {@link TrnAlertDialogComponent} in a CDK dialog (focus
- * trap, backdrop, escape-to-cancel) and exposes cold finite RxJS commands for
- * the user's choice.
+ * Confirm / prompt dialogs. Opens {@link TrnAlertDialogComponent} in a CDK dialog (focus trap,
+ * backdrop, escape-to-cancel) and exposes cold finite RxJS commands for the user's choice.
  */
 @Injectable({ providedIn: 'root' })
 export class TrnAlertService {

@@ -25,7 +25,7 @@ export type TrnDialogPlacement =
 export type TrnDialogAutoFocus = string | false;
 
 export interface DialogOptions<C = object> {
-  /** Set on the opened component as @Inputs after creation (Ionic componentProps). */
+  /** Set on the opened component as inputs after creation. */
   inputs?: Record<string, unknown>;
   /**
    * Where the panel sits. `'center'` (default) is a centered modal card;
@@ -34,7 +34,7 @@ export interface DialogOptions<C = object> {
    * `'bottom'` is a full-width bottom sheet; the surface service picks it by {@link prefersSheet}.
    */
   placement?: TrnDialogPlacement;
-  /** Prevent backdrop/escape close (Ionic backdropDismiss: false). */
+  /** Prevent backdrop/escape close. */
   disableClose?: boolean;
   /**
    * Accessible name announced when the dialog opens — CDK renders role="dialog"
@@ -48,11 +48,10 @@ export interface DialogOptions<C = object> {
    */
   ariaDescribedBy?: string;
   /**
-   * Which element takes focus when the dialog opens, defaulting to CDK's
-   * `'first-tabbable'`. That default is wrong for any dialog whose header carries a
-   * Cancel/Close button ahead of the field the user came to type in — the button wins.
-   * A component-side `focus()` can't fix it either: CDK focuses *after* attach, so it
-   * simply overrides the earlier call. Name the element instead — a CSS selector
+   * Which element takes focus when the dialog opens, defaulting to CDK's `'first-tabbable'`.
+   * That default is wrong for a dialog whose header carries a Cancel/Close button ahead of the
+   * field the user came to type in, and a component-side `focus()` can't fix it: CDK focuses
+   * *after* attach and overrides the earlier call. Name the element instead: a CSS selector
    * (`'[data-autofocus]'`), `'first-heading'`, `'dialog'` or `false`.
    */
   autoFocus?: TrnDialogAutoFocus;
@@ -64,16 +63,15 @@ export interface DialogOptions<C = object> {
    */
   dismissGuard?: (component: C | null) => boolean;
   /**
-   * Present beside this element instead of centred — a popover rather than a modal.
+   * Present beside this element instead of centred, as a popover rather than a modal.
    *
-   * The panel is positioned against the anchor and flips to the other side rather than
-   * going off-screen. It stays a CDK dialog in every other respect, which is the point:
-   * the focus trap, Escape, focus restore and the inert page behind it are all still
-   * there. Only the geometry changes, plus a transparent backdrop — a dark scrim over
-   * the thing the popover is *about* would defeat the reason for anchoring it.
+   * The panel flips to the other side rather than going off-screen. It stays a CDK dialog
+   * otherwise (focus trap, Escape, focus restore, inert page behind it); only the geometry
+   * changes, plus a transparent backdrop, because a dark scrim over the thing the popover is
+   * *about* would defeat anchoring it.
    *
-   * Ignored under `(pointer: coarse)`. A card pinned to a mention halfway down a phone
-   * screen has nowhere to go and lands under a thumb; touch keeps the centred modal.
+   * Ignored under `(pointer: coarse)`: a card pinned halfway down a phone screen has nowhere
+   * to go and lands under a thumb, so touch keeps the centred modal.
    */
   anchor?: HTMLElement;
   /** `false` when the opener restores focus itself, e.g. after a row opens another surface. */
@@ -87,11 +85,9 @@ const VIEWPORT_BELOW_TITLE_ROW =
 /**
  * Where a popover sits relative to its anchor, in preference order.
  *
- * Below-start first because these hang off inline text and a reader's eye is already
- * travelling down; the other three are the fallbacks CDK flips through as the viewport
- * runs out. Written out rather than taken from `createMenuPosition()` (the helper
- * `TrnAnchoredOverlayDirective` uses) because that one is built for a menu hugging a
- * button edge-to-edge, and a card wants the 8px of daylight below.
+ * Below-start first because these hang off inline text. Written out rather than taken from
+ * `createMenuPosition()` (used by `TrnAnchoredOverlayDirective`) because that helper hugs a
+ * button edge-to-edge, and a card wants the 8px of daylight.
  */
 const POPOVER_POSITIONS: ConnectedPosition[] = [
   {
@@ -143,9 +139,9 @@ const SHEET_MAX_HEIGHT =
 /**
  * The presentation, CDK pane geometry and ref wiring for a dialog, decided once at open.
  *
- * Below `md` a centred dialog becomes a full-width bottom sheet. Fullscreen, inline-end and
+ * Below `md` a centred dialog becomes a full-width bottom sheet; fullscreen, inline-end and
  * anchored popovers keep their own geometry. Shared with {@link TrnAlertService}, which opens
- * on the same root `Dialog` with its own data, so confirms and prompts follow the same rule.
+ * on the same root `Dialog`, so confirms and prompts follow the same rule.
  *
  * `pane` carries `ariaLabelledBy` for the shell's title id and leaves geometry it does not set
  * out entirely, so CDK's own defaults stand.
@@ -215,8 +211,7 @@ export function dialogPresentation(
         maxWidth: '100vw',
         maxHeight: SHEET_MAX_HEIGHT,
       }),
-      // Default (undefined) lets CDK center the card; `'inline-end'` pins it to
-      // the logical end edge (currently right in Trinity's supported direction).
+      // Undefined lets CDK center the card; `'inline-end'` pins it to the logical end edge.
       ...(positionStrategy && { positionStrategy }),
     },
     createRef: (cdkRef) => new TrnDialogRef(cdkRef, presentation, titleId),
@@ -224,13 +219,10 @@ export function dialogPresentation(
 }
 
 /**
- * Component dialogs / modals — the spartan replacement for Ionic's
- * `ModalController`. `open()` mounts a component in a CDK dialog and returns the
- * {@link TrnDialogRef}; the component closes itself with a result via
- * `inject(TrnDialogRef).close(value)` (replacing `modalCtrl.dismiss(data)`), and the
- * opener reads that value from the cold, finite `openAndWait$()` command (replacing
- * `onWillDismiss()`).
- * `inputs` map to the component's signal `input()`s (Ionic `componentProps`).
+ * Component dialogs: `open()` mounts a component in a CDK dialog and returns the
+ * {@link TrnDialogRef}. The component closes itself with a result via
+ * `inject(TrnDialogRef).close(value)`, and the opener reads that value from the cold, finite
+ * `openAndWait$()` command. `inputs` map to the component's signal `input()`s.
  */
 @Injectable({ providedIn: 'root' })
 export class TrnDialogService {
@@ -261,13 +253,8 @@ export class TrnDialogService {
     component: Type<C>,
     opts: DialogOptions<C> = {},
   ): TrnDialogRef<R> {
-    // No `panelClass`. The option and its `trn-dialog-panel` default were both dead: no
-    // call site ever passed one, and the class name occurred exactly once in the whole
-    // workspace — here, styled by nothing. Same reason `DialogOptions.data` went in #151.
-    // Dialog content owns its surface through `trnOverlaySurface`; the CDK pane stays
-    // transparent and behavior-only, so there is no shared panel styling for a hook to
-    // carry. Consumers migrated in #397-#401. Re-add a hook only with a
-    // real behavior consumer.
+    // No `panelClass`: dialog content owns its surface through `trnOverlaySurface`, and the CDK
+    // pane stays transparent and behavior-only. Re-add a hook only for a real behavior consumer.
     const anchor = opts.anchor && !prefersCentred() ? opts.anchor : null;
     const { pane, createRef } = dialogPresentation(
       this.overlay,
@@ -289,9 +276,8 @@ export class TrnDialogService {
         opts.dismissGuard(instance as C | null),
       ariaLabel: opts.ariaLabel,
       ariaDescribedBy: opts.ariaDescribedBy,
-      // Spelled out rather than left off: CDK merges the config over its defaults with
-      // a spread, so an `autoFocus: undefined` key would clobber the default instead of
-      // falling back to it.
+      // Spelled out rather than left off: CDK merges the config over its defaults with a spread,
+      // so an `autoFocus: undefined` key would clobber the default.
       autoFocus: opts.autoFocus ?? 'first-tabbable',
       // The pressed control, not only what held focus: a WebKit tap never focuses it.
       restoreFocus:
@@ -341,16 +327,13 @@ export class TrnDialogService {
   }
 
   /**
-   * Whether any overlay is currently presented — the replacement for Ionic's
-   * `ModalController.getTop()` guard (e.g. "don't stack the quick switcher over an
+   * Whether any overlay is currently presented (e.g. "don't stack the quick switcher over an
    * open panel").
    *
-   * This reads CDK's shared root stack, so it counts alerts and action sheets too,
-   * not only dialogs opened through {@link open}. That is deliberate and always has
-   * been true — the JSDoc used to claim otherwise. `Dialog` is `providedIn: 'root'`,
-   * so {@link TrnAlertService} and {@link TrnActionSheetService} push onto the same
-   * `openDialogs`, and a guard that ignored them would let a dialog stack on top of
-   * an alert.
+   * This reads CDK's shared root stack, so it counts alerts and action sheets too, not only
+   * dialogs opened through {@link open}: {@link TrnAlertService} and
+   * {@link TrnActionSheetService} push onto the same `openDialogs`, and a guard that ignored
+   * them would let a dialog stack on top of an alert.
    */
   hasOpen(): boolean {
     return this.dialog.openDialogs.length > 0;
@@ -359,26 +342,22 @@ export class TrnDialogService {
   /**
    * Close the most recently opened overlay, returning whether one actually closed.
    *
-   * This is the hardware back-button primitive: Android's back should dismiss what
-   * is on top before it navigates. It closes the *last* entry of the shared stack
-   * described on {@link hasOpen} — so back dismisses an alert or action sheet just
-   * as it dismisses a dialog, and dismisses them in the order the user sees them.
+   * This is the hardware back-button primitive: Android's back should dismiss what is on top
+   * before it navigates. It closes the *last* entry of the shared stack described on
+   * {@link hasOpen}, so back dismisses an alert or action sheet just as it dismisses a dialog.
    *
-   * **`disableClose` is honoured here, and it has to be.** CDK does not do it for us:
-   * `DialogRef.close()` gates only on `closePredicate`, so a programmatic close
-   * dismisses a dialog that was explicitly opened as non-dismissible. Without this
-   * guard the back button walked straight through the encryption-unlock and
-   * device-verification dialogs, whose whole reason for setting the flag is that a
+   * **`disableClose` is honoured here, and it has to be.** `DialogRef.close()` gates only on
+   * `closePredicate`, so a programmatic close would dismiss a dialog explicitly opened as
+   * non-dismissible, such as the encryption-unlock and device-verification dialogs, where a
    * stray dismissal must not be possible mid-flow.
    *
-   * A `false` return means "nothing closed", NOT "nothing was there" — the two are
-   * distinguished by {@link hasOpen}, and a caller that navigates on `false` alone
-   * would navigate underneath a modal still on screen. The back-button handler in
-   * the app shell branches on `hasOpen()` for exactly that reason.
+   * A `false` return means "nothing closed", NOT "nothing was there"; {@link hasOpen}
+   * distinguishes them, and a caller that navigates on `false` alone would navigate underneath
+   * a modal still on screen. The app shell's back-button handler branches on `hasOpen()` for
+   * that reason.
    *
-   * Named rather than exposing CDK's `Dialog`: handing feature code the class back
-   * would let it call `open()` with unmediated config, and this service would stop
-   * being the only door.
+   * Named rather than exposing CDK's `Dialog`, so this service stays the only door: feature
+   * code could otherwise call `open()` with unmediated config.
    */
   closeTopmost(): boolean {
     const before = this.dialog.openDialogs.length;
@@ -387,18 +366,14 @@ export class TrnDialogService {
       return false;
     }
     top?.close();
-    // Whether one actually CLOSED, not whether one was found. CDK's `close()` consults
-    // the dialog's `closePredicate` and can decline; when it does close it splices the
-    // ref out of `openDialogs` synchronously, so the lengths tell them apart. Reporting
-    // a refusal as success would make the back button swallow the press while the dialog
-    // stayed on screen — the one outcome worse than either branch on its own.
+    // Whether one actually CLOSED, not whether one was found: CDK's `close()` consults
+    // `closePredicate` and can decline, and when it does close it splices the ref out of
+    // `openDialogs` synchronously, so the lengths tell them apart. Reporting a refusal as
+    // success would make the back button swallow the press while the dialog stayed on screen.
     return this.dialog.openDialogs.length < before;
   }
 
-  /**
-   * Close every open overlay. Intended for teardown — a spec that opened a real
-   * dialog, or a flow that navigates away from everything at once.
-   */
+  /** Close every open overlay. Intended for teardown. */
   closeAll(): void {
     this.dialog.closeAll();
   }
