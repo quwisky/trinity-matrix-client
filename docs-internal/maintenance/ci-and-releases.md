@@ -23,8 +23,8 @@ public developer guide.
 | [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) | `CI` completes on a `back-merge/**` branch of this repository              | Pushes the back-merge commit to `main` as a fast-forward, through a GitHub App token                                                                            |
 | [`codeql.yml`](../../.github/workflows/codeql.yml)                   | A push to `main`, a pull request to `main`, or Mondays at 05:37 UTC        | CodeQL code scanning for GitHub Actions, Java/Kotlin, JavaScript/TypeScript and Swift (see [Code scanning](#code-scanning))                                     |
 
-The branch workflow accepts pushes to `main`, `release/**`, and
-`renovate/patch-**`; pull requests are its usual review path. A newer run for
+The branch workflow accepts pushes to `main` and `release/**`; pull requests,
+Renovate updates included, are its usual review path. A newer run for
 the same workflow and ref cancels an older run. Diagnose the newest run rather
 than treating a cancelled predecessor as a product failure.
 
@@ -48,8 +48,7 @@ harness file the MAS stack uses changed (`e2e/support/homeserver/` `Caddyfile`, 
 `@matrix-org/matrix-sdk-crypto-wasm` line changed in `package.json`, `pnpm-lock.yaml` or
 `pnpm-workspace.yaml` (a version bump rewrites that dependency's entries; any other dependency leaves the
 answer `false`). An empty base commit fails the step instead of answering `false`. Pushes answer `false`:
-the Synapse nightly runs the same journeys against `main`. Renovate `renovate/patch-**` pushes that
-automerge therefore skip `mas-e2e`, and the nightly covers them. It is a step, not an
+the Synapse nightly runs the same journeys against `main`. It is a step, not an
 `on.pull_request.paths` filter, so a pull request that skips the journeys still reports every required check.
 
 A `scrollbars` step of `classify` decides the same way whether `scrollbars-e2e` runs the scheduled
@@ -361,8 +360,9 @@ Prerequisites for a cut:
 The workflow refuses, and creates nothing, when `from` is not a published prerelease on
 `main`'s history, when `release/X.Y.x` already exists (land fixes on it; its next stable
 release is a patch release), or when a `vX.Y.Z` tag exists. It also refuses a prerelease
-whose commit predates `release-stable.yml`, because a release branch inherits the
-workflows of the commit it is cut from: cut a new prerelease from `main` first.
+whose commit predates `release-stable.yml` or has no `.github/CODEOWNERS`, because a
+release branch inherits the workflows and code owners of the commit it is cut from: cut a
+new prerelease from `main` first.
 
 It pushes with the release App's installation token, not `GITHUB_TOKEN`: pushes made with
 `GITHUB_TOKEN` trigger no workflows, so `release.yml` would never run on the new branch.
@@ -389,6 +389,35 @@ it, read the `Release PR and tag` job of the `release.yml` run for that push (it
 run is gone, merge any pull request into `release/X.Y.x` (an empty commit is enough) to
 trigger a new one; the version comes from the tags, so any push opens the PR at `X.Y.Z`.
 Never force-push.
+
+### Release credentials
+
+Every release credential lives in an environment: the release App key in `release-app`,
+the macOS signing and notarization secrets in `release`, the tap deploy key in `homebrew`
+and the Renovate App key in `renovate`. An environment admits a job by its ref, so the
+rules on those refs decide who can reach the credentials:
+
+- The `Protect release tags` ruleset blocks creating, updating and deleting `v*` tags.
+  Only the release App, which tags releases, and the maintainer bypass it. Without the
+  creation rule, any writer could push a `v*` tag carrying an edited `homebrew.yml` and
+  run it with the deploy key.
+- `Protect main` and `Protect release branches` require one approval from someone other
+  than the last pusher, dismiss approvals when new commits arrive, and require a code
+  owner's review. [`CODEOWNERS`](../../.github/CODEOWNERS) assigns the workflows, the
+  scripts the release jobs run, the release-please tooling and configuration, the root
+  `package.json` (its `packageManager` picks the pnpm those jobs install) and every file
+  directly in `electron/` to the maintainer. The release App and the maintainer bypass
+  both rulesets, so release PRs, back-merges and the maintainer's own pull requests merge
+  as before. GitHub reads `CODEOWNERS` from the pull request's base branch, so each
+  `release/X.Y.x` branch carries its own copy; `Release stable` refuses a prerelease
+  without one.
+- `release` and `homebrew` require the maintainer's approval for each deployment, so every
+  signed macOS build and every tap update waits for it. `release-app` runs on every push
+  to `main` and `release/**` and `renovate` runs daily, so neither has reviewers; the
+  approval rules on those branches guard them instead.
+
+When a release job starts running a new script or configuration file, add it to
+`CODEOWNERS`.
 
 ### Release a fix
 
@@ -745,7 +774,8 @@ commit predates `homebrew.yml` never triggers it; dispatch it from `main` instea
 2. Create the public repository `quwisky/homebrew-trinity` **with an initial commit**
    (a README is enough); checkout and push fail on an empty repository.
 3. Create the environment `homebrew` in this repository. Under deployment branches
-   and tags, allow only `main`, `release/**` and tags matching `v*`.
+   and tags, allow only `main` and tags matching `v*`, and add the
+   maintainer as a required reviewer (see [Release credentials](#release-credentials)).
 4. Run `ssh-keygen -t ed25519 -C homebrew-trinity -f homebrew-trinity`. Add
    `homebrew-trinity.pub` to the tap as a deploy key **with write access**, and store
    the private key as the **environment** secret `HOMEBREW_TAP_DEPLOY_KEY` in
@@ -849,15 +879,15 @@ The committed [Renovate policy](../../.github/renovate.json) applies a
 three-day minimum release age before its exceptions. Use this table when
 reviewing an update branch or diagnosing why it did not merge.
 
-| Update                        | Current behavior                                                                                                                                                                                                                                                                                                                                                                | Maintainer action                                                                                                                |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Ordinary non-patch dependency | Waits for Dependency Dashboard approval and opens a pull request.                                                                                                                                                                                                                                                                                                               | Approve the dashboard entry, then review CI.                                                                                     |
-| Patch dependency              | After the three-day age, Renovate uses branch automerge and rebases behind `main`; it waits for CI on `renovate/patch-*`. A failed or 24-hour-pending branch becomes a pull request. `Protect main` requires a pull request, so unless Renovate is a bypass actor the direct merge is refused; recent patches arrived as `renovate/patch-*` pull requests.                      | Keep the narrow `ci.yml` push trigger for `renovate/patch-**`; without it, patch automerge silently falls back to pull requests. |
-| Security update               | Bypasses the dashboard gate, waits one day instead of three, keeps a pull request, and can automerge after CI unless it is a shipped runtime package below.                                                                                                                                                                                                                     | Review the security details Renovate links and its labeled pull request; it intentionally does not use the patch-branch path.    |
-| Shipped runtime package       | `dompurify`, `katex`, `matrix-js-sdk`, `@matrix-org/matrix-sdk-crypto-wasm`, `matrix-widget-api` and `electron` patches open a pull request on `renovate/runtime-*` without the dashboard gate but never automerge. Security updates for them open on `renovate/*` and do not automerge either. `katex` is pinned exactly, as the `@shikijs/*` packages are, because it is 0.x. | Review the upstream changes and merge the pull request by hand.                                                                  |
-| GitHub Actions digest         | Stays behind dashboard approval and does not patch-automerge.                                                                                                                                                                                                                                                                                                                   | Review the changed pinned action digest before approval.                                                                         |
-| Native platform dependency    | Stays behind dashboard approval.                                                                                                                                                                                                                                                                                                                                                | Use the evidence described in the developer native platform guides before approval.                                              |
-| TypeScript                    | Moves root and `electron/` manifests together in the `typescript` group, pinned below `6.1.0` for Angular 22's compiler window.                                                                                                                                                                                                                                                 | Widen that bound deliberately with an Angular upgrade; do not split the Electron version.                                        |
+| Update                        | Current behavior                                                                                                                                                                                                                                                                                                                                                                             | Maintainer action                                                                         |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Ordinary non-patch dependency | Waits for Dependency Dashboard approval and opens a pull request.                                                                                                                                                                                                                                                                                                                            | Approve the dashboard entry, then review CI.                                              |
+| Patch dependency              | After the three-day age, skips the dashboard gate and opens a pull request on `renovate/patch-*`. Nothing automerges: `Protect main` requires an approval and Renovate is not a bypass actor.                                                                                                                                                                                                | Review CI and merge the pull request.                                                     |
+| Security update               | Bypasses the dashboard gate, waits one day instead of three and opens a labeled pull request on `renovate/*`. It does not automerge.                                                                                                                                                                                                                                                         | Review the security details Renovate links and merge the pull request promptly.           |
+| Shipped runtime package       | `dompurify`, `katex`, `matrix-js-sdk`, `@matrix-org/matrix-sdk-crypto-wasm`, `matrix-widget-api` and `electron` patches open a pull request on `renovate/runtime-*` without the dashboard gate, and keep `automerge: false` should a patch automerge return. Security updates for them open on `renovate/*`. `katex` is pinned exactly, as the `@shikijs/*` packages are, because it is 0.x. | Review the upstream changes and merge the pull request by hand.                           |
+| GitHub Actions digest         | Stays behind dashboard approval and keeps `automerge: false`.                                                                                                                                                                                                                                                                                                                                | Review the changed pinned action digest before approval.                                  |
+| Native platform dependency    | Stays behind dashboard approval.                                                                                                                                                                                                                                                                                                                                                             | Use the evidence described in the developer native platform guides before approval.       |
+| TypeScript                    | Moves root and `electron/` manifests together in the `typescript` group, pinned below `6.1.0` for Angular 22's compiler window.                                                                                                                                                                                                                                                              | Widen that bound deliberately with an Angular upgrade; do not split the Electron version. |
 
 ## Source of truth
 

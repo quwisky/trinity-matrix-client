@@ -6,18 +6,9 @@ on:
     # absent from this workflow and pull-request suites keep their existing jobs.
     - cron: '23 3 * * 0'
   push:
-    # renovate/patch-** is load-bearing, not housekeeping. Patch updates are set to automerge
-    # as a branch without a pull request (.github/renovate.json), so until one falls back to a
-    # pull request the `pull_request` trigger below never fires for it. Without
-    # this line those branches carry no status checks at all, Renovate refuses to merge an
-    # untested branch, and after its 24h pending window it opens a PR instead: the automerge
-    # rule stops working quietly rather than failing. Renovate pushes with a GitHub App
-    # token, which does trigger workflows; the default GITHUB_TOKEN would not (renovate.yml).
-    #
-    # Matched on the patch- prefix, NOT on renovate/** — the pattern has to select exactly
-    # the branches meant to merge without a PR. Every other Renovate branch does get one, and would
-    # otherwise run all five jobs twice per rebase: once here, once for the pull request.
-    branches: [main, 'release/**', 'renovate/patch-**']
+    # No renovate/** branches: every Renovate update opens a pull request, which the
+    # `pull_request` trigger below tests, and a push trigger would run each one twice.
+    branches: [main, 'release/**']
   pull_request:
 
 # A newer push to the same branch makes the run in flight obsolete. The weekly cron run reports
@@ -187,7 +178,7 @@ jobs:
       # Pull requests test only the projects their diff affects, by the Nx project graph
       # against the PR base. Any root-level file or anything under .github/ runs every
       # project: Nx maps files such as .nvmrc or the setup action to no project. Pushes to
-      # main, release/** and renovate/patch-** always run every project.
+      # main and release/** always run every project.
       - id: unit
         env:
           BASE: ${{ github.event.pull_request.base.sha }}

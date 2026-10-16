@@ -1,4 +1,4 @@
-/** Renovate merges nothing shipped and security-sensitive on its own, and nothing brand new. */
+/** Renovate merges nothing on its own, and proposes nothing brand new. */
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
@@ -9,11 +9,15 @@ const source = readFileSync(
 );
 const config = JSON.parse(source);
 const PATCH_RULE = config.packageRules.findIndex(
-  (rule) => rule.matchUpdateTypes?.includes('patch') && rule.automerge === true,
+  (rule) =>
+    rule.matchUpdateTypes?.includes('patch') &&
+    !rule.matchPackageNames &&
+    !rule.matchManagers,
 );
 
 const RUNTIME = [
   'dompurify',
+  'katex',
   '@matrix-org/matrix-sdk-crypto-wasm',
   'matrix-js-sdk',
   'matrix-widget-api',
@@ -21,14 +25,28 @@ const RUNTIME = [
 ];
 
 describe('Renovate update policy', () => {
+  it('automerges nothing, because Renovate is not a bypass actor on main', () => {
+    // 'Protect main' requires an approval, so a Renovate merge could never complete.
+    expect(config.automerge).toBe(false);
+    for (const rule of [
+      config,
+      config.vulnerabilityAlerts,
+      config.lockFileMaintenance,
+      ...config.packageRules,
+    ]) {
+      expect(rule.automerge).not.toBe(true);
+      expect(rule).not.toHaveProperty('automergeType');
+      expect(rule).not.toHaveProperty('platformAutomerge');
+    }
+  });
+
   it('ends with the rule that keeps shipped runtime patches unmerged', () => {
     // No later rule may set automerge at all, or it could quietly win the key back.
     const last = config.packageRules.findLast((rule) => 'automerge' in rule);
     expect(last.matchPackageNames).toEqual(expect.arrayContaining(RUNTIME));
     expect(last.automerge).toBe(false);
-    // Patches only, on a prefix of their own: off renovate/patch-*, which ci.yml treats
-    // as having no pull request, and off the branch of a non-patch update in the same
-    // group that waits for dashboard approval.
+    // Patches only, on a prefix of their own: off renovate/patch-* and off the branch of
+    // a non-patch update in the same group that waits for dashboard approval.
     expect(last.matchUpdateTypes).toEqual(['patch']);
     expect(last.additionalBranchPrefix).toMatch(/^[a-z]+-$/);
     expect(last.additionalBranchPrefix).not.toBe(
@@ -50,6 +68,9 @@ describe('Renovate update policy', () => {
       expect(winner(key), key).toBeGreaterThan(PATCH_RULE);
       expect(config.packageRules[winner(key)][key], key).toBe(value);
     }
+    expect(config.packageRules[PATCH_RULE].additionalBranchPrefix).toBe(
+      'patch-',
+    );
     // Still a pull request straight away, not one waiting behind the dashboard.
     expect(winner('dependencyDashboardApproval')).toBe(-1);
   });
