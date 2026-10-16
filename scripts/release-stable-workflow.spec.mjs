@@ -68,7 +68,7 @@ describe('Release stable workflow', () => {
   it('creates the branch as exactly the prerelease commit in one push', () => {
     const token = job.steps[index('Mint the App token')];
     expect(token.uses).toBe(
-      'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1',
+      'actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510',
     );
     expect(token.with).toEqual({
       'client-id': '${{ vars.RELEASE_APP_CLIENT_ID }}',
