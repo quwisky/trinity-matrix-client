@@ -1,5 +1,6 @@
 import Capacitor
 import UIKit
+import UserNotifications
 
 /**
  * The app's bridge for coordinating WebKit history gestures with Angular-owned surfaces.
@@ -46,13 +47,17 @@ class NativeNavigationPlugin: CAPInstancePlugin, CAPBridgedPlugin {
 /**
  * Opens Trinity's page in the Settings app, where a permission the user refused can be turned
  * back on. The composer offers it after camera or photo-library access is denied (#919).
+ * App lock's "Hide on the lock screen" opens Trinity's notification page and reads its Show
+ * Previews setting, which that choice follows (decision 16).
  */
 @objc(AppSettingsPlugin)
 class AppSettingsPlugin: CAPInstancePlugin, CAPBridgedPlugin {
     let identifier = "AppSettingsPlugin"
     let jsName = "AppSettings"
     let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "openAppSettings", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "openAppSettings", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openNotificationSettings", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "notificationPreviewSetting", returnType: CAPPluginReturnPromise)
     ]
 
     @objc func openAppSettings(_ call: CAPPluginCall) {
@@ -68,6 +73,37 @@ class AppSettingsPlugin: CAPInstancePlugin, CAPBridgedPlugin {
                     call.reject("Settings are unavailable")
                 }
             }
+        }
+    }
+
+    /// Trinity's page under Settings › Notifications (iOS 16 and later; the app targets 16.4).
+    @objc func openNotificationSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let url = URL(string: UIApplication.openNotificationSettingsURLString) else {
+                call.reject("Settings are unavailable")
+                return
+            }
+            UIApplication.shared.open(url) { opened in
+                if opened {
+                    call.resolve()
+                } else {
+                    call.reject("Settings are unavailable")
+                }
+            }
+        }
+    }
+
+    /// Show Previews for Trinity: "always", "whenUnlocked" or "never".
+    @objc func notificationPreviewSetting(_ call: CAPPluginCall) {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let value: String
+            switch settings.showPreviewsSetting {
+            case .always: value = "always"
+            case .whenAuthenticated: value = "whenUnlocked"
+            case .never: value = "never"
+            @unknown default: value = "whenUnlocked"
+            }
+            call.resolve(["value": value])
         }
     }
 }

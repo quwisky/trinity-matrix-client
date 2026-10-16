@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   APP_LOCK_ENABLED_PREFERENCE,
   APP_LOCK_LOCK_AFTER_PREFERENCE,
+  APP_LOCK_NOTIFICATION_TEXT_PREFERENCE,
   readAppLockSettings,
 } from './app-lock.preferences';
 
@@ -47,6 +48,7 @@ describe('App lock preferences', () => {
     for (const descriptor of [
       APP_LOCK_ENABLED_PREFERENCE,
       APP_LOCK_LOCK_AFTER_PREFERENCE,
+      APP_LOCK_NOTIFICATION_TEXT_PREFERENCE,
     ]) {
       expect(descriptor).toMatchObject({
         owner: 'app-lock',
@@ -62,8 +64,12 @@ describe('App lock preferences', () => {
     expect(APP_LOCK_LOCK_AFTER_PREFERENCE.persistence.key).toBe(
       'trinity.app-lock.lock-after',
     );
+    expect(APP_LOCK_NOTIFICATION_TEXT_PREFERENCE.persistence.key).toBe(
+      'trinity.app-lock.notification-text',
+    );
     expect(APP_LOCK_ENABLED_PREFERENCE.defaultValue).toBe(false);
     expect(APP_LOCK_LOCK_AFTER_PREFERENCE.defaultValue).toBe('1m');
+    expect(APP_LOCK_NOTIFICATION_TEXT_PREFERENCE.defaultValue).toBe('show');
   });
 
   it('accept only their own values', () => {
@@ -73,6 +79,12 @@ describe('App lock preferences', () => {
       kind: 'accepted',
       value: '15m',
     });
+    expect(APP_LOCK_NOTIFICATION_TEXT_PREFERENCE.validate('hide').kind).toBe(
+      'rejected',
+    );
+    expect(
+      APP_LOCK_NOTIFICATION_TEXT_PREFERENCE.validate('hide-on-lock-screen'),
+    ).toEqual({ kind: 'accepted', value: 'hide-on-lock-screen' });
   });
 
   it('read as unreadable, never as off, when storage fails', async () => {
@@ -81,6 +93,7 @@ describe('App lock preferences', () => {
     ).resolves.toEqual({
       enabled: 'unreadable',
       lockAfter: '1m',
+      notificationText: 'show',
     });
   });
 
@@ -91,7 +104,11 @@ describe('App lock preferences', () => {
           store(stored({ 'trinity.app-lock.enabled': 'yes' })),
         ),
       ),
-    ).resolves.toEqual({ enabled: 'unreadable', lockAfter: '1m' });
+    ).resolves.toEqual({
+      enabled: 'unreadable',
+      lockAfter: '1m',
+      notificationText: 'show',
+    });
   });
 
   it('read as unreadable, never as off, when the adapter throws', async () => {
@@ -104,6 +121,7 @@ describe('App lock preferences', () => {
     ).resolves.toEqual({
       enabled: 'unreadable',
       lockAfter: '1m',
+      notificationText: 'show',
     });
   });
 
@@ -115,6 +133,7 @@ describe('App lock preferences', () => {
     ).resolves.toEqual({
       enabled: 'unreadable',
       lockAfter: '1m',
+      notificationText: 'show',
     });
   });
 
@@ -124,6 +143,7 @@ describe('App lock preferences', () => {
     ).resolves.toEqual({
       enabled: false,
       lockAfter: '1m',
+      notificationText: 'show',
     });
   });
 
@@ -135,11 +155,16 @@ describe('App lock preferences', () => {
             stored({
               'trinity.app-lock.enabled': true,
               'trinity.app-lock.lock-after': '15m',
+              'trinity.app-lock.notification-text': 'always-hide',
             }),
           ),
         ),
       ),
-    ).resolves.toEqual({ enabled: true, lockAfter: '15m' });
+    ).resolves.toEqual({
+      enabled: true,
+      lockAfter: '15m',
+      notificationText: 'always-hide',
+    });
   });
 
   it('keep the stored switch when only the delay is unreadable', async () => {
@@ -154,7 +179,31 @@ describe('App lock preferences', () => {
           ),
         ),
       ),
-    ).resolves.toEqual({ enabled: true, lockAfter: '1m' });
+    ).resolves.toEqual({
+      enabled: true,
+      lockAfter: '1m',
+      notificationText: 'show',
+    });
+  });
+
+  it('keep the stored switch and delay when only the notification text is unreadable', async () => {
+    await expect(
+      firstValueFrom(
+        readAppLockSettings(
+          store(
+            stored({
+              'trinity.app-lock.enabled': false,
+              'trinity.app-lock.lock-after': '5m',
+              'trinity.app-lock.notification-text': 'sideways',
+            }),
+          ),
+        ),
+      ),
+    ).resolves.toEqual({
+      enabled: false,
+      lockAfter: '5m',
+      notificationText: 'show',
+    });
   });
 
   describe('with a store that reports an unexpected load state', () => {
@@ -180,6 +229,7 @@ describe('App lock preferences', () => {
         ).resolves.toEqual({
           enabled: 'unreadable',
           lockAfter: '1m',
+          notificationText: 'show',
         });
       },
     );
@@ -191,7 +241,11 @@ describe('App lock preferences', () => {
             reporting({ kind: 'ready', value: false }, EMPTY),
           ),
         ),
-      ).resolves.toEqual({ enabled: 'unreadable', lockAfter: '1m' });
+      ).resolves.toEqual({
+        enabled: 'unreadable',
+        lockAfter: '1m',
+        notificationText: 'show',
+      });
     });
   });
 });

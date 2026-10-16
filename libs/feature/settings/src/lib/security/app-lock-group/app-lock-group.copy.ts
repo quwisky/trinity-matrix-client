@@ -13,7 +13,12 @@ import type {
 
 /** What a guarded change was trying to do; it names what stayed as it was. */
 export type AppLockChange =
-  'enable' | 'disable' | 'lock-after' | 'change-pin' | 'clear-pin';
+  | 'enable'
+  | 'disable'
+  | 'lock-after'
+  | 'notification-text'
+  | 'change-pin'
+  | 'clear-pin';
 
 export type AppLockFailure = Extract<
   AppLockCommandOutcome,
@@ -78,6 +83,8 @@ function unchanged(change: AppLockChange): string {
       return 'App lock is still on';
     case 'lock-after':
       return 'Lock after hasn’t changed';
+    case 'notification-text':
+      return 'Notification text hasn’t changed';
     case 'change-pin':
       return 'your PIN hasn’t changed';
     case 'clear-pin':

@@ -1,0 +1,38 @@
+<trn-settings-row
+  label="Notification text"
+  labelId="app-lock-text-label"
+  data-testid="app-lock-notification-text"
+>
+  <div class="flex flex-col items-start gap-3">
+    <trn-radio-group
+      aria-labelledby="app-lock-text-label"
+      [options]="options"
+      [value]="value()"
+      [disabled]="disabled()"
+      (valueChange)="valueChange.emit($event)"
+    />
+    @if (lockScreenOffered) {
+      @if (previewsShown()) {
+        <p
+          class="m-0 text-sm text-muted-foreground"
+          data-testid="app-lock-text-previews"
+        >
+          Your iPhone currently shows previews on the lock screen. Set Show
+          Previews to When Unlocked.
+        </p>
+      }
+      @if (canOpenSettings) {
+        <button
+          trnBtn
+          size="sm"
+          presentation="outline"
+          type="button"
+          (click)="openSettings()"
+          data-testid="app-lock-notification-settings"
+        >
+          Open notification settings
+        </button>
+      }
+    }
+  </div>
+</trn-settings-row>

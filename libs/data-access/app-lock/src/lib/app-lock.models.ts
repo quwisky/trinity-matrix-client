@@ -6,6 +6,7 @@ import type {
 } from '@trinity/runtime/host';
 import {
   APP_LOCK_LOCK_AFTER_PREFERENCE,
+  APP_LOCK_NOTIFICATION_TEXT_PREFERENCE,
   type StoredAppLock,
 } from './app-lock.preferences';
 
@@ -214,6 +215,7 @@ export const SETTINGS_TIMEOUT_MS = 3_000;
 export const SETTINGS_UNREADABLE: StoredAppLock = {
   enabled: 'unreadable',
   lockAfter: APP_LOCK_LOCK_AFTER_PREFERENCE.defaultValue,
+  notificationText: APP_LOCK_NOTIFICATION_TEXT_PREFERENCE.defaultValue,
 };
 /**
  * The host did not answer: whether a PIN is stored is unknown, so the PIN reads as unreadable

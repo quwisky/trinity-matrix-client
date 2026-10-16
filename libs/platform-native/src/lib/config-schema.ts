@@ -548,6 +548,14 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'A per-device privacy choice that only means something while that device has App ' +
       'lock on; it stays with the device like the lock itself.',
   },
+  {
+    disposition: 'excluded',
+    key: 'trinity.app-lock.notification-text',
+    owner: 'data-access/app-lock',
+    reason:
+      'A per-device privacy choice nested under App lock; it means nothing on a device ' +
+      'without the lock, and the native push renderers read their own mirror of it.',
+  },
 
   // — data-access/trust —
   {
