@@ -37,9 +37,6 @@ const CHECK_END = 4;
  * position, longest first through its output links; a forward walk takes the first that
  * passes its checks. No pattern is built from the literals, so neither their content nor
  * their number can make a line slow to scan.
- *
- * Transitions are stored compactly once built: a table for the root and, for every other
- * state, its children's code units and targets in two typed arrays, sorted for binary search.
  */
 export class LiteralMatcher {
   // Per-line buffers, reused: the automaton state at each position and the protected edges.
@@ -371,7 +368,6 @@ class TrieBuilder {
       }
     }
     edgeStart[states] = edge;
-    // Dropped by reference, for the collector to reclaim in its own time.
     this.next = new Map();
     return {
       rootNext,

@@ -176,7 +176,7 @@ const KEPT_OAUTH_VALUE =
 /**
  * Patterns for values that must never be stored, applied in order. Matrix identifiers are
  * deliberately left alone: the on-device log keeps them, and the export redactor replaces
- * them (spec §2). Each rule is covered by `scrub-secrets.spec.ts`.
+ * them.
  */
 const HEADER_RULES: readonly (readonly [RegExp, string])[] = [
   // Bearer credentials, then whatever an Authorization header or field still carries, under

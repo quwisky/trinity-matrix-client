@@ -13,7 +13,7 @@ import {
   type DiagnosticStoreSnapshot,
 } from './store/diagnostic-log-store';
 
-/** How long entries wait in memory before a batch is written (spec §1). */
+/** How long entries wait in memory before a batch is written. */
 export const FLUSH_DELAY_MS = 5_000;
 
 /**
@@ -38,10 +38,9 @@ export interface DiagnosticLogRecorderOptions {
 }
 
 /**
- * Batches entries and writes them to the store. The store is opened lazily by the first
- * flush, so start-up pays nothing but a timer; the first write happens after first render.
- * Every store operation runs through one queue, so a flush, a snapshot and a clear never
- * interleave.
+ * Batches entries and writes them to the store, opened lazily by the first flush so start-up
+ * pays only a timer. Every store operation runs through one queue, so a flush, a snapshot
+ * and a clear never interleave.
  */
 export class DiagnosticLogRecorder {
   private readonly limits: DiagnosticLogLimits;

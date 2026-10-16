@@ -1,6 +1,5 @@
-// @trinity/data-access/diagnostic-log — the on-device diagnostic log: capture, storage,
-// redaction and export. Consumers go through DiagnosticLogService; nothing reads the store.
-// Capture, scrubbing, redaction and the IndexedDB store stay internal to the library.
+// The on-device diagnostic log. Consumers go through DiagnosticLogService and nothing reads
+// the store; capture, scrubbing, redaction and the IndexedDB store stay internal.
 export {
   DiagnosticLogNotDeletedError,
   DiagnosticLogService,

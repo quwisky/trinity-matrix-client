@@ -33,7 +33,7 @@ export interface DiagnosticLogLimits {
   readonly maxAgeMs: number;
 }
 
-/** About 5 MB and 48 hours (spec §1). */
+/** About 5 MB and 48 hours. */
 export const DIAGNOSTIC_LOG_LIMITS: DiagnosticLogLimits = {
   maxBytes: 5 * 1024 * 1024,
   maxAgeMs: 48 * 60 * 60 * 1000,
