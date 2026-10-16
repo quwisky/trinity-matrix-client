@@ -1,5 +1,6 @@
 /**
- * electron-builder configuration, chosen by release channel. A plain X.Y.Z version in
+ * electron-builder configuration, chosen by release channel. Packaging scripts and the
+ * release workflow pass `--config` with this file. A plain X.Y.Z version in
  * electron/package.json packages electron-builder.yml as written; X.Y.Z-next.N merges
  * electron-builder.next.yml on top ("Trinity Next", installs beside stable). A bare
  * `electron-builder` run reads only electron-builder.yml, so it always packages stable.
