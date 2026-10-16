@@ -42,8 +42,20 @@ test.describe('Settings parts', () => {
     await expect(page.getByTestId('settings-part-code-blocks')).toBeVisible({
       timeout: 20_000,
     });
-    // Straight back to the top while the click's smooth scroll still holds the spy.
+    // Straight back to the top while the click's smooth scroll still holds the spy. Wait
+    // (every frame, so the scroll is still running) for it to leave the top first: a wheel
+    // up that lands before it starts has nothing to scroll, so it is not the scroll this
+    // test is about. Keep the hover() before the wheel: in probes a synthetic wheel sent
+    // without it, mid-animation, was absorbed and Chromium carried on to Code blocks (the
+    // app called scrollTo once only), while after hover() it scrolled back up every time.
     await page.getByTestId('settings-part-code-blocks').click();
+    await page.waitForFunction(
+      () =>
+        (document.querySelector('[data-testid="settings-detail"]')?.scrollTop ??
+          0) > 0,
+      undefined,
+      { polling: 'raf', timeout: 5_000 },
+    );
     await page.getByTestId('settings-detail').hover();
     await page.mouse.wheel(0, -10_000);
     await expect(

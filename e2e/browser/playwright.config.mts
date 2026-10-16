@@ -23,13 +23,14 @@ const specMatch = e2eSpec();
  */
 export default defineConfig({
   // Capability directories are independently focusable through the project target,
-  // while one project-level invocation keeps the fixed Synapse lifecycle serialized.
+  // while one project-level invocation keeps the fixed homeserver lifecycle serialized.
   ...nxE2EPreset(import.meta.dirname, { testDir: './journeys' }),
-  // Retry transient failures. Every spec drives one shared disposable Synapse, so
-  // under full-suite parallelism the initial /sync and server round-trips (a room
-  // appearing in the list, a rename/receipt propagating) can briefly exceed their
-  // per-step timeouts. A retry re-runs when contention has eased; a genuine bug
-  // still fails all attempts, and Playwright reports the retried ones as "flaky".
+  // Retry transient failures. Every spec drives one shared disposable homeserver
+  // (Tuwunel on pull requests, Synapse nightly), so under full-suite parallelism the
+  // initial /sync and server round-trips (a room appearing in the list, a
+  // rename/receipt propagating) can briefly exceed their per-step timeouts. A retry
+  // re-runs when contention has eased; a genuine bug still fails all attempts, and
+  // Playwright reports the retried ones as "flaky".
   // Pairs with `trace: 'retain-on-failure'` below.
   retries: process.env['CI'] ? 1 : 0,
   failOnFlakyTests: Boolean(process.env['CI']),
@@ -49,12 +50,20 @@ export default defineConfig({
   // outer invocation budget) gives realistic headroom; retries still catch the rare tail.
   timeout: 120_000,
   ...e2eReportConfig(browserSuite),
-  // Shared with the current-interface evidence suite: Synapse lifecycle, app server, self-signed
+  // Shared with the current-interface evidence suite: homeserver lifecycle, app server, self-signed
   // TLS policy and retain-on-failure traces must not drift between real-app browser harnesses.
   ...appE2EConfig(baseURL),
   use: {
     ...appE2EConfig(baseURL).use,
     screenshot: 'only-on-failure',
+    // Bound every action and wait that names no timeout of its own: clicks, taps, fills,
+    // getAttribute and locator waitFor, and also waitForResponse, waitForEvent and
+    // waitForFunction. Without it such a call waits for the whole test budget, so one lost
+    // tap turned into a 150s hang instead of a failure at the step that went wrong. 30s
+    // matches the explicit bounds in login() and touchPlatform.tap, and leaves room for a
+    // first /sync under load. Navigations (goto, waitForURL) are not covered: they use
+    // navigationTimeout, which stays unset.
+    actionTimeout: 30_000,
   },
   // Chromium only: the app ships to Capacitor/Electron (Blink/WebKit) WebViews;
   // these UI journeys are representative in Chromium, matching the legacy harness.

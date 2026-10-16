@@ -10,6 +10,7 @@ import {
 } from '@playwright/test';
 import type { AuthPlatform } from './support/platform-contracts.mts';
 import { resourceFixtureDefinitions } from './support/resource-fixtures.mts';
+import { settleSurface } from './support/surface-settle.mts';
 import { cdpSwipe, type TouchPlatform } from './support/touch-platform.mts';
 
 const webTestWithPlatform = webTest.extend<{
@@ -23,9 +24,14 @@ const webTestWithPlatform = webTest.extend<{
   touchPlatform: async ({}, use) => {
     await use({
       async tap(_page, target): Promise<void> {
-        // Ordinary controls must settle before receiving real touch input. Only
-        // unavailable actions bypass the enabled check to explain their state.
-        const force = (await target.getAttribute('aria-disabled')) === 'true';
+        // Ordinary controls must settle before receiving real touch input, including the
+        // sheet or dialog that is still sliding in around them. Only unavailable actions
+        // bypass the enabled check to explain their state. Each wait is bounded: a target
+        // that never appears fails here instead of holding the test to its own timeout.
+        await settleSurface(target);
+        const force =
+          (await target.getAttribute('aria-disabled', { timeout: 30_000 })) ===
+          'true';
         await target.tap({ force, timeout: 30_000 });
       },
       async dismissKeyboard(): Promise<void> {
