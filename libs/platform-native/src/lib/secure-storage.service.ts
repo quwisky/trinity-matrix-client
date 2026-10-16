@@ -36,11 +36,10 @@ export interface SecureStorageBackend {
   set(key: string, value: string): Promise<void>;
   remove(key: string): Promise<void>;
   /**
-   * Drop every secret this backend holds, where it can. Optional because only the native
-   * plugin offers it — Electron's IPC bridge exposes per-key deletion only, and the web
-   * fallback needs none (its keys live in Preferences, which the factory reset clears as a
-   * group). A backend without it relies on the caller deleting keys it derived from the
-   * account registry.
+   * Drop every secret this backend holds. Optional because only the native plugin offers
+   * it: Electron's IPC bridge exposes per-key deletion only, and the web fallback's keys
+   * live in Preferences, which the factory reset clears as a group. A backend without it
+   * relies on the caller deleting keys derived from the account registry.
    */
   clear?(): Promise<void>;
 }
@@ -49,10 +48,9 @@ export interface SecureStorageBackend {
 const WEB_PREFIX = 'secure.';
 
 /**
- * Web/PWA fallback. A browser has no XSS-proof secret store, so this is best-effort —
- * Capacitor Preferences (localStorage on web). `isSecure` is false to make that
- * explicit; the real web defenses are the CSP (`script-src 'self'`, no inline) plus
- * DOMPurify sanitization. Native + Electron use OS-backed backends instead.
+ * Web/PWA fallback. A browser has no XSS-proof secret store, so this is best-effort
+ * Capacitor Preferences (localStorage on web); `isSecure` is false. The real web
+ * defenses are the CSP (`script-src 'self'`, no inline) plus DOMPurify sanitization.
  *
  * `degraded` marks the fallback on a host that has a keychain it could not reach: a secret
  * missing here may still sit in that keychain, so it reads as unavailable, not absent.
@@ -79,9 +77,8 @@ function createWebBackend(degraded = false): SecureStorageBackend {
 }
 
 /**
- * Electron desktop: OS-keychain-backed `safeStorage`, reached through the main process
- * via the grouped desktop secure-store capability (the renderer never touches the keyring
- * or the on-disk ciphertext directly).
+ * Electron desktop: OS-keychain-backed `safeStorage`, reached through the main process;
+ * the renderer never touches the keyring or the on-disk ciphertext directly.
  */
 function createElectronBackend(
   store: TrinityDesktopBridge['capabilities']['secureStore'],
@@ -113,8 +110,8 @@ function createElectronBackend(
  * `@aparajita/capacitor-secure-storage`. Every value belongs to this device's Matrix
  * session, so it stays on this device: `sync: false` keeps it out of iCloud Keychain, and
  * the iOS `whenUnlockedThisDeviceOnly` class keeps a backup restored onto another device
- * from bringing it along. An item written before this class was set keeps its old class
- * until it is next written.
+ * from bringing it along. An item written before this class was set keeps its
+ * old class until it is next written.
  */
 function createNativeBackend(): SecureStorageBackend {
   return {
@@ -154,11 +151,7 @@ function createNativeBackend(): SecureStorageBackend {
 
 /**
  * Stores secrets (notably the Matrix access token) behind the strongest backend the
- * current platform offers, chosen once at first use and memoized. Centralizes the
- * platform branch so callers never feature-detect themselves.
- *
- * Backends are async (IPC / native plugin / browser storage), so the API is
- * promise-based; callers that expose Observables wrap with `from(...)`.
+ * current platform offers, chosen once at first use and memoized.
  */
 @Injectable({ providedIn: 'root' })
 export class SecureStorageService {
@@ -195,17 +188,15 @@ export class SecureStorageService {
   }
 
   /**
-   * Best-effort bulk wipe. Resolves `true` only when the backend actually swept itself —
+   * Best-effort bulk wipe. Resolves `true` only when the backend actually swept itself;
    * only the native keychain/keystore backend can.
    *
    * This is NOT how the factory reset clears secrets. It removes each account's keys by
-   * name first (`SessionStorageService.clearAll`), which is what covers Electron, whose
-   * bridge exposes no bulk clear, and web, whose keys live in Preferences. Losing that
-   * per-key pass would leave Electron's main-process store fully populated AND unreachable,
-   * because the registry naming its keys is deleted moments later.
-   *
-   * What this adds on native is the residue that pass cannot reach: a secret orphaned by an
-   * earlier bug, whose account is no longer listed and whose key nothing can name.
+   * name first (`SessionStorageService.clearAll`), which covers Electron (no bulk clear)
+   * and web (keys live in Preferences). Skipping that pass would leave Electron's
+   * main-process store populated AND unreachable, because the registry naming its keys is
+   * deleted moments later. This adds, on native, the residue that pass cannot reach: a
+   * secret whose account is no longer listed and whose key nothing can name.
    */
   async clearAll(): Promise<boolean> {
     const backend = await this.resolve();
@@ -221,16 +212,14 @@ export class SecureStorageService {
   }
 
   /**
-   * The chosen backend, selected once. A REJECTED selection must not be memoized: a
-   * rejection is a value like any other, so caching it would make every later get/set/remove
-   * reject for the page lifetime. The reachable case is a startup race on desktop —
-   * `createWindow()` loads the renderer before `registerSecureStoreIpc()` is installed, so
-   * the availability probe can reject with nothing wrong with the keychain at all. Clearing
-   * the memo makes the next call retry (as matrix-js-sdk's TokenManager does for discovery).
+   * The chosen backend, selected once. A REJECTED selection must not be memoized, or every
+   * later call would reject for the page lifetime. The reachable case is a desktop startup
+   * race: `createWindow()` loads the renderer before `registerSecureStoreIpc()` is
+   * installed, so the availability probe can reject with nothing wrong with the keychain.
+   * Clearing the memo makes the next call retry.
    *
    * Deliberately NOT swallowed into the web fallback: on a device that has a keychain, a
-   * transient IPC failure would then latch a plaintext token store for the whole session.
-   * A retryable rejection is the safer of the two.
+   * transient IPC failure would latch a plaintext token store for the whole session.
    */
   private resolve(): Promise<SecureStorageBackend> {
     return (this.backend ??= this.select().catch((err: unknown) => {
@@ -240,24 +229,20 @@ export class SecureStorageService {
   }
 
   private async select(): Promise<SecureStorageBackend> {
-    // 1) Electron desktop — safeStorage via the trinityDesktop IPC bridge.
     const bridge = getTrinityDesktopBridge();
     const electronStore = bridge?.capabilities.secureStore;
     if (electronStore && (await electronStore.isAvailable())) {
       return createElectronBackend(electronStore);
     }
-    // 2) Native iOS/Android — OS Keychain / Android Keystore.
     if (
       Capacitor.isNativePlatform() &&
       Capacitor.isPluginAvailable('SecureStorage')
     ) {
       return createNativeBackend();
     }
-    // 3) Web/PWA (and Electron/native without an available keyring): best-effort
-    // plaintext. On web this is the documented norm (defended by CSP + sanitization),
-    // but on desktop/native it means the OS keychain FAILED — secrets (the access
-    // token) will land in plaintext. Surface that anomaly rather than falling back
-    // silently. (A user-facing prompt is a further, product-owned step.)
+    // Web/PWA fallback is plaintext. That is the norm on web (CSP + sanitization), but on
+    // desktop/native it means the OS keychain FAILED and the access token will land in
+    // plaintext, so warn instead of falling back silently.
     const degraded = !!bridge || Capacitor.isNativePlatform();
     if (degraded) {
       console.warn(

@@ -8,11 +8,9 @@ export interface DevicePreferenceWrite {
 }
 
 /**
- * Platform-contained access to the installation's non-secret key/value storage.
- *
- * Capability code depends on this cold RxJS port rather than naming Capacitor. Values
- * remain opaque strings because domain owners are responsible for validation, migration,
- * and defaults; secrets belong in {@link SecureStorageService}, not this adapter.
+ * Cold RxJS port over the installation's non-secret key/value storage, so capability code
+ * doesn't name Capacitor. Values stay opaque strings (owners validate and migrate them);
+ * secrets belong in {@link SecureStorageService}, not here.
  */
 @Injectable({ providedIn: 'root' })
 export class DevicePreferenceStorageService {
