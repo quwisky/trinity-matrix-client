@@ -92,6 +92,8 @@ export class MediaAttachmentComponent {
   private pending: PresentedMediaReference | null = null;
   /** The media the effect last set this row up for. */
   private current: PresentedMediaReference | null = null;
+  /** Whether the current thumbnail or poster resolve failed (it completed without a URL). */
+  private thumbnailFailed = false;
   /**
    * The played clip: the message it belongs to (rows are recycled, so not necessarily the
    * current one), its pinned URL once resolved, and the resolve.
@@ -108,13 +110,16 @@ export class MediaAttachmentComponent {
       // Under the gate, a receipt or reaction re-projects the message with a new reference to
       // the same file: keep the thumbnail shown or still loading rather than cancel and fetch it
       // again (an encrypted original is a full download and decrypt each time).
+      // A failed one is tried again, as before.
       if (
         previous &&
+        !this.thumbnailFailed &&
         this.gate?.enabled &&
         this.mediaPipeline.sameMedia(previous, media)
       ) {
         return;
       }
+      this.thumbnailFailed = false;
       // A row that already shows its image is re-rendering its message (an edit, a receipt,
       // a reaction): load at once rather than blank it mid-scroll. Read before the reset.
       const shown = this.pinnedUrl !== null;
@@ -255,10 +260,17 @@ export class MediaAttachmentComponent {
     // Only with the gate on is a row that goes mid-load cancelled; off, it loads as before.
     const cancellable = this.gate?.enabled ?? false;
     this.pending = cancellable ? media : null;
-    this.mediaSub = resolve.subscribe((url) => {
-      this.pending = null;
-      this.repin(url);
-      show(url);
+    let resolved = false;
+    this.mediaSub = resolve.subscribe({
+      next: (url) => {
+        resolved = true;
+        this.pending = null;
+        this.repin(url);
+        show(url);
+      },
+      complete: () => {
+        if (!resolved) this.thumbnailFailed = true;
+      },
     });
   }
 

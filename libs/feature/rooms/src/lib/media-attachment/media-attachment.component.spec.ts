@@ -860,6 +860,26 @@ describe('MediaAttachmentComponent', () => {
         expect(fixture.componentInstance.src()).toBe('blob:thumb');
       });
 
+      it('retries a failed thumbnail when its message is re-projected', async () => {
+        mediaService.resolveMedia.mockReturnValueOnce(
+          throwError(() => new Error('offline')),
+        );
+        const { fixture } = await renderInTimeline(imageMedia());
+        comesNear(fixture.nativeElement);
+        expect(fixture.componentInstance.hasError()).toBe(true);
+
+        fixture.componentRef.setInput('media', {
+          ...imageMedia(),
+          id: 'presented-media-again',
+        });
+        TestBed.tick();
+        comesNear(fixture.nativeElement);
+
+        expect(mediaService.resolveMedia).toHaveBeenCalledTimes(2);
+        expect(fixture.componentInstance.hasError()).toBe(false);
+        expect(fixture.componentInstance.src()).toBe('blob:thumb');
+      });
+
       it('swaps the load when an edit changes the image', async () => {
         const thumb = new Subject<string>();
         mediaService.resolveMedia.mockReturnValueOnce(thumb.asObservable());
