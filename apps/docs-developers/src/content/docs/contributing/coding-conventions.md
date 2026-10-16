@@ -32,6 +32,15 @@ Match the established owner before introducing a new pattern. Repository checks 
 - Put unit specs beside their source and use real-browser evidence for layout and interaction claims.
 - Keep screenshots, traces, prototypes, and pixel baselines in ignored output.
 
+## Comments {#comments}
+
+Comment only what the code can't say: a constraint, an invariant, a non-obvious reason, or a trap for the next editor. Keep it to one to three lines.
+
+- Don't restate the code, describe the obvious, or narrate the steps. A better name or a small function beats a comment explaining a confusing block.
+- Don't record history: what the code used to do, the bug it fixed, issue or PR numbers, alternatives tried, or measurements taken at the time. Those belong in the commit message, the PR or a decision record.
+- Keep these in full, even past three lines: security reasoning (sanitising, secrets, trust), Matrix protocol and spec constraints, platform or browser workarounds together with what triggers them, and numbers that a test asserts.
+- Public API docs (JSDoc): one sentence of purpose, plus any constraints the signature can't express.
+
 ## User-facing copy {#copy}
 
 The domain language in `CONTEXT.md` capitalises Account, Room and Space for code and design discussion. User-visible text does not: it reads as plain English.

@@ -13,6 +13,8 @@ in `package.json`; verify unfamiliar APIs against installed declarations or offi
 - Remove unused imports and variables. Keep debug `console.log` calls out of committed
   source. Use meaningful names; JSDoc is optional for public APIs and should explain
   constraints that the signature cannot express.
+  Follow the [comment rule](../apps/docs-developers/src/content/docs/contributing/coding-conventions.md#comments):
+  comment only what the code can't say.
 - Follow the [coding conventions](../apps/docs-developers/src/content/docs/contributing/coding-conventions.md), including their deprecated-API policy.
 
 ## Components and templates
