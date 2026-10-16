@@ -104,8 +104,9 @@ export class AppearanceSettingsComponent {
 
   /**
    * The instant every format option is previewed against: a fixed afternoon rather than
-   * `Date.now()`, so samples are stable and each option differs only by its format. A
-   * two-digit day in a single-digit month keeps 12/24-hour and every date order distinct.
+   * `Date.now()`, so samples are stable and each option differs only by its format. The
+   * afternoon keeps 12/24-hour distinct, and a two-digit day in a single-digit month keeps
+   * every date order distinct.
    */
   readonly sample = new Date(2026, 6, 24, 15, 45).getTime();
 

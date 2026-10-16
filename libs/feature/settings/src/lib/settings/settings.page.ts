@@ -44,8 +44,9 @@ import { SettingsDirectorySearchComponent } from '../shared/settings-directory-s
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.page.html',
   styleUrl: './settings.page.scss',
-  // Painting the host on the content surface covers the transparent header and panes (else
-  // the darker shell background shows in dark mode). Overflow is clipped in the stylesheet.
+  // Painting the host on the content surface, matching the rooms main pane and thread panels,
+  // covers the transparent header and panes (else the darker shell background shows in dark
+  // mode). Overflow is clipped in the stylesheet.
   host: {
     class: 'settings-page',
     '(keydown.escape)': 'onEscape($event)',

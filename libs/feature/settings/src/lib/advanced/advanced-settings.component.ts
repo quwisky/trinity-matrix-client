@@ -259,8 +259,9 @@ export class AdvancedSettingsComponent {
   }
 
   /**
-   * Check what is in the box and say what applying it would do; writes nothing. The summary
-   * must be confirmed ({@link confirmApply}) before anything moves.
+   * Check what is in the box and say what applying it would do; writes nothing. The Apply
+   * button runs this, and the summary must be confirmed ({@link confirmApply}) before
+   * anything moves.
    */
   review(): void {
     const plan = this.config.validateJson(this.editorValue());

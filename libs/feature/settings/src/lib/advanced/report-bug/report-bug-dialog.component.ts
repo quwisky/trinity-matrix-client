@@ -271,7 +271,8 @@ export class ReportBugDialogComponent {
 
   /**
    * The log the issue names: the built file when it has entries, or, while it is still being
-   * prepared, the name it will be saved under.
+   * prepared, the name it will be saved under, so a log saved after GitHub opened is still
+   * named there.
    */
   private issueLogFileName(): string | null {
     if (this.loggingOff() || !this.includeLogs()) {
