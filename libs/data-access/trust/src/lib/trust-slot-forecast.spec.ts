@@ -342,14 +342,29 @@ describe('TrustSlotForecastService', () => {
     expect(harness.forecast.forecast()).toBe('needs-verification');
   });
 
-  it('completes at once when asked to hydrate with no active Account', async () => {
-    const harness = setup();
+  it('waits for an Account to become active, then hydrates it', async () => {
+    const harness = setup(
+      new Map([[`${FORECAST_KEY}|@a:hs`, record('needs-recovery')]]),
+    );
     const hydrate = vi.spyOn(harness.forecast, 'hydrate');
+    const events: string[] = [];
 
-    await expect(
-      firstValueFrom(harness.forecast.hydrateActive()),
-    ).resolves.toBeUndefined();
+    harness.forecast.hydrateActive().subscribe({
+      next: () => events.push('next'),
+      complete: () => events.push('complete'),
+    });
+    TestBed.tick();
+
+    // No Account yet: nothing is read and nothing is emitted.
+    expect(events).toEqual([]);
     expect(hydrate).not.toHaveBeenCalled();
+
+    harness.active.set('@a:hs');
+    TestBed.tick();
+
+    await vi.waitFor(() => expect(events).toEqual(['next', 'complete']));
+    expect(hydrate).toHaveBeenCalledWith('@a:hs');
+    expect(harness.forecast.forecast()).toBe('needs-recovery');
   });
 
   it.each([

@@ -6,7 +6,18 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { Observable, catchError, defer, map, of, shareReplay } from 'rxjs';
+import { toObservable } from '@angular/core/rxjs-interop';
+import {
+  Observable,
+  catchError,
+  defer,
+  filter,
+  map,
+  of,
+  shareReplay,
+  switchMap,
+  take,
+} from 'rxjs';
 import { TrustCryptoPort } from '@trinity/data-access/matrix-client';
 import {
   PreferenceStoreService,
@@ -124,6 +135,9 @@ export class TrustSlotForecastService {
   /** Accounts whose forecast has outlived FORECAST_HOLD_MS without a live status. */
   private readonly expired = signal<ReadonlySet<string>>(new Set());
   private readonly reads = new Map<string, Observable<void>>();
+  private readonly activeAccountId$ = toObservable(
+    this.cryptoPort.activeAccountId,
+  );
   private readonly unavailable = computed(
     () => this.health.health().availability === 'unavailable',
   );
@@ -178,11 +192,20 @@ export class TrustSlotForecastService {
     });
   }
 
-  /** Load the active Account's stored forecast; completes at once when there is none. */
+  /**
+   * Load the active Account's stored forecast. With no active Account yet, it waits for
+   * one; the caller bounds how long it waits.
+   */
   hydrateActive(): Observable<void> {
     return defer(() => {
       const accountId = this.cryptoPort.activeAccountId();
-      return accountId ? this.hydrate(accountId) : of(undefined);
+      return accountId
+        ? this.hydrate(accountId)
+        : this.activeAccountId$.pipe(
+            filter((id): id is string => id !== null),
+            take(1),
+            switchMap((id) => this.hydrate(id)),
+          );
     });
   }
 
