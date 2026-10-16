@@ -436,10 +436,14 @@ export class MessageListComponent extends MessageListBase {
         return; // jsdom / SSR — degrades to render-all via estimate heights.
       }
       this.ro = new ResizeObserver((entries) => this.onRowsResized(entries));
-      this.watchScrollerHeight((height, scrollTop) => {
-        this.viewportH.set(height);
-        this.scrollTop.set(scrollTop);
-      });
+      this.watchScrollerHeight(
+        (height, scrollTop) => {
+          this.viewportH.set(height);
+          this.scrollTop.set(scrollTop);
+        },
+        // The keyboard or composer pin is the list's own write, like `writeScrollTop`.
+        (delta) => this.scrollActivity.shifted(delta),
+      );
       this.watchScrollerWidth();
       this.reconcileObserved(this.rowHosts());
     });
@@ -779,7 +783,13 @@ export class MessageListComponent extends MessageListBase {
 
   /**
    * Set the scroll position from the list's own code (a pin, a correction, a restore, a
-   * jump), telling the scroll activity at once so the move never reads as the reader's.
+   * jump), telling the scroll activity at once so the move never reads as the reader's. The
+   * keyboard/composer pin (`observeScrollerHeight`) reports its write the same way.
+   *
+   * Known exceptions, which the speed estimate sees as movement: smooth `scrollIntoView`
+   * calls (`scrollToJumpTarget`, `revealFocusIn`, a row's Show less), whose browser animation
+   * has no single write to take out, and the mobile action sheet's own viewport writes
+   * (`MessageSheetViewportSession`), which run while a modal sheet covers the list.
    */
   private writeScrollTop(el: HTMLElement, top: number): void {
     const before = el.scrollTop;
