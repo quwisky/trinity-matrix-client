@@ -90,8 +90,8 @@ export const LongMessage: Story = {
 /**
  * The two banners that take turns in the app's global slot: the limited-capability notice
  * (two actions) and the encryption prompt (one). `placement="global"` gives them one height
- * below md, where the two actions wrap under the message, so replacing one with the other
- * never moves the page below.
+ * while the slot is narrower than 34rem, where the two-action banner wraps, so replacing one
+ * with the other never moves the page below.
  */
 export const GlobalSlot: Story = {
   // Full width, as in the app: the padded canvas would narrow the banners by 2rem and wrap
