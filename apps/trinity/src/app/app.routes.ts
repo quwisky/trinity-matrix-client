@@ -30,17 +30,13 @@ export const routes: Routes = [
     loadComponent: () =>
       import('@trinity/feature/auth').then((m) => m.RegistrationPage),
   },
-  // `/rooms` and `/rooms/<segment>` as ONE route, via a matcher rather than two entries.
+  // `/rooms` and `/rooms/<segment>` are ONE route, via a matcher rather than two entries:
+  // Angular's DefaultRouteReuseStrategy compares `routeConfig` by identity, so two entries
+  // sharing a `loadComponent` would destroy and rebuild `RoomsPage` on every open-a-room and
+  // close-back-to-the-list. Its `providers` hold `RoomShellStore` and the shell coordinators,
+  // so a rebuild resets the selected space, sidebar view and room filter.
   //
-  // Two sibling entries sharing a `loadComponent` do NOT share a component instance: Angular's
-  // DefaultRouteReuseStrategy is `future.routeConfig === curr.routeConfig`, an identity check on
-  // the Route OBJECT, so two entries are two configs and every open-a-room and close-back-to-the
-  // -list would destroy `RoomsPage` and rebuild it. That page's `providers` hold `RoomShellStore`
-  // and the twelve shell coordinators, so a rebuild resets the selected space, the sidebar view
-  // and the room filter — clicking a room inside a space would snap the sidebar back to Recent.
-  // One config means one `routeConfig`, so the instance is reused across both URLs.
-  //
-  // The segment is base64url, not the raw room id — see `encodeRoomSegment`. A raw id ends in a
+  // The segment is base64url, not the raw room id (see `encodeRoomSegment`): a raw id ends in a
   // dotted server name, which both SPA fallbacks refuse to answer with index.html.
   {
     matcher: (segments) => {
@@ -80,10 +76,9 @@ export const routes: Routes = [
   {
     path: 'encryption/setup',
     canActivate: [authGuard],
-    // Same shown-once key as the unlock route below, on the path EVERY new account
-    // takes: first-run setup displays the recovery key once and never persists it, and
-    // the browser's back button would drop it without a word. (See main.ts for the
-    // router config these guards need.)
+    // Same shown-once key as the unlock route below, on the path EVERY new account takes:
+    // first-run setup displays the recovery key once and never persists it, and the
+    // browser's back button would drop it without a word.
     canDeactivate: [(page: EncryptionSetupPage) => page.confirmLeave()],
     loadComponent: () =>
       import('@trinity/feature/crypto').then((m) => m.EncryptionSetupPage),
@@ -91,12 +86,10 @@ export const routes: Routes = [
   {
     path: 'encryption/unlock',
     canActivate: [authGuard],
-    // Same guard, one extra risk: a reset shows its new recovery key exactly once AND
-    // cannot be cancelled once it is running, while the routed page — what every narrow
-    // layout gets — is dismissed by the browser's own back button, which tears the
-    // component down without asking anyone. The desktop modal has an in-page Close that
-    // can ask; this is the same question for the path most users are on. It does not
-    // cover a tab close or reload (that needs beforeunload, which cannot show our copy).
+    // Same guard, one extra risk: a reset shows its new recovery key exactly once AND cannot
+    // be cancelled once running, while the routed page (what narrow layouts get) is dismissed
+    // by the browser's back button without asking. The desktop modal's in-page Close can ask.
+    // Does not cover a tab close or reload (beforeunload cannot show our copy).
     canDeactivate: [(page: EncryptionUnlockPage) => page.confirmLeave()],
     loadComponent: () =>
       import('@trinity/feature/crypto').then((m) => m.EncryptionUnlockPage),
