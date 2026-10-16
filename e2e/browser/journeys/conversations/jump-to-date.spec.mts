@@ -135,10 +135,13 @@ test.describe('Jump to date', () => {
       if (!windowed) {
         expect(await page.locator('.scroll .msg').count()).toBeGreaterThan(100);
       }
-      // Stay in view past JUMP_REAPPLY_MS (3s), when a re-aim or a snap-back can happen.
+      // Rendered is not yet in view: with windowing off the jump scrolls through all ~121
+      // rows, which can take longer than one check. Wait for it to arrive, then stay in view
+      // past JUMP_REAPPLY_MS (3s), when a re-aim or a snap-back can happen.
       const markerRow = page
         .locator('.scroll .msg', { hasText: marker })
         .first();
+      await expect(markerRow).toBeInViewport({ timeout: 10_000 });
       for (let i = 0; i < 14; i++) {
         await page.waitForTimeout(250);
         await expect(markerRow).toBeInViewport({ timeout: 250 });
