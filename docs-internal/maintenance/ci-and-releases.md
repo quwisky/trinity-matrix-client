@@ -236,16 +236,19 @@ with artifact coordinate handling in `node scripts/renderer-artifact.mjs`.
 
 Desktop, Android, iOS, and the production renderer journey download that artifact and
 validate its coordinates, manifest digest, file contents, and expected checkout before
-installing the payload into the canonical `www/` directory. The renderer job and its
-consumers check out the event's commit without a `ref:` input and rely on those checks
-to bind it to the renderer's SHA. A `ref:` input taken from a workflow input or job
-output reads to CodeQL's `actions/cache-poisoning/poisonable-step` query as untrusted
-code on `ci.yml`'s schedule trigger, and opens an alert at every step after it. The native wrappers allow
+installing the payload into the canonical `www/` directory. The native wrappers allow
 only their generated Cordova files alongside the manifest payload. A failed validation
 does not replace `www/`. The `e2e` and `browser-e2e` jobs build the development bundle while
 preparing Docker/browser prerequisites. In `e2e`, the production renderer step restores the
 verified artifact afterward, while styling uses the development server. The browser
 journeys use only the development server, so `browser-e2e` does not wait for the renderer.
+
+The renderer job and its consumers check out the event's commit without a `ref:` input.
+`renderer-artifact.mjs` binds that checkout to the renderer's SHA: every command fails
+unless `HEAD` equals `TRINITY_RENDERER_SHA`. CodeQL's
+`actions/cache-poisoning/poisonable-step` query treats a `ref:` taken from a workflow
+input or job output as untrusted code on `ci.yml`'s schedule trigger, and flags each
+local action or script that runs after it.
 
 For local host parity checks against an already recorded artifact, use:
 

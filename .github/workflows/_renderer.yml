@@ -3,7 +3,7 @@ on:
   workflow_call:
     inputs:
       sha:
-        description: Exact full commit SHA to build.
+        description: The calling event's full commit SHA (github.sha); the job fails unless the checkout is that commit.
         required: true
         type: string
       artifact-name:

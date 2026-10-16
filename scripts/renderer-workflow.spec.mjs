@@ -107,8 +107,35 @@ describe('verified renderer workflow boundary', () => {
     expect(steps[1].with['run-id']).toBe('${{ inputs.source-run-id }}');
     expect(steps[1].with.name).toBeUndefined();
     expect(steps[2].run).toBe('node scripts/renderer-artifact.mjs restore');
+    // The consumer's checkout has no `ref:`; these bind it to the renderer's SHA.
+    expect(steps[0].env.TRINITY_RENDERER_SHA).toBe('${{ inputs.sha }}');
+    expect(steps[2].env.TRINITY_RENDERER_SHA).toBe('${{ inputs.sha }}');
     expect(JSON.stringify(restore)).not.toContain('TRINITY_E2E_PREBUILT_WWW=1');
   });
+
+  it.each(['assert-source', 'prepare', 'restore'])(
+    'refuses %s when the checkout is not the renderer commit',
+    (command) => {
+      let failure;
+      try {
+        execFileSync(
+          process.execPath,
+          [resolve(root, 'scripts/renderer-artifact.mjs'), command],
+          {
+            cwd: root,
+            env: { ...process.env, TRINITY_RENDERER_SHA: '0'.repeat(40) },
+            stdio: 'pipe',
+          },
+        );
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure?.status).toBe(1);
+      expect(String(failure?.stderr)).toContain(
+        'Renderer SHA differs from checked-out commit',
+      );
+    },
+  );
 
   it('restores production after development prerequisites and preserves development builds', () => {
     const steps = ci.jobs.e2e.steps;
