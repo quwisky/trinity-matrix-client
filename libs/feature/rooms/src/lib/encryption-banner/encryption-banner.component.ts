@@ -13,7 +13,10 @@ import {
 } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
 import { TrustService } from '@trinity/data-access/trust';
-import { BannerComponent } from '@trinity/components/generic-content';
+import {
+  BannerComponent,
+  type TrnBannerPlacement,
+} from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
 /** Which surface a banner action opens: an encryption flow, or Security settings. */
@@ -69,6 +72,14 @@ export class EncryptionBannerComponent {
       this.systemStatus.bannerSlot() === 'encryption'
     );
   });
+
+  /**
+   * Keep the two-action notice's height only where this prompt may replace it: in a slot
+   * that never held the notice the prompt replaces nothing and keeps its own height.
+   */
+  readonly placement = computed<TrnBannerPlacement>(() =>
+    this.systemStatus.bannerSlotReserved() ? 'global' : 'inline',
+  );
 
   readonly message = computed(() => {
     if (this.setupElsewhere()) {

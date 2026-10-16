@@ -407,6 +407,34 @@ describe('CapabilityStatusService', () => {
       expect(status.bannerSlot()).toBe('status');
     });
 
+    it('reserves the slot height for a prompt only once the notice has held the slot', () => {
+      TestBed.tick();
+      trust.set('needs-setup');
+      TestBed.tick();
+      expect(status.bannerSlot()).toBe('encryption');
+      expect(status.bannerSlotReserved()).toBe(false);
+
+      trust.set('ready');
+      report('@a:hs', 'accounts', 'restore');
+      TestBed.tick();
+      expect(status.bannerSlot()).toBe('status');
+      expect(status.bannerSlotReserved()).toBe(true);
+
+      trust.set('needs-setup');
+      TestBed.tick();
+      expect(status.bannerSlot()).toBe('encryption');
+      expect(status.bannerSlotReserved()).toBe(true);
+
+      // Sticky: the slot can take the notice back at any time, so later prompts keep it.
+      trust.set('ready');
+      status.dismiss(status.visibleEntries()[0]!);
+      TestBed.tick();
+      expect(status.bannerSlot()).toBeNull();
+      trust.set('needs-recovery');
+      TestBed.tick();
+      expect(status.bannerSlotReserved()).toBe(true);
+    });
+
     it('names the limited capability instead of counting it', () => {
       report('@a:hs', 'accounts', 'restore');
       expect(status.bannerMessage()).toBe(
