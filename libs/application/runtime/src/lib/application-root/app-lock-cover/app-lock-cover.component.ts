@@ -32,7 +32,7 @@ import { AppLockCoverState, type CoverView } from './app-lock-cover.state';
 export { unlockLabel, useMethodLabel } from './app-lock-cover.copy';
 
 /**
- * App lock's cover (spec §2): a modal `<dialog>` in the top layer, above every overlay, that
+ * App lock's cover: a modal `<dialog>` in the top layer, above every overlay, that
  * makes the rest of the app inert until the person unlocks. It shows only the app's mark, its
  * name and the unlock control; nothing about accounts or rooms. It stays mounted for the app's
  * lifetime and is open exactly while App lock is `locked`. This component owns the dialog,
@@ -68,7 +68,6 @@ export class AppLockCoverComponent {
 
   protected readonly state = inject(AppLockCoverState);
   protected readonly shownError = shownError;
-  /** The dialog's description: the view's own explanation, then the message line under it. */
   protected readonly describedBy = computed(() =>
     coverDescription(this.state.view()),
   );
@@ -142,7 +141,7 @@ export class AppLockCoverComponent {
     this.state.opened();
     this.focusPrimary();
     // The shell keeps a window it hid transparent until it hears the cover has painted (a
-    // reloaded renderer included). No window, no paint to report.
+    // reloaded renderer included).
     this.painted?.unsubscribe();
     const painted = this.window ? afterPaint(this.window) : EMPTY;
     this.painted = painted.subscribe(() => {

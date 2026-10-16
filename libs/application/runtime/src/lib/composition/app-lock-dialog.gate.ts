@@ -5,11 +5,11 @@ import { Observable, defer, filter, map, of, take } from 'rxjs';
 import { appLockCovers } from './app-lock.providers';
 
 /**
- * Holds app-initiated dialogs while App lock covers the app (spec §2, "While locked"): a
- * dialog that an incoming event, a timer or a notification opens, rather than a person's
- * click, waits until the person has unlocked and the lock screen has closed. Opening only
- * after the lock screen's own close has put focus back lets the dialog take focus as it
- * opens, instead of opening behind the cover and losing focus to that restore.
+ * Holds app-initiated dialogs while App lock covers the app: a dialog that an incoming
+ * event, a timer or a notification opens, rather than a person's click, waits until the
+ * person has unlocked and the lock screen has closed. Opening only after the lock screen's
+ * own close has put focus back lets the dialog take focus as it opens, instead of opening
+ * behind the cover and losing focus to that restore.
  *
  * Effect-driven hosts read {@link clear}; one-shot openers wait on {@link whenClear}.
  * A person's click can't reach the app while it is locked, so click handlers need neither.

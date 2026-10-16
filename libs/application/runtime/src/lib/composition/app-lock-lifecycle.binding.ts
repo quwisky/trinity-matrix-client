@@ -68,11 +68,10 @@ interface AwayPeriod {
 const SYSTEM_UI_CLOSED_GRACE_MS = DESKTOP_IMMEDIATE_GRACE_MS;
 
 /**
- * App lock's part of the shell (decision 14): the away timer over the host lifecycle and,
- * on desktop, window focus; the shell's lock requests; the state and accelerator the shell
- * shows; the window title; and the mobile app-switcher cover (decision 13). Time in
- * Trinity's own system UI is not "away" (Review Focus 1): it never starts the timer, and it
- * stops one that is running.
+ * App lock's part of the shell: the away timer over the host lifecycle and, on desktop,
+ * window focus; the shell's lock requests; the state and accelerator the shell shows; the
+ * window title; and the mobile app-switcher cover. Time in Trinity's own system UI is not
+ * "away": it never starts the timer, and it stops one that is running.
  */
 @Injectable({ providedIn: 'root' })
 export class AppLockLifecycleBinding {
@@ -125,7 +124,7 @@ export class AppLockLifecycleBinding {
   }
 
   /**
-   * The cover is on whenever App lock is on, locked or not (spec §4), and each lock takes
+   * The cover is on whenever App lock is on, locked or not, and each lock takes
    * down native UI Trinity presented over the web view, which the DOM cover can't reach.
    * Both are best effort: an answer that never comes or a failure never holds up locking or
    * unlocking, and a failure is recorded by its stable code only. A cover that failed to go

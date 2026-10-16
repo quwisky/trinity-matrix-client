@@ -82,7 +82,7 @@ export type ApplicationStartupStageOutcome =
 /** The diagnostic of a tab that cannot take the session lock: no Web Locks (an insecure context). */
 export const SESSION_LOCK_UNAVAILABLE_CODE = 'session-lock-unavailable';
 
-/** The secure-connection copy (owner decision 1), shared by the notice and System status. */
+/** The secure-connection copy, shared by the notice and System status. */
 export const SESSION_LOCK_UNAVAILABLE_COPY = {
   heading: 'Trinity needs a secure connection',
   body: 'Open Trinity over HTTPS to use it in this browser.',

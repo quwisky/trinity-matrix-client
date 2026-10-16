@@ -21,9 +21,9 @@ export function unsentDraftKey(message: PendingTextMessage): string {
 }
 
 /**
- * Owner decision 5 of #1267: text a handover could not get onto the homeserver goes back into
- * its composer draft, so the tab that takes over shows it ready to send again. The store holds
- * plain strings, so the plain body is kept; it is the composer's own markdown source.
+ * Text a handover could not get onto the homeserver goes back into its composer draft, so the
+ * tab that takes over shows it ready to send again. The store holds plain strings, so the plain
+ * body is kept; it is the composer's own markdown source.
  */
 @Injectable({ providedIn: 'root' })
 export class UnsentDraftsWriter {

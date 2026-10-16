@@ -33,4 +33,4 @@ export function optionalProducerDegraded(
   };
 }
 
-/** A producer whose scoped health replaces the legacy global warning surface. */
+/** A producer whose scoped health is its warning surface, in place of a global warning. */

@@ -14,7 +14,7 @@ export class PreferenceEffectHealthService {
   private readonly health = inject(CapabilityHealthService);
   private readonly context = Symbol('appearance-effect');
   private active: Subscription | null = null;
-  // Health-fact version: stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard (#927).
+  // Health-fact version: stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard.
   private generation = 0;
 
   run(): Observable<never> {

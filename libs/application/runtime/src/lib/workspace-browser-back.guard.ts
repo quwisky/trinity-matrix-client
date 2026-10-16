@@ -30,7 +30,7 @@ export function workspaceBrowserBackGuard(): boolean | Observable<boolean> {
   if (!dialog.hasOpen()) {
     const active = back.activeSurface();
     if (active !== null && routed.owns(active)) return true;
-    // A Conversation pushed over its list: this history step lands on that list (#1113).
+    // A Conversation pushed over its list: this history step lands on that list.
     if (active?.layer === 'conversation' && workspace.conversationOverList())
       return true;
   }

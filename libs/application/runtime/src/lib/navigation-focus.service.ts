@@ -20,8 +20,7 @@ interface FocusRecord {
  * Moves DOM focus into each entering routed page for keyboard and screen-reader users.
  *
  * A navigation the person did not make (Router `info` marked as a background navigation,
- * such as a Workspace repair) leaves focus where it is. If that left focus nowhere, because
- * the control holding it was removed, focus moves to the nearest landmark that remains.
+ * such as a Workspace repair) leaves focus where it is, unless the control holding focus was removed.
  */
 @Injectable({ providedIn: 'root' })
 export class NavigationFocusService {
@@ -97,7 +96,7 @@ export class NavigationFocusService {
    * Focus the entering page's feature-owned target, else its first heading or main,
    * else the page itself. A candidate inside a pane the current layout hides (the
    * compact Rooms list hides the conversation pane holding the shell's <h1>) cannot
-   * take focus, so keep the first candidate the browser actually focuses (#859).
+   * take focus, so keep the first candidate the browser actually focuses.
    */
   focusEnteringPage(): void {
     const page = this.document.querySelector<HTMLElement>(

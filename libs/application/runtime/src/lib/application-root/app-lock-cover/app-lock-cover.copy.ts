@@ -4,7 +4,7 @@ import type {
   HostSystemPresenceUnavailableReason,
 } from '@trinity/runtime/host';
 
-// The lock screen's words (spec §2). Copy that names the app takes the running app's name.
+// The lock screen's words. Copy that names the app takes the running app's name.
 
 /** The method's name in a sentence ("Face ID isn’t available."). */
 function methodName(biometry: HostPresenceBiometry): string {
@@ -69,11 +69,10 @@ export function useMethodLabel(biometry: HostPresenceBiometry): string {
 
 /**
  * Why the system prompt isn't offered, naming the method the cover last saw (`method`), with
- * no OS text. Null where the PIN is simply how this device unlocks, which needs no explaining:
- * no system prompt here, Windows 10, or a prompt not offered since the app started (`method`
- * null, as on a phone with no screen lock or a PC whose Windows Hello was never set up). The
- * cover remembers the method across locks until a restart, a crash reload, or the phone's OS
- * ending the app; a method that went away while the app was closed is not named.
+ * no OS text. Null where the PIN is simply how this device unlocks: no system prompt here,
+ * Windows 10, or none offered since the app started (`method` null). The cover remembers the
+ * method across locks until a restart, a crash reload, or the phone's OS ending the app; a
+ * method that went away while the app was closed is not named.
  */
 export function fallbackLine(
   reason: HostSystemPresenceUnavailableReason,
