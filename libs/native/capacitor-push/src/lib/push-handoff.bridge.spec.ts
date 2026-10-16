@@ -13,6 +13,8 @@ const plugin = vi.hoisted(() => ({
   registrationAvailable: vi.fn(),
   beginBackgroundWork: vi.fn(),
   endBackgroundWork: vi.fn(),
+  setNotificationText: vi.fn(),
+  clearDelivered: vi.fn(),
 }));
 // Recorded outside the mock: the registration happens once at import, and the runner clears
 // mock call history before each test.
@@ -218,6 +220,50 @@ describe('PushHandoffBridge', () => {
       id: 3,
       protectedDataAvailable: true,
       locking: false,
+    });
+  });
+
+  describe('notification text', () => {
+    it('mirrors the mode and clears delivered notifications on a native host', async () => {
+      isNative.mockReturnValue(true);
+      isAvailable.mockReturnValue(true);
+      const handoff = bridge();
+
+      await firstValueFrom(handoff.setNotificationText('always-hide'), {
+        defaultValue: undefined,
+      });
+      await firstValueFrom(handoff.clearDelivered(), {
+        defaultValue: undefined,
+      });
+
+      expect(plugin.setNotificationText).toHaveBeenCalledWith({
+        mode: 'always-hide',
+      });
+      expect(plugin.clearDelivered).toHaveBeenCalledOnce();
+    });
+
+    it('is inert off a native host', async () => {
+      const handoff = bridge();
+
+      await firstValueFrom(handoff.setNotificationText('show'), {
+        defaultValue: undefined,
+      });
+      await firstValueFrom(handoff.clearDelivered(), {
+        defaultValue: undefined,
+      });
+
+      expect(plugin.setNotificationText).not.toHaveBeenCalled();
+      expect(plugin.clearDelivered).not.toHaveBeenCalled();
+    });
+
+    it('reports a native refusal as an error', async () => {
+      isNative.mockReturnValue(true);
+      isAvailable.mockReturnValue(true);
+      plugin.setNotificationText.mockRejectedValue(new Error('refused'));
+
+      await expect(
+        firstValueFrom(bridge().setNotificationText('show')),
+      ).rejects.toThrow('refused');
     });
   });
 });

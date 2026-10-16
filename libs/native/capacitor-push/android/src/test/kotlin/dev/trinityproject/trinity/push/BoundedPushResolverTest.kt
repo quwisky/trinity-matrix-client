@@ -127,4 +127,31 @@ class BoundedPushResolverTest {
 
         assertEquals(RenderedNotification("Trinity", "", "New message"), outcome.notification)
     }
+
+    @Test
+    fun theFaultTolerantReaderAsksTheStoreForTheNotificationTextAndFailsClosed() {
+        val hiding = object : HandoffReader {
+            override fun account(userId: String): HandoffAccount? = null
+
+            override fun room(userId: String, roomId: String): HandoffRoom? = null
+
+            override fun notificationText() = NotificationTextMode.HIDE_ON_LOCK_SCREEN
+        }
+        val faulty = object : HandoffReader {
+            override fun account(userId: String): HandoffAccount? = null
+
+            override fun room(userId: String, roomId: String): HandoffRoom? = null
+
+            override fun notificationText(): String = throw java.security.ProviderException("keystore")
+        }
+
+        assertEquals(
+            NotificationTextMode.HIDE_ON_LOCK_SCREEN,
+            BoundedPushResolver.FaultTolerantReader(hiding).notificationText(),
+        )
+        assertEquals(
+            NotificationTextMode.ALWAYS_HIDE,
+            BoundedPushResolver.FaultTolerantReader(faulty).notificationText(),
+        )
+    }
 }

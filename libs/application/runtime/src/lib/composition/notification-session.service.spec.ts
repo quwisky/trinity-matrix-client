@@ -5,6 +5,7 @@ import { TrnToastService } from '@trinity/components/overlay';
 import {
   AppLockService,
   type AppLockStatus,
+  type NotificationText,
 } from '@trinity/data-access/app-lock';
 import {
   NativePushLifetime,
@@ -36,17 +37,23 @@ interface FocusedConversation {
   readonly key: { readonly accountId: string; readonly roomId: string };
 }
 
-/** App lock's state, with `whenUnlocked` following it as the real service's does. */
-function fakeAppLock(initial: AppLockStatus) {
+/**
+ * App lock's state, with `whenUnlocked` following it as the real service's does, and its
+ * effective Notification text.
+ */
+function fakeAppLock(initial: AppLockStatus, text: NotificationText = 'show') {
   const status = signal(initial);
   const changes = new BehaviorSubject(initial);
+  const mode = signal<NotificationText>(text);
   return {
+    mode,
     set(next: AppLockStatus): void {
       status.set(next);
       changes.next(next);
     },
     provider: MockProvider(AppLockService, {
       status: status.asReadonly() as never,
+      effectiveNotificationText: mode.asReadonly() as never,
       whenUnlocked: () =>
         changes.pipe(
           filter((next) => next === 'off' || next === 'unlocked'),
@@ -65,7 +72,19 @@ describe('NotificationSessionService', () => {
 
   type LifecycleEvent = { readonly kind: 'active' | 'background' };
 
-  function setup() {
+  function setup(
+    options: {
+      status?: AppLockStatus;
+      text?: NotificationText;
+      writeNotificationText?: (mode: NotificationText) => Observable<void>;
+    } = {},
+  ) {
+    const appLock = fakeAppLock(options.status ?? 'off', options.text);
+    const writeNotificationText = vi.fn(
+      options.writeNotificationText ??
+        ((_mode: NotificationText): Observable<void> => of(void 0)),
+    );
+    const clearDelivered = vi.fn((): Observable<void> => of(void 0));
     const focused = signal<FocusedConversation | null>(null);
     const lifecycle = new Subject<LifecycleEvent>();
     const clearRoom = vi.fn(
@@ -81,6 +100,8 @@ describe('NotificationSessionService', () => {
           run: () => EMPTY,
           clearRoom,
           refreshBeforeBackground,
+          writeNotificationText,
+          clearDelivered,
         }),
         MockProvider(ConversationRuntime, {
           focused: focused.asReadonly() as never,
@@ -91,7 +112,7 @@ describe('NotificationSessionService', () => {
         MockProvider(WorkspaceNavigationService),
         MockProvider(CapabilityHealthService),
         MockProvider(TrnToastService),
-        fakeAppLock('off').provider,
+        appLock.provider,
       ],
     });
     const open = (accountId: string, roomId: string): void => {
@@ -109,8 +130,94 @@ describe('NotificationSessionService', () => {
       refreshBeforeBackground,
       open,
       lifetime,
+      appLock,
+      writeNotificationText,
+      clearDelivered,
     };
   }
+
+  describe('the notification text mirror', () => {
+    it('mirrors the notification text and clears notifications only when it gets more private', () => {
+      const { appLock, writeNotificationText, clearDelivered, lifetime } =
+        setup({ text: 'show' });
+      expect(writeNotificationText).toHaveBeenCalledOnce();
+      expect(writeNotificationText).toHaveBeenLastCalledWith('show');
+      expect(clearDelivered).not.toHaveBeenCalled();
+
+      appLock.mode.set('hide-on-lock-screen');
+      TestBed.tick();
+      expect(writeNotificationText).toHaveBeenLastCalledWith(
+        'hide-on-lock-screen',
+      );
+      expect(clearDelivered).toHaveBeenCalledOnce();
+
+      appLock.mode.set('always-hide');
+      TestBed.tick();
+      expect(writeNotificationText).toHaveBeenLastCalledWith('always-hide');
+      expect(clearDelivered).toHaveBeenCalledTimes(2);
+      expect(writeNotificationText.mock.invocationCallOrder[2]).toBeLessThan(
+        clearDelivered.mock.invocationCallOrder[1],
+      );
+
+      appLock.mode.set('show');
+      TestBed.tick();
+      expect(writeNotificationText).toHaveBeenLastCalledWith('show');
+      expect(clearDelivered).toHaveBeenCalledTimes(2);
+      lifetime.unsubscribe();
+    });
+
+    it('writes nothing until App lock has loaded, then the loaded mode', () => {
+      const { appLock, writeNotificationText, lifetime } = setup({
+        status: 'unknown',
+        text: 'always-hide',
+      });
+      expect(writeNotificationText).not.toHaveBeenCalled();
+
+      appLock.mode.set('hide-on-lock-screen');
+      appLock.set('locked');
+      TestBed.tick();
+      expect(writeNotificationText).toHaveBeenCalledOnce();
+      expect(writeNotificationText).toHaveBeenLastCalledWith(
+        'hide-on-lock-screen',
+      );
+      lifetime.unsubscribe();
+    });
+
+    it('writes nothing again for the same mode, and nothing after the session ends', () => {
+      const { appLock, writeNotificationText, lifetime } = setup();
+      appLock.set('locked');
+      TestBed.tick();
+      appLock.set('unlocked');
+      TestBed.tick();
+      expect(writeNotificationText).toHaveBeenCalledOnce();
+
+      lifetime.unsubscribe();
+      appLock.mode.set('always-hide');
+      TestBed.tick();
+      expect(writeNotificationText).toHaveBeenCalledOnce();
+    });
+
+    it('still clears delivered notifications, and keeps mirroring, after a write fails', () => {
+      let fail = false;
+      const { appLock, writeNotificationText, clearDelivered, lifetime } =
+        setup({
+          writeNotificationText: () =>
+            fail ? throwError(() => new Error('refused')) : of(void 0),
+        });
+      fail = true;
+      appLock.mode.set('always-hide');
+      TestBed.tick();
+      expect(writeNotificationText).toHaveBeenLastCalledWith('always-hide');
+      expect(clearDelivered).toHaveBeenCalledOnce();
+
+      fail = false;
+      appLock.mode.set('show');
+      TestBed.tick();
+      expect(writeNotificationText).toHaveBeenLastCalledWith('show');
+      expect(writeNotificationText).toHaveBeenCalledTimes(3);
+      lifetime.unsubscribe();
+    });
+  });
 
   it("clears a room's delivered notifications once each time it becomes the active room", () => {
     const { focused, clearRoom, open, lifetime } = setup();
@@ -239,6 +346,8 @@ describe('NotificationSessionService', () => {
             run: () => EMPTY,
             clearRoom,
             refreshBeforeBackground: () => of(void 0),
+            writeNotificationText: () => of(void 0),
+            clearDelivered: () => of(void 0),
           }),
           MockProvider(ConversationRuntime, {
             focused: focused.asReadonly() as never,

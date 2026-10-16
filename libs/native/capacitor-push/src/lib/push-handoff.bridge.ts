@@ -5,6 +5,7 @@ import {
   PUSH_HANDOFF_PLUGIN_NAME,
   type BackgroundWork,
   type PushHandoffAccount,
+  type PushHandoffNotificationText,
   type PushHandoffPlugin,
   type PushHandoffRoom,
 } from './definitions';
@@ -99,6 +100,16 @@ export class PushHandoffBridge {
   /** Cold. Ends what {@link beginBackgroundWork} began; an unknown or ended id is a no-op. */
   endBackgroundWork(id: number): Observable<void> {
     return this.call(() => pushHandoff.endBackgroundWork({ id }));
+  }
+
+  /** Cold. Writes the Notification text mirror the renderers read; inert off native. */
+  setNotificationText(mode: PushHandoffNotificationText): Observable<void> {
+    return this.call(() => pushHandoff.setNotificationText({ mode }));
+  }
+
+  /** Cold. Removes every delivered Trinity notification; inert off native. */
+  clearDelivered(): Observable<void> {
+    return this.call(() => pushHandoff.clearDelivered());
   }
 
   private call(command: () => Promise<void>): Observable<void> {

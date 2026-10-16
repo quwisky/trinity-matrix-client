@@ -32,6 +32,8 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
             CAPPluginMethod(name: "registrationAvailable", returnType: CAPPluginReturnPromise),
             CAPPluginMethod(name: "beginBackgroundWork", returnType: CAPPluginReturnPromise),
             CAPPluginMethod(name: "endBackgroundWork", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "setNotificationText", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "clearDelivered", returnType: CAPPluginReturnPromise),
         ]
         #if DEBUG
         methods.append(CAPPluginMethod(name: "renderProbe", returnType: CAPPluginReturnPromise))
@@ -163,6 +165,31 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
         } catch {
             call.reject("Could not clear the push handoff")
         }
+    }
+
+    /// App lock's effective Notification text, for the NotificationService extension.
+    @objc func setNotificationText(_ call: CAPPluginCall) {
+        guard let raw = call.getString("mode"), let mode = NotificationTextMode(rawValue: raw) else {
+            call.reject("Must provide a known mode")
+            return
+        }
+        guard let store else {
+            call.reject("Push handoff storage is unavailable")
+            return
+        }
+        do {
+            try store.setNotificationText(mode)
+            call.resolve()
+        } catch {
+            call.reject("Could not store the notification text")
+        }
+    }
+
+    /// The text became more private: take down every notification Trinity delivered, pushes
+    /// and the running app's own alike, so no earlier text stays in Notification Center.
+    @objc func clearDelivered(_ call: CAPPluginCall) {
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        call.resolve()
     }
 
     /// The room was opened: remove that account's delivered notifications for it.

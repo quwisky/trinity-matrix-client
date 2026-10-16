@@ -105,6 +105,31 @@ public class PushHandoffPlugin extends Plugin {
         }
     }
 
+    /** App lock's effective Notification text, for TrinityMessagingService; refuses an unknown mode. */
+    @PluginMethod
+    public void setNotificationText(PluginCall call) {
+        String mode = call.getString("mode");
+        if (mode == null || !store.setNotificationText(mode)) {
+            call.reject("Could not store the notification text");
+            return;
+        }
+        call.resolve();
+    }
+
+    /**
+     * The text became more private: cancel every notification Trinity posted, the pushes
+     * TrinityMessagingService rendered and the running app's own alike. Best effort.
+     */
+    @PluginMethod
+    public void clearDelivered(PluginCall call) {
+        try {
+            NotificationManagerCompat.from(getContext()).cancelAll();
+        } catch (RuntimeException error) {
+            // Leaving a notification behind must not fail the change that asked.
+        }
+        call.resolve();
+    }
+
     /** The room was opened: drop the notification TrinityMessagingService posted for it. */
     @PluginMethod
     public void clearRoom(PluginCall call) {

@@ -20,6 +20,53 @@ final class PushHandoffStoreTests: XCTestCase {
     }
 
     private var roomsFile: URL { container.appendingPathComponent("push-handoff/rooms.json") }
+    private var settingsFile: URL { container.appendingPathComponent("push-handoff/settings.json") }
+
+    func testNotificationTextIsShowUntilTheAppWritesIt() throws {
+        XCTAssertEqual(store.notificationText(), .show)
+        try store.setNotificationText(.alwaysHide)
+        XCTAssertEqual(store.notificationText(), .alwaysHide)
+        try store.setNotificationText(.hideOnLockScreen)
+        XCTAssertEqual(store.notificationText(), .hideOnLockScreen)
+        try store.setNotificationText(.show)
+        XCTAssertEqual(store.notificationText(), .show)
+    }
+
+    func testAnUnreadableNotificationTextHidesEverything() throws {
+        try FileManager.default.createDirectory(
+            at: settingsFile.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("{ not json".utf8).write(to: settingsFile)
+        XCTAssertEqual(store.notificationText(), .alwaysHide)
+        try Data(#"{"notificationText":"sideways"}"#.utf8).write(to: settingsFile)
+        XCTAssertEqual(store.notificationText(), .alwaysHide)
+        try Data("{}".utf8).write(to: settingsFile)
+        XCTAssertEqual(store.notificationText(), .alwaysHide)
+    }
+
+    func testTheNotificationTextIsWrittenBesideTheRooms() throws {
+        try store.mergeRooms(["!a:hs": HandoffRoom(name: "A", direct: false)], for: "@u:hs")
+        try store.setNotificationText(.hideOnLockScreen)
+        let stored = try JSONSerialization.jsonObject(with: Data(contentsOf: settingsFile)) as? [String: String]
+        XCTAssertEqual(stored, ["notificationText": "hide-on-lock-screen"])
+        XCTAssertEqual(store.room("@u:hs", "!a:hs"), HandoffRoom(name: "A", direct: false))
+    }
+
+    func testClearRemovesTheNotificationText() throws {
+        try store.setNotificationText(.alwaysHide)
+        try? store.clear()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: settingsFile.path))
+        XCTAssertEqual(store.notificationText(), .show)
+    }
+
+    func testAReaderThatPredatesTheMirrorShowsText() {
+        struct OldReader: HandoffReading {
+            func account(_ userId: String) -> HandoffAccount? { nil }
+            func room(_ userId: String, _ roomId: String) -> HandoffRoom? { nil }
+        }
+        XCTAssertEqual(OldReader().notificationText(), .show)
+    }
 
     func testMergesRoomsPerAccountAndKeepsTheOnesNotListed() throws {
         try store.mergeRooms(["!a:hs": HandoffRoom(name: "A", direct: false), "!b:hs": HandoffRoom(name: "B", direct: true)], for: "@u:hs")

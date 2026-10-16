@@ -36,6 +36,7 @@ import {
 import {
   AppLockService,
   type AppLockStatus,
+  type NotificationText,
 } from '@trinity/data-access/app-lock';
 import {
   IdentityLifetime,
@@ -193,6 +194,8 @@ function setup(
       MockProvider(PushHandoffService, {
         run: () => EMPTY,
         clearRoom: () => of(void 0),
+        writeNotificationText: () => of(void 0),
+        clearDelivered: () => of(void 0),
       }),
       MockProvider(ConversationRuntime, {
         focused: signal(null).asReadonly() as never,
@@ -273,6 +276,9 @@ function setup(
       MockProvider(AppLockService, {
         status: appLockStatus.asReadonly(),
         whenUnlocked: () => of(undefined),
+        // Read by the notification session's push mirror.
+        effectiveNotificationText:
+          signal<NotificationText>('show').asReadonly(),
       }),
     ],
   });

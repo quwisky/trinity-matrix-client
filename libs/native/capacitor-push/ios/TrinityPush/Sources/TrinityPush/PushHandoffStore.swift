@@ -39,10 +39,30 @@ public struct HandoffAccount: Codable, Equatable {
     }
 }
 
+/// App lock's Notification text as the app mirrored it (spec §5): the effective mode, written
+/// on every change. Missing reads as `show` (nothing written yet, or cleared by the full
+/// reset); anything unreadable reads as `alwaysHide`, so a damaged file never reveals text.
+public enum NotificationTextMode: String, Codable, Equatable {
+    case show
+    case hideOnLockScreen = "hide-on-lock-screen"
+    case alwaysHide = "always-hide"
+}
+
+private struct HandoffSettings: Codable {
+    let notificationText: NotificationTextMode
+}
+
 /// Read side of the push handoff store.
 public protocol HandoffReading {
     func account(_ userId: String) -> HandoffAccount?
     func room(_ userId: String, _ roomId: String) -> HandoffRoom?
+    /// What a rendered push may show; see ``NotificationTextMode``.
+    func notificationText() -> NotificationTextMode
+}
+
+public extension HandoffReading {
+    /// A reader with no mirror has nothing written: `show`, as a missing mirror reads.
+    func notificationText() -> NotificationTextMode { .show }
 }
 
 public enum PushHandoffStoreError: Error {
@@ -55,20 +75,23 @@ public enum PushHandoffStoreError: Error {
 /// after its first unlock, and an encrypted backup restored onto another phone does not bring
 /// the tokens along (the policy the app's own secrets follow). `SecItemUpdate` sets the class
 /// too, so an item written with an older class moves over at the next write; the app writes
-/// every account when it starts. Room names live in the app-group file `push-handoff/rooms.json`.
-/// Reads never throw: a keychain or file error reads as "no account" or "no room".
+/// every account when it starts. Room names live in the app-group file `push-handoff/rooms.json`,
+/// and App lock's Notification text in `push-handoff/settings.json` beside it.
+/// Reads never throw: a keychain or file error reads as "no account" or "no room", and an
+/// unreadable Notification text as `alwaysHide`.
 /// Never logs what it stores.
 public final class PushHandoffStore: HandoffReading {
     static let service = "dev.trinityproject.trinity.push-handoff"
     private let keychainGroup: String
     private let roomsURL: URL
+    private let settingsURL: URL
     private let queue = DispatchQueue(label: "dev.trinityproject.trinity.push-handoff")
 
     public init(keychainGroup: String, containerURL: URL) {
         self.keychainGroup = keychainGroup
-        roomsURL = containerURL
-            .appendingPathComponent("push-handoff", isDirectory: true)
-            .appendingPathComponent("rooms.json")
+        let directory = containerURL.appendingPathComponent("push-handoff", isDirectory: true)
+        roomsURL = directory.appendingPathComponent("rooms.json")
+        settingsURL = directory.appendingPathComponent("settings.json")
     }
 
     /// The store named by the bundle's `TrinityKeychainGroup` and `TrinityAppGroup` keys.
@@ -125,12 +148,28 @@ public final class PushHandoffStore: HandoffReading {
     public func clear() throws {
         try queue.sync {
             let status = SecItemDelete(baseQuery(nil) as CFDictionary)
-            if FileManager.default.fileExists(atPath: roomsURL.path) {
-                try FileManager.default.removeItem(at: roomsURL)
+            for url in [roomsURL, settingsURL] where FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
             }
             guard status == errSecSuccess || status == errSecItemNotFound else {
                 throw PushHandoffStoreError.keychain(status)
             }
+        }
+    }
+
+    public func setNotificationText(_ mode: NotificationTextMode) throws {
+        try queue.sync {
+            try write(JSONEncoder().encode(HandoffSettings(notificationText: mode)), to: settingsURL)
+        }
+    }
+
+    public func notificationText() -> NotificationTextMode {
+        queue.sync {
+            guard FileManager.default.fileExists(atPath: settingsURL.path) else { return .show }
+            guard let data = try? Data(contentsOf: settingsURL),
+                  let settings = try? JSONDecoder().decode(HandoffSettings.self, from: data)
+            else { return .alwaysHide }
+            return settings.notificationText
         }
     }
 
@@ -167,14 +206,18 @@ public final class PushHandoffStore: HandoffReading {
     }
 
     private func writeRooms(_ rooms: [String: [String: HandoffRoom]]) throws {
+        try write(JSONEncoder().encode(rooms), to: roomsURL)
+    }
+
+    private func write(_ data: Data, to url: URL) throws {
         try FileManager.default.createDirectory(
-            at: roomsURL.deletingLastPathComponent(),
+            at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         var options: Data.WritingOptions = [.atomic]
         #if os(iOS)
         options.insert(.completeFileProtectionUntilFirstUserAuthentication)
         #endif
-        try JSONEncoder().encode(rooms).write(to: roomsURL, options: options)
+        try data.write(to: url, options: options)
     }
 }

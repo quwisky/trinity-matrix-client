@@ -10,6 +10,7 @@ import {
   type NotificationDestination,
   type NotificationIncident,
   type NotificationRuntimeEvent,
+  type NotificationTextMode,
 } from '@trinity/data-access/notifications';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { HostLifecycleService } from '@trinity/runtime/host';
@@ -31,11 +32,19 @@ import {
   map,
   merge,
   mergeMap,
+  of,
   switchMap,
   timer,
 } from 'rxjs';
 import { CapabilityHealthService } from '../capability-health.service';
 import { appLockCovers } from './app-lock.providers';
+
+/** How much each Notification text hides; a rise clears delivered notifications. */
+const TEXT_PRIVACY: Readonly<Record<NotificationTextMode, number>> = {
+  show: 0,
+  'hide-on-lock-screen': 1,
+  'always-hide': 2,
+};
 
 /** Owns notification delivery/activation health and contextual navigation incidents. */
 @Injectable({ providedIn: 'root' })
@@ -67,7 +76,50 @@ export class NotificationSessionService {
       this.refreshTokensOnBackground(),
       this.clearOpenedRooms(),
       this.clearResumedRoom(),
+      this.mirrorNotificationText(),
     );
+  }
+
+  /**
+   * Keep the push renderers' copy of App lock's effective Notification text current (spec
+   * §5): once App lock has loaded, then on every change; nothing while its state is unknown.
+   * A change to something more private writes the mirror first, then clears what was already
+   * delivered, even if the write failed. Best effort; inert off native mobile.
+   */
+  private mirrorNotificationText(): Observable<never> {
+    return new Observable<never>(() => {
+      let previous: NotificationTextMode | null = null;
+      const writes = new Subscription();
+      const watch = effect(
+        () => {
+          if (this.appLock.status() === 'unknown') return;
+          const mode = this.appLock.effectiveNotificationText();
+          untracked(() => {
+            if (mode === previous) return;
+            const morePrivate =
+              previous !== null && TEXT_PRIVACY[mode] > TEXT_PRIVACY[previous];
+            previous = mode;
+            writes.add(
+              this.handoff
+                .writeNotificationText(mode)
+                .pipe(
+                  catchError(() => of(void 0)),
+                  switchMap(() =>
+                    morePrivate ? this.handoff.clearDelivered() : EMPTY,
+                  ),
+                  catchError(() => EMPTY),
+                )
+                .subscribe(),
+            );
+          });
+        },
+        { injector: this.injector },
+      );
+      return () => {
+        watch.destroy();
+        writes.unsubscribe();
+      };
+    });
   }
 
   /**
