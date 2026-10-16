@@ -74,6 +74,7 @@ const ESTIMATED_ROW_PX = 52;
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: 'sidebar-room-list.component.html',
   styleUrls: ['sidebar-room-list.component.scss'],
+  host: { '[attr.aria-busy]': 'loading() ? "true" : null' },
   imports: [
     TrnIconButton,
     TrnTooltip,

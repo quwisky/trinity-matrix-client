@@ -63,6 +63,16 @@
   >
     {{ filterActive() ? filterStatus() : '' }}
   </p>
+  <!-- Says once that a selected space's rooms are loading: the region stays, and its text
+       changes only when loading starts or ends, so re-rendering the list repeats nothing. -->
+  <p
+    class="sr-only"
+    role="status"
+    aria-live="polite"
+    data-testid="sidebar-loading-status"
+  >
+    {{ spaceLoading() ? 'Loading rooms…' : '' }}
+  </p>
 
   <div class="sidebar__scroll" #roomScroller>
     <trn-sidebar-room-list
