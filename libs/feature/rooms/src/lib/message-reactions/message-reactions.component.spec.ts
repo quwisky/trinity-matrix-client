@@ -51,10 +51,11 @@ describe('MessageReactionsComponent', () => {
       ...container.querySelectorAll('.reaction:not(.reaction--who)'),
     ].map((pill) => pill.getAttribute('aria-label'));
 
-    expect(labels[0]).toBe('👍 reacted by You, Alice, Bob and 4 others');
-    expect(labels[1]).toBe('🎉 reacted by Alice and Bob');
+    // Each name starts with what the pill shows, its key and count (label in name).
+    expect(labels[0]).toBe('👍 7, reacted by You, Alice, Bob and 4 others');
+    expect(labels[1]).toBe('🎉 2, reacted by Alice and Bob');
     // A lone extra reactor is "1 other", not "1 others".
-    expect(labels[2]).toBe('😮 reacted by Alice and 1 other');
+    expect(labels[2]).toBe('😮 2, reacted by Alice and 1 other');
   });
 
   it('asks for the whole list from the trailing chip', async () => {

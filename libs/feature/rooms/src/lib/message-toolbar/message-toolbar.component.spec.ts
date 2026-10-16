@@ -172,6 +172,14 @@ describe('MessageToolbarComponent', () => {
       '.toolbar__emoji:not(.toolbar__emoji--more)',
     );
     expect(emojis.length).toBe(cmp.quickEmojis.length);
+    // Named from content (WCAG 2.5.3 label in name): no aria-label replaces the visible
+    // emoji, and a hidden prefix says what the button does.
+    emojis.forEach((button, index) => {
+      expect(button.hasAttribute('aria-label')).toBe(false);
+      expect(button.textContent?.replace(/\s+/gu, ' ').trim()).toBe(
+        `React with ${cmp.quickEmojis[index]}`,
+      );
+    });
     emojis[0].click();
 
     expect(action).toEqual({ type: 'react', key: cmp.quickEmojis[0] });

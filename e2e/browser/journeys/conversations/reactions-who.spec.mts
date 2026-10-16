@@ -240,12 +240,13 @@ test.describe('Who reacted', () => {
       row.first().locator('.reaction:not(.reaction--who)'),
     ).toHaveCount(seeded.reactionGroupCount, { timeout: 30_000 });
 
-    // The pill names who is behind the count — the local user first, as "You".
+    // The pill's name starts with its key and count, then who is behind the count — the
+    // local user first, as "You".
     // Loose on the second name: it is whatever the homeserver resolved (display name,
     // a disambiguated one, or the raw mxid) — all of which contain the localpart.
     await expect(thumbsUp).toHaveAttribute(
       'aria-label',
-      /^👍 reacted by You, .* and \d+ others$/,
+      /^👍 \d+, reacted by You, .* and \d+ others$/,
       { timeout: 20_000 },
     );
     // Hover and assert as ONE retried unit, not two statements.

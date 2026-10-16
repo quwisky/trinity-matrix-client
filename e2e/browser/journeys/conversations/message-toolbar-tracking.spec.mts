@@ -120,9 +120,13 @@ test.describe('Message toolbar tracking', () => {
 
     await expect(picker).toBeVisible();
     const emoji = picker.getByRole('button').first();
-    const label = (await emoji.getAttribute('aria-label')) as string;
+    // Named from content, "React with 👍": the emoji itself is the visible text.
+    const key = ((await emoji.textContent()) ?? '')
+      .replace('React with', '')
+      .trim();
+    expect(key).not.toBe('');
     await emoji.click();
-    await expect(row.locator('.reaction', { hasText: label })).toBeVisible({
+    await expect(row.locator('.reaction', { hasText: key })).toBeVisible({
       timeout: 20_000,
     });
   });

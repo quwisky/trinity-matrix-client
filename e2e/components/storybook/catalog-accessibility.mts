@@ -39,6 +39,11 @@ function composite(foreground: Srgb, background: Srgb, opacity: number): Srgb {
   };
 }
 
+/** A rule result inside the page, where `elementRef` adds each node's element. */
+interface AxeBrowserRuleResult extends Omit<AxeRuleResult, 'nodes'> {
+  readonly nodes: readonly (AxeNodeResult & { readonly element?: Element })[];
+}
+
 interface AxeBrowserApi {
   configure(config: {
     readonly rules: readonly {
@@ -46,13 +51,40 @@ interface AxeBrowserApi {
       readonly id: string;
     }[];
   }): void;
-  run(context: Element | AxeContext): Promise<AxeScan>;
+  run(
+    context: Element | AxeContext,
+    options: { readonly elementRef: boolean },
+  ): Promise<{
+    readonly incomplete: readonly AxeBrowserRuleResult[];
+    readonly violations: readonly AxeBrowserRuleResult[];
+  }>;
 }
 
 interface AxeContext {
   readonly exclude: readonly (readonly string[])[];
   readonly include: readonly (readonly string[])[];
 }
+
+/** One Axe rule waived for one third-party element that Trinity renders but cannot change. */
+interface AxeRuleWaiver {
+  readonly rule: string;
+  readonly selector: string;
+}
+
+/**
+ * Third-party DOM waivers. Each one drops a single rule's results for exactly the matched
+ * elements; every other rule still scans them, and Trinity's own elements are never waived.
+ */
+const THIRD_PARTY_RULE_WAIVERS: readonly AxeRuleWaiver[] = [
+  {
+    // @ctrl/ngx-emoji-mart names each native emoji button "<glyph>, <short names>"
+    // (aria-label="👍, +1, thumbsup") around the glyph alone. The glyph is part of the
+    // name, but Axe cannot judge an emoji-only visible label and reports every button as
+    // needing review. The library has no way to name its buttons differently.
+    rule: 'label-content-name-mismatch',
+    selector: 'button.emoji-mart-emoji',
+  },
+];
 
 export async function runAxe(
   page: Page,
@@ -65,16 +97,44 @@ export async function runAxe(
     `${axe.source}; window.axe`,
   );
   try {
-    return await browserAxe.evaluate(async (instance, selectors) => {
-      // Story canvases are fragments, so an application-level landmark is not required.
-      instance.configure({ rules: [{ id: 'region', enabled: false }] });
-      return selectors.length === 0
-        ? instance.run(document.body)
-        : instance.run({
-            include: [['body']],
-            exclude: selectors.map((selector) => [selector]),
-          });
-    }, excludedSelectors);
+    return await browserAxe.evaluate(
+      async (instance, { selectors, waivers }) => {
+        // Story canvases are fragments, so an application-level landmark is not required.
+        instance.configure({ rules: [{ id: 'region', enabled: false }] });
+        const context =
+          selectors.length === 0
+            ? document.body
+            : {
+                include: [['body']],
+                exclude: selectors.map((selector) => [selector]),
+              };
+        const scan = await instance.run(context, { elementRef: true });
+        // Drop waived nodes, then the element references, which cannot leave the page.
+        const kept = (results: readonly AxeBrowserRuleResult[]) =>
+          results
+            .map((result) => ({
+              help: result.help,
+              helpUrl: result.helpUrl,
+              id: result.id,
+              nodes: result.nodes
+                .filter(
+                  ({ element }) =>
+                    !waivers.some(
+                      (waiver) =>
+                        waiver.rule === result.id &&
+                        element?.matches(waiver.selector),
+                    ),
+                )
+                .map(({ html, target }) => ({ html, target })),
+            }))
+            .filter((result) => result.nodes.length > 0);
+        return {
+          incomplete: kept(scan.incomplete),
+          violations: kept(scan.violations),
+        };
+      },
+      { selectors: excludedSelectors, waivers: THIRD_PARTY_RULE_WAIVERS },
+    );
   } finally {
     await browserAxe.dispose();
   }

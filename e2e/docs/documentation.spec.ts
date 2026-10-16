@@ -14,14 +14,53 @@ interface AxeViolation {
   readonly nodes: readonly AxeNodeResult[];
 }
 
+/** A violation inside the page, where `elementRef` adds each node's element. */
+interface AxeBrowserViolation extends Omit<AxeViolation, 'nodes'> {
+  readonly nodes: readonly (AxeNodeResult & { readonly element?: Element })[];
+}
+
+/**
+ * Third-party DOM waivers: each drops one rule's results for exactly the matched elements;
+ * every other rule still scans them.
+ */
+const THIRD_PARTY_RULE_WAIVERS = [
+  {
+    // Starlight's search button (dist/components/Search.astro) is named "Search" and shows a
+    // "Ctrl K" (⌘K on Apple) key hint beside that word, which it exposes through
+    // aria-keyshortcuts instead. Axe counts the hint as part of the visible label. The button
+    // is Starlight's own markup; a component override cannot change it without forking it.
+    rule: 'label-content-name-mismatch',
+    selector: 'site-search > button[data-open-modal]',
+  },
+] as const;
+
 const axeViolations = async (page: Page): Promise<readonly AxeViolation[]> =>
-  page.evaluate(async (source) => {
-    const script = document.createElement('script');
-    script.textContent = source;
-    document.head.append(script);
-    const result = await window.axe.run(document);
-    return result.violations;
-  }, axe.source);
+  page.evaluate(
+    async ({ source, waivers }) => {
+      const script = document.createElement('script');
+      script.textContent = source;
+      document.head.append(script);
+      const result = await window.axe.run(document, { elementRef: true });
+      // Drop waived nodes, then the element references, which cannot leave the page.
+      return result.violations
+        .map((violation) => ({
+          help: violation.help,
+          id: violation.id,
+          nodes: violation.nodes
+            .filter(
+              ({ element }) =>
+                !waivers.some(
+                  (waiver) =>
+                    waiver.rule === violation.id &&
+                    element?.matches(waiver.selector),
+                ),
+            )
+            .map(({ html, target }) => ({ html, target })),
+        }))
+        .filter((violation) => violation.nodes.length > 0);
+    },
+    { source: axe.source, waivers: THIRD_PARTY_RULE_WAIVERS },
+  );
 
 const formatViolations = (violations: readonly AxeViolation[]): string[] =>
   violations.flatMap((violation) =>
@@ -205,7 +244,10 @@ test('has no automated accessibility violations in shared layouts', async ({
 declare global {
   interface Window {
     axe: {
-      run(context: Document): Promise<{ violations: AxeViolation[] }>;
+      run(
+        context: Document,
+        options: { elementRef: boolean },
+      ): Promise<{ violations: AxeBrowserViolation[] }>;
     };
   }
 }
