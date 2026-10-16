@@ -174,10 +174,9 @@ interface AccountClient {
   readonly client: MatrixClient;
   /**
    * This account's Rust crypto-store `cryptoDatabasePrefix` (undefined for a migrated
-   * legacy account on the SDK default). Retained so a logout wipe can delete THIS
-   * account's crypto IndexedDB rather than the default-prefix one — otherwise the
-   * account's real store is orphaned and a later fresh login (new device id, same
-   * userId-derived prefix) reopens a store whose device id mismatches the new one.
+   * legacy account on the SDK default). Retained so a logout wipe deletes THIS account's
+   * crypto IndexedDB: otherwise the real store is orphaned and a later fresh login (new
+   * device id, same userId-derived prefix) reopens a store with a mismatched device id.
    */
   readonly cryptoPrefix: string | undefined;
   /** Whether its crypto store is keyed (false for a store created before store keys). */
@@ -215,16 +214,14 @@ export interface AccessTokenRotation {
 }
 
 /**
- * Owns the live matrix-js-sdk clients and their lifecycle. Holds a registry of
- * accounts (`Map<userId, AccountClient>`), all of which sync, with one marked
- * **active**. {@link instance} returns the active account's client, so the ~78
- * `this.matrix.instance` readers stay scoped to whichever account is in view.
+ * Owns the live matrix-js-sdk clients and their lifecycle: a registry of accounts, all
+ * syncing, with one **active**. {@link instance} returns the active account's client.
  *
  * Lifecycle per account (see apps/docs-developers/src/content/docs/architecture/matrix-integration.md):
  *   createClient -> initRustCrypto({ cryptoDatabasePrefix, storageKey }) -> startClient()
  *
- * Components must NOT import matrix-js-sdk directly — go through this service and
- * the feature services (auth, sync, timeline) layered on top.
+ * Components must NOT import matrix-js-sdk directly; go through this service and the
+ * feature services layered on top.
  */
 @Injectable({ providedIn: 'root' })
 export class MatrixClientService {
@@ -237,10 +234,9 @@ export class MatrixClientService {
 
   /**
    * Tell the Electron main process which origins we legitimately talk to, so its CORS
-   * shim can be scoped to them instead of rewriting every remote https response (see
-   * electron/src/cors.ts). Main cannot know this: the user picks homeservers at login,
-   * and there may be several. Called wherever the live account set changes; a no-op off
-   * desktop, where the bridge is absent.
+   * shim (electron/src/cors.ts) is scoped to them instead of rewriting every remote https
+   * response. Main cannot know them: the user picks homeservers at login. Called wherever
+   * the live account set changes; a no-op off desktop.
    */
   private publishCorsOrigins(): void {
     const origins = [...this.clients.values()].map((a) => a.client.baseUrl);
@@ -248,13 +244,13 @@ export class MatrixClientService {
   }
 
   /**
-   * Declare ONE origin to the same shim, additively. Needed before an account's client
-   * exists, where {@link publishCorsOrigins} — which reads the live client set — cannot
-   * name it yet: `startClient()` issues `/_matrix/client/versions`, the thread-support
-   * probe and the first `/sync` before it resolves, so publishing only afterwards leaves
-   * all three to be blocked against a homeserver whose proxy strips CORS headers (a failed
-   * `getVersions()` disables server-side threads for the whole session). The post-start
-   * {@link publishCorsOrigins} still replaces the set, so removals keep applying.
+   * Declare ONE origin to the same shim, additively, before the account's client exists
+   * and {@link publishCorsOrigins} can name it: `startClient()` issues
+   * `/_matrix/client/versions`, the thread-support probe and the first `/sync` before it
+   * resolves, so publishing only afterwards leaves all three blocked against a homeserver
+   * whose proxy strips CORS headers (a failed `getVersions()` disables server-side threads
+   * for the whole session). The post-start {@link publishCorsOrigins} still replaces the
+   * set, so removals keep applying.
    */
   private allowCorsOrigin(origin: string): void {
     this.hostNetworkPolicy.allowOrigin(origin);
@@ -286,14 +282,13 @@ export class MatrixClientService {
 
   /**
    * The access token Trinity last saw each OAuth account's client start with or persist,
-   * with its expiry (epoch ms) when the server gave one, and whether the sign-in came with
-   * a refresh token. Set from the session when the client is built, and moved to each
-   * refreshed pair once storage accepted it and before the rotation is published. Read
-   * through {@link accessTokenExpiry}.
+   * with its expiry (epoch ms) when the server gave one, and whether the sign-in has a
+   * refresh token. Moved to each refreshed pair once storage accepted it, before the
+   * rotation is published. Read through {@link accessTokenExpiry}.
    *
-   * `client` is the start the entry belongs to. Only that client's refreshes move it, and
-   * only that client's teardown drops it: a refresh from a client that was replaced or torn
-   * down, or a teardown racing another start for the account, leaves it alone.
+   * `client` is the start the entry belongs to. Only that client's refreshes move it and
+   * only its teardown drops it: a refresh from a replaced or torn-down client, or a
+   * teardown racing another start for the account, leaves it alone.
    */
   private readonly oauthTokens = new Map<
     string,
@@ -306,16 +301,16 @@ export class MatrixClientService {
   >();
 
   /**
-   * In-flight background store wipes started by {@link reset}/{@link remove},
-   * keyed by user id. Re-adding that account awaits its wipe first: the sync +
-   * Rust-crypto IndexedDB names repeat across a same-account re-login, so opening
-   * either before the pending delete finishes would block (or race) it.
+   * In-flight background store wipes started by {@link reset}/{@link remove}, keyed by
+   * user id. Re-adding that account awaits its wipe first: the sync and Rust-crypto
+   * IndexedDB names repeat across a same-account re-login, so opening either before the
+   * pending delete finishes would block (or race) it.
    */
   private readonly wipes = new Map<string, Promise<void>>();
 
   /**
-   * Starts that have not finished yet, keyed by user id — see {@link start} for why a
-   * second start must join the first rather than build a second client.
+   * Starts that have not finished yet, keyed by user id; see {@link start} for why a second
+   * start joins the first.
    */
   private readonly starting = new Map<string, Observable<AccountClient>>();
 
@@ -329,8 +324,8 @@ export class MatrixClientService {
 
   /** Coarse sync state of the ACTIVE account (null until its first transition). */
   readonly syncState: Signal<SyncState | null> = computed(() => {
-    // Depend on the account set too, so re-adding the active user re-binds to its
-    // fresh per-account signal even when the active id is unchanged.
+    // Depend on the account set too: re-adding the active user must re-bind to its fresh
+    // per-account signal even when the active id is unchanged.
     this._accountIds();
     return this.active()?.syncState() ?? null;
   });
@@ -346,10 +341,8 @@ export class MatrixClientService {
   });
 
   /**
-   * Connectivity for the UI: `offline` once the active account's sync is erroring
-   * or reconnecting, else `online` (including the pre-first-sync window, so a fresh
-   * start doesn't flash offline). Cached data still renders while offline thanks to
-   * the persistent IndexedDB sync store.
+   * `offline` once the active account's sync is erroring or reconnecting, else `online`
+   * (including the pre-first-sync window, so a fresh start doesn't flash offline).
    */
   readonly connectivity = computed<'online' | 'offline'>(() => {
     const state = this.syncState();
@@ -423,16 +416,15 @@ export class MatrixClientService {
 
   /**
    * Ask the SDK to refresh one live OAuth account's tokens now, joining a refresh already
-   * in flight. The new pair is persisted and published through `onTokenRefresh` like any
-   * refresh. Emits whether new tokens were adopted. A refusal signs nothing out here: the
-   * account's next request meets it and takes the usual path. Cold and finite; never
-   * errors; false for an account that is not live, not OAuth or signed in without a
-   * refresh token.
+   * in flight; the new pair is persisted and published through `onTokenRefresh`. Emits
+   * whether new tokens were adopted. A refusal signs nothing out here: the account's next
+   * request meets it. Cold and finite; never errors; false for an account that is not live,
+   * not OAuth or without a refresh token.
    *
-   * `timeoutMs` bounds when the token grant this call starts may answer, counted from the
-   * call; past it the grant is aborted, which fails like a network error. Without it the
-   * patched SDK's own bound ({@link MATRIX_REQUEST_TIMEOUT_MS}, from the grant's start)
-   * applies. A refresh already in flight keeps its own bound.
+   * `timeoutMs` bounds the token grant this call starts, counted from the call; past it the
+   * grant is aborted and fails like a network error. Without it the patched SDK's own bound
+   * ({@link MATRIX_REQUEST_TIMEOUT_MS}, from the grant's start) applies. A refresh already
+   * in flight keeps its own bound.
    */
   refreshAccessToken(
     userId: string,
@@ -505,10 +497,9 @@ export class MatrixClientService {
   }
 
   /**
-   * Replace any signed-in accounts with this one and make it active. Cold: runs on
-   * subscribe. The login-replaces-current path; use {@link add} to keep the others.
-   * The new client is only published once it has fully started — a failed bootstrap
-   * cleans up and rethrows rather than leaving a half-initialized client behind.
+   * Replace any signed-in accounts with this one and make it active; use {@link add} to
+   * keep the others. Cold. The new client is only published once fully started: a failed
+   * bootstrap cleans up and rethrows rather than leaving a half-initialized client.
    */
   init(session: MatrixSession): Observable<void> {
     return defer(() => {
@@ -543,8 +534,8 @@ export class MatrixClientService {
       catchError((error: unknown) =>
         error instanceof MatrixClientStartupError
           ? defer(() => {
-              // A lost store key also needs a sign-in: as a new device, which the
-              // re-auth flow chooses when the key no longer reads back.
+              // A lost store key also needs a sign-in as a new device, which the re-auth
+              // flow chooses when the key no longer reads back.
               if (
                 error.failure === 'reauthentication-required' ||
                 error.failure === 'crypto-store-key-lost'
@@ -598,8 +589,7 @@ export class MatrixClientService {
     });
   }
 
-  /** Flag a user id as soft-logged-out (needs re-auth). The signal write schedules
-   * change detection on its own. Deduped; cleared by a successful (re-)start. */
+  /** Flag a user id as soft-logged-out (needs re-auth). Deduped; cleared by a successful (re-)start. */
   private markSoftLoggedOut(userId: string): void {
     if (!this._softLoggedOut().includes(userId)) {
       this._softLoggedOut.set([...this._softLoggedOut(), userId]);
@@ -645,16 +635,15 @@ export class MatrixClientService {
   /**
    * Ask the homeserver to invalidate every live account's device, best-effort.
    *
-   * For the factory reset, which must work when the homeserver is unreachable — so each
-   * logout is caught on the RAW promise rather than through `catchError`. The caller races
-   * this against a timeout, and `race` unsubscribes the loser: a promise that rejects after
-   * its subscriber has closed reaches RxJS's unhandled-error reporter, and from there the
-   * global error handler, which would surface a toast in the middle of a deliberate wipe.
+   * For the factory reset, which must work when the homeserver is unreachable, so each
+   * logout is caught on the RAW promise rather than through `catchError`: the caller races
+   * this against a timeout and `race` unsubscribes the loser, and a promise rejecting after
+   * its subscriber closed reaches the global error handler, which would toast in the middle
+   * of a deliberate wipe.
    *
    * Resolves once every attempt has settled; never errors. Does NOT tear the clients down,
-   * so it must be called while they are still LIVE — `stop()` empties the registry this
-   * reads, and calling it afterwards signs nothing out at all while looking identical from
-   * the outside. Sequence it before the teardown, not after.
+   * so call it while they are still LIVE: `stop()` empties the registry this reads, and
+   * calling it afterwards signs nothing out while looking identical from outside.
    */
   signOutAll(): Observable<void> {
     return defer(() => {
@@ -696,23 +685,22 @@ export class MatrixClientService {
   }
 
   /**
-   * Build a client from a session, bootstrap E2EE, start syncing, and register it in
-   * the map (not activated — the caller decides). On failure it tears the half-started
-   * client down and rethrows.
+   * Build a client from a session, bootstrap E2EE, start syncing, and register it (not
+   * activated; the caller decides). On failure it tears the half-started client down and
+   * rethrows.
    *
    * **Idempotent per account while in flight**, and independent of the caller's
-   * subscription surviving. Both matter because the callers are guards: the Router
-   * unsubscribes a guard whose navigation is superseded, and the start chain (open
-   * IndexedDB → WASM → `initRustCrypto` → `startClient`) is long enough that a deep link
-   * arriving mid-flight begins a second one for the same account. Two `initRustCrypto`
-   * calls on one device open the same crypto store twice, which is the shape that produces
-   * device-key divergence.
+   * subscription surviving. The callers are guards: the Router unsubscribes a guard whose
+   * navigation is superseded, and the start chain (open IndexedDB, WASM, `initRustCrypto`,
+   * `startClient`) is long enough that a deep link arriving mid-flight begins a second
+   * start for the same account. Two `initRustCrypto` calls on one device open the same
+   * crypto store twice, which produces device-key divergence.
    *
    * So a second `start()` for the same user id JOINS the first, and the shared chain is
-   * `refCount: false` deliberately — losing the last subscriber must not cancel it, or a
-   * cancelled navigation would leave a half-open store behind for the next login to collide
-   * with. It always runs to the end and then, if nothing consumed its result, rolls itself
-   * back (see `rollback` in {@link startNew}).
+   * `refCount: false` deliberately: losing the last subscriber must not cancel it, or a
+   * cancelled navigation would leave a half-open store for the next login to collide with.
+   * It always runs to the end and, if nothing consumed its result, rolls itself back (see
+   * `rollback` in {@link startNew}).
    */
   private start(session: MatrixSession): Observable<AccountClient> {
     return defer(() => {
@@ -720,10 +708,9 @@ export class MatrixClientService {
       if (inFlight) {
         return inFlight;
       }
-      // Set by the tap BELOW the share, so it is true exactly when some subscriber
-      // received the started account — the signal `startNew` uses to decide whether this
-      // start was wanted. A subscriber count would not do: `firstValueFrom` unsubscribes
-      // on the value, so a perfectly consumed start also ends with zero subscribers.
+      // Set by the tap BELOW the share: true exactly when some subscriber received the
+      // account, which `startNew` uses to decide whether this start was wanted. A subscriber
+      // count would not do: `firstValueFrom` unsubscribes on the value.
       let delivered = false;
       const started: Observable<AccountClient> = this.startNew(
         session,
@@ -734,8 +721,8 @@ export class MatrixClientService {
             this.starting.delete(session.userId);
           }
         }),
-        // Not cached across calls: the entry is dropped above the moment the chain
-        // settles, so a FAILED start is never replayed to a later caller.
+        // The entry is dropped above once the chain settles, so a FAILED start is never
+        // replayed to a later caller.
         shareReplay({ bufferSize: 1, refCount: false }),
         tap(() => {
           delivered = true;
@@ -761,17 +748,16 @@ export class MatrixClientService {
 
   /**
    * One actual start attempt: awaits a pending wipe for the same account, then builds,
-   * bootstraps and registers the client. See {@link start}, which owns the joining and
-   * the cancellation semantics.
+   * bootstraps and registers the client. {@link start} owns the joining and cancellation.
    */
   private startNew(
     session: MatrixSession,
     consumed: () => boolean,
   ): Observable<AccountClient> {
     return defer(() => {
-      // Replace any existing client for this account (a re-add / re-auth) so we
-      // never orphan a running client — its Sync listener, and its sync store —
-      // or open a second connection to its per-account IndexedDB.
+      // Replace any existing client for this account (re-add / re-auth) so a running client,
+      // its Sync listener and its sync store are never orphaned, and its per-account
+      // IndexedDB is never opened twice.
       if (this.clients.has(session.userId)) {
         this.removeInternal(session.userId, false);
       }
@@ -793,18 +779,17 @@ export class MatrixClientService {
       const onBackupKeysRemaining = (remaining: number): void => {
         backupKeysRemaining = remaining;
       };
-      // Per-account 4S key holder, wired only into THIS client's callbacks so a
-      // background account's key op can't read/overwrite another account's key.
+      // Wired only into THIS client's callbacks so a background account's key operation
+      // can't read or overwrite another account's key.
       const holder = new SecretStorageKeyHolder();
       /**
        * Undo whatever this attempt managed to do. Driven from `finalize`, so it covers the
-       * error path AND the cancelled one — an unsubscribed start still reaches the end,
-       * and without this its client would sync on, unreachable, with its crypto store open.
+       * error path AND the cancelled one: an unsubscribed start still reaches the end, and
+       * without this its client would sync on, unreachable, with its crypto store open.
        */
       const rollback = (): void => {
         if (account) {
-          // It finished after its caller had gone: hand it to the normal removal path,
-          // which detaches, stops, closes the store and repoints the active account.
+          // It finished after its caller had gone: use the normal removal path.
           if (this.clients.get(session.userId) === account) {
             this.removeInternal(session.userId, false);
           }
@@ -820,14 +805,13 @@ export class MatrixClientService {
       return from(this.wipes.get(session.userId) ?? Promise.resolve()).pipe(
         switchMap(() => {
           store = this.createSyncStore(session.userId);
-          // Declared before the client is built, so the first requests it makes — inside
-          // startClient(), which resolves only after them — are already served.
+          // Before the client is built: startClient() resolves only after its first requests.
           this.allowCorsOrigin(session.baseUrl);
           created = createClient({
             baseUrl: session.baseUrl,
             // Without a client-level deadline, a socket that accepts a request and never
-            // answers leaves every downstream busy/finalize path pending indefinitely.
-            // Long-poll sync calls pass their own larger local timeout to the SDK.
+            // answers leaves every downstream busy/finalize path pending. Long-poll sync
+            // calls pass their own larger timeout.
             localTimeoutMs: MATRIX_REQUEST_TIMEOUT_MS,
             accessToken: session.accessToken,
             userId: session.userId,
@@ -837,8 +821,8 @@ export class MatrixClientService {
               client: () => created,
             }),
             ...(store ? { store } : {}),
-            // Lets the crypto stack read/write 4S using the recovery key the user
-            // unlocks during the setup/recovery flows (held only in memory).
+            // Lets the crypto stack read/write 4S with the recovery key unlocked during
+            // setup/recovery (held only in memory).
             cryptoCallbacks: {
               getSecretStorageKey: holder.getSecretStorageKey,
               cacheSecretStorageKey: holder.cacheSecretStorageKey,
@@ -852,7 +836,7 @@ export class MatrixClientService {
               refreshable: !!session.refreshToken,
             });
           }
-          // Best-effort cache load; a corrupt/blocked IndexedDB must NOT block login.
+          // A corrupt or blocked IndexedDB must NOT block login.
           return from(
             store ? store.startup().catch(() => undefined) : Promise.resolve(),
           );
@@ -862,8 +846,8 @@ export class MatrixClientService {
         ),
         switchMap(() => from(this.storeKey(session))),
         switchMap((storageKey) =>
-          // Per-account crypto store; unset prefix (migrated legacy account) → the
-          // SDK default store, preserving its existing keys.
+          // An unset prefix (migrated legacy account) means the SDK default store, which
+          // keeps its existing keys.
           from(
             this.initializeCrypto(created!, session.cryptoPrefix, storageKey),
           ).pipe(catchError(classifyCryptoStartupFailure)),
@@ -919,8 +903,8 @@ export class MatrixClientService {
         }),
         switchMap(() =>
           from(
-            // Lazy members (#1295): a first sync carries only the members its events name, and
-            // a room loads the rest when it is opened, observed in settings or upgraded.
+            // Lazy members: a first sync carries only the members its events name; a room
+            // loads the rest when it is opened, observed in settings or upgraded.
             created!.startClient({
               initialSyncLimit: 20,
               threadSupport: true,
@@ -959,7 +943,7 @@ export class MatrixClientService {
           this.clients.set(session.userId, started);
           this._accountIds.set([...this.clients.keys()]);
           this.publishCorsOrigins();
-          // A successful (re-)start clears any prior soft-logout — re-auth restored it.
+          // A successful (re-)start means re-auth restored the account.
           this.clearSoftLoggedOut(session.userId);
           return started;
         }),
@@ -971,8 +955,7 @@ export class MatrixClientService {
             })
             .pipe(map(() => started)),
         ),
-        // Covers error, completion and unsubscription in one place; the error still
-        // propagates untouched to the caller.
+        // Covers error, completion and unsubscription; the error still propagates.
         finalize(() => {
           if (!consumed()) {
             rollback();
@@ -994,15 +977,14 @@ export class MatrixClientService {
    *
    * The write is a compare-and-swap on the sign-in the session came from (its
    * {@link MatrixSession.lineage}): storage applies it only while the account's record still
-   * holds that sign-in. So a client that was retired, rolled back, stopped or removed still
-   * saves the pair it rotated while its sign-in is the stored one (with refresh-token
-   * rotation those are the only valid next tokens), and a client a new sign-in replaced
-   * never writes over the new session.
+   * holds that sign-in. So a retired, rolled-back, stopped or removed client still saves the
+   * pair it rotated while its sign-in is the stored one (with refresh-token rotation those
+   * are the only valid next tokens), and a client a new sign-in replaced never writes over
+   * the new session.
    *
-   * A `started` client's refresh then moves the tracked pair and publishes the rotation, but
-   * only while that client still owns the account's tracked pair (it is live or starting).
-   * A `detached` client is never the account's live client, so its refresh is persisted and
-   * nothing more.
+   * A `started` client's refresh then moves the tracked pair and publishes the rotation,
+   * only while that client still owns the tracked pair (it is live or starting). A
+   * `detached` client is never the live client, so its refresh is only persisted.
    */
   private tokenOptions(
     session: MatrixSession,
@@ -1089,7 +1071,7 @@ export class MatrixClientService {
   /**
    * Open the account's Rust crypto store, with its store key when it has one. A store
    * created without a key is opened without one: the crypto WASM refuses to open an
-   * existing unencrypted store with a key, and has no way to encrypt it in place.
+   * existing unencrypted store with a key and cannot encrypt it in place.
    */
   private initializeCrypto(
     client: MatrixClient,
@@ -1109,7 +1091,7 @@ export class MatrixClientService {
     return result;
   }
 
-  /** Stop + drop every client (no store deletion), and forget the 4S key. */
+  /** Stop and drop every client (no store deletion), and forget the 4S keys. */
   private teardownAll(): void {
     for (const account of this.clients.values()) {
       account.syncProjection.release();
@@ -1132,16 +1114,15 @@ export class MatrixClientService {
    * active, and either wipe (logout) or just close (switch-away) its stores.
    */
   private removeInternal(userId: string, wipe: boolean): void {
-    this.clearSoftLoggedOut(userId); // any removal clears a stale re-auth flag
+    this.clearSoftLoggedOut(userId);
     const account = this.clients.get(userId);
     // Only the removed client's pair: a start in flight for this account keeps its own.
     this.forgetOAuthTokens(userId, account?.client ?? null);
     if (!account) {
       if (wipe) {
-        // "Stop it + wipe its stores" must still wipe when there is nothing to stop —
-        // the normal state for a soft-logged-out account, or one whose background
-        // warm-up failed. The caller deletes the registry record moments later, and
-        // that record is the only thing naming this account's crypto store.
+        // Must still wipe when there is nothing to stop (a soft-logged-out account, or one
+        // whose background warm-up failed): the caller deletes the registry record moments
+        // later, and that record is the only thing naming this account's crypto store.
         this.wipeStoresByName(userId);
       }
       return;
@@ -1149,7 +1130,7 @@ export class MatrixClientService {
     account.syncProjection.release();
     account.client.off(HttpApiEvent.SessionLoggedOut, account.onLoggedOut);
     account.client.stopClient(); // clearStores must run with the client stopped
-    account.holder.clear(); // forget this account's 4S key
+    account.holder.clear();
     this.clients.delete(userId);
     this._accountIds.set([...this.clients.keys()]);
     this.publishCorsOrigins();
@@ -1157,13 +1138,12 @@ export class MatrixClientService {
       this._activeUserId.set(this.clients.keys().next().value ?? null);
     }
     if (wipe) {
-      // clearStores() deletes this account's sync + Rust-crypto IndexedDB. Pass the
-      // account's OWN cryptoDatabasePrefix so the Rust store deleted is this account's
-      // (`${prefix}::matrix-sdk-crypto`), not the SDK default — omitting it orphans the
-      // real store and breaks a later fresh login with an account/device-id mismatch.
-      // The crypto delete can block ~25s (the WASM store connection releases only on
-      // GC), so run it as a tracked BACKGROUND wipe keyed by user id; a re-add of the
-      // same account awaits it. Best-effort — a failure still leaves the client removed.
+      // Pass the account's OWN cryptoDatabasePrefix so the Rust store deleted is this
+      // account's (`${prefix}::matrix-sdk-crypto`), not the SDK default: omitting it orphans
+      // the real store and breaks a later fresh login with a device-id mismatch.
+      // The crypto delete can block ~25s (the WASM store connection releases only on GC),
+      // so it is a tracked BACKGROUND wipe; a re-add of the same account awaits it.
+      // Best-effort: a failure still leaves the client removed.
       const store = account.syncStore;
       this.trackWipe(
         userId,
@@ -1180,12 +1160,12 @@ export class MatrixClientService {
   /**
    * Delete a NON-live account's IndexedDB by name: its sync store, plus the Rust crypto
    * pair derived from the registry record's `cryptoPrefix` (the same prefix the live path
-   * hands `clearStores`). Without a record we only know the sync-store name — the
-   * SDK-default crypto pair may belong to a migrated legacy account, so it is left for the
-   * cold-start orphan sweep rather than guessed at.
+   * hands `clearStores`). Without a record only the
+   * sync-store name is known; the SDK-default crypto pair may belong to a migrated legacy
+   * account, so it is left for the cold-start orphan sweep rather than guessed at.
    *
    * Best-effort and bounded (`deleteDatabase` settles even when a connection blocks it),
-   * and tracked like the live wipe so a re-add of this account awaits it.
+   * and tracked like the live wipe so a re-add awaits it.
    */
   private wipeStoresByName(userId: string): void {
     const idb = globalThis.indexedDB;
@@ -1205,8 +1185,8 @@ export class MatrixClientService {
   }
 
   /**
-   * Track an in-flight store wipe, and prune the entry once it settles (unless a newer
-   * wipe replaced it) so the map doesn't grow across logout/login cycles.
+   * Track an in-flight store wipe, pruning the entry once it settles (unless a newer wipe
+   * replaced it) so the map doesn't grow across logout/login cycles.
    */
   private trackWipe(userId: string, wipeDone: Promise<void>): void {
     this.wipes.set(userId, wipeDone);
@@ -1219,12 +1199,11 @@ export class MatrixClientService {
 
   /**
    * Handle a server-side session logout for one account (`M_UNKNOWN_TOKEN`). A **soft**
-   * logout (`soft_logout: true`) keeps the device + stores: stop the client without
-   * wiping and mark it {@link softLoggedOut}, so re-authenticating (its registry entry
-   * and crypto-store prefix are preserved) restores it. A **hard** logout (device
-   * deleted server-side) wipes the account's stores and drops its registry entry. Either
-   * way the other accounts keep running, and if this was the active one the active
-   * pointer moves to a survivor (or null when it was the last).
+   * logout (`soft_logout: true`) keeps the device and stores: the client stops without
+   * wiping and is marked {@link softLoggedOut}, so re-authenticating (its registry entry
+   * and crypto-store prefix are preserved) restores it. A **hard** logout (device deleted
+   * server-side) wipes the account's stores and drops its registry entry. Either way the
+   * other accounts keep running and the active pointer moves to a survivor (or null).
    */
   private handleServerLogout(userId: string, err: MatrixError): void {
     if (!this.clients.has(userId)) {
@@ -1232,25 +1211,21 @@ export class MatrixClientService {
     }
     const soft =
       (err.data as { soft_logout?: boolean } | undefined)?.soft_logout === true;
-    // This runs from an SDK network callback; the signal writes below schedule change
-    // detection on their own, driving the reproject + redirect effects.
     if (soft) {
-      // Keep the stores + registry entry for re-auth, but drop the now-dead token so
-      // a restart's restore skips it instead of resurrecting a failing ghost account.
+      // Keep the stores and registry entry for re-auth, but drop the dead token so a
+      // restart's restore skips it instead of resurrecting a failing ghost account.
       this.removeInternal(userId, false);
       this.storage
         .invalidateToken(userId)
         .subscribe({ error: () => undefined });
       this.markSoftLoggedOut(userId);
     } else {
-      // Hard logout: the device is gone server-side — wipe locally (which also clears
-      // any soft-logout flag) and forget the account.
+      // The device is gone server-side: wipe locally and forget the account.
       this.removeInternal(userId, true);
       this.storage.remove(userId).subscribe({ error: () => undefined });
     }
-    // Reconcile the persisted active pointer with the surviving in-memory active:
-    // removeInternal repoints in memory by Map order, storage.remove by array order,
-    // so without this a restart could restore a different account than the UI shows.
+    // removeInternal repoints in memory by Map order, storage.remove by array order; without
+    // this a restart could restore a different account than the UI shows.
     const active = this._activeUserId();
     if (active) {
       this.storage.setActive(active).subscribe({ error: () => undefined });
@@ -1267,9 +1242,8 @@ export class MatrixClientService {
   }
 
   /**
-   * Build a persistent IndexedDB sync store scoped to the account, or null when
-   * IndexedDB is unavailable (non-browser / unit tests) so the SDK falls back to
-   * its in-memory store.
+   * Build a persistent IndexedDB sync store scoped to the account, or null when IndexedDB
+   * is unavailable (unit tests) so the SDK falls back to its in-memory store.
    */
   private createSyncStore(userId: string): IndexedDBStore | null {
     if (typeof globalThis.indexedDB === 'undefined') {
@@ -1277,17 +1251,17 @@ export class MatrixClientService {
     }
     return new IndexedDBStore({
       indexedDB: globalThis.indexedDB,
-      // Per-account database so multiple accounts on one device don't share a cache.
-      // Note the SDK prepends `matrix-js-sdk:` to this — see syncStoreIndexedDbName, which
-      // is what anything deleting the database by name has to use.
+      // Per-account database so accounts on one device don't share a cache.
+      // The SDK prepends `matrix-js-sdk:` to this; anything deleting the database by name
+      // must use syncStoreIndexedDbName.
       dbName: syncStoreDbName(userId),
     });
   }
 
   /**
-   * Close (and release) a specific IndexedDB sync-store instance. Taken by value so a
-   * long-running background wipe destroys the store it was started for — never a newer
-   * store a re-login may open while the wipe is still pending.
+   * Close a specific IndexedDB sync-store instance. Taken by value so a long-running
+   * background wipe destroys the store it started for, never a newer one a re-login opens
+   * while the wipe is pending.
    */
   private closeStore(store: IndexedDBStore | null): void {
     if (store) {
