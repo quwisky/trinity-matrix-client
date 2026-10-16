@@ -189,8 +189,8 @@ export class SpacesService {
   private readonly hierarchyCancelled = new Subject<void>();
   /** Each rebuild of the joined model, for a hierarchy waiting for its space to be joined. */
   private readonly refreshed = new Subject<void>();
-  /** The Account-and-space pairs a {@link leaveSpace} is in flight for. */
-  private readonly _leaving = signal<ReadonlySet<string>>(new Set());
+  /** How many {@link leaveSpace} requests are in flight, per Account-and-space pair. */
+  private readonly _leaving = signal<ReadonlyMap<string, number>>(new Map());
 
   /**
    * The open space's full child set, with each child's `joined` flag derived live
@@ -480,16 +480,10 @@ export class SpacesService {
       const client = this.matrix.clientFor(accountId);
       if (!client) return throwError(() => new Error('Account unavailable.'));
       const key = leavingKey(accountId, spaceId);
-      this._leaving.update((keys) => new Set(keys).add(key));
+      this.countLeave(key, 1);
       return from(client.leave(spaceId)).pipe(
         map(() => void 0),
-        finalize(() =>
-          this._leaving.update((keys) => {
-            const next = new Set(keys);
-            next.delete(key);
-            return next;
-          }),
-        ),
+        finalize(() => this.countLeave(key, -1)),
       );
     });
   }
@@ -502,6 +496,16 @@ export class SpacesService {
    */
   isLeaving(accountId: string, spaceId: string): boolean {
     return this._leaving().has(leavingKey(accountId, spaceId));
+  }
+
+  private countLeave(key: string, change: 1 | -1): void {
+    this._leaving.update((counts) => {
+      const next = new Map(counts);
+      const count = (next.get(key) ?? 0) + change;
+      if (count > 0) next.set(key, count);
+      else next.delete(key);
+      return next;
+    });
   }
 
   /**

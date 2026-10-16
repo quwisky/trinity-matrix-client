@@ -491,6 +491,24 @@ describe('SpacesService writes', () => {
     expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(false);
   });
 
+  it('keeps the leaving mark until the last of two overlapping leaves settles', async () => {
+    const { svc, leave } = setupWrites();
+    const settles: (() => void)[] = [];
+    leave.mockImplementation(
+      () => new Promise<void>((resolve) => settles.push(resolve)),
+    );
+
+    const first = firstValueFrom(svc.leaveSpace('@me:hs', '!s:hs'));
+    const second = firstValueFrom(svc.leaveSpace('@me:hs', '!s:hs'));
+    settles[0]();
+    await first;
+    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(true);
+
+    settles[1]();
+    await second;
+    expect(svc.isLeaving('@me:hs', '!s:hs')).toBe(false);
+  });
+
   it('clears the leaving mark when the leave fails', async () => {
     const { svc, leave } = setupWrites();
     leave.mockRejectedValue(new Error('forbidden'));
