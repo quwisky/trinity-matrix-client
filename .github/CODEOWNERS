@@ -1,0 +1,23 @@
+# Files that run with release credentials. "Protect main" and "Protect release branches"
+# require a code owner's review, so a writer cannot merge a change that reads the release
+# App key, the macOS signing secrets or the Homebrew deploy key without the maintainer.
+# See docs-internal/maintenance/ci-and-releases.md#release-credentials.
+
+# Workflows, the setup action, Renovate's policy and this file.
+/.github/ @quwisky
+
+# Scripts the release, back-merge, backport and Homebrew jobs run.
+/scripts/ @quwisky
+/tools/release-please/ @quwisky
+
+# What the macOS signing job installs and loads next to the signing certificate.
+/.nvmrc @quwisky
+/electron/package.json @quwisky
+/electron/pnpm-lock.yaml @quwisky
+/electron/pnpm-workspace.yaml @quwisky
+/electron/electron-builder.config.ts @quwisky
+/electron/electron-builder.yml @quwisky
+/electron/electron-builder.next.yml @quwisky
+/electron/afterPack.cjs @quwisky
+/electron/build/ @quwisky
+/electron/src/release-channel.ts @quwisky

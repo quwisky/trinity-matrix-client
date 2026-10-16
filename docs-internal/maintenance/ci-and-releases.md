@@ -390,6 +390,32 @@ run is gone, merge any pull request into `release/X.Y.x` (an empty commit is eno
 trigger a new one; the version comes from the tags, so any push opens the PR at `X.Y.Z`.
 Never force-push.
 
+### Release credentials
+
+Every release credential lives in an environment: the release App key in `release-app`,
+the macOS signing and notarization secrets in `release`, the tap deploy key in `homebrew`
+and the Renovate App key in `renovate`. An environment admits a job by its ref, so the
+rules on those refs decide who can reach the credentials:
+
+- The `Protect release tags` ruleset blocks creating, updating and deleting `v*` tags.
+  Only the release App, which tags releases, and the maintainer bypass it. Without the
+  creation rule, any writer could push a `v*` tag carrying an edited `homebrew.yml` and
+  run it with the deploy key.
+- `Protect main` and `Protect release branches` require one approval from someone other
+  than the last pusher, dismiss approvals when new commits arrive, and require a code
+  owner's review. [`CODEOWNERS`](../../.github/CODEOWNERS) assigns the workflows, the
+  scripts the release jobs run, the release-please tooling and the files electron-builder
+  loads while signing to the maintainer. The release App and the maintainer bypass both
+  rulesets, so release PRs, back-merges and the maintainer's own pull requests merge as
+  before.
+- `release` and `homebrew` require the maintainer's approval for each deployment, so every
+  signed macOS build and every tap update waits for it. `release-app` and `renovate` have
+  no reviewers because they run on every push to `main`; the approval rule on `main`
+  guards them instead.
+
+When a release job starts running a new script or configuration file, add it to
+`CODEOWNERS`.
+
 ### Release a fix
 
 1. Merge the fix into `main` through its normal pull request and add the label
@@ -745,7 +771,8 @@ commit predates `homebrew.yml` never triggers it; dispatch it from `main` instea
 2. Create the public repository `quwisky/homebrew-trinity` **with an initial commit**
    (a README is enough); checkout and push fail on an empty repository.
 3. Create the environment `homebrew` in this repository. Under deployment branches
-   and tags, allow only `main`, `release/**` and tags matching `v*`.
+   and tags, allow only `main`, `release/**` and tags matching `v*`, and add the
+   maintainer as a required reviewer (see [Release credentials](#release-credentials)).
 4. Run `ssh-keygen -t ed25519 -C homebrew-trinity -f homebrew-trinity`. Add
    `homebrew-trinity.pub` to the tap as a deploy key **with write access**, and store
    the private key as the **environment** secret `HOMEBREW_TAP_DEPLOY_KEY` in
@@ -853,7 +880,7 @@ reviewing an update branch or diagnosing why it did not merge.
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | Ordinary non-patch dependency | Waits for Dependency Dashboard approval and opens a pull request.                                                                                                                                                                                                                                                                                                               | Approve the dashboard entry, then review CI.                                                                                     |
 | Patch dependency              | After the three-day age, Renovate uses branch automerge and rebases behind `main`; it waits for CI on `renovate/patch-*`. A failed or 24-hour-pending branch becomes a pull request. `Protect main` requires a pull request, so unless Renovate is a bypass actor the direct merge is refused; recent patches arrived as `renovate/patch-*` pull requests.                      | Keep the narrow `ci.yml` push trigger for `renovate/patch-**`; without it, patch automerge silently falls back to pull requests. |
-| Security update               | Bypasses the dashboard gate, waits one day instead of three, keeps a pull request, and can automerge after CI unless it is a shipped runtime package below.                                                                                                                                                                                                                     | Review the security details Renovate links and its labeled pull request; it intentionally does not use the patch-branch path.    |
+| Security update               | Bypasses the dashboard gate, waits one day instead of three and keeps a pull request. Its automerge cannot complete: `Protect main` requires an approval and Renovate is not a bypass actor, so the pull request waits for a maintainer.                                                                                                                                        | Review the security details Renovate links and its labeled pull request; it intentionally does not use the patch-branch path.    |
 | Shipped runtime package       | `dompurify`, `katex`, `matrix-js-sdk`, `@matrix-org/matrix-sdk-crypto-wasm`, `matrix-widget-api` and `electron` patches open a pull request on `renovate/runtime-*` without the dashboard gate but never automerge. Security updates for them open on `renovate/*` and do not automerge either. `katex` is pinned exactly, as the `@shikijs/*` packages are, because it is 0.x. | Review the upstream changes and merge the pull request by hand.                                                                  |
 | GitHub Actions digest         | Stays behind dashboard approval and does not patch-automerge.                                                                                                                                                                                                                                                                                                                   | Review the changed pinned action digest before approval.                                                                         |
 | Native platform dependency    | Stays behind dashboard approval.                                                                                                                                                                                                                                                                                                                                                | Use the evidence described in the developer native platform guides before approval.                                              |
