@@ -20,7 +20,7 @@ interface FocusRecord {
  * Moves DOM focus into each entering routed page for keyboard and screen-reader users.
  *
  * A navigation the person did not make (Router `info` marked as a background navigation,
- * such as a Workspace repair) leaves focus where it is, unless its control was removed.
+ * such as a Workspace repair) leaves focus where it is, unless the control holding focus was removed.
  */
 @Injectable({ providedIn: 'root' })
 export class NavigationFocusService {
