@@ -21,8 +21,10 @@ export * from './lib/keyword-rules.service';
 export type {
   NotificationDestination,
   NotificationIntent,
+  NotificationPolicyInput,
   NotificationRuntimeEvent,
 } from './lib/notification-intent';
+export { NotificationPolicy } from './lib/notification-policy';
 export {
   NOTIFICATION_TEXT,
   type NotificationTextMode,

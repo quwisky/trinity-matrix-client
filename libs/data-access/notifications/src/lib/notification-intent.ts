@@ -1,3 +1,5 @@
+import type { NotificationTextMode } from './notification-text.port';
+
 /** A bounded, SDK-free event considered by notification delivery policy. */
 interface NotificationEventContext {
   readonly accountId: string;
@@ -79,7 +81,7 @@ export interface NotificationPolicyInput {
    */
   readonly backgroundDelivery: 'app' | 'push';
   /** App lock's Notification text; Show when absent. */
-  readonly textMode?: import('./notification-text.port').NotificationTextMode;
+  readonly textMode?: NotificationTextMode;
   /** The running app's name, the title of a generic notification; "Trinity" when absent. */
   readonly appName?: string;
 }

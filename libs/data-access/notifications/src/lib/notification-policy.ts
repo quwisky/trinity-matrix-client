@@ -57,6 +57,7 @@ export class NotificationPolicy {
         kind: 'present',
         intent: Object.freeze({
           id,
+          // Twin of DEFAULT_APP_NAME (runtime/host); the policy stays free of the host.
           title: input.appName || 'Trinity',
           body: GENERIC_BODY,
           tag,

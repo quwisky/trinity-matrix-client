@@ -6,7 +6,11 @@ import {
   type AppLockStatus,
   type NotificationText,
 } from '@trinity/data-access/app-lock';
-import { NOTIFICATION_TEXT } from '@trinity/data-access/notifications';
+import {
+  NOTIFICATION_TEXT,
+  NotificationPolicy,
+} from '@trinity/data-access/notifications';
+import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { CONVERSATION_ATTENTION } from '@trinity/data-access/timeline';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, Subject, of, tap, type Observable } from 'rxjs';
@@ -213,5 +217,55 @@ describe('notification text port', () => {
     expect(port.mode()).toBe('always-hide');
     mode.set('hide-on-lock-screen');
     expect(port.mode()).toBe('hide-on-lock-screen');
+  });
+});
+
+describe('notification text before App lock has loaded', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('hides sender, room and text until the settings are known', () => {
+    // The real service over a settings store that never answers: hydrate() hasn't decided.
+    TestBed.configureTestingModule({
+      providers: [
+        appLockProviders(),
+        {
+          provide: PREFERENCE_STORAGE_ADAPTER,
+          useValue: { read: () => NEVER, write: () => NEVER },
+        },
+        MockProvider(AppearanceEffects, { applySaved: () => of(undefined) }),
+      ],
+    });
+    const appLock = TestBed.inject(AppLockService);
+    const port = TestBed.inject(NOTIFICATION_TEXT);
+    expect(appLock.status()).toBe('unknown');
+
+    const decision = TestBed.inject(NotificationPolicy).decide({
+      event: {
+        accountId: '@alice:example.org',
+        roomId: '!room:example.org',
+        eventId: '$event',
+        senderId: '@bob:example.org',
+        senderName: 'Bob',
+        roomName: 'General',
+        body: 'Hello',
+        kind: 'message',
+      },
+      viewerId: '@alice:example.org',
+      rules: { notify: true, silent: false },
+      visibility: { foreground: false, hidden: false, conversation: null },
+      duplicate: false,
+      backgroundDelivery: 'app',
+      textMode: port.mode(),
+      appName: appLock.appName,
+    });
+
+    expect(decision).toMatchObject({
+      kind: 'present',
+      intent: { title: appLock.appName, body: 'New message' },
+    });
+    const text = JSON.stringify(decision);
+    expect(text.includes('Bob')).toBe(false);
+    expect(text.includes('General')).toBe(false);
+    expect(text.includes('Hello')).toBe(false);
   });
 });

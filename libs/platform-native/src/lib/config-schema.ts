@@ -474,7 +474,7 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'RetiredPushGatewayCleanup deletes it at startup; nothing reads it.',
   },
 
-  // — platform-native, excluded —
+  // — platform-native, excluded and internal —
   {
     disposition: 'excluded',
     key: 'trinity.composer.drafts',
