@@ -779,9 +779,11 @@ jobs:
 
       # Saved only after the emulator booted from these packages (the script writes `started`
       # after boot), so a cache entry cannot hold a package that does not work, and only when
-      # the installed versions differ from the restored entry's.
+      # the installed versions differ from the restored entry's. Only main saves: the entry is
+      # 2 GB, and pull requests restore main's, so there is one entry rather than one per pull
+      # request. A pull request run before main has an entry installs with the retry alone.
       - name: Save the emulator and its system image
-        if: ${{ !cancelled() && steps.mobile.outputs.started == 'true' && steps.emulator-install.outputs.key != steps.emulator-cache.outputs.cache-matched-key }}
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.mobile.outputs.started == 'true' && steps.emulator-install.outputs.key != steps.emulator-cache.outputs.cache-matched-key }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.emulator-packages.outputs.paths }}

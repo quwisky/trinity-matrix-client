@@ -172,10 +172,12 @@ or outdated, in up to three attempts that each discard the partial download, and
 result with `sdkmanager --list_installed`. The action's own sdkmanager calls find both packages
 current and download nothing. Cache keys end in the installed emulator version and image revision
 (`android-emulator-Linux-36-google_apis-x86_64-<emulator>-r<revision>`) and the newest is restored
-by prefix, so a new release is downloaded once and saved under a new key. Packages are saved only
-after the emulator booted from them, and files left by a restore that failed part-way are deleted
-before the install, so a bad entry cannot reach the emulator. To force fresh downloads, delete
-the entries: `gh cache delete <key>`.
+by prefix, so a new release is downloaded once and saved under a new key. Only runs on `main`
+save, because the entry is about 2 GB: pull requests restore main's entry, and until main has one
+for the current versions they install with the retry alone. Packages are saved only after the
+emulator booted from them, and files left by a restore that failed part-way are deleted before
+the install, so a bad entry cannot reach the emulator. To force fresh downloads, delete the
+entries: `gh cache delete <key>`.
 
 ## The CI jobs
 
