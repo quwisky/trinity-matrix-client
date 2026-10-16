@@ -46,15 +46,14 @@ export function releaseChannelArgument(): string {
 }
 
 /**
- * Resolve this run's channel, so an unknown version shape stops the app at startup, and
- * give an unpackaged run its channel's app name and user-data folder (e.g. "Trinity
- * Next"). It then keeps its data, single-instance lock and cached OIDC client where a
- * packaged build of that channel would, instead of in the folder Electron picked before
- * main.js ran: the productName of electron/package.json ("Trinity") for `electron .`, or
- * Electron's own name for `electron dist/main.js`. Renaming the app alone does not move
- * that folder. A `--user-data-dir=<path>` switch (the E2E launcher's isolated profile)
- * keeps its folder. Packaged apps already carry both in their package.json. Call before
- * anything reads the user-data folder or takes the single-instance lock.
+ * Resolve this run's channel, so an unknown version shape stops startup, and give an
+ * unpackaged run its channel's app name and user-data folder. Data, single-instance lock
+ * and cached OIDC client then sit where a packaged build of that channel keeps them, not
+ * in the folder Electron picked before main.js ran (productName for `electron .`, Electron's
+ * own name for `electron dist/main.js`; renaming the app alone does not move it). A
+ * `--user-data-dir=<path>` switch (the E2E isolated profile) keeps its folder. Packaged
+ * apps already carry both. Call before anything reads the user-data folder or takes the
+ * single-instance lock.
  */
 export function alignDevelopmentName(): void {
   const { productName } = appIdentity();
@@ -68,11 +67,11 @@ export function alignDevelopmentName(): void {
 }
 
 /**
- * alignDevelopmentName(), or, when the version names no known release channel, an error
- * box and exit code 1. An uncaught throw would show Electron's generic dialog and leave a
- * windowless process behind, one more on every relaunch (the single-instance lock is not
- * taken yet). The title names no channel, as the channel is what is unknown. Returns
- * whether startup may continue. dialog.showErrorBox is safe before `ready`.
+ * alignDevelopmentName(), or an error box and exit code 1 when the version names no known
+ * channel. An uncaught throw would show Electron's generic dialog and leave a windowless
+ * process behind on every relaunch (the single-instance lock is not taken yet). The title
+ * names no channel, as that is what is unknown. Returns whether startup may continue.
+ * dialog.showErrorBox is safe before `ready`.
  */
 export function alignDevelopmentNameOrExit(): boolean {
   try {

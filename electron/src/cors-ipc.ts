@@ -8,10 +8,8 @@ export const SET_CORS_ORIGINS_CHANNEL = 'trinity:cors:set-allowed-origins';
 export const ALLOW_CORS_ORIGIN_CHANNEL = 'trinity:cors:allow-origin';
 
 /**
- * Wire the CORS-allowlist IPC. The main process cannot know which homeservers are in
- * play — the renderer picks them at login, there may be several (multi-account), and
- * `.well-known` discovery probes an origin the user has only just typed. So the
- * renderer publishes the set and main scopes {@link installMatrixCors} to it.
+ * Wire the CORS-allowlist IPC: the renderer publishes the homeserver origins in play and
+ * main scopes {@link installMatrixCors} to them.
  *
  * Treated as untrusted, like every other channel here: only our own main window's
  * renderer is served, and a malformed payload is ignored rather than throwing.

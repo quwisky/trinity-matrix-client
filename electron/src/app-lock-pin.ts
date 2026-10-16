@@ -12,7 +12,7 @@ import * as path from 'node:path';
 import type { SafeStorage } from 'electron';
 import { atomicWriteFile, secureStorageUsable } from './secure-store';
 
-/** 4–16 ASCII digits (spec decision 18). Unicode digits are refused, never normalised. */
+/** 4–16 ASCII digits. Unicode digits are refused, never normalised. */
 export const PIN_PATTERN = /^[0-9]{4,16}$/;
 
 export function isValidPin(pin: unknown): pin is string {
@@ -361,7 +361,7 @@ const NO_STORE = { kind: 'not-supported' } as const;
  * new PIN over it would skip the full reset, so `set` refuses it. Only {@link clear} removes
  * it: the full reset, turning the lock off, and Settings, which the renderer allows only
  * while App lock is readably off or after a fresh system-prompt check (`AppLockService`
- * `clearUnreadablePin` and `changePin`; ruling T16-1). Without usable
+ * `clearUnreadablePin` and `changePin`). Without usable
  * encryption (none at all, or Linux `basic_text`) and with no file, there is no PIN store
  * (`not-supported`), so a lock that cannot be read does not ask for a PIN never set.
  *

@@ -52,7 +52,7 @@ function isAddon(value: unknown): value is WindowsHelloAddon {
 
 /**
  * The packaged addon, or the development build in electron/build. A missing or broken
- * addon is null: no Windows Hello, so App lock uses the Trinity PIN (decision 15).
+ * addon is null: no Windows Hello, so App lock uses the Trinity PIN.
  */
 export function loadWindowsHello(deps: {
   readonly packaged: boolean;
@@ -92,7 +92,7 @@ function outcomeOf(value: string): PresenceOutcome {
     case 'cancelled':
       return { kind: 'cancelled' };
     case 'retries-exhausted':
-      // Hello's own anti-hammering; the lock screen falls back to the PIN (decision 23).
+      // Hello's own anti-hammering; the lock screen falls back to the PIN.
       return { kind: 'locked-out' };
     case 'not-configured':
     case 'device-not-present':

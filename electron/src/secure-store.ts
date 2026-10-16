@@ -1,12 +1,8 @@
 /**
- * OS-encrypted secret store backing the `trinity:secure-store:*` IPC handlers.
- *
- * Pure, dependency-injected logic: every function takes the Electron
- * `safeStorage` object and the on-disk store path as parameters, plus an
- * optional {@link SecureStoreIo} for file access (defaults to `node:fs`). The
- * only `electron` reference is an `import type`, which is erased at compile
- * time — so this module has NO runtime dependency on `electron` and is unit
- * testable in plain node without touching disk.
+ * OS-encrypted secret store backing the `trinity:secure-store:*` IPC handlers. Every
+ * function takes the `safeStorage` object and the store path (plus an optional
+ * {@link SecureStoreIo}), and the only `electron` reference is an `import type`, so it runs
+ * in plain Node tests without touching disk.
  *
  * `safeStorage` encrypts only bytes, so values are stored as a JSON map of
  * `key -> base64(ciphertext)` in a single 0600 file under `userData`.
@@ -15,18 +11,17 @@ import * as fs from 'node:fs';
 import type { SafeStorage } from 'electron';
 
 /**
- * Whether safeStorage will give us REAL encryption — not merely whether it will accept
- * a string.
+ * Whether safeStorage gives real encryption, not merely whether it accepts a string.
  *
  * On Linux, when no OS password manager can be determined, Electron selects the
- * `basic_text` backend, which "encrypts" with a hardcoded key. That is obfuscation, not
- * encryption: anything running as the user recovers the Matrix access token and the
- * crypto-store key, and with that key the store holding the cross-signing keys.
- * `isEncryptionAvailable()` does NOT distinguish it, so a token would be stored under a
- * false promise while `isSecure()` reported true.
+ * `basic_text` backend, which "encrypts" with a hardcoded key. That is obfuscation:
+ * anything running as the user recovers the Matrix access token and the crypto-store key,
+ * and with that key the store holding the cross-signing keys. `isEncryptionAvailable()`
+ * does not distinguish it, so a token would be stored under a false promise while
+ * `isSecure()` reported true.
  *
- * Refusing it means the renderer takes its documented plaintext fallback and surfaces
- * the anomaly, rather than us silently pretending the secret is protected.
+ * Refusing it makes the renderer take its documented plaintext fallback and surface the
+ * anomaly, rather than silently pretending the secret is protected.
  */
 export function secureStorageUsable(safeStorage: SafeStorage): boolean {
   if (!safeStorage.isEncryptionAvailable()) {
@@ -40,13 +35,10 @@ export function secureStorageUsable(safeStorage: SafeStorage): boolean {
   return backend !== 'basic_text' && backend !== 'unknown';
 }
 
-/** 0600: readable/writable only by the owning user (the on-disk ciphertext map). */
+/** 0600: readable and writable only by the owning user. */
 const STORE_FILE_MODE = 0o600;
 
-/**
- * Injectable file access so tests never touch disk. The defaults read/write the
- * store file synchronously via `node:fs`, mirroring the original main-process code.
- */
+/** Injectable file access so tests never touch disk; the defaults use `node:fs` synchronously. */
 export interface SecureStoreIo {
   /** Read the store file as UTF-8 text. Throws (e.g. ENOENT) when it is absent. */
   readFile: (filePath: string) => string;
@@ -91,10 +83,7 @@ export function atomicWriteFile(
   }
 }
 
-/**
- * Read + parse the on-disk secret map. Returns an empty map for a missing file,
- * non-JSON garbage, or a non-object payload — never throws.
- */
+/** The on-disk secret map; empty for a missing file, non-JSON garbage or a non-object. Never throws. */
 function readSecureStore(
   filePath: string,
   io: SecureStoreIo = defaultIo,
@@ -110,10 +99,10 @@ function readSecureStore(
 }
 
 /**
- * What the store file holds, for a read that must not mistake a broken store for an
- * empty one. A missing or empty file is an empty map. Any other read error is
- * `unreadable`: the entries may be there but cannot be read right now. Content that is
- * not a JSON map is `corrupt`: no later read will do better.
+ * What the store file holds, so a broken store is not mistaken for an empty one. A missing
+ * or empty file is an empty map. Any other read error is `unreadable`: the entries may be
+ * there but cannot be read right now. Content that is not a JSON map is `corrupt`: no later
+ * read will do better.
  */
 type StoreFile =
   | { readonly kind: 'ok'; readonly data: Record<string, string> }
@@ -203,9 +192,9 @@ export function secureStoreRead(
 }
 
 /**
- * Decrypt and return the value for `key`, or `null` when it is absent, when OS
- * encryption is unavailable, or when decryption fails. Never throws. Use
- * {@link secureStoreRead} where "absent" and "unavailable" must not be confused.
+ * Decrypt the value for `key`, or `null` when it is absent, OS encryption is unavailable or
+ * decryption fails. Never throws. Use {@link secureStoreRead} where "absent" and
+ * "unavailable" must not be confused.
  */
 export function secureStoreGet(
   safeStorage: SafeStorage,
@@ -225,10 +214,10 @@ export function secureStoreGet(
 }
 
 /**
- * Encrypt and persist `value` under `key`. Returns `false` (writing nothing)
- * when OS encryption is unavailable, or when the store file cannot be read right now
- * (writing then would drop every other entry), so the renderer can fall back; `true` on
- * success. A file that is not a JSON map is moved aside first (see {@link readStoreFile}).
+ * Encrypt and persist `value` under `key`. Returns `false`, writing nothing, when OS
+ * encryption is unavailable or the store file cannot be read right now (writing then would
+ * drop every other entry), so the renderer can fall back. A file that is not a JSON map is
+ * moved aside first (see {@link readStoreFile}).
  */
 export function secureStoreSet(
   safeStorage: SafeStorage,
@@ -264,9 +253,8 @@ export function secureStoreSet(
 }
 
 /**
- * Remove `key` from the store (persisting the rest). No-op when it is absent.
- * Needs no `safeStorage` — deletion never touches the OS keyring. Returns `false`,
- * writing nothing, when the store file cannot be read right now; `true` otherwise.
+ * Remove `key` from the store. Needs no `safeStorage`: deletion never touches the OS
+ * keyring. Returns `false`, writing nothing, when the store file cannot be read right now.
  */
 export function secureStoreDelete(
   filePath: string,

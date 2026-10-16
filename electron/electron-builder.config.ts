@@ -1,13 +1,8 @@
 /**
- * electron-builder configuration for the desktop app, chosen by release channel.
- *
- * Every packaging script and the release workflow run
- * `electron-builder --config electron-builder.config.ts`; electron-builder loads this file
- * through its own TypeScript loader. A plain X.Y.Z version in electron/package.json packages
- * electron-builder.yml as written. An X.Y.Z-next.N version packages it with
- * electron-builder.next.yml merged on top, which makes the app "Trinity Next" so it
- * installs beside stable Trinity. A bare `electron-builder` run reads only
- * electron-builder.yml, so it always packages the stable identity.
+ * electron-builder configuration, chosen by release channel. A plain X.Y.Z version in
+ * electron/package.json packages electron-builder.yml as written; X.Y.Z-next.N merges
+ * electron-builder.next.yml on top ("Trinity Next", installs beside stable). A bare
+ * `electron-builder` run reads only electron-builder.yml, so it always packages stable.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

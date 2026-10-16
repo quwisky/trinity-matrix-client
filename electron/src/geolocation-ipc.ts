@@ -4,8 +4,8 @@ import { getMainWindow } from './window';
 /** IPC channel the preload's `resolveApproxLocation` invokes. */
 export const APPROX_LOCATION_CHANNEL = 'trinity:geolocation:approximate';
 
-// Keyless, HTTPS IP-geolocation endpoint. City-level accuracy is intentional —
-// this is the desktop convenience fallback, not precise device positioning.
+// Keyless HTTPS IP-geolocation. City-level accuracy is intentional: a convenience fallback,
+// not device positioning.
 const IP_GEO_URL = 'https://ipapi.co/json/';
 const LOOKUP_TIMEOUT_MS = 8_000;
 
@@ -28,20 +28,16 @@ function toGeoPoint(
 }
 
 /**
- * Wire the approximate-location IPC (renderer → main, request/response).
+ * Wire the approximate-location IPC: a city-level estimate from the public IP, looked up
+ * from the main process. Chromium's own `navigator.geolocation` uses Google's network
+ * provider, which prebuilt Electron can't authenticate without an embedded API key, so it
+ * never resolves on a desktop with no GPS. Running in main also bypasses the renderer's
+ * strict CSP and uses Chromium's proxy-aware network stack.
  *
- * Estimates the device's location from its public IP (city-level) via a keyless
- * HTTPS lookup made from the MAIN process. This exists because Chromium's own
- * `navigator.geolocation` is backed by Google's network provider, which prebuilt
- * Electron can't authenticate without an embedded API key — so it never resolves on
- * a keyboard-and-mouse desktop with no GPS. Running the request in main (not the
- * renderer) means it bypasses the renderer's strict CSP and rides Chromium's
- * proxy-aware network stack.
- *
- * Treats the channel as untrusted: only our own main window's renderer is served,
- * the request is time-boxed, and any failed/malformed lookup resolves to `null` so
- * the renderer falls back to manual entry instead of hanging. Sends only the IP the
- * request originates from — never GPS or Wi-Fi scan data.
+ * Untrusted channel: only our own main window's renderer is served, the request is
+ * time-boxed, and any failed or malformed lookup resolves to `null` so the renderer falls
+ * back to manual entry instead of hanging. Sends only the request's own IP, never GPS or
+ * Wi-Fi scan data.
  */
 export function registerGeolocationIpc(): void {
   ipcMain.handle(APPROX_LOCATION_CHANNEL, async (event) => {

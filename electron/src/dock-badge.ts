@@ -3,33 +3,26 @@ import * as fs from 'node:fs';
 import { iconCandidatePaths } from './icons';
 import { getMainWindow } from './window';
 
-// Dock / launcher / taskbar unread badge.
-//   renderer -> main (`ipcMain.handle`, request/response): SET_BADGE_COUNT_CHANNEL pushes the
-//     app-wide unread total. The payload is UNTRUSTED — it is fully validated and
-//     clamped (coerceBadgeCount) before it drives any native badge.
+// Dock / launcher / taskbar unread badge. SET_BADGE_COUNT_CHANNEL pushes the app-wide unread
+// total from the renderer; the payload is untrusted and validated and clamped
+// (coerceBadgeCount) before it drives any native badge.
 //
-// Platform split (see applyBadgeCount):
-//   macOS / Linux(Unity): `app.setBadgeCount` draws the numeric dock/launcher
-//     count. A count of `0` clears it.
-//   Windows: there is NO numeric taskbar badge — the closest native affordance
-//     is a small OVERLAY ICON on the taskbar button (BrowserWindow.setOverlayIcon).
-//     We show a red "unread present" dot for count > 0 and clear it at 0. The
-//     exact count can't be rendered reliably (see resolveOverlayIcon), so it is
-//     carried in the overlay's accessibility description ("5 unread" / "99+ unread").
+// Platform split (see applyBadgeCount): macOS / Linux(Unity) `app.setBadgeCount` draws the
+// numeric count, and 0 clears it. Windows has no numeric taskbar badge, so a red "unread
+// present" overlay icon (BrowserWindow.setOverlayIcon) shows for count > 0 and clears at 0;
+// the count rides in the overlay's accessibility description ("5 unread" / "99+ unread").
 export const SET_BADGE_COUNT_CHANNEL = 'trinity:host:v1:badge:set';
 
 /** Upper bound for the displayed badge; larger totals are clamped to it. */
 export const MAX_BADGE_COUNT = 9999;
 
-// Lazily resolved red-dot overlay image for the Windows taskbar. `undefined` =>
-// not yet resolved; `null` => none found (we then skip drawing an overlay).
+// Lazily resolved overlay image: `undefined` not yet resolved, `null` none found (no overlay).
 let overlayIconCache: Electron.NativeImage | null | undefined;
 
 /**
- * Validate + clamp an UNTRUSTED badge count from the renderer. It must be a
- * finite number; it is floored to an integer and clamped to
- * `[0, MAX_BADGE_COUNT]`. Returns `null` for anything malformed (non-number,
- * `NaN`, `Infinity`) so the caller leaves the current badge untouched.
+ * Validate and clamp an untrusted badge count: a finite number, floored and clamped to
+ * `[0, MAX_BADGE_COUNT]`. Returns `null` for anything malformed (non-number, `NaN`,
+ * `Infinity`) so the caller leaves the current badge untouched.
  */
 function coerceBadgeCount(raw: unknown): number | null {
   if (typeof raw !== 'number' || !Number.isFinite(raw)) {
@@ -38,26 +31,17 @@ function coerceBadgeCount(raw: unknown): number | null {
   return Math.min(Math.max(Math.floor(raw), 0), MAX_BADGE_COUNT);
 }
 
-/**
- * Short, human-readable form of a (already-clamped) count for the Windows
- * overlay description — a taskbar overlay can only convey ~3 characters, so
- * anything past 99 collapses to `99+`.
- */
+/** Overlay description text; a taskbar overlay conveys ~3 characters, so past 99 it is `99+`. */
 function formatBadgeText(count: number): string {
   return count > 99 ? '99+' : String(count);
 }
 
 /**
- * Red-dot overlay image for the Windows taskbar, resolved once and cached.
- *
- * Rendering choice — why a bundled PNG rather than a generated numbered badge:
- * Electron's `nativeImage.createFromDataURL` decodes PNG/JPEG only; it does NOT
- * rasterize SVG (an `image/svg+xml` data URL yields an EMPTY image, verified on
- * Electron 42), and there is no canvas/font rasterizer in the main process. A
- * generated numbered badge would therefore be unreliable. So we ship a small,
- * self-contained red-dot PNG ("unread present", no number) and put the actual
- * count in the overlay's accessibility description instead. Returns `undefined`
- * when the asset can't be found so we skip drawing rather than pass a blank image.
+ * Red-dot overlay image for the Windows taskbar, resolved once and cached. A bundled PNG,
+ * not a generated numbered badge: `nativeImage.createFromDataURL` decodes PNG/JPEG only (an
+ * `image/svg+xml` data URL yields an empty image) and the main process has no canvas or
+ * font rasterizer. Returns `undefined` when the asset is missing, so we skip drawing
+ * rather than pass a blank image.
  */
 function resolveOverlayIcon(): Electron.NativeImage | undefined {
   if (overlayIconCache === undefined) {
@@ -81,24 +65,17 @@ function resolveOverlayIcon(): Electron.NativeImage | undefined {
   return overlayIconCache ?? undefined;
 }
 
-/**
- * Apply a validated, clamped unread count to the correct native affordance for
- * the current platform. Exported for tests.
- *   win32  -> taskbar overlay icon on the main window (red dot + count in the
- *             description); clears the overlay at 0; no-ops if no window exists.
- *   other  -> `app.setBadgeCount` (macOS dock / Linux Unity launcher count).
- */
+/** Apply a validated, clamped count: the taskbar overlay on win32, else `app.setBadgeCount`. */
 function applyBadgeCount(count: number): void {
   if (process.platform === 'win32') {
     const win = getMainWindow();
     if (!win) {
-      return; // no window yet — nothing to overlay; safe no-op
+      return; // no window yet, nothing to overlay
     }
     if (count > 0) {
       const text = formatBadgeText(count);
       const image = resolveOverlayIcon();
-      // Skip only when the asset is missing; the description still carries the
-      // count for assistive tech and hover.
+      // Skip only when the asset is missing.
       if (image) {
         win.setOverlayIcon(image, `${text} unread`);
       }
@@ -111,15 +88,13 @@ function applyBadgeCount(count: number): void {
 }
 
 /**
- * Wire the versioned badge-operation IPC. Treats the channel as an untrusted
- * boundary: the sender and payload are validated before native state changes,
- * and every request gets an explicit secret-safe outcome.
+ * Wire the versioned badge-operation IPC. An untrusted boundary: sender and payload are
+ * validated before native state changes, and every request gets an explicit secret-safe
+ * outcome.
  */
 export function registerDockBadge(): void {
   ipcMain.handle(SET_BADGE_COUNT_CHANNEL, (event, raw: unknown) => {
-    // Every other IPC handler verifies the sender is our own window; this one didn't.
-    // The value of that invariant is that it holds WITHOUT exception — a reader should
-    // never have to work out why one channel is different.
+    // Verify the sender like every other IPC handler: the invariant holds without exception.
     const win = getMainWindow();
     if (!win || event.sender !== win.webContents) {
       return {
