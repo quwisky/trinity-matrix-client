@@ -42,6 +42,14 @@ function recordSlotFrames(): void {
   requestAnimationFrame(frame);
 }
 
+/** Installed before the app loads: the browser grants persistent storage, so no notice. */
+function grantPersistentStorage(): void {
+  Object.defineProperty(StorageManager.prototype, 'persisted', {
+    configurable: true,
+    value: () => Promise.resolve(true),
+  });
+}
+
 /** Frames from the first one that drew a room row, a couple of frames past `settled`. */
 async function framesWithRow(page: Page): Promise<SlotFrame[]> {
   await page.evaluate(
@@ -143,4 +151,51 @@ test.describe('Global banner slot after sign-in', () => {
       ).toEqual([]);
     });
   }
+
+  /*
+   * With persistent storage granted the notice never takes the slot, so the prompt
+   * arrives in an empty slot and replaces nothing. It then keeps its own one-row height
+   * instead of the notice's wrapped two-row height, which would push the room list
+   * further down for no swap (#1430).
+   */
+  test('the prompt keeps its own height when no notice preceded it at 390px', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(grantPersistentStorage);
+    await page.addInitScript(recordSlotFrames);
+    await login(page, account);
+    const prompt = page.locator('trn-encryption-banner trn-banner');
+    await expect(
+      prompt.getByText('Set up encryption to secure your messages.'),
+    ).toBeVisible();
+
+    const frames = await page.evaluate(() => window.__slotFrames ?? []);
+    expect(
+      frames.some(({ slot }) => slot === 'status'),
+      'the notice must not hold the slot, or this measures the swap instead',
+    ).toBe(false);
+    await expect(prompt).toHaveAttribute('data-placement', 'inline');
+
+    const size = await prompt.locator('.banner').evaluate((banner) => {
+      const style = getComputedStyle(banner);
+      const content = Math.max(
+        ...[...banner.children].map(
+          (child) => child.getBoundingClientRect().height,
+        ),
+      );
+      return {
+        height: banner.getBoundingClientRect().height,
+        natural:
+          content +
+          parseFloat(style.paddingBlockStart) +
+          parseFloat(style.paddingBlockEnd),
+      };
+    });
+    test.info().annotations.push({
+      type: 'prompt height',
+      description: `${size.height}px (one row: ${size.natural}px)`,
+    });
+    expect(size.height).toBeCloseTo(size.natural, 0);
+  });
 });
