@@ -41,8 +41,9 @@ export class FileSaveService {
     const data = await blobToBase64(blob);
     // The receiving app reads a content:// URI asynchronously; on Android share() resolves
     // before that finishes, so deleting now can truncate the share (same on iOS). Each share
-    // gets its own cache subfolder and the previous shares are swept first, so plaintext
-    // never lingers indefinitely and the delete can't race the receiver.
+    // gets its own cache subfolder (so the target sees a clean filename) and earlier shares
+    // are swept first: by the next save the earlier receiver has long finished reading, so
+    // plaintext never lingers and the delete can't race it.
     await sweepShareDir();
     const path = `${SHARE_DIR}/${uniqueToken()}/${safeName(filename)}`;
     const { uri } = await Filesystem.writeFile({

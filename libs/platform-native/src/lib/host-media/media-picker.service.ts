@@ -86,8 +86,9 @@ export class MediaPickerService {
    * A photo over `maxBytes` on disk is skipped before its bytes are fetched into the WebView
    * and counted in {@link PickedImages.oversized}. The size is a filesystem `stat`, not the
    * plugin's `includeMetadata`, which decodes every photo in full to build its EXIF. If the
-   * size cannot be read the photo is fetched anyway. `maxBytes` is awaited only after the
-   * user has chosen, so a slow lookup never delays the picker.
+   * size cannot be read the photo is fetched anyway, and the caller's own size check on the
+   * file still applies. `maxBytes` is awaited only after the user has chosen, so a slow
+   * lookup never delays the picker.
    *
    * Materializing runs in parallel, unlike the send: each is a local fetch of a URL the
    * WebView already holds.

@@ -102,7 +102,7 @@ export interface TrinityDesktopBridge {
       popupMenu: (at: { x: number; y: number }) => void;
       /**
        * `saved` is the stored preference (applies after `relaunch()`); `active` is whether
-       * this session's window uses the OS title bar.
+       * this session's window uses the OS title bar. Rendering reads `mode`.
        */
       getSystemTitleBar: () => Promise<{ saved: boolean; active: boolean }>;
       setSystemTitleBar: (value: boolean) => Promise<HostOperationOutcome>;

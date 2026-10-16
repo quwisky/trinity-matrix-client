@@ -20,8 +20,8 @@ export function isInstalledNativePlatform(): boolean {
  * interaction model.
  *
  * 1. Capacitor knows exactly.
- * 2. The Electron shell runs under a Macintosh user agent, so it is excluded before any
- *    string test can misread it.
+ * 2. The Electron shell reports `'web'` and runs under a Macintosh user agent, so it is
+ *    excluded before any string test can misread it.
  * 3. The user agent, for mobile web and PWAs. `Android` is tested directly because
  *    `userAgentData.mobile` is false on an Android tablet; UA-CH is only read as an extra yes.
  * 4. iPadOS 13+ reports a desktop Mac user agent; only touch points separate it from a

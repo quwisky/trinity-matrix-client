@@ -65,7 +65,10 @@ const A = (over: Partial<Chord>): Chord => ({
   ...over,
 });
 
-/** The shortcut catalog: every configurable shortcut, in the order the settings list renders. */
+/**
+ * The shortcut catalog: every configurable shortcut, in the order the settings list renders.
+ * Mirrors the shortcuts wired in {@link RoomsPage}.
+ */
 export const SHORTCUTS: readonly ShortcutDef[] = [
   {
     id: 'switcher.open',

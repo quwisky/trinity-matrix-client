@@ -57,6 +57,7 @@ export const SESSION_LOCKS = new InjectionToken<SessionLocks | null>(
 /**
  * Whether this host needs the lock: the web and the installed PWA do; the Electron shell
  * (single instance, one window) and the Capacitor apps (one activity, one scene) do not.
+ * Keep in step with the service-worker predicate in `apps/trinity/src/main.ts`.
  */
 export const SESSION_LOCK_REQUIRED = new InjectionToken<boolean>(
   'SESSION_LOCK_REQUIRED',

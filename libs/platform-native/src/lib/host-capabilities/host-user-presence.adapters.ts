@@ -62,7 +62,7 @@ const notSupported = (): HostOperationOutcome => ({
 /**
  * What the device offers for the system prompt. With the device credential allowed, any
  * secure device can prompt (its passcode at least); only a device with no screen lock
- * cannot, and App lock then uses the PIN alone (decision 24).
+ * cannot, and App lock then uses the PIN alone.
  */
 export function systemPresenceOf(
   result: CheckBiometryResult,
@@ -158,7 +158,7 @@ function pinPresenceOf(status: AppLockPinStatus): HostPinPresence {
   }
 }
 
-/** The web and PWA have no App lock (decision 3). */
+/** The web and PWA have no App lock. */
 @Injectable({ providedIn: 'root' })
 export class WebUserPresenceAdapter implements HostUserPresenceOperation {
   support(): Observable<HostUserPresenceSupport> {

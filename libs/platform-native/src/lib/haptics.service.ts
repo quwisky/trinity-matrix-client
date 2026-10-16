@@ -3,8 +3,8 @@ import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 /**
- * The only file that imports `@capacitor/haptics`; features ask for a moment, not a
- * waveform, so the taste decision lives in one place.
+ * The only file that imports `@capacitor/haptics` (its own spec aside); features ask for a
+ * moment, not a waveform, so the taste decision lives in one place.
  *
  * Two invariants hold for every call:
  *

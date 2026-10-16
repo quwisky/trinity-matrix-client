@@ -38,7 +38,7 @@ const FAILED: HostOperationOutcome = {
 };
 
 /**
- * iOS blurs the app-switcher snapshot (spec §4). Android dims rather than drawing the splash,
+ * iOS blurs the app-switcher snapshot. Android dims rather than drawing the splash,
  * whose path looks up a `Splash` theme Trinity doesn't have; FLAG_SECURE is set either way.
  */
 const COVER = {
@@ -52,7 +52,7 @@ const NOT_SUPPORTED: HostOperationOutcome = {
 };
 
 /**
- * The app-switcher cover while App lock is on (decision 13): iOS covers the snapshot on
+ * The app-switcher cover while App lock is on: iOS covers the snapshot on
  * resign-active, Android sets FLAG_SECURE. Fails closed: a host without the plugin is
  * unavailable, and a refusal or an answer outside the declared shape is rejected.
  */
