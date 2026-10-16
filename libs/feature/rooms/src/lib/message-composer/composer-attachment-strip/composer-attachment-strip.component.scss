@@ -1,6 +1,6 @@
 @layer components {
-  // No box of its own: the upload bar and the staged attachment stay direct children of the
-  // composer element, exactly where they sat before they were extracted.
+  // No box of its own: the upload bar and the staged attachments stay direct children of the
+  // composer element.
   :host {
     display: contents;
 
@@ -32,9 +32,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  // Staged attachment awaiting a caption (shown above the input until sent).
-  // The margin that used to sit on each row moves to the list, so N rows stack tightly instead
-  // of each carrying the full gap. Capped and scrollable because a batch is unbounded and the
+  // Staged attachments awaiting a caption. Capped and scrollable: a batch is unbounded and the
   // composer must not grow until it pushes the timeline off screen.
   .composer__pending-list {
     margin: 0 var(--trinity-density-composer-padding-inline)
@@ -43,10 +41,9 @@
     flex-direction: column;
     gap: var(--trinity-density-item-gap);
 
-    // Deliberately NOT a whole number of rows. Rows are 52px with a 4px gap, so they occupy
-    // 0-52, 56-108, 112-164, 168-220: a 168px cap lands exactly on the fourth row's top edge and
-    // leaves it entirely invisible, with no scrollbar gutter to hint otherwise. 190px shows
-    // three in full and 22px of the fourth, which is what says "there is more".
+    // Deliberately NOT a whole number of rows. Rows are 52px with a 4px gap, so a 168px cap
+    // lands exactly on the fourth row's top edge and hides it, with no scrollbar gutter to hint
+    // otherwise. 190px shows three in full and 22px of the fourth, which says "there is more".
     max-height: 190px;
     overflow-y: auto;
   }
@@ -61,8 +58,8 @@
     background: var(--trinity-surface-raised);
   }
 
-  // A failed row has to be tellable from a pending one at a glance; the tint is the cue, and
-  // the "Not sent" text is what carries it to a screen reader and past a colour deficiency.
+  // The tint marks a failed row; the "Not sent" text carries it to screen readers and past
+  // colour deficiency.
   .composer__pending--failed {
     background: var(--trinity-danger-tint-10);
   }
@@ -95,10 +92,9 @@
     border-radius: var(--trinity-radius-sm);
   }
 
-  // A pending video: always the same square as a photo's thumb, so the filename never shifts.
-  // The play glyph sits in the top-start corner and the length spans the bottom edge, so the
-  // two never meet at this size; with no poster, the video glyph is centred in what the length
-  // leaves free.
+  // Same square as a photo's thumb, so the filename never shifts. The play glyph sits top-start
+  // and the length spans the bottom edge; with no poster, the video glyph is centred in what
+  // the length leaves free.
   .composer__pending-poster {
     position: relative;
     display: flex;
@@ -174,8 +170,7 @@
     }
   }
 
-  // Touch targets: the 44px minimum this project holds itself to. Split out of the composer's
-  // own coarse-pointer block when this markup moved, so the rule travels with the button.
+  // Touch targets: 44px minimum.
   @media (pointer: coarse) {
     .composer__pending-remove,
     .composer__pending-retry {

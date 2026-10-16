@@ -10,20 +10,19 @@ import {
 
 /**
  * The message as it will arrive, rendered through the timeline's own path so the two cannot
- * disagree — including the slash commands wherever the send path parses them, because
- * `/spoiler x` sends a concealed span and previewing the literal text would be a lie in
- * exactly the case a preview is most useful. Where it does not parse them (reply, edit,
- * caption) the lie runs the other way, so the preview shows the text as typed.
+ * disagree. Slash commands are previewed wherever the send path parses them (`/spoiler x`
+ * sends a concealed span); where it does not (reply, edit, caption) the preview shows the
+ * text as typed.
  *
- * `sanitizeMatrixHtml` is what adds the render-only normalisation the send path deliberately
- * omits: the spoiler class the reveal directive needs, the code-block language caption and
- * syntax highlighting.
+ * `sanitizeMatrixHtml` adds the render-only normalisation the send path deliberately omits:
+ * the spoiler class the reveal directive needs, the code-block language caption and syntax
+ * highlighting.
  *
  * `parsesCommands` is whether a leading slash is read as a command on the way out. Only
  * ordinary Conversation and exact-thread sends are: a reply, an edit and an attachment
  * caption route through `replyMessageContent` / `editMessageContent` / `mediaCaptionFields`,
- * none of which look at a leading slash — so previewing `/spoiler x` concealed while
- * replying would promise a spoiler and send the literal text.
+ * none of which look at a leading slash, so previewing `/spoiler x` concealed while replying
+ * would promise a spoiler and send the literal text.
  */
 export function composerPreview(
   rawText: string,
@@ -44,15 +43,13 @@ export function composerPreview(
   if (html) {
     return { html: sanitizeMatrixHtml(html), rich: true };
   }
-  // No formatted_body means it goes as plain text, which the timeline linkifies (falling
-  // back to the raw body when there is no URL) — mirror both, including which container it
-  // lands in, and its links open as the timeline's do (an external one in a new tab with no
-  // opener). `linkifyText` replaces newlines with `<br>`, so its output belongs in the
-  // rendered-markdown container the timeline uses at `message-row.component.html:88`;
-  // without that class the link would render browser-blue instead of in the Theme.
-  // The fallback keeps raw newlines and so needs `pre-wrap`, which is what `rich: false`
-  // selects — hence `escapeHtml` and NOT `escapeInlineText`, whose `<br>`s would double
-  // every line break under it.
+  // No formatted_body means plain text, which the timeline linkifies (raw body when there is
+  // no URL); mirror both, including the container and link behaviour (an external link opens in
+  // a new tab with no opener). `linkifyText` replaces newlines with `<br>`, so its output belongs
+  // in the timeline's rendered-markdown container; without that class the link would render
+  // browser-blue instead of in the Theme. The fallback keeps raw newlines and so needs
+  // `pre-wrap`, which `rich: false` selects: hence `escapeHtml` and NOT `escapeInlineText`,
+  // whose `<br>`s would double every line break.
   const body = content.body ?? text;
   const linkified = linkifyMessageText(body);
   return linkified !== null

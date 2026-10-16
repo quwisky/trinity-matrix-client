@@ -22,9 +22,9 @@ interface FormatSelection {
 }
 
 /**
- * Which formatting action each shortcut applies. An explicit table rather than deriving the
- * action from the id: a `format.*` id with no entry here is simply not a formatting shortcut,
- * where slicing the prefix off would have produced a bogus action and applied nothing.
+ * Which formatting action each shortcut applies. An explicit table rather than slicing the
+ * action off the id: a `format.*` id with no entry here is not a formatting shortcut, where
+ * slicing would produce a bogus action.
  */
 const SHORTCUT_ACTIONS: Readonly<Record<string, FormatAction>> = {
   'format.bold': 'bold',
@@ -59,8 +59,7 @@ export interface ComposerFormattingPorts {
 
 /**
  * Formatting chords, list continuation, quoting, the format menu's saved selection and the
- * preview toggle — everything that rewrites the box on purpose rather than by typing.
- * A plain class, like the other composer controllers.
+ * preview toggle: everything that rewrites the box on purpose rather than by typing.
  */
 export class ComposerFormatting {
   private selection: FormatSelection | null = null;
@@ -70,7 +69,6 @@ export class ComposerFormatting {
     private readonly injector: Injector,
   ) {
     // Formatting UI belongs to the exact Account, Conversation and editing target.
-    // Draft persistence remains with its existing Conversation owner.
     effect(
       () => {
         ports.context();
@@ -91,15 +89,14 @@ export class ComposerFormatting {
   /**
    * The keys the composer owns that Angular's per-key bindings cannot express.
    *
-   * Two jobs. **Formatting chords** are user-rebindable, so they are data rather than a
-   * template string and have to be resolved through the registry. Only `format.` ids are
-   * claimed — everything else (the quick switcher, the room hops) is left to bubble to the
-   * page handler, so those still work while typing. `stopPropagation` is what keeps a claimed
-   * chord off that handler, and `preventDefault` is not optional: Chrome and Firefox bind
-   * Ctrl+B to the bookmarks bar.
+   * **Formatting chords** are user-rebindable, so they are resolved through the registry. Only
+   * `format.` ids are claimed; everything else (the quick switcher, the room hops) bubbles to
+   * the page handler, so those still work while typing. `stopPropagation` keeps a claimed chord
+   * off that handler, and `preventDefault` is not optional: Chrome and Firefox bind Ctrl+B to
+   * the bookmarks bar.
    *
    * **Shift+Enter** continues a list. It cannot live in `onEnter`, which Angular only fires
-   * when no modifier is held — the newline today is the browser's own default.
+   * when no modifier is held.
    */
   onKeydown(event: Event): void {
     const keyEvent = event as KeyboardEvent;
@@ -143,31 +140,23 @@ export class ComposerFormatting {
   /**
    * Put a message's text into the composer as a blockquote to write around.
    *
-   * Called by the host list when a row raises `quote`, rather than driven by an input,
-   * because quoting is a one-shot event and not a state the composer should be able to
-   * re-enter: an input would need a token to distinguish "quoted twice" from "re-rendered".
+   * Called by the host list rather than driven by an input: quoting is a one-shot event, and
+   * an input would need a token to tell "quoted twice" from "re-rendered".
    *
-   * The block goes ABOVE anything already typed and the caret lands at the very end.
-   * Whatever is in the box is the response being written, so the quote belongs before it
-   * and the caret belongs after it; quoting a second message stacks rather than replaces.
-   * Routed through the same `applyEdit` a formatting chord uses, so the textarea, the
-   * autocompletes and the typing notice all stay in step.
+   * The block goes ABOVE anything already typed and the caret lands at the very end, so the
+   * typed response follows the quote; quoting a second message stacks rather than replaces.
    */
   insertQuote(block: string): void {
     if (!block) {
       return;
     }
-    // Quoting out of an edit has to wait for the edit to actually end.
-    //
-    // The host clears its `editingId` and calls this in the SAME tick, so `editing()` is
-    // still true here — the input only changes on the next change detection. The draft
-    // effect then takes its `!editing && wasEditing` branch and does an unconditional
-    // `text.set(draft)`, which would land AFTER this insert and silently discard the
-    // quote. afterNextRender runs after that effect, so the quote survives.
-    //
-    // afterNextRender, NOT queueMicrotask: the app is zoneless, so the host's signal write
-    // only schedules change detection (rAF) and a microtask would still run before the
-    // effect. Same reason `onTogglePreview` uses it.
+    // Quoting out of an edit has to wait for the edit to actually end. The host clears its
+    // `editingId` and calls this in the SAME tick, so `editing()` is still true: the input only
+    // changes on the next change detection. The draft effect then takes its
+    // `!editing && wasEditing` branch and does an unconditional `text.set(draft)`, which would
+    // land AFTER this insert and silently discard the quote. afterNextRender runs after that
+    // effect, NOT queueMicrotask: the app is zoneless, so the host's signal write only schedules
+    // change detection (rAF) and a microtask would still run before the effect.
     if (this.ports.editing()) {
       afterNextRender(() => this.insertQuoteNow(block), {
         injector: this.injector,
@@ -178,9 +167,8 @@ export class ComposerFormatting {
   }
 
   private insertQuoteNow(block: string): void {
-    // A preview hides the textarea, and `applyEdit` focuses it — on a `display: none`
-    // element that is a no-op, stranding the caret on <body>. Quoting means you are about
-    // to write, so drop back to the editor first.
+    // A preview hides the textarea, and `applyEdit` focuses it; on a `display: none` element
+    // that is a no-op, stranding the caret on <body>. So drop back to the editor first.
     this.ports.previewing.set(false);
     const existing = this.ports.text();
     const text = existing ? block + existing : block;
@@ -220,9 +208,9 @@ export class ComposerFormatting {
   /** Land an edit in the field, then do the bookkeeping a keystroke would have done. */
   private applyEdit(result: EditResult): void {
     this.ports.write(result);
-    // Without this an open mention menu keeps a query anchored to a caret that has moved —
-    // accepting it then splices at a stale offset — and a message begun entirely from the
-    // format action never announces that anyone is typing.
+    // Without this an open mention menu keeps a query anchored to a caret that has moved, so
+    // accepting splices at a stale offset, and a message begun from a format action never
+    // announces typing.
     this.ports.syncMenus();
     this.ports.typing(result.text.trim().length > 0);
   }

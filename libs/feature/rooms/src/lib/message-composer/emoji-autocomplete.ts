@@ -6,18 +6,17 @@ import type {
 import { type CaretReplacement } from './caret-replacement';
 
 /**
- * A `:shortcode` being typed at the caret: a `:` at a word boundary, then at
- * least two shortcode characters, with no closing colon yet. The leading
- * boundary keeps URLs and times (`http://`, `8:30`) from opening the menu.
+ * A `:shortcode` being typed at the caret: a `:` at a word boundary, then at least two
+ * shortcode characters, with no closing colon yet. The leading boundary keeps URLs and times
+ * (`http://`, `8:30`) from opening the menu.
  */
 const EMOJI_TRIGGER = /(?:^|\s):([a-z0-9_+-]{2,})$/i;
 /** A fully typed `:shortcode:` (closing colon present) for inline replacement. */
 const EMOJI_COMPLETE = /(?:^|\s):([a-z0-9_+-]+):$/i;
 
 /**
- * What accepting an emoji suggestion resolves to: normally a splice over the `:fragment`
- * under the caret, but a caret that has drifted off the fragment leaves nothing to
- * replace, so the emoji goes in at the cursor instead.
+ * What accepting an emoji suggestion resolves to: a splice over the `:fragment` under the
+ * caret, or, if the caret has drifted off the fragment, an insert at the cursor.
  */
 export type EmojiAcceptance =
   | { readonly kind: 'replace'; readonly replacement: CaretReplacement }
@@ -26,11 +25,9 @@ export type EmojiAcceptance =
 /**
  * The composer's `:shortcode` emoji autocomplete.
  *
- * Owns the trigger regexes, the ranked suggestion list, the highlighted index and the
- * caret splice an acceptance resolves to — everything except the textarea. A plain class
- * rather than an `@Injectable`: every composer instance (room and thread) needs its own,
- * it holds no injectable dependency of its own beyond the emoji index handed to it, and
- * staying DI-free keeps it constructible in a bare unit test.
+ * Owns the trigger regexes, the ranked suggestion list, the highlighted index and the caret
+ * splice an acceptance resolves to: everything except the textarea. A plain class because
+ * every composer instance (room and thread) needs its own.
  */
 export class EmojiAutocomplete {
   /** The `:shortcode` fragment under the caret, or null when the menu is closed. */
@@ -42,7 +39,7 @@ export class EmojiAutocomplete {
     if (q === null) {
       return [];
     }
-    // Limit left to the facade, which owns it and already defaults it to a menu's worth.
+    // The facade owns the result limit and defaults it to a menu's worth.
     return this.index.suggest(q);
   });
 
@@ -55,10 +52,9 @@ export class EmojiAutocomplete {
   constructor(private readonly index: TrnEmojiIndex) {}
 
   /**
-   * Recompute the menu from the text before the caret. A fully typed `:shortcode:` is
-   * converted to its emoji inline — returned as a splice for the caller to apply, with the
-   * menu closed; otherwise an in-progress `:fragment` opens (or, with no match, closes)
-   * the suggestion menu and nothing is spliced.
+   * Recompute the menu from the text before the caret. A fully typed `:shortcode:` is returned
+   * as an inline splice for the caller to apply, with the menu closed; otherwise an in-progress
+   * `:fragment` opens (or, with no match, closes) the menu and nothing is spliced.
    */
   sync(text: string, caret: number): CaretReplacement | null {
     const before = text.slice(0, caret);
@@ -79,8 +75,8 @@ export class EmojiAutocomplete {
   }
 
   /**
-   * Resolve the suggestion at `index` against the `:fragment` under the caret. Null when
-   * there is no such suggestion (or it carries no native character) — nothing to accept.
+   * Resolve the suggestion at `index` against the `:fragment` under the caret. Null when there
+   * is no such suggestion or it carries no native character.
    */
   accept(text: string, caret: number, index: number): EmojiAcceptance | null {
     const native = this.matches()[index]?.native;

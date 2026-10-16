@@ -40,11 +40,10 @@ export interface ComposerDraftsPorts {
  * Four effects, created in this order and in the component's injection context: the room
  * switch, the edit prefill, the persistence and the external mirror. They fire in creation
  * order within one change-detection pass when inputs move together, and the `untracked`
- * reads decide which inputs may re-fire them — reordering either changes what a draft
- * becomes. In particular, typing and an external draft landing in the same pass emit the
- * typed text first and the external draft second (persistence before mirror); mirror-first
- * would emit only the external one. A plain class, like the other composer controllers;
- * construct it in the component's constructor.
+ * reads decide which inputs may re-fire them; reordering either changes what a draft becomes.
+ * Typing and an external draft landing in the same pass emit the typed text first and the
+ * external draft second (persistence before mirror); mirror-first would emit only the
+ * external one. Construct it in the component's constructor.
  */
 export class ComposerDrafts {
   private wasEditing = false;
@@ -55,9 +54,8 @@ export class ComposerDrafts {
     const { roomId, editing, editTargetId, draft, composeDraft, text, store } =
       ports;
 
-    // On a room/thread change: drop the staged (unsent) attachment — it was staged
-    // to send here — and swap drafts. The composer instance is reused across rooms,
-    // so without this a half-typed message would leak into the next conversation.
+    // On a room/thread change, drop what belonged to the old room and swap drafts. The composer
+    // instance is reused across rooms, so otherwise a half-typed message leaks into the next one.
     effect(() => {
       const id = roomId();
       if (id !== this.wasRoomId) {
@@ -68,9 +66,9 @@ export class ComposerDrafts {
           // Drafts only apply to compose mode; in edit mode `text` is the edit body.
           if (!editing()) {
             const managedDraft = composeDraft();
-            // `editing()` can already be false in the pass that ends an edit and switches
-            // room together; `wasEditing` (updated by the prefill effect, later in this
-            // pass) still says `text` holds the edit body, which is not the old room's draft.
+            // `editing()` can already be false in the pass that ends an edit and switches room
+            // together; `wasEditing` (updated by the prefill effect, later in this pass) still
+            // says `text` holds the edit body, which is not the old room's draft.
             if (managedDraft === null && prev != null && !this.wasEditing) {
               store.set(prev, text());
             }
@@ -81,12 +79,11 @@ export class ComposerDrafts {
       }
     });
 
-    // Prefill on entering edit mode, or when the edit TARGET changes while still
-    // editing (a different message was selected). Keyed on editTargetId — not the
-    // draft body — and draft() is read untracked, so a mid-edit body change of the
-    // same target (redaction, concurrent multi-device edit, a late echo) neither
-    // fires this effect nor overwrites the user's in-progress text. Clear on
-    // leaving edit mode. Typing never re-fires this (it updates `text`, unread here).
+    // Prefill on entering edit mode, or when the edit TARGET changes while still editing. Keyed
+    // on editTargetId, not the draft body, and draft() is read untracked, so a mid-edit body
+    // change of the same target (redaction, concurrent multi-device edit, a late echo) neither
+    // fires this effect nor overwrites the user's in-progress text. Typing never re-fires it
+    // (it updates `text`, unread here).
     effect(() => {
       const isEditing = editing();
       const targetId = editTargetId();
@@ -95,17 +92,15 @@ export class ComposerDrafts {
         (!this.wasEditing || targetId !== this.wasEditTargetId)
       ) {
         text.set(untracked(() => draft()));
-        // Both branches replace the text wholesale, so a preview left open would be showing
-        // content that is no longer there — and the focus() below cannot land on a hidden
-        // textarea, leaving edit mode apparently unresponsive.
+        // The text is replaced wholesale, so an open preview would show stale content, and the
+        // focus() below cannot land on a hidden textarea, leaving edit mode unresponsive.
         ports.leavePreview();
         queueMicrotask(() => {
           ports.focusAtEnd();
           ports.autoGrow();
         });
       } else if (!isEditing && this.wasEditing) {
-        // Leaving edit mode restores the conversation's compose draft (empty when
-        // none), so an edit interlude doesn't discard a half-typed message.
+        // Restore the compose draft so an edit interlude doesn't discard a half-typed message.
         const id = untracked(() => roomId());
         const managedDraft = untracked(() => composeDraft());
         text.set(managedDraft ?? (id != null ? store.get(id) : ''));
@@ -116,9 +111,8 @@ export class ComposerDrafts {
       this.wasEditTargetId = targetId;
     });
 
-    // Persist the compose draft on any text change (typing, emoji insert, inline
-    // autocomplete). Gated to compose mode and the settled conversation so a room
-    // switch's load never cross-saves; sending blanks the field, dropping the draft.
+    // Persist the compose draft on any text change. Gated to compose mode and the settled
+    // conversation so a room switch's load never cross-saves; sending blanks the field.
     effect(() => {
       const value = text();
       const id = roomId();
@@ -134,8 +128,8 @@ export class ComposerDrafts {
     });
 
     // A failed or cancelled runtime send restores its durable draft after this component
-    // optimistically clears the textarea. Mirror only external changes; caret-local typing
-    // does not trigger this effect because `text` is read untracked.
+    // optimistically clears the textarea. Mirrors only external changes: `text` is read
+    // untracked, so typing does not trigger it.
     effect(() => {
       const managedDraft = composeDraft();
       const isEditing = editing();

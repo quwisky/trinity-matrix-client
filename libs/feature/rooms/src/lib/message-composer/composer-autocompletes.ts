@@ -23,12 +23,11 @@ export interface ComposerAutocompletePorts {
   /**
    * Whether a leading slash is READ as a command on the way out.
    *
-   * A port rather than something the menus work out, because it is a fact about the composer's
-   * MODE: only ordinary Conversation and exact-thread sends run
-   * `slashCommandContent`, while a reply, an edit and an attachment caption route through
-   * `replyMessageContent` / `editMessageContent` / `mediaCaptionFields`, none of which look at
-   * a leading slash. Offering a command in those states completes something that then sends as
-   * its own nine literal characters.
+   * A port because it is a fact about the composer's MODE: only ordinary Conversation and
+   * exact-thread sends run `slashCommandContent`, while a reply, an edit and an attachment
+   * caption route through `replyMessageContent` / `editMessageContent` / `mediaCaptionFields`,
+   * none of which look at a leading slash. Offering a command there completes text that then
+   * sends literally.
    */
   readonly commandsParsed: Signal<boolean>;
 }
@@ -36,15 +35,13 @@ export interface ComposerAutocompletePorts {
 /**
  * The composer's three autocomplete menus, as one thing.
  *
- * Each engine owns its trigger detection, suggestion list, highlighted index and the caret
- * splice an acceptance resolves to. What lived in the component was the layer above them: the
- * caret handover, the accept/move plumbing repeated three times, and the ORDER — which menu
- * gets Enter, which rung of the Escape ladder closes what. That order is the only thing
- * making the three safe together, so it belongs in one place rather than spread across six
- * key handlers.
+ * Each engine owns its trigger detection, suggestions, highlighted index and the caret splice an
+ * acceptance resolves to. This layer owns the caret handover, the shared accept/move plumbing
+ * and the ORDER: which menu gets Enter, which rung of the Escape ladder closes what. That order
+ * is what makes the three safe together.
  *
  * The ladder is mention → emoji → slash throughout. A slash only triggers at the start of the
- * message, where neither of the others can be open, so in practice they never compete — but
+ * message, where neither of the others can be open, so they never compete in practice, but
  * stating an order beats relying on that.
  */
 export class ComposerAutocompletes {
@@ -91,9 +88,9 @@ export class ComposerAutocompletes {
     this.mentionOpen = this.mention.open;
     this.mentionActiveIndex = this.mention.activeIndex;
     this.slashMatches = this.slash.matches;
-    // Gated, not just "has matches": see `commandsParsed`. The engine still tracks its query
-    // underneath — this decides only whether the menu is shown and whether the key ladders
-    // above will hand it Enter, Tab and the arrows.
+    // Gated, not just "has matches": see `commandsParsed`. The engine still tracks its query;
+    // this decides only whether the menu shows and whether the key ladders hand it Enter, Tab
+    // and the arrows.
     this.slashOpen = computed(
       () => this.ports.commandsParsed() && this.slash.open(),
     );
@@ -207,7 +204,7 @@ export class ComposerAutocompletes {
       const { start, end, insert } = acceptance.replacement;
       this.ports.replaceRange(start, end, insert);
     } else {
-      // Caret drifted off the fragment — fall back to a plain cursor insert.
+      // Caret drifted off the fragment: fall back to a plain cursor insert.
       this.ports.insertAtCursor(acceptance.native);
     }
     this.emojiQuery.set(null);

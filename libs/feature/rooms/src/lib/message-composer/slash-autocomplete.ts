@@ -6,10 +6,9 @@ import { type CaretReplacement } from './caret-replacement';
  * A `/command` being typed at the START of the message, and only there.
  *
  * Anchored to `^` rather than to a word boundary, unlike the emoji and mention triggers,
- * because that is where the parser looks: `parseSlashCommand` only ever matches a leading
- * command, so offering one mid-sentence would complete something that then sends as literal
- * text. The name may be empty — a bare `/` opens the menu on everything, which is how anyone
- * finds out these exist at all.
+ * because `parseSlashCommand` only ever matches a leading command, so offering one
+ * mid-sentence would complete text that then sends literally. The name may be empty: a bare
+ * `/` opens the menu on everything.
  */
 const SLASH_TRIGGER = /^\/([a-z]*)$/i;
 
@@ -17,13 +16,10 @@ const SLASH_TRIGGER = /^\/([a-z]*)$/i;
  * The composer's `/command` autocomplete.
  *
  * Owns the trigger, the filtered list, the highlighted index and the caret splice an
- * acceptance resolves to — everything except the textarea. A plain class rather than an
- * `@Injectable`, for the reasons {@link EmojiAutocomplete} records: one per composer, no
- * injectable dependency, and constructible in a bare unit test.
+ * acceptance resolves to: everything except the textarea.
  *
- * The command list comes from `@trinity/util/matrix` rather than being restated here. It is
- * the same list the send path parses against, so a command renamed there stops being offered
- * here rather than being offered under a name that no longer works.
+ * The command list is the one the send path parses against, so a command renamed there stops
+ * being offered here instead of being offered under a name that no longer works.
  */
 export class SlashAutocomplete {
   /** The command fragment after the leading slash, or null when the menu is closed. */
@@ -44,22 +40,19 @@ export class SlashAutocomplete {
   /**
    * Index of the highlighted command.
    *
-   * Reset in {@link sync} rather than by an effect on `matches`, which is how the composer
-   * does it for the emoji and mention engines. The difference is deliberate and rests on a
-   * property only this engine has: `matches` is a pure function of `query` over a module
-   * constant, so the same fragment always yields the same list and the highlight can safely
-   * survive a re-sync the user did not ask for — a caret move, a format edit further along
-   * the message. Mention's list can change underneath an unchanged query (members arrive), so
-   * it cannot make that promise and resets on every change instead.
+   * Reset in {@link sync} rather than by an effect on `matches`, as the composer does for the
+   * emoji and mention engines, deliberately: `matches` is a pure function of `query` over a
+   * module constant, so the highlight can survive a re-sync the user did not ask for (a caret
+   * move, a format edit further along). Mention's list can change under an unchanged query
+   * (members arrive), so it cannot make that promise and resets on every change instead.
    */
   readonly activeIndex = signal(0);
 
   /**
    * Recompute the menu from the text before the caret.
    *
-   * Nothing is ever spliced here, which is the difference from the emoji engine: there is no
-   * "fully typed" form to convert inline — a complete `/me` is not finished until it has a
-   * message after it, and that is the parser's business at send time.
+   * Nothing is ever spliced here, unlike the emoji engine: there is no "fully typed" form to
+   * convert inline, since a complete `/me` is not finished until a message follows it.
    */
   sync(text: string, caret: number): void {
     const trigger = SLASH_TRIGGER.exec(text.slice(0, caret));
@@ -68,18 +61,16 @@ export class SlashAutocomplete {
       return; // same fragment, same list — leave the highlight where the user put it
     }
     this.query.set(next);
-    // A different fragment is a different list, so an index into the old one means nothing.
-    // Left alone it can point past the end, and then `accept` returns null while the menu is
-    // open: Enter is swallowed and the message neither completes nor sends.
+    // A different fragment is a different list; a stale index can point past the end, and then
+    // `accept` returns null while the menu is open: Enter is swallowed and nothing sends.
     this.activeIndex.set(0);
   }
 
   /**
    * Resolve the command at `index` into a splice over the `/fragment`.
    *
-   * The trailing space is part of the acceptance rather than a nicety: every one of these
-   * takes an argument, and `parseSlashCommand` needs the separator before it will read one.
-   * Accepting `/me` and leaving the caret against the `e` invites a message that sends as the
+   * The trailing space is part of the acceptance: every command takes an argument, and
+   * `parseSlashCommand` needs the separator before it will read one, else typing on sends the
    * literal text `/mehello`.
    */
   accept(text: string, caret: number, index: number): CaretReplacement | null {
@@ -104,8 +95,8 @@ export class SlashAutocomplete {
     if (n === 0) {
       return null;
     }
-    // Modulo twice: `+ n` alone only rescues a delta within one lap, so a page-sized jump
-    // would go negative and index nothing.
+    // Modulo twice: `+ n` alone only rescues a delta within one lap; a page-sized jump would
+    // go negative.
     const next = (((this.activeIndex() + delta) % n) + n) % n;
     this.activeIndex.set(next);
     return next;
