@@ -210,8 +210,6 @@ function afterTwoFrames(page: Page): Promise<void> {
   );
 }
 
-let receiptChecks = 0;
-
 /** Whether `userId` has a public read receipt on `eventId`, as `token`'s account sees it. */
 async function readReceiptBy(
   request: APIRequestContext,
@@ -221,13 +219,7 @@ async function readReceiptBy(
   eventId: string,
   userId: string,
 ): Promise<boolean> {
-  // Synapse answers a repeated, identical sync from a short-lived cache: vary the filter so
-  // each check reads the receipts as they are now.
-  receiptChecks += 1;
-  const filter = JSON.stringify({
-    room: { timeline: { limit: 1 } },
-    account_data: { not_types: [`trn.e2e.receipt-check.${receiptChecks}`] },
-  });
+  const filter = JSON.stringify({ room: { timeline: { limit: 1 } } });
   const res = await request.get(
     `${hs}/_matrix/client/v3/sync?timeout=0&filter=${encodeURIComponent(filter)}`,
     { headers: { Authorization: `Bearer ${token}` } },

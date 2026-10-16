@@ -107,8 +107,6 @@ async function setDisplayName(
   expect(res.ok(), `displayname ${displayname}`).toBe(true);
 }
 
-let probeCount = 0;
-
 /** The server's own unread notification count for `roomId`, as `reader` sees it. */
 async function serverUnreadCount(
   request: APIRequestContext,
@@ -116,13 +114,9 @@ async function serverUnreadCount(
   reader: ApiUser,
   roomId: string,
 ): Promise<number> {
-  // Synapse caches the response to an identical sync request for a couple of minutes, so a
-  // repeated probe would keep returning the first answer. A filter that differs by an unused
-  // account-data type is a different request every time.
   const filter = JSON.stringify({
     room: { rooms: [roomId], timeline: { limit: 1 } },
     presence: { types: [] },
-    account_data: { types: [`probe.${++probeCount}.${Date.now()}`] },
   });
   const res = await request.get(
     `${hs}/_matrix/client/v3/sync?timeout=0&filter=${encodeURIComponent(filter)}`,

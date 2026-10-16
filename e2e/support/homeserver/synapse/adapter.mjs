@@ -184,6 +184,7 @@ export async function ensureConfig(ctx) {
   // random one (403 "HMAC incorrect"). Force our known secret: replace the
   // generated line in place if present, otherwise append it below.
   let replacedSecret = false;
+  let syncCacheChanged = false;
   if (/^registration_shared_secret:.*$/m.test(yaml)) {
     const next = yaml.replace(
       /^registration_shared_secret:.*$/m,
@@ -263,6 +264,22 @@ export async function ensureConfig(ctx) {
       '  burst_count: 1000',
     );
   }
+  // Synapse answers a repeated, identical /sync from a response cache for two minutes
+  // (caches.sync_response_cache_duration), so a journey that polls the same sync URL
+  // while it waits for a receipt or a count can keep reading the first answer. Zero keeps
+  // only the sharing of identical requests still in flight. Guarded on its own key for
+  // the same reason as the publication rules above.
+  if (!yaml.includes('sync_response_cache_duration')) {
+    if (/^caches:/m.test(yaml)) {
+      yaml = yaml.replace(
+        /^caches:[^\n]*$/m,
+        '$&\n  sync_response_cache_duration: 0',
+      );
+      syncCacheChanged = true;
+    } else {
+      additions.push('caches:', '  sync_response_cache_duration: 0');
+    }
+  }
   if (!/^federation_verify_certificates:/m.test(yaml)) {
     // The harness Caddy uses its own disposable CA. Federation is still real — only
     // certificate-chain verification is relaxed inside this isolated test network.
@@ -302,7 +319,13 @@ export async function ensureConfig(ctx) {
   const oidcChanged = patched !== yaml;
   yaml = patched;
 
-  if (additions.length || replacedSecret || oidcChanged || trustedKeysChanged) {
+  if (
+    additions.length ||
+    replacedSecret ||
+    syncCacheChanged ||
+    oidcChanged ||
+    trustedKeysChanged
+  ) {
     await writeFile(CONFIG, yaml, 'utf8');
     ctx.log(
       `patched homeserver.yaml (shared secret, public_baseurl, rate limits${ctx.sso === false ? '' : ', dex sso'})`,
