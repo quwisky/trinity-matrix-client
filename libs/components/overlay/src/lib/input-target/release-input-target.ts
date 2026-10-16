@@ -9,7 +9,7 @@ import { InputModalityDetector } from '@angular/cdk/a11y';
  * of the last mousedown, touchstart or keydown it counts (not a bare modifier key, a mousedown
  * just after a touch, or a screen reader's synthetic touch), and nothing clears it until the
  * next one. A panel closed by a press or key inside it would stay in memory, detached, until
- * then (#1361). The CDK has no public way to clear it, so this writes its internal
+ * then. The CDK has no public way to clear it, so this writes its internal
  * `_mostRecentTarget` back to its initial `null`; `release-input-target.spec.ts` fails if that
  * field changes. `null` is what the detector reads as "no recent target", and a detached
  * element could not match a later focus target anyway.

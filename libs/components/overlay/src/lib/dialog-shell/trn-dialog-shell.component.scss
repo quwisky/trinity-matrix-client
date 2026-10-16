@@ -8,8 +8,8 @@
     height: 100%;
   }
 
-  // Centred, not start-aligned: on a coarse pointer the close button grows to a 44px target,
-  // and top-aligned its icon sat ~10px below a one-line title.
+  // Centred, not start-aligned: on a coarse pointer the close button grows to a 44px target
+  // and top-aligned its icon would sit lower than a one-line title.
   .dialog-shell__header {
     display: flex;
     flex: none;

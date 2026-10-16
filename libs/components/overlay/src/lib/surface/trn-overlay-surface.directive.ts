@@ -25,7 +25,7 @@ export class TrnOverlaySurfaceDirective {
   /**
    * The accent variant paints the attention surface, so it declares that context for its
    * content: `trnBtn` reads `data-trn-surface="attention"` and inverts its solid fill, which
-   * would otherwise be the same accent as the surface (#1224). That includes the surface's
+   * would otherwise be the same accent as the surface. That includes the surface's
    * own primary action. The accent recipe also switches every focusable inside (buttons,
    * fields, links) to the on-attention ring, because they all sit on the accent. Portal
    * content opened from inside renders outside this element. Neutral content (a neutral card
