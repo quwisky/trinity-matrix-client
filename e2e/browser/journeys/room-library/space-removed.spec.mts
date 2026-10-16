@@ -138,22 +138,30 @@ async function expectRecentWithRoomOpen(
 test.describe('A selected space that disappears', () => {
   test.skip(!session.available, 'needs a disposable homeserver');
 
-  test('removed from the space: the rail returns to Recent with the room open', async ({
+  test('removed from the space: the rail returns to Recent with the room open, focus kept', async ({
     page,
     request,
   }) => {
     const f = await seedSpace(request, 'srk');
     await openRoomInSpace(page, f);
     const historyLength = await page.evaluate(() => history.length);
+    // Someone is typing when the space goes: the person did not navigate, so their
+    // focus and their typing stay in the composer.
+    const composer = page.getByTestId('composer-input');
+    await composer.click();
+    await page.keyboard.type('Still here');
 
     await membership(request, f.hs, f.owner, f.spaceId, 'kick', {
       user_id: f.readerId,
     });
 
     await expectRecentWithRoomOpen(page, f, historyLength);
+    await expect(composer).toBeFocused();
+    await page.keyboard.type(', and typing');
+    await expect(composer).toHaveValue('Still here, and typing');
   });
 
-  test('left on another device: the rail returns to Recent with the room open', async ({
+  test('left on another device: the rail returns to Recent with the room open, focus in the rail', async ({
     page,
     request,
   }) => {
@@ -161,10 +169,16 @@ test.describe('A selected space that disappears', () => {
     await openRoomInSpace(page, f);
     const historyLength = await page.evaluate(() => history.length);
 
+    // Focus is on the space's pill, which goes with the space: it moves to the rail the
+    // pill was in, not to a removed node or the page.
+    await spacePill(page, f).focus();
+    await expect(spacePill(page, f)).toBeFocused();
+
     // A second session of the same account: another device.
     const otherDevice = await passwordLogin(request, f.hs, f.user, f.pass);
     await membership(request, f.hs, otherDevice, f.spaceId, 'leave');
 
     await expectRecentWithRoomOpen(page, f, historyLength);
+    await expect(page.locator('trn-server-rail nav.rail')).toBeFocused();
   });
 });

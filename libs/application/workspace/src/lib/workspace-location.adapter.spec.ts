@@ -8,6 +8,7 @@ import {
 } from '@angular/router';
 import { Subject, firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { BACKGROUND_NAVIGATION_INFO } from '@trinity/util/ui';
 import { WorkspaceLocationAdapter } from './workspace-location.adapter';
 import { workspaceUrlOf } from './workspace-url';
 
@@ -122,6 +123,23 @@ describe('WorkspaceLocationAdapter', () => {
       replaceUrl: true,
     });
     expect(test.adapter.projecting).toBe(false);
+  });
+
+  it('marks a background projection with Router info, so focus stays where it is', async () => {
+    const test = setup(`/rooms?account=${encodeURIComponent(ALICE)}`);
+
+    await firstValueFrom(
+      test.adapter.project(conversation, {
+        history: 'replace',
+        background: true,
+      }),
+    );
+
+    expect(test.navigate).toHaveBeenCalledWith(['/rooms', expect.any(String)], {
+      queryParams: { account: ALICE },
+      replaceUrl: true,
+      info: BACKGROUND_NAVIGATION_INFO,
+    });
   });
 
   it('rewrites the list it leaves and marks a Conversation pushed over it (#1113)', async () => {

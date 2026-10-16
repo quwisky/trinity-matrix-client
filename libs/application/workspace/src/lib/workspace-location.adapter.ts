@@ -21,6 +21,7 @@ import {
   startWith,
   timer,
 } from 'rxjs';
+import { BACKGROUND_NAVIGATION_INFO } from '@trinity/util/ui';
 import type { WorkspaceDestination } from './workspace.models';
 import {
   parseWorkspaceUrl,
@@ -36,6 +37,8 @@ interface WorkspaceLocationProjection {
   readonly history: 'push' | 'replace' | 'back';
   readonly overList?: boolean;
   readonly eventId?: string | null;
+  /** The person did not make this navigation (a repair): their focus stays where it is. */
+  readonly background?: boolean;
 }
 
 /** History-state key on a Conversation entry pushed straight over its list (#1113). */
@@ -140,6 +143,7 @@ export class WorkspaceLocationAdapter {
       queryParams: { ...projection.queryParams },
       replaceUrl: options.history === 'replace',
       ...(overList ? { state: { [LIST_BELOW]: true } } : {}),
+      ...(options.background ? { info: BACKGROUND_NAVIGATION_INFO } : {}),
     });
   }
 

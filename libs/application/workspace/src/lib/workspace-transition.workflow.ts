@@ -126,6 +126,8 @@ export class WorkspaceTransitionWorkflow {
         history: resolved.repaired ? 'replace' : options.history,
         overList: options.overList === true && !resolved.repaired,
         eventId: options.eventId,
+        // A repair is not the person's navigation, so it leaves their focus alone.
+        ...(options.source === 'repair' ? { background: true } : {}),
       });
     };
 

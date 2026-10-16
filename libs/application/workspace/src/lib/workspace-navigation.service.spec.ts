@@ -203,6 +203,7 @@ function harness(options: HarnessOptions = {}) {
   const projections: {
     readonly history: 'push' | 'replace' | 'back';
     readonly overList?: boolean;
+    readonly background?: boolean;
   }[] = [];
   const popHistory = vi.fn();
   const location = {
@@ -221,12 +222,14 @@ function harness(options: HarnessOptions = {}) {
         readonly history: 'push' | 'replace' | 'back';
         readonly overList?: boolean;
         readonly eventId?: string | null;
+        readonly background?: boolean;
       },
     ) =>
       defer(() => {
         projections.push({
           history: projectionOptions.history,
           overList: projectionOptions.overList,
+          ...(projectionOptions.background ? { background: true } : {}),
         });
         if (projectionOptions.history === 'back') {
           popHistory();
@@ -1082,6 +1085,28 @@ describe('WorkspaceNavigationService', () => {
           ['/rooms', encodeRoomSegment(ROOM)],
           { queryParams: { account: ALICE }, replaceUrl: true },
         );
+      });
+
+      // The person did not make this navigation, so it must not move their focus.
+      it('projects its repair as a background navigation, unlike a navigation the person made', async () => {
+        const h = harness({ routeAccountId: ALICE, rooms });
+        await openInSpace(h);
+        expect(h.projections.at(-1)).toEqual({
+          history: 'push',
+          overList: false,
+        });
+
+        drop(h, ALICE, SPACE);
+
+        await vi.waitFor(() => {
+          TestBed.tick();
+          expect(h.service.view().scope).toEqual({ kind: 'recent' });
+        });
+        expect(h.projections.at(-1)).toEqual({
+          history: 'replace',
+          overList: false,
+          background: true,
+        });
       });
 
       it('does not repair while the space is unconfirmed', async () => {
