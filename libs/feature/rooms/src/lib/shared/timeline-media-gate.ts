@@ -1,11 +1,8 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
-import { TimelineScrollActivity } from './timeline-scroll-activity';
-
-/**
- * Faster than anyone reads: about two viewports a second. A fling moves 3,000–10,000 px/s,
- * so its images wait; a reader scrolling to read keeps loading them as they come near.
- */
-const READING_SPEED_PX_PER_S = 1_500;
+import {
+  READING_SPEED_PX_PER_S,
+  TimelineScrollActivity,
+} from './timeline-scroll-activity';
 
 /** How far beyond the list's viewport a row counts as near: half its height above and below. */
 const NEAR_MARGIN = '50% 0px';
@@ -129,6 +126,7 @@ export class TimelineMediaGate {
     waiting.start();
   }
 
+  /** A fling moves 3,000–10,000 px/s, so its images wait; a reader keeps loading them. */
   private fast(): boolean {
     return this.activity.speed >= READING_SPEED_PX_PER_S;
   }

@@ -132,6 +132,8 @@ describe('SettingsDialogComponent', () => {
         setVirtualTimeline: vi.fn(),
         deferMediaWhileScrolling: signal(false),
         setDeferMediaWhileScrolling: vi.fn(),
+        flingPlaceholders: signal(false),
+        setFlingPlaceholders: vi.fn(),
       },
     });
     const fixture = TestBed.createComponent(SettingsDialogComponent);
@@ -154,6 +156,8 @@ describe('SettingsDialogComponent', () => {
         setVirtualTimeline: vi.fn(),
         deferMediaWhileScrolling: signal(false),
         setDeferMediaWhileScrolling: vi.fn(),
+        flingPlaceholders: signal(false),
+        setFlingPlaceholders: vi.fn(),
       },
     });
     const fixture = TestBed.createComponent(SettingsDialogComponent);

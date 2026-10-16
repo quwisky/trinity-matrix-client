@@ -67,6 +67,7 @@ describe('config key ledger', () => {
     // happened when this phase's density preference met the composer's selection toggle.
     expect([...exportedKeysFor('platform-native')].sort()).toEqual([
       'trinity.flags.defer-media-while-scrolling',
+      'trinity.flags.fling-placeholders',
       'trinity.flags.virtual-timeline',
       'trinity.format.date',
       'trinity.format.time',

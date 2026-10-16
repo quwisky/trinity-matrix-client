@@ -284,6 +284,7 @@ const SETUPS: Record<string, () => Setup> = {
       MockProvider(FeatureFlagsService, {
         virtualTimeline: signal(false),
         deferMediaWhileScrolling: signal(false),
+        flingPlaceholders: signal(false),
       }),
     ],
   }),

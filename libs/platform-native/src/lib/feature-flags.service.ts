@@ -11,12 +11,16 @@ import {
 const VIRTUAL_TIMELINE_KEY = 'trinity.flags.virtual-timeline';
 const DEFER_MEDIA_WHILE_SCROLLING_KEY =
   'trinity.flags.defer-media-while-scrolling';
+const FLING_PLACEHOLDERS_KEY = 'trinity.flags.fling-placeholders';
 
 /** The windowed timeline is on unless the user opts out. */
 export const DEFAULT_VIRTUAL_TIMELINE = true;
 
 /** Timeline images load as their rows mount unless the user opts in to waiting. */
 export const DEFAULT_DEFER_MEDIA_WHILE_SCROLLING = false;
+
+/** Every timeline row renders in full during a fast scroll unless the user opts in. */
+export const DEFAULT_FLING_PLACEHOLDERS = false;
 
 /**
  * User-toggleable experimental feature flags, persisted across launches.
@@ -33,6 +37,7 @@ export class FeatureFlagsService {
   private readonly _deferMediaWhileScrolling = signal(
     DEFAULT_DEFER_MEDIA_WHILE_SCROLLING,
   );
+  private readonly _flingPlaceholders = signal(DEFAULT_FLING_PLACEHOLDERS);
 
   /**
    * Windowed (virtualized) message timeline: render only the on-screen rows plus
@@ -55,6 +60,14 @@ export class FeatureFlagsService {
   readonly deferMediaWhileScrolling =
     this._deferMediaWhileScrolling.asReadonly();
 
+  /**
+   * While the timeline moves faster than anyone reads, rows entering the window render as
+   * blank placeholders of their known (or estimated) height, and the real rows mount once
+   * the scroll slows or stops. A fast scroll otherwise builds and throws away about a
+   * hundred full rows a second. OFF by default: an opt-in in Settings → Experimental.
+   */
+  readonly flingPlaceholders = this._flingPlaceholders.asReadonly();
+
   /** Read the saved flags and apply them. Call once at app startup. */
   async init(): Promise<PreferenceInitializationOutcome> {
     const outcomes = await Promise.all([
@@ -63,6 +76,7 @@ export class FeatureFlagsService {
         DEFER_MEDIA_WHILE_SCROLLING_KEY,
         this._deferMediaWhileScrolling,
       ),
+      this.restore(FLING_PLACEHOLDERS_KEY, this._flingPlaceholders),
     ]);
     return combinePreferenceInitialization(outcomes);
   }
@@ -77,6 +91,12 @@ export class FeatureFlagsService {
   setDeferMediaWhileScrolling(on: boolean): void {
     this._deferMediaWhileScrolling.set(on);
     this.persist(DEFER_MEDIA_WHILE_SCROLLING_KEY, on);
+  }
+
+  /** Toggle + persist whether rows flying past in a fast scroll render as placeholders. */
+  setFlingPlaceholders(on: boolean): void {
+    this._flingPlaceholders.set(on);
+    this.persist(FLING_PLACEHOLDERS_KEY, on);
   }
 
   /** Apply one stored flag, keeping its default when nothing valid is stored. */

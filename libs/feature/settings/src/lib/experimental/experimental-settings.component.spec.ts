@@ -11,10 +11,12 @@ import { ExperimentalSettingsComponent } from './experimental-settings.component
 describe('ExperimentalSettingsComponent', () => {
   let virtualTimeline: ReturnType<typeof signal<boolean>>;
   let deferMediaWhileScrolling: ReturnType<typeof signal<boolean>>;
+  let flingPlaceholders: ReturnType<typeof signal<boolean>>;
 
   beforeEach(() => {
     virtualTimeline = signal(false);
     deferMediaWhileScrolling = signal(false);
+    flingPlaceholders = signal(false);
   });
 
   function renderPage() {
@@ -23,6 +25,7 @@ describe('ExperimentalSettingsComponent', () => {
         MockProvider(FeatureFlagsService, {
           virtualTimeline,
           deferMediaWhileScrolling,
+          flingPlaceholders,
         }),
       ],
     });
@@ -81,6 +84,28 @@ describe('ExperimentalSettingsComponent', () => {
     toggle.checkedChange.emit(false);
     expect(
       TestBed.inject(FeatureFlagsService).setDeferMediaWhileScrolling,
+    ).toHaveBeenCalledWith(false);
+  });
+
+  it('offers blank rows while scrolling fast as an opt-in, and toggles it', async () => {
+    const { fixture } = await renderPage();
+
+    const control = screen.getByRole('switch', {
+      name: 'Blank rows while scrolling fast',
+    });
+    expect(control).toHaveAccessibleDescription(
+      'Messages that fly past show as blank space until scrolling slows down, which uses less memory. Needs Virtualized timeline.',
+    );
+    const toggle = switchIn(fixture, 'flag-fling-placeholders');
+    expect(toggle.checked()).toBe(false);
+
+    flingPlaceholders.set(true);
+    fixture.detectChanges();
+    expect(toggle.checked()).toBe(true);
+
+    toggle.checkedChange.emit(false);
+    expect(
+      TestBed.inject(FeatureFlagsService).setFlingPlaceholders,
     ).toHaveBeenCalledWith(false);
   });
 });

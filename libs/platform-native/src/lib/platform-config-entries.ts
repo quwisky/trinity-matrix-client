@@ -29,6 +29,7 @@ import {
 } from './message-gesture-settings.service';
 import {
   DEFAULT_DEFER_MEDIA_WHILE_SCROLLING,
+  DEFAULT_FLING_PLACEHOLDERS,
   DEFAULT_VIRTUAL_TIMELINE,
   FeatureFlagsService,
 } from './feature-flags.service';
@@ -263,6 +264,15 @@ function flagEntries(flags: FeatureFlagsService): readonly ConfigEntry[] {
       reset: () =>
         flags.setDeferMediaWhileScrolling(DEFAULT_DEFER_MEDIA_WHILE_SCROLLING),
       ...flagSetting((on) => flags.setDeferMediaWhileScrolling(on)),
+    },
+    {
+      path: 'flags.flingPlaceholders',
+      key: 'trinity.flags.fling-placeholders',
+      description:
+        'Whether messages that fly past in a fast scroll show as blank rows until scrolling slows down, which uses less memory. Works only with flags.virtualTimeline on.',
+      read: () => flags.flingPlaceholders(),
+      reset: () => flags.setFlingPlaceholders(DEFAULT_FLING_PLACEHOLDERS),
+      ...flagSetting((on) => flags.setFlingPlaceholders(on)),
     },
   ];
 }
