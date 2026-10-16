@@ -116,6 +116,26 @@ test.describe('Leaving a Space', () => {
     await page.getByTestId('space-leave').click();
     await confirmation.getByRole('button', { name: 'Leave' }).click();
 
+    // Leaving goes to the direct messages, once: the sync that drops the space can land
+    // before the leave request answers, and must not send the rail to Recent first (#1402).
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('view'), {
+        timeout: 30_000,
+      })
+      .toBe('home');
+    expect(new URL(page.url()).searchParams.get('space')).toBeNull();
+    await expect(
+      page.locator('trn-channel-sidebar .sidebar__title'),
+    ).toHaveText('Direct messages');
+    await expect(page.getByTestId('rail-recent')).not.toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    await expect(
+      page.getByRole('button', { name: spaceName, exact: true }),
+    ).toHaveCount(0, { timeout: 30_000 });
+    expect(new URL(page.url()).searchParams.get('view')).toBe('home');
+
     await expect
       .poll(() => joinedRooms(request, hs, token), { timeout: 30_000 })
       .not.toContain(spaceId);

@@ -3,6 +3,7 @@ import {
   expect,
   test,
   testResourceId,
+  type APIRequestContext,
   type Page,
 } from '../../../fixtures.mts';
 import { login } from '../../../support/app.mts';
@@ -13,6 +14,7 @@ import {
   configureMultiAccountSuite,
   mixInAccount,
   session,
+  type ApiUser,
 } from '../../support/multi-account-journey.mts';
 
 /**
@@ -29,6 +31,143 @@ const settleMenus = (page: Page) =>
         container.getAnimations({ subtree: true }).map((a) => a.finished),
       ),
     );
+
+interface SharedSpace {
+  readonly hs: string;
+  readonly userA: string;
+  readonly passA: string;
+  readonly userB: string;
+  readonly passB: string;
+  readonly b: ApiUser;
+  readonly spaceId: string;
+  readonly spaceName: string;
+  readonly aRoom: string;
+  readonly bRoom: string;
+  readonly outside: string;
+}
+
+/**
+ * A and B both hold a space. A files A's room and B's room in it, and B has joined only
+ * B's room, so the space lists B's row through B's copy of the space. B also has a room
+ * outside the space.
+ */
+async function seedSharedSpace(
+  request: APIRequestContext,
+  role: string,
+): Promise<SharedSpace> {
+  const hs = session.hs as string;
+  const runId = `${testResourceId('run')}${role}`;
+  const userA = `${role}-a-${runId}`;
+  const passA = `${role}-a-pass-${runId}`;
+  const userB = `${role}-b-${runId}`;
+  const passB = `${role}-b-pass-${runId}`;
+  const spaceName = `Shared space ${runId}`;
+  const bRoom = `B's room in the space ${runId}`;
+  const aRoom = `A's room in the space ${runId}`;
+  const outside = `B's room outside ${runId}`;
+
+  await registerUser(request, userA, passA);
+  await registerUser(request, userB, passB);
+  const a = await apiLogin(request, hs, userA, passA);
+  const b = await apiLogin(request, hs, userB, passB);
+  const create = async (
+    who: typeof a,
+    name: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<string> => {
+    const res = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: who.headers,
+      data: { name, preset: 'private_chat', ...extra },
+    });
+    expect(res.ok(), `createRoom ${name}`).toBe(true);
+    return (await res.json()).room_id as string;
+  };
+  const spaceId = await create(a, spaceName, {
+    creation_content: { type: 'm.space' },
+    invite: [b.userId],
+  });
+  const joined = await request.post(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/join`,
+    { headers: b.headers },
+  );
+  expect(joined.ok(), 'B joins the space').toBe(true);
+  const aRoomId = await create(a, aRoom);
+  const bRoomId = await create(b, bRoom);
+  // A files both rooms. A space lists the children its holder has joined, so B's room
+  // reaches the list through B's copy of the space.
+  const serverName = a.userId.slice(a.userId.indexOf(':') + 1);
+  for (const childId of [aRoomId, bRoomId]) {
+    const linked = await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(
+        spaceId,
+      )}/state/m.space.child/${encodeURIComponent(childId)}`,
+      { headers: a.headers, data: { via: [serverName] } },
+    );
+    expect(linked.ok(), `m.space.child ${childId}`).toBe(true);
+  }
+  await create(b, outside);
+  return {
+    hs,
+    userA,
+    passA,
+    userB,
+    passB,
+    b,
+    spaceId,
+    spaceName,
+    aRoom,
+    bRoom,
+    outside,
+  };
+}
+
+/**
+ * Sign in B, then add A, mix B in and select the space: A is on screen. Opening B's row
+ * acts as B and keeps the space selected with its list.
+ */
+async function openBRoomAsB(page: Page, f: SharedSpace) {
+  await login(page, {
+    available: true,
+    hs: f.hs,
+    user: f.userB,
+    pass: f.passB,
+  });
+  await addAccountViaUi(page, f.hs, f.userA, f.passA);
+  const handle = page.locator('.userbar__handle');
+  await expect(handle).toContainText(`@${f.userA}:`);
+  await mixInAccount(page, f.userB);
+
+  const spacePill = page
+    .locator('trn-server-rail')
+    .getByRole('button', { name: f.spaceName });
+  const recent = page.getByTestId('rail-recent');
+  const row = (name: string) =>
+    page.locator('trn-channel-sidebar .channel', { hasText: name });
+  const selected = page.locator(
+    'trn-channel-sidebar .channel.channel--selected',
+  );
+  const expectSpaceList = async (): Promise<void> => {
+    await expect(spacePill).toHaveAttribute('aria-current', 'true', {
+      timeout: 30_000,
+    });
+    await expect(recent).not.toHaveAttribute('aria-current', 'true');
+    await expect(row(f.bRoom)).toBeVisible({ timeout: 30_000 });
+    await expect(row(f.aRoom)).toBeVisible();
+    await expect(row(f.outside)).toHaveCount(0);
+  };
+
+  await spacePill.click();
+  await expectSpaceList();
+  await expect(handle).toContainText(`@${f.userA}:`);
+  await expect(row(f.bRoom).getByTestId('account-badge')).toBeVisible();
+
+  // Opening B's row acts as B, and the space stays selected with its list.
+  await row(f.bRoom).click();
+  await expect(handle).toContainText(`@${f.userB}:`, { timeout: 20_000 });
+  await expect(selected).toHaveText(new RegExp(f.bRoom), { timeout: 15_000 });
+  await expectSpaceList();
+  return { spacePill, recent, row, selected, handle };
+}
 
 test.describe('Multiple accounts', () => {
   configureMultiAccountSuite();
@@ -168,94 +307,55 @@ test.describe('Multiple accounts', () => {
     page,
     request,
   }) => {
-    const hs = session.hs as string;
-    const runId = `${testResourceId('run')}msr`;
-    const userA = `msr-a-${runId}`;
-    const passA = `msr-a-pass-${runId}`;
-    const userB = `msr-b-${runId}`;
-    const passB = `msr-b-pass-${runId}`;
-    const spaceName = `Shared space ${runId}`;
-    const bRoom = `B's room in the space ${runId}`;
-    const aRoom = `A's room in the space ${runId}`;
-    const outside = `B's room outside ${runId}`;
+    const f = await seedSharedSpace(request, 'msr');
+    await openBRoomAsB(page, f);
+  });
 
-    await registerUser(request, userA, passA);
-    await registerUser(request, userB, passB);
-    const a = await apiLogin(request, hs, userA, passA);
-    const b = await apiLogin(request, hs, userB, passB);
-    const create = async (
-      who: typeof a,
-      name: string,
-      extra: Record<string, unknown> = {},
-    ): Promise<string> => {
-      const res = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: who.headers,
-        data: { name, preset: 'private_chat', ...extra },
-      });
-      expect(res.ok(), `createRoom ${name}`).toBe(true);
-      return (await res.json()).room_id as string;
-    };
-    const spaceId = await create(a, spaceName, {
-      creation_content: { type: 'm.space' },
-      invite: [b.userId],
+  // #1402 in the mixed view. Once B has left the space elsewhere, only A holds it, and the
+  // view keeps it while A is ticked. Unticking A leaves no shown account holding the space:
+  // the rail returns to Recent activity, still acting as B, with B's room open.
+  test('unticking the account that holds the selected space returns to Recent with the room open', async ({
+    page,
+    request,
+  }) => {
+    const f = await seedSharedSpace(request, 'msu');
+    const { spacePill, recent, row, selected, handle } = await openBRoomAsB(
+      page,
+      f,
+    );
+
+    // B leaves the space on another device; A, still ticked, holds it.
+    const left = await request.post(
+      `${f.hs}/_matrix/client/v3/rooms/${encodeURIComponent(f.spaceId)}/leave`,
+      { headers: f.b.headers },
+    );
+    expect(left.ok(), 'B leaves the space').toBe(true);
+    // B's copy of the space filed B's room, so the list drops it; the room stays open.
+    await expect(row(f.bRoom)).toHaveCount(0, { timeout: 30_000 });
+    await expect(spacePill).toHaveAttribute('aria-current', 'true');
+    await expect(page.getByTestId('composer-input')).toBeVisible();
+
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('show-accounts').click();
+    const rowA = page.locator(`[data-testid^="show-account-@${f.userA}:"]`);
+    await expect(rowA).toHaveAttribute('aria-checked', 'true');
+    await rowA.click();
+    await expect(rowA).toHaveAttribute('aria-checked', 'false');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+
+    await expect(recent).toHaveAttribute('aria-current', 'true', {
+      timeout: 30_000,
     });
-    const joined = await request.post(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/join`,
-      { headers: b.headers },
-    );
-    expect(joined.ok(), 'B joins the space').toBe(true);
-    const aRoomId = await create(a, aRoom);
-    const bRoomId = await create(b, bRoom);
-    // A files both rooms. A space lists the children its holder has joined, so B's room
-    // reaches the list through B's copy of the space.
-    const serverName = a.userId.slice(a.userId.indexOf(':') + 1);
-    for (const childId of [aRoomId, bRoomId]) {
-      const linked = await request.put(
-        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(
-          spaceId,
-        )}/state/m.space.child/${encodeURIComponent(childId)}`,
-        { headers: a.headers, data: { via: [serverName] } },
-      );
-      expect(linked.ok(), `m.space.child ${childId}`).toBe(true);
-    }
-    await create(b, outside);
-
-    // Sign in B, then add A: A is the account on screen, with B mixed in.
-    await login(page, { available: true, hs, user: userB, pass: passB });
-    await addAccountViaUi(page, hs, userA, passA);
-    const handle = page.locator('.userbar__handle');
-    await expect(handle).toContainText(`@${userA}:`);
-    await mixInAccount(page, userB);
-
-    const spacePill = page
-      .locator('trn-server-rail')
-      .getByRole('button', { name: spaceName });
-    const recent = page.getByTestId('rail-recent');
-    const row = (name: string) =>
-      page.locator('trn-channel-sidebar .channel', { hasText: name });
-    const selected = page.locator(
-      'trn-channel-sidebar .channel.channel--selected',
-    );
-    const expectSpaceList = async (): Promise<void> => {
-      await expect(spacePill).toHaveAttribute('aria-current', 'true', {
-        timeout: 30_000,
-      });
-      await expect(recent).not.toHaveAttribute('aria-current', 'true');
-      await expect(row(bRoom)).toBeVisible({ timeout: 30_000 });
-      await expect(row(aRoom)).toBeVisible();
-      await expect(row(outside)).toHaveCount(0);
-    };
-
-    await spacePill.click();
-    await expectSpaceList();
-    await expect(handle).toContainText(`@${userA}:`);
-    await expect(row(bRoom).getByTestId('account-badge')).toBeVisible();
-
-    // Opening B's row acts as B, and the space stays selected with its list.
-    await row(bRoom).click();
-    await expect(handle).toContainText(`@${userB}:`, { timeout: 20_000 });
-    await expect(selected).toHaveText(new RegExp(bRoom), { timeout: 15_000 });
-    await expectSpaceList();
+    await expect(spacePill).toHaveCount(0);
+    await expect(handle).toContainText(`@${f.userB}:`);
+    await expect(selected).toHaveText(new RegExp(f.bRoom), {
+      timeout: 15_000,
+    });
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('space'))
+      .toBeNull();
+    await expect(page.getByTestId('composer-input')).toBeVisible();
   });
 
   // The picker's headline promises: the mix survives a restart, the account you're acting

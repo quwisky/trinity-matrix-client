@@ -12,6 +12,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, passwordLogin } from '../../../support/account.mts';
 import { openNamedRoom } from '../../../support/message-composer.mts';
+import { waitForPersistedSync } from '../../support/sync-cache.mts';
 
 // Truthful timeline loading states (#545): a skeleton only while a Room is really loading,
 // an inline error with Retry when backfill fails, and "No messages yet." only once settled.
@@ -146,45 +147,6 @@ const unavailableSeen = (page: Page) =>
     () =>
       (window as unknown as { __unavailableSeen: boolean }).__unavailableSeen,
   );
-
-/**
- * Wait until the SDK has persisted a sync for this user to its IndexedDB store, so the next
- * load restores it from cache (a returning user) rather than starting cold.
- */
-async function waitForPersistedSync(page: Page, user: string): Promise<void> {
-  await expect
-    .poll(
-      () =>
-        page.evaluate(async (localpart) => {
-          const dbs = await indexedDB.databases();
-          const name = dbs
-            .map((d) => d.name ?? '')
-            .find((n) => n.includes(`trinity-sync:@${localpart}:`));
-          if (!name) return false;
-          const db = await new Promise<IDBDatabase>((resolve, reject) => {
-            const req = indexedDB.open(name);
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(req.error);
-          });
-          try {
-            if (!db.objectStoreNames.contains('sync')) return false;
-            const saved = await new Promise<unknown>((resolve, reject) => {
-              const req = db
-                .transaction('sync', 'readonly')
-                .objectStore('sync')
-                .get(['-']); // keyPath ["clobber"]: an array key
-              req.onsuccess = () => resolve(req.result);
-              req.onerror = () => reject(req.error);
-            });
-            return !!(saved as { nextBatch?: string } | undefined)?.nextBatch;
-          } finally {
-            db.close();
-          }
-        }, user),
-      { timeout: 30_000 },
-    )
-    .toBe(true);
-}
 
 interface Fixture {
   hs: string;
