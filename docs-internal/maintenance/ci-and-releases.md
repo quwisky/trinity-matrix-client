@@ -950,8 +950,8 @@ reviewing an update branch or diagnosing why it did not merge.
 An agent asked to integrate open updates applies them on its own branches and pull requests
 rather than merging Renovate's. It gives each update that needs its own review a pull request of
 its own: a shipped runtime package, a major version, an Actions digest, a native dependency,
-`nx`, `pnpm` and lockfile maintenance. The rest go in one batch. Once the maintainer merges one,
-it closes each superseded Renovate pull request with "Integrated into main in #N.". It ticks
+`nx`, `pnpm` and lockfile maintenance. The rest go in one batch. Once the maintainer merges one of those pull requests,
+it closes each Renovate pull request it supersedes with "Integrated into main in #N.". It ticks
 Dependency Dashboard approvals only when the maintainer asks.
 
 ## Source of truth

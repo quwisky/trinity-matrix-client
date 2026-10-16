@@ -39,7 +39,7 @@ The maintainer merges: do not merge or approve the pull request, or bypass the b
 
 ## Stack dependent pull requests {#stacked-pull-requests}
 
-Base a pull request that needs another one on that pull request's branch, and keep it a draft until the parent merges. Pull requests are squash-merged, so then fetch, rebase the branch with `git rebase --onto origin/main <parent commit it sits on> <branch>`, retarget it with `gh pr edit <number> --base main` if GitHub has not, rerun the affected checks, and push with `git push --force-with-lease`. Restacking your own stack this way is coordinated history rewriting.
+Base a pull request that needs another one on that pull request's branch, and keep it a draft until the parent merges. Merging gives the parent's commits new hashes, so then fetch, rebase the branch with `git rebase --onto origin/main <parent commit it sits on> <branch>`, retarget it with `gh pr edit <number> --base main` if GitHub has not, rerun the affected checks, and push with `git push --force-with-lease`. Restacking your own stack this way is coordinated history rewriting.
 
 ## Change someone else's pull request {#others-pull-requests}
 
