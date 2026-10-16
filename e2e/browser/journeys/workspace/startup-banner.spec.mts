@@ -366,6 +366,66 @@ test.describe('Global banner slot after sign-in', () => {
   }
 
   /*
+   * With persistent storage granted the notice never takes the slot, so without a
+   * forecast the prompt would arrive in an empty slot after the first row and push the
+   * list down (#1433, case 3). On a restart the forecast holds the prompt's space from
+   * the first frame instead: the slot goes straight from the hidden prompt to the
+   * revealed one, the notice never shows, and the row never moves.
+   */
+  test('after a restart with persistent storage the list stays put while the prompt is confirmed at 390px', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(grantPersistentStorage);
+    await login(page, account);
+    const prompt = page.locator('trn-encryption-banner trn-banner');
+    await expect(
+      prompt.getByText('Set up encryption to secure your messages.'),
+    ).toBeVisible();
+    await expectForecastStored(page, 'needs-setup');
+
+    // Restart: same storage, fresh page, persistent storage still granted.
+    await holdTrustStatus(
+      page,
+      () => new Promise((resolve) => setTimeout(resolve, STATUS_DELAY_MS)),
+    );
+    await page.addInitScript(recordSlotFrames);
+    await page.reload();
+    await expect(
+      prompt.getByText('Set up encryption to secure your messages.'),
+    ).toBeVisible();
+    await expect(
+      page.locator('trn-encryption-banner [data-forecast]'),
+    ).toHaveCount(0);
+
+    const frames = await framesWithRow(page);
+    expect(frames.length).toBeGreaterThan(0);
+    const first = frames[0]!;
+    const swaps = frames.filter(
+      (frame, index) => index === 0 || frame.slot !== frames[index - 1]!.slot,
+    );
+    test.info().annotations.push({
+      type: 'slot changes',
+      description: JSON.stringify(swaps),
+    });
+    expect(
+      swaps.map(({ slot }) => slot),
+      'the forecast held the empty slot when the first row was drawn, then was ' +
+        `revealed, with no notice; slot changes: ${JSON.stringify(swaps)}`,
+    ).toEqual(['forecast', 'encryption']);
+    const moved = frames.filter(
+      (frame) => frame.row === null || Math.abs(frame.row - first.row!) > 0.5,
+    );
+    expect(
+      moved,
+      `row first drawn at y=${first.row}; slot changes: ${JSON.stringify(swaps)}`,
+    ).toEqual([]);
+    const boxes = revealBoxes(frames);
+    expect(boxes?.forecast, 'prompt box while hidden').toBeTruthy();
+    expect(boxes!.shown, 'prompt box when revealed').toEqual(boxes!.forecast);
+  });
+
+  /*
    * The hidden prompt is inert: its action must not take focus before the live status
    * confirms it. Holding the secret-storage key read keeps the prompt a forecast while the
    * keyboard is tried. Once it is released the same prompt is revealed, and only then does
