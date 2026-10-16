@@ -36,14 +36,13 @@ export class RoomReadinessService {
   private readonly matrix = inject(MatrixClientService);
 
   /**
-   * Wait until one exact Room is in its Account's synced SDK graph, joined.
+   * Wait until one exact Room is in its Account's synced SDK graph, joined. Cold and finite.
    *
-   * Successful create/join endpoints can resolve before `/sync` publishes the Room. A
-   * Workspace command must not focus that Room until Timeline can attach to the same live
-   * object. A Room the store already held, left earlier or with an invitation, keeps that
-   * membership until `/sync` brings the join, so the join is what this waits for. The
-   * listeners are installed before the second read to close the event-between-checks race,
-   * and cancellation always detaches them. Cold and finite.
+   * Create/join endpoints can resolve before `/sync` publishes the Room, and a Room the store
+   * already held (left earlier, or invited) keeps that membership until `/sync` brings the
+   * join; a Workspace command must not focus it until Timeline can attach to that same live
+   * object. Listeners are installed before the second read to close the event-between-checks
+   * race; cancellation detaches them.
    */
   waitForRoom(accountId: string, roomId: string): Observable<void> {
     return defer(() => {

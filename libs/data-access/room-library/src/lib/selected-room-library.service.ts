@@ -59,10 +59,8 @@ function indexSpaceChildrenByAccount(
 }
 
 /**
- * The public selected-Account Room Library boundary.
- *
- * It owns active-versus-mixed source choice, selected Account listener lifecycle, and the
- * Room, Space, and invitation projection policy behind one coherent read interface.
+ * The public selected-Account Room Library boundary: active-versus-mixed source choice,
+ * selected Account listener lifecycle and Room/Space/invitation projection behind one read.
  */
 @Injectable({ providedIn: 'root' })
 export class SelectedRoomLibraryService {
@@ -160,25 +158,24 @@ export class SelectedRoomLibraryService {
   /**
    * Whether Workspace may keep a Space selected while acting as `accountId`.
    *
-   * - `available`: the Account has joined the Space, or, in the mixed view it is part of,
-   *   another selected Account has. That Space is listed, with its pill in the rail and its
-   *   children in the sidebar, so any selected Account may keep it while opening one of
-   *   those Rooms.
-   * - `unconfirmed`: none of them holds it yet, and either the Account itself has not
-   *   completed a sync with its homeserver (a cache replay only, offline, or still
-   *   starting), or another selected Account has not loaded even its sync cache yet. Keep
-   *   it, as a Room the client has not synced yet is kept. Another Account counts once it
-   *   has replayed its cache: one whose homeserver is unreachable lives on that cache, and
-   *   waiting for its server would keep a Space it does not hold loading indefinitely.
-   * - `unavailable`: none of them holds it once that is settled, the Account's client is
-   *   not live, or the id is not a Room id. A selected Account whose client is not live (it
-   *   failed to start) does not count as holding it: none of its Rooms can be listed either.
+   * - `available`: the Account has joined the Space or, in the mixed view it is part of,
+   *   another selected Account has. The Space is then listed (rail pill, sidebar children), so
+   *   any selected Account may keep it while opening one of those Rooms.
+   * - `unconfirmed`: none holds it yet, and either the Account itself has not completed a sync
+   *   with its homeserver (cache replay only, offline, or still starting) or another selected
+   *   Account has not loaded even its sync cache. Keep it, as an unsynced Room is kept. Another
+   *   Account counts once it has replayed its cache: one with an unreachable homeserver lives
+   *   on that cache, and waiting for its server would keep a Space it does not hold loading
+   *   indefinitely.
+   * - `unavailable`: none holds it once that is settled, the Account's client is not live, or
+   *   the id is not a Room id. A selected Account whose client is not live (failed to start)
+   *   does not count as holding it: none of its Rooms can be listed either.
    *
-   * A Space left, or only invited to, is not held (see {@link isJoinedSpace}); flows that
-   * open a Space they just joined wait for the join first. The answer comes from the live
-   * selection and clients, so it never waits for a projection flush and an empty republish
-   * never reads as "gone". It reads {@link view} only to re-run when the shown Accounts'
-   * Rooms or memberships change.
+   * A Space left, or only invited to, is not held (see {@link isJoinedSpace}); flows that open
+   * a Space they just joined wait for the join first. The answer comes from the live selection
+   * and clients, so it never waits for a projection flush and an empty republish never reads as
+   * "gone". It reads {@link view} only to re-run when the shown Accounts' Rooms or memberships
+   * change.
    */
   spaceAvailability(
     accountId: string,

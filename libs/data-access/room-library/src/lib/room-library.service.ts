@@ -132,9 +132,9 @@ const EMPTY_TYPING: readonly string[] = Object.freeze([]);
 /**
  * `next`, or `previous` when it describes the room identically.
  *
- * Every sync rebuilds every joined room's summary (#1292). Handing back the previous object
- * for a room the sync didn't change keeps its OnPush sidebar row from re-rendering, and
- * lets {@link sameRooms} keep the whole list when no room changed at all.
+ * Every sync rebuilds every joined room's summary. Handing back the previous object for a room
+ * the sync didn't change keeps its OnPush sidebar row from re-rendering, and lets
+ * {@link sameRooms} keep the whole list when no room changed at all.
  */
 function reuseUnchanged(
   previous: RoomSummary | undefined,
@@ -175,12 +175,10 @@ function sameNames(a: readonly string[], b: readonly string[]): boolean {
 }
 
 /**
- * Read model over the synced `MatrixClient`: exposes joined rooms as plain view models
- * (components never touch `matrix-js-sdk` directly). Signals are recomputed as the
- * client syncs; Application Runtime retains the projection lifetime.
- *
- * Spaces (the server rail) are a separate read model — see {@link SpacesService}.
- * Space rooms are excluded from {@link rooms} so they never appear as channels.
+ * Read model over the synced `MatrixClient`: joined rooms as plain view models (components
+ * never touch `matrix-js-sdk`), recomputed as the client syncs; Application Runtime retains the
+ * projection lifetime. Space rooms are excluded from {@link rooms}; spaces are a separate read
+ * model ({@link SpacesService}).
  */
 @Injectable({ providedIn: 'root' })
 export class RoomLibraryService {
@@ -190,29 +188,27 @@ export class RoomLibraryService {
 
   /**
    * The other party in each of our DMs, refreshed by {@link refresh}. A DM has no
-   * `m.room.avatar`, so its row's picture comes from this member — which makes the room
-   * list depend on member state, where before it depended only on room state.
+   * `m.room.avatar`, so its row's picture comes from this member, which makes the room list
+   * depend on member state.
    */
   private dmPeers: ReadonlySet<string> = new Set();
 
   /**
-   * Marked-unread writes shown before /sync confirms them, keyed by room id.
-   *
-   * An entry is dropped as soon as the synced room agrees with it, so this holds only
-   * genuinely in-flight state rather than shadowing the server indefinitely.
+   * Marked-unread writes shown before /sync confirms them, keyed by room id. An entry is dropped
+   * once the synced room agrees, so this holds only in-flight state rather than shadowing the
+   * server.
    */
   private readonly pendingUnread = new Map<string, boolean>();
 
   /**
-   * Our OWN membership changed (joined/left a room). The rebuild is already covered —
-   * `RoomEvent.MyMembership` is in the projection's coalesced event list. This handler
-   * clears transient typing state for a Room we left; Room Administration owns rosters.
+   * Our OWN membership changed. The rebuild is already covered by `RoomEvent.MyMembership` in
+   * the projection's event list; this clears transient typing state for a Room we left. Room
+   * Administration owns rosters.
    */
   private readonly onMyMembership = (room?: { roomId?: string }): void => {
-    // A room we have left stops syncing, so its members never emit the "stopped typing"
-    // transition and its key would sit in the map for the rest of the session — visible
-    // again the moment the room is rejoined, and frozen there, because an unchanged set
-    // writes nothing.
+    // A room we have left stops syncing, so its members never emit "stopped typing" and its key
+    // would sit in the map for the session, reappearing frozen on rejoin because an unchanged
+    // set writes nothing.
     const roomId = room?.roomId;
     if (roomId) {
       this.dirtyTypingRooms.delete(roomId);
@@ -232,10 +228,10 @@ export class RoomLibraryService {
     member: RoomMember,
   ): void => {
     void state;
-    // A DM peer's profile can arrive or change without a sync — `loadMembersIfNeeded`
-    // from opening a member list, say — and their avatar IS the room's picture. Gated
-    // on the DM map so a member event in a large room does not rebuild the whole room
-    // list, which is exactly why this listener was kept out of the coalesced rebuild.
+    // A DM peer's profile can arrive or change without a sync (`loadMembersIfNeeded` from opening
+    // a member list) and their avatar IS the room's picture. Gated on the DM map so a member
+    // event in a large room does not rebuild the whole list, which is why this listener stays
+    // out of the coalesced rebuild.
     if (this.dmPeers.has(member.userId)) {
       this.projection.schedule();
     }
@@ -245,23 +241,17 @@ export class RoomLibraryService {
     {},
   );
   /**
-   * Who is typing, per room, excluding the local user — the sidebar's source.
-   *
-   * `TimelineService` tracks this too, but only for the ONE open room, which is why the
-   * sidebar could not show it before. This listener is client-level, so it sees every room
-   * the user is in.
+   * Who is typing, per room, excluding the local user: the sidebar's source. Client-level, so
+   * it sees every room; `TimelineService` tracks only the open one.
    */
   readonly typingByRoom = this._typingByRoom.asReadonly();
 
   private readonly dirtyTypingRooms = new Map<string, string[]>();
 
   /**
-   * Coalesced, and deliberately separate from the Room-list projection.
-   *
-   * Adding `RoomMemberEvent.Typing` to the projection's `events` list would run a full
-   * room-list rebuild and re-sort on every typing EDU from every room. This writes one key.
-   * Room Administration owns membership projections separately, so there is no roster
-   * flusher here for typing work to share.
+   * Coalesced, and separate from the Room-list projection: adding `RoomMemberEvent.Typing` to
+   * its `events` would run a full rebuild and re-sort on every typing EDU from every room, where
+   * this writes one key.
    */
   private readonly typingFlusher = coalesce(() => {
     const rooms = [...this.dirtyTypingRooms];
@@ -271,13 +261,8 @@ export class RoomLibraryService {
       return;
     }
     // EVERY signed-in account, not just the active one. A room both accounts are joined to
-    // renders as ONE row (see `RoomSummary.accountIds`), so filtering only the active mxid
-    // let the user's own other account announce itself on their own room — the same failure
-    // the self-exclusion exists to prevent, arriving by the back door.
-    // EVERY signed-in account, not just the active one. A room both accounts are joined to
-    // renders as ONE row (see `RoomSummary.accountIds`), so filtering only the active mxid
-    // let the user's own other account announce itself on their own room — the same failure
-    // the self-exclusion exists to prevent, arriving by the back door.
+    // renders as ONE row (see `RoomSummary.accountIds`), so filtering only the active mxid let
+    // the user's other account announce itself on their own room.
     const selves = new Set(this.matrix.accountIds());
     let next = this._typingByRoom();
     let changed = false;
@@ -335,25 +320,25 @@ export class RoomLibraryService {
   readonly rooms = this._rooms.asReadonly();
 
   /**
-   * App-wide unread total: the sum of every joined room's unread notification
-   * count. Drives the app-icon badge on every platform (see AppBadgeService).
+   * App-wide unread total: the sum of every joined room's unread notification count (the
+   * app-icon badge; see AppBadgeService).
    */
   readonly totalUnread = computed(() =>
     this.rooms().reduce((sum, r) => sum + r.unreadCount, 0),
   );
 
   /**
-   * Room ids the `m.direct` account-data map records as direct messages, recomputed
-   * on each {@link refresh}. Lets read-only consumers (e.g. the quick switcher) tag a
-   * joined room as a DM without re-reading account data themselves. Non-authoritative
-   * for membership — a DM we have left still appears here until the map is rewritten.
+   * Room ids the `m.direct` account-data map records as direct messages, recomputed on each
+   * {@link refresh}, so read-only consumers can tag a joined room as a DM without re-reading
+   * account data. Non-authoritative for membership: a DM we have left still appears here until
+   * the map is rewritten.
    */
   private readonly _directRoomIds = signal<ReadonlySet<string>>(new Set());
   readonly directRoomIds = this._directRoomIds.asReadonly();
 
   /**
-   * One active-Account Projection Runtime entry: {@link projectFromClient} owns listener
-   * identity, coalescing, switching, and acknowledgement; only event list and rebuild stay here.
+   * Active-Account Projection Runtime entry: {@link projectFromClient} owns listener identity,
+   * coalescing, switching and acknowledgement; only the event list and rebuild stay here.
    */
   private readonly projection = projectFromClient({
     id: 'rooms.list',
@@ -363,24 +348,20 @@ export class RoomLibraryService {
       ClientEvent.Room,
       RoomEvent.Name,
       RoomEvent.MyMembership,
-      // Keep unread badges live. In an encrypted room the notification count is
-      // only recomputed once the message DECRYPTS (async), which lands after the
-      // Sync that carried the ciphertext — so relying on Sync alone drops those
-      // increments. Decrypted (re-emitted at the client) fires when that happens,
-      // so we re-read the now-updated count. Receipt fires when a room is read and
-      // its count clears. (UnreadNotifications is Room-only, not re-emitted here.)
+      // Keep unread badges live. In an encrypted room the notification count is only recomputed
+      // once the message DECRYPTS (async), after the Sync that carried the ciphertext, so Sync
+      // alone drops those increments. Decrypted (re-emitted at the client) fires then. Receipt
+      // fires when a room is read and its count clears. (UnreadNotifications is Room-only, not
+      // re-emitted here.)
       MatrixEventEvent.Decrypted,
       RoomEvent.Receipt,
       // Room tags (e.g. `m.favourite`, the favourite flag) can change from another device;
       // rebuild so a remote favourite/unfavourite re-partitions and re-sorts the list live.
       RoomEvent.Tags,
-      // Room account data carries the marked-unread flag, and nothing in the app
-      // listened to it before — so a room flagged on another device would not have
-      // surfaced here until some unrelated event happened to rebuild the list.
+      // Room account data carries the marked-unread flag; without it a room flagged on another
+      // device would not surface until an unrelated event rebuilt the list.
       RoomEvent.AccountData,
     ],
-    // refresh() writes signals, which schedule change detection, so the room list and
-    // unread badges surface immediately.
     rebuild: () => this.refresh(),
     // Bound by hand because typing has its own per-Room coalescer and member changes only
     // rebuild the Room list when a DM peer's profile affects its summary. Room
@@ -399,12 +380,9 @@ export class RoomLibraryService {
       this._rooms.set([]);
       this._directRoomIds.set(new Set());
       this.dmPeers = new Set();
-      // The typing map is protected one layer earlier too: its flusher reads
-      // `projection.client()` and returns when there is none, so a late flush cannot
-      // repopulate from the outgoing client. Cancelling also skips that pointless
-      // microtask. The suite pins the outcome: the map is empty and the listener detached
-      // after a disconnect. Reset also explicitly owns every scheduled task this service
-      // creates.
+      // The typing flusher reads `projection.client()` and returns when there is none, so a
+      // late flush cannot repopulate from the outgoing client. Cancelling also skips that
+      // microtask, and reset owns every scheduled task this service creates.
       this.typingFlusher.cancel();
       this.dirtyTypingRooms.clear();
       this._typingByRoom.set({});
@@ -452,11 +430,10 @@ export class RoomLibraryService {
   }
 
   /**
-   * Favourite (or unfavourite) a room by writing/clearing the standard Matrix `m.favourite`
-   * room tag — persisted in account data and synced across devices (interops with
-   * Element). Cold: the write starts on subscribe and errors reach the subscriber.
-   * The post-write {@link refresh} makes the local change land immediately; the
-   * `RoomEvent.Tags` listener also reconciles the authoritative sync echo.
+   * Favourite (or unfavourite) a room via the standard `m.favourite` room tag, persisted in
+   * account data and synced across devices (interops with Element). Cold; errors reach the
+   * subscriber. The post-write {@link refresh} lands the change locally and the
+   * `RoomEvent.Tags` listener reconciles the sync echo.
    */
   setFavourite(
     roomId: string,
@@ -467,11 +444,9 @@ export class RoomLibraryService {
   }
 
   /**
-   * Add or remove the room's `m.lowpriority` tag, on the account that owns the row.
-   *
-   * Mirrors {@link setFavourite} exactly, including its cold finite command shape and
-   * writing an empty tag body: Matrix tags carry an optional `order`, and Trinity does not
-   * use it — ordering within the group comes from the active sort mode, not from the tag.
+   * Add or remove the room's `m.lowpriority` tag, on the account that owns the row. Same cold
+   * finite shape as {@link setFavourite}. The tag body is empty: Matrix tags carry an optional
+   * `order` that Trinity does not use, since ordering within the group comes from the sort mode.
    */
   setLowPriority(
     roomId: string,
@@ -504,9 +479,9 @@ export class RoomLibraryService {
   }
 
   /**
-   * Leave a joined room. Cold — runs on subscribe. On success the client emits
-   * `RoomEvent.MyMembership`, which drops the room from {@link rooms} (the list is
-   * filtered to `join`), so no explicit refresh is needed; errors reach the subscriber.
+   * Leave a joined room. Cold. The resulting `RoomEvent.MyMembership` drops the room from
+   * {@link rooms} (filtered to `join`), so no explicit refresh is needed; errors reach the
+   * subscriber.
    */
   leave(roomId: string, accountId?: string): Observable<void> {
     return defer(() => {
@@ -519,10 +494,9 @@ export class RoomLibraryService {
   }
 
   /**
-   * The client that owns a row's room: the named account's when one is given (the
-   * mixed-account view, where a row may belong to a signed-in account that isn't active),
-   * else the active client. Null when there is no such client — the caller decides whether
-   * that is a silent no-op or an error.
+   * The client that owns a row's room: the named account's (mixed-account view, where a row may
+   * belong to a non-active account), else the active client. Null when there is none; the
+   * caller decides whether that is a silent no-op or an error.
    */
   private clientOwning(accountId?: string): MatrixClient | null {
     if (accountId) {
@@ -532,9 +506,9 @@ export class RoomLibraryService {
   }
 
   /**
-   * Mark a room read: ack its latest confirmed event with a read receipt + fully-read
-   * marker, clearing its unread badge. Cold — runs on subscribe; a no-op for an empty
-   * or unknown room. The client emits the receipt so {@link rooms} re-derives the badge.
+   * Mark a room read: ack its latest confirmed event with a read receipt and fully-read marker.
+   * Cold; a no-op for an empty or unknown room. The client emits the receipt so {@link rooms}
+   * re-derives the badge.
    */
   markRead(roomId: string, accountId?: string): Observable<void> {
     return defer(() => {
@@ -544,8 +518,8 @@ export class RoomLibraryService {
       }
       const room = client.getRoom(roomId);
       const events = room?.getLiveTimeline().getEvents() ?? [];
-      // Walk backward for the newest confirmed (non-local-echo) event — no array
-      // copy/reverse, since the caller runs this per unread room.
+      // Walk backward for the newest confirmed (non-local-echo) event; no array copy, since the
+      // caller runs this per unread room.
       let latest: (typeof events)[number] | undefined;
       for (let i = events.length - 1; i >= 0; i--) {
         if (!events[i].status) {
@@ -553,16 +527,15 @@ export class RoomLibraryService {
           break;
         }
       }
-      // Clear the flag first, and unconditionally: an empty room returns early below,
-      // but a room flagged unread and then marked read must stop being flagged whether
-      // or not there is an event to acknowledge.
+      // Clear the flag first, and unconditionally: an empty room returns early below, but a
+      // room flagged unread and then marked read must stop being flagged either way.
       const latestId = latest?.getId();
       if (!latest || !latestId) {
         return this.clearMarkedUnreadOn(roomId, accountId);
       }
-      // Honor the read-receipt privacy setting: when off, ack privately
-      // (`m.read.private`) so the badge clears without telling other members —
-      // mirroring the auto-on-view path in TimelineService.markRead.
+      // Honor the read-receipt privacy setting: when off, ack privately (`m.read.private`) so
+      // the badge clears without telling other members. Keep in step with
+      // TimelineService.markRead.
       const receiptType = this.privacy.sendReadReceipts()
         ? ReceiptType.Read
         : ReceiptType.ReadPrivate;
@@ -581,14 +554,14 @@ export class RoomLibraryService {
   /**
    * Flag a room to come back to, or clear that flag (`m.marked_unread`, MSC2867).
    *
-   * Room account data, so it syncs to the user's other devices and interops with Element.
-   * The read receipt is deliberately untouched: the point is to say "I have seen this and
-   * still want it in front of me", which a receipt cannot express. Clearing writes
-   * `{unread: false}` rather than redacting, which is what other clients read back.
+   * Room account data, so it syncs to other devices and interops with Element. The read
+   * receipt is deliberately untouched: the flag says "I have seen this and still want it in
+   * front of me", which a receipt cannot express. Clearing writes `{unread: false}` rather
+   * than redacting, which is what other clients read back.
    *
-   * Cold and finite like {@link setFavourite}: the optimistic {@link refresh} makes the
-   * change land at once after subscription, and the `RoomEvent.AccountData` listener
-   * covers the echo. Write failures reach the subscriber and roll the overlay back.
+   * Cold and finite like {@link setFavourite}: the optimistic {@link refresh} lands the change
+   * at once, the `RoomEvent.AccountData` listener covers the echo, and a write failure rolls
+   * the overlay back.
    */
   setMarkedUnread(
     roomId: string,
@@ -600,10 +573,9 @@ export class RoomLibraryService {
       if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
-      // Shown before the server confirms, because there is nothing else to show:
-      // `setRoomAccountData` is a bare PUT with no local echo, and `Room.accountData` is
-      // only ever written from /sync — so a post-write refresh alone re-reads the OLD
-      // value and the row would not change until the sync echo landed.
+      // Shown before the server confirms: `setRoomAccountData` is a bare PUT with no local echo
+      // and `Room.accountData` is only written from /sync, so a post-write refresh alone
+      // re-reads the OLD value.
       this.pendingUnread.set(roomId, unread);
       this.refresh();
       return from(
@@ -622,10 +594,9 @@ export class RoomLibraryService {
   /**
    * Drop a room's marked-unread flag wherever it is actually set.
    *
-   * Sweeps every signed-in account rather than taking one: a row merged from two mixed
-   * accounts can be flagged on either, and clearing only the active one would leave the
-   * row still reading as unread with no obvious way to fix it. Writes nothing for an
-   * account that does not hold the flag, so this is cheap to call on every room open.
+   * Sweeps every signed-in account: a row merged from two mixed accounts can be flagged on
+   * either, and clearing only the active one would leave the row reading as unread. Writes
+   * nothing for an account that does not hold the flag, so it is cheap on every room open.
    */
   clearMarkedUnread(roomId: string): Observable<void> {
     return defer(() => {
@@ -641,12 +612,10 @@ export class RoomLibraryService {
   /**
    * Drop the flag on ONE account, and only if it is actually set.
    *
-   * The single definition of "clear the flag", shared by {@link clearMarkedUnread} and by
-   * {@link markRead} — the two must not drift, and checking first is what keeps this cheap
-   * enough to call on every room open.
-   *
-   * Cold and finite: a failed clear reaches the owning workflow, which may deliberately
-   * suppress noisy room-open failures while still owning the subscription lifecycle.
+   * The single definition of "clear the flag", shared by {@link clearMarkedUnread} and
+   * {@link markRead} so the two cannot drift; checking first keeps it cheap on every room open.
+   * Cold and finite: a failed clear reaches the owning workflow, which may suppress room-open
+   * failures.
    */
   private clearMarkedUnreadOn(
     roomId: string,
@@ -662,10 +631,9 @@ export class RoomLibraryService {
 
   /**
    * Create a standalone (not space-linked) E2EE room and resolve its room id. Like
-   * {@link SpacesService.createRoomInSpace} the room carries `m.room.encryption`
-   * (Megolm) in its `initial_state` so it is encrypted from the first event, but it
-   * is not linked into any space. It surfaces in {@link rooms} once the client syncs
-   * the new room (the existing listeners pick it up). Cold: runs on subscribe.
+   * {@link SpacesService.createRoomInSpace} it carries `m.room.encryption` (Megolm) in its
+   * `initial_state`, so it is encrypted from the first event. It surfaces in {@link rooms}
+   * once the client syncs it. Cold.
    */
   createRoom(options: CreateRoomOptions): Observable<string> {
     return defer(() => {
@@ -691,9 +659,9 @@ export class RoomLibraryService {
   }
 
   /**
-   * Resolve a room id or alias to a room id. A `!id:hs` resolves immediately; a
-   * `#alias:hs` is looked up on the homeserver. Cold: runs on subscribe. Used to route
-   * `matrix.to` room permalinks (which may carry either form) to an actual room.
+   * Resolve a room id or alias to a room id: a `!id:hs` resolves immediately, a `#alias:hs` is
+   * looked up on the homeserver. Cold. Routes `matrix.to` room permalinks, which may carry
+   * either form.
    */
   resolveRoomId(roomIdOrAlias: string): Observable<string> {
     return defer(() => {
@@ -712,12 +680,11 @@ export class RoomLibraryService {
   /**
    * Open (or reuse) a 1:1 direct message with `userId` and resolve its room id.
    *
-   * If `m.direct` account data already records a DM with this user that we have not
-   * left, that room is reused (resolving immediately) so repeated "message" actions
-   * don't spawn duplicate DMs. Otherwise a new invite-only, encrypted room is created
-   * (`is_direct`, `trusted_private_chat` preset, the user invited, Megolm enabled)
-   * and registered in the `m.direct` map so both ends — and a future reuse — treat it
-   * as a DM. Rejects when `userId` isn't a valid MXID. Cold: runs on subscribe.
+   * A DM that `m.direct` records with this user and that we have not left is reused, so
+   * repeated "message" actions don't spawn duplicates. Otherwise a new invite-only, encrypted
+   * room is created (`is_direct`, `trusted_private_chat` preset, the user invited, Megolm
+   * enabled) and registered in `m.direct` so both ends and future reuse treat it as a DM.
+   * Rejects when `userId` isn't a valid MXID. Cold.
    */
   createDirectMessage(userId: string): Observable<string> {
     return defer(() => {
@@ -747,8 +714,8 @@ export class RoomLibraryService {
   }
 
   /**
-   * Invite `userId` to `roomId` — works for both rooms and spaces (a space is just a
-   * room). Rejects when `userId` isn't a valid MXID. Cold: runs on subscribe.
+   * Invite `userId` to `roomId`, a room or a space alike. Rejects when `userId` isn't a valid
+   * MXID. Cold.
    */
   inviteUser(
     target: string | RoomLibraryGovernanceKey,
@@ -778,10 +745,9 @@ export class RoomLibraryService {
   }
 
   /**
-   * The id of an existing, not-left DM room with `userId` from the `m.direct`
-   * account-data map, or null. A joined room is preferred; an outstanding invite we
-   * sent (membership `invite`) is also reused so we don't create a second DM while
-   * the first is pending. Rooms we have left (or that no longer exist) are skipped.
+   * The id of an existing, not-left DM room with `userId` from the `m.direct` map, or null. A
+   * joined room is preferred; an outstanding invite we sent (membership `invite`) is also
+   * reused so a second DM isn't created while the first is pending.
    */
   private existingDirectRoom(
     client: MatrixClient,
@@ -808,11 +774,10 @@ export class RoomLibraryService {
     userId: string,
     roomId: string,
   ): Observable<void> {
-    // `setAccountData` does a *full replace* of m.direct, so merge against the
-    // freshest map, re-read at write time (inside the defer, on subscribe) — not
-    // a snapshot taken before `createRoom`. Otherwise an m.direct update that
-    // arrived during the create round-trip (another device / a concurrent DM)
-    // would be clobbered by our PUT.
+    // `setAccountData` does a *full replace* of m.direct, so merge against the freshest map,
+    // re-read at write time (inside the defer, on subscribe), not a snapshot from before
+    // `createRoom`; otherwise an m.direct update that arrived during the create round-trip
+    // (another device, a concurrent DM) would be clobbered by our PUT.
     return defer(() => {
       const current = this.directMap(client);
       const forUser = current[userId] ?? [];
@@ -827,9 +792,9 @@ export class RoomLibraryService {
   }
 
   /**
-   * Current `m.direct` map (`{ userId: roomId[] }`), or an empty map when unset. The
-   * accessor is called optionally so a stub client without account data (e.g. unit
-   * fakes for the sync-driven read model) yields an empty map rather than throwing.
+   * Current `m.direct` map (`{ userId: roomId[] }`), or empty when unset. `getAccountData` is
+   * called optionally so a stub client without account data yields an empty map rather than
+   * throwing.
    */
   private directMap(client: MatrixClient): Record<string, string[]> {
     return (

@@ -44,10 +44,8 @@ import {
 const HIERARCHY_LIMIT = 100;
 
 /**
- * Safety cap on hierarchy pages we follow via `next_batch`. A space with more
- * than `HIERARCHY_LIMIT * HIERARCHY_MAX_PAGES` joinable children is well beyond
- * what the rail shows usefully; stop there so a pathological/looping hierarchy
- * can't fan out unbounded requests. 5 pages ≈ 500 children.
+ * Safety cap on `next_batch` pages followed, so a pathological or looping hierarchy can't fan
+ * out unbounded requests. 5 pages ≈ 500 children, well beyond what the rail shows usefully.
  */
 const HIERARCHY_MAX_PAGES = 5;
 
@@ -81,19 +79,16 @@ export interface SpaceSummary {
   /** Raw `mxc://` avatar; the avatar component resolves it to an authed blob URL. */
   avatarMxc: string | null;
   /**
-   * This space's *joined* child room ids, ordered by the `m.space.child` `order`
-   * field (lexicographic) then room name. Children we have not joined — and
-   * removed/dangling child links — are dropped for this increment.
+   * This space's *joined* child room ids, ordered by the `m.space.child` `order` (Unicode code
+   * point) then room name. Children we have not joined, and removed/dangling links, are dropped.
    */
   childRoomIds: string[];
 }
 
 /**
- * A room (or sub-space) linked into a space via `m.space.child`, as projected from
- * the server's space hierarchy (`getRoomHierarchy`, MSC2946). Unlike
- * {@link SpaceSummary.childRoomIds} — which only sees *joined* children — this
- * surfaces the space's *full* child set, including rooms we have not joined yet, so
- * the UI can offer a Join action.
+ * A room (or sub-space) linked into a space via `m.space.child`, projected from the server's
+ * space hierarchy (`getRoomHierarchy`, MSC2946). Unlike {@link SpaceSummary.childRoomIds} it
+ * includes children we have not joined, so the UI can offer a Join action.
  */
 export interface SpaceChildRoom {
   /** Account whose hierarchy produced this row and must handle its actions. */
@@ -127,25 +122,15 @@ export interface SpaceChildRoom {
 type SpaceChildBase = Omit<SpaceChildRoom, 'joined'>;
 
 /**
- * Read model over the synced `MatrixClient` for Matrix **Spaces** — the
- * Discord-style server rail. Exposes the user's joined spaces and, per space, the
- * ordered ids of its joined child rooms (so the room list can filter to a space).
+ * Read model over the synced `MatrixClient` for Matrix **Spaces** (the server rail): the joined
+ * spaces and, per space, the ordered ids of its joined child rooms.
  *
- * Mirrors {@link RoomLibraryService}'s patterns: components never touch `matrix-js-sdk`
- * directly, signals recompute as the client syncs, and connection is keyed to the
- * client *instance* (a logout→login swaps in a fresh client) rather than a boolean.
+ * {@link openSpace} also fetches a space's *full* child set on demand (`getRoomHierarchy`,
+ * MSC2946) so the UI can list, and {@link joinRoom}, children not yet joined. The hierarchy is
+ * a network read, so unlike the sync-driven joined model it is patched into signals from the
+ * fetch result, with the per-child `joined` flag recomputed live against the synced client.
  *
- * Beyond the joined view this also fetches a space's *full* child set on demand via
- * {@link openSpace} (`getRoomHierarchy`, MSC2946) so the UI can list — and
- * {@link joinRoom} — children we have not joined yet, and {@link removeRoomFromSpace}
- * unlinks a child. The hierarchy is a network read, so unlike the sync-driven joined
- * model it is patched into signals from the fetch result (and the per-child `joined`
- * flag is recomputed live against the synced client).
- *
- * Writes: {@link createSpace}, {@link createRoomInSpace}, {@link leaveSpace},
- * {@link joinRoom}, {@link removeRoomFromSpace}. Membership results land in the joined
- * read model through the existing sync listeners. Public-space directory discovery,
- * nested-rail navigation, and child reordering remain deferred follow-ups.
+ * Membership results from the writes land in the joined read model through the sync listeners.
  */
 @Injectable({ providedIn: 'root' })
 export class SpacesService {
@@ -157,14 +142,9 @@ export class SpacesService {
   readonly spaces = this._spaces.asReadonly();
 
   /**
-   * Every room this account has joined, as of the last refresh.
-   *
-   * The hierarchy projection reads this to derive each child's `joined` flag live (a
-   * not-joined child flips the moment its membership syncs back) without re-fetching the
-   * hierarchy. It replaces a bump counter that meant the same thing indirectly: this is
-   * the actual question `openSpaceChildren` asks, `refresh()` already has the answer in
-   * hand from its own `getRooms()` pass, and a set of ids is inspectable in a debugger
-   * where an incrementing integer is not.
+   * Every room this account has joined, as of the last refresh. The hierarchy projection
+   * derives each child's `joined` flag from it live (a not-joined child flips as its
+   * membership syncs back) without re-fetching the hierarchy.
    */
   private readonly _joinedRoomIds = signal<ReadonlySet<string>>(new Set(), {
     equal: sameIds,
@@ -197,10 +177,9 @@ export class SpacesService {
    * against the synced client (so a join/leave is reflected without a re-fetch).
    */
   readonly openSpaceChildren = computed<SpaceChildRoom[]>(() => {
-    // Reading the set rather than the client keeps the whole derivation inside signals.
-    // The old form reached for `matrix.instance` here, which during an account switch can
-    // already be the NEXT account's client while `_childrenBase` still holds the previous
-    // account's hierarchy — two sources, one frame apart.
+    // Reading the set rather than the client keeps the derivation inside signals: during an
+    // account switch `matrix.instance` can already be the NEXT account's client while
+    // `_childrenBase` still holds the previous account's hierarchy.
     const joined = this._joinedRoomIds();
     return this._childrenBase().map((base) => ({
       ...base,
@@ -217,19 +196,17 @@ export class SpacesService {
   );
 
   /**
-   * Open-space children that are themselves Spaces (joined or not). Joined sub-spaces
-   * already live in the rail; the sidebar surfaces them so they can be opened, and
-   * offers a Join for the rest. (Full nested-rail navigation is deferred.)
+   * Open-space children that are themselves Spaces (joined or not). Joined sub-spaces already
+   * live in the rail; the sidebar surfaces them so they can be opened, and offers a Join for
+   * the rest.
    */
   readonly childSpaces = computed<SpaceChildRoom[]>(() =>
     this.openSpaceChildren().filter((c) => c.isSpace),
   );
 
   /**
-   * State-event listener scoped to `m.space.child`: every state event flows through
-   * here, so filter to the child links to avoid refreshing on unrelated state
-   * (avatars, topics, membership of unrelated rooms, …). These are rare admin
-   * actions (not a sync burst), so they refresh immediately rather than coalescing.
+   * Scoped to `m.space.child`: every state event flows through here, so filter to child links
+   * rather than refreshing on unrelated state (avatars, topics, other rooms' membership).
    */
   private readonly onStateEvent = (event: MatrixEvent): void => {
     if (event.getType() === SPACE_CHILD_EVENT) {
@@ -240,9 +217,8 @@ export class SpacesService {
   };
 
   /**
-   * The sync projection: client-keyed listeners, coalesced rebuilds, re-projection on an
-   * account switch. Listens to the same events as {@link RoomLibraryService} — which is the
-   * point of sharing {@link projectFromClient} rather than mirroring it by hand.
+   * Listens to the same events as {@link RoomLibraryService} via the shared
+   * {@link projectFromClient}.
    */
   private readonly projection = projectFromClient({
     id: 'rooms.spaces',
@@ -255,11 +231,9 @@ export class SpacesService {
       // Joining/leaving a space or a child room changes what is shown.
       RoomEvent.MyMembership,
     ],
-    // refresh() writes signals, which schedule change detection on their own.
     rebuild: () => this.refresh(),
-    // `m.space.child` add/remove/reorder arrives as a room state event, and the handler
-    // has to read the event to tell it apart from every other state change — so it is
-    // bound by hand rather than listed above.
+    // `m.space.child` add/remove/reorder arrives as a room state event the handler must
+    // inspect to tell it from other state changes, so it is bound by hand, not listed above.
     bind: (client) => client.on(RoomStateEvent.Events, this.onStateEvent),
     unbind: (client) => client.off(RoomStateEvent.Events, this.onStateEvent),
     reset: () => {
@@ -284,9 +258,8 @@ export class SpacesService {
   }
 
   /**
-   * Ordered joined child-room ids of a space, or `[]` for Home (`null`) / an
-   * unknown space. Reads the {@link spaces} signal, so callers that read this from
-   * within a `computed`/effect stay reactive to live updates.
+   * Ordered joined child-room ids of a space, or `[]` for Home (`null`) or an unknown space.
+   * Reads the {@link spaces} signal, so callers inside a `computed`/effect stay reactive.
    */
   childRoomIds(spaceId: string | null): string[] {
     if (!spaceId) {
@@ -317,12 +290,11 @@ export class SpacesService {
   }
 
   /**
-   * Load `spaceId`'s full child set (rooms + sub-spaces, joined or not) into
-   * {@link openSpaceChildren} via `getRoomHierarchy`, replacing any previously open
-   * space. Pass `null` (Home) to clear it. Idempotent enough to call on every space
-   * selection: a prior in-flight fetch is cancelled. Errors land in
-   * {@link childrenError}; progress in {@link childrenLoading}. Cold: selection changes only
-   * when subscribed, errors update the signal and also reach the subscriber.
+   * Load `spaceId`'s full child set (rooms and sub-spaces, joined or not) into
+   * {@link openSpaceChildren} via `getRoomHierarchy`, replacing any previously open space;
+   * `null` (Home) clears it. A prior in-flight fetch is cancelled. Errors land in
+   * {@link childrenError} and also reach the subscriber; progress in {@link childrenLoading}.
+   * Cold.
    *
    * A lifetime, not a one-shot command: for a space the active Account has not joined (a
    * restored space its first sync has yet to bring, or one only another Account holds in
@@ -382,10 +354,8 @@ export class SpacesService {
   }
 
   /**
-   * Create a new Space (a room with `type: m.space`) and resolve its room id. The
-   * pill appears in the rail once the client syncs the new room (the existing
-   * listeners pick it up); callers select it by id. Cold: the request runs on
-   * subscribe.
+   * Create a new Space (a room with `type: m.space`), resolving its room id. The rail pill
+   * appears once the client syncs the new room. Cold.
    */
   createSpace(
     accountId: string,
@@ -396,8 +366,8 @@ export class SpacesService {
       if (!client) return throwError(() => new Error('Account unavailable.'));
       return from(
         client.createRoom({
-          // `creation_content.type` is what marks the room as a Space; the SDK
-          // types `creation_content` loosely (`object`), so the field is set here.
+          // `creation_content.type` marks the room as a Space; the SDK types
+          // `creation_content` loosely (`object`), so the field is set here.
           creation_content: { type: RoomType.Space },
           name: options.name.trim(),
           ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
@@ -408,12 +378,10 @@ export class SpacesService {
   }
 
   /**
-   * Create a normal (E2EE) room and link it into `spaceId` as a child, resolving the
-   * new room id. The room is created with `m.room.encryption` (Megolm) in its
-   * `initial_state` so it is encrypted from the first event, then two-way linked:
-   * `m.space.child` on the space (pointing at the child) and `m.space.parent` on the
-   * child (pointing back, canonical). Both links carry our homeserver in `via` so a
-   * remote server can route to the room. Cold: the work runs on subscribe.
+   * Create a normal room encrypted from the first event (Megolm `m.room.encryption` in
+   * `initial_state`) and link it into `spaceId`, resolving the new room id. Linked both ways:
+   * `m.space.child` on the space and a canonical `m.space.parent` on the child, both carrying
+   * our homeserver in `via` so a remote server can route to the room. Cold.
    */
   createRoomInSpace(
     spaceId: string,
@@ -444,7 +412,6 @@ export class SpacesService {
       ).pipe(
         switchMap((res) => {
           const childId = res.room_id;
-          // Link the child into the space, then point the child back at the space.
           return from(
             client.sendStateEvent(
               spaceId,
@@ -471,9 +438,8 @@ export class SpacesService {
   }
 
   /**
-   * Leave a space room. Only the space itself is left — its child rooms stay joined
-   * (leaving the children too is a deferred follow-up). The rail drops the pill once
-   * the membership change syncs back through the existing listeners.
+   * Leave a space room. Only the space is left; its child rooms stay joined. The rail drops
+   * the pill once the membership change syncs back.
    */
   leaveSpace(accountId: string, spaceId: string): Observable<void> {
     return defer(() => {
@@ -509,11 +475,9 @@ export class SpacesService {
   }
 
   /**
-   * Join a child room/space, routing through its `via` servers when known (a remote
-   * room may not be resolvable on our homeserver alone). Once joined it lands in the
-   * synced read model — a normal room moves into the joined channel list, a space
-   * into the rail — and its {@link SpaceChildRoom.joined} flag flips live. Cold: runs
-   * on subscribe.
+   * Join a child room/space, routing through its `via` servers when known (a remote room may
+   * not resolve on our homeserver alone). The result reaches the read model through sync and
+   * flips {@link SpaceChildRoom.joined} live. Cold.
    */
   joinRoom(
     accountId: string,
@@ -533,12 +497,10 @@ export class SpacesService {
   }
 
   /**
-   * Unlink a child from a space by sending an empty `m.space.child` (no `via`) for it
-   * — the spec's tombstone for a removed child. We stay joined to the room; it just
-   * leaves the space. The joined channel list drops it once the state change syncs
-   * back. The child's `m.space.parent` is intentionally left untouched (clearing it
-   * needs power in the child room and is not required to remove from the space).
-   * Cold: runs on subscribe.
+   * Unlink a child from a space by sending an empty `m.space.child` (no `via`), the spec's
+   * tombstone for a removed child. We stay joined to the room. The child's `m.space.parent` is
+   * intentionally left untouched: clearing it needs power in the child room and is not required
+   * to remove it from the space. Cold.
    */
   removeRoomFromSpace(spaceId: string, childId: string): Observable<void> {
     return defer(() => {
@@ -567,8 +529,8 @@ export class SpacesService {
   }
 
   /**
-   * Fetch a space's direct children (`maxDepth: 1`, `suggestedOnly: false`) and
-   * project them to {@link SpaceChildBase}, excluding the space root itself. Cold.
+   * Fetch a space's direct children (`maxDepth: 1`, `suggestedOnly: false`) and project them,
+   * excluding the space root itself. Cold.
    */
   private fetchHierarchy(spaceId: string): Observable<SpaceChildBase[]> {
     return defer(() => {
@@ -582,10 +544,10 @@ export class SpacesService {
   }
 
   /**
-   * Accumulate a space's children across `getRoomHierarchy` pages, following
-   * `next_batch` until it's exhausted (or {@link HIERARCHY_MAX_PAGES} is hit, so
-   * a huge/looping hierarchy can't fan out unbounded). Without this, spaces with
-   * more than {@link HIERARCHY_LIMIT} children silently dropped the overflow.
+   * Accumulate a space's children across `getRoomHierarchy` pages via `next_batch`, up to
+   * {@link HIERARCHY_MAX_PAGES} so a huge or looping hierarchy can't fan out unbounded. A single
+   * page would silently drop the overflow of spaces with more than {@link HIERARCHY_LIMIT}
+   * children.
    */
   private async fetchHierarchyRooms(
     client: MatrixClient,
@@ -611,11 +573,10 @@ export class SpacesService {
   }
 
   /**
-   * Project a `getRoomHierarchy` response into ordered child view models. The link
-   * metadata (`via`, `suggested`, `order`) for each child lives in the *space root's*
-   * `children_state`, not on the child summary — so read it from the root entry and
-   * join it onto each non-root room. Ordered by the child link `order` then name, to
-   * match the joined-children ordering.
+   * Project a `getRoomHierarchy` response into ordered child view models. The link metadata
+   * (`via`, `suggested`, `order`) lives in the *space root's* `children_state`, not on the child
+   * summary, so it is read from the root entry and joined onto each non-root room. Ordered like
+   * the joined children: child link `order`, then name.
    */
   private projectHierarchy(
     accountId: string,
@@ -681,10 +642,10 @@ export class SpacesService {
         .map((r) => this.toSpace(client, r))
         .sort((a, b) => a.name.localeCompare(b.name)),
     );
-    // Every joined room, spaces included: a child of the open space may be either, and
-    // `openSpaceChildren` derives its `joined` flag from this. The signal's structural
-    // equality means an ordinary sync that changed no membership stops here rather than
-    // re-deriving four downstream computeds.
+    // Every joined room, spaces included (a child of the open space may be either):
+    // `openSpaceChildren` derives its `joined` flag from this. Structural equality stops an
+    // ordinary sync that changed no membership here, rather than re-deriving the downstream
+    // computeds.
     this._joinedRoomIds.set(
       new Set(
         rooms
@@ -736,9 +697,9 @@ function initialOf(name: string): string {
 }
 
 /**
- * Our homeserver name, derived from the user id (`@user:server.tld` → `server.tld`)
- * for the `via` of `m.space.child`/`m.space.parent` links. Empty when there is no
- * server part — the homeserver will still accept the link, just without routing help.
+ * Our homeserver name from the user id (`@user:server.tld` → `server.tld`), for the `via` of
+ * `m.space.child`/`m.space.parent` links. Empty when there is no server part; the homeserver
+ * still accepts the link, just without routing help.
  */
 function serverNameOf(userId: string | null): string {
   const colon = userId?.indexOf(':') ?? -1;

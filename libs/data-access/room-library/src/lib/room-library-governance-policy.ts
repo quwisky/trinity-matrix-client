@@ -14,10 +14,9 @@ export interface RoomLibraryGovernanceKey {
 }
 
 /**
- * Narrow policy interface consumed by Room Library.
- *
- * The application composes the Room Administration adapter. Keeping this interface in
- * Room Library makes relationship ownership independent of the governance implementation.
+ * Narrow policy interface consumed by Room Library. The application composes the Room
+ * Administration adapter, so relationship ownership stays independent of the governance
+ * implementation.
  */
 export interface RoomLibraryGovernancePolicy {
   authorize(

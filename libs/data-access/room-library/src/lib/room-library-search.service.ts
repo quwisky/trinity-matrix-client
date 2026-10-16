@@ -82,22 +82,19 @@ const SCORE_EMPTY = 1;
 const DEFAULT_LIMIT = 30;
 
 /**
- * Read-only, client-side search aggregator for the quick switcher. Reads the live
- * selected Room Library view (joined rooms/DMs, spaces, pending invites) and ranks
- * them by name — no network, no message-body access, so it is inherently E2EE-safe.
+ * Read-only, client-side search over the live selected Room Library view, ranked by name. No
+ * network and no message-body access, so it is inherently E2EE-safe.
  *
- * {@link search} is synchronous so application orchestration can wrap it in a
- * `computed` and preserve signal reactivity without making Room Library know about
- * remote Discovery.
+ * {@link search} is synchronous so orchestration can wrap it in a `computed` without Room
+ * Library knowing about remote Discovery.
  */
 @Injectable({ providedIn: 'root' })
 export class RoomLibrarySearchService {
   private readonly selected = inject(SelectedRoomLibraryService);
 
   /**
-   * The searchable corpus, recomputed only when a source signal changes — so each
-   * keystroke re-filters this memoized, already-lowercased list instead of
-   * re-projecting and re-casing every name.
+   * Recomputed only when a source signal changes, so a keystroke re-filters this memoized,
+   * pre-lowercased list.
    */
   private readonly entries = computed<SwitcherEntry[]>(() => {
     const view = this.selected.view();
@@ -162,10 +159,8 @@ export class RoomLibrarySearchService {
   });
 
   /**
-   * Ranked, capped local matches for `query`. Reads the live source signals (via the
-   * memoized {@link entries}), so calling it from a component `computed` keeps it
-   * reactive. An empty query returns recents (everything, ordered by recency).
-   * Ordering: score desc, then last-activity desc, then title.
+   * Ranked, capped local matches for `query`; an empty query returns everything by recency.
+   * Ordering: score desc, last activity desc, then title.
    */
   search(
     query: string,
@@ -220,11 +215,9 @@ export class RoomLibrarySearchService {
 }
 
 /**
- * Rank a row against `qLower` (already lowercased+trimmed): exact > prefix >
- * word-boundary prefix on the title, then a substring fallback over `haystack` (which
- * also covers a room's topic). `0` means no match (dropped); an empty query matches
- * everything equally so the list falls back to recents. `titleLower`/`haystack` are
- * pre-lowercased.
+ * Rank a row against `qLower` (lowercased, trimmed): exact > prefix > word-boundary prefix on
+ * the title, then a substring fallback over `haystack` (title plus a room's topic). `0` means
+ * no match; an empty query matches everything equally.
  */
 function scoreOf(titleLower: string, haystack: string, qLower: string): number {
   if (!qLower) {

@@ -32,18 +32,11 @@ export interface PendingInvite {
 }
 
 /**
- * Read model over the synced `MatrixClient` for **incoming invites** — the rooms
- * (and spaces) where our membership is `invite`. A sibling to {@link RoomLibraryService}
- * (joined rooms) and {@link SpacesService} (joined spaces), all of which exclude
- * invited rooms; this surfaces them so the UI can offer Accept / Decline.
+ * Read model over the synced `MatrixClient` for incoming invites (rooms and spaces whose
+ * membership is `invite`); the joined-room and space services exclude them.
  *
- * Mirrors the sibling read models: components never touch `matrix-js-sdk`, the
- * signal recomputes as the client syncs, and connection is keyed to the client
- * *instance* (a logout→login swaps in a fresh client) rather than a boolean.
- *
- * Accept ({@link acceptInvite}) joins and Decline ({@link declineInvite}) leaves;
- * the result lands in the read model — and in the joined rooms/spaces lists — through
- * the existing sync listeners (no manual signal patching).
+ * Accept joins and Decline leaves; the result reaches the read model and the joined lists
+ * through the sync listeners, with no manual signal patching.
  */
 @Injectable({ providedIn: 'root' })
 export class InvitesService {
@@ -53,7 +46,6 @@ export class InvitesService {
   /** Rooms/spaces we have been invited to; live as the client syncs. */
   readonly pendingInvites = this._pendingInvites.asReadonly();
 
-  /** The sync projection: client-keyed listeners, coalesced rebuilds, account switch. */
   private readonly projection = projectFromClient({
     id: 'invites.active-account',
     matrix: this.matrix,
@@ -65,10 +57,8 @@ export class InvitesService {
       // The invited room being (re)named changes its label.
       RoomEvent.Name,
     ],
-    // Coalescing is not cosmetic here: `ClientEvent.Room` fires once PER ROOM during
-    // initial sync and refresh() walks every joined room (filter + map + a localeCompare
-    // sort), so rebuilding per event was O(rooms²) on startup. refresh() writes the
-    // `_pendingInvites` signal, which schedules change detection on its own.
+    // Coalesced: `ClientEvent.Room` fires once per room during initial sync and refresh() walks
+    // every joined room, so per-event rebuilds would be O(rooms²) on startup.
     rebuild: () => this.refresh(),
     reset: () => this._pendingInvites.set([]),
   });
@@ -132,9 +122,9 @@ export class InvitesService {
 }
 
 /**
- * Project one invited {@link Room} into a {@link PendingInvite}, tagged with the account it
- * was sent to. Pure read — shared by {@link InvitesService} (active account) and the
- * selected-Account projector so both build identical rows.
+ * Project one invited {@link Room} into a {@link PendingInvite}. Shared by
+ * {@link InvitesService} (active account) and the selected-Account projector so both build
+ * identical rows.
  */
 export function buildInvite(
   client: MatrixClient,
@@ -155,11 +145,10 @@ export function buildInvite(
     accountId,
     name,
     initial: initialOf(name),
-    // A DM invite's stripped state carries the inviter's `m.room.member`, so it resolves
-    // to their avatar the same way a joined DM does. `is_direct` has to be what decides:
-    // stripped state holds only the inviter's and our own membership no matter how big
-    // the room really is, so left to its own member-count heuristic the SDK would hand
-    // back the inviter for every group-room and space invite too.
+    // A DM invite's stripped state carries the inviter's `m.room.member`, so it resolves to
+    // their avatar like a joined DM. `is_direct` must decide: stripped state holds only the
+    // inviter's and our membership whatever the room size, so the SDK's member-count heuristic
+    // would return the inviter for every group-room and space invite.
     avatarMxc: roomAvatarMxc(room, isDirect),
     inviterName: inviter?.name || inviterId || 'Someone',
     isSpace: room.isSpaceRoom(),

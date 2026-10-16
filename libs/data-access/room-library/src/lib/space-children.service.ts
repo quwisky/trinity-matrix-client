@@ -83,25 +83,22 @@ export class SpaceChildrenService {
     unbind: (client) => client.off(RoomStateEvent.Events, this.onStateEvent),
     // Takes the `client` argument rather than re-reading `matrix.instance`: a rebuild
     // coalesced from account A's events can drain after the active client is already B.
-    // (Most services here still re-read the instance; project-from-client.ts says new
-    // code should not.)
+    // Most services here still re-read the instance; new code should not (see
+    // project-from-client.ts).
     rebuild: (client) => {
       for (const [spaceId, state] of this.links) {
         state.set(readLinksFrom(client, spaceId));
       }
     },
-    // No `reset`: disconnect must NOT clear these. The surfaces holding them are still
-    // mounted, and an empty list renders as "this space has no rooms" — a wrong answer
-    // rather than a missing one. The last known links are the honest thing to show until
-    // a reconnect re-seeds them.
+    // No `reset`: disconnect must NOT clear these. Mounted surfaces would render an empty list
+    // as "this space has no rooms", a wrong answer; the last known links are the honest thing
+    // to show until a reconnect re-seeds them.
   });
 
   /**
-   * A space's child links, live — the read every curation surface should use.
-   *
-   * Memoized per space id, so several surfaces watching one space share a signal, and
-   * seeded synchronously from current state so a caller may read it in a field initializer
-   * without a blank first frame.
+   * A space's child links, live; the read every curation surface should use. Memoized per
+   * space id and seeded synchronously from current state, so a field initializer sees no
+   * blank first frame.
    */
   linksFor(spaceId: string): Signal<readonly SpaceChildLink[]> {
     let state = this.links.get(spaceId);
@@ -134,10 +131,8 @@ export class SpaceChildrenService {
   }
 
   /**
-   * Whether the signed-in user may curate `spaceId` — i.e. send `m.space.child` in it.
-   *
-   * Derived from live power levels the same way `RoomSettingsService.editableFields` is,
-   * so the UI can hide curation controls rather than offering actions the server rejects.
+   * Whether the signed-in user may curate `spaceId` (send `m.space.child` in it), from live
+   * power levels, so the UI can hide controls the server would reject.
    */
   canCurate(spaceId: string): boolean {
     const state = this.spaceState(spaceId);
@@ -151,9 +146,8 @@ export class SpaceChildrenService {
   }
 
   /**
-   * Every child link currently on `spaceId`, read straight from live state.
-   *
-   * The write paths' read half. A surface that renders links wants {@link linksFor}.
+   * Every child link currently on `spaceId`, read straight from live state: the write paths'
+   * read half. A surface that renders links wants {@link linksFor}.
    */
   childLinks(spaceId: string): SpaceChildLink[] {
     return readChildLinks(this.spaceState(spaceId));
@@ -175,13 +169,9 @@ export class SpaceChildrenService {
   /**
    * Link an already-joined room into `spaceId`.
    *
-   * The counterpart of `SpacesService.removeRoomFromSpace`, and the reason a room no
-   * longer has to be *born* in a space to belong to one.
-   *
-   * Only the space's `m.space.child` is written — deliberately not the room's
-   * `m.space.parent`. That second event needs power in the ROOM, which the person
-   * curating a space very often does not have, and a failure there would leave the child
-   * half-linked after the link that matters had already succeeded. The parent event is
+   * Only the space's `m.space.child` is written, deliberately not the room's `m.space.parent`:
+   * that needs power in the ROOM, which the curator often lacks, and a failure there would
+   * leave the child half-linked after the link that matters succeeded. The parent event is
    * advisory; the child event is what puts the room in the space.
    */
   addExistingRoom(
@@ -211,9 +201,8 @@ export class SpaceChildrenService {
       const last = links.length > 0 ? links[links.length - 1].order : '';
       const content: SpaceChildContent = {
         via: [viaFor(client, childId)],
-        // Appended, not inserted: adding a room should not disturb an admin's existing
-        // arrangement. A null gap here just means the new child sorts as unordered, which
-        // the spec already puts last — exactly where it belongs.
+        // Appended, not inserted, so an admin's arrangement is undisturbed. A null gap just
+        // means the new child sorts as unordered, which the spec puts last.
         ...(orderBetween(last, '')
           ? { order: orderBetween(last, '') as string }
           : {}),
@@ -264,15 +253,12 @@ export class SpaceChildrenService {
   }
 
   /**
-   * Move `childId` so it sits directly before `beforeChildId` in the space's arrangement,
-   * or at the end when that is `null`.
+   * Move `childId` directly before `beforeChildId`, or to the end when that is `null`.
    *
-   * One write in the ordinary case: a key is minted strictly between the two children the
-   * moved one lands among, and nothing else is touched. When no such key can exist —
-   * neighbouring keys with no gap, or a key some other client wrote that this one cannot
-   * do arithmetic against — the whole sibling list is renumbered instead, which is several
-   * writes but is the only way to make room. {@link spreadOrders} spaces the new keys out
-   * so the next move is a single write again.
+   * Normally one write: a key is minted between the two neighbours. When no such key exists
+   * (neighbours with no gap, or a key another client wrote that this one cannot do arithmetic
+   * against) the whole sibling list is renumbered, which is several writes; {@link spreadOrders}
+   * leaves room so the next move is a single write again.
    */
   moveChildBefore(
     accountId: string,
@@ -405,12 +391,11 @@ export class SpaceChildrenService {
 }
 
 /**
- * The child links a space's state currently declares, ordered the way the spec sorts them.
+ * The child links a space's state declares, ordered the way the spec sorts them.
  *
- * Kept here rather than in `room-projection.ts` beside `spaceChildIdsOf`: it has one owner,
- * so the move would buy no reuse, and it would park this spec-correct code-point
- * {@link compareOrder} next to that file's `localeCompare` — an invitation to "unify" them
- * and change visible sidebar ordering as a side effect.
+ * Kept here, not beside `spaceChildIdsOf` in `room-projection.ts`: that file uses
+ * `localeCompare`, and parking this code-point {@link compareOrder} next to it invites
+ * "unifying" them, which would change visible sidebar ordering.
  */
 function readChildLinks(state: RoomState | null | undefined): SpaceChildLink[] {
   if (!state) {

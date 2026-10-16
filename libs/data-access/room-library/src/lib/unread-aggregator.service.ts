@@ -18,7 +18,6 @@ import {
   roomActivityTs,
 } from './room-projection';
 
-/** A no-arg listener reused across every unread-affecting client / room event. */
 type UnreadListener = () => void;
 
 /** The client + shared handler attached for one account, kept so we can detach it. */
@@ -43,24 +42,18 @@ export interface UnreadRoom {
 }
 
 /**
- * Cross-account unread aggregator. Where {@link RoomLibraryService.totalUnread} sums only the
- * ACTIVE account's rooms, this sums every signed-in account so the app-icon badge — and,
- * later, the account switcher — reflects all of them at once.
- *
- * It attaches a lightweight listener to each account's client (reading notification
- * counts directly, with no full room projection) and reconciles that listener set as
- * accounts are added or removed. Recomputes are coalesced onto a microtask so a sync
- * burst across several accounts rebuilds the totals once; the rebuild writes a signal,
- * which schedules change detection so the badge updates promptly.
- *
- * The same pass also publishes the per-room list ({@link unreadRooms}) for the space rail.
+ * Cross-account unread aggregator: where {@link RoomLibraryService.totalUnread} sums only the
+ * ACTIVE account's rooms, this sums every signed-in account (app-icon badge). A lightweight
+ * listener per account client reads notification counts directly, without a full room
+ * projection, and the same pass publishes the per-room {@link unreadRooms} list. Rebuilds are
+ * coalesced onto a microtask so a sync burst across accounts rebuilds once.
  */
 @Injectable({ providedIn: 'root' })
 export class UnreadAggregatorService {
   private readonly matrix = inject(MatrixClientService);
 
   // Equal by content: every sync rebuilds the map, and an unchanged one must not ripple
-  // through every badge that reads it (#1292).
+  // through every badge that reads it.
   private readonly _unreadByAccount = signal<ReadonlyMap<string, number>>(
     new Map(),
     { equal: sameCounts },
@@ -91,8 +84,7 @@ export class UnreadAggregatorService {
   private readonly listeners = new Map<string, AccountListener>();
 
   constructor() {
-    // Reconcile per-account listeners against the live account set — runs at startup
-    // and on every add/remove, attaching to new clients and dropping gone ones.
+    // Reconcile per-account listeners against the live account set (startup, add, remove).
     effect(() => this.reconcile(this.matrix.accountIds()));
   }
 
@@ -108,9 +100,8 @@ export class UnreadAggregatorService {
       const client = this.matrix.clientFor(userId);
       const held = this.listeners.get(userId);
       if (held) {
-        // Same user id can get a NEW client object (re-adding an already signed-in account
-        // stops and re-creates it). Holding the old one strands the listener on a stopped
-        // client and that account silently stops updating.
+        // Same user id can get a NEW client object (re-adding a signed-in account recreates
+        // it); holding the old one strands the listener on a stopped client.
         if (held.client === client) {
           continue;
         }
@@ -128,15 +119,10 @@ export class UnreadAggregatorService {
   }
 
   /**
-   * Coalesce a burst of events into one rebuild: recompute the totals on the microtask
-   * after the current task drains, deduped by the shared coalescer.
-   */
-  /**
-   * Coalesced through the shared primitive. Keyed on the account set, not one active
-   * client, so it takes the batching alone rather than `projectFromClient`.
+   * Coalesced through the shared primitive. Keyed on the account set, not one active client,
+   * so it takes the batching alone rather than `projectFromClient`.
    */
   private readonly flusher = coalesce(() => {
-    // flush() writes the per-account signal, which schedules change detection.
     this.flush();
   });
 
@@ -149,9 +135,9 @@ export class UnreadAggregatorService {
     const rooms: UnreadRoom[] = [];
     for (const userId of this.listeners.keys()) {
       const unread = this.unreadRoomsFor(userId);
-      // A room flagged to come back to counts as one although the server's count for it is
-      // zero: that flag is the only thing saying it wants attention, and a badge that ignored
-      // it would leave "come back to this" visible nowhere but the sidebar row.
+      // A room flagged to come back to counts as one although the server's count is zero: the
+      // flag is the only sign it wants attention, and ignoring it would leave it visible only
+      // in the sidebar row.
       counts.set(
         userId,
         unread.reduce((sum, room) => sum + (room.unreadCount || 1), 0),

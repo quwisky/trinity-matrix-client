@@ -1,20 +1,11 @@
 /**
- * `m.space.child` **order** keys — the string a space admin sets so everyone sees the
- * children in the intended arrangement.
+ * `m.space.child` **order** keys. The spec limits a key to 50 characters in `\x20`–`\x7E` and
+ * sorts children by **Unicode code point**. Two consequences:
  *
- * The spec constrains the field tightly: at most 50 characters, every character in
- * `\x20`–`\x7E`, and children sorted by **Unicode code point** order. Two consequences
- * shape everything here.
- *
- * First, code point order is NOT `localeCompare` order: ICU collation puts `'a'` before
- * `'B'`, while code points put `'B'` (66) before `'a'` (97). Keys generated for one and
- * compared with the other disagree, so {@link compareOrder} exists and every comparison
- * goes through it.
- *
- * Second, reordering must not rewrite the whole sibling list. Each child link is its own
- * state event, so renumbering ten siblings to move one is ten events in the space's
- * timeline. Instead {@link orderBetween} mints a key that sorts strictly between its new
- * neighbours, so one move is one write.
+ * - Code point order is NOT `localeCompare` order (ICU puts `'a'` before `'B'`; code points put
+ *   `'B'` (66) before `'a'` (97)), so every comparison goes through {@link compareOrder}.
+ * - Reordering must not rewrite the sibling list: each child link is its own state event, so
+ *   {@link orderBetween} mints a key between the new neighbours and one move is one write.
  */
 
 /**
@@ -66,17 +57,12 @@ export function compareOrder(a: string, b: string): number {
 }
 
 /**
- * Mint a key that sorts strictly after `prev` and strictly before `next`, or `null` when
- * no key can exist between them.
+ * Mint a key that sorts strictly after `prev` and before `next`, or `null` when none exists.
+ * Pass `''` for either side for unbounded (`orderBetween('', first)` inserts at the top).
  *
- * Pass `''` for either side to mean unbounded: `orderBetween('', first)` inserts at the
- * top, `orderBetween(last, '')` at the bottom.
- *
- * `null` is a real outcome, not a failure to handle later. Keys are finite strings, so a
- * caller can always construct a pair with no gap — most obviously by asking to insert
- * before a child whose key is already the lowest digit. The caller's answer is to
- * renumber the siblings with {@link spreadOrders}; returning `null` says which of the two
- * paths to take rather than inventing a key that sorts in the wrong place.
+ * `null` is a real outcome: keys are finite, so a pair with no gap is easy to construct
+ * (inserting before a child already at the lowest digit). The caller renumbers with
+ * {@link spreadOrders} rather than receiving a key that sorts in the wrong place.
  */
 export function orderBetween(prev: string, next: string): string | null {
   let result = '';
@@ -116,13 +102,9 @@ export function orderBetween(prev: string, next: string): string | null {
 }
 
 /**
- * Evenly spaced keys for `count` children — the renumbering fallback for when
- * {@link orderBetween} reports no gap, and the way an unordered list is given orders for
- * the first time.
- *
- * Spread across the alphabet rather than packed (`0`, `1`, `2`, …) so later single-key
- * inserts have somewhere to land: consecutive keys are exactly the case that forces
- * another renumber.
+ * Evenly spaced keys for `count` children: the renumbering fallback when {@link orderBetween}
+ * reports no gap, and the first orders for an unordered list. Spread rather than packed
+ * (`0`, `1`, `2`, …) because consecutive keys are exactly the case that forces another renumber.
  */
 export function spreadOrders(count: number): string[] {
   if (count <= 0) {
