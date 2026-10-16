@@ -101,6 +101,7 @@ describe('ApplicationRootComponent', () => {
           useValue: {
             hasProblems: signal(false),
             bannerSlot: signal(null),
+            bannerSlotReserved: signal(false),
             show: vi.fn(),
           },
         },

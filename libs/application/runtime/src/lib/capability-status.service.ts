@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { TrustService } from '@trinity/data-access/trust';
 import {
@@ -79,6 +79,7 @@ export class CapabilityStatusService {
   private readonly trust = inject(TrustService);
   private readonly dismissed = signal<ReadonlyMap<string, string>>(new Map());
   private readonly copied = signal(false);
+  private readonly slotHeldStatus = signal(false);
 
   readonly open = this.visibility.open;
   readonly copyConfirmed = this.copied.asReadonly();
@@ -115,6 +116,14 @@ export class CapabilityStatusService {
       return 'encryption';
     return limited ? 'status' : null;
   });
+  /**
+   * Whether the slot has held the status notice in this app session. Only then can a
+   * prompt replace that two-action notice, so only then does the prompt keep the
+   * notice's height (`placement="global"` on the banner). A prompt arriving in a slot
+   * that never held the notice replaces nothing and keeps its own height. Sticky: the
+   * notice can take the slot back at any time.
+   */
+  readonly bannerSlotReserved = this.slotHeldStatus.asReadonly();
   /** Names what is limited: the one problem's heading, or up to two capability names. */
   readonly bannerMessage = computed(() => {
     const entries = this.visibleEntries();
@@ -189,6 +198,14 @@ export class CapabilityStatusService {
       ? `${capabilityStatusCopy(notice.fact).capability} recovered.`
       : '';
   });
+
+  constructor() {
+    // Recorded as the slot changes rather than derived when read: a lazy derivation would
+    // miss a notice that nobody asked about before the prompt replaced it.
+    effect(() => {
+      if (this.bannerSlot() === 'status') this.slotHeldStatus.set(true);
+    });
+  }
 
   show(): void {
     this.copied.set(false);

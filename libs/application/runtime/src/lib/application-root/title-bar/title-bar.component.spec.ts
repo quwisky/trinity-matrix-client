@@ -75,6 +75,7 @@ describe('TitleBarComponent', () => {
           useValue: {
             hasProblems: signal(opts.problems ?? false),
             bannerSlot: signal(null),
+            bannerSlotReserved: signal(false),
             show,
           },
         },
@@ -129,6 +130,7 @@ describe('TitleBarComponent', () => {
           useValue: {
             hasProblems: signal(false),
             bannerSlot: signal(null),
+            bannerSlotReserved: signal(false),
             show: vi.fn(),
           },
         },
@@ -199,6 +201,7 @@ describe('TitleBarComponent', () => {
           useValue: {
             hasProblems: signal(false),
             bannerSlot: signal(null),
+            bannerSlotReserved: signal(false),
             show: vi.fn(),
           },
         },
@@ -240,6 +243,7 @@ describe('TitleBarComponent', () => {
           useValue: {
             hasProblems: signal(false),
             bannerSlot: signal(null),
+            bannerSlotReserved: signal(false),
             show: vi.fn(),
           },
         },

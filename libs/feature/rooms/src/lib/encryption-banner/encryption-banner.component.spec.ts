@@ -14,6 +14,7 @@ import { EncryptionBannerComponent } from './encryption-banner.component';
 const status = signal<TrustStatus>('unknown');
 const setupElsewhere = signal(false);
 const slot = signal<'status' | 'encryption' | null>('encryption');
+const slotReserved = signal(false);
 const open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
   of({ kind: 'presented' as const, surface: request.surface }),
 );
@@ -33,6 +34,7 @@ function renderBanner() {
           hasProblems: signal(false),
           show: vi.fn(),
           bannerSlot: slot,
+          bannerSlotReserved: slotReserved,
         },
       },
     ],
@@ -43,6 +45,7 @@ beforeEach(() => {
   status.set('unknown');
   setupElsewhere.set(false);
   slot.set('encryption');
+  slotReserved.set(false);
   open.mockClear();
 });
 
@@ -87,6 +90,21 @@ describe('EncryptionBannerComponent', () => {
     slot.set('status');
     fixture.detectChanges();
     expect(container.querySelector('trn-banner')).toBeNull();
+  });
+
+  it('keeps its own height unless the notice it may replace has held the slot', async () => {
+    status.set('needs-setup');
+    const { fixture, container } = await renderBanner();
+    const placement = () =>
+      container.querySelector('trn-banner')?.getAttribute('data-placement');
+
+    // Arriving in an empty slot replaces nothing, so it reserves nothing.
+    expect(placement()).toBe('inline');
+
+    // Once the two-action notice has held the slot, the prompt keeps its height.
+    slotReserved.set(true);
+    fixture.detectChanges();
+    expect(placement()).toBe('global');
   });
 
   it('offers a single setup action as a semantic trust surface', async () => {

@@ -133,6 +133,7 @@ export function provideTrinityApplication(
         return {
           hasProblems: computed(() => health.problems().length > 0),
           bannerSlot: status.bannerSlot,
+          bannerSlotReserved: status.bannerSlotReserved,
           show: () => visibility.show(),
         };
       },
