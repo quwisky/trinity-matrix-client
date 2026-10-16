@@ -40,8 +40,9 @@ export class RoomReadinessService {
    *
    * Create/join endpoints can resolve before `/sync` publishes the Room, and a Room the store
    * already held (left earlier, or invited) keeps that membership until `/sync` brings the
-   * join; Timeline must not attach before then. Listeners are installed before the second
-   * read to close the event-between-checks race; cancellation detaches them.
+   * join; a Workspace command must not focus it until Timeline can attach to that same live
+   * object. Listeners are installed before the second read to close the event-between-checks
+   * race; cancellation detaches them.
    */
   waitForRoom(accountId: string, roomId: string): Observable<void> {
     return defer(() => {

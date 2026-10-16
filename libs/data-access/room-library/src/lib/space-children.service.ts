@@ -83,6 +83,8 @@ export class SpaceChildrenService {
     unbind: (client) => client.off(RoomStateEvent.Events, this.onStateEvent),
     // Takes the `client` argument rather than re-reading `matrix.instance`: a rebuild
     // coalesced from account A's events can drain after the active client is already B.
+    // Most services here still re-read the instance; new code should not (see
+    // project-from-client.ts).
     rebuild: (client) => {
       for (const [spaceId, state] of this.links) {
         state.set(readLinksFrom(client, spaceId));
