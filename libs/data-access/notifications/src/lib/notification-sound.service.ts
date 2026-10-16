@@ -23,8 +23,8 @@ const DEFAULT_ON = true;
 /**
  * The single global "play a sound" preference.
  *
- * Stored in ACCOUNT DATA, not in the push rules, because a `sound` tweak on the rules (as
- * observed on Synapse 1.119):
+ * Stored in ACCOUNT DATA, not in the push rules, because toggling the rules' `sound` tweak
+ * (as observed on Synapse 1.119):
  *
  *  - does not silence the phone. Trinity registers its pusher with `format: 'event_id_only'`
  *    to keep message content off the gateway, and Synapse blanks the tweaks for that format

@@ -48,7 +48,8 @@ function isServerRule(ruleId: string): boolean {
  *
  * A `*` typed into the keyword field would become "notify on every message in every room"
  * on every device and client. Rejected rather than escaped: escaping would store something
- * other than what was typed, and escape support across homeservers is unreliable.
+ * other than what was typed, and escape support across homeservers is not worth betting a
+ * runaway notification rule on.
  */
 const GLOB_CHARACTERS = /[*?]/;
 
@@ -274,7 +275,10 @@ export class KeywordRulesService {
     });
   }
 
-  /** The named account's client, else the active one, as in {@link RoomNotificationsService}. */
+  /**
+   * The named account's client, else the active one, as in {@link RoomNotificationsService},
+   * so a non-active account's keywords are reachable.
+   */
   private clientOwning(accountId?: string): MatrixClient | null {
     if (accountId) {
       return this.matrix.clientFor(accountId);

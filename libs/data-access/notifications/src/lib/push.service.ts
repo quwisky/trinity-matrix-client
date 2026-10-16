@@ -36,7 +36,8 @@ const DEVICE_RENDER = 'device';
  * Outcome of the most recent pusher-registration round, for the settings UI.
  *
  * `applied` counts the accounts a pusher was registered for and stamps when; `error`
- * carries the homeserver's message from the first account that failed.
+ * carries the homeserver's message from the first account that failed. A discriminated
+ * union, so "succeeded and failed" is unrepresentable; don't split it into two signals.
  *
  * `applied` means the homeservers accepted the pushers, not that a notification will
  * arrive: the gateway → FCM/APNs → device leg cannot be observed from the client, so the UI
