@@ -25,25 +25,27 @@ describe('setup-playwright apt archive cache', () => {
       String(step.run ?? '').includes('playwright install'),
     );
     expect(aptCache).toBeGreaterThan(-1);
-    expect(steps[aptCache].uses).toMatch(/^actions\/cache@[0-9a-f]{40}$/);
+    // Restore only: save-playwright saves, from main.
+    expect(steps[aptCache].uses).toMatch(
+      /^actions\/cache\/restore@[0-9a-f]{40}$/,
+    );
     expect(aptCache).toBeLessThan(install);
     // Not gated on the install input: ci-prerequisites installs too.
     expect(steps[aptCache].if).not.toContain('inputs.install');
   });
 
-  it('keys on the runner image, the browsers and the lockfile', () => {
+  it('keys on the runner image, the Playwright version and the browsers', () => {
     const { key, 'restore-keys': restoreKeys } = steps[aptCache].with;
     for (const part of [
       'runner.os',
       'steps.apt.outputs.image',
+      'steps.playwright.outputs.version',
       'inputs.browsers',
-      "hashFiles('pnpm-lock.yaml')",
     ]) {
       expect(key).toContain(part);
     }
-    expect(restoreKeys).toBe(
-      key.replace("${{ hashFiles('pnpm-lock.yaml') }}", ''),
-    );
+    // Any browser set's entry is a usable start for another set.
+    expect(restoreKeys).toBe(key.replace('${{ inputs.browsers }}', ''));
     const prepare = steps.find((step) => step.id === 'apt');
     expect(prepare.run).toContain('ImageOS');
     expect(prepare.run).toContain('ImageVersion');

@@ -1,5 +1,5 @@
 name: Prepare Playwright browsers
-description: Cache browser downloads and optionally install browsers and host libraries.
+description: Restore cached browser downloads and optionally install browsers and host libraries.
 inputs:
   browsers:
     description: Space-separated Playwright browser names.
@@ -27,19 +27,34 @@ runs:
         printf 'Dir::Cache::Archives "%s";\nAPT::Keep-Downloaded-Packages "true";\n' "$archives" |
           sudo tee /etc/apt/apt.conf.d/99trinity-archives > /dev/null
         echo "image=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+    # Keys follow the Playwright version, not the whole lockfile, so an unrelated dependency
+    # update reuses the same entries. Only `main` saves (save-playwright); other refs restore.
+    - id: playwright
+      shell: bash
+      run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
     # Only the .debs are cached: partial/ belongs to _apt and lock is root-only, so tar
-    # cannot read either.
+    # cannot read either. One entry is saved, for the default `chromium webkit` set; the other
+    # sets restore it through the prefix and apt downloads only what it lacks.
     - if: runner.os == 'Linux' && inputs.with-deps == 'true'
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/apt-archives/*.deb
-        key: apt-${{ runner.os }}-${{ steps.apt.outputs.image }}-${{ inputs.browsers }}-${{ hashFiles('pnpm-lock.yaml') }}
-        restore-keys: apt-${{ runner.os }}-${{ steps.apt.outputs.image }}-${{ inputs.browsers }}-
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        key: apt-${{ runner.os }}-${{ steps.apt.outputs.image }}-${{ steps.playwright.outputs.version }}-${{ inputs.browsers }}
+        restore-keys: apt-${{ runner.os }}-${{ steps.apt.outputs.image }}-${{ steps.playwright.outputs.version }}-
+    # One entry per browser, so each is stored once whatever set a job asks for. Firefox is
+    # not cached: only the pull-request scrollbar check and the weekly scheduled run use it.
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ inputs.browsers }}-${{ hashFiles('pnpm-lock.yaml') }}
-        restore-keys: playwright-${{ runner.os }}-${{ inputs.browsers }}-
+        path: |
+          ~/.cache/ms-playwright/chromium-*
+          ~/.cache/ms-playwright/chromium_headless_shell-*
+          ~/.cache/ms-playwright/ffmpeg-*
+        key: playwright-${{ runner.os }}-chromium-${{ steps.playwright.outputs.version }}
+    - if: contains(inputs.browsers, 'webkit')
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright/webkit-*
+        key: playwright-${{ runner.os }}-webkit-${{ steps.playwright.outputs.version }}
     - if: inputs.install == 'true'
       shell: bash
       env:
@@ -59,3 +74,10 @@ runs:
           fi
         done
         exit "$rc"
+    # When install is false the job installs later (scripts/ci-prerequisites.mjs) and calls
+    # save-playwright itself after that.
+    - if: inputs.install == 'true'
+      uses: ./.github/actions/save-playwright
+      with:
+        browsers: ${{ inputs.browsers }}
+        with-deps: ${{ inputs.with-deps }}

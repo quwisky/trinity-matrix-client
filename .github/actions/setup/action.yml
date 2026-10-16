@@ -13,10 +13,9 @@ description: The .nvmrc Node, the pinned pnpm, and installed dependencies.
 runs:
   using: composite
   steps:
-    # Must come BEFORE setup-node: its `cache: pnpm` resolves the store path by shelling
-    # out to pnpm, which is not on the runner yet. The version comes from package.json's
-    # `packageManager` field — passing a `version:` input as well is an
-    # error, not an override.
+    # Before setup-node, so pnpm (the version in package.json's `packageManager` field) is on
+    # PATH for the store steps below. Passing a `version:` input as well is an error, not an
+    # override.
     - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -25,20 +24,36 @@ runs:
         # the ^24.15.0 floor. Using the file keeps CI, nvm and fnm on the latest available
         # Node 24 maintenance release without duplicating the version declaration here.
         node-version-file: .nvmrc
-        cache: pnpm
-        # electron/ is a second pnpm project with its own lockfile. Both share one
-        # global store, so its packages land in the cache either way — but without
-        # this the cache key ignores electron/pnpm-lock.yaml, so a change there hits
-        # the primary key exactly, skips the save, and re-downloads its delta forever.
-        cache-dependency-path: |
-          pnpm-lock.yaml
-          electron/pnpm-lock.yaml
+        # The pnpm store is cached below instead: setup-node's own cache saves from every
+        # ref, so each pull request kept a private copy of the store.
+        package-manager-cache: false
+
+    # Only `main` saves the store; every other ref restores main's entry (GitHub lets any
+    # branch read the default branch's caches). The key covers the root lockfile only:
+    # electron/ is installed later and separately (`pnpm electron:install`), after the save,
+    # so its packages are never in the entry. Saved right after the install, when the store
+    # holds exactly what the root install needed plus whatever an older entry carried.
+    - id: pnpm-store
+      shell: bash
+      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+    - id: pnpm-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: pnpm-store-${{ runner.os }}-${{ runner.arch }}-
 
     # --frozen-lockfile fails when pnpm-lock.yaml is out of sync with package.json, so a
     # dependency edit committed without its lockfile change is caught here rather than
     # by a mystery version drift later.
     - run: pnpm install --frozen-lockfile
       shell: bash
+
+    - if: github.ref == 'refs/heads/main' && steps.pnpm-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: ${{ steps.pnpm-cache.outputs.cache-primary-key }}
 
 # NOTE: there is deliberately no actions/cache step for Nx.
 #

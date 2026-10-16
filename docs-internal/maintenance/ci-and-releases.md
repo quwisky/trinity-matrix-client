@@ -22,6 +22,7 @@ public developer guide.
 | [`backport.yml`](../../.github/workflows/backport.yml)               | A merged `main` pull request is closed or labeled `backport release/X.Y.x` | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                               |
 | [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) | `CI` completes on a `back-merge/**` branch of this repository              | Pushes the back-merge commit to `main` as a fast-forward, through a GitHub App token                                                                            |
 | [`codeql.yml`](../../.github/workflows/codeql.yml)                   | A push to `main`, a pull request to `main`, or Mondays at 05:37 UTC        | CodeQL code scanning for GitHub Actions, Java/Kotlin, JavaScript/TypeScript and Swift (see [Code scanning](#code-scanning))                                     |
+| [`cache-cleanup.yml`](../../.github/workflows/cache-cleanup.yml)     | A pull request closes, merged or not                                       | Deletes the Actions caches saved under that pull request's `refs/pull/<n>/merge` ref                                                                            |
 
 The branch workflow accepts pushes to `main` and `release/**`; pull requests,
 Renovate updates included, are its usual review path. A newer run for
@@ -138,14 +139,34 @@ CI validation jobs and release verification/package jobs use the shared
 and container-action setup; the draft-release job consumes artifacts without installing
 the workspace, and the macOS signing job installs only `electron/`'s lockfile, with
 `--ignore-scripts`.
-It installs pinned pnpm before Node because Node's pnpm cache lookup invokes pnpm.
+It installs pinned pnpm first, so the store steps can ask pnpm for the store path.
 The pnpm version comes from `packageManager`; Node follows `.nvmrc`; and installation
 uses a frozen lockfile. A dependency or lockfile mismatch therefore fails at setup,
 before the task that exposed it.
 
-The pnpm cache key covers both `pnpm-lock.yaml` and `electron/pnpm-lock.yaml`.
-The desktop shell is a second pnpm project, so omitting its lockfile makes its
-dependency changes miss cache saves. There is deliberately no Nx cache sharing
+Every Actions cache this repository controls is saved from `main` only. Each job restores with
+`actions/cache/restore` and saves with `actions/cache/save` under
+`github.ref == 'refs/heads/main'`, skipping the save when the exact key was restored. Any branch
+can read the default branch's entries, so pull requests restore main's and add none of their own;
+a pull request that changes a key (a new lockfile, say) restores the newest entry through its
+prefix and downloads the difference. The
+[cache cleanup workflow](../../.github/workflows/cache-cleanup.yml) deletes whatever is left
+under `refs/pull/<n>/merge` when a pull request closes. CodeQL manages its own caches. The
+iOS nightly's caches (WebDriverAgent, pip, Appium, Caddy) still use `actions/cache`, which saves
+from whatever ref runs it, because that workflow runs on its schedule from `main` or by dispatch.
+
+| Entry                                                          | Saved by                                      | Key changes when                       |
+| -------------------------------------------------------------- | --------------------------------------------- | -------------------------------------- |
+| `pnpm-store-<OS>-<arch>-<hash>`                                | The setup action, right after `pnpm install`  | `pnpm-lock.yaml` changes               |
+| `playwright-Linux-chromium-<version>`, `-webkit-`              | `save-playwright`, after the browsers install | Playwright's version changes           |
+| `apt-Linux-<ImageOS>-<ImageVersion>-<version>-chromium webkit` | `save-playwright`, for that set only          | The runner image or Playwright changes |
+| `electron-Linux-<electron version>`                            | Desktop jobs, after `pnpm electron:install`   | `electron/package.json`'s Electron pin |
+| `gradle-Linux-<hash>`, `appium-Linux-<hash>`                   | `mobile-e2e`, at the end of a successful run  | The lockfile or Gradle files change    |
+| `android-emulator-Linux-36-google_apis-x86_64-…`               | `mobile-e2e`, after the emulator booted       | The emulator or image version changes  |
+
+The pnpm store key covers the root lockfile only. `electron/` is a second pnpm project that
+`pnpm electron:install` installs after the store is saved, so its packages were never reliably
+in the entry. There is deliberately no Nx cache sharing
 between hosted runners: Nx's local result index is machine-specific, and this
 repository has no remote Nx cache. Treat a repeated build in another CI job as
 an independent build, not a cache regression. Pull requests instead save
@@ -154,8 +175,15 @@ time by testing only affected projects (see the `test` job below); there is stil
 Playwright's `--with-deps` installs its host libraries with apt, which once timed out on a slow
 Ubuntu mirror. The [Playwright action](../../.github/actions/setup-playwright/action.yml) therefore
 points apt at `~/.cache/apt-archives` (a drop-in setting `Dir::Cache::Archives`) and caches the
-`.deb` files under `apt-<OS>-<ImageOS>-<ImageVersion>-<browsers>-<lockfile hash>`, with a prefix
-fallback. A hit skips the package downloads; `apt-get update` still fetches the index, and a missing
+`.deb` files under `apt-<OS>-<ImageOS>-<ImageVersion>-<Playwright version>-<browsers>`. Only the
+default `chromium webkit` set is saved; other sets restore it through the prefix and apt fetches
+what they lack. Browsers are cached one entry per browser (Chromium with its headless shell and
+ffmpeg, and WebKit), keyed on the Playwright version, so a job asking for Chromium alone and one
+asking for both share the Chromium entry. Firefox, used only by the pull-request scrollbar check
+and the weekly scheduled run, is downloaded each time. Jobs that install through
+`scripts/ci-prerequisites.mjs` (`install: 'false'`) call
+[`save-playwright`](../../.github/actions/save-playwright/action.yml) after it. A hit skips the
+package downloads; `apt-get update` still fetches the index, and a missing
 or corrupt `.deb` is downloaded again, so a stale cache cannot fail the job. A new runner image
 version starts a new cache. Each `playwright install` attempt (in the action and in
 `scripts/ci-prerequisites.mjs`) is bounded to six minutes and retried once, with a

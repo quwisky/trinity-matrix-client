@@ -235,13 +235,21 @@ jobs:
       # true and was the problem: a two-major Chromium bump had no gate at all, and the
       # e2e suite that does launch Electron had silently rotted (it still toggled a CSS
       # class renamed months earlier, and its "crypto WASM loads" test never loaded any
-      # WASM). ~100 MB, cached below.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # WASM). ~100 MB, cached below, one entry per Electron version: an older version's
+      # download is no use, so there is no prefix fallback. Only main saves.
+      - id: electron-version
+        run: echo "version=$(node -p "require('./electron/package.json').devDependencies.electron")" >> "$GITHUB_OUTPUT"
+      - id: electron-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/electron
-          key: electron-${{ runner.os }}-${{ hashFiles('electron/pnpm-lock.yaml') }}
-          restore-keys: electron-${{ runner.os }}-
+          key: electron-${{ runner.os }}-${{ steps.electron-version.outputs.version }}
       - run: pnpm electron:install
+      - if: github.ref == 'refs/heads/main' && steps.electron-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ steps.electron-version.outputs.version }}
       # Fetch it here rather than letting `electron:e2e` trip the package's lazy download
       # mid-run: this is the step that populates the cache above, and a wedged @electron/get
       # should fail as itself, not as a Playwright launch timeout.
@@ -293,6 +301,8 @@ jobs:
       - name: Prepare e2e prerequisites
         id: prerequisites
         run: node scripts/ci-prerequisites.mjs
+      # Installed by the helper above, so the browser caches are saved here (main only).
+      - uses: ./.github/actions/save-playwright
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
         with:
@@ -390,6 +400,10 @@ jobs:
           TRINITY_PLAYWRIGHT_BROWSERS: chromium
           TRINITY_PLAYWRIGHT_WITH_DEPS: 'false'
         run: node scripts/ci-prerequisites.mjs
+      - uses: ./.github/actions/save-playwright
+        with:
+          browsers: chromium
+          with-deps: 'false'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
         with:
@@ -637,7 +651,10 @@ jobs:
           manifest-digest: ${{ needs.renderer.outputs.manifest-digest }}
           destination: dist/renderer-download
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Restored here and saved at the end of a successful run on main only; other refs
+      # restore main's entries.
+      - id: gradle-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.gradle/caches
@@ -645,7 +662,8 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'android/**/*.gradle', 'libs/native/*/android/**/*.gradle', 'android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: appium-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .appium
           key: appium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'scripts/setup-appium.mjs') }}
@@ -812,6 +830,27 @@ jobs:
       - name: Verify Mobile E2E left the worktree unchanged
         if: ${{ !cancelled() }}
         run: git diff --exit-code
+
+      # The wrapper runs from the unpacked distribution once its .ok marker exists, so the
+      # downloaded zip beside it is dead weight in the entry. Sizes are logged for tuning.
+      - name: Prune the Gradle cache
+        continue-on-error: true
+        run: |
+          find ~/.gradle/wrapper/dists -name '*.zip' -type f -print -delete
+          du -sh ~/.gradle/caches ~/.gradle/wrapper
+          du -sh ~/.gradle/caches/* | sort -h | tail -n 6
+      - if: github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
+      - if: github.ref == 'refs/heads/main' && steps.appium-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .appium
+          key: ${{ steps.appium-cache.outputs.cache-primary-key }}
 
   # Branch rules require the check "Mobile E2E (Android)"; both Android jobs report under
   # it through this job, which succeeds only when both succeeded.

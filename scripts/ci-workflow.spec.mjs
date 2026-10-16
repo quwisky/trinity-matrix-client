@@ -130,7 +130,7 @@ describe('CI execution contract', () => {
       kvm.indexOf('udevadm settle'),
     );
     const caches = steps.filter((step) =>
-      step.uses?.startsWith('actions/cache@'),
+      step.uses?.startsWith('actions/cache/restore@'),
     );
     expect(
       caches.some(
