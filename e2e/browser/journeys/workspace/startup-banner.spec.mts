@@ -13,7 +13,12 @@ const session = homeserverSession();
 interface SlotFrame {
   readonly t: number;
   readonly row: number | null;
-  readonly slot: 'status' | 'encryption' | null;
+  /** `forecast`: the encryption prompt laid out hidden, before the live status confirms it. */
+  readonly slot: 'forecast' | 'status' | 'encryption' | null;
+  /** The encryption prompt's box, hidden or shown; null while it is not in the page. */
+  readonly banner: { readonly width: number; readonly height: number } | null;
+  /** The root font size in px, to show larger text applied from the first frame. */
+  readonly rootFont: number;
 }
 
 declare global {
@@ -28,14 +33,20 @@ function recordSlotFrames(): void {
   window.__slotFrames = frames;
   const frame = (): void => {
     const row = document.querySelector('button.channel');
+    const banner = document.querySelector('trn-encryption-banner trn-banner');
+    const box = banner?.getBoundingClientRect();
     frames.push({
       t: Math.round(performance.now()),
       row: row ? row.getBoundingClientRect().top : null,
-      slot: document.querySelector('trn-encryption-banner trn-banner')
-        ? 'encryption'
-        : document.querySelector('[data-testid="app-capability-summary"]')
-          ? 'status'
-          : null,
+      slot: document.querySelector('trn-encryption-banner [data-forecast]')
+        ? 'forecast'
+        : banner
+          ? 'encryption'
+          : document.querySelector('[data-testid="app-capability-summary"]')
+            ? 'status'
+            : null,
+      banner: box ? { width: box.width, height: box.height } : null,
+      rootFont: parseFloat(getComputedStyle(document.documentElement).fontSize),
     });
     requestAnimationFrame(frame);
   };
@@ -48,6 +59,76 @@ function grantPersistentStorage(): void {
     configurable: true,
     value: () => Promise.resolve(true),
   });
+}
+
+/**
+ * Installed before the app loads: text at 200%, as a browser whose default font size is
+ * doubled gives. A constructed stylesheet applies before the first frame, and its
+ * `!important` survives Trinity's appearance adapter, which clears an inline root font
+ * size at start-up when its own text size is the default.
+ */
+function doubleTextSize(): void {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(':root { font-size: 200% !important; }');
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+}
+
+/** Wait until this device has recorded which prompt the Account needs, so a restart has it. */
+async function expectForecastStored(page: Page, kind: string): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate((wanted) => {
+        for (let index = 0; index < localStorage.length; index += 1) {
+          const key = localStorage.key(index) ?? '';
+          if (
+            key.includes('trinity.trust.slot-forecast') &&
+            (localStorage.getItem(key) ?? '').includes(wanted)
+          ) {
+            return true;
+          }
+        }
+        return false;
+      }, kind),
+    )
+    .toBe(true);
+}
+
+/** The prompt's box in the last frame it was a forecast and the first frame it showed. */
+function revealBoxes(frames: readonly SlotFrame[]): {
+  readonly forecast: SlotFrame['banner'];
+  readonly shown: SlotFrame['banner'];
+} | null {
+  const shownAt = frames.findIndex(
+    (frame, index) =>
+      index > 0 &&
+      frame.slot === 'encryption' &&
+      frames[index - 1]!.slot === 'forecast',
+  );
+  return shownAt < 0
+    ? null
+    : { forecast: frames[shownAt - 1]!.banner, shown: frames[shownAt]!.banner };
+}
+
+/** How long a restart's status read is slowed: under the forecast's 3 s hold. */
+const STATUS_DELAY_MS = 1_000;
+
+/**
+ * Hold the live encryption status of the next load: its request waits for `until()`.
+ * A restored session reads its status from local crypto state, except for the Account's
+ * default secret-storage key, which it fetches from the homeserver: holding that request
+ * is what keeps the status unknown while Rooms draws.
+ */
+async function holdTrustStatus(
+  page: Page,
+  until: () => Promise<void>,
+): Promise<void> {
+  await page.route(
+    '**/_matrix/client/*/user/*/account_data/m.secret_storage.default_key',
+    async (route) => {
+      await until();
+      await route.fallback();
+    },
+  );
 }
 
 /** Frames from the first one that drew a room row, a couple of frames past `settled`. */
@@ -197,5 +278,165 @@ test.describe('Global banner slot after sign-in', () => {
       description: `${size.height}px (one row: ${size.natural}px)`,
     });
     expect(size.height).toBeCloseTo(size.natural, 0);
+  });
+
+  /*
+   * On a restart the device already knows which prompt the Account needed last time, so
+   * the slot holds that prompt, laid out but hidden, from the first frame, and the live
+   * status only reveals it in place (#1433). Neither the notice nor an empty slot may come
+   * first, and neither the row nor the prompt's box may change when it is revealed.
+   *
+   * Here the restored session reads its status before Rooms draws, so the read of the
+   * secret-storage key is slowed by a second, as on a phone's network; without that the
+   * prompt is confirmed before the first row and nothing would be measured. The test
+   * checks the forecast really held the slot while the row was on screen.
+   */
+  for (const width of [320, 390]) {
+    for (const text of ['100%', '200%'] as const) {
+      test(`after a restart the list stays put while the prompt is confirmed at ${width}px, ${text} text`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width, height: 844 });
+        await login(page, account);
+        await expect(
+          page
+            .locator('trn-encryption-banner trn-banner')
+            .getByText('Set up encryption to secure your messages.'),
+        ).toBeVisible();
+        await expectForecastStored(page, 'needs-setup');
+
+        // Restart: same storage, fresh page. The forecast is now on disk.
+        await holdTrustStatus(
+          page,
+          () => new Promise((resolve) => setTimeout(resolve, STATUS_DELAY_MS)),
+        );
+        await page.addInitScript(recordSlotFrames);
+        if (text === '200%') {
+          await page.addInitScript(doubleTextSize);
+        }
+        await page.reload();
+        await expect(
+          page
+            .locator('trn-encryption-banner trn-banner')
+            .getByText('Set up encryption to secure your messages.'),
+        ).toBeVisible();
+        await expect(
+          page.locator('trn-encryption-banner [data-forecast]'),
+        ).toHaveCount(0);
+
+        const frames = await framesWithRow(page);
+        expect(frames.length).toBeGreaterThan(0);
+        const first = frames[0]!;
+        expect(
+          [...new Set(frames.map(({ rootFont }) => rootFont))],
+          'root font size (px) in every frame from the first row',
+        ).toEqual([text === '200%' ? 32 : 16]);
+        const swaps = frames.filter(
+          (frame, index) =>
+            index === 0 || frame.slot !== frames[index - 1]!.slot,
+        );
+        test.info().annotations.push({
+          type: 'slot changes',
+          description: JSON.stringify(swaps),
+        });
+        expect(
+          swaps.map(({ slot }) => slot),
+          'the forecast held the slot when the first row was drawn, then was revealed; ' +
+            `slot changes: ${JSON.stringify(swaps)}`,
+        ).toEqual(['forecast', 'encryption']);
+        const moved = frames.filter(
+          (frame) =>
+            frame.row === null || Math.abs(frame.row - first.row!) > 0.5,
+        );
+        expect(
+          moved,
+          `row first drawn at y=${first.row}; slot changes: ${JSON.stringify(swaps)}`,
+        ).toEqual([]);
+        const boxes = revealBoxes(frames);
+        test.info().annotations.push({
+          type: 'prompt box',
+          description: JSON.stringify(boxes),
+        });
+        expect(boxes?.forecast, 'prompt box while hidden').toBeTruthy();
+        expect(boxes!.shown, 'prompt box when revealed').toEqual(
+          boxes!.forecast,
+        );
+      });
+    }
+  }
+
+  /*
+   * The hidden prompt is inert: its action must not take focus before the live status
+   * confirms it. Holding the secret-storage key read keeps the prompt a forecast while the
+   * keyboard is tried. Once it is released the same prompt is revealed, and only then does
+   * Tab reach its action.
+   */
+  test('after a restart the hidden prompt takes no focus until it is confirmed at 390px', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await login(page, account);
+    const prompt = page.locator('trn-encryption-banner trn-banner');
+    await expect(
+      prompt.getByText('Set up encryption to secure your messages.'),
+    ).toBeVisible();
+    await expectForecastStored(page, 'needs-setup');
+
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await holdTrustStatus(page, () => released);
+    await page.reload();
+    try {
+      await expect(page.locator('button.channel').first()).toBeVisible();
+      await expect(
+        page.locator('trn-encryption-banner [data-forecast]'),
+      ).toBeAttached();
+      await expect(prompt).toBeHidden();
+      // A focusable stand-in for whatever precedes the banner, placed right before it and
+      // out of flow, so Tab from it goes to the banner's action if anything can.
+      await page.evaluate(() => {
+        const before = document.createElement('span');
+        before.tabIndex = 0;
+        before.dataset['testid'] = 'before-banner';
+        before.style.position = 'absolute';
+        before.style.inlineSize = '1px';
+        before.style.blockSize = '1px';
+        document.querySelector('trn-encryption-banner')!.before(before);
+        before.focus();
+      });
+      await page.keyboard.press('Tab');
+      const hidden = await page.evaluate(() => ({
+        forecast:
+          document.querySelector('trn-encryption-banner [data-forecast]') !==
+          null,
+        inBanner:
+          document.activeElement?.closest('trn-encryption-banner') != null,
+        focused: document.activeElement?.outerHTML.slice(0, 80) ?? null,
+      }));
+      test.info().annotations.push({
+        type: 'focus after Tab while hidden',
+        description: String(hidden.focused),
+      });
+      expect(hidden.forecast, 'the prompt was still hidden after Tab').toBe(
+        true,
+      );
+      expect(
+        hidden.inBanner,
+        `Tab focused ${hidden.focused} inside the hidden prompt`,
+      ).toBe(false);
+    } finally {
+      release();
+    }
+
+    const action = prompt.getByRole('button', { name: 'Set up', exact: true });
+    await expect(action).toBeVisible();
+    await expect(
+      page.locator('trn-encryption-banner [data-forecast]'),
+    ).toHaveCount(0);
+    await page.getByTestId('before-banner').focus();
+    await page.keyboard.press('Tab');
+    await expect(action, 'the confirmed prompt takes focus').toBeFocused();
   });
 });
