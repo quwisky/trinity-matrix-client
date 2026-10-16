@@ -32,22 +32,25 @@
     class="account-badge"
     role="img"
     data-testid="account-badge"
+    #badgeState="trnAvatarAccountBadge"
+    [trnAvatarAccountBadge]="badge"
+    [avatarSize]="resolvedSize()"
     [attr.aria-label]="'Account: ' + badge.name + ' (' + badge.id + ')'"
     [title]="badge.name + ' (' + badge.id + ')'"
-    [style.width.px]="badgeSize()"
-    [style.height.px]="badgeSize()"
-    [style.font-size.px]="badgeSize() * 0.6"
-    [style.background]="badgeColor()"
-    [style.color]="badgeInk()"
+    [style.width.px]="badgeState.badgeSize()"
+    [style.height.px]="badgeState.badgeSize()"
+    [style.font-size.px]="badgeState.badgeSize() * 0.6"
+    [style.background]="badgeState.badgeColor()"
+    [style.color]="badgeState.badgeInk()"
   >
-    @if (badgeSrc(); as badgeUrl) {
+    @if (badgeState.badgeSrc(); as badgeUrl) {
       <img
         class="account-badge__img"
         decoding="async"
         loading="lazy"
         [src]="badgeUrl"
         alt=""
-        (error)="onBadgeImageError()"
+        (error)="badgeState.onBadgeImageError()"
       />
     } @else {
       {{ badge.initial }}
