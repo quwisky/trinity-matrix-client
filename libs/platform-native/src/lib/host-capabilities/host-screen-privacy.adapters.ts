@@ -38,7 +38,7 @@ const FAILED: HostOperationOutcome = {
 };
 
 /**
- * iOS blurs the app-switcher snapshot (spec §4). Android dims rather than drawing the splash,
+ * iOS blurs the app-switcher snapshot. Android dims rather than drawing the splash,
  * whose path looks up a `Splash` theme Trinity doesn't have; FLAG_SECURE is set either way.
  */
 const COVER = {
@@ -52,7 +52,7 @@ const NOT_SUPPORTED: HostOperationOutcome = {
 };
 
 /**
- * The app-switcher cover while App lock is on (decision 13): iOS covers the snapshot on
+ * The app-switcher cover while App lock is on: iOS covers the snapshot on
  * resign-active, Android sets FLAG_SECURE. Fails closed: a host without the plugin is
  * unavailable, and a refusal or an answer outside the declared shape is rejected.
  */
@@ -97,10 +97,10 @@ export class CapacitorScreenPrivacyAdapter implements HostScreenPrivacyOperation
 
   /**
    * Best effort: a failure or a timeout is reported, never thrown. On Android a Custom Tab is
-   * its own activity, out of the bridge's reach, so it is closed through the browser sheet's
-   * own close too; Android 10 and later refuse that while Trinity is in the background. Not on
-   * iOS, where the Browser plugin's close dismisses whatever the root presents, the privacy
-   * cover included, and the bridge's dismissal already takes the browser sheet down.
+   * its own activity, out of the bridge's reach, so it is also closed through the browser
+   * sheet's close; Android 10+ refuses that while Trinity is in the background. Not on iOS,
+   * where the Browser plugin's close would dismiss the privacy cover too, and the bridge's
+   * dismissal already takes the browser sheet down.
    */
   dismissPresented(): Observable<HostOperationOutcome> {
     return defer(() =>
@@ -114,10 +114,7 @@ export class CapacitorScreenPrivacyAdapter implements HostScreenPrivacyOperation
     );
   }
 
-  /**
-   * Never holds up the dismissal's answer: a close that hasn't answered within the bridge's own
-   * 2 s cap is let go.
-   */
+  /** Never holds up the dismissal's answer: a close unanswered within the bridge's 2 s cap is let go. */
   private closeCustomTab(): Observable<unknown> {
     return this.deepLinks.closeAuthentication().pipe(
       take(1),

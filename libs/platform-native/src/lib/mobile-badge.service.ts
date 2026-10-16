@@ -24,17 +24,13 @@ import {
 const NATIVE_BADGE_OPERATION_TIMEOUT_MS = 5_000;
 
 /**
- * iOS / Android app-icon (launcher) badge sink, called by {@link AppBadgeService}
- * only when running on a native Capacitor platform.
+ * iOS / Android app-icon badge sink, called by {@link AppBadgeService} only on a native
+ * Capacitor platform, via `@capawesome/capacitor-badge`.
  *
- * Backed by `@capawesome/capacitor-badge`: on **iOS** the app-icon badge requires the
- * `badge` notification authorization (requested once, lazily, and cached), while on
- * **Android** launcher badges are notification/launcher-driven and need no permission
- * (their availability depends on the launcher, so treat display as best-effort).
- *
- * Kept behind the host-operation seam so the native dependency stays out of product
- * code. Commands are cold, finite Observables and report unavailable/rejected outcomes
- * with stable secret-safe diagnostic codes.
+ * iOS needs the `badge` notification authorization (requested once, lazily, and cached).
+ * Android launcher badges need no permission, but availability depends on the launcher, so
+ * display is best-effort. Commands are cold, finite Observables with stable secret-safe
+ * diagnostic codes.
  */
 @Injectable({ providedIn: 'root' })
 export class MobileBadgeService implements HostBadgeOperation {
@@ -117,8 +113,8 @@ export class MobileBadgeService implements HostBadgeOperation {
     if (!isSupported) {
       return false;
     }
-    // iOS: prompts for the `badge` authorization once. Android: resolves granted
-    // without a prompt. Request rather than only check so first use can grant it.
+    // iOS prompts for the `badge` authorization once; Android resolves granted without a
+    // prompt. Request rather than only check so first use can grant it.
     const { display } = await Badge.requestPermissions();
     return display === 'granted';
   }

@@ -43,9 +43,8 @@ export interface CaptureOptions {
   readonly saveToGallery: boolean;
   /**
    * The largest capture the caller accepts, in bytes (the homeserver's upload limit, or a
-   * device ceiling when the server states none); null or absent for no check. It may still be
-   * resolving when the camera opens: it is awaited only after a capture returns, so a slow
-   * lookup never delays the camera and a cancelled capture never waits for it.
+   * device ceiling when the server states none); null or absent for no check. Awaited only
+   * after a capture returns, so a slow lookup never delays the camera.
    */
   readonly maxBytes?: number | null | PromiseLike<number | null>;
 }

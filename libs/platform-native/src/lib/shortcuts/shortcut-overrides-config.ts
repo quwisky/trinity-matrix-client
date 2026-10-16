@@ -12,13 +12,9 @@ import {
 } from './keyboard-shortcuts.service';
 
 /**
- * The keyboard shortcuts, for the config export — the one setting whose value is a map the
- * user can write freely, and so the one that most needs a boundary.
- *
- * The issue names this exact hole: the overrides used to be a bare `JSON.parse` with no
- * shape check, so a malformed chord persisted and reached `resolve` on every keystroke.
- * {@link validateShortcutOverrides} is that boundary for a pasted document; the service
- * applies the same rules to what it loads from storage.
+ * The keyboard shortcuts, for the config export. Its value is a map the user can write
+ * freely, so {@link validateShortcutOverrides} is the boundary for a pasted document; the
+ * service applies the same rules to what it loads from storage.
  */
 export function shortcutOverridesEntry(
   shortcuts: KeyboardShortcutsService,
@@ -29,13 +25,11 @@ export function shortcutOverridesEntry(
     description:
       'The shortcuts you have rebound, by shortcut id; null means one you left unbound. ' +
       'Shortcuts you have not changed are not listed.',
-    // An object of ids to bindings, always — an empty one when nothing is rebound, so the
-    // setting has no "absent" shape to describe.
+    // Always an object, empty when nothing is rebound, so there is no "absent" shape.
     type: 'object',
-    // Only what the user actually changed: the defaults are the catalog's business and
-    // differ by platform, so exporting them would pin one device's desktop bindings into
-    // a document another device has to ignore. `null` is a shortcut left unbound after
-    // another one stole its chord — a state a missing key cannot express.
+    // Only what the user changed: defaults differ by platform, so exporting them would pin
+    // one device's bindings into a document another device must ignore. `null` is a
+    // shortcut left unbound after another stole its chord, which a missing key cannot say.
     read: () => {
       const overrides: { [id: string]: ConfigValue } = {};
       for (const shortcut of shortcuts.list()) {
@@ -60,13 +54,9 @@ export function shortcutOverridesEntry(
 }
 
 /**
- * Check a pasted set of custom bindings.
- *
- * A binding this build cannot honour is the difference between a refusal and a warning: a
- * value that is *not a chord* is a broken document and takes the whole import down with it,
- * while a chord for a shortcut this build does not have (or cannot rebind) is a document
- * from elsewhere — named, dropped, and everything else still applies. That is decision 4 on
- * the issue, applied inside a single setting.
+ * Check a pasted set of custom bindings. A value that is not a chord is a broken document
+ * and fails the whole import; a chord for a shortcut this build lacks (or cannot rebind) is
+ * named and dropped with a warning, and everything else still applies.
  */
 export function validateShortcutOverrides(value: unknown): ConfigValidation {
   if (!isConfigRecord(value)) {
@@ -108,8 +98,8 @@ export function validateShortcutOverrides(value: unknown): ConfigValidation {
       };
     }
     if (!onDesktop && isBrowserReserved(binding)) {
-      // Kept, not dropped: this document travels back to the desktop app, where the chord
-      // works. It is named because here the browser eats it before the page ever sees it.
+      // Kept, not dropped: the document travels back to the desktop app, where the chord
+      // works. Named because here the browser eats it before the page sees it.
       reservedIds.push(id);
     }
     accepted[id] = {
@@ -142,9 +132,8 @@ export function validateShortcutOverrides(value: unknown): ConfigValidation {
 }
 
 /**
- * The validated value as the service's own type. Only ever called with what
- * {@link validateShortcutOverrides} accepted, and the service re-filters anyway, so anything
- * that is not a binding is simply left out rather than asserted away.
+ * The validated value as the service's own type. Anything that is not a binding is left out
+ * rather than asserted away; the service re-filters anyway.
  */
 function toBindings(value: ConfigValue): Record<string, Chord | null> {
   const bindings: Record<string, Chord | null> = {};

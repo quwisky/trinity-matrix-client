@@ -32,11 +32,10 @@ function normalizeLocationError(error: unknown): Error {
 }
 
 /**
- * Resolves the device's current location through Capacitor: its native provider on
- * iOS/Android and its browser adapter on the web. The native provider is deliberate:
- * Android WebView's browser API can receive permission yet never receive a
- * fused-provider fix. Exposed as a cold Observable so callers can surface errors; a
- * missing API or a denied/failed request errors rather than hanging.
+ * Resolves the device's current location through Capacitor: the native provider on
+ * iOS/Android (Android WebView's browser API can get permission yet never a fix) and the
+ * browser adapter on the web. Cold; a missing API or a denied/failed request errors rather
+ * than hanging.
  */
 @Injectable({ providedIn: 'root' })
 export class GeolocationService {
@@ -57,9 +56,9 @@ export class GeolocationService {
       }
       const options: PositionOptions = isNative
         ? {
-            // Prefer GPS when available. Android's balanced fused provider can wait
-            // indefinitely when network positioning is unavailable; approximate-only
-            // permission still downgrades this request safely on Android 12+.
+            // Prefer GPS: Android's balanced fused provider can wait indefinitely when network
+            // positioning is unavailable. Approximate-only permission still downgrades this
+            // request safely on Android 12+.
             enableHighAccuracy: true,
             timeout: 20_000,
             maximumAge: 60_000,
@@ -83,9 +82,8 @@ export class GeolocationService {
   }
 
   /**
-   * Whether the desktop shell can estimate an approximate location (its IP-based
-   * lookup is exposed). False on web/mobile and on older desktop builds — callers
-   * use it to gate the opt-in "use my approximate location" affordance.
+   * Whether the desktop shell exposes its IP-based approximate lookup; false on web/mobile
+   * and older desktop builds. Gates the opt-in "use my approximate location" affordance.
    */
   supportsApproximate(): boolean {
     return (
@@ -95,10 +93,9 @@ export class GeolocationService {
   }
 
   /**
-   * The device's APPROXIMATE location via the desktop shell's IP lookup (city-level).
-   * Cold — resolves through the main process on subscribe; errors if the bridge is
-   * absent (non-desktop) or the estimate fails. Backs the manual dialog's opt-in
-   * button on desktop, where {@link current} can't resolve without a Google API key.
+   * The approximate (city-level) location via the desktop shell's IP lookup. Cold; errors if
+   * the bridge is absent or the estimate fails. Exists because on desktop {@link current}
+   * can't resolve without a Google API key.
    */
   approximateFromDesktop(): Observable<GeoPoint> {
     return defer(() => {

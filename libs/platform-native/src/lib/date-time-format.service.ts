@@ -32,12 +32,9 @@ const TIME_KEY = 'trinity.format.time';
 const DATE_KEY = 'trinity.format.date';
 
 /**
- * The reader's locale chain, most-preferred first.
- *
- * `navigator.languages` rather than `navigator.language`: the full chain lets `Intl` negotiate
- * down when the engine lacks data for the first tag, where a single tag would instead fall
- * through to the *runtime* default — `en-US` under jsdom and in the Electron shell, quietly
- * reinstating the very bug this preference exists to fix.
+ * The reader's locale chain, most-preferred first. The full `navigator.languages` chain lets
+ * `Intl` negotiate down when the engine lacks the first tag; a single tag would fall through
+ * to the runtime default (`en-US` under jsdom and in the Electron shell).
  */
 function systemLocales(): readonly string[] | undefined {
   if (typeof navigator === 'undefined') {
@@ -55,19 +52,13 @@ function systemLocales(): readonly string[] | undefined {
 /**
  * The tags `Intl` will actually accept, or `undefined` if none of them are.
  *
- * **Not defensive programming — this throws in the wild.** Chromium derives
- * `navigator.languages` from the OS locale, and a POSIX-style one (`LANG=en_US`, `C`, or an
- * `@posix` modifier) arrives as `en-US@posix`, which is not valid BCP-47. The chain is
- * handed straight to `new Intl.DateTimeFormat(...)` in `date-format.ts`, and that
- * constructor throws a `RangeError` on a malformed tag. Because the timeline formats
- * timestamps *while it renders*, the throw lands inside change detection: no timestamp, no
- * message, no room — the screen is simply blank, with a `RangeError` in the console and
- * nothing to connect it to a locale.
+ * Needed in practice: Chromium derives `navigator.languages` from the OS locale, and a
+ * POSIX-style one (`LANG=en_US`, `C`, an `@posix` modifier) arrives as `en-US@posix`, which
+ * is not valid BCP-47. `new Intl.DateTimeFormat(...)` throws a `RangeError` on it, and since
+ * timestamps format during render, the throw blanks the screen.
  *
- * Filtered per tag rather than all-or-nothing, so one bad entry cannot cost the reader the
- * rest of their preference order. `undefined` rather than `[]` when nothing survives: an
- * empty array is a legal argument meaning "no preference", but it is a distinct cache key
- * downstream and would misreport what we know.
+ * Filtered per tag so one bad entry cannot cost the rest of the preference order.
+ * `undefined` rather than `[]` when nothing survives: `[]` is a distinct cache key downstream.
  */
 function usable(
   tags: readonly string[] | undefined,
@@ -87,18 +78,12 @@ function usable(
 }
 
 /**
- * The single choke point for every timestamp the app renders — how the clock is shown
- * (12/24-hour) and how a date is ordered, persisted per device.
+ * Every rendered timestamp goes through here: clock style (12/24-hour) and date order,
+ * persisted per device in Capacitor `Preferences` (non-secret).
  *
- * Components call the format methods straight from their templates rather than through a
- * pipe. That is deliberate: a *pure* pipe caches on its input, so a timestamp that never
- * changes would skip `transform()` entirely, never re-read the preference signal, and — worse —
- * have its producer link trimmed, leaving the view permanently deaf to the setting. A method
- * invoked from the template re-registers the dependency on every pass, so an OnPush view
- * refreshes when the preference moves even though none of its inputs changed.
- *
- * Device-scoped, like the theme and the other UI preferences: non-secret, so Capacitor
- * `Preferences` rather than secure storage.
+ * Components call these methods from templates instead of a pipe: a pure pipe caches on its
+ * input, never re-reads the preference signal, and can lose its dependency link, leaving the
+ * view deaf to the setting. A template method re-registers the dependency every pass.
  */
 @Injectable({ providedIn: 'root' })
 export class DateTimeFormatService {
@@ -119,12 +104,9 @@ export class DateTimeFormatService {
   readonly dateFormats = TRINITY_DATE_FORMATS;
 
   /**
-   * Everything the pure formatters need, as one value.
-   *
-   * A `computed`, emphatically not a getter returning a fresh literal: the timeline's `rows()`
-   * reads this, and a new object identity on every read would make that computed re-derive on
-   * every change-detection pass, costing every row its cached identity and turning the row
-   * cache into a pessimisation.
+   * Everything the pure formatters need, as one value. Must stay a `computed`: a fresh object
+   * identity per read would make the timeline's `rows()` re-derive every pass and defeat its
+   * row cache.
    */
   readonly prefs = computed<DateTimePrefs>(() => ({
     locales: this._locales(),
@@ -133,9 +115,8 @@ export class DateTimeFormatService {
   }));
 
   constructor() {
-    // The OS language can change under a running app (and a Capacitor WebView is long-lived),
-    // which moves what "Match system" means. Like Appearance's system-Mode source, this is
-    // guarded for the non-DOM contexts the rest of the library supports.
+    // The OS language can change under a running app, which moves what "Match system" means.
+    // Guarded for non-DOM contexts.
     const target = typeof window !== 'undefined' ? window : null;
     const onLanguageChange = () => this._locales.set(systemLocales());
     target?.addEventListener('languagechange', onLanguageChange);
@@ -200,8 +181,7 @@ export class DateTimeFormatService {
 
 /**
  * A stored preference, validated through its type guard. An unrecognised value falls back to
- * the default rather than propagating: this feeds every timestamp in the app, so a stale or
- * hand-edited key would otherwise render `undefined` app-wide.
+ * the default: this feeds every timestamp, so a bad value would render `undefined` app-wide.
  */
 async function read<T extends string>(
   key: string,

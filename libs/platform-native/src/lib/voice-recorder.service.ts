@@ -30,11 +30,9 @@ function pickMimeType(): string | undefined {
 }
 
 /**
- * Records a voice clip from the microphone via `MediaRecorder` (web + the
- * Capacitor/Electron WebViews, gated by the OS mic permission) and derives its
- * waveform by decoding the clip with an `AudioContext`. Stateful across a single
- * recording: {@link start} then {@link stop} (which resolves the clip) or
- * {@link cancel} (which discards it). Not for concurrent recordings.
+ * Records a voice clip via `MediaRecorder` and derives its waveform with an `AudioContext`.
+ * One recording at a time: {@link start}, then {@link stop} (resolves the clip) or
+ * {@link cancel} (discards it).
  */
 @Injectable({ providedIn: 'root' })
 export class VoiceRecorderService {
@@ -81,9 +79,9 @@ export class VoiceRecorderService {
         this.chunks.push(event.data);
       }
     };
-    // The recorder can die on its own (permission revoked mid-record, the device
-    // grabbed by another app). Nothing else clears the handle, and `start()` no-ops
-    // while it is set, so a stale one would wedge voice messaging for the session.
+    // The recorder can die on its own (permission revoked mid-record, device grabbed by
+    // another app). `start()` no-ops while the handle is set, so a stale one would wedge
+    // voice messaging for the session.
     recorder.onerror = () => {
       if (this.recorder === recorder) {
         this.teardown();
@@ -109,8 +107,8 @@ export class VoiceRecorderService {
     );
     let blob: Blob;
     try {
-      // Already inactive — the tracks ended under us, so no 'stop' event is coming
-      // and calling stop() would throw InvalidStateError. Take whatever was captured.
+      // Already inactive: the tracks ended under us, so no 'stop' event is coming and stop()
+      // would throw InvalidStateError.
       if (recorder.state === 'inactive') {
         blob = this.collect(recorder);
       } else {
@@ -125,14 +123,13 @@ export class VoiceRecorderService {
           try {
             recorder.stop();
           } catch {
-            // Raced into 'inactive' between the check and the call; the event will
-            // never fire, so resolve from the chunks we already have.
+            // Raced into 'inactive' between the check and the call; no event will fire.
             resolve(this.collect(recorder));
           }
         });
       }
     } finally {
-      // On every exit path, or the mic stays live and `start()` no-ops forever after.
+      // On every exit path, or the mic stays live and `start()` no-ops.
       this.teardown();
     }
     const waveform = await computeWaveform(blob);

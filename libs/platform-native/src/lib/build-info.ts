@@ -8,19 +8,12 @@ export interface BuildInfo {
   commit: string;
   /** ISO timestamp the build was generated at, or `''` when unknown. */
   builtAt: string;
-  /**
-   * Installed matrix-js-sdk and crypto WASM versions, for the diagnostic log header.
-   * Optional: hand-written BuildInfo values in specs and stories omit it.
-   */
+  /** Installed matrix-js-sdk and crypto WASM versions, for the diagnostic log header. */
   dependencies?: {
     readonly matrixJsSdk: string;
     readonly cryptoWasm: string;
   };
 }
 
-/**
- * The running build's {@link BuildInfo}. Provided in `main.ts` from a file the build
- * regenerates from git + `package.json` (see `scripts/gen-build-info.mjs`), so features
- * (e.g. the Settings footer) can display the version/commit without reaching into the app.
- */
+/** The running build's {@link BuildInfo}, provided in `main.ts` from a generated file. */
 export const BUILD_INFO = new InjectionToken<BuildInfo>('BUILD_INFO');

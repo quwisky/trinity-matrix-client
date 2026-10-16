@@ -1,37 +1,29 @@
 import { Injectable } from '@angular/core';
 
 /**
- * Restarts the app into a clean document.
- *
- * Exists as a service rather than a bare `window.location` call for two reasons. It is the
- * only way a spec can assert the restart did NOT happen — the blocked-wipe path depends on
- * that, and `test-setup.base.ts` filters jsdom's "Not implemented: navigation" noise, so a
- * raw call is silently untestable in both directions. And it keeps the one-line difference
- * between `reload()` and `replace()` somewhere it can be explained.
+ * Restarts the app into a clean document. A service so a spec can assert the restart did
+ * not happen (the blocked-wipe path); a raw `window.location` call is untestable under jsdom.
  */
 @Injectable({ providedIn: 'root' })
 export class AppRestartService {
   /**
    * Reload from the app root, discarding the current URL.
    *
-   * `replace(origin + '/')`, not `reload()`: after a factory reset the current URL may still
-   * carry `?add` or `?reauth=<userId>`, and re-entering the login page with those against an
-   * empty registry produces "That account is no longer stored." for an account the user just
-   * chose to erase. Replacing also leaves no history entry pointing at the pre-wipe state.
+   * `replace(origin + '/')`, not `reload()`: after a factory reset the URL may still carry
+   * `?add` or `?reauth=<userId>`, which against an empty registry shows "That account is no
+   * longer stored." for an account the user just erased. It also leaves no history entry for
+   * the pre-wipe state.
    *
-   * One implementation covers every platform: web is the site origin, Electron's renderer
-   * runs on the privileged `trinity://app` scheme whose `/` maps to the packaged index, and
-   * Capacitor's local server serves `/` on `capacitor://localhost` / `https://localhost`.
-   * Native storage is genuinely cleared by then, so a WebView reload observes the new state.
+   * Works on every platform: Electron's `trinity://app` and Capacitor's local server both
+   * serve `/` as the app index.
    */
   restart(): void {
     window.location.replace(new URL('/', window.location.href).toString());
   }
 
   /**
-   * Reload the current URL, keeping its route and query, for a session handover (#1267).
-   * Nothing was wiped, so the URL is still valid: the tab waits for the session lock and, when
-   * it takes the session again, lands where it was.
+   * Reload the current URL, keeping its route and query, for a session handover. Nothing was
+   * wiped, so the tab waits for the session lock and lands where it was.
    */
   reload(): void {
     window.location.reload();

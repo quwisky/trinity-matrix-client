@@ -5,15 +5,10 @@ import type {
 } from '@trinity/runtime/host';
 
 /**
- * Shape of the minimal, non-privileged bridge that the hand-rolled Electron
- * preload exposes on the renderer's `globalThis` as `trinityDesktop`
- * (see electron/src/preload.ts).
- *
- * It is present ONLY inside the desktop shell; on web/PWA and on mobile
- * (Capacitor) it is `undefined`. Protocol v1 has a required negotiation core and grouped
- * capability operations. Every operation remains inert until the latest accepted negotiation
- * grants it; a rejected or partial renegotiation revokes earlier grants. The preload never leaks
- * `ipcRenderer` or Node.
+ * The non-privileged bridge the Electron preload exposes as `globalThis.trinityDesktop`;
+ * `undefined` on web/PWA and mobile. Every operation stays inert until the latest accepted
+ * negotiation grants it, and a rejected or partial renegotiation revokes earlier grants.
+ * The preload never leaks `ipcRenderer` or Node.
  */
 /** Which installed desktop app this is. Fixed for the process; readable without negotiation. */
 export interface TrinityDesktopAppIdentity {
@@ -33,9 +28,8 @@ export interface TrinityDesktopBridge {
   readonly platform: string;
 
   /**
-   * The installed app (Trinity or Trinity Next). Optional so the structural guard below
-   * still recognises the shell; consumers read it through {@link desktopAppIdentity},
-   * which refuses to guess rather than fall back to stable Trinity's scheme.
+   * The installed app (Trinity or Trinity Next). Optional so the structural guard still
+   * recognises the shell; read it through {@link desktopAppIdentity}.
    */
   readonly appIdentity?: TrinityDesktopAppIdentity | null;
 
@@ -44,7 +38,6 @@ export interface TrinityDesktopBridge {
     operations: readonly HostOperation[],
   ) => Promise<unknown>;
 
-  /** Protocol-v1 operations are grouped by capability and gated by negotiated grants. */
   capabilities: {
     deepLinks: {
       /** Subscribe to validated OS deep links, replaying any buffered cold-start URL. */
@@ -95,9 +88,9 @@ export interface TrinityDesktopBridge {
     /** Trinity's own title row: overlay colours, the app menu and the system-bar opt-out. */
     titleBar: {
       /**
-       * The mode this window was launched with, readable at first render without
-       * negotiation: `'row'` means Trinity draws its title row. `null` (or anything
-       * unexpected from an older shell) means it must not, so the row never covers an OS bar.
+       * The launch mode, readable at first render without negotiation: `'row'` means Trinity
+       * draws its title row. `null` (or anything unexpected from an older shell) means it
+       * must not, so the row never covers an OS bar.
        */
       readonly mode: 'row' | 'system' | null;
       /** `#rrggbb` colours for the Windows/Linux window-controls overlay. */
@@ -108,11 +101,10 @@ export interface TrinityDesktopBridge {
       /** Pop the application menu up at integer window coordinates (0–10000). */
       popupMenu: (at: { x: number; y: number }) => void;
       /**
-       * `saved` is the stored preference (applies after `relaunch()`); `active` is
-       * whether this session's window uses the OS title bar. Rendering reads `mode`.
+       * `saved` is the stored preference (applies after `relaunch()`); `active` is whether
+       * this session's window uses the OS title bar. Rendering reads `mode`.
        */
       getSystemTitleBar: () => Promise<{ saved: boolean; active: boolean }>;
-      /** Store the preference; it applies after `relaunch()`. */
       setSystemTitleBar: (value: boolean) => Promise<HostOperationOutcome>;
       relaunch: () => void;
     };
@@ -147,27 +139,21 @@ export interface DesktopNotification {
   /** Body / message preview. */
   body: string;
   /**
-   * Suppress the OS notification sound. The desktop shell builds its own native
-   * notification in the main process, so it never sees the Web `NotificationOptions` the
-   * browser paths carry `silent` on — without this the "Play a sound" setting would be a
-   * no-op on Electron.
+   * Suppress the OS notification sound. The main process builds its own native
+   * notification and never sees the Web `NotificationOptions` `silent`, so without this the
+   * "Play a sound" setting would be a no-op on Electron.
    */
   silent?: boolean;
   /**
-   * Collapse key: a newer notification with the same tag replaces an earlier
-   * still-open one. Mirrors the Web `Notification` `tag`. Trinity uses
-   * `accountId|roomId` so messages from one room collapse per account (and the same
-   * room on two accounts stays two distinct toasts).
+   * Collapse key: a newer notification with the same tag replaces an open one. Trinity uses
+   * `accountId|roomId`, so the same room on two accounts stays two toasts.
    */
   tag?: string;
   /** Exact semantic destination to activate when the notification is clicked. */
   destination: HostNotificationDestination;
 }
 
-/**
- * Read the desktop bridge off `globalThis`, or `undefined` on web/mobile.
- * Centralizes the (necessarily) loose global access so feature code stays typed.
- */
+/** Read the desktop bridge off `globalThis`, or `undefined` on web/mobile. */
 export function getTrinityDesktopBridge(): TrinityDesktopBridge | undefined {
   const bridge = (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
   if (!bridge || typeof bridge !== 'object') return undefined;
@@ -234,16 +220,12 @@ export function desktopAppIdentity(
 }
 
 /**
- * Whether this renderer is the hand-rolled Electron shell.
+ * Whether this renderer is the Electron shell. Capacitor's `isNativePlatform()` is false on
+ * desktop, so code that treats the shell as neither web nor mobile must ask this instead.
  *
- * Capacitor's `isNativePlatform()` is FALSE on desktop, so anything that must treat the
- * shell like neither web nor mobile — the service-worker enable predicate above all —
- * has to ask this instead. The user-agent token is a fallback for the case where the
- * preload marker is unavailable; it is checked second because the marker is the
- * authoritative signal and a user agent can be overridden.
- *
- * Not a service: it is read during `bootstrapApplication`'s provider array, before any
- * injector exists.
+ * The preload marker is authoritative; the user-agent token is a fallback because a user
+ * agent can be overridden. Not a service: it runs in `bootstrapApplication`'s provider
+ * array, before any injector exists.
  */
 export function isElectronRenderer(): boolean {
   return (
