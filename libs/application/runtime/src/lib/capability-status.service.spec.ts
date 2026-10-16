@@ -14,6 +14,7 @@ import {
 } from './capability-status.catalog';
 import { CapabilityHealthService } from './capability-health.service';
 import { CapabilityStatusService } from './capability-status.service';
+import { PointerPressService } from './pointer-press.service';
 
 describe('CapabilityStatusService', () => {
   let health: CapabilityHealthService;
@@ -21,11 +22,13 @@ describe('CapabilityStatusService', () => {
   let runtimeState: WritableSignal<ApplicationRuntimeState>;
   let trust: WritableSignal<TrustStatus>;
   let setupElsewhere: WritableSignal<boolean>;
+  let pressed: WritableSignal<boolean>;
 
   beforeEach(() => {
     runtimeState = signal({ phase: 'ready', attempt: 7, settlements: [] });
     trust = signal<TrustStatus>('ready');
     setupElsewhere = signal(false);
+    pressed = signal(false);
     TestBed.configureTestingModule({
       providers: [
         CapabilityHealthService,
@@ -34,6 +37,7 @@ describe('CapabilityStatusService', () => {
           provide: TrustService,
           useValue: { status: trust, recoverySetupElsewhere: setupElsewhere },
         },
+        { provide: PointerPressService, useValue: { pressed } },
         {
           provide: ApplicationRuntimeService,
           useValue: {
@@ -357,6 +361,26 @@ describe('CapabilityStatusService', () => {
   });
 
   describe('global banner slot', () => {
+    it('holds a slot change while a pointer is pressed and applies it on release', () => {
+      report('@a:hs', 'accounts', 'restore');
+      expect(status.bannerSlot()).toBe('status');
+
+      pressed.set(true);
+      trust.set('needs-setup');
+      TestBed.tick();
+      expect(status.bannerSlot()).toBe('status');
+
+      pressed.set(false);
+      TestBed.tick();
+      expect(status.bannerSlot()).toBe('encryption');
+    });
+
+    it('changes at once when nothing is pressed', () => {
+      trust.set('needs-setup');
+      TestBed.tick();
+      expect(status.bannerSlot()).toBe('encryption');
+    });
+
     it('is empty when nothing is limited and encryption needs nothing', () => {
       expect(status.bannerSlot()).toBeNull();
       expect(status.bannerMessage()).toBe('');

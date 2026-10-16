@@ -1,4 +1,11 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import {
+  Injectable,
+  computed,
+  effect,
+  inject,
+  linkedSignal,
+  signal,
+} from '@angular/core';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { TrustService } from '@trinity/data-access/trust';
 import {
@@ -26,6 +33,7 @@ import {
   capabilityStatusCopy,
   type CapabilityStatusCopy,
 } from './capability-status.catalog';
+import { PointerPressService } from './pointer-press.service';
 import { SystemStatusVisibilityService } from './system-status-visibility.service';
 
 export interface CapabilityStatusEntry {
@@ -80,6 +88,29 @@ export class CapabilityStatusService {
   private readonly dismissed = signal<ReadonlyMap<string, string>>(new Map());
   private readonly copied = signal(false);
   private readonly slotHeldStatus = signal(false);
+  private readonly press = inject(PointerPressService);
+  /**
+   * The single global banner slot, by priority: a blocking capability error, then the
+   * encryption prompt, then a limited capability. A limited capability is non-blocking
+   * and reachable from System Status, while the encryption prompt is the user's one
+   * pending setup step. Guidance to set up recovery on another device is no step on this
+   * one, so it takes the slot only when nothing is limited. Per-room banners (offline,
+   * tombstone) sit outside this slot.
+   */
+  private readonly liveSlot = computed<'status' | 'encryption' | null>(() => {
+    if (this.hasBlocking()) return 'status';
+    const trust = this.trust.status();
+    const limited = this.visibleEntries().length > 0;
+    if (trust === 'needs-setup' && this.trust.recoverySetupElsewhere())
+      return limited ? 'status' : 'encryption';
+    if (
+      trust === 'needs-setup' ||
+      trust === 'needs-recovery' ||
+      trust === 'needs-verification'
+    )
+      return 'encryption';
+    return limited ? 'status' : null;
+  });
 
   readonly open = this.visibility.open;
   readonly copyConfirmed = this.copied.asReadonly();
@@ -95,27 +126,17 @@ export class CapabilityStatusService {
     ),
   );
   /**
-   * The single global banner slot, by priority: a blocking capability error, then the
-   * encryption prompt, then a limited capability. A limited capability is non-blocking
-   * and reachable from System Status, while the encryption prompt is the user's one
-   * pending setup step. Guidance to set up recovery on another device is no step on this
-   * one, so it takes the slot only when nothing is limited. Per-room banners (offline,
-   * tombstone) sit outside this slot.
+   * The slot as rendered: {@link liveSlot}, except that a change waits while a pointer is
+   * pressed, so a tap never straddles the slot growing or shrinking above it.
    */
-  readonly bannerSlot = computed<'status' | 'encryption' | null>(() => {
-    if (this.hasBlocking()) return 'status';
-    const trust = this.trust.status();
-    const limited = this.visibleEntries().length > 0;
-    if (trust === 'needs-setup' && this.trust.recoverySetupElsewhere())
-      return limited ? 'status' : 'encryption';
-    if (
-      trust === 'needs-setup' ||
-      trust === 'needs-recovery' ||
-      trust === 'needs-verification'
-    )
-      return 'encryption';
-    return limited ? 'status' : null;
-  });
+  readonly bannerSlot = linkedSignal<
+    { live: 'status' | 'encryption' | null; pressed: boolean },
+    'status' | 'encryption' | null
+  >({
+    source: () => ({ live: this.liveSlot(), pressed: this.press.pressed() }),
+    computation: ({ live, pressed }, previous) =>
+      pressed && previous ? previous.value : live,
+  }).asReadonly();
   /**
    * Whether the slot has held the status notice in this app session. Only then can a
    * prompt replace that two-action notice, so only then does the prompt keep the
