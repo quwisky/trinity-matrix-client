@@ -13,11 +13,8 @@ export class UiaCancelledError extends Error {
 
 /**
  * Thrown when the server will not accept a password for this action — an SSO-only or
- * OIDC-native account, or a multi-stage flow past the password.
- *
- * A distinct type rather than a bare Error because callers act on it: encryption reset
- * offers the identity provider's own page instead, which is only correct for THIS failure
- * and not for a wrong password or a network error.
+ * OIDC-native account, or a multi-stage flow past the password. Distinct because encryption
+ * reset offers the identity provider's page for this failure only.
  */
 export class UiaUnsupportedError extends Error {
   constructor() {
@@ -29,11 +26,9 @@ export class UiaUnsupportedError extends Error {
 }
 
 /**
- * Thrown when the password was rejected {@link MAX_ATTEMPTS} times.
- *
- * A distinct type for the same reason as {@link UiaUnsupportedError}: a caller that
- * authenticates ahead of an irreversible action has to tell "the user did not get in"
- * apart from "the request itself failed", and only the former should stop it.
+ * Thrown when the password was rejected {@link MAX_ATTEMPTS} times. Distinct so a caller
+ * authenticating ahead of an irreversible action can tell "the user did not get in" from
+ * "the request itself failed"; only the former should stop it.
  */
 export class UiaAttemptsExceededError extends Error {
   constructor() {
@@ -61,11 +56,9 @@ const MAX_ATTEMPTS = 3;
 /** Tuning for {@link runPasswordUia}. */
 export interface PasswordUiaOptions {
   /**
-   * How many of the prompt's first answers come from somewhere other than the user — a
-   * password an earlier request already had accepted, replayed so they are not asked
-   * twice. Those attempts get their own budget on top of {@link MAX_ATTEMPTS}, so a
-   * replay the server rejects (the password changed between the two requests) does not
-   * silently cost the human one of their three tries.
+   * How many of the prompt's first answers are a replayed, previously accepted password
+   * rather than the user's. They get their own budget on top of {@link MAX_ATTEMPTS}, so a
+   * rejected replay (password changed in between) does not cost the human a try.
    */
   readonly replayedAttempts?: number;
 }
@@ -85,10 +78,8 @@ interface UiaOutcome<T> {
 }
 
 /**
- * Drive a request that may require password user-interactive auth (UIA).
- * `makeRequest(null)` probes unauthenticated; on a password challenge the user is
- * prompted and the request retried with an `m.login.password` auth dict,
- * re-prompting on a wrong password up to {@link MAX_ATTEMPTS} times.
+ * Drive a request that may require password UIA: `makeRequest(null)` probes, then a password
+ * challenge prompts the user and retries with an `m.login.password` auth dict.
  */
 async function drivePasswordUia<T>(
   makeRequest: (auth: AuthDict | null) => Promise<T>,
@@ -141,19 +132,14 @@ async function drivePasswordUia<T>(
 }
 
 /**
- * Run `makeRequest` for its result, completing a password UIA flow if the server asks
- * for one.
+ * Run `makeRequest` for its result, completing a password UIA flow if the server asks.
  *
  * Throws {@link UiaCancelledError} if the prompt is cancelled, and
  * {@link UiaUnsupportedError} when the server requires a stage Trinity can't satisfy
- * here (SSO-only or a multi-stage flow past the password) rather than looping to the
- * attempt cap.
+ * (rather than looping to the attempt cap).
  *
- * Shared by encryption setup (device-signing upload) and device sign-out.
- *
- * Pass {@link PasswordUiaOptions.replayedAttempts} when `promptPassword` answers its
- * first calls from a stored password rather than from the user, so the human still gets
- * the full {@link MAX_ATTEMPTS}.
+ * Pass {@link PasswordUiaOptions.replayedAttempts} when `promptPassword` answers its first
+ * calls from a stored password, so the human still gets the full {@link MAX_ATTEMPTS}.
  */
 export async function runPasswordUia<T>(
   makeRequest: (auth: AuthDict | null) => Promise<T>,
@@ -171,14 +157,11 @@ export async function runPasswordUia<T>(
 }
 
 /**
- * Run the same flow for its *authentication* rather than its result: complete a real UIA
- * round-trip against a harmless request and report the password the server accepted
- * (null when it completed without asking for one).
+ * Run the same flow for its *authentication* rather than its result, against a harmless
+ * request, and report the accepted password (null if none was asked for).
  *
- * This is how an irreversible action proves the user can authenticate *before* it starts
- * — an unanswerable challenge, a cancelled prompt or a wrong password then costs nothing
- * — and the returned password can be replayed into the real request's own challenge so
- * the user is only ever asked once.
+ * An irreversible action uses this to prove the user can authenticate *before* it starts;
+ * the password can then be replayed into the real request's challenge.
  */
 export async function completePasswordUia(
   makeRequest: (auth: AuthDict | null) => Promise<unknown>,
@@ -200,9 +183,8 @@ function uiaChallenge(err: unknown): UiaData | null {
 }
 
 /**
- * Whether a password stage is still available to complete. Unknown/empty flows
- * fall through to attempting a password (the prior behavior); a flow set that
- * offers only non-password stages (e.g. SSO) returns false so the caller bails.
+ * Whether a password stage is still available to complete. Unknown/empty flows attempt a
+ * password; a flow set offering only non-password stages (e.g. SSO) returns false.
  */
 function offersPassword(data: UiaData): boolean {
   const flows = data.flows;

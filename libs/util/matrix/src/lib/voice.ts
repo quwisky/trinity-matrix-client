@@ -2,10 +2,9 @@ import { MsgType } from 'matrix-js-sdk';
 import type { EncryptedFileInfo } from './media.model';
 
 /**
- * Voice messages (MSC3245) — an `m.audio` marked with an empty
- * `org.matrix.msc3245.voice` object and an `org.matrix.msc1767.audio` extension
- * carrying the duration and a downsampled waveform. This module is pure (no SDK/DI):
- * it computes the waveform and builds the send content.
+ * Voice messages (MSC3245): an `m.audio` marked with an empty `org.matrix.msc3245.voice`
+ * object and an `org.matrix.msc1767.audio` extension carrying the duration and a downsampled
+ * waveform. Pure: computes the waveform and builds the send content.
  */
 
 /** Number of amplitude buckets in a rendered/sent waveform. */
@@ -67,9 +66,9 @@ export interface VoiceUpload {
 }
 
 /**
- * Build the `m.audio` content for a recorded voice message: the standard file/info
- * fields plus the MSC3245 voice marker and the MSC1767 audio extension (duration +
- * waveform), so voice-aware clients (Element et al.) render it as a voice message.
+ * Build the `m.audio` content for a recorded voice message: the standard file/info fields
+ * plus the MSC3245 voice marker and MSC1767 audio extension, so voice-aware clients render it
+ * as a voice message.
  */
 export function voiceMessageContent(
   upload: VoiceUpload,

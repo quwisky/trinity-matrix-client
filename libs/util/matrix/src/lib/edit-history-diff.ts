@@ -8,23 +8,15 @@ import { type MessageRevisionView } from './edit-history';
 
 /**
  * Character-level diff between two versions of a message, applied as highlights on top of
- * the newer version's already-sanitized HTML — so a past revision keeps its formatting
- * while showing what the edit changed.
- *
- * The diff itself comes from `@sanity/diff-match-patch` (Apache-2.0, no dependencies): a
- * maintained TypeScript rewrite of Google's algorithm. It is worth the dependency for two
- * things that are easy to get subtly wrong by hand — `cleanupSemantic`, which merges the
- * slivers a raw character diff produces into runs a person can read, and its surrogate-pair
- * adjustment, which stops a diff boundary cutting an emoji in half.
+ * the newer version's already-sanitized HTML.
  *
  * ⚠️ The annotated HTML this module returns must NEVER be passed back through
  * `sanitizeMatrixHtml`. That allowlist is the Matrix spec's: it permits `del` but not
- * `ins`, and its attribute hook drops any `class` outside the markdown/spoiler set. Doing
- * so would leave deletions rendering while insertions silently vanished — a failure that
- * looks like a CSS bug and isn't. It doesn't need re-sanitizing: the input is already
+ * `ins`, and its attribute hook drops any `class` outside the markdown/spoiler set, so
+ * insertions would silently vanish. Re-sanitizing is unnecessary: the input is already
  * sanitized, every wrapper is built with `createElement`, and every piece of text comes
  * from `splitText`/`createTextNode`, so no text can become markup. The `[innerHTML]`
- * binding still runs Angular's own sanitizer over the result, as it does today.
+ * binding still runs Angular's own sanitizer over the result.
  */
 
 /** A run of text that is unchanged, added by this edit, or removed by it. */
@@ -34,19 +26,15 @@ export type DiffOp =
   | { kind: 'remove'; text: string };
 
 /**
- * How long the diff may spend before it settles for a coarser answer. Message length is
- * bounded only by the ~64 KiB event limit and nothing stops a sender making an edit
- * deliberately expensive to compare, so this is a guard, not a tuning knob: past the
- * deadline diff-match-patch returns a valid but blunter diff rather than running on.
- * A quarter second is far more than any real edit needs and imperceptible in a dialog.
+ * How long the diff may run before diff-match-patch returns a valid but blunter result. A
+ * guard, not a tuning knob: a sender can make an edit deliberately expensive to compare
+ * within the ~64 KiB event limit.
  */
 const DIFF_TIMEOUT_SECONDS = 0.25;
 
 /**
- * Move the whitespace at the edges of an addition out of it. "added ` morning`" would
- * otherwise draw its highlight starting a space early, which reads as a stray gap before
- * the word. Only additions are peeled: their whitespace is genuinely part of the new text,
- * so it becomes an unchanged run, whereas a deletion's is not there to move.
+ * Move the whitespace at the edges of an addition out of it, so the highlight does not start
+ * a space early. Only additions are peeled; a deletion's whitespace is not in the new text.
  */
 function peelEdgeWhitespace(ops: DiffOp[]): DiffOp[] {
   return ops.flatMap((op): DiffOp[] => {
@@ -73,8 +61,7 @@ function tidy(rawOps: DiffOp[]): DiffOp[] {
     if (original.text === '') {
       continue;
     }
-    // A highlighted space renders as a small blank box that says nothing; fold it back
-    // into the surrounding text (an added one) or drop it (a removed one).
+    // A highlighted lone space says nothing: fold an added one back, drop a removed one.
     const isolatedWhitespace =
       original.kind !== 'same' &&
       /^\s+$/.test(original.text) &&
@@ -96,16 +83,12 @@ function tidy(rawOps: DiffOp[]): DiffOp[] {
 }
 
 /**
- * Character-level diff of two strings, oldest first.
- *
- * `cleanupSemantic` is what makes the result readable rather than merely correct: raw
- * character diffs fragment into confetti on text that repeats letters, and it merges
- * those slivers back into the word-sized runs a person actually reads.
+ * Character-level diff of two strings, oldest first. `cleanupSemantic` merges the slivers a
+ * raw character diff produces into word-sized runs.
  */
 export function diffTokens(previous: string, current: string): DiffOp[] {
-  // Precomposed "café" and decomposed "café" are different strings; without this the
-  // same word typed on two platforms reads as a delete plus an insert. The library
-  // compares code units, so this has to happen before it sees them.
+  // Precomposed and decomposed "café" differ as code units, which the library compares, so
+  // normalise first or the same word typed on two platforms diffs as delete plus insert.
   const diffs = cleanupSemantic(
     makeDiff(previous.normalize('NFC'), current.normalize('NFC'), {
       timeout: DIFF_TIMEOUT_SECONDS,
@@ -168,12 +151,10 @@ function markAdded(
 /**
  * Put the removed text back, struck through, where it used to sit.
  *
- * Note for code blocks: the removed run is inserted as ONE `<del>` at a single offset, so a
- * removal spanning several lines lands inside one `<span class="code-line">` and renders as
- * several lines within a single wrapper. Nothing here re-sanitizes, so the wrappers cannot
- * be re-derived. Line numbering is therefore suppressed for a diffed revision in
- * rendered-markdown.scss rather than being allowed to under-count — the wrappers are inline
- * and contribute nothing else, so the diff renders as it did before numbering existed.
+ * In code blocks the removed run is ONE `<del>` at a single offset, so a multi-line removal
+ * lands inside one `<span class="code-line">`. Nothing here re-sanitizes, so the wrappers
+ * cannot be re-derived; rendered-markdown.scss suppresses line numbering for a diffed
+ * revision rather than under-count.
  */
 function markRemoved(
   root: HTMLElement,
@@ -192,9 +173,8 @@ function markRemoved(
   }
   const tail =
     at > span.start ? span.node.splitText(at - span.start) : span.node;
-  // A replacement puts the removal at the same offset as the insertion that took its
-  // place, and that text has already been wrapped. Landing inside the wrapper would read
-  // as "added, and also struck through" — the removed words belong beside it, not in it.
+  // A replacement's removal shares an offset with the already-wrapped insertion; landing
+  // inside that wrapper would read as "added, and also struck through".
   let anchor: Node = tail;
   while (
     anchor.parentElement &&
@@ -209,11 +189,10 @@ function markRemoved(
 
 /**
  * Show each formula as its LaTeX source, in the `code.mx-maths-source` the maths directive
- * shows for one it cannot render (#1336). Rendered, KaTeX replaces a formula's fallback, and
- * any change marks in it with it; its boxes are inline-blocks, which an underline or a
- * strike-through does not reach, so a changed formula would be marked by colour alone. As
- * source, the diff compares and marks the LaTeX itself. The element keeps its tag, so display
- * maths stays a block, and loses `mx-maths`, so the directive leaves it as text.
+ * uses for one it cannot render. Rendered KaTeX boxes are inline-blocks that an underline or
+ * strike-through does not reach, so a changed formula would be marked by colour alone. The
+ * element keeps its tag, so display maths stays a block, and loses `mx-maths`, so the
+ * directive leaves it as text.
  */
 function mathsAsSource(root: Element): void {
   const formulas = [...root.querySelectorAll('.mx-maths')].filter(
@@ -247,17 +226,12 @@ function plainTextOf(html: string, body: string): string {
 /**
  * Annotate `current` with what changed since `previous`: its own HTML, with added runs
  * wrapped in `<ins class="diff-ins">` and removed runs re-inserted as
- * `<del class="diff-del">`. Returns null when there is nothing useful to show — the two
- * read identically, or either side is a version we couldn't decrypt (its body is a fixed
- * notice, so diffing against it would be noise).
+ * `<del class="diff-del">`. Returns null when the two read identically, or either side is
+ * undecryptable (its body is a fixed notice).
  *
- * Only text nodes are ever split or wrapped: no element is moved, cloned or re-attributed,
- * so the annotated tree cannot come out malformed.
- *
- * Removed text is the one place fidelity is lost, in both directions: it has no node in
- * the new tree, so it neither keeps the formatting it had nor escapes the formatting of
- * whichever element holds the offset it is re-inserted at. Turning highlighting off in the
- * dialog gives back the exact as-sent rendering.
+ * Only text nodes are split or wrapped, so the tree cannot come out malformed. Removed text
+ * has no node in the new tree: it loses its own formatting and takes that of the element at
+ * the offset it is re-inserted at.
  */
 export function annotateRevision(
   previous: MessageRevisionView,
@@ -277,8 +251,7 @@ export function annotateRevision(
     return null;
   }
 
-  // Build the tree from the revision's own HTML so its formatting survives; a plain-text
-  // revision goes through the same path via a text node, so there is one code path.
+  // A plain-text revision goes through the same path via a text node.
   const doc = new DOMParser().parseFromString('<div></div>', 'text/html');
   const root = doc.body.firstElementChild as HTMLElement;
   if (current.html) {

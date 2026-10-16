@@ -1,11 +1,9 @@
 /**
- * A parsed Matrix link target the app can route to internally.
- * - `user` — a person (`@user:hs`).
- * - `room` — a room by id (`!id:hs`) or alias (`#alias:hs`), optionally deep-linking to
- *   an event within it (`eventId`).
+ * A parsed Matrix link target the app can route to internally: a `user` (`@user:hs`), or a
+ * `room` by id (`!id:hs`) or alias (`#alias:hs`), optionally deep-linking to an `eventId`.
  *
- * `via` contains at most the three valid, distinct routing servers Matrix clients are
- * allowed to pass to a join request. It is omitted when the link supplied no usable hints.
+ * `via` holds at most the three valid, distinct routing servers a join request may carry,
+ * and is omitted when the link supplied no usable hints.
  */
 export type MatrixLinkTarget =
   | { kind: 'user'; userId: string }
@@ -30,10 +28,8 @@ export function isMatrixLinkHref(href: string): boolean {
  * Build a `matrix.to` permalink to a specific message (`https://matrix.to/#/<room>/<event>`).
  * The sigil-prefixed ids are percent-encoded, matching what {@link parseMatrixLink} decodes.
  *
- * A room-*ID* link is not resolvable on its own — a recipient not already in the room
- * needs a `?via=<server>` routing hint. `via` supplies those candidate servers; when
- * omitted, the room's own origin server (the domain of `!id:server`) is used as a
- * sensible default. Alias links (`#alias:server`) resolve without a hint.
+ * A room-*ID* link needs a `?via=<server>` hint for a recipient not already in the room;
+ * when `via` is omitted, the room ID's origin server is used. Alias links need no hint.
  */
 export function messagePermalink(
   roomIdOrAlias: string,

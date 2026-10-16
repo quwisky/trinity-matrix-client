@@ -4,12 +4,10 @@ import type { EncryptedFileInfo } from './media.model';
  * Matrix encrypted-attachment crypto (AES-CTR-256 + SHA-256 integrity), over the
  * platform WebCrypto (`crypto.subtle`).
  *
- * This is a faithful port of the Matrix.org reference `matrix-encrypt-attachment`
- * (Apache-2.0). We inline it rather than depend on the package: it has had no
- * release since 2022 and the scheme is frozen by the spec, so there is nothing to
- * track — and we keep a security-sensitive primitive in-tree, auditable, with no
- * Node-`crypto` shim leaking into the browser bundle. Targets browsers + Capacitor
- * WebViews, which always expose `crypto.subtle`.
+ * A faithful port of the Matrix.org reference `matrix-encrypt-attachment` (Apache-2.0),
+ * inlined so the security-sensitive primitive stays in-tree and auditable, with no
+ * Node-`crypto` shim in the browser bundle. Targets browsers and Capacitor WebViews, which
+ * always expose `crypto.subtle`.
  *
  * Spec: https://spec.matrix.org/latest/client-server-api/#sending-encrypted-attachments
  */
@@ -18,10 +16,7 @@ import type { EncryptedFileInfo } from './media.model';
 export interface EncryptedAttachment {
   /** AES-CTR ciphertext to upload to the media repo. */
   data: ArrayBuffer;
-  /**
-   * The `EncryptedFile` block for the event content. `url` is left empty — the
-   * caller fills it with the `mxc://` returned by the upload.
-   */
+  /** The `EncryptedFile` block for the event content; the caller fills the empty `url`. */
   info: EncryptedFileInfo;
 }
 
@@ -44,8 +39,7 @@ export async function decryptAttachment(
     throw new Error(`Unsupported attachment encryption version: ${info.v}`);
   }
 
-  // Integrity first: hash the ciphertext and bail before importing the key or
-  // decrypting if it has been altered in transit.
+  // Integrity first: bail before importing the key or decrypting if the ciphertext was altered.
   const digest = await crypto.subtle.digest('SHA-256', ciphertext);
   if (encodeUnpaddedBase64(new Uint8Array(digest)) !== info.hashes['sha256']) {
     throw new Error('Mismatched SHA-256 digest');
@@ -68,10 +62,9 @@ export async function decryptAttachment(
 }
 
 /**
- * Encrypt bytes for upload as a Matrix encrypted attachment: generates a fresh
- * AES-CTR-256 key + IV, and returns the ciphertext plus the `content.file`
- * descriptor (JWK key, iv, sha256 of the ciphertext). The caller uploads `data`
- * and sets `info.url` to the resulting `mxc://`.
+ * Encrypt bytes for upload as a Matrix encrypted attachment with a fresh AES-CTR-256 key and
+ * IV. Returns the ciphertext plus the `content.file` descriptor (JWK key, iv, sha256 of the
+ * ciphertext).
  */
 export async function encryptAttachment(
   plaintext: ArrayBuffer,

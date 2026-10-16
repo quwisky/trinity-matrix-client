@@ -1,7 +1,6 @@
 /**
- * Passphrase-encrypted room-key export file, in the interoperable **Matrix megolm
- * export** format (the same `.txt` Element reads and writes), implemented on platform
- * WebCrypto (`crypto.subtle`) — DI-free so it stays in `util-matrix`.
+ * Passphrase-encrypted room-key export file, in the interoperable **Matrix megolm export**
+ * format (the same `.txt` Element reads and writes), on platform WebCrypto.
  *
  * Format (all binary, then base64 between the armor lines):
  *   version(1) ‖ salt(16) ‖ iv(16) ‖ iterations(4, big-endian) ‖ ciphertext ‖ hmac(32)
@@ -11,7 +10,7 @@
  *
  * Buffers are typed `Uint8Array<ArrayBuffer>` and sliced (never sub-arrayed) before hitting
  * `crypto.subtle`: the Angular build's TS lib rejects the `ArrayBufferLike` a `subarray()`
- * view carries where a `BufferSource` (ArrayBuffer-backed) is required.
+ * view carries where a `BufferSource` is required.
  */
 
 const HEADER = '-----BEGIN MEGOLM SESSION DATA-----';
@@ -21,10 +20,10 @@ const TRAILER = '-----END MEGOLM SESSION DATA-----';
 const DEFAULT_KEY_FILE_ITERATIONS = 500_000;
 
 /**
- * Upper bound on the iteration count we'll honor from an *imported* file. The count is
- * an attacker-controlled uint32 read before HMAC verification, so an uncapped value
- * (up to ~4.3 billion) would pin the main thread running PBKDF2 for minutes — a DoS.
- * 10× the default is far above any legitimate exporter yet stays sub-second.
+ * Upper bound on the iteration count we'll honor from an *imported* file. The count is an
+ * attacker-controlled uint32 read before HMAC verification, so an uncapped value (up to
+ * ~4.3 billion) would pin the main thread running PBKDF2 for minutes — a DoS. 10× the
+ * default is far above any legitimate exporter yet stays sub-second.
  */
 const MAX_KEY_FILE_ITERATIONS = 5_000_000;
 
@@ -85,8 +84,7 @@ export async function decryptMegolmKeyFile(
     1 + SALT_LEN + IV_LEN,
     false,
   );
-  // The count is untrusted (read before verification): reject an absurd value rather
-  // than run PBKDF2 for it, which would freeze the app.
+  // Untrusted (read before verification): see MAX_KEY_FILE_ITERATIONS.
   if (iterations < 1 || iterations > MAX_KEY_FILE_ITERATIONS) {
     throw new Error('This file isn’t a valid encrypted key export.');
   }

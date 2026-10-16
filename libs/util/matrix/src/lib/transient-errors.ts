@@ -1,10 +1,8 @@
 import { ConnectionError, HTTPError, MatrixError } from 'matrix-js-sdk';
 import { type MonoTypeOperatorFunction, retry, throwError, timer } from 'rxjs';
 
-// Re-exported because they are this module's implicit public surface: the predicate below
-// answers questions *about* these classes, so a caller testing or narrowing against it
-// needs the constructors — and nothing outside data-access may import matrix-js-sdk
-// itself. Same reasoning as the enum re-export at a data-access boundary.
+// Re-exported because nothing outside data-access may import matrix-js-sdk, and callers
+// testing or narrowing against the predicate below need these constructors.
 export { ConnectionError, HTTPError, MatrixError } from 'matrix-js-sdk';
 
 /** How many times a transient failure is retried before giving up. */
@@ -20,10 +18,9 @@ function isTransientStatus(status: number | undefined): boolean {
 }
 
 /**
- * Matrix's fetch transport preserves AbortError for both its local request
- * deadline and deliberate request cancellation instead of wrapping it in a
- * ConnectionError. Either case is expected transport control flow rather than
- * an application defect.
+ * Matrix's fetch transport preserves AbortError for both its local request deadline and
+ * deliberate cancellation instead of wrapping it in a ConnectionError; neither is an
+ * application defect.
  */
 export function isMatrixRequestAbortError(err: unknown): boolean {
   return (
@@ -35,13 +32,10 @@ export function isMatrixRequestAbortError(err: unknown): boolean {
 }
 
 /**
- * True when `err` represents a transient homeserver hiccup worth retrying/quieting:
- * a connection-level failure, or an HTTP/Matrix error that is rate-limited (429) or
- * server-side (5xx). Genuine client errors (4xx except 429), plain `Error`s and
- * `undefined` are NOT transient and must surface as usual.
- *
- * `MatrixError` extends `HTTPError`, so a Matrix error is matched by either arm;
- * both are checked explicitly for clarity.
+ * True when `err` is a transient homeserver hiccup worth retrying/quieting: a
+ * connection-level failure, or an HTTP/Matrix error that is rate-limited (429) or
+ * server-side (5xx). Client errors (4xx except 429), plain `Error`s and `undefined` are NOT
+ * transient and must surface as usual.
  */
 export function isTransientMatrixError(err: unknown): boolean {
   if (err instanceof ConnectionError) {
@@ -60,10 +54,9 @@ function backoffMs(attempt: number): number {
 
 /**
  * RxJS operator that retries the source up to {@link MAX_RETRIES} times on a
- * {@link isTransientMatrixError transient} failure, backing off exponentially.
- * Non-transient errors are rethrown immediately (no retry); after the retries are
- * exhausted the last transient error is rethrown so a downstream `catchError` can
- * still perform its final fallback.
+ * {@link isTransientMatrixError transient} failure, backing off exponentially. Other errors
+ * are rethrown immediately; once retries are exhausted the last error is rethrown so a
+ * downstream `catchError` can fall back.
  */
 export function retryTransient<T>(): MonoTypeOperatorFunction<T> {
   return retry<T>({

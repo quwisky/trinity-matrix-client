@@ -1,14 +1,10 @@
 /**
- * matrix-js-sdk's default Rust crypto-store prefix (its exported `RUST_SDK_STORE_PREFIX`),
- * used when an account has no per-account prefix — a migrated pre-multi-account session that
- * stays on the SDK default store.
+ * matrix-js-sdk's default Rust crypto-store prefix (its `RUST_SDK_STORE_PREFIX`), used by a
+ * migrated pre-multi-account session with no per-account prefix.
  */
 const DEFAULT_RUST_CRYPTO_PREFIX = 'matrix-js-sdk';
 
-/**
- * The prefix matrix-js-sdk prepends to every IndexedDB name it is given
- * (`IndexedDBLocalBackend`: `this.dbName = "matrix-js-sdk:" + dbName`).
- */
+/** The prefix `IndexedDBLocalBackend` prepends to every IndexedDB name it is given. */
 const SDK_DB_NAME_PREFIX = 'matrix-js-sdk:';
 
 /** Our own per-account namespace for the message sync store, before the SDK's prefix. */
@@ -21,11 +17,9 @@ const RUST_CRYPTO_DB_SUFFIXES = [
 ] as const;
 
 /**
- * The IndexedDB database names matrix-js-sdk's Rust crypto uses for a given
- * `cryptoDatabasePrefix` — `${prefix}::matrix-sdk-crypto` and `${prefix}::matrix-sdk-crypto-meta`
- * — the exact pair `initRustCrypto` creates and `clearStores` deletes. An undefined prefix
- * resolves to the SDK default, matching a migrated legacy account's store. Kept here (not
- * duplicated at call sites) so this SDK naming convention lives in one place.
+ * The IndexedDB database names matrix-js-sdk's Rust crypto uses for a `cryptoDatabasePrefix`:
+ * the exact pair `initRustCrypto` creates and `clearStores` deletes. An undefined prefix
+ * resolves to the SDK default.
  */
 export function rustCryptoStoreDbNames(
   prefix: string | undefined,
@@ -38,10 +32,8 @@ export function rustCryptoStoreDbNames(
 }
 
 /**
- * Whether `dbName` is one of matrix-js-sdk's Rust crypto-store IndexedDB databases (i.e. ends
- * with a known crypto suffix). Used to pick crypto stores out of an `indexedDB.databases()`
- * listing when sweeping orphans — so the message-sync store and unrelated databases are left
- * alone.
+ * Whether `dbName` is one of matrix-js-sdk's Rust crypto-store databases, for picking them
+ * out of an `indexedDB.databases()` listing without touching the sync store or others.
  */
 export function isRustCryptoStoreDbName(dbName: string): boolean {
   return RUST_CRYPTO_DB_SUFFIXES.some((suffix) => dbName.endsWith(suffix));
@@ -53,13 +45,9 @@ export function syncStoreDbName(userId: string): string {
 }
 
 /**
- * The name the sync store ACTUALLY has on disk.
- *
- * matrix-js-sdk does not use `dbName` verbatim: `IndexedDBLocalBackend` prepends
- * `matrix-js-sdk:` to whatever it is given. So the database the app creates as
- * `trinity-sync:@me:hs` is really `matrix-js-sdk:trinity-sync:@me:hs`, and anything deleting
- * or enumerating it by name must use THIS form — passing the `dbName` would silently delete
- * nothing. Kept beside the crypto-store names so both SDK naming conventions live together.
+ * The name the sync store ACTUALLY has on disk: `IndexedDBLocalBackend` prepends
+ * `matrix-js-sdk:` to the `dbName`, so deleting or enumerating by `dbName` would silently
+ * match nothing.
  */
 export function syncStoreIndexedDbName(userId: string): string {
   return `${SDK_DB_NAME_PREFIX}${syncStoreDbName(userId)}`;

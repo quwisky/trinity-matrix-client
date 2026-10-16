@@ -7,14 +7,13 @@ interface RoomEncryptionProbe {
 
 /**
  * Whether a room counts as encrypted, by the rule matrix-js-sdk uses when it sends: the
- * room's `m.room.encryption` state says so, or the crypto store has the room recorded as
- * encrypted. Following both means a room whose state lacks the encryption event (a
- * homeserver that leaves it out after a cache clear, say) still gets the marks and previews
- * that depend on it, while the client keeps encrypting its own sends.
+ * room's `m.room.encryption` state says so, or the crypto store has it recorded as
+ * encrypted. This covers a room whose state lacks the encryption event (a homeserver that
+ * leaves it out after a cache clear, say), so its encryption marks and previews match the
+ * client's own encrypted sends.
  *
- * The store's answer is async: {@link refresh} fetches it once per room and caches it, and
- * {@link isEncrypted} reads the cache synchronously. Callers re-project when `refresh`
- * resolves true.
+ * The store's answer is async: {@link refresh} fetches it once per room and caches it for
+ * {@link isEncrypted}. Callers re-project when `refresh` resolves true.
  */
 export class RoomEncryptionFlags {
   private readonly stored = new Map<string, boolean>();

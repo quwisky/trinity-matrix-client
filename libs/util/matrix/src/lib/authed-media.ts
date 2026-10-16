@@ -51,11 +51,10 @@ export function mediaHttpUrl(
  * does not route `/_matrix/client/v1/media/download` answers the unknown endpoint with
  * `M_UNRECOGNIZED` as a 404 (some as a 400).
  *
- * Deliberately narrow. A 429 or 5xx means the server is there and struggling, and falling
- * back on those is actively harmful: on a homeserver that has *disabled* legacy media
- * (Synapse's default since 1.120) the legacy attempt answers 404, and that terminal status
- * is what reaches {@link retryTransient} — so a retryable hiccup became a hard failure and
- * the caller rendered its placeholder.
+ * Deliberately narrow. A 429 or 5xx means the server is there and struggling; falling back
+ * on those is harmful, because a homeserver that *disabled* legacy media (Synapse's default
+ * since 1.120) answers the legacy attempt with a terminal 404 that reaches
+ * {@link retryTransient} in place of the retryable status.
  */
 function isUnsupportedEndpoint(status: number): boolean {
   return (
@@ -67,12 +66,9 @@ function isUnsupportedEndpoint(status: number): boolean {
 }
 
 /**
- * Re-tag a network-level failure as the SDK's own ConnectionError.
- *
- * A dropped connection surfaces as a bare TypeError carrying no status, which
- * {@link isTransientMatrixError} cannot recognise and so treats as terminal. Tagging it
- * here — rather than widening that predicate — keeps a plain TypeError non-transient
- * everywhere else, which is what its spec pins and what the global error handler wants.
+ * Re-tag a network-level failure as the SDK's own ConnectionError. A dropped connection
+ * surfaces as a bare TypeError with no status, which {@link isTransientMatrixError} treats
+ * as terminal; tagging it here keeps a plain TypeError non-transient everywhere else.
  */
 function asConnectionError(cause: unknown): Observable<never> {
   return throwError(
@@ -85,16 +81,12 @@ function asConnectionError(cause: unknown): Observable<never> {
 }
 
 /**
- * Fetch raw media bytes for an `mxc://`, using authenticated media (Bearer token)
- * when the homeserver supports it, and falling back to the legacy unauthenticated
- * endpoint if that endpoint turns out to be unsupported — older servers advertise
- * v1.11 but still serve legacy. Shared by {@link MediaService} (attachments) and the
- * avatar resolver.
+ * Fetch raw media bytes for an `mxc://`, using authenticated media (Bearer token) when the
+ * homeserver supports it, and falling back to the legacy unauthenticated endpoint if that
+ * endpoint turns out to be unsupported.
  *
- * Every request is built inside a `defer`, so {@link retryTransient} genuinely re-issues
- * it. Calling `fetch()` eagerly (to hand `from()` a promise) would look identical but
- * silently defeat the retry: re-subscribing to an already-settled promise replays its
- * result, so the request would be made exactly once however many times it was retried.
+ * Every request is built inside a `defer`, so {@link retryTransient} genuinely re-issues it:
+ * an eager `fetch()` promise would be replayed, not re-sent, on each retry.
  */
 export function fetchMediaBytes(
   client: MatrixClient,
@@ -115,9 +107,8 @@ export function fetchMediaBytes(
           bearer ? { headers: { Authorization: `Bearer ${bearer}` } } : {},
         ),
       ).pipe(
-        // A rejected `fetch` is a network-level failure (offline, DNS/TLS, a CORS
-        // rejection) rather than an answer from the server. Without the re-tag an
-        // offline blip lasting a few hundred ms is terminal for every avatar in flight.
+        // A rejected `fetch` is a network-level failure (offline, DNS/TLS, CORS), not a
+        // server answer; without the re-tag a brief offline blip is terminal.
         catchError(asConnectionError),
       );
     });
@@ -130,21 +121,17 @@ export function fetchMediaBytes(
     ),
     switchMap((res) =>
       res.ok
-        ? // Reading the body can fail on its own — the connection dropping after the
-          // headers arrived aborts the stream — and that rejection is a bare TypeError
-          // just like a rejected `fetch`. Re-tag it the same way, or the very blip this
-          // retries would still be terminal one line further down the pipeline.
+        ? // Reading the body can fail after the headers arrived (connection dropped), with a
+          // bare TypeError like a rejected `fetch`; re-tag it the same way.
           from(res.arrayBuffer()).pipe(catchError(asConnectionError))
-        : // Throw an HTTPError carrying the status so retryTransient recognises a
-          // transient 503/5xx/429 and retries with backoff before the caller's
-          // catchError falls back (a plain Error would be treated as terminal).
+        : // An HTTPError carries the status so retryTransient recognises a transient
+          // 503/5xx/429 (a plain Error would be terminal).
           throwError(
             () =>
               new HTTPError(`Media fetch failed (${res.status})`, res.status),
           ),
     ),
-    // Retry a flaky homeserver a few times before the avatar/media services'
-    // existing catchError renders the placeholder.
+    // Retry a flaky homeserver before the callers' catchError renders the placeholder.
     retryTransient(),
   );
 }

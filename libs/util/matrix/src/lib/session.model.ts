@@ -5,48 +5,42 @@ export interface MatrixSession {
   deviceId: string;
   accessToken: string;
   /**
-   * OIDC refresh token (OAuth 2.0 `refresh_token` grant), present only for accounts
-   * signed in via OIDC-native ("next-gen") auth. A long-lived, bearer-equivalent
-   * credential — persisted through the platform secure store alongside {@link
-   * accessToken}, **never** in the plaintext account registry.
+   * OIDC refresh token (OAuth 2.0 `refresh_token` grant), present only for OIDC-native
+   * accounts. A long-lived, bearer-equivalent credential: persisted through the platform
+   * secure store alongside {@link accessToken}, **never** in the plaintext account registry.
    */
   refreshToken?: string;
   /**
-   * Absolute epoch-ms expiry of {@link accessToken} (login/refresh time +
-   * `expires_in`). OIDC access tokens are short-lived; matrix-js-sdk 43 takes no initial
-   * expiry, so it refreshes on the first 401 after a restart and eagerly after that.
-   * Absent for password/SSO sessions, whose tokens do not expire on a fixed schedule.
+   * Absolute epoch-ms expiry of {@link accessToken} (login/refresh time + `expires_in`).
+   * matrix-js-sdk takes no initial expiry, so it refreshes on the first 401 after a restart.
+   * Absent for password/SSO sessions.
    */
   accessTokenExpiresAt?: number;
   /**
-   * OIDC provider binding, present only for OIDC-native accounts. Grouped so "is this
-   * an OIDC account" is a single truthiness check, and so the inputs the SDK needs to
-   * refresh and revoke them (`clientId`) stay together. All fields are non-secret (the
-   * secret is {@link refreshToken}).
+   * OIDC provider binding, present only for OIDC-native accounts, so "is this an OIDC
+   * account" is a single truthiness check. All fields are non-secret (the secret is
+   * {@link refreshToken}).
    */
   oidc?: OidcSessionBinding;
   /**
    * IndexedDB name prefix for this account's Rust crypto store, passed to
    * `initRustCrypto({ cryptoDatabasePrefix })`. Assigned per account **and device**
-   * (`trinity-crypto:${userId}:${deviceId}`) so multiple accounts on one device don't
-   * share a single Olm store, and — crucially — so a fresh login (which mints a new
-   * device id) never reopens a store an earlier device left behind (which the Rust
-   * OlmMachine rejects as an account/device mismatch). Unset for a migrated
-   * pre-multi-account session, which keeps the SDK default prefix so its existing
-   * crypto store is preserved (no re-verification on upgrade), until its device changes.
+   * (`trinity-crypto:${userId}:${deviceId}`) so accounts don't share an Olm store and a
+   * fresh login (new device id) never reopens a store the Rust OlmMachine would reject as an
+   * account/device mismatch. Unset for a migrated pre-multi-account session, which keeps
+   * the SDK default prefix (no re-verification on upgrade) until its device changes.
    */
   cryptoPrefix?: string;
   /**
    * Set when {@link cryptoPrefix}'s store was created with a store key (kept in secure
-   * storage under that prefix). Non-secret. Absent for a store created before store keys
-   * existed, which stays unencrypted; a keyed store whose key is gone cannot be opened.
+   * storage under that prefix). Non-secret. Absent for a store that predates store keys,
+   * which stays unencrypted; a keyed store whose key is gone cannot be opened.
    */
   cryptoStoreKeyed?: true;
   /**
-   * Names the sign-in whose tokens the stored record holds. Storage mints a new one each
-   * time it saves a session, and a token refresh keeps it, so a refresh writes only over
-   * the tokens of the sign-in it came from, never over a newer one for the same account.
-   * Non-secret. Absent for a session saved before the id existed.
+   * Names the sign-in whose tokens the stored record holds. Storage mints a new one on each
+   * save and a token refresh keeps it, so a refresh never overwrites a newer sign-in's
+   * tokens for the same account. Non-secret. Absent for sessions saved before it existed.
    */
   lineage?: string;
 }

@@ -9,10 +9,8 @@ import {
 const MEGOLM_ALGORITHM = 'm.megolm.v1.aes-sha2';
 
 /**
- * The `m.room.encryption` (Megolm) entry to drop into a `createRoom`
- * `initial_state` so a room is encrypted from its very first event — it is never
- * briefly unencrypted. Shared by every room/DM creation path (spaces, standalone
- * rooms, DMs) so the E2EE-first guarantee can't drift between them.
+ * The `m.room.encryption` (Megolm) entry for a `createRoom` `initial_state`, so a room is
+ * encrypted from its very first event. Shared by every room/DM creation path.
  */
 export function roomEncryptionInitialState(): ICreateRoomStateEvent {
   return {
@@ -33,11 +31,9 @@ export function visibilityOptions(isPublic?: boolean): {
 }
 
 /**
- * Whether a string has the shape of a Matrix user id (`@localpart:server`). A
- * cheap structural guard used before invite/DM calls so an obvious typo is
- * rejected client-side rather than round-tripping to the homeserver. The
- * localpart may not contain a colon (per spec); the server name may (e.g. a
- * `:port`), so only the localpart's colon is excluded.
+ * Whether a string has the shape of a Matrix user id (`@localpart:server`), a cheap guard
+ * before invite/DM calls. Per spec the localpart may not contain a colon; the server name may
+ * (e.g. `:port`).
  */
 export function isValidUserId(userId: string): boolean {
   return /^@[^\s:]+:[^\s]+$/.test(userId.trim());
