@@ -246,3 +246,34 @@ test('banner actions share the message row when there is room (#1221)', async ({
   // Left-to-right: Storybook renders LTR, so the actions sit after the message.
   expect(actionsBox.x).toBeGreaterThanOrEqual(textBox.x + textBox.width);
 });
+
+// The global banners reserve the wrapped two-row height while the slot is narrower than
+// 34rem. That threshold has to sit above the width where the two-action notice stops
+// wrapping, actions or message (or a swap still moves the page), and not far beyond it
+// (or wide slots carry empty space). Sweep the widths and check both with these fonts.
+test('global-slot banners match at every width, reserving only where one wraps', async ({
+  page,
+}) => {
+  await page.goto(story('components-banner--global-slot'));
+  const status = page.getByTestId('global-status');
+  const prompt = page.getByTestId('global-prompt').locator('.banner');
+  for (let width = 320; width <= 760; width += 20) {
+    await page.setViewportSize({ width, height: 600 });
+    const text = (await status.locator('.banner__text').boundingBox())!;
+    const actions = (await status.locator('.banner__actions').boundingBox())!;
+    const statusBox = (await status.locator('.banner').boundingBox())!;
+    const promptBox = (await prompt.boundingBox())!;
+    const wrapped = actions.y >= text.y + text.height;
+    expect(promptBox.height, `prompt height at ${width}px`).toBeCloseTo(
+      statusBox.height,
+      1,
+    );
+    if (width >= 560) {
+      expect(wrapped, `notice wraps at ${width}px`).toBe(false);
+      // One row: nothing is reserved where nothing wraps.
+      expect(statusBox.height, `reserved height at ${width}px`).toBeLessThan(
+        text.height + actions.height,
+      );
+    }
+  }
+});

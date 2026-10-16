@@ -77,3 +77,25 @@ test('a lone banner action leaves no blank message row (#1221)', async ({
   // One row: the banner is the action plus its padding, with no empty line above it.
   expect(bannerBox.height).toBeLessThanOrEqual(actionBox.height + padding + 1);
 });
+
+// The app's global banner slot swaps the two-action status notice for the one-action
+// encryption prompt a moment after sign-in. If they differ in height the page below jumps
+// and a tap in flight lands on the wrong room, so in a narrow slot both keep one height.
+for (const width of [320, 360, 393, 430]) {
+  test(`global-slot banners keep one height at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 851 });
+    await page.goto(
+      '/iframe.html?id=components-banner--global-slot&viewMode=story',
+    );
+    const status = page.getByTestId('global-status').locator('.banner');
+    const prompt = page.getByTestId('global-prompt').locator('.banner');
+    await expect(status.getByRole('button')).toHaveCount(2);
+    await expect(prompt.getByRole('button')).toHaveCount(1);
+
+    const statusBox = (await status.boundingBox())!;
+    const promptBox = (await prompt.boundingBox())!;
+    expect(promptBox.height).toBeCloseTo(statusBox.height, 1);
+  });
+}

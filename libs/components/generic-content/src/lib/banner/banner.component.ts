@@ -9,6 +9,12 @@ import type { TrnVariant } from '@trinity/components/foundations';
 export type TrnBannerVariant = Extract<TrnVariant, 'neutral' | 'accent'>;
 
 /**
+ * `inline`: a banner in its own place in the page. `global`: one of several banners that
+ * take turns in a single slot, each replacing the last as the state behind it changes.
+ */
+export type TrnBannerPlacement = 'inline' | 'global';
+
+/**
  * The slim shell banner shared by the connectivity and encryption prompts: a
  * semantically coloured bar with a leading icon, a live-region message, and optional
  * trailing actions. Everything is projected, so the consumer owns the icon,
@@ -32,10 +38,18 @@ export type TrnBannerVariant = Extract<TrnVariant, 'neutral' | 'accent'>;
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './banner.component.scss',
   templateUrl: './banner.component.html',
+  host: { '[attr.data-placement]': 'placement()' },
 })
 export class BannerComponent {
   /** Semantic treatment: `neutral` status or `accent` call-to-action. */
   readonly variant = input<TrnBannerVariant>('neutral');
+
+  /**
+   * Where the slot is narrow enough for a two-action banner to wrap its actions under the
+   * message, a `global` banner keeps that two-row height whichever banner holds the slot:
+   * replacing one with another then never moves the page below it.
+   */
+  readonly placement = input<TrnBannerPlacement>('inline');
 
   /**
    * The accent tone paints the attention surface, so it declares that context for the

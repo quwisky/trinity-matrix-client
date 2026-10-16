@@ -135,4 +135,18 @@ describe('BannerComponent', () => {
     fixture.detectChanges();
     expect(banner()?.getAttribute('data-trn-surface')).toBe('attention');
   });
+
+  // Banners in one shared slot replace each other; where the slot is narrow they keep one
+  // reserved height (the stylesheet), so a replacement never moves the page.
+  it('marks a banner that holds the global slot, and only that one', async () => {
+    const { fixture, container } = await render(BannerComponent);
+    const banner = () => container.querySelector('.banner');
+    expect(banner()?.getAttribute('data-placement')).toBe('inline');
+
+    fixture.componentRef.setInput('placement', 'global');
+    fixture.detectChanges();
+    expect(banner()?.getAttribute('data-placement')).toBe('global');
+    // The host is the size container the reservation measures the slot width with.
+    expect(fixture.nativeElement.getAttribute('data-placement')).toBe('global');
+  });
 });
