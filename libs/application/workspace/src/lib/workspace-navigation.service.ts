@@ -31,10 +31,8 @@ import {
   EMPTY,
   Observable,
   type Subscription,
-  catchError,
   concatMap,
   defer,
-  distinctUntilChanged,
   filter,
   last,
   map,
@@ -55,6 +53,7 @@ import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 import { WorkspaceLocationAdapter } from './workspace-location.adapter';
 import { WorkspaceAvailability } from './workspace-availability';
 import { resolveWorkspaceNavigation } from './workspace-navigation.resolver';
+import { WorkspaceSpaceRepair } from './workspace-space-repair';
 
 /**
  * The application workflow that owns the semantic Workspace destination.
@@ -72,6 +71,7 @@ export class WorkspaceNavigationService {
   private readonly media = inject(MediaPipeline);
   private readonly rooms = inject(RoomLibraryService);
   private readonly availability = inject(WorkspaceAvailability);
+  private readonly spaceRepair = inject(WorkspaceSpaceRepair);
   private readonly roomReadiness = inject(RoomReadinessService);
   private readonly invites = inject(InvitesService);
   private readonly spaces = inject(SpacesService);
@@ -150,44 +150,15 @@ export class WorkspaceNavigationService {
   }
 
   /**
-   * Return the selected Space to Recent once it is unavailable, keeping the open Room:
-   * the Account has synced without it (#1401), or it disappeared (#1402: removed, left
-   * elsewhere, or its holder unticked in the mixed view). Recent lists every Room, so the
-   * Room is then judged on its own. It stays quiet while a transition owns the view, while
-   * this app's own leave of the Space is in flight (that flow navigates itself), while the
-   * view's Account is not the active one (a switch or sign-out is under way), and outside
-   * Workspace, where the return restores through the same repair. One attempt per
-   * committed view, so a rejected Router navigation is not retried in a loop.
+   * Return the selected Space to Recent once it is unavailable ({@link WorkspaceSpaceRepair}),
+   * keeping the open Room, which Recent lists and the transition judges on its own. Outside
+   * Workspace nothing is repaired here; the return restores through the same repair.
    */
   private repairUnavailableSpace(): void {
-    const unavailable = computed(() => {
-      const view = this.view();
-      if (view.scope.kind !== 'space' || !view.accountId) return null;
-      if (this.workflow.busy()) return null;
-      if (view.accountId !== this.accounts.activeAccountId()) return null;
-      if (this.spaces.isLeaving(view.accountId, view.scope.spaceId)) {
-        return null;
-      }
-      return this.availability.space(view.accountId, view.scope.spaceId) ===
-        'unavailable'
-        ? view
-        : null;
-    });
-    toObservable(unavailable, { injector: this.injector })
-      .pipe(
-        filter((view): view is WorkspaceView => view !== null),
-        distinctUntilChanged(),
-        concatMap((view) =>
-          defer(() => {
-            if (
-              !this.projectionsActive ||
-              this.view() !== view ||
-              !view.accountId
-            ) {
-              return EMPTY;
-            }
-            // A failed repair leaves the view as it is; the watch must outlive it.
-            return this.transition(
+    this.spaceRepair
+      .run(this.view, (view) =>
+        this.projectionsActive && this.view() === view && view.accountId
+          ? this.transition(
               {
                 accountId: view.accountId,
                 scope: RECENT_WORKSPACE_SCOPE,
@@ -195,11 +166,10 @@ export class WorkspaceNavigationService {
                 pane: view.pane,
               },
               { source: 'repair', history: 'replace' },
-            ).pipe(catchError(() => EMPTY));
-          }),
-        ),
-        takeUntilDestroyed(this.destroyRef),
+            )
+          : EMPTY,
       )
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
   }
 
