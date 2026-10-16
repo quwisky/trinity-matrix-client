@@ -11,9 +11,8 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 /**
  * One account-level notification preference, mapping a labelled toggle to a predefined
  * global push rule. `invert` marks a rule whose *enabled* state means "don't notify" (the
- * master kill-switch), so the UI shows the opposite of the raw rule state. `aliases` lists
- * additional rule ids that govern the same preference across homeserver variants (e.g.
- * modern intentional-mention rules vs. their legacy equivalents) — see {@link PushRulesService}.
+ * master kill-switch). `aliases` lists other rule ids governing the same preference across
+ * homeserver variants — see {@link PushRulesService}.
  */
 export interface PushRuleToggle {
   readonly id: RuleId;
@@ -85,22 +84,19 @@ interface ResolvedRule {
 }
 
 /**
- * Reads and toggles the account's **predefined global push rules** — the server-side
- * rules that decide which events notify (mentions, invites, DMs, room messages, calls).
- * Owns the account-level notification *preferences* that sync across devices, a sibling to
+ * Reads and toggles the account's **predefined global push rules**: the account-level
+ * notification preferences that sync across devices. A sibling to
  * {@link RoomNotificationsService} (per-room overrides).
  *
- * Reads are synchronous snapshots off the synced client's cached `pushRules`; toggles are
- * cold Observables. The client's account-data sync keeps `pushRules` current, so a change
- * made here (or on another device) is reflected on the next read.
+ * Reads are synchronous snapshots of the cached `pushRules`, kept current by account-data
+ * sync; toggles are cold Observables.
  *
- * A single preference can map to more than one rule id (a toggle's `id` plus its `aliases`):
- * homeservers name some rules differently — notably the intentional-mention rules
+ * A preference can map to more than one rule id (a toggle's `id` plus its `aliases`):
+ * homeservers name some rules differently, notably the intentional-mention rules
  * (`.m.rule.is_user_mention` / `.m.rule.is_room_mention`) vs. their legacy equivalents
- * (`.m.rule.contains_display_name` / `.m.rule.roomnotif`) — and current Synapse ships both.
- * So reads consider every id the server actually defines, and a write is applied to each
- * present id (at whichever kind it lives), keeping the toggle authoritative and never
- * targeting an id the server doesn't have (which would 404 and appear as "won't toggle").
+ * (`.m.rule.contains_display_name` / `.m.rule.roomnotif`), and current Synapse ships both.
+ * Reads consider every id the server defines, and a write is applied to each present id (at
+ * whichever kind it lives); targeting an id the server lacks would 404.
  */
 @Injectable({ providedIn: 'root' })
 export class PushRulesService {

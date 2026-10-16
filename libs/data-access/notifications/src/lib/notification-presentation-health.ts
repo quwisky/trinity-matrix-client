@@ -25,7 +25,7 @@ const RECOVERY_BUDGET_MS = 10_000;
 export class NotificationPresentationHealthTracker {
   private readonly context: CapabilityContext = Symbol();
   private readonly changes = new Subject<NotificationPresentationHealth>();
-  // Version stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard (#927).
+  // Version stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard.
   private generation = 0;
   private current: NotificationPresentationHealth | null = null;
   private emit: ((event: NotificationRuntimeEvent) => void) | null = null;

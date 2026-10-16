@@ -25,8 +25,7 @@ export interface NativePushActivation {
 }
 
 /** Pusher `data` key carrying the owning account's user id (see docs-internal/maintenance/push-notifications.md). The
- * gateway must forward this from `devices[].data` into the delivered push payload so
- * a tap can switch to the right account. */
+ * gateway must forward it from `devices[].data` into the push payload so a tap can switch account. */
 const ACCOUNT_DATA_KEY = 'trinity_user_id';
 /** Pusher `data` key choosing the gateway's render mode (see the gateway README). */
 const RENDER_DATA_KEY = 'trinity_render';
@@ -37,13 +36,11 @@ const DEVICE_RENDER = 'device';
  * Outcome of the most recent pusher-registration round, for the settings UI.
  *
  * `applied` counts the accounts a pusher was registered for and stamps when; `error`
- * carries the homeserver's message from the first account that failed. Deliberately a
- * discriminated union rather than separate `lastAppliedAt` / `lastError` signals, so the
- * "succeeded *and* failed" state is unrepresentable.
+ * carries the homeserver's message from the first account that failed.
  *
- * Note what `applied` does NOT mean: the pushers were accepted by the homeservers, not
- * that a notification will actually arrive. The gateway → FCM/APNs → device leg cannot
- * be observed from the client, so the UI must not present this as "push is working".
+ * `applied` means the homeservers accepted the pushers, not that a notification will
+ * arrive: the gateway → FCM/APNs → device leg cannot be observed from the client, so the UI
+ * must not present this as "push is working".
  */
 export type PushRegistrationState =
   | { readonly status: 'idle' }
@@ -73,9 +70,8 @@ export type PushRuntimeStatus =
     };
 
 /**
- * Best human-readable message from a rejected pusher call. A `MatrixError` carries the
- * homeserver's own text in `data.error` (e.g. the notify-path config error); fall back
- * to the Error message, then to a generic line so the UI never shows `undefined`.
+ * Best human-readable message from a rejected pusher call: a `MatrixError`'s `data.error`,
+ * then the Error message, then a generic line.
  */
 function pushErrorMessage(err: unknown): string {
   if (err && typeof err === 'object') {
@@ -95,8 +91,8 @@ function pushErrorMessage(err: unknown): string {
 const DEVICE_REGISTRATION_FAILED =
   'The device could not register for push notifications.';
 
-/** Best text from a rejected `PushNotifications.register()` — a plugin/OS failure, so
- * deliberately not {@link pushErrorMessage}, whose fallback blames the homeserver. */
+/** Best text from a rejected `PushNotifications.register()`: a plugin/OS failure, so not
+ * {@link pushErrorMessage}, whose fallback blames the homeserver. */
 function deviceErrorMessage(err: unknown): string {
   const message =
     err && typeof err === 'object'
@@ -108,17 +104,14 @@ function deviceErrorMessage(err: unknown): string {
 }
 
 /**
- * Registers the device for OS push (FCM/APNs via `@capacitor/push-notifications`)
- * and a matching **Matrix pusher on every signed-in account** so each account's
- * homeserver routes its notifications through the configured push gateway. All
- * accounts share the one device token (pushkey); each pusher tags itself with its
- * account's user id in `data` so the gateway can fan out to the right account and a
- * tap can switch to it. Native-only and config-gated: a no-op on web/desktop or when
- * no `PushConfig` is provided.
+ * Registers the device for OS push (FCM/APNs via `@capacitor/push-notifications`) and a
+ * matching **Matrix pusher on every signed-in account**, so each homeserver routes its
+ * notifications through the configured push gateway. All accounts share the one device
+ * token (pushkey); each pusher tags its account's user id in `data`. Native-only and
+ * config-gated: a no-op on web/desktop or when no `PushConfig` is provided.
  *
- * Pair {@link register} (called once the shell is live — it also re-applies pushers
- * for accounts added later) with {@link unregister} (a single account on per-account
- * sign-out, or all on full logout) to delete the pusher(s).
+ * Pair {@link register} (which also re-applies pushers for accounts added later) with
+ * {@link unregister} (one account on sign-out, or all on full logout).
  */
 @Injectable({ providedIn: 'root' })
 export class PushService {
@@ -147,8 +140,7 @@ export class PushService {
    * account's pusher carries this device's token, `push`: TrinityMessagingService renders
    * background and closed-app pushes itself, so the running app must not show a second
    * notification for the same message. Everywhere else (iOS, web, desktop, and Android
-   * before registration succeeds or after it fails or is torn down) `app`, so nobody
-   * loses notifications.
+   * before registration succeeds or after it fails or is torn down) `app`.
    */
   readonly backgroundDelivery = computed<'app' | 'push'>(() =>
     this.nativePush.platform === 'android' &&
@@ -167,8 +159,8 @@ export class PushService {
 
   /**
    * Own native callbacks for one Application Runtime session and expose only semantic
-   * activation destinations. Listener setup precedes OS registration, and teardown is
-   * tied to the returned cold Observable rather than hidden behind a finite command.
+   * activation destinations. Listener setup precedes OS registration; teardown is tied to
+   * the returned cold Observable.
    */
   run(): Observable<NativePushActivation> {
     return defer(() => {
@@ -176,9 +168,8 @@ export class PushService {
       return this.nativePush.listen().pipe(
         mergeMap((event) => this.handleNativeEvent(event)),
         finalize(() => {
-          // A token callback that arrives after teardown is intentionally ignored. Let a
-          // later session issue a fresh registration request instead of retaining a stale
-          // in-progress guard forever.
+          // A token callback after teardown is ignored; release the guard so a later
+          // session can register afresh.
           this.registered = false;
         }),
       );
@@ -187,9 +178,8 @@ export class PushService {
 
   /**
    * Request OS push permission, register for a device token, and register a Matrix
-   * pusher on every account. Idempotent + best-effort: once the token is known a
-   * repeat call just re-applies pushers for all accounts (covering any added since),
-   * so the authenticated shell can call it on every mount. No-op when push isn't
+   * pusher on every account. Idempotent and best-effort: once the token is known a repeat
+   * call just re-applies pushers for all accounts. No-op when push isn't
    * available/configured.
    */
   register(): Observable<void> {
@@ -197,8 +187,6 @@ export class PushService {
       if (!this.canPush()) {
         return;
       }
-      // Token already in hand (e.g. a shell re-mount after adding an account):
-      // (re)register a pusher for every account, covering any newly-added ones.
       if (this.currentPushkey) {
         await this.setPushers(this.currentPushkey);
         return;
@@ -226,8 +214,8 @@ export class PushService {
       }
       if (!permission) {
         this.registered = false;
-        // Say so instead of returning silently: mobile push is the only delivery path
-        // there is, so "denied" and "never attempted" must not look the same in settings.
+        // Mobile push is the only delivery path, so "denied" and "never attempted" must
+        // not look the same in settings.
         this._registration.set({
           status: 'error',
           message:
@@ -243,9 +231,9 @@ export class PushService {
       await firstValueFrom(this.nativePush.prepareChannel()).catch(
         () => undefined,
       );
-      // Fires the `registration` listener with the FCM/APNs token — or `registrationError`.
-      // A rejection here means the OS flow never started, so release the one-time guard:
-      // holding it would make every later register() early-exit for the process lifetime.
+      // Fires the `registration` listener with the FCM/APNs token, or `registrationError`.
+      // A rejection means the OS flow never started: release the guard, or every later
+      // register() would early-exit.
       const outcome = await firstValueFrom(this.nativePush.register()).catch(
         (e: unknown) => {
           this.registered = false;
@@ -261,8 +249,8 @@ export class PushService {
         },
       );
       if (outcome === 'unavailable') {
-        // Nothing was asked of the OS, so no token callback will settle this flow. Like a
-        // platform without push: quiet, neither a failure nor a refused permission.
+        // Nothing was asked of the OS, so no token callback will settle this flow; treat
+        // it like a platform without push, neither a failure nor a refused permission.
         this.registered = false;
         this._registration.set({ status: 'idle' });
         this._runtimeStatus.set({
@@ -282,10 +270,9 @@ export class PushService {
   }
 
   /**
-   * Delete pusher(s). With a `userId`, remove just that account's pusher (on
-   * per-account sign-out) while the others keep theirs. Without one, tear everything
-   * down — remove every account's pusher and detach listeners (full logout / reset).
-   * Run before the access token is invalidated so the gateway stops delivering.
+   * Delete pusher(s). With a `userId`, remove just that account's pusher; without one, tear
+   * everything down (full logout / reset). Run before the access token is invalidated so
+   * the gateway stops delivering.
    */
   unregister(userId?: string): Observable<void> {
     return defer(async () => {
@@ -300,7 +287,7 @@ export class PushService {
       }
       this.currentPushkey = null;
       this.registered = false;
-      // Every pusher is going away — a lingering "applied to N accounts" would be a lie.
+      // Every pusher is going away, so "applied to N accounts" would be stale.
       this._registration.set({ status: 'idle' });
       this._runtimeStatus.set({
         status: 'idle',
@@ -317,9 +304,8 @@ export class PushService {
   }
 
   private canPush(): boolean {
-    // Gate on the concrete mobile platforms. On web — and inside the hand-rolled
-    // Electron desktop shell, where `getPlatform()` is also `'web'` — there is no
-    // push plugin, so this keeps push a no-op everywhere except real iOS/Android.
+    // Gate on the concrete mobile platforms: on web, and inside the Electron desktop shell
+    // (where `getPlatform()` is also `'web'`), there is no push plugin.
     return (
       this.config !== null &&
       this.matrix.isInitialized &&
@@ -330,8 +316,8 @@ export class PushService {
   /**
    * Per-platform app id the gateway is keyed by, e.g. `dev.trinityproject.trinity.ios`.
    *
-   * Falls back to {@link DEFAULT_APP_ID} rather than interpolating the optional field
-   * directly: `${undefined}` would stringify to the literal `"undefined.ios"`.
+   * Falls back to {@link DEFAULT_APP_ID}: interpolating the optional field directly would
+   * yield the literal `"undefined.ios"`.
    */
   private pusherAppId(): string {
     return `${this.config?.appId ?? DEFAULT_APP_ID}.${this.nativePush.platform ?? 'web'}`;
@@ -412,12 +398,11 @@ export class PushService {
           device_display_name: account.client.getDeviceId() ?? 'Trinity',
           lang: 'en',
           data,
-          // `append` governs pushers belonging to *other users*, not this one — the
-          // homeserver always replaces this user's own pusher for the same
-          // (app_id, pushkey). It must be true here: every account shares one device
-          // token, so `false` makes each account in this loop delete the previous
-          // one's pusher whenever two accounts live on the same homeserver, leaving
-          // only the last. Verified against Synapse.
+          // `append` governs pushers belonging to *other users*; the homeserver always
+          // replaces this user's own pusher for the same (app_id, pushkey). It must be true:
+          // every account shares one device token, so `false` makes each account in this
+          // loop delete the previous one's pusher when two accounts share a homeserver
+          // (Synapse).
           append: true,
         })
         .catch((e) => (failure ??= pushErrorMessage(e)));
@@ -442,18 +427,13 @@ export class PushService {
   /**
    * Read the pushers back and confirm the one just registered is actually there.
    *
-   * `setPusher` returning 200 is the homeserver's word that it stored the pusher; this
-   * is an independent check that the row is queryable — the state the gateway depends
-   * on — and catches a homeserver that accepts the POST but does not persist it (a real
-   * risk on the non-Synapse homeservers this feature invites people to point at). It is
-   * the only delivery-adjacent thing the client CAN verify: the gateway → FCM/APNs →
-   * device leg is invisible from here, so this confirms registration, never delivery.
+   * Catches a homeserver that accepts the POST (200) but does not persist the pusher, a
+   * risk on non-Synapse homeservers. It confirms registration, never delivery: the gateway
+   * → FCM/APNs → device leg is invisible from here.
    *
-   * Matching is on the `(app_id, pushkey)` identity tuple, not the URL: the URL we sent
-   * is authoritative, and a homeserver that canonicalises it differently must not read
-   * as a failure. Only a definitive *absence* downgrades the state — if the readback GET
-   * itself fails, the just-succeeded registration is left standing rather than punished
-   * for an unrelated network blip.
+   * Matching is on the `(app_id, pushkey)` identity tuple, not the URL, since a homeserver
+   * may canonicalise the URL. Only a definitive *absence* downgrades the state; if the
+   * readback GET itself fails, the registration stands.
    */
   private async verifyPushers(pushkey: string, appId: string): Promise<void> {
     for (const account of this.matrix.all()) {

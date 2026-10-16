@@ -46,10 +46,7 @@ export class RoomNotificationUpdateError extends Error {
   }
 }
 
-/**
- * Reads and writes a room's notification level via Matrix push rules. Kept separate
- * from the receipt/badge notification wiring: this owns the *preference*, not delivery.
- */
+/** Reads and writes a room's notification level via Matrix push rules: the preference, not delivery. */
 @Injectable({ providedIn: 'root' })
 export class RoomNotificationsService {
   private readonly matrix = inject(MatrixClientService);
@@ -117,8 +114,8 @@ export class RoomNotificationsService {
    * from the account that actually holds the rules. */
   modeFor(roomId: string, accountId?: string): RoomNotifyMode {
     // A template call becomes a signal consumer. The app is zoneless, so the SDK's
-    // AccountData callback must write a signal or a FluffyChat/other-device change would
-    // remain invisible until the next unrelated click caused change detection.
+    // AccountData callback must write a signal or another device's change stays invisible
+    // until the next change detection.
     this._revision();
     const client = this.clientOwning(accountId);
     return client ? this.modeForClient(client, roomId) : 'all';
@@ -138,10 +135,9 @@ export class RoomNotificationsService {
   /**
    * Refresh and read one exact Account-and-Room notification mode from its homeserver.
    *
-   * Unlike {@link modeFor}, this command never turns a missing Account into the guessed
-   * default `all`. Settings surfaces use it while loading so unavailable and failed reads
-   * stay distinguishable from a real server answer. Cold and finite — no request starts
-   * until a caller subscribes.
+   * Unlike {@link modeFor}, never turns a missing Account into the guessed default `all`,
+   * so unavailable and failed reads stay distinguishable from a real server answer. Cold
+   * and finite.
    */
   readMode(roomId: string, accountId: string): Observable<RoomNotifyMode> {
     return defer(() => {
@@ -170,9 +166,9 @@ export class RoomNotificationsService {
   }
 
   /**
-   * Apply a notification mode by (re)writing the room's push rules. Cold — fires on
-   * subscribe — and refreshes the client's cached rules so {@link modeFor} reflects the
-   * change immediately (before the `m.push_rules` account-data echo arrives on sync).
+   * Apply a notification mode by (re)writing the room's push rules. Cold. Refreshes the
+   * cached rules so {@link modeFor} reflects the change before the `m.push_rules`
+   * account-data echo arrives on sync.
    */
   setMode(
     roomId: string,
@@ -232,9 +228,9 @@ export class RoomNotificationsService {
     roomId: string,
     mode: RoomNotifyMode,
   ): Promise<void> {
-    // The SDK cache can lag a write made by another device. Read every homeserver before
-    // taking the rollback snapshot, and do not start a cross-account transaction unless
-    // every target has a trustworthy pre-write state.
+    // The SDK cache can lag a write made by another device: read every homeserver before
+    // the rollback snapshot, and start no cross-account transaction unless every target
+    // has a trustworthy pre-write state.
     const initialRefreshes = await Promise.allSettled(
       clients.map((client) => this.refreshRules(client)),
     );
@@ -266,9 +262,9 @@ export class RoomNotificationsService {
       return;
     }
 
-    // Each mode change can span two Matrix endpoints. Re-read the actual server state
-    // before compensating, then restore every account—including peers that succeeded—so
-    // a merged sidebar row remains one coherent preference.
+    // A mode change can span two Matrix endpoints. Re-read the server state before
+    // compensating, then restore every account, including peers that succeeded, so a merged
+    // row stays one coherent preference.
     const restorations = await Promise.allSettled(
       targets.map(async ({ client, previous }) => {
         await this.refreshRules(client);
@@ -290,8 +286,8 @@ export class RoomNotificationsService {
       (result) => result.status === 'fulfilled',
     );
     if (!restored) {
-      // Even when compensation fails, expose the homeserver's latest known state rather
-      // than retaining a stale pre-write cache in the room menu.
+      // Even when compensation fails, expose the homeserver's latest state, not a stale
+      // pre-write cache.
       await Promise.allSettled(
         targets.map(({ client }) => this.refreshRules(client)),
       );
@@ -301,8 +297,8 @@ export class RoomNotificationsService {
 
   /**
    * Serialize every push-rule write. A refresh replaces the client's complete ruleset, so
-   * room-scoped queues can still race each other's cache assignments. Account ids—not SDK
-   * clients—are captured, allowing a queued update to use a replacement client after reauth.
+   * room-scoped queues could race each other's cache assignments. Account ids, not SDK
+   * clients, are captured so a queued update can use a replacement client after reauth.
    */
   private enqueueModeUpdate(
     accountIds: readonly string[],
@@ -364,16 +360,15 @@ export class RoomNotificationsService {
   }
 
   private async refreshRules(client: MatrixClient): Promise<void> {
-    // matrix-js-sdk also assigns this internally; retain the explicit assignment for
-    // narrow test doubles and to keep the cache contract obvious at this boundary.
+    // matrix-js-sdk also assigns this internally; the explicit assignment serves narrow test
+    // doubles.
     client.pushRules = await client.getPushRules();
     this.bumpRevision();
   }
 
   private rebindClients(): void {
-    // `all()` is always populated in production. Treat an undefined return as an empty
-    // account set so narrow component-test doubles do not have to construct SDK clients
-    // merely to exercise unrelated room-shell focus behaviour.
+    // `all()` is always populated in production; undefined (narrow test doubles) means no
+    // accounts.
     const accounts = this.matrix.all?.() ?? [];
     const activeClient = this.activeProjection.client();
     const next = new Set(
@@ -463,10 +458,10 @@ export class RoomNotificationsService {
   }
 
   /**
-   * Matrix v1.7 removed `dont_notify` and `coalesce` as active actions. A rule
-   * suppresses notifications when no effective action remains, so current clients such
-   * as FluffyChat write `[]` while older clients may retain either deprecated string.
-   * Tweaks and `notify` remain custom and must not be claimed by this service.
+   * Matrix v1.7 removed `dont_notify` and `coalesce` as active actions. A rule suppresses
+   * notifications when no effective action remains, so current clients write `[]` while
+   * older clients may retain either deprecated string. Tweaks and `notify` remain custom
+   * and must not be claimed by this service.
    */
   private hasNoNotifyActions(rule: IPushRule): boolean {
     return rule.actions.every(
