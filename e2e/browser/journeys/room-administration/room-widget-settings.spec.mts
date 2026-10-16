@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { settleSurface } from '../../../support/surface-settle.mts';
 import { installWidgetFixture } from '../../support/widget.mts';
 import { addAccountViaUi } from '../../support/multi-account-journey.mts';
 import {
@@ -397,6 +398,7 @@ test.describe('Room settings', () => {
     const confirmation = page.locator('trn-alert-dialog');
     await expect(confirmation).toContainText(widgetName);
     await expect(confirmation).toContainText('every member and Matrix client');
+    await settleSurface(confirmation);
     await confirmation.getByTestId('alert-confirm').click();
 
     await expect(card).toHaveCount(0, { timeout: 30_000 });

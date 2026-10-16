@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { settleSurface } from '../../../support/surface-settle.mts';
 import {
   openSettingsSection,
   openSystemStatusFromRooms,
@@ -110,6 +111,8 @@ test.describe('Security settings', () => {
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
     await expect(page).toHaveURL(roomUrl);
 
+    // Below md the dialog is a sheet that slides up: wait for it to stop before pressing.
+    await settleSurface(encryption);
     await encryption.getByTestId('dialog-close').click();
     await expect(encryption).toBeHidden();
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
