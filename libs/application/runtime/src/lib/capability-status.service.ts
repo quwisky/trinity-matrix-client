@@ -11,6 +11,7 @@ import {
   TrustService,
   TrustSlotForecastService,
   type SlotForecast,
+  type TrustStatus,
 } from '@trinity/data-access/trust';
 import {
   BUILD_INFO,
@@ -50,6 +51,26 @@ export interface CapabilityStatusEntry {
     readonly initial: string;
   } | null;
   readonly recovery: CapabilityRecoveryOutcome | null;
+}
+
+/** The encryption prompt the global banner slot holds. */
+export interface HeldBannerPrompt {
+  readonly kind: SlotForecast;
+  /** Laid out to hold its space, but hidden, unannounced and inert. */
+  readonly placeholder: boolean;
+}
+
+/** The trust state the slot is decided on, and whether it is only the forecast. */
+interface SlotTrust {
+  readonly status: TrustStatus;
+  readonly elsewhere: boolean;
+  readonly forecast: boolean;
+}
+
+/** What the slot shows: which banner, and the trust state its prompt is drawn from. */
+interface SlotState {
+  readonly slot: 'status' | 'encryption' | null;
+  readonly trust: SlotTrust;
 }
 
 export interface CapabilityStatusGroup {
@@ -95,7 +116,7 @@ export class CapabilityStatusService {
   private readonly press = inject(PointerPressService);
   private readonly slotForecast = inject(TrustSlotForecastService);
   /** The trust state the slot is decided on: the live one, or the forecast until it arrives. */
-  private readonly slotTrust = computed(() => {
+  private readonly slotTrust = computed<SlotTrust>(() => {
     const live = this.trust.status();
     if (live !== 'unknown') {
       return {
@@ -107,7 +128,7 @@ export class CapabilityStatusService {
     const forecast = this.slotForecast.forecast();
     if (!forecast) return { status: live, elsewhere: false, forecast: false };
     return forecast === 'setup-elsewhere'
-      ? { status: 'needs-setup' as const, elsewhere: true, forecast: true }
+      ? { status: 'needs-setup', elsewhere: true, forecast: true }
       : { status: forecast, elsewhere: false, forecast: true };
   });
   /**
@@ -135,6 +156,23 @@ export class CapabilityStatusService {
     return limited ? 'status' : null;
   });
 
+  /**
+   * The slot as rendered and the trust state its prompt is drawn from, latched together:
+   * while a pointer is pressed neither changes, so a tap never straddles the slot or its
+   * content growing, shrinking or changing kind above it. The change applies on release.
+   */
+  private readonly slotState = linkedSignal<
+    { live: SlotState; pressed: boolean },
+    SlotState
+  >({
+    source: () => ({
+      live: { slot: this.liveSlot(), trust: this.slotTrust() },
+      pressed: this.press.pressed(),
+    }),
+    computation: ({ live, pressed }, previous) =>
+      pressed && previous ? previous.value : live,
+  });
+
   readonly open = this.visibility.open;
   readonly copyConfirmed = this.copied.asReadonly();
   readonly entries = computed(() =>
@@ -148,23 +186,32 @@ export class CapabilityStatusService {
           occurrenceSignature(problem, recovery),
     ),
   );
+  /** The slot as rendered: {@link liveSlot}, except that a change waits for a press to end. */
+  readonly bannerSlot = computed(() => this.slotState().slot);
   /**
-   * The slot as rendered: {@link liveSlot}, except that a change waits while a pointer is
-   * pressed, so a tap never straddles the slot growing or shrinking above it.
+   * The encryption prompt the slot holds; `null` unless the slot is `'encryption'`. Its
+   * kind is held with the slot. It is perceivable only when the live status confirms that
+   * kind and the slot is not held: a forecast, and a held prompt the live status no longer
+   * supports, are placeholders of the same kind and height until the press ends.
    */
-  readonly bannerSlot = linkedSignal<
-    { live: 'status' | 'encryption' | null; pressed: boolean },
-    'status' | 'encryption' | null
-  >({
-    source: () => ({ live: this.liveSlot(), pressed: this.press.pressed() }),
-    computation: ({ live, pressed }, previous) =>
-      pressed && previous ? previous.value : live,
-  }).asReadonly();
-  /** The forecast the encryption slot is held for, while the live status is not known. */
-  readonly bannerForecast = computed<SlotForecast | null>(() =>
-    this.bannerSlot() === 'encryption' && this.slotTrust().forecast
-      ? this.slotForecast.forecast()
-      : null,
+  readonly bannerPrompt = computed<HeldBannerPrompt | null>(
+    () => {
+      const { slot, trust } = this.slotState();
+      const kind = promptKind(trust);
+      if (slot !== 'encryption' || !kind) return null;
+      const live = this.slotTrust();
+      const confirmed =
+        !trust.forecast && !live.forecast && promptKind(live) === kind;
+      return { kind, placeholder: !confirmed };
+    },
+    {
+      equal: (a, b) =>
+        a === b ||
+        (a !== null &&
+          b !== null &&
+          a.kind === b.kind &&
+          a.placeholder === b.placeholder),
+    },
   );
   /**
    * Whether the slot has held the status notice in this app session. Only then can a
@@ -332,6 +379,16 @@ export class CapabilityStatusService {
         this.health.recoveries().get(problem.reference)?.outcome ?? null,
     };
   }
+}
+
+/** The encryption prompt a trust state asks for, if any. */
+function promptKind({ status, elsewhere }: SlotTrust): SlotForecast | null {
+  if (status === 'needs-setup' && elsewhere) return 'setup-elsewhere';
+  return status === 'needs-setup' ||
+    status === 'needs-recovery' ||
+    status === 'needs-verification'
+    ? status
+    : null;
 }
 
 function occurrenceSignature(

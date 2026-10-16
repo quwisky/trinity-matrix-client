@@ -134,7 +134,7 @@ export function provideTrinityApplication(
           hasProblems: computed(() => health.problems().length > 0),
           bannerSlot: status.bannerSlot,
           bannerSlotReserved: status.bannerSlotReserved,
-          bannerForecast: status.bannerForecast,
+          bannerPrompt: status.bannerPrompt,
           show: () => visibility.show(),
         };
       },

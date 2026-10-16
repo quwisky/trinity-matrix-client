@@ -1,14 +1,15 @@
 <!-- Always-mounted live region: a role="status" node inserted at the same moment
      its text appears (as the @if banner below is) is not reliably announced, so
      mirror the message here where the region already exists when the text changes.
-     A forecast prompt is never announced: only the confirmed one fills the region. -->
+     A placeholder prompt (a forecast, or a held prompt the live status no longer
+     supports) is never announced: only a confirmed one fills the region. -->
 <span class="sr-only" role="status" aria-live="polite">
   {{ visible() && !pending() ? message() : '' }}
 </span>
 @if (visible()) {
-  <!-- A forecast prompt is laid out to hold its space, but hidden, out of the
-       accessibility tree and inert; when the live status confirms it, this same frame
-       and banner are revealed in place. `inert` is bound as an attribute: jsdom has no
+  <!-- A placeholder prompt is laid out to hold its space, but hidden, out of the
+       accessibility tree and inert; when the live status confirms a forecast, this same
+       frame and banner are revealed in place. `inert` is bound as an attribute: jsdom has no
        `inert` property to reflect it, and the attribute is what the browser reads. -->
   <div
     class="encryption-banner__frame"
