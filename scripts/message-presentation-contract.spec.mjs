@@ -60,7 +60,7 @@ describe('Message Presentation production boundary', () => {
 
   it('routes both timeline surfaces through the single projection entrypoint', () => {
     expect(source(`${timelineRoot}/timeline.service.ts`)).toMatch(
-      /projectMessage\(\s*client,\s*room,\s*e,\s*(?:null|shield),\s*this\.mediaPipeline,\s*\)/,
+      /projectMessage\(\s*client,\s*room,\s*e,\s*(?:null|shield),\s*this\.mediaPipeline,?\s*\)/,
     );
     expect(source(`${timelineRoot}/threads.service.ts`)).toMatch(
       /projectMessage\(\s*client,\s*room,\s*e,\s*shield,\s*this\.mediaPipeline,\s*\)/,

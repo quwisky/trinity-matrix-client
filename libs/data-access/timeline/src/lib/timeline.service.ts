@@ -13,6 +13,7 @@ import {
   RoomEvent,
   RoomMemberEvent,
   RoomStateEvent,
+  type EventTimeline,
   type MatrixClient,
   type MatrixEvent,
   type Room,
@@ -77,6 +78,7 @@ import {
   CONVERSATION_MESSAGE_POLICY,
 } from './conversation-message-adapter.service';
 import { onWindowFocus, windowHasFocus } from './window-focus';
+import { TimelineRowCache } from './timeline-row-cache';
 
 const SCROLLBACK = 30;
 const RETAINED_EVENT_BYTES = 64;
@@ -346,16 +348,16 @@ export class TimelineService {
   }
   private room: Room | null = null;
 
-  // Per-event projection cache keyed by event id. Each entry stores the view model
-  // and a `rev` fingerprint of everything Message Presentation reads that can
-  // change while the room is open (see {@link eventRevision}). On refresh an event
-  // is re-projected only when its fingerprint changes; otherwise the existing view
-  // object is reused so its OnPush row never re-renders — instead of rebuilding the
-  // entire timeline (and re-running DOMPurify) on every live event.
-  private readonly viewCache = new Map<
-    string,
-    { rev: string; view: MessageView }
-  >();
+  // Per-event projection cache keyed by event id. Each row keeps its view and a
+  // fingerprint of everything Message Presentation read for it (see {@link revisionOf}).
+  // A refresh re-checks only the rows the listeners below noted as possibly changed, and
+  // re-projects one only when its fingerprint moved; every other row keeps its view object,
+  // so its OnPush row never re-renders and a page of history costs only that page.
+  private readonly rows = new TimelineRowCache();
+
+  /** The live timeline and encryption the rows were last projected against. */
+  private projectedTimeline: EventTimeline | null = null;
+  private projectedEncryption = '';
 
   // Latest event we've already sent a read receipt for, so live messages while
   // the room is open mark read without re-sending on every refresh — and
@@ -390,12 +392,43 @@ export class TimelineService {
   // loads/changes, so a full lazy member-load doesn't re-map once per member.
   private relevantSenders = new Set<string>();
 
-  private readonly onTimeline = (): void => this.scheduleRefresh();
-  private readonly onLocalEcho = (): void => this.scheduleRefresh();
+  // An event was added to (or removed from) a timeline of the room: paged in, received,
+  // or a local echo. A removal re-checks every row, since what it took away may be quoted.
+  private readonly onTimeline = (
+    event?: MatrixEvent,
+    _room?: Room,
+    _toStartOfTimeline?: boolean,
+    removed?: boolean,
+  ): void => {
+    if (removed) {
+      this.rows.markAll();
+    } else {
+      this.rows.noteEvent(event);
+    }
+    this.scheduleRefresh();
+  };
+  private readonly onLocalEcho = (
+    event?: MatrixEvent,
+    _room?: Room,
+    oldEventId?: string,
+  ): void => {
+    this.rows.noteEvent(event, oldEventId);
+    this.scheduleRefresh();
+  };
   // Others' read receipts moved — re-project so the "seen by" avatars follow them.
-  private readonly onReceipt = (): void => this.scheduleRefresh();
+  private readonly onReceipt = (event?: MatrixEvent): void => {
+    this.rows.noteReceipt(event);
+    this.scheduleRefresh();
+  };
+  // A message, or a member's own events when they are banned with their messages (MSC4293),
+  // lost its content. Received, local and cancelled redactions all land here or in onLocalEcho.
+  private readonly onRedaction = (): void => {
+    this.rows.markAll();
+    this.scheduleRefresh();
+  };
   private readonly onDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.roomId) {
+      this.rows.noteEvent(event);
       this.scheduleRefresh();
     }
   };
@@ -405,6 +438,7 @@ export class TimelineService {
   // timeline), so without this the row keeps rendering the version that just went away.
   private readonly onReplaced = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.roomId) {
+      this.rows.noteEvent(event);
       this.scheduleRefresh();
     }
   };
@@ -422,6 +456,7 @@ export class TimelineService {
       member.roomId === this.roomId &&
       this.relevantSenders.has(member.userId)
     ) {
+      this.rows.noteMember(member.userId);
       this.scheduleRefresh();
     }
   };
@@ -487,6 +522,7 @@ export class TimelineService {
     room.on(RoomEvent.Timeline, this.onTimeline);
     room.on(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
     room.on(RoomEvent.Receipt, this.onReceipt);
+    room.on(RoomEvent.Redaction, this.onRedaction);
     room.on(RoomStateEvent.Members, this.onMember);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
     client.on(MatrixEventEvent.Replaced, this.onReplaced);
@@ -552,6 +588,7 @@ export class TimelineService {
     }
     // Blur compacts the application-owned view cache while keeping SDK listeners warm;
     // focus immediately rebuilds the complete loaded projection from the SDK store.
+    this.rows.markAll();
     this.refresh();
     this.refreshTyping();
   }
@@ -565,9 +602,9 @@ export class TimelineService {
       return { listenerCount: 0, retainedBytes: 0 };
     }
     return {
-      listenerCount: 10 + (typeof window === 'undefined' ? 0 : 1),
+      listenerCount: 11 + (typeof window === 'undefined' ? 0 : 1),
       retainedBytes:
-        this.viewCache.size * RETAINED_EVENT_BYTES +
+        this.rows.size * RETAINED_EVENT_BYTES +
         this.shields.size * RETAINED_SHIELD_BYTES +
         this.relevantSenders.size * RETAINED_SENDER_BYTES,
     };
@@ -592,6 +629,7 @@ export class TimelineService {
     this.room?.off(RoomEvent.Timeline, this.onTimeline);
     this.room?.off(RoomEvent.LocalEchoUpdated, this.onLocalEcho);
     this.room?.off(RoomEvent.Receipt, this.onReceipt);
+    this.room?.off(RoomEvent.Redaction, this.onRedaction);
     this.room?.off(RoomStateEvent.Members, this.onMember);
     // Detach from the client open() attached to — NOT `matrix.instance`, which follows
     // the active account and would leave the old client's listeners attached forever
@@ -614,7 +652,9 @@ export class TimelineService {
     this._firstUnreadId.set(null);
     this._oldestEventId.set(null);
     this.relevantSenders.clear();
-    this.viewCache.clear();
+    this.rows.clear();
+    this.projectedTimeline = null;
+    this.projectedEncryption = '';
     this.shields.clear();
     this.encryption = new RoomEncryptionFlags();
     this._messages.set([]);
@@ -945,16 +985,21 @@ export class TimelineService {
     }
     const liveTimeline = room.getLiveTimeline();
     const loadedEvents = liveTimeline.getEvents();
-    const unencryptedShield = unencryptedShieldFor(
-      room,
-      this.encryption.isEncrypted(room),
-    );
+    const encrypted = this.encryption.isEncrypted(room);
+    const unencryptedShield = unencryptedShieldFor(room, encrypted);
     const events = this.visible
       ? loadedEvents
       : loadedEvents.slice(-RETAINED_EVENT_LIMIT);
-    const seen = new Set<string>();
-    const shieldIds = new Set<string>();
-    const relevant = new Set<string>();
+    // Every row is re-checked when what changed cannot be pinned to rows: a replaced live
+    // timeline (a trim or a gappy sync) may have taken away what kept rows quote, and
+    // encryption turning on changes every plaintext row's shield and link preview.
+    const encryption = `${encrypted}:${room.hasEncryptionStateEvent()}`;
+    this.rows.beginPass(
+      liveTimeline !== this.projectedTimeline ||
+        encryption !== this.projectedEncryption,
+    );
+    this.projectedTimeline = liveTimeline;
+    this.projectedEncryption = encryption;
     // Divider anchor: the first surviving message after the read marker that someone else
     // sent. The "after the marker" test runs on the RAW event order — markRead acks the
     // newest raw event, so m.fully_read can name an event the projection drops (a hidden
@@ -964,126 +1009,95 @@ export class TimelineService {
     const markerIdx = marker
       ? events.findIndex((e) => e.getId() === marker)
       : -1;
-    const afterMarker =
-      markerIdx >= 0
-        ? new Set(events.slice(markerIdx + 1).map((e) => e.getId() ?? ''))
-        : null;
+    const selfId = client.getUserId();
     let firstUnread: string | null = null;
-    const views = events
+    // Rows this pass fingerprinted, whose shields may need resolving.
+    const checked: MatrixEvent[] = [];
+    let subjectsMoved = false;
+    const views: MessageView[] = [];
+    for (let i = 0; i < events.length; i++) {
+      const e = events[i];
       // Edit events (m.replace) are aggregated onto their target, so hide them.
       // Threaded replies (`threadRootId` set on a non-root) are projected by
       // ThreadsService instead — the SDK already keeps them out of the live
       // timeline when thread support is on, but guard here too in case any leak.
       // Membership / room-state changes ride alongside messages as system lines.
-      .filter(
-        (e) =>
-          !isThreadReply(e) &&
-          (isDisplayableMessage(e) || isPresentableSystemEvent(e)),
-      )
-      .map((e): MessageView | null => {
-        const id = e.getId() ?? '';
-        // A state / membership change is normalized and presented before this capability
-        // applies the user's category visibility. A no-op change returns null and is
-        // dropped entirely.
-        if (!isDisplayableMessage(e)) {
-          const view = projectMessage(
-            client,
-            room,
-            e,
-            null,
-            this.mediaPipeline,
-          );
-          // Dropped when there is nothing to say (a no-op change) or when the user has
-          // hidden this category. Returning null collapses the row entirely — no gap or
-          // placeholder — and keeps `seen` clean so the view cache prunes it.
-          if (
-            !view ||
-            view.kind !== 'event' ||
-            !view.systemCategory ||
-            !this.showsCategory(view.systemCategory)
-          ) {
-            return null;
-          }
-          const summary = view.summary ?? view.body;
-          seen.add(id);
-          // A system line renders no "seen by" avatars (Message Presentation sets
-          // `readReceipts: []`), so its readers are nobody this row depends on.
-          collectMessageSenders(client, room, e, relevant, { receipts: false });
-          // A membership line names the TARGET (state_key), whose display name can
-          // load late — register them too so a RoomStateEvent.Members for that member
-          // re-projects the line (same late-member fix as reply previews).
-          const target = e.getStateKey();
-          if (e.getType() === EventType.RoomMember && target) {
-            relevant.add(target);
-          }
-          const cached = this.viewCache.get(id);
-          if (cached && cached.rev === summary) {
-            return cached.view;
-          }
-          this.viewCache.set(id, { rev: summary, view });
-          return view;
+      if (isThreadReply(e)) {
+        continue;
+      }
+      const id = e.getId() ?? '';
+      if (!isDisplayableMessage(e)) {
+        if (!isPresentableSystemEvent(e)) {
+          continue;
         }
-        seen.add(id);
-        collectMessageSenders(client, room, e, relevant);
-        // A system line is not an unread *message*, so only real messages from someone else
-        // can anchor the divider.
+        const view = this.systemRow(client, room, e, id);
+        // Dropped when there is nothing to say (a no-op change) or when the user has
+        // hidden this category. Returning nothing collapses the row entirely — no gap or
+        // placeholder. The row stays cached, so showing the category again costs nothing.
         if (
-          afterMarker?.has(id) &&
-          !firstUnread &&
-          e.getSender() !== client.getUserId()
+          view?.kind === 'event' &&
+          view.systemCategory &&
+          this.showsCategory(view.systemCategory)
         ) {
-          firstUnread = id;
+          views.push(view);
         }
-        // Reuse the existing view (preserving its object identity for OnPush)
-        // unless something this event renders from has actually changed. The shield
-        // (resolved asynchronously) is folded into the rev so a trust change re-projects.
-        // A shield belongs to the event that supplies the row's text: its latest edit.
-        const subjectId = shieldSubject(e).getId() ?? '';
-        shieldIds.add(subjectId);
-        const shield =
-          unencryptedShield(e) ?? this.shields.get(subjectId) ?? null;
-        const rev = eventRevision(client, room, e) + '\x1f' + shieldKey(shield);
-        const cached = this.viewCache.get(id);
-        if (cached && cached.rev === rev) {
-          return cached.view;
-        }
-        const view = projectMessage(
-          client,
-          room,
-          e,
-          shield,
-          this.mediaPipeline,
-        );
-        if (!view) {
-          return null;
-        }
-        this.viewCache.set(id, { rev, view });
-        return view;
-      })
-      .filter((view): view is MessageView => view !== null);
-    this.relevantSenders = this.visible
-      ? relevant
-      : new Set([...relevant].slice(0, RETAINED_SENDER_LIMIT));
+        continue;
+      }
+      // A system line is not an unread *message*, so only real messages from someone else
+      // can anchor the divider.
+      if (
+        markerIdx >= 0 &&
+        i > markerIdx &&
+        !firstUnread &&
+        e.getSender() !== selfId
+      ) {
+        firstUnread = id;
+      }
+      // Reuse the existing view (preserving its object identity for OnPush)
+      // unless something this event renders from has actually changed. The shield
+      // (resolved asynchronously) is part of the fingerprint so a trust change re-projects.
+      // A shield belongs to the event that supplies the row's text: its latest edit.
+      const subjectId = shieldSubject(e).getId() ?? '';
+      const shield =
+        unencryptedShield(e) ?? this.shields.get(subjectId) ?? null;
+      const reused = this.rows.reusable(id, e.replyEventId, shield);
+      if (reused) {
+        if (reused.view) views.push(reused.view);
+        continue;
+      }
+      checked.push(e);
+      // A newer edit supplies the row's text: the old one's shield is no longer shown.
+      const previousSubject = this.rows.previous(id)?.subjectId;
+      subjectsMoved ||=
+        previousSubject !== undefined && previousSubject !== subjectId;
+      const view = this.messageRow(client, room, e, id, shield, subjectId);
+      if (view) views.push(view);
+    }
+    const { pruned, rechecked } = this.rows.endPass();
+    if (pruned || rechecked > 0) {
+      const relevant = this.rows.renderedMembers();
+      this.relevantSenders = this.visible
+        ? relevant
+        : new Set([...relevant].slice(0, RETAINED_SENDER_LIMIT));
+    }
     this._oldestEventId.set(events[0]?.getId() ?? null);
     // Null when there is no marker, the marker isn't loaded, or nothing followed it.
-    this._firstUnreadId.set(afterMarker ? firstUnread : null);
-    // Drop cache entries for events no longer in the timeline (redacted-away,
-    // replaced by their remote id, or scrolled out under a window cap). Prune the
-    // shields map on the same key set so it can't grow unbounded across a session.
-    for (const id of [...this.viewCache.keys()]) {
-      if (!seen.has(id)) {
-        this.viewCache.delete(id);
-      }
-    }
-    for (const id of [...this.shields.keys()]) {
-      if (!shieldIds.has(id)) {
-        this.shields.delete(id);
+    this._firstUnreadId.set(markerIdx >= 0 ? firstUnread : null);
+    // Drop shields of events no longer shown (redacted-away, replaced by their remote id,
+    // scrolled out under a window cap, or superseded by a newer edit), so the map can't
+    // grow unbounded across a session.
+    if ((pruned || subjectsMoved) && this.shields.size > 0) {
+      const subjects = this.rows.shieldSubjects();
+      for (const id of [...this.shields.keys()]) {
+        if (!subjects.has(id)) {
+          this.shields.delete(id);
+        }
       }
     }
     this._messages.set(views);
     // Resolve encrypted-message authenticity shields off the async crypto API; when any
     // resolve to a new value they're folded into the cache rev and re-projected.
-    void this.resolveShields(room, events);
+    void this.resolveShields(room, checked);
     this._canLoadOlder.set(
       liveTimeline.getPaginationToken(Direction.Backward) !== null,
     );
@@ -1094,6 +1108,93 @@ export class TimelineService {
     this.markRead(events);
     // A tombstone lands as a state event → onTimeline → here; keep the banner current.
     this.updateTombstone(room);
+  }
+
+  /**
+   * Project a message row the refresh could not reuse as it was: re-fingerprint it, and
+   * re-project it only when the fingerprint moved.
+   */
+  private messageRow(
+    client: MatrixClient,
+    room: Room,
+    e: MatrixEvent,
+    id: string,
+    shield: MessageShield | null,
+    subjectId: string,
+  ): MessageView | null {
+    const { content, rest } = revisionOf(client, room, e);
+    const revision = rest + '\x1f' + shieldKey(shield);
+    const members = new Set<string>();
+    collectMessageSenders(client, room, e, members);
+    const previous = this.rows.previous(id);
+    const unchanged =
+      previous?.content === content && previous.rest === revision;
+    const view = unchanged
+      ? previous.view
+      : projectMessage(client, room, e, shield, this.mediaPipeline);
+    this.rows.store(
+      id,
+      {
+        content,
+        rest: revision,
+        view,
+        shield,
+        subjectId,
+        members: [...members],
+      },
+      !unchanged,
+    );
+    return view;
+  }
+
+  /**
+   * Project a system line the refresh could not reuse. A state / membership change is
+   * normalized and presented before this capability applies the user's category
+   * visibility; the line keeps its view object while its text stays the same.
+   */
+  private systemRow(
+    client: MatrixClient,
+    room: Room,
+    e: MatrixEvent,
+    id: string,
+  ): MessageView | null {
+    const reused = this.rows.reusable(id, undefined, null);
+    if (reused) {
+      return reused.view;
+    }
+    const projected = projectMessage(client, room, e, null, this.mediaPipeline);
+    const presented =
+      projected?.kind === 'event' && projected.systemCategory
+        ? projected
+        : null;
+    const summary = presented ? (presented.summary ?? presented.body) : '';
+    const previous = this.rows.previous(id);
+    const unchanged = !!previous?.view && previous.rest === summary;
+    const view = unchanged ? previous.view : presented;
+    // A system line renders no "seen by" avatars (Message Presentation sets
+    // `readReceipts: []`), so its readers are nobody this row depends on.
+    const members = new Set<string>();
+    collectMessageSenders(client, room, e, members, { receipts: false });
+    // A membership line names the TARGET (state_key), whose display name can
+    // load late — register them too so a RoomStateEvent.Members for that member
+    // re-projects the line (same late-member fix as reply previews).
+    const target = e.getStateKey();
+    if (e.getType() === EventType.RoomMember && target) {
+      members.add(target);
+    }
+    this.rows.store(
+      id,
+      {
+        content: '',
+        rest: summary,
+        view,
+        shield: null,
+        subjectId: id,
+        members: [...members],
+      },
+      !unchanged,
+    );
+    return view;
   }
 
   /**
@@ -1184,7 +1285,10 @@ export class TimelineService {
       return;
     }
     const list = events ?? this.room.getLiveTimeline().getEvents();
-    const latest = [...list].reverse().find((e) => !e.status);
+    let latest: MatrixEvent | undefined;
+    for (let i = list.length - 1; i >= 0 && !latest; i--) {
+      if (!list[i].status) latest = list[i];
+    }
     const id = latest?.getId() ?? null;
     if (
       !latest ||
@@ -1244,6 +1348,36 @@ function isThreadReply(event: MatrixEvent): boolean {
 }
 
 /**
+ * Each content object's JSON, kept while the object lives, so a row re-checked for some
+ * other reason (a receipt, a member, a shield) does not serialise its unchanged body again.
+ * The SDK replaces content rather than changing it — decryption, an edit and a remote echo
+ * all bring a new object — with one exception: a redaction empties it in place, and that
+ * also sets the redaction flag every revision carries.
+ */
+const contentJson = new WeakMap<object, string>();
+
+function contentSignature(event: MatrixEvent): string {
+  const content = event.getContent();
+  let json = contentJson.get(content);
+  if (json === undefined) {
+    json = JSON.stringify(content);
+    contentJson.set(content, json);
+  }
+  return json;
+}
+
+/**
+ * A row's fingerprint in two parts, so its body's JSON is the memoised string rather than a
+ * copy of it.
+ */
+export interface EventRevision {
+  /** The effective content (edits and decryption applied) as JSON. */
+  readonly content: string;
+  /** Every other input; see {@link eventRevision}. */
+  readonly rest: string;
+}
+
+/**
  * A compact fingerprint of every per-event input Message Presentation reads
  * that can change while the room is open: send status, redaction, decryption,
  * edits (captured via the effective content + replacing-event presence),
@@ -1257,27 +1391,39 @@ export function eventRevision(
   room: Room,
   event: MatrixEvent,
 ): string {
+  const { content, rest } = revisionOf(client, room, event);
+  return content + '\x1f' + rest;
+}
+
+/** {@link eventRevision} in its two parts. */
+export function revisionOf(
+  client: MatrixClient,
+  room: Room,
+  event: MatrixEvent,
+): EventRevision {
   const senderId = event.getSender() ?? '';
   const member = room.getMember(senderId);
-  return [
-    event.status ?? '',
-    event.isRedacted() ? 'r' : '',
-    event.isDecryptionFailure() ? 'd' : '',
-    // A new failure reason (after a reload or a key-backup change) changes the row's text.
-    event.decryptionFailureReason ?? '',
-    event.replacingEvent() ? 'e' : '',
+  return {
     // Effective content captures edits (m.replace) and decrypted bodies; it is far
     // cheaper than the DOMPurify pass that a rebuild would otherwise repeat.
-    JSON.stringify(event.getContent()),
-    reactionSignature(client, room, event),
-    replyTargetSignature(room, event.replyEventId),
-    member?.name ?? senderId,
-    member?.getMxcAvatarUrl() ?? '',
-    // Re-project when the "seen by" receipts on this event change.
-    receiptSignature(client, room, event),
-    // Re-project a poll when its votes or end state change.
-    isPollStart(event) ? pollSignature(room, event) : '',
-  ].join('\x1f');
+    content: contentSignature(event),
+    rest: [
+      event.status ?? '',
+      event.isRedacted() ? 'r' : '',
+      event.isDecryptionFailure() ? 'd' : '',
+      // A new failure reason (after a reload or a key-backup change) changes the row's text.
+      event.decryptionFailureReason ?? '',
+      event.replacingEvent() ? 'e' : '',
+      reactionSignature(client, room, event),
+      replyTargetSignature(room, event.replyEventId),
+      member?.name ?? senderId,
+      member?.getMxcAvatarUrl() ?? '',
+      // Re-project when the "seen by" receipts on this event change.
+      receiptSignature(client, room, event),
+      // Re-project a poll when its votes or end state change.
+      isPollStart(event) ? pollSignature(room, event) : '',
+    ].join('\x1f'),
+  };
 }
 
 /**

@@ -974,7 +974,7 @@ describe('TimelineService', () => {
     ]);
 
     expect(svc.resources()).toEqual({
-      listenerCount: 11,
+      listenerCount: 12,
       retainedBytes: 160,
     });
 

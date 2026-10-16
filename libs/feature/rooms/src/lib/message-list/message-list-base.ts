@@ -107,10 +107,12 @@ const DEFAULT_ROW_CAPS: MessageRowCaps = {
 
 /** A memoized row, with the inputs it was derived from (see {@link MessageListBase.rows}). */
 interface RowCacheEntry {
-  readonly view: MessageView;
-  readonly showHeader: boolean;
-  readonly daySeparator: string | null;
-  readonly row: MessageRow;
+  view: MessageView;
+  showHeader: boolean;
+  daySeparator: string | null;
+  row: MessageRow;
+  /** The derivation that last produced the row; an older one means its message has left. */
+  pass: number;
 }
 
 const LOAD_ERROR_COPY: Readonly<
@@ -353,8 +355,10 @@ export abstract class MessageListBase {
   // Grouping rows, cached per event id so an unchanged message (same view object, same
   // header flag AND same day-separator label) keeps its row identity — an OnPush row is
   // then re-rendered only when its own message, grouping or separator changes, not on
-  // every live event in the room.
-  private rowCache = new Map<string, RowCacheEntry>();
+  // every live event in the room. Updated in place: a page of history then allocates for
+  // its own rows, not for a new entry per row already loaded.
+  private readonly rowCache = new Map<string, RowCacheEntry>();
+  private rowPass = 0;
 
   /**
    * Group consecutive messages from the same sender (Discord-style), and mark where the
@@ -372,7 +376,8 @@ export abstract class MessageListBase {
     // happens to span a single day must still re-derive when the format preference moves, or
     // the first separator to appear after a backfill would carry the old one.
     const dateFormat = this.dateFormat.prefs();
-    const nextCache = new Map<string, RowCacheEntry>();
+    const pass = ++this.rowPass;
+    let visited = 0;
     // The calendar day the rows so far belong to, or null before the first row with a
     // usable timestamp. A row whose timestamp is missing or implausible (a malformed event
     // degraded to `timestamp: 0` by Message Presentation) neither opens nor closes a day:
@@ -411,18 +416,29 @@ export abstract class MessageListBase {
         // author (name + avatar).
         !!m.replyTo;
 
-      const cached = this.rowCache.get(m.id);
-      const row =
-        cached &&
-        cached.view === m &&
-        cached.showHeader === showHeader &&
-        cached.daySeparator === daySeparator
-          ? cached.row
-          : { ...m, showHeader, daySeparator };
-      nextCache.set(m.id, { view: m, showHeader, daySeparator, row });
-      return row;
+      let entry = this.rowCache.get(m.id);
+      if (
+        !entry ||
+        entry.view !== m ||
+        entry.showHeader !== showHeader ||
+        entry.daySeparator !== daySeparator
+      ) {
+        const row: MessageRow = { ...m, showHeader, daySeparator };
+        entry = { view: m, showHeader, daySeparator, row, pass: 0 };
+        this.rowCache.set(m.id, entry);
+      }
+      if (entry.pass !== pass) {
+        entry.pass = pass;
+        visited++;
+      }
+      return entry.row;
     });
-    this.rowCache = nextCache;
+    // Forget the rows of messages that have left (trimmed, redacted away, re-keyed).
+    if (visited !== this.rowCache.size) {
+      for (const [id, entry] of this.rowCache) {
+        if (entry.pass !== pass) this.rowCache.delete(id);
+      }
+    }
     return result;
   });
 
