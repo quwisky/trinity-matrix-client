@@ -36,6 +36,7 @@ import {
   UPLOAD_THUMBNAIL_PX,
 } from './thumbnail-size';
 
+/** Which rendition of an attachment to resolve. */
 export type MediaVariant = 'thumbnail' | 'full';
 
 /**
@@ -232,6 +233,7 @@ export class MediaService {
     return entry.result;
   }
 
+  /** Resolve the full-resolution bytes + filename for a download/save. */
   downloadMedia(
     media: MediaPayload,
     client: MatrixClient = this.matrix.instance,
@@ -397,8 +399,9 @@ export class MediaService {
     }
     const { w, h } = thumbnail;
     // A host-rendered thumbnail (native camera capture) is an image file of its own: it loses
-    // its metadata like any photo, even when the person keeps the video's own, being a derived
-    // preview. One rendered on a canvas has none and comes back unchanged.
+    // its metadata like any photo before it goes up, encrypted or not, even when the person
+    // keeps the video's own, being a derived preview. One rendered on a canvas has none and
+    // comes back unchanged.
     const blob = await withoutImageMetadata(
       new File([thumbnail.blob], 'thumbnail', { type: thumbnail.blob.type }),
     );
@@ -830,6 +833,7 @@ async function analyzeImage(file: File): Promise<MediaAnalysis> {
     try {
       thumbnail = await renderThumbnail(bitmap);
     } catch {
+      // best-effort: a render error must not fail the send
       thumbnail = null;
     }
     return { dims, thumbnail };

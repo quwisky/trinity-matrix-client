@@ -61,10 +61,12 @@ export class PartsBuilder {
 
   constructor(private readonly source: Bytes) {}
 
+  /** Count one visited segment, chunk or box. */
   step(): void {
     if (++this.steps > MAX_WALK_STEPS) throw new MalformedImage();
   }
 
+  /** Keep `source[start, end)` verbatim. */
   keep(start: number, end: number): void {
     if (end <= start) return;
     if (start === this.runEnd) {
@@ -81,6 +83,7 @@ export class PartsBuilder {
     this.edited = true;
   }
 
+  /** Write new bytes at the current position. */
   insert(bytes: Bytes): void {
     this.flush();
     this.push(bytes);
@@ -111,6 +114,7 @@ export class PartsBuilder {
   }
 }
 
+/** Copy `parts` into one new contiguous buffer. */
 export function joinParts(parts: readonly Uint8Array[]): Bytes {
   const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
   let offset = 0;
@@ -121,6 +125,7 @@ export function joinParts(parts: readonly Uint8Array[]): Bytes {
   return out;
 }
 
+/** Whether `bytes` holds the ASCII `text` at `offset`. */
 export function hasAscii(
   bytes: Uint8Array,
   offset: number,
