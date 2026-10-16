@@ -8,6 +8,7 @@ export const CODE_JOB_IDS = Object.freeze([
   'test',
   'renderer',
   'desktop',
+  'desktop-windows',
   'e2e',
   'browser-e2e',
   'storybook',

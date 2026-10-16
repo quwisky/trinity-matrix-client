@@ -101,6 +101,7 @@ describe('CI change classifier', () => {
       'test',
       'renderer',
       'desktop',
+      'desktop-windows',
       'e2e',
       'browser-e2e',
       'storybook',

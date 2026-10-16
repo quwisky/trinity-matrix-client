@@ -114,14 +114,15 @@ locked. App lock isn't available in the web app. Trinity Next has its own App lo
 own PIN.
 
 **Turn it on.** Open Settings › Security and turn on **Lock Trinity**. On a Mac with Touch ID,
-confirm with Touch ID first. Then choose a Trinity PIN of 4 to 16 digits (6 or more is better)
-and type it twice. Every lock has this PIN as a backup. On Windows, on Linux and on Macs
-without Touch ID, the PIN is the only way to unlock. On Linux, App lock needs your desktop's
-keyring (GNOME Keyring or KWallet) to keep the PIN; without one, Settings says so and App lock
-can't be turned on. Changing App lock later, or turning it off, asks again for the way you
-unlock: the system prompt (Face ID, Touch ID, your fingerprint or your phone's passcode) where
-you have one, or your PIN. One check covers further changes for a minute while Settings stays
-open.
+confirm with Touch ID first; on Windows 11 with Windows Hello set up, confirm with Windows Hello
+first. Then choose a Trinity PIN of 4 to 16 digits (6 or more is better) and type it twice.
+Every lock has this PIN as a backup. On Linux, on Macs without Touch ID, on Windows 10 and on
+Windows without Windows Hello set up, the PIN is the only way to unlock. On Linux, App lock
+needs your desktop's keyring (GNOME Keyring or KWallet) to keep the PIN; without one, Settings
+says so and App lock can't be turned on. Changing App lock later, or turning it off, asks again
+for the way you unlock: the system prompt (Face ID, Touch ID, Windows Hello, your fingerprint or
+your phone's passcode) where you have one, or your PIN. One check covers further changes for a
+minute while Settings stays open.
 
 **Lock after.** Choose how long Trinity waits after you leave it before it locks:
 **Immediately**, **After 1 minute** (the default), 5 minutes, 15 minutes or 1 hour. On a
@@ -150,32 +151,32 @@ Trinity is in the background.
 the sidebar), or, on a computer, from the **File** menu. You can also give it a shortcut in
 Settings › Keyboard shortcuts; it has none until you choose one.
 
-**Unlock.** Where you have a system prompt (Face ID, Touch ID, your fingerprint or your phone's
-passcode), choose the lock screen's **Unlock with…** button. The prompt also opens by itself
-when you come back to Trinity. It offers your phone's passcode or screen lock, or on a Mac
-**Use Password…** for your Mac's password. Choose **Use PIN instead** to type your Trinity PIN.
-If the prompt stops being available, for example after you turn off your phone's passcode, the
-lock screen asks for your PIN. While Trinity is locked, messages stay unread: Trinity sends no
-read receipts until you unlock. Notifications still arrive, including for the room you left
-open, and a notification or link you open while locked opens once you unlock. A verification
-request from another of your devices, or from someone else, also waits until you unlock; if
-it's cancelled or times out meanwhile, Trinity doesn't show it. On a computer, the window title
-shows only the app's name, and Trinity's own shortcuts, such as the quick switcher, do nothing;
-the menu's window and system commands, such as Quit, Close, Edit, zoom and full screen, still
-work.
+**Unlock.** Where you have a system prompt (Face ID, Touch ID, Windows Hello, your fingerprint
+or your phone's passcode), choose the lock screen's **Unlock with…** button. The prompt also
+opens by itself when you come back to Trinity. It offers your phone's passcode or screen lock,
+on a Mac **Use Password…** for your Mac's password, and on Windows your Windows Hello PIN.
+Choose **Use PIN instead** to type your Trinity PIN. If the prompt stops being available, for
+example after you turn off your phone's passcode or Windows Hello, the lock screen asks for your
+PIN. While Trinity is locked, messages stay unread: Trinity sends no read receipts until you
+unlock. Notifications still arrive, including for the room you left open, and a notification or
+link you open while locked opens once you unlock. A verification request from another of your
+devices, or from someone else, also waits until you unlock; if it's cancelled or times out
+meanwhile, Trinity doesn't show it. On a computer, the window title shows only the app's name,
+and Trinity's own shortcuts, such as the quick switcher, do nothing; the menu's window and
+system commands, such as Quit, Close, Edit, zoom and full screen, still work.
 
 **Wrong PINs.** After 5 wrong PINs in a row, Trinity makes you wait before the next try:
 30 seconds, then 1 minute, 5 minutes, 15 minutes, and then 1 hour after each further wrong
 PIN. The wait keeps counting if you quit and reopen Trinity. Nothing is erased. On a phone, too
 many failed Face ID, Touch ID or fingerprint tries make the phone itself wait or ask for its
-passcode, as it does for any app. If the phone reports too many tries, the lock screen asks for
-your Trinity PIN.
+passcode, as it does for any app; Windows Hello limits its own tries too. If the phone or
+Windows Hello reports too many tries, the lock screen asks for your Trinity PIN.
 
-**Forgot PIN?** If you have a system prompt (Face ID, Touch ID, your fingerprint or your
-phone's passcode), unlock with it and set a new PIN with **Change PIN** in Settings › Security.
-Otherwise the only way back in is **Erase all data on this device**. That signs out every
-account on this device, and encrypted messages are lost unless you have your recovery key or
-another signed-in device. Keep your recovery key safe before you turn App lock on.
+**Forgot PIN?** If you have a system prompt (Face ID, Touch ID, Windows Hello, your fingerprint
+or your phone's passcode), unlock with it and set a new PIN with **Change PIN** in Settings ›
+Security. Otherwise the only way back in is **Erase all data on this device**. That signs out
+every account on this device, and encrypted messages are lost unless you have your recovery key
+or another signed-in device. Keep your recovery key safe before you turn App lock on.
 
 **"Trinity can't read your PIN right now".** Trinity keeps the PIN in your system's secure
 storage. If that storage can't be read, for example while a Linux keyring is locked, the lock

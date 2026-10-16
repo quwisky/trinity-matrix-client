@@ -40,6 +40,8 @@ log.txt
 /electron/dist
 /electron/www
 /electron/release
+/electron/native/windows-hello/build/
+/electron/build/windows-hello.node
 
 # Node. Unanchored on purpose: pnpm and Vite create nested package dirs — `vitest` writes a
 # cache into `libs/<lib>/node_modules/.vite/`, and an anchored `/node_modules` left those

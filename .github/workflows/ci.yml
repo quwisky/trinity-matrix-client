@@ -423,6 +423,32 @@ jobs:
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
 
+  # App lock's Windows Hello addon (electron/native/windows-hello): the shell's only native
+  # module, so the only job that needs a Windows compiler. Builds it against Electron's
+  # headers and loads it with Electron-as-Node; a hosted runner has no Hello hardware, so
+  # the smoke accepts any known availability.
+  desktop-windows:
+    needs: [classify]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
+    name: Desktop (Windows Hello addon)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm electron:install
+      - run: pnpm -C electron run build:windows-hello
+      - run: pnpm -C electron compile
+      - name: Load the addon in Electron
+        shell: bash
+        env:
+          ELECTRON_RUN_AS_NODE: '1'
+        run: pnpm -C electron exec electron scripts/smoke-windows-hello.cjs
+
   # Builds and serves the component Storybook, then verifies its palette × mode canvas and
   # focused text contrast in the installed browsers. It needs neither the renderer nor a
   # homeserver, so it starts as soon as `classify` finishes.

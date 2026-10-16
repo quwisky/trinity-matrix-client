@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { handlers, mainWindowRef } = vi.hoisted(() => ({
+const { handlers, mainWindowRef, osRelease } = vi.hoisted(() => ({
+  osRelease: { current: '10.0.22631' },
   handlers: new Map<
     string,
     (event: { sender: unknown }, request?: unknown) => unknown
@@ -10,7 +11,7 @@ const { handlers, mainWindowRef } = vi.hoisted(() => ({
 
 vi.mock('electron', () => ({
   // Only the default verifier reads these; every test passes its own.
-  app: { getPath: () => '/profile' },
+  app: { getPath: () => '/profile', isPackaged: true },
   safeStorage: {},
   ipcMain: {
     handle: (
@@ -24,6 +25,10 @@ vi.mock('electron', () => ({
   },
 }));
 vi.mock('./window', () => ({ getMainWindow: () => mainWindowRef.current }));
+vi.mock('node:os', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:os')>()),
+  release: () => osRelease.current,
+}));
 
 import { PinVerifier, type PinFileIo } from './app-lock-pin';
 import {
@@ -32,8 +37,11 @@ import {
   USER_PRESENCE_SUPPORT_CHANNEL,
   USER_PRESENCE_VERIFY_CHANNEL,
   USER_PRESENCE_VERIFY_PIN_CHANNEL,
+  defaultPresenceDriver,
   registerUserPresenceIpc,
 } from './user-presence-ipc';
+import { NO_SYSTEM_PRESENCE } from './user-presence';
+import { loadWindowsHello, windowsHelloDriver } from './windows-hello';
 
 const contents = { id: 'main' };
 
@@ -391,6 +399,96 @@ describe('user presence IPC with the real verifier', () => {
     await expect(support(event)).resolves.toEqual({
       system: { kind: 'unavailable', reason: 'not-supported' },
       pin: { kind: 'unavailable', reason: 'secure-storage-unavailable' },
+    });
+  });
+});
+
+describe('user presence IPC on Windows without a loadable Hello addon', () => {
+  const files = new Map<string, string>();
+  const safeStorage = {
+    isEncryptionAvailable: () => true,
+    getSelectedStorageBackend: () => 'dpapi',
+    encryptString: (plain: string) =>
+      Buffer.from(`enc:${Buffer.from(plain).toString('base64')}`),
+    decryptString: (cipher: Buffer) =>
+      Buffer.from(cipher.toString().slice(4), 'base64').toString(),
+  };
+
+  beforeEach(() => {
+    handlers.clear();
+    files.clear();
+    mainWindowRef.current = {
+      webContents: contents,
+      getNativeWindowHandle: () => Buffer.alloc(8, 1),
+    } as never;
+    const addon = loadWindowsHello({
+      packaged: true,
+      resourcesPath: 'C:\\app\\resources',
+      require: () => {
+        throw new Error('The specified module could not be found.');
+      },
+    });
+    registerUserPresenceIpc(
+      windowsHelloDriver(addon, 22631),
+      new PinVerifier({
+        safeStorage: safeStorage as never,
+        file: 'C:\\profile\\app-lock.bin',
+        io: {
+          read: (path) => files.get(path) ?? null,
+          write: (path, data) => void files.set(path, data),
+          remove: (path) => void files.delete(path),
+        },
+        params: { N: 1024, r: 8, p: 1 },
+      }),
+    );
+  });
+
+  it('reports no Windows Hello and keeps the Trinity PIN working', async () => {
+    const event = { sender: contents };
+    const support = handlers.get(USER_PRESENCE_SUPPORT_CHANNEL)!;
+    await expect(support(event)).resolves.toEqual({
+      system: { kind: 'unavailable', reason: 'addon-unavailable' },
+      pin: { kind: 'available', set: false, nextAttemptAt: null },
+    });
+    await expect(
+      handlers.get(USER_PRESENCE_VERIFY_CHANNEL)!(event, {
+        reason: 'Unlock Trinity',
+      }),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'addon-unavailable' });
+    await expect(
+      handlers.get(USER_PRESENCE_SET_PIN_CHANNEL)!(event, { pin: '4829' }),
+    ).resolves.toEqual({ kind: 'completed' });
+    await expect(
+      handlers.get(USER_PRESENCE_VERIFY_PIN_CHANNEL)!(event, { pin: '4829' }),
+    ).resolves.toEqual({ kind: 'verified' });
+    await expect(support(event)).resolves.toEqual({
+      system: { kind: 'unavailable', reason: 'addon-unavailable' },
+      pin: { kind: 'available', set: true, nextAttemptAt: null },
+    });
+  });
+});
+
+describe('defaultPresenceDriver', () => {
+  it('has no system prompt on linux', () => {
+    expect(defaultPresenceDriver('linux')).toBe(NO_SYSTEM_PRESENCE);
+  });
+
+  // Under Vitest `process.resourcesPath` is undefined, so building the addon's path throws
+  // inside the loader, as any load failure does: Windows 11 reports the addon missing and
+  // stays on the PIN.
+  it('reads Windows 11 whose addon cannot be loaded as no Windows Hello', async () => {
+    osRelease.current = '10.0.22631';
+    await expect(defaultPresenceDriver('win32').support()).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'addon-unavailable',
+    });
+  });
+
+  it('reads Windows 10 as windows-version', async () => {
+    osRelease.current = '10.0.19045';
+    await expect(defaultPresenceDriver('win32').support()).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'windows-version',
     });
   });
 });
