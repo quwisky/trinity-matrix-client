@@ -1351,13 +1351,18 @@ function isThreadReply(event: MatrixEvent): boolean {
  * Each content object's JSON, kept while the object lives, so a row re-checked for some
  * other reason (a receipt, a member, a shield) does not serialise its unchanged body again.
  * The SDK replaces content rather than changing it — decryption, an edit and a remote echo
- * all bring a new object — with one exception: a redaction empties it in place, and that
- * also sets the redaction flag every revision carries.
+ * all bring a new object — with one exception: a redaction empties it in place. A redacted
+ * event therefore drops its entry and is serialised afresh, so the deleted text is neither
+ * kept here nor stored again in its row.
  */
 const contentJson = new WeakMap<object, string>();
 
 function contentSignature(event: MatrixEvent): string {
   const content = event.getContent();
+  if (event.isRedacted()) {
+    contentJson.delete(content);
+    return JSON.stringify(content);
+  }
   let json = contentJson.get(content);
   if (json === undefined) {
     json = JSON.stringify(content);

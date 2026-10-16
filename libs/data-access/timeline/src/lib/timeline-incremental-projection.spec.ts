@@ -19,7 +19,7 @@ import {
 } from 'matrix-js-sdk/lib/crypto-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pollResponseContent, pollStartContent } from '@trinity/util/matrix';
-import { TimelineService } from './timeline.service';
+import { TimelineService, revisionOf } from './timeline.service';
 import { trimLiveTimeline } from './live-timeline-trim';
 import type { MessageView } from './message-presentation';
 import {
@@ -386,6 +386,32 @@ describe('TimelineService incremental projection', () => {
 
       expect(row(id(2))?.kind).toBe('redacted');
       expect(row(id(9))?.replyTo?.body).toBe('(message deleted)');
+    });
+
+    it("keeps no copy of a deleted message's text in its fingerprint", async () => {
+      const { client, room, row, event, receive } = await openConversation(
+        10,
+        10,
+        {
+          2: { content: { msgtype: 'm.text', body: 'words to forget' } },
+        },
+      );
+      expect(row(id(2))?.body).toBe('words to forget');
+
+      await receive(
+        live('$redaction', {
+          type: 'm.room.redaction',
+          redacts: id(2),
+          content: { redacts: id(2) },
+        }),
+      );
+
+      // The SDK empties the content object in place; a memo keyed by that object must not
+      // keep serving (and the row cache keep storing) the text that was deleted.
+      expect(row(id(2))?.kind).toBe('redacted');
+      expect(revisionOf(client, room, event(2)).content).not.toContain(
+        'words to forget',
+      );
     });
 
     it('counts a reaction as it is added and removed', async () => {
