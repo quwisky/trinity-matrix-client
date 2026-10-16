@@ -86,6 +86,15 @@ export class SidebarSpaceHeaderComponent {
   /** The orderings offered in the "Order rooms" submenu. */
   protected readonly sortModes = TRINITY_ROOM_SORTS;
 
+  /** The row that drops the space's override: "Use my default (…)", or another account's. */
+  protected readonly defaultSortLabel = computed(() => {
+    const owner = this.defaultSortOwner();
+    const mode = this.labelFor(this.defaultSortMode());
+    return owner
+      ? `Use ${owner}’s default (${mode})`
+      : `Use my default (${mode})`;
+  });
+
   /** What the "Order rooms" row announces — the effective order, override or not. */
   protected readonly sortModeLabel = computed(() =>
     this.labelFor(this.sortMode()),
@@ -103,12 +112,20 @@ export class SidebarSpaceHeaderComponent {
   readonly curateSpaceReason = input<string | null>(null);
   readonly canInviteToSpace = input(false);
   readonly inviteToSpaceReason = input<string | null>(null);
+  /** Leave and Members act as the active account, which may not hold this space. */
+  readonly canUseSpaceMembership = input(false);
+  readonly spaceMembershipReason = input<string | null>(null);
   /** The ordering the open space's list is using (drives the radio checks). */
   readonly sortMode = input<RoomSortMode>(DEFAULT_ROOM_SORT);
   /** Whether that ordering is the space's own override rather than the account default. */
   readonly sortOverridden = input(false);
-  /** The active account's default ordering, named in the "Use my default (…)" row. */
+  /** The default ordering the list follows, named in the "Use … default" row. */
   readonly defaultSortMode = input<RoomSortMode>(DEFAULT_ROOM_SORT);
+  /**
+   * Whose default that is, when it is not the account on screen's: in the mixed view a
+   * space only another account holds follows that account's ordering. `null` reads "my".
+   */
+  readonly defaultSortOwner = input<string | null>(null);
 
   readonly spaceAction = output<SidebarSpaceAction>();
 

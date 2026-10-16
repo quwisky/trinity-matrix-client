@@ -135,7 +135,11 @@ export class SpaceActionsService {
   onLeaveSpace(): void {
     const spaceId = this.store.activeSpaceId();
     const accountId = this.store.activeAccountId();
-    if (!spaceId || !accountId) {
+    if (
+      !spaceId ||
+      !accountId ||
+      !this.vm.spaceMembershipPermission().available
+    ) {
       return;
     }
     const spaceName = this.vm.activeSpaceName();
@@ -290,17 +294,19 @@ export class SpaceActionsService {
    */
   onSetSpaceSort(mode: RoomSortMode | null): void {
     const spaceId = this.store.activeSpaceId();
-    if (!spaceId) {
+    // The account whose ordering the list shows, so the choice reorders what is on screen.
+    const accountId = this.vm.spaceOrderAccountId();
+    if (!spaceId || !accountId) {
       return; // the control is space-only, but the handler shouldn't assume it
     }
     if (mode) {
       runWithBusy(
-        this.spaceOrder.setForSpace(spaceId, mode),
+        this.spaceOrder.setForAccountSpace(accountId, spaceId, mode),
         this.status,
       ).subscribe();
     } else {
       runWithBusy(
-        this.spaceOrder.clearForSpace(spaceId),
+        this.spaceOrder.clearForAccountSpace(accountId, spaceId),
         this.status,
       ).subscribe();
     }
@@ -376,7 +382,11 @@ export class SpaceActionsService {
   onOpenSpaceMembers(): void {
     const accountId = this.store.activeAccountId();
     const spaceId = this.store.activeSpaceId();
-    if (!accountId || !spaceId) {
+    if (
+      !accountId ||
+      !spaceId ||
+      !this.vm.spaceMembershipPermission().available
+    ) {
       return;
     }
     this.openSpaceSettings(accountId, spaceId, 'members');

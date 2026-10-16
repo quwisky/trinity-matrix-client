@@ -264,13 +264,21 @@ describe('RoomShellViewModel.listsShowing', () => {
   const dm = { ...room('!dm:hs', '@me:hs'), directUserId: '@ben:hs' };
   const group = room('!group:hs', '@me:hs');
   const child = room('!child:hs', '@me:hs');
+  const space = {
+    id: '!s:hs',
+    accountId: '@me:hs',
+    name: 'Space',
+    initial: 'S',
+    avatarMxc: null,
+    childRoomIds: ['!child:hs', '!dm:hs'],
+  };
   const lists = (selection: { accountId: string; roomId: string }) =>
     build({
       selectedView: {
         accountIds: new Set(['@me:hs']),
         mode: 'active',
         rooms: [dm, group, child],
-        spaces: [],
+        spaces: [space],
         spaceChildRoomIdsByAccount: new Map([
           ['@me:hs', new Set(['!child:hs'])],
         ]),
@@ -278,29 +286,39 @@ describe('RoomShellViewModel.listsShowing', () => {
       },
     }).vm.listsShowing(selection);
 
-  it('lists a direct message in Recent and Home', () => {
+  it('lists a direct message in Recent and Home, and in a space that files it', () => {
     expect(lists({ accountId: '@me:hs', roomId: '!dm:hs' })).toEqual([
-      'recent',
-      'home',
+      { kind: 'recent' },
+      { kind: 'home' },
+      { kind: 'space', spaceId: '!s:hs' },
     ]);
   });
 
   it('lists a room outside spaces in Recent and Rooms', () => {
     expect(lists({ accountId: '@me:hs', roomId: '!group:hs' })).toEqual([
-      'recent',
-      'rooms',
+      { kind: 'recent' },
+      { kind: 'rooms' },
     ]);
   });
 
-  it('lists a space child only in Recent, since Rooms leaves it under its space', () => {
+  it('lists a space child in Recent and its space, since Rooms leaves it under its space', () => {
     expect(lists({ accountId: '@me:hs', roomId: '!child:hs' })).toEqual([
-      'recent',
+      { kind: 'recent' },
+      { kind: 'space', spaceId: '!s:hs' },
+    ]);
+  });
+
+  // The resolver keeps a listed space for any account, so a row must not be claimed for an
+  // account it does not carry: Workspace would repair that space and drop the chat.
+  it('claims only Recent for an account the row does not carry', () => {
+    expect(lists({ accountId: '@other:hs', roomId: '!child:hs' })).toEqual([
+      { kind: 'recent' },
     ]);
   });
 
   it('claims only Recent for a room the selected library does not hold', () => {
     expect(lists({ accountId: '@me:hs', roomId: '!gone:hs' })).toEqual([
-      'recent',
+      { kind: 'recent' },
     ]);
   });
 });

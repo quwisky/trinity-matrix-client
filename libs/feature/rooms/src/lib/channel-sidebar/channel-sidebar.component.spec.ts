@@ -112,10 +112,13 @@ async function renderSidebar(
       sortMode?: RoomSortMode;
       sortOverridden?: boolean;
       defaultSortMode?: RoomSortMode;
+      defaultSortOwner?: string | null;
       canCurateSpace?: boolean;
       curateSpaceReason?: string | null;
       canInviteToSpace?: boolean;
       inviteToSpaceReason?: string | null;
+      canUseSpaceMembership?: boolean;
+      spaceMembershipReason?: string | null;
       canConfigureSpace?: boolean;
       accountBadges?: ReadonlyMap<string, AccountBadge>;
     };
@@ -417,6 +420,7 @@ describe('ChannelSidebarComponent', () => {
         spaceActive: true,
         canCurateSpace: true,
         canInviteToSpace: true,
+        canUseSpaceMembership: true,
       },
     });
 
@@ -459,7 +463,7 @@ describe('ChannelSidebarComponent', () => {
     // on screen a shared one resolves two nodes, which is a strict-mode failure waiting
     // for a slower machine.
     const { fixture, container } = await renderSidebar({
-      inputs: { spaceActive: true },
+      inputs: { spaceActive: true, canUseSpaceMembership: true },
     });
 
     let opened = false;
@@ -550,6 +554,41 @@ describe('ChannelSidebarComponent', () => {
     ).not.toBeNull();
   });
 
+  it('explains and blocks Leave and Members for a space the account does not hold', async () => {
+    // Mixed view: the active account can be showing a space only another account holds.
+    // Both rows act as the active account, so they stay discoverable but do nothing.
+    const reason = 'Switch to the account that owns this space.';
+    const { fixture, container } = await renderSidebar({
+      inputs: {
+        spaceActive: true,
+        canUseSpaceMembership: false,
+        spaceMembershipReason: reason,
+      },
+    });
+
+    let left = false;
+    let members = false;
+    fixture.componentInstance.leaveSpace.subscribe(() => (left = true));
+    fixture.componentInstance.openSpaceMembers.subscribe(
+      () => (members = true),
+    );
+    container
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
+      .click();
+    fixture.detectChanges();
+
+    for (const testId of ['space-leave', 'open-space-members']) {
+      const row = document.querySelector<HTMLElement>(
+        `[data-testid="${testId}"]`,
+      )!;
+      expect(row.getAttribute('aria-disabled')).toBe('true');
+      expect(row.getAttribute('aria-description')).toBe(reason);
+      row.click();
+    }
+    expect(left).toBe(false);
+    expect(members).toBe(false);
+  });
+
   it('emits openSpaceSettings from the overflow menu', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: { spaceActive: true, canConfigureSpace: true },
@@ -572,8 +611,8 @@ describe('ChannelSidebarComponent', () => {
 
   it('hides space settings for another account\u2019s space', async () => {
     // Mixed mode: RoomSettingsService writes on the ACTIVE client, so the dialog would seed
-    // blank and save to the wrong account. Leave and invite still show — those are the
-    // pre-existing rows, unguarded today.
+    // blank and save to the wrong account. Leave and invite still show, governed by their
+    // own inputs.
     const { fixture, container } = await renderSidebar({
       inputs: { spaceActive: true, canConfigureSpace: false },
     });
@@ -1514,6 +1553,7 @@ describe('ChannelSidebarComponent space sort menu', () => {
       sortMode?: RoomSortMode;
       sortOverridden?: boolean;
       defaultSortMode?: RoomSortMode;
+      defaultSortOwner?: string | null;
     } = {},
   ) {
     const rendered = await renderSidebar({
@@ -1595,6 +1635,18 @@ describe('ChannelSidebarComponent space sort menu', () => {
 
     expect(row('space-sort-default')?.textContent).toContain(
       'Use my default (Space order)',
+    );
+  });
+
+  // Mixed view: a space only another account holds follows that account's ordering.
+  it("names the account whose default it is when that is not the account on screen's", async () => {
+    const { row } = await openSortMenu({
+      defaultSortMode: 'alphabetical',
+      defaultSortOwner: 'Alpha',
+    });
+
+    expect(row('space-sort-default')?.textContent).toContain(
+      'Use Alpha’s default (Alphabetical)',
     );
   });
 

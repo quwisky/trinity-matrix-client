@@ -81,13 +81,16 @@ export interface SpaceRoomOrderSnapshot {
  * suffixed with the user id, so two accounts on one device keep separate orderings. Nothing is
  * written to Matrix account data — the ordering does not follow the account to another device.
  *
- * **Resolution: a space's own override wins, otherwise the _active_ account's default** — not
- * the default of whichever account "owns" the space. While mixing, one space's list can hold
- * children from several accounts, and the mixed projection picks a space's `accountId` by
- * preferring the active account, so "the owner" changes as you switch. The active account is
- * the one you are acting as and the one whose default Settings shows you. A corollary: an
- * override set as `@me` is invisible to `@alt` even for a space both have joined, which is
- * intended — it is that account's view preference.
+ * **Resolution: a space's own override wins, otherwise the account's default**, read from one
+ * account's record. The rooms shell reads it through {@link snapshotFor} for the space's
+ * owner in the selected view. The mixed projection makes the active account the owner
+ * whenever it holds the space, so a space you hold follows your own ordering, the one
+ * Settings shows you, and the owner changes as you switch between accounts that both hold
+ * it. A corollary: an override set as `@me` is invisible to `@alt` even for a space both
+ * have joined, which is intended — it is that account's view preference. Only a space the
+ * active account does not hold, shown because another mixed-in account does, keeps that
+ * account's ordering. {@link effectiveFor} and {@link overrideFor} read the active
+ * account's record.
  *
  * Overrides for spaces you have **left are deliberately not pruned**, for the same reason
  * {@link AccountScopeService} keeps stale account ids: the space list is sync-derived and

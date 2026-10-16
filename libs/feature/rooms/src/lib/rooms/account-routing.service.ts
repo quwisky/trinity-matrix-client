@@ -17,6 +17,7 @@ import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   ROOM_READINESS_TIMEOUT_MS,
+  RoomReadinessService,
   SelectedRoomLibraryService,
 } from '@trinity/data-access/room-library';
 import {
@@ -57,6 +58,7 @@ export class AccountRoutingService {
   private readonly workspace = inject(WorkspaceNavigationService);
   private readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   private readonly selected = inject(SelectedRoomLibraryService);
+  private readonly roomReadiness = inject(RoomReadinessService);
   private readonly matrix = inject(MatrixClientService);
   private readonly injector = inject(Injector);
   private readonly conversations = inject(ConversationRuntime);
@@ -131,13 +133,14 @@ export class AccountRoutingService {
   }
 
   /**
-   * Open the exact Account-and-Room identity emitted by a visible Room row. `onReady` runs
-   * once Workspace has opened it, for a caller that hands focus on from a control the open
-   * removes.
+   * Open an exact Account-and-Room identity. Callers name `origin` because it decides
+   * which list the Room opens in: `'room-list'` keeps a selected space, so only a row of
+   * the sidebar list on screen may use it. `onReady` runs once Workspace has opened it,
+   * for a caller that hands focus on from a control the open removes.
    */
   onSelectRoomSelection(
     selection: ExactRoomSelection,
-    origin: WorkspaceRoomNavigationOrigin = 'room-list',
+    origin: WorkspaceRoomNavigationOrigin,
     onReady?: () => void,
   ): void {
     this.openRoom(selection, origin, onReady);
@@ -163,10 +166,22 @@ export class AccountRoutingService {
 
   /**
    * Select a space pill from the rail. In mixed mode a foreign account's space switches to
-   * that account first; Home (`null`) and same-account spaces select directly.
+   * that account first; Home (`null`) and same-account spaces select directly, and so does
+   * the pill already selected for the account on screen.
    */
-  onSelectSpaceRow({ spaceId, accountId }: ExactSpaceSelection): void {
-    const changesAccount = accountId !== this.workspace.activeAccountId();
+  onSelectSpaceRow(selection: ExactSpaceSelection): void {
+    const { spaceId } = selection;
+    const activeAccountId = this.workspace.activeAccountId();
+    // In the mixed view the account on screen can be showing another account's space, after
+    // opening one of its rooms. Its highlighted pill stays on that account and its room.
+    const accountId =
+      spaceId &&
+      activeAccountId &&
+      spaceId === this.workspace.activeSpaceId() &&
+      this.selected.spaceSelectable(activeAccountId, spaceId)
+        ? activeAccountId
+        : selection.accountId;
+    const changesAccount = accountId !== activeAccountId;
     this.navigate(
       {
         kind: 'scope',
@@ -325,14 +340,33 @@ export class AccountRoutingService {
     origin: WorkspaceRoomNavigationOrigin = 'room-action',
   ): void {
     if (target.kind === 'space') {
-      this.navigate(
-        {
-          kind: 'scope',
-          accountId: target.accountId,
-          scope: { kind: 'space', spaceId: target.roomId },
-        },
-        'Unable to open that destination right now.',
-      );
+      // A join or an accepted invitation keeps the earlier membership until `/sync` brings
+      // it, and Workspace keeps only a joined space, so the join has to land first.
+      this.roomReadiness
+        .waitForRoom(target.accountId, target.roomId)
+        .pipe(
+          switchMap(() =>
+            this.workspace.navigate({
+              kind: 'scope',
+              accountId: target.accountId,
+              scope: { kind: 'space', spaceId: target.roomId },
+            }),
+          ),
+          takeUntilDestroyed(this.destroyRef),
+        )
+        .subscribe({
+          next: (outcome) => {
+            if (outcome.kind !== 'ready') {
+              void this.status.showError(
+                'Unable to open that destination right now.',
+              );
+            }
+          },
+          error: () =>
+            void this.status.showError(
+              'Joined, but the space is not ready yet.',
+            ),
+        });
       return;
     }
     this.navigate(

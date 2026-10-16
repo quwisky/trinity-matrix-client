@@ -12,6 +12,7 @@ import {
   compareRoomSummaries,
   directMapOf,
   initialOf,
+  isJoinedSpace,
   spaceChildIdsOf,
 } from './room-projection';
 import { type RoomSummary } from './room-library.service';
@@ -199,7 +200,7 @@ export function projectSelectedSpaces(
   for (const { accountId, client } of sources) {
     const accountChildIds = new Set<string>();
     for (const room of client.getRooms()) {
-      if (!room.isSpaceRoom() || room.getMyMembership() !== 'join') continue;
+      if (!isJoinedSpace(room)) continue;
 
       const mergedChildren = childrenBySpace.get(room.roomId) ?? [];
       for (const childId of spaceChildIdsOf(client, room)) {

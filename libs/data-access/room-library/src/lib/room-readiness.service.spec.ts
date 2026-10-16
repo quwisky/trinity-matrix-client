@@ -1,6 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { ClientEvent, SyncState, type MatrixClient } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  RoomEvent,
+  SyncState,
+  type MatrixClient,
+} from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -15,8 +20,13 @@ afterEach(() => {
 });
 
 describe('RoomReadinessService', () => {
-  function setup(initiallyAvailable = false) {
-    let room: object | null = initiallyAvailable ? {} : null;
+  /** A stored Room with the Account's membership in it, as the SDK keeps it. */
+  const stored = (membership: string) => ({
+    getMyMembership: () => membership,
+  });
+
+  function setup(initial: 'none' | 'join' | 'leave' | 'invite' = 'none') {
+    let room: object | null = initial === 'none' ? null : stored(initial);
     const on = vi.fn();
     const off = vi.fn();
     const client = {
@@ -42,8 +52,15 @@ describe('RoomReadinessService', () => {
       on,
       off,
       publishRoom: () => {
-        room = {};
+        room = stored('join');
         const handler = handlerFor(on, ClientEvent.Room);
+        handler?.();
+        return handler;
+      },
+      /** The join syncs into a Room the store already held. */
+      syncJoin: () => {
+        room = stored('join');
+        const handler = handlerFor(on, RoomEvent.MyMembership);
         handler?.();
         return handler;
       },
@@ -72,13 +89,38 @@ describe('RoomReadinessService', () => {
   });
 
   it('resolves immediately when the Room is already in the SDK graph', async () => {
-    const { service, on } = setup(true);
+    const { service, on } = setup('join');
 
     await expect(
       firstValueFrom(service.waitForRoom('@owner:hs', '!ready:hs')),
     ).resolves.toBeUndefined();
     expect(on).not.toHaveBeenCalled();
   });
+
+  // Re-joining a left Room, or accepting an invitation, keeps the earlier membership in the
+  // SDK store until `/sync` brings the join; Workspace only keeps a space that is joined.
+  it.each(['leave', 'invite'] as const)(
+    'waits for the join to sync when the Room is still stored as %s',
+    async (membership) => {
+      const { service, on, off, syncJoin } = setup(membership);
+      let resolved = false;
+      const result = firstValueFrom(
+        service.waitForRoom('@owner:hs', '!again:hs'),
+      ).then(() => (resolved = true));
+
+      await Promise.resolve();
+      expect(resolved).toBe(false);
+      expect(on).toHaveBeenCalledWith(
+        RoomEvent.MyMembership,
+        expect.any(Function),
+      );
+      const handler = syncJoin();
+
+      await result;
+      expect(resolved).toBe(true);
+      expect(off).toHaveBeenCalledWith(RoomEvent.MyMembership, handler);
+    },
+  );
 
   it('fails closed when the exact Account is not live', async () => {
     const { service } = setup();
@@ -122,7 +164,10 @@ describe('RoomReadinessService', () => {
   });
 });
 
-function handlerFor(on: ReturnType<typeof vi.fn>, event: ClientEvent) {
+function handlerFor(
+  on: ReturnType<typeof vi.fn>,
+  event: ClientEvent | RoomEvent,
+) {
   return on.mock.calls.find(([boundEvent]) => boundEvent === event)?.[1] as
     ((...args: never[]) => void) | undefined;
 }

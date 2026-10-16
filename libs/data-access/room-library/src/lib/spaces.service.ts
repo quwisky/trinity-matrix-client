@@ -31,7 +31,7 @@ import {
   roomEncryptionInitialState,
   visibilityOptions,
 } from '@trinity/util/matrix';
-import { spaceChildIdsOf } from './room-projection';
+import { isJoinedSpace, spaceChildIdsOf } from './room-projection';
 import { compareOrder } from './space-child-order';
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
@@ -324,7 +324,10 @@ export class SpacesService {
       this._openSpaceId.set(spaceId);
       this._childrenBase.set([]);
       this._childrenError.set(null);
-      if (!spaceId || !this.matrix.isInitialized) {
+      // In the mixed view the active Account can be showing a space only another Account
+      // holds. Its own `/hierarchy` read would fail for a private space, and joining a child
+      // from here would join as the wrong Account, so it lists the joined children alone.
+      if (!spaceId || !this.activeHolds(spaceId)) {
         this._childrenLoading.set(false);
         return of(void 0);
       }
@@ -506,6 +509,13 @@ export class SpacesService {
         client.sendStateEvent(spaceId, EventType.SpaceChild, {}, childId),
       ).pipe(map(() => void 0));
     });
+  }
+
+  /** Whether the active Account holds a space (see {@link isJoinedSpace}). */
+  private activeHolds(spaceId: string): boolean {
+    if (!this.matrix.isInitialized) return false;
+    const space = this.matrix.instance.getRoom(spaceId);
+    return !!space && isJoinedSpace(space);
   }
 
   /**

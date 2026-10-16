@@ -7,9 +7,9 @@ export type WorkspaceNavigationScope =
 
 /** Why the Room shell is opening an exact Account-and-Room identity. */
 export type WorkspaceRoomNavigationOrigin =
-  | 'room-list'
+  | /** A row of the sidebar list on screen, by click or the Alt+↑/↓ or Alt+Shift+↑/↓ walk. */ 'room-list'
   | 'room-action'
-  | 'shortcut'
+  | /** A visit-history jump (Ctrl/Cmd+digit), which may land outside the list on screen. */ 'shortcut'
   | 'room-hop'
   | 'direct-invitation'
   | 'room-invitation'
@@ -25,15 +25,13 @@ export interface WorkspaceRoomNavigationIntent {
   readonly scope?: WorkspaceNavigationScope;
   readonly origin: WorkspaceRoomNavigationOrigin;
   /**
-   * The sidebar lists that show this Room, supplied by the caller that can see the Room
-   * Library. A `'rail-unread'` open keeps the list already on screen only when it is named
-   * here; left out, the Room opens in Recent, which lists every chat.
+   * The sidebar lists that show this Room (Recent, Home, Rooms or a Space's own list),
+   * supplied by the caller that can see the Room Library. A `'rail-unread'` open keeps the
+   * list already on screen only when it is named here; left out, the Room opens in
+   * Recent, which lists every chat.
    */
-  readonly listedIn?: readonly WorkspaceListedScopeKind[];
+  readonly listedIn?: readonly WorkspaceNavigationScope[];
 }
-
-/** A sidebar list that may show a given Room (a Space lists its own children instead). */
-export type WorkspaceListedScopeKind = 'recent' | 'home' | 'rooms';
 
 /** One Account-and-Room identity eligible for visit-history navigation. */
 export interface WorkspaceRoomIdentity {

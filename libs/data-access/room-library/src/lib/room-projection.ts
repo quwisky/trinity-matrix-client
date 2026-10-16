@@ -192,6 +192,15 @@ export function compareRoomSummaries(a: RoomSummary, b: RoomSummary): number {
 }
 
 /**
+ * A Space this Account holds: it has joined it. A Space it left, or was removed from, stays
+ * in the SDK store with that membership, and an accepted invitation keeps `invite` until the
+ * join syncs; neither counts.
+ */
+export function isJoinedSpace(room: Room): boolean {
+  return room.isSpaceRoom() && room.getMyMembership() === 'join';
+}
+
+/**
  * A space's *joined* child room ids, ordered by the `m.space.child` `order` field
  * (Unicode code point, unordered children last) then room name. Children we have not
  * joined — and removed/dangling child links — are dropped. Pure read of the space room,

@@ -1,6 +1,7 @@
 import type { WorkspaceNavigationIntent } from './workspace-navigation.models';
 import {
   RECENT_WORKSPACE_SCOPE,
+  sameWorkspaceScope,
   type WorkspaceDestination,
   type WorkspaceOpenOptions,
   type WorkspaceView,
@@ -24,16 +25,24 @@ function roomScope(
   }
   if (intent.origin === 'rail-unread') {
     // Keep the list on screen only while it shows the chat, so the row is there to select.
-    return current.accountId === intent.accountId &&
-      current.scope.kind !== 'space' &&
-      intent.listedIn?.includes(current.scope.kind)
+    // A space's list can show another Account's chat in the mixed view; as for a pick from
+    // that list, Workspace keeps the space while a selected Account holds it.
+    const listed = intent.listedIn?.some((scope) =>
+      sameWorkspaceScope(scope, current.scope),
+    );
+    return listed &&
+      (current.accountId === intent.accountId || current.scope.kind === 'space')
       ? current.scope
       : RECENT_WORKSPACE_SCOPE;
   }
-  return (
-    intent.scope ??
-    (current.scope.kind === 'space' ? RECENT_WORKSPACE_SCOPE : current.scope)
-  );
+  if (intent.scope) return intent.scope;
+  // A row picked from the list on screen is in that list, so even a space stays (#1369),
+  // also for another Account's row in the mixed view: that Account may keep a space any
+  // selected Account holds, and Workspace repairs one none of them holds to Recent.
+  // Opened from anywhere else, a space may not hold the Room, so Recent lists it instead.
+  return current.scope.kind !== 'space' || intent.origin === 'room-list'
+    ? current.scope
+    : RECENT_WORKSPACE_SCOPE;
 }
 
 /** What browser history holds under the current entry, as far as Workspace knows. */

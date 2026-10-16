@@ -6,6 +6,7 @@ import {
   type SyncState,
 } from '@trinity/data-access/matrix-client';
 import {
+  RoomReadinessService,
   SelectedRoomLibraryService,
   type SelectedRoomLibraryView,
 } from '@trinity/data-access/room-library';
@@ -39,6 +40,8 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
   let showError: Mock;
   let transition: Mock;
   let loadEvent: Mock;
+  let joinSynced: Subject<void>;
+  let waitForRoom: Mock;
   const focused = signal<ConversationHandle | null>(null);
   const eventTarget = signal<{ readonly eventId: string } | null>(null);
   const activeRoomId = signal<string | null>(null);
@@ -53,10 +56,12 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
 
   function build(): AccountRoutingService {
     navigate = vi.fn(() => of({ kind: 'ready' }));
-    listsShowing = vi.fn(() => ['recent', 'home']);
+    listsShowing = vi.fn(() => [{ kind: 'recent' }, { kind: 'home' }]);
     showError = vi.fn();
     transition = vi.fn();
     loadEvent = vi.fn(() => of(true));
+    joinSynced = new Subject<void>();
+    waitForRoom = vi.fn(() => joinSynced);
     TestBed.configureTestingModule({
       providers: [
         AccountRoutingService,
@@ -82,6 +87,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
           } as never,
         }),
         MockProvider(SelectedRoomLibraryService, { view }),
+        MockProvider(RoomReadinessService, { waitForRoom }),
         MockProvider(MatrixClientService, { syncState }),
       ],
     });
@@ -364,7 +370,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
       kind: 'room',
       ...chat,
       origin: 'rail-unread',
-      listedIn: ['recent', 'home'],
+      listedIn: [{ kind: 'recent' }, { kind: 'home' }],
     });
     expect(listsShowing).toHaveBeenCalledWith(chat);
     expect(onReady).toHaveBeenCalledOnce();
@@ -389,5 +395,43 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     for (const [intent] of navigate.mock.calls) {
       expect(intent).not.toHaveProperty('listedIn');
     }
+  });
+
+  // A join or an accepted invitation keeps the earlier membership until `/sync` brings it,
+  // and Workspace keeps only a joined space: re-joining a space left this session would
+  // otherwise land in Recent.
+  it('waits for a confirmed space join to sync before selecting the space', () => {
+    const routing = build();
+
+    routing.openConfirmedLinkedRoom({
+      kind: 'space',
+      roomId: '!s:hs',
+      accountId: '@me:hs',
+    });
+
+    expect(waitForRoom).toHaveBeenCalledWith('@me:hs', '!s:hs');
+    expect(navigate).not.toHaveBeenCalled();
+    joinSynced.next();
+    expect(navigate).toHaveBeenCalledExactlyOnceWith({
+      kind: 'scope',
+      accountId: '@me:hs',
+      scope: { kind: 'space', spaceId: '!s:hs' },
+    });
+  });
+
+  it('reports a confirmed space whose join never syncs', () => {
+    const routing = build();
+
+    routing.openConfirmedLinkedRoom({
+      kind: 'space',
+      roomId: '!s:hs',
+      accountId: '@me:hs',
+    });
+    joinSynced.error(new Error('timed out'));
+
+    expect(navigate).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      'Joined, but the space is not ready yet.',
+    );
   });
 });

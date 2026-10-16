@@ -117,6 +117,8 @@ describe('RoomsPage quick switcher', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
+        // The Account holds every space these tests open, as `selectionAvailability` says.
+        selectedRoomLibraryProvider(),
         MockProvider(RoomLibraryService, {
           selectionAvailability,
           clearMarkedUnread: () => of(void 0),
@@ -472,10 +474,13 @@ describe('RoomsPage mobile navigation', () => {
     expect(shell.store.pane()).toBe('list');
     expect(TestBed.inject(RoomsTimelineStub).close).not.toHaveBeenCalled();
 
-    shell.routing.onSelectRoomSelection({
-      roomId: '!r:hs',
-      accountId: '@me:hs',
-    });
+    shell.routing.onSelectRoomSelection(
+      {
+        roomId: '!r:hs',
+        accountId: '@me:hs',
+      },
+      'room-list',
+    );
     await vi.waitFor(() => expect(shell.store.pane()).toBe('conversation'));
   });
 
@@ -945,10 +950,13 @@ describe('RoomsPage mobile navigation', () => {
   it('semantic Room selection opens the mobile Conversation pane', async () => {
     const shell = build();
 
-    shell.routing.onSelectRoomSelection({
-      roomId: '!r:hs',
-      accountId: '@me:hs',
-    });
+    shell.routing.onSelectRoomSelection(
+      {
+        roomId: '!r:hs',
+        accountId: '@me:hs',
+      },
+      'room-list',
+    );
     await settleWorkspace(); // the projections follow the URL from an effect
 
     expect(shell.store.activeRoomId()).toBe('!r:hs');
@@ -972,10 +980,13 @@ describe('RoomsPage mobile navigation', () => {
 
   it('silently ignores selecting the exact Room that is already open', async () => {
     const shell = build();
-    shell.routing.onSelectRoomSelection({
-      roomId: '!r:hs',
-      accountId: '@me:hs',
-    });
+    shell.routing.onSelectRoomSelection(
+      {
+        roomId: '!r:hs',
+        accountId: '@me:hs',
+      },
+      'room-list',
+    );
     await settleWorkspace();
     const navigate = TestBed.inject(Router).navigate as Mock;
     const showError = vi.spyOn(shell.status, 'showError');
@@ -984,10 +995,13 @@ describe('RoomsPage mobile navigation', () => {
     timelineOpen.mockClear();
     releaseAll.mockClear();
 
-    shell.routing.onSelectRoomSelection({
-      roomId: '!r:hs',
-      accountId: '@me:hs',
-    });
+    shell.routing.onSelectRoomSelection(
+      {
+        roomId: '!r:hs',
+        accountId: '@me:hs',
+      },
+      'room-list',
+    );
     await settleWorkspace();
 
     expect(showError).not.toHaveBeenCalled();
@@ -1002,10 +1016,13 @@ describe('RoomsPage mobile navigation', () => {
     const showError = vi.spyOn(shell.status, 'showError');
     navigate.mockResolvedValueOnce(false);
 
-    shell.routing.onSelectRoomSelection({
-      roomId: '!r:hs',
-      accountId: '@me:hs',
-    });
+    shell.routing.onSelectRoomSelection(
+      {
+        roomId: '!r:hs',
+        accountId: '@me:hs',
+      },
+      'room-list',
+    );
     await settleWorkspace();
 
     expect(showError).toHaveBeenCalledWith(

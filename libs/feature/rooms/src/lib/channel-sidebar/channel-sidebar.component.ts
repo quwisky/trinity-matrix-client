@@ -92,6 +92,9 @@ export class ChannelSidebarComponent {
   readonly curateSpaceReason = input<string | null>(null);
   readonly canInviteToSpace = input(false);
   readonly inviteToSpaceReason = input<string | null>(null);
+  /** Whether "Leave space" and "Members" may act as the active account in this space. */
+  readonly canUseSpaceMembership = input(false);
+  readonly spaceMembershipReason = input<string | null>(null);
   /** Already narrowed by {@link filterQuery} — the shell filters, so that the Alt+↑/↓ room
    * walk steps through exactly what is on screen (`RoomShellStore.roomFilter`). */
   readonly rooms = input<readonly RoomSummary[]>([]);
@@ -234,8 +237,10 @@ export class ChannelSidebarComponent {
   readonly sortMode = input<RoomSortMode>(DEFAULT_ROOM_SORT);
   /** Whether that ordering is the space's own override rather than the account default. */
   readonly sortOverridden = input(false);
-  /** The active account's default ordering, named in the "Use my default (…)" row. */
+  /** The default ordering the list follows, named in the "Use … default" row. */
   readonly defaultSortMode = input<RoomSortMode>(DEFAULT_ROOM_SORT);
+  /** Whose default that is, when not the account on screen's; `null` reads "my". */
+  readonly defaultSortOwner = input<string | null>(null);
   /**
    * Order this space's rooms this way, from the "Order rooms" submenu of the space overflow.
    * `null` means "follow my account default", which drops the override. One output because

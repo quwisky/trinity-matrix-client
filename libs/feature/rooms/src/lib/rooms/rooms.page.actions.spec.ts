@@ -4,6 +4,7 @@ import {
   RoomsTimelineStub,
   clientStub,
   invitesProvider,
+  selectedRoomLibraryProvider,
   setRouteRoom,
   settleWorkspace,
   shellFrom,
@@ -107,6 +108,8 @@ describe('RoomsPage space actions', () => {
           provide: ACCOUNT_REMOVAL_LAUNCHER,
           useValue: { remove: accountRemoval },
         },
+        // The Account holds every space these actions open, as `selectionAvailability` says.
+        selectedRoomLibraryProvider(),
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
@@ -573,6 +576,8 @@ describe('RoomsPage room / DM / invite actions', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
+        // The Account holds every space these tests open, as `selectionAvailability` says.
+        selectedRoomLibraryProvider(),
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
@@ -1178,10 +1183,13 @@ describe('RoomsPage room / DM / invite actions', () => {
     shell.members.onSelectMember(bob);
     ref.close('@bob:hs');
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
-    shell.routing.onSelectRoomSelection({
-      accountId: '@me:hs',
-      roomId: '!second:hs',
-    });
+    shell.routing.onSelectRoomSelection(
+      {
+        accountId: '@me:hs',
+        roomId: '!second:hs',
+      },
+      'room-list',
+    );
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-threads' });
 
@@ -1574,6 +1582,8 @@ describe('RoomsPage space hierarchy actions', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
+        // The Account holds every space these tests open, as `selectionAvailability` says.
+        selectedRoomLibraryProvider(),
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),

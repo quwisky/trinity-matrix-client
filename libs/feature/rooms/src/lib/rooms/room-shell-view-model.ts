@@ -10,6 +10,7 @@ import {
   RailUnreadChatsPreference,
   SpaceRoomOrderService,
   UnreadAggregatorService,
+  DEFAULT_ROOM_SORT,
   comparatorFor,
   filterRoomLibraryItems,
   type RoomSortMode,
@@ -17,7 +18,7 @@ import {
   type SpaceSummary,
 } from '@trinity/data-access/room-library';
 import { initialOf } from '@trinity/util/matrix';
-import { type WorkspaceListedScopeKind } from '@trinity/application/workspace';
+import { type WorkspaceNavigationScope } from '@trinity/application/workspace';
 import { type ExactRoomSelection } from '../shared/exact-selection';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
@@ -75,8 +76,8 @@ export class RoomShellViewModel {
    * messages (`m.direct`) in recency order. The Rooms view shows every non-DM joined
    * room that does not belong to any space (space-owned rooms live under their space).
    * A selected space shows only its joined child rooms, in the ordering that space resolves
-   * to — its own override, else the active account's default (recent activity out of the
-   * box). All read live signals, so the list reacts to sync, membership, `m.space.child`
+   * to — its own override, else the account's default (recent activity out of the box), for
+   * the account {@link spaceOrderAccountId} names. All read live signals, so the list reacts to sync, membership, `m.space.child`
    * changes, and to the ordering being changed from the sidebar or Settings.
    *
    * Every list reads one selected Room Library generation. Room ownership, deduplication,
@@ -109,29 +110,34 @@ export class RoomShellViewModel {
     const children = childIds
       .map((id) => byId.get(id))
       .filter((room): room is RoomSummary => room !== undefined);
-    return children.sort(
-      comparatorFor(this.spaceOrder.effectiveFor(spaceId), childIds),
-    );
+    return children.sort(comparatorFor(this.spaceSortMode(), childIds));
   });
 
   /**
-   * The sidebar lists that show one Room, by the rules {@link visibleRooms} applies. Recent
-   * lists every chat. A Room the selected library does not hold is claimed only by Recent,
-   * the one list that always has it.
+   * The sidebar lists that show one Room, by the rules {@link visibleRooms} applies, filter
+   * box aside. Recent lists every chat, and each space lists its children whatever their
+   * kind. A Room the selected library does not hold is claimed only by Recent, the one list
+   * that always has it.
    */
   listsShowing(
     selection: ExactRoomSelection,
-  ): readonly WorkspaceListedScopeKind[] {
-    const row = this.selectedLibrary
-      .view()
-      .rooms.find(
-        (room) =>
-          room.id === selection.roomId &&
-          room.accountIds.includes(selection.accountId),
-      );
-    if (!row) return ['recent'];
-    if (this.isDirectRow(row)) return ['recent', 'home'];
-    return this.isSpaceChild(row) ? ['recent'] : ['recent', 'rooms'];
+  ): readonly WorkspaceNavigationScope[] {
+    const view = this.selectedLibrary.view();
+    const row = view.rooms.find(
+      (room) =>
+        room.id === selection.roomId &&
+        room.accountIds.includes(selection.accountId),
+    );
+    if (!row) return [{ kind: 'recent' }];
+    const spaces = view.spaces
+      .filter((space) => space.childRoomIds.includes(row.id))
+      .map((space) => ({ kind: 'space', spaceId: space.id }) as const);
+    if (this.isDirectRow(row)) {
+      return [{ kind: 'recent' }, { kind: 'home' }, ...spaces];
+    }
+    return this.isSpaceChild(row)
+      ? [{ kind: 'recent' }, ...spaces]
+      : [{ kind: 'recent' }, { kind: 'rooms' }, ...spaces];
   }
 
   /**
@@ -156,11 +162,34 @@ export class RoomShellViewModel {
   );
 
   /**
-   * The ordering the open space's rooms are listed in — its own override, else the active
-   * account's default. Drives the sidebar header menu's radio checks.
+   * The account whose ordering the open space's list uses, and whose record the sort menu
+   * writes: the space's owner in the selected view. That is the active account whenever it
+   * holds the space. In the mixed view a space only another account holds keeps that
+   * account's ordering, so opening one of its rooms as a different account does not
+   * reorder the list.
    */
-  readonly spaceSortMode = computed<RoomSortMode>(() =>
-    this.spaceOrder.effectiveFor(this.store.activeSpaceId()),
+  readonly spaceOrderAccountId = computed(() => {
+    const spaceId = this.store.activeSpaceId();
+    const owner = spaceId
+      ? this.railSpaces().find((space) => space.id === spaceId)?.accountId
+      : undefined;
+    return owner ?? this.matrix.activeUserId();
+  });
+
+  private readonly spaceOrderSnapshot = computed(() => {
+    const accountId = this.spaceOrderAccountId();
+    return accountId
+      ? this.spaceOrder.snapshotFor(accountId, this.store.activeSpaceId())
+      : null;
+  });
+
+  /**
+   * The ordering the open space's rooms are listed in — its own override, else the
+   * account's default (see {@link spaceOrderAccountId}). Drives the sidebar header menu's
+   * radio checks.
+   */
+  readonly spaceSortMode = computed<RoomSortMode>(
+    () => this.spaceOrderSnapshot()?.effectiveMode ?? DEFAULT_ROOM_SORT,
   );
 
   /**
@@ -168,11 +197,23 @@ export class RoomShellViewModel {
    * what separates a checked "Recent activity" from a checked "Use my default".
    */
   readonly spaceSortOverridden = computed(
-    () => this.spaceOrder.overrideFor(this.store.activeSpaceId()) !== null,
+    () => (this.spaceOrderSnapshot()?.overrideMode ?? null) !== null,
   );
 
-  /** The active account's default ordering, named in the menu's "Use my default (…)" row. */
-  readonly defaultSpaceSortMode = this.spaceOrder.defaultMode;
+  /** That account's default ordering, named in the menu's "Use … default" row. */
+  readonly defaultSpaceSortMode = computed<RoomSortMode>(
+    () => this.spaceOrderSnapshot()?.defaultMode ?? DEFAULT_ROOM_SORT,
+  );
+
+  /**
+   * The name of the account whose ordering the space follows, when it is not the account
+   * on screen, so the menu says whose default it offers; `null` when it is "my" default.
+   */
+  readonly spaceOrderOwnerName = computed(() => {
+    const accountId = this.spaceOrderAccountId();
+    if (!accountId || accountId === this.matrix.activeUserId()) return null;
+    return this.accountBadges().get(accountId)?.name ?? accountId;
+  });
 
   readonly activeSpaceName = computed(() => {
     const id = this.store.activeSpaceId();
@@ -440,6 +481,20 @@ export class RoomShellViewModel {
     }
     return this.permissions.room(spaceId).invite;
   });
+
+  /**
+   * Whether "Leave space" and "Members" are offered for the active space. Both act as the
+   * ACTIVE account, so it has to hold the space: in the mixed view it can be showing a
+   * space only another account holds, after opening one of that space's rooms.
+   */
+  readonly spaceMembershipPermission = computed(() =>
+    this.ownsActiveSpace()
+      ? { available: true, reason: null }
+      : {
+          available: false,
+          reason: 'Switch to the account that owns this space.',
+        },
+  );
 
   /** Whether the active space belongs to the signed-in account. */
   private readonly ownsActiveSpace = computed(() => {

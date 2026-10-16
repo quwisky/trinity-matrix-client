@@ -179,7 +179,9 @@ export class ShellShortcutsService {
   }
 
   /**
-   * Open a list-walk target when it still belongs to the visible Account projection.
+   * Open a list-walk target when it still belongs to the visible Account projection. The
+   * walk steps only through the list on screen, so it opens the room as a pick from that
+   * list: a space stays selected rather than falling back to Recent (#1369).
    */
   private openShortcutTarget(room: ExactRoomSelection | null): void {
     if (!room) return;
@@ -197,7 +199,7 @@ export class ShellShortcutsService {
     ) {
       return;
     }
-    this.routing.onSelectRoomSelection(room, 'shortcut');
+    this.routing.onSelectRoomSelection(room, 'room-list');
   }
 
   private roomIdentity(

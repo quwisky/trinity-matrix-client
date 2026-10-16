@@ -15,6 +15,7 @@ import {
   addAccountViaUi,
   apiLogin,
   configureMultiAccountSuite,
+  mixInAccount,
   postMessage,
   session,
   type ApiUser,
@@ -219,12 +220,15 @@ async function seedUnreadRooms(
   const reader = await apiLogin(request, hs, user, pass);
   const sender = await apiLogin(request, hs, senderUser, senderPass);
   const rooms: string[] = [];
+  const roomIds: string[] = [];
   for (let i = 0; i < count; i++) {
     const name = `Unread ${String(i).padStart(2, '0')} ${runId}`;
-    await seedUnreadRoom(request, hs, reader, sender, name, `${runId}-${i}`);
+    roomIds.push(
+      await seedUnreadRoom(request, hs, reader, sender, name, `${runId}-${i}`),
+    );
     rooms.push(name);
   }
-  return { user, pass, rooms };
+  return { user, pass, rooms, roomIds, reader };
 }
 
 /** Open Settings › Appearance and choose how many unread chats the rail lists. */
@@ -415,6 +419,194 @@ test.describe('Space rail unread chats', () => {
       'aria-current',
       'true',
     );
+  });
+
+  test('a rail chat keeps the space whose list shows it, and opens anything else in Recent', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}ru7`;
+    const seeded = await seedUnreadRooms(request, hs, runId, 2);
+    const [inSpace, outside] = seeded.rooms;
+    const { reader } = seeded;
+    const spaceName = `Rail space ${runId}`;
+    const created = await sendWithRetry(`createRoom ${spaceName}`, () =>
+      request.post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: reader.headers,
+        data: {
+          name: spaceName,
+          preset: 'private_chat',
+          creation_content: { type: 'm.space' },
+        },
+      }),
+    );
+    const spaceId = (await created.json()).room_id as string;
+    await sendWithRetry(`m.space.child ${inSpace}`, () =>
+      request.put(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(
+          spaceId,
+        )}/state/m.space.child/${encodeURIComponent(seeded.roomIds[0])}`,
+        {
+          headers: reader.headers,
+          data: { via: [reader.userId.slice(reader.userId.indexOf(':') + 1)] },
+        },
+      ),
+    );
+    // The pill's name gains ", unread" while one of its rooms is unread.
+    const spacePill = page.locator('trn-server-rail').getByRole('button', {
+      name: new RegExp(`^${escapeRegExp(spaceName)}(, |$)`),
+    });
+    const recent = page.getByTestId('rail-recent');
+    const selectedRow = (room: string) =>
+      page.locator('trn-channel-sidebar .channel.channel--selected', {
+        hasText: room,
+      });
+
+    await login(page, {
+      available: true,
+      hs,
+      user: seeded.user,
+      pass: seeded.pass,
+    });
+    await expect(railEntries(page)).toHaveCount(2, { timeout: 30_000 });
+    await spacePill.click();
+    await expect(spacePill).toHaveAttribute('aria-current', 'true');
+    await expect(
+      page.locator('trn-channel-sidebar .channel', { hasText: inSpace }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // The space lists this chat, so the space stays with its row selected.
+    await railEntry(page, inSpace).getByRole('button').click();
+    await expect(selectedRow(inSpace)).toBeVisible({ timeout: 15_000 });
+    await expect(spacePill).toHaveAttribute('aria-current', 'true');
+    await expect(recent).not.toHaveAttribute('aria-current', 'true');
+
+    // It does not list this one, so the chat opens in Recent, which lists every chat.
+    await railEntry(page, outside).getByRole('button').click();
+    await expect(recent).toHaveAttribute('aria-current', 'true', {
+      timeout: 15_000,
+    });
+    await expect(selectedRow(outside)).toBeVisible({ timeout: 15_000 });
+    await expect(spacePill).not.toHaveAttribute('aria-current', 'true');
+  });
+
+  // The mixed view: only A holds the space, which files a room A and B have both joined.
+  // B's unread chat there keeps the space while acting as B, though B does not hold it.
+  // Clicking the space's pill again stays on B and the chat, and B cannot leave a space it
+  // does not hold. A reload is not asserted: it races the cached sync on startup (#1401).
+  test('another account’s rail chat keeps the space whose list shows it', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}ru8`;
+    const userA = `rail-ma-${runId}`;
+    const passA = `rail-ma-pass-${runId}`;
+    const userB = `rail-mb-${runId}`;
+    const passB = `rail-mb-pass-${runId}`;
+    const nameB = `Rail Mixed B ${runId}`;
+    const spaceName = `A's rail space ${runId}`;
+    const shared = `Shared in A's space ${runId}`;
+    await registerUser(request, userA, passA);
+    await registerUser(request, userB, passB);
+    const a = await apiLogin(request, hs, userA, passA);
+    const b = await apiLogin(request, hs, userB, passB);
+    await setDisplayName(request, hs, b, nameB);
+    const space = await sendWithRetry(`createRoom ${spaceName}`, () =>
+      request.post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: a.headers,
+        data: {
+          name: spaceName,
+          preset: 'private_chat',
+          creation_content: { type: 'm.space' },
+        },
+      }),
+    );
+    const spaceId = (await space.json()).room_id as string;
+    const sharedRoom = await sendWithRetry(`createRoom ${shared}`, () =>
+      request.post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: a.headers,
+        data: { name: shared, preset: 'private_chat', invite: [b.userId] },
+      }),
+    );
+    const sharedId = (await sharedRoom.json()).room_id as string;
+    await sendWithRetry(`join ${shared}`, () =>
+      request.post(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(sharedId)}/join`,
+        { headers: b.headers },
+      ),
+    );
+    await sendWithRetry(`m.space.child ${shared}`, () =>
+      request.put(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(
+          spaceId,
+        )}/state/m.space.child/${encodeURIComponent(sharedId)}`,
+        {
+          headers: a.headers,
+          data: { via: [a.userId.slice(a.userId.indexOf(':') + 1)] },
+        },
+      ),
+    );
+    // A writes, so the chat is unread for B only.
+    await postMessage(request, hs, a, sharedId, `${runId}-shared`, 'hello B');
+
+    // Sign in B, then add A: A is the account on screen, with B mixed in.
+    await login(page, { available: true, hs, user: userB, pass: passB });
+    await addAccountViaUi(page, hs, userA, passA);
+    const handle = page.locator('.userbar__handle');
+    await expect(handle).toContainText(`@${userA}:`);
+    await mixInAccount(page, userB);
+
+    // Mixed, the pill's name adds " — " and its account, and ", unread" while unread.
+    const spacePill = page.locator('trn-server-rail').getByRole('button', {
+      name: new RegExp(`^${escapeRegExp(spaceName)}( — |, |$)`),
+    });
+    const recent = page.getByTestId('rail-recent');
+    const selected = page.locator(
+      'trn-channel-sidebar .channel.channel--selected',
+    );
+    const expectSpaceSelected = async (): Promise<void> => {
+      await expect(spacePill).toHaveAttribute('aria-current', 'true', {
+        timeout: 30_000,
+      });
+      await expect(recent).not.toHaveAttribute('aria-current', 'true');
+    };
+
+    await spacePill.click();
+    await expectSpaceSelected();
+    await expect(
+      page.locator('trn-channel-sidebar .channel', { hasText: shared }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // B's unread chat names B; opening it acts as B and keeps A's space.
+    const entry = railEntry(page, shared);
+    await expect(entry.getByRole('button')).toHaveAccessibleName(
+      `${shared} · 1 unread · ${nameB}`,
+      { timeout: 30_000 },
+    );
+    await entry.getByRole('button').click();
+    await expect(handle).toContainText(`@${userB}:`, { timeout: 20_000 });
+    await expect(selected).toHaveText(new RegExp(escapeRegExp(shared)), {
+      timeout: 15_000,
+    });
+    await expectSpaceSelected();
+
+    // B does not hold the space, so Leave space says to switch rather than act as B.
+    await page.getByTestId('space-header').click();
+    const leave = page.getByTestId('space-leave');
+    await expect(leave).toHaveAttribute('aria-disabled', 'true');
+    await expect(leave).toHaveAttribute(
+      'aria-description',
+      'Switch to the account that owns this space.',
+    );
+    await page.keyboard.press('Escape');
+
+    // The space's pill, clicked again to get back to its list, stays on B and the chat.
+    await spacePill.click();
+    await expectSpaceSelected();
+    await expect(handle).toContainText(`@${userB}:`);
+    await expect(selected).toHaveText(new RegExp(escapeRegExp(shared)));
   });
 
   test('Up to 5, All and Off choose how many unread chats the rail lists, and Off is saved and exported', async ({

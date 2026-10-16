@@ -562,8 +562,13 @@ function setupHierarchy(opts: {
   reject?: unknown;
   /** Skip `connect()`, to assert what a caller sees before the shell has wired it up. */
   skipConnect?: boolean;
+  /** Whether this account holds the opened `!s:hs` itself (it does unless a test says not). */
+  holdsSpace?: boolean;
 }) {
-  const spaceIds = new Set(opts.joinedSpaces ?? []);
+  const spaceIds = new Set([
+    ...(opts.holdsSpace === false ? [] : ['!s:hs']),
+    ...(opts.joinedSpaces ?? []),
+  ]);
   const joined = new Set([...(opts.joined ?? []), ...spaceIds]);
   const getRoomHierarchy = opts.reject
     ? vi.fn().mockRejectedValue(opts.reject)
@@ -595,7 +600,9 @@ function setupHierarchy(opts: {
     getUserId: () => '@me:hs',
     getRooms: () => joinedRooms,
     getRoom: (id: string) =>
-      joined.has(id) ? { getMyMembership: () => 'join' } : null,
+      joined.has(id)
+        ? { getMyMembership: () => 'join', isSpaceRoom: () => spaceIds.has(id) }
+        : null,
     getRoomHierarchy,
     on: vi.fn(),
     off: vi.fn(),
@@ -912,7 +919,11 @@ describe('SpacesService hierarchy', () => {
     const client = {
       getUserId: () => '@me:hs',
       getRooms: () => [],
-      getRoom: () => null,
+      // The account holds the space it opens; only a held space's hierarchy is fetched.
+      getRoom: (id: string) =>
+        id === '!s:hs'
+          ? { getMyMembership: () => 'join', isSpaceRoom: () => true }
+          : null,
       getRoomHierarchy,
       on: vi.fn(),
       off: vi.fn(),
@@ -938,6 +949,59 @@ describe('SpacesService hierarchy', () => {
       '!a:hs',
       '!b:hs',
     ]);
+  });
+
+  it('skips the hierarchy of a space the active account does not hold', async () => {
+    // Mixed view: the active account can be showing a space only another account holds.
+    // Its own /hierarchy read would fail for a private space, so there is nothing to fetch.
+    const { svc, getRoomHierarchy } = setupHierarchy({
+      rooms: [],
+      reject: new Error('forbidden'),
+      holdsSpace: false,
+    });
+
+    void svc.openSpace('!s:hs').subscribe();
+    await flush();
+
+    expect(getRoomHierarchy).not.toHaveBeenCalled();
+    expect(svc.childrenError()).toBeNull();
+    expect(svc.childrenLoading()).toBe(false);
+    expect(svc.openSpaceChildren()).toEqual([]);
+  });
+
+  it('skips the hierarchy of a space the active account has left', async () => {
+    // The SDK keeps a left room in its store; only a joined space is read.
+    const { svc, getRoomHierarchy, client } = setupHierarchy({
+      rooms: [],
+      holdsSpace: false,
+    });
+    client.getRoom = (id: string) =>
+      id === '!s:hs'
+        ? { getMyMembership: () => 'leave', isSpaceRoom: () => true }
+        : null;
+
+    void svc.openSpace('!s:hs').subscribe();
+    await flush();
+
+    expect(getRoomHierarchy).not.toHaveBeenCalled();
+    expect(svc.childrenError()).toBeNull();
+  });
+
+  it('skips the hierarchy of a space the active account is only invited to', async () => {
+    // Held means joined: a space opens once the join has synced (RoomReadinessService).
+    const { svc, getRoomHierarchy, client } = setupHierarchy({
+      rooms: [],
+      holdsSpace: false,
+    });
+    client.getRoom = (id: string) =>
+      id === '!s:hs'
+        ? { getMyMembership: () => 'invite', isSpaceRoom: () => true }
+        : null;
+
+    void svc.openSpace('!s:hs').subscribe();
+    await flush();
+
+    expect(getRoomHierarchy).not.toHaveBeenCalled();
   });
 
   it('surfaces a hierarchy fetch failure in childrenError', async () => {

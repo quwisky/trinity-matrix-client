@@ -11,6 +11,7 @@ import {
   InvitesService,
   RoomLibraryService,
   RoomReadinessService,
+  SelectedRoomLibraryService,
   SpacesService,
 } from '@trinity/data-access/room-library';
 import {
@@ -48,9 +49,15 @@ interface HarnessOptions {
   readonly routeAccountId?: string;
   readonly routeRoomId?: string;
   readonly routeView?: string;
+  readonly routeSpaceId?: string;
   readonly routeEventId?: string;
   readonly rooms?: Readonly<Record<string, readonly string[]>>;
   readonly compact?: boolean;
+  /** The mixed view: its selected Accounts, and the Spaces any of them has joined. */
+  readonly mixed?: {
+    readonly accountIds: readonly string[];
+    readonly spaceIds: readonly string[];
+  };
   /** Conversations' attention port (App lock); absent means only the Workspace decides. */
   readonly attentive?: WritableSignal<boolean>;
 }
@@ -68,6 +75,9 @@ function harness(options: HarnessOptions = {}) {
     convertToParamMap({
       ...(options.routeAccountId ? { account: options.routeAccountId } : {}),
       ...(options.routeView ? { view: options.routeView } : {}),
+      ...(options.routeSpaceId
+        ? { space: encodeRoomSegment(options.routeSpaceId) }
+        : {}),
       ...(options.routeEventId ? { event: options.routeEventId } : {}),
     }),
   );
@@ -137,6 +147,13 @@ function harness(options: HarnessOptions = {}) {
         ? ('available' as const)
         : ('unconfirmed' as const);
     },
+  };
+  const selectedRooms = {
+    spaceSelectable: (accountId: string, spaceId: string) =>
+      rooms.selectionAvailability(accountId, spaceId) === 'available' ||
+      (!!options.mixed &&
+        options.mixed.accountIds.includes(accountId) &&
+        options.mixed.spaceIds.includes(spaceId)),
   };
   const spaces = { openSpace: vi.fn(() => of(void 0)) };
   const waitForRoom = vi.fn(() => of(void 0));
@@ -227,6 +244,7 @@ function harness(options: HarnessOptions = {}) {
       { provide: ConversationRuntime, useValue: conversations },
       { provide: MediaPipeline, useValue: media },
       { provide: RoomLibraryService, useValue: rooms },
+      { provide: SelectedRoomLibraryService, useValue: selectedRooms },
       {
         provide: RoomReadinessService,
         useValue: { waitForRoom },
@@ -771,6 +789,93 @@ describe('WorkspaceNavigationService', () => {
       expect(h.navigate).toHaveBeenLastCalledWith(['/rooms'], {
         queryParams: { account: BOB, space: encodeRoomSegment(spaceId) },
         replaceUrl: false,
+      });
+    });
+
+    describe('in the mixed view', () => {
+      const SPACE = '!space:example.org';
+      // ALICE holds the space; BOB holds only the room the space lists.
+      const mixed = { accountIds: [ALICE, BOB], spaceIds: [SPACE] };
+      const rooms = { [ALICE]: [SPACE], [BOB]: [ROOM] };
+
+      it('keeps a space another selected Account holds when opening its room as BOB (#1369)', async () => {
+        const h = harness({ routeAccountId: ALICE, rooms, mixed });
+        await firstValueFrom(
+          h.service.navigate({
+            kind: 'scope',
+            accountId: ALICE,
+            scope: { kind: 'space', spaceId: SPACE },
+          }),
+        );
+
+        await expect(
+          firstValueFrom(
+            h.service.navigate({
+              kind: 'room',
+              accountId: BOB,
+              roomId: ROOM,
+              origin: 'room-list',
+            }),
+          ),
+        ).resolves.toMatchObject({ kind: 'ready', change: 'committed' });
+        expect(h.switchActiveAccount).toHaveBeenCalledWith(
+          BOB,
+          expect.anything(),
+        );
+        expect(h.service.view()).toEqual({
+          accountId: BOB,
+          scope: { kind: 'space', spaceId: SPACE },
+          roomId: ROOM,
+          pane: 'conversation',
+        });
+        expect(h.navigate).toHaveBeenLastCalledWith(
+          ['/rooms', encodeRoomSegment(ROOM)],
+          {
+            queryParams: { account: BOB, space: encodeRoomSegment(SPACE) },
+            replaceUrl: false,
+          },
+        );
+      });
+
+      it('restores that space and room on BOB while ALICE still holds the space', async () => {
+        const h = harness({
+          accountId: BOB,
+          routeAccountId: BOB,
+          routeSpaceId: SPACE,
+          routeRoomId: ROOM,
+          rooms,
+          mixed,
+        });
+
+        await vi.waitFor(() =>
+          expect(h.conversations.focus).toHaveBeenCalled(),
+        );
+        expect(h.service.view()).toEqual({
+          accountId: BOB,
+          scope: { kind: 'space', spaceId: SPACE },
+          roomId: ROOM,
+          pane: 'conversation',
+        });
+      });
+
+      it('repairs the space, as before, once no selected Account holds it', async () => {
+        const h = harness({
+          accountId: BOB,
+          routeAccountId: BOB,
+          routeSpaceId: SPACE,
+          routeRoomId: ROOM,
+          rooms,
+          mixed: { accountIds: [BOB], spaceIds: [] },
+        });
+
+        await vi.waitFor(() =>
+          expect(h.service.view()).toEqual({
+            accountId: BOB,
+            scope: { kind: 'recent' },
+            roomId: null,
+            pane: 'list',
+          }),
+        );
       });
     });
 

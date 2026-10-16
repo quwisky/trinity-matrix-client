@@ -60,6 +60,7 @@ describe('SidebarSpaceHeaderComponent', () => {
       hasAnyUnread: true,
       canInviteToSpace: true,
       canCurateSpace: true,
+      canUseSpaceMembership: true,
     });
 
     click('[aria-label="Create a room"]');
