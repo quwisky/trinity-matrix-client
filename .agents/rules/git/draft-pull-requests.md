@@ -9,4 +9,5 @@ pending. When new work lands on a ready pull request, return it to draft
 `scripts/agent-guard.mjs` blocks `gh pr create` without `--draft` and blocks
 `gh pr ready` while `gh pr checks` does not pass. Follow
 [Prepare a pull request](../../../apps/docs-developers/src/content/docs/contributing/prepare-a-pull-request.md#review-handoff)
-for the rest of the handoff.
+for the rest of the handoff, and [pull request handling](pull-request-handling.md)
+for merges and the guides that cover the rest.

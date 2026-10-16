@@ -31,6 +31,22 @@ Use `Closes #123` when the pull request resolves an issue and `Refs #123` for re
 
 ## Hand off honestly {#review-handoff}
 
-Open the pull request as a draft and mark it ready only when it can be merged as it stands: every check is green, the review is finished, and nothing is pending. Return it to draft while new work is in progress. Call out failed, retried, skipped, and unavailable checks. Mention changes to migrations, security boundaries, infrastructure, configuration, or public APIs so reviewers can focus appropriately. Do not merge the pull request as part of preparation.
+Open the pull request as a draft and mark it ready only when it can be merged as it stands: every check is green, the review is finished, and nothing is pending. Return it to draft while new work is in progress. Call out failed, retried, skipped, and unavailable checks. Mention changes to migrations, security boundaries, infrastructure, configuration, or public APIs so reviewers can focus appropriately.
+
+Before marking it ready, have someone other than the author review the final diff: the maintainer, another contributor, or a fresh review agent. Fix the findings that would block a merge and have the fix reviewed, and list the rest in the description or a follow-up issue. Give failing-first evidence for a fix or behavior change. When pull-request CI cannot exercise the change, such as a harness change that only the Synapse nightly runs, dispatch that workflow on the branch and link the run.
+
+The maintainer merges: do not merge or approve the pull request, or bypass the branch rules, unless the maintainer asks you to.
+
+## Stack dependent pull requests {#stacked-pull-requests}
+
+Base a pull request that needs another one on that pull request's branch, and keep it a draft until the parent merges. Merging gives the parent's commits new hashes, so then fetch, rebase the branch with `git rebase --onto origin/main <parent commit it sits on> <branch>`, retarget it with `gh pr edit <number> --base main` if GitHub has not, rerun the affected checks, and push with `git push --force-with-lease`. Restacking your own stack this way is coordinated history rewriting.
+
+## Change someone else's pull request {#others-pull-requests}
+
+Review a pull request someone else opened when asked, and change it only when asked. Add commits on top. Rewrite its history only when asked to, with `git push --force-with-lease=<branch>:<reviewed commit>` so that a push you have not seen is never overwritten, and say in the description what you rewrote.
+
+## After the merge {#after-merge}
+
+Once the maintainer merges the pull request, remove its worktree if it is clean and delete the local branch. Then check the CI run for the merge commit on `main`. When a newer push lands on `main`, CI cancels the older run and the newer run covers both. Fix a failure in a new pull request.
 
 Read [validate a change](../validate-a-change/) and [branches and commits](../branches-and-commits/) before publishing the branch.
