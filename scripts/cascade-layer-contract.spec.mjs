@@ -261,6 +261,9 @@ describe('cascade layer contract', () => {
     expect(rulePaths(overrides)).toEqual([
       "button:disabled:not([data-trn-selection-locked]), [aria-disabled='true']:not([data-trn-selection-locked])",
       '[data-trn-selection-locked]',
+      ":is(button, a)[trnBtn][data-trn-presentation='solid']:not( [data-trn-variant='secondary'] ):is(:disabled, [aria-disabled='true'])",
+      ":is(button, a)[trnBtn][data-trn-presentation='solid']:not( [data-trn-variant='secondary'] ):is(:disabled, [aria-disabled='true']) > &:not(:focus-visible)",
+      ":is(button, a)[trnBtn][data-trn-presentation='solid']:not( [data-trn-variant='secondary'] ):is(:disabled, [aria-disabled='true']) > @media (forced-colors: active)",
       '[data-trn-action-disabled]',
       ':is(button, a)[data-trn-icon-button]',
       ':is(button, a)[trnBtn][data-trn-icon-button]',

@@ -163,6 +163,13 @@ const ROLES = [
       '--trinity-active',
     ],
   },
+  // A disabled solid primary or danger button (#1355): its label on its own neutral fill.
+  // Opacity faded the label and its tinted fill together to 2.0:1, so the state is drawn with
+  // these roles instead.
+  {
+    text: '--trinity-disabled-foreground',
+    on: ['--trinity-disabled-surface'],
+  },
   {
     text: '--trinity-state-hover-foreground',
     on: ['--trinity-state-hover-surface'],
@@ -322,6 +329,27 @@ const NON_TEXT_ROLES = [
       '--trinity-sidebar',
       '--trinity-surface-raised',
     ],
+  },
+  // A disabled solid button's border keeps its shape visible: the neutral fill alone is
+  // 1.02-1.64:1 against the panes (#1355).
+  {
+    foreground: '--trinity-disabled-border',
+    on: [
+      '--trinity-surface-canvas',
+      '--trinity-chat',
+      '--trinity-sidebar',
+      '--trinity-surface-workspace',
+      '--trinity-surface-raised',
+      '--trinity-surface-overlay',
+      '--trinity-surface-overlay-footer',
+      '--trinity-status-neutral-surface',
+    ],
+  },
+  // On an attention surface the border nearly matches the accent, so the neutral fill itself
+  // carries the shape of a disabled solid primary that would otherwise invert there.
+  {
+    foreground: '--trinity-disabled-surface',
+    on: ['--trinity-state-attention-surface'],
   },
   // A loading inline image's outline (rendered-markdown.scss, `.mx-image--loading`): on every
   // message surface around it, since its raised fill alone barely differs from the dark panes.

@@ -403,6 +403,14 @@
     --trinity-focus-ring-offset: 2px;
     --trinity-disabled-opacity: 0.48;
 
+    // A disabled solid primary or danger button (#1355). The opacity fade took its tinted fill
+    // and label toward the pane together, to 2.0:1, so it draws a neutral fill with the muted
+    // label instead (5.13:1 or more) and the control border, because that fill is
+    // 1.02-1.64:1 on the panes.
+    --trinity-disabled-surface: var(--trinity-surface-control);
+    --trinity-disabled-foreground: var(--trinity-text-muted);
+    --trinity-disabled-border: var(--trinity-border-control);
+
     // --- Trinity text -------------------------------------------------------------
     --trinity-text: oklch(32% 0.012 60deg);
     --trinity-text-muted: oklch(50% 0.014 60deg);
