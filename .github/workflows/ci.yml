@@ -708,6 +708,8 @@ jobs:
           restore-keys: android-emulator-${{ runner.os }}-36-google_apis-x86_64-
       - name: Install the emulator and its system image
         id: emulator-install
+        # Three attempts of at most 2 + 10 minutes each, plus the pauses between them.
+        timeout-minutes: 40
         env:
           PACKAGE_PATHS: ${{ steps.emulator-packages.outputs.paths }}
           RESTORED_KEY: ${{ steps.emulator-cache.outputs.cache-matched-key }}
@@ -724,11 +726,14 @@ jobs:
             "$sdkmanager" --list_installed 2> /dev/null |
               awk -F '|' -v pkg="$1" '{ gsub(/ /, "", $1); gsub(/ /, "", $2) } $1 == pkg { print $2; exit }'
           }
-          # sdkmanager exits non-zero when a download is corrupt; its partial files are deleted
-          # before the next attempt so that attempt downloads afresh.
+          # sdkmanager exits non-zero when a download is corrupt. After a failed attempt its
+          # partial downloads and both package directories are deleted, so the next attempt
+          # downloads afresh and cannot install beside a half-moved package. `{ yes || :; }`
+          # keeps the licence pipe's status sdkmanager's even under pipefail, where `yes`
+          # exiting on SIGPIPE would otherwise fail every attempt.
           for attempt in 1 2 3; do
             start=$SECONDS
-            if yes | "$sdkmanager" --licenses > /dev/null &&
+            if { yes || :; } | timeout 120 "$sdkmanager" --licenses > /dev/null &&
               timeout 600 "$sdkmanager" --install emulator "$SYSTEM_IMAGE" --channel=0 > /dev/null &&
               [ -n "$(version emulator)" ] && [ -n "$(version "$SYSTEM_IMAGE")" ]; then
               echo "sdkmanager attempt $attempt succeeded in $((SECONDS - start))s"
@@ -740,6 +745,7 @@ jobs:
             fi
             echo "::warning::sdkmanager attempt $attempt failed after $((SECONDS - start))s; retrying"
             rm -rf "$ANDROID_HOME/.temp" "$ANDROID_HOME/.downloadIntermediates"
+            while read -r dir; do rm -rf "$dir"; done <<< "$PACKAGE_PATHS"
             sleep $((attempt * 15))
           done
           emulator=$(version emulator)
@@ -782,8 +788,9 @@ jobs:
       # the installed versions differ from the restored entry's. Only main saves: the entry is
       # 2 GB, and pull requests restore main's, so there is one entry rather than one per pull
       # request. A pull request run before main has an entry installs with the retry alone.
+      # Shard 1 saves; both shards install the same packages, and two 2 GB uploads would race.
       - name: Save the emulator and its system image
-        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.mobile.outputs.started == 'true' && steps.emulator-install.outputs.key != steps.emulator-cache.outputs.cache-matched-key }}
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && matrix.shard == 1 && steps.mobile.outputs.started == 'true' && steps.emulator-install.outputs.key != steps.emulator-cache.outputs.cache-matched-key }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.emulator-packages.outputs.paths }}
