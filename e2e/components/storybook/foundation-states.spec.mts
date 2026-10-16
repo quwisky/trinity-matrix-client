@@ -7,6 +7,7 @@ import {
   type Srgb,
 } from '../../browser/support/contrast.mts';
 import { disabledContrast } from './catalog-accessibility.mts';
+import { expectSeparatedFocusRing } from './focus-ring-pixels.mts';
 import {
   type ResolvedThemeMode,
   type ThemeId,
@@ -173,31 +174,25 @@ async function expectAttentionAction(
   );
   await page.mouse.move(0, 0);
 
+  const onAttentionRing = await resolveTokenSrgb(
+    page,
+    'attention-action',
+    '--trinity-focus-ring-on-attention',
+  );
   await action.focus();
   await expect(action).toBeFocused();
-  const attentionRing = await expectPaintedRing(
-    action,
-    await resolveTokenSrgb(
-      page,
-      'attention-action',
-      '--trinity-focus-ring-on-attention',
-    ),
-  );
+  const attentionRing = await expectPaintedRing(action, onAttentionRing);
   expect(contrastRatio(attentionRing, attentionSurface)).toBeGreaterThanOrEqual(
     3,
   );
+  await action.evaluate((element: HTMLElement) => element.blur());
   // The ring shares the inverted fill's colour, so a gap in the surface colour is what
   // keeps it distinct from the button.
-  const ringOffset = await action.evaluate((element) => {
-    const style = getComputedStyle(element);
-    return {
-      colour: style.getPropertyValue('--tw-ring-offset-color').trim(),
-      width: style.getPropertyValue('--tw-ring-offset-width').trim(),
-    };
+  const ratios = await expectSeparatedFocusRing(page, action, onAttentionRing);
+  test.info().annotations.push({
+    type: 'contrast',
+    description: `attention action ring ${JSON.stringify(ratios)}`,
   });
-  expect(ringOffset.width).not.toMatch(/^0(px)?$/);
-  expect(ringOffset.colour).not.toBe('');
-  await action.evaluate((element: HTMLElement) => element.blur());
   return hoverSurface;
 }
 
@@ -1307,7 +1302,7 @@ test.describe('semantic design foundations', () => {
     );
   });
 
-  test('an unavailable solid button keeps the disabled roles on hover and its focus border', async ({
+  test('an unavailable solid button keeps the disabled roles on hover and its focus ring', async ({
     page,
   }) => {
     await openStory(page, 'components-control-recipe-matrix--complete-catalog');
@@ -1328,16 +1323,13 @@ test.describe('semantic design foundations', () => {
       await action.evaluate((element) => getComputedStyle(element).opacity),
     ).toBe('1');
 
-    await action.focus();
-    await expect(action).toBeFocused();
-    const focusRing = await resolveTokenSrgb(
+    // A solid primary button's focus ring stands apart from its edge, so the disabled border
+    // must not replace it.
+    await expectSeparatedFocusRing(
       page,
-      testId,
-      '--trinity-focus-ring',
+      action,
+      await resolveTokenSrgb(page, testId, '--trinity-focus-ring'),
     );
-    await expect
-      .poll(() => computedColour(action, 'border-top-color'))
-      .toEqual(focusRing);
   });
 
   test('a disabled solid secondary or outline button keeps the shared fade', async ({

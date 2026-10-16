@@ -29,6 +29,10 @@ If a control has product meaning, keep it with the owning feature. Move it into 
 
 Feature templates choose a shape instead of adding padding, height or width classes to a `trnBtn`; the design-system contract rejects those.
 
+### Button focus ring {#button-focus-ring}
+
+A solid primary `trnBtn` draws its focus ring `--trinity-focus-ring-offset` (2px) out from its edge, not flush against it. Its fill is too close to the ring's colour to tell the two apart (1.31-1.45:1 for the accent, 1:1 for the inverted attention action), so a flush ring reads as a thick border. The gap is transparent and shows whatever surface the button sits on, so the ring keeps the 3:1 it has against every surface on both of its sides, on a pane, a dialog, the rail or an attention surface. Every other button keeps the shared ring. Feature code never adds `ring-` classes to a `trnBtn`; the ring belongs to the recipe.
+
 ## Style with semantic tokens {#semantic-tokens}
 
 The root theme foundation defines color, spacing, shape, typography, motion, and surface tokens for light and dark appearance. Product styles consume those meanings instead of hard-coded color values or vendor custom properties.

@@ -252,8 +252,6 @@ describe('TrnButton', () => {
         `${attention}hover:bg-[color:var(--trinity-state-attention-action-hover-surface)]`,
         // Helm's anchor hover outranks the plain one, so anchors carry their own copy.
         `${attention}[a]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)]`,
-        `${attention}focus-visible:ring-offset-[length:var(--trinity-focus-ring-offset)]`,
-        `${attention}focus-visible:ring-offset-[color:var(--trinity-state-attention-surface)]`,
       ]),
     );
     // None of the attention roles applies unscoped, which would repaint every primary button.
@@ -458,9 +456,71 @@ describe('TrnButton', () => {
     ).toBe('Only room admins can do this.');
   });
 
+  it('separates a solid primary focus ring from its fill with a gap that shows the surface behind', () => {
+    const separatedRing = [
+      'focus-visible:border-transparent',
+      'focus-visible:ring-0',
+      'focus-visible:outline-solid',
+      'focus-visible:outline-[length:var(--trinity-focus-ring-width)]',
+      'focus-visible:outline-offset-[length:var(--trinity-focus-ring-offset)]',
+      'focus-visible:outline-[color:var(--trinity-focus-ring)]',
+    ];
+    for (const shape of ['label', 'icon', 'row', 'inline'] as const) {
+      for (const size of ['xs', 'sm', 'md', 'lg'] as const) {
+        const solidPrimary = trnButtonRecipe({
+          presentation: 'solid',
+          shape,
+          size,
+          variant: 'primary',
+        }).split(' ');
+
+        expect(solidPrimary).toEqual(expect.arrayContaining(separatedRing));
+        // A painted ring or border flush against the accent fill is what read as a thick
+        // border; neither may survive the merge, on any surface.
+        expect(solidPrimary).not.toContain('focus-visible:ring-3');
+        expect(solidPrimary).not.toContain('focus-visible:border-ring');
+        expect(solidPrimary).not.toContain(
+          'focus-visible:border-[color:var(--trinity-focus-ring)]',
+        );
+        expect(solidPrimary).not.toContain(
+          'focus-visible:ring-[color:var(--trinity-focus-ring)]',
+        );
+        expect(
+          solidPrimary.filter((name) => /(^|:)ring-offset-/u.test(name)),
+        ).toEqual([]);
+      }
+    }
+
+    for (const [variant, presentation] of [
+      ['secondary', 'solid'],
+      ['danger', 'solid'],
+      ['primary', 'outline'],
+      ['primary', 'ghost'],
+      ['primary', 'link'],
+      ['danger', 'outline'],
+    ] as const) {
+      const recipe = trnButtonRecipe({
+        presentation,
+        shape: 'label',
+        size: 'md',
+        variant,
+      }).split(' ');
+
+      expect(recipe).toEqual(
+        expect.arrayContaining([
+          'focus-visible:ring-3',
+          'focus-visible:border-[color:var(--trinity-focus-ring)]',
+          'focus-visible:ring-[color:var(--trinity-focus-ring)]',
+        ]),
+      );
+      expect(recipe.some((name) => name.includes(':outline-'))).toBe(false);
+    }
+  });
+
   it('shares the global focus ring across every presentation and variant', () => {
     for (const presentation of ['solid', 'outline', 'ghost', 'link'] as const) {
       for (const variant of ['primary', 'secondary', 'danger'] as const) {
+        if (presentation === 'solid' && variant === 'primary') continue;
         const recipe = trnButtonRecipe({
           presentation,
           shape: 'icon',

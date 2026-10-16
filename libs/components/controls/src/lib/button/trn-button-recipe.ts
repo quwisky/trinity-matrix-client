@@ -49,16 +49,14 @@ const solidDangerTone =
  * A solid primary action on an attention surface (an accent `trn-banner`, `trn-page-header` or
  * `trnOverlaySurface`, which mark themselves `data-trn-surface="attention"`). Its fill is the
  * same accent as the surface, so it would read as plain text with no visible hover. There it
- * inverts to the attention action roles, and its focus ring gains an offset in the surface
- * colour so the ring, which shares the fill's colour, stays distinct from the button. Outside
- * such a surface none of these classes match.
+ * inverts to the attention action roles. Outside such a surface none of these classes match.
  *
  * Anchors need their own hover class: Helm's `[a]:hover:bg-primary/80` compiles to
  * `.cls:is(a):hover`, which outranks the plain attention hover. The `[a]:` copy has equal
  * specificity and is emitted after Helm's, so it wins.
  */
 const solidPrimaryOnAttention =
-  'in-data-[trn-surface=attention]:bg-[color:var(--trinity-state-attention-action-surface)] in-data-[trn-surface=attention]:text-[color:var(--trinity-state-attention-action-foreground)] in-data-[trn-surface=attention]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:[a]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:focus-visible:ring-offset-[length:var(--trinity-focus-ring-offset)] in-data-[trn-surface=attention]:focus-visible:ring-offset-[color:var(--trinity-state-attention-surface)]';
+  'in-data-[trn-surface=attention]:bg-[color:var(--trinity-state-attention-action-surface)] in-data-[trn-surface=attention]:text-[color:var(--trinity-state-attention-action-foreground)] in-data-[trn-surface=attention]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:[a]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)]';
 
 const solidTone = {
   primary: solidPrimaryOnAttention,
@@ -105,11 +103,19 @@ const nonSolidTone = {
 } as const;
 
 /**
- * One keyboard-focus ring for every button, matching `trnInput` and the global baseline.
+ * The keyboard-focus ring for every button but a solid primary one, matching `trnInput`.
  * `dark:focus-visible:ring-*` out-merges Helm destructive's `dark:focus-visible:ring-destructive/40`.
  */
 const focusRing =
   'focus-visible:border-[color:var(--trinity-focus-ring)] focus-visible:ring-[color:var(--trinity-focus-ring)] dark:focus-visible:ring-[color:var(--trinity-focus-ring)]';
+
+/**
+ * A solid primary fill (the accent, or the inverted attention action) is close to the ring's
+ * colour, so a ring flush against it reads as one thick border. An outline with a transparent
+ * offset leaves a gap that shows whatever surface the button sits on.
+ */
+const separatedFocusRing =
+  'focus-visible:border-transparent focus-visible:ring-0 focus-visible:outline-solid focus-visible:outline-[length:var(--trinity-focus-ring-width)] focus-visible:outline-offset-[length:var(--trinity-focus-ring-offset)] focus-visible:outline-[color:var(--trinity-focus-ring)]';
 
 /** A full-width list row: the label starts at the inline start and wraps instead of clipping. */
 const rowShape = 'h-auto w-full justify-start text-start whitespace-normal';
@@ -144,10 +150,15 @@ export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
       ? solidTone[options.variant]
       : nonSolidTone[options.variant][options.presentation];
 
+  const ring =
+    options.presentation === 'solid' && options.variant === 'primary'
+      ? separatedFocusRing
+      : focusRing;
+
   return hlm(
     buttonVariants({ variant, size }),
     shapeClasses[options.shape],
     tone,
-    focusRing,
+    ring,
   );
 }

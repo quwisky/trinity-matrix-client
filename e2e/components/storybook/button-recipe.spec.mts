@@ -9,9 +9,12 @@ import {
   expectStorybookThemeRoot,
   storybookThemeGlobals,
 } from './theme-preview.mts';
+import { expectSeparatedFocusRing } from './focus-ring-pixels.mts';
 
 const STORY =
   '/iframe.html?id=components-button--canonical-states&viewMode=story';
+const FOCUS_STORY =
+  '/iframe.html?id=components-button--solid-primary-focus&viewMode=story';
 
 const recipeStyle = (control: Locator) =>
   control.evaluate((element) => {
@@ -98,5 +101,29 @@ for (const preview of STORYBOOK_THEME_PREVIEWS.filter(
     await expect
       .poll(async () => (await measureContrast(page, testId)).background)
       .toEqual(secondary);
+  });
+}
+
+for (const preview of STORYBOOK_THEME_PREVIEWS) {
+  test(`${preview.theme.id} ${preview.mode.id} solid primary focus ring stands apart from its fill on every surface`, async ({
+    page,
+  }) => {
+    await page.goto(`${FOCUS_STORY}&globals=${storybookThemeGlobals(preview)}`);
+    await expectStorybookThemeRoot(page, preview);
+
+    for (const surface of ['canvas', 'card', 'rail']) {
+      const testId = `focus-primary-${surface}`;
+      const button = page.getByTestId(testId);
+      await expect(button).toBeVisible();
+      const ratios = await expectSeparatedFocusRing(
+        page,
+        button,
+        await resolveTokenSrgb(page, testId, '--trinity-focus-ring'),
+      );
+      test.info().annotations.push({
+        type: 'contrast',
+        description: `${preview.theme.id} ${preview.mode.id} ${surface} ${JSON.stringify(ratios)}`,
+      });
+    }
   });
 }
