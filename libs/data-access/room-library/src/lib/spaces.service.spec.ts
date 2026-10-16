@@ -1084,6 +1084,29 @@ describe('SpacesService hierarchy', () => {
     expect(getRoomHierarchy).not.toHaveBeenCalled();
   });
 
+  // The wait is a lifetime: the next openSpace call ends it (above), and so does a reset
+  // of the active-Account projection, as on an account switch.
+  it('ends the wait for a space to be joined when the active account switches', () => {
+    const { svc, matrix } = setup([]);
+    activeUserId.set('@a:hs');
+    TestBed.inject(ApplicationRef).tick();
+    let ended = false;
+    svc.openSpace('!s:hs').subscribe({ complete: () => (ended = true) });
+    expect(ended).toBe(false);
+
+    ngMocks.stubMember(matrix, 'instance', {
+      getRooms: () => [],
+      getRoom: () => null,
+      on: vi.fn(),
+      off: vi.fn(),
+    } as unknown as MatrixClient);
+    activeUserId.set('@b:hs');
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(ended).toBe(true);
+    expect(svc.childrenLoading()).toBe(false);
+  });
+
   it('surfaces a hierarchy fetch failure in childrenError', async () => {
     const { svc } = setupHierarchy({
       rooms: [],

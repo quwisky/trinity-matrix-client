@@ -322,9 +322,14 @@ export class SpacesService {
    * space. Pass `null` (Home) to clear it. Idempotent enough to call on every space
    * selection: a prior in-flight fetch is cancelled. Errors land in
    * {@link childrenError}; progress in {@link childrenLoading}. Cold: selection changes only
-   * when subscribed, errors update the signal and also reach the subscriber. It completes
-   * once the hierarchy is read, or when the next call or an Account change cancels it; for
-   * a space the active Account has not joined, that wait can last until then.
+   * when subscribed, errors update the signal and also reach the subscriber.
+   *
+   * A lifetime, not a one-shot command: for a space the active Account has not joined (a
+   * restored space its first sync has yet to bring, or one only another Account holds in
+   * the mixed view) it waits for the join before reading the hierarchy. It completes once
+   * the hierarchy is read, or when the next call or an Account change cancels it; otherwise
+   * its owner ends it. Workspace holds it for each committed view (see
+   * `state-and-reactivity.md`).
    */
   openSpace(spaceId: string | null): Observable<void> {
     return defer(() => {

@@ -85,7 +85,11 @@ export class WorkspaceNavigationService {
   private readonly compact = mediaQuerySignal(BELOW_MD_QUERY, this.destroyRef);
   private readonly workspaceView = signal<WorkspaceView>(this.seedView());
   private readonly eventTargetState = signal<WorkspaceEventTarget | null>(null);
-  private hierarchySubscription: Subscription | null = null;
+  /**
+   * The open space ({@link SpacesService.openSpace}) for the committed view, a lifetime it
+   * owns: replaced when another view is projected, ended outside Workspace and on teardown.
+   */
+  private openSpaceLifetime: Subscription | null = null;
   /** A marked-unread clear waiting for someone to look (see {@link clearMarkedUnread}). */
   private markedUnreadWait: Subscription | null = null;
   private projectionsActive = false;
@@ -386,8 +390,8 @@ export class WorkspaceNavigationService {
     if (!this.projectionsActive) return;
     this.projectionsActive = false;
     this.markedUnreadWait?.unsubscribe();
-    this.hierarchySubscription?.unsubscribe();
-    this.hierarchySubscription = null;
+    this.openSpaceLifetime?.unsubscribe();
+    this.openSpaceLifetime = null;
     this.conversations.blur();
     this.media.releaseAll();
     this.eventTargetState.set(null);
@@ -396,8 +400,8 @@ export class WorkspaceNavigationService {
   private project(view: WorkspaceView, initial = false): void {
     this.markedUnreadWait?.unsubscribe();
     if (!initial) this.media.releaseAll();
-    this.hierarchySubscription?.unsubscribe();
-    this.hierarchySubscription = this.spaces
+    this.openSpaceLifetime?.unsubscribe();
+    this.openSpaceLifetime = this.spaces
       .openSpace(view.scope.kind === 'space' ? view.scope.spaceId : null)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({ error: () => undefined });

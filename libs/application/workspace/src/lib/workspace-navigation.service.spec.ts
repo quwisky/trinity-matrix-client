@@ -34,6 +34,7 @@ import {
 } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeRoomSegment } from '@trinity/util/matrix';
+import type { WorkspaceNavigationScope } from './workspace-navigation.models';
 import { WorkspaceNavigationService } from './workspace-navigation.service';
 import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 import { WorkspaceVisitHistoryService } from './workspace-visit-history.service';
@@ -181,7 +182,7 @@ function harness(options: HarnessOptions = {}) {
     },
   };
   const spaces = {
-    openSpace: vi.fn(() => of(void 0)),
+    openSpace: vi.fn((_spaceId: string | null): Observable<void> => of(void 0)),
     isLeaving: (accountId: string, spaceId: string) =>
       leaving().has(`${accountId} ${spaceId}`),
   };
@@ -971,6 +972,49 @@ describe('WorkspaceNavigationService', () => {
           { queryParams: { account: BOB }, replaceUrl: true },
         );
       });
+    });
+
+    // SpacesService.openSpace can wait for the Account to join the space; that wait is a
+    // lifetime, owned by the committed view rather than finishing on its own.
+    it('holds the open space for the committed view only: a new view, leaving Workspace and teardown end it', async () => {
+      const SPACE = '!space:example.org';
+      const h = harness({
+        routeAccountId: ALICE,
+        rooms: { [ALICE]: [ROOM, SPACE], [BOB]: [ROOM] },
+      });
+      await settle();
+      const lifetimes: { spaceId: string | null; ended: boolean }[] = [];
+      h.spaces.openSpace.mockImplementation(
+        (spaceId) =>
+          new Observable<void>(() => {
+            const lifetime = { spaceId, ended: false };
+            lifetimes.push(lifetime);
+            return () => (lifetime.ended = true);
+          }),
+      );
+      const open = (scope: WorkspaceNavigationScope) =>
+        firstValueFrom(
+          h.service.navigate({ kind: 'scope', accountId: ALICE, scope }),
+        );
+
+      await open({ kind: 'space', spaceId: SPACE });
+      expect(lifetimes).toEqual([{ spaceId: SPACE, ended: false }]);
+
+      await open({ kind: 'recent' });
+      expect(lifetimes[0].ended).toBe(true);
+      await open({ kind: 'space', spaceId: SPACE });
+      expect(lifetimes.at(-1)).toEqual({ spaceId: SPACE, ended: false });
+
+      h.locationMode.next('outside');
+      await settle();
+      expect(lifetimes.at(-1)?.ended).toBe(true);
+
+      h.locationMode.next('workspace');
+      await settle();
+      expect(lifetimes.at(-1)).toEqual({ spaceId: SPACE, ended: false });
+
+      TestBed.resetTestingModule();
+      expect(lifetimes.every((lifetime) => lifetime.ended)).toBe(true);
     });
 
     describe('a space its Account has not synced yet (#1401)', () => {
