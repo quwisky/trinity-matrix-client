@@ -226,8 +226,9 @@ workspace with the host-side health check.
 ### The verified renderer artifact
 
 The reusable [`_renderer.yml`](../../.github/workflows/_renderer.yml) workflow checks
-out the exact full commit SHA requested by `ci.yml`, runs one production renderer
-compilation, and records `dist/web-bundle-manifest.json` version 2. The manifest binds
+out the calling event's commit, fails unless it is the exact full commit SHA requested by
+`ci.yml`, runs one production renderer compilation, and records
+`dist/web-bundle-manifest.json` version 2. The manifest binds
 the production configuration and every file's path, byte count, and SHA-256; its own
 SHA-256, source SHA, immutable artifact ID, and run-bound artifact name are passed to
 downstream jobs. The canonical verifier is `node scripts/web-bundle-manifest.mjs`,
@@ -235,7 +236,11 @@ with artifact coordinate handling in `node scripts/renderer-artifact.mjs`.
 
 Desktop, Android, iOS, and the production renderer journey download that artifact and
 validate its coordinates, manifest digest, file contents, and expected checkout before
-installing the payload into the canonical `www/` directory. The native wrappers allow
+installing the payload into the canonical `www/` directory. The renderer job and its
+consumers check out the event's commit without a `ref:` input and rely on those checks
+to bind it to the renderer's SHA. A `ref:` input taken from a workflow input or job
+output reads to CodeQL's `actions/cache-poisoning/poisonable-step` query as untrusted
+code on `ci.yml`'s schedule trigger, and opens an alert at every step after it. The native wrappers allow
 only their generated Cordova files alongside the manifest payload. A failed validation
 does not replace `www/`. The `e2e` and `browser-e2e` jobs build the development bundle while
 preparing Docker/browser prerequisites. In `e2e`, the production renderer step restores the

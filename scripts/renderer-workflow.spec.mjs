@@ -33,7 +33,17 @@ describe('verified renderer workflow boundary', () => {
     const job = renderer.jobs.renderer;
     expect(job.uses).toBeUndefined();
     expect(job.permissions).toEqual({ contents: 'read' });
-    expect(job.steps[0].with.ref).toBe('${{ inputs.sha }}');
+    // The event's commit, bound to inputs.sha by `assert-source` before the build. An
+    // explicit `ref:` reopens CodeQL's cache-poisoning alert on the schedule trigger.
+    expect(job.steps[0].with).toEqual({ 'persist-credentials': false });
+    expect(job.env.TRINITY_RENDERER_SHA).toBe('${{ inputs.sha }}');
+    const assertSource = job.steps.findIndex(
+      (step) => step.run === 'node scripts/renderer-artifact.mjs assert-source',
+    );
+    expect(assertSource).toBeGreaterThan(0);
+    expect(assertSource).toBeLessThan(
+      job.steps.findIndex((step) => step.run?.includes('nx build trinity')),
+    );
     expect(
       job.steps.filter((step) => step.run?.includes('nx build trinity')),
     ).toEqual([
@@ -85,7 +95,8 @@ describe('verified renderer workflow boundary', () => {
         'manifest-digest': '${{ needs.renderer.outputs.manifest-digest }}',
         destination: 'dist/renderer-download',
       });
-      expect(job.steps[0].with.ref).toBe('${{ needs.renderer.outputs.sha }}');
+      // The restore action binds this checkout to the renderer's SHA (HEAD check).
+      expect(job.steps[0].with).toEqual({ 'persist-credentials': false });
     },
   );
 

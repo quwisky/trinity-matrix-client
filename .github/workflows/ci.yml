@@ -225,9 +225,10 @@ jobs:
       contents: read
       actions: read
     steps:
+      # The event's commit, like every renderer consumer below: restore-verified-renderer
+      # fails unless HEAD equals the renderer's SHA. No `ref:` input (see _renderer.yml).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.renderer.outputs.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/restore-verified-renderer
@@ -292,7 +293,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.renderer.outputs.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup
 
@@ -631,7 +631,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.renderer.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
         with:
@@ -766,7 +765,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.renderer.outputs.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/restore-verified-renderer
