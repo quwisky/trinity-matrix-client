@@ -9,9 +9,9 @@ export function conversationDraftKey(key: ConversationKey): string {
 }
 
 /**
- * The per-device draft key of a thread's composer: the thread root event id alone, as the thread
- * composer has always stored it. The thread view and a session handover's unsent replies (#1267)
- * both build it here, so the reply lands in the draft the thread composer reads.
+ * The per-device draft key of a thread's composer: the thread root event id alone, as the
+ * thread composer stores it. The thread view and a session handover's unsent replies both
+ * build it here, so the reply lands in the draft the thread composer reads.
  */
 export function threadDraftKey(rootEventId: string): string {
   return rootEventId;

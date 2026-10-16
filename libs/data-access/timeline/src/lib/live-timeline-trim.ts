@@ -120,7 +120,7 @@ function indexOf(
 
 /**
  * Events a caller needs kept beyond what the room itself protects: the open room's view
- * and composer (#1366). Ids that are null or not loaded are ignored.
+ * and composer. Ids that are null or not loaded are ignored.
  */
 export interface TrimGuard {
   /**

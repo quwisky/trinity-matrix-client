@@ -29,14 +29,12 @@ interface CachedRow extends ProjectedRow {
  * The open room's projected rows, keyed by event id, and what has changed since each was
  * projected.
  *
- * A refresh used to fingerprint every loaded event, so each page of history cost the whole
- * history loaded so far: 39% of all JS allocation in a cold fling through 3,000 events
- * (fast-scroll memory study, 2026-10-15). It now re-checks only the rows something noted
- * here may have changed, and reuses every other row as it is.
+ * A refresh re-checks only the rows something noted here may have changed and reuses every
+ * other row as it is, so a page of history costs only that page, not every loaded event.
  *
  * Noting too much costs time; noting too little leaves a stale row on screen. Every listener
  * that can change a row notes what it changed, and anything that cannot be attributed to
- * particular rows re-checks them all, as every refresh did before.
+ * particular rows re-checks them all.
  */
 export class TimelineRowCache {
   private readonly rows = new Map<string, CachedRow>();

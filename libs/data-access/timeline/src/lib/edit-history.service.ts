@@ -31,9 +31,8 @@ const MAX_PAGES = 10;
  * Fetches the edit history of a message: its `m.replace` relations, projected into
  * {@link MessageRevisionView}s by {@link buildEditRevisions}.
  *
- * Sits beside {@link TimelineService} rather than inside it — the timeline is already
- * past the file-size threshold, and this is a one-shot fetch with no state of its own,
- * so there is nothing to share but the client.
+ * Separate from {@link TimelineService}: a one-shot fetch with no state of its own, so
+ * nothing is shared but the client.
  */
 @Injectable({ providedIn: 'root' })
 export class EditHistoryService {
@@ -108,14 +107,12 @@ export class EditHistoryService {
    * Redacting an edit leaves matrix-js-sdk's in-memory aggregation wrong: it re-resolves
    * the message by filtering relations against a timestamp taken from the ORIGINAL
    * event's bundle, which the redaction never refreshes, so the message falls all the way
-   * back to its first wording and stops counting as edited. Measured against a live
-   * server: remove the newest of two edits and the timeline showed the original, while a
-   * cold reload of the same room showed the correct middle version — the server was right
-   * and only the client's cache was stale.
+   * back to its first wording and stops counting as edited. The server is right; only the
+   * client's cache is stale.
    *
-   * We have just fetched the surviving edits, so we already know the right answer; this
-   * applies it. `makeReplaced` is what the SDK's own relation handling calls, and it
-   * emits `MatrixEventEvent.Replaced`, which the timeline listens for.
+   * We have just fetched the surviving edits, so this applies the right answer.
+   * `makeReplaced` is what the SDK's own relation handling calls, and it emits
+   * `MatrixEventEvent.Replaced`, which the timeline listens for.
    */
   private repairAggregation(
     client: MatrixClient,
@@ -155,11 +152,10 @@ export class EditHistoryService {
    * rather than reading the active room: the dialog outlives a room switch, and a
    * redaction that quietly sent nothing would look exactly like one that worked.
    *
-   * Only ever called for a revision the user sent. Removing the NEWEST edit leaves the
-   * SDK aggregating the message back to its ORIGINAL wording, so the caller re-reads the
-   * history afterwards — not for the list's sake but because that read runs
-   * {@link repairAggregation}, which is what actually puts the timeline right. Re-fetching
-   * alone does not: measured, the row stayed on the original until a cold reload.
+   * Only ever called for a revision the user sent. Removing the NEWEST edit leaves the SDK
+   * aggregating the message back to its ORIGINAL wording, so the caller re-reads the
+   * history afterwards: that read runs {@link repairAggregation}, which puts the timeline
+   * right (re-fetching alone does not).
    */
   removeRevision(roomId: string, revisionId: string): Observable<void> {
     return defer(() => {

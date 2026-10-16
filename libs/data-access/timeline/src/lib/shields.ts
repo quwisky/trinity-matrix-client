@@ -53,12 +53,10 @@ export function toShield(
 /**
  * A human-readable explanation for a shield reason code.
  *
- * Covers every reason matrix-js-sdk still emits. `MISMATCHED_SENDER_KEY` and
- * `SENT_IN_CLEAR` are deliberately absent: both are deprecated and never raised by
- * matrix-sdk-crypto (the sender_key field went unchecked in v37, and SENT_IN_CLEAR
- * "has never been used"), so a case for either would be unreachable — and would put a
- * deprecated constant in our source. The default below still covers them if that
- * changes.
+ * Covers every reason matrix-js-sdk still emits. `MISMATCHED_SENDER_KEY` and `SENT_IN_CLEAR`
+ * are deliberately absent: both are deprecated and never raised by matrix-sdk-crypto, so a
+ * case for either would be unreachable and would put a deprecated constant in our source.
+ * The default below still covers them if that changes.
  */
 export function shieldReasonText(reason: EventShieldReason | null): string {
   switch (reason) {
@@ -186,11 +184,10 @@ export async function resolveShieldsInto(
     try {
       shield = toShield(await crypto.getEncryptionInfoForEvent(event));
     } catch {
-      // Fail CLOSED. `events` is already filtered to encrypted events, and null renders
-      // as NO shield — visually identical to a fully authenticated message. A transient
-      // crypto/store error must not silently upgrade an unverified message's appearance;
-      // show the cautious indicator instead. (Still caught, so a probe failure can never
-      // break the timeline — that part of the original intent stands.)
+      // Fail CLOSED. `events` is already filtered to encrypted events, and null renders as NO
+      // shield, visually identical to a fully authenticated message. A transient crypto/store
+      // error must not silently upgrade an unverified message's appearance; show the cautious
+      // indicator instead. (Still caught, so a probe failure can never break the timeline.)
       shield = {
         level: 'grey',
         reason: shieldReasonText(null),

@@ -67,14 +67,14 @@ const isStopped = (state: SyncState | null): boolean =>
   state === SyncState.Stopped || state === SyncState.Error;
 
 /**
- * The lifecycle-backed loading interval of one Conversation's main timeline (#545).
+ * The lifecycle-backed loading interval of one Conversation's main timeline.
  *
  * `TimelineService.open()` projects whatever the SDK holds, synchronously, so an empty
- * list cannot say "loading". This owns the three real waits — the Room not yet in the
+ * list cannot say "loading". This owns the three real waits (the Room not yet in the
  * Account's client, the Account's first sync, and the first backfill of a Room with
- * nothing displayable — and names every outcome. One instance lives in each
- * Conversation's injector and is stopped on release, so a previous Room can never
- * publish into the focused one.
+ * nothing displayable) and names every outcome. One instance lives in each Conversation's
+ * injector and is stopped on release, so a previous Room can never publish into the
+ * focused one.
  *
  * Only a never-synced Account (`getSyncState() === null`) waits for sync; transient
  * states (Reconnecting, Catchup, Error) never block an Account that already synced.

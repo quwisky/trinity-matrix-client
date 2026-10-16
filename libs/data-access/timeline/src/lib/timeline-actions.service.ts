@@ -33,15 +33,15 @@ function voiceExtension(mimeType: string): string {
  * shared locations and forwards. Message relations and actions belong to each immutable
  * Conversation handle's typed `messages` surface.
  *
- * The counterpart to the Conversation Runtime's timeline projection, which owns
- * every listener; nothing here subscribes to the SDK or holds room state. The open
- * room is asked for on subscribe through the runtime's internal action context, so there is
- * one answer to "which room, on which account" rather than two.
+ * The counterpart to the Conversation Runtime's timeline projection, which owns every
+ * listener; nothing here subscribes to the SDK or holds room state. The open room is asked
+ * for on subscribe through the runtime's internal action context, so there is one answer
+ * to "which room, on which account".
  *
- * Every method returns a COLD Observable: nothing is sent until someone subscribes,
- * and the focused Conversation is resolved at that moment. An action built before
- * focus changes (or replayed by a retry operator) therefore uses the then-focused
- * immutable Account-and-Room handle, never a captured route or global client pointer.
+ * Every method returns a COLD Observable: nothing is sent until someone subscribes, and
+ * the focused Conversation is resolved then. An action built before focus changes (or
+ * replayed by a retry operator) therefore uses the then-focused immutable Account-and-Room
+ * handle, never a captured route or global client pointer.
  */
 @Injectable({ providedIn: 'root' })
 export class TimelineActionsService {

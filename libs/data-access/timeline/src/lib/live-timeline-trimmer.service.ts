@@ -33,7 +33,7 @@ import {
  * {@link TRIM_HIGH_WATER} events back to its latest ones. A room a Conversation handle
  * holds is left to {@link ConversationRuntime.trimHeld}: a retained room is trimmed when
  * its handle retires, and the focused room only while the window is hidden and its view
- * follows the newest message, keeping what that view shows (#1366). That room is tried as
+ * follows the newest message, keeping what that view shows. That room is tried as
  * soon as the window has been hidden a while, then after each sync. If its trim fails it
  * is reported once and not tried again while open; once nobody has it open, it is trimmed
  * like any other room.
