@@ -20,12 +20,11 @@ type SeedField = keyof typeof CROSS_SIGNING_SEEDS;
  * and an own identity that still does not verify.
  *
  * `isCrossSigningReady()` alone is far too wide a trigger. It is
- * `!!identity?.isVerified() && (cachedLocally || inSecretStorage)` (rust-crypto.js:600),
- * so it is false for every unverified device — including the ordinary one that has simply
- * never imported anything, where there is nothing stale to evict and the SDK's own import
- * is what should run. Requiring the privates to be cached locally *as well* is what
- * distinguishes "the olm machine already holds keys nobody published" from "the olm
- * machine holds nothing yet".
+ * `!!identity?.isVerified() && (cachedLocally || inSecretStorage)`, so it is false for
+ * every unverified device — including the ordinary one that has simply never imported
+ * anything, where there is nothing stale to evict and the SDK's own import is what should
+ * run. Requiring the privates to be cached locally *as well* is what distinguishes "the
+ * olm machine already holds keys nobody published" from "the olm machine holds nothing yet".
  */
 export async function hasStrandedCrossSigning(
   crypto: TrustCryptoApi,

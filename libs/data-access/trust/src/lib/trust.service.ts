@@ -58,18 +58,9 @@ const CROSS_SIGNING_RESET_ACTION = 'org.matrix.cross_signing_reset';
 
 /**
  * The account-level Trust module on top of the lifecycle-free {@link TrustCryptoPort}:
- * bootstraps
- * cross-signing + secret storage (4S) + key backup, exposes readiness as signals,
- * and recovers a fresh device from the recovery key. Wraps `client.getCrypto()`
+ * bootstraps cross-signing, secret storage (4S) and key backup, exposes readiness as
+ * signals, and recovers a fresh device from the recovery key. Wraps `client.getCrypto()`
  * (the CryptoApi) so components never touch matrix-js-sdk directly.
- *
- * Two entry flows (see apps/docs-developers/src/content/docs/architecture/encryption-and-trust.md):
- * - {@link setUp}: first device — generate a recovery key, set up cross-signing,
- *   secret storage and a server key backup. Needs UIA (the user's password) to
- *   upload the new device-signing keys.
- * - {@link recoverWithKey} / {@link recoverWithPassphrase}: a later device — unlock
- *   4S so the cross-signing secrets and backup key gossip in and this device is
- *   trusted. No UIA: the keys already exist server-side.
  */
 @Injectable({ providedIn: 'root' })
 export class TrustService {
@@ -102,9 +93,10 @@ export class TrustService {
   }
 
   /**
-   * First-device setup (flow A): create a recovery key, bootstrap cross-signing,
-   * secret storage and a new key backup. Emits the encoded recovery key string for
-   * the user to save — it is shown once and never persisted.
+   * First-device setup: create a recovery key, bootstrap cross-signing, secret storage
+   * and a new key backup. Emits the encoded recovery key string for the user to save — it
+   * is shown once and never persisted. Needs UIA (the user's password) to upload the new
+   * device-signing keys.
    *
    * The key is generated randomly (no passphrase), so accounts onboarded here are
    * recovered via {@link recoverWithKey}, not {@link recoverWithPassphrase}.
@@ -120,7 +112,7 @@ export class TrustService {
    *
    * When this device holds an identity the server never received (a first setup cancelled
    * or failed before its upload), setup creates and uploads new keys rather than storing
-   * the unpublished ones in secret storage (#1225).
+   * the unpublished ones in secret storage.
    */
   setUp(promptPassword: PasswordPrompt): Observable<string> {
     return defer(() =>
@@ -142,8 +134,8 @@ export class TrustService {
               userId,
             ),
             // Keys this device made and never uploaded: bootstrapping without this does
-            // nothing (CrossSigningIdentity.ts:72-78), so the 4S set up next would hold
-            // keys no server has. The server has no identity, so new keys replace nothing.
+            // nothing, so the 4S set up next would hold keys no server has. The server has
+            // no identity, so new keys replace nothing.
             ...(identity === 'unpublished' && { setupNewCrossSigning: true }),
           });
           await crypto.bootstrapSecretStorage({
@@ -158,8 +150,8 @@ export class TrustService {
   }
 
   /**
-   * Last resort (flow C): throw the account's encryption identity away and build a new
-   * one, for someone who has lost their recovery key and has no other verified device.
+   * Last resort: throw the account's encryption identity away and build a new one, for
+   * someone who has lost their recovery key and has no other verified device.
    *
    * Emits the new recovery key, exactly as {@link setUp} does, so the same shown-once
    * display can present it. **This destroys data and cannot be undone** — see
@@ -206,15 +198,15 @@ export class TrustService {
     );
   }
 
-  /** Unlock this device from the account's recovery key (flow B). */
+  /** Unlock this device from the account's recovery key. */
   recoverWithKey(recoveryKey: string): Observable<void> {
     return this.recover(async () => ({ privateKey: this.decode(recoveryKey) }));
   }
 
   /**
-   * Unlock this device from a recovery passphrase (flow B). Only works for accounts
-   * whose 4S key was derived from a passphrase; {@link setUp} provisions a random
-   * recovery key, so Trinity-onboarded accounts use {@link recoverWithKey} instead.
+   * Unlock this device from a recovery passphrase. Only works for accounts whose 4S key
+   * was derived from a passphrase; {@link setUp} provisions a random recovery key, so
+   * Trinity-onboarded accounts use {@link recoverWithKey} instead.
    */
   recoverWithPassphrase(passphrase: string): Observable<void> {
     return this.recover(async (keyInfo) => {
@@ -239,8 +231,8 @@ export class TrustService {
 
   /**
    * Export this device's Megolm room keys as a passphrase-encrypted file, in the
-   * interoperable Matrix key-export format (the same `.txt` Element reads/writes). Cold —
-   * exports + encrypts on subscribe. A safety net independent of the server key backup.
+   * interoperable Matrix key-export format (the same `.txt` Element reads/writes). A safety
+   * net independent of the server key backup.
    */
   exportRoomKeys(passphrase: string): Observable<string> {
     return defer(() =>
@@ -255,9 +247,8 @@ export class TrustService {
   }
 
   /**
-   * Import Megolm room keys from a passphrase-encrypted export file. Cold — decrypts +
-   * imports on subscribe. A wrong passphrase (or a corrupted file) surfaces as an error
-   * rather than importing nothing.
+   * Import Megolm room keys from a passphrase-encrypted export file. A wrong passphrase (or
+   * a corrupted file) surfaces as an error rather than importing nothing.
    */
   importRoomKeys(armored: string, passphrase: string): Observable<void> {
     return defer(() =>
@@ -332,11 +323,10 @@ export class TrustService {
           // no UIA, since the keys already exist server-side.
           await crypto.bootstrapCrossSigning({});
 
-          // ...unless the olm machine already holds privates, in which case that call
-          // does nothing at all — including when they are the ones a reset rotated and
-          // never published (see repairStaleCrossSigning). Unlocking 4S is exactly when
-          // that is both detectable and fixable, so do it here rather than leaving the
-          // device stuck at needs-recovery forever.
+          // ...unless the olm machine already holds privates, in which case that call does
+          // nothing, including when they are ones a reset rotated and never published (see
+          // repairStaleCrossSigning). Unlocking 4S is when that is both detectable and
+          // fixable, so repair it here rather than leave the device at needs-recovery forever.
           await this.repairStrandedIdentity(
             crypto,
             secretStorage,
@@ -371,9 +361,8 @@ export class TrustService {
    * `importSecretsBundle` are optional on `CryptoApi`, the bundle shape is probed at
    * runtime, and the WASM crate refuses to export unless all three privates are present.
    * A user who typed the CORRECT key must not be shown a raw SDK error over a device that
-   * is in fact trusted — so a failure recomputes the status first and is only re-raised
-   * when the device really is still untrusted. Loud when it matters, silent when the
-   * recovery worked anyway.
+   * is in fact trusted, so a failure recomputes the status first and is re-raised only when
+   * the device really is still untrusted.
    */
   private async repairStrandedIdentity(
     crypto: TrustCryptoApi,
@@ -394,11 +383,9 @@ export class TrustService {
   }
 
   /**
-   * UIA callback for uploading new device-signing keys: defers to the shared
-   * password-UIA loop (probe unauthenticated, then prompt + retry).
-   *
+   * UIA callback for uploading new device-signing keys, via the shared password-UIA loop.
    * `userId` is passed in rather than read here: the callback is built after several
-   * awaits, so the account it authenticates as has to be the one the caller captured.
+   * awaits, so the account it authenticates as must be the one the caller captured.
    */
   private passwordUia(
     promptPassword: PasswordPrompt,
@@ -448,8 +435,8 @@ export class TrustService {
  * `needs-setup` is derived from `secretStorage.getDefaultKeyId()`, which after initial
  * sync answers from this client's LOCAL store, so it goes stale for as long as a /sync
  * echo is missing — up to the ~110s the sync loop takes to notice a dead long-poll. That
- * is precisely the window a rolled-back recovery reset opens, which is why the local view
- * cannot be the check here. Ask the server.
+ * is exactly the window a rolled-back recovery reset opens, so the local view cannot be
+ * the check here. Ask the server.
  *
  * **Fails open on purpose.** Only a pointer the server positively reports stops the setup;
  * an unreachable or unhappy server does not. This exists to block a known-destructive
@@ -494,10 +481,10 @@ type SetupIdentity = 'none' | 'unpublished' | 'held';
  * Refuse first-device setup on an Account whose cross-signing identity lives elsewhere.
  *
  * With no private keys on this device and none in secret storage, `bootstrapCrossSigning`
- * "creat[es] new keys" (CrossSigningIdentity.ts:119-123): the identity is replaced, every
- * other device of the user stops being cross-signed (and, under MSC4153, stops receiving
- * room keys from strict senders), and contacts who verified the user see an identity
- * change. Resetting is a separate, explicitly confirmed action (`resetRecovery`).
+ * "creat[es] new keys": the identity is replaced, every other device of the user stops
+ * being cross-signed (and, under MSC4153, stops receiving room keys from strict senders),
+ * and contacts who verified the user see an identity change. Resetting is a separate,
+ * explicitly confirmed action (`resetRecovery`).
  *
  * **Fails closed**, unlike {@link assertNoRecoveryOnAccount}: the upload that follows
  * needs the same homeserver, and a wrong "no identity" here is the destructive answer.
@@ -520,14 +507,13 @@ async function assertNoIdentityElsewhere(
   crypto: TrustCryptoApi,
 ): Promise<SetupIdentity> {
   // The local view can lag right after sign-in; ask the homeserver (own user). Asked
-  // first because, for the own user, this also re-queries the published identity
-  // (rust-crypto.ts:516-525), so the match below is judged against the server's copy.
+  // first because, for the own user, this also re-queries the published identity, so the
+  // match below is judged against the server's copy.
   if (!(await withTimeout(crypto.userHasCrossSigningKeys(undefined, true)))) {
     return 'none';
   }
-  // That answer comes from the olm machine (rust-crypto.ts:527-529), which keeps an
-  // identity it created even when the query returns no master key. Only the server can
-  // say whether that identity was ever published.
+  // That answer comes from the olm machine, which keeps an identity it created even when
+  // the query returns no master key. Only the server can say whether it was ever published.
   const published = await readPublishedMasterKey(client);
   const [status, crossSigningReady] = await Promise.all([
     crypto.getCrossSigningStatus(),

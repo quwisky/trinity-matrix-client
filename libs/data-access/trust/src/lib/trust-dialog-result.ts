@@ -1,6 +1,6 @@
 /**
- * What a trust dialog closes with to ask its opener for the next step. Trust pages cannot
- * open Settings themselves (the capability does not depend on Workspace), so they name the
+ * What a trust dialog closes with to ask its opener for the next step. Trust cannot open
+ * Settings itself (the capability does not depend on Workspace), so the dialog names the
  * intent and the application presenter decides where it lives.
  *
  * `manage-identity`: the user cannot verify this device and wants the identity choices,
