@@ -321,8 +321,10 @@ export class SpacesService {
    * {@link openSpaceChildren} via `getRoomHierarchy`, replacing any previously open
    * space. Pass `null` (Home) to clear it. Idempotent enough to call on every space
    * selection: a prior in-flight fetch is cancelled. Errors land in
-   * {@link childrenError}; progress in {@link childrenLoading}. Cold and finite: selection
-   * changes only when subscribed, errors update the signal and also reach the subscriber.
+   * {@link childrenError}; progress in {@link childrenLoading}. Cold: selection changes only
+   * when subscribed, errors update the signal and also reach the subscriber. It completes
+   * once the hierarchy is read, or when the next call or an Account change cancels it; for
+   * a space the active Account has not joined, that wait can last until then.
    */
   openSpace(spaceId: string | null): Observable<void> {
     return defer(() => {
