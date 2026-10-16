@@ -13,9 +13,8 @@ import { SecureStorageService } from './secure-storage.service';
 import { CryptoStoreKeyService } from './crypto-store-key.service';
 
 /**
- * Non-secret per-account record. Both credentials — the access token and the OIDC
- * refresh token — live in {@link SecureStorageService}; everything else (including
- * the non-secret `accessTokenExpiresAt` + `oidc` binding) is kept here.
+ * Non-secret per-account record. Both credentials (access token and OIDC refresh token)
+ * live in {@link SecureStorageService}; everything else is kept here.
  */
 export type AccountRecord = Omit<MatrixSession, 'accessToken' | 'refreshToken'>;
 
@@ -27,9 +26,8 @@ export class AccountAlreadyStoredError extends Error {
 }
 
 /**
- * A sign-in for an account that is already saved under another homeserver. The saved
- * account is left as it is; the user removes it before signing in to it through a
- * different server.
+ * A sign-in for an account already saved under another homeserver. The saved account
+ * is left as it is; the user must remove it before using a different server.
  */
 export class AccountHomeserverMismatchError extends Error {
   constructor(
@@ -40,7 +38,6 @@ export class AccountHomeserverMismatchError extends Error {
   }
 }
 
-/** The persisted multi-account registry: the account list + which one is active. */
 interface AccountRegistry {
   activeUserId: string | null;
   accounts: AccountRecord[];
@@ -54,11 +51,9 @@ export interface AccountRegistrySnapshot {
 
 export type AccountPersistenceConstraint = 'upsert' | 'new';
 
-/** Registry of non-secret account records + the active pointer. */
 const ACCOUNTS_KEY = 'matrix.accounts';
-/** Per-account access-token key in secure storage: `${TOKEN_KEY_PREFIX}${userId}`. */
+/** Secure-storage key prefixes; the full key is the prefix plus the user id. */
 const TOKEN_KEY_PREFIX = 'matrix.accessToken:';
-/** Per-account OIDC refresh-token key in secure storage (OIDC accounts only). */
 const REFRESH_TOKEN_KEY_PREFIX = 'matrix.refreshToken:';
 /** Legacy single-slot keys (migration source), retired on first read. */
 const LEGACY_SESSION_KEY = 'matrix.session';
@@ -67,19 +62,14 @@ const LEGACY_TOKEN_KEY = 'matrix.accessToken';
 const CRYPTO_PREFIX = 'trinity-crypto:';
 
 /**
- * Persists signed-in Matrix accounts. Each account's **access token** (the full
- * bearer credential) goes through {@link SecureStorageService} under a per-account
- * key; the non-secret fields (homeserver, user id, device id) live together in a
- * Capacitor Preferences registry that also records which account is active. Never
- * write a token to Preferences/localStorage.
+ * Persists signed-in Matrix accounts. Each account's access token (the full bearer
+ * credential) goes through {@link SecureStorageService}; the non-secret fields live in a
+ * Capacitor Preferences registry that also records the active account. Never write a
+ * token to Preferences/localStorage.
  *
- * Supports multiple accounts (add / list / switch / remove) while staying backward
- * compatible: `save`/`load`/`clear` behave as before for a single account. On first
- * read the legacy single-slot format (`matrix.session` + `matrix.accessToken`) is
- * folded into the registry as the sole active account — one-time and transparent
- * (no re-login).
- *
- * Methods return cold Observables (`defer` so the work runs on subscribe).
+ * On first read the legacy single-slot format (`matrix.session` + `matrix.accessToken`)
+ * is folded into the registry as the sole active account, without a re-login.
+ * Methods return cold Observables.
  */
 @Injectable({ providedIn: 'root' })
 export class SessionStorageService {
@@ -88,19 +78,16 @@ export class SessionStorageService {
 
   /**
    * Serializes registry read-modify-write cycles. The OIDC token refresher calls
-   * {@link updateTokens} on its own schedule (near-expiry / 401), fully concurrently
-   * with user-driven `save`/`remove`/`clear`. Without a lock, two overlapping
-   * read → mutate → write cycles on the shared `matrix.accounts` blob lose an update
-   * (e.g. a refresh landing after a logout resurrects the signed-out account). Every
-   * mutation runs through this promise chain so each sees the prior one's committed
-   * result. Reads stay off the chain — a single `Preferences.get` + parse is already a
-   * consistent snapshot.
+   * {@link updateTokens} concurrently with user-driven `save`/`remove`/`clear`; without
+   * this chain, overlapping cycles on the shared `matrix.accounts` blob lose an update
+   * (a refresh after a logout would resurrect the signed-out account). Reads stay off
+   * the chain: one `Preferences.get` + parse is already a consistent snapshot.
    */
   private writeQueue: Promise<unknown> = Promise.resolve();
 
   private serialize<T>(op: () => Promise<T>): Promise<T> {
     const result = this.writeQueue.then(op, op);
-    // Keep the chain alive regardless of this op's outcome; callers still get `result`.
+    // Keep the chain alive whatever this op's outcome; callers still get `result`.
     this.writeQueue = result.then(
       () => undefined,
       () => undefined,
@@ -110,10 +97,9 @@ export class SessionStorageService {
 
   /**
    * Persist a session and make it the active account (add or replace). Resolves the
-   * **stored** session — carrying the crypto-store prefix this account resolved to
-   * (a fresh account gets its own; an existing/migrated one keeps its prior one) — so
-   * the caller starts the client with the same prefix that was persisted, instead of
-   * the SDK default (which would collide with another account's crypto store).
+   * stored session, carrying the crypto-store prefix it resolved to, so the caller
+   * doesn't fall back to the SDK default (which would collide with another account's
+   * crypto store).
    */
   save(session: MatrixSession): Observable<MatrixSession> {
     return defer(() =>
@@ -123,8 +109,8 @@ export class SessionStorageService {
 
   /**
    * Persist a newly created account only when its MXID is absent from the registry.
-   * The check and write share one serialized turn, so registration can never overwrite
-   * an existing account's token, device binding, or crypto-store prefix.
+   * Check and write share one serialized turn, so registration can't overwrite an
+   * existing account's token, device binding or crypto-store prefix.
    */
   saveNew(session: MatrixSession): Observable<MatrixSession> {
     return defer(() =>
@@ -188,9 +174,8 @@ export class SessionStorageService {
   }
 
   /**
-   * The stored (non-secret) record for one account, or null. Unlike {@link load} this
-   * needs no access token, so it works for a soft-logged-out account whose token was
-   * dropped — used to prefill homeserver + device id when re-authenticating it.
+   * The stored (non-secret) record for one account, or null. Unlike {@link load} it
+   * needs no access token, so it works for a soft-logged-out account.
    */
   record(userId: string): Observable<AccountRecord | null> {
     return defer(() =>
@@ -203,10 +188,9 @@ export class SessionStorageService {
   }
 
   /**
-   * The device a re-authentication may sign back in on, or null when it has to sign in as
-   * a new device: a keyed store whose key is missing (a restore onto a new phone, a wiped
-   * keychain) can never be opened again, so reusing its device would fail the same way on
-   * every attempt. A new device gets a new store and key, and the old store is reclaimed.
+   * The device a re-authentication may sign back in on, or null when it must sign in as a
+   * new device: a keyed store whose key is missing (a restore onto a new phone, a wiped
+   * keychain) can never be opened again, so reusing its device would fail every time.
    * A key that is only unavailable (a locked keyring) keeps the device, so the store is
    * never replaced over an outage; that sign-in fails until the keychain is back.
    */
@@ -233,10 +217,9 @@ export class SessionStorageService {
   }
 
   /**
-   * Drop an account's access token (e.g. a server-side soft-logout revoked it) but KEEP
-   * its registry record, so a later re-authentication restores it on the same crypto
-   * store. A token-less record is treated as absent by {@link load}, so a restart's
-   * restore skips it instead of resurrecting an account whose token no longer works.
+   * Drop an account's tokens (e.g. after a soft-logout) but keep its registry record, so
+   * a later re-authentication restores it on the same crypto store. {@link load} treats
+   * a token-less record as absent, so a restart doesn't resurrect it.
    */
   invalidateToken(userId: string): Observable<void> {
     return defer(() =>
@@ -252,16 +235,14 @@ export class SessionStorageService {
   }
 
   /**
-   * Persist tokens rotated by the OIDC token refresher for an already-stored account:
-   * write the new access token (and, when the provider rotated it, the new refresh
-   * token) to secure storage and update the record's `accessTokenExpiresAt`. Leaves the
-   * existing refresh token in place when the provider returned none (no rotation).
+   * Persist tokens rotated by the OIDC token refresher for an already-stored account.
+   * The existing refresh token stays when the provider returned none.
    *
    * A compare-and-swap on the sign-in: writes only while the record still holds the
-   * session `lineage` names (the {@link MatrixSession.lineage} the refreshing client
-   * started from), checked in the same serialized turn as the write. A no-op once the
-   * account was signed out or signed in again mid-refresh. A record saved before lineages
-   * existed matches any refresh. The write never changes the lineage.
+   * {@link MatrixSession.lineage} the refreshing client started from, checked in the
+   * same serialized turn. A no-op once the account was signed out or signed in again
+   * mid-refresh. A record saved before lineages existed matches any refresh. The write
+   * never changes the lineage.
    */
   updateTokens(
     userId: string,
@@ -296,22 +277,19 @@ export class SessionStorageService {
    * Like {@link clear}, but hands back the records it removed.
    *
    * The factory reset needs them: the registry is the only map from account to its secure
-   * key names and its IndexedDB names, and on Electron secure storage cannot be enumerated
-   * at all. Returning them from inside the same `serialize()` turn is what makes that read
-   * safe — a token refresh landing between a separate read and the clear could otherwise
-   * rewrite the registry and resurrect an account the wipe had already accounted for.
+   * key names and IndexedDB names, and Electron secure storage cannot be enumerated.
+   * Returning them from the same `serialize()` turn keeps the read safe: a token refresh
+   * between a separate read and the clear could resurrect an account the wipe had
+   * already accounted for.
    */
   clearAll(): Observable<readonly AccountRecord[]> {
     return defer(() => from(this.serialize(() => this.clearInternal())));
   }
 
   /**
-   * Reclaim orphaned Rust crypto stores left on disk that NO signed-in account owns — e.g. a
-   * pre-fix sign-out that deleted the wrong store (leaving the account's real one behind), or
-   * a re-login whose background cleanup didn't finish. Deletes every `…::matrix-sdk-crypto[-meta]`
-   * IndexedDB not owned by a currently-registered account. Meant to run once at startup: a fresh
-   * page load holds no connection to a prior session's stores (so `deleteDatabase` won't block),
-   * and the keep-set spares every live account's store. Best-effort; a no-op where
+   * Delete every `…::matrix-sdk-crypto[-meta]` IndexedDB not owned by a registered
+   * account. Meant to run once at startup: a fresh page load holds no connection to a
+   * prior session's stores, so `deleteDatabase` won't block. Best-effort; a no-op where
    * `indexedDB.databases()` is unavailable (e.g. Firefox) or off-browser.
    */
   sweepOrphanedCryptoStores(): Observable<void> {
@@ -353,27 +331,21 @@ export class SessionStorageService {
       `${CRYPTO_PREFIX}${incoming.userId}:${incoming.deviceId}`;
     const record: AccountRecord =
       existing && !deviceChanged
-        ? // Same-device re-login (soft-logout re-auth, token rotation): reuse the exact
-          // crypto store this account already has — including a migrated legacy
-          // account's absent (SDK-default) prefix — so no re-verification is forced.
-          // The incoming session is authoritative for the rotated token metadata, so
-          // refresh the expiry + OIDC binding (dropping them when the new login isn't
-          // OIDC) rather than keeping the stale ones.
+        ? // Same-device re-login: reuse the exact crypto store (including a migrated
+          // legacy account's absent SDK-default prefix) so no re-verification is forced.
+          // The incoming session is authoritative for expiry and OIDC binding.
           {
             ...existing,
             accessTokenExpiresAt: incoming.accessTokenExpiresAt,
             oidc: incoming.oidc,
             lineage,
           }
-        : // A brand-new account, OR an existing one whose device changed (a fresh login
-          // minted a new device), binds a crypto store scoped to THIS device. Scoping
-          // by device id — not user id alone — is what stops a later fresh login from
-          // reopening a store an earlier device left behind: reusing the old device's
-          // store under a new device makes the Rust OlmMachine reject the mismatch
-          // ("the account in the store doesn't match the account in the constructor").
+        : // A new account, or one whose device changed, binds a crypto store scoped to THIS
+          // device. Reusing an earlier device's store under a new device makes the Rust
+          // OlmMachine reject the mismatch ("the account in the store doesn't match the
+          // account in the constructor").
           {
-            // An existing account keeps the base URL it was saved with: an equivalent
-            // spelling (trailing slash, host case) is not a reason to rewrite it.
+            // Keep the saved base URL: an equivalent spelling is no reason to rewrite it.
             baseUrl: existing?.baseUrl ?? incoming.baseUrl,
             userId: incoming.userId,
             deviceId: incoming.deviceId,
@@ -391,17 +363,15 @@ export class SessionStorageService {
       registry.activeUserId = incoming.userId;
     }
     if (!existing || deviceChanged) {
-      // A new store gets a new key, named by the store and written BEFORE the tokens and
-      // the registry: a keyed record without its key could never open its store, and a
-      // failure here must leave the stored device's tokens as they were. A key left behind
-      // by a later failure is harmless. A same-device re-login keeps whatever its existing
-      // store has, including no key at all.
+      // A new store's key is written BEFORE the tokens and the registry: a keyed record
+      // without its key could never open its store, and a failure here must leave the
+      // stored device's tokens as they were. A key left behind by a later failure is
+      // harmless.
       await this.storeKeys.create(newPrefix);
     }
     await this.secure.set(this.tokenKey(incoming.userId), accessToken);
-    // Persist (or clear) the OIDC refresh token alongside the access token: set it for
-    // an OIDC login, remove any stale one when re-logging in without one (e.g. an
-    // account that switched from OIDC to password), so no dead credential lingers.
+    // Remove any stale refresh token when re-logging in without one, so no dead
+    // credential lingers.
     if (refreshToken !== undefined) {
       await this.secure.set(
         this.refreshTokenKey(incoming.userId),
@@ -412,9 +382,7 @@ export class SessionStorageService {
     }
     await this.writeRegistry(registry);
     if (existing && deviceChanged) {
-      // The device changed, so `record` above moved this account to a fresh
-      // device-scoped crypto store. No logout wiped the old device's store (this is a
-      // re-login, not a sign-out), so reclaim it here — otherwise it leaks on disk.
+      // No sign-out wiped the old device's store, so reclaim it here or it leaks on disk.
       this.reclaimCryptoStore(existing.cryptoPrefix);
       await this.removeStoreKey(existing);
     }
@@ -441,10 +409,9 @@ export class SessionStorageService {
       return; // signed in again mid-refresh — these tokens belong to the old sign-in
     }
     await this.secure.set(this.tokenKey(userId), accessToken);
-    // Truthiness, not `!== undefined`. A provider that rotated nothing may answer with
-    // `refresh_token: ''` — which the SDK's validator accepts — and writing that over the
-    // stored token would destroy a still-valid credential that no restart could recover.
-    // Absent and empty mean the same thing here: keep what we already have.
+    // Truthiness, not `!== undefined`: a provider that rotated nothing may answer
+    // `refresh_token: ''` (which the SDK accepts), and writing that would destroy a
+    // still-valid credential no restart could recover.
     if (refreshToken) {
       await this.secure.set(this.refreshTokenKey(userId), refreshToken);
     }
@@ -453,12 +420,10 @@ export class SessionStorageService {
   }
 
   /**
-   * Best-effort delete of the Rust crypto-store IndexedDB an account left behind after its
-   * device changed (see {@link upsert}). Fire-and-forget: the account already opened its
-   * fresh store, so this only reclaims disk — and `deleteDatabase` can block on `onblocked`
-   * until the old device's OlmMachine connection releases on GC, which is fine since nothing
-   * awaits it. A no-op off-browser (unit tests / non-IDB platforms). An undefined prefix is a
-   * migrated legacy account on the SDK default store.
+   * Best-effort delete of the crypto-store IndexedDB left behind after a device change
+   * (see {@link upsert}). Fire-and-forget: `deleteDatabase` can block until the old
+   * OlmMachine connection releases on GC, and nothing awaits it. A no-op off-browser.
+   * An undefined prefix is a migrated legacy account on the SDK default store.
    */
   private reclaimCryptoStore(prefix: string | undefined): void {
     const idb = globalThis.indexedDB;
@@ -469,7 +434,7 @@ export class SessionStorageService {
       try {
         idb.deleteDatabase(dbName);
       } catch {
-        // Best-effort — a blocked/failed delete just leaves the store for a later sweep.
+        // Best-effort: a failed delete leaves the store for a later sweep.
       }
     }
   }
@@ -483,9 +448,7 @@ export class SessionStorageService {
       idb.databases().catch(() => []),
       this.readRegistry(),
     ]);
-    // Every database a signed-in account legitimately owns — its device-scoped crypto
-    // stores (or a legacy account's SDK-default pair) and its message sync store. Never
-    // delete these.
+    // Databases a registered account owns (crypto stores and sync store): never delete.
     const owned = new Set<string>();
     const orphanedStores = new Set<string>();
     for (const account of registry.accounts) {
@@ -495,10 +458,8 @@ export class SessionStorageService {
       owned.add(syncStoreIndexedDbName(account.userId));
     }
     for (const { name } of databases) {
-      // Sync stores are swept as well as crypto stores. They are the other half of an
-      // account's on-disk footprint, and the factory reset can leave one behind when a
-      // second tab holds it open — this is what makes that self-heal on the next cold
-      // start, where nothing holds a connection yet.
+      // Sync stores are swept too: the factory reset can leave one behind when a second
+      // tab holds it open, and the next cold start has no connection to it yet.
       const orphaned =
         !!name &&
         !owned.has(name) &&
@@ -507,7 +468,7 @@ export class SessionStorageService {
         try {
           idb.deleteDatabase(name);
         } catch {
-          // Best-effort — leave anything we can't delete for a later run.
+          // Best-effort: leave what we can't delete for a later run.
         }
         if (isRustCryptoStoreDbName(name)) {
           orphanedStores.add(name.slice(0, name.lastIndexOf('::')));
@@ -520,9 +481,8 @@ export class SessionStorageService {
   }
 
   /**
-   * Delete the keys of swept stores, which are named by the store. Serialized and
-   * re-reading the registry, so a sign-in that binds one of these prefixes in the
-   * meantime keeps the key it just created.
+   * Delete the keys of swept stores. Serialized and re-reading the registry, so a
+   * sign-in that binds one of these prefixes meanwhile keeps the key it just created.
    */
   private async removeOrphanedStoreKeys(prefixes: Set<string>): Promise<void> {
     const registry = await this.readRegistry();
@@ -536,8 +496,8 @@ export class SessionStorageService {
   /**
    * Delete a store's key, best-effort. Callers run it AFTER the registry stops naming the
    * store: deleting first, then failing the registry write, would leave a keyed record
-   * whose store can never open. A key left behind here (also by a crash between deleting
-   * the store and its key) is harmless residue that the installation reset removes.
+   * whose store can never open. A key left behind is harmless residue that the
+   * installation reset removes.
    */
   private async removeStoreKey(record: AccountRecord): Promise<void> {
     if (record.cryptoStoreKeyed && record.cryptoPrefix) {
@@ -619,7 +579,7 @@ export class SessionStorageService {
     }
     await Promise.all(removals);
     await Preferences.remove({ key: ACCOUNTS_KEY });
-    // Defensively retire any legacy single-slot residue too.
+    // Retire any legacy single-slot residue too.
     await Preferences.remove({ key: LEGACY_SESSION_KEY });
     await this.secure.remove(LEGACY_TOKEN_KEY);
     await Promise.all(
@@ -635,10 +595,7 @@ export class SessionStorageService {
     });
   }
 
-  /**
-   * Read the account registry, migrating a legacy single-slot session on first run.
-   * A freshly parsed object is returned each call, so callers may mutate it safely.
-   */
+  /** Read the registry, migrating a legacy session on first run. Returns a fresh object. */
   private async readRegistry(): Promise<AccountRegistry> {
     const { value } = await Preferences.get({ key: ACCOUNTS_KEY });
     if (value) {
@@ -648,10 +605,9 @@ export class SessionStorageService {
   }
 
   /**
-   * Fold the legacy `matrix.session` slot (+ its token, whether in secure storage or,
-   * pre-secure-storage, inline in the JSON) into the registry as the sole active
-   * account, then retire the legacy keys. Returns an empty registry when there is
-   * nothing (or nothing complete) to migrate.
+   * Fold the legacy `matrix.session` slot (its token is in secure storage or inline in
+   * the JSON) into the registry as the sole active account, then retire the legacy keys.
+   * Returns an empty registry when there is nothing complete to migrate.
    */
   private async migrateLegacy(): Promise<AccountRegistry> {
     const empty: AccountRegistry = { activeUserId: null, accounts: [] };

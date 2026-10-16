@@ -24,8 +24,7 @@ const IV_BYTES = 12;
 /**
  * The key that encrypts an account's Rust crypto store at rest (its device identity, room
  * keys, cross-signing keys and backup key). One random key per store, named by the store's
- * `cryptoPrefix` (one per account and device), created when the account binds that store
- * and deleted with it.
+ * `cryptoPrefix`, created when the account binds that store and deleted with it.
  *
  * Electron, Android and iOS keep it in the OS keychain or keystore through
  * {@link SecureStorageService}. The web has no such store, so there the key is wrapped
@@ -50,11 +49,11 @@ export class CryptoStoreKeyService {
   }
 
   /**
-   * The store's key: `present`; `missing` when there is no usable key at all (no entry, or a
-   * web key whose wrapping key is gone or does not fit), which for a keyed store means the
-   * key is lost; or `unavailable` when it may exist but cannot be reached right now (a
-   * locked or denied keychain, an IndexedDB error). Only `missing` may lead to replacing the
-   * store; `unavailable` must be retried.
+   * The store's key: `present`; `missing` when there is no usable key (no entry, or a web
+   * key whose wrapping key is gone or does not fit), meaning the key is lost; or
+   * `unavailable` when it may exist but cannot be reached now (a locked or denied
+   * keychain, an IndexedDB error). Only `missing` may lead to replacing the store;
+   * `unavailable` must be retried.
    */
   async read(cryptoPrefix: string): Promise<StoreKeyRead> {
     const stored = await this.secure.read(STORE_KEY_PREFIX + cryptoPrefix);

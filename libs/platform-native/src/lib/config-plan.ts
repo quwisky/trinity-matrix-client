@@ -5,7 +5,6 @@ import {
 } from './config-schema';
 import { isConfigRecord } from './config-validation';
 
-/** How much of a value is shown in a one-line change summary. */
 const MAX_SUMMARY = 60;
 
 /** Import-only aliases for Appearance paths written by portable format version 1. */
@@ -23,17 +22,13 @@ export interface ConfigChange {
   readonly path: string;
   /** What the app holds right now. */
   readonly from: ConfigValue;
-  /** What it would hold — the *validated* value, so this is what actually gets stored. */
+  /** The validated value, which is what actually gets stored. */
   readonly to: ConfigValue;
 }
 
 /**
- * A document that can be applied: which settings it moves, and anything about it worth
- * saying first.
- *
- * `changes` is the change summary the issue asks for — empty when the document matches the
- * app exactly, which is what makes re-applying an untouched export a no-op rather than a
- * pile of writes.
+ * A document that can be applied. `changes` is empty when the document matches the app
+ * exactly, so re-applying an untouched export is a no-op.
  */
 export interface AcceptedConfigPlan {
   readonly ok: true;
@@ -42,12 +37,9 @@ export interface AcceptedConfigPlan {
 }
 
 /**
- * A document that will not be applied at all.
- *
- * `problems` names the offending path for each one. Nothing partial is ever written: this
- * variant has no way to reach `AppConfigService.apply`, which takes only the accepted plan —
- * so "reject the whole document rather than write partial state" is enforced by the type,
- * not by remembering to check.
+ * A document that will not be applied at all; `problems` names the offending path of
+ * each. `AppConfigService.apply` takes only the accepted plan, so the type enforces that
+ * nothing partial is written.
  */
 export interface RejectedConfigPlan {
   readonly ok: false;
@@ -58,25 +50,23 @@ export interface RejectedConfigPlan {
 /** What checking a document produced. Warnings appear on both: they never block. */
 export type ConfigApplyPlan = AcceptedConfigPlan | RejectedConfigPlan;
 
-/** One change as a line the UI can list: `appearance.theme: "trinity" → "amethyst"`. */
+/** One change as a UI line: `appearance.theme: "trinity" → "amethyst"`. */
 export function describeConfigChange(change: ConfigChange): string {
   return `${change.path}: ${summarise(change.from)} → ${summarise(change.to)}`;
 }
 
 /**
- * Check a whole document against the registered settings, and say what applying it would do.
+ * Check a whole document against the registered settings, and say what applying it would
+ * do. Pure: nothing is written here; `AppConfigService.apply` writes, from a plan this
+ * returned.
  *
- * Pure, so the rules can be read (and tested) without the DI graph: the entries arrive as a
- * parameter and nothing is written here — `AppConfigService.apply` does that, and only from
- * a plan this returned.
- *
- * The three outcomes, from the issue's requirements:
- *   • a value its owning setting refuses → the **whole document** is rejected, naming the
- *     path, because a half-applied config is worse than none;
- *   • a path this build does not know — a newer export, or a typo → a **warning**, and the
- *     rest still applies (decision 4: warn and proceed, naming what will not apply here);
- *   • a setting absent from the document → left alone, so a hand-written fragment that sets
- *     one preference is a legitimate document.
+ * Outcomes:
+ *   - a value its owning setting refuses: the whole document is rejected, naming the path,
+ *     because a half-applied config is worse than none;
+ *   - a path this build does not know (a newer export, or a typo): a warning, and the rest
+ *     still applies;
+ *   - a setting absent from the document: left alone, so a fragment that sets one
+ *     preference is a legitimate document.
  */
 export function planConfigApply(
   document: unknown,
@@ -93,8 +83,7 @@ export function planConfigApply(
     !Number.isInteger(version) ||
     version < 1
   ) {
-    // Without a version an older export cannot be told from a damaged file, which is the
-    // whole reason the envelope carries one.
+    // Without a version an older export cannot be told from a damaged file.
     return rejected([
       'This is not a settings document: it has no version number, so it cannot be read as an export.',
     ]);
@@ -160,11 +149,11 @@ export function planConfigApply(
 
 /**
  * Walk the nested settings down to the paths the registry knows, collecting their values
- * and naming everything else.
+ * and warning about everything else.
  *
- * Stops descending the moment a prefix *is* a registered path, because a setting's own value
- * can be an object — the shortcut overrides and the push gateway both are — and taking it
- * apart would hand its fields to the walker as unknown paths.
+ * Stops descending once a prefix is a registered path: a setting's own value can be an
+ * object (shortcut overrides, the push gateway), and its fields would otherwise be
+ * reported as unknown paths.
  */
 function collect(
   node: { readonly [key: string]: unknown },
@@ -209,11 +198,9 @@ function rejected(problems: readonly string[]): RejectedConfigPlan {
 }
 
 /**
- * Structural equality, so an unchanged setting produces no change.
- *
- * Compared field by field rather than by `JSON.stringify`, which would call two equal
- * objects different because their keys were written in another order — every re-import of a
- * hand-edited document would then rewrite settings it did not touch.
+ * Structural equality, so an unchanged setting produces no change. Not `JSON.stringify`,
+ * which would call equal objects different when their keys are in another order and
+ * rewrite untouched settings on every re-import of a hand-edited document.
  */
 function sameValue(a: unknown, b: unknown): boolean {
   if (a === b) {
@@ -238,7 +225,6 @@ function sameValue(a: unknown, b: unknown): boolean {
   );
 }
 
-/** A value as one short line, for the change summary. */
 function summarise(value: ConfigValue): string {
   const text = JSON.stringify(value) ?? 'nothing';
   return text.length > MAX_SUMMARY ? `${text.slice(0, MAX_SUMMARY)}…` : text;

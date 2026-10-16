@@ -4,20 +4,15 @@ import type { ConfigAction, ConfigEntry } from './config-schema';
  * The building blocks every {@link ConfigEntry} validator is made of.
  *
  * A pasted document is untrusted input, so each setting is checked against the same guard
- * its owning service already uses at startup — these helpers only wrap that guard in prose
- * and pair it with the setter, so the check and the write can never drift apart. Exported
- * from the lib because the entries live in three libraries and the wording of a rejection
- * is part of the feature.
+ * its owning service uses at startup; these helpers wrap that guard in prose and pair it
+ * with the setter, so the check and the write can't drift apart.
  */
 
-/** How much of a pasted string is echoed back in a problem message. */
 const MAX_ECHO = 40;
 
 /**
- * How a rejected value is named to the user.
- *
- * Strings are quoted and truncated (someone pastes a whole file into one field); everything
- * else is described by its kind rather than dumped, so a message stays one readable line.
+ * How a rejected value is named to the user: strings are quoted and truncated, everything
+ * else is described by its kind, so a message stays one line.
  */
 export function describeConfigValue(value: unknown): string {
   if (typeof value === 'string') {
@@ -49,7 +44,7 @@ export function listOptions(options: readonly string[]): string {
   return `${options.slice(0, -1).join(', ')} or ${last}`;
 }
 
-/** A plain JSON object — not an array, not null. */
+/** A plain JSON object: not an array, not null. */
 export function isConfigRecord(
   value: unknown,
 ): value is { readonly [key: string]: unknown } {
@@ -59,14 +54,10 @@ export function isConfigRecord(
 /**
  * A setting whose value is one of a closed set of ids.
  *
- * `isValid` is the owning service's own guard, so the imported value is held to the same
- * standard as the stored one; `options` is the offered set, and `noun` completes the
- * sentence "'mauve' is not …".
- *
- * `options` is declared here once and reaches three places from this one call: the rejection
- * message, the schema's `enum`, and the editor's completion list. The alternative — a list
- * for the message and a second for the schema — is the drift this whole feature exists to
- * stop, one level down.
+ * `isValid` is the owning service's own guard; `options` is the offered set, and `noun`
+ * completes the sentence "'mauve' is not …". `options` is declared once and feeds the
+ * rejection message, the schema's `enum` and the editor's completions, so the lists
+ * can't drift apart.
  */
 export function choiceSetting<T extends string>(spec: {
   readonly isValid: (value: string) => value is T;
@@ -86,9 +77,7 @@ export function choiceSetting<T extends string>(spec: {
             ok: false,
             problem: `${describeConfigValue(value)} is not ${spec.noun} (expected ${listOptions(spec.options)})`,
           },
-    // Re-narrowing rather than asserting: `write` is only ever called with a value
-    // `validate` accepted, so the guard costs one comparison and keeps `as` out of the
-    // path that actually moves the app.
+    // Re-narrow rather than assert, keeping `as` out of the path that moves the app.
     write: (value) => {
       if (accepts(value)) {
         return spec.set(value);
@@ -121,17 +110,15 @@ export function flagSetting(
 }
 
 /**
- * A whole number inside a range — a pane width, and anything else measured in pixels.
+ * A whole number inside a range, such as a pane width in pixels.
  *
- * Clamps rather than rejects an out-of-range number, which is the opposite of what the
- * other helpers do and is deliberate. A bad *kind* (a string, a list) is a typo the user
- * must see; a width of 5000 is a number they meant, on a screen the config was not written
- * on, and answering it with a rejection would leave the pane at whatever it was while
- * telling them nothing useful. The clamped value is what validation reports, so the change
- * summary shows what will actually be stored.
+ * Clamps rather than rejects an out-of-range number, unlike the other helpers: a bad kind
+ * (a string, a list) is a typo the user must see, but a width of 5000 is a number they
+ * meant, on a screen the config was not written on. The clamped value is what validation
+ * reports, so the change summary shows what will be stored.
  *
- * Non-integers are rounded for the same reason: a pane is laid out in whole pixels, so
- * storing 341.7 would report one number and apply another.
+ * Non-integers are rounded: a pane is laid out in whole pixels, so storing 341.7 would
+ * report one number and apply another.
  */
 export function boundedNumberSetting(spec: {
   min: number;
@@ -160,8 +147,8 @@ export function boundedNumberSetting(spec: {
 }
 
 /**
- * A setting the user types. Trimmed on the way in — the value validation reports is the
- * value that gets stored, so the change summary cannot promise something else.
+ * A setting the user types. Trimmed on the way in; the value validation reports is the
+ * value stored.
  */
 export function textSetting(spec: {
   readonly maxLength: number;

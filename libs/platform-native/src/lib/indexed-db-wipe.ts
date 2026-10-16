@@ -1,7 +1,6 @@
 /**
- * IndexedDB deletion primitives for the factory reset, kept pure and DI-free so the awkward
- * parts — a delete that never settles, an API that does not exist in Firefox — can be driven
- * from a spec with a fake `IDBFactory` rather than a real browser.
+ * IndexedDB deletion primitives for the factory reset, pure and DI-free so a spec can
+ * drive a delete that never settles, or a missing `databases()`, with a fake `IDBFactory`.
  */
 
 /** How a single `deleteDatabase` attempt ended. */
@@ -26,12 +25,11 @@ export interface IdbDeleteAttempt {
 /**
  * Delete one database, resolving within `timeoutMs` no matter what.
  *
- * The bound is the entire point. `deleteDatabase` fires `onblocked` while any connection is
- * still open and then simply waits — possibly forever. matrix-js-sdk's own `clearStores`
- * handles that event by **logging and nothing else** (`client.js`), so its promise never
- * settles and the caller hangs; that is the long stall behind the "wipe" comment in
- * `MatrixClientService.removeInternal`. Here `onblocked` is a real outcome the caller can
- * report, and the timer is the backstop for the case where no event arrives at all.
+ * The bound is the point. `deleteDatabase` fires `onblocked` while any connection is
+ * still open and then waits, possibly forever. matrix-js-sdk's own `clearStores` only
+ * logs that event, so its promise never settles and the caller hangs. Here `onblocked`
+ * is an outcome the caller can report, and the timer backstops the case where no event
+ * arrives at all.
  *
  * Never rejects: a factory reset reports what it could not do rather than failing halfway.
  */
@@ -88,10 +86,10 @@ export function beginDatabaseDeletion(
 /**
  * Every database name on this origin, or `null` when the browser cannot enumerate them.
  *
- * `indexedDB.databases()` is unavailable in Firefox, so a caller must be able to fall back to
- * names it derived itself — `null` says "I could not look", which is different from "there
- * are none". Enumeration is still worth attempting everywhere else: it is the only way to
- * reach databases left behind by accounts that are no longer in the registry.
+ * `indexedDB.databases()` is unavailable in Firefox, so callers must fall back to names
+ * they derived themselves: `null` means "could not look", not "there are none".
+ * Elsewhere enumeration is the only way to reach databases left by accounts no longer in
+ * the registry.
  */
 export async function listDatabaseNames(
   idb: IDBFactory,

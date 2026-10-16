@@ -8,14 +8,12 @@ const PERSIST_DEBOUNCE_MS = 400;
 const MAX_DRAFTS = 200;
 
 /**
- * Per-conversation composer drafts, persisted across launches. Callers supply an opaque
- * conversation key: Conversation Runtime uses an Account-and-Room key for the main composer,
- * while the legacy thread composer uses its root event id. Like the theme and feature flags,
- * these are non-secret UI state, so they live in Capacitor `Preferences` (localStorage on web,
- * native KV on device), never secure storage.
+ * Per-conversation composer drafts, persisted across launches under an opaque conversation
+ * key (an Account-and-Room key for the main composer, the root event id for the legacy
+ * thread composer). Held in Capacitor `Preferences`, not secure storage.
  *
- * Held in memory and read synchronously; {@link init} (called at startup) loads the
- * saved map before any composer mounts, and writes are debounced.
+ * Read synchronously from memory; {@link init} must load the saved map before any
+ * composer mounts. Writes are debounced.
  */
 @Injectable({ providedIn: 'root' })
 export class DraftStoreService implements OnDestroy {
@@ -24,15 +22,12 @@ export class DraftStoreService implements OnDestroy {
   private initialised = false;
 
   /**
-   * Drop a pending write when the injector goes away.
+   * Drop a pending write when the injector goes away: under test a late write lands after
+   * the module is torn down, where `Preferences.set` is no longer a promise, and the run
+   * fails on an uncaught TypeError with every test passing.
    *
-   * A debounced write must not outlive its owner: the timer previously had no handle at all,
-   * so a draft touched in the last 400ms of a lifetime still fired afterwards. Under test that
-   * lands after the module is torn down, where `Preferences.set` is no longer a promise — and
-   * the run fails on an uncaught TypeError with every test passing.
-   *
-   * `ngOnDestroy` rather than `inject(DestroyRef)` deliberately: it needs no injection context,
-   * so a test can still build a standalone instance with `new` to pre-seed it.
+   * `ngOnDestroy` rather than `inject(DestroyRef)` so a test can still build an instance
+   * with `new` to pre-seed it.
    */
   ngOnDestroy(): void {
     this.cancelPending();
@@ -51,7 +46,7 @@ export class DraftStoreService implements OnDestroy {
         );
       }
     } catch {
-      // Absent or corrupt → start empty.
+      // Absent or corrupt: start empty.
     }
     this.initialised = true;
   }
@@ -84,30 +79,30 @@ export class DraftStoreService implements OnDestroy {
   }
 
   /**
-   * Drop every draft, in memory and on disk — for sign-out.
+   * Drop every draft, in memory and on disk, for sign-out.
    *
    * A draft is the plaintext of a message destined for an encrypted room, so it must not
    * outlive the session that wrote it; on web/Electron the store is localStorage, readable
    * by whoever next uses the browser profile. The pending write is cancelled first, or it
    * would re-persist the map 400ms after the wipe.
    *
-   * Although main-room keys include the Account, all drafts share one persisted collection
-   * and legacy thread keys do not. Signing one of several accounts out therefore clears all
-   * drafts. Losing a draft is recoverable; leaking one is not.
+   * All drafts share one persisted collection and legacy thread keys carry no Account, so
+   * signing one of several accounts out clears all drafts. Losing a draft is recoverable;
+   * leaking one is not.
    */
   clearAll(): void {
     this.cancelPending();
     this.drafts = new Map();
-    // Same reason as persist(): a `.catch` straight onto a non-promise throws synchronously.
+    // Wrapped as in persist(): a `.catch` on a non-promise throws synchronously.
     void Promise.resolve(Preferences.remove({ key: DRAFTS_KEY })).catch(
       () => undefined,
     );
   }
 
   /**
-   * Write the drafts now instead of after the debounce, for a page about to restart (a session
-   * handover): a debounced write would be lost with the page. Never rejects. Before
-   * {@link init} has loaded them it writes nothing: the empty map would erase the stored drafts.
+   * Write the drafts now, for a page about to restart: a debounced write would be lost
+   * with the page. Never rejects. Before {@link init} has loaded them it writes nothing,
+   * since the empty map would erase the stored drafts.
    */
   flush(): Promise<void> {
     if (!this.initialised) return Promise.resolve();
@@ -133,14 +128,12 @@ export class DraftStoreService implements OnDestroy {
   }
 
   private persist(): Promise<void> {
-    // Keep only the most recently inserted MAX_DRAFTS to bound storage.
     const record: Record<string, string> = {};
     for (const [key, text] of [...this.drafts.entries()].slice(-MAX_DRAFTS)) {
       record[key] = text;
     }
-    // Promise.resolve wraps the call rather than chaining off it directly: this is an SDK
-    // boundary we do not control, and a `.catch` straight onto a non-promise throws
-    // synchronously — out of a timer callback, where nothing can catch it.
+    // Promise.resolve wraps the SDK call: a `.catch` straight onto a non-promise throws
+    // synchronously out of a timer callback, where nothing can catch it.
     return Promise.resolve(
       Preferences.set({ key: DRAFTS_KEY, value: JSON.stringify(record) }),
     ).then(
