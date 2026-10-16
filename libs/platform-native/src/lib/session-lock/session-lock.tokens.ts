@@ -2,7 +2,7 @@ import { InjectionToken } from '@angular/core';
 import { isInstalledNativePlatform } from '../mobile-os';
 import { isElectronRenderer } from '../trinity-desktop-bridge';
 
-/** The Web Lock every Trinity tab of one origin competes for (#1267). */
+/** The Web Lock every Trinity tab of one origin competes for. */
 export const SESSION_LOCK_NAME = 'trinity-session';
 
 /** The channel a waiting tab asks the holder on; only the holder acts on it. */
@@ -57,7 +57,6 @@ export const SESSION_LOCKS = new InjectionToken<SessionLocks | null>(
 /**
  * Whether this host needs the lock: the web and the installed PWA do; the Electron shell
  * (single instance, one window) and the Capacitor apps (one activity, one scene) do not.
- * The same predicates `apps/trinity/src/main.ts` uses for the service worker.
  */
 export const SESSION_LOCK_REQUIRED = new InjectionToken<boolean>(
   'SESSION_LOCK_REQUIRED',
@@ -78,7 +77,7 @@ export const SESSION_CHANNEL_FACTORY = new InjectionToken<
 function browserSessionLocks(): SessionLocks | null {
   if (typeof navigator === 'undefined') return null;
   // Typed as always there, but browsers expose it only in a secure context: plain HTTP on a
-  // LAN address has no `navigator.locks`, and owner decision 1 then blocks startup.
+  // LAN address has no `navigator.locks`, and startup is then blocked.
   const locks: LockManager | undefined = navigator.locks;
   return locks ?? null;
 }

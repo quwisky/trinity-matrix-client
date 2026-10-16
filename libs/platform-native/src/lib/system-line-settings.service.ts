@@ -18,16 +18,10 @@ export const DEFAULT_SHOW_PROFILE = true;
 export const DEFAULT_SHOW_ROOM_CHANGES = true;
 
 /**
- * Which categories of *system line* the timeline renders between messages — "Bob joined the
- * room", "Bob changed their profile picture", "Mod changed the room topic".
- *
- * In busy or bridged rooms the membership/profile churn drowns out the conversation, so each
- * category can be turned off independently. All three default to shown, so an existing
- * install sees no change until the user opts out.
- *
- * Device-scoped, like the other UI preferences ({@link PrivacySettingsService}, the theme):
- * non-secret, so they live in Capacitor `Preferences` rather than secure storage. Hiding is
- * purely visual — unread counts come from the server's notification counts and are untouched.
+ * Which categories of system line ("Bob joined the room", "Mod changed the room topic") the
+ * timeline renders; each can be hidden independently. Per-device and non-secret, so they
+ * live in Capacitor `Preferences`. Hiding is purely visual: unread counts come from the
+ * server's notification counts and are untouched.
  */
 @Injectable({ providedIn: 'root' })
 export class SystemLineSettingsService {

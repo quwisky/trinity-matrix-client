@@ -1,7 +1,6 @@
 /**
- * A keyboard chord: a key plus its modifiers, platform-neutral. `accel` stands for the
- * primary accelerator — **Ctrl on Windows/Linux, Cmd on macOS** — matched against either,
- * the way every editor treats it, so one binding works everywhere.
+ * A keyboard chord: a key plus its modifiers. `accel` is the primary accelerator (Ctrl on
+ * Windows/Linux, Cmd on macOS), matched against either so one binding works everywhere.
  */
 export interface Chord {
   /** Ctrl or Cmd (matched against either). */
@@ -9,9 +8,8 @@ export interface Chord {
   alt: boolean;
   shift: boolean;
   /**
-   * The non-modifier key, as `KeyboardEvent.key` — except digits, which use the
-   * layout-stable position (`'1'`…`'9'` from `event.code` `Digit1`…`Digit9`). Compared
-   * case-insensitively.
+   * The non-modifier key, as `KeyboardEvent.key`, except digits, which use the layout-stable
+   * position (`'1'`…`'9'` from `event.code`). Compared case-insensitively.
    */
   key: string;
 }
@@ -56,12 +54,8 @@ export function matchesEvent(chord: Chord, event: KeyboardEvent): boolean {
 }
 
 /**
- * Whether an untrusted value is a chord.
- *
- * The shape check for anything that did not come from a keydown — a stored override written
- * by an older build, a hand-edited store, an imported settings document. A chord always
- * names a key: an empty one can match no event, so it is not a binding, it is a corrupt
- * record of one.
+ * Whether an untrusted value (stored override, imported settings document) is a chord. An
+ * empty key can match no event, so it is a corrupt record, not a binding.
  */
 export function isChord(value: unknown): value is Chord {
   if (typeof value !== 'object' || value === null) {
@@ -128,9 +122,8 @@ export function formatChord(chord: Chord): string[] {
 }
 
 /**
- * Whether a chord is one the browser reserves for itself (tab switching, new tab/window,
- * address bar, …), so it can only work in the desktop shell. Used to warn when a user binds
- * one on the web. Deliberately a small, high-confidence set rather than an exhaustive list.
+ * Whether the browser reserves this chord for itself (tab switching, new tab/window, address
+ * bar), so it can only work in the desktop shell. Deliberately a small, high-confidence set.
  */
 export function isBrowserReserved(chord: Chord): boolean {
   if (!chord.accel || chord.alt) {
@@ -140,18 +133,17 @@ export function isBrowserReserved(chord: Chord): boolean {
   if (key === 'tab' || /^[1-9]$/.test(key)) {
     return true;
   }
-  // Ctrl/Cmd + these open a new tab/window/location or close one — never reaches the page.
+  // Ctrl/Cmd + these open or close a tab/window/location and never reach the page.
   const window = ['w', 't', 'n', 'l'];
   if (!chord.shift) {
     return window.includes(key);
   }
-  // Shift does not make a chord ordinary. Ctrl+Shift+T reopens a closed tab, Ctrl+Shift+N
-  // opens an incognito window and Ctrl+Shift+W closes the window — all as unreachable as
-  // their unshifted cousins, so binding one on the web deserves the same warning. `l` is the
-  // exception: Ctrl+L is the address bar, Ctrl+Shift+L is claimed by neither browser.
+  // Shift does not free them: Ctrl+Shift+T reopens a tab, Ctrl+Shift+N opens incognito and
+  // Ctrl+Shift+W closes the window. `l` is the exception: Ctrl+Shift+L is claimed by neither
+  // browser.
   //
-  // Ctrl/Cmd+Shift+these open developer tools in Firefox (and most in Chrome), which the
-  // browser likewise consumes before the page sees them.
+  // Ctrl/Cmd+Shift+ the devtools keys open developer tools in Firefox (and most in Chrome),
+  // which consumes them before the page sees them.
   const devtools = ['i', 'j', 'k', 'c', 'e', 'm'];
   return [...window.filter((k) => k !== 'l'), ...devtools].includes(key);
 }

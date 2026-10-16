@@ -26,10 +26,9 @@ export interface AccountRemovalLauncher {
 }
 
 /**
- * "Remove account from this device" for every surface that offers it: the account menu
- * (`feature/rooms`) and the new-device check (`feature/crypto`). Declared in this shared
- * tier because the Crypto feature, a Trust capability, may import neither Accounts nor an
- * application library. Application Runtime provides it.
+ * "Remove account from this device" for the account menu and the new-device check. Declared
+ * in this shared tier because the Crypto feature, a Trust capability, may import neither
+ * Accounts nor an application library. Application Runtime provides it.
  */
 export const ACCOUNT_REMOVAL_LAUNCHER =
   new InjectionToken<AccountRemovalLauncher>('ACCOUNT_REMOVAL_LAUNCHER');

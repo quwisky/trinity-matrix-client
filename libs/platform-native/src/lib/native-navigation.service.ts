@@ -11,16 +11,13 @@ interface NativeNavigationPlugin {
 const nativeNavigation = registerPlugin<NativeNavigationPlugin>(PLUGIN_NAME);
 
 /**
- * Coordinates WebKit's native back/forward gestures with Trinity-owned surfaces.
+ * Coordinates WebKit's native back/forward gestures with Trinity-owned surfaces. iOS exposes
+ * both edge recognisers behind one WebView switch; the app shell supplies the policy
+ * (enabled only when no dialog or registered panel needs Back).
  *
- * iOS exposes both edge recognisers behind one WebView switch. The app shell supplies the
- * policy — enabled only when no dialog or registered panel needs Back — and this wrapper is
- * the single platform boundary that sends it to the same-named Swift plugin.
- *
- * Best-effort by design. Plugin registration or a bridge call can fail while the WebView
- * tears down. Neither may become an unhandled application error; the native controller that
- * carries this plugin starts fail-safe with gestures disabled, so a failed call cannot
- * recreate the navigation bypass.
+ * Best-effort: plugin registration or a bridge call can fail while the WebView tears down,
+ * and must not become an application error. The native controller starts with gestures
+ * disabled, so a failed call cannot recreate the navigation bypass.
  */
 @Injectable({ providedIn: 'root' })
 export class NativeNavigationService {

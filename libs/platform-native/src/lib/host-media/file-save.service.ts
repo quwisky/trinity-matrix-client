@@ -8,11 +8,8 @@ import { Share } from '@capacitor/share';
 export type FileSaveResult = 'saved' | 'cancelled';
 
 /**
- * Host adapter that saves a downloaded attachment blob. On a native platform it
- * writes the bytes to the cache and opens the OS share sheet (so the user can
- * save to Files/Photos or send it on); on the web it triggers a browser download
- * via an `<a download>` link. Centralizes the platform branch so the timeline's
- * media UI never feature-detects inline.
+ * Host adapter that saves a downloaded attachment blob: natively it writes the bytes to the
+ * cache and opens the OS share sheet; on the web it triggers an `<a download>` download.
  */
 @Injectable({ providedIn: 'root' })
 export class FileSaveService {
@@ -42,13 +39,10 @@ export class FileSaveService {
     filename: string,
   ): Promise<FileSaveResult> {
     const data = await blobToBase64(blob);
-    // The OS hands the receiving app a content:// URI it reads asynchronously —
-    // on Android share() resolves before that read completes, so deleting the
-    // file now can truncate the share. Instead, each share gets its own cache
-    // subfolder (keeping a clean filename for the target) and the *previous*
-    // shares are swept first. By the time the user triggers another save the
-    // earlier receiver has long finished reading, so plaintext never lingers
-    // indefinitely yet the delete can't race the receiver. Same on iOS.
+    // The receiving app reads a content:// URI asynchronously; on Android share() resolves
+    // before that finishes, so deleting now can truncate the share (same on iOS). Each share
+    // gets its own cache subfolder and the previous shares are swept first, so plaintext
+    // never lingers indefinitely and the delete can't race the receiver.
     await sweepShareDir();
     const path = `${SHARE_DIR}/${uniqueToken()}/${safeName(filename)}`;
     const { uri } = await Filesystem.writeFile({
@@ -88,9 +82,8 @@ export class FileSaveService {
 const SHARE_DIR = 'trinity-shared';
 
 /**
- * Delete the cache subfolder of all previous shares (best-effort). Run before each
- * new native share so a former share's plaintext never lingers, without deleting a
- * file the receiving app might still be reading from the *current* share.
+ * Delete the cache subfolder of all previous shares (best-effort), so a former share's
+ * plaintext never lingers without deleting a file the current receiver may still be reading.
  */
 async function sweepShareDir(): Promise<void> {
   await Filesystem.rmdir({
@@ -115,15 +108,14 @@ function uniqueToken(): string {
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    // onload is success-only; onerror owns every failure path. (onloadend fires on
-    // both, and on an error reader.result is null — slicing it would throw.)
+    // onload is success-only; onloadend also fires on error, where reader.result is null.
     reader.onload = () => {
       const result = reader.result;
       if (typeof result !== 'string') {
         reject(reader.error ?? new Error('Could not read file'));
         return;
       }
-      // Strip the `data:<mime>;base64,` prefix; Filesystem wants raw base64.
+      // Filesystem wants raw base64, without the `data:<mime>;base64,` prefix.
       resolve(result.slice(result.indexOf(',') + 1));
     };
     reader.onerror = () =>
@@ -155,14 +147,12 @@ function safeName(filename: string): string {
 }
 
 /**
- * The rejection @capacitor/share 8 gives a dismissed sheet, with no error code, on both
- * platforms: iOS when `UIActivityViewController` completes with `completed == false`,
- * Android when the chooser returns `RESULT_CANCELED` while Trinity's activity never stopped.
+ * The code-less rejection @capacitor/share 8 gives a dismissed sheet: iOS when
+ * `UIActivityViewController` completes with `completed == false`, Android when the chooser
+ * returns `RESULT_CANCELED` while Trinity's activity never stopped.
  *
- * Re-check this exact match whenever @capacitor/share is upgraded: 8.0.3 rejects with it in
- * `ios/Sources/SharePlugin/SharePlugin.swift:63` and
- * `android/src/main/java/com/capacitorjs/plugins/share/SharePlugin.java:79`. If the message
- * changes, a dismissal becomes a reported failure.
+ * Re-check this exact match whenever @capacitor/share is upgraded (8.0.3: `SharePlugin.swift:63`,
+ * `SharePlugin.java:79`); if the message changes, a dismissal becomes a reported failure.
  */
 const SHARE_CANCELED = 'Share canceled';
 

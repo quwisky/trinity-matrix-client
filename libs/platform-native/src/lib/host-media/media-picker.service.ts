@@ -45,11 +45,8 @@ export interface PickedImages {
 }
 
 /**
- * Host adapter that picks and captures media for the composer. On a native platform it opens the
- * Capacitor gallery picker and materializes the choice into a `File`; on the web
- * it is a no-op ({@link available} === false) and the composer falls back to a
- * hidden `<input type="file">` — which itself surfaces the native picker/camera
- * when running inside a Capacitor WebView.
+ * Host adapter that picks and captures media for the composer. On the web it is a no-op
+ * ({@link available} === false) and the composer falls back to a hidden `<input type="file">`.
  */
 @Injectable({ providedIn: 'root' })
 export class MediaPickerService {
@@ -83,24 +80,17 @@ export class MediaPickerService {
   }
 
   /**
-   * Open the native gallery and resolve every chosen image as a File — empty when the user
-   * picks nothing or dismisses. Gates on photo-library permission first, swallows a
-   * user-cancel (resolves empty), and surfaces a denial as a
-   * {@link GalleryPermissionDeniedError} — so the composer shows feedback instead of an
-   * unhandled rejection.
+   * Open the native gallery and resolve every chosen image as a File; empty when the user
+   * dismisses. A denial surfaces as {@link GalleryPermissionDeniedError}.
    *
-   * A photo whose size on disk is over `maxBytes` is skipped BEFORE its bytes are
-   * fetched into the WebView and counted in {@link PickedImages.oversized}, so the caller can
-   * say so while the rest still arrive. The size is a filesystem `stat` of the picked file, not
-   * the plugin's `includeMetadata`, which decodes every photo in full to build its EXIF. A photo
-   * whose size cannot be read is fetched as before, and the caller's own size check on the file
-   * still applies. `maxBytes` may still be resolving
-   * when the gallery opens: it is awaited only after the user has chosen, so a slow lookup
-   * never delays the picker and a dismissed picker never waits for it.
+   * A photo over `maxBytes` on disk is skipped before its bytes are fetched into the WebView
+   * and counted in {@link PickedImages.oversized}. The size is a filesystem `stat`, not the
+   * plugin's `includeMetadata`, which decodes every photo in full to build its EXIF. If the
+   * size cannot be read the photo is fetched anyway. `maxBytes` is awaited only after the
+   * user has chosen, so a slow lookup never delays the picker.
    *
-   * Materializing runs in parallel, unlike the SEND: each is a local `fetch` of a
-   * `file://`/blob URL the WebView already holds, with none of the ordering, memory or
-   * scheduler constraints that make uploads sequential.
+   * Materializing runs in parallel, unlike the send: each is a local fetch of a URL the
+   * WebView already holds.
    */
   pickImages(
     maxBytes?: number | null | PromiseLike<number | null>,
@@ -126,12 +116,11 @@ export class MediaPickerService {
           ),
         ),
         catchError((err: unknown) => {
-          // Dismissing the picker is a user choice, not a failure → null, no error.
+          // Dismissing the picker is a user choice, not a failure.
           if (errorCode(err) === CameraErrorCode.ChooseMediaCancelled) {
             return of({ files: [], oversized: 0 });
           }
-          // A denial raised at pick time (rather than the gate) normalizes to the
-          // same typed error, so there's a single clear message to show.
+          // A denial raised at pick time normalizes to the same typed error as the gate.
           if (errorCode(err) === CameraErrorCode.GalleryPermissionDenied) {
             return throwError(() => new GalleryPermissionDeniedError());
           }
@@ -142,9 +131,8 @@ export class MediaPickerService {
   }
 
   /**
-   * Gate on camera access, open the camera, and materialize the result. Cancelling is a
-   * choice (null); a denial, a missing camera and an over-limit capture are typed errors the
-   * composer turns into a notice or a toast.
+   * Gate on camera access, open the camera, and materialize the result. Cancelling gives
+   * null; a denial, a missing camera and an over-limit capture are typed errors.
    */
   private capture(
     kind: CaptureKind,
@@ -228,10 +216,8 @@ function errorCode(err: unknown): string | undefined {
 }
 
 /**
- * Read every result within `maxBytes` into a File and count the ones over it, unread. The
- * sizes are stat-ed in parallel.
- * `allSettled`, not `all`: one photo whose `webPath` will not fetch must cost you that photo,
- * not the other nine — the same principle the batch send commits to.
+ * Read every result within `maxBytes` into a File and count the ones over it, unread.
+ * `allSettled`, not `all`: one photo whose `webPath` will not fetch must not cost the rest.
  */
 async function materialize(
   results: readonly MediaResult[],
@@ -275,8 +261,7 @@ async function toFile(result: MediaResult | undefined): Promise<File | null> {
   if (!result) {
     return null;
   }
-  // `webPath` on web; on native the file:// `uri` must be mapped to a URL the
-  // WebView can fetch.
+  // On native the file:// `uri` must be mapped to a URL the WebView can fetch.
   const src =
     result.webPath ??
     (result.uri ? Capacitor.convertFileSrc(result.uri) : null);

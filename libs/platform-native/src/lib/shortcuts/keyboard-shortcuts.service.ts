@@ -65,11 +65,7 @@ const A = (over: Partial<Chord>): Chord => ({
   ...over,
 });
 
-/**
- * The shortcut catalog — the single source of truth for what every configurable shortcut
- * is, its default binding, and its platform constraints. Mirrors the shortcuts wired in
- * {@link RoomsPage}. The order here is the order the settings list renders.
- */
+/** The shortcut catalog: every configurable shortcut, in the order the settings list renders. */
 export const SHORTCUTS: readonly ShortcutDef[] = [
   {
     id: 'switcher.open',
@@ -138,9 +134,9 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     desktopOnly: true,
     family: 'digit',
   },
-  // Handled by the Rooms shell, which checks it before its open-dialog guard so it works
-  // over Settings too. Ships unassigned (spec decision 21), so no existing habit locks the
-  // app by surprise, and does something only while App lock is on and unlocked.
+  // The Rooms shell checks it before its open-dialog guard, so it works over Settings too.
+  // Ships unassigned so no habit locks the app by surprise; acts only while App lock is on
+  // and unlocked.
   {
     id: 'lock.now',
     category: 'General',
@@ -148,9 +144,8 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     defaultChord: null,
     rebindable: true,
   },
-  // Formatting — handled by the message composer, which resolves them itself and stops the
-  // event before it reaches the page-level handler. They only do anything while the composer
-  // has focus; everywhere else they fall through to the browser.
+  // Formatting: the composer resolves these itself and stops the event before the page-level
+  // handler. Active only while the composer has focus; elsewhere they fall through to the browser.
   {
     id: 'format.bold',
     category: 'Formatting',
@@ -180,13 +175,9 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     rebindable: true,
   },
   {
-    // Accel+K would be the conventional chord, but it is already the quick switcher and
-    // `resolve` is first-hit-wins — so the default cannot start there. A user who wants it
-    // can rebind: `rebind` unsets whichever shortcut currently holds the chord.
-    //
-    // Accel+Shift+K is the other obvious candidate and is worse: it is Firefox's Web Console
-    // on every platform, which the browser eats before the page sees it. Accel+Shift+U is
-    // Slack's chord for the same action and is not reserved anywhere we know of.
+    // Not Accel+K: that is the quick switcher and `resolve` is first-hit-wins. Not
+    // Accel+Shift+K either: it is Firefox's Web Console, which the browser eats before the
+    // page sees it. Accel+Shift+U is not reserved anywhere we know of.
     id: 'format.link',
     category: 'Formatting',
     description: 'Turn the selected text into a link',
@@ -196,15 +187,11 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
 ];
 
 /**
- * The central registry of keyboard shortcuts: their definitions, the user's custom bindings
- * (persisted per device, like the other preference services), and the one `resolve` that
- * turns a keydown into a shortcut id. {@link RoomsPage} dispatches through it, and the
- * settings section reads {@link list} / rebinds through it, so a binding is defined once.
+ * Registry of keyboard shortcuts and the user's per-device custom bindings; `resolve` turns
+ * a keydown into a shortcut id.
  *
- * A shortcut can be **unset**: rebinding onto a taken chord steals it, leaving the previous
- * holder with no binding (its override is an explicit `null`). One can also ship unset
- * (`defaultChord: null`). {@link reset} restores a default; {@link resetAll} clears every
- * override.
+ * A shortcut can be unset: rebinding onto a taken chord steals it, leaving the previous
+ * holder with an explicit `null` override. One can also ship unset (`defaultChord: null`).
  */
 @Injectable({ providedIn: 'root' })
 export class KeyboardShortcutsService {
@@ -247,9 +234,8 @@ export class KeyboardShortcutsService {
     }
     if (!value) return preferenceInitializationReady;
     try {
-      // Checked, not trusted: this used to parse straight into the signal, so a malformed
-      // binding written by an older build (or by hand) reached `resolve` on every keystroke
-      // for the life of the session. Anything unrecognised falls back to its default.
+      // Checked, not trusted: a malformed stored binding would otherwise reach `resolve` on
+      // every keystroke. Anything unrecognised falls back to its default.
       this.overrides.set(acceptedOverrides(JSON.parse(value)));
       return preferenceInitializationReady;
     } catch {
@@ -267,16 +253,14 @@ export class KeyboardShortcutsService {
   }
 
   /**
-   * Resolve a keydown to the shortcut it triggers, or null. Honors custom bindings, the
-   * desktop gate (desktop-only defaults, aliases, and the digit family only fire in the
-   * Electron shell), and the digit family (returning which digit).
+   * Resolve a keydown to the shortcut it triggers, or null. Desktop-only defaults, aliases
+   * and the digit family fire only in the Electron shell.
    */
   resolve(event: KeyboardEvent): ShortcutHit | null {
     if (this.captures.size > 0) {
       return null;
     }
     for (const def of SHORTCUTS) {
-      // The numbered-jump family matches accel + any digit 1–9, desktop only.
       if (def.family === 'digit') {
         if (
           this.isDesktop &&
@@ -307,8 +291,8 @@ export class KeyboardShortcutsService {
 
   /**
    * Hold every shortcut while Settings captures a new chord. The page's handler sees a key
-   * before the capture listener does and, for Lock Trinity, even over the Settings dialog:
-   * without this, pressing a chord to bind it would run the shortcut that holds it.
+   * before the capture listener (for Lock Trinity, even over Settings), so without this,
+   * pressing a chord to bind it would run the shortcut that holds it.
    *
    * Returns the release for this capture alone; calling it again does nothing.
    */
@@ -324,9 +308,8 @@ export class KeyboardShortcutsService {
    * Rebind `id` to `chord`, stealing it from any *rebindable* shortcut that currently holds
    * it (that one becomes unset). Persists.
    *
-   * Refused when a fixed shortcut already claims the chord. `resolve` is first-hit-wins and
-   * the fixed ones sit ahead of the rebindable ones, so the new binding would never fire —
-   * settings would show key-caps for a chord that does something else entirely.
+   * Refused when a fixed shortcut already claims the chord: `resolve` is first-hit-wins and
+   * fixed ones sit ahead, so the new binding would never fire.
    */
   rebind(id: string, chord: Chord): RebindResult {
     const conflict = SHORTCUTS.find(
@@ -369,17 +352,12 @@ export class KeyboardShortcutsService {
   }
 
   /**
-   * Replace the whole set of custom bindings at once, and persist it — how an applied
-   * settings document gets its shortcuts in.
+   * Replace the whole set of custom bindings and persist it (how an applied settings
+   * document seats its shortcuts). A binding the set does not mention returns to its default.
    *
-   * Whole-set rather than per-shortcut because that is what the document says: a binding it
-   * does not mention is back at its default, not left as this device had it. Deliberately
-   * NOT routed through {@link rebind}: rebinding one at a time would let each steal a chord
-   * from the next and leave shortcuts unset that the document binds. The chords are the
-   * user's stated intent, so they are taken as given — the same set the export produced.
-   *
-   * Filtered through the same acceptance rules as {@link init}, so no caller can seat a
-   * binding here that a stored one would have been refused.
+   * Deliberately not routed through {@link rebind}: one at a time, each would steal a chord
+   * from the next and leave unset shortcuts the document binds. Filtered through the same
+   * acceptance rules as {@link init}.
    */
   setOverrides(overrides: Record<string, Chord | null>): void {
     this.overrides.set(acceptedOverrides(overrides));
@@ -395,13 +373,11 @@ export class KeyboardShortcutsService {
 }
 
 /**
- * The bindings out of an untrusted set that this build will actually honour.
+ * The bindings out of an untrusted set that this build will honour.
  *
- * Drops what `resolve` could only ever mishandle: a shortcut this build does not have, one
- * that is not rebindable (a fixed chord always wins the first-hit-wins scan, so an override
- * on it is a binding the settings list would show and nothing would fire), a value that is
- * not a chord, and a chord with no modifier — which would fire while the user typed. `null`
- * survives: it is an explicitly unset shortcut, which a missing key cannot express.
+ * Drops unknown shortcuts, non-rebindable ones (a fixed chord always wins the first-hit-wins
+ * scan), non-chord values, and chords with no modifier, which would fire while the user
+ * typed. `null` survives: it is an explicitly unset shortcut.
  */
 function acceptedOverrides(value: unknown): Record<string, Chord | null> {
   const accepted: Record<string, Chord | null> = {};
@@ -429,12 +405,12 @@ function acceptedOverrides(value: unknown): Record<string, Chord | null> {
 }
 
 /**
- * Whether a fixed shortcut would swallow `chord`, by any of the routes `resolve` matches on:
- * its binding, its desktop alias, or — for the digit family — accel + any digit 1…9.
+ * Whether a fixed shortcut would swallow `chord`: via its binding, its desktop alias, or
+ * (digit family) accel + any digit 1…9.
  *
- * The family check mirrors `resolve`'s, which tests only accel and `!alt`: Ctrl+Shift+3 hits
- * it just as Ctrl+3 does. Deliberately not gated on `isDesktop`, unlike `resolve`: a binding
- * persisted on the web would still be dead the moment the same person opens the desktop app.
+ * The family check mirrors `resolve`'s, which tests only accel and `!alt`, so Ctrl+Shift+3
+ * hits it too. Deliberately not gated on `isDesktop`: a binding persisted on the web would be
+ * dead once the same person opens the desktop app.
  */
 function claimsChord(
   svc: KeyboardShortcutsService,

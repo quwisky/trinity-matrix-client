@@ -57,11 +57,9 @@ export class NativePushRegistrationService {
   }
 
   /**
-   * Own native push callbacks for exactly one Application Runtime session.
-   *
-   * Subscription attaches all three listeners and emits `ready` only after their handles
-   * resolve, so the registration command cannot race the token callback. Unsubscription
-   * removes only these handles; it never clears another consumer's plugin listeners.
+   * Own native push callbacks for exactly one Application Runtime session. Emits `ready`
+   * only after all three listener handles resolve, so registration cannot race the token
+   * callback. Unsubscription removes only these handles, never another consumer's.
    */
   listen(): Observable<NativePushRegistrationEvent> {
     return new Observable((subscriber) => {

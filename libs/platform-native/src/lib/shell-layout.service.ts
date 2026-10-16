@@ -11,15 +11,11 @@ import {
 /**
  * The two pane widths the rooms shell lets you drag, persisted per install.
  *
- * Lives here rather than in the rooms feature for the same reason the theme does: it is a
- * preference, `platform-config-entries.ts` has to reach it to expose it in the settings JSON
- * editor, and that file is in this library — a feature lib is below it in the boundary and
- * cannot be imported from here.
+ * Lives here, not in the rooms feature, because `platform-config-entries.ts` exposes it in
+ * the settings JSON editor and a feature lib cannot be imported from this library.
  *
- * Bounds are the point of this service, not decoration. The rail plus the room list is a
- * navigation column that stops being navigable when it is squeezed, and a timeline that has
- * given all its room away is unreadable, so a drag is clamped and so is a hand-edited config.
- * The clamps live once, here, and both the handle and the JSON editor go through them.
+ * Both a drag and a hand-edited config are clamped, once, here: a squeezed navigation column
+ * is unusable, and so is a timeline with no room left.
  */
 
 /** Storage keys. Prefixed like every other preference so a wipe can find them. */
@@ -27,29 +23,24 @@ const SIDEBAR_KEY = 'trinity.shell.sidebar-width';
 const RIGHT_PANEL_KEY = 'trinity.shell.right-panel-width';
 
 /**
- * The rail (72px) plus the room list (280px), as the shell has always shipped it.
+ * The rail (72px) plus the room list (280px).
  *
- * Px, not a rem slot like `w-88`: the column's contents are hard-coded px — the rail's icon
- * rail and the room list's chrome — so a slot that grew with the root font size would grow
- * away from what sits in it, leaving a gap that widens with every notch of text scaling.
- * `text-scaling.spec.mts` asserts the rail and room-list edges meet at every text size, and
- * this default is what makes that true out of the box.
+ * Px, not a rem slot like `w-88`: the column's contents are hard-coded px, so a slot that
+ * grew with the root font size would leave a gap that widens with text scaling.
+ * `text-scaling.spec.mts` asserts the rail and room-list edges meet at every text size.
  */
 export const DEFAULT_SIDEBAR_WIDTH = 352;
 
-/** The width the side panels had as `md:w-120` dialog cards. */
+/** The default width of the right-hand panel slot, in px. */
 export const DEFAULT_RIGHT_PANEL_WIDTH = 480;
 
 /**
- * The rail alone is 72px, so anything under ~200 leaves the room list a sliver; past ~560 it
- * is taking space from the conversation, which is what people came for.
+ * The rail alone is 72px: under ~200 leaves the room list a sliver; past ~560 it crowds
+ * the timeline.
  */
 export const SIDEBAR_WIDTH_BOUNDS = { min: 200, max: 560 } as const;
 
-/**
- * A thread or a search result needs prose width to be worth reading; past ~720 the timeline
- * beside it is the one being squeezed.
- */
+/** A thread or search result needs prose width; past ~720 the timeline is squeezed. */
 export const RIGHT_PANEL_WIDTH_BOUNDS = { min: 280, max: 720 } as const;
 
 const clamp = (value: number, { min, max }: { min: number; max: number }) =>
@@ -68,12 +59,7 @@ export class ShellLayoutService {
   readonly sidebarBounds = SIDEBAR_WIDTH_BOUNDS;
   readonly rightPanelBounds = RIGHT_PANEL_WIDTH_BOUNDS;
 
-  /**
-   * Load both widths before the shell first paints.
-   *
-   * Registered as an app initializer beside the other preference loads, so a dragged layout
-   * is the one that renders rather than the default flashing first.
-   */
+  /** Load both widths before the shell first paints, so the default never flashes. */
   async init(): Promise<PreferenceInitializationOutcome> {
     const [sidebar, secondaryPane] = await Promise.all([
       this.read(SIDEBAR_KEY, DEFAULT_SIDEBAR_WIDTH, SIDEBAR_WIDTH_BOUNDS),
@@ -117,8 +103,7 @@ export class ShellLayoutService {
     try {
       const { value } = await Preferences.get({ key });
       const parsed = Number(value);
-      // `Number(null)` is 0 and `Number('')` is 0, so a missing key would otherwise read as a
-      // width of zero and clamp to the minimum — a pane the user never chose.
+      // `Number(null)` and `Number('')` are 0, so a missing key would clamp to the minimum.
       if (value === null) {
         return { value: fallback, outcome: preferenceInitializationReady };
       }
@@ -146,10 +131,8 @@ export class ShellLayoutService {
     value: number,
   ): void {
     target.set(value);
-    // Fire and forget, like every other preference here: the signal is the source of truth
-    // for this session, and a failed write costs the setting on the next launch, not now. The
-    // rejection is deliberately handled so best-effort persistence cannot become a global
-    // application error.
+    // Fire and forget: the signal is the session's source of truth. The rejection is handled
+    // so best-effort persistence cannot become a global application error.
     void Preferences.set({ key, value: String(value) }).catch(() => undefined);
   }
 }

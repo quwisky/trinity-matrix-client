@@ -14,7 +14,7 @@ import {
 } from './session-lock.tokens';
 
 /**
- * One running Trinity per browser profile and origin (#1267). The tab holding the
+ * One running Trinity per browser profile and origin. The tab holding the
  * `trinity-session` Web Lock runs the Matrix clients and crypto stores; every other tab waits
  * in the lock's queue and can ask the holder, on the `trinity-session` channel, to hand over.
  * Root-provided, so it lives as long as the page. The lock is never handed back early: the
@@ -167,8 +167,8 @@ export class SessionLockService {
       () => {
         // Aborted on destroy: nothing is waiting any more.
         if (this.teardown.signal.aborted) return;
-        // The browser dropped the queued request although this context has Web Locks: not
-        // the secure-connection case. Offer "Try again", which queues again.
+        // The browser dropped the queued request although Web Locks exist here. Offer "Try
+        // again", which queues again.
         this.queued = false;
         this.clearHandoverTimer();
         this.lockState.set('handover-timed-out');
