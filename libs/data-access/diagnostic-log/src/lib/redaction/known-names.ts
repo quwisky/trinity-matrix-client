@@ -21,7 +21,6 @@ const MAX_NAMES_PER_PREFIX = 8;
 export const MAX_DISPLAY_NAMES_PER_GROUP = 1_000;
 /** Names taken in all; with only names that occur in the log taken, rarely reached. */
 export const MAX_NAMES = 20_000;
-/** Names read between two pauses. */
 const NAMES_PER_STEP = 128;
 /**
  * Words a room or person may be called that are also log vocabulary or everyday words;

@@ -447,7 +447,6 @@ class IdentifierRedactor implements LogRedactor {
     return this.redactDevicesAfterUsers(this.redactDeviceContext(known));
   }
 
-  /** The device ID that follows a user placeholder. */
   private redactDevicesAfterUsers<T extends Rewritable<T>>(text: T): T {
     return text.replace(
       DEVICE_AFTER_USER,

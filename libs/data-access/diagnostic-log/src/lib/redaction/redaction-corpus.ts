@@ -149,7 +149,7 @@ export const REDACTION_CORPUS: readonly RedactionCase[] = [
   },
   {
     // An SDK MatrixError printed by Angular's ErrorHandler: its message embeds the request
-    // URL, which carries the token on the XHR upload path (http-api/index.js:110-111).
+    // URL, which carries the token on the XHR upload path.
     name: 'matrix error with token url',
     line: `M_UNKNOWN_TOKEN: MatrixError: [401] Invalid access token passed. (${HOMESERVER}/_matrix/media/v3/upload?filename=photo.jpg&access_token=${SYNAPSE_TOKEN})`,
     secrets: [SYNAPSE_TOKEN, 'matrix.example.org'],
