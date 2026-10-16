@@ -1,3 +1,4 @@
+import { computed } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import {
@@ -19,6 +20,7 @@ import {
   MATRIX_REQUEST_TIMEOUT_MS,
   MATRIX_SYNC_PROJECTION_BASELINE,
   MatrixClientService,
+  isServerSync,
   type AccessTokenRotation,
 } from './matrix-client.service';
 import {
@@ -1260,6 +1262,134 @@ describe('MatrixClientService', () => {
       activeProjections: 0,
       listenerCount: 0,
       retainedBytes: 0,
+    });
+  });
+
+  describe('first server sync', () => {
+    type SyncListener = (
+      state: SyncState,
+      previous: SyncState | null,
+      data?: { readonly fromCache?: boolean },
+    ) => void;
+    const syncWithDataOf = (client: ReturnType<typeof fakeClient>) =>
+      syncOf(client) as unknown as SyncListener;
+
+    it('names a SYNCING or a PREPARED that did not come from the cache', () => {
+      expect(isServerSync(SyncState.Syncing)).toBe(true);
+      expect(isServerSync(SyncState.Prepared)).toBe(true);
+      expect(isServerSync(SyncState.Prepared, {})).toBe(true);
+      expect(isServerSync(SyncState.Prepared, { fromCache: true })).toBe(false);
+      for (const state of [
+        SyncState.Reconnecting,
+        SyncState.Error,
+        SyncState.Stopped,
+        SyncState.Catchup,
+      ]) {
+        expect(isServerSync(state)).toBe(false);
+      }
+    });
+
+    it('does not report a server sync for a PREPARED replayed from the cache', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+      await firstValueFrom(svc.init(SESSION));
+      expect(svc.serverSynced('@me:hs')).toBe(false);
+
+      syncWithDataOf(client)(SyncState.Prepared, null, { fromCache: true });
+      await Promise.resolve();
+
+      expect(svc.syncState()).toBe(SyncState.Prepared);
+      expect(svc.serverSynced('@me:hs')).toBe(false);
+    });
+
+    it.each([
+      ['a PREPARED from the homeserver', SyncState.Prepared],
+      ['a SYNCING', SyncState.Syncing],
+    ])('latches the first server sync: %s', async (_name, state) => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+      await firstValueFrom(svc.init(SESSION));
+      const sync = syncWithDataOf(client);
+
+      sync(SyncState.Prepared, null, { fromCache: true });
+      sync(state, SyncState.Prepared, {});
+      await Promise.resolve();
+
+      expect(svc.serverSynced('@me:hs')).toBe(true);
+    });
+
+    it('keeps it through RECONNECTING, ERROR and STOPPED', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+      await firstValueFrom(svc.init(SESSION));
+      const sync = syncWithDataOf(client);
+      sync(SyncState.Prepared, null, {});
+      await Promise.resolve();
+
+      for (const state of [
+        SyncState.Reconnecting,
+        SyncState.Error,
+        SyncState.Catchup,
+        SyncState.Stopped,
+      ]) {
+        sync(state, null, {});
+        await Promise.resolve();
+        expect(svc.serverSynced('@me:hs')).toBe(true);
+      }
+    });
+
+    it('a same-account replacement client starts unsynced; a removed account reports false', async () => {
+      const a1 = fakeClient();
+      const a2 = fakeClient();
+      const b = fakeClient();
+      vi.mocked(createClient)
+        .mockReturnValueOnce(a1 as never)
+        .mockReturnValueOnce(b as never)
+        .mockReturnValueOnce(a2 as never);
+      const { svc, storage } = setup();
+      vi.mocked(storage.remove).mockReturnValue(of(undefined));
+      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(svc.add(SESSION_B));
+      syncWithDataOf(a1)(SyncState.Syncing, null, {});
+      syncWithDataOf(b)(SyncState.Syncing, null, {});
+      await Promise.resolve();
+      const synced = TestBed.runInInjectionContext(() =>
+        computed(() => svc.serverSynced('@me:hs')),
+      );
+      expect(synced()).toBe(true);
+
+      await firstValueFrom(svc.add(SESSION));
+      expect(synced()).toBe(false);
+      syncWithDataOf(a2)(SyncState.Prepared, null, {});
+      await Promise.resolve();
+      expect(synced()).toBe(true);
+
+      await firstValueFrom(svc.remove('@you:other'));
+      expect(svc.serverSynced('@you:other')).toBe(false);
+      expect(svc.serverSynced('@nobody:hs')).toBe(false);
+    });
+
+    it('still uses one listener and the same retained bytes per live account', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc, projections } = setup();
+      await firstValueFrom(svc.init(SESSION));
+
+      syncWithDataOf(client)(SyncState.Prepared, null, {});
+      await Promise.resolve();
+
+      expect(svc.serverSynced('@me:hs')).toBe(true);
+      expect(
+        client.on.mock.calls.filter(([event]) => event === ClientEvent.Sync),
+      ).toHaveLength(1);
+      expect(projections.diagnostics()).toMatchObject({
+        listenerCount:
+          MATRIX_SYNC_PROJECTION_BASELINE.listenerCountPerLiveAccount,
+        retainedBytes: SyncState.Prepared.length * 2,
+      });
     });
   });
 
