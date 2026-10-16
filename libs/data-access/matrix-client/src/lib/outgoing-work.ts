@@ -24,7 +24,7 @@ const NOT_ON_SERVER: ReadonlySet<EventStatus> = new Set([
   EventStatus.NOT_SENT,
 ]);
 
-/** A text message a live client has not got onto the homeserver (owner decision 5 of #1267). */
+/** A text message a live client has not got onto the homeserver. */
 export interface PendingTextMessage {
   readonly accountId: string;
   readonly roomId: string;

@@ -21,15 +21,13 @@ export interface ClientProjection {
   /** Whether listeners are currently attached to a client. */
   isConnected(): boolean;
   /**
-   * The client the listeners are attached to, or null. For a bespoke handler that needs
-   * to ask something of the client it is bound to — rather than of `matrix.instance`,
-   * which during an account switch may already be the next one.
+   * The client the listeners are attached to, or null. Prefer it to `matrix.instance` in a
+   * bespoke handler: during an account switch the instance may already be the next client.
    */
   client(): MatrixClient | null;
   /**
-   * Trigger the (coalesced) rebuild. For a service whose own handler decides whether an
-   * event is interesting — a state event filtered by type, say — and which is declared as
-   * a class field, so it cannot close over the argument {@link ProjectFromClientConfig.bind}
+   * Trigger the (coalesced) rebuild, for a class-field handler that decides itself whether
+   * an event matters and so cannot close over the argument {@link ProjectFromClientConfig.bind}
    * receives.
    */
   schedule(): void;
@@ -42,20 +40,16 @@ export interface ProjectFromClientConfig {
 
   /**
    * Rebuild the read model from this client. Called synchronously by {@link
-   * ClientProjection.connect} — so consumers see the model immediately — and again on each
+   * ClientProjection.connect}, so consumers see the model immediately, and again on each
    * coalesced flush.
    *
-   * Optional, because a projection need not have a read model of its own: a service that
-   * only forwards events (and does no initial read) still wants the client-keyed listeners
-   * and the account-switch re-projection. Omitting it with {@link events} set would mean an
-   * event list that triggers nothing, so pass one or neither.
+   * Optional for a service that only forwards events. Omitting it with {@link events} set
+   * would mean an event list that triggers nothing, so pass one or neither.
    *
-   * Prefer the `client` argument over re-reading `matrix.instance`. Most services here
-   * still do the latter inside their own `refresh()`, which is what they did before this
-   * primitive existed and is benign — a rebuild coalesced from account A's events can
-   * drain after the active client is already B, and it then rebuilds from B, which the
-   * re-projection effect was about to do anyway. New code should take the argument and
-   * avoid the window entirely.
+   * Prefer the `client` argument over re-reading `matrix.instance`: a rebuild coalesced from
+   * account A's events can drain after the active client is already B. Re-reading is benign
+   * (it rebuilds from B, as the re-projection effect was about to) but the argument avoids
+   * the window.
    */
   rebuild?: (
     client: MatrixClient,
@@ -63,18 +57,16 @@ export interface ProjectFromClientConfig {
   ) => void | Observable<void>;
 
   /**
-   * Events that mean "the model changed". Bound to a coalesced rebuild.
-   *
-   * Use {@link bind} instead when a handler needs the event's arguments, or when a service
-   * has a second listener group that must NOT be coalesced.
+   * Events that mean "the model changed". Bound to a coalesced rebuild; use {@link bind}
+   * for a handler that needs the event's arguments or a listener group that must NOT be
+   * coalesced.
    */
   events?: readonly EmittedEvents[];
 
   /**
-   * Bind bespoke listeners — a handler that needs the event's arguments, or a second group
-   * that must not be coalesced. Whatever this binds, {@link unbind} must remove: the
-   * projection cannot know what was attached. Use {@link ClientProjection.schedule} from
-   * such a handler to trigger the rebuild.
+   * Bind bespoke listeners. Whatever this binds, {@link unbind} must remove: the projection
+   * cannot know what was attached. Call {@link ClientProjection.schedule} from a handler to
+   * trigger the rebuild.
    */
   bind?: (client: MatrixClient) => void;
   /** Remove whatever {@link bind} attached. */
@@ -92,20 +84,17 @@ export interface ProjectFromClientConfig {
 }
 
 /**
- * The client-lifecycle half of a sync projection, so each service stops re-deriving it.
+ * The client-lifecycle half of a sync projection:
  *
- * Three things every projection has to get right, decided here once:
- *
- * 1. **Coalescing** — a sync burst emits many events; rebuilding per event is waste.
+ * 1. **Coalescing** of a sync burst into one rebuild.
  * 2. **Client-keyed connection** — a logout→login swaps in a fresh `MatrixClient`, so
- *    listeners are keyed to the *instance*. Gating on a boolean instead leaves them on the
+ *    listeners are keyed to the *instance*. Gating on a boolean leaves them on the
  *    discarded client and freezes the read model.
- * 3. **Re-projection on account switch** — in multi-account the active client changes
- *    underneath a service that is already connected.
+ * 3. **Re-projection on account switch** — the active client changes underneath an
+ *    already-connected service.
  *
- * Call from a service's field initializer or constructor: it is an injection context, which
- * {@link reprojectOnAccountSwitch}'s effect needs in order to be owned by the root injector
- * and live for the session.
+ * Call from a field initializer or constructor: {@link reprojectOnAccountSwitch}'s effect
+ * needs the injection context to be owned by the root injector.
  */
 export function projectFromClient(
   config: ProjectFromClientConfig,

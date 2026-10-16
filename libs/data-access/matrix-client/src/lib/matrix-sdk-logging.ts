@@ -43,8 +43,7 @@ export const MATRIX_SDK_LOG_SINK = new InjectionToken<MatrixSdkLogSink>(
 type SdkLoglevelLogger = loglevel.Logger & SdkLogger;
 type MethodFactory = loglevel.Logger['methodFactory'];
 
-// matrix-js-sdk names its root logger `matrix` and each child `matrix-<prefix>`
-// (`getPrefixedLogger` in matrix-js-sdk/lib/logger.js).
+// matrix-js-sdk names its root logger `matrix` and each child `matrix-<prefix>`.
 const SDK_ROOT_LOGGER = 'matrix';
 
 const METHOD_RANK: Readonly<Record<MatrixSdkLogMethod, number>> = {
@@ -74,8 +73,7 @@ const governed = new WeakSet<SdkLoglevelLogger>();
  * child the SDK creates afterwards. Call it at startup, before any client is created.
  *
  * With a `sink`, every logger is built at debug so the sink receives debug lines, and each
- * call is printed only at `level` and above. Without one, levels below `level` are not built
- * at all, as before.
+ * call is printed only at `level` and above. Without one, levels below `level` are not built.
  */
 export function configureMatrixSdkLogging(
   level: MatrixSdkLogLevel,
@@ -112,8 +110,7 @@ export function provideMatrixSdkLogging(
 
 function govern(logger: SdkLoglevelLogger): void {
   logger.methodFactory = sinkAware(logger.methodFactory);
-  // `persist: false` keeps the level out of localStorage, as the SDK does. setLevel
-  // rebuilds the methods through the (wrapped) factory.
+  // `persist: false` keeps the level out of localStorage, as the SDK does.
   logger.setLevel(sdkSink ? 'debug' : sdkLogLevel, false);
   if (governed.has(logger)) {
     return;

@@ -9,23 +9,15 @@ export interface Coalescer {
 }
 
 /**
- * Collapse a burst of events into one call.
+ * Collapse a burst of events (a /sync fires many at once) into one microtask-queued call.
  *
- * A completed /sync fires many events at once, and rebuilding a read model — typically
- * O(rooms) plus a re-sort — once per event is waste. This queues the rebuild on the
- * microtask after the current task drains and dedupes everything that arrives meanwhile.
+ * - The flag clears *before* `fn` runs, so an event arriving during the run queues the next
+ *   one rather than being swallowed.
+ * - {@link cancel} drops a queued run, so a detached service does not rebuild against a
+ *   client it has let go of.
  *
- * Two details are load-bearing and easy to lose when reimplementing this by hand, which is
- * why it is extracted rather than described:
- *
- * - the flag clears *before* `fn` runs, so a fresh event arriving during the rebuild queues
- *   the next one rather than being swallowed;
- * - {@link cancel} drops a queued run, so a service that detaches between the schedule and
- *   the flush does not rebuild against a client it has let go of.
- *
- * Note for tests: because the run is queued rather than immediate, asserting "this did NOT
- * rebuild" passes trivially unless the turn is flushed first (`await Promise.resolve()`).
- * A negative assertion without a flush proves nothing.
+ * In tests, flush the turn (`await Promise.resolve()`) before asserting "did NOT rebuild";
+ * otherwise the assertion passes trivially.
  */
 export function coalesce(fn: () => void): Coalescer {
   let scheduled = false;
