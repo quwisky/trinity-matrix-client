@@ -156,9 +156,9 @@ function accountContext(accountId: string): PreferenceContext {
 }
 
 /**
- * MSC4153: a new device of an Account that has an identity is verified (with another
- * device or the recovery key) or the identity is reset before the app opens. Existing
- * devices are never blocked; they keep the banner.
+ * Following MSC4153, a new device of an Account that has an identity is verified (with
+ * another device or the recovery key) or the identity is reset before the app opens.
+ * Existing devices are never blocked; they keep the banner.
  *
  * The record is written synchronously when Accounts reports a new-device sign-in, so the
  * sign-in page's navigation already sees it, and persisted per Account so a restart does

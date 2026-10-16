@@ -264,10 +264,11 @@ function replayAccepted(
  * Delete the dehydrated device, if the account has one. It is signed by the cross-signing
  * key this reset just replaced, so nothing can verify it any more.
  *
- * Not reachable through `CryptoApi`, so this issues the same request. Best effort: a server
- * without MSC3814 (`M_UNRECOGNIZED`) or without a dehydrated device (`M_NOT_FOUND`) is the
- * common case, and no failure here is worth failing a reset that already succeeded. Bounded
- * by the crypto flow's tighter limit, since it heads the destructive tail.
+ * Not reachable through `CryptoApi` (`resetEncryption` calls the manager directly), so
+ * this issues the same request. Best effort: a server without MSC3814 (`M_UNRECOGNIZED`)
+ * or without a dehydrated device (`M_NOT_FOUND`) is the common case, and no failure here
+ * is worth failing a reset that already succeeded. Bounded by the crypto flow's tighter
+ * limit, since it heads the destructive tail.
  */
 async function deleteDehydratedDevice(
   client: TrustMatrixClient,
