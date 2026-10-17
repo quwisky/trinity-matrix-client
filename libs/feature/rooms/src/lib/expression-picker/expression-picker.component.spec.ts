@@ -21,7 +21,10 @@ import {
   ComposerExpressionTabPreference,
   type ComposerExpressionTab,
 } from '@trinity/data-access/timeline';
-import { type TrnEmojiPick } from '@trinity/components/controls';
+import {
+  TrnTabsImports,
+  type TrnEmojiPick,
+} from '@trinity/components/controls';
 import {
   TrnAnchoredOverlayDirective,
   TrnOverlaySurfaceDirective,
@@ -119,6 +122,7 @@ async function renderPanel(options: Options = {}) {
         StickerPickerComponent,
         EmojiPickerStubComponent,
         TrnOverlaySurfaceDirective,
+        TrnTabsImports,
       ],
     },
   });
@@ -163,6 +167,9 @@ async function renderPanel(options: Options = {}) {
   view = result;
   return { ...result, remember, handlers };
 }
+
+const expressionContent = () =>
+  view.container.querySelector<HTMLElement>('[data-expression-content]')!;
 
 const tabNames = () =>
   view.queryAllByRole('tab').map((tab) => tab.textContent?.trim());
@@ -298,18 +305,26 @@ describe('ExpressionPickerComponent', () => {
     expect(view.queryByTestId('emoji-picker')).toBeNull();
   });
 
-  it('points the selected tab at the panel it shows, and only that tab', async () => {
+  it('points each tab at its own panel, and shows only the selected one', async () => {
     await renderPanel();
 
-    const emoji = view.getByRole('tab', { name: 'Emoji' });
-    const controls = emoji.getAttribute('aria-controls');
-    expect(controls).toBeTruthy();
-    const panel = document.getElementById(controls ?? '');
-    expect(panel).toHaveAttribute('role', 'tabpanel');
-    expect(panel).toHaveAttribute('aria-labelledby', emoji.id);
-    expect(
-      view.getByRole('tab', { name: 'GIFs' }).getAttribute('aria-controls'),
-    ).toBeNull();
+    for (const name of ['GIFs', 'Stickers', 'Emoji']) {
+      const tab = view.getByRole('tab', { name });
+      const panel = document.getElementById(
+        tab.getAttribute('aria-controls') ?? '',
+      );
+      expect(panel).toHaveAttribute('role', 'tabpanel');
+      expect(panel).toHaveAttribute('aria-labelledby', tab.id);
+    }
+    expect(view.getByRole('tabpanel')).toHaveAccessibleName('Emoji');
+  });
+
+  it("leaves the panels out of the tab order: each picker's own controls take focus", async () => {
+    await renderPanel();
+
+    for (const panel of view.container.querySelectorAll('[role=tabpanel]')) {
+      expect(panel).not.toHaveAttribute('tabindex');
+    }
   });
 
   it('moves focus between tabs with the arrow keys, Home and End, keeping one tab stop', async () => {
@@ -430,24 +445,18 @@ describe('ExpressionPickerComponent', () => {
     expect(gifs).toHaveAttribute('tabindex', '-1');
   });
 
-  it('keeps one tab panel, under one id, whichever tab shows', async () => {
+  it('keeps one content element whichever tab shows, so its inset and scrolling stay', async () => {
     const { fixture } = await renderPanel();
-    const panel = view.getByRole('tabpanel');
-    const id = panel.id;
+    const content = view.container.querySelector('[data-expression-content]');
 
     view.getByRole('tab', { name: 'GIFs' }).click();
     await fixture.whenStable();
 
-    expect(view.getByRole('tabpanel')).toBe(panel);
-    expect(panel.id).toBe(id);
-    expect(view.getByRole('tab', { name: 'GIFs' })).toHaveAttribute(
-      'aria-controls',
-      id,
+    expect(view.container.querySelector('[data-expression-content]')).toBe(
+      content,
     );
-    expect(panel).toHaveAttribute(
-      'aria-labelledby',
-      view.getByRole('tab', { name: 'GIFs' }).id,
-    );
+    expect(content).toContainElement(view.getByRole('tabpanel'));
+    expect(view.getByRole('tabpanel')).toHaveAccessibleName('GIFs');
   });
 
   it("names the tab row by what it chooses, not with the trigger's name", async () => {
@@ -617,7 +626,7 @@ describe('ExpressionPickerComponent', () => {
 
   it('insets every tab by the same 12px in a sheet', async () => {
     await renderPanel({ presentation: 'sheet' });
-    const content = view.getByRole('tabpanel');
+    const content = expressionContent();
 
     for (const name of ['GIFs', 'Stickers', 'Emoji']) {
       view.getByRole('tab', { name }).click();
@@ -630,7 +639,7 @@ describe('ExpressionPickerComponent', () => {
 
   it('insets every tab by the same 8px in the desktop card', async () => {
     await renderPanel();
-    const content = view.getByRole('tabpanel');
+    const content = expressionContent();
 
     for (const name of ['GIFs', 'Stickers', 'Emoji']) {
       view.getByRole('tab', { name }).click();
@@ -659,7 +668,7 @@ describe('ExpressionPickerComponent', () => {
 
   it('scrolls its content inside the card rather than cutting it off on a short window', async () => {
     await renderPanel();
-    const content = view.getByRole('tabpanel');
+    const content = expressionContent();
 
     expect(content).toHaveClass('min-h-0');
     expect(content).toHaveClass('overflow-y-auto');

@@ -19,74 +19,91 @@
   <!-- A sheet closes by its handle, backdrop, Escape or a pick, so the row has no close
        button. With Emoji alone there is no row at all. -->
   @if (tabs().length > 1) {
-    <!-- Plain tabs on the surface: only the selected tab is marked, with the pill. -->
     <div
-      role="tablist"
-      aria-label="Picker type"
-      class="grid auto-cols-fr grid-flow-col gap-1 pt-2"
-      [style.padding-inline]="inset()"
-      data-testid="expression-tabs"
-      (keydown)="onTabKeydown($event)"
-      (focusout)="onTabFocusOut($event)"
+      trnTabs
+      activation="manual"
+      class="contents"
+      [value]="active()"
+      (valueChange)="onTabChange($event)"
     >
-      @for (tab of tabs(); track tab) {
-        <!-- Plain buttons rather than `trnBtn`: the button recipe has no selected-tab state. -->
-        <button
-          #tab
-          type="button"
-          role="tab"
-          class="min-h-9 rounded-[var(--trinity-shape-control-radius)] px-3 text-sm font-semibold text-[var(--trinity-text-muted)] hover:bg-[var(--trinity-state-hover-surface)] hover:text-[var(--trinity-state-hover-foreground)] aria-selected:bg-[var(--trinity-state-selected-surface)] aria-selected:text-[var(--trinity-state-selected-foreground)] pointer-coarse:min-h-11"
-          [id]="tabId(tab)"
-          [attr.aria-selected]="tab === active()"
-          [attr.aria-controls]="tab === active() ? tabPanelId() : null"
-          [attr.tabindex]="tab === tabStop() ? 0 : -1"
-          [attr.data-testid]="'expression-tab-' + tab"
-          (click)="select(tab)"
-        >
-          {{ labels[tab] }}
-        </button>
-      }
+      <div
+        trnTabList
+        aria-label="Picker type"
+        class="pt-2"
+        [style.padding-inline]="inset()"
+        data-testid="expression-tabs"
+      >
+        @for (tab of tabs(); track tab) {
+          <button [trnTab]="tab" [attr.data-testid]="'expression-tab-' + tab">
+            {{ labels[tab] }}
+          </button>
+        }
+      </div>
+      <!-- Focusable so a sheet can put focus on the content when it opens. -->
+      <div
+        #content
+        class="grid outline-none"
+        [class.min-h-0]="presentation() === 'popover'"
+        [class.overflow-y-auto]="presentation() === 'popover'"
+        tabindex="-1"
+        data-expression-content
+        [style.padding-inline]="inset()"
+      >
+        <!-- Only the selected panel holds its picker, so a hidden GIF picker fetches nothing. -->
+        @for (tab of tabs(); track tab) {
+          <div
+            class="grid min-w-0"
+            [trnTabPanel]="tab"
+            [focusable]="false"
+            [attr.aria-busy]="tab === 'gif' && gifBusy() ? true : null"
+          >
+            @if (active() === tab) {
+              <ng-container [ngTemplateOutlet]="picker" />
+            }
+          </div>
+        }
+      </div>
+    </div>
+  } @else {
+    <div
+      #content
+      class="grid outline-none"
+      [class.min-h-0]="presentation() === 'popover'"
+      [class.overflow-y-auto]="presentation() === 'popover'"
+      tabindex="-1"
+      data-expression-content
+      [style.padding-inline]="inset()"
+    >
+      <ng-container [ngTemplateOutlet]="picker" />
     </div>
   }
-  <!-- Focusable so a sheet can put focus on the content when it opens. -->
-  <div
-    #content
-    class="grid outline-none"
-    [class.min-h-0]="presentation() === 'popover'"
-    [class.overflow-y-auto]="presentation() === 'popover'"
-    tabindex="-1"
-    data-expression-content
-    [style.padding-inline]="inset()"
-    [attr.role]="tabs().length > 1 ? 'tabpanel' : null"
-    [attr.id]="tabs().length > 1 ? tabPanelId() : null"
-    [attr.aria-labelledby]="tabs().length > 1 ? tabId(active()) : null"
-    [attr.aria-busy]="active() === 'gif' && gifBusy() ? true : null"
-  >
-    @switch (active()) {
-      @case ('gif') {
-        <trn-gif-picker (gifSelect)="gifSelect.emit($event)" />
-      }
-      @case ('sticker') {
-        <trn-sticker-picker
-          [packs]="stickerPacks()"
-          (selected)="stickerSelect.emit($event)"
-          (dismiss)="dismiss.emit()"
-          (manage)="manage.emit()"
-        />
-      }
-      @case ('emoji') {
-        <!-- A sheet's touch cells are 44px with the larger glyph. `min-w-0`: the grid must
-             not size its track; the content's width does. -->
-        <trn-emoji-picker
-          class="min-w-0"
-          [framed]="false"
-          layout="fill"
-          [size]="presentation() === 'sheet' ? 'lg' : 'md'"
-          [autoFocusSearch]="presentation() === 'sheet'"
-          [shown]="shown()"
-          (picked)="emojiPick.emit($event)"
-        />
-      }
+</ng-template>
+
+<ng-template #picker>
+  @switch (active()) {
+    @case ('gif') {
+      <trn-gif-picker (gifSelect)="gifSelect.emit($event)" />
     }
-  </div>
+    @case ('sticker') {
+      <trn-sticker-picker
+        [packs]="stickerPacks()"
+        (selected)="stickerSelect.emit($event)"
+        (dismiss)="dismiss.emit()"
+        (manage)="manage.emit()"
+      />
+    }
+    @case ('emoji') {
+      <!-- A sheet's touch cells are 44px with the larger glyph. `min-w-0`: the grid must
+           not size its track; the content's width does. -->
+      <trn-emoji-picker
+        class="min-w-0"
+        [framed]="false"
+        layout="fill"
+        [size]="presentation() === 'sheet' ? 'lg' : 'md'"
+        [autoFocusSearch]="presentation() === 'sheet'"
+        [shown]="shown()"
+        (picked)="emojiPick.emit($event)"
+      />
+    }
+  }
 </ng-template>

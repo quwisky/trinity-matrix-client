@@ -29,6 +29,28 @@ If a control has product meaning, keep it with the owning feature. Move it into 
 
 Feature templates choose a shape instead of adding padding, height or width classes to a `trnBtn`; the design-system contract rejects those.
 
+### Tabs {#tabs}
+
+The directives in `TrnTabsImports` from `@trinity/components/controls` follow the WAI-ARIA tabs pattern:
+
+```html
+<div trnTabs [(value)]="tab">
+  <div trnTabList aria-label="Picker type">
+    <button trnTab="gif">GIFs</button>
+    <button trnTab="emoji">Emoji</button>
+  </div>
+  <div trnTabPanel="gif">…</div>
+  <div trnTabPanel="emoji">…</div>
+</div>
+```
+
+- Name the list in its context with `aria-label` or `aria-labelledby`; the component adds no name of its own.
+- Arrow keys, Home and End move between tabs and wrap at the ends; right-to-left layouts flip the arrows. Activation is `automatic` by default, so moving also selects. Set `activation="manual"` when a panel moves focus into its own content as it appears, such as a search field: then Enter, Space or a click selects, and the tab stop follows focus until it leaves the list.
+- A `disabled` tab is skipped by the arrow keys and left out of the tab order.
+- Each panel is a tab stop. Set `[focusable]="false"` when the panel's first content is focusable itself.
+- A hidden panel stays in the DOM. Put its content behind `@if` when it should not run while hidden, as the expression picker does with its GIF search.
+- The selected tab draws the `--trinity-state-selected-*` pill, hover the `--trinity-state-hover-*` roles, and a coarse pointer gets the 44px target. There is no attention-surface variant yet, so keep tabs off attention surfaces.
+
 ### Button focus ring {#button-focus-ring}
 
 A solid primary `trnBtn` draws its focus ring `--trinity-focus-ring-offset` (2px) out from its edge, not flush against it. Its fill is too close to the ring's colour to tell the two apart (1.31-1.45:1 for the accent, 1:1 for the inverted attention action), so a flush ring reads as a thick border. The recipe swaps Helm's box-shadow ring for an outline: `ring-0`, a transparent border and a `--trinity-focus-ring-width` outline at that offset. The gap is transparent and shows whatever surface the button sits on, so on the surfaces measured (the canvas, a card, the rail and an attention surface) the ring keeps 3:1 or more against both of its sides. Under forced colours the overrides-layer `:focus-visible` rule in `global.scss` draws it in `Highlight`. Every other button keeps the shared ring. Feature code never adds `ring-` classes to a `trnBtn`; the ring belongs to the recipe.

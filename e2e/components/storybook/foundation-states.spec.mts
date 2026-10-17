@@ -1417,6 +1417,77 @@ test.describe('semantic design foundations', () => {
     });
   }
 
+  for (const { theme, mode } of STORYBOOK_THEME_PREVIEWS) {
+    test(`${theme.id} ${mode.id} tabs keep the selected, hover and focus states readable`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await openStory(page, 'components-tabs--default', theme.id, mode.id);
+      const selected = page.getByRole('tab', { name: 'Emoji' });
+      const resting = page.getByRole('tab', { name: 'Stickers' });
+      await expect(selected).toHaveAttribute('aria-selected', 'true');
+      await selected.evaluate((element) =>
+        element.setAttribute('data-testid', 'selected-tab'),
+      );
+
+      expect(await computedColour(selected, 'background-color')).toEqual(
+        await resolveTokenSrgb(
+          page,
+          'selected-tab',
+          '--trinity-state-selected-surface',
+        ),
+      );
+      const ratios: Record<string, number> = {
+        selected: (await measureLocatorContrast(selected)).ratio,
+        resting: (await measureLocatorContrast(resting)).ratio,
+      };
+
+      await resting.hover();
+      await expect
+        .poll(() => computedColour(resting, 'background-color'))
+        .toEqual(
+          await resolveTokenSrgb(
+            page,
+            'selected-tab',
+            '--trinity-state-hover-surface',
+          ),
+        );
+      ratios.hover = (await measureLocatorContrast(resting)).ratio;
+      await page.mouse.move(0, 0);
+
+      // Keyboard modality first, so the tab matches :focus-visible.
+      await page.keyboard.press('Tab');
+      await selected.focus();
+      await page.keyboard.press('ArrowLeft');
+      await expect(resting).toBeFocused();
+      const surface = await resolveTokenSrgb(
+        page,
+        'selected-tab',
+        '--trinity-surface-overlay',
+      );
+      const ring = await expectPaintedRing(
+        resting,
+        await resolveTokenSrgb(page, 'selected-tab', '--trinity-focus-ring'),
+      );
+      ratios.focusRing = contrastRatio(ring, surface);
+
+      expect(ratios.selected, 'selected label on pill').toBeGreaterThanOrEqual(
+        AA_NORMAL_TEXT,
+      );
+      expect(ratios.resting, 'resting label').toBeGreaterThanOrEqual(
+        AA_NORMAL_TEXT,
+      );
+      expect(ratios.hover, 'hovered label').toBeGreaterThanOrEqual(
+        AA_NORMAL_TEXT,
+      );
+      expect(ratios.focusRing, 'focus ring').toBeGreaterThanOrEqual(3);
+      test.info().annotations.push({
+        type: 'contrast',
+        description: `${theme.id} ${mode.id} tabs ${JSON.stringify(ratios)}`,
+      });
+    });
+  }
+
   for (const [story, label] of [
     ['components-input--default', 'Room name'],
     ['components-textarea--default', 'Room topic'],
