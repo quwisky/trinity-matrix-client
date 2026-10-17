@@ -24,6 +24,11 @@ import {
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
 
 const SILENT_NOTIFICATION_CHANNEL = 'trinity-notifications-silent';
+/**
+ * App lock's "Hide on the lock screen" on iOS: AppDelegate registers this category at launch
+ * with the placeholder "New message", which iOS shows while it hides previews.
+ */
+export const PRIVATE_NOTIFICATION_CATEGORY = 'trinity.message.private';
 
 const supported = (): HostCapabilitySupport => ({ kind: 'supported' });
 const notSupported = (): Extract<
@@ -213,7 +218,8 @@ export class CapacitorNotificationPresentationAdapter implements HostNotificatio
               notifications: [
                 {
                   id: notificationId(request),
-                  title: request.title,
+                  // Always hide: iOS and Android show the app's name themselves.
+                  title: request.generic ? '' : request.title,
                   body: request.body,
                   extra: request.destination,
                   threadIdentifier: request.tag,
@@ -221,6 +227,11 @@ export class CapacitorNotificationPresentationAdapter implements HostNotificatio
                   autoCancel: true,
                   foreground: true,
                   isExactNotification: false,
+                  // Android's LocalNotifications already posts VISIBILITY_PRIVATE.
+                  ...(request.hideOnLockScreen &&
+                  Capacitor.getPlatform() === 'ios'
+                    ? { actionTypeId: PRIVATE_NOTIFICATION_CATEGORY }
+                    : {}),
                   ...(request.silent
                     ? Capacitor.getPlatform() === 'android'
                       ? { channelId: SILENT_NOTIFICATION_CHANNEL }

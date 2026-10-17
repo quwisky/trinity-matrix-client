@@ -32,6 +32,8 @@ export class NotificationPresenterService {
         body: intent.body,
         tag: intent.tag,
         silent: intent.silent,
+        ...(intent.privacy === 'generic' ? { generic: true } : {}),
+        ...(intent.privacy === 'lock-screen' ? { hideOnLockScreen: true } : {}),
         destination: intent.destination,
       }),
     );

@@ -23,6 +23,7 @@ import {
   throwError,
   type Observable,
 } from 'rxjs';
+import { desktopBridgeFixture } from '@trinity/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { APP_LOCK_CLOCK } from './app-lock.tokens';
 import {
@@ -1603,6 +1604,171 @@ describe('AppLockService', () => {
         kind: 'failed',
         reason: 'not-verified',
       });
+    });
+  });
+
+  describe('notification text', () => {
+    it('hides everything until the settings have loaded', async () => {
+      const { lock } = setup({
+        stored: { 'trinity.app-lock.notification-text': 'show' },
+      });
+      // Before hydrate(), nothing is known: not the switch, not the choice.
+      expect(lock.effectiveNotificationText()).toBe('always-hide');
+      await hydrated(lock);
+      expect(lock.effectiveNotificationText()).toBe('show');
+    });
+
+    it('hides everything while the settings are still loading', async () => {
+      await withFakeTimers(async () => {
+        const { lock } = setup({ stored: 'never' });
+        const hydrating = hydrated(lock);
+        await vi.advanceTimersByTimeAsync(SETTINGS_TIMEOUT_MS - 1);
+        expect(lock.effectiveNotificationText()).toBe('always-hide');
+        await vi.advanceTimersByTimeAsync(1);
+        await hydrating;
+        expect(lock.effectiveNotificationText()).toBe('always-hide');
+      });
+    });
+
+    it('is Show while App lock is off, whatever is stored', async () => {
+      const { lock } = setup({
+        stored: { 'trinity.app-lock.notification-text': 'always-hide' },
+      });
+      await hydrated(lock);
+      expect(lock.notificationText()).toBe('always-hide');
+      expect(lock.effectiveNotificationText()).toBe('show');
+    });
+
+    it('takes effect while App lock is on', async () => {
+      const { lock } = setup({
+        stored: {
+          'trinity.app-lock.enabled': true,
+          'trinity.app-lock.notification-text': 'hide-on-lock-screen',
+        },
+      });
+      await hydrated(lock);
+      expect(lock.lockScreenTextOffered).toBe(true);
+      expect(lock.effectiveNotificationText()).toBe('hide-on-lock-screen');
+    });
+
+    it('hides everything when the stored choice cannot be read', async () => {
+      const { lock } = setup({
+        stored: {
+          'trinity.app-lock.enabled': true,
+          'trinity.app-lock.notification-text': 'sideways',
+        },
+      });
+      await hydrated(lock);
+      expect(lock.notificationText()).toBe('always-hide');
+      expect(lock.effectiveNotificationText()).toBe('always-hide');
+    });
+
+    it('hides everything, on a desktop too, when the settings never answer', async () => {
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture();
+      try {
+        await withFakeTimers(async () => {
+          const { lock } = setup({ stored: 'never', support: PIN_ONLY });
+          const hydrating = hydrated(lock);
+          await vi.advanceTimersByTimeAsync(SETTINGS_TIMEOUT_MS);
+          await hydrating;
+          expect(lock.locked()).toBe(true);
+          expect(lock.notificationText()).toBe('always-hide');
+          expect(lock.effectiveNotificationText()).toBe('always-hide');
+        });
+      } finally {
+        delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+      }
+    });
+
+    it('shows text when nothing is stored', async () => {
+      const { lock } = setup({ stored: { 'trinity.app-lock.enabled': true } });
+      await hydrated(lock);
+      expect(lock.notificationText()).toBe('show');
+      expect(lock.effectiveNotificationText()).toBe('show');
+    });
+
+    it('is a guarded change', async () => {
+      const { lock, writes } = setup();
+      await hydrated(lock);
+      // An unlock opens no guard window: Settings asks for its own check.
+      await firstValueFrom(lock.unlockWithSystem());
+      await expect(
+        firstValueFrom(lock.setNotificationText('always-hide')),
+      ).resolves.toEqual({ kind: 'failed', reason: 'not-verified' });
+      expect(lock.notificationText()).toBe('show');
+      await firstValueFrom(lock.verifyForChange());
+      await expect(
+        firstValueFrom(lock.setNotificationText('always-hide')),
+      ).resolves.toEqual({ kind: 'completed' });
+      expect(lock.notificationText()).toBe('always-hide');
+      expect(lock.effectiveNotificationText()).toBe('always-hide');
+      expect(writes).toContainEqual({
+        key: 'trinity.app-lock.notification-text',
+        payload: JSON.stringify({ version: 1, value: 'always-hide' }),
+      });
+    });
+
+    it('keeps the old choice when it cannot be saved', async () => {
+      const { lock } = setup({ writeFails: true });
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithSystem());
+      await firstValueFrom(lock.verifyForChange());
+      await expect(
+        firstValueFrom(lock.setNotificationText('always-hide')),
+      ).resolves.toEqual({ kind: 'failed', reason: 'setting-not-saved' });
+      expect(lock.notificationText()).toBe('show');
+    });
+
+    it('keeps the choice when App lock is turned off, and restores it when turned on', async () => {
+      const { lock } = setup({
+        stored: {
+          'trinity.app-lock.enabled': true,
+          'trinity.app-lock.notification-text': 'always-hide',
+        },
+      });
+      await hydrated(lock);
+      await firstValueFrom(lock.unlockWithSystem());
+      await firstValueFrom(lock.verifyForChange());
+      await firstValueFrom(lock.disable());
+      expect(lock.effectiveNotificationText()).toBe('show');
+      expect(lock.notificationText()).toBe('always-hide');
+      await firstValueFrom(lock.confirmPresence());
+      await firstValueFrom(lock.enable('482913'));
+      expect(lock.effectiveNotificationText()).toBe('always-hide');
+    });
+
+    it('takes the stored choice once Retry reads a setting that was unreadable', async () => {
+      const { lock, restore } = setup({ stored: 'unavailable' });
+      await hydrated(lock);
+      expect(lock.locked()).toBe(true);
+      expect(lock.notificationText()).toBe('always-hide');
+      restore({
+        'trinity.app-lock.enabled': true,
+        'trinity.app-lock.notification-text': 'hide-on-lock-screen',
+      });
+      await firstValueFrom(lock.retry(), { defaultValue: undefined });
+      expect(lock.notificationText()).toBe('hide-on-lock-screen');
+      expect(lock.effectiveNotificationText()).toBe('hide-on-lock-screen');
+    });
+
+    it('treats a stored lock-screen choice as Always hide on desktop', async () => {
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture();
+      try {
+        const { lock } = setup({
+          stored: {
+            'trinity.app-lock.enabled': true,
+            'trinity.app-lock.notification-text': 'hide-on-lock-screen',
+          },
+        });
+        await hydrated(lock);
+        expect(lock.lockScreenTextOffered).toBe(false);
+        expect(lock.notificationText()).toBe('hide-on-lock-screen');
+        expect(lock.effectiveNotificationText()).toBe('always-hide');
+      } finally {
+        delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+      }
     });
   });
 

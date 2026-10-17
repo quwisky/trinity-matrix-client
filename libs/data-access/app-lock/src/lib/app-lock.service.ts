@@ -1,4 +1,5 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { getTrinityDesktopBridge } from '@trinity/platform-native';
 import {
   HostUserPresenceService,
   NO_USER_PRESENCE,
@@ -29,8 +30,10 @@ import {
 import {
   APP_LOCK_ENABLED_PREFERENCE,
   APP_LOCK_LOCK_AFTER_PREFERENCE,
+  APP_LOCK_NOTIFICATION_TEXT_PREFERENCE,
   readAppLockSettings,
   type LockAfter,
+  type NotificationText,
   type StoredAppLock,
 } from './app-lock.preferences';
 import {
@@ -66,6 +69,7 @@ import {
   type SystemPromptKind,
 } from './app-lock-system-prompt';
 import { APP_LOCK_CLOCK } from './app-lock.tokens';
+import { effectiveNotificationText } from './notification-text-policy';
 import { isValidPin } from './pin-policy';
 
 /**
@@ -85,6 +89,7 @@ export class AppLockService {
   );
   private readonly _enabled = signal(false);
   private readonly _lockAfter = signal<LockAfter>('1m');
+  private readonly _notificationText = signal<NotificationText>('show');
   private readonly _support = signal<HostUserPresenceSupport>(NO_USER_PRESENCE);
   private verifiedAt: number | null = null;
   /** Bumped on every PIN change the host confirmed; older support reads are dropped. */
@@ -117,6 +122,22 @@ export class AppLockService {
   readonly locked = computed(() => this._status() === 'locked');
   readonly enabled = this._enabled.asReadonly();
   readonly lockAfter = this._lockAfter.asReadonly();
+  /** Phones only: a desktop has no lock-screen notification setting to follow. */
+  readonly lockScreenTextOffered = !getTrinityDesktopBridge();
+  /** The stored Notification text choice; kept, with no effect, while App lock is off. */
+  readonly notificationText = this._notificationText.asReadonly();
+  /**
+   * What notifications may show now; see {@link effectiveNotificationText}. Always hide until
+   * `hydrate()` has decided, then Show while App lock is off.
+   */
+  readonly effectiveNotificationText = computed((): NotificationText =>
+    effectiveNotificationText({
+      known: this._status() !== 'unknown',
+      enabled: this._enabled(),
+      choice: this._notificationText(),
+      lockScreenOffered: this.lockScreenTextOffered,
+    }),
+  );
   readonly support = this._support.asReadonly();
   /** App lock can be on here: the host keeps a PIN (decisions 23 and 24). */
   readonly offered = computed(() => this._support().pin.kind === 'available');
@@ -379,6 +400,19 @@ export class AppLockService {
     );
   }
 
+  /** A guarded change, like Lock after. */
+  setNotificationText(
+    text: NotificationText,
+  ): Observable<AppLockCommandOutcome> {
+    return this.guarded(() =>
+      this.save(APP_LOCK_NOTIFICATION_TEXT_PREFERENCE, text).pipe(
+        tap((saved) => {
+          if (saved.kind === 'completed') this._notificationText.set(text);
+        }),
+      ),
+    );
+  }
+
   /**
    * A new PIN. Over a PIN record the host can't read, only after the system prompt confirmed
    * it's you inside the guard window (spec §1: someone who forgot the PIN but can use the
@@ -467,6 +501,7 @@ export class AppLockService {
       stored.enabled === 'unreadable'
         ? unreadableSettingLocks(support)
         : stored.enabled;
+    this._notificationText.set(stored.notificationText);
     if (retrying) {
       // A Retry never locks: someone may have unlocked while it waited. It only releases.
       this._lockAfter.set(stored.lockAfter);
@@ -578,8 +613,9 @@ export class AppLockService {
   private save(
     descriptor:
       | typeof APP_LOCK_ENABLED_PREFERENCE
-      | typeof APP_LOCK_LOCK_AFTER_PREFERENCE,
-    value: boolean | LockAfter,
+      | typeof APP_LOCK_LOCK_AFTER_PREFERENCE
+      | typeof APP_LOCK_NOTIFICATION_TEXT_PREFERENCE,
+    value: boolean | LockAfter | NotificationText,
   ): Observable<AppLockCommandOutcome> {
     return this.preferences
       .setPreference(descriptor, INSTALLATION_PREFERENCE_CONTEXT, value)

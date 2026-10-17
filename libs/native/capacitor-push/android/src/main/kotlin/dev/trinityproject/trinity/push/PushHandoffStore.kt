@@ -16,8 +16,20 @@ import org.json.JSONException
 import org.json.JSONObject
 
 /**
+ * App lock's Notification text as the app mirrored it; see the Swift `NotificationTextMode`.
+ * Missing reads as [SHOW]; anything unreadable as [ALWAYS_HIDE].
+ */
+object NotificationTextMode {
+    const val SHOW = "show"
+    const val HIDE_ON_LOCK_SCREEN = "hide-on-lock-screen"
+    const val ALWAYS_HIDE = "always-hide"
+    val ALL = setOf(SHOW, HIDE_ON_LOCK_SCREEN, ALWAYS_HIDE)
+}
+
+/**
  * The push handoff store: per account its homeserver URL, access token (with its expiry,
- * when it has one) and sound choice, and its room names and DM flags. Written by
+ * when it has one) and sound choice, its room names and DM flags, and App lock's
+ * Notification text. Written by
  * PushHandoffPlugin, read by TrinityMessagingService while the app is closed.
  *
  * Every value is AES-256-GCM encrypted with a non-exportable Android Keystore key before it
@@ -63,6 +75,19 @@ class PushHandoffStore internal constructor(
 
     @Synchronized
     fun clear(): Boolean = preferences.edit().clear().commit()
+
+    /** Stores App lock's effective Notification text; refuses a mode it doesn't know. */
+    @Synchronized
+    fun setNotificationText(mode: String): Boolean =
+        mode in NotificationTextMode.ALL && write(SETTINGS_KEY, JSONObject().put("notificationText", mode))
+
+    /** Missing reads as Show; anything unreadable as Always hide, so damage never reveals text. */
+    @Synchronized
+    override fun notificationText(): String {
+        if (!preferences.contains(SETTINGS_KEY)) return NotificationTextMode.SHOW
+        val mode = read(SETTINGS_KEY)?.let { PushRenderRules.stringOrNull(it, "notificationText") }
+        return if (mode != null && mode in NotificationTextMode.ALL) mode else NotificationTextMode.ALWAYS_HIDE
+    }
 
     @Synchronized
     override fun account(userId: String): HandoffAccount? {
@@ -116,6 +141,7 @@ class PushHandoffStore internal constructor(
 
     private companion object {
         const val FILE = "trinity_push_handoff"
+        const val SETTINGS_KEY = "settings:notification-text"
     }
 }
 

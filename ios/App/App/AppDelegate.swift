@@ -2,6 +2,7 @@ import UIKit
 import Capacitor
 import FirebaseCore
 import FirebaseMessaging
+import UserNotifications
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -20,6 +21,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             FirebaseApp.configure()
             firebaseConfigured = true
         }
+        // App lock's "Hide on the lock screen": iOS shows this placeholder while it hides
+        // previews, and only for a category registered before the notification arrives.
+        // This set replaces all categories; Trinity registers no others (Capacitor's
+        // LocalNotifications would only through registerActionTypes, which Trinity never calls).
+        UNUserNotificationCenter.current().setNotificationCategories([
+            UNNotificationCategory(
+                identifier: "trinity.message.private",
+                actions: [],
+                intentIdentifiers: [],
+                hiddenPreviewsBodyPlaceholder: "New message",
+                options: []
+            ),
+        ])
         return true
     }
 

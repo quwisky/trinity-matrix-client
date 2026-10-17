@@ -153,4 +153,111 @@ describe('NotificationPolicy', () => {
       },
     });
   });
+
+  describe('notification text (App lock)', () => {
+    const reactionOf = (input: NotificationPolicyInput) =>
+      ({
+        ...input.event,
+        kind: 'reaction',
+        senderCount: 2,
+        reactionKeys: ['👍'],
+      }) as NotificationPolicyInput['event'];
+
+    it('shows only “New message” under Always hide, for messages and reactions alike', () => {
+      const message = policy.decide({ ...base(), textMode: 'always-hide' });
+      const reaction = policy.decide({
+        ...base(),
+        textMode: 'always-hide',
+        event: reactionOf(base()),
+      });
+      for (const decision of [message, reaction]) {
+        expect(decision).toMatchObject({
+          kind: 'present',
+          intent: { title: 'Trinity', body: 'New message', privacy: 'generic' },
+        });
+        const text = JSON.stringify(decision);
+        expect(text.includes('Bob')).toBe(false);
+        expect(text.includes('General')).toBe(false);
+        expect(text.includes('Hello')).toBe(false);
+        expect(text.includes('👍')).toBe(false);
+      }
+    });
+
+    it('names the running app under Always hide', () => {
+      expect(
+        policy.decide({
+          ...base(),
+          textMode: 'always-hide',
+          appName: 'Trinity Next',
+        }),
+      ).toMatchObject({
+        intent: { title: 'Trinity Next', body: 'New message' },
+      });
+    });
+
+    it('keeps the grouping tag, the destination and the sound choice under Always hide', () => {
+      expect(
+        policy.decide({
+          ...base(),
+          textMode: 'always-hide',
+          rules: { notify: true, silent: true },
+        }),
+      ).toEqual({
+        kind: 'present',
+        intent: {
+          id: '@alice:example.org $event',
+          title: 'Trinity',
+          body: 'New message',
+          tag: '@alice:example.org !room:example.org',
+          silent: true,
+          privacy: 'generic',
+          destination: {
+            accountId: '@alice:example.org',
+            roomId: '!room:example.org',
+            eventId: '$event',
+          },
+        },
+      });
+      expect(
+        policy.decide({
+          ...base(),
+          textMode: 'always-hide',
+          event: reactionOf(base()),
+        }),
+      ).toMatchObject({
+        intent: {
+          id: '@alice:example.org reaction $event',
+          tag: '@alice:example.org !room:example.org reaction $event',
+        },
+      });
+    });
+
+    it('still suppresses what it would suppress under Always hide', () => {
+      expect(
+        policy.decide({
+          ...base(),
+          textMode: 'always-hide',
+          rules: { notify: false, silent: false },
+        }),
+      ).toEqual({ kind: 'suppress', reason: 'rules' });
+    });
+
+    it('marks the intent for the lock screen under Hide on the lock screen', () => {
+      expect(
+        policy.decide({ ...base(), textMode: 'hide-on-lock-screen' }),
+      ).toMatchObject({
+        intent: {
+          title: 'Bob · General',
+          body: 'Hello',
+          privacy: 'lock-screen',
+        },
+      });
+    });
+
+    it('adds nothing under Show', () => {
+      expect(policy.decide({ ...base(), textMode: 'show' })).toEqual(
+        policy.decide(base()),
+      );
+    });
+  });
 });

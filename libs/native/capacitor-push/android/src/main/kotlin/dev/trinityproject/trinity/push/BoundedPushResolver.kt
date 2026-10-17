@@ -39,8 +39,11 @@ class BoundedPushResolver(
 
     private fun offline(data: Map<String, String>): PushOutcome = PushResolver(store, NoNetworkApi, wallClock).resolve(data)
 
-    /** A store fault reads as "no such account or room", which resolves to the generic fallback. */
-    private class FaultTolerantReader(private val delegate: HandoffReader) : HandoffReader {
+    /**
+     * A store fault reads as "no such account or room", which resolves to the generic fallback,
+     * and as Always hide for the Notification text (fail closed).
+     */
+    internal class FaultTolerantReader(private val delegate: HandoffReader) : HandoffReader {
         override fun account(userId: String): HandoffAccount? = try {
             delegate.account(userId)
         } catch (error: RuntimeException) {
@@ -51,6 +54,12 @@ class BoundedPushResolver(
             delegate.room(userId, roomId)
         } catch (error: RuntimeException) {
             null
+        }
+
+        override fun notificationText(): String = try {
+            delegate.notificationText()
+        } catch (error: RuntimeException) {
+            NotificationTextMode.ALWAYS_HIDE
         }
     }
 

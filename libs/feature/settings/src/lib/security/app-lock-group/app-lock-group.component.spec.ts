@@ -9,7 +9,9 @@ import {
   type AppLockPinState,
   type GuardOutcome,
   type LockAfter,
+  type NotificationText,
 } from '@trinity/data-access/app-lock';
+import { AppSettingsService } from '@trinity/platform-native';
 import {
   HOST_OPERATIONS,
   HOST_USER_PRESENCE_OPERATION,
@@ -68,7 +70,12 @@ const NO_PIN_STORE: HostUserPresenceSupport = {
 };
 
 type Command =
-  'enable' | 'disable' | 'setLockAfter' | 'changePin' | 'clearUnreadablePin';
+  | 'enable'
+  | 'disable'
+  | 'setLockAfter'
+  | 'setNotificationText'
+  | 'changePin'
+  | 'clearUnreadablePin';
 
 function pinStateOf(support: HostUserPresenceSupport): AppLockPinState {
   const pin = support.pin;
@@ -117,11 +124,19 @@ async function setup(
     systemGuard?: GuardOutcome;
     /** Whether the service allows clearing an unreadable PIN (a setting that was read). */
     canClear?: boolean;
+    notificationText?: NotificationText;
+    /** Whether "Hide on the lock screen" is offered (phones), as the service says. */
+    lockScreenTextOffered?: boolean;
+    /** What the host reports for iOS's Show Previews. */
+    previews?: 'always' | 'when-unlocked' | 'never' | null;
   } = {},
 ) {
   const support = signal(options.support ?? (options.enabled ? FACE_ON : FACE));
   const enabled = signal(options.enabled ?? false);
   const lockAfter = signal<LockAfter>(options.lockAfter ?? '1m');
+  const notificationText = signal<NotificationText>(
+    options.notificationText ?? 'show',
+  );
   const results = [...(options.dialogResults ?? [])];
   const recent = options.recentlyVerified ?? true;
   const outcome = (
@@ -175,6 +190,11 @@ async function setup(
     setLockAfter: vi.fn((value: LockAfter) =>
       outcome('setLockAfter', () => lockAfter.set(value)),
     ),
+    notificationText: notificationText.asReadonly(),
+    lockScreenTextOffered: options.lockScreenTextOffered ?? true,
+    setNotificationText: vi.fn((value: NotificationText) =>
+      outcome('setNotificationText', () => notificationText.set(value)),
+    ),
     changePin: vi.fn((_pin: string) => outcome('changePin', () => undefined)),
   };
   // A dialog takes focus from its opener, as the real surface does.
@@ -187,6 +207,11 @@ async function setup(
       MockProvider(AppLockService, lock as never),
       MockProvider(TrnSurfaceService, { open: open as never }),
       MockProvider(TrnToastService),
+      MockProvider(AppSettingsService, {
+        available: true,
+        openNotificationSettings: vi.fn(() => of(true)),
+        previewSetting: () => of(options.previews ?? null),
+      }),
       MockProvider(HostCapabilitiesService, {
         manifest: () =>
           of(
@@ -507,6 +532,87 @@ describe('AppLockGroupComponent', () => {
       await setup({ enabled: false });
       expect(screen.queryByTestId('app-lock-after')).toBeNull();
       expect(screen.queryByTestId('app-lock-change-pin')).toBeNull();
+    });
+  });
+
+  describe('Notification text', () => {
+    function textChoice(name: RegExp): HTMLInputElement {
+      return screen.getByRole('radio', { name }) as HTMLInputElement;
+    }
+
+    it('offers three choices on a phone, with the hint and the settings link', async () => {
+      await setup({ enabled: true, previews: 'always' });
+      expect(
+        screen.getByRole('radiogroup', { name: 'Notification text' }),
+      ).toBeTruthy();
+      expect(textChoice(/^Show/).checked).toBe(true);
+      expect(textChoice(/^Always hide/)).toBeTruthy();
+      // The hint describes its option, whichever choice is selected.
+      expect(
+        textChoice(/^Hide on the lock screen/).closest('label')?.textContent,
+      ).toMatch(/Follows your phone’s lock-screen notification setting\./);
+      expect(
+        screen.getByText(
+          /Your iPhone currently shows previews on the lock screen/,
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole('button', { name: 'Open notification settings' }),
+      ).toBeTruthy();
+    });
+
+    it('changes the choice behind the guard', async () => {
+      const { lock } = await setup({ enabled: true, recentlyVerified: false });
+      await click(textChoice(/^Always hide/));
+      expect(lock.verifyForChange).toHaveBeenCalledOnce();
+      expect(lock.setNotificationText).toHaveBeenCalledWith('always-hide');
+      expect(textChoice(/^Always hide/).checked).toBe(true);
+      expect(alertText()).toBeUndefined();
+    });
+
+    it('keeps showing the old choice when the check is cancelled', async () => {
+      const { lock, view } = await setup({
+        enabled: true,
+        recentlyVerified: false,
+        guard: 'cancelled',
+      });
+      await click(textChoice(/^Always hide/));
+      await view.fixture.whenStable();
+      view.fixture.detectChanges();
+      expect(lock.setNotificationText).not.toHaveBeenCalled();
+      expect(textChoice(/^Show/).checked).toBe(true);
+      expect(textChoice(/^Always hide/).checked).toBe(false);
+    });
+
+    it('keeps the old choice and says so when it cannot be saved', async () => {
+      const { view } = await setup({
+        enabled: true,
+        notificationText: 'hide-on-lock-screen',
+        failures: {
+          setNotificationText: { kind: 'failed', reason: 'setting-not-saved' },
+        },
+      });
+      await click(textChoice(/^Show/));
+      await view.fixture.whenStable();
+      view.fixture.detectChanges();
+      expect(alertText()).toBe(
+        'Trinity couldn’t save this setting, so Notification text hasn’t changed. Try again.',
+      );
+      expect(textChoice(/^Hide on the lock screen/).checked).toBe(true);
+      expect(textChoice(/^Show/).checked).toBe(false);
+    });
+
+    it('offers only Show and Always hide on a desktop', async () => {
+      await setup({ enabled: true, lockScreenTextOffered: false });
+      expect(screen.getAllByRole('radio')).toHaveLength(2);
+      expect(textChoice(/^Show/)).toBeTruthy();
+      expect(textChoice(/^Always hide/)).toBeTruthy();
+    });
+
+    it('hides the choice while App lock is off', async () => {
+      await setup({ enabled: false });
+      expect(screen.queryByRole('radio', { name: /^Always hide/ })).toBeNull();
+      expect(screen.queryByTestId('app-lock-notification-text')).toBeNull();
     });
   });
 

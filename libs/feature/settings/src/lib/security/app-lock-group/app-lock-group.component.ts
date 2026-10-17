@@ -22,13 +22,18 @@ import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
-import { AppLockService, type LockAfter } from '@trinity/data-access/app-lock';
+import {
+  AppLockService,
+  type LockAfter,
+  type NotificationText,
+} from '@trinity/data-access/app-lock';
 import {
   HostCapabilitiesService,
   HostScreenPrivacyService,
 } from '@trinity/runtime/host';
 import { Observable, catchError, defaultIfEmpty, of, take } from 'rxjs';
 import { AppLockFlows, STOPPED, type AppLockFlowEnd } from './app-lock-flows';
+import { AppLockNotificationTextComponent } from './app-lock-notification-text.component';
 import {
   PIN_CHANGED,
   STORED_PIN_CLEARED,
@@ -46,11 +51,9 @@ import {
 type AppLockView = 'controls' | 'pin-unreadable' | 'keyring' | 'hidden';
 
 /**
- * Settings › Security › App lock (spec §1): the switch, Lock after and Change PIN, or why App
- * lock can't be used here. Turning it on runs the system prompt where available, then the PIN
- * dialog (decision 23). Every later change needs a fresh verification (decision 7): the
- * system prompt, or the current PIN. Every outcome is shown; a control always shows the
- * stored value, so nothing is left half-changed.
+ * Settings › Security › App lock: the switch, Lock after, Notification text and Change PIN,
+ * or why App lock can't be used here. Every change after setup needs a fresh verification,
+ * and a control always shows the stored value, so nothing is left half-changed.
  */
 @Component({
   selector: 'trn-app-lock-group',
@@ -58,6 +61,7 @@ type AppLockView = 'controls' | 'pin-unreadable' | 'keyring' | 'hidden';
   templateUrl: './app-lock-group.component.html',
   providers: [AppLockFlows],
   imports: [
+    AppLockNotificationTextComponent,
     NgTemplateOutlet,
     TrnButton,
     TrnSelectComponent,
@@ -130,6 +134,12 @@ export class AppLockGroupComponent {
   /** What the select shows; a change that doesn't happen goes back to the stored value. */
   protected readonly shownLockAfter = linkedSignal(() =>
     this.appLock.lockAfter(),
+  );
+  /** Phones only offer "Hide on the lock screen". */
+  protected readonly lockScreenTextOffered = this.appLock.lockScreenTextOffered;
+  /** What the Notification text choice shows; like Lock after, back to the stored value. */
+  protected readonly shownNotificationText = linkedSignal(() =>
+    this.appLock.notificationText(),
   );
   protected readonly view = computed((): AppLockView => {
     if (this.enabled() || this.appLock.offered()) return 'controls';
@@ -211,6 +221,15 @@ export class AppLockGroupComponent {
     this.run(
       'lock-after',
       this.flows.guarded(() => this.appLock.setLockAfter(value)),
+    );
+  }
+
+  protected changeNotificationText(text: NotificationText): void {
+    if (text === this.appLock.notificationText() || this.busy()) return;
+    this.shownNotificationText.set(text);
+    this.run(
+      'notification-text',
+      this.flows.guarded(() => this.appLock.setNotificationText(text)),
     );
   }
 
@@ -305,6 +324,10 @@ export class AppLockGroupComponent {
         return root.querySelector<HTMLElement>(
           '[data-testid=app-lock-after-select] [role=combobox]',
         );
+      case 'notification-text':
+        return root.querySelector<HTMLElement>(
+          '[data-testid=app-lock-notification-text] input:checked',
+        );
       case 'change-pin':
         return root.querySelector<HTMLElement>(
           '[data-testid=app-lock-change-pin]',
@@ -318,12 +341,16 @@ export class AppLockGroupComponent {
   }
 
   private finish(change: AppLockChange, end: AppLockFlowEnd): void {
-    // The select shows the stored value again whenever the change didn't happen. After a
-    // render: the select already holds the choice, and re-binding an unchanged value (an
-    // answer that came before any render) would not move it back.
-    afterNextRender(() => this.shownLockAfter.set(this.appLock.lockAfter()), {
-      injector: this.injector,
-    });
+    // The select and the radios show the stored values again whenever the change didn't
+    // happen. After a render: the control already holds the choice, and re-binding an
+    // unchanged value (an answer that came before any render) would not move it back.
+    afterNextRender(
+      () => {
+        this.shownLockAfter.set(this.appLock.lockAfter());
+        this.shownNotificationText.set(this.appLock.notificationText());
+      },
+      { injector: this.injector },
+    );
     switch (end.kind) {
       case 'completed':
         if (change === 'change-pin') this.status.set(PIN_CHANGED);

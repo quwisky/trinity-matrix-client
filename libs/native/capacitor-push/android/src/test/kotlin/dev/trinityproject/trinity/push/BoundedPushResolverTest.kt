@@ -11,6 +11,8 @@ class BoundedPushResolverTest {
     private val store = object : HandoffReader {
         override fun account(userId: String) = HandoffAccount("https://hs.example", "token", sound = false)
         override fun room(userId: String, roomId: String) = HandoffRoom("Team", direct = false)
+
+        override fun notificationText() = NotificationTextMode.SHOW
     }
 
     private val push = mapOf("trinity_user_id" to "@a:hs", "room_id" to "!r:hs", "event_id" to "\$e")
@@ -96,6 +98,8 @@ class BoundedPushResolverTest {
                 HandoffAccount("https://hs.example", "token", sound = false, accessTokenExpiresAt = 1_000L)
 
             override fun room(userId: String, roomId: String) = HandoffRoom("Team", direct = false)
+
+            override fun notificationText() = NotificationTextMode.SHOW
         }
         val api = BlockingApi()
 
@@ -121,10 +125,39 @@ class BoundedPushResolverTest {
             override fun account(userId: String): HandoffAccount? = throw java.security.ProviderException("keystore")
 
             override fun room(userId: String, roomId: String): HandoffRoom? = throw java.security.ProviderException("keystore")
+
+            override fun notificationText(): String = throw java.security.ProviderException("keystore")
         }
 
         val outcome = BoundedPushResolver(faulty, BlockingApi(), budgetMillis = 100).resolve(push) as PushOutcome.Post
 
         assertEquals(RenderedNotification("Trinity", "", "New message"), outcome.notification)
+    }
+
+    @Test
+    fun theFaultTolerantReaderAsksTheStoreForTheNotificationTextAndFailsClosed() {
+        val hiding = object : HandoffReader {
+            override fun account(userId: String): HandoffAccount? = null
+
+            override fun room(userId: String, roomId: String): HandoffRoom? = null
+
+            override fun notificationText() = NotificationTextMode.HIDE_ON_LOCK_SCREEN
+        }
+        val faulty = object : HandoffReader {
+            override fun account(userId: String): HandoffAccount? = null
+
+            override fun room(userId: String, roomId: String): HandoffRoom? = null
+
+            override fun notificationText(): String = throw java.security.ProviderException("keystore")
+        }
+
+        assertEquals(
+            NotificationTextMode.HIDE_ON_LOCK_SCREEN,
+            BoundedPushResolver.FaultTolerantReader(hiding).notificationText(),
+        )
+        assertEquals(
+            NotificationTextMode.ALWAYS_HIDE,
+            BoundedPushResolver.FaultTolerantReader(faulty).notificationText(),
+        )
     }
 }

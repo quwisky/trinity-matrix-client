@@ -37,6 +37,12 @@
             data-testid="app-lock-after-select"
           />
         </trn-settings-row>
+        <trn-app-lock-notification-text
+          [value]="shownNotificationText()"
+          [lockScreenOffered]="lockScreenTextOffered"
+          [disabled]="busy()"
+          (valueChange)="changeNotificationText($event)"
+        />
         <trn-settings-row
           [label]="appName + ' PIN'"
           [description]="pinDescription()"

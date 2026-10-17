@@ -17,6 +17,7 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { injectHostAppName } from '@trinity/runtime/host';
 import { RoomEncryptionFlags } from '@trinity/util/matrix';
 import {
   LEGACY_NOTIFICATION_SOUND_EVENT,
@@ -29,6 +30,7 @@ import { normalizeNotificationEvent } from './matrix-notification-event.adapter'
 import type { NotificationRuntimeEvent } from './notification-intent';
 import { NotificationPolicy } from './notification-policy';
 import { NotificationPresenterService } from './notification-presenter.service';
+import { NOTIFICATION_TEXT } from './notification-text.port';
 import { NOTIFICATION_VISIBILITY } from './notification-visibility.port';
 import { PushService } from './push.service';
 import type {
@@ -139,6 +141,9 @@ export class NotificationService {
   );
   private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly visibility = inject(NOTIFICATION_VISIBILITY);
+  /** App lock's Notification text, composed by the application; absent means Show. */
+  private readonly text = inject(NOTIFICATION_TEXT, { optional: true });
+  private readonly appName = injectHostAppName();
   private readonly push = inject(PushService);
   private readonly policy = inject(NotificationPolicy);
   private readonly presenter = inject(NotificationPresenterService);
@@ -598,6 +603,8 @@ export class NotificationService {
       visibility: this.visibility.snapshot(),
       backgroundDelivery: this.push.backgroundDelivery(),
       duplicate: this.notified.has(key),
+      textMode: this.text?.mode() ?? 'show',
+      appName: this.appName,
     });
     if (decision.kind === 'suppress') return;
     this.notified.add(key);
@@ -620,6 +627,8 @@ export class NotificationService {
       visibility: this.visibility.snapshot(),
       backgroundDelivery: this.push.backgroundDelivery(),
       duplicate: false,
+      textMode: this.text?.mode() ?? 'show',
+      appName: this.appName,
     });
     if (decision.kind === 'suppress') return;
     this.presentIntent(decision.intent);

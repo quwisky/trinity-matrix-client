@@ -73,4 +73,17 @@ export interface PushHandoffPlugin {
   }>;
   /** Releases what `beginBackgroundWork` returned; an unknown or ended `id` is a no-op. */
   endBackgroundWork(options: { id: number }): Promise<void>;
+  /**
+   * Mirrors App lock's effective Notification text for the closed-app renderers; rejects a
+   * mode it doesn't know. The full reset's `clear` removes it (a missing mirror reads Show).
+   */
+  setNotificationText(options: {
+    mode: PushHandoffNotificationText;
+  }): Promise<void>;
+  /** Removes every notification Trinity delivered (the text became more private). */
+  clearDelivered(): Promise<void>;
 }
+
+/** App lock's Notification text, as the renderers read it. */
+export type PushHandoffNotificationText =
+  'show' | 'hide-on-lock-screen' | 'always-hide';

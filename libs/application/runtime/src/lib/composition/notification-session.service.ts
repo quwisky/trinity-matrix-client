@@ -10,6 +10,7 @@ import {
   type NotificationDestination,
   type NotificationIncident,
   type NotificationRuntimeEvent,
+  type NotificationTextMode,
 } from '@trinity/data-access/notifications';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { HostLifecycleService } from '@trinity/runtime/host';
@@ -31,11 +32,19 @@ import {
   map,
   merge,
   mergeMap,
+  of,
   switchMap,
   timer,
 } from 'rxjs';
 import { CapabilityHealthService } from '../capability-health.service';
 import { appLockCovers } from './app-lock.providers';
+
+/** How much each Notification text hides; a rise clears delivered notifications. */
+const TEXT_PRIVACY: Readonly<Record<NotificationTextMode, number>> = {
+  show: 0,
+  'hide-on-lock-screen': 1,
+  'always-hide': 2,
+};
 
 /** Owns notification delivery/activation health and contextual navigation incidents. */
 @Injectable({ providedIn: 'root' })
@@ -67,7 +76,61 @@ export class NotificationSessionService {
       this.refreshTokensOnBackground(),
       this.clearOpenedRooms(),
       this.clearResumedRoom(),
+      this.mirrorNotificationText(),
     );
+  }
+
+  /**
+   * Mirror App lock's effective Notification text for the push renderers once it has loaded,
+   * then on each change. A more private mode also clears delivered notifications (even if the
+   * write failed), so no earlier text stays on screen; a refused write is retried. Best effort.
+   */
+  private mirrorNotificationText(): Observable<never> {
+    return new Observable<never>(() => {
+      /** The last mode notifications followed, which the privacy rank compares against. */
+      let seen: NotificationTextMode | null = null;
+      /** The last mode the store accepted (or is writing); null after a refusal. */
+      let written: NotificationTextMode | null = null;
+      const writes = new Subscription();
+      // The store lost the mirror (emptied, then refused): the next report writes it again.
+      writes.add(
+        this.handoff.notificationTextLost.subscribe(() => (written = null)),
+      );
+      const watch = effect(
+        () => {
+          if (this.appLock.status() === 'unknown') return;
+          const mode = this.appLock.effectiveNotificationText();
+          untracked(() => {
+            const morePrivate =
+              seen !== null && TEXT_PRIVACY[mode] > TEXT_PRIVACY[seen];
+            seen = mode;
+            if (mode === written && !morePrivate) return;
+            written = mode;
+            writes.add(
+              this.handoff
+                .writeNotificationText(mode)
+                .pipe(
+                  catchError(() => {
+                    // Not de-duplicated away: the next report writes it again.
+                    if (written === mode) written = null;
+                    return of(void 0);
+                  }),
+                  switchMap(() =>
+                    morePrivate ? this.handoff.clearDelivered() : EMPTY,
+                  ),
+                  catchError(() => EMPTY),
+                )
+                .subscribe(),
+            );
+          });
+        },
+        { injector: this.injector },
+      );
+      return () => {
+        watch.destroy();
+        writes.unsubscribe();
+      };
+    });
   }
 
   /**

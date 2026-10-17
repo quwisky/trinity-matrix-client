@@ -6,6 +6,7 @@ import type {
 } from './notification-intent';
 
 const PREVIEW_LIMIT = 140;
+const GENERIC_BODY = 'New message';
 
 /** Pure notification policy: no Router, SDK, DOM, or host dependency. */
 @Injectable({ providedIn: 'root' })
@@ -40,8 +41,34 @@ export class NotificationPolicy {
       return { kind: 'suppress', reason: 'duplicate' };
     }
 
-    const body = event.body?.trim();
     const reaction = event.kind === 'reaction';
+    const id = `${event.accountId} ${reaction ? 'reaction ' : ''}${event.eventId}`;
+    const tag = `${event.accountId} ${event.roomId}${reaction ? ` reaction ${event.eventId}` : ''}`;
+    const destination = Object.freeze({
+      accountId: event.accountId,
+      roomId: event.roomId,
+      eventId: event.eventId,
+    });
+    const textMode = input.textMode ?? 'show';
+    if (textMode === 'always-hide') {
+      // Built before anything reads the event's text, sender or room; the tag and destination
+      // are identifiers that are never shown.
+      return {
+        kind: 'present',
+        intent: Object.freeze({
+          id,
+          // Twin of DEFAULT_APP_NAME (runtime/host); the policy stays free of the host.
+          title: input.appName || 'Trinity',
+          body: GENERIC_BODY,
+          tag,
+          silent: rules.silent,
+          privacy: 'generic',
+          destination,
+        }),
+      };
+    }
+
+    const body = event.body?.trim();
     let heading = event.senderName;
     if (reaction) {
       const others = event.senderCount - 1;
@@ -56,7 +83,7 @@ export class NotificationPolicy {
       heading = `${people} reacted ${keys}${event.reactionKeys.length > 3 ? ' …' : ''}`;
     }
     const intent: NotificationIntent = Object.freeze({
-      id: `${event.accountId} ${reaction ? 'reaction ' : ''}${event.eventId}`,
+      id,
       title: event.roomName ? `${heading} · ${event.roomName}` : heading,
       body: reaction
         ? body
@@ -64,14 +91,13 @@ export class NotificationPolicy {
           : 'Your message'
         : body
           ? body.slice(0, PREVIEW_LIMIT)
-          : 'New message',
-      tag: `${event.accountId} ${event.roomId}${reaction ? ` reaction ${event.eventId}` : ''}`,
+          : GENERIC_BODY,
+      tag,
       silent: rules.silent,
-      destination: Object.freeze({
-        accountId: event.accountId,
-        roomId: event.roomId,
-        eventId: event.eventId,
-      }),
+      ...(textMode === 'hide-on-lock-screen'
+        ? { privacy: 'lock-screen' as const }
+        : {}),
+      destination,
     });
     return { kind: 'present', intent };
   }

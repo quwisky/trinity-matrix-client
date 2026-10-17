@@ -25,6 +25,14 @@ export const LOCK_AFTER_CHOICES = [
 ] as const;
 export type LockAfter = (typeof LOCK_AFTER_CHOICES)[number];
 
+export const NOTIFICATION_TEXT_CHOICES = [
+  'show',
+  'hide-on-lock-screen',
+  'always-hide',
+] as const;
+/** What notifications may say while App lock is on. */
+export type NotificationText = (typeof NOTIFICATION_TEXT_CHOICES)[number];
+
 function validateEnabled(value: unknown): PreferenceValidation<boolean> {
   return typeof value === 'boolean'
     ? { kind: 'accepted', value }
@@ -38,6 +46,17 @@ function validateLockAfter(value: unknown): PreferenceValidation<LockAfter> {
   return (LOCK_AFTER_CHOICES as readonly unknown[]).includes(value)
     ? { kind: 'accepted', value: value as LockAfter }
     : { kind: 'rejected', diagnostic: { code: 'app-lock-lock-after-unknown' } };
+}
+
+function validateNotificationText(
+  value: unknown,
+): PreferenceValidation<NotificationText> {
+  return (NOTIFICATION_TEXT_CHOICES as readonly unknown[]).includes(value)
+    ? { kind: 'accepted', value: value as NotificationText }
+    : {
+        kind: 'rejected',
+        diagnostic: { code: 'app-lock-notification-text-unknown' },
+      };
 }
 
 function version1<T extends boolean | string>(
@@ -101,6 +120,32 @@ export const APP_LOCK_LOCK_AFTER_PREFERENCE = definePreference<LockAfter>({
   validate: validateLockAfter,
 });
 
+/**
+ * Settings › Security › App lock › Notification text. Kept while App lock is off, when it has
+ * no effect; "Hide on the lock screen" is offered on phones only.
+ */
+export const APP_LOCK_NOTIFICATION_TEXT_PREFERENCE =
+  definePreference<NotificationText>({
+    id: 'app-lock.notification-text',
+    owner: 'app-lock',
+    section: 'security',
+    order: 2,
+    scope: 'installation',
+    defaultValue: 'show',
+    sensitivity: 'private',
+    storage: 'device-preferences',
+    export: 'excluded',
+    editor: { kind: 'none' },
+    persistence: {
+      key: 'trinity.app-lock.notification-text',
+      migration: version1(
+        validateNotificationText,
+        'app-lock-notification-text-version-unsupported',
+      ),
+    },
+    validate: validateNotificationText,
+  });
+
 export interface StoredAppLock {
   /**
    * The saved switch, or `unreadable` (fail closed: never collapse it to `false`; the caller
@@ -118,14 +163,23 @@ export interface StoredAppLock {
   readonly enabled: boolean | 'unreadable';
   /** The saved delay, or the default (`1m`) when it did not load as `ready`. */
   readonly lockAfter: LockAfter;
+  /**
+   * The saved choice, or `always-hide` when it did not load as `ready` (fail closed, like the
+   * push renderers' mirror). Nothing saved is `show`, the default.
+   */
+  readonly notificationText: NotificationText;
 }
 
-const UNREADABLE: StoredAppLock = { enabled: 'unreadable', lockAfter: '1m' };
+const UNREADABLE: StoredAppLock = {
+  enabled: 'unreadable',
+  lockAfter: '1m',
+  notificationText: 'always-hide',
+};
 
 /**
- * Read both settings from installation storage. Cold; emits once and never errors. Each
- * setting is judged on its own load state: a switch that is not `ready` is `unreadable`,
- * a delay that is not `ready` falls back to its default.
+ * Read the settings from installation storage. Cold; emits once and never errors. Each is
+ * judged on its own load state: a switch not `ready` is `unreadable` (fail closed), a delay
+ * falls back to its default and a notification text to `always-hide`.
  */
 export function readAppLockSettings(
   preferences: PreferenceStoreService,
@@ -134,6 +188,7 @@ export function readAppLockSettings(
     preferences.hydrateDescriptors(INSTALLATION_PREFERENCE_CONTEXT, [
       APP_LOCK_ENABLED_PREFERENCE,
       APP_LOCK_LOCK_AFTER_PREFERENCE,
+      APP_LOCK_NOTIFICATION_TEXT_PREFERENCE,
     ]),
   ).pipe(
     take(1),
@@ -146,10 +201,18 @@ export function readAppLockSettings(
         APP_LOCK_LOCK_AFTER_PREFERENCE,
         INSTALLATION_PREFERENCE_CONTEXT,
       )();
+      const notificationText = preferences.stateFor(
+        APP_LOCK_NOTIFICATION_TEXT_PREFERENCE,
+        INSTALLATION_PREFERENCE_CONTEXT,
+      )();
       return {
         enabled: enabled.kind === 'ready' ? enabled.value : 'unreadable',
         lockAfter:
           lockAfter.kind === 'ready' ? lockAfter.value : UNREADABLE.lockAfter,
+        notificationText:
+          notificationText.kind === 'ready'
+            ? notificationText.value
+            : UNREADABLE.notificationText,
       };
     }),
     catchError(() => of(UNREADABLE)),

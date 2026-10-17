@@ -29,7 +29,11 @@ const electronNavigate: Navigate = async (page: Page, path: string) => {
 interface FakeReport {
   readonly pinSet: boolean;
   readonly systemPrompts: number;
-  readonly notifications: readonly { body: string; eventId: string }[];
+  readonly notifications: readonly {
+    title: string;
+    body: string;
+    eventId: string;
+  }[];
 }
 
 interface FakeControls {
@@ -50,7 +54,7 @@ async function installFakes(app: ElectronApplication): Promise<void> {
       system: 'available' as 'available' | 'unavailable',
       answer: 'verified' as 'verified' | 'cancelled',
       systemPrompts: 0,
-      notifications: [] as { body: string; eventId: string }[],
+      notifications: [] as { title: string; body: string; eventId: string }[],
       report: () => ({
         pinSet: pin !== null,
         systemPrompts: state.systemPrompts,
@@ -100,10 +104,12 @@ async function installFakes(app: ElectronApplication): Promise<void> {
     });
     swap('trinity:host:v1:notification-presentation:present', (_event, raw) => {
       const payload = raw as {
+        title?: string;
         body?: string;
         destination?: { eventId?: string };
       };
       state.notifications.push({
+        title: payload.title ?? '',
         body: payload.body ?? '',
         eventId: payload.destination?.eventId ?? '',
       });
@@ -253,6 +259,94 @@ async function readReceiptBy(
 
 test.describe('App lock in the desktop shell', () => {
   test.skip(!session.available, 'needs a homeserver');
+
+  test('notifications say only the app’s name and “New message” under Always hide', async ({
+    request,
+    matrixResources,
+  }) => {
+    test.slow();
+    const hs = session.hs as string;
+    const me = matrixResources.userLocalpart('app-lock-hide');
+    const friend = matrixResources.userLocalpart('app-lock-hide-friend');
+    await registerUser(request, me, `${me}-pass`);
+    await registerUser(request, friend, `${friend}-pass`);
+    const mine = await passwordLogin(request, hs, me, `${me}-pass`);
+    const theirs = await passwordLogin(request, hs, friend, `${friend}-pass`);
+    const roomName = matrixResources.roomName('hidden text');
+    const created = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: { Authorization: `Bearer ${theirs.accessToken}` },
+      data: { name: roomName, preset: 'private_chat', invite: [mine.userId] },
+    });
+    expect(created.ok()).toBe(true);
+    const roomId = (await created.json()).room_id as string;
+    const joined = await request.post(
+      `${hs}/_matrix/client/v3/join/${encodeURIComponent(roomId)}`,
+      { headers: { Authorization: `Bearer ${mine.accessToken}` } },
+    );
+    expect(joined.ok()).toBe(true);
+
+    const app = await launchApp();
+    try {
+      await installFakes(app);
+      const page = await app.firstWindow();
+      await grantNotifications(page);
+      const appName = await appNameOf(page);
+      await login(
+        page,
+        { available: true, hs, user: me, pass: `${me}-pass` },
+        electronNavigate,
+      );
+      await page.getByText(roomName, { exact: true }).first().waitFor();
+      await turnOnAppLock(page, appName);
+
+      // Within the 60-second window after setup, no second prompt is needed. The desktop
+      // offers Show and Always hide only.
+      await expect(page.getByTestId('app-lock-text-lock-screen')).toHaveCount(
+        0,
+      );
+      await page.getByTestId('app-lock-text-always').click();
+      await expect(
+        page.getByRole('radio', { name: /^Always hide/ }),
+      ).toBeChecked({ timeout: 15_000 });
+      expect((await fakes(app)).systemPrompts).toBe(1);
+
+      // Locked, nobody is looking, so the message notifies wherever the app stands.
+      await lockFromMenu(app);
+      await expect(page.getByTestId('app-lock-cover')).toHaveAttribute(
+        'open',
+        '',
+        { timeout: 15_000 },
+      );
+      const sent = await request.put(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${matrixResources.namespace.role('hidden')}`,
+        {
+          headers: { Authorization: `Bearer ${theirs.accessToken}` },
+          data: { msgtype: 'm.text', body: 'Secret plans' },
+        },
+      );
+      expect(sent.ok()).toBe(true);
+      const eventId = (await sent.json()).event_id as string;
+      await expect
+        .poll(
+          async () =>
+            (await fakes(app)).notifications.some(
+              (shown) => shown.eventId === eventId,
+            ),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
+      const shown = (await fakes(app)).notifications.find(
+        (notification) => notification.eventId === eventId,
+      );
+      expect(shown).toMatchObject({ title: appName, body: 'New message' });
+      const text = JSON.stringify((await fakes(app)).notifications);
+      expect(text.includes('Secret plans')).toBe(false);
+      expect(text.includes(roomName)).toBe(false);
+      expect(text.includes(friend)).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
 
   test('locks over an open dialog, keeps notifying, holds receipts and unlocks', async ({
     request,

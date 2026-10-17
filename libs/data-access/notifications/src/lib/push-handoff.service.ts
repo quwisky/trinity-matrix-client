@@ -16,6 +16,7 @@ import {
 } from '@trinity/capacitor-push';
 import {
   Observable,
+  Subject,
   catchError,
   concat,
   defaultIfEmpty,
@@ -31,6 +32,7 @@ import {
   switchMap,
   timeout,
 } from 'rxjs';
+import type { NotificationTextMode } from './notification-text.port';
 import {
   LEGACY_NOTIFICATION_SOUND_EVENT,
   NOTIFICATION_SOUND_EVENT,
@@ -111,6 +113,16 @@ export class PushHandoffService {
   /** When each bound account's token last rotated (epoch ms), for the background refresh. */
   private readonly rotatedAt = new Map<string, number>();
   private tail: Promise<void> = Promise.resolve();
+  /**
+   * The Notification text last mirrored, written again after the store is emptied (a sign-in
+   * replacing every account, App lock still on): a missing mirror would read as Show.
+   */
+  private notificationText: NotificationTextMode | null = null;
+  private readonly mirrorLost = new Subject<void>();
+
+  /** Emits when the store was emptied and the mirror couldn't be written again. */
+  readonly notificationTextLost: Observable<void> =
+    this.mirrorLost.asObservable();
 
   /** Own the handoff for one Application Runtime session. Never emits. */
   run(): Observable<never> {
@@ -160,12 +172,40 @@ export class PushHandoffService {
         if (clients.size > 0) this.retired.set(id, clients);
         this.bindings.get(id)?.written.clear();
       }
-      return from(
-        this.schedule(() =>
-          userId ? this.bridge.removeAccount(userId) : this.bridge.clear(),
-        ),
+      const emptied = this.schedule(() =>
+        userId ? this.bridge.removeAccount(userId) : this.bridge.clear(),
       );
+      const text = this.notificationText;
+      if (!userId && text !== null) {
+        // Best effort, after the clear whatever it answered; the reset restarts the app,
+        // whose session then writes the true mode.
+        void this.schedule(() => this.bridge.setNotificationText(text)).catch(
+          () => this.mirrorLost.next(),
+        );
+      }
+      return from(emptied);
     });
+  }
+
+  /**
+   * Cold. Mirror App lock's effective Notification text for the closed-app renderers, queued
+   * after earlier writes; inert off native. Errors when the native store refused.
+   */
+  writeNotificationText(mode: NotificationTextMode): Observable<void> {
+    return defer(() => {
+      if (!this.bridge.available) return of(void 0);
+      this.notificationText = mode;
+      return from(this.schedule(() => this.bridge.setNotificationText(mode)));
+    });
+  }
+
+  /** Cold. Remove every delivered Trinity notification, queued after earlier writes. */
+  clearDelivered(): Observable<void> {
+    return defer(() =>
+      this.bridge.available
+        ? from(this.schedule(() => this.bridge.clearDelivered()))
+        : of(void 0),
+    );
   }
 
   /**

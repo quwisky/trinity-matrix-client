@@ -80,6 +80,62 @@ class PushHandoffStoreTest {
     private val account = HandoffAccount("https://hs.example", "token", sound = false)
 
     @Test
+    fun notificationTextIsShowUntilWrittenAndFailsClosed() {
+        val preferences = MemoryPreferences()
+        val crypto = FakeCrypto()
+        val store = PushHandoffStore(preferences, crypto)
+        assertEquals(NotificationTextMode.SHOW, store.notificationText())
+        assertTrue(store.setNotificationText(NotificationTextMode.ALWAYS_HIDE))
+        assertEquals(NotificationTextMode.ALWAYS_HIDE, store.notificationText())
+        assertTrue(store.setNotificationText(NotificationTextMode.HIDE_ON_LOCK_SCREEN))
+        assertEquals(NotificationTextMode.HIDE_ON_LOCK_SCREEN, store.notificationText())
+        crypto.failing = true
+        assertEquals(NotificationTextMode.ALWAYS_HIDE, store.notificationText())
+        crypto.failing = false
+        assertFalse(store.setNotificationText("sideways"))
+        assertEquals(NotificationTextMode.HIDE_ON_LOCK_SCREEN, store.notificationText())
+    }
+
+    @Test
+    fun aDamagedNotificationTextHidesEverything() {
+        val preferences = MemoryPreferences()
+        val crypto = FakeCrypto()
+        val store = PushHandoffStore(preferences, crypto)
+        preferences.values["settings:notification-text"] = crypto.encrypt("{ not json")
+        assertEquals(NotificationTextMode.ALWAYS_HIDE, store.notificationText())
+        preferences.values["settings:notification-text"] = crypto.encrypt("""{"notificationText":"sideways"}""")
+        assertEquals(NotificationTextMode.ALWAYS_HIDE, store.notificationText())
+        preferences.values["settings:notification-text"] = crypto.encrypt("{}")
+        assertEquals(NotificationTextMode.ALWAYS_HIDE, store.notificationText())
+    }
+
+    @Test
+    fun clearRemovesTheNotificationText() {
+        val store = PushHandoffStore(MemoryPreferences(), FakeCrypto())
+        assertTrue(store.setNotificationText(NotificationTextMode.ALWAYS_HIDE))
+        assertTrue(store.clear())
+        assertEquals(NotificationTextMode.SHOW, store.notificationText())
+    }
+
+    @Test
+    fun aMissingMirrorShowsTextAndADamagedOrUnknownOneHidesEverything() {
+        val preferences = MemoryPreferences()
+        val crypto = FakeCrypto()
+        val store = PushHandoffStore(preferences, crypto)
+        assertEquals(NotificationTextMode.SHOW, store.notificationText())
+        for (damaged in listOf("", "null", "[]", """{"notificationText":null}""", """{"notificationText":"Show"}""")) {
+            preferences.values["settings:notification-text"] = crypto.encrypt(damaged)
+            assertEquals(damaged, NotificationTextMode.ALWAYS_HIDE, store.notificationText())
+        }
+        preferences.values["settings:notification-text"] = "not sealed"
+        crypto.failing = true
+        assertEquals(NotificationTextMode.ALWAYS_HIDE, store.notificationText())
+        crypto.failing = false
+        preferences.values.remove("settings:notification-text")
+        assertEquals(NotificationTextMode.SHOW, store.notificationText())
+    }
+
+    @Test
     fun storedValuesRoundTrip() {
         val store = PushHandoffStore(MemoryPreferences(), FakeCrypto())
 

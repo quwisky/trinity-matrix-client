@@ -474,7 +474,7 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'RetiredPushGatewayCleanup deletes it at startup; nothing reads it.',
   },
 
-  // — platform-native, excluded —
+  // — platform-native, excluded and internal —
   {
     disposition: 'excluded',
     key: 'trinity.composer.drafts',
@@ -482,6 +482,14 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     reason:
       'Unsent message text, not configuration. It must not appear in a document someone ' +
       'pastes into a support thread, and Reset must never destroy it.',
+  },
+  {
+    disposition: 'internal',
+    key: 'trinity.message.private',
+    owner: 'platform-native',
+    reason:
+      'Not a stored key at all: the iOS notification category for App lock’s "Hide on the ' +
+      'lock screen", registered by AppDelegate with the placeholder "New message".',
   },
 
   // — data-access/room-library, excluded —
@@ -547,6 +555,14 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     reason:
       'A per-device privacy choice that only means something while that device has App ' +
       'lock on; it stays with the device like the lock itself.',
+  },
+  {
+    disposition: 'excluded',
+    key: 'trinity.app-lock.notification-text',
+    owner: 'data-access/app-lock',
+    reason:
+      'A per-device privacy choice nested under App lock; it means nothing on a device ' +
+      'without the lock, and the native push renderers read their own mirror of it.',
   },
 
   // — data-access/trust —

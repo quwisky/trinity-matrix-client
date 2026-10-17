@@ -214,6 +214,8 @@ export const SETTINGS_TIMEOUT_MS = 3_000;
 export const SETTINGS_UNREADABLE: StoredAppLock = {
   enabled: 'unreadable',
   lockAfter: APP_LOCK_LOCK_AFTER_PREFERENCE.defaultValue,
+  // Fail closed: a choice that can't be read hides everything.
+  notificationText: 'always-hide',
 };
 /**
  * The host did not answer: whether a PIN is stored is unknown, so the PIN reads as unreadable

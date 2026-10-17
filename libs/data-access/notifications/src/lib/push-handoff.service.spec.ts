@@ -17,10 +17,12 @@ import {
   defer,
   firstValueFrom,
   of,
+  take,
   throwError,
   type Observable,
   type Subscription,
 } from 'rxjs';
+import type { NotificationTextMode } from './notification-text.port';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   NOTIFICATION_SOUND_EVENT,
@@ -112,6 +114,10 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
     clearRoom: vi.fn((): Observable<void> => of(void 0)),
     beginBackgroundWork: vi.fn((): Observable<BackgroundWork> => of(grant(7))),
     endBackgroundWork: vi.fn((_id: number): Observable<void> => of(void 0)),
+    setNotificationText: vi.fn(
+      (_mode: NotificationTextMode): Observable<void> => of(void 0),
+    ),
+    clearDelivered: vi.fn((): Observable<void> => of(void 0)),
   };
   const sound = { isOn: vi.fn(() => true) };
   const expiry = vi.fn(
@@ -168,6 +174,94 @@ const refreshed = (h: ReturnType<typeof setup>) =>
 
 describe('PushHandoffService', () => {
   beforeEach(() => TestBed.resetTestingModule());
+
+  describe('notification text', () => {
+    it('mirrors the notification text and clears delivered notifications in order', async () => {
+      const h = setup();
+      await firstValueFrom(h.service.writeNotificationText('always-hide'), {
+        defaultValue: undefined,
+      });
+      await firstValueFrom(h.service.clearDelivered(), {
+        defaultValue: undefined,
+      });
+      expect(h.bridge.setNotificationText).toHaveBeenCalledWith('always-hide');
+      expect(h.bridge.clearDelivered).toHaveBeenCalledOnce();
+      expect(
+        h.bridge.setNotificationText.mock.invocationCallOrder[0],
+      ).toBeLessThan(h.bridge.clearDelivered.mock.invocationCallOrder[0]);
+    });
+
+    it('queues the mirror after earlier writes', async () => {
+      const h = setup();
+      const gate = new Subject<void>();
+      h.bridge.removeAccount.mockReturnValueOnce(gate.pipe(take(1)));
+      const forgetting = firstValueFrom(h.service.forget('@me:hs'), {
+        defaultValue: undefined,
+      });
+      const writing = firstValueFrom(
+        h.service.writeNotificationText('hide-on-lock-screen'),
+        { defaultValue: undefined },
+      );
+      await flush();
+      expect(h.bridge.removeAccount).toHaveBeenCalledOnce();
+      expect(h.bridge.setNotificationText).not.toHaveBeenCalled();
+      gate.next();
+      await Promise.all([forgetting, writing]);
+      expect(h.bridge.setNotificationText).toHaveBeenCalledWith(
+        'hide-on-lock-screen',
+      );
+    });
+
+    it('writes the mirrored text again after emptying the store', async () => {
+      const h = setup();
+      await firstValueFrom(h.service.writeNotificationText('always-hide'), {
+        defaultValue: undefined,
+      });
+      await firstValueFrom(h.service.forget());
+      expect(h.bridge.clear).toHaveBeenCalledOnce();
+      expect(h.bridge.setNotificationText).toHaveBeenLastCalledWith(
+        'always-hide',
+      );
+      expect(h.bridge.setNotificationText).toHaveBeenCalledTimes(2);
+      expect(h.bridge.clear.mock.invocationCallOrder[0]).toBeLessThan(
+        h.bridge.setNotificationText.mock.invocationCallOrder[1],
+      );
+    });
+
+    it('reports a mirror it could not write again after emptying the store', async () => {
+      const h = setup();
+      const lost: void[] = [];
+      h.service.notificationTextLost.subscribe(() => lost.push(undefined));
+      await firstValueFrom(h.service.writeNotificationText('always-hide'), {
+        defaultValue: undefined,
+      });
+      h.bridge.setNotificationText.mockReturnValueOnce(
+        throwError(() => new Error('refused')),
+      );
+      await firstValueFrom(h.service.forget());
+      await flush();
+      expect(h.bridge.setNotificationText).toHaveBeenCalledTimes(2);
+      expect(lost).toHaveLength(1);
+    });
+
+    it('writes nothing after emptying the store when it never mirrored', async () => {
+      const h = setup();
+      await firstValueFrom(h.service.forget());
+      expect(h.bridge.setNotificationText).not.toHaveBeenCalled();
+    });
+
+    it('is inert without the native store', async () => {
+      const h = setup({ available: false });
+      await firstValueFrom(h.service.writeNotificationText('always-hide'), {
+        defaultValue: undefined,
+      });
+      await firstValueFrom(h.service.clearDelivered(), {
+        defaultValue: undefined,
+      });
+      expect(h.bridge.setNotificationText).not.toHaveBeenCalled();
+      expect(h.bridge.clearDelivered).not.toHaveBeenCalled();
+    });
+  });
 
   it('writes an account when it signs in', async () => {
     const h = setup();
