@@ -33,12 +33,14 @@ import {
   CapacitorUserPresenceAdapter,
   ElectronUserPresenceAdapter,
   WebUserPresenceAdapter,
-  parsePinOutcome,
-  parsePresenceOutcome,
-  parseUserPresenceSupport,
   presenceOutcomeOfError,
   systemPresenceOf,
 } from './host-user-presence.adapters';
+import {
+  parsePinOutcome,
+  parsePresenceOutcome,
+  parseUserPresenceSupport,
+} from './host-user-presence.electron-response';
 
 function check(over: Partial<CheckBiometryResult>): CheckBiometryResult {
   return {
