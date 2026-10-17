@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { signal, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -60,6 +60,24 @@ beforeEach(() => {
   TestBed.configureTestingModule({ providers: [privacyProvider(true)] });
 });
 
+/** Opens `!r:hs` on a TimelineService over `client`, plus any per-test providers. */
+function openTimeline(client: unknown, extraProviders: Provider[] = []) {
+  TestBed.configureTestingModule({
+    providers: [TimelineService, matrixProvider(client), ...extraProviders],
+  });
+  const svc = TestBed.inject(TimelineService);
+  svc.open('!r:hs');
+  return svc;
+}
+
+/** The harness client over a room a test has tweaked (the harness types its own room strictly). */
+function clientFor(room: object, overrides: object = {}) {
+  return {
+    ...fakeClient(room as ReturnType<typeof fakeRoom>, []),
+    ...overrides,
+  };
+}
+
 describe('TimelineService', () => {
   beforeEach(() => {
     // Viewing a room = the window is focused (the normal case). markRead only acks
@@ -71,35 +89,12 @@ describe('TimelineService', () => {
   it('loads the full member list of the room it opens (#1295)', () => {
     const loadMembersIfNeeded = vi.fn(() => Promise.resolve(true));
     const room = {
-      roomId: '!r:hs',
-      getLiveTimeline: () => ({
-        getEvents: () => [],
-        getPaginationToken: () => null,
-        getState: () => undefined,
-      }),
-      findEventById: () => undefined,
+      ...fakeRoom([]),
       getMember: () => null,
-      relations: { getChildEventsForEvent: () => undefined },
-      hasEncryptionStateEvent: () => false,
       loadMembersIfNeeded,
-      on: () => {},
-      off: () => {},
     };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
-      sendReadReceipt: () => Promise.resolve({}),
-      scrollback: () => Promise.resolve(room),
-    };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client)],
-    });
-    const svc = TestBed.inject(TimelineService);
-
-    svc.open('!r:hs');
+    const client = clientFor(room);
+    openTimeline(client);
 
     // A lazily synced room knows only the senders it has seen: mentions, typing names and
     // the member list need everyone once the room is in use.
@@ -346,14 +341,7 @@ describe('TimelineService', () => {
     let aliceLoaded = false;
     let memberHandler: ((...a: unknown[]) => void) | undefined;
     const room = {
-      roomId: '!r:hs',
-      loadMembersIfNeeded: () => Promise.resolve(true),
-      getLiveTimeline: () => ({
-        getEvents: () => events,
-        getPaginationToken: () => null,
-        getState: () => undefined,
-      }),
-      findEventById: (id: string) => events.find((e) => e.getId() === id),
+      ...fakeRoom(events),
       getMember: (id: string) => {
         if (id === '@me:hs') {
           return { name: 'Me', getMxcAvatarUrl: () => null };
@@ -362,29 +350,14 @@ describe('TimelineService', () => {
           ? { name: 'Alice', getMxcAvatarUrl: () => 'mxc://hs/av' }
           : null;
       },
-      relations: { getChildEventsForEvent: () => undefined },
-      hasEncryptionStateEvent: () => false,
       on: (ev: string, cb: (...a: unknown[]) => void) => {
         if (ev === RoomStateEvent.Members) {
           memberHandler = cb;
         }
       },
-      off: () => {},
     };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
-      sendReadReceipt: () => Promise.resolve({}),
-      scrollback: () => Promise.resolve(room),
-    };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client)],
-    });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    const client = clientFor(room);
+    const svc = openTimeline(client);
 
     // Member absent → preview falls back to the raw mxid, no avatar.
     const before = svc.messages().find((m) => m.id === '$reply');
@@ -414,43 +387,21 @@ describe('TimelineService', () => {
     let bobLoaded = false;
     let memberHandler: ((...a: unknown[]) => void) | undefined;
     const room = {
-      roomId: '!r:hs',
-      loadMembersIfNeeded: () => Promise.resolve(true),
-      getLiveTimeline: () => ({
-        getEvents: () => events,
-        getPaginationToken: () => null,
-        getState: () => undefined,
-      }),
-      findEventById: (id: string) => events.find((e) => e.getId() === id),
+      ...fakeRoom(events),
       getMember: (id: string) => {
         if (id === '@me:hs') {
           return { name: 'Me', getMxcAvatarUrl: () => null };
         }
         return bobLoaded ? { name: 'Bob', getMxcAvatarUrl: () => null } : null;
       },
-      relations: { getChildEventsForEvent: () => undefined },
-      hasEncryptionStateEvent: () => false,
       on: (ev: string, cb: (...a: unknown[]) => void) => {
         if (ev === RoomStateEvent.Members) {
           memberHandler = cb;
         }
       },
-      off: () => {},
     };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
-      sendReadReceipt: () => Promise.resolve({}),
-      scrollback: () => Promise.resolve(room),
-    };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client)],
-    });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    const client = clientFor(room);
+    const svc = openTimeline(client);
 
     // Target member absent → the line names the raw mxid.
     expect(svc.messages().find((m) => m.id === '$inv')?.summary).toBe(
@@ -476,14 +427,7 @@ describe('TimelineService', () => {
     let memberHandler: ((...a: unknown[]) => void) | undefined;
     const relations = fakeRelations([['👍', new Set([fakeReaction('@a:hs')])]]);
     const room = {
-      roomId: '!r:hs',
-      loadMembersIfNeeded: () => Promise.resolve(true),
-      getLiveTimeline: () => ({
-        getEvents: () => events,
-        getPaginationToken: () => null,
-        getState: () => undefined,
-      }),
-      findEventById: (id: string) => events.find((e) => e.getId() === id),
+      ...fakeRoom(events, { $1: relations }),
       getMember: (id: string) => {
         if (id === '@me:hs') {
           return { name: 'Me', getMxcAvatarUrl: () => null };
@@ -492,32 +436,14 @@ describe('TimelineService', () => {
           ? { name: 'Alice', getMxcAvatarUrl: () => null }
           : null;
       },
-      relations: {
-        getChildEventsForEvent: (id: string) =>
-          id === '$1' ? relations : undefined,
-      },
-      hasEncryptionStateEvent: () => false,
       on: (ev: string, cb: (...a: unknown[]) => void) => {
         if (ev === RoomStateEvent.Members) {
           memberHandler = cb;
         }
       },
-      off: () => {},
     };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
-      sendReadReceipt: () => Promise.resolve({}),
-      scrollback: () => Promise.resolve(room),
-    };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client)],
-    });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    const client = clientFor(room);
+    const svc = openTimeline(client);
 
     expect(svc.messages()[0].reactions[0].reactors).toEqual(['@a:hs']);
 
@@ -556,14 +482,7 @@ describe('TimelineService', () => {
     let memberCalls = 0;
     let memberHandler: ((...a: unknown[]) => void) | undefined;
     const room = {
-      roomId: '!r:hs',
-      loadMembersIfNeeded: () => Promise.resolve(true),
-      getLiveTimeline: () => ({
-        getEvents: () => events,
-        getPaginationToken: () => null,
-        getState: () => undefined,
-      }),
-      findEventById: (id: string) => events.find((e) => e.getId() === id),
+      ...fakeRoom(events),
       getMember: (id: string) => {
         memberCalls++;
         return {
@@ -571,29 +490,14 @@ describe('TimelineService', () => {
           getMxcAvatarUrl: () => null,
         };
       },
-      relations: { getChildEventsForEvent: () => undefined },
-      hasEncryptionStateEvent: () => false,
       on: (ev: string, cb: (...a: unknown[]) => void) => {
         if (ev === RoomStateEvent.Members) {
           memberHandler = cb;
         }
       },
-      off: () => {},
     };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
-      sendReadReceipt: () => Promise.resolve({}),
-      scrollback: () => Promise.resolve(room),
-    };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client)],
-    });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    const client = clientFor(room);
+    openTimeline(client);
     const baseline = memberCalls;
 
     // A member the timeline doesn't render → gated out, no re-projection.
@@ -676,33 +580,17 @@ describe('TimelineService', () => {
 
   it('resets loadingOlder after a failed scrollback so pagination can retry', async () => {
     const room = {
-      roomId: '!r:hs',
-      hasEncryptionStateEvent: () => false,
-      loadMembersIfNeeded: () => Promise.resolve(true),
+      ...fakeRoom([]),
       getLiveTimeline: () => ({
         getEvents: () => [],
         getPaginationToken: () => 'tok',
         getState: () => undefined,
       }),
-      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
-      relations: { getChildEventsForEvent: () => undefined },
-      on: () => {},
-      off: () => {},
     };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
-      sendReadReceipt: () => Promise.resolve({}),
+    const client = clientFor(room, {
       scrollback: () => Promise.reject(new Error('network')),
-    };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client)],
     });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    const svc = openTimeline(client);
 
     await expect(firstValueFrom(svc.loadOlder())).rejects.toThrow('network');
     expect(svc.loadingOlder()).toBe(false); // finalize cleared it; not stuck
@@ -719,37 +607,14 @@ describe('TimelineService', () => {
         status: 'sending',
       }),
     ];
-    const room = {
-      roomId: '!r:hs',
-      hasEncryptionStateEvent: () => false,
-      loadMembersIfNeeded: () => Promise.resolve(true),
-      getLiveTimeline: () => ({
-        getEvents: () => events,
-        getPaginationToken: () => null,
-        getState: () => undefined,
-      }),
-      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
-      relations: { getChildEventsForEvent: () => undefined },
-      on: () => {},
-      off: () => {},
-    };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
+    const room = fakeRoom(events);
+    const client = clientFor(room, {
       sendReadReceipt: (e: { getId: () => string }) => {
         received.push(e);
         return Promise.resolve({});
       },
-      scrollback: () => Promise.resolve(room),
-    };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client)],
     });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    openTimeline(client);
 
     expect(received).toHaveLength(1);
     expect(received[0].getId()).toBe('$a'); // not the pending echo
@@ -768,42 +633,14 @@ describe('TimelineService', () => {
       vi.spyOn(document, 'hasFocus').mockReturnValue(true);
       const received: { id: string; type: string }[] = [];
       const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
-      const room = {
-        roomId: '!r:hs',
-        hasEncryptionStateEvent: () => false,
-        loadMembersIfNeeded: () => Promise.resolve(true),
-        getLiveTimeline: () => ({
-          getEvents: () => events,
-          getPaginationToken: () => null,
-          getState: () => undefined,
-        }),
-        getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
-        relations: { getChildEventsForEvent: () => undefined },
-        on: () => {},
-        off: () => {},
-      };
-      const client = {
-        baseUrl: 'https://hs',
-        getRoom: () => room,
-        getUserId: () => '@me:hs',
-        on: () => {},
-        off: () => {},
+      const room = fakeRoom(events);
+      const client = clientFor(room, {
         sendReadReceipt: (e: { getId: () => string }, type: string) => {
           received.push({ id: e.getId(), type });
           return Promise.resolve({});
         },
-        setRoomReadMarkers: () => Promise.resolve({}),
-        scrollback: () => Promise.resolve(room),
-      };
-      TestBed.configureTestingModule({
-        providers: [
-          TimelineService,
-          matrixProvider(client),
-          privacyProvider(sendReceipts),
-        ],
       });
-      const svc = TestBed.inject(TimelineService);
-      svc.open('!r:hs');
+      openTimeline(client, [privacyProvider(sendReceipts)]);
 
       expect(received).toEqual([{ id: '$a', type: expected }]);
     },
@@ -813,37 +650,14 @@ describe('TimelineService', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false); // app not in focus
     const received: { getId: () => string }[] = [];
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
-    const room = {
-      roomId: '!r:hs',
-      hasEncryptionStateEvent: () => false,
-      loadMembersIfNeeded: () => Promise.resolve(true),
-      getLiveTimeline: () => ({
-        getEvents: () => events,
-        getPaginationToken: () => null,
-        getState: () => undefined,
-      }),
-      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
-      relations: { getChildEventsForEvent: () => undefined },
-      on: () => {},
-      off: () => {},
-    };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
+    const room = fakeRoom(events);
+    const client = clientFor(room, {
       sendReadReceipt: (e: { getId: () => string }) => {
         received.push(e);
         return Promise.resolve({});
       },
-      scrollback: () => Promise.resolve(room),
-    };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client)],
     });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    openTimeline(client);
 
     expect(received).toHaveLength(0); // unfocused → held back so unread accrues
   });
@@ -852,37 +666,14 @@ describe('TimelineService', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false); // start unfocused
     const received: { getId: () => string }[] = [];
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
-    const room = {
-      roomId: '!r:hs',
-      hasEncryptionStateEvent: () => false,
-      loadMembersIfNeeded: () => Promise.resolve(true),
-      getLiveTimeline: () => ({
-        getEvents: () => events,
-        getPaginationToken: () => null,
-        getState: () => undefined,
-      }),
-      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
-      relations: { getChildEventsForEvent: () => undefined },
-      on: () => {},
-      off: () => {},
-    };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
+    const room = fakeRoom(events);
+    const client = clientFor(room, {
       sendReadReceipt: (e: { getId: () => string }) => {
         received.push(e);
         return Promise.resolve({});
       },
-      scrollback: () => Promise.resolve(room),
-    };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client)],
     });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    openTimeline(client);
     expect(received).toHaveLength(0); // unfocused: not acked yet
 
     vi.spyOn(document, 'hasFocus').mockReturnValue(true); // user returns
@@ -895,37 +686,14 @@ describe('TimelineService', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false); // start unfocused
     const received: { getId: () => string }[] = [];
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
-    const room = {
-      roomId: '!r:hs',
-      hasEncryptionStateEvent: () => false,
-      loadMembersIfNeeded: () => Promise.resolve(true),
-      getLiveTimeline: () => ({
-        getEvents: () => events,
-        getPaginationToken: () => null,
-        getState: () => undefined,
-      }),
-      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
-      relations: { getChildEventsForEvent: () => undefined },
-      on: () => {},
-      off: () => {},
-    };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
+    const room = fakeRoom(events);
+    const client = clientFor(room, {
       sendReadReceipt: (e: { getId: () => string }) => {
         received.push(e);
         return Promise.resolve({});
       },
-      scrollback: () => Promise.resolve(room),
-    };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client)],
     });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    const svc = openTimeline(client);
     expect(received).toHaveLength(0); // unfocused: not acked yet
 
     svc.close();
@@ -1008,37 +776,14 @@ describe('TimelineService', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false); // start unfocused
     const received: { getId: () => string }[] = [];
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
-    const room = {
-      roomId: '!r:hs',
-      hasEncryptionStateEvent: () => false,
-      loadMembersIfNeeded: () => Promise.resolve(true),
-      getLiveTimeline: () => ({
-        getEvents: () => events,
-        getPaginationToken: () => null,
-        getState: () => undefined,
-      }),
-      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
-      relations: { getChildEventsForEvent: () => undefined },
-      on: () => {},
-      off: () => {},
-    };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
+    const room = fakeRoom(events);
+    const client = clientFor(room, {
       sendReadReceipt: (e: { getId: () => string }) => {
         received.push(e);
         return Promise.resolve({});
       },
-      scrollback: () => Promise.resolve(room),
-    };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client)],
     });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    openTimeline(client);
     expect(received).toHaveLength(0); // unfocused: not acked yet
 
     // The live timeline gains a newer event while still unfocused (no refresh
@@ -1055,44 +800,19 @@ describe('TimelineService', () => {
     const attentive = signal(false);
     const received: { getId: () => string }[] = [];
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
-    const room = {
-      roomId: '!r:hs',
-      hasEncryptionStateEvent: () => false,
-      loadMembersIfNeeded: () => Promise.resolve(true),
-      getLiveTimeline: () => ({
-        getEvents: () => events,
-        getPaginationToken: () => null,
-        getState: () => undefined,
-      }),
-      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
-      relations: { getChildEventsForEvent: () => undefined },
-      on: () => {},
-      off: () => {},
-    };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
+    const room = fakeRoom(events);
+    const client = clientFor(room, {
       sendReadReceipt: (e: { getId: () => string }) => {
         received.push(e);
         return Promise.resolve({});
       },
-      scrollback: () => Promise.resolve(room),
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        TimelineService,
-        matrixProvider(client),
-        {
-          provide: CONVERSATION_ATTENTION,
-          useValue: { attentive: attentive.asReadonly() },
-        },
-      ],
     });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    openTimeline(client, [
+      {
+        provide: CONVERSATION_ATTENTION,
+        useValue: { attentive: attentive.asReadonly() },
+      },
+    ]);
     TestBed.tick();
     expect(received).toHaveLength(0); // focused, but locked: nobody is looking
 
@@ -1121,30 +841,16 @@ describe('TimelineService', () => {
           ];
           const listeners = new Map<string, () => void>();
           const room = {
+            ...fakeRoom(events),
             roomId,
-            hasEncryptionStateEvent: () => false,
-            loadMembersIfNeeded: () => Promise.resolve(true),
-            getLiveTimeline: () => ({
-              getEvents: () => events,
-              getPaginationToken: () => null,
-              getState: () => undefined,
-            }),
-            getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
-            getMembers: () => [],
-            relations: { getChildEventsForEvent: () => undefined },
             on: (name: string, listener: () => void) =>
               listeners.set(name, listener),
-            off: () => {},
           };
           return [roomId, { room, events, listeners }] as const;
         }),
       );
-      const client = {
-        baseUrl: 'https://hs',
+      const client = clientFor(fakeRoom([]), {
         getRoom: (roomId: string) => live.get(roomId)?.room ?? null,
-        getUserId: () => '@me:hs',
-        on: () => {},
-        off: () => {},
         sendReadReceipt: (e: { getId: () => string }) => {
           received.push(e.getId());
           return options.hold
@@ -1152,7 +858,7 @@ describe('TimelineService', () => {
             : Promise.resolve({});
         },
         scrollback: (room: unknown) => Promise.resolve(room),
-      };
+      });
       TestBed.configureTestingModule({
         providers: [
           TimelineService,
@@ -1351,9 +1057,7 @@ describe('TimelineService', () => {
     let scans = 0;
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
     const room = {
-      roomId: '!r:hs',
-      hasEncryptionStateEvent: () => false,
-      loadMembersIfNeeded: () => Promise.resolve(true),
+      ...fakeRoom(events),
       getLiveTimeline: () => ({
         getEvents: () => {
           scans++;
@@ -1362,29 +1066,13 @@ describe('TimelineService', () => {
         getPaginationToken: () => null,
         getState: () => undefined,
       }),
-      findEventById: (id: string) => events.find((e) => e.getId() === id),
-      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
-      relations: { getChildEventsForEvent: () => undefined },
       on: (ev: string, cb: () => void) => {
         if (ev === RoomEvent.Timeline) {
           timelineHandler = cb;
         }
       },
-      off: () => {},
     };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
-      sendReadReceipt: () => Promise.resolve({}),
-    };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client)],
-    });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    openTimeline(clientFor(room));
 
     // Baseline: what one event costs, once the microtask has flushed.
     const before = scans;
@@ -1408,40 +1096,21 @@ describe('TimelineService', () => {
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
     let timelineHandler: (() => void) | undefined;
     const room = {
-      roomId: '!r:hs',
-      hasEncryptionStateEvent: () => false,
-      loadMembersIfNeeded: () => Promise.resolve(true),
-      getLiveTimeline: () => ({
-        getEvents: () => events,
-        getPaginationToken: () => null,
-        getState: () => undefined,
-      }),
-      getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
-      relations: { getChildEventsForEvent: () => undefined },
+      ...fakeRoom(events),
       on: (ev: string, cb: () => void) => {
         if (ev === RoomEvent.Timeline) {
           timelineHandler = cb;
         }
       },
-      off: () => {},
     };
-    const client = {
-      baseUrl: 'https://hs',
-      getRoom: () => room,
-      getUserId: () => '@me:hs',
-      on: () => {},
-      off: () => {},
-      sendReadReceipt: (e: { getId: () => string }) => {
-        received.push(e);
-        return Promise.resolve({});
-      },
-      scrollback: () => Promise.resolve(room),
-    };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client)],
-    });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    openTimeline(
+      clientFor(room, {
+        sendReadReceipt: (e: { getId: () => string }) => {
+          received.push(e);
+          return Promise.resolve({});
+        },
+      }),
+    );
 
     expect(received.map((e) => e.getId())).toEqual(['$a']); // initial ack
 
@@ -2280,14 +1949,7 @@ describe('TimelineService', () => {
       let readerLoaded = false;
       let memberHandler: ((...a: unknown[]) => void) | undefined;
       const room = {
-        roomId: '!r:hs',
-        loadMembersIfNeeded: () => Promise.resolve(true),
-        getLiveTimeline: () => ({
-          getEvents: () => events,
-          getPaginationToken: () => null,
-          getState: () => undefined,
-        }),
-        findEventById: (id: string) => events.find((e) => e.getId() === id),
+        ...fakeRoom(events),
         getMember: (id: string) => {
           if (id === '@reader:hs') {
             return readerLoaded
@@ -2297,29 +1959,13 @@ describe('TimelineService', () => {
           return { name: 'A', getMxcAvatarUrl: () => null };
         },
         getUsersReadUpTo: () => ['@reader:hs'],
-        relations: { getChildEventsForEvent: () => undefined },
-        hasEncryptionStateEvent: () => false,
         on: (ev: string, cb: (...a: unknown[]) => void) => {
           if (ev === RoomStateEvent.Members) {
             memberHandler = cb;
           }
         },
-        off: () => {},
       };
-      const client = {
-        baseUrl: 'https://hs',
-        getRoom: () => room,
-        getUserId: () => '@me:hs',
-        on: () => {},
-        off: () => {},
-        sendReadReceipt: () => Promise.resolve({}),
-        scrollback: () => Promise.resolve(room),
-      };
-      TestBed.configureTestingModule({
-        providers: [TimelineService, matrixProvider(client)],
-      });
-      const svc = TestBed.inject(TimelineService);
-      svc.open('!r:hs');
+      const svc = openTimeline(clientFor(room));
 
       // Not in room state yet: the receipt shows the raw mxid and no avatar.
       expect(svc.messages()[0].readReceipts[0]).toMatchObject({
@@ -3139,9 +2785,6 @@ describe('TimelineService.jumpToDate', () => {
     let shown = all.slice(opts.total - opts.loaded);
     const room = {
       ...fakeRoom([]),
-      roomId: '!r:hs',
-      hasEncryptionStateEvent: () => false,
-      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => shown,
         getPaginationToken: () => 'tok',
@@ -3168,11 +2811,7 @@ describe('TimelineService.jumpToDate', () => {
         );
       },
     };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client), mediaProvider()],
-    });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    const svc = openTimeline(client, [mediaProvider()]);
     return { svc, scrollbacks: () => scrollbacks, asked };
   }
 
@@ -3395,9 +3034,6 @@ describe('TimelineService.jumpToDate', () => {
     ];
     const room = {
       ...fakeRoom([]),
-      roomId: '!r:hs',
-      hasEncryptionStateEvent: () => false,
-      loadMembersIfNeeded: () => Promise.resolve(true),
       getLiveTimeline: () => ({
         getEvents: () => shown,
         getPaginationToken: () => null,
@@ -3411,11 +3047,7 @@ describe('TimelineService.jumpToDate', () => {
       scrollback: () => Promise.resolve(room),
       timestampToEvent: () => Promise.resolve({ event_id: '$react' }),
     };
-    TestBed.configureTestingModule({
-      providers: [TimelineService, matrixProvider(client), mediaProvider()],
-    });
-    const svc = TestBed.inject(TimelineService);
-    svc.open('!r:hs');
+    const svc = openTimeline(client, [mediaProvider()]);
 
     const result = await firstValueFrom(svc.jumpToDate(0));
 
