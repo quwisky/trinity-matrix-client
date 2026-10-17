@@ -22,6 +22,7 @@ import {
   ConversationComposeStub,
   ConversationMessagesStub,
 } from '../testing/conversation-timeline.stub';
+import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 
 type ListOptions = NonNullable<
   Parameters<typeof render<MessageListComponent>>[1]
@@ -772,18 +773,10 @@ describe('MessageListComponent with windowing off', () => {
 
     // jsdom has no layout, so fake a scrolled-up viewport: not near the bottom
     // (>120px away) and past the auto-load threshold (>150px from the top).
-    Object.defineProperty(scroll, 'scrollHeight', {
-      value: 1000,
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'clientHeight', {
-      value: 400,
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'scrollTop', {
-      value: 200,
-      writable: true,
-      configurable: true,
+    setScrollGeometry(scroll, {
+      scrollTop: 200,
+      clientHeight: 400,
+      scrollHeight: 1000,
     });
     scroll.dispatchEvent(new Event('scroll'));
     fixture.detectChanges();

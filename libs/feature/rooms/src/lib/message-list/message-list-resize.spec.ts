@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessageListComponent } from './message-list.component';
 import type { MessageView } from '@trinity/data-access/timeline';
 import type { MessageListBase } from './message-list-base';
+import { setScrollGeometry as stubScrollGeometry } from '../testing/scroll-geometry.stub';
 
 /** The minimum a list needs to render a row and know its id. */
 function msg(id: string): MessageView {
@@ -121,17 +122,10 @@ describe('message list — jump across a resize', () => {
       readonly scrollTop: number;
     },
   ): HTMLElement {
-    const scroll = container.querySelector('.scroll') as HTMLElement;
-    Object.defineProperties(scroll, {
-      clientHeight: { value: geometry.clientHeight, configurable: true },
-      scrollHeight: { value: geometry.scrollHeight, configurable: true },
-      scrollTop: {
-        value: geometry.scrollTop,
-        configurable: true,
-        writable: true,
-      },
-    });
-    return scroll;
+    return stubScrollGeometry(
+      container.querySelector('.scroll') as HTMLElement,
+      geometry,
+    );
   }
 
   it('re-aims a recent jump when the scroller changes width', async () => {

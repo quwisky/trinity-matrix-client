@@ -33,6 +33,7 @@ import {
   stubIntersectionObserver,
 } from '../testing/intersection-observer.stub';
 import { MessageListComponent } from './message-list.component';
+import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 
 function message(id: string, media: PresentedMediaReference | null = null) {
   return {
@@ -116,10 +117,11 @@ describe('MessageListComponent and the images of its rows', () => {
   function scroller(container: Element): HTMLElement {
     const scroll = container.querySelector('.scroll') as HTMLElement;
     let top = 0;
-    Object.defineProperty(scroll, 'scrollTop', {
-      get: () => top,
-      set: (value: number) => (top = value),
-      configurable: true,
+    setScrollGeometry(scroll, {
+      scrollTop: {
+        get: () => top,
+        set: (value: number) => (top = value),
+      },
     });
     return scroll;
   }
@@ -149,13 +151,9 @@ describe('MessageListComponent and the images of its rows', () => {
     const { fixture, container } = await renderList({ messages });
     const activity = fixture.debugElement.injector.get(TimelineScrollActivity);
     const scroll = scroller(container);
-    Object.defineProperty(scroll, 'clientHeight', {
-      value: 600,
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'scrollHeight', {
-      value: 200 * 64,
-      configurable: true,
+    setScrollGeometry(scroll, {
+      clientHeight: 600,
+      scrollHeight: 200 * 64,
     });
     // The rows' region starts at the top of the scroller's content.
     scroll.getBoundingClientRect = () => ({ top: 0, bottom: 600 }) as DOMRect;

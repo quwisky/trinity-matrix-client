@@ -23,6 +23,7 @@ import {
   ConversationComposeStub,
   ConversationMessagesStub,
 } from '../testing/conversation-timeline.stub';
+import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 
 function msg(
   id: string,
@@ -170,18 +171,13 @@ describe('MessageListComponent', () => {
     function scrollTo(container: Element, scrollTop: number): HTMLElement {
       const scroll = container.querySelector('.scroll') as HTMLElement;
       let st = scrollTop;
-      Object.defineProperty(scroll, 'scrollTop', {
-        get: () => st,
-        set: (v: number) => (st = v),
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'clientHeight', {
-        value: 600,
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'scrollHeight', {
-        value: 3 * PER_DAY * EST,
-        configurable: true,
+      setScrollGeometry(scroll, {
+        scrollTop: {
+          get: () => st,
+          set: (v: number) => (st = v),
+        },
+        clientHeight: 600,
+        scrollHeight: 3 * PER_DAY * EST,
       });
       return scroll;
     }
@@ -295,18 +291,13 @@ describe('MessageListComponent', () => {
 
     const scroll = container.querySelector('.scroll') as HTMLElement;
     let st = 5000;
-    Object.defineProperty(scroll, 'scrollTop', {
-      get: () => st,
-      set: (v: number) => (st = v),
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'clientHeight', {
-      value: 600,
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'scrollHeight', {
-      value: 200 * EST,
-      configurable: true,
+    setScrollGeometry(scroll, {
+      scrollTop: {
+        get: () => st,
+        set: (v: number) => (st = v),
+      },
+      clientHeight: 600,
+      scrollHeight: 200 * EST,
     });
     cmp.onScroll();
     fixture.detectChanges();
@@ -323,18 +314,13 @@ describe('MessageListComponent', () => {
 
     const scroll = container.querySelector('.scroll') as HTMLElement;
     let st = 5000;
-    Object.defineProperty(scroll, 'scrollTop', {
-      get: () => st,
-      set: (v: number) => (st = v),
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'clientHeight', {
-      value: 600,
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'scrollHeight', {
-      value: 200 * EST,
-      configurable: true,
+    setScrollGeometry(scroll, {
+      scrollTop: {
+        get: () => st,
+        set: (v: number) => (st = v),
+      },
+      clientHeight: 600,
+      scrollHeight: 200 * EST,
     });
 
     // Scrolled far from the bottom: the list offers the jump pill.
@@ -359,18 +345,13 @@ describe('MessageListComponent', () => {
     const scroll = container.querySelector('.scroll') as HTMLElement;
 
     let st = 5000;
-    Object.defineProperty(scroll, 'scrollTop', {
-      get: () => st,
-      set: (v: number) => (st = v),
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'scrollHeight', {
-      value: 200 * EST,
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'clientHeight', {
-      value: 600,
-      configurable: true,
+    setScrollGeometry(scroll, {
+      scrollTop: {
+        get: () => st,
+        set: (v: number) => (st = v),
+      },
+      clientHeight: 600,
+      scrollHeight: 200 * EST,
     });
 
     // scrollToLatest defers its scroll write to rAF (a no-op stub in beforeEach); run
@@ -608,10 +589,11 @@ describe('MessageListComponent', () => {
 
     const scroll = container.querySelector('.scroll') as HTMLElement;
     let st = 0;
-    Object.defineProperty(scroll, 'scrollTop', {
-      get: () => st,
-      set: (v: number) => (st = v),
-      configurable: true,
+    setScrollGeometry(scroll, {
+      scrollTop: {
+        get: () => st,
+        set: (v: number) => (st = v),
+      },
     });
 
     const target = '$150';
@@ -786,18 +768,13 @@ describe('MessageListComponent', () => {
     // Scroll up in room A → not pinned (bottom spacer appears).
     const scroll = container.querySelector('.scroll') as HTMLElement;
     let st = 2000;
-    Object.defineProperty(scroll, 'scrollTop', {
-      get: () => st,
-      set: (v: number) => (st = v),
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'clientHeight', {
-      value: 600,
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'scrollHeight', {
-      value: 200 * EST,
-      configurable: true,
+    setScrollGeometry(scroll, {
+      scrollTop: {
+        get: () => st,
+        set: (v: number) => (st = v),
+      },
+      clientHeight: 600,
+      scrollHeight: 200 * EST,
     });
     cmp.onScroll();
     fixture.detectChanges();
@@ -817,18 +794,13 @@ describe('MessageListComponent', () => {
 
     const scroll = container.querySelector('.scroll') as HTMLElement;
     let st = 0;
-    Object.defineProperty(scroll, 'scrollTop', {
-      get: () => st,
-      set: (v: number) => (st = v),
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'clientHeight', {
-      value: 600,
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'scrollHeight', {
-      value: 200 * EST,
-      configurable: true,
+    setScrollGeometry(scroll, {
+      scrollTop: {
+        get: () => st,
+        set: (v: number) => (st = v),
+      },
+      clientHeight: 600,
+      scrollHeight: 200 * EST,
     });
 
     // Scrolled up → not pinned → a bottom spacer stands in for the rest.
@@ -853,18 +825,13 @@ describe('MessageListComponent', () => {
           0,
         ) +
         scroll.querySelectorAll('.msg').length * EST;
-      Object.defineProperty(scroll, 'scrollTop', {
-        get: () => at.st,
-        set: (v: number) => (at.st = v),
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'clientHeight', {
-        value: 600,
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'scrollHeight', {
-        get: height,
-        configurable: true,
+      setScrollGeometry(scroll, {
+        scrollTop: {
+          get: () => at.st,
+          set: (v: number) => (at.st = v),
+        },
+        clientHeight: 600,
+        scrollHeight: height,
       });
       return height;
     }
@@ -990,14 +957,12 @@ describe('MessageListComponent', () => {
 
       const scroll = container.querySelector('.scroll') as HTMLElement;
       let st = 0;
-      Object.defineProperty(scroll, 'scrollTop', {
-        get: () => st,
-        set: (v: number) => (st = v),
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'scrollHeight', {
-        value: 12_800,
-        configurable: true,
+      setScrollGeometry(scroll, {
+        scrollTop: {
+          get: () => st,
+          set: (v: number) => (st = v),
+        },
+        scrollHeight: 12_800,
       });
       const row = scroll.querySelector('[data-mid]') as Element;
 
@@ -1252,18 +1217,13 @@ describe('MessageListComponent', () => {
 
       const scroll = container.querySelector('.scroll') as HTMLElement;
       let st = 5000;
-      Object.defineProperty(scroll, 'scrollTop', {
-        get: () => st,
-        set: (v: number) => (st = v),
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'clientHeight', {
-        value: 600,
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'scrollHeight', {
-        value: 200 * EST,
-        configurable: true,
+      setScrollGeometry(scroll, {
+        scrollTop: {
+          get: () => st,
+          set: (v: number) => (st = v),
+        },
+        clientHeight: 600,
+        scrollHeight: 200 * EST,
       });
       // Make rowsRegionTop resolve to 0 (jsdom has no layout): container top 0 and the
       // first .vpad tracks -scrollTop, so (-st) - 0 + st === 0.
@@ -1288,14 +1248,12 @@ describe('MessageListComponent', () => {
       });
       const scroll = container.querySelector('.scroll') as HTMLElement;
       let st = 0;
-      Object.defineProperty(scroll, 'scrollTop', {
-        get: () => st,
-        set: (v: number) => (st = v),
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'scrollHeight', {
-        value: 12_800,
-        configurable: true,
+      setScrollGeometry(scroll, {
+        scrollTop: {
+          get: () => st,
+          set: (v: number) => (st = v),
+        },
+        scrollHeight: 12_800,
       });
       expect(scroll.querySelectorAll('.msg')).toHaveLength(200);
 
@@ -1313,18 +1271,13 @@ describe('MessageListComponent', () => {
       const cmp = fixture.componentInstance;
       const scroll = container.querySelector('.scroll') as HTMLElement;
       let st = 5000;
-      Object.defineProperty(scroll, 'scrollTop', {
-        get: () => st,
-        set: (v: number) => (st = v),
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'clientHeight', {
-        value: 600,
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'scrollHeight', {
-        value: 200 * EST,
-        configurable: true,
+      setScrollGeometry(scroll, {
+        scrollTop: {
+          get: () => st,
+          set: (v: number) => (st = v),
+        },
+        clientHeight: 600,
+        scrollHeight: 200 * EST,
       });
       scroll.getBoundingClientRect = () => rect(0);
       cmp.onScroll(); // scrolled up: not pinned
@@ -1438,18 +1391,13 @@ describe('MessageListComponent', () => {
 
       const scroll = container.querySelector('.scroll') as HTMLElement;
       let st = 100; // < AUTO_LOAD_THRESHOLD_PX (150) → triggers load-older
-      Object.defineProperty(scroll, 'scrollTop', {
-        get: () => st,
-        set: (v: number) => (st = v),
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'clientHeight', {
-        value: 600,
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'scrollHeight', {
-        value: 30 * EST,
-        configurable: true,
+      setScrollGeometry(scroll, {
+        scrollTop: {
+          get: () => st,
+          set: (v: number) => (st = v),
+        },
+        clientHeight: 600,
+        scrollHeight: 30 * EST,
       });
       // getBoundingClientRect drives anchor capture + region offset. Container top 0;
       // first .vpad tracks -scrollTop so rowsRegionTop resolves to 0.
@@ -1682,18 +1630,13 @@ describe('MessageListComponent', () => {
       const cmp = fixture.componentInstance;
       const scroll = container.querySelector('.scroll') as HTMLElement;
       let st = 100;
-      Object.defineProperty(scroll, 'scrollTop', {
-        get: () => st,
-        set: (v: number) => (st = v),
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'clientHeight', {
-        value: 600,
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'scrollHeight', {
-        value: 120 * EST,
-        configurable: true,
+      setScrollGeometry(scroll, {
+        scrollTop: {
+          get: () => st,
+          set: (v: number) => (st = v),
+        },
+        clientHeight: 600,
+        scrollHeight: 120 * EST,
       });
       scroll.getBoundingClientRect = () => rect(0);
 
@@ -1739,10 +1682,11 @@ describe('MessageListComponent', () => {
     const cmp = fixture.componentInstance;
     const scroll = container.querySelector('.scroll') as HTMLElement;
     let st = 0;
-    Object.defineProperty(scroll, 'scrollTop', {
-      get: () => st,
-      set: (v: number) => (st = v),
-      configurable: true,
+    setScrollGeometry(scroll, {
+      scrollTop: {
+        get: () => st,
+        set: (v: number) => (st = v),
+      },
     });
 
     fixture.componentRef.setInput('firstUnreadId', '$20');
@@ -1785,18 +1729,13 @@ describe('MessageListComponent', () => {
       const cmp = fixture.componentInstance;
       const scroll = container.querySelector('.scroll') as HTMLElement;
       let st = 5000;
-      Object.defineProperty(scroll, 'scrollTop', {
-        get: () => st,
-        set: (v: number) => (st = v),
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'clientHeight', {
-        value: 600,
-        configurable: true,
-      });
-      Object.defineProperty(scroll, 'scrollHeight', {
-        value: 200 * EST,
-        configurable: true,
+      setScrollGeometry(scroll, {
+        scrollTop: {
+          get: () => st,
+          set: (v: number) => (st = v),
+        },
+        clientHeight: 600,
+        scrollHeight: 200 * EST,
       });
       cmp.onScroll();
       fixture.detectChanges();
