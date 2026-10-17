@@ -59,7 +59,7 @@ const CAPTURED_SHAPES: readonly {
     secrets: [MAS_TOKEN, MAS_REFRESH],
   },
   {
-    // CALLBACK_PARAMS in trinity-application-session.adapter.ts: legacy SSO.
+    // CALLBACK_PARAMS in trinity-host-navigation.adapter.ts: legacy SSO.
     name: 'native SSO callback',
     line: `dev.trinityproject.trinity://sso-callback?loginToken=${LOGIN_TOKEN}&sso_state=Qm9ndXNTdGF0ZQ`,
     secrets: [LOGIN_TOKEN, 'Qm9ndXNTdGF0ZQ'],
