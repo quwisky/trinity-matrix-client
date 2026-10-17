@@ -1,0 +1,9 @@
+@use '../room-settings-panel' as panel;
+
+@layer components {
+  @include panel.layout;
+
+  .room-settings-directory__message {
+    padding-block-end: var(--trinity-space-4);
+  }
+}

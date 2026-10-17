@@ -223,7 +223,7 @@ describe('RoomActionPermissionsService', () => {
     const fixture = clientFixture('@me:hs', { myPower: 49 });
     const { service } = setup(fixture);
 
-    expect(Object.values(service.settings('!room:hs'))).toHaveLength(8);
+    expect(Object.values(service.settings('!room:hs'))).toHaveLength(9);
     expect(
       Object.values(service.settings('!room:hs')).every(
         (permission) => !permission.available && !!permission.reason,
@@ -271,6 +271,23 @@ describe('RoomActionPermissionsService', () => {
     expect(
       service.settingsFor({ accountId: '@me:hs', roomId: '!room:hs' })
         .encryption,
+    ).toEqual({ available: true, reason: null });
+  });
+
+  it('lets only members who may change the addresses list the room in the directory', () => {
+    const fixture = clientFixture('@me:hs', { myPower: 50 });
+    fixture.rules.stateByType[EventType.RoomCanonicalAlias] = 100;
+    const { service } = setup(fixture);
+
+    expect(service.settings('!room:hs').directory).toEqual({
+      available: false,
+      reason: "Your role cannot change this room's directory listing.",
+    });
+
+    fixture.members.get('@me:hs')!.powerLevel = 100;
+    expect(
+      service.settingsFor({ accountId: '@me:hs', roomId: '!room:hs' })
+        .directory,
     ).toEqual({ available: true, reason: null });
   });
 
@@ -403,6 +420,7 @@ describe('RoomActionPermissionsService', () => {
     expect(service.settings('!room:hs').topic.available).toBe(false);
     expect(service.settings('!room:hs').upgrade.available).toBe(false);
     expect(service.settings('!room:hs').encryption.available).toBe(false);
+    expect(service.settings('!room:hs').directory.available).toBe(false);
     expect(service.member('!room:hs', '@target:hs').ban.available).toBe(false);
     expect(service.unban('!room:hs', '@target:hs').available).toBe(false);
   });

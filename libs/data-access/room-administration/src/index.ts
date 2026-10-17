@@ -13,3 +13,4 @@ export * from './lib/room-advanced-info';
 export * from './lib/room-upgrade.service';
 export * from './lib/content-reporting.service';
 export * from './lib/room-encryption.service';
+export * from './lib/room-directory.service';

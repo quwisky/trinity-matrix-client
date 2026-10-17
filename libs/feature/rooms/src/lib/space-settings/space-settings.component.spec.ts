@@ -51,6 +51,7 @@ const ALL_ALLOWED: RoomSettingsPermissions = {
   aliases: ALLOWED,
   upgrade: ALLOWED,
   encryption: ALLOWED,
+  directory: ALLOWED,
 };
 
 function spaceSnapshot(

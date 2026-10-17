@@ -39,6 +39,7 @@ import {
       [attr.aria-checked]="checked()"
       [disabled]="disabled()"
       [attr.data-disabled]="disabled() ? 'true' : null"
+      [attr.aria-disabled]="ariaDisabled() ? 'true' : null"
       [attr.aria-label]="ariaLabel()"
       [attr.aria-describedby]="ariaDescribedby()"
       (change)="onCheckedChange($event)"
@@ -74,6 +75,11 @@ export class TrnSwitchComponent {
   readonly checked = input(false, { transform: booleanAttribute });
   readonly disabled = input(false, { transform: booleanAttribute });
 
+  /** Busy rather than unavailable: stays focusable; the parent declines changes meanwhile. */
+  readonly ariaDisabled = input(false, {
+    alias: 'aria-disabled',
+    transform: booleanAttribute,
+  });
   /** For a switch with no visible label of its own. */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
   /** Points at supporting text for the switch. */

@@ -23,6 +23,7 @@ import { PlaceGeneralSettingsComponent } from '../shared/place-general-settings/
 import { SettingsHubController } from '../shared/settings-hub/settings-hub.controller';
 import { RoomSettingsAccessComponent } from './room-settings-access.component';
 import { RoomSettingsAdvancedComponent } from './room-settings-advanced.component';
+import { RoomSettingsDirectoryComponent } from './room-settings-directory/room-settings-directory.component';
 import { RoomSettingsDraftService } from './room-settings-draft.service';
 import { RoomSettingsEncryptionComponent } from './room-settings-encryption/room-settings-encryption.component';
 import { RoomSettingsForYouComponent } from './room-settings-for-you/room-settings-for-you.component';
@@ -104,6 +105,7 @@ const SECTIONS: readonly (SettingsHubSection & {
     RoomAliasesComponent,
     RoomSettingsAccessComponent,
     RoomSettingsAdvancedComponent,
+    RoomSettingsDirectoryComponent,
     RoomSettingsEncryptionComponent,
     RoomSettingsForYouComponent,
     RoomWidgetsComponent,

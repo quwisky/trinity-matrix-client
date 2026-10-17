@@ -58,6 +58,11 @@
             noun="Room"
           />
         </trn-settings-group>
+        @if (!direct()) {
+          <trn-settings-group title="Room directory">
+            <trn-room-settings-directory />
+          </trn-settings-group>
+        }
       </section>
     }
     @case ('widgets') {

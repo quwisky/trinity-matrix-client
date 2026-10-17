@@ -1,0 +1,74 @@
+@let loaded = listing().kind === 'loaded';
+<trn-settings-row
+  [label]="label()"
+  [description]="hint()"
+  [for]="loaded ? switchId : undefined"
+  data-testid="room-settings-directory-listing"
+>
+  @switch (listing().kind) {
+    @case ('loading') {
+      <span
+        class="room-settings__hint"
+        data-testid="room-settings-directory-checking"
+        >Checking…</span
+      >
+    }
+    @case ('failed') {
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="outline"
+        size="sm"
+        (click)="reload()"
+        data-testid="room-settings-directory-retry"
+      >
+        Try again
+      </button>
+    }
+    @case ('loaded') {
+      <trn-switch
+        [inputId]="switchId"
+        [checked]="listed()"
+        [disabled]="!mayChange()"
+        [aria-disabled]="saving()"
+        [aria-describedby]="describedBy()"
+        (checkedChange)="setListed($event)"
+        data-testid="room-settings-directory-switch"
+      />
+    }
+  }
+</trn-settings-row>
+@if (listing().kind === 'failed') {
+  <p
+    class="room-settings__hint room-settings__feedback--danger room-settings-directory__message"
+    data-testid="room-settings-directory-load-failed"
+  >
+    {{ loadFailed }}
+  </p>
+}
+@if (!permission().available && permission().reason; as reason) {
+  <p
+    class="room-settings__hint room-settings-directory__message"
+    [id]="reasonId"
+    data-testid="room-settings-directory-reason"
+  >
+    {{ reason }}
+  </p>
+}
+@if (error(); as message) {
+  <p
+    class="room-settings__hint room-settings__feedback--danger room-settings-directory__message"
+    [id]="errorId"
+    data-testid="room-settings-directory-error"
+  >
+    {{ message }}
+  </p>
+}
+<p
+  class="sr-only"
+  role="status"
+  data-testid="room-settings-directory-announcer"
+>
+  {{ announcement() }}
+</p>

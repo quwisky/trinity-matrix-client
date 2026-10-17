@@ -43,6 +43,8 @@ export interface RoomSettingsPermissions {
   readonly upgrade: ActionAvailability;
   /** Turning on encryption, which sends `m.room.encryption`. */
   readonly encryption: ActionAvailability;
+  /** Listing the room in its homeserver's directory, which servers gate like the addresses. */
+  readonly directory: ActionAvailability;
 }
 
 export interface MemberActionPermissions {
@@ -149,6 +151,7 @@ export class RoomActionPermissionsService {
         aliases: freshness,
         upgrade: freshness,
         encryption: freshness,
+        directory: freshness,
       };
     }
     return this.settingsPermissions(this.context(roomId));
@@ -176,6 +179,7 @@ export class RoomActionPermissionsService {
         aliases: unavailable,
         upgrade: unavailable,
         encryption: unavailable,
+        directory: unavailable,
       };
     }
     const may = (type: EventType): boolean =>
@@ -197,6 +201,7 @@ export class RoomActionPermissionsService {
         : denied(
             'Only people who can change room settings can turn on encryption.',
           ),
+      directory: maySend(EventType.RoomCanonicalAlias, 'directory listing'),
     };
   }
 

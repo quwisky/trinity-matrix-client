@@ -25,6 +25,12 @@ class HostComponent {
   readonly last = signal<boolean | null>(null);
 }
 
+@Component({
+  imports: [TrnSwitchComponent],
+  template: `<trn-switch aria-label="Listed" aria-disabled="true" />`,
+})
+class BusyHostComponent {}
+
 const box = (container: Element) =>
   container.querySelector<HTMLInputElement>('[role="switch"]');
 
@@ -100,6 +106,26 @@ describe('TrnSwitchComponent', () => {
     const control = box(container);
     expect(control?.disabled).toBe(true);
     expect(control?.getAttribute('data-disabled')).toBe('true');
+  });
+
+  it('stays focusable while marked busy with aria-disabled', async () => {
+    const { container } = await render(BusyHostComponent);
+    const input = box(container);
+
+    expect(input?.disabled).toBe(false);
+    expect(input?.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('keeps checked unchanged when pressed while busy', async () => {
+    const { container, fixture } = await render(BusyHostComponent);
+    const input = box(container);
+    input?.focus();
+    input?.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(input?.checked).toBe(false);
+    expect(document.activeElement).toBe(input);
   });
 
   it('reverts in place, keeping focus, when the parent declines the change', async () => {

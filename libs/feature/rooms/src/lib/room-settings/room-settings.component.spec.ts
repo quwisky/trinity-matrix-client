@@ -12,6 +12,7 @@ import {
   JoinRule,
   RoomActionPermissionsService,
   RoomAliasesService,
+  RoomDirectoryService,
   RoomEncryptionService,
   RoomMembersService,
   RoomModerationService,
@@ -65,6 +66,7 @@ const ALL_ALLOWED: RoomSettingsPermissions = {
   aliases: ALLOWED,
   upgrade: ALLOWED,
   encryption: ALLOWED,
+  directory: ALLOWED,
 };
 
 const ADVANCED: RoomAdvancedInfo = {
@@ -131,6 +133,7 @@ interface BuildOptions {
   readonly initialSection?: 'general';
   readonly canManageWidgets?: boolean;
   readonly initial?: RoomSettingsSnapshot;
+  readonly direct?: boolean;
   readonly setName?: Mock;
   readonly setTopic?: Mock;
   readonly setAvatar?: Mock;
@@ -179,6 +182,7 @@ async function build(options: BuildOptions = {}) {
       accountId: TARGET.accountId,
       roomId: TARGET.roomId,
       roomDisplayName: 'Fallback room',
+      direct: options.direct ?? false,
       parentSpaces: options.parentSpaces ?? [
         { id: '!space:hs', name: 'Design' },
       ],
@@ -256,6 +260,11 @@ async function build(options: BuildOptions = {}) {
       }),
       MockProvider(RoomUpgradeService, { plan: () => UPGRADE_PLAN }),
       MockProvider(RoomEncryptionService, { turnOn: () => of(undefined) }),
+      MockProvider(RoomDirectoryService, {
+        serverName: () => 'hs',
+        listed: () => of(false),
+        setListed: () => of(undefined),
+      }),
       MockProvider(WidgetsService, {
         widgetsFor: () => widgets.asReadonly(),
         canManageFor: () => canManageWidgets.asReadonly(),
@@ -843,6 +852,30 @@ describe('RoomSettingsComponent', () => {
 
     emit(roomSnapshot({ openingAccountActive: false }));
     expect(container.querySelector('trn-room-aliases')).not.toBeNull();
+  });
+
+  it('offers the room directory listing under Addresses', async () => {
+    const { cmp, fixture, container } = await build();
+    cmp.selectSection('addresses');
+    await fixture.whenStable();
+
+    expect(
+      container.querySelector('[data-testid="room-settings-directory-listing"]')
+        ?.textContent,
+    ).toContain("List in hs's room directory");
+  });
+
+  it('leaves the room directory listing out of a DM', async () => {
+    const { cmp, fixture, container } = await build({ direct: true });
+    cmp.selectSection('addresses');
+    await fixture.whenStable();
+
+    expect(container.querySelector('trn-room-aliases')).not.toBeNull();
+    expect(
+      container.querySelector(
+        '[data-testid="room-settings-directory-listing"]',
+      ),
+    ).toBeNull();
   });
 
   it('shows Advanced last and hands Open room back to the opener', async () => {
