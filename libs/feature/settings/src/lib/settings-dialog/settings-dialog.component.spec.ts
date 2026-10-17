@@ -3,6 +3,10 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { within } from '@testing-library/dom';
 import { WorkspaceBackService } from '@trinity/application/workspace';
+import {
+  RELEASE_NOTES,
+  WHATS_NEW_LAUNCHER,
+} from '@trinity/data-access/whats-new';
 import { BUILD_INFO, FeatureFlagsService } from '@trinity/platform-native';
 import { TrnDialogRef, TrnSettingsParts } from '@trinity/components/overlay';
 import { firstValueFrom } from 'rxjs';
@@ -210,5 +214,46 @@ describe('SettingsDialogComponent', () => {
       .querySelector<HTMLButtonElement>('[data-testid="close-settings"]')
       ?.click();
     expect(close).toHaveBeenCalledOnce();
+  });
+
+  describe("What's new link", () => {
+    const showAll = vi.fn();
+    const notes = [
+      { version: '1.0.0', date: '2026-01-01', sections: {} },
+    ] as never;
+    const open = (provide: unknown[]): HTMLElement => {
+      TestBed.configureTestingModule({ providers: provide as never[] });
+      const fixture = TestBed.createComponent(SettingsDialogComponent);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    };
+
+    it("opens What's new from the footer", () => {
+      const root = open([
+        { provide: RELEASE_NOTES, useValue: notes },
+        { provide: WHATS_NEW_LAUNCHER, useValue: { showAll } },
+      ]);
+      const button = within(root).getByRole('button', { name: "What's new" });
+      expect(button.dataset['testid']).toBe('settings-whats-new');
+      button.click();
+      expect(showAll).toHaveBeenCalledOnce();
+    });
+
+    it("hides the What's new link when the build has no notes", () => {
+      const root = open([
+        { provide: RELEASE_NOTES, useValue: [] },
+        { provide: WHATS_NEW_LAUNCHER, useValue: { showAll } },
+      ]);
+      expect(
+        within(root).queryByRole('button', { name: "What's new" }),
+      ).toBeNull();
+    });
+
+    it("hides the What's new link without a launcher", () => {
+      const root = open([{ provide: RELEASE_NOTES, useValue: notes }]);
+      expect(
+        within(root).queryByRole('button', { name: "What's new" }),
+      ).toBeNull();
+    });
   });
 });
