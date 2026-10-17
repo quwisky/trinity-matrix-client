@@ -302,29 +302,20 @@ describe('titleBarOptions', () => {
 });
 
 /** The BrowserWindow stub createWindow needs; `overrides` add or replace members. */
-function fakeWindow<T extends object = object>(overrides?: T) {
-  const { webContents, ...rest } = (overrides ?? {}) as {
-    webContents?: object;
-  };
+function fakeWindow<T extends object>(overrides = {} as T) {
   return {
     once: vi.fn(),
     on: vi.fn(),
     loadURL: vi.fn(() => Promise.resolve()),
     setMenuBarVisibility: vi.fn(),
-    ...rest,
+    ...overrides,
     webContents: {
       setWindowOpenHandler: vi.fn(),
       on: vi.fn(),
       ipc: { on: vi.fn() },
-      ...webContents,
+      ...(overrides as { webContents?: object }).webContents,
     },
-  } as unknown as {
-    once: ReturnType<typeof vi.fn>;
-    on: ReturnType<typeof vi.fn>;
-    loadURL: ReturnType<typeof vi.fn>;
-    setMenuBarVisibility: ReturnType<typeof vi.fn>;
-    webContents: Record<string, unknown>;
-  } & Omit<T, 'webContents'>;
+  };
 }
 
 describe('createWindow title bar', () => {
