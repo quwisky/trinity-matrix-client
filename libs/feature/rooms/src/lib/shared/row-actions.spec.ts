@@ -1,4 +1,7 @@
 import { DestroyRef } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { RecentEmojiService } from '@trinity/data-access/media';
+import { MockProvider } from 'ng-mocks';
 import { of, Subject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MessageSourceComponent } from '../message-source/message-source.component';
@@ -103,6 +106,18 @@ describe('dispatchSharedRowAction', () => {
 
     expect(ctx.quote).toHaveBeenCalledWith(row);
     expect(ctx.react).toHaveBeenCalledWith('$e', '👍');
+  });
+
+  it('records no recent emoji for a react, which may be a pill toggled off', () => {
+    const record = vi.fn();
+    TestBed.configureTestingModule({
+      providers: [MockProvider(RecentEmojiService, { record })],
+    });
+    TestBed.runInInjectionContext(() =>
+      dispatchSharedRowAction({ type: 'react', key: '👍' }, row, setup()),
+    );
+
+    expect(record).not.toHaveBeenCalled();
   });
 
   it('reacts with the emoji picked from the full picker', () => {

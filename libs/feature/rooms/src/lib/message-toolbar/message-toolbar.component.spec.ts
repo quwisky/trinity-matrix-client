@@ -1,6 +1,8 @@
 import { ComponentFixture } from '@angular/core/testing';
+import { RecentEmojiService } from '@trinity/data-access/media';
 import { render } from '@trinity/testing';
-import { describe, expect, it } from 'vitest';
+import { MockProvider } from 'ng-mocks';
+import { describe, expect, it, vi } from 'vitest';
 import {
   MessageToolbarComponent,
   type MessageAction,
@@ -313,5 +315,16 @@ describe('MessageToolbarComponent save media', () => {
     expect(item.textContent).toContain(label);
     item.click();
     expect(seen).toEqual([{ type: 'save-media' }]);
+  });
+
+  it('records a quick reaction as a recently used emoji', async () => {
+    const record = vi.fn();
+    const { fixture } = await render(MessageToolbarComponent, {
+      providers: [MockProvider(RecentEmojiService, { record })],
+    });
+
+    fixture.componentInstance.pick('🎉');
+
+    expect(record).toHaveBeenCalledWith('🎉');
   });
 });

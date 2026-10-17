@@ -72,6 +72,11 @@ const stable = (...entries: [string, number][]) => ({
   recent_emoji: entries.map(([emoji, total]) => ({ emoji, total })),
 });
 
+const parseRecent = (content: Content | undefined) =>
+  ((content?.['recent_emoji'] ?? []) as { emoji: string; total: number }[]).map(
+    ({ emoji }) => emoji,
+  );
+
 async function settle(ms = 2_000) {
   await vi.advanceTimersByTimeAsync(ms);
   TestBed.tick();
@@ -259,11 +264,17 @@ describe('RecentEmojiService', () => {
     );
   });
 
-  it('waits for a write in flight before starting the next one', async () => {
-    const { service, write } = setup();
+  it('waits for a write in flight, then writes on top of it', async () => {
+    const { service, write, server } = setup();
     let release = (): void => undefined;
     write.mockImplementationOnce(
-      () => new Promise<void>((resolve) => (release = resolve)),
+      (type: string, content: Content) =>
+        new Promise<void>((resolve) => {
+          release = () => {
+            server[type] = structuredClone(content);
+            resolve();
+          };
+        }),
     );
 
     service.record('😀');
@@ -276,6 +287,51 @@ describe('RecentEmojiService', () => {
     await settle(0);
 
     expect(write).toHaveBeenCalledTimes(2);
+    expect(write).toHaveBeenLastCalledWith(
+      RECENT_EMOJI_EVENT_TYPE,
+      stable(['🎉', 1], ['😀', 1]),
+    );
+  });
+
+  it('shows a sync that lands while a write is in flight, then what the server holds', async () => {
+    const { service, write, server, sync } = setup();
+    let release = (): void => undefined;
+    write.mockImplementationOnce(
+      (type: string, content: Content) =>
+        new Promise<void>((resolve) => {
+          release = () => {
+            server[type] = structuredClone(content);
+            resolve();
+          };
+        }),
+    );
+    service.record('😀');
+    await settle();
+
+    await sync(RECENT_EMOJI_EVENT_TYPE, stable(['👋', 1]));
+    expect(service.recent()).toEqual(['😀', '👋']);
+
+    release();
+    await settle(0);
+
+    // Account data has no compare-and-set: the write read the server before the other
+    // device's, so its pick is overwritten there, and this device follows the server.
+    expect(service.recent()).toEqual(
+      parseRecent(server[RECENT_EMOJI_EVENT_TYPE]),
+    );
+  });
+
+  it('gives no slot to text that is not an emoji', () => {
+    const { service } = setup({
+      [RECENT_EMOJI_EVENT_TYPE]: stable(
+        ['hello', 9],
+        ['👍', 1],
+        ['🇫🇷', 1],
+        ['1️⃣', 1],
+      ),
+    });
+
+    expect(service.recent()).toEqual(['👍', '🇫🇷', '1️⃣']);
   });
 
   it("follows another device's picks as they sync", async () => {

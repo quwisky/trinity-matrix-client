@@ -77,6 +77,13 @@ describe('TrnEmojiIndex', () => {
     expect((await index()).idFor('👍🏽')).toBe('+1');
   });
 
+  it('finds joined emoji, with a skin tone or a variation selector inside', async () => {
+    const loaded = await index();
+
+    expect(loaded.idFor('👩🏽‍💻')).toBe('female-technologist');
+    expect(loaded.idFor('🏳️‍🌈')).toBe('rainbow-flag');
+  });
+
   it('returns null for text that names no emoji, and until the vendor has loaded', async () => {
     const lazy = TestBed.inject(TrnEmojiIndex);
     expect(lazy.idFor('🚀')).toBeNull();

@@ -9,6 +9,7 @@ import {
   effect,
   inject,
   input,
+  linkedSignal,
   output,
   signal,
   untracked,
@@ -115,10 +116,10 @@ export class TrnEmojiPickerPanelComponent {
    * can show, keeps that row.
    */
   protected readonly vendorRecent = computed(() => {
-    const ids = (this.recent() ?? []).flatMap(
-      (native) => this.index.idFor(native) ?? [],
+    const ids = new Set(
+      (this.recent() ?? []).flatMap((native) => this.index.idFor(native) ?? []),
     );
-    return ids.length > 0 ? ids : undefined;
+    return ids.size > 0 ? [...ids] : undefined;
   });
 
   /**
@@ -132,18 +133,18 @@ export class TrnEmojiPickerPanelComponent {
   /**
    * Filling, the vendor waits for the first measurement: it sizes its frequently-used row from
    * `perLine` once, when it is created, so it must be created with the right one. Given recent
-   * emoji, it waits for the index that maps them, for the same reason.
+   * emoji, it waits for the index that maps them, for the same reason. Once created it stays,
+   * so a later list (the account's first pick) never tears down the open grid.
    */
-  protected readonly ready = computed(
-    () =>
+  protected readonly ready = linkedSignal<boolean, boolean>({
+    source: () =>
       (!this.fill() || this.fit() !== null || this.unmeasured()) &&
       (!this.recent()?.length || this.index.loaded()),
-  );
+    computation: (now, previous) => previous?.value === true || now,
+  });
 
   constructor() {
-    effect(() => {
-      if (this.recent()?.length) void this.index.load();
-    });
+    void this.index.load();
 
     const injector = inject(Injector);
     let firstShown = true;

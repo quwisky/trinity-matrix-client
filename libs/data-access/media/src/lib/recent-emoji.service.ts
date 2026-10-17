@@ -122,10 +122,12 @@ export class RecentEmojiService {
   private save(client: MatrixClient): void {
     const pending = this.pendingFor(client);
     pending.timer = null;
-    pending.queue = pending.queue.then(async () => {
+    const queue = pending.queue.then(async () => {
       const picks = pending.picks;
       if (picks.length === 0) return;
       try {
+        // Account data has no compare-and-set: a write from another device that lands between
+        // this read and the write below is overwritten. Reading just before narrows the window.
         const saved = applyPicks(await serverEntries(client), picks);
         await accountData(client).setAccountDataRaw(
           RECENT_EMOJI_EVENT_TYPE,
@@ -138,6 +140,18 @@ export class RecentEmojiService {
         }
       } catch {
         // Left in `picks`: the next burst saves them.
+      }
+    });
+    pending.queue = queue;
+    void queue.then(() => {
+      // Forget a client with nothing left to save, so a signed-out one is not kept alive.
+      if (
+        pending.queue === queue &&
+        pending.timer === null &&
+        pending.picks.length === 0 &&
+        this.writes.get(client) === pending
+      ) {
+        this.writes.delete(client);
       }
     });
   }

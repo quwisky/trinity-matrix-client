@@ -73,15 +73,22 @@ export function applyPicks(
   return next.slice(0, RECENT_EMOJI_KEPT);
 }
 
+/** A pictograph, a flag letter or a keycap; other text and `mxc://` custom emoji are not shown. */
+const SHOWABLE_EMOJI =
+  /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u;
+
 /**
  * The most recent Unicode emoji, then stably sorted by count as MSC4356's example does, so
- * equal counts keep their recency. `mxc://` entries are custom emoji the picker cannot show.
+ * equal counts keep their recency.
  */
 export function shownRecentEmoji(
   entries: readonly RecentEmojiEntry[],
 ): string[] {
   return entries
-    .filter((entry) => !entry.emoji.startsWith('mxc://'))
+    .filter(
+      (entry) =>
+        !entry.emoji.startsWith('mxc://') && SHOWABLE_EMOJI.test(entry.emoji),
+    )
     .slice(0, RECENT_EMOJI_SHOWN)
     .sort((left, right) => right.total - left.total)
     .map((entry) => entry.emoji);

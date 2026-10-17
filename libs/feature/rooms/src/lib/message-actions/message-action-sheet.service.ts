@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { RecentEmojiService } from '@trinity/data-access/media';
 import {
   TrnSurfaceService,
   type TrnActionSheetRef,
@@ -68,6 +69,7 @@ type PayloadFreeAction = Exclude<
 @Injectable({ providedIn: 'root' })
 export class MessageActionSheetService {
   private readonly surfaces = inject(TrnSurfaceService);
+  private readonly recentEmoji = inject(RecentEmojiService);
   private ref: TrnActionSheetRef | null = null;
   private owner: object | null = null;
   private viewport: MessageSheetViewportSession | null = null;
@@ -207,7 +209,10 @@ export class MessageActionSheetService {
         buttons,
         reactions: QUICK_SHEET_REACTIONS.map((key) => ({
           key,
-          handler: () => run({ type: 'react', key }),
+          handler: () => {
+            this.recentEmoji.record(key);
+            run({ type: 'react', key });
+          },
         })),
       },
       { ariaLabel: 'Message actions', anchor: context?.anchor },

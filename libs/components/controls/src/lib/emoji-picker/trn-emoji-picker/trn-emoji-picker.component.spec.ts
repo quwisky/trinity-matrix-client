@@ -537,6 +537,48 @@ describe('TrnEmojiPickerComponent', () => {
       expect(vendor.recent).toBeUndefined();
     });
 
+    it('keeps the device row for an empty list', async () => {
+      const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
+        inputs: { recent: [] },
+      });
+      const vendor = fixture.debugElement.query(By.directive(PickerComponent))
+        .componentInstance as PickerComponent;
+
+      expect(vendor.recent).toBeUndefined();
+    });
+
+    it("keeps the open grid when the account's first pick arrives", async () => {
+      const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
+        inputs: { recent: [] },
+      });
+      const vendor = () =>
+        fixture.debugElement.query(By.directive(PickerComponent))
+          ?.componentInstance as PickerComponent | undefined;
+      const grid = vendor();
+
+      fixture.componentRef.setInput('recent', ['🎉']);
+      fixture.detectChanges();
+      expect(vendor()).toBe(grid);
+      await vi.waitFor(() => {
+        fixture.detectChanges();
+        expect(grid?.recent).toEqual(['tada']);
+      });
+      expect(vendor()).toBe(grid);
+    });
+
+    it('passes each emoji once, whatever its skin tone', async () => {
+      const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
+        inputs: { recent: ['👍', '👍🏽', '🎉'] },
+      });
+      const vendor = fixture.debugElement.query(By.directive(PickerComponent))
+        .componentInstance as PickerComponent;
+
+      await vi.waitFor(() => {
+        fixture.detectChanges();
+        expect(vendor.recent).toEqual(['+1', 'tada']);
+      });
+    });
+
     it('shows a changed list when its surface shows it again', async () => {
       const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
         inputs: { recent: ['🎉'], shown: 1 },
