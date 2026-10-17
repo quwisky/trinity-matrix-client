@@ -43,6 +43,8 @@ const REASON = {
 /** Shown once a block lands, from a report or from the member card. */
 export const BLOCKED_TOAST = "Blocked — you won't see their messages.";
 /** Shown once an unblock lands; the server does not resend what it hid meanwhile. */
+/** Shown when a block or unblock write fails. */
+export const BLOCK_FAILED_TOAST = 'Could not update the block.';
 export const UNBLOCKED_TOAST =
   'Unblocked. Their earlier messages appear after you reload.';
 
@@ -215,7 +217,7 @@ export class ReportService {
             ? this.ignoredUsers.ignore(target.userId).pipe(
                 tap(() => this.toast.show(BLOCKED_TOAST, { duration: 2500 })),
                 catchError(() => {
-                  this.toast.show('Could not update the block.', {
+                  this.toast.show(BLOCK_FAILED_TOAST, {
                     duration: 4000,
                     variant: 'danger',
                   });

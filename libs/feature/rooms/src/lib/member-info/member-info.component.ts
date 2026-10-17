@@ -45,6 +45,7 @@ import {
 } from '@trinity/data-access/trust';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
+  BLOCK_FAILED_TOAST,
   BLOCKED_TOAST,
   ReportService,
   UNBLOCKED_TOAST,
@@ -346,7 +347,7 @@ export class MemberInfoComponent {
         });
       },
       error: () =>
-        this.toast.show('Could not update the block.', {
+        this.toast.show(BLOCK_FAILED_TOAST, {
           duration: 4000,
           variant: 'danger',
         }),
