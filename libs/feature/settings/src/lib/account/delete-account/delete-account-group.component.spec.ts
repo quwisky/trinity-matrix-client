@@ -22,7 +22,7 @@ async function setup(
   const launcher: Partial<AccountDeletionLauncher> = {
     plan: vi.fn(() => of(plan)),
     openProvider: vi.fn(() => of(true)),
-    confirm: vi.fn(() => of(checked)),
+    checkDeletion: vi.fn(() => of(checked)),
   };
   const rendered = await render(DeleteAccountGroupComponent, {
     inputs: { accountId: ALICE },
@@ -110,7 +110,7 @@ describe('DeleteAccountGroupComponent', () => {
     fireEvent.click(screen.getByTestId('delete-account-check-now'));
     await test.fixture.whenStable();
 
-    expect(test.launcher.confirm).toHaveBeenCalledWith(ALICE);
+    expect(test.launcher.checkDeletion).toHaveBeenCalledWith(ALICE);
     expect(
       screen.getByTestId('delete-account-check-result').textContent,
     ).toContain(

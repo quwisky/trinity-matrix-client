@@ -126,7 +126,7 @@ export class AccountDeletionWorkflow {
   }
 
   /** Ask the server whether the account still exists, and clean up when it does not. */
-  confirm(accountId: string): Observable<AccountDeletionResult> {
+  checkDeletion(accountId: string): Observable<AccountDeletionResult> {
     return defer(() => {
       const hold = this.matrix.holdServerLogout(accountId);
       return this.resolveUnknown(accountId, hold, true).pipe(

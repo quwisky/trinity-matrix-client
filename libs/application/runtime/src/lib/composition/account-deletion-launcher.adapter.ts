@@ -77,8 +77,8 @@ export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
     );
   }
 
-  confirm(accountId: string): Observable<AccountDeletionOutcome> {
-    return this.owned(this.workflow.confirm(accountId));
+  checkDeletion(accountId: string): Observable<AccountDeletionOutcome> {
+    return this.owned(this.workflow.checkDeletion(accountId));
   }
 
   openProvider(accountId: string, url: string): Observable<boolean> {
@@ -167,7 +167,7 @@ export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
       complete
         ? `${accountId} was deleted. You’re now using ${next}.`
         : `${accountId} was deleted. Some data on this device couldn’t be removed yet. Restart Trinity to finish.`,
-      { duration: DELETED_TOAST_MS, variant: complete ? 'success' : 'warning' },
+      { duration: DELETED_TOAST_MS, variant: complete ? 'success' : 'danger' },
     );
   }
 }

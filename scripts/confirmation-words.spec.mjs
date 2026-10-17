@@ -32,6 +32,11 @@ const GATES = [
     constant: 'CLEAR_DATA_CONFIRMATION_WORD',
   },
   {
+    what: 'delete account',
+    file: 'libs/data-access/accounts/src/lib/account-deletion-confirmation.ts',
+    constant: 'ACCOUNT_DELETION_CONFIRMATION_WORD',
+  },
+  {
     what: 'reset settings to defaults',
     file: 'libs/platform-native/src/lib/config-reset.policy.ts',
     constant: 'RESET_CONFIG_CONFIRMATION_WORD',

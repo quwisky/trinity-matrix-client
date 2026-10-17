@@ -58,7 +58,9 @@ function setup(
       AccountDeletionLauncherAdapter,
       MockProvider(AccountDeletionWorkflow, {
         delete: vi.fn(() => of(options.result ?? deleted(cleanup([BOB])))),
-        confirm: vi.fn(() => of(options.result ?? deleted(cleanup([BOB])))),
+        checkDeletion: vi.fn(() =>
+          of(options.result ?? deleted(cleanup([BOB]))),
+        ),
         removeDeleted: vi.fn(() =>
           of(options.result ?? deleted(cleanup([BOB]))),
         ),
@@ -213,7 +215,7 @@ describe('AccountDeletionLauncherAdapter', () => {
     ).resolves.toEqual({ kind: 'deleted' });
     expect(test.toast.show).toHaveBeenCalledWith(
       `${ALICE} was deleted. Some data on this device couldn’t be removed yet. Restart Trinity to finish.`,
-      { duration: 8000, variant: 'warning' },
+      { duration: 8000, variant: 'danger' },
     );
   });
 
@@ -288,7 +290,7 @@ describe('AccountDeletionLauncherAdapter', () => {
       const test = setup();
       await firstValueFrom(test.launcher.openProvider(ALICE, 'https://a/'));
 
-      await firstValueFrom(test.launcher.confirm(ALICE));
+      await firstValueFrom(test.launcher.checkDeletion(ALICE));
       test.tokenDies();
       await Promise.resolve();
 
@@ -302,9 +304,9 @@ describe('AccountDeletionLauncherAdapter', () => {
       result: { kind: 'kept', accountId: ALICE, reason: 'still-active' },
     });
 
-    await expect(firstValueFrom(test.launcher.confirm(ALICE))).resolves.toEqual(
-      { kind: 'kept', reason: 'still-active' },
-    );
-    expect(test.workflow.confirm).toHaveBeenCalledWith(ALICE);
+    await expect(
+      firstValueFrom(test.launcher.checkDeletion(ALICE)),
+    ).resolves.toEqual({ kind: 'kept', reason: 'still-active' });
+    expect(test.workflow.checkDeletion).toHaveBeenCalledWith(ALICE);
   });
 });

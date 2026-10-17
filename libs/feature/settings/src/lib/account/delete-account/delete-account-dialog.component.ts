@@ -239,7 +239,7 @@ export class DeleteAccountDialogComponent {
   checkAgain(): void {
     this.step.set({ kind: 'unconfirmed', checking: true });
     this.launcher
-      .confirm(this.accountId())
+      .checkDeletion(this.accountId())
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => this.settle(outcome));
   }

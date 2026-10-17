@@ -353,7 +353,7 @@ describe('AccountDeletionWorkflow', () => {
     });
   });
 
-  describe('confirm', () => {
+  describe('checkDeletion', () => {
     it.each([
       ['gone', { kind: 'deleted', accountId: ALICE, cleanup: CLEANED }],
       ['active', { kind: 'kept', accountId: ALICE, reason: 'still-active' }],
@@ -362,7 +362,7 @@ describe('AccountDeletionWorkflow', () => {
       const test = setup({ status });
 
       await expect(
-        firstValueFrom(test.workflow.confirm(ALICE)),
+        firstValueFrom(test.workflow.checkDeletion(ALICE)),
       ).resolves.toEqual(expected);
       expect(test.matrix.holdServerLogout).toHaveBeenCalledWith(ALICE);
     });

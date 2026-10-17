@@ -25,7 +25,7 @@ async function setup() {
       prompts = request.prompts;
       return outcome;
     }),
-    confirm: vi.fn(() => of({ kind: 'deleted' } as const)),
+    checkDeletion: vi.fn(() => of({ kind: 'deleted' } as const)),
   };
   const close = vi.fn();
   const removal = { remove: vi.fn(() => of({ kind: 'kept' } as const)) };
@@ -261,7 +261,7 @@ describe('DeleteAccountDialogComponent', () => {
     await test.settle();
 
     fireEvent.click(screen.getByTestId('delete-account-check-again'));
-    expect(test.launcher.confirm).toHaveBeenCalledWith(ALICE);
+    expect(test.launcher.checkDeletion).toHaveBeenCalledWith(ALICE);
 
     test.outcome.next({ kind: 'unconfirmed' });
     await test.settle();

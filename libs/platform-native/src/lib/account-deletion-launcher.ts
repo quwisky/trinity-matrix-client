@@ -53,7 +53,7 @@ export interface AccountDeletionLauncher {
     readonly prompts: AccountDeletionPrompts;
   }): Observable<AccountDeletionOutcome>;
   /** Ask the server whether the account still exists, and finish the deletion if not. */
-  confirm(accountId: string): Observable<AccountDeletionOutcome>;
+  checkDeletion(accountId: string): Observable<AccountDeletionOutcome>;
   /** Open the provider page and remove the account here once its token stops working. */
   openProvider(accountId: string, url: string): Observable<boolean>;
   /**

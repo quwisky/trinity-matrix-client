@@ -95,7 +95,7 @@ export class DeleteAccountGroupComponent {
     this.checking.set(true);
     this.checkMessage.set(null);
     this.launcher
-      .confirm(this.accountId())
+      .checkDeletion(this.accountId())
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => {
         this.checking.set(false);
