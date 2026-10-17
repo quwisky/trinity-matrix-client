@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "data-access-whats-new",
+  "projectType": "library",
+  "sourceRoot": "libs/data-access/whats-new/src",
+  "prefix": "trn",
+  "tags": [
+    "type:data-access",
+    "scope:matrix",
+    "role:capability",
+    "capability:whats-new"
+  ],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

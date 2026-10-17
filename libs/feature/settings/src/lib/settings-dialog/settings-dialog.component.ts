@@ -23,6 +23,11 @@ import {
 } from '@trinity/components/overlay';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { BUILD_INFO } from '@trinity/platform-native';
+import { TrnButton } from '@trinity/components/controls';
+import {
+  WhatsNewService,
+  WHATS_NEW_LAUNCHER,
+} from '@trinity/data-access/whats-new';
 import { textScaledViewportSignal } from '@trinity/util/ui';
 import { of } from 'rxjs';
 import { provideConfigEditor } from '../advanced/config-editor-loader';
@@ -40,6 +45,7 @@ import { SettingsDirectorySearchComponent } from '../shared/settings-directory-s
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     NgComponentOutlet,
+    TrnButton,
     TrnSettingsLayoutComponent,
     SettingsDirectorySearchComponent,
   ],
@@ -58,6 +64,8 @@ export class SettingsDialogComponent {
   private readonly directorySearch = viewChild(
     SettingsDirectorySearchComponent,
   );
+  private readonly notes = inject(WhatsNewService).all;
+  private readonly whatsNew = inject(WHATS_NEW_LAUNCHER, { optional: true });
   private appliedInitialSection?: string;
 
   readonly initialSection = input<string>();

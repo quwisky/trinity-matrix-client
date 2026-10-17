@@ -29,5 +29,22 @@
       [ngComponentOutletEnvironmentInjector]="sectionInjector(section)"
     />
   }
-  <p settings-nav-footer data-testid="settings-build">{{ buildLabel }}</p>
+  <p settings-nav-footer data-testid="settings-build">
+    {{ buildLabel }}
+    @if (notes.length && whatsNew) {
+      <span class="block"
+        ><button
+          trnBtn
+          type="button"
+          presentation="link"
+          shape="inline"
+          size="xs"
+          data-testid="settings-whats-new"
+          (click)="whatsNew.showAll()"
+        >
+          What's new
+        </button></span
+      >
+    }
+  </p>
 </trn-settings-layout>

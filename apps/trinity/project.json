@@ -14,9 +14,24 @@
         "command": "node scripts/gen-build-info.mjs"
       }
     },
+    "release-notes": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node scripts/gen-release-notes.mjs"
+      }
+    },
     "build": {
       "executor": "@angular/build:application",
-      "dependsOn": ["build-info"],
+      "dependsOn": ["build-info", "release-notes"],
+      "//": "release-notes.ts is git-ignored, so the notes that scripts/gen-release-notes.mjs bundles reach the cache hash only through these variables.",
+      "inputs": [
+        "production",
+        "^production",
+        { "env": "TRINITY_RELEASE_NOTES_FIXTURE" },
+        { "env": "TRINITY_RELEASE_NOTES" },
+        { "env": "TRINITY_CURRENT_RELEASE_NOTES" }
+      ],
       "outputs": ["{workspaceRoot}/www"],
       "options": {
         "outputPath": {
@@ -120,7 +135,7 @@
     },
     "serve": {
       "executor": "@angular/build:dev-server",
-      "dependsOn": ["build-info"],
+      "dependsOn": ["build-info", "release-notes"],
       "configurations": {
         "production": {
           "buildTarget": "trinity:build:production"

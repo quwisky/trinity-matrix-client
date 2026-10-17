@@ -42,3 +42,9 @@ pnpm ios:verify
 ```
 
 Read [host capabilities](../../architecture/host-capabilities/) before changing the protocol and [desktop and native tests](../../testing/desktop-and-native-tests/) before claiming host behavior.
+
+## Bundle release notes {#release-notes}
+
+The "What's new" dialog reads `apps/trinity/src/app/release-notes.ts`, which `scripts/gen-release-notes.mjs` writes before `trinity:build` and `trinity:serve` (Nx target `trinity:release-notes`). Devices never fetch notes. The file is ignored by Git.
+
+Only a release build, or the browser e2e suite through `TRINITY_RELEASE_NOTES_FIXTURE`, has notes. `TRINITY_RELEASE_NOTES=required` makes the script read release-please's notes from the GitHub API (`GITHUB_TOKEN`, `GITHUB_REPOSITORY`) and fail the build if fetching or parsing fails; `TRINITY_CURRENT_RELEASE_NOTES` carries the draft release's body from the `release-notes` job in `release.yml`. The browser suite points `TRINITY_RELEASE_NOTES_FIXTURE` at a JSON file instead. Without release context, as in local builds, the list is empty and the dialog and the Settings link never appear. All three variables are cache inputs of `trinity:build`. The release flow is in `docs-internal/maintenance/ci-and-releases.md`.

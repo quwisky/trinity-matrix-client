@@ -128,6 +128,7 @@ describe('Trinity application provider composition', () => {
       providers: [
         ...applicationCapabilityProviders({
           buildInfo: {} as BuildInfo,
+          releaseNotes: [],
           pushConfig: null,
         }),
       ],
@@ -163,10 +164,12 @@ describe('Trinity application provider composition', () => {
           matrixSdkLogLevel: 'warn',
           issueRepositoryUrl: null,
           buildInfo: {} as BuildInfo,
+          releaseNotes: [],
           dialogLoaders: {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
+            whatsNew: () => NEVER,
           },
         }),
       ],
@@ -191,10 +194,12 @@ describe('Trinity application provider composition', () => {
           issueRepositoryUrl:
             'https://github.com/quwisky/trinity-matrix-client',
           buildInfo: { version: '1.2.3', commit: 'abc1234', builtAt: '' },
+          releaseNotes: [],
           dialogLoaders: {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
+            whatsNew: () => NEVER,
           },
         }),
         {
@@ -251,6 +256,7 @@ describe('Trinity application provider composition', () => {
         providers: [
           ...applicationCapabilityProviders({
             buildInfo: {} as BuildInfo,
+            releaseNotes: [],
             pushConfig: null,
           }),
           MockProvider(AppLockService, {
@@ -288,6 +294,7 @@ describe('Trinity application provider composition', () => {
       providers: [
         ...applicationCapabilityProviders({
           buildInfo: {} as BuildInfo,
+          releaseNotes: [],
           pushConfig: null,
         }),
         {
@@ -315,10 +322,12 @@ describe('Trinity application provider composition', () => {
           matrixSdkLogLevel: 'warn',
           issueRepositoryUrl: null,
           buildInfo: {} as BuildInfo,
+          releaseNotes: [],
           dialogLoaders: {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
+            whatsNew: () => NEVER,
           },
         }),
       ],
@@ -343,10 +352,12 @@ describe('Trinity application provider composition', () => {
           matrixSdkLogLevel: 'warn',
           issueRepositoryUrl: null,
           buildInfo: {} as BuildInfo,
+          releaseNotes: [],
           dialogLoaders: {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
+            whatsNew: () => NEVER,
           },
         }),
       ],
@@ -371,10 +382,12 @@ describe('Trinity application provider composition', () => {
           matrixSdkLogLevel: 'warn',
           issueRepositoryUrl: null,
           buildInfo: {} as BuildInfo,
+          releaseNotes: [],
           dialogLoaders: {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
+            whatsNew: () => NEVER,
           },
         }),
       ],
@@ -397,10 +410,12 @@ describe('Trinity application provider composition', () => {
       matrixSdkLogLevel: 'warn' as const,
       issueRepositoryUrl: null,
       buildInfo: {} as BuildInfo,
+      releaseNotes: [],
       dialogLoaders: {
         settings: () => NEVER,
         encryption: { unlock: () => NEVER, verify: () => NEVER },
         reportBug: () => NEVER,
+        whatsNew: () => NEVER,
       },
     };
     for (const [options, allowSkip] of [
@@ -430,10 +445,12 @@ describe('Trinity application provider composition', () => {
           matrixSdkLogLevel: 'warn',
           issueRepositoryUrl: null,
           buildInfo: { version: '1.2.3', commit: 'abc1234', builtAt: '' },
+          releaseNotes: [],
           dialogLoaders: {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => of(ReportBugDependencyProbeComponent),
+            whatsNew: () => NEVER,
           },
         }),
         {

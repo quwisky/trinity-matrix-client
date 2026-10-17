@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **75 Nx projects** and **295 dependencies**. No project cycles detected.
+This snapshot contains **77 Nx projects** and **306 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -32,8 +32,8 @@ Capability-to-capability dependencies are valid only inside the same named capab
 | Source role          | Projects | May depend on                                                                                          |
 | -------------------- | -------: | ------------------------------------------------------------------------------------------------------ |
 | `role:app`           |        5 | `role:app`, `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system` |
-| `role:application`   |        7 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
-| `role:capability`    |       16 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
+| `role:application`   |        8 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
+| `role:capability`    |       17 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
 | `role:kernel`        |        5 | `role:kernel`                                                                                          |
 | `role:adapter`       |        9 | `role:adapter`, `role:kernel`                                                                          |
 | `role:design-system` |       19 | `role:design-system`, `role:kernel`, `role:adapter`                                                    |
@@ -85,11 +85,13 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `data-access-room-library`        | `@trinity/data-access/room-library`        | `./libs/data-access/room-library/src/index.ts`        |
 | `data-access-timeline`            | `@trinity/data-access/timeline`            | `./libs/data-access/timeline/src/index.ts`            |
 | `data-access-trust`               | `@trinity/data-access/trust`               | `./libs/data-access/trust/src/index.ts`               |
+| `data-access-whats-new`           | `@trinity/data-access/whats-new`           | `./libs/data-access/whats-new/src/index.ts`           |
 | `data-access-widgets`             | `@trinity/data-access/widgets`             | `./libs/data-access/widgets/src/index.ts`             |
 | `feature-auth`                    | `@trinity/feature/auth`                    | `./libs/feature/auth/src/index.ts`                    |
 | `feature-crypto`                  | `@trinity/feature/crypto`                  | `./libs/feature/crypto/src/index.ts`                  |
 | `feature-rooms`                   | `@trinity/feature/rooms`                   | `./libs/feature/rooms/src/index.ts`                   |
 | `feature-settings`                | `@trinity/feature/settings`                | `./libs/feature/settings/src/index.ts`                |
+| `feature-whats-new`               | `@trinity/feature/whats-new`               | `./libs/feature/whats-new/src/index.ts`               |
 | `avatar`                          | `@trinity/helm/avatar`                     | `./libs/spartan/avatar/src/index.ts`                  |
 | `button`                          | `@trinity/helm/button`                     | `./libs/spartan/button/src/index.ts`                  |
 | `card`                            | `@trinity/helm/card`                       | `./libs/spartan/card/src/index.ts`                    |
@@ -123,7 +125,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | ----------------------------------- | ---------------------------------------- | ----------------------------------------------- | ------------------: |
 | `application-appearance`            | `libs/application/appearance`            | role:application; capability:design-system      |                   4 |
 | `application-badge`                 | `libs/application/badge`                 | role:application; capability:badge              |                   2 |
-| `application-runtime`               | `libs/application/runtime`               | role:application; capability:runtime            |                  30 |
+| `application-runtime`               | `libs/application/runtime`               | role:application; capability:runtime            |                  31 |
 | `application-search`                | `libs/application/search`                | role:application; capability:search             |                   5 |
 | `application-workspace`             | `libs/application/workspace`             | role:application; capability:workspace          |                   7 |
 | `avatar`                            | `libs/spartan/avatar`                    | role:design-system; capability:design-system    |                   0 |
@@ -150,6 +152,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `data-access-room-library`          | `libs/data-access/room-library`          | role:capability; capability:room-library        |                   6 |
 | `data-access-timeline`              | `libs/data-access/timeline`              | role:capability; capability:conversations       |                   6 |
 | `data-access-trust`                 | `libs/data-access/trust`                 | role:capability; capability:trust               |                   4 |
+| `data-access-whats-new`             | `libs/data-access/whats-new`             | role:capability; capability:whats-new           |                   1 |
 | `data-access-widgets`               | `libs/data-access/widgets`               | role:capability; capability:conversations       |                   3 |
 | `docs-developers`                   | `apps/docs-developers`                   | unmanaged tooling/test                          |                   1 |
 | `docs-e2e`                          | `e2e/docs`                               | unmanaged tooling/test                          |                   0 |
@@ -159,7 +162,8 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `feature-auth`                      | `libs/feature/auth`                      | role:capability; capability:accounts            |                  11 |
 | `feature-crypto`                    | `libs/feature/crypto`                    | role:capability; capability:trust               |                  11 |
 | `feature-rooms`                     | `libs/feature/rooms`                     | role:application; capability:workspace          |                  26 |
-| `feature-settings`                  | `libs/feature/settings`                  | role:application; capability:settings           |                  26 |
+| `feature-settings`                  | `libs/feature/settings`                  | role:application; capability:settings           |                  27 |
+| `feature-whats-new`                 | `libs/feature/whats-new`                 | role:application; capability:whats-new          |                   7 |
 | `label`                             | `libs/spartan/label`                     | role:design-system; capability:design-system    |                   1 |
 | `native-capacitor-app-lock`         | `libs/native/capacitor-app-lock`         | role:adapter; capability:host                   |                   0 |
 | `native-capacitor-app-lock-android` | `libs/native/capacitor-app-lock/android` | role:adapter; capability:host                   |                   0 |
@@ -180,7 +184,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `testing`                           | `libs/testing`                           | unmanaged tooling/test                          |                   0 |
 | `theme-foundation`                  | `libs/theme-foundation`                  | role:kernel; capability:design-system           |                   0 |
 | `tooltip`                           | `libs/spartan/tooltip`                   | role:design-system; capability:design-system    |                   1 |
-| `trinity`                           | `apps/trinity`                           | role:app; capability:composition                |                   8 |
+| `trinity`                           | `apps/trinity`                           | role:app; capability:composition                |                   9 |
 | `trinity-android`                   | `android`                                | role:app; capability:composition                |                   3 |
 | `trinity-desktop`                   | `electron`                               | role:app; capability:composition                |                   1 |
 | `trinity-e2e`                       | `e2e`                                    | unmanaged tooling/test                          |                   2 |
