@@ -25,6 +25,7 @@ import {
   TrnButton,
   TrnFieldImports,
   TrnInput,
+  TrnPasswordInputComponent,
 } from '@trinity/components/controls';
 import {
   TrnDialogActions,
@@ -80,6 +81,7 @@ const EMPTY: PinModel = { pin: '', confirmPin: '' };
     TrnDialogShellComponent,
     TrnFieldImports,
     TrnInput,
+    TrnPasswordInputComponent,
   ],
 })
 export class AppLockPinDialogComponent {

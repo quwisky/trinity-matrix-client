@@ -19,6 +19,7 @@ import {
   TrnButton,
   TrnFieldImports,
   TrnInput,
+  TrnPasswordInputComponent,
 } from '@trinity/components/controls';
 import { AppLockService } from '@trinity/data-access/app-lock';
 import { HostLockIntegrationService } from '@trinity/runtime/host';
@@ -50,7 +51,14 @@ export { unlockLabel, useMethodLabel } from './app-lock-cover.copy';
   selector: 'trn-app-lock-cover',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './app-lock-cover.component.html',
-  imports: [FormField, FormRoot, TrnButton, TrnFieldImports, TrnInput],
+  imports: [
+    FormField,
+    FormRoot,
+    TrnButton,
+    TrnFieldImports,
+    TrnInput,
+    TrnPasswordInputComponent,
+  ],
   providers: [AppLockCoverState],
   host: { 'aria-live': 'off' },
 })

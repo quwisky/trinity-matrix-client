@@ -85,22 +85,23 @@
             <trn-field-label controlId="app-lock-pin" [invalid]="!!pinError">
               {{ state.appName }} PIN
             </trn-field-label>
-            <input
-              trnInput
-              size="lg"
-              id="app-lock-pin"
-              type="password"
-              inputmode="numeric"
-              autocomplete="off"
-              [formField]="state.pinForm.pin"
-              [aria-describedby]="
-                pinError
-                  ? 'app-lock-pin-error app-lock-message'
-                  : 'app-lock-message'
-              "
-              data-testid="app-lock-pin"
-              data-autofocus
-            />
+            <trn-password-input label="PIN">
+              <input
+                trnInput
+                size="lg"
+                id="app-lock-pin"
+                inputmode="numeric"
+                autocomplete="off"
+                [formField]="state.pinForm.pin"
+                [aria-describedby]="
+                  pinError
+                    ? 'app-lock-pin-error app-lock-message'
+                    : 'app-lock-message'
+                "
+                data-testid="app-lock-pin"
+                data-autofocus
+              />
+            </trn-password-input>
             @if (pinError) {
               <p id="app-lock-pin-error" class="m-0 text-sm text-danger">
                 {{ pinError.message }}

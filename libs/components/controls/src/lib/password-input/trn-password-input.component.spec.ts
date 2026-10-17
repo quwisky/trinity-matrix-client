@@ -18,6 +18,16 @@ class HostComponent {
   readonly disabled = signal(false);
 }
 
+@Component({
+  imports: [TrnPasswordInputComponent, TrnInput],
+  template: `
+    <trn-password-input label="PIN">
+      <input trnInput id="pw" aria-label="PIN" />
+    </trn-password-input>
+  `,
+})
+class PinHostComponent {}
+
 const field = (container: Element) =>
   container.querySelector<HTMLInputElement>('#pw') as HTMLInputElement;
 
@@ -48,6 +58,15 @@ describe('TrnPasswordInputComponent', () => {
     expect(
       screen.getByRole('button', { name: 'Show password' }),
     ).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('names the button after what the field holds', async () => {
+    const { fixture } = await render(PinHostComponent);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show PIN' }));
+    fixture.detectChanges();
+
+    expect(screen.getByRole('button', { name: 'Hide PIN' })).toBeTruthy();
   });
 
   it('disables the button with the disabled input', async () => {
