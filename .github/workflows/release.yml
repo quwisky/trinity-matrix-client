@@ -280,8 +280,9 @@ jobs:
     name: Package (${{ matrix.platform }})
     needs: [verify, release-notes]
     # Explicit, not the default success(): that also requires release-please, which a
-    # dispatch skips, and would skip packaging on every manual re-package.
-    if: ${{ !cancelled() && needs.verify.result == 'success' }}
+    # dispatch skips, and would skip packaging on every manual re-package. release-notes
+    # fails early when the tag has no release, instead of four runners failing late.
+    if: ${{ !cancelled() && needs.verify.result == 'success' && needs.release-notes.result == 'success' }}
     runs-on: ${{ matrix.os }}
     # Without this the job inherits the 6-hour default, and a wedged @electron/get download
     # would hold the release all day.
@@ -347,7 +348,7 @@ jobs:
   desktop-shell:
     name: Build the desktop shell (mac)
     needs: [verify, release-notes]
-    if: ${{ !cancelled() && needs.verify.result == 'success' }}
+    if: ${{ !cancelled() && needs.verify.result == 'success' && needs.release-notes.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -485,7 +486,7 @@ jobs:
   package-web:
     name: Package (web)
     needs: [verify, release-notes]
-    if: ${{ !cancelled() && needs.verify.result == 'success' }}
+    if: ${{ !cancelled() && needs.verify.result == 'success' && needs.release-notes.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -554,7 +555,7 @@ jobs:
 
       # Stays a DRAFT here; the `publish` job below publishes it once every platform's
       # package is attached. release-please normally created this draft already
-      # (with its notes); a dispatch for a tag without a release creates it here.
+      # (with its notes); a dispatch re-packages an existing (draft or published) release only.
       - name: Create or update the draft release
         env:
           GH_TOKEN: ${{ github.token }}

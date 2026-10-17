@@ -678,12 +678,17 @@ describe('release notes in release builds', () => {
         GITHUB_TOKEN: '${{ github.token }}',
       });
       expect(job.permissions, id).toBeUndefined();
+      expect(job.if, id).toBe(
+        "${{ !cancelled() && needs.verify.result == 'success' && needs.release-notes.result == 'success' }}",
+      );
     }
   });
 
   it('reads the release body for dispatch re-packages', () => {
     expect(notes.needs).toBe('release-please');
-    expect(notes.if).toContain('workflow_dispatch');
+    expect(notes.if).toBe(
+      "${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.release-please.outputs.created == 'true') }}",
+    );
     expect(notes.environment).toBe('release-app');
     expect(JSON.stringify(notes)).toContain(
       'inputs.tag || needs.release-please.outputs.tag',

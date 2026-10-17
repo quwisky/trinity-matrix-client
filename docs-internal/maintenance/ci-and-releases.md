@@ -691,7 +691,8 @@ This describes the original bootstrap under the old develop/main model.
 
 `0.1.0` predates release-please. After the migration merge, push the `v0.1.0`
 tag on the migration commit **first**, then create `main` from that commit, and
-dispatch `release.yml` with `tag: v0.1.0` to build its draft. In the other order,
+create a draft `v0.1.0` release for it (`gh release create v0.1.0 --draft --verify-tag`), then
+dispatch `release.yml` with `tag: v0.1.0` to build it. In the other order,
 the stable line's first run finds no `v0.1.0` release and proposes a stable release for
 whatever reached the integration branch after the bootstrap commit. Both configs carry a
 `bootstrap-sha` so release-please's first runs do not read the project's whole
@@ -724,7 +725,8 @@ change before merging the release PR, following [testing](../../apps/docs-develo
 The `release-notes` job reads the draft release body with the release App token and hands it to
 `package`, `desktop-shell` and `package-web` as `TRINITY_CURRENT_RELEASE_NOTES`, because their
 read-only token cannot see a draft. They build with `TRINITY_RELEASE_NOTES=required`, so a
-notes failure fails the build. Android and iOS builds run locally after publishing: set
+notes failure fails the build. A dispatch therefore re-packages an existing release, draft or
+published, only: for a tag without one, `release-notes` fails and the builds are skipped. Android and iOS builds run locally after publishing: set
 `TRINITY_RELEASE_NOTES=required` and `GITHUB_TOKEN=$(gh auth token)`.
 
 After verification, the package matrix builds the desktop shell with publishing

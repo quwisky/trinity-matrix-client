@@ -235,6 +235,16 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     owner: 'platform-native',
   },
 
+  // — data-access/whats-new —
+  {
+    disposition: 'excluded',
+    key: 'trinity.whats-new.last-seen-version',
+    owner: 'platform-native',
+    reason:
+      'The app version this device last opened. It records how one device was used, ' +
+      'not a setting, so another device must not inherit it.',
+  },
+
   // — data-access/gif —
   {
     disposition: 'exported',
