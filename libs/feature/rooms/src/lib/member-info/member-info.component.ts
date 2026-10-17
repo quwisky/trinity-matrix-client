@@ -6,7 +6,6 @@ import {
   computed,
   inject,
   input,
-  linkedSignal,
   output,
   viewChild,
 } from '@angular/core';
@@ -137,8 +136,15 @@ export class MemberInfoComponent {
   private readonly userIdHandle =
     viewChild<ElementRef<HTMLElement>>('userIdHandle');
 
-  /** Whether this member is ignored (blocked); flips locally when toggled. */
-  readonly ignored = linkedSignal(() =>
+  constructor() {
+    this.ignoredUsers
+      .runProjection()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+  }
+
+  /** Whether the active account blocks this member, as its synced ignore list says. */
+  readonly ignored = computed(() =>
     this.ignoredUsers.isIgnored(this.member().userId),
   );
 
@@ -147,6 +153,16 @@ export class MemberInfoComponent {
     const owner = this.owningAccountId();
     return owner !== null && owner !== this.identity.activeUserId();
   });
+
+  /**
+   * Blocking acts on the active account's list, so while another account is active the card
+   * can neither show nor change this owner's block.
+   */
+  readonly blockUnavailableReason = computed(() =>
+    this.ownerInactive()
+      ? `Switch back to ${this.owningAccountId()} to block or unblock from this card.`
+      : null,
+  );
 
   /** The Account the commands run as, when one is known. */
   private readonly commandAccountId = computed(
@@ -302,7 +318,7 @@ export class MemberInfoComponent {
     selection.addRange(range);
   }
 
-  /** Block or unblock the member (account-wide ignore); flips the button on success. */
+  /** Block or unblock the member (account-wide ignore); the button follows the synced list. */
   toggleIgnore(): void {
     if (this.ownerInactive()) return;
     const userId = this.member().userId;
@@ -312,9 +328,10 @@ export class MemberInfoComponent {
       : this.ignoredUsers.ignore(userId);
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
-        this.ignored.set(!wasIgnored);
         this.toast.show(
-          wasIgnored ? 'Unblocked.' : "Blocked — you won't see their messages.",
+          wasIgnored
+            ? 'Unblocked. Their earlier messages appear after you reload.'
+            : "Blocked — you won't see their messages.",
           { duration: 2500 },
         );
       },

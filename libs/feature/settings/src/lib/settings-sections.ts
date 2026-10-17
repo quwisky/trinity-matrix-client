@@ -123,7 +123,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     icon: 'shield',
     group: 'Preferences',
     component: PrivacySettingsComponent,
-    parts: [],
+    // Invites renders only where the server enforces invite blocking.
+    parts: [
+      { id: 'general', label: 'General' },
+      { id: 'invites', label: 'Invites' },
+      { id: 'blocked-users', label: 'Blocked users' },
+    ],
   },
   {
     path: 'server',

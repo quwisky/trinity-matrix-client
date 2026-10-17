@@ -19,10 +19,14 @@ import {
   IdentityPresenceService,
   IdentityService,
 } from '@trinity/data-access/identity';
-import { RoomLibraryService } from '@trinity/data-access/room-library';
+import {
+  InviteBlockedError,
+  RoomLibraryService,
+} from '@trinity/data-access/room-library';
 import { TrustVerificationService } from '@trinity/data-access/trust';
 import { MockProvider } from 'ng-mocks';
-import { BehaviorSubject, of } from 'rxjs';
+import { BehaviorSubject, NEVER, of, throwError } from 'rxjs';
+import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { MembersSettingsComponent } from './members-settings.component';
@@ -59,6 +63,9 @@ async function build(options: { readonly canManage?: boolean } = {}) {
   const snapshots = new BehaviorSubject(snapshot());
   const inviteUser = vi.fn(() => of(undefined));
   const pick = vi.fn(() => of('@invitee:hs'));
+  const pickUser = vi.fn(() =>
+    of({ userId: '@invitee:hs', displayName: 'Ivy' as string | null }),
+  );
   const navigate = vi.fn(() =>
     of({ kind: 'ready' as const, change: 'committed' as const }),
   );
@@ -97,7 +104,10 @@ async function build(options: { readonly canManage?: boolean } = {}) {
         inviteUser,
         createDirectMessage: () => of('!dm:hs'),
       }),
-      MockProvider(UserPickerService, { pick$: pick }),
+      MockProvider(UserPickerService, {
+        pick$: pick,
+        pickUser$: pickUser,
+      }),
       MockProvider(WorkspaceNavigationService, { navigate }),
       MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: vi.fn() }),
@@ -113,6 +123,7 @@ async function build(options: { readonly canManage?: boolean } = {}) {
       }),
       MockProvider(IgnoredUsersService, {
         isIgnored: () => false,
+        runProjection: () => NEVER,
         ignore: () => of(undefined),
         unignore: () => of(undefined),
       }),
@@ -127,7 +138,7 @@ async function build(options: { readonly canManage?: boolean } = {}) {
     container,
     snapshots,
     inviteUser,
-    pick,
+    pick: pickUser,
     navigate,
     close,
   };
@@ -217,5 +228,19 @@ describe('MembersSettingsComponent', () => {
       confirmLabel: 'Invite',
     });
     expect(inviteUser).toHaveBeenCalledWith(TARGET, '@invitee:hs');
+  });
+
+  it('says the invitee is not accepting invites when their server blocks them', async () => {
+    const { cmp, inviteUser } = await build();
+    inviteUser.mockReturnValue(
+      throwError(() => new InviteBlockedError('@invitee:hs')),
+    );
+
+    cmp.invite();
+
+    expect(TestBed.inject(TrnToastService).show).toHaveBeenCalledWith(
+      "Ivy isn't accepting invites.",
+      expect.objectContaining({ variant: 'danger' }),
+    );
   });
 });

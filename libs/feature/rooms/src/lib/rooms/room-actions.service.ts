@@ -2,6 +2,7 @@ import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PublicRoomsService } from '@trinity/data-access/discovery';
 import {
+  InviteBlockedError,
   RoomLibraryService,
   RoomReadinessService,
   SpacesService,
@@ -12,9 +13,13 @@ import {
   TrnAlertService,
   TrnSurfaceService,
 } from '@trinity/components/overlay';
-import { matrixRequestErrorHandling } from '@trinity/util/matrix';
+import {
+  matrixRequestErrorHandling,
+  type MatrixRequestErrorHandling,
+} from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
+import type { PickedUser } from '../user-picker/user-picker.component';
 import {
   RoomDirectoryComponent,
   type DirectoryJoin,
@@ -27,6 +32,21 @@ import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
 import { EMPTY, filter, forkJoin, map, switchMap, type Observable } from 'rxjs';
+
+/** The shared invite failure copy, naming an invitee who blocks invites. */
+function inviteErrorHandling(name: string): MatrixRequestErrorHandling {
+  const failure = matrixRequestErrorHandling(
+    'invite user to room',
+    'Could not invite this user. Try again.',
+  );
+  return {
+    ...failure,
+    formatError: (error) =>
+      error instanceof InviteBlockedError
+        ? `${name} isn't accepting invites.`
+        : failure.formatError(error),
+  };
+}
 
 /**
  * The life of a room: creating one, starting a DM, joining from the directory, inviting
@@ -299,21 +319,18 @@ export class RoomActionsService {
   private invitePeople(targetId: string, label: string): void {
     this.status.error.set(null);
     this.userPicker
-      .pick$({
+      .pickUser$({
         title: `Invite to ${label}`,
         confirmLabel: 'Invite',
       })
       .pipe(
-        filter((userId): userId is string => Boolean(userId)),
-        switchMap((userId) =>
+        filter((picked): picked is PickedUser => picked !== null),
+        switchMap((picked) =>
           runWithBusy(
-            this.rooms.inviteUser(targetId, userId),
+            this.rooms.inviteUser(targetId, picked.userId),
             this.status,
-            matrixRequestErrorHandling(
-              'invite user to room',
-              'Could not invite this user. Try again.',
-            ),
-          ).pipe(map(() => userId)),
+            inviteErrorHandling(picked.displayName ?? picked.userId),
+          ).pipe(map(() => picked.userId)),
         ),
         takeUntilDestroyed(this.destroyRef),
       )

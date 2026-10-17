@@ -1,0 +1,95 @@
+<trn-settings-group
+  title="Blocked users"
+  [description]="description()"
+  data-testid="privacy-blocked-users"
+>
+  @for (user of users(); track user.userId) {
+    @let name = nameOf(user);
+    <div
+      class="flex items-center gap-3 border-b border-[var(--trinity-border-subtle)] py-3"
+      data-testid="blocked-user-row"
+    >
+      <trn-avatar
+        [mxc]="user.avatarMxc"
+        [initial]="initialFor(user)"
+        [name]="name"
+        [exactSize]="32"
+      />
+      <div class="flex min-w-0 flex-1 flex-col">
+        @if (user.displayName) {
+          <span
+            class="truncate font-semibold text-[var(--trinity-text-bright)]"
+            >{{ user.displayName }}</span
+          >
+        }
+        <span class="truncate text-sm text-[var(--trinity-text-muted)]">{{
+          user.userId
+        }}</span>
+      </div>
+      <button
+        trnBtn
+        type="button"
+        presentation="outline"
+        size="sm"
+        class="shrink-0"
+        [disabled]="unblocking().has(user.userId)"
+        [attr.aria-label]="'Unblock ' + name"
+        (click)="unblock(user)"
+        data-testid="blocked-user-unblock"
+      >
+        Unblock
+      </button>
+    </div>
+  } @empty {
+    <trn-empty-state
+      layout="line"
+      body="You haven't blocked anyone."
+      data-testid="blocked-users-empty"
+    />
+  }
+
+  <form
+    [formRoot]="blockForm"
+    class="flex flex-col gap-2 py-3"
+    (submit)="block()"
+  >
+    @let fieldError = shownError(blockForm.userId);
+    <label trnLabel for="privacy-block-user-id">Block someone by user ID</label>
+    <div class="flex items-center gap-2">
+      <input
+        trnInput
+        id="privacy-block-user-id"
+        class="min-w-0 flex-1"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+        placeholder="@name:example.org"
+        [formField]="blockForm.userId"
+        [attr.aria-invalid]="fieldError ? 'true' : null"
+        [attr.aria-describedby]="
+          fieldError ? 'privacy-block-user-id-error' : null
+        "
+        data-testid="blocked-users-input"
+      />
+      <button
+        trnBtn
+        type="submit"
+        size="sm"
+        class="shrink-0"
+        [disabled]="blocking()"
+        data-testid="blocked-users-block"
+      >
+        Block
+      </button>
+    </div>
+    @if (fieldError) {
+      <p
+        id="privacy-block-user-id-error"
+        class="m-0 text-sm text-danger"
+        role="alert"
+      >
+        {{ fieldError.message }}
+      </p>
+    }
+  </form>
+</trn-settings-group>

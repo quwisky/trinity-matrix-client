@@ -12,18 +12,24 @@ import {
 } from '@trinity/platform-native';
 import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { render, screen } from '@trinity/testing';
+import { TrnToastService } from '@trinity/components/overlay';
+import { IgnoredUsersService } from '@trinity/data-access/identity';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { InvitePermissionService } from '@trinity/data-access/room-library';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom, of } from 'rxjs';
+import { NEVER, firstValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrivacySettingsComponent } from './privacy-settings.component';
 
 describe('PrivacySettingsComponent', () => {
   let previewsSupported: ReturnType<typeof signal<boolean | null>>;
   let write: ReturnType<typeof vi.fn>;
+  let inviteBlockingSupported: ReturnType<typeof signal<boolean | null>>;
 
   beforeEach(() => {
     TestBed.resetTestingModule();
     previewsSupported = signal<boolean | null>(null);
+    inviteBlockingSupported = signal<boolean | null>(true);
     write = vi.fn(() => of({ kind: 'completed' }));
   });
 
@@ -41,9 +47,44 @@ describe('PrivacySettingsComponent', () => {
         },
         MockProvider(UrlPreviewService, { supported: previewsSupported }),
         MockProvider(MediaPickerService, { captureSupported }),
+        MockProvider(InvitePermissionService, {
+          supported: inviteBlockingSupported.asReadonly(),
+          blocked: signal(false).asReadonly(),
+          runProjection: () => NEVER,
+        }),
+        MockProvider(IgnoredUsersService, {
+          ignoredUsers: signal([]).asReadonly(),
+          runProjection: () => NEVER,
+        }),
+        MockProvider(MatrixClientService, {
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+        }),
+        MockProvider(TrnToastService),
       ],
     });
   }
+
+  it('groups the page as General, Invites and Blocked users', async () => {
+    await renderPage();
+
+    expect(
+      screen
+        .getAllByRole('heading', { level: 2 })
+        .map((h) => h.textContent?.trim()),
+    ).toEqual(['General', 'Invites', 'Blocked users']);
+  });
+
+  it('leaves out only the Invites group where the server cannot block invites', async () => {
+    inviteBlockingSupported.set(false);
+    await renderPage();
+
+    expect(
+      screen
+        .getAllByRole('heading', { level: 2 })
+        .map((h) => h.textContent?.trim()),
+    ).toEqual(['General', 'Blocked users']);
+  });
 
   it('renders the complete privacy catalog journey', async () => {
     const { container } = await renderPage();

@@ -40,7 +40,7 @@ import {
   ShellLayoutService,
 } from '@trinity/platform-native';
 import { MockComponent, MockProvider, ngMocks } from 'ng-mocks';
-import { of } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
@@ -245,7 +245,10 @@ function renderHeader(
       MockProvider(RoomMembersService),
       MockProvider(RoomModerationService),
       MockProvider(TrustVerificationService),
-      MockProvider(IgnoredUsersService, { isIgnored: () => false }),
+      MockProvider(IgnoredUsersService, {
+        isIgnored: () => false,
+        runProjection: () => NEVER,
+      }),
       MockProvider(TrnAlertService),
       MockProvider(TrnToastService),
     ],

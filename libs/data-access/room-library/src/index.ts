@@ -10,6 +10,7 @@ export * from './lib/room-library-config-entries';
 export * from './lib/space-room-order.service';
 export * from './lib/unread-aggregator.service';
 export * from './lib/invites.service';
+export * from './lib/invite-permission.service';
 export * from './lib/room-library-governance-policy';
 export * from './lib/room-filter';
 export * from './lib/room-library-search.service';

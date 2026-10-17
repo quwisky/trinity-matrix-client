@@ -1,0 +1,29 @@
+@if (supported()) {
+  <trn-settings-group
+    title="Invites"
+    [description]="description()"
+    data-testid="privacy-invites"
+  >
+    <trn-settings-row
+      label="Who can invite you"
+      labelId="privacy-invites-heading"
+      [divider]="false"
+    >
+      <trn-radio-group
+        aria-labelledby="privacy-invites-heading"
+        [options]="options"
+        [value]="choice()"
+        (valueChange)="choose($event)"
+      />
+    </trn-settings-row>
+    @if (error(); as message) {
+      <p
+        class="m-0 pb-3 text-sm text-danger"
+        role="alert"
+        data-testid="privacy-invites-error"
+      >
+        {{ message }}
+      </p>
+    }
+  </trn-settings-group>
+}

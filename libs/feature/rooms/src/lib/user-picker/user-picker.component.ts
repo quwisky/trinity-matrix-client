@@ -44,6 +44,12 @@ const MIN_SEARCH_LENGTH = 2;
  * reached only through {@link UserDirectoryDiscoveryService.search}. The card self-sizes for
  * a bare CDK dialog (no `ion-modal` host).
  */
+/** Who was picked; the name is null for a typed ID the directory did not return. */
+export interface PickedUser {
+  readonly userId: string;
+  readonly displayName: string | null;
+}
+
 @Component({
   selector: 'trn-user-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -61,7 +67,7 @@ const MIN_SEARCH_LENGTH = 2;
 })
 export class UserPickerComponent {
   private readonly dialogRef =
-    inject<TrnDialogRef<string | null>>(TrnDialogRef);
+    inject<TrnDialogRef<PickedUser | null>>(TrnDialogRef);
   private readonly directory = inject(UserDirectoryDiscoveryService);
 
   /** Dialog heading (e.g. "Start a direct message"). */
@@ -117,14 +123,19 @@ export class UserPickerComponent {
     this.term.set((event.target as HTMLInputElement).value);
   }
 
-  choose(userId: string): void {
-    this.dialogRef.close(userId);
+  choose(user: DiscoveredUser): void {
+    this.dialogRef.close({
+      userId: user.userId,
+      displayName: user.displayName,
+    });
   }
 
   /** Confirm the typed MXID (enabled only when it's a valid `@user:server`). */
   confirmTyped(): void {
     if (this.canConfirm()) {
-      this.dialogRef.close(this.term().trim());
+      const userId = this.term().trim();
+      const known = this.results().find((user) => user.userId === userId);
+      this.dialogRef.close({ userId, displayName: known?.displayName ?? null });
     }
   }
 

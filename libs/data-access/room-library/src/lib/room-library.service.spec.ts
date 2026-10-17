@@ -8,10 +8,11 @@ import {
   RoomEvent,
   RoomMemberEvent,
   RoomStateEvent,
+  MatrixError,
 } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { RoomLibraryService } from './room-library.service';
+import { InviteBlockedError, RoomLibraryService } from './room-library.service';
 import { ROOM_LIBRARY_GOVERNANCE_POLICY } from './room-library-governance-policy';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PrivacySettingsService } from '@trinity/platform-native';
@@ -1411,6 +1412,33 @@ describe('RoomLibraryService writes', () => {
 
     expect(invite).toHaveBeenCalledWith('!space:hs', '@bob:hs');
     expect(otherInvite).not.toHaveBeenCalled();
+  });
+
+  it.each(['M_INVITE_BLOCKED', 'ORG.MATRIX.MSC4155.INVITE_BLOCKED'])(
+    'inviteUser reports %s as the invitee not accepting invites',
+    async (errcode) => {
+      const { svc, invite } = setupWrites();
+      invite.mockRejectedValue(
+        new MatrixError({ errcode, error: 'blocked' }, 403),
+      );
+
+      await expect(
+        firstValueFrom(svc.inviteUser('!r:hs', '@bob:hs')),
+      ).rejects.toEqual(new InviteBlockedError('@bob:hs'));
+    },
+  );
+
+  it('inviteUser passes other failures through unchanged', async () => {
+    const { svc, invite } = setupWrites();
+    const forbidden = new MatrixError(
+      { errcode: 'M_FORBIDDEN', error: 'no' },
+      403,
+    );
+    invite.mockRejectedValue(forbidden);
+
+    await expect(
+      firstValueFrom(svc.inviteUser('!r:hs', '@bob:hs')),
+    ).rejects.toBe(forbidden);
   });
 
   it('inviteUser rejects an invalid user id without calling invite', async () => {

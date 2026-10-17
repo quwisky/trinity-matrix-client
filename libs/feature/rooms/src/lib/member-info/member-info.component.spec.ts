@@ -21,7 +21,7 @@ import {
   TrustVerificationService,
 } from '@trinity/data-access/trust';
 import { MockProvider } from 'ng-mocks';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MemberInfoComponent } from './member-info.component';
 
@@ -65,8 +65,23 @@ async function build(
   const setPowerLevel = opts.setPowerLevel ?? vi.fn(() => of(undefined));
   const alertPrompt = opts.alertPrompt ?? vi.fn(() => of(''));
   const alertConfirm = opts.alertConfirm ?? vi.fn(() => of(true));
-  const ignore = opts.ignore ?? vi.fn(() => of(undefined));
-  const unignore = opts.unignore ?? vi.fn(() => of(undefined));
+  // Stands in for the service's projection: a write lands through the account-data echo.
+  const ignoredIds = signal<readonly string[]>(
+    opts.isIgnored ? [m.userId] : [],
+  );
+  const ignoreProjection = new Subject<void>();
+  const ignore =
+    opts.ignore ??
+    vi.fn((id: string) => {
+      ignoredIds.update((ids) => [...ids, id]);
+      return of(undefined);
+    });
+  const unignore =
+    opts.unignore ??
+    vi.fn((id: string) => {
+      ignoredIds.update((ids) => ids.filter((x) => x !== id));
+      return of(undefined);
+    });
   const createDirectMessage =
     opts.createDirectMessage ?? vi.fn(() => of('!dm:hs'));
   const startUserVerification =
@@ -118,7 +133,8 @@ async function build(
       MockProvider(RoomLibraryService, { createDirectMessage }),
       MockProvider(TrustVerificationService, { startUserVerification }),
       MockProvider(IgnoredUsersService, {
-        isIgnored: () => opts.isIgnored ?? false,
+        isIgnored: (id: string) => ignoredIds().includes(id),
+        runProjection: () => ignoreProjection,
         ignore,
         unignore,
       }),
@@ -141,6 +157,8 @@ async function build(
     alertConfirm,
     ignore,
     unignore,
+    ignoredIds,
+    ignoreProjection,
     createDirectMessage,
     startUserVerification,
   };
@@ -176,7 +194,10 @@ async function buildPanel(m: MemberSummary = member()) {
         createDirectMessage: vi.fn(() => of('!dm:hs')),
       }),
       MockProvider(TrustVerificationService),
-      MockProvider(IgnoredUsersService, { isIgnored: () => false }),
+      MockProvider(IgnoredUsersService, {
+        isIgnored: () => false,
+        runProjection: () => new Subject<void>(),
+      }),
       MockProvider(TrnAlertService),
     ],
   });
@@ -627,6 +648,36 @@ describe('MemberInfoComponent', () => {
     expect(ignore).not.toHaveBeenCalled();
   });
 
+  it('disables Block, with the reason, while another account is active', async () => {
+    const { fixture, container } = await build(member(), {
+      activeUserId: '@other:hs',
+    });
+    fixture.componentRef.setInput('owningAccountId', '@me:hs');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const block = container.querySelector<HTMLElement>(
+      '[data-testid="member-info-ignore"]',
+    )!;
+    expect(block.getAttribute('aria-disabled')).toBe('true');
+    expect(block.getAttribute('aria-description')).toBe(
+      'Switch back to @me:hs to block or unblock from this card.',
+    );
+  });
+
+  it('leaves Block enabled for the active owning account', async () => {
+    const { fixture, container } = await build(member());
+    fixture.componentRef.setInput('owningAccountId', '@me:hs');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(
+      container
+        .querySelector('[data-testid="member-info-ignore"]')!
+        .getAttribute('aria-disabled'),
+    ).toBeNull();
+  });
+
   it('confirms exact Space context and keeps the command on the opening Account', async () => {
     const alertPrompt = vi.fn(() => of('spam'));
     const { cmp, fixture, kick, close } = await build(member(), {
@@ -815,14 +866,46 @@ describe('MemberInfoComponent', () => {
     expect(cmp.ignored()).toBe(true); // button flips to "Unblock"
   });
 
+  it('follows the account ignore list, so a block made elsewhere shows here', async () => {
+    const { fixture, container, ignoredIds, ignoreProjection } =
+      await build(member());
+    expect(ignoreProjection.observed).toBe(true);
+    const btn = () =>
+      container
+        .querySelector<HTMLElement>('[data-testid="member-info-ignore"]')
+        ?.textContent?.trim();
+    expect(btn()).toBe('Block');
+
+    ignoredIds.set(['@bob:hs']);
+    fixture.detectChanges();
+
+    expect(btn()).toBe('Unblock');
+  });
+
+  it('does not flip when a block write fails', async () => {
+    const { cmp } = await build(member(), {
+      ignore: vi.fn(() => throwError(() => new Error('offline'))),
+    });
+
+    cmp.toggleIgnore();
+
+    expect(cmp.ignored()).toBe(false);
+  });
+
   it('offers Unblock for an ignored member and unblocks them on click', async () => {
-    const { cmp, unignore } = await build(member(), { isIgnored: true });
+    const { cmp, unignore, toastShow } = await build(member(), {
+      isIgnored: true,
+    });
     expect(cmp.ignored()).toBe(true);
 
     cmp.toggleIgnore();
 
     expect(unignore).toHaveBeenCalledWith('@bob:hs');
     expect(cmp.ignored()).toBe(false);
+    expect(toastShow).toHaveBeenCalledWith(
+      'Unblocked. Their earlier messages appear after you reload.',
+      expect.anything(),
+    );
   });
 
   it('hides Block on your own row', async () => {

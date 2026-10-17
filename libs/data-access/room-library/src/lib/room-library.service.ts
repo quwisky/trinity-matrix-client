@@ -8,6 +8,7 @@ import {
   RoomEvent,
   RoomMemberEvent,
   RoomStateEvent,
+  MatrixError,
   type MatrixClient,
   type MatrixEvent,
   type RoomMember,
@@ -172,6 +173,26 @@ function sameRooms(
 /** Whether two typing-name lists say the same thing, in order. */
 function sameNames(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((name, i) => name === b[i]);
+}
+
+/** The invitee blocks invites (MSC4380), so the invite was refused. Carries no user copy. */
+export class InviteBlockedError extends Error {
+  constructor(readonly userId: string) {
+    super('M_INVITE_BLOCKED');
+    this.name = 'InviteBlockedError';
+  }
+}
+
+const INVITE_BLOCKED_ERRCODES = new Set([
+  'M_INVITE_BLOCKED',
+  'ORG.MATRIX.MSC4155.INVITE_BLOCKED',
+]);
+
+function isInviteBlocked(error: unknown): boolean {
+  return (
+    error instanceof MatrixError &&
+    INVITE_BLOCKED_ERRCODES.has(error.errcode ?? '')
+  );
 }
 
 /**
@@ -740,7 +761,14 @@ export class RoomLibraryService {
       assertRoomLibraryGovernance(
         this.governance.authorize({ accountId, roomId }, 'invite'),
       );
-      return from(client.invite(roomId, userId)).pipe(map(() => void 0));
+      return from(client.invite(roomId, userId)).pipe(
+        map(() => void 0),
+        catchError((error: unknown) =>
+          throwError(() =>
+            isInviteBlocked(error) ? new InviteBlockedError(userId) : error,
+          ),
+        ),
+      );
     });
   }
 

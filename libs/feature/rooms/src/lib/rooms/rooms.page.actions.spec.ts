@@ -27,7 +27,10 @@ import {
   type AccountRemovalOutcome,
 } from '@trinity/platform-native';
 import { ShellStatusService } from './shell-status.service';
-import { type PendingInvite } from '@trinity/data-access/room-library';
+import {
+  InviteBlockedError,
+  type PendingInvite,
+} from '@trinity/data-access/room-library';
 import {
   MatrixClientService,
   type SyncState,
@@ -653,7 +656,17 @@ describe('RoomsPage room / DM / invite actions', () => {
           acceptInvite,
           declineInvite,
         }),
-        MockProvider(UserPickerService, { pick$: pick }),
+        MockProvider(UserPickerService, {
+          pick$: pick,
+          pickUser$: (options: unknown) =>
+            pick(options).pipe(
+              map((picked: unknown) =>
+                typeof picked === 'string'
+                  ? { userId: picked, displayName: null }
+                  : picked,
+              ),
+            ),
+        }),
         MockProvider(RoomModerationService, { canModerate }),
         MockProvider(QuickSwitcherService),
         MockProvider(TimelineActionsService),
@@ -1358,6 +1371,27 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(warn).toHaveBeenCalledWith(
       '[trinity] Matrix request failed',
       expect.objectContaining({ operation: 'invite user to room' }),
+    );
+    warn.mockRestore();
+  });
+
+  it('says the invitee is not accepting invites when their server blocks them', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+    pick.mockReturnValue(of({ userId: '@bob:hs', displayName: 'Bob' }));
+    inviteUser.mockReturnValue(
+      throwError(() => new InviteBlockedError('@bob:hs')),
+    );
+
+    shell.rooms.onInviteToRoom();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      "Bob isn't accepting invites.",
+      expect.objectContaining({ variant: 'danger' }),
     );
     warn.mockRestore();
   });

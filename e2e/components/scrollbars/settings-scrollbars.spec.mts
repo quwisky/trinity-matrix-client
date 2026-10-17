@@ -127,13 +127,14 @@ test.describe('Settings scrollbars', () => {
     // Per section, and EXACT — not "at most one". A `<= 1` assertion passes at zero, so a
     // section that rendered nothing at all would have satisfied it; and the rule has two
     // halves ("never the outer, only the inner when necessary"), of which only the first
-    // survives a count. Notifications and Appearance are the sections whose own content is
-    // long enough to scroll here; Privacy's is not. The detail pane is a `<section>`: the
-    // app shell owns the page's only `<main>` landmark.
+    // survives a count. Notifications, Appearance and Privacy are the sections whose own
+    // content is long enough to scroll here; Presence's is not. The detail pane is a
+    // `<section>`: the app shell owns the page's only `<main>` landmark.
     const expected: Record<string, string[]> = {
       notifications: ['SECTION[settings-detail]'],
       appearance: ['SECTION[settings-detail]'],
-      privacy: [],
+      privacy: ['SECTION[settings-detail]'],
+      presence: [],
     };
 
     const viewports = [

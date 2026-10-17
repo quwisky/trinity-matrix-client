@@ -23,12 +23,16 @@ import {
   type RoomMembersSnapshot,
   type RoomSettingsTarget,
 } from '@trinity/data-access/room-administration';
-import { RoomLibraryService } from '@trinity/data-access/room-library';
-import { filter, map, switchMap } from 'rxjs';
+import {
+  InviteBlockedError,
+  RoomLibraryService,
+} from '@trinity/data-access/room-library';
+import { catchError, filter, map, switchMap, throwError } from 'rxjs';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
 import { MemberInfoComponent } from '../member-info/member-info.component';
 import { MemberListComponent } from '../member-list/member-list.component';
 import { UserPickerService } from '../user-picker/user-picker.service';
+import type { PickedUser } from '../user-picker/user-picker.component';
 
 type MembersDestination = 'current' | 'banned';
 
@@ -132,15 +136,26 @@ export class MembersSettingsComponent implements OnInit {
     const target = this.target();
     const targetName = this.targetName();
     this.picker
-      .pick$({
+      .pickUser$({
         title: `Invite to ${targetName}`,
         confirmLabel: 'Invite',
       })
       .pipe(
-        filter((userId): userId is string => Boolean(userId)),
-        switchMap((userId) => {
+        filter((picked): picked is PickedUser => picked !== null),
+        switchMap((picked) => {
           this.inviting.set(true);
-          return this.rooms.inviteUser(target, userId).pipe(map(() => userId));
+          return this.rooms.inviteUser(target, picked.userId).pipe(
+            map(() => picked.userId),
+            catchError((error: unknown) =>
+              throwError(() =>
+                error instanceof InviteBlockedError
+                  ? new Error(
+                      `${picked.displayName ?? picked.userId} isn't accepting invites.`,
+                    )
+                  : new Error(`Could not invite this person to ${targetName}.`),
+              ),
+            ),
+          );
         }),
         takeUntilDestroyed(this.destroyRef),
       )
@@ -152,12 +167,9 @@ export class MembersSettingsComponent implements OnInit {
             variant: 'success',
           });
         },
-        error: () => {
+        error: (error: Error) => {
           this.inviting.set(false);
-          this.toast.show(`Could not invite this person to ${targetName}.`, {
-            duration: 4000,
-            variant: 'danger',
-          });
+          this.toast.show(error.message, { duration: 4000, variant: 'danger' });
         },
       });
   }
