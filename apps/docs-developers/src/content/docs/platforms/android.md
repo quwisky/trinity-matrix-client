@@ -30,7 +30,7 @@ pnpm e2e:mobile
 
 The static verifier checks host contracts. Native verification runs Android unit tests after synchronization. The debug build creates an APK, while the installed E2E target (WebdriverIO and Appium in `e2e/mobile`) drives the installed app on a managed emulator.
 
-The release target creates an AAB but remains unsigned unless external signing is configured. Keep credentials and publishing procedure out of public documentation.
+The release target creates an AAB but remains unsigned unless external signing is configured. Build it after the release is published, with the release notes the app bundles: `TRINITY_RELEASE_NOTES=required GITHUB_TOKEN=$(gh auth token) pnpm android:build:release`. Keep credentials and publishing procedure out of public documentation.
 
 ## Push rendering {#push-rendering}
 

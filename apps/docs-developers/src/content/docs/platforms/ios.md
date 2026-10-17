@@ -29,7 +29,7 @@ pnpm nx run trinity-ios:test-push
 pnpm ios:build
 ```
 
-The static verifier checks shared host contracts on any supported development machine. `verify-native` performs an unsigned simulator build and requires macOS and Xcode. A successful unsigned simulator build does not prove device signing, App Store packaging, notification delivery, Keychain behavior on a device, or production lifecycle.
+The static verifier checks shared host contracts on any supported development machine. `verify-native` performs an unsigned simulator build and requires macOS and Xcode. For a release build, run `TRINITY_RELEASE_NOTES=required GITHUB_TOKEN=$(gh auth token) pnpm ios:build` after the release is published; the published release supplies the notes the app bundles. A successful unsigned simulator build does not prove device signing, App Store packaging, notification delivery, Keychain behavior on a device, or production lifecycle.
 
 ## Run the installed-app suite {#ios-e2e}
 

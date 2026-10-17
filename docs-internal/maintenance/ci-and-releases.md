@@ -721,6 +721,12 @@ change before merging the release PR, following [testing](../../apps/docs-develo
 
 ## Package and review the draft
 
+The `release-notes` job reads the draft release body with the release App token and hands it to
+`package`, `desktop-shell` and `package-web` as `TRINITY_CURRENT_RELEASE_NOTES`, because their
+read-only token cannot see a draft. They build with `TRINITY_RELEASE_NOTES=required`, so a
+notes failure fails the build. Android and iOS builds run locally after publishing: set
+`TRINITY_RELEASE_NOTES=required` and `GITHUB_TOKEN=$(gh auth token)`.
+
 After verification, the package matrix builds the desktop shell with publishing
 disabled and without any signing secret, and packages the Linux and Windows installers. The
 `desktop-shell` job builds the same compiled shell and renderer on Linux, and the `sign-mac`

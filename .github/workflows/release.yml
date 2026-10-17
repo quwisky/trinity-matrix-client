@@ -115,6 +115,39 @@ jobs:
           config-file: ${{ startsWith(github.ref_name, 'release/') && 'release-please-config.json' || 'release-please-config.next.json' }}
           manifest-file: ${{ startsWith(github.ref_name, 'release/') && '.release-please-manifest.json' || '.release-please-manifest.next.json' }}
 
+  # The renderer bundles its release notes. The release is still a draft here and the
+  # build jobs' read-only token cannot see drafts, so the release App reads the body once.
+  release-notes:
+    name: Read the release notes
+    needs: release-please
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.release-please.outputs.created == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release-app
+    outputs:
+      body: ${{ steps.body.outputs.body }}
+    steps:
+      - name: Mint the App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+      # The body is untrusted text: it goes through env and a random delimiter, never a script.
+      - id: body
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag }}
+        run: |
+          delimiter="notes-$(openssl rand -hex 16)"
+          {
+            echo "body<<$delimiter"
+            gh release view "$TAG" --json body -q .body
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
   # Merges the release branch back into main so main gets the changelog, the stable
   # version files and any fixes made on the branch. Independent of packaging: a failed
   # installer build must not hold the back-merge.
@@ -245,7 +278,7 @@ jobs:
   # Packages Linux and Windows without a signing secret. macOS is packaged by sign-mac.
   package:
     name: Package (${{ matrix.platform }})
-    needs: verify
+    needs: [verify, release-notes]
     # Explicit, not the default success(): that also requires release-please, which a
     # dispatch skips, and would skip packaging on every manual re-package.
     if: ${{ !cancelled() && needs.verify.result == 'success' }}
@@ -279,6 +312,10 @@ jobs:
       # The release-specific Nx path builds the shared renderer and shell without the
       # local `trinity-dev` signature.
       - run: pnpm electron:build:release
+        env:
+          TRINITY_RELEASE_NOTES: required
+          TRINITY_CURRENT_RELEASE_NOTES: ${{ needs.release-notes.outputs.body }}
+          GITHUB_TOKEN: ${{ github.token }}
 
       # App lock's Windows Hello addon ships in resources/ (electron-builder.yml, win).
       - if: ${{ matrix.platform == 'win' }}
@@ -309,7 +346,7 @@ jobs:
   # does not wait for the Windows leg.
   desktop-shell:
     name: Build the desktop shell (mac)
-    needs: verify
+    needs: [verify, release-notes]
     if: ${{ !cancelled() && needs.verify.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -320,6 +357,10 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: pnpm electron:build:release
+        env:
+          TRINITY_RELEASE_NOTES: required
+          TRINITY_CURRENT_RELEASE_NOTES: ${{ needs.release-notes.outputs.body }}
+          GITHUB_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           # Outside draft-release's trinity-* pattern: build input, not a release asset.
@@ -443,7 +484,7 @@ jobs:
   # container.yml builds the GHCR image from this exact zip once the release is published.
   package-web:
     name: Package (web)
-    needs: verify
+    needs: [verify, release-notes]
     if: ${{ !cancelled() && needs.verify.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -454,6 +495,10 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: pnpm nx run trinity:build
+        env:
+          TRINITY_RELEASE_NOTES: required
+          TRINITY_CURRENT_RELEASE_NOTES: ${{ needs.release-notes.outputs.body }}
+          GITHUB_TOKEN: ${{ github.token }}
       # Records www/ hashes bound to the tag commit; container.yml verifies them again.
       - run: node scripts/web-bundle-manifest.mjs write www
       - name: Pack the web zip

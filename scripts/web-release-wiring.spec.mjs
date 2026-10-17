@@ -19,7 +19,7 @@ describe('release workflow web zip', () => {
 
   it('builds, records and packs the verified renderer for the tag', () => {
     const web = job(release, 'package-web');
-    expect(web).toContain('needs: verify');
+    expect(web).toContain('needs: [verify, release-notes]');
     expect(web).toContain("needs.verify.result == 'success'");
     expect(web).toContain('pnpm nx run trinity:build');
     expect(web).toContain('node scripts/web-bundle-manifest.mjs write www');

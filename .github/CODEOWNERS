@@ -10,6 +10,7 @@
 
 # Scripts the release, back-merge, backport and Homebrew jobs run.
 /scripts/ @quwisky
+/scripts/gen-release-notes.mjs @quwisky
 /tools/release-please/ @quwisky
 
 # What release-please reads while it holds the release App token.

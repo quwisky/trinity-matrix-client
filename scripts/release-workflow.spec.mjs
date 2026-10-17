@@ -169,7 +169,7 @@ describe('macOS signing isolation', () => {
   it('signs the shell one Linux job built, without waiting for the package matrix', () => {
     const shell = shellJob();
     expect(shell['runs-on']).toBe('ubuntu-latest');
-    expect(shell.needs).toBe('verify');
+    expect(shell.needs).toEqual(['verify', 'release-notes']);
     expect(shell.steps.flatMap((s) => s.run ?? [])).toContain(
       'pnpm electron:build:release',
     );
@@ -543,6 +543,8 @@ describe('release branches', () => {
       'release.yml release-please': ['contents', 'pull-requests'],
       'release.yml back-merge': ['contents', 'pull-requests'],
       'release.yml publish': ['contents'],
+      // Reads the draft release body, which only writers can see.
+      'release.yml release-notes': ['contents'],
       'release-stable.yml cut': ['contents', 'issues'],
       'backport.yml backport': ['contents', 'pull-requests'],
       'land-back-merge.yml land': ['contents'],
@@ -651,5 +653,44 @@ describe('release publishing job', () => {
     expect(steps[run].env.GH_TOKEN).toBe(
       '\${{ steps.app-token.outputs.token }}',
     );
+  });
+});
+
+describe('release notes in release builds', () => {
+  const notes = workflow.jobs['release-notes'];
+  const buildStep = {
+    package: (job) =>
+      job.steps.find((s) => s.run === 'pnpm electron:build:release'),
+    'desktop-shell': (job) =>
+      job.steps.find((s) => s.run === 'pnpm electron:build:release'),
+    'package-web': (job) =>
+      job.steps.find((s) => s.run === 'pnpm nx run trinity:build'),
+  };
+
+  it('builds every renderer with its release notes', () => {
+    for (const [id, find] of Object.entries(buildStep)) {
+      const job = workflow.jobs[id];
+      expect(job.needs, id).toContain('release-notes');
+      expect(find(job).env, id).toEqual({
+        TRINITY_RELEASE_NOTES: 'required',
+        TRINITY_CURRENT_RELEASE_NOTES:
+          '${{ needs.release-notes.outputs.body }}',
+        GITHUB_TOKEN: '${{ github.token }}',
+      });
+      expect(job.permissions, id).toBeUndefined();
+    }
+  });
+
+  it('reads the release body for dispatch re-packages', () => {
+    expect(notes.needs).toBe('release-please');
+    expect(notes.if).toContain('workflow_dispatch');
+    expect(notes.environment).toBe('release-app');
+    expect(JSON.stringify(notes)).toContain(
+      'inputs.tag || needs.release-please.outputs.tag',
+    );
+    const read = notes.steps.find((s) => s.run?.includes('gh release view'));
+    expect(read.run).toContain('--json body -q .body');
+    expect(read.env.GH_TOKEN).toBe('${{ steps.app-token.outputs.token }}');
+    expect(notes.outputs.body).toBe('${{ steps.body.outputs.body }}');
   });
 });
