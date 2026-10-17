@@ -1,13 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import * as backMerge from './back-merge.mjs';
 import {
   compareVersions,
@@ -19,6 +12,7 @@ import {
   resolveConflicts,
   leaseFor,
 } from './back-merge.mjs';
+import { gitSandbox } from './git-sandbox.mjs';
 
 const PAGE = 'apps/docs-users/src/content/docs/index.md';
 const filler = (tag) =>
@@ -34,19 +28,9 @@ const manifest = (version) => `{\n  ".": "${version}"\n}\n`;
 
 /** A real repository whose main and release lines both bump the version files. */
 function conflictedRepo({ extraConflict = false } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'back-merge-'));
-  const git = (...args) =>
-    execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: 'pipe' });
-  const write = (files) => {
-    for (const [path, text] of Object.entries(files)) {
-      mkdirSync(dirname(join(dir, path)), { recursive: true });
-      writeFileSync(join(dir, path), text);
-    }
-    git('add', '-A');
-  };
-  const commit = (message) =>
-    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', message);
-  git('init', '-q', '-b', 'main');
+  const { dir, git, write, commit, cleanup } = gitSandbox({
+    prefix: 'back-merge-',
+  });
   write({
     [PAGE]: page('0.1.1', 'footer'),
     'package.json': pkg('0.1.1', '1.0.0'),
@@ -71,20 +55,15 @@ function conflictedRepo({ extraConflict = false } = {}) {
   });
   commit('main');
   try {
-    git(
-      '-c',
-      'user.name=t',
-      '-c',
-      'user.email=t@t',
-      'merge',
-      '--no-ff',
-      '--no-commit',
-      'release/0.1.x',
-    );
+    git('merge', '--no-ff', '--no-commit', 'release/0.1.x');
   } catch {
     // The version files conflict by design.
   }
-  return { dir, read: (path) => readFileSync(join(dir, path), 'utf8') };
+  return {
+    dir,
+    cleanup,
+    read: (path) => readFileSync(join(dir, path), 'utf8'),
+  };
 }
 
 describe('back-merge', () => {
@@ -158,7 +137,7 @@ describe('back-merge', () => {
 
   describe('resolving conflicts in a real merge', () => {
     let repo;
-    afterEach(() => rmSync(repo.dir, { recursive: true, force: true }));
+    afterEach(() => repo.cleanup());
 
     it('resolves each conflicting hunk by rule and keeps the other side elsewhere', () => {
       repo = conflictedRepo();
@@ -198,41 +177,24 @@ describe('back-merge', () => {
 
   describe('merging a tag', () => {
     let dir;
-    afterEach(() => rmSync(dir, { recursive: true, force: true }));
-    const sh = (...args) =>
-      execFileSync(
-        'git',
-        ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args],
-        {
-          cwd: dir,
-          encoding: 'utf8',
-          stdio: 'pipe',
-        },
-      );
+    let cleanup;
+    afterEach(() => cleanup());
     const setup = (base, release, main) => {
-      dir = mkdtempSync(join(tmpdir(), 'back-merge-'));
-      sh('init', '-q', '-b', 'main');
-      sh('config', 'user.name', 't');
-      sh('config', 'user.email', 't@t');
-      const write = (files) => {
-        for (const [path, text] of Object.entries(files)) {
-          mkdirSync(dirname(join(dir, path)), { recursive: true });
-          writeFileSync(join(dir, path), text);
-        }
-        sh('add', '-A');
-      };
+      const sandbox = gitSandbox({ prefix: 'back-merge-' });
+      ({ dir, cleanup } = sandbox);
+      const { git, write, commit } = sandbox;
       write(base);
-      sh('commit', '-qm', 'base');
-      sh('switch', '-qc', 'release/0.1.x');
+      commit('base');
+      git('switch', '-qc', 'release/0.1.x');
       write(release.files);
-      for (const path of release.remove ?? []) sh('rm', '-q', path);
-      sh('commit', '-qm', 'release');
-      sh('tag', 'v0.1.2');
-      sh('switch', '-q', 'main');
+      for (const path of release.remove ?? []) git('rm', '-q', path);
+      commit('release');
+      git('tag', 'v0.1.2');
+      git('switch', '-q', 'main');
       write(main.files);
-      for (const path of main.remove ?? []) sh('rm', '-q', path);
-      sh('commit', '-qm', 'main');
-      sh('update-ref', 'refs/remotes/origin/main', 'main');
+      for (const path of main.remove ?? []) git('rm', '-q', path);
+      commit('main');
+      git('update-ref', 'refs/remotes/origin/main', 'main');
     };
     const read = (path) => readFileSync(join(dir, path), 'utf8');
 

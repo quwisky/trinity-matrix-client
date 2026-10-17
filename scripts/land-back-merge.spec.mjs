@@ -1,7 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { gitSandbox } from './git-sandbox.mjs';
 import {
   checkProblems,
   land,
@@ -40,24 +38,11 @@ const pr = (sha, more = {}) => ({
 
 /** A bare origin and a clone with main, a tagged release line and a pushed back-merge branch. */
 function repo() {
-  const root = mkdtempSync(join(tmpdir(), 'land-back-merge-'));
-  const origin = join(root, 'origin.git');
-  const dir = join(root, 'work');
-  const git = (...args) =>
-    execFileSync('git', args, {
-      cwd: dir,
-      encoding: 'utf8',
-      stdio: 'pipe',
-    }).trim();
-  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', origin]);
-  execFileSync('git', ['clone', '-q', origin, dir], { stdio: 'pipe' });
-  git('config', 'user.name', 't');
-  git('config', 'user.email', 't@t');
+  const sandbox = gitSandbox({ prefix: 'land-back-merge-', bare: true });
+  const { origin, dir, git, cleanup } = sandbox;
   const commit = (file, text) => {
-    writeFileSync(join(dir, file), text);
-    git('add', '-A');
-    git('commit', '-qm', `${file}: ${text}`);
-    return git('rev-parse', 'HEAD');
+    sandbox.write({ [file]: text });
+    return sandbox.commit(`${file}: ${text}`);
   };
   commit('a.txt', 'base\n');
   git('push', '-q', 'origin', 'main');
@@ -77,12 +62,12 @@ function repo() {
       cwd: origin,
       encoding: 'utf8',
     }).trim();
-  return { root, dir, git, commit, head, remoteMain };
+  return { cleanup, dir, git, commit, head, remoteMain };
 }
 
 describe('land-back-merge', () => {
   let r;
-  afterEach(() => r && rmSync(r.root, { recursive: true, force: true }));
+  afterEach(() => r && r.cleanup());
 
   it('reads the stable tag from the branch name', () => {
     expect(tagFor('back-merge/v0.1.2')).toBe('v0.1.2');
