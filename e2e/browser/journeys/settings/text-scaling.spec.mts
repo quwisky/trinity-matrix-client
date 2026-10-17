@@ -10,6 +10,7 @@ import {
   openSettingsFromRooms,
   openSettingsSection,
 } from '../../../support/journeys/navigation.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers the text-size setting (Settings → Appearance → Text size). The lever is the ROOT
 // font size, applied as a percentage, so everything that inherits from it scales.
@@ -25,16 +26,6 @@ import {
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
 const session = homeserverSession();
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
 
 /** Pick an option from one of the Appearance selects (a CDK overlay). */
 async function choose(

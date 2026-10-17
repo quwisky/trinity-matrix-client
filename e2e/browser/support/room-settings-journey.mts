@@ -34,15 +34,7 @@ export async function tokenFor(
   return json.access_token as string;
 }
 
-export async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
+export { openNamedRoom as openRoom } from '../../support/message-composer.mts';
 
 export const HS_SERVER_NAME = 'localhost';
 

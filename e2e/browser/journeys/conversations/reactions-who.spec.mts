@@ -4,7 +4,6 @@ import {
   expect,
   devices,
   type APIRequestContext,
-  type Page,
 } from '../../../fixtures.mts';
 import {
   login,
@@ -18,6 +17,7 @@ import {
 } from '../../../support/journeys/navigation.mts';
 import { sendWithRetry } from '../../support/cs-api.mts';
 import { hasDarkMode } from '../../support/settings-journey.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers "who reacted" (issue #8): a reaction pill names its reactors on hover, and
 // the trailing chip opens the full list, grouped by emoji.
@@ -172,16 +172,6 @@ async function seedReactedMessage(
     reactionGroupCount: 20,
     sendReactions,
   };
-}
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
 }
 
 test.describe('Who reacted', () => {

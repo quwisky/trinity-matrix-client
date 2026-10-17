@@ -11,6 +11,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // End-to-end for the per-room notification level: the room's ⋮ menu in the channel list
 // has a Notifications submenu (All / Mentions / Mute); picking one writes push rules, and
@@ -54,16 +55,6 @@ async function seedRoom(
     roomId: room_id,
     accessToken: access_token,
   };
-}
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
 }
 
 const LEVELS = ['all', 'mentions', 'mute'] as const;

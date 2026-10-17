@@ -1,4 +1,4 @@
-import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
@@ -6,6 +6,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers kick and ban projection recovery. Member info opens as a dialog over the roster,
 // so the removed row assertion waits for member info to close first: asserting only that
@@ -31,16 +32,6 @@ interface RoomAdministrationFaultWindow extends Window {
     };
   };
   restoreRoomAdministrationMembers?: () => void;
-}
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
 }
 
 test.describe('Remove a member', () => {

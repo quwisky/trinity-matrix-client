@@ -3,7 +3,6 @@ import {
   test,
   expect,
   type APIRequestContext,
-  type Page,
 } from '../../../fixtures.mts';
 import {
   login,
@@ -11,6 +10,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // End-to-end for the full emoji reaction picker: hover a message, open the quick
 // reactions, escalate to the full emoji-mart picker via "+", search and pick an
@@ -57,16 +57,6 @@ async function seedRoom(
     roomId,
     headers,
   };
-}
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
 }
 
 test.describe('Full emoji reaction picker', () => {

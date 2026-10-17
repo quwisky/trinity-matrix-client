@@ -1,4 +1,4 @@
-import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   clickRowMenuItem,
   login,
@@ -7,20 +7,11 @@ import {
   waitForSent,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers the message "View source" context action (msg-more → msg-view-source): a dialog
 // (data-testid="message-source") shows the event's raw JSON. Needs Synapse (Docker).
 const session = homeserverSession();
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
 
 test.describe('Message source', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');

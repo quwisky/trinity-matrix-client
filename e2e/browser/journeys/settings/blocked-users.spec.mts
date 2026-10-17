@@ -19,22 +19,13 @@ import {
   closeSettings,
   openSettingsSection,
 } from '../../../support/journeys/navigation.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers Settings › Privacy › Blocked users: a member blocked from their card is listed
 // there (IgnoredUsersService.ignoredUsers over m.ignored_user_list), unblocking from the
 // list removes them, and the card follows the same list back to "Block", including changes
 // made on another device. A message sent while blocked shows after unblocking and a reload.
 const session = homeserverSession();
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
 
 async function openMemberCard(page: Page, memberName: string): Promise<void> {
   if (!(await page.locator('.chat-members').isVisible())) {

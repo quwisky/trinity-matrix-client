@@ -1,26 +1,17 @@
-import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers the room-upgrade / tombstone banner (data-testid="tombstone-banner"): a room
 // with an m.room.tombstone shows a banner whose "Go to the new room" (tombstone-go) joins
 // and opens the successor. Uses distinctly-named old/new rooms so each is identifiable.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = homeserverSession();
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
 
 test.describe('Room tombstone', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');

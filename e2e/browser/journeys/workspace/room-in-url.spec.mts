@@ -1,10 +1,11 @@
-import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 /**
  * The open room is in the URL, so a room is linkable and survives a reload.
@@ -19,16 +20,6 @@ import { registerUser } from '../../../support/account.mts';
  * Needs a Synapse homeserver (Docker) and self-skips otherwise.
  */
 const session = homeserverSession();
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
 
 test.describe('The open room lives in the URL', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');

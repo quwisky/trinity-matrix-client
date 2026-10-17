@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers member info: clicking a member row in the member list
 // (data-testid="member-row") opens a room-scoped info card
@@ -14,16 +15,6 @@ import { registerUser, apiLogin } from '../../../support/account.mts';
 // there's a member to click that isn't the viewer. Needs a Synapse homeserver
 // (Docker); self-skips otherwise.
 const session = homeserverSession();
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
 
 async function openMembers(page: Page): Promise<void> {
   const toggle = page.getByTestId('toggle-members');

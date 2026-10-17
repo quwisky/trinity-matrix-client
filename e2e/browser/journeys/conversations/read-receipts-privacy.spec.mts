@@ -3,7 +3,6 @@ import {
   test,
   expect,
   type APIRequestContext,
-  type Page,
 } from '../../../fixtures.mts';
 import {
   login,
@@ -16,6 +15,7 @@ import {
   type ApiUser,
 } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers the "Send read receipts" privacy toggle (Settings → Privacy). With it
 // OFF, reading a message must still clear the reader's own unread state — but
@@ -50,17 +50,6 @@ function hasReceiptFrom(
   return Object.values(content).some(
     (byType) => byType?.[receiptType]?.[userId] !== undefined,
   );
-}
-
-/** From /rooms, open the named room and wait for its composer. */
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
 }
 
 test.describe('Read-receipt privacy', () => {

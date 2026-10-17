@@ -3,7 +3,6 @@ import {
   test,
   expect,
   type APIRequestContext,
-  type Page,
 } from '../../../fixtures.mts';
 import {
   login,
@@ -16,6 +15,7 @@ import {
   sendMessage,
   signInAndOpen,
 } from '../../support/formatted-message-journey.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // End-to-end for spoiler reveal: a message carrying a `data-mx-spoiler` span renders
 // concealed, and clicking it uncovers it. The spoiler is injected through the Matrix
@@ -71,16 +71,6 @@ async function seedRoomWithSpoiler(
     roomName,
     secret,
   };
-}
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
 }
 
 test.describe('Spoiler reveal', () => {

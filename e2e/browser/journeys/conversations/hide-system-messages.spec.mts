@@ -1,4 +1,4 @@
-import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
@@ -6,22 +6,13 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers issue #21: the Settings → Appearance toggles that hide system lines (joins,
 // profile changes, room changes) from the timeline. Two users so a real
 // "X joined the room" line exists, plus a message that must survive the filtering.
 // Needs a Synapse homeserver (Docker); self-skips.
 const session = homeserverSession();
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
 
 test.describe('Hide system messages', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
