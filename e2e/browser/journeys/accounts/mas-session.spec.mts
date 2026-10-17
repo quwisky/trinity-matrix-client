@@ -442,8 +442,14 @@ test.describe('MAS account deletion', () => {
     } else {
       await dialog.getByRole('textbox').first().fill(userId);
     }
+    // Closing the tab before MAS answers would cancel the deactivation itself.
+    const deactivated = provider.waitForResponse(
+      (response) =>
+        response.url().endsWith('/graphql') &&
+        /deactivate/iu.test(response.request().postData() ?? ''),
+    );
     await dialog.getByRole('button', { name: 'Delete account' }).click();
-    await provider.close();
+    expect((await deactivated).ok()).toBe(true);
 
     // MAS revokes the session; the app notices on its own, or on Check now.
     const checkNow = page.getByTestId('delete-account-check-now');
