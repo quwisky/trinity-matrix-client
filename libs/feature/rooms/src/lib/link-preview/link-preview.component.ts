@@ -40,12 +40,9 @@ export class LinkPreviewComponent {
   private readonly privacy = inject(PrivacySettingsService);
   private readonly resolver = inject(AVATAR_RESOLVER, { optional: true });
 
-  /** The resolved preview, or null while loading / when there's nothing to show. */
   readonly preview = signal<UrlPreview | null>(null);
-  /** Resolved (authenticated) URL for the preview image, or null. */
   readonly imageUrl = signal<string | null>(null);
 
-  /** The link's host (e.g. `example.com`) for the card's source line. */
   readonly host = computed(() => {
     try {
       return new URL(this.url()).host;

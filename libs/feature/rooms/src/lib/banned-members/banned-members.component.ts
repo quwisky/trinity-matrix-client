@@ -92,7 +92,6 @@ export class BannedMembersComponent {
     });
   });
 
-  /** Whether this member's unban is currently in flight. */
   isPending(userId: string): boolean {
     return this.pending().has(userId);
   }

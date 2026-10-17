@@ -26,11 +26,8 @@ export class ReactionPickerComponent {
   private readonly dialogRef =
     inject<TrnDialogRef<string | null>>(TrnDialogRef);
   /**
-   * A reaction was chosen — close with its character.
-   *
-   * No `?? null` any more: the wrapper drops a pick that has no `native`, so anything
-   * arriving here is insertable. Previously this closed the dialog with `null` on such an
-   * event, which the caller could not distinguish from a dismissal.
+   * A reaction was chosen: close with its character. The wrapper drops a pick that has no
+   * `native`, so anything arriving here is insertable.
    */
   onSelect(pick: TrnEmojiPick): void {
     this.dialogRef.close(pick.native);

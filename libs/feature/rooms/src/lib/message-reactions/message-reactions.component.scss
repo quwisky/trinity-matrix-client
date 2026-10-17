@@ -38,10 +38,8 @@
     }
   }
 
-  // Opens the full "who reacted" list. It counts nothing and toggles nothing, so it
-  // deliberately sheds the pill chrome — no border, no fill, muted ink — and reads as a
-  // plain icon button set slightly apart from the pills it follows. A hover fill (rather
-  // than the pills' border highlight) says it acts rather than reports.
+  // Opens the full "who reacted" list. It counts nothing and toggles nothing, so it sheds the
+  // pill chrome (no border, no fill, muted ink); the hover fill says it acts, not reports.
   .reaction--who {
     margin-left: 2px;
     padding: 1px 5px;

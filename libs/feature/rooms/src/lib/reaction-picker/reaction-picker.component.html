@@ -1,10 +1,8 @@
 <!--
-  No `data-testid` here. The wrapper carries `emoji-picker` as a host attribute, and a
-  template attribute of the same name does not sit alongside it — it REPLACES it (Angular
-  merges the template's `TAttributes` over the directive's `hostAttrs`), so declaring one
-  here silently stripped the kit's own handle at this call site while leaving it in place
-  at the other. The dialog is what distinguishes this picker from the composer's, and the
-  dialog is addressable by its accessible name.
+  No `data-testid` here: the wrapper carries `emoji-picker` as a host attribute, and a
+  template attribute of the same name REPLACES it (Angular merges the template's
+  `TAttributes` over the directive's `hostAttrs`). The dialog is addressable by its
+  accessible name instead.
 -->
 <trn-dialog-shell title="Pick a reaction" bodyClass="p-0">
   <trn-emoji-picker class="reaction-picker" (picked)="onSelect($event)" />

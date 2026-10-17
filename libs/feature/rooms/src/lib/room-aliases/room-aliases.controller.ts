@@ -49,9 +49,9 @@ export class RoomAliasesController {
   private readonly targetSwitch = latestGuard();
   private targetToken = this.targetSwitch.next();
   /**
-   * Adds and removals that succeeded since the current directory read started. That read
-   * may have reached the homeserver before them, so its answer is merged with these rather
-   * than replacing the list (#1227).
+   * Adds and removals that succeeded since the current directory read started. That read may
+   * have reached the homeserver before them, so its answer is merged with these rather than
+   * replacing the list.
    */
   private sinceLoad = { added: new Set<string>(), removed: new Set<string>() };
   /** A newer directory load cancels the one still in flight. */
@@ -128,7 +128,6 @@ export class RoomAliasesController {
     this.aliasForm().reset({ localpart: '' });
   }
 
-  /** Reload the homeserver directory for this immutable settings target. */
   load(): void {
     if (!this.source.available()) {
       this.loading.set(false);
@@ -151,7 +150,6 @@ export class RoomAliasesController {
     return this.confirmingRemoval().has(alias);
   }
 
-  /** Publish `#<localpart>:<server>` as a new local alias. */
   add(): void {
     if (!this.availability().available || this.adding()) return;
     const target = this.target();
@@ -245,7 +243,6 @@ export class RoomAliasesController {
       });
   }
 
-  /** Make an existing local alias the target's primary (canonical) address. */
   setPrimary(alias: string): void {
     if (!this.availability().available || this.settingPrimary()) return;
     const target = this.target();

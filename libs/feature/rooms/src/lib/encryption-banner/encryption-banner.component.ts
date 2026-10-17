@@ -29,23 +29,22 @@ interface BannerAction {
 
 /**
  * Non-blocking, persistent prompt shown in the rooms shell when this device's encryption
- * isn't ready (MSC4153 decision 3: existing unverified devices are prompted, never
- * blocked). Renders the encryption prompt the global banner slot holds
- * (`bannerPrompt`), never the live trust status directly, so the slot owner can hold the
- * prompt with the slot while a pointer is pressed. `needs-setup` offers first-time setup;
- * `needs-recovery` offers both ways to trust this device — the recovery key or verifying
- * with another signed-in session; `needs-verification` (an identity set up elsewhere,
- * with no recovery) offers only verification, because setup would replace that identity.
- * A verified device that still lacks that identity's keys (`setup-elsewhere`) is sent to
- * the device that holds them; its only action opens Security settings. The banner cannot
- * be dismissed, so it never offers the irreversible reset itself — that stays in Security
- * settings, behind its typed confirmation.
- * A placeholder prompt — a forecast before the live status arrives, or a held prompt the
- * live status no longer supports — is laid out hidden, unannounced and inert, so it holds
- * its exact space; a confirmed forecast is the same element, revealed in place. Its
- * status is the ACTIVE account's, re-projected on an account switch. Lives in
- * feature-rooms (not feature-crypto) because the module boundary forbids feature→feature
- * dependencies.
+ * isn't ready (MSC4153: existing unverified devices are prompted, never blocked). Renders the
+ * prompt the global banner slot holds (`bannerPrompt`), never the live trust status, so the
+ * slot owner can hold the prompt while a pointer is pressed.
+ * - `needs-setup`: first-time setup.
+ * - `needs-recovery`: the recovery key, or verifying with another signed-in session.
+ * - `needs-verification` (identity set up elsewhere, no recovery): verification only,
+ *   because setup would replace that identity.
+ * - `setup-elsewhere` (verified device still lacking that identity's keys): sent to the
+ *   device that holds them; its only action opens Security settings.
+ * The banner cannot be dismissed, so it never offers the irreversible reset; that stays in
+ * Security settings, behind its typed confirmation.
+ * A placeholder prompt (a forecast before the live status arrives, or a held prompt the live
+ * status no longer supports) is laid out hidden, unannounced and inert, so it holds its exact
+ * space; a confirmed forecast is the same element, revealed in place. The status is the
+ * ACTIVE account's, re-projected on an account switch. Lives in feature-rooms because the
+ * module boundary forbids feature-to-feature dependencies.
  */
 @Component({
   selector: 'trn-encryption-banner',
@@ -111,9 +110,8 @@ export class EncryptionBannerComponent {
     }
   });
   /**
-   * Open a semantic trust surface, or Security settings. The application adapter chooses
-   * a modal or canonical route without exposing Router or platform policy to this
-   * capability.
+   * Open a trust surface or Security settings. The application adapter picks a modal or
+   * route, keeping Router and platform policy out of this capability.
    */
   run(kind: BannerActionKind): void {
     const request: WorkspaceApplicationSurfaceRequest =

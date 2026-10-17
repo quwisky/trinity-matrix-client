@@ -4,11 +4,9 @@ import { defer, EMPTY, finalize, map, type Observable } from 'rxjs';
 import { ReactionsDialogComponent } from './reactions-dialog.component';
 
 /**
- * Presents {@link ReactionsDialogComponent} for a message — everyone who reacted,
- * grouped by emoji. Mirrors {@link EditHistoryDialogService}: presentation only, with
- * the component reading its own data.
- *
- * A re-entrancy guard makes a repeat trigger a no-op rather than stacking dialogs.
+ * Presents {@link ReactionsDialogComponent} for a message: everyone who reacted, grouped by
+ * emoji. Mirrors {@link EditHistoryDialogService} (presentation only; the component reads
+ * its own data), with a re-entrancy guard so a repeat trigger is a no-op.
  */
 @Injectable({ providedIn: 'root' })
 export class ReactionsDialogService {

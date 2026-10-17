@@ -36,18 +36,13 @@ import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 const MIN_SEARCH_LENGTH = 2;
 
 /**
- * Dialog user picker for the invite and DM flows. Combines a free-text Matrix-ID
- * field (the always-available minimum — the Confirm action accepts a typed
- * `@user:server`) with live homeserver user-directory results below it. Presented
- * by {@link UserPickerService} as a {@link TrnSurfaceService} dialog; on a pick it
- * closes with the chosen MXID, and on cancel with `null` — it never creates or
- * invites itself, so the page stays the orchestrator (matching the
- * `TrnAlertService` prompts in `RoomsPage`).
- *
- * Config (heading / confirm label / placeholder) arrives as signal inputs (set by
- * TrnSurfaceService). matrix-js-sdk is reached only through
- * {@link UserDirectoryDiscoveryService.search}. The card self-sizes so it works in a bare CDK
- * dialog (no `ion-modal` host).
+ * Dialog user picker for the invite and DM flows: a free-text Matrix-ID field (the
+ * always-available minimum; Confirm accepts a typed `@user:server`) above live homeserver
+ * user-directory results. Presented by {@link UserPickerService} as a
+ * {@link TrnSurfaceService} dialog; it closes with the chosen MXID, or `null` on cancel, and
+ * never creates or invites itself, so the page stays the orchestrator. matrix-js-sdk is
+ * reached only through {@link UserDirectoryDiscoveryService.search}. The card self-sizes for
+ * a bare CDK dialog (no `ion-modal` host).
  */
 @Component({
   selector: 'trn-user-picker',
@@ -76,9 +71,7 @@ export class UserPickerComponent {
   /** Search placeholder. */
   readonly placeholder = input('@user:server or a name');
 
-  /** Current free-text term, driving both validation and the live search. */
   readonly term = signal('');
-  /** A directory request is in flight (drives the spinner). */
   readonly searching = signal(false);
 
   /** Whether the typed term is a complete MXID, so Confirm can act on it as-is. */
@@ -124,7 +117,6 @@ export class UserPickerComponent {
     this.term.set((event.target as HTMLInputElement).value);
   }
 
-  /** Pick a directory result. */
   choose(userId: string): void {
     this.dialogRef.close(userId);
   }
@@ -140,6 +132,5 @@ export class UserPickerComponent {
     this.dialogRef.close(null);
   }
 
-  /** First visible character (sans sigil), uppercased, for the avatar fallback. */
   readonly initialOf = initialOf;
 }

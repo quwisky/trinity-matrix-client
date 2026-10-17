@@ -111,29 +111,25 @@ export class MessageToolbarComponent {
   readonly menuOpenChange = output<boolean>();
 
   /**
-   * The overflow menu's trigger, so a consumer can open the SAME menu from somewhere else —
-   * the message row opens it on right-click and long-press. Exposed rather than duplicating
-   * the item list: a second menu would drift from this one the first time an action is added
-   * to either, and the two would disagree about what a message can do.
+   * The overflow menu's trigger, exposed so the message row can open the SAME menu on
+   * right-click and long-press; a second item list would drift from this one.
    */
   private readonly moreTrigger = viewChild(TrnDropdownMenuTrigger);
 
   readonly quickEmojis = QUICK_EMOJIS;
   readonly pickerOpen = signal(false);
   readonly pickerBelow = signal(false);
-  /** Unique id linking the reaction toggle to its picker via aria-controls. */
   readonly pickerId = `trn-reaction-picker-${nextPickerId++}`;
 
   constructor() {
-    // The row mounts this toolbar on demand (#958), usually from the same pointerenter that
-    // reveals it, so it places itself as soon as it has a box rather than waiting for one.
+    // The row mounts this toolbar on demand, usually from the same pointerenter that reveals
+    // it, so it places itself as soon as it has a box rather than waiting for one.
     afterNextRender(() => this.placeToolbar());
   }
 
   /**
-   * Open the overflow menu programmatically. Anchored to the "⋯" button rather than to the
-   * pointer, which is deliberate: the menu keeps one predictable position however it was
-   * summoned, and on touch it does not land under the finger that opened it.
+   * Open the overflow menu programmatically. Anchored to the "⋯" button, not the pointer,
+   * so the menu has one predictable position and on touch does not land under the finger.
    */
   openMoreMenu(options: { focusFirstItem?: boolean } = {}): void {
     this.moreTrigger()?.open(options);

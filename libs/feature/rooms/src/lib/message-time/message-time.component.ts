@@ -40,7 +40,6 @@ export class MessageTimeComponent {
   /** Whether the tooltip exists yet; owned by the row, which arms every time on hover. */
   readonly armed = input.required<boolean>();
   readonly variant = input.required<'gutter' | 'head'>();
-  /** A mouse or pen reached an unarmed time. */
   readonly arm = output<void>();
 
   protected readonly iso = computed(() =>

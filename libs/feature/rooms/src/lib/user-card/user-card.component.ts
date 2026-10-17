@@ -39,7 +39,6 @@ export class UserCardComponent {
   private readonly profileSvc = inject(IdentityService);
   private readonly presence = inject(IdentityPresenceService);
 
-  /** The user's fetched profile (null while loading, or on an unresolved fetch). */
   readonly profile = toSignal(
     toObservable(this.userId).pipe(
       switchMap((id) =>
@@ -49,17 +48,14 @@ export class UserCardComponent {
     { initialValue: null },
   );
 
-  /** Display name, falling back to the user id when unset. */
   readonly displayName = computed(
     () => this.profile()?.displayName || this.userId(),
   );
   readonly initial = computed(() => initialOf(this.displayName()));
-  /** Live online status for the presence dot. */
   readonly presenceState = computed(() =>
     this.presence.presenceFor(this.userId())(),
   );
 
-  /** Start (or reuse) a direct message with this user — the host does the navigation. */
   message(): void {
     this.dialogRef.close(this.userId());
   }

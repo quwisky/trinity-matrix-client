@@ -38,9 +38,8 @@ const SEARCH_DEBOUNCE_MS = 350;
 /**
  * GIF search grid, the GIFs tab of the composer's expression panel. It draws no surface of
  * its own: the panel is the card around it, or the sheet is. Loads trending GIFs on open and
- * re-queries (debounced) as the user types, emitting the chosen GIF for the
- * composer to download and send. Only rendered once a provider + API key are
- * configured, so it never queries without credentials.
+ * re-queries (debounced) as the user types, emitting the chosen GIF. Only rendered once a
+ * provider + API key are configured, so it never queries without credentials.
  */
 @Component({
   selector: 'trn-gif-picker',
@@ -63,7 +62,6 @@ export class GifPickerComponent {
   private readonly searchInput =
     viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
-  /** Fires when the user asks to retry after a load failure. */
   private readonly retry$ = new Subject<void>();
 
   /** Attribution line the active provider's terms require us to display. */
@@ -119,7 +117,6 @@ export class GifPickerComponent {
     this.query.set((event.target as HTMLInputElement).value);
   }
 
-  /** Re-run the current query after a load failure (the "Try again" button). */
   retry(): void {
     this.retry$.next();
   }

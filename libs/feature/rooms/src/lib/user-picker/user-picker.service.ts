@@ -11,11 +11,9 @@ export interface UserPickerOptions {
 }
 
 /**
- * Presents the {@link UserPickerComponent} as a {@link TrnSurfaceService} dialog and
- * resolves the chosen Matrix ID (or `null` when cancelled). Wraps the dialog so the
- * rooms page stays thin and the presentation can be retargeted later — mirroring
- * the thread panel. The page performs the actual create/invite with the
- * returned id, so this service owns presentation only.
+ * Presents the {@link UserPickerComponent} as a {@link TrnSurfaceService} dialog and resolves
+ * the chosen Matrix ID, or `null` when cancelled. Presentation only: the page performs the
+ * create/invite with the returned id.
  */
 @Injectable({ providedIn: 'root' })
 export class UserPickerService {

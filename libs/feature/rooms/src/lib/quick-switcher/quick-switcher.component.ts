@@ -50,18 +50,14 @@ const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
 };
 
 /**
- * Quick-switcher overlay (Ctrl/Cmd+K): a single search field over joined rooms,
- * spaces, DMs, and pending invites, with debounced directory-people results appended.
- * Presented by {@link QuickSwitcherService} as a {@link TrnSurfaceService} dialog;
- * renders a {@link GlobalSearchService} session over Room Library and Discovery.
- *
- * Local matches are an instant `computed` over the query signal; people are a
- * debounced RxJS stream. Keyboard nav (Up/Down move, Enter select, Esc close) lives on
- * the native input. On a pick it closes with the chosen {@link SwitcherSelection},
- * leaving the actual navigation and repair to Workspace. The card self-sizes so it works in a
- * bare CDK dialog (no `ion-modal` host). The search field takes focus on open through
- * the dialog's `autoFocus` selector (see {@link QuickSwitcherService}) — CDK focuses
- * after attach, so anything the component focuses itself is immediately overridden.
+ * Quick-switcher overlay (Ctrl/Cmd+K): one search field over joined rooms, spaces, DMs and
+ * pending invites, with debounced directory-people results appended. Presented by
+ * {@link QuickSwitcherService} as a {@link TrnSurfaceService} dialog over a
+ * {@link GlobalSearchService} session. A pick closes with the {@link SwitcherSelection};
+ * Workspace does the navigation and repair. The card self-sizes for a bare CDK dialog (no
+ * `ion-modal` host). The field takes focus through the dialog's `autoFocus` selector (see
+ * {@link QuickSwitcherService}): CDK focuses after attach, so anything the component focuses
+ * itself is overridden.
  */
 @Component({
   selector: 'trn-quick-switcher',
@@ -91,9 +87,7 @@ export class QuickSwitcherComponent {
    */
   readonly activeAccountOnly = input(false);
 
-  /** Current query text, driving both the local computed and the people stream. */
   readonly query = signal('');
-  /** Index of the keyboard-highlighted row in {@link results}. */
   readonly highlight = signal(0);
   private readonly session = this.search.createSession(
     this.query,
@@ -103,7 +97,6 @@ export class QuickSwitcherComponent {
   readonly searching = this.session.searching;
   readonly results = this.session.results;
 
-  /** Contextual empty-state copy. */
   readonly emptyHint = computed(() =>
     this.query().trim()
       ? 'No matches.'
@@ -115,7 +108,6 @@ export class QuickSwitcherComponent {
     this.highlight.set(0); // a fresh query re-anchors the highlight to the top
   }
 
-  /** Move the highlight by `delta`, wrapping; stops the caret from moving. */
   move(delta: number, event: Event): void {
     event.preventDefault();
     const length = this.results().length;
@@ -126,7 +118,6 @@ export class QuickSwitcherComponent {
     this.highlight.update((index) => (index + delta + length) % length);
   }
 
-  /** Enter: select the highlighted row (no-op when the list is empty). */
   choose(event: Event): void {
     event.preventDefault();
     const result = this.results()[this.highlight()];
@@ -135,12 +126,10 @@ export class QuickSwitcherComponent {
     }
   }
 
-  /** Click/Enter on a row: close with its selection. */
   select(result: SwitcherResult): void {
     this.dismiss(this.search.destinationFor(result));
   }
 
-  /** The owning-account badge for a result (mixed view only), or null. */
   badgeFor(result: SwitcherResult): AccountBadge | null {
     return this.accountBadges.forAccount(result.accountBadgeId);
   }
