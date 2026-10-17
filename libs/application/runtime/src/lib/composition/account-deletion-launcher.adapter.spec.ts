@@ -329,6 +329,21 @@ describe('AccountDeletionLauncherAdapter', () => {
     expect(test.launcher.deletedNotice()).toBe(ALICE);
   });
 
+  it('closes whatever is open when a late deletion settles, on purpose', () => {
+    const test = setup();
+
+    test.late.next(deleted(cleanup([BOB])));
+
+    expect(test.surfaces.closeAll).toHaveBeenCalledOnce();
+    expect(test.router.navigateByUrl).toHaveBeenCalledWith('/', {
+      replaceUrl: true,
+    });
+    expect(test.toast.show).toHaveBeenCalledWith(
+      `${ALICE} was deleted. You’re now using ${BOB}.`,
+      expect.objectContaining({ variant: 'success' }),
+    );
+  });
+
   it('checks with the server on Check now', async () => {
     const test = setup({
       result: { kind: 'kept', accountId: ALICE, reason: 'still-active' },
