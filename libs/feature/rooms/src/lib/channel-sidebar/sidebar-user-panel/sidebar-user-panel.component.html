@@ -158,8 +158,8 @@
     @if (canPickAccounts()) {
       <div trnDropdownMenuSeparator></div>
       @if (pickAccountsInDialog()) {
-        <!-- Narrow layout: a submenu would have nowhere to fly out to, so this opens a
-             dialog instead. Same testid, so the affordance is one thing to drive either way. -->
+        <!-- Narrow layout: a submenu would have nowhere to fly out to, so this opens a dialog instead.
+             Same testid, so the affordance is one thing to drive either way. -->
         <button
           class="menu-action"
           trnDropdownMenuItem
@@ -205,11 +205,10 @@
     </button>
   </div>
 
-  <!-- Which accounts the room list, rail and space pills draw from. Checkboxes keep the
-       menu open (the Hlm wrapper defaults keepOpen to true), so several accounts can be
-       ticked in one visit. The active account is disabled rather than merely pre-checked:
-       CDK early-returns on a disabled item, so it can neither be unticked nor drift out of
-       sync with the state that refuses to drop it. -->
+  <!-- Which accounts the room list, rail and space pills draw from. Checkboxes keep the menu open (the
+       Hlm wrapper defaults keepOpen to true), so several accounts can be ticked in one visit. The
+       active account is disabled rather than pre-checked: CDK early-returns on a disabled item, so it
+       can neither be unticked nor drift out of sync with the state that refuses to drop it. -->
   <ng-template #showAccountsMenu>
     <div class="account-pick-menu" trnDropdownMenuSub>
       <div trnDropdownMenuLabel>Accounts in view</div>

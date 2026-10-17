@@ -22,25 +22,18 @@ function badgeOf(
 }
 
 /**
- * Owning-account badges: account id → the avatar/initial/name drawn in the corner of a
- * room row, space pill, rail unread chat or switcher result.
+ * Owning-account badges: account id to the avatar/initial/name drawn in the corner of a room row,
+ * space pill, rail unread chat or switcher result. Shared so every surface badges rows identically.
  *
- * Shared so every surface that badges rows does so identically — the sidebar, the rail
- * and the quick switcher would otherwise each derive this, and drift.
- *
- * {@link badges} is empty unless more than one account is being mixed, which is what makes
- * a badge meaningful on mixed rows: with a single account every row belongs to it.
- * {@link everyAccount} covers every signed-in account regardless.
+ * {@link badges} is empty unless more than one account is being mixed (with a single account every
+ * row belongs to it). {@link everyAccount} covers every signed-in account regardless.
  */
 @Injectable({ providedIn: 'root' })
 export class AccountBadgesService {
   private readonly selectedLibrary = inject(SelectedRoomLibraryService);
   private readonly identities = inject(AccountIdentitiesService);
 
-  /**
-   * Whether more than one account is being mixed. A boolean computed, so a consumer
-   * re-evaluates only when mixing starts or stops, not on every room-list sync.
-   */
+  /** Whether more than one account is being mixed. A boolean computed, so consumers re-evaluate only when mixing starts or stops. */
   readonly mixed = computed(() => this.selectedLibrary.view().mode === 'mixed');
 
   /** The mixed accounts' badges; empty unless more than one account is being mixed. */
@@ -50,12 +43,8 @@ export class AccountBadgesService {
     if (view.mode !== 'mixed') {
       return badges;
     }
-    // Every account's profile, each read through its OWN client. This used to read a
-    // counter only the ACTIVE client bumped, and lean on the unread aggregator — the one
-    // signal already fed by every client — to notice a mixed-in account hydrating later,
-    // which otherwise kept its mxid and a hashed letter instead of its name and picture.
-    // That workaround is gone: the projection listens per account, so a badge is driven by
-    // the thing it displays rather than by whichever unrelated signal happened to tick.
+    // Every account's profile, each read through its OWN client, so a mixed-in account hydrating later
+    // updates its badge (the projection listens per account) instead of keeping its mxid and a hashed letter.
     const profiles = this.identities.identities();
     for (const userId of view.accountIds) {
       const profile = profiles.get(userId);
@@ -65,8 +54,8 @@ export class AccountBadgesService {
   });
 
   /**
-   * Every signed-in account's badge, mixed or not. The rail's unread chats list other
-   * accounts' chats even with one account selected, so they cannot use {@link badges}.
+   * Every signed-in account's badge, mixed or not. The rail's unread chats list other accounts' chats
+   * even with one account selected, so they cannot use {@link badges}.
    */
   readonly everyAccount = computed<ReadonlyMap<string, AccountBadge>>(() => {
     const badges = new Map<string, AccountBadge>();

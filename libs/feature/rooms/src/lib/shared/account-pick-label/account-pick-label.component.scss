@@ -1,8 +1,7 @@
 @use '../../styles/mixins' as *;
 
 @layer components {
-  // The host adds no box of its own: the avatar and the id column stay direct flex
-  // children of the row that hosts them.
+  // The host adds no box: the avatar and id column stay direct flex children of the hosting row.
   :host {
     display: contents;
   }

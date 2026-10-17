@@ -1,13 +1,7 @@
 /**
- * Pure windowing math for the virtualized message timeline — no Angular, no DOM.
- *
- * The list keeps a `Map` of measured row heights (rendered rows only) and an
- * estimate for everything not yet seen. From a prefix-sum of those heights and the
- * scroll position it derives which rows to render plus the two spacer heights that
- * stand in for the off-screen rows, so the scroll container keeps its true height.
- *
- * Kept side-effect-free and DOM-free so it's fully unit-testable (jsdom has no
- * layout): the component feeds it plain numbers and applies the result.
+ * Pure windowing math for the virtualized message timeline (no Angular, no DOM, so unit-testable
+ * without layout). From measured row heights, an estimate for unseen rows and the scroll position
+ * it derives which rows to render plus the two spacer heights that keep the scroll container's true height.
  */
 
 /** Measured heights (by row id) with a fallback estimate for unmeasured rows. */
@@ -28,7 +22,7 @@ export interface WindowInput {
   readonly pinBottom: boolean;
   /** At or below this row count, render everything (no windowing). */
   readonly smallListThreshold: number;
-  /** Master switch: when false, render everything (the message list's `windowed` input; member-list.component.ts also drives it). */
+  /** Master switch: when false, render everything (the message list's `windowed` input; the member list also drives it). */
   readonly enabled: boolean;
 }
 
@@ -50,10 +44,7 @@ export function rowHeight(id: string, h: RowHeights): number {
   return h.measured.get(id) ?? h.estimate;
 }
 
-/**
- * Prefix sums of row heights: `prefix[i]` is the offset of the top of row `i`,
- * `prefix[N]` is the total height. Length N+1, `prefix[0] === 0`.
- */
+/** Prefix sums of row heights: `prefix[i]` is the top of row `i`, `prefix[N]` the total. Length N+1. */
 export function buildPrefixSums(
   ids: readonly string[],
   h: RowHeights,
@@ -80,15 +71,13 @@ export interface HeightChange {
 }
 
 /**
- * How much to shift `scrollTop` to keep the read position stable after some rendered
- * rows changed height, when the user is scrolled up (not pinned to the bottom). A row
- * fully ABOVE the fold that grows or shrinks shoves everything below it — including
- * the viewport — by its delta, so those deltas are summed.
+ * How much to shift `scrollTop` to keep the read position stable after rendered rows changed
+ * height, when scrolled up (not pinned to the bottom). A row fully ABOVE the fold that changes
+ * height shoves everything below it, including the viewport, by its delta; deltas are summed.
  *
- * `prefix` are the PRE-change offsets. `regionTop` is the content offset of the row
- * region from the scroll origin — the `.scroll` padding plus any load-older banner
- * rendered above the rows — so the above-the-fold test is done in the same coordinate
- * system as the physical `scrollTop`. Returns 0 when nothing above the fold changed.
+ * `prefix` are the PRE-change offsets. `regionTop` is the row region's content offset from the
+ * scroll origin (the `.scroll` padding plus any load-older banner), so the above-the-fold test
+ * uses the same coordinate system as the physical `scrollTop`. Returns 0 when nothing above the fold changed.
  */
 export function scrollCompensation(
   changes: readonly HeightChange[],
@@ -107,10 +96,8 @@ export function scrollCompensation(
 }
 
 /**
- * Index of the row that contains vertical offset `y` — the largest `i` in
- * `[0, N-1]` with `prefix[i] <= y`. A row spans `[prefix[i], prefix[i+1])`, so an
- * offset exactly on a boundary belongs to the following row. Clamped to
- * `[0, N-1]`; returns 0 for an empty list.
+ * Index of the row containing vertical offset `y`: the largest `i` in `[0, N-1]` with
+ * `prefix[i] <= y`. An offset exactly on a boundary belongs to the following row; returns 0 for an empty list.
  */
 export function indexAtOffset(prefix: Float64Array, y: number): number {
   const n = prefix.length - 1;
@@ -148,9 +135,8 @@ export function firstRowWithin(prefix: Float64Array, px: number): number {
 }
 
 /**
- * Resolve the render window and spacer heights. `prefix` must be
- * {@link buildPrefixSums} for the same ids/heights (passed in so the caller can
- * memoize and reuse it across window/offset queries).
+ * Resolve the render window and spacer heights. `prefix` must be {@link buildPrefixSums} for the
+ * same ids/heights (passed in so the caller can memoize it).
  */
 export function computeWindow(
   input: WindowInput,
@@ -178,8 +164,7 @@ export function computeWindow(
     };
   }
 
-  // Fast path: virtualization off, or a list short enough that windowing isn't
-  // worth it — render everything, identical to the un-virtualized list.
+  // Fast path: virtualization off or a short list; render everything.
   if (!enabled || n <= smallListThreshold) {
     return {
       startIndex: 0,
@@ -191,9 +176,8 @@ export function computeWindow(
   }
 
   if (pinBottom) {
-    // Anchor to the newest row and grow the window upward until it covers the
-    // viewport plus overscan. Keeps the bottom spacer at 0 so `scrollTop =
-    // scrollHeight` lands on real content (no blank space) for live/own messages.
+    // Anchor to the newest row and grow the window upward to cover viewport plus overscan. The
+    // bottom spacer stays 0 so `scrollTop = scrollHeight` lands on real content for live/own messages.
     const endIndex = n - 1;
     const startIndex = firstRowWithin(prefix, viewportHeight + overscanPx);
     return {

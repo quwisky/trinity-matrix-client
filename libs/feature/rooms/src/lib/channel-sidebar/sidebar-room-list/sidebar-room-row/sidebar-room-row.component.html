@@ -103,8 +103,7 @@
         Mark as read
       </button>
     } @else if (!active()) {
-      <!-- Not offered for the room being read: the flag is cleared when a room is
-         opened, and this one already is, so it would stick until you left. -->
+      <!-- Not offered for the room being read: the flag is cleared on open, so it would stick until you left. -->
       <button
         trnDropdownMenuItem
         (triggered)="action.emit({ kind: 'mark-unread', room: r })"

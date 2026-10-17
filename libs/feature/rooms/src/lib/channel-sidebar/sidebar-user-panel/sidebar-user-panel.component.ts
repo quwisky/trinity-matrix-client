@@ -74,7 +74,7 @@ export class SidebarUserPanelComponent {
 
   /** The desktop title row carries system status itself, so the panel then drops it. */
   protected readonly titleBar = inject(TitleBarState);
-  /** "Lock Trinity" is offered only while App lock is on (decision 6). */
+  /** "Lock Trinity" is offered only while App lock is on. */
   protected readonly appLockOn = this.appLock.enabled;
   /** "Trinity", or "Trinity Next" in the desktop prerelease. */
   protected readonly appName = this.appLock.appName;
@@ -95,19 +95,13 @@ export class SidebarUserPanelComponent {
   readonly activeUserId = input<string | null>(null);
   /** User ids of accounts the server signed out that need re-authentication. */
   readonly reauthAccounts = input<readonly string[]>([]);
-  /**
-   * The accounts the room list currently draws from. Drives the picker's ticks; defaults to empty so the panel renders standalone.
-   */
+  /** The accounts the room list currently draws from. Drives the picker's ticks; defaults to empty so the panel renders standalone. */
   readonly shownAccountIds = input<ReadonlySet<string>>(new Set());
 
   /**
-   * Present the account picker as a dialog rather than a submenu.
-   *
-   * Set by the host from the layout, not read here: the component doesn't measure the
-   * viewport (it reads only the title-bar state and App lock). Below the `md` breakpoint the
-   * sidebar is a full-screen page and this panel is a bar across the bottom of the viewport,
-   * so a submenu flying out beside the account menu has nowhere to go and lands back on top
-   * of it.
+   * Present the account picker as a dialog rather than a submenu. Set by the host from the layout:
+   * below the `md` breakpoint the sidebar is a full-screen page and this panel a bar across the
+   * bottom, so a submenu flying out beside the account menu has nowhere to go and lands on top of it.
    */
   readonly pickAccountsInDialog = input(false);
   /** The picker is only meaningful with more than one account signed in. */

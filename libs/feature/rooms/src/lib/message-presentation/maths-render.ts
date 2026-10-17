@@ -2,13 +2,12 @@ import DOMPurify, { type Config } from 'dompurify';
 import katex from 'katex';
 
 /**
- * KaTeX for maths in messages (spec B, Matrix spec v1.11 "Mathematical messages").
+ * KaTeX for maths in messages (Matrix spec v1.11 "Mathematical messages").
  *
- * Never imported statically: MathsLoader (for MathsDirective) loads this module with a dynamic
- * `import()` the first time a rendered body holds maths, so KaTeX (about 270 KB minified) is a
- * lazy chunk and a room without maths never downloads it. The chunk is named after this file
- * (`maths-render-<hash>.js`), and `apps/trinity/ngsw-config.json` matches that name to keep it
- * out of the service worker's prefetch: renaming this file moves KaTeX back into prefetch.
+ * Never imported statically: MathsLoader loads this module with a dynamic `import()` the first time
+ * a rendered body holds maths, so KaTeX (about 270 KB minified) is a lazy chunk. The chunk is named
+ * after this file (`maths-render-<hash>.js`) and `apps/trinity/ngsw-config.json` matches that name
+ * to keep it out of the service worker's prefetch: renaming this file moves KaTeX back into prefetch.
  */
 
 /** Characters of LaTeX one expression may have; past it the source is shown. */
@@ -19,17 +18,16 @@ export type MathsOutcome =
   | { readonly kind: 'rendered'; readonly fragment: DocumentFragment }
   | { readonly kind: 'source' };
 
-// Its own instance: the default one carries message-view.ts's Matrix hook, which would strip
-// KaTeX's classes and styles. Defence in depth — `trust: false` already keeps URLs out.
+// Its own instance: the default one carries message-view.ts's Matrix hook, which would strip KaTeX's
+// classes and styles. Defence in depth: `trust: false` already keeps URLs out.
 const purifier = DOMPurify(window);
 
 /** KaTeX's colour for what it cannot render; see {@link renderMaths}. */
 const ERROR_COLOUR = '#cc0000';
 
 /**
- * KaTeX's `maxSize`, in em: also the furthest any inline style may move content sideways.
- * KaTeX caps only positive user sizes, so `\kern{-40em}` would move text far outside the
- * formula; see {@link oversized}.
+ * KaTeX's `maxSize`, in em: also the furthest any inline style may move content sideways. KaTeX caps
+ * only positive user sizes, so `\kern{-40em}` would move text far outside the formula; see {@link oversized}.
  */
 const MAX_SIZE_EM = 10;
 
@@ -42,13 +40,10 @@ const LENGTHS =
   /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:em|px)?(?: -?(?:\d+(?:\.\d+)?|\.\d+)(?:em|px)?){0,3}$/;
 
 /**
- * Every inline style KaTeX 0.19.0 writes, with the values it writes (owner decision 10). Its
- * layout uses plain lengths; `\phantom` hides content with `color: transparent`, the one colour
- * kept. Sender colours never reach here (they are neutralised) and `color: #cc0000` (errors) is
- * dropped. Derived from KaTeX's source and output (`\cancel`, `\sqrt[3]`, `\xrightarrow`,
- * `\widehat`, `\overbrace`, `\phase`, `\boxed`, `\pmb`, `\raisebox`, `\rule`, `\\[1em]`,
- * limits, accents, `\oiint`, large delimiters, matrices and arrays with rules); the spec's
- * "keeps every style KaTeX writes" cases fail if a property here is missing.
+ * Every inline style KaTeX 0.19.0 writes, with the values it writes. Its layout uses plain lengths;
+ * `\phantom` hides content with `color: transparent`, the one colour kept. Sender colours never reach
+ * here (they are neutralised) and `color: #cc0000` (errors) is dropped. Derived from KaTeX's source
+ * and output; the spec's "keeps every style KaTeX writes" cases fail if a property here is missing.
  */
 const KATEX_STYLES: ReadonlyMap<string, RegExp> = new Map([
   ...[
@@ -76,8 +71,8 @@ const KATEX_STYLES: ReadonlyMap<string, RegExp> = new Map([
   ['color', /^transparent$/],
 ]);
 
-// Inline styles keep only the declarations in KATEX_STYLES, one by one; a style left empty is
-// removed. So no URL, `image-set`, CSS escape, sender colour or unknown property gets through.
+// Inline styles keep only the declarations in KATEX_STYLES, one by one; a style left empty is removed,
+// so no URL, `image-set`, CSS escape, sender colour or unknown property gets through.
 purifier.addHook('uponSanitizeAttribute', (_node, data) => {
   if (data.attrName !== 'style') {
     return;
@@ -98,11 +93,11 @@ purifier.addHook('uponSanitizeAttribute', (_node, data) => {
 });
 
 const MATHS_PURIFY_CONFIG = {
-  // No SVG profile: only the SVG KaTeX emits is added below (owner decision 10).
+  // No SVG profile: only the SVG KaTeX emits is added below.
   USE_PROFILES: { html: true, mathMl: true },
   ADD_TAGS: [
-    // DOMPurify disallows these MathML elements by default; KaTeX wraps its MathML in them
-    // and keeps the LaTeX in the annotation, which is what screen readers are given.
+    // DOMPurify disallows these MathML elements by default; KaTeX wraps its MathML in them and keeps
+    // the LaTeX in the annotation, which is what screen readers are given.
     'semantics',
     'annotation',
     // KaTeX's SvgNode, PathNode and LineNode (stretchy delimiters, \sqrt, \cancel).
@@ -149,10 +144,10 @@ const MATHS_PURIFY_CONFIG = {
 
 /**
  * KaTeX built-ins replaced for every call; `renderMaths` copies them into a fresh table.
- * - `\message`, `\errmessage` and `\show` write to the console whatever `strict` and `trust`
- *   say, and console output feeds the diagnostic log, which must never hold message content.
- * - `\color`, `\textcolor` and `\colorbox` (owner decision 13) and `\fcolorbox` (decision 2)
- *   would paint sender colours past the 3:1 contrast guard; they keep only their content.
+ * - `\message`, `\errmessage` and `\show` write to the console whatever `strict` and `trust` say, and
+ *   console output feeds the diagnostic log, which must never hold message content.
+ * - `\color`, `\textcolor`, `\colorbox` and `\fcolorbox` would paint sender colours past the 3:1
+ *   contrast guard; they keep only their content.
  * `\@firstoftwo{A}{B}` expands to `A`; naming every `#n` keeps KaTeX's argument count right.
  */
 const NEUTRALISED_MACROS: Readonly<Record<string, string>> = {
@@ -165,9 +160,9 @@ const NEUTRALISED_MACROS: Readonly<Record<string, string>> = {
   '\\fcolorbox': '\\@firstoftwo{\\text{#3}}{#1#2}',
 };
 
-// One `style="…"` attribute value of KaTeX's markup. KaTeX escapes `"` in text, attribute values
-// and the MathML annotation (which repeats the sender's TeX), so this matches only real
-// attributes, never text that spells one. A fixed pattern, never built from the input.
+// One `style="…"` attribute value of KaTeX's markup. KaTeX escapes `"` in text, attribute values and
+// the MathML annotation (which repeats the sender's TeX), so this matches only real attributes, never
+// text that spells one. A fixed pattern, never built from the input.
 const STYLE_ATTRIBUTE = /\sstyle="([^"]*)"/g;
 
 /** The furthest any inline style may move content up or down, in em. */
@@ -175,10 +170,10 @@ const MAX_VERTICAL_MOVE_EM = 50;
 
 /**
  * Lengths that move content away from where layout put it, and how far each may: sideways
- * {@link MAX_SIZE_EM}, up or down {@link MAX_VERTICAL_MOVE_EM}. Tall matrices, `cases` and
- * `aligned` blocks place their rows with `top` and `vertical-align` well past 10em; what a
- * sender moves vertically stays inside the message body's clip (rendered-markdown.scss). A
- * box's own positive height, width or padding only makes the formula bigger.
+ * {@link MAX_SIZE_EM}, up or down {@link MAX_VERTICAL_MOVE_EM}. Tall matrices, `cases` and `aligned`
+ * blocks place rows with `top` and `vertical-align` well past 10em; what a sender moves vertically
+ * stays inside the message body's clip (rendered-markdown.scss). A box's own positive height, width
+ * or padding only makes the formula bigger.
  */
 const MOVING: ReadonlyMap<string, number> = new Map([
   ['left', MAX_SIZE_EM],
@@ -219,13 +214,12 @@ function oversized(property: string, value: string): boolean {
 }
 
 /**
- * Whether KaTeX's markup must give way to the source, read from the raw markup's `style`
- * attribute values (never text) before the style allowlist drops anything:
- * - it painted something in its error colour in the HTML copy (`\html@mathml{\foo}{x}` keeps
- *   the error out of the MathML copy);
- * - a length moves content further than it may (see {@link oversized}), such as a large
- *   negative kern. What smaller moves add up to stays inside the formula's and the message
- *   body's clips (rendered-markdown.scss).
+ * Whether KaTeX's markup must give way to the source, read from the raw markup's `style` attribute
+ * values (never text) before the style allowlist drops anything:
+ * - it painted something in its error colour in the HTML copy (`\html@mathml{\foo}{x}` keeps the
+ *   error out of the MathML copy);
+ * - a length moves content further than it may (see {@link oversized}), such as a large negative
+ *   kern. Smaller moves stay inside the formula's and the message body's clips.
  */
 function forcesSource(markup: string): boolean {
   for (const [, style] of markup.matchAll(STYLE_ATTRIBUTE)) {
@@ -254,15 +248,14 @@ export function sanitizeMathsMarkup(markup: string): DocumentFragment {
 }
 
 /**
- * Render one expression. KaTeX's options are the spec's: no trusted commands (`\href`, `\url`,
- * `\includegraphics`, `\html*`), sizes up to 10em, at most 100 macro expansions, warnings
- * ignored (console warnings feed the diagnostic log, which must never hold message content),
- * and a fresh macro table for every call, seeded with {@link NEUTRALISED_MACROS}, so a `\gdef`
- * cannot leak into the next expression or message. Anything KaTeX rejects, an expression over
- * {@link MAX_MATHS_SOURCE_LENGTH}, anything KaTeX paints in its error colour (an unknown
- * command such as `\foo`, or one `trust: false` refuses, such as `\href`; red text below 3:1 on
- * dark themes that hides the command's content), and any length moving content further than it
- * may (see {@link oversized}) becomes `{ kind: 'source' }`.
+ * Render one expression. KaTeX's options: no trusted commands (`\href`, `\url`, `\includegraphics`,
+ * `\html*`), sizes up to 10em, at most 100 macro expansions, warnings ignored (console warnings feed
+ * the diagnostic log, which must never hold message content), and a fresh macro table per call seeded
+ * with {@link NEUTRALISED_MACROS}, so a `\gdef` cannot leak into the next expression or message.
+ * Anything KaTeX rejects, an expression over {@link MAX_MATHS_SOURCE_LENGTH}, anything painted in
+ * KaTeX's error colour (an unknown command, or one `trust: false` refuses such as `\href`; red text
+ * below 3:1 on dark themes would hide the command's content), and any length moving content further
+ * than it may (see {@link oversized}) becomes `{ kind: 'source' }`.
  */
 export function renderMaths(latex: string, displayMode: boolean): MathsOutcome {
   if (latex.length === 0 || latex.length > MAX_MATHS_SOURCE_LENGTH) {
@@ -289,8 +282,8 @@ export function renderMaths(latex: string, displayMode: boolean): MathsOutcome {
     return { kind: 'source' };
   }
   const fragment = sanitizeMathsMarkup(markup);
-  // The MathML copy marks an error with `mathcolor`, which no sender can set (every colour
-  // command is neutralised); `\html@mathml` can put one in the MathML copy alone.
+  // The MathML copy marks an error with `mathcolor`, which no sender can set (every colour command is
+  // neutralised); `\html@mathml` can put one in the MathML copy alone.
   if (
     fragment.querySelector(`.katex-error, [mathcolor="${ERROR_COLOUR}"]`) ||
     !fragment.querySelector('.katex')

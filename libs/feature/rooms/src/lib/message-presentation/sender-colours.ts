@@ -5,7 +5,7 @@ export interface Rgb {
   readonly b: number;
 }
 
-/** The contrast a sender colour must keep (owner decision 2), by WCAG 2 relative luminance. */
+/** The contrast a sender colour must keep, by WCAG 2 relative luminance. */
 export const MIN_SENDER_CONTRAST = 3;
 
 /** One sender element's requested colours, already validated as `#RRGGBB`. */
@@ -41,11 +41,10 @@ export function parseHexColour(value: string): Rgb | null {
 }
 
 /**
- * The colour forms Trinity's surfaces arrive in: hex, `rgb()`/`rgba()` and `oklch()` (the theme
- * tokens are OKLCH, and Chromium keeps OKLCH in computed values). Null for anything else, so the
- * caller can ask the browser instead: a malformed number (`1.2.3`), and a see-through colour
- * (alpha below 1, such as Chromium's computed `transparent`, `rgba(0, 0, 0, 0)`), whose
- * appearance depends on what lies behind it.
+ * The colour forms Trinity's surfaces arrive in: hex, `rgb()`/`rgba()` and `oklch()` (theme tokens
+ * are OKLCH, and Chromium keeps OKLCH in computed values). Null for anything else so the caller can
+ * ask the browser: a malformed number (`1.2.3`), and a see-through colour (alpha below 1, such as
+ * Chromium's computed `transparent`), whose appearance depends on what lies behind it.
  */
 export function parseCssColour(value: string): Rgb | null {
   const text = value.trim();
@@ -112,11 +111,9 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
 }
 
 /**
- * Which colours of one element to keep (spec A1, contrast guard):
- * - text colour only: against `background` (the nearest kept sender background, else the
- *   message surface);
- * - background only: against `inheritedText` (the nearest kept sender text colour, else the
- *   theme's);
+ * Which colours of one element to keep (contrast guard):
+ * - text colour only: against `background` (nearest kept sender background, else the message surface);
+ * - background only: against `inheritedText` (nearest kept sender text colour, else the theme's);
  * - both: kept as a pair when they reach 3:1 against each other; otherwise the text colour is
  *   dropped and the background is checked alone.
  */

@@ -34,11 +34,10 @@ const languageOf = (code: Element): string | null =>
     ?.toLowerCase() ?? null;
 
 /**
- * Syntax-highlights the fenced blocks of a sanitized message body that is rendered with
- * `[innerHTML]`. The sanitizer leaves code as plain text, so a row shows readable code at
- * once and this swaps colours in (same characters, same layout) when Shiki has loaded —
- * only for rows that are actually on screen. Output is built from createElement and
- * textContent, never markup.
+ * Syntax-highlights the fenced blocks of a sanitized message body rendered with `[innerHTML]`.
+ * The sanitizer leaves code as plain text, so a row shows readable code at once and this swaps
+ * colours in (same characters, same layout) when Shiki has loaded, only for rows on screen.
+ * Output is built from createElement and textContent, never markup.
  */
 @Directive({ selector: '[trnCodeHighlight]' })
 export class CodeHighlightDirective {

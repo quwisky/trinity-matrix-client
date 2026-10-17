@@ -38,9 +38,9 @@ const SECURITY_SETTINGS: UndecryptableFix = Object.freeze({
 });
 
 /**
- * The button for a message this device could not decrypt, from this device's trust
- * status, in the spec's order. An account with no identity has nothing to verify
- * against, so its "Verify this device" opens setup, as the encryption banner does.
+ * The button for a message this device could not decrypt, from this device's trust status. An
+ * account with no identity has nothing to verify against, so "Verify this device" opens setup, as
+ * the encryption banner does.
  */
 export function deriveUndecryptableFix(
   status: TrustStatus,
@@ -88,9 +88,9 @@ function surfaceFor(
 }
 
 /**
- * Derives the unreadable-message button from Trust's live status and opens the trust
- * surface it names. Message rows stay presentational: they receive {@link fix} and raise
- * one row action, which the shared dispatcher routes to {@link open}.
+ * Derives the unreadable-message button from Trust's live status and opens the trust surface it
+ * names. Rows stay presentational: they receive {@link fix} and raise one row action, which the
+ * shared dispatcher routes to {@link open}.
  */
 @Injectable({ providedIn: 'root' })
 export class UndecryptableFixService {

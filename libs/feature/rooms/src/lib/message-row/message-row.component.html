@@ -69,13 +69,10 @@
     (focusout)="onFocusOut($event)"
   >
     @if (swipeDirection() !== 'off' && !caps().readOnly) {
-      <!-- The affordance, and under this design it is what makes the gesture honest: the
-           reader has to know WHICH of edit and reply they will get before they commit. Drawn
-           from the same `swipeAction()` the row emits at release, so the two cannot disagree
-           even if the host's live caps change. Counter-translated so it stays put while the
-           row slides over it — `.msg` is the element that moves, and there is no host box
-           to hang this on
-           (`:host { display: contents }`). -->
+      <!-- The affordance: the reader must know WHICH of edit and reply they will get before they
+           commit. Drawn from the same `swipeAction()` the row emits at release, so the two cannot
+           disagree if the host's live caps change. Counter-translated so it stays put while the row
+           slides over it: `.msg` moves, and the host (`display: contents`) has no box to hang this on. -->
       <span
         class="msg__swipe"
         [class.msg__swipe--end]="swipeDirection() === 'left'"
@@ -91,8 +88,8 @@
         (jump)="action.emit({ type: 'jump', id: $event })"
       />
     }
-    <!-- The lead slot is the only thing the header/continuation split still owns: an
-         avatar on a group start, the hover-revealed timestamp on a continuation. -->
+    <!-- The lead slot is all the header/continuation split still owns: an avatar on a group start,
+         the hover-revealed timestamp on a continuation. -->
     @if (r.showHeader) {
       <trn-avatar
         class="msg__avatar"
@@ -110,10 +107,8 @@
       />
     }
 
-    <!-- One body for both layouts. It used to be written twice, character-identical
-         apart from a `msg__text--cont` class and where the (edited) marker sits, so
-         every change to a message had to be made in both copies or it was made in
-         neither. The class is now a `.msg--cont .msg__text` rule in the stylesheet. -->
+    <!-- One body for both layouts, so a message change is made once. Continuation styling is the
+         `.msg--cont .msg__text` rule in the stylesheet. -->
     <div class="msg__body">
       <div class="msg__content">
         @if (r.showHeader) {
@@ -155,8 +150,8 @@
             <trn-media-attachment class="msg__media" [media]="r.media" />
           }
           @if (hasTextBody()) {
-            <!-- Show more (spec C): the wrapper clamps a long body, and the body inside keeps
-                 its full height, so the list's ResizeObserver can measure it. -->
+            <!-- Show more: the wrapper clamps a long body, and the body inside keeps its full
+                 height so the list's ResizeObserver can measure it. -->
             <div
               class="msg__clamp"
               [id]="bodyId"
@@ -234,9 +229,9 @@
         }
       </div>
 
-      <!-- The shield and receipts share the body grid but not a column. Message content
-           reserves the shield's trailing column; receipts span both columns below, so the
-           shield never pushes their avatars toward the middle of the timeline. -->
+      <!-- The shield and receipts share the body grid but not a column: content reserves the
+           shield's trailing column, receipts span both, so the shield never pushes their avatars
+           toward the middle of the timeline. -->
       @if (r.shield; as shield) {
         <trn-icon
           [name]="shieldIcon(shield.level)"
@@ -279,8 +274,8 @@
       </button>
     }
 
-    <!-- Mounted only on the hovered, focused or revealed row (#958): on every row it was
-         most of a long room's DOM and listeners. -->
+    <!-- Mounted only on the hovered, focused or revealed row: on every row it was most of a long
+         room's DOM and listeners. -->
     @if (hasToolbar() && (toolbarActive() || revealed())) {
       <trn-message-toolbar
         class="msg__toolbar"

@@ -20,11 +20,9 @@ import {
 import { type ExactSpaceSelection } from '../../shared/exact-selection';
 
 /**
- * The active space's not-yet-joined rooms ("More rooms") and sub-spaces ("Spaces"), with
- * the loading and failure lines that stand in for them while the hierarchy loads.
- *
- * Reads `SpacesService` itself, as the sidebar did. The host is `display: contents` so the
- * rows stay direct children of the sidebar's scroller.
+ * The active space's not-yet-joined rooms ("More rooms") and sub-spaces ("Spaces"), with the loading
+ * and failure lines that stand in for them. Reads `SpacesService` itself. The host is
+ * `display: contents` so the rows stay direct children of the sidebar's scroller.
  */
 @Component({
   selector: 'trn-space-children-list',

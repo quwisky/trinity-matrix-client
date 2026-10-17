@@ -31,9 +31,9 @@ import {
 } from '@trinity/data-access/room-library';
 
 /**
- * What the header asks the sidebar to do. The sidebar maps each kind onto the output it
- * always had, so `rooms.page` binds nothing new. `new-chat` carries the button the chooser
- * anchors to; `sort` carries `null` for "follow my account default".
+ * What the header asks the sidebar to do. The sidebar maps each kind onto an existing output, so
+ * `rooms.page` binds nothing new. `new-chat` carries the button the chooser anchors to; `sort`
+ * carries `null` for "follow my account default".
  */
 export type SidebarSpaceAction =
   | {
@@ -53,11 +53,9 @@ export type SidebarSpaceAction =
   | { kind: 'sort'; mode: RoomSortMode | null };
 
 /**
- * The channel sidebar's 48px header: the title (a menu trigger inside a space), the quick
- * actions, and the space menu with its "Order rooms" submenu.
- *
- * The host is `display: contents` so `.sidebar__header` stays a direct flex item of the
- * sidebar column.
+ * The channel sidebar's 48px header: the title (a menu trigger inside a space), the quick actions,
+ * and the space menu with its "Order rooms" submenu. The host is `display: contents` so
+ * `.sidebar__header` stays a direct flex item of the sidebar column.
  */
 @Component({
   selector: 'trn-sidebar-space-header',
@@ -122,8 +120,8 @@ export class SidebarSpaceHeaderComponent {
   /** The default ordering the list follows, named in the "Use … default" row. */
   readonly defaultSortMode = input<RoomSortMode>(DEFAULT_ROOM_SORT);
   /**
-   * Whose default that is, when it is not the account on screen's: in the mixed view a
-   * space only another account holds follows that account's ordering. `null` reads "my".
+   * Whose default that is, when not the account on screen's: in the mixed view a space only another
+   * account holds follows that account's ordering. `null` reads "my".
    */
   readonly defaultSortOwner = input<string | null>(null);
 

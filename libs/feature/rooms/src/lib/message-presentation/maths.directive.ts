@@ -12,7 +12,7 @@ import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import { MathsLoader } from './maths-loader';
 import type { MathsOutcome } from './maths-render';
 
-/** Expressions one message may render; the rest show their LaTeX source (spec B). */
+/** Expressions one message may render; the rest show their LaTeX source. */
 export const MAX_MATHS_PER_MESSAGE = 50;
 
 /**
@@ -28,16 +28,14 @@ const outermost = (element: Element): boolean =>
   !element.parentElement?.closest('.mx-maths');
 
 /**
- * Renders the maths of a sanitized message body with KaTeX (spec B). Nothing loads until a
- * rendered body holds `.mx-maths` outside a concealed spoiler (maths a spoiler hides waits for
- * its reveal, so a body whose only maths is hidden costs no download); then
- * {@link MathsLoader} fetches the KaTeX chunk and
- * stylesheet once (the sender's fallback shows until both have loaded), and each
- * expression is rendered from the LaTeX re-read in the sanitized string — parsed once per body,
- * paired with the live elements in document order. At most {@link MAX_MATHS_PER_MESSAGE}
- * render; the rest, and anything KaTeX rejects, show their source as code. Inline maths too
- * wide for the body is marked {@link WIDE_MATHS}, re-checked whenever the body resizes or fonts
- * finish loading.
+ * Renders the maths of a sanitized message body with KaTeX. Nothing loads until a rendered body
+ * holds `.mx-maths` outside a concealed spoiler (maths a spoiler hides waits for its reveal, so a
+ * body whose only maths is hidden costs no download); then {@link MathsLoader} fetches the KaTeX
+ * chunk and stylesheet once (the sender's fallback shows until both load). Each expression is
+ * rendered from the LaTeX re-read in the sanitized string, parsed once per body and paired with
+ * the live elements in document order. At most {@link MAX_MATHS_PER_MESSAGE} render; the rest,
+ * and anything KaTeX rejects, show their source as code. Inline maths too wide for the body is
+ * marked {@link WIDE_MATHS}, re-checked when the body resizes or fonts finish loading.
  */
 @Directive({ selector: '[trnMaths]' })
 export class MathsDirective {
@@ -93,8 +91,8 @@ export class MathsDirective {
   }
 
   /**
-   * Re-check {@link fitInline} when the body's width changes (one observer per body) and when
-   * fonts finish loading: a formula measured in fallback fonts can widen once KaTeX's arrive.
+   * Re-check {@link fitInline} when the body's width changes (one observer per body) and when fonts
+   * finish loading: a formula measured in fallback fonts can widen once KaTeX's arrive.
    */
   private watchWidth(): void {
     if (this.watching) {
@@ -126,9 +124,8 @@ export class MathsDirective {
   }
 
   /**
-   * Mark each outermost inline formula {@link WIDE_MATHS} when one of its runs is wider than
-   * the body's content box. Reads every width before writing any class, so a body lays out
-   * once however many formulas it holds.
+   * Mark each outermost inline formula {@link WIDE_MATHS} when one of its runs is wider than the
+   * body's content box. Reads every width before writing any class, so a body lays out once.
    */
   private fitInline(): void {
     const host = this.host.nativeElement;

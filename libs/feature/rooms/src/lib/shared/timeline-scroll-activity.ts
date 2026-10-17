@@ -18,21 +18,19 @@ const SAMPLE_GAP_MS = 150;
 /**
  * Whether the timeline is mid-scroll, and how fast, shared by the message list with its rows.
  *
- * A scroll slides a new row under a still pointer almost every frame. Each of those rows
- * used to mount its hover toolbar and arm its time tooltip, a style recalculation and
- * layout per frame for rows the reader is only passing (#1288). While the list scrolls, a
- * row the pointer enters defers that work here instead. Only the latest row is kept, since
- * only one row can hold the pointer, and it runs once the scroll settles.
+ * A scroll slides a new row under a still pointer almost every frame, and mounting a hover toolbar
+ * and arming a time tooltip for each costs a style recalculation and layout per frame. While the
+ * list scrolls, a row the pointer enters defers that work here; only the latest row is kept (one row
+ * holds the pointer) and it runs once the scroll settles.
  *
- * The list also reports where the reader has moved it ({@link moved}), so work that only
- * a reader can use (an image) can wait while the list moves faster than anyone reads
- * ({@link speed}). Scroll positions the list writes itself (a pin, a height correction, a
- * jump) are taken out as they are written ({@link shifted}), so they never read as speed,
- * even when the browser reports one together with the reader's own movement.
+ * The list also reports where the reader has moved it ({@link moved}), so work only a reader can
+ * use (an image) can wait while the list moves faster than anyone reads ({@link speed}). Positions
+ * the list writes itself (a pin, a height correction, a jump) are taken out as written
+ * ({@link shifted}), so they never read as speed, even when the browser reports one together with
+ * the reader's own movement.
  *
- * Plain fields, not signals: nothing renders from this state, so scroll events must not
- * schedule change detection through it. Code that must act when the scroll slows down
- * {@link watch}es it instead.
+ * Plain fields, not signals: nothing renders from this state, so scroll events must not schedule
+ * change detection through it. Code that must act when the scroll slows down {@link watch}es it.
  */
 @Injectable()
 export class TimelineScrollActivity {

@@ -1,9 +1,8 @@
 @use '../../styles/mixins' as *;
 
 @layer components {
-  // Narrow layouts keep the panel in the room-list column of the navigation grid. At desktop
-  // width the host floats across both the Space rail and room list, leaving `.userbar`
-  // responsible only for the dock's visual surface.
+  // Narrow layouts keep the panel in the room-list column of the navigation grid. At desktop width the
+  // host floats across both the Space rail and room list, leaving `.userbar` only the dock's visual surface.
   :host {
     display: block;
     grid-column: 2;

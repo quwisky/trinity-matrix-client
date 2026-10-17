@@ -57,17 +57,11 @@ const ESTIMATED_ROW_PX = 52;
 
 /**
  * The scrolling body of the channel sidebar: pending invites, the three room partitions
- * (favourites, other, low priority), the empty state, and the `trn-sidebar-room-row`s
- * those partitions render.
+ * (favourites, other, low priority), the empty state, and the `trn-sidebar-room-row`s they render.
+ * The parent keeps the header, the space menu and the space-children lists.
  *
- * Extracted from `ChannelSidebarComponent`, whose template was 561 lines — past the 250-300
- * refactor threshold in `.claude/rules/code-quality.md`, and the single region that every
- * room-list feature has to edit. The parent keeps the header, the space menu and the
- * space-children lists.
- *
- * The host is `display: contents` on purpose: this element sits between `.sidebar__scroll`
- * and its children, and anything else would insert a box into a flex column that is doing
- * the scrolling.
+ * The host is `display: contents` on purpose: it sits between `.sidebar__scroll` and its children,
+ * and anything else would insert a box into the flex column that is scrolling.
  */
 @Component({
   selector: 'trn-sidebar-room-list',
@@ -88,9 +82,9 @@ export class SidebarRoomListComponent {
   private readonly roomListStyle = inject(ROOM_LIST_STYLE);
   private readonly destroyRef = inject(DestroyRef);
 
-  // Windowing state (#1312). `scrollTop` and `viewportH` come from the scroller; `regionTop`
-  // is where the windowed lines start inside it (below the invites), and `measured` keeps the
-  // real height of each line rendered so far, bumping `heightVersion` when one changes.
+  // Windowing state. `scrollTop` and `viewportH` come from the scroller; `regionTop` is where the
+  // windowed lines start inside it (below the invites); `measured` keeps each rendered line's real
+  // height, bumping `heightVersion` when one changes.
   private readonly scrollTop = signal(0);
   private readonly viewportH = signal(0);
   private readonly regionTop = signal(0);
@@ -149,12 +143,9 @@ export class SidebarRoomListComponent {
   readonly invites = input<readonly PendingInvite[]>([]);
   readonly activeRoomId = input<string | null>(null);
   /**
-   * Who is typing, per room id, excluding the local user.
-   *
-   * An INPUT and not a `RoomLibraryService` read: `typingByRoom` is an instance field, which
-   * ng-mocks does not reflect, so a bare `MockProvider(RoomLibraryService)` would leave it
-   * undefined and throw here on every render — and one helper in
-   * `channel-sidebar.component.spec.ts` backs 85 of them.
+   * Who is typing, per room id, excluding the local user. An INPUT and not a `RoomLibraryService`
+   * read: `typingByRoom` is an instance field, which ng-mocks does not reflect, so a bare
+   * `MockProvider(RoomLibraryService)` would leave it undefined and throw on every render.
    */
   readonly typingByRoom = input<Readonly<Record<string, readonly string[]>>>(
     {},
@@ -165,19 +156,17 @@ export class SidebarRoomListComponent {
   readonly curateSpaceReason = input<string | null>(null);
   readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
   /**
-   * Whether the parent's filter box is narrowing {@link rooms}. Only the empty state cares:
-   * an empty list means "you have no rooms here" normally and "nothing matched" under a
-   * filter, and telling a user with 40 rooms that they have none is worse than saying
-   * nothing.
+   * Whether the parent's filter box is narrowing {@link rooms}. Only the empty state cares: an empty
+   * list means "you have no rooms here" normally and "nothing matched" under a filter, and telling a
+   * user with 40 rooms that they have none is worse than saying nothing.
    */
   readonly filterActive = input(false);
   /** The rooms are still loading (a selected space not listed yet): the empty state says so. */
   readonly loading = input(false);
   /**
-   * The element that scrolls this list. With one, a long list renders only the lines in and
-   * near its viewport, plus spacers, so the sidebar's DOM stays bounded however many rooms
-   * the account has. Without one (or with {@link SMALL_LIST_ITEMS} lines or fewer) every
-   * line renders, as before.
+   * The element that scrolls this list. With one, a long list renders only the lines in and near its
+   * viewport, plus spacers, so the DOM stays bounded however many rooms the account has. Without one
+   * (or with {@link SMALL_LIST_ITEMS} lines or fewer) every line renders.
    */
   readonly scroller = input<HTMLElement | null>(null);
 
@@ -206,20 +195,17 @@ export class SidebarRoomListComponent {
   readonly priorityChange = output<RoomSummary>();
 
   /**
-   * Favourite rooms (`m.favourite`), rendered under a "Favourite" header. The service
-   * already sorts favourite-first, so a stable partition keeps activity order within
-   * each group.
+   * Favourite rooms (`m.favourite`), under a "Favourite" header. The service already sorts
+   * favourite-first, so a stable partition keeps activity order within each group.
    */
   readonly favouriteRooms = computed(() =>
     this.rooms().filter((r) => r.favourite),
   );
 
   /**
-   * Low-priority rooms (`m.lowpriority`), rendered last under their own header.
-   *
-   * Favourite wins when a room carries both tags, matching `compareRoomSummaries` — the
-   * partition and the sort have to agree, or a room would render in one group while the
-   * keyboard walk found it in another.
+   * Low-priority rooms (`m.lowpriority`), rendered last under their own header. Favourite wins when a
+   * room carries both tags, matching `compareRoomSummaries`: the partition and the sort must agree,
+   * or a room would render in one group while the keyboard walk found it in another.
    */
   readonly lowPriorityRooms = computed(() =>
     this.rooms().filter((r) => r.lowPriority && !r.favourite),
@@ -278,9 +264,8 @@ export class SidebarRoomListComponent {
   readonly bottomPad = computed(() => this.windowResult().bottomPadPx);
 
   constructor() {
-    // Follow the scroller: its position and viewport drive the window. A plain listener
-    // rather than a template binding, so a scroll that keeps the same lines rendered costs
-    // one signal write and a cheap recompute, not a change-detection pass per event.
+    // Follow the scroller. A plain listener rather than a template binding, so a scroll that keeps the
+    // same lines rendered costs one signal write and a cheap recompute, not a change-detection pass per event.
     effect((onCleanup) => {
       const el = this.scroller();
       if (!el) return;
@@ -310,7 +295,7 @@ export class SidebarRoomListComponent {
       },
     });
 
-    // Measure the lines that are rendered, and stop measuring ones that left the window.
+    // Measure the rendered lines; stop measuring ones that left the window.
     afterRenderEffect({
       read: () => this.reconcileObserved(this.itemHosts()),
     });
@@ -318,10 +303,7 @@ export class SidebarRoomListComponent {
     this.destroyRef.onDestroy(() => this.itemObserver?.disconnect());
   }
 
-  /**
-   * Where the windowed lines start inside the scroller. Read on resize and when the invites
-   * above them change, not per scroll: the offset does not move when the list scrolls.
-   */
+  /** Where the windowed lines start inside the scroller. Read on resize and when the invites change, not per scroll. */
   private measureRegionTop(): void {
     const el = this.scroller();
     const spacer = this.topSpacer()?.nativeElement;

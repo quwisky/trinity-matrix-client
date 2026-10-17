@@ -1,9 +1,9 @@
 import type { TrnToastService } from '@trinity/components/overlay';
 
 /**
- * Copy `text` and toast the outcome once the write settles — never before. A missing
- * Clipboard API (insecure origin, old WebView) or a refused permission toasts a failure
- * instead of claiming a copy. `what` names the value in sentence case ("Room ID").
+ * Copy `text` and toast the outcome once the write settles, never before. A missing Clipboard API
+ * (insecure origin, old WebView) or a refused permission toasts a failure instead of claiming a
+ * copy. `what` names the value in sentence case ("Room ID").
  */
 export function copyText(
   text: string,

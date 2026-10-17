@@ -36,7 +36,7 @@ interface Context {
 
 const TOKEN_SELECTOR = '[class*="mx-fg-"], [class*="mx-bg-"]';
 
-/** Maths, drawn in the body's own text colour (owner decision 13); marked by the render pass. */
+/** Maths, drawn in the body's own text colour; marked by the render pass. */
 const MATHS = '.mx-maths';
 
 /** Never coloured: code keeps its syntax colours, a mention its pill and maths the text colour. */
@@ -59,10 +59,10 @@ const MAX_RESOLVED = 64;
 
 /**
  * Applies the sender colours `sanitizeMatrixHtml` carried as `mx-fg-*`/`mx-bg-*` tokens, keeping
- * only those that reach 3:1 against what they are drawn on in the current theme (owner decision
- * 2). Reads computed style once per body in `earlyRead`, writes through the CSSOM in `write`,
- * and re-runs for every mounted body when {@link RootThemeObserver} reports a theme change.
- * Bodies without a token cost a substring test.
+ * only those that reach 3:1 against what they are drawn on in the current theme. Reads computed
+ * style once per body in `earlyRead`, writes through the CSSOM in `write`, and re-runs for every
+ * mounted body when {@link RootThemeObserver} reports a theme change. Bodies without a token cost
+ * a substring test.
  */
 @Directive({ selector: '[trnSenderColours]' })
 export class SenderColoursDirective {
@@ -96,10 +96,10 @@ function hasColourTokens(source: string): boolean {
 
 /**
  * The body's message surface, text, link and table-header colours, from one computed style. The
- * surface is `--trinity-message-surface`, set by every container a body is drawn in (the timeline
- * and thread panes, the composer preview, edit history); `--trinity-surface-canvas` is only the
- * fallback. Transient tints (hover, the jump flash, selection) are deliberately ignored. Null when
- * any cannot be resolved, and then no sender colour is applied.
+ * surface is `--trinity-message-surface`, set by every container a body is drawn in (timeline and
+ * thread panes, composer preview, edit history); `--trinity-surface-canvas` is only the fallback.
+ * Transient tints (hover, the jump flash, selection) are ignored. Null when any cannot be
+ * resolved, and then no sender colour is applied.
  */
 export function readMessageTheme(host: HTMLElement): MessageTheme | null {
   const doc = host.ownerDocument;
@@ -119,11 +119,10 @@ export function readMessageTheme(host: HTMLElement): MessageTheme | null {
 
 /**
  * Paint the body's sender colours, parents first, keeping each that stays readable. Resets every
- * token element first, so a theme change re-decides from scratch. A kept background that holds a
- * link must suit the link colour too, one that holds maths the body text colour, and a kept text
- * colour that holds a table header must read on its rail. Linear in the size of the body: each
- * ancestor walk is bounded by the 100-level nesting cap, and the walk up from links, headers and
- * maths stops at a marked ancestor.
+ * token element first, so a theme change re-decides from scratch. A kept background holding a link
+ * must suit the link colour too, one holding maths the body text colour, and a kept text colour
+ * holding a table header must read on its rail. Linear in body size: each ancestor walk is bounded
+ * by the 100-level nesting cap, and the walk up from links, headers and maths stops at a marked ancestor.
  */
 export function applySenderColours(
   host: HTMLElement,
@@ -136,9 +135,8 @@ export function applySenderColours(
   for (const element of host.querySelectorAll<HTMLElement>(TOKEN_SELECTOR)) {
     element.style.removeProperty('color');
     element.style.removeProperty('background-color');
-    // A concealed spoiler is drawn by its stylesheet: an inline colour on the spoiler itself
-    // would beat `color: transparent` and show what it hides. Its children are coloured and
-    // hidden with it.
+    // A concealed spoiler is drawn by its stylesheet: an inline colour on the spoiler itself would
+    // beat `color: transparent` and show what it hides. Its children are coloured and hidden with it.
     if (
       !theme ||
       element.classList.contains('mx-spoiler') ||
@@ -165,9 +163,8 @@ export function applySenderColours(
         (aroundMaths.has(element) &&
           contrastRatio(theme.text, bg) < MIN_SENDER_CONTRAST))
     ) {
-      // A link or maths inside keeps its own colour (the link's, the body text's), which this
-      // background would hide: drop it and decide the text colour as if no background had been
-      // asked for.
+      // A link or maths inside keeps its own colour, which this background would hide: drop it and
+      // decide the text colour as if no background had been asked for.
       kept = decideColours({ fg, bg: null }, context.text, context.background);
     }
     if (kept.fg && fg) element.style.color = toHex(fg);

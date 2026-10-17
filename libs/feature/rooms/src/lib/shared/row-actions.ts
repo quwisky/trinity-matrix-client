@@ -59,11 +59,10 @@ export function buildRowCaps(
   message: MessageView,
   policy: RowCapsPolicy,
 ): MessageRowCaps {
-  // An unsent message is only a local echo: its id is the SDK's `~roomId:txnId`
-  // placeholder, which the homeserver has never seen. Threading off it would make
-  // that placeholder the thread root — every reply then relates to an event the
-  // server can't resolve — and pinning it would write it into `m.room.pinned_events`
-  // room state. Both wait for the remote echo to swap in the real event id.
+  // An unsent message is a local echo with the SDK's `~roomId:txnId` placeholder id, which the
+  // homeserver has never seen. Threading off it would make the placeholder the thread root (replies
+  // relate to an event the server can't resolve), and pinning it would write it into
+  // `m.room.pinned_events`. Both wait for the remote echo to swap in the real event id.
   const unsent = !!message.status;
   return {
     editable: isEditableMessage(message),
@@ -93,9 +92,9 @@ export function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
 }
 
 /**
- * Caps for every row keyed by event id, reusing the `previous` object when nothing about
- * a row's caps changed. A host's message array gets a new identity on every timeline event;
- * without this reuse each event would hand every OnPush row a fresh `caps` input.
+ * Caps for every row keyed by event id, reusing the `previous` object when nothing about a row's
+ * caps changed. A host's message array gets a new identity on every timeline event; without this
+ * reuse each event would hand every OnPush row a fresh `caps` input.
  */
 export function buildRowCapsMap(
   messages: readonly MessageView[],
@@ -131,10 +130,9 @@ type SharedRowAction = Extract<
 >;
 
 /**
- * Run the row actions that behave the same in the room timeline and in a thread.
- *
- * Returns true when it handled `action`, which also narrows the caller's remaining `switch`
- * to the host-specific actions, so the exhaustiveness guard there still catches a new variant.
+ * Run the row actions that behave the same in the room timeline and in a thread. Returns true when
+ * it handled `action`, which narrows the caller's remaining `switch` to the host-specific actions
+ * so its exhaustiveness guard still catches a new variant.
  */
 export function dispatchSharedRowAction(
   action: MessageRowAction,
@@ -198,8 +196,7 @@ export function dispatchSharedRowAction(
         .subscribe({ error: () => undefined });
       return true;
     case 'edit-history':
-      // A permalink followed inside the dialog comes back to the host rather than being
-      // routed there, so it travels the same path as one clicked in the timeline itself.
+      // A permalink followed inside the dialog comes back to the host, so it travels the same path as one clicked in the timeline.
       ctx.editHistory
         .openHistory$(ctx.roomId, row.id)
         .pipe(takeUntilDestroyed(ctx.destroyRef))

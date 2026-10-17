@@ -6,9 +6,9 @@ const THEME_ATTRIBUTES = ['class', 'data-theme'];
 
 /**
  * The current theme as a signal, for render-leaf code that must re-check what it painted.
- * Appearance owns the theme, and feature code cannot import `application/appearance`, so this
- * watches its result instead: one `MutationObserver` on the document root for the app's
- * lifetime, publishing a key that changes only when the mode or the theme does.
+ * Feature code cannot import `application/appearance`, so this watches its result: one
+ * `MutationObserver` on the document root for the app's lifetime, publishing a key that changes
+ * only when the mode or the theme does.
  */
 @Injectable({ providedIn: 'root' })
 export class RootThemeObserver {

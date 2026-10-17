@@ -48,10 +48,10 @@ function sameEvents(
 }
 
 /**
- * Fold each run of 2+ adjacent system lines into one row. A day separator or the first
- * unread event starts a new run, so a group never hides either. The group is keyed by its
- * LAST event: back-pagination prepends to a run's start, so the id (and with it the
- * measured height, scroll anchor and expanded state) survives loading older history.
+ * Fold each run of 2+ adjacent system lines into one row. A day separator or the first unread
+ * event starts a new run, so a group never hides either. Keyed by the run's LAST event:
+ * back-pagination prepends to a run's start, so the id (and its measured height, scroll anchor
+ * and expanded state) survives loading older history.
  */
 export function groupSystemRuns(
   rows: readonly MessageRow[],

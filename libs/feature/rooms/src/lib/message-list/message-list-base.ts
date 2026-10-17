@@ -85,15 +85,10 @@ export interface JumpOptions {
   readonly afterRender?: boolean;
 }
 
-/**
- * How long after a jump a width change still counts as "the same jump".
- *
- * Long enough to cover a panel closing and a pane being dragged, short enough that resizing
- * the window later is not answered by scrolling somewhere the reader left behind.
- */
+/** How long after a jump a width change still counts as "the same jump" (panel close, pane drag). */
 const JUMP_REAPPLY_MS = 3_000;
 
-/** Fallback caps for a row not present in the memoized map (defensive; unreached). */
+/** Fallback caps for a row missing from the memoized map (defensive). */
 const DEFAULT_ROW_CAPS: MessageRowCaps = {
   editable: false,
   deletable: false,
@@ -124,11 +119,9 @@ const LOAD_ERROR_COPY: Readonly<
 };
 
 /**
- * Shared domain logic for the room timeline, independent of scroll strategy: the
- * inputs/outputs, the edit/reply state + action handlers, and the Discord-style row
- * grouping. {@link MessageListComponent} extends this and adds the scroll container, windowing,
- * anchoring and template. Kept an abstract `@Directive()` so this domain half stays
- * testable without the scroll half (`message-list-base.spec.ts`).
+ * Scroll-strategy-independent domain logic for the room timeline: inputs/outputs, edit/reply
+ * state and the Discord-style row grouping. Abstract `@Directive()` so it is testable without
+ * the scroll half in {@link MessageListComponent}.
  */
 @Directive()
 export abstract class MessageListBase {
@@ -143,25 +136,16 @@ export abstract class MessageListBase {
   readonly pinnedIds = input<readonly string[]>([]);
   readonly loadingOlder = input(false);
   /**
-   * Gates the appearance of the "Loading older messages…" strip, and nothing else.
+   * Gates only the appearance of the "Loading older messages…" strip.
    *
-   * `minimumMs: 0` is load-bearing, not a tuning choice — but not on the way OUT, which is
-   * what it looks like. The AND in {@link showLoadingOlder} is what makes the strip vanish
-   * in the same change-detection pass the prepend lands in, and it does that whatever this
-   * is set to. What a minimum hold changes is the NEXT backfill: scrolling back is
-   * repetitive, one slow page is routinely followed by several fast ones, and a
-   * `delayedBusy` still serving out a hold is still "visible" — so the load after it skips
-   * the delay entirely and flashes the strip for a page nobody noticed was fetched, which is
-   * the exact flicker the delay exists to prevent. Zero ends the hold with the load, so
-   * every backfill is judged on its own duration.
+   * `minimumMs: 0` is load-bearing: a minimum hold would leave `delayedBusy` "visible" after a
+   * slow page, so the next fast backfill would skip the delay and flash the strip. Zero ends the
+   * hold with the load, so every backfill is judged on its own duration.
    *
-   * Why the removal has to be synchronous at all: the strip is IN FLOW above the rows, and
-   * `MessageListComponent.rowsRegionTop()` folds its height into the scroll restore
-   * that keeps the reader's place across a prepend. `TimelineService.loadOlder` prepends the
-   * rows and clears `loadingOlder` in one synchronous block, so a strip held past that point
-   * has the restore measure 36px that is about to disappear — and `.scroll` sets
-   * `overflow-anchor: none`, so nothing compensates when it does: the content jumps up by
-   * the strip's height, in the exact spot being read.
+   * The strip must vanish synchronously with the prepend (the AND in {@link showLoadingOlder}
+   * does that): it is in flow above the rows and `rowsRegionTop()` folds its height into the
+   * scroll restore, and `.scroll` sets `overflow-anchor: none`, so a strip held past the prepend
+   * would make the content jump up by its height.
    */
   private readonly loadingOlderSettled = delayedBusy(
     this.loadingOlder,
@@ -170,23 +154,17 @@ export abstract class MessageListBase {
   );
 
   /**
-   * `loadingOlder`, shaped for the eye: nothing at all for a fast backfill.
+   * `loadingOlder`, delayed so a fast backfill shows no strip at all.
    *
-   * Backfilling a page of history is usually quicker than a person can register, so binding
-   * the raw input flashed the strip on most scrolls back — motion at the top of the timeline,
-   * in the exact spot the reader is looking, for a load they never noticed was happening.
-   *
-   * The raw input is ANDed in deliberately: it makes the strip's removal synchronous with the
-   * prepend, exactly as it was before any of this, while the delayed signal decides only
-   * whether it was ever worth showing. The residual is a load landing just past the delay,
-   * which shows the strip briefly — much rarer than the flicker it replaced, and the only
-   * alternative moves the reader's content.
+   * The raw input is ANDed in so removal stays synchronous with the prepend; the delayed signal
+   * only decides whether the strip was ever worth showing. A load landing just past the delay
+   * shows it briefly, which is rarer than the flicker and the only alternative moves content.
    */
   protected readonly showLoadingOlder = computed(
     () => this.loadingOlder() && this.loadingOlderSettled(),
   );
 
-  /** The Conversation's loading interval (#545). Not an empty list: an empty Room is `empty`. */
+  /** The conversation's loading interval. Not an empty list: an empty room is `empty`. */
   readonly loadState = input<TimelineLoadState>(READY_LOAD_STATE);
   readonly retryLoad = output<void>();
 
@@ -213,16 +191,15 @@ export abstract class MessageListBase {
     return state.kind === 'error' ? LOAD_ERROR_COPY[state.reason] : null;
   });
   readonly canLoadOlder = input(false);
-  /** Oldest RAW event in the loaded window — the backfill progress marker (see
-   * TimelineService.oldestEventId). Not the oldest rendered row: rows can be filtered out. */
+  /** Oldest RAW event in the loaded window (the backfill marker), not the oldest rendered row. */
   readonly oldestEventId = input<string | null>(null);
   readonly roomName = input('');
   /** False while the Room is not held by the client: there is nothing to send to yet. */
   readonly composerEnabled = input(true);
   /**
-   * Active room id. The list instance is reused across room switches, so a change
-   * here resets the per-room UI + scroll state (see {@link resetOnRoomChange}) —
-   * otherwise a pending edit/reply target and the scroll anchors leak between rooms.
+   * Active room id. The list instance is reused across room switches, so a change resets
+   * per-room UI and scroll state ({@link resetOnRoomChange}); otherwise edit/reply targets and
+   * scroll anchors leak between rooms.
    */
   readonly roomId = input<string | null>(null);
   readonly accountId = input<string | null>(null);
@@ -230,24 +207,16 @@ export abstract class MessageListBase {
   readonly members = input<readonly MentionMember[]>([]);
   /** Display names of members currently typing in the room (excludes the local user). */
   readonly typingNames = input<string[]>([]);
-  /**
-   * Event id of the first unread message — a "New messages" divider renders before it,
-   * and a jump-to-unread pill appears while it's off-screen. Null when nothing is unread.
-   */
+  /** Event id of the first unread message: the "New messages" divider and jump pill key off it. */
   readonly firstUnreadId = input<string | null>(null);
   /** Which file of how many is uploading and how far along, or null when idle. */
   readonly uploadProgress = input<BatchProgress | null>(null);
   readonly stickerPacks = input<readonly ImagePack[]>([]);
-  /**
-   * Event id to scroll into view, set by an external jump (e.g. in-room search).
-   * Waits briefly for the event to load; a no-op once that limit passes.
-   */
+  /** Event id to scroll into view (external jump, e.g. in-room search); waits briefly for it to load. */
   readonly jumpToId = input<string | null>(null);
   /**
-   * Bumped by the host on every jump request. Paired with {@link jumpToId} so that
-   * re-requesting the SAME event id (e.g. clicking the same pinned message twice)
-   * still changes an input and re-fires the jump effect — an unchanged `jumpToId`
-   * alone would be an Object.is no-op and never re-run.
+   * Bumped on every jump request so re-requesting the SAME event id still changes an input;
+   * an unchanged `jumpToId` alone would be an Object.is no-op.
    */
   readonly jumpToNonce = input(0);
   readonly loadOlder = output<void>();
@@ -258,9 +227,8 @@ export abstract class MessageListBase {
   readonly send = output<{ body: string; mentions: Mention[] }>();
   readonly sendSticker = output<ImagePackImage>();
   /**
-   * Send a batch of staged attachments. `onOutcomes` reports back per item, so the composer
-   * can drop the delivered ones and keep the rest staged for a retry — and it MUST be called
-   * by whoever performs the send, because it also releases the one-at-a-time send latch.
+   * Send a batch of staged attachments. The sender MUST call `onOutcomes`: it lets the composer
+   * keep failed items staged and also releases the one-at-a-time send latch.
    */
   readonly sendMedia = output<{
     items: readonly BatchItem[];
@@ -304,14 +272,10 @@ export abstract class MessageListBase {
   /** Live-region text announcing a newly-arrived incoming message to screen readers. */
   readonly announcement = signal('');
 
-  /** Whether the jump-to-unread pill is shown — true while unread exist and the
-   * "New messages" divider is scrolled out of the viewport. */
+  /** True while unread exist and the "New messages" divider is outside the viewport. */
   readonly showJumpToUnread = signal(false);
 
-  /**
-   * Files dragged onto the conversation. Handled here rather than in each list because the
-   * drop directive is a host directive on both, and staging is identical for both.
-   */
+  /** Files dragged onto the conversation; the drop directive is a host directive on both lists. */
   protected readonly fileDrop = inject(TrnFileDropDirective);
   protected readonly alert = inject(TrnAlertService);
   private readonly dayBoundary = inject(DayBoundaryService);
@@ -326,63 +290,48 @@ export abstract class MessageListBase {
   private readonly haptics = inject(HapticsService);
 
   /**
-   * Which way a row is dragged to act on it, resolved by the page and passed straight down.
-   *
-   * The page owns it because the answer depends on the drawer, which neither the list nor
-   * the row can see. `'off'` means the gesture does not arm at all — no listeners doing
-   * anything, no row movement — rather than a drag that moves and is then refused.
+   * Which way a row is dragged to act on it, resolved by the page (it depends on the drawer,
+   * which neither list nor row can see). `'off'` means the gesture does not arm at all.
    */
   readonly swipeDirection = input<SwipeDirection>('off');
   protected readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
 
-  /**
-   * The composer rendered by each concrete list, so a quote can be put into it directly —
-   * and so a file dropped on the conversation reaches the same staging the picker fills.
-   */
+  /** The composer rendered by each concrete list: quotes and dropped files go straight into it. */
   private readonly composer = viewChild(MessageComposerComponent);
 
   /**
-   * Stage files dropped on the conversation.
-   *
-   * Routed through the composer rather than the attachments service directly: that service is
-   * provided BY the composer, so it does not exist at this level, and going through the
-   * component keeps one definition of what staging means (and of when it is refused).
+   * Stage files dropped on the conversation. Goes through the composer because the attachments
+   * service is provided BY the composer, so it does not exist at this level.
    */
   protected onFilesDropped(files: readonly File[]): void {
     this.composer()?.stageFiles(files);
   }
 
-  // Grouping rows, cached per event id so an unchanged message (same view object, same
-  // header flag AND same day-separator label) keeps its row identity — an OnPush row is
-  // then re-rendered only when its own message, grouping or separator changes, not on
-  // every live event in the room. Updated in place: a page of history then allocates for
-  // its own rows, not for a new entry per row already loaded.
+  // Cached per event id so an unchanged message (same view, header flag and day-separator
+  // label) keeps its row identity and the OnPush row re-renders only when its own data changes.
+  // Updated in place so a page of history allocates only for its own rows.
   private readonly rowCache = new Map<string, RowCacheEntry>();
   private rowPass = 0;
 
   /**
-   * Group consecutive messages from the same sender (Discord-style), and mark where the
-   * local calendar day changes.
+   * Group consecutive messages from the same sender (Discord-style) and mark local day changes.
    *
-   * Both are derived over the FULL list. The windowed list renders a `slice()` of this, so
-   * anything derived from "the previous *rendered* row" would emit a spurious separator at
-   * the top of every window and lose the one where a window opens mid-day.
+   * Both derive over the FULL list: the windowed list renders a `slice()`, so anything derived
+   * from the previous *rendered* row would emit a spurious separator at every window top and
+   * lose the one where a window opens mid-day.
    */
   private readonly eventRows = computed<MessageRow[]>(() => {
     const GAP_MS = 5 * 60 * 1000;
     const msgs = this.messages();
     const todayStart = this.dayBoundary.todayStart();
-    // Read unconditionally rather than inside the day-change branch below: a window that
-    // happens to span a single day must still re-derive when the format preference moves, or
-    // the first separator to appear after a backfill would carry the old one.
+    // Read unconditionally: a single-day window must still re-derive when the format preference
+    // moves, or the first separator after a backfill would carry the old one.
     const dateFormat = this.dateFormat.prefs();
     const pass = ++this.rowPass;
     let visited = 0;
-    // The calendar day the rows so far belong to, or null before the first row with a
-    // usable timestamp. A row whose timestamp is missing or implausible (a malformed event
-    // degraded to `timestamp: 0` by Message Presentation) neither opens nor closes a day:
-    // it inherits this, so it mints no 1970 separator AND the next real row is still
-    // compared against the last real day rather than against 1970.
+    // The calendar day of the rows so far, or null before the first usable timestamp. A missing
+    // or implausible timestamp (degraded to `timestamp: 0`) neither opens nor closes a day, so it
+    // mints no 1970 separator and the next real row is compared against the last real day.
     let currentDayStart: number | null = null;
     const result = msgs.map((m, i) => {
       const prev = msgs[i - 1];
@@ -390,10 +339,8 @@ export abstract class MessageListBase {
       let daySeparator: string | null = null;
       if (hasUsableTimestamp(m.timestamp)) {
         const dayStart = startOfLocalDay(m.timestamp);
-        // Nothing above the FIRST row: the loaded window is an arbitrary slice of the
-        // room's history, so "the day changed here" only means something relative to a row
-        // we are actually showing. A separator at the top would also jump to a different
-        // row on every page of backfilled history.
+        // No separator above the FIRST row: the window is an arbitrary slice of history, and a
+        // separator at the top would jump to a different row on every backfilled page.
         if (currentDayStart !== null && dayStart !== currentDayStart) {
           daySeparator = dayLabel(dayStart, todayStart, dateFormat);
         }
@@ -402,18 +349,13 @@ export abstract class MessageListBase {
 
       const showHeader =
         !prev ||
-        // A system (state/membership) line breaks the group, so the next message
-        // re-shows its author even when it's from the same sender.
+        // A system line breaks the group so the next message re-shows its author.
         prev.kind === 'event' ||
         prev.senderId !== m.senderId ||
         m.timestamp - prev.timestamp > GAP_MS ||
-        // Same reason a system line breaks the group: two messages either side of midnight
-        // can be seconds apart, and a headerless continuation directly under a day
-        // separator reads as if the message lost its author.
+        // Same for midnight: a headerless continuation under a day separator reads as authorless.
         daySeparator !== null ||
-        // A reply always shows its own header: the quoted preview breaks the visual
-        // flow, so a headerless continuation would look like the reply lost its
-        // author (name + avatar).
+        // A reply always shows its header: the quoted preview breaks the flow.
         !!m.replyTo;
 
       let entry = this.rowCache.get(m.id);
@@ -433,7 +375,7 @@ export abstract class MessageListBase {
       }
       return entry.row;
     });
-    // Forget the rows of messages that have left (trimmed, redacted away, re-keyed).
+    // Forget rows of messages that have left (trimmed, redacted, re-keyed).
     if (visited !== this.rowCache.size) {
       for (const [id, entry] of this.rowCache) {
         if (entry.pass !== pass) this.rowCache.delete(id);
@@ -442,8 +384,7 @@ export abstract class MessageListBase {
     return result;
   });
 
-  // Group rows from the previous pass, keyed by group id, so an unchanged run keeps its
-  // row identity (see `groupSystemRuns`).
+  // Group rows from the previous pass, so an unchanged run keeps its identity (`groupSystemRuns`).
   private groupCache: ReadonlyMap<string, MessageRow> = new Map();
 
   /** Event rows with each run of adjacent system lines folded into one summary row. */
@@ -477,13 +418,9 @@ export abstract class MessageListBase {
     });
   }
 
-  /**
-   * The row to scroll to for an event: the event itself, or the group that holds it,
-   * expanded so the line is on screen.
-   */
+  /** The row to scroll to for an event: itself, or its group expanded so the line is on screen. */
   revealEvent(eventId: string): string {
-    // Untracked: callers are jump effects that must fire on a new request only, not on
-    // every timeline change or expand/collapse.
+    // Untracked: jump effects must fire on a new request only, not on every timeline change.
     return untracked(() => {
       const groupId = this.runOf().get(eventId);
       if (!groupId) return eventId;
@@ -523,45 +460,36 @@ export abstract class MessageListBase {
   });
 
   /**
-   * Declared ABOVE the constructor on purpose. The constructor registers an `onDestroy` on
-   * it, which works wherever the field sits — every initializer runs before the constructor
-   * body — but TS2729 only guards field initializers, not constructor bodies, so the
-   * compiler would not catch it if this drifted below a subclass. Keeping the two adjacent
-   * removes the question.
+   * Declared ABOVE the constructor on purpose: the constructor registers an `onDestroy` on it,
+   * and TS2729 would not catch this drifting below a subclass.
    */
   private readonly listDestroyRef = inject(DestroyRef);
   protected readonly injector = inject(Injector);
 
-  /** A requested jump whose row had not loaded yet; applied when it arrives, within the limit. */
+  /** A requested jump whose row had not loaded yet; applied on arrival, within the limit. */
   private awaitedJumpId: string | null = null;
   private awaitedJumpAt = 0;
 
   constructor() {
     // A host directive's outputs are not template-bound, so the subscription IS the wiring.
-    // No teardown: an `OutputEmitterRef` drops its subscribers when its own directive is
-    // destroyed, and a host directive is destroyed with the component it is attached to.
+    // No teardown: the emitter drops subscribers when its host directive is destroyed with the component.
     this.fileDrop.filesDropped.subscribe((files) => this.onFilesDropped(files));
 
-    // The sheet is a CDK overlay, which lives OUTSIDE the router outlet and so outlives
-    // this list. `resetOnRoomChange` cannot be the only place it is shut: a route to
-    // settings, a logout redirect and a deep link all destroy the timeline WITHOUT the
-    // room id changing, leaving a modal standing whose every row dispatches into a
-    // destroyed component. Scoped to `this`, so it never shuts the thread panel's sheet.
+    // The sheet is a CDK overlay outside the router outlet, so it outlives this list.
+    // `resetOnRoomChange` is not enough: settings, logout and deep links destroy the timeline
+    // WITHOUT a room id change, leaving a modal whose rows dispatch into a destroyed component.
+    // Scoped to `this`, so the thread panel's sheet stays.
     this.listDestroyRef.onDestroy(() => this.messageSheet.close(this));
 
-    // Reset per-room state when the active room changes. Created here — before any
-    // scroll effect a subclass adds in its own constructor — so it runs FIRST
-    // (effects fire in creation order), letting the scroll effect treat the new room
-    // as a fresh load. Subclasses override resetOnRoomChange() to also clear their
-    // scroll/windowing state.
+    // Reset per-room state on room change. Created before any subclass scroll effect so it runs
+    // FIRST (effects fire in creation order) and the scroll effect sees a fresh load.
     effect(() => {
       this.roomId();
       untracked(() => this.resetOnRoomChange());
     });
 
-    // A jump requested before its row exists (a linked message in a room that is still
-    // syncing) is a no-op in `jumpTo`; remember it and apply it once the row loads. A newer
-    // request, or none, replaces it, so a superseded jump is never applied late.
+    // A jump requested before its row exists (a linked message in a still-syncing room) is
+    // remembered and applied once the row loads; a newer request replaces it.
     effect(() => {
       this.jumpToNonce();
       const id = this.jumpToId();
@@ -577,17 +505,14 @@ export abstract class MessageListBase {
       const id = this.awaitedJumpId;
       if (!id || !loaded.some((m) => m.id === id)) return;
       this.awaitedJumpId = null;
-      // Bounded like a width re-apply: a row that loads minutes later (the reader scrolled up
-      // and paged it in) must not yank them back.
+      // Bounded like a width re-apply: a row paged in minutes later must not yank the reader back.
       if (Date.now() - this.awaitedJumpAt > JUMP_REAPPLY_MS) return;
       afterNextRender(() => this.jumpTo(id), { injector: this.injector });
     });
 
-    // Re-evaluate the jump-to-unread pill when the unread anchor or the message set
-    // changes (e.g. the divider row (dis)appears). Deferred a frame so the row/divider
-    // is laid out before we measure it. Cancelled on re-run: a burst of sync ticks
-    // between two frames would otherwise queue one forced-layout measurement each, on
-    // the hottest surface in the app, all computing the same answer.
+    // Re-evaluate the jump-to-unread pill when the unread anchor or message set changes. Deferred
+    // a frame so the divider is laid out; cancelled on re-run so a burst of sync ticks between
+    // frames does not queue one forced-layout measurement each on the hottest surface.
     effect((onCleanup) => {
       this.firstUnreadId();
       this.messages();
@@ -597,10 +522,8 @@ export abstract class MessageListBase {
   }
 
   /**
-   * Show the jump-to-unread pill while there are unread messages whose "New messages"
-   * divider is not currently within the viewport (so on open — pinned to the bottom with
-   * unread above — it shows; scrolling the divider into view hides it). Called from each
-   * list's scroll handler and when the unread anchor changes.
+   * Show the jump-to-unread pill while there are unread messages and the "New messages" divider
+   * is outside the viewport. Called from each list's scroll handler and on unread-anchor change.
    */
   protected updateJumpToUnread(): void {
     const id = this.firstUnreadId();
@@ -613,8 +536,7 @@ export abstract class MessageListBase {
       '[data-testid="new-messages-divider"]',
     );
     if (!divider) {
-      // Not rendered — the (windowed) viewport doesn't include the divider, so it's
-      // off-screen: offer the jump.
+      // Not rendered (outside the windowed viewport), so off-screen: offer the jump.
       this.showJumpToUnread.set(true);
       return;
     }
@@ -633,11 +555,10 @@ export abstract class MessageListBase {
   }
 
   /**
-   * Jump to a target someone asked for (a reply preview, permalink, search hit, pinned message
-   * or notification), starting it expanded (spec C). Only these jumps expand: positioning at
-   * the first unread message ({@link jumpToUnread}) does not. When the expansion grows the
-   * row, a row already on screen is scrolled to after the render that shows it whole, so the
-   * list scrolls once, to the full row.
+   * Jump to a target someone asked for (reply preview, permalink, search hit, pinned message,
+   * notification), starting it expanded. Positioning at the first unread ({@link jumpToUnread})
+   * does not expand. If expansion grows an on-screen row, scroll after the render that shows it
+   * whole, so the list scrolls once.
    */
   protected jumpToRequested(id: string): void {
     this.jumpTo(id, { afterRender: this.expandJumpTarget(id) });
@@ -653,8 +574,7 @@ export abstract class MessageListBase {
 
   /** Reset per-room state on a room switch. Subclasses override to add scroll state. */
   protected resetOnRoomChange(): void {
-    // A sheet is about ONE message in ONE room; leaving it standing over a different
-    // room's timeline would offer actions against an event that is no longer on screen.
+    // A sheet is about ONE message in ONE room; it must not stand over another room's timeline.
     this.messageSheet.close(this);
     this.cancelPendingJump();
     this.announcement.set('');
@@ -664,13 +584,11 @@ export abstract class MessageListBase {
   }
 
   /**
-   * Briefly highlight a just-jumped-to message row (after `jumpTo` scrolls it into
-   * view) so the eye lands on it. Resets any in-flight flash with a forced reflow so a
-   * repeat jump to the same row re-triggers the animation, and self-clears on
-   * `animationend`.
+   * Briefly highlight a just-jumped-to row. Forces a reflow so a repeat jump to the same row
+   * restarts the animation; self-clears on `animationend`.
    */
   protected flash(el: Element | null | undefined): void {
-    // A re-aim lands on the row the reader already saw flash; flashing again is flicker.
+    // A re-aim lands on a row the reader already saw flash; flashing again is flicker.
     if (!el || this.reaiming) {
       return;
     }
@@ -705,10 +623,8 @@ export abstract class MessageListBase {
   /**
    * Pull a message's text into the composer as a `>` block.
    *
-   * Leaves `replyingToId` alone: a quote is composer content, not a send target, so
-   * quoting while replying keeps the reply — the two compose. Editing IS cancelled,
-   * because the composer holds the edited message's body there and inserting a quote into
-   * it would rewrite the original rather than answer it.
+   * Leaves `replyingToId` alone (a quote is content, not a send target). Editing IS cancelled:
+   * the composer holds the edited body there, so a quote would rewrite the original.
    */
   startQuote(row: MessageRow): void {
     this.cancelEdit();
@@ -729,20 +645,11 @@ export abstract class MessageListBase {
   /**
    * The row a jump most recently aimed at, and the scroller width it was aimed at.
    *
-   * A jump ends in `scrollIntoView`, which is a measurement: it resolves to a scrollTop that
-   * is only correct for the layout at that instant. Change the scroller's WIDTH afterwards
-   * and every row re-wraps to a new height, so the position the jump computed now belongs to
-   * a different message — the reader is left somewhere near, or nowhere near, with only the
-   * flash to say the jump happened.
-   *
-   * That is not hypothetical: it is what closing a right-hand panel does, since the panel and
-   * the timeline share the row, and it is what a pane drag will do continuously. Rather than
-   * time the jump against the reflow — which cannot be done reliably, because the browser
-   * lays out and fires `ResizeObserver` on its own schedule — the jump is remembered and
-   * RE-APPLIED when the width actually changes.
-   *
-   * Bounded by {@link JUMP_REAPPLY_MS} so a width change minutes later does not yank someone
-   * back to a message they have long scrolled past.
+   * `scrollIntoView` resolves to a scrollTop valid only for the layout at that instant. A width
+   * change afterwards (closing a right-hand panel, a pane drag) re-wraps every row, so the jump
+   * now lands on a different message. The browser's layout and `ResizeObserver` timing cannot be
+   * relied on, so the jump is remembered and RE-APPLIED when the width actually changes, bounded
+   * by {@link JUMP_REAPPLY_MS} so a late width change does not yank the reader back.
    */
   private pendingJumpId: string | null = null;
   private pendingJumpAt = 0;
@@ -752,30 +659,22 @@ export abstract class MessageListBase {
   private widthRo?: ResizeObserver;
   private stopHeightWatcher?: () => void;
 
-  /**
-   * Remember a jump so a width change can re-apply it. Called BY `jumpTo`,
-   * not instead of it — the base cannot know how each strategy scrolls.
-   */
+  /** Remember a jump so a width change can re-apply it. Called BY `jumpTo`, not instead of it. */
   protected notePendingJump(messageId: string): void {
     this.pendingJumpId = messageId;
-    // A re-aim keeps the deadline of the jump the reader asked for: re-aiming must never
-    // renew its own window, or measurements (or a drag) could hold the reader on the row.
+    // A re-aim keeps the original deadline: renewing it would let measurements or a drag hold the reader.
     if (!this.reaiming) this.pendingJumpAt = Date.now();
   }
 
-  /**
-   * Stop re-aiming, and drop a jump still waiting for its row: the reader moved, or the
-   * jump was superseded or withdrawn.
-   */
+  /** Stop re-aiming and drop a jump still waiting for its row (reader moved, or superseded). */
   protected cancelPendingJump(): void {
     this.pendingJumpId = null;
     this.awaitedJumpId = null;
   }
 
   /**
-   * Re-aim a recent jump at the layout that now exists (a width change, or the first real
-   * row measurements). One path and one window: {@link JUMP_REAPPLY_MS} from the original
-   * jump, never extended by a re-aim.
+   * Re-aim a recent jump at the layout that now exists (width change, or first real row
+   * measurements), within {@link JUMP_REAPPLY_MS} of the original jump and never extended.
    */
   protected reapplyRecentJump(): void {
     const id = this.pendingJumpId;
@@ -807,11 +706,9 @@ export abstract class MessageListBase {
 
   /**
    * Watch the scroller's width and re-aim a recent jump when it changes (windowed mode also
-   * re-aims after row measurements). Also starts the reader-scroll watcher that ends re-aiming.
+   * re-aims after row measurements), and start the reader-scroll watcher that ends re-aiming.
    *
-   * Width only: a height change is the keyboard opening or the composer growing, and
-   * re-jumping there would fight the reader rather than help them. Started once the
-   * component has a scroll element, and torn down with the component.
+   * Width only: a height change is the keyboard or composer, and re-jumping would fight the reader.
    */
   protected watchScrollerWidth(): void {
     const el = this.scrollEl()?.nativeElement;
@@ -834,11 +731,9 @@ export abstract class MessageListBase {
 
   /**
    * Keep a bottom-pinned conversation pinned when the composer, formatting bar or software
-   * keyboard changes the scroller's viewport height. A reader who has scrolled up needs no
-   * compensation: the scroller's top edge and scrollTop remain unchanged, so their anchor
-   * stays put. This exact pin is intentionally separate from the 120px
-   * near-bottom state for incoming messages. The optional callback lets windowed mode
-   * keep its window-height signal in step with the same observation.
+   * keyboard changes the viewport height. A reader scrolled up needs no compensation. This exact
+   * pin is separate from the 120px near-bottom state for incoming messages; the optional callback
+   * keeps windowed mode's window-height signal in step.
    */
   protected watchScrollerHeight(
     resized?: (height: number, scrollTop: number) => void,
@@ -853,17 +748,15 @@ export abstract class MessageListBase {
   }
 
   /**
-   * Scroll a message into view (each scroll strategy implements it differently). With
-   * `afterRender`, a row already in the DOM is scrolled to after the next render, because the
-   * caller has just changed its height (an expanded jump target).
+   * Scroll a message into view (per strategy). With `afterRender`, a row already in the DOM is
+   * scrolled to after the next render, because the caller has just changed its height.
    */
   abstract jumpTo(messageId: string, options?: JumpOptions): void;
 
   /**
-   * Per-row caps keyed by event id, memoized so the reference is stable across
-   * change-detection ticks that don't touch pinning/permissions/the message set.
-   * `rowCaps()` is called from an `@for` on every CD; returning a fresh object each
-   * time would defeat the OnPush `MessageRowComponent` and re-render every row.
+   * Per-row caps keyed by event id, memoized so the reference is stable across change-detection
+   * ticks: `rowCaps()` runs in an `@for` on every CD, and a fresh object would defeat the OnPush
+   * `MessageRowComponent`.
    */
   private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
     this.prevRowCaps = buildRowCapsMap(
@@ -887,11 +780,7 @@ export abstract class MessageListBase {
     return this.rowCapsById().get(row.id) ?? DEFAULT_ROW_CAPS;
   }
 
-  /**
-   * The fix Trust offers for an unreadable message, handed to every row; each row decides
-   * whether its reason can use it. Resolved only while some row can, so a timeline with no
-   * fixable message does not depend on Trust.
-   */
+  /** The fix Trust offers for an unreadable message; resolved only while some row can use it. */
   readonly undecryptableFix = computed<UndecryptableFix | null>(() =>
     this.messages().some((message) => message.undecryptable?.deviceFixable)
       ? this.injector.get(UndecryptableFixService).fix()
@@ -899,11 +788,8 @@ export abstract class MessageListBase {
   );
 
   /**
-   * Dispatch the semantic action the row captured when its sideways drag committed.
-   *
-   * The host owns dispatch because `row` is its stable snapshot. It deliberately does not
-   * re-read `rowCaps`: the row may have left the virtual window or caps map by the time this
-   * handler runs, while `action` remains the affordance the reader actually committed.
+   * Dispatch the semantic action the row captured when its drag committed. Does not re-read
+   * `rowCaps`: the row may have left the window or caps map, while `action` is what the reader committed.
    */
   onRowSwipe(row: MessageRow, action: MessageSwipeAction): void {
     this.haptics.gestureCommitted();
@@ -915,12 +801,10 @@ export abstract class MessageListBase {
   }
 
   /**
-   * A long press on a row, on a phone or tablet: offer its actions as a bottom sheet.
+   * A long press on a row (phone or tablet): offer its actions as a bottom sheet.
    *
-   * The sheet is built and held by {@link MessageActionSheetService}, not here, because
-   * `trn-message-row` has a third consumer that does not extend this class — see that
-   * service. What this method contributes is its caps and a dispatch closing over the row,
-   * routed through `onRowAction` — the same path the hover toolbar takes.
+   * The sheet is held by {@link MessageActionSheetService} because `trn-message-row` has a third
+   * consumer that does not extend this class. Dispatch goes through `onRowAction`, like the hover toolbar.
    */
   onRowLongPress(row: MessageRow, context?: MessageLongPressContext): void {
     this.messageSheet.open(
@@ -950,8 +834,7 @@ export abstract class MessageListBase {
         },
         react: (id, key) => this.react.emit({ id, key }),
         quote: (r) => this.startQuote(r),
-        // No anchor: the dialog that held the link has already closed, so a user card from
-        // here is centred rather than pinned to an element that no longer exists.
+        // No anchor: the dialog that held the link has closed, so the user card is centred.
         onHistoryLink: (target) => this.matrixLink.emit({ target }),
       })
     ) {
@@ -980,8 +863,7 @@ export abstract class MessageListBase {
         this.openThread.emit(row.id);
         break;
       default: {
-        // Exhaustiveness guard: adding a MessageRowAction variant without a case
-        // here becomes a compile error rather than a silently-dropped action.
+        // Exhaustiveness guard: a new MessageRowAction variant without a case is a compile error.
         const unhandled: never = action;
         void unhandled;
         break;
@@ -996,9 +878,8 @@ export abstract class MessageListBase {
   }
 
   /**
-   * A batch caption, posted plainly. Deliberately NOT routed through {@link onSubmit}: it was
-   * written before an upload that may have taken minutes, so the edit or reply the user has
-   * started since is not what it belongs to.
+   * A batch caption, posted plainly. NOT routed through {@link onSubmit}: it was written before an
+   * upload that may have taken minutes, so a since-started edit or reply is not what it belongs to.
    */
   protected onBatchCaption({ text, mentions }: ComposerSubmit): void {
     this.send.emit({ body: text, mentions });

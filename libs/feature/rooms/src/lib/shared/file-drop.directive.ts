@@ -7,20 +7,15 @@ import {
 } from '@angular/core';
 
 /**
- * Turn the host into a drop target for files dragged in from the desktop.
+ * Turn the host into a drop target for files dragged in from the desktop. A host directive because
+ * both message lists are template fragments with no wrapper element, and the target must be the
+ * whole conversation.
  *
- * A host directive rather than markup: both message lists are template fragments with no
- * wrapper element of their own, and the target has to be the whole conversation — dropping a
- * screenshot "on the room" is the gesture, not dropping it on a particular strip of it.
+ * Two details are load-bearing:
  *
- * Two details are load-bearing and neither is obvious:
- *
- * - **`dragover` must `preventDefault()`** or the browser never fires `drop` at all. The
- *   handler looks like a no-op and is the only reason any of this works.
- * - **`dragenter`/`dragleave` are counted, not toggled.** Moving the pointer onto a child
- *   fires `dragleave` on the parent *before* `dragenter` on the child, so a boolean flag
- *   flickers off and on for every element crossed. The depth counter is what makes the
- *   overlay hold steady across a timeline full of message rows.
+ * - **`dragover` must `preventDefault()`** or the browser never fires `drop`.
+ * - **`dragenter`/`dragleave` are counted, not toggled.** Moving onto a child fires `dragleave` on
+ *   the parent *before* `dragenter` on the child, so a boolean flickers for every element crossed.
  */
 @Directive({
   selector: '[trnFileDrop]',
@@ -51,7 +46,7 @@ export class TrnFileDropDirective {
     if (!this.carriesFiles(event)) {
       return;
     }
-    // Without this the drop event never arrives — the default action is "reject the drag".
+    // Without this the drop event never arrives: the default action is "reject the drag".
     event.preventDefault();
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = 'copy';
@@ -59,8 +54,8 @@ export class TrnFileDropDirective {
   }
 
   protected onDragLeave(): void {
-    // Floor at zero: a drag that began outside the host can leave it without ever having
-    // entered, and a negative depth would then need two enters to show the overlay again.
+    // Floor at zero: a drag that began outside the host can leave without entering, and a negative
+    // depth would then need two enters to show the overlay again.
     this.depth.update((current) => Math.max(0, current - 1));
   }
 
@@ -77,9 +72,9 @@ export class TrnFileDropDirective {
   }
 
   /**
-   * Whether this drag is files rather than text, a link, or a message being dragged inside
-   * the app. Checked on every handler: without it, selecting a word and dragging it across
-   * the timeline would raise the overlay and swallow the browser's own default.
+   * Whether this drag is files rather than text, a link, or an in-app message drag. Checked on every
+   * handler: otherwise dragging selected text across the timeline would raise the overlay and
+   * swallow the browser's own default.
    */
   private carriesFiles(event: DragEvent): boolean {
     return event.dataTransfer?.types.includes('Files') ?? false;
