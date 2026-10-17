@@ -21,6 +21,8 @@ vi.mock('@trinity/helm/utils', async (importOriginal) => {
 // Name prefix kept out of a literal var(...) so the token guard sweep does not read it as a token.
 const AVATAR_TOKEN = '--trinity-avatar-';
 
+const WORK = { id: '@work:hs', initial: 'W', name: 'Work' };
+
 /** The account badge an avatar renders, when it renders one. */
 function accountBadgeOf(
   fixture: ComponentFixture<AvatarComponent>,
@@ -246,7 +248,7 @@ describe('AvatarComponent', () => {
       inputs: {
         initial: 'R',
         name: 'Room',
-        accountBadge: { id: '@work:hs', initial: 'W', name: 'Work' },
+        accountBadge: WORK,
       },
     });
     const el = badge(container)!;
@@ -259,7 +261,7 @@ describe('AvatarComponent', () => {
     const { fixture } = await render(AvatarComponent, {
       inputs: {
         name: 'Room A',
-        accountBadge: { id: '@work:hs', initial: 'W', name: 'Work' },
+        accountBadge: WORK,
       },
     });
     const badge = accountBadgeOf(fixture)!;
@@ -321,7 +323,7 @@ describe('AvatarComponent', () => {
       inputs: {
         initial: 'R',
         name: 'Room',
-        accountBadge: { id: '@work:hs', initial: 'W', name: 'Work' },
+        accountBadge: WORK,
       },
     });
     const styled = [
@@ -344,12 +346,7 @@ describe('AvatarComponent', () => {
       inputs: {
         initial: 'R',
         name: 'Room',
-        accountBadge: {
-          id: '@work:hs',
-          initial: 'W',
-          name: 'Work',
-          avatarMxc: 'mxc://hs/work',
-        },
+        accountBadge: { ...WORK, avatarMxc: 'mxc://hs/work' },
       },
       providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
     });
@@ -372,12 +369,7 @@ describe('AvatarComponent', () => {
     const { container } = await render(AvatarComponent, {
       inputs: {
         initial: 'R',
-        accountBadge: {
-          id: '@work:hs',
-          initial: 'W',
-          name: 'Work',
-          avatarMxc: 'mxc://hs/work',
-        },
+        accountBadge: { ...WORK, avatarMxc: 'mxc://hs/work' },
       },
       providers: [
         { provide: AVATAR_RESOLVER, useValue: () => of('blob:account-avatar') },
@@ -392,12 +384,7 @@ describe('AvatarComponent', () => {
       inputs: {
         initial: 'R',
         name: 'Room',
-        accountBadge: {
-          id: '@work:hs',
-          initial: 'W',
-          name: 'Work',
-          avatarMxc: 'mxc://hs/missing',
-        },
+        accountBadge: { ...WORK, avatarMxc: 'mxc://hs/missing' },
       },
       providers: [{ provide: AVATAR_RESOLVER, useValue: () => of(null) }],
     });
@@ -412,12 +399,7 @@ describe('AvatarComponent', () => {
       inputs: {
         initial: 'R',
         name: 'Room',
-        accountBadge: {
-          id: '@work:hs',
-          initial: 'W',
-          name: 'Work',
-          avatarMxc: null,
-        },
+        accountBadge: { ...WORK, avatarMxc: null },
       },
       providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
     });
@@ -433,12 +415,7 @@ describe('AvatarComponent', () => {
     const resolver = vi.fn((mxc: string) => of(`blob:${mxc}`));
     const { container, fixture } = await render(AvatarComponent, {
       inputs: {
-        accountBadge: {
-          id: '@work:hs',
-          initial: 'W',
-          name: 'Work',
-          avatarMxc: 'mxc://hs/work',
-        },
+        accountBadge: { ...WORK, avatarMxc: 'mxc://hs/work' },
       },
       providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
     });
@@ -471,12 +448,7 @@ describe('AvatarComponent', () => {
     const resolver = vi.fn(() => of('blob:work'));
     const { fixture } = await render(AvatarComponent, {
       inputs: {
-        accountBadge: {
-          id: '@work:hs',
-          initial: 'W',
-          name: 'Work',
-          avatarMxc: 'mxc://hs/work',
-        },
+        accountBadge: { ...WORK, avatarMxc: 'mxc://hs/work' },
       },
       providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
     });
@@ -485,9 +457,7 @@ describe('AvatarComponent', () => {
     // The rooms page rebuilds its badge map (fresh objects, same contents) on every sync
     // tick. Re-fetching then would hammer the resolver — which doesn't cache failures.
     fixture.componentRef.setInput('accountBadge', {
-      id: '@work:hs',
-      initial: 'W',
-      name: 'Work',
+      ...WORK,
       avatarMxc: 'mxc://hs/work',
     });
     fixture.detectChanges();
@@ -497,12 +467,7 @@ describe('AvatarComponent', () => {
   it('falls back to the initial when the resolved badge image fails to load', async () => {
     const { container, fixture } = await render(AvatarComponent, {
       inputs: {
-        accountBadge: {
-          id: '@work:hs',
-          initial: 'W',
-          name: 'Work',
-          avatarMxc: 'mxc://hs/work',
-        },
+        accountBadge: { ...WORK, avatarMxc: 'mxc://hs/work' },
       },
       providers: [
         { provide: AVATAR_RESOLVER, useValue: () => of('blob:broken') },
