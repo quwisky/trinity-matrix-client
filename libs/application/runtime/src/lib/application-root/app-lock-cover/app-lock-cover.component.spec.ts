@@ -310,6 +310,21 @@ describe('AppLockCoverComponent', () => {
       expect(pinField('Trinity Next')).toBeTruthy();
     });
 
+    it('reveals the PIN from a toggle inside the PIN field', async () => {
+      const { settle } = await setup({ support: PIN_ONLY });
+      const input = pinField() as HTMLInputElement;
+      const toggle = screen.getByRole('button', { name: 'Show password' });
+
+      expect(input.parentElement?.localName).toBe('trn-password-input');
+      expect(input.type).toBe('password');
+
+      fireEvent.click(toggle);
+      await settle();
+
+      expect(input.type).toBe('text');
+      expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    });
+
     it('stays closed while nothing is locked', async () => {
       const { dialog, coverPainted } = await setup({ locked: false });
       expect(dialog.hasAttribute('open')).toBe(false);

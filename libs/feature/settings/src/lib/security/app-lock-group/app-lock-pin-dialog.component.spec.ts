@@ -56,6 +56,25 @@ function field(label: string): HTMLInputElement {
 }
 
 describe('AppLockPinDialogComponent', () => {
+  it('reveals each PIN from a toggle inside its own field', async () => {
+    const { view } = await setup('set', null);
+    const [pinToggle] = screen.getAllByRole('button', {
+      name: 'Show password',
+    });
+
+    expect(field('New PIN').parentElement?.localName).toBe(
+      'trn-password-input',
+    );
+    expect(field('New PIN').type).toBe('password');
+    expect(field('Confirm PIN').type).toBe('password');
+
+    fireEvent.click(pinToggle);
+    view.fixture.detectChanges();
+
+    expect(field('New PIN').type).toBe('text');
+    expect(field('Confirm PIN').type).toBe('password');
+  });
+
   describe('set', () => {
     it('sets a PIN typed twice and warns that a forgotten one means erasing', async () => {
       const { close } = await setup('set', 'Face ID or your device passcode');

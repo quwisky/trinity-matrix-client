@@ -33,24 +33,25 @@
         <trn-field-label controlId="app-lock-pin-input" [invalid]="!!pinError">
           {{ mode() === 'set' ? 'New PIN' : appName + ' PIN' }}
         </trn-field-label>
-        <input
-          #pinInput
-          trnInput
-          id="app-lock-pin-input"
-          type="password"
-          inputmode="numeric"
-          autocomplete="off"
-          [formField]="pinForm.pin"
-          [aria-describedby]="
-            pinError
-              ? 'app-lock-pin-input-error'
-              : mode() === 'set'
-                ? 'app-lock-pin-input-hint'
-                : null
-          "
-          data-autofocus
-          data-testid="app-lock-pin-input"
-        />
+        <trn-password-input>
+          <input
+            #pinInput
+            trnInput
+            id="app-lock-pin-input"
+            inputmode="numeric"
+            autocomplete="off"
+            [formField]="pinForm.pin"
+            [aria-describedby]="
+              pinError
+                ? 'app-lock-pin-input-error'
+                : mode() === 'set'
+                  ? 'app-lock-pin-input-hint'
+                  : null
+            "
+            data-autofocus
+            data-testid="app-lock-pin-input"
+          />
+        </trn-password-input>
         @if (pinError) {
           <p
             id="app-lock-pin-input-error"
@@ -78,19 +79,20 @@
           >
             Confirm PIN
           </trn-field-label>
-          <input
-            #confirmInput
-            trnInput
-            id="app-lock-pin-confirm"
-            type="password"
-            inputmode="numeric"
-            autocomplete="off"
-            [formField]="pinForm.confirmPin"
-            [aria-describedby]="
-              confirmError ? 'app-lock-pin-confirm-error' : null
-            "
-            data-testid="app-lock-pin-confirm"
-          />
+          <trn-password-input>
+            <input
+              #confirmInput
+              trnInput
+              id="app-lock-pin-confirm"
+              inputmode="numeric"
+              autocomplete="off"
+              [formField]="pinForm.confirmPin"
+              [aria-describedby]="
+                confirmError ? 'app-lock-pin-confirm-error' : null
+              "
+              data-testid="app-lock-pin-confirm"
+            />
+          </trn-password-input>
           @if (confirmError) {
             <p
               id="app-lock-pin-confirm-error"
