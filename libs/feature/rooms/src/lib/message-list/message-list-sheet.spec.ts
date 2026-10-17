@@ -14,6 +14,7 @@ import {
   ConversationComposeStub,
   ConversationMessagesStub,
 } from '../testing/conversation-timeline.stub';
+import { messageView } from '../testing/message-view.fixture';
 
 /**
  * The mobile long press opens its sheet HERE, on the list, rather than on the row that was
@@ -40,28 +41,7 @@ class TestListComponent extends MessageListBase {
 }
 
 function msg(id: string): MessageView {
-  return {
-    id,
-    senderId: '@a:hs',
-    senderName: 'Alice',
-    senderInitial: 'A',
-    senderAvatarMxc: null,
-    body: `body ${id}`,
-    html: null,
-    timestamp: 1000,
-    isOwn: false,
-    decryptionFailed: false,
-    edited: false,
-    reactions: [],
-    replyTo: null,
-    status: null,
-    kind: 'text',
-    media: null,
-    caption: null,
-    captionHtml: null,
-    readReceipts: [],
-    poll: null,
-  };
+  return messageView({ id, body: `body ${id}` });
 }
 
 /** The sheet payload the list handed the service on the last `open()`. */

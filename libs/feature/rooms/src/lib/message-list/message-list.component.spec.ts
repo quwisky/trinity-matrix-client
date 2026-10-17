@@ -24,6 +24,7 @@ import {
   ConversationMessagesStub,
 } from '../testing/conversation-timeline.stub';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
+import { messageView } from '../testing/message-view.fixture';
 
 function msg(
   id: string,
@@ -31,28 +32,14 @@ function msg(
   senderName: string,
   ts: number,
 ): MessageView {
-  return {
+  return messageView({
     id,
     senderId,
     senderName,
     senderInitial: senderName[0],
-    senderAvatarMxc: null,
     body: `body ${id}`,
-    html: null,
     timestamp: ts,
-    isOwn: false,
-    decryptionFailed: false,
-    edited: false,
-    reactions: [],
-    replyTo: null,
-    status: null,
-    kind: 'text',
-    media: null,
-    caption: null,
-    captionHtml: null,
-    readReceipts: [],
-    poll: null,
-  };
+  });
 }
 
 // Row height defaults to the 64px estimate here — the ResizeObserver stub in

@@ -66,6 +66,7 @@ import {
 } from 'vitest';
 import { ThreadViewComponent } from './thread-view.component';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
+import { messageView } from '../testing/message-view.fixture';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageSourceComponent } from '../message-source/message-source.component';
 import type { MessageRow } from '../message-row/message-row.component';
@@ -73,28 +74,13 @@ import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
 import { RoomShellStore } from '../rooms/room-shell-store';
 
 function msg(id: string, senderId: string, body: string): MessageView {
-  return {
+  return messageView({
     id,
     senderId,
     senderName: senderId,
     senderInitial: senderId[1]?.toUpperCase() ?? '?',
-    senderAvatarMxc: null,
     body,
-    html: null,
-    timestamp: 1000,
-    isOwn: false,
-    decryptionFailed: false,
-    edited: false,
-    reactions: [],
-    replyTo: null,
-    status: null,
-    kind: 'text',
-    media: null,
-    caption: null,
-    captionHtml: null,
-    readReceipts: [],
-    poll: null,
-  };
+  });
 }
 
 /** The composer this panel renders, for asserting what a quote put into it. */
