@@ -89,6 +89,28 @@ export async function passwordLogin(
   };
 }
 
+/** A logged-in account in the shape journeys pass to CS-API calls: ids, raw token and auth header. */
+export interface ApiUser {
+  token: string;
+  userId: string;
+  headers: { Authorization: string };
+}
+
+/** `passwordLogin` for journeys: throws on a failed login, returns the token and auth headers. */
+export async function apiLogin(
+  request: APIRequestContext,
+  hs: string,
+  user: string,
+  pass: string,
+): Promise<ApiUser> {
+  const session = await passwordLogin(request, hs, user, pass);
+  return {
+    token: session.accessToken,
+    userId: session.userId,
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+  };
+}
+
 /**
  * The account's 4S default-key pointer, or undefined when it has no usable recovery key.
  *

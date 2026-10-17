@@ -13,7 +13,11 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import {
+  registerUser,
+  apiLogin,
+  type ApiUser,
+} from '../../../support/account.mts';
 
 // Covers the rendered thread summary on a real timeline: keyboard activation on desktop,
 // touch activation on a Pixel 5, and the long-preview layout in the browser engine.
@@ -25,11 +29,6 @@ const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
 );
-
-interface ApiUser {
-  userId: string;
-  headers: { Authorization: string };
-}
 
 interface SeededThread {
   reader: HomeserverSession;
@@ -49,27 +48,6 @@ interface SeedThreadOptions {
   latestBody?: string;
   includeImageRoot?: boolean;
   imageLatestBody?: string;
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((response) => response.json());
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
 }
 
 async function sendMessage(

@@ -1,27 +1,16 @@
-import {
-  testResourceId,
-  test,
-  expect,
-  type APIRequestContext,
-  type Page,
-} from '../../../fixtures.mts';
+import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.mts';
 
 // Covers kick and ban projection recovery. Member info opens as a dialog over the roster,
 // so the removed row assertion waits for member info to close first: asserting only that
 // the row disappeared could pass while the dialog still hid the stale list.
 const session = homeserverSession();
-
-interface ApiUser {
-  userId: string;
-  headers: { Authorization: string };
-}
 
 interface RoomAdministrationFaultWindow extends Window {
   ng: {
@@ -42,27 +31,6 @@ interface RoomAdministrationFaultWindow extends Window {
     };
   };
   restoreRoomAdministrationMembers?: () => void;
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
 }
 
 async function openRoom(page: Page, roomName: string): Promise<void> {

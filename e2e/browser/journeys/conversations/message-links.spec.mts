@@ -12,7 +12,7 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, passwordLogin } from '../../../support/account.mts';
 import { AA_NORMAL_TEXT, measureContrast } from '../../support/contrast.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
 import {
@@ -30,27 +30,6 @@ import {
 const session = homeserverSession();
 
 type Auth = { accessToken: string; userId: string };
-
-async function loginApi(
-  request: APIRequestContext,
-  hs: string,
-  username: string,
-  password: string,
-): Promise<Auth> {
-  const response = await request.post(`${hs}/_matrix/client/v3/login`, {
-    data: {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user: username },
-      password,
-    },
-  });
-  expect(response.ok(), await describeFailure('login', response)).toBe(true);
-  const body = await response.json();
-  return {
-    accessToken: body.access_token as string,
-    userId: body.user_id as string,
-  };
-}
 
 async function registerRemote(
   request: APIRequestContext,
@@ -129,7 +108,7 @@ async function localScenario(
   const username = `link-user-${suffix}`;
   const password = `${username}-pass`;
   await registerUser(request, username, password);
-  const auth = await loginApi(request, hs, username, password);
+  const auth = await passwordLogin(request, hs, username, password);
   const sourceName = `Link Source ${suffix}`;
   const sourceId = await createRoom(request, hs, auth, { name: sourceName });
   return { hs, username, password, auth, sourceId, sourceName };

@@ -1,15 +1,10 @@
-import {
-  testResourceId,
-  test,
-  expect,
-  type APIRequestContext,
-} from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 
 // Covers the Discord-style grouping of consecutive messages from one sender: the
 // follow-on rows drop the avatar for a hover-only timestamp gutter, which must measure
@@ -23,32 +18,6 @@ const session = homeserverSession();
 
 /** The avatar size a header row reserves; the grouped gutter must match it. */
 const LEAD_WIDTH = 40;
-
-interface ApiUser {
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 test.describe('Message grouping', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');

@@ -1,16 +1,11 @@
-import {
-  testResourceId,
-  test,
-  expect,
-  type APIRequestContext,
-} from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   clickRowMenuItem,
   login,
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 
 // Covers the notification half of quoting: carrying someone else's words must not notify
 // the people those words happen to name.
@@ -37,24 +32,6 @@ const session = homeserverSession();
 /** A display name nothing else could match, so a highlight can only be the mention rule. */
 const READER_DISPLAY_NAME = 'Zephyrine';
 
-async function loginApi(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<{ token: string; userId: string }> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return { token: json.access_token as string, userId: json.user_id as string };
-}
-
 test.describe('Quoting does not notify the people it quotes', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
@@ -71,8 +48,8 @@ test.describe('Quoting does not notify the people it quotes', () => {
 
     await registerUser(request, writer, pass);
     await registerUser(request, reader, pass);
-    const w = await loginApi(request, hs, writer, pass);
-    const r = await loginApi(request, hs, reader, pass);
+    const w = await apiLogin(request, hs, writer, pass);
+    const r = await apiLogin(request, hs, reader, pass);
     const wHeaders = { Authorization: `Bearer ${w.token}` };
     const rHeaders = { Authorization: `Bearer ${r.token}` };
 

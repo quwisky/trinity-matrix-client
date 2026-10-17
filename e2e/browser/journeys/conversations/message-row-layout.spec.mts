@@ -11,7 +11,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
-import { apiLogin } from '../../support/multi-account-journey.mts';
+import { apiLogin } from '../../../support/account.mts';
 
 // Pins the message row's grid placement: the gutter standing in for the avatar, the header
 // time, and the receipts with their "seen by" list sit where the stylesheet puts them. The

@@ -9,7 +9,11 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import {
+  registerUser,
+  apiLogin,
+  type ApiUser,
+} from '../../../support/account.mts';
 
 // Covers the "Recent activity" view (issue #9): the first rail item
 // (`data-testid="rail-recent"`), active on launch, whose channel list mixes direct
@@ -21,30 +25,6 @@ import { registerUser } from '../../../support/account.mts';
 const session = homeserverSession();
 
 const HS_SERVER_NAME = 'localhost';
-
-interface ApiUser {
-  token: string;
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const { access_token: token, user_id: userId } = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return { token, userId, headers: { Authorization: `Bearer ${token}` } };
-}
 
 /** Create a room owned by `user`, returning its id. */
 async function createRoom(

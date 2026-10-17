@@ -1,46 +1,15 @@
-import {
-  testResourceId,
-  test,
-  expect,
-  type APIRequestContext,
-} from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 
 // Covers "Mark all as read" (data-testid="mark-all-read"): with an unread room the header
 // action appears; clicking it acks every room (RoomsService.markAllRead) so it disappears.
 // Another user sends a message so there's something unread. Needs Synapse (Docker).
 const session = homeserverSession();
-
-interface ApiUser {
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 test.describe('Mark as read', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');

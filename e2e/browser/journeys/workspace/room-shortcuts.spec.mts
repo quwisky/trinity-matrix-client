@@ -9,7 +9,11 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import {
+  registerUser,
+  apiLogin,
+  type ApiUser,
+} from '../../../support/account.mts';
 
 // Covers the web-available keyboard room-switching shortcuts (issue #12): Ctrl/Cmd+'
 // hops through the most-recently-VISITED stack (alt-tab, cycling deeper; Shift reverses),
@@ -21,30 +25,6 @@ import { registerUser } from '../../../support/account.mts';
 // CI is Linux, so the accelerator is Control (the app binds both Control and Meta).
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
 const session = homeserverSession();
-
-interface ApiUser {
-  token: string;
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const { access_token: token, user_id: userId } = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return { token, userId, headers: { Authorization: `Bearer ${token}` } };
-}
 
 async function createRoom(
   request: APIRequestContext,

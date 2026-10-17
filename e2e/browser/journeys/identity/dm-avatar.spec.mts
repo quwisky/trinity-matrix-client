@@ -9,7 +9,11 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import {
+  registerUser,
+  apiLogin,
+  type ApiUser,
+} from '../../../support/account.mts';
 
 // End-to-end for the direct-message avatar. A DM is never given an `m.room.avatar`, so
 // the room row has to fall back to the other person's picture; reading only the state
@@ -29,31 +33,6 @@ const PNG_1x1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
   'base64',
 );
-
-interface ApiUser {
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const res = await request.post(`${hs}/_matrix/client/v3/login`, {
-    data: {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    },
-  });
-  const json = await res.json();
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 /** Upload a PNG and set it as this user's profile picture. */
 async function setProfileAvatar(

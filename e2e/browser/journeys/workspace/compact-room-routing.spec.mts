@@ -4,7 +4,7 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
 
 // Node's fetch (the CS-API room seeding below) must accept the disposable
@@ -35,28 +35,6 @@ let MOBILE_USER = '';
 let MOBILE_PASS = '';
 let mobileSession: HomeserverSession;
 const ROOM_ATTACH_TIMEOUT = 30_000;
-
-/** CS-API password login (bypasses the UI) — returns the access token + user id. */
-async function apiLogin(
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<{ token: string; userId: string }> {
-  const res = await fetch(`${hs}/_matrix/client/v3/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(await describeFailure('CS-API login failed', res));
-  }
-  const json = (await res.json()) as { access_token: string; user_id: string };
-  return { token: json.access_token, userId: json.user_id };
-}
 
 /**
  * Seed a room via the CS API so the sidebar has a real channel to tap, and mark
@@ -152,6 +130,7 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
     };
     await registerUser(request, MOBILE_USER, MOBILE_PASS);
     const { token, userId } = await apiLogin(
+      request,
       mobileSession.hs as string,
       MOBILE_USER,
       MOBILE_PASS,

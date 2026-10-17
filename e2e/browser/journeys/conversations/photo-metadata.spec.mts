@@ -10,7 +10,11 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import {
+  registerUser,
+  apiLogin,
+  type ApiUser,
+} from '../../../support/account.mts';
 import {
   closeSettings,
   openSettingsSection,
@@ -99,28 +103,6 @@ function moovRange(bytes: Buffer): { start: number; end: number } {
     pos += size;
   }
   throw new Error('no moov box');
-}
-
-interface ApiUser {
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return { headers: { Authorization: `Bearer ${json.access_token}` } };
 }
 
 /** Register a fresh user with a plain, unencrypted room to send into. */

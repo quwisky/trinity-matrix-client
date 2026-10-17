@@ -1,41 +1,14 @@
-import {
-  testResourceId,
-  test,
-  expect,
-  type APIRequestContext,
-  type Page,
-} from '../../../fixtures.mts';
+import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 
 // End-to-end for "seen by" read receipts: when another member reads a message, their
 // avatar appears on it in the reader's timeline. Needs Synapse (Docker).
 const session = homeserverSession();
-
-async function apiToken(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<{ userId: string; headers: { Authorization: string } }> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -60,19 +33,19 @@ test.describe('Read receipts (seen by)', () => {
     await registerUser(request, `rcpt-reader-${runId}`, 'pass-reader');
     await registerUser(request, `rcpt-author-${runId}`, 'pass-author');
     await registerUser(request, `rcpt-seer-${runId}`, 'pass-seer');
-    const reader = await apiToken(
+    const reader = await apiLogin(
       request,
       hs,
       `rcpt-reader-${runId}`,
       'pass-reader',
     );
-    const author = await apiToken(
+    const author = await apiLogin(
       request,
       hs,
       `rcpt-author-${runId}`,
       'pass-author',
     );
-    const seer = await apiToken(request, hs, `rcpt-seer-${runId}`, 'pass-seer');
+    const seer = await apiLogin(request, hs, `rcpt-seer-${runId}`, 'pass-seer');
 
     const seerName = `Cara${runId}`;
     await request.put(

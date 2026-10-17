@@ -11,34 +11,13 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 
 // End-to-end for typing indicators: when another member of the open room starts
 // typing, the app shows an "X is typing" row under the timeline, and clears it once
 // they stop. The other member's typing is driven straight through the Matrix API, so
 // this exercises our sync → signal → render path. Needs a Synapse homeserver (Docker).
 const session = homeserverSession();
-
-async function apiToken(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<{ userId: string; headers: { Authorization: string } }> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 /** Register a reader plus a named member who joins the reader's room. */
 async function seedRoomWithMember(
@@ -63,8 +42,8 @@ async function seedRoomWithMember(
 
   await registerUser(request, readerUser, readerPass);
   await registerUser(request, memberUser, memberPass);
-  const reader = await apiToken(request, hs, readerUser, readerPass);
-  const member = await apiToken(request, hs, memberUser, memberPass);
+  const reader = await apiLogin(request, hs, readerUser, readerPass);
+  const member = await apiLogin(request, hs, memberUser, memberPass);
 
   // A deterministic display name so the typing row is easy to assert on.
   await request.put(

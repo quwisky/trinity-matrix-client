@@ -10,7 +10,11 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import {
+  registerUser,
+  apiLogin,
+  type ApiUser,
+} from '../../../support/account.mts';
 
 // Covers the pin-messages feature end to end: a message's hover toolbar's ⋯
 // menu (`data-testid="msg-more"`) offers "Pin message" (`data-testid="msg-pin"`),
@@ -52,33 +56,6 @@ const REPEAT_PIN_BODY = 'pin me twice please';
 // paged back in. That is fine here: the panel fetches unloaded pins and a jump pages the
 // target back in, so the test no longer has to.
 const FILLER_COUNT = 32;
-
-interface ApiUser {
-  token: string;
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const res = await request.post(`${hs}/_matrix/client/v3/login`, {
-    data: {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    },
-  });
-  const json = await res.json();
-  return {
-    token: json.access_token as string,
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 /**
  * Register a fresh reader, have them create their own plain (non-DM) room —

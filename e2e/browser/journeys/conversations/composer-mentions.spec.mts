@@ -10,33 +10,12 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 
 // End-to-end for @-mention autocomplete: typing `@` opens a member menu, picking one
 // inserts a pill, and the sent message carries a matrix.to mention link (so it pings
 // via m.mentions). Needs a Synapse homeserver (Docker).
 const session = homeserverSession();
-
-async function apiToken(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<{ userId: string; headers: { Authorization: string } }> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 /** Register a reader plus a named member who joins the reader's room. */
 async function seedRoomWithMember(
@@ -60,8 +39,8 @@ async function seedRoomWithMember(
 
   await registerUser(request, readerUser, readerPass);
   await registerUser(request, memberUser, memberPass);
-  const reader = await apiToken(request, hs, readerUser, readerPass);
-  const member = await apiToken(request, hs, memberUser, memberPass);
+  const reader = await apiLogin(request, hs, readerUser, readerPass);
+  const member = await apiLogin(request, hs, memberUser, memberPass);
 
   // A deterministic display name so the mention menu matches on it.
   await request.put(
@@ -81,7 +60,7 @@ async function seedRoomWithMember(
   for (let i = 0; laterMessages > 0 && i < 6; i++) {
     const other = `mention-other-${runId}-${i}`;
     await registerUser(request, other, `${other}-pass`);
-    const joined = await apiToken(request, hs, other, `${other}-pass`);
+    const joined = await apiLogin(request, hs, other, `${other}-pass`);
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/invite`,
       { headers: reader.headers, data: { user_id: joined.userId } },

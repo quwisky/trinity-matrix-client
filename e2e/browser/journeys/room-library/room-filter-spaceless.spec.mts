@@ -9,7 +9,7 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
 
 // Covers the "Rooms view excludes space-owned rooms" behavior: the flat Rooms
@@ -30,33 +30,6 @@ import { describeFailure } from '../../../support/http-failure.mts';
 const session = homeserverSession();
 
 const HS_SERVER_NAME = 'localhost';
-
-interface ApiUser {
-  token: string;
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const res = await request.post(`${hs}/_matrix/client/v3/login`, {
-    data: {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    },
-  });
-  const json = await res.json();
-  return {
-    token: json.access_token as string,
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 /**
  * Register a fresh reader, then create (as that reader, so it's auto-joined

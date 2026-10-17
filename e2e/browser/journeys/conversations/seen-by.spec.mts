@@ -1,48 +1,16 @@
-import {
-  testResourceId,
-  test,
-  expect,
-  type APIRequestContext,
-  type Page,
-} from '../../../fixtures.mts';
+import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 
 // Covers the "seen by" reader list: clicking a message's read-receipt cluster
 // (data-testid="read-receipts") expands the names of who read it (seen-by-list).
 // Another user reads the message (via the receipts API) so a receipt appears.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = homeserverSession();
-
-interface ApiUser {
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();

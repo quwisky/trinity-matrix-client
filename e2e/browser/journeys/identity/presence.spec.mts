@@ -11,7 +11,7 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.mts';
 
 // End-to-end for member online-status (presence): the room member list renders a
@@ -20,31 +20,6 @@ import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.
 // proves rendering, while injected read failure proves unknown state and targeted retry.
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
 const session = homeserverSession();
-
-interface ApiUser {
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const res = await request.post(`${hs}/_matrix/client/v3/login`, {
-    data: {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    },
-  });
-  const json = await res.json();
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 /**
  * Register a reader plus a second member, have the reader create a plain (non-DM)

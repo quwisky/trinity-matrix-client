@@ -6,19 +6,21 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import { login } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import {
+  registerUser,
+  apiLogin,
+  type ApiUser,
+} from '../../../support/account.mts';
 import {
   closeSettings,
   openSettingsFromRooms,
 } from '../../../support/journeys/navigation.mts';
 import {
   addAccountViaUi,
-  apiLogin,
   configureMultiAccountSuite,
   mixInAccount,
   postMessage,
   session,
-  type ApiUser,
 } from '../../support/multi-account-journey.mts';
 import { sendWithRetry } from '../../support/cs-api.mts';
 import { openSection } from '../../support/settings-journey.mts';

@@ -6,13 +6,15 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import { login, type HomeserverSession } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import {
+  registerUser,
+  apiLogin,
+  type ApiUser,
+} from '../../../support/account.mts';
 import {
   addAccountViaUi,
-  apiLogin,
   expectWorkspaceAccount,
   mixInAccount,
-  type ApiUser,
 } from '../../support/multi-account-journey.mts';
 import {
   configureRoomSettingsSuite,
