@@ -1,9 +1,6 @@
-import { NgtscProgram, readConfiguration } from '@angular/compiler-cli';
 import ts from 'typescript';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-
-const workspaceRoot = join(import.meta.dirname, '..');
+import { compileStrictTemplate } from './strict-template-compile.mjs';
 
 const source = `
 import { Component } from '@angular/core';
@@ -42,49 +39,12 @@ export class InvalidButtonSizeHost {}
 export class InvalidLegacyButtonHost {}
 `;
 
-function compileTemplateContract() {
-  const { options } = readConfiguration(
-    join(workspaceRoot, 'tsconfig.base.json'),
-  );
-  options.noEmit = true;
-  const fixture = join(workspaceRoot, 'button-recipe-template.fixture.ts');
-  const host = ts.createCompilerHost(options, true);
-  const fileExists = host.fileExists.bind(host);
-  const readFile = host.readFile.bind(host);
-  const getSourceFile = host.getSourceFile.bind(host);
-
-  host.fileExists = (fileName) => fileName === fixture || fileExists(fileName);
-  host.readFile = (fileName) =>
-    fileName === fixture ? source : readFile(fileName);
-  host.getSourceFile = (
-    fileName,
-    languageVersion,
-    onError,
-    shouldCreateNewSourceFile,
-  ) =>
-    fileName === fixture
-      ? ts.createSourceFile(fileName, source, languageVersion, true)
-      : getSourceFile(
-          fileName,
-          languageVersion,
-          onError,
-          shouldCreateNewSourceFile,
-        );
-
-  const program = new NgtscProgram([fixture], options, host);
-  return [
-    ...program.getTsOptionDiagnostics(),
-    ...program.getTsSyntacticDiagnostics(),
-    ...program.getTsSemanticDiagnostics(),
-    ...program.getNgOptionDiagnostics(),
-    ...program.getNgStructuralDiagnostics(),
-    ...program.getNgSemanticDiagnostics(),
-  ].filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
-}
-
 describe('button recipe strict-template contract', () => {
   it('accepts canonical inputs and rejects unsupported or retired values', () => {
-    const errors = compileTemplateContract();
+    const errors = compileStrictTemplate(
+      source,
+      'button-recipe-template.fixture.ts',
+    );
     const messages = errors.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     );
