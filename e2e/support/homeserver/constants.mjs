@@ -32,6 +32,11 @@ export const SSO_USER = 'sso-e2e';
 export const SSO_RESET_EMAIL = 'sso-reset-e2e@trinity.test';
 export const SSO_RESET_USER = 'sso-reset-e2e';
 
+// A third Dex identity, which the account-deletion journey deletes on the homeserver. A
+// deleted Matrix ID is never released, so no other spec may use it.
+export const SSO_DELETE_EMAIL = 'sso-delete-e2e@trinity.test';
+export const SSO_DELETE_USER = 'sso-delete-e2e';
+
 // The opt-in MAS stack (TRINITY_E2E_MAS=1, see mas/). Must match mas/mas.yaml and the
 // Caddyfile. The account is seeded through MAS's CLI; Synapse never sees a password.
 export const MAS_HS_TLS = 'https://localhost:8450';

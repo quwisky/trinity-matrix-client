@@ -46,6 +46,11 @@ export interface HomeserverSessionDescriptor {
     readonly email: string;
     readonly pass: string;
   };
+  readonly ssoDelete?: {
+    readonly user: string;
+    readonly email: string;
+    readonly pass: string;
+  };
   /** Docker Compose, or host processes when TRINITY_E2E_HOMESERVER_RUNTIME=native. */
   readonly runtime?: HomeserverRuntime;
   /** Harness features this runtime does not provide; specs needing one are excluded by name. */
@@ -144,7 +149,9 @@ function assertHomeserver(
     );
     if (
       withheld.has('sso') &&
-      (value['sso'] !== undefined || value['ssoReset'] !== undefined)
+      (value['sso'] !== undefined ||
+        value['ssoReset'] !== undefined ||
+        value['ssoDelete'] !== undefined)
     ) {
       throw new Error('E2E session both offers and withholds sso');
     }

@@ -75,3 +75,9 @@ staticPasswords:
     username: sso-reset-e2e
     userID: 6a2f7b5c-1a0b-4c4e-8b3a-0a1f6d8e2b31
     hash: $2a$14$SkXgoBc7KBCrfGowk6vDBuMzNv53jHGoWiwkHeebA65PkSsjoKDte
+  # The account-deletion account, which the SSO deletion journey deletes for good: its
+  # Matrix ID can never sign in or be registered again on that homeserver.
+  - email: sso-delete-e2e@trinity.test
+    username: sso-delete-e2e
+    userID: 7b3a8c6d-2b1c-4d5f-9c4b-1b2a7e9f3c42
+    hash: $2a$14$SkXgoBc7KBCrfGowk6vDBuMzNv53jHGoWiwkHeebA65PkSsjoKDte

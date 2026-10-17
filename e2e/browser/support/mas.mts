@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { expect, type APIRequestContext, type Page } from '../../fixtures.mts';
 import {
   fillLabeledInput,
@@ -19,6 +21,33 @@ export interface MasEndpoints {
 export interface MasTokenResponse {
   readonly access_token: string;
   readonly refresh_token?: string;
+}
+
+const exec = promisify(execFile);
+
+/**
+ * A fresh account on the MAS stack, for a journey that consumes it (deletion). Seeded the
+ * way start.mjs seeds the shared one: through MAS's CLI in its container
+ * (`container_name` in e2e/support/homeserver/mas/docker-compose.yml).
+ */
+export async function registerMasUser(
+  account: MasAccount,
+  user: string,
+): Promise<MasAccount> {
+  const pass = `${user}-pass`;
+  await exec('docker', [
+    'exec',
+    'trinity-e2e-mas',
+    'mas-cli',
+    'manage',
+    'register-user',
+    '--yes',
+    '--ignore-password-complexity',
+    '--password',
+    pass,
+    user,
+  ]);
+  return { ...account, user, pass };
 }
 
 /** The provider endpoints, read the way the app reads them: from the homeserver. */

@@ -43,6 +43,8 @@ import {
   SERVER_NAME,
   SSO_EMAIL,
   SSO_PASS,
+  SSO_DELETE_EMAIL,
+  SSO_DELETE_USER,
   SSO_RESET_EMAIL,
   SSO_RESET_USER,
   SSO_USER,
@@ -362,6 +364,11 @@ const ssoAccounts = () => ({
   ssoReset: {
     user: SSO_RESET_USER,
     email: SSO_RESET_EMAIL,
+    pass: SSO_PASS,
+  },
+  ssoDelete: {
+    user: SSO_DELETE_USER,
+    email: SSO_DELETE_EMAIL,
     pass: SSO_PASS,
   },
 });
