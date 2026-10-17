@@ -1,7 +1,8 @@
 import {
+  DestroyRef,
   computed,
+  inject,
   signal,
-  type DestroyRef,
   type Signal,
   type WritableSignal,
 } from '@angular/core';
@@ -13,10 +14,14 @@ import type { ComposerAttachmentsHost } from './composer-attachments.service';
 
 /**
  * The voice-clip workflow of {@link ComposerAttachmentsService}: the microphone, the recording
- * timer and the send. Not injectable; the service constructs it and passes its own `DestroyRef`,
- * so the timer and the mic are released with the composer.
+ * timer and the send. Not injectable; the service constructs it in its own injection context,
+ * so it shares the service's `DestroyRef` and the timer and the mic are released with the composer.
  */
 export class ComposerVoiceRecording {
+  private readonly voiceRecorder = inject(VoiceRecorderService);
+  private readonly toast = inject(TrnToastService);
+  private readonly timelineActions = inject(TimelineActionsService);
+  private readonly destroyRef = inject(DestroyRef);
   /** Elapsed recording time in seconds, for the live timer. */
   private readonly voiceElapsed = signal(0);
   /** Interval handle for the recording timer, cleared on stop/cancel/destroy. */
@@ -36,13 +41,7 @@ export class ComposerVoiceRecording {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   });
 
-  constructor(
-    private readonly voiceRecorder: VoiceRecorderService,
-    private readonly toast: TrnToastService,
-    private readonly timelineActions: TimelineActionsService,
-    private readonly destroyRef: DestroyRef,
-    private readonly host: () => ComposerAttachmentsHost,
-  ) {
+  constructor(private readonly host: () => ComposerAttachmentsHost) {
     // Stop a running recording timer (and release the mic) if torn down mid-record.
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;

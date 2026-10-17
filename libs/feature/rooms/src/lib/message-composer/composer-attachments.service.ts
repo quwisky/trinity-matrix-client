@@ -31,7 +31,6 @@ import {
   MediaPickerService,
   NoCameraError,
   PrivacySettingsService,
-  VoiceRecorderService,
   captureModeFor,
   isInstalledNativePlatform,
   isMobileOs,
@@ -44,7 +43,6 @@ import {
   GifSettingsService,
   type GifResult,
 } from '@trinity/data-access/gif';
-import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { MediaPipeline, type MediaHints } from '@trinity/data-access/media';
 import { ComposerVoiceRecording } from './composer-voice-recording';
 import { CreatePollService } from '../poll/create-poll.service';
@@ -106,8 +104,6 @@ export class ComposerAttachmentsService {
   private readonly toast = inject(TrnToastService);
   private readonly createPollSvc = inject(CreatePollService);
   private readonly locationShare = inject(LocationShareService);
-  private readonly timelineActions = inject(TimelineActionsService);
-  private readonly voiceRecorder = inject(VoiceRecorderService);
   private readonly gifs = inject(GifService);
   private readonly gifSettings = inject(GifSettingsService);
   private readonly mediaPipeline = inject(MediaPipeline);
@@ -164,13 +160,7 @@ export class ComposerAttachmentsService {
 
   constructor() {
     this.destroyRef.onDestroy(() => this.clearStaged());
-    this.voice = new ComposerVoiceRecording(
-      this.voiceRecorder,
-      this.toast,
-      this.timelineActions,
-      this.destroyRef,
-      () => this.host,
-    );
+    this.voice = new ComposerVoiceRecording(() => this.host);
     this.recordingVoice = this.voice.recordingVoice;
     this.voiceTimeLabel = this.voice.voiceTimeLabel;
   }
