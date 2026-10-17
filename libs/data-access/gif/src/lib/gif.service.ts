@@ -84,7 +84,10 @@ export class GifService {
   }
 }
 
-/** Wrap bytes in a named `image/gif` File; the forced type makes the media pipeline see an image. */
+/**
+ * Wrap bytes in a named `image/gif` File; the forced type makes the media pipeline classify
+ * it as an image regardless of the CDN's headers.
+ */
 function toGifFile(blob: Blob, gif: GifResult): File {
   return new File([blob], filenameFor(gif), { type: 'image/gif' });
 }

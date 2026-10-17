@@ -15,7 +15,10 @@ import {
   retiredGifProvider,
 } from './gif.model';
 
-/** Upper bound on a pasted API key (KLIPY and GIPHY keys are ~40 characters). */
+/**
+ * Upper bound on a pasted API key (KLIPY and GIPHY keys are ~40 characters); keeps a paste of
+ * something that is not a key out of the stored blob.
+ */
 const MAX_API_KEY_LENGTH = 200;
 
 /**

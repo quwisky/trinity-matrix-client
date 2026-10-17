@@ -28,7 +28,8 @@ export type {
  * feature libs; projected nodes keep their origin component's style encapsulation.
  *
  * The `<h1>` is always rendered by the shell (the `title` string, else the `[trnHeaderTitle]`
- * slot), so projected title content must stay heading-free (inline spans and icons only).
+ * slot), so a page never ends up with a heading nested inside another heading. Projected title
+ * content must stay heading-free (inline spans and icons only).
  *
  * ```html
  * <trn-page-header title="Settings">

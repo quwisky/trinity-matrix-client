@@ -53,6 +53,7 @@ export class AppearanceEffects {
   /**
    * Put the saved Appearance on the document once, before preferences hydrate, for a tab
    * that shows a notice instead of starting. Reads only; emits once when applied and
+   * completes without applying if anything fails. Hydration later applies the same values.
    */
   applySaved(): Observable<void> {
     return defer(() =>

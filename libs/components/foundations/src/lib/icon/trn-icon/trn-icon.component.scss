@@ -1,7 +1,7 @@
 @layer components {
   // `inline-flex`, NOT `inline-block`: an inline-block host sizes its height from its line box,
-  // so as an `hlmBtn` flex item the taller box is centred and the glyph sits above the
-  // button's middle.
+  // so the box is taller than the glyph, and as an `hlmBtn` flex item it is centred, putting the
+  // glyph above the button's middle.
   // Motion is composed on the inner glyph, so the host stays an unchanged layout box with no
   // transformed stacking context; consumers can still transform the host itself.
   :host {

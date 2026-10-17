@@ -21,7 +21,7 @@ import {
   type IdentityOperation,
 } from './identity-operation-error';
 
-/** The signed-in user's profile. The avatar is the raw `mxc://`; the UI resolves it. */
+/** The signed-in user's profile. The avatar is the raw `mxc://`; the UI resolves it (authenticated). */
 export interface IdentityProfile {
   readonly userId: string;
   readonly displayName: string;

@@ -29,6 +29,7 @@ const DISCLOSURE_ORDER: readonly WidgetDisclosureKind[] = [
 
 /**
  * Expand a widget URL without loading `matrix-widget-api`'s iframe/postMessage runtime.
+ * The variable set follows that package's reference templating contract.
  *
  * Room-declared `data` is applied first and the authoritative Matrix/client values overwrite
  * it, so a widget cannot make `$matrix_user_id` claim to be another account. Longest keys

@@ -64,7 +64,10 @@ export class AppLockSystemPrompt {
   private open: OpenPrompt | null = null;
   private waitTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /** End of Trinity's wait after consecutive failed unlock prompts, or null once it passes. */
+  /**
+   * End of Trinity's wait after consecutive failed unlock prompts, or null once it passes;
+   * the failure count is kept until a success.
+   */
   readonly waitUntil = computed(() => {
     const until = this.deadline();
     return until !== null && until !== this.passed() ? until : null;
