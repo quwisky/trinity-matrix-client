@@ -301,6 +301,32 @@ describe('titleBarOptions', () => {
   });
 });
 
+/** The BrowserWindow stub createWindow needs; `overrides` add or replace members. */
+function fakeWindow<T extends object = object>(overrides?: T) {
+  const { webContents, ...rest } = (overrides ?? {}) as {
+    webContents?: object;
+  };
+  return {
+    once: vi.fn(),
+    on: vi.fn(),
+    loadURL: vi.fn(() => Promise.resolve()),
+    setMenuBarVisibility: vi.fn(),
+    ...rest,
+    webContents: {
+      setWindowOpenHandler: vi.fn(),
+      on: vi.fn(),
+      ipc: { on: vi.fn() },
+      ...webContents,
+    },
+  } as unknown as {
+    once: ReturnType<typeof vi.fn>;
+    on: ReturnType<typeof vi.fn>;
+    loadURL: ReturnType<typeof vi.fn>;
+    setMenuBarVisibility: ReturnType<typeof vi.fn>;
+    webContents: Record<string, unknown>;
+  } & Omit<T, 'webContents'>;
+}
+
 describe('createWindow title bar', () => {
   const setMenuBarVisibility = vi.fn();
   const originalPlatform = process.platform;
@@ -317,17 +343,7 @@ describe('createWindow title bar', () => {
       opts: unknown,
     ) {
       options = opts as Record<string, unknown>;
-      return {
-        webContents: {
-          setWindowOpenHandler: vi.fn(),
-          on: vi.fn(),
-          ipc: { on: vi.fn() },
-        },
-        once: vi.fn(),
-        on: vi.fn(),
-        loadURL: vi.fn(() => Promise.resolve()),
-        setMenuBarVisibility,
-      };
+      return fakeWindow({ setMenuBarVisibility });
     } as never);
     createWindow();
     return options;
@@ -416,18 +432,7 @@ describe('createWindow close requested by the page', () => {
     const close = vi.fn();
     const ipcOn = vi.fn();
     vi.mocked(BrowserWindow).mockImplementation(function () {
-      return {
-        webContents: {
-          setWindowOpenHandler: vi.fn(),
-          on: vi.fn(),
-          ipc: { on: ipcOn },
-        },
-        once: vi.fn(),
-        on: vi.fn(),
-        loadURL: vi.fn(() => Promise.resolve()),
-        setMenuBarVisibility: vi.fn(),
-        close,
-      };
+      return fakeWindow({ webContents: { ipc: { on: ipcOn } }, close });
     } as never);
     createWindow();
 
@@ -440,17 +445,7 @@ describe('createWindow close requested by the page', () => {
 
 describe('createWindow renderer recovery', () => {
   it('watches the new window for a crashed or hung renderer', () => {
-    const win = {
-      webContents: {
-        setWindowOpenHandler: vi.fn(),
-        on: vi.fn(),
-        ipc: { on: vi.fn() },
-      },
-      once: vi.fn(),
-      on: vi.fn(),
-      loadURL: vi.fn(() => Promise.resolve()),
-      setMenuBarVisibility: vi.fn(),
-    };
+    const win = fakeWindow();
     vi.mocked(BrowserWindow).mockImplementation(function () {
       return win;
     } as never);
@@ -464,23 +459,14 @@ describe('createWindow visibility', () => {
   function create() {
     const listeners = new Map<string, () => void>();
     const send = vi.fn();
-    const win = {
-      webContents: {
-        setWindowOpenHandler: vi.fn(),
-        on: vi.fn(),
-        ipc: { on: vi.fn() },
-        send,
-        isDestroyed: () => false,
-      },
-      once: vi.fn(),
+    const win = fakeWindow({
+      webContents: { send, isDestroyed: () => false },
       on: vi.fn((event: string, listener: () => void) =>
         listeners.set(event, listener),
       ),
-      loadURL: vi.fn(() => Promise.resolve()),
-      setMenuBarVisibility: vi.fn(),
       isVisible: vi.fn(() => true),
       isMinimized: vi.fn(() => false),
-    };
+    });
     vi.mocked(BrowserWindow).mockImplementation(function () {
       return win;
     } as never);
