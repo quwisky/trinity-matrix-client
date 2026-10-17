@@ -2,6 +2,11 @@
  * Static third-party styles participate in Trinity's cascade instead of arriving as
  * anonymous top-level author rules. Unavoidable runtime injection is audited separately in
  * architecture/runtime-vendor-styles.json and stays behind its named Trinity seam.
+ *
+ * Both stay global: no overlay positions without CDK's sheet, and moving the emoji picker's
+ * into its lazy component chunk puts that component 517 B over the 8 kB anyComponentStyle
+ * budget (raising a budget that guards every component is the worse trade). The import
+ * ban cannot see the build `styles` config, so a third vendor stylesheet needs arguing for here.
  */
 @import '../../../node_modules/@angular/cdk/overlay-prebuilt.css' layer(vendor);
 @import '../../../node_modules/@ctrl/ngx-emoji-mart/picker.css' layer(vendor);
