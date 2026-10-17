@@ -3,7 +3,11 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { createRequire } from 'node:module';
 import { release } from 'node:os';
 import * as path from 'node:path';
-import { PIN_FILE_NAME, PinVerifier, type PinStatus } from './app-lock-pin';
+import {
+  PIN_FILE_NAME,
+  PinVerifier,
+  type PinStatus,
+} from './app-lock-pin-store';
 import {
   presenceReason,
   systemPresenceDriver,

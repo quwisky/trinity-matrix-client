@@ -20,13 +20,15 @@ import {
   encodePinRecord,
   isValidPin,
   nextAttemptAt,
-  PIN_FILE_NAME,
-  PinVerifier,
   waitSecondsAfter,
   type PinClock,
-  type PinFileIo,
   type PinRecord,
 } from './app-lock-pin';
+import {
+  PIN_FILE_NAME,
+  PinVerifier,
+  type PinFileIo,
+} from './app-lock-pin-store';
 
 // A pass-through spy, so tests can prove which attempts reach the key derivation.
 vi.mock('node:crypto', async (importOriginal) => {

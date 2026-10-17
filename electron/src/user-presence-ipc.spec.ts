@@ -30,7 +30,7 @@ vi.mock('node:os', async (importOriginal) => ({
   release: () => osRelease.current,
 }));
 
-import { PinVerifier, type PinFileIo } from './app-lock-pin';
+import { PinVerifier, type PinFileIo } from './app-lock-pin-store';
 import {
   USER_PRESENCE_CLEAR_PIN_CHANNEL,
   USER_PRESENCE_SET_PIN_CHANNEL,
