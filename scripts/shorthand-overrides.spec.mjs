@@ -1,6 +1,7 @@
 import { globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { stripSourceComments as strip } from './source-style-blocks.mjs';
 import { inlineStyleSheets } from './inline-styles.mjs';
 
 /**
@@ -70,9 +71,6 @@ const SHORTHANDS = {
   flex: ['flex-grow', 'flex-shrink', 'flex-basis'],
   'list-style': ['list-style-type', 'list-style-position', 'list-style-image'],
 };
-
-const strip = (text) =>
-  text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
 
 /** Top-level rules in source order, each with its full brace-matched body. */
 function rulesOf(text) {

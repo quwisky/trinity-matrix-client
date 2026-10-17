@@ -1,6 +1,7 @@
 import { globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { stripSourceComments as stripComments } from './source-style-blocks.mjs';
 
 /**
  * Feature-only libraries must stay out of the initial bundle.
@@ -28,9 +29,6 @@ const staticImportOf = (specifier) =>
 const staticImport = staticImportOf(String.raw`qr(?:\/[^'"]*)?`);
 const WIDGET_RUNTIME =
   'libs/data-access/widgets/src/lib/widget-bridge-runtime.ts';
-
-const stripComments = (text) =>
-  text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
 
 const staticLazyImports = (source, pattern = staticImport) =>
   [...stripComments(source).matchAll(pattern)].map((match) => match[0]);
