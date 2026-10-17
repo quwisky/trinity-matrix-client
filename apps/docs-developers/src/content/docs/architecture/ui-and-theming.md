@@ -46,7 +46,9 @@ The directives in `TrnTabsImports` from `@trinity/components/controls` follow th
 
 - Name the list in its context with `aria-label` or `aria-labelledby`; the component adds no name of its own.
 - Arrow keys, Home and End move between tabs and wrap at the ends; right-to-left layouts flip the arrows. Activation is `automatic` by default, so moving also selects. Set `activation="manual"` when a panel moves focus into its own content as it appears, such as a search field: then Enter, Space or a click selects, and the tab stop follows focus until it leaves the list.
-- A `disabled` tab is skipped by the arrow keys and left out of the tab order.
+- Tab values become part of element ids, so use values without spaces.
+- A `disabled` tab is skipped by the arrow keys and left out of the tab order. When nothing is selected, or the selected tab is disabled, the first enabled tab holds the tab stop.
+- A panel whose tab is not in the list is plain content, with no `tabpanel` role, so a list can come and go without rebuilding the panels.
 - Each panel is a tab stop. Set `[focusable]="false"` when the panel's first content is focusable itself.
 - A hidden panel stays in the DOM. Put its content behind `@if` when it should not run while hidden, as the expression picker does with its GIF search.
 - The selected tab draws the `--trinity-state-selected-*` pill, hover the `--trinity-state-hover-*` roles, and a coarse pointer gets the 44px target. There is no attention-surface variant yet, so keep tabs off attention surfaces.

@@ -16,16 +16,17 @@
 }
 
 <ng-template #panel>
-  <!-- A sheet closes by its handle, backdrop, Escape or a pick, so the row has no close
-       button. With Emoji alone there is no row at all. -->
-  @if (tabs().length > 1) {
-    <div
-      trnTabs
-      activation="manual"
-      class="contents"
-      [value]="active()"
-      (valueChange)="onTabChange($event)"
-    >
+  <!-- One content element whatever the row shows, so a picker survives a tab appearing. A
+       sheet closes by its handle, backdrop, Escape or a pick, so the row has no close button.
+       With Emoji alone there is no row, and the panel is plain content. -->
+  <div
+    trnTabs
+    activation="manual"
+    class="contents"
+    [value]="active()"
+    (valueChange)="onTabChange($event)"
+  >
+    @if (tabs().length > 1) {
       <div
         trnTabList
         aria-label="Picker type"
@@ -39,32 +40,8 @@
           </button>
         }
       </div>
-      <!-- Focusable so a sheet can put focus on the content when it opens. -->
-      <div
-        #content
-        class="grid outline-none"
-        [class.min-h-0]="presentation() === 'popover'"
-        [class.overflow-y-auto]="presentation() === 'popover'"
-        tabindex="-1"
-        data-expression-content
-        [style.padding-inline]="inset()"
-      >
-        <!-- Only the selected panel holds its picker, so a hidden GIF picker fetches nothing. -->
-        @for (tab of tabs(); track tab) {
-          <div
-            class="grid min-w-0"
-            [trnTabPanel]="tab"
-            [focusable]="false"
-            [attr.aria-busy]="tab === 'gif' && gifBusy() ? true : null"
-          >
-            @if (active() === tab) {
-              <ng-container [ngTemplateOutlet]="picker" />
-            }
-          </div>
-        }
-      </div>
-    </div>
-  } @else {
+    }
+    <!-- Focusable so a sheet can put focus on the content when it opens. -->
     <div
       #content
       class="grid outline-none"
@@ -74,9 +51,21 @@
       data-expression-content
       [style.padding-inline]="inset()"
     >
-      <ng-container [ngTemplateOutlet]="picker" />
+      <!-- Only the selected panel holds its picker, so a hidden GIF picker fetches nothing. -->
+      @for (tab of tabs(); track tab) {
+        <div
+          class="grid min-w-0"
+          [trnTabPanel]="tab"
+          [focusable]="false"
+          [attr.aria-busy]="tab === 'gif' && gifBusy() ? true : null"
+        >
+          @if (active() === tab) {
+            <ng-container [ngTemplateOutlet]="picker" />
+          }
+        </div>
+      }
     </div>
-  }
+  </div>
 </ng-template>
 
 <ng-template #picker>

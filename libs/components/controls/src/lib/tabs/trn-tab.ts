@@ -1,4 +1,11 @@
-import { computed, Directive, ElementRef, inject } from '@angular/core';
+import {
+  afterRenderEffect,
+  computed,
+  Directive,
+  ElementRef,
+  inject,
+  input,
+} from '@angular/core';
 import { BrnTabsTrigger } from '@spartan-ng/brain/tabs';
 import { classes } from '@trinity/helm/utils';
 import { trnTabRecipe } from './trn-tabs-recipe';
@@ -18,12 +25,10 @@ import { TrnTabs } from './trn-tabs';
       outputs: [],
     },
   ],
-  // These outrank brain's own bindings, which host directives run first. Brain keeps the tab
-  // stop on the selected tab even while manual activation moves focus elsewhere.
+  // Host directive bindings run first, so these win.
   host: {
     '[id]': 'root.tabId(value())',
     '[attr.aria-controls]': 'root.panelId(value())',
-    '[tabindex]': 'tabIndex()',
   },
 })
 export class TrnTab {
@@ -36,10 +41,20 @@ export class TrnTab {
 
   readonly element =
     inject<ElementRef<HTMLButtonElement>>(ElementRef).nativeElement;
-  readonly value = computed(() => this.trigger.triggerFor());
+  /**
+   * Also bound to brain's required trigger input. Read here without the required check: the
+   * root reads every tab's value, and may do so before a newer tab's inputs are set.
+   */
+  readonly value = input('', { alias: 'trnTab' });
 
   constructor() {
     classes(() => trnTabRecipe());
+    // Not a host binding: brain binds `tabindex` to the selection and rewrites it whenever that
+    // changes, so this has to run after it each time either does.
+    afterRenderEffect(() => {
+      this.trigger.selected();
+      this.element.tabIndex = this.tabIndex();
+    });
   }
 
   get disabled(): boolean {

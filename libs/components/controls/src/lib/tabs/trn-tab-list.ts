@@ -1,5 +1,11 @@
-import { contentChildren, Directive, ElementRef, inject } from '@angular/core';
-import { Directionality } from '@angular/cdk/bidi';
+import {
+  contentChildren,
+  DestroyRef,
+  Directive,
+  ElementRef,
+  inject,
+  signal,
+} from '@angular/core';
 import { classes } from '@trinity/helm/utils';
 import { trnTabListRecipe } from './trn-tabs-recipe';
 import { TrnTab } from './trn-tab';
@@ -7,9 +13,7 @@ import { TrnTabs } from './trn-tabs';
 
 /**
  * The row of `trnTab` buttons. The caller names it with `aria-label` or `aria-labelledby`.
- *
- * Not brain's tab list: its key manager keeps the tabs it found first, so a tab added later
- * could not be reached with the arrow keys.
+ * A live query, so tabs added later stay reachable.
  */
 @Directive({
   selector: '[trnTabList]',
@@ -25,15 +29,16 @@ export class TrnTabList {
   private readonly root = inject(TrnTabs);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly tabs = contentChildren(TrnTab, { descendants: true });
-  private readonly direction = inject(Directionality).valueSignal;
 
   constructor() {
+    this.root.connect(this.tabs);
+    inject(DestroyRef).onDestroy(() => this.root.connect(signal([])));
     classes(() => trnTabListRecipe());
   }
 
   protected onKeydown(event: KeyboardEvent): void {
     const tab = this.tabFor(event.target);
-    if (!tab) {
+    if (!tab || event.altKey || event.ctrlKey || event.metaKey) {
       return;
     }
     if (event.key === 'Enter' || event.key === ' ') {
@@ -64,7 +69,8 @@ export class TrnTabList {
   /** Where `key` moves from `from`, wrapping at both ends and skipping disabled tabs. */
   private targetFor(key: string, from: TrnTab): TrnTab | undefined {
     const enabled = this.tabs().filter((tab) => !tab.disabled);
-    const forward = this.direction() === 'rtl' ? 'ArrowLeft' : 'ArrowRight';
+    const forward =
+      this.root.direction() === 'rtl' ? 'ArrowLeft' : 'ArrowRight';
     const back = forward === 'ArrowRight' ? 'ArrowLeft' : 'ArrowRight';
     const index = enabled.indexOf(from);
     switch (key) {

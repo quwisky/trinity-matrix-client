@@ -1,6 +1,6 @@
 import { Dir } from '@angular/cdk/bidi';
 import { Component, signal } from '@angular/core';
-import { fireEvent, render, type RenderResult } from '@trinity/testing';
+import { fireEvent, render, within, type RenderResult } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
 import { TrnTab } from './trn-tab';
 import { TrnTabList } from './trn-tab-list';
@@ -34,13 +34,14 @@ import { TrnTabs, type TrnTabsActivation } from './trn-tabs';
           <button trnTab="one">one</button>
         </div>
         <div trnTabPanel="one">Second panel</div>
+        <div trnTabPanel="orphan">No tab of its own</div>
       </div>
     </div>
   `,
 })
 class HostComponent {
   readonly activation = signal<TrnTabsActivation>('automatic');
-  readonly value = signal('gifs');
+  readonly value = signal<string | undefined>('gifs');
   readonly tabs = signal(['gifs', 'stickers', 'emoji']);
   readonly disabledTab = signal<string | null>(null);
   readonly focusable = signal(true);
@@ -66,8 +67,8 @@ async function press(target: HTMLElement, key: string) {
 }
 
 const tabStops = () =>
-  ['gifs', 'stickers', 'emoji']
-    .map(tab)
+  within(view.getByRole('tablist', { name: 'Picker type' }))
+    .getAllByRole('tab')
     .filter((element) => element.getAttribute('tabindex') === '0');
 
 describe('trnTabs', () => {
@@ -112,6 +113,8 @@ describe('trnTabs', () => {
       (element) => element.id,
     );
     expect(ids).toHaveLength(6);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(view.getByText('Panel one').id).toMatch(/^trn-tabs-\d+-panel-one$/);
     expect(ids.every(Boolean)).toBe(true);
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -248,5 +251,64 @@ describe('trnTabs', () => {
     await view.fixture.whenStable();
 
     expect(panel()).not.toHaveAttribute('tabindex');
+  });
+
+  describe('keeps one tab stop reachable', () => {
+    it('on the first tab while nothing is selected', async () => {
+      await renderTabs((h) => h.value.set(undefined));
+
+      expect(tabStops()).toEqual([tab('gifs')]);
+    });
+
+    it('on the first enabled tab while the selected one is disabled', async () => {
+      await renderTabs((h) => h.disabledTab.set('gifs'));
+
+      expect(tabStops()).toEqual([tab('stickers')]);
+    });
+
+    it('on the first tab while the selected value names no tab', async () => {
+      await renderTabs((h) => h.value.set('gone'));
+
+      expect(tabStops()).toEqual([tab('gifs')]);
+    });
+
+    it('on the selected tab again once the focused tab is removed', async () => {
+      const host = await renderTabs((h) => h.activation.set('manual'));
+      tab('gifs').focus();
+      await press(tab('gifs'), 'ArrowRight');
+
+      host.tabs.set(['gifs', 'emoji']);
+      await view.fixture.whenStable();
+
+      expect(tabStops()).toEqual([tab('gifs')]);
+    });
+  });
+
+  it('leaves arrow keys with a modifier to the browser', async () => {
+    await renderTabs();
+    tab('gifs').focus();
+
+    for (const modifier of ['altKey', 'ctrlKey', 'metaKey']) {
+      const event = new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        bubbles: true,
+        cancelable: true,
+        [modifier]: true,
+      });
+      tab('gifs').dispatchEvent(event);
+      await view.fixture.whenStable();
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(tab('gifs')).toHaveFocus();
+    }
+  });
+
+  it('treats a panel whose tab is not shown as plain content', async () => {
+    await renderTabs();
+    const orphan = view.getByText('No tab of its own');
+
+    expect(orphan).not.toHaveAttribute('role');
+    expect(orphan).not.toHaveAttribute('aria-labelledby');
+    expect(orphan).not.toHaveAttribute('tabindex');
   });
 });

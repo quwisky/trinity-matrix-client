@@ -523,10 +523,26 @@ describe('ExpressionPickerComponent', () => {
 
     expect(view.queryByRole('tablist')).toBeNull();
     expect(view.queryByRole('button', { name: 'Close' })).toBeNull();
-    // No empty top row: the content is the panel's first element.
-    expect(view.fixture.nativeElement.firstElementChild).toHaveAttribute(
-      'data-expression-content',
-    );
+    // No empty top row: the content is the first box drawn; the tabs element draws none.
+    const tabs = view.fixture.nativeElement.firstElementChild as HTMLElement;
+    expect(tabs).toHaveClass('contents');
+    expect(tabs.firstElementChild).toHaveAttribute('data-expression-content');
+    expect(view.queryByRole('tabpanel')).toBeNull();
+  });
+
+  it('keeps the emoji grid, with its search, when more tabs become available', async () => {
+    const { fixture } = await renderPanel({
+      gifEnabled: false,
+      stickerEnabled: false,
+    });
+    const grid = emojiPicker(fixture);
+
+    fixture.componentRef.setInput('gifEnabled', true);
+    await fixture.whenStable();
+
+    expect(view.getByRole('tablist')).toBeInTheDocument();
+    expect(emojiPicker(fixture)).toBe(grid);
+    expect(view.getByRole('tabpanel')).toHaveAccessibleName('Emoji');
   });
 
   it('has no close button of its own as a popover', async () => {

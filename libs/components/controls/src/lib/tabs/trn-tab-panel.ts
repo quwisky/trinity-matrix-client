@@ -8,7 +8,10 @@ import {
 import { BrnTabsContent } from '@spartan-ng/brain/tabs';
 import { TrnTabs } from './trn-tabs';
 
-/** The panel for the tab whose value is `[trnTabPanel]`; hidden while another is selected. */
+/**
+ * The panel for the tab whose value is `[trnTabPanel]`; hidden while another is selected.
+ * Without that tab in the list it is plain content, so a row can come and go around it.
+ */
 @Directive({
   selector: '[trnTabPanel]',
   exportAs: 'trnTabPanel',
@@ -21,8 +24,9 @@ import { TrnTabs } from './trn-tabs';
   ],
   host: {
     '[id]': 'root.panelId(value())',
-    '[attr.aria-labelledby]': 'root.tabId(value())',
-    '[attr.tabindex]': 'focusable() ? 0 : null',
+    '[attr.role]': 'tabbed() ? "tabpanel" : null',
+    '[attr.aria-labelledby]': 'tabbed() ? root.tabId(value()) : null',
+    '[attr.tabindex]': 'tabbed() && focusable() ? 0 : null',
   },
 })
 export class TrnTabPanel {
@@ -30,6 +34,7 @@ export class TrnTabPanel {
 
   protected readonly root = inject(TrnTabs);
   protected readonly value = computed(() => this.content.contentFor());
+  protected readonly tabbed = computed(() => this.root.hasTab(this.value()));
 
   /**
    * Whether the panel itself is a tab stop. Turn it off when the panel's first content is
