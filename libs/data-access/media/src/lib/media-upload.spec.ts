@@ -1074,12 +1074,8 @@ describe('uploadLimit', () => {
       getMediaConfig: vi.fn().mockResolvedValue({}),
     });
 
-    // Pre-split formatting, kept so the assertion text matches the original.
-    // prettier-ignore
     expect(
-      await firstValueFrom(
-        svc.uploadLimit(client as unknown as MatrixClient),
-      ),
+      await firstValueFrom(svc.uploadLimit(client as unknown as MatrixClient)),
     ).toBeNull();
   });
 
