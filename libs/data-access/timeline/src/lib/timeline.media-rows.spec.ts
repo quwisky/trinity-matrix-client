@@ -274,10 +274,7 @@ describe('media messages', () => {
     ]);
 
     // Rendered one DOM node each, so the received array must be bounded.
-    // prettier-ignore
-    expect(svc.messages()[0].media?.waveform?.length).toBeLessThanOrEqual(
-      512,
-    );
+    expect(svc.messages()[0].media?.waveform?.length).toBeLessThanOrEqual(512);
   });
 
   it('leaves a plain m.audio unflagged as voice', () => {
