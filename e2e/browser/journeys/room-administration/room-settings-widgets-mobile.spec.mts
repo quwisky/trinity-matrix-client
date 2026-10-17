@@ -1,10 +1,4 @@
-import {
-  testResourceId,
-  devices,
-  expect,
-  test,
-  type Page,
-} from '../../../fixtures.mts';
+import { testResourceId, devices, expect, test } from '../../../fixtures.mts';
 import {
   login,
   openSettingsTab,
@@ -13,22 +7,13 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { installWidgetFixture } from '../../support/widget.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // A real device profile is essential here: a touch-enabled desktop user agent keeps the
 // desktop dialog path and would not prove that the mobile settings surface stays usable.
 test.use({ ...devices['Pixel 5'] });
 
 const session = homeserverSession();
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
 
 test.describe('Room settings widgets on a phone', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');

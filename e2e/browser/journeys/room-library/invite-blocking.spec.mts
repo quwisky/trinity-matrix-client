@@ -1,4 +1,4 @@
-import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
@@ -6,22 +6,13 @@ import {
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers Settings › Privacy › Invites: choosing "Block all invites" stores the MSC4380
 // invite permission config, after which the invitee's homeserver turns the invite down
 // (M_INVITE_BLOCKED). The inviter sees "{name} isn't accepting invites." and the invitee
 // never receives the invite. Needs a homeserver that supports invite blocking.
 const session = homeserverSession();
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
 
 test.describe('Block unwanted invites', () => {
   test.skip(!session.available, 'needs a homeserver');

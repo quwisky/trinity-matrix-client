@@ -13,6 +13,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 /**
  * Paging in older history must not move what the reader is looking at.
@@ -36,16 +37,6 @@ const { defaultBrowserType: _browser, ...pixel5 } = devices['Pixel 5'];
 
 /** Comfortably more than one page, so scrolling to the top pages in real history. */
 const MESSAGE_COUNT = 45;
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
 
 interface AnchorCase {
   readonly position: 'top' | 'near-bottom';

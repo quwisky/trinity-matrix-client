@@ -13,6 +13,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers starting cross-user verification from a member's info panel: "Verify"
 // (data-testid="member-info-verify") ensures a DM with them and requests emoji-SAS
@@ -22,16 +23,6 @@ import { registerUser, apiLogin } from '../../../support/account.mts';
 // *starts* — the SAS round-trip is covered by the crypto unit + e2e:verify suites.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = homeserverSession();
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
 
 /** Give a UI client its own cross-signing identity before cross-user SAS starts. */
 async function setUpEncryption(page: Page, password: string): Promise<void> {

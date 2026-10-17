@@ -3,7 +3,6 @@ import {
   test,
   expect,
   type APIRequestContext,
-  type Page,
 } from '../../../fixtures.mts';
 import {
   login,
@@ -12,6 +11,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // End-to-end for per-conversation composer drafts: a half-typed message is kept per
 // room while switching between rooms, and survives a reload (persisted to Capacitor
@@ -55,17 +55,6 @@ async function seedTwoRooms(
     roomA,
     roomB,
   };
-}
-
-/** Open a room from the sidebar and wait for its composer to be ready. */
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
 }
 
 test.describe('Composer drafts', () => {

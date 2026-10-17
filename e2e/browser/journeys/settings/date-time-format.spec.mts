@@ -2,6 +2,7 @@ import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import { login, homeserverSession } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers issue #22: the Settings → Appearance dropdowns that choose how times and dates are
 // written. The unit tests cover the formatting itself; what only a real browser can prove is
@@ -9,16 +10,6 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // an already-rendered timeline and survives a reload.
 // Needs a Synapse homeserver (Docker); self-skips.
 const session = homeserverSession();
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
 
 /**
  * Pick an option from one of the format dropdowns.

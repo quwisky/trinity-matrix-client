@@ -8,22 +8,13 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // Covers the thread composer (data-testid="thread-view"): the room-scoped actions
 // (poll/location/voice) are hidden there because they post to the main room,
 // not the thread; and a slash command typed in a thread is parsed (`/me waves` sends an
 // emote "waves", not the literal text). Needs a Synapse homeserver (Docker); self-skips.
 const session = homeserverSession();
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
-}
 
 test.describe('Thread composer', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');

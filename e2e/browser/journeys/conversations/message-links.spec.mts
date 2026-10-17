@@ -21,6 +21,7 @@ import {
   sendMessage,
   signInAndOpen,
 } from '../../support/formatted-message-journey.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // End-to-end for message links. A matrix.to link to another room routes in-app (switches
 // rooms) rather than leaving to matrix.to; those tests need the federated secondary
@@ -112,16 +113,6 @@ async function localScenario(
   const sourceName = `Link Source ${suffix}`;
   const sourceId = await createRoom(request, hs, auth, { name: sourceName });
   return { hs, username, password, auth, sourceId, sourceName };
-}
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
 }
 
 async function activateRoomLinkPrimary(

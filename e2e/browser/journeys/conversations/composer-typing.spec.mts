@@ -4,7 +4,6 @@ import {
   expect,
   type APIRequestContext,
   type Locator,
-  type Page,
 } from '../../../fixtures.mts';
 import {
   login,
@@ -12,6 +11,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // End-to-end for typing indicators: when another member of the open room starts
 // typing, the app shows an "X is typing" row under the timeline, and clears it once
@@ -88,16 +88,6 @@ async function setMemberTyping(
       data: typing ? { typing: true, timeout: 30_000 } : { typing: false },
     },
   );
-}
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
 }
 
 test.describe('Typing indicators', () => {

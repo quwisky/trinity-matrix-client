@@ -3,7 +3,6 @@ import {
   test,
   expect,
   type APIRequestContext,
-  type Page,
 } from '../../../fixtures.mts';
 import {
   login,
@@ -11,6 +10,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
+import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
 // End-to-end for @-mention autocomplete: typing `@` opens a member menu, picking one
 // inserts a pill, and the sent message carries a matrix.to mention link (so it pings
@@ -95,16 +95,6 @@ async function seedRoomWithMember(
     memberName,
     memberId: member.userId,
   };
-}
-
-async function openRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByTestId('rail-rooms').click();
-  const channel = page.locator('.channel', { hasText: roomName });
-  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
-  await channel.first().click();
-  await expect(page.getByTestId('composer-input')).toBeVisible({
-    timeout: 15_000,
-  });
 }
 
 test.describe('Composer @-mentions', () => {
