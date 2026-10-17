@@ -708,24 +708,6 @@ describe('MessageListComponent with windowing off', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 
-  it('flashes the jumped-to row', async () => {
-    Element.prototype.scrollIntoView = vi.fn();
-
-    const { fixture, container } = await renderUnwindowed({
-      inputs: {
-        messages: [
-          msg('$1', '@a:hs', 'Alice', 1000),
-          msg('$2', '@b:hs', 'Bob', 2000),
-        ],
-      },
-    });
-
-    fixture.componentInstance.jumpTo('$2');
-
-    const row = container.querySelector('[data-mid="$2"]')!;
-    expect(row.classList.contains('msg--flash')).toBe(true);
-  });
-
   it('re-applies the flash class on a repeat jump to the same row', async () => {
     Element.prototype.scrollIntoView = vi.fn();
 
