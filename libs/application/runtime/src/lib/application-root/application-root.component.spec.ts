@@ -60,6 +60,30 @@ function settle(fixture: { detectChanges(): void }): void {
   TestBed.inject(ApplicationRef).tick();
 }
 
+const READY: ApplicationRuntimeState = {
+  phase: 'ready',
+  attempt: 1,
+  settlements: [],
+};
+
+function blocked(
+  failure: Extract<ApplicationRuntimeState, { phase: 'blocked' }>['failure'],
+  attempt = 1,
+): ApplicationRuntimeState {
+  return { phase: 'blocked', attempt, failure, settlements: [] };
+}
+
+/** Open System status through the entry button the capability banner and startup screens share. */
+function openSystemStatus(fixture: {
+  nativeElement: HTMLElement;
+  detectChanges(): void;
+}): void {
+  [...fixture.nativeElement.querySelectorAll('button')]
+    .find((item) => item.textContent?.includes('System status'))!
+    .click();
+  settle(fixture);
+}
+
 describe('ApplicationRootComponent', () => {
   beforeAll(() => {
     // jsdom has no top layer; record App lock's modal as an open attribute.
@@ -210,14 +234,11 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('keeps the healthy fallback on login and removes it across every shell URL', async () => {
-    const { fixture, router, getByTestId, queryByTestId } = await setup(
-      { phase: 'ready', attempt: 1, settlements: [] },
-      [
-        { path: 'login', component: RouteProbeComponent },
-        { path: 'rooms', component: RouteProbeComponent },
-        { path: 'rooms/:roomId', component: RouteProbeComponent },
-      ],
-    );
+    const { fixture, router, getByTestId, queryByTestId } = await setup(READY, [
+      { path: 'login', component: RouteProbeComponent },
+      { path: 'rooms', component: RouteProbeComponent },
+      { path: 'rooms/:roomId', component: RouteProbeComponent },
+    ]);
 
     await router.navigateByUrl('/login');
     await fixture.whenStable();
@@ -251,24 +272,21 @@ describe('ApplicationRootComponent', () => {
       'Restoring your Accounts',
     );
 
-    state.set({ phase: 'ready', attempt: 1, settlements: [] });
+    state.set(READY);
     fixture.detectChanges();
     expect(queryByTestId('app-booting')).toBeNull();
     expect(fixture.nativeElement.querySelector('router-outlet')).toBeTruthy();
   });
 
   it('asks to unlock the keychain when it blocks startup', async () => {
-    const { getByTestId } = await setup({
-      phase: 'blocked',
-      attempt: 1,
-      failure: {
+    const { getByTestId } = await setup(
+      blocked({
         stage: 'account-restoration',
         recovery: 'retry-startup',
         secondaryRecovery: 'reauthenticate',
         diagnostic: { code: 'account-secure-storage-unavailable' },
-      },
-      settlements: [],
-    });
+      }),
+    );
 
     expect(getByTestId('app-startup-blocked').textContent).toContain(
       'Your system keychain is locked or unavailable. Unlock it and try again.',
@@ -279,17 +297,14 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('offers account removal behind a confirm when the keychain blocks startup', async () => {
-    const { fixture, getByTestId, recover, confirm } = await setup({
-      phase: 'blocked',
-      attempt: 1,
-      failure: {
+    const { fixture, getByTestId, recover, confirm } = await setup(
+      blocked({
         stage: 'account-restoration',
         recovery: 'retry-startup',
         secondaryRecovery: 'reauthenticate',
         diagnostic: { code: 'account-secure-storage-unavailable' },
-      },
-      settlements: [],
-    });
+      }),
+    );
     const remove = getByTestId('app-startup-secondary-recovery');
     expect(remove.textContent).toContain('Remove account');
 
@@ -310,16 +325,13 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('focuses blocked startup on user-function copy and confirms Account removal', async () => {
-    const { fixture, getByTestId, recover, confirm } = await setup({
-      phase: 'blocked',
-      attempt: 1,
-      failure: {
+    const { fixture, getByTestId, recover, confirm } = await setup(
+      blocked({
         stage: 'account-restoration',
         recovery: 'reauthenticate',
         diagnostic: { code: 'active-account-unavailable' },
-      },
-      settlements: [],
-    });
+      }),
+    );
     expect(getByTestId('app-startup-blocked').textContent).toContain(
       'required account session',
     );
@@ -336,16 +348,13 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('preserves exact RESET TRINITY and DEFAULTS confirmations', async () => {
-    const installation = await setup({
-      phase: 'blocked',
-      attempt: 1,
-      failure: {
+    const installation = await setup(
+      blocked({
         stage: 'account-restoration',
         recovery: 'reset-installation',
         diagnostic: { code: 'account-local-state-unavailable' },
-      },
-      settlements: [],
-    });
+      }),
+    );
     installation.prompt.mockReturnValueOnce(of('RESET TRINITY'));
     installation.getByTestId('app-startup-recovery').click();
     installation.fixture.detectChanges();
@@ -354,16 +363,16 @@ describe('ApplicationRootComponent', () => {
       expect.objectContaining({ placeholder: 'RESET TRINITY' }),
     );
 
-    installation.state.set({
-      phase: 'blocked',
-      attempt: 2,
-      failure: {
-        stage: 'preference-hydration',
-        recovery: 'reset-preferences',
-        diagnostic: { code: 'preference-safe-baseline-unavailable' },
-      },
-      settlements: [],
-    });
+    installation.state.set(
+      blocked(
+        {
+          stage: 'preference-hydration',
+          recovery: 'reset-preferences',
+          diagnostic: { code: 'preference-safe-baseline-unavailable' },
+        },
+        2,
+      ),
+    );
     installation.fixture.detectChanges();
     installation.prompt.mockReturnValueOnce(of('DEFAULTS'));
     installation.getByTestId('app-startup-recovery').click();
@@ -375,11 +384,7 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('presents System status as a surface that Escape closes', async () => {
-    const { fixture, getByTestId } = await setup({
-      phase: 'ready',
-      attempt: 1,
-      settlements: [],
-    });
+    const { fixture, getByTestId } = await setup(READY);
     getByTestId('system-status-access').click();
     settle(fixture);
     expect(screen.getByRole('dialog', { name: 'System status' })).toBeTruthy();
@@ -403,11 +408,7 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('closes the System status surface when its state closes', async () => {
-    const { fixture, getByTestId } = await setup({
-      phase: 'ready',
-      attempt: 1,
-      settlements: [],
-    });
+    const { fixture, getByTestId } = await setup(READY);
     getByTestId('system-status-access').click();
     settle(fixture);
 
@@ -418,11 +419,7 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('stacks System status over an open dialog and closes it first', async () => {
-    const { fixture, getByTestId } = await setup({
-      phase: 'ready',
-      attempt: 1,
-      settlements: [],
-    });
+    const { fixture, getByTestId } = await setup(READY);
     const surfaces = TestBed.inject(TrnSurfaceService);
     surfaces.open(ProbeDialogComponent, { ariaLabel: 'Probe' });
     settle(fixture);
@@ -442,11 +439,7 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('keeps routed content while grouping scoped problems in System status', async () => {
-    const { fixture, health, getByTestId } = await setup({
-      phase: 'ready',
-      attempt: 1,
-      settlements: [],
-    });
+    const { fixture, health, getByTestId } = await setup(READY);
     const context = Symbol('private-account-id');
     health.presentForAccount(context, '@private:example.org');
     health.report(
@@ -471,11 +464,7 @@ describe('ApplicationRootComponent', () => {
     expect(getByTestId('app-capability-summary').textContent).toContain(
       'A background Account needs attention.',
     );
-    const button = [...fixture.nativeElement.querySelectorAll('button')].find(
-      (item: HTMLButtonElement) => item.textContent?.includes('System status'),
-    );
-    button.click();
-    settle(fixture);
+    openSystemStatus(fixture);
     const status = screen.getByTestId('system-status');
     expect(status.textContent).toContain('Accounts');
     expect(status.textContent).toContain('Alice');
@@ -484,11 +473,8 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('shows one banner at a time and yields the slot to the encryption prompt', async () => {
-    const { fixture, health, trust, getByTestId, queryByTestId } = await setup({
-      phase: 'ready',
-      attempt: 1,
-      settlements: [],
-    });
+    const { fixture, health, trust, getByTestId, queryByTestId } =
+      await setup(READY);
     health.report(
       {
         capability: 'accounts',
@@ -516,16 +502,13 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('opens Overview and navigates to safe Support details without leaving startup', async () => {
-    const { fixture, getByRole } = await setup({
-      phase: 'blocked',
-      attempt: 1,
-      failure: {
+    const { fixture, getByRole } = await setup(
+      blocked({
         stage: 'account-restoration',
         recovery: 'reauthenticate',
         diagnostic: { code: 'active-account-unavailable' },
-      },
-      settlements: [],
-    });
+      }),
+    );
     // The startup entry point is available independently of a ready Workspace.
     getByRole('button', { name: 'System status' }).click();
     settle(fixture);
@@ -555,16 +538,13 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('opens Report a bug over Support details, even while startup is blocked', async () => {
-    const { fixture, getByRole, openReport } = await setup({
-      phase: 'blocked',
-      attempt: 1,
-      failure: {
+    const { fixture, getByRole, openReport } = await setup(
+      blocked({
         stage: 'account-restoration',
         recovery: 'reauthenticate',
         diagnostic: { code: 'active-account-unavailable' },
-      },
-      settlements: [],
-    });
+      }),
+    );
 
     getByRole('button', { name: 'System status' }).click();
     settle(fixture);
@@ -577,11 +557,7 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('keeps the selected capability through refresh and returns to Overview when it resolves', async () => {
-    const { fixture, health, getByRole } = await setup({
-      phase: 'ready',
-      attempt: 1,
-      settlements: [],
-    });
+    const { fixture, health, getByRole } = await setup(READY);
     const fact = {
       capability: 'accounts',
       operation: 'restore',
@@ -622,11 +598,7 @@ describe('ApplicationRootComponent', () => {
       value: 390,
     });
     try {
-      const { fixture, getByTestId } = await setup({
-        phase: 'ready',
-        attempt: 1,
-        settlements: [],
-      });
+      const { fixture, getByTestId } = await setup(READY);
       getByTestId('system-status-access').click();
       settle(fixture);
       screen.getByRole('button', { name: 'Back to sections' }).click();
@@ -665,11 +637,7 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('keeps an all-working System status entry point available', async () => {
-    const { fixture, getByTestId } = await setup({
-      phase: 'ready',
-      attempt: 1,
-      settlements: [],
-    });
+    const { fixture, getByTestId } = await setup(READY);
     getByTestId('system-status-access').click();
     settle(fixture);
     expect(
@@ -678,11 +646,7 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('uses the safe generic catalogue entry for an unknown fault', async () => {
-    const { fixture, health } = await setup({
-      phase: 'ready',
-      attempt: 1,
-      settlements: [],
-    });
+    const { fixture, health } = await setup(READY);
     health.report(
       {
         capability: 'future',
@@ -698,12 +662,7 @@ describe('ApplicationRootComponent', () => {
       () => of({ kind: 'unavailable' as const }),
     );
     fixture.detectChanges();
-    [...fixture.nativeElement.querySelectorAll('button')]
-      .find((item: HTMLButtonElement) =>
-        item.textContent?.includes('System status'),
-      )
-      .click();
-    settle(fixture);
+    openSystemStatus(fixture);
     expect(screen.getByTestId('system-status').textContent).toContain(
       'A feature needs attention',
     );
@@ -790,16 +749,11 @@ describe('ApplicationRootComponent', () => {
 
   it('shows the secure-connection notice, not the startup recovery page, when the lock is unavailable', async () => {
     const { queryByTestId } = await setup(
-      {
-        phase: 'blocked',
-        attempt: 1,
-        settlements: [],
-        failure: {
-          stage: 'session-lock',
-          recovery: 'retry-startup',
-          diagnostic: { code: 'session-lock-unavailable' },
-        },
-      },
+      blocked({
+        stage: 'session-lock',
+        recovery: 'retry-startup',
+        diagnostic: { code: 'session-lock-unavailable' },
+      }),
       [],
       'unavailable',
     );
