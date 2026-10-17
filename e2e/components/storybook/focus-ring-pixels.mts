@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { contrastRatio, type Srgb } from '../../browser/support/contrast.mts';
 
-/** Painted colours across a focused control's inline-start edge, outside in. */
+/** Painted colours across a focused control's left edge, outside in. */
 export interface FocusRingPixels {
   surface: Srgb;
   ring: Srgb;
@@ -17,12 +17,25 @@ export interface SeparatedRingRatios {
   fillToGap: number;
 }
 
-/** No more than rounding noise between two samples of the same colour. */
-const SAME_COLOUR = 1.05;
+/** Rounding noise between two samples of one colour, per 0-255 channel. */
+const CHANNEL_TOLERANCE = 2;
+
+/** Compares channels, not luminance, so two hues of equal lightness still differ. */
+function expectSameColour(actual: Srgb, expected: Srgb, message: string): void {
+  const distance = Math.max(
+    Math.abs(actual.r - expected.r),
+    Math.abs(actual.g - expected.g),
+    Math.abs(actual.b - expected.b),
+  );
+  expect(
+    distance,
+    `${message} ${JSON.stringify({ actual, expected })}`,
+  ).toBeLessThanOrEqual(CHANNEL_TOLERANCE);
+}
 
 /**
  * Samples the screenshot, not computed styles, along the vertical middle of the control's
- * inline-start edge. Each column is chosen to land on a whole pixel inside its band for any
+ * left edge. Each column is chosen to land on a whole pixel inside its band for any
  * fractional box position, given the token offset and width of 2px or more.
  */
 export async function focusRingPixels(
@@ -50,9 +63,11 @@ export async function focusRingPixels(
     fill: Math.floor(box.x) + 4,
   };
   const y = Math.floor(box.y + box.height / 2);
-  // Helm's `transition-all` would otherwise catch the ring mid-fade.
+  // Helm's `transition-all` would otherwise catch the ring mid-fade. The columns are CSS
+  // pixels, so the image must be too on a high-density display.
   const png = await page.screenshot({
     animations: 'disabled',
+    scale: 'css',
     clip: {
       x: columns.surface,
       y,
@@ -88,7 +103,8 @@ export async function focusRingPixels(
 
 /**
  * A focused control whose fill shares the ring's colour must show the ring apart from it: a
- * gap painted in the surface behind the control, then the ring, at 3:1 or more against both.
+ * transparent gap that shows the surface behind the control, then the ring, at 3:1 or more
+ * against both.
  */
 export async function expectSeparatedFocusRing(
   page: Page,
@@ -108,14 +124,8 @@ export async function expectSeparatedFocusRing(
     gapToSurface: contrastRatio(pixels.gap, pixels.surface),
     fillToGap: contrastRatio(pixels.fill, pixels.gap),
   };
-  expect(
-    contrastRatio(pixels.ring, ringColour),
-    `painted ring ${JSON.stringify(pixels)}`,
-  ).toBeLessThanOrEqual(SAME_COLOUR);
-  expect(
-    ratios.gapToSurface,
-    `gap matches the surface ${JSON.stringify(pixels)}`,
-  ).toBeLessThanOrEqual(SAME_COLOUR);
+  expectSameColour(pixels.ring, ringColour, 'painted ring');
+  expectSameColour(pixels.gap, pixels.surface, 'gap shows the surface');
   expect(ratios.ringToGap).toBeGreaterThanOrEqual(3);
   expect(ratios.ringToSurface).toBeGreaterThanOrEqual(3);
   return ratios;

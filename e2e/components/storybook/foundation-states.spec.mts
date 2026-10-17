@@ -124,8 +124,9 @@ async function expectPaintedRing(
 
 /**
  * #1217: a solid action on an attention surface inverts, so its fill stands out from the
- * surface at rest and on hover, its label stays readable on both, and its focus ring sits
- * on a gap in the surface colour. Returns the resolved attention hover fill.
+ * surface at rest and on hover, its label stays readable on both, and its focus ring stands
+ * apart from it across a transparent gap that shows the surface. Returns the resolved
+ * attention hover fill.
  */
 async function expectAttentionAction(
   page: Page,
@@ -186,8 +187,8 @@ async function expectAttentionAction(
     3,
   );
   await action.evaluate((element: HTMLElement) => element.blur());
-  // The ring shares the inverted fill's colour, so a gap in the surface colour is what
-  // keeps it distinct from the button.
+  // The ring shares the inverted fill's colour, so a transparent gap that shows the surface
+  // is what keeps it distinct from the button.
   const ratios = await expectSeparatedFocusRing(page, action, onAttentionRing);
   test.info().annotations.push({
     type: 'contrast',
@@ -1329,6 +1330,17 @@ test.describe('semantic design foundations', () => {
       page,
       action,
       await resolveTokenSrgb(page, testId, '--trinity-focus-ring'),
+    );
+
+    // Its fill is clipped to the padding box, so the border keeps its colour while focused:
+    // a transparent one would shrink the fill by a pixel.
+    await action.focus();
+    await expect(action).toBeFocused();
+    expect(
+      await action.evaluate((element) => element.matches(':focus-visible')),
+    ).toBe(true);
+    expect(await computedColour(action, 'border-top-color')).toEqual(
+      await resolveTokenSrgb(page, testId, '--trinity-disabled-border'),
     );
   });
 

@@ -127,3 +127,41 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
     }
   });
 }
+
+test.describe('on a high-density display', () => {
+  test.use({ deviceScaleFactor: 2 });
+
+  test('solid primary focus ring is sampled in CSS pixels', async ({
+    page,
+  }) => {
+    await page.goto(FOCUS_STORY);
+    for (const surface of ['canvas', 'card']) {
+      const testId = `focus-primary-${surface}`;
+      await expectSeparatedFocusRing(
+        page,
+        page.getByTestId(testId),
+        await resolveTokenSrgb(page, testId, '--trinity-focus-ring'),
+      );
+    }
+  });
+});
+
+test('a focused solid primary keeps a visible outline under forced colours', async ({
+  page,
+}) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.goto(FOCUS_STORY);
+  const button = page.getByTestId('focus-primary-canvas');
+  await page.keyboard.press('Tab');
+  await button.focus();
+  await expect(button).toBeFocused();
+  const outline = await button.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      style: style.outlineStyle,
+      width: Number.parseFloat(style.outlineWidth),
+    };
+  });
+  expect(outline.style).not.toBe('none');
+  expect(outline.width).toBeGreaterThanOrEqual(2);
+});

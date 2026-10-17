@@ -93,8 +93,10 @@
    * the pane), so it takes a neutral fill and the muted label at full opacity; this selector
    * out-ranks the fade above. Losing its tone marks the state. A solid secondary button
    * already rests on that neutral fill, so it keeps the fade, as outline, ghost and link
-   * buttons do: their glyphs and emoji ignore a text colour. A focused `trnActionAllowed` button keeps its focus border. Forced
-   * colours replace these colours, so the system's disabled colour marks the state there. */
+   * buttons do: their glyphs and emoji ignore a text colour. A focused `trnActionAllowed`
+   * danger button takes its focus border; a primary one keeps this border, as its fill is
+   * clipped to the padding box and its ring stands apart. Forced colours replace these
+   * colours, so the system's disabled colour marks the state there. */
   :is(button, a)[trnBtn][data-trn-presentation='solid']:not(
       [data-trn-variant='secondary']
     ):is(:disabled, [aria-disabled='true']) {
@@ -102,7 +104,7 @@
     color: var(--trinity-disabled-foreground);
     opacity: 1;
 
-    &:not(:focus-visible) {
+    &:is(:not(:focus-visible), [data-trn-variant='primary']) {
       border-color: var(--trinity-disabled-border);
     }
 

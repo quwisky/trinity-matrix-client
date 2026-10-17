@@ -475,8 +475,7 @@ describe('TrnButton', () => {
         }).split(' ');
 
         expect(solidPrimary).toEqual(expect.arrayContaining(separatedRing));
-        // A painted ring or border flush against the accent fill is what read as a thick
-        // border; neither may survive the merge, on any surface.
+        // Neither a ring nor a focus border may sit flush against the fill, on any surface.
         expect(solidPrimary).not.toContain('focus-visible:ring-3');
         expect(solidPrimary).not.toContain('focus-visible:border-ring');
         expect(solidPrimary).not.toContain(
