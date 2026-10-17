@@ -214,11 +214,13 @@ app-owned `push_notification_appearance.xml` notification icon and accent.
 
 **Push handoff store.** `PushHandoffService` (data-access/notifications) keeps a native
 store current through the `PushHandoff` plugin (`setAccount`, `setRooms`, `removeAccount`,
-`clear`, `clearRoom`). Per signed-in account it holds the homeserver URL, the access token
-(rewritten when the SDK refreshes it), the token's expiry when the account signed in through
+`clear`, `clearRoom`, `setNotificationText`, `clearDelivered`). Per signed-in account it holds
+the homeserver URL, the access token (rewritten when the SDK refreshes it), the token's expiry when the account signed in through
 OAuth 2.0 and its server gave the token a lifetime (MAS defaults to five minutes;
 `MatrixClientService.accessTokenExpiry` hands it over only with the token it belongs to) and
-the notification-sound choice, plus room display names and DM flags written in one batch per
+the notification-sound choice, plus App lock's effective Notification text (`setNotificationText`;
+iOS app-group `push-handoff/settings.json`, Android `settings:notification-text`; missing reads as
+Show and unreadable as Always hide), room display names and DM flags written in one batch per
 sync or rename. It never holds refresh tokens, crypto keys or message history. An account's
 entry is removed as the first step of its sign-out, together with that account's delivered
 pushes, and the store is emptied, with
@@ -339,8 +341,14 @@ message", because only the running app can renew the token; any other failed rea
 "New message". Password and SSO tokens carry no expiry and are always read. The renderers
 never log tokens, expiries, IDs, room names or message text. Android posts
 one `MessagingStyle` notification per room on `messages` and cancels it when a push without
-`event_id` arrives for that room. The operating system's preview settings decide what shows
-on the lock screen.
+`event_id` arrives for that room. What shows depends on App lock's Notification text, which
+only applies while App lock is on. Show leaves the lock screen to the system's preview settings.
+Hide on the lock screen adds the `trinity.message.private` category on iOS, which shows "New
+message" while Show Previews hides previews, and `VISIBILITY_PRIVATE` with a generic public
+version on Android, which is used where the lock-screen setting hides sensitive content. Always
+hide renders only "New message" with no title (the system shows the app's name), without reading
+the event, and on iOS without any network request. Both renderers read the mode again just
+before posting; with no store, iOS hides everything.
 
 **Who presents in the background.** Once Android push is registered,
 `PushService.backgroundDelivery` is `push`, and the notification policy stops the running
