@@ -46,12 +46,14 @@ export type {
 export type {
   ConversationHandle,
   ConversationMedia,
-  ConversationResources,
-  ConversationSearch,
   ConversationRuntimeDiagnostics,
   ConversationState,
-  ConversationTimeline,
 } from './lib/conversation-runtime.service';
+export type {
+  ConversationResources,
+  ConversationSearch,
+  ConversationTimeline,
+} from './lib/conversation-timeline-factory';
 export * from './lib/timeline-actions.service';
 export * from './lib/url-preview.service';
 export * from './lib/edit-history.service';

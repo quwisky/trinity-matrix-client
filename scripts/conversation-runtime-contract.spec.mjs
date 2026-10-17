@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 const workspaceRoot = join(import.meta.dirname, '..');
 const runtimeImplementation =
   'libs/data-access/timeline/src/lib/conversation-runtime.service.ts';
+const timelineFactoryImplementation =
+  'libs/data-access/timeline/src/lib/conversation-timeline-factory.ts';
 const readinessImplementation =
   'libs/data-access/timeline/src/lib/conversation-timeline-readiness.ts';
 const composeImplementation =
@@ -99,23 +101,24 @@ describe('Conversation Runtime production boundary', () => {
   });
 
   it('binds each child to the client for its immutable Account key', () => {
-    const runtime = source(runtimeImplementation);
+    const factory = source(timelineFactoryImplementation);
     const readiness = source(readinessImplementation);
 
-    expect(runtime).toContain('this.matrix.clientFor(key.accountId)');
-    expect(runtime).toContain('readiness.start(key.roomId, client, timeline);');
+    expect(factory).toContain('this.matrix.clientFor(key.accountId)');
+    expect(factory).toContain('readiness.start(key.roomId, client, timeline);');
     expect(readiness).toContain('timeline.open(this.roomId, client)');
   });
 
   it('binds message search to the same exact Conversation child', () => {
     const runtime = source(runtimeImplementation);
+    const factory = source(timelineFactoryImplementation);
     const search = source(searchImplementation);
     const roomFeature = productionSources
       .filter((file) => file.startsWith('libs/feature/rooms/'))
       .map(source)
       .join('\n');
 
-    expect(runtime).toContain('search.attach(key, client);');
+    expect(factory).toContain('search.attach(key, client);');
     expect(runtime).toContain('readonly search: ConversationSearch;');
     expect(search).toContain(
       'attach(key: ConversationKey, client: MatrixClient)',
