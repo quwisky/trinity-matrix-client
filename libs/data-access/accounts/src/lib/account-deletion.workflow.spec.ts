@@ -384,6 +384,30 @@ describe('AccountDeletionWorkflow', () => {
       expect(test.accounts.removeDeletedAccount).not.toHaveBeenCalled();
       expect(test.release).toHaveBeenCalledWith({ deleted: false });
     });
+
+    it('is not counted as a deletion when the token died before a request that then got no answer', async () => {
+      const test = setup({ status: 'gone' });
+      vi.mocked(test.stages.password).mockImplementation(async () => {
+        test.killToken();
+        return 'pw';
+      });
+      vi.mocked(test.client.deactivateAccount).mockImplementation(
+        async (auth: unknown) => {
+          if (!auth) throw uia(['m.login.password']);
+          throw new ConnectionError('reset');
+        },
+      );
+
+      await expect(
+        firstValueFrom(test.workflow.delete(request(test.stages))),
+      ).resolves.toEqual({
+        kind: 'kept',
+        accountId: ALICE,
+        reason: 'signed-out',
+      });
+      expect(test.accounts.removeDeletedAccount).not.toHaveBeenCalled();
+      expect(test.release).toHaveBeenCalledWith({ deleted: false });
+    });
   });
 
   it('sends nothing while another account operation is running', async () => {
