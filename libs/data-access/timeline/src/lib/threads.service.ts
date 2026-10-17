@@ -45,7 +45,7 @@ import {
   shieldSubject,
   unencryptedShieldFor,
 } from './shields';
-import { eventRevision } from './timeline.service';
+import { eventRevision } from './event-revision';
 import { onWindowFocus, windowHasFocus } from './window-focus';
 import { projectMessage } from './project-message';
 import type { MessageShield, MessageView } from './message-presentation';

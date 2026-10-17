@@ -25,7 +25,8 @@ import {
   vi,
 } from 'vitest';
 import { CONVERSATION_ATTENTION } from './conversation-attention.port';
-import { TimelineService, eventRevision } from './timeline.service';
+import { TimelineService } from './timeline.service';
+import { eventRevision } from './event-revision';
 import { TYPING_REFRESH_MS, TYPING_TIMEOUT_MS } from '@trinity/util/matrix';
 import {
   fakeClient,

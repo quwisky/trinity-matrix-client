@@ -19,7 +19,8 @@ import {
 } from 'matrix-js-sdk/lib/crypto-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pollResponseContent, pollStartContent } from '@trinity/util/matrix';
-import { TimelineService, revisionOf } from './timeline.service';
+import { TimelineService } from './timeline.service';
+import { revisionOf } from './event-revision';
 import { trimLiveTimeline } from './live-timeline-trim';
 import type { MessageView } from './message-presentation';
 import {
