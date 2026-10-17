@@ -12,3 +12,4 @@ export * from './lib/room-pin-governance.service';
 export * from './lib/room-advanced-info';
 export * from './lib/room-upgrade.service';
 export * from './lib/room-encryption.service';
+export * from './lib/room-directory.service';

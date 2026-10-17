@@ -42,6 +42,7 @@ const DENIED_SPACE_SETTINGS: RoomSettingsPermissions = {
   aliases: { available: false, reason: 'Space settings are unavailable.' },
   upgrade: { available: false, reason: 'Space settings are unavailable.' },
   encryption: { available: false, reason: 'Space settings are unavailable.' },
+  directory: { available: false, reason: 'Space settings are unavailable.' },
 };
 
 const SPACE_JOIN_RULE_OPTIONS: readonly {
