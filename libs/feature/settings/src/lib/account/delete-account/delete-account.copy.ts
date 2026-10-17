@@ -17,6 +17,8 @@ export const DELETE_ACCOUNT_COPY = {
     'After you delete your account there, come back to Trinity. It removes the account from this device when it notices.',
   providerMissing: (server: string) =>
     `${server} doesn’t offer a page for deleting accounts. Ask its administrator to delete it.`,
+  planUnknown: (server: string) =>
+    `Trinity couldn’t load how to delete this account from ${server}. Check your connection and try again.`,
   stillExists:
     'Your account still exists. If you deleted it, wait a moment and check again.',
   confirmTitle: (accountId: string) => `Delete ${accountId}?`,

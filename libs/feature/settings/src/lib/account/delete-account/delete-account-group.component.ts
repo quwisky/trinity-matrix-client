@@ -12,7 +12,7 @@ import {
   toObservable,
   toSignal,
 } from '@angular/core/rxjs-interop';
-import { switchMap, tap } from 'rxjs';
+import { Subject, startWith, switchMap, tap } from 'rxjs';
 import { TrnButton } from '@trinity/components/controls';
 import {
   TrnSettingsGroupComponent,
@@ -44,6 +44,9 @@ export class DeleteAccountGroupComponent {
   private readonly launcher = inject(ACCOUNT_DELETION_LAUNCHER);
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly retries = new Subject<void>();
+  /** What a screen reader hears about Try again; the visible text alone isn't announced. */
+  protected readonly announcement = signal('');
 
   protected readonly copy = DELETE_ACCOUNT_COPY;
 
@@ -55,8 +58,27 @@ export class DeleteAccountGroupComponent {
       tap(() => {
         this.providerOpened.set(false);
         this.checkMessage.set(null);
+        this.announcement.set('');
       }),
-      switchMap((id) => this.launcher.plan(id)),
+      switchMap((id) =>
+        this.retries.pipe(
+          startWith(undefined),
+          switchMap((_, retry) => {
+            const plan = this.launcher.plan(id);
+            return retry === 0
+              ? plan.pipe(startWith(null))
+              : plan.pipe(
+                  tap(({ kind }) =>
+                    this.announcement.set(
+                      kind === 'unknown'
+                        ? 'Still couldn’t load how to delete this account.'
+                        : 'Delete account options loaded.',
+                    ),
+                  ),
+                );
+          }),
+        ),
+      ),
     ),
     { initialValue: null },
   );
@@ -75,6 +97,12 @@ export class DeleteAccountGroupComponent {
       return null;
     }
   });
+
+  /** Ask the server again after it could not be reached. */
+  retryPlan(): void {
+    this.announcement.set('Trying again…');
+    this.retries.next();
+  }
 
   openDialog(): void {
     this.surfaces.open(DeleteAccountDialogComponent, {

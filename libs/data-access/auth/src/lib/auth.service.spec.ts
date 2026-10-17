@@ -12,7 +12,12 @@ vi.mock('matrix-js-sdk', async (importActual) => {
   };
 });
 
-import { MatrixError, createClient } from 'matrix-js-sdk';
+import {
+  ConnectionError,
+  HTTPError,
+  MatrixError,
+  createClient,
+} from 'matrix-js-sdk';
 import {
   AccountRuntimeService,
   type AccountEstablishmentOutcome,
@@ -246,7 +251,11 @@ describe('AuthService', () => {
         of({ userId: '@alice:alice.hs', baseUrl: 'https://alice.hs' }) as never,
       );
       createClientMock.mockReturnValue({
-        getAuthMetadata: vi.fn().mockRejectedValue(new Error('404')),
+        getAuthMetadata: vi
+          .fn()
+          .mockRejectedValue(
+            new MatrixError({ errcode: 'M_UNRECOGNIZED' }, 404),
+          ),
       } as never);
 
       await expect(
@@ -269,6 +278,44 @@ describe('AuthService', () => {
       await expect(
         firstValueFrom(auth.accountManagementFor('@me:hs')),
       ).resolves.toEqual({ kind: 'oauth', management: null });
+    });
+    it.each([
+      ['a 404 that is not JSON', new HTTPError('Not Found', 404)],
+      ['a 405', new MatrixError({}, 405)],
+      ['a 403 from a proxy', new HTTPError('Forbidden', 403)],
+      ['a 501', new MatrixError({}, 501)],
+    ])('reads %s as a server without OAuth', async (_label, error) => {
+      const matrix = TestBed.inject(MatrixClientService);
+      vi.mocked(matrix.clientFor).mockReturnValue({
+        baseUrl: 'https://hs',
+      } as never);
+      createClientMock.mockReturnValue({
+        getAuthMetadata: vi.fn().mockRejectedValue(error),
+      } as never);
+
+      await expect(
+        firstValueFrom(auth.accountManagementFor('@me:hs')),
+      ).resolves.toEqual({ kind: 'legacy' });
+    });
+
+    it.each([
+      ['no connection', new ConnectionError('fetch failed')],
+      ['a timeout', new MatrixError({}, 408)],
+      ['rate limiting', new MatrixError({ errcode: 'M_LIMIT_EXCEEDED' }, 429)],
+      ['a server error', new MatrixError({ errcode: 'M_UNKNOWN' }, 502)],
+      ['metadata that is not valid', new Error('OP does not support')],
+    ])('does not guess when it gets %s', async (_label, error) => {
+      const matrix = TestBed.inject(MatrixClientService);
+      vi.mocked(matrix.clientFor).mockReturnValue({
+        baseUrl: 'https://hs',
+      } as never);
+      createClientMock.mockReturnValue({
+        getAuthMetadata: vi.fn().mockRejectedValue(error),
+      } as never);
+
+      await expect(
+        firstValueFrom(auth.accountManagementFor('@me:hs')),
+      ).resolves.toEqual({ kind: 'unknown' });
     });
   });
 

@@ -11,7 +11,7 @@ import {
   toObservable,
   toSignal,
 } from '@angular/core/rxjs-interop';
-import { of, switchMap } from 'rxjs';
+import { Subject, of, startWith, switchMap, tap } from 'rxjs';
 import {
   FormField,
   FormRoot,
@@ -22,13 +22,16 @@ import {
   validateTree,
 } from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnInput } from '@trinity/components/controls';
+import {
+  TrnInput,
+  TrnPasswordInputComponent,
+} from '@trinity/components/controls';
 import { runWithBusy } from '@trinity/util/ui';
 import { AuthService } from '@trinity/data-access/auth';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ExternalBrowserService } from '@trinity/platform-native';
-import { TrnIconComponent } from '@trinity/components/foundations';
 import { DeleteAccountGroupComponent } from './delete-account/delete-account-group.component';
+import { serverNameOf } from './delete-account/delete-account.copy';
 import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
@@ -38,7 +41,7 @@ import {
 /** Minimum length we require for a new password (a light client-side guard). */
 const MIN_PASSWORD = 8;
 
-/** The password fields, each with its own show/hide reveal toggle. */
+/** The change-password form's fields. */
 type PasswordField = 'currentPassword' | 'newPassword' | 'confirmPassword';
 
 /** The change-password form's model. */
@@ -100,9 +103,9 @@ const passwordSchema = schema<PasswordModel>((path) => {
     TrnSettingsGroupComponent,
     FormField,
     FormRoot,
-    TrnIconComponent,
     TrnButton,
     TrnInput,
+    TrnPasswordInputComponent,
   ],
 })
 export class AccountSectionComponent {
@@ -110,6 +113,9 @@ export class AccountSectionComponent {
   private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly retries = new Subject<void>();
+  /** What a screen reader hears about Try again; the visible text alone isn't announced. */
+  protected readonly announcement = signal('');
 
   /** The account this section shows. */
   readonly accountId = inject(MatrixClientService).activeUserId;
@@ -117,10 +123,37 @@ export class AccountSectionComponent {
   /** The server's account API; null until it has answered. */
   readonly serverApi = toSignal(
     toObservable(this.accountId).pipe(
-      switchMap((id) => (id ? this.auth.accountManagementFor(id) : of(null))),
+      tap(() => this.announcement.set('')),
+      switchMap((id) =>
+        id
+          ? this.retries.pipe(
+              startWith(undefined),
+              // A retry keeps the current answer while it asks, so Try again keeps focus.
+              switchMap((_, retry) => {
+                const api = this.auth.accountManagementFor(id);
+                return retry === 0
+                  ? api.pipe(startWith(null))
+                  : api.pipe(
+                      tap(({ kind }) =>
+                        this.announcement.set(
+                          kind === 'unknown'
+                            ? 'Still couldn’t load the account options.'
+                            : 'Account options loaded.',
+                        ),
+                      ),
+                    );
+              }),
+            )
+          : of(null),
+      ),
     ),
     { initialValue: null },
   );
+
+  protected readonly server = computed(() => {
+    const id = this.accountId();
+    return id ? serverNameOf(id) : '';
+  });
 
   readonly usesProvider = computed(() => this.serverApi()?.kind === 'oauth');
 
@@ -129,6 +162,12 @@ export class AccountSectionComponent {
     const api = this.serverApi();
     return api?.kind === 'oauth' ? api.management : null;
   });
+
+  /** Ask the server again after it could not be reached. */
+  retryServerApi(): void {
+    this.announcement.set('Trying again…');
+    this.retries.next();
+  }
 
   /** Open the provider's account-management page (system browser on every platform). */
   openAccountManagement(): void {
@@ -145,18 +184,6 @@ export class AccountSectionComponent {
   readonly saving = signal(false);
   /** Last failure (bad password, mismatch, server error), or null. */
   readonly error = signal<string | null>(null);
-
-  /** Which password fields are currently shown as plain text. */
-  readonly revealed = signal<Record<PasswordField, boolean>>({
-    currentPassword: false,
-    newPassword: false,
-    confirmPassword: false,
-  });
-
-  /** Flip a single password field between masked and revealed. */
-  toggleReveal(field: PasswordField): void {
-    this.revealed.update((state) => ({ ...state, [field]: !state[field] }));
-  }
 
   private readonly passwords = signal<PasswordModel>({ ...EMPTY_PASSWORDS });
   readonly form = form(this.passwords, passwordSchema);

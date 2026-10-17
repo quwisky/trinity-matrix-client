@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
-import { render, screen } from '@trinity/testing';
+import { NEVER, of, throwError } from 'rxjs';
+import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signal } from '@angular/core';
@@ -34,12 +34,15 @@ function fill(
 describe('AccountSectionComponent', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  async function renderSection(api: AccountServerApi = { kind: 'legacy' }) {
+  /** `null` leaves the server's answer pending. */
+  async function renderSection(
+    api: AccountServerApi | null = { kind: 'legacy' },
+  ) {
     const result = await render(AccountSectionComponent, {
       providers: [
         // Read on construction, so it must be stubbed before render.
         MockProvider(AuthService, {
-          accountManagementFor: vi.fn(() => of(api)),
+          accountManagementFor: vi.fn(() => (api ? of(api) : NEVER)),
         }),
         MockProvider(MatrixClientService, {
           activeUserId: signal('@alice:example.org').asReadonly(),
@@ -114,30 +117,89 @@ describe('AccountSectionComponent', () => {
     );
   });
 
-  it('reveals each password field independently', async () => {
-    const { cmp, fixture } = await renderSection();
-    const field = (id: string) => screen.getByTestId(id) as HTMLInputElement;
+  it('offers no account controls until the server can be asked, then tries again', async () => {
+    const { auth } = await renderSection({ kind: 'unknown' });
 
-    // All three start masked.
+    expect(screen.queryByTestId('change-password')).toBeNull();
+    expect(screen.queryByTestId('manage-account')).toBeNull();
+    expect(
+      screen.queryByRole('heading', { name: 'Delete account' }),
+    ).toBeNull();
+    expect(screen.getByTestId('account-options-unknown').textContent).toContain(
+      'Trinity couldn’t load the account options from example.org.',
+    );
+
+    vi.mocked(auth.accountManagementFor).mockReturnValue(
+      of({ kind: 'legacy' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByTestId('change-password');
+
+    expect(auth.accountManagementFor).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId('account-options-unknown')).toBeNull();
+    expect(screen.getByTestId('account-options-status').textContent).toContain(
+      'Account options loaded.',
+    );
+  });
+
+  it('keeps the message and Try again in place while it asks again', async () => {
+    const { auth, fixture } = await renderSection({ kind: 'unknown' });
+    const retry = screen.getByRole('button', { name: 'Try again' });
+
+    vi.mocked(auth.accountManagementFor).mockReturnValue(NEVER);
+    fireEvent.click(retry);
+    await fixture.whenStable();
+
+    expect(screen.getByRole('button', { name: 'Try again' })).toBe(retry);
+    expect(screen.queryByTestId('change-password')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('Trying again…');
+  });
+
+  it('says so when asking again fails again', async () => {
+    const { fixture } = await renderSection({ kind: 'unknown' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await fixture.whenStable();
+
+    expect(screen.getByRole('status').textContent).toContain(
+      'Still couldn’t load the account options.',
+    );
+  });
+
+  it('shows no account controls and no Delete account until the server answers', async () => {
+    await renderSection(null);
+
+    expect(screen.queryByTestId('change-password')).toBeNull();
+    expect(
+      screen.queryByRole('heading', { name: 'Delete account' }),
+    ).toBeNull();
+  });
+
+  it('reveals each password field from a toggle inside that field', async () => {
+    const { fixture } = await renderSection();
+    const field = (id: string) => screen.getByTestId(id) as HTMLInputElement;
+    const toggles = screen.getAllByRole('button', { name: 'Show password' });
+    expect(toggles).toHaveLength(3);
+    const [currentToggle] = toggles;
+
+    expect(field('current-password').parentElement?.localName).toBe(
+      'trn-password-input',
+    );
+    expect(
+      field('current-password').parentElement?.contains(currentToggle),
+    ).toBe(true);
     expect(field('current-password').type).toBe('password');
     expect(field('new-password').type).toBe('password');
     expect(field('confirm-password').type).toBe('password');
 
-    // Toggling one reveals only that field.
-    cmp.toggleReveal('currentPassword');
+    fireEvent.click(currentToggle);
     fixture.detectChanges();
+
     expect(field('current-password').type).toBe('text');
     expect(field('new-password').type).toBe('password');
-    expect(cmp.revealed()).toEqual({
-      currentPassword: true,
-      newPassword: false,
-      confirmPassword: false,
-    });
-
-    // Toggling again re-masks it.
-    cmp.toggleReveal('currentPassword');
-    fixture.detectChanges();
-    expect(field('current-password').type).toBe('password');
+    expect(field('confirm-password').type).toBe('password');
+    expect(currentToggle.getAttribute('aria-label')).toBe('Hide password');
+    expect(currentToggle.getAttribute('aria-pressed')).toBe('true');
   });
 
   it('changes the password, clears the form, and toasts on success', async () => {

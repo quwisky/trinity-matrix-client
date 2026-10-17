@@ -5,6 +5,8 @@ import type { Observable } from 'rxjs';
 export type AccountDeletionPlan =
   /** The legacy account API: Trinity deletes the account itself. */
   | { readonly kind: 'in-app' }
+  /** The server couldn't be asked which API it uses; asking again can settle it. */
+  | { readonly kind: 'unknown' }
   /** An OAuth 2.0 server: the provider's page deletes it; null when none is published. */
   | { readonly kind: 'provider'; readonly url: string | null };
 

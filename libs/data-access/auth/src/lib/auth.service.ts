@@ -1,5 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import {
+  HTTPError,
+  MatrixError,
   createClient,
   type AuthDict,
   type ValidatedAuthMetadata,
@@ -67,6 +69,8 @@ export interface AccountManagement {
  */
 export type AccountServerApi =
   | { readonly kind: 'legacy' }
+  /** The server could not be asked, so neither API can be offered. */
+  | { readonly kind: 'unknown' }
   | {
       readonly kind: 'oauth';
       /** Null when the provider publishes no usable account page. */
@@ -90,6 +94,23 @@ export function deletionLink(management: AccountManagement): string {
   } catch {
     return management.url;
   }
+}
+
+/**
+ * The server answered without offering OAuth 2.0 metadata: `M_UNRECOGNIZED`, or a client
+ * error or 501 from it or its proxy. A timeout, rate limiting, a 5xx, no connection or a
+ * body that isn't valid metadata (a captive portal) leave the answer unknown.
+ */
+function lacksAuthMetadata(err: unknown): boolean {
+  if (err instanceof MatrixError && err.errcode === 'M_UNRECOGNIZED') {
+    return true;
+  }
+  if (!(err instanceof HTTPError)) return false;
+  const status = err.httpStatus ?? 0;
+  return (
+    status === 501 ||
+    (status >= 400 && status < 500 && status !== 408 && status !== 429)
+  );
 }
 
 /**
@@ -320,11 +341,8 @@ export class AuthService {
    * it is surfaced; a non-https value is rejected, not opened.
    */
   private serverApi(baseUrl: string): Observable<AccountServerApi> {
-    return this.getDelegatedAuthConfig(baseUrl).pipe(
+    return defer(() => from(createClient({ baseUrl }).getAuthMetadata())).pipe(
       map((config): AccountServerApi => {
-        if (!config) {
-          return { kind: 'legacy' };
-        }
         const url = config.account_management_uri;
         return {
           kind: 'oauth',
@@ -338,6 +356,11 @@ export class AuthService {
               : null,
         };
       }),
+      catchError((err: unknown) =>
+        of<AccountServerApi>(
+          lacksAuthMetadata(err) ? { kind: 'legacy' } : { kind: 'unknown' },
+        ),
+      ),
     );
   }
 

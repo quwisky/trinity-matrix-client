@@ -147,6 +147,14 @@ describe('AccountDeletionLauncherAdapter', () => {
         url: null,
       });
     });
+
+    it('offers neither way when the server could not be asked', async () => {
+      const test = setup({ api: { kind: 'unknown' } });
+
+      await expect(firstValueFrom(test.launcher.plan(ALICE))).resolves.toEqual({
+        kind: 'unknown',
+      });
+    });
   });
 
   it('passes the dialog’s answers to the workflow', async () => {

@@ -1,7 +1,31 @@
+<p class="sr-only" role="status" data-testid="account-options-status">
+  {{ announcement() }}
+</p>
+
 <trn-settings-group
   description="Manage the credentials and account controls provided by your homeserver."
 >
-  @if (usesProvider()) {
+  @if (serverApi()?.kind === 'unknown') {
+    <div
+      class="flex flex-col items-start gap-2 py-3"
+      data-testid="account-options-unknown"
+    >
+      <p class="m-0 text-sm text-muted-foreground">
+        Trinity couldn’t load the account options from {{ server() }}. Check
+        your connection and try again.
+      </p>
+      <button
+        trnBtn
+        size="sm"
+        presentation="outline"
+        type="button"
+        (click)="retryServerApi()"
+        data-testid="account-options-retry"
+      >
+        Try again
+      </button>
+    </div>
+  } @else if (usesProvider()) {
     <trn-settings-row
       label="Credentials and sessions"
       description="Your password and sessions are managed by your identity provider."
@@ -17,97 +41,40 @@
         </button>
       }
     </trn-settings-row>
-  } @else {
+  } @else if (serverApi()?.kind === 'legacy') {
     <form [formRoot]="form" (submit)="submit()">
       <trn-settings-row label="Current password" for="current-password">
-        <div class="flex items-center gap-2">
+        <trn-password-input class="w-56 max-w-full">
           <input
             trnInput
             id="current-password"
-            [type]="revealed().currentPassword ? 'text' : 'password'"
-            class="w-56 min-w-0 max-sm:flex-1"
             autocomplete="current-password"
             [formField]="form.currentPassword"
             data-testid="current-password"
           />
-          <button
-            type="button"
-            trnBtn
-            presentation="ghost"
-            shape="icon"
-            size="md"
-            [attr.aria-label]="
-              revealed().currentPassword ? 'Hide password' : 'Show password'
-            "
-            [attr.aria-pressed]="revealed().currentPassword"
-            (click)="toggleReveal('currentPassword')"
-          >
-            <trn-icon
-              [name]="revealed().currentPassword ? 'eye-off' : 'eye'"
-              motion="pop"
-            />
-          </button>
-        </div>
+        </trn-password-input>
       </trn-settings-row>
       <trn-settings-row label="New password" for="new-password">
-        <div class="flex items-center gap-2">
+        <trn-password-input class="w-56 max-w-full">
           <input
             trnInput
             id="new-password"
-            [type]="revealed().newPassword ? 'text' : 'password'"
-            class="w-56 min-w-0 max-sm:flex-1"
             autocomplete="new-password"
             [formField]="form.newPassword"
             data-testid="new-password"
           />
-          <button
-            type="button"
-            trnBtn
-            presentation="ghost"
-            shape="icon"
-            size="md"
-            [attr.aria-label]="
-              revealed().newPassword ? 'Hide password' : 'Show password'
-            "
-            [attr.aria-pressed]="revealed().newPassword"
-            (click)="toggleReveal('newPassword')"
-          >
-            <trn-icon
-              [name]="revealed().newPassword ? 'eye-off' : 'eye'"
-              motion="pop"
-            />
-          </button>
-        </div>
+        </trn-password-input>
       </trn-settings-row>
       <trn-settings-row label="Confirm new password" for="confirm-password">
-        <div class="flex items-center gap-2">
+        <trn-password-input class="w-56 max-w-full">
           <input
             trnInput
             id="confirm-password"
-            [type]="revealed().confirmPassword ? 'text' : 'password'"
-            class="w-56 min-w-0 max-sm:flex-1"
             autocomplete="new-password"
             [formField]="form.confirmPassword"
             data-testid="confirm-password"
           />
-          <button
-            type="button"
-            trnBtn
-            presentation="ghost"
-            shape="icon"
-            size="md"
-            [attr.aria-label]="
-              revealed().confirmPassword ? 'Hide password' : 'Show password'
-            "
-            [attr.aria-pressed]="revealed().confirmPassword"
-            (click)="toggleReveal('confirmPassword')"
-          >
-            <trn-icon
-              [name]="revealed().confirmPassword ? 'eye-off' : 'eye'"
-              motion="pop"
-            />
-          </button>
-        </div>
+        </trn-password-input>
       </trn-settings-row>
 
       @if (error(); as message) {
@@ -131,5 +98,9 @@
 </trn-settings-group>
 
 @if (accountId(); as id) {
-  <trn-delete-account-group [accountId]="id" />
+  @if (serverApi(); as api) {
+    @if (api.kind !== 'unknown') {
+      <trn-delete-account-group [accountId]="id" />
+    }
+  }
 }

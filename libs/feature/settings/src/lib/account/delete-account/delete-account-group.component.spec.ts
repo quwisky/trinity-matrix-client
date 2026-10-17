@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
@@ -142,5 +142,49 @@ describe('DeleteAccountGroupComponent', () => {
     ).toContain(
       'example.org doesn’t offer a page for deleting accounts. Ask its administrator to delete it.',
     );
+  });
+
+  it('says the server could not be asked, and asks again', async () => {
+    const test = await setup({ kind: 'unknown' });
+
+    expect(screen.queryByTestId('delete-account')).toBeNull();
+    expect(screen.queryByTestId('delete-account-provider')).toBeNull();
+    expect(
+      screen.getByTestId('delete-account-plan-unknown').textContent,
+    ).toContain(
+      'Trinity couldn’t load how to delete this account from example.org.',
+    );
+
+    vi.mocked(test.launcher.plan!).mockReturnValue(of({ kind: 'in-app' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByTestId('delete-account');
+
+    expect(test.launcher.plan).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('status').textContent).toContain(
+      'Delete account options loaded.',
+    );
+  });
+
+  it('says so when asking again fails again', async () => {
+    const test = await setup({ kind: 'unknown' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await test.fixture.whenStable();
+
+    expect(screen.getByRole('status').textContent).toContain(
+      'Still couldn’t load how to delete this account.',
+    );
+  });
+
+  it('keeps the message and Try again in place while it asks again', async () => {
+    const test = await setup({ kind: 'unknown' });
+    const retry = screen.getByRole('button', { name: 'Try again' });
+
+    vi.mocked(test.launcher.plan!).mockReturnValue(NEVER);
+    fireEvent.click(retry);
+    await test.fixture.whenStable();
+
+    expect(screen.getByRole('button', { name: 'Try again' })).toBe(retry);
+    expect(screen.getByRole('status').textContent).toContain('Trying again…');
   });
 });

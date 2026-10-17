@@ -80,9 +80,13 @@ describe('TrnIconName', () => {
   // lowercase words, only 15 of which are icons, so the broad form would let 95 unrelated
   // strings vouch for icons that nothing renders. `{{ n === 1 ? 'vote' : 'votes' }}` is a
   // real example — it would otherwise keep the `vote` icon alive on its own.
+  // Inline component templates count too: the shared password input renders its eye icons
+  // from a `template:` string, not an `.html` file.
   const inlineNames = grep([
     '-rho',
     '--include=*.html',
+    '--include=*.ts',
+    '--exclude=*.spec.ts',
     '-E',
     '\\[name\\]="[^"]*"',
     ...CALL_SITES,
