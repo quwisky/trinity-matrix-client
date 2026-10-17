@@ -24,13 +24,7 @@
         hint="Shown in room lists and at the top of the conversation."
       >
         <trn-settings-group title="Encryption">
-          <p class="room-settings__note" data-testid="room-settings-encryption">
-            {{ encryptionStatus() }}
-          </p>
-          <p class="room-settings__note">
-            Encryption is informational here and cannot be changed from Room
-            settings.
-          </p>
+          <trn-room-settings-encryption />
         </trn-settings-group>
       </trn-place-general-settings>
     }

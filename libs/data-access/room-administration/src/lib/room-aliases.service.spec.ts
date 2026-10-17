@@ -67,6 +67,7 @@ function setup(
       history: permission,
       aliases: permission,
       upgrade: permission,
+      encryption: permission,
     };
   });
   TestBed.configureTestingModule({

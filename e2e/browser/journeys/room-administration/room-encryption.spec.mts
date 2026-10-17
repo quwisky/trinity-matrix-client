@@ -1,0 +1,119 @@
+import { expect, test, testResourceId } from '../../../fixtures.mts';
+import {
+  login,
+  waitForSent,
+  type HomeserverSession,
+} from '../../../support/app.mts';
+import { registerUser } from '../../../support/account.mts';
+import { withSyncFence } from '../../../support/sync-fence.mts';
+import {
+  HS_SERVER_NAME,
+  configureRoomSettingsSuite,
+  openRoom,
+  session,
+  tokenFor,
+} from '../../support/room-settings-journey.mts';
+
+// Covers Room settings › General › Encryption: an admin turns on encryption in an unencrypted
+// room. The status changes once sync delivers m.room.encryption, and the next message the app
+// sends reaches the server as m.room.encrypted.
+test.describe('Room encryption', () => {
+  configureRoomSettingsSuite();
+
+  test('an admin turns on encryption and the next message is encrypted', async ({
+    page,
+    request,
+  }) => {
+    test.slow();
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}enc`;
+    const user = `encrypt-${runId}`;
+    const pass = `${user}-pass`;
+    const userId = `@${user}:${HS_SERVER_NAME}`;
+    const roomName = `Encrypt ${runId}`;
+
+    await registerUser(request, user, pass);
+    const token = await tokenFor(request, hs, user, pass);
+    const headers = { Authorization: `Bearer ${token}` };
+    const room = (id: string) =>
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(id)}`;
+    const roomId = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers,
+        data: { name: roomName, preset: 'private_chat' },
+      })
+      .then((r) => r.json())
+      .then((j) => j.room_id as string);
+
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
+    await openRoom(page, roomName);
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
+    const settings = page.getByTestId('room-settings');
+    await expect(settings).toBeVisible({ timeout: 10_000 });
+
+    const status = settings.getByTestId('room-settings-encryption');
+    await expect(status).toHaveText(
+      'Messages in this room are not end-to-end encrypted.',
+    );
+    await settings.getByRole('button', { name: 'Turn on encryption…' }).click();
+    const confirm = page.getByRole('dialog', {
+      name: 'Turn on encryption?',
+    });
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toContainText("This can't be undone.");
+    await expect(confirm.getByTestId('alert-confirm')).toHaveText(
+      'Turn on encryption',
+    );
+
+    await withSyncFence(
+      page,
+      request,
+      session,
+      { userId, headers },
+      async () => {
+        const sent = page.waitForResponse(
+          (response) =>
+            response.request().method() === 'PUT' &&
+            response.url().includes('/state/m.room.encryption'),
+        );
+        await confirm.getByTestId('alert-confirm').click();
+        expect((await sent).ok()).toBe(true);
+      },
+    );
+
+    await expect(status).toHaveText(
+      "Messages in this room are end-to-end encrypted. This can't be turned off.",
+      { timeout: 30_000 },
+    );
+    await expect(
+      settings.getByRole('button', { name: 'Turn on encryption…' }),
+    ).toHaveCount(0);
+    const state = await request
+      .get(`${room(roomId)}/state/m.room.encryption/`, { headers })
+      .then((r) => r.json());
+    expect(state).toEqual({ algorithm: 'm.megolm.v1.aes-sha2' });
+
+    await page.getByTestId('room-settings-cancel').click();
+    await expect(settings).toBeHidden();
+    const body = `Secret ${runId}`;
+    await page.getByTestId('composer-input').fill(body);
+    await page.getByTestId('composer-input').press('Enter');
+    await waitForSent(
+      page.locator('.scroll .msg[data-mid]', { hasText: body }).first(),
+    );
+
+    const messages = await request
+      .get(`${room(roomId)}/messages?dir=b&limit=20`, { headers })
+      .then((r) => r.json());
+    const latest = (
+      messages.chunk as { type: string; sender: string; content: object }[]
+    ).find(
+      ({ type, sender }) =>
+        sender === userId &&
+        (type === 'm.room.message' || type === 'm.room.encrypted'),
+    );
+    expect(latest?.type).toBe('m.room.encrypted');
+    expect(JSON.stringify(latest?.content)).not.toContain(body);
+  });
+});

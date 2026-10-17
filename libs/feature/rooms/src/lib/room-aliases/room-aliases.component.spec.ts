@@ -63,6 +63,7 @@ async function build(
           history: availability(),
           aliases: availability(),
           upgrade: availability(),
+          encryption: availability(),
         }),
       }),
       MockProvider(TrnAlertService, { confirm$: alertConfirm }),

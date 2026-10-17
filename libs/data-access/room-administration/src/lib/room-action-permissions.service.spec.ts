@@ -223,7 +223,7 @@ describe('RoomActionPermissionsService', () => {
     const fixture = clientFixture('@me:hs', { myPower: 49 });
     const { service } = setup(fixture);
 
-    expect(Object.values(service.settings('!room:hs'))).toHaveLength(7);
+    expect(Object.values(service.settings('!room:hs'))).toHaveLength(8);
     expect(
       Object.values(service.settings('!room:hs')).every(
         (permission) => !permission.available && !!permission.reason,
@@ -252,6 +252,25 @@ describe('RoomActionPermissionsService', () => {
     fixture.members.get('@me:hs')!.powerLevel = 100;
     expect(
       service.settingsFor({ accountId: '@me:hs', roomId: '!room:hs' }).upgrade,
+    ).toEqual({ available: true, reason: null });
+  });
+
+  it('allows turning on encryption only to members who may send m.room.encryption', () => {
+    const fixture = clientFixture('@me:hs', { myPower: 50 });
+    fixture.rules.stateByType[EventType.RoomEncryption] = 100;
+    const { service } = setup(fixture);
+
+    expect(service.settings('!room:hs').name.available).toBe(true);
+    expect(service.settings('!room:hs').encryption).toEqual({
+      available: false,
+      reason:
+        'Only people who can change room settings can turn on encryption.',
+    });
+
+    fixture.members.get('@me:hs')!.powerLevel = 100;
+    expect(
+      service.settingsFor({ accountId: '@me:hs', roomId: '!room:hs' })
+        .encryption,
     ).toEqual({ available: true, reason: null });
   });
 
@@ -383,6 +402,7 @@ describe('RoomActionPermissionsService', () => {
     });
     expect(service.settings('!room:hs').topic.available).toBe(false);
     expect(service.settings('!room:hs').upgrade.available).toBe(false);
+    expect(service.settings('!room:hs').encryption.available).toBe(false);
     expect(service.member('!room:hs', '@target:hs').ban.available).toBe(false);
     expect(service.unban('!room:hs', '@target:hs').available).toBe(false);
   });

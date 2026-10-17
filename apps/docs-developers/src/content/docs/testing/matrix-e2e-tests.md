@@ -38,7 +38,7 @@ Pull requests run against Tuwunel. The `E2E (Synapse nightly)` workflow runs the
 
 When the two servers legitimately differ, branch the expectation on `homeserverSession().kind` and keep both expectations. Never delete the Synapse expectation to make Tuwunel pass.
 
-Tuwunel 1.9.3 can wake a waiting `/sync` that has a new state event in its timeline but still has the previous state in MSC4222 `state_after`. The SDK follows `state_after`, so the app keeps the old state. A spec that changes room state while the app is syncing must not let a waiting sync see the write. See `putRoomState` in `e2e/support/image-pack-management-journey.mts`.
+Tuwunel 1.9.3 can wake a waiting `/sync` that has a new state event in its timeline but still has the previous state in MSC4222 `state_after`. The SDK follows `state_after`, so the app keeps the old state. A spec that changes room state while the app is syncing must not let a waiting sync see the write. Wrap such a write in `withSyncFence` from `e2e/support/sync-fence.mts`.
 
 ## Run the MAS journeys {#mas-journeys}
 

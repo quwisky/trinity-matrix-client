@@ -150,6 +150,7 @@ function setup(
           history: permissionFor('m.room.history_visibility'),
           aliases: permissionFor('m.room.canonical_alias'),
           upgrade: permissionFor('m.room.tombstone'),
+          encryption: permissionFor('m.room.encryption'),
         }),
         settingsFor: () => ({
           name: permissionFor('m.room.name'),
@@ -159,6 +160,7 @@ function setup(
           history: permissionFor('m.room.history_visibility'),
           aliases: permissionFor('m.room.canonical_alias'),
           upgrade: permissionFor('m.room.tombstone'),
+          encryption: permissionFor('m.room.encryption'),
         }),
         assert: (permission: { available: boolean }) => {
           if (!permission.available) throw new Error('Not allowed.');

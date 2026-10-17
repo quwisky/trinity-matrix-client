@@ -41,6 +41,8 @@ export interface RoomSettingsPermissions {
   readonly aliases: ActionAvailability;
   /** Upgrading the room, which sends `m.room.tombstone` into it. */
   readonly upgrade: ActionAvailability;
+  /** Turning on encryption, which sends `m.room.encryption`. */
+  readonly encryption: ActionAvailability;
 }
 
 export interface MemberActionPermissions {
@@ -146,6 +148,7 @@ export class RoomActionPermissionsService {
         history: freshness,
         aliases: freshness,
         upgrade: freshness,
+        encryption: freshness,
       };
     }
     return this.settingsPermissions(this.context(roomId));
@@ -172,10 +175,13 @@ export class RoomActionPermissionsService {
         history: unavailable,
         aliases: unavailable,
         upgrade: unavailable,
+        encryption: unavailable,
       };
     }
+    const may = (type: EventType): boolean =>
+      !!liveRoomState(context.room)?.maySendStateEvent(type, context.userId);
     const maySend = (type: EventType, label: string): ActionAvailability =>
-      liveRoomState(context.room)?.maySendStateEvent(type, context.userId)
+      may(type)
         ? ALLOWED
         : denied(`Your role cannot change this room's ${label}.`);
     return {
@@ -186,6 +192,11 @@ export class RoomActionPermissionsService {
       history: maySend(EventType.RoomHistoryVisibility, 'history visibility'),
       aliases: maySend(EventType.RoomCanonicalAlias, 'addresses'),
       upgrade: maySend(EventType.RoomTombstone, 'version'),
+      encryption: may(EventType.RoomEncryption)
+        ? ALLOWED
+        : denied(
+            'Only people who can change room settings can turn on encryption.',
+          ),
     };
   }
 

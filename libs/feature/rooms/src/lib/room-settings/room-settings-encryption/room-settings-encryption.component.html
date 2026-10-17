@@ -1,0 +1,51 @@
+<p class="room-settings__note" data-testid="room-settings-encryption">
+  {{ status() }}
+</p>
+@if (offered()) {
+  @let encryption = permission();
+  @if (encryption?.available) {
+    <div class="room-settings-encryption__action">
+      @if (waiting()) {
+        <p
+          class="room-settings__hint"
+          role="status"
+          data-testid="room-settings-encryption-pending"
+        >
+          Turning on encryption…
+        </p>
+      } @else {
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          presentation="outline"
+          size="sm"
+          [disabled]="sending()"
+          [loading]="sending()"
+          [attr.aria-describedby]="error() ? errorId : null"
+          (click)="turnOn()"
+          data-testid="room-settings-encryption-on"
+        >
+          Turn on encryption…
+        </button>
+      }
+      @if (error(); as message) {
+        <p
+          class="room-settings__hint room-settings__feedback--danger"
+          role="alert"
+          [id]="errorId"
+          data-testid="room-settings-encryption-error"
+        >
+          {{ message }}
+        </p>
+      }
+    </div>
+  } @else if (encryption?.reason; as reason) {
+    <p
+      class="room-settings__hint room-settings-encryption__reason"
+      data-testid="room-settings-encryption-reason"
+    >
+      {{ reason }}
+    </p>
+  }
+}
