@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { EventType } from 'matrix-js-sdk';
+import { EventType, MatrixError } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -21,8 +21,19 @@ function setup(
     encryption?: ActionAvailability;
     signedIn?: boolean;
     send?: () => Promise<unknown>;
+    serverState?: () => Promise<unknown>;
   } = {},
 ) {
+  const getStateEvent = vi.fn(
+    options.serverState ??
+      (() =>
+        Promise.reject(
+          new MatrixError(
+            { errcode: 'M_NOT_FOUND', error: 'Event not found.' },
+            404,
+          ),
+        )),
+  );
   const sendStateEvent = vi.fn(
     options.send ?? (() => Promise.resolve({ event_id: '$e' })),
   );
@@ -31,6 +42,7 @@ function setup(
     hasEncryptionStateEvent: () => options.encrypted ?? false,
   };
   const client = {
+    getStateEvent,
     sendStateEvent,
     getRoom: (roomId: string) => (roomId === TARGET.roomId ? room : null),
   };
@@ -58,6 +70,7 @@ function setup(
   });
   return {
     service: TestBed.inject(RoomEncryptionService),
+    getStateEvent,
     sendStateEvent,
     settingsFor,
   };
@@ -96,6 +109,45 @@ describe('RoomEncryptionService', () => {
     expect(error).toBeInstanceOf(RoomAdministrationError);
     expect((error as RoomAdministrationError).outcome.failure).toBe(
       'invalid-input',
+    );
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it('asks the server first, so a missed sync never sends a second event', async () => {
+    const { service, getStateEvent, sendStateEvent } = setup({
+      serverState: () => Promise.resolve({ algorithm: 'm.megolm.v1.aes-sha2' }),
+    });
+
+    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
+      (cause: unknown) => cause,
+    );
+
+    expect(getStateEvent).toHaveBeenCalledWith(
+      TARGET.roomId,
+      EventType.RoomEncryption,
+      '',
+    );
+    expect((error as RoomAdministrationError).outcome.failure).toBe(
+      'invalid-input',
+    );
+    expect((error as Error).message).toBe('This room is already encrypted.');
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing when the server state cannot be read', async () => {
+    const { service, sendStateEvent } = setup({
+      serverState: () =>
+        Promise.reject(
+          new MatrixError({ errcode: 'M_UNKNOWN', error: 'busy' }, 500),
+        ),
+    });
+
+    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
+      (cause: unknown) => cause,
+    );
+
+    expect((error as RoomAdministrationError).outcome.failure).toBe(
+      'server-rejected',
     );
     expect(sendStateEvent).not.toHaveBeenCalled();
   });

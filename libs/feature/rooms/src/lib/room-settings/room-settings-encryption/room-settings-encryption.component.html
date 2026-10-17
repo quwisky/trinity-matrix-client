@@ -1,17 +1,23 @@
-<p class="room-settings__note" data-testid="room-settings-encryption">
+<p
+  #statusLine
+  class="room-settings__note"
+  tabindex="-1"
+  data-testid="room-settings-encryption"
+>
   {{ status() }}
 </p>
 @if (offered()) {
   @let encryption = permission();
   @if (encryption?.available) {
     <div class="room-settings-encryption__action">
-      @if (waiting()) {
+      @if (late()) {
         <p
-          class="room-settings__hint"
-          role="status"
-          data-testid="room-settings-encryption-pending"
+          #lateLine
+          class="room-settings__hint room-settings__feedback--danger"
+          tabindex="-1"
+          data-testid="room-settings-encryption-late"
         >
-          Turning on encryption…
+          {{ lateWarning }}
         </p>
       } @else {
         <button
@@ -20,19 +26,18 @@
           variant="secondary"
           presentation="outline"
           size="sm"
-          [disabled]="sending()"
-          [loading]="sending()"
+          [loading]="busy()"
+          [attr.aria-disabled]="busy() ? 'true' : null"
           [attr.aria-describedby]="error() ? errorId : null"
           (click)="turnOn()"
           data-testid="room-settings-encryption-on"
         >
-          Turn on encryption…
+          {{ buttonLabel() }}
         </button>
       }
       @if (error(); as message) {
         <p
           class="room-settings__hint room-settings__feedback--danger"
-          role="alert"
           [id]="errorId"
           data-testid="room-settings-encryption-error"
         >
@@ -49,3 +54,10 @@
     </p>
   }
 }
+<p
+  class="sr-only"
+  role="status"
+  data-testid="room-settings-encryption-announcer"
+>
+  {{ announcement() }}
+</p>

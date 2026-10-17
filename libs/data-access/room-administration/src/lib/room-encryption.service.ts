@@ -1,10 +1,19 @@
 import { Injectable, inject } from '@angular/core';
-import { EventType } from 'matrix-js-sdk';
-import { Observable, defer, finalize, from, map, throwError } from 'rxjs';
+import { EventType, MatrixError, type MatrixClient } from 'matrix-js-sdk';
+import {
+  Observable,
+  defer,
+  finalize,
+  from,
+  map,
+  switchMap,
+  throwError,
+} from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { roomEncryptionContent } from '@trinity/util/matrix';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 import {
+  RoomAdministrationError,
   recoverRoomAdministrationRequest,
   roomAdministrationInvalidInput,
   roomAdministrationNotSignedIn,
@@ -26,8 +35,8 @@ export class RoomEncryptionService {
 
   /**
    * Send `m.room.encryption` with the same Megolm content new rooms get. Cold: runs on
-   * subscribe. Errors without sending when the room is already encrypted, a request is in
-   * flight, the account is gone or the role does not allow it.
+   * subscribe. Errors without sending when the room is already encrypted (by synced state or
+   * the server's), a request is in flight, the account is gone or the role does not allow it.
    */
   turnOn(target: RoomSettingsTarget): Observable<void> {
     return defer(() => {
@@ -44,12 +53,7 @@ export class RoomEncryptionService {
       // A second m.room.encryption replaces the algorithm and rotation settings every
       // member's client is using, so an encrypted room is never sent one.
       if (room.hasEncryptionStateEvent()) {
-        return throwError(() =>
-          roomAdministrationInvalidInput(
-            OPERATION,
-            'This room is already encrypted.',
-          ),
-        );
+        return throwError(() => alreadyEncrypted());
       }
       if (this.sending.has(key)) {
         return throwError(() =>
@@ -60,18 +64,45 @@ export class RoomEncryptionService {
         );
       }
       this.sending.add(key);
-      return from(
-        client.sendStateEvent(
-          target.roomId,
-          EventType.RoomEncryption,
-          roomEncryptionContent(),
-          '',
-        ),
-      ).pipe(
-        map(() => void 0),
+      // Sync can miss the event (Tuwunel's state_after race), so the server decides too.
+      return from(serverHasEncryption(client, target.roomId)).pipe(
+        switchMap((encrypted) => {
+          if (encrypted) return throwError(() => alreadyEncrypted());
+          return from(
+            client.sendStateEvent(
+              target.roomId,
+              EventType.RoomEncryption,
+              roomEncryptionContent(),
+              '',
+            ),
+          ).pipe(map(() => void 0));
+        }),
         recoverRoomAdministrationRequest(OPERATION),
         finalize(() => this.sending.delete(key)),
       );
     });
+  }
+}
+
+function alreadyEncrypted(): RoomAdministrationError {
+  return roomAdministrationInvalidInput(
+    OPERATION,
+    'This room is already encrypted.',
+  );
+}
+
+/** The server's current m.room.encryption, read directly; `M_NOT_FOUND` means none. */
+async function serverHasEncryption(
+  client: MatrixClient,
+  roomId: string,
+): Promise<boolean> {
+  try {
+    await client.getStateEvent(roomId, EventType.RoomEncryption, '');
+    return true;
+  } catch (error) {
+    if (error instanceof MatrixError && error.errcode === 'M_NOT_FOUND') {
+      return false;
+    }
+    throw error;
   }
 }
