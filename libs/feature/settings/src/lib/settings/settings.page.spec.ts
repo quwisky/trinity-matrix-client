@@ -1,5 +1,5 @@
 import { Location } from '@angular/common';
-import { Component } from '@angular/core';
+import { Component, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, type Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -12,6 +12,10 @@ import {
   type Mock,
   vi,
 } from 'vitest';
+import {
+  RELEASE_NOTES,
+  WHATS_NEW_LAUNCHER,
+} from '@trinity/data-access/whats-new';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { TrnSettingsGroupComponent } from '@trinity/components/overlay';
 import { matchingSettingsSections } from '../settings-sections';
@@ -93,7 +97,10 @@ function stubViewport(wide: boolean): {
 const flush = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve));
 
-async function harnessAt(url: string): Promise<{
+async function harnessAt(
+  url: string,
+  extraProviders: Provider[] = [],
+): Promise<{
   harness: RouterTestingHarness;
   shell: SettingsPage;
   router: Router;
@@ -101,6 +108,7 @@ async function harnessAt(url: string): Promise<{
   TestBed.configureTestingModule({
     providers: [
       provideRouter(ROUTES),
+      ...extraProviders,
       {
         provide: BUILD_INFO,
         useValue: { version: '9.9.9', commit: 'abc1234', builtAt: '' },
@@ -366,6 +374,22 @@ describe('SettingsPage (shell)', () => {
     );
     expect(footer?.textContent).toContain('9.9.9');
     expect(footer?.textContent).toContain('abc1234');
+  });
+
+  it("opens What's new from the footer", async () => {
+    stubViewport(false);
+    const showAll = vi.fn();
+    const { harness } = await harnessAt('/settings', [
+      {
+        provide: RELEASE_NOTES,
+        useValue: [{ version: '1.0.0', date: '2026-01-01', sections: {} }],
+      },
+      { provide: WHATS_NEW_LAUNCHER, useValue: { showAll } },
+    ]);
+    (harness.fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('[data-testid="settings-whats-new"]')!
+      .click();
+    expect(showAll).toHaveBeenCalledOnce();
   });
 
   it('keeps the category list at the index on the narrow layout', async () => {

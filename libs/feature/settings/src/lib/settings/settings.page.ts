@@ -24,6 +24,11 @@ import {
   TrnSettingsLayoutComponent,
   type TrnSettingsLayoutSection,
 } from '@trinity/components/overlay';
+import { TrnButton } from '@trinity/components/controls';
+import {
+  RELEASE_NOTES,
+  WHATS_NEW_LAUNCHER,
+} from '@trinity/data-access/whats-new';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { markRoutedPage, textScaledViewportSignal } from '@trinity/util/ui';
 import {
@@ -55,6 +60,7 @@ import { SettingsDirectorySearchComponent } from '../shared/settings-directory-s
     SettingsDirectorySearchComponent,
     TrnSettingsLayoutComponent,
     RouterOutlet,
+    TrnButton,
   ],
 })
 export class SettingsPage {
@@ -63,6 +69,8 @@ export class SettingsPage {
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
   private readonly build = inject(BUILD_INFO);
+  private readonly notes = inject(RELEASE_NOTES);
+  private readonly whatsNew = inject(WHATS_NEW_LAUNCHER, { optional: true });
   private readonly document = inject(DOCUMENT);
   private readonly injector = inject(Injector);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
