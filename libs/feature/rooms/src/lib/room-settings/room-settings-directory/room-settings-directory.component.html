@@ -1,12 +1,17 @@
+@let loaded = listing().kind === 'loaded';
 <trn-settings-row
   [label]="label()"
   [description]="hint()"
-  [for]="switchId"
+  [for]="loaded ? switchId : undefined"
   data-testid="room-settings-directory-listing"
 >
   @switch (listing().kind) {
     @case ('loading') {
-      <span class="room-settings__hint" role="status">Checking…</span>
+      <span
+        class="room-settings__hint"
+        data-testid="room-settings-directory-checking"
+        >Checking…</span
+      >
     }
     @case ('failed') {
       <button
@@ -25,7 +30,8 @@
       <trn-switch
         [inputId]="switchId"
         [checked]="listed()"
-        [disabled]="!mayChange() || saving()"
+        [disabled]="!mayChange()"
+        [aria-disabled]="saving()"
         [aria-describedby]="describedBy()"
         (checkedChange)="setListed($event)"
         data-testid="room-settings-directory-switch"
@@ -36,9 +42,9 @@
 @if (listing().kind === 'failed') {
   <p
     class="room-settings__hint room-settings__feedback--danger room-settings-directory__message"
-    role="alert"
+    data-testid="room-settings-directory-load-failed"
   >
-    Couldn't check whether this room is listed.
+    {{ loadFailed }}
   </p>
 }
 @if (!permission().available && permission().reason; as reason) {
@@ -53,10 +59,16 @@
 @if (error(); as message) {
   <p
     class="room-settings__hint room-settings__feedback--danger room-settings-directory__message"
-    role="alert"
     [id]="errorId"
     data-testid="room-settings-directory-error"
   >
     {{ message }}
   </p>
 }
+<p
+  class="sr-only"
+  role="status"
+  data-testid="room-settings-directory-announcer"
+>
+  {{ announcement() }}
+</p>

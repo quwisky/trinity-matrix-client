@@ -48,6 +48,7 @@ async function build(
   options: {
     directory?: ActionAvailability;
     listed?: () => Observable<boolean>;
+    serverName?: string | null;
     setListed?: (target: unknown, listed: boolean) => Observable<void>;
   } = {},
 ) {
@@ -81,12 +82,26 @@ async function build(
     input.click();
     fixture.detectChanges();
   };
-  return { fixture, container, toggle, flip, listed, setListed, permissions };
+  const text = (testId: string): string =>
+    container.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ??
+    '';
+  const announced = (): string => text('room-settings-directory-announcer');
+  return {
+    fixture,
+    container,
+    toggle,
+    flip,
+    text,
+    announced,
+    listed,
+    setListed,
+    permissions,
+  };
 }
 
 describe('RoomSettingsDirectoryComponent', () => {
   it("names the opening account's server and explains what listing does", async () => {
-    const { toggle } = await build();
+    const { toggle, container } = await build();
 
     expect(
       screen.getByText("List in hs.example's room directory"),
@@ -98,6 +113,22 @@ describe('RoomSettingsDirectoryComponent', () => {
     ).toBeTruthy();
     expect(toggle()?.checked).toBe(false);
     expect(toggle()?.disabled).toBe(false);
+    expect(container.querySelector('label')?.getAttribute('for')).toBe(
+      toggle()?.id,
+    );
+  });
+
+  it('keeps one persistent, empty status region for announcements', async () => {
+    const { container, announced } = await build();
+
+    const regions = container.querySelectorAll(
+      '[role="status"], [role="alert"]',
+    );
+    expect(regions).toHaveLength(1);
+    expect(regions[0]?.getAttribute('data-testid')).toBe(
+      'room-settings-directory-announcer',
+    );
+    expect(announced()).toBe('');
   });
 
   it('shows the current listing for the opening account', async () => {
@@ -107,12 +138,16 @@ describe('RoomSettingsDirectoryComponent', () => {
     expect(toggle()?.checked).toBe(true);
   });
 
-  it('says it is checking until the server answers', async () => {
+  it('says it is checking until the server answers, with no label pointing nowhere', async () => {
     const answer = new Subject<boolean>();
-    const { fixture, toggle } = await build({ listed: () => answer });
+    const { fixture, toggle, text, container } = await build({
+      listed: () => answer,
+    });
 
-    expect(screen.getByRole('status').textContent?.trim()).toBe('Checking…');
+    expect(text('room-settings-directory-checking')).toBe('Checking…');
     expect(toggle()).toBeNull();
+    expect(container.querySelector('label[for]')).toBeNull();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
 
     answer.next(true);
     answer.complete();
@@ -121,15 +156,16 @@ describe('RoomSettingsDirectoryComponent', () => {
     expect(toggle()?.checked).toBe(true);
   });
 
-  it('offers Try again when the listing could not be read', async () => {
+  it('offers Try again when the listing could not be read, and announces it', async () => {
     let fail = true;
-    const { fixture, toggle, listed } = await build({
+    const { fixture, toggle, listed, text, announced } = await build({
       listed: () => (fail ? throwError(() => new Error('offline')) : of(true)),
     });
 
-    expect(screen.getByRole('alert').textContent?.trim()).toBe(
+    expect(text('room-settings-directory-load-failed')).toBe(
       "Couldn't check whether this room is listed.",
     );
+    expect(announced()).toBe("Couldn't check whether this room is listed.");
     expect(toggle()).toBeNull();
 
     fail = false;
@@ -138,7 +174,7 @@ describe('RoomSettingsDirectoryComponent', () => {
 
     expect(listed).toHaveBeenCalledTimes(2);
     expect(toggle()?.checked).toBe(true);
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(text('room-settings-directory-load-failed')).toBe('');
   });
 
   it('disables the switch with the reason when the role may not change it', async () => {
@@ -149,31 +185,60 @@ describe('RoomSettingsDirectoryComponent', () => {
     expect(toggle()?.getAttribute('aria-describedby')).toContain(reason.id);
   });
 
-  it('lists the room at once and keeps the new value', async () => {
-    const { flip, toggle, setListed } = await build();
+  it('points at no reason when a denial gives none', async () => {
+    const { toggle } = await build({
+      directory: { available: false, reason: null },
+    });
+
+    expect(toggle()?.getAttribute('aria-describedby')).toBe(
+      'room-settings-directory-switch-description',
+    );
+  });
+
+  it('lists the room at once, keeps the new value and announces it', async () => {
+    const { flip, toggle, setListed, announced } = await build();
 
     flip();
 
     expect(setListed).toHaveBeenCalledExactlyOnceWith(TARGET, true);
     expect(toggle()?.checked).toBe(true);
-    expect(toggle()?.disabled).toBe(false);
+    expect(toggle()?.getAttribute('aria-disabled')).toBeNull();
+    expect(announced()).toBe("Listed in hs.example's room directory.");
   });
 
-  it('disables the switch while the change is in flight', async () => {
-    const pending = new Subject<void>();
-    const { flip, toggle, setListed } = await build({
-      setListed: () => pending,
-    });
+  it('announces an unlisting too', async () => {
+    const { flip, announced } = await build({ listed: () => of(true) });
 
     flip();
 
-    expect(toggle()?.checked).toBe(true);
-    expect(toggle()?.disabled).toBe(true);
+    expect(announced()).toBe("Not listed in hs.example's room directory.");
+  });
+
+  it('keeps the busy switch focusable and ignores presses until the server answers', async () => {
+    const pending = new Subject<void>();
+    const { fixture, flip, toggle, setListed } = await build({
+      setListed: () => pending,
+    });
+    toggle()?.focus();
+
+    flip();
+    const busy = toggle();
+    expect(busy?.checked).toBe(true);
+    expect(busy?.disabled).toBe(false);
+    expect(busy?.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(busy);
+
+    flip();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
     expect(setListed).toHaveBeenCalledTimes(1);
+    expect(toggle()?.checked).toBe(true);
+    expect(document.activeElement).toBe(busy);
   });
 
   it("reverts and explains a server that doesn't let this account list rooms", async () => {
-    const { flip, toggle } = await build({
+    const { flip, toggle, text, announced, listed } = await build({
       setListed: () =>
         throwError(() =>
           setOutcome(
@@ -183,20 +248,26 @@ describe('RoomSettingsDirectoryComponent', () => {
           ),
         ),
     });
+    toggle()?.focus();
 
     flip();
 
-    const alert = screen.getByRole('alert');
-    expect(alert.textContent?.trim()).toBe(
-      "Your server doesn't let you list rooms in its directory.",
-    );
+    const message = "Your server doesn't let you list rooms in its directory.";
+    expect(text('room-settings-directory-error')).toBe(message);
+    expect(announced()).toBe(`Not listed. ${message}`);
     expect(toggle()?.checked).toBe(false);
-    expect(toggle()?.getAttribute('aria-describedby')).toContain(alert.id);
+    expect(document.activeElement).toBe(toggle());
+    expect(toggle()?.getAttribute('aria-describedby')).toContain(
+      'room-settings-directory-switch-error',
+    );
+    expect(listed).toHaveBeenCalledTimes(1);
   });
 
-  it('reverts any other failure with plain words', async () => {
-    const { flip, toggle, container } = await build({
-      listed: () => of(true),
+  it('re-reads the listing after any other failure instead of guessing', async () => {
+    const reread = new Subject<boolean>();
+    let reads = 0;
+    const { fixture, flip, toggle, text, announced, container } = await build({
+      listed: () => (reads++ === 0 ? of(false) : reread),
       setListed: () =>
         throwError(() =>
           setOutcome(
@@ -209,13 +280,23 @@ describe('RoomSettingsDirectoryComponent', () => {
           ),
         ),
     });
+    toggle()?.focus();
 
     flip();
 
-    expect(screen.getByRole('alert').textContent?.trim()).toBe(
-      'The homeserver is unavailable. Try again.',
-    );
-    expect(toggle()?.checked).toBe(true);
+    const message = 'The homeserver is unavailable. Try again.';
+    expect(text('room-settings-directory-error')).toBe(message);
+    expect(announced()).toBe(message);
+    expect(reads).toBe(2);
+    expect(toggle()?.getAttribute('aria-disabled')).toBe('true');
     expect(container.textContent).not.toContain('upstream body');
+
+    reread.next(true);
+    reread.complete();
+    fixture.detectChanges();
+
+    expect(toggle()?.checked).toBe(true);
+    expect(toggle()?.getAttribute('aria-disabled')).toBeNull();
+    expect(document.activeElement).toBe(toggle());
   });
 });

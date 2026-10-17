@@ -9,9 +9,6 @@ import {
   tokenFor,
 } from '../../support/room-settings-journey.mts';
 
-// Covers Room settings › Addresses › Room directory: an admin lists a room in their server's
-// directory, a second account finds it in Explore public rooms, and after the admin unlists it
-// the search no longer finds it.
 async function openExplore(page: Page): Promise<void> {
   await page.click('button[aria-label="New room or direct message"]');
   const menu = page.getByRole('menu', { name: 'New message' });

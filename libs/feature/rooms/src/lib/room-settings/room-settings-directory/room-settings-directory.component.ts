@@ -10,7 +10,10 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnButton, TrnSwitchComponent } from '@trinity/components/controls';
 import { TrnSettingsRowComponent } from '@trinity/components/overlay';
-import { RoomDirectoryService } from '@trinity/data-access/room-administration';
+import {
+  RoomAdministrationError,
+  RoomDirectoryService,
+} from '@trinity/data-access/room-administration';
 import { Subject, catchError, map, of, startWith, switchMap } from 'rxjs';
 import { RoomSettingsDraftService } from '../room-settings-draft.service';
 import { settingsActionFailure } from '../settings-action-failure';
@@ -21,6 +24,7 @@ type Listing =
   | { readonly kind: 'loaded'; readonly listed: boolean };
 
 const SWITCH_ID = 'room-settings-directory-switch';
+const LOAD_FAILED = "Couldn't check whether this room is listed.";
 
 /** Room settings › Addresses: list the room in its account's homeserver directory. */
 @Component({
@@ -34,10 +38,12 @@ export class RoomSettingsDirectoryComponent implements OnInit {
   private readonly draft = inject(RoomSettingsDraftService);
   private readonly directory = inject(RoomDirectoryService);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly reloads = new Subject<void>();
+  /** Each reload, and whether to show Checking… meanwhile instead of the current switch. */
+  private readonly reloads = new Subject<boolean>();
   private readonly listingState = signal<Listing>({ kind: 'loading' });
   private readonly savingState = signal(false);
   private readonly errorState = signal<string | null>(null);
+  private readonly announcementState = signal('');
   private readonly target = computed(
     () => this.draft.snapshot()?.target ?? null,
   );
@@ -45,6 +51,7 @@ export class RoomSettingsDirectoryComponent implements OnInit {
   readonly switchId = SWITCH_ID;
   readonly reasonId = `${SWITCH_ID}-reason`;
   readonly errorId = `${SWITCH_ID}-error`;
+  readonly loadFailed = LOAD_FAILED;
   readonly listing = this.listingState.asReadonly();
   readonly listed = computed(() => {
     const listing = this.listing();
@@ -52,6 +59,8 @@ export class RoomSettingsDirectoryComponent implements OnInit {
   });
   readonly saving = this.savingState.asReadonly();
   readonly error = this.errorState.asReadonly();
+  /** Text for the one persistent live region, so each outcome is announced. */
+  readonly announcement = this.announcementState.asReadonly();
   readonly server = computed(() => {
     const target = this.target();
     return (target && this.directory.serverName(target)) ?? 'your server';
@@ -68,7 +77,7 @@ export class RoomSettingsDirectoryComponent implements OnInit {
   readonly describedBy = computed(() =>
     [
       `${SWITCH_ID}-description`,
-      this.permission().available ? null : this.reasonId,
+      this.permission().reason ? this.reasonId : null,
       this.error() ? this.errorId : null,
     ]
       .filter(Boolean)
@@ -78,26 +87,33 @@ export class RoomSettingsDirectoryComponent implements OnInit {
   ngOnInit(): void {
     this.reloads
       .pipe(
-        startWith(undefined),
-        switchMap(() => {
+        startWith(true),
+        switchMap((showChecking) => {
           const target = this.target();
           if (!target) return of<Listing>({ kind: 'failed' });
-          return this.directory.listed(target).pipe(
+          const read = this.directory.listed(target).pipe(
             map((listed): Listing => ({ kind: 'loaded', listed })),
             catchError(() => of<Listing>({ kind: 'failed' })),
-            startWith<Listing>({ kind: 'loading' }),
           );
+          return showChecking
+            ? read.pipe(startWith<Listing>({ kind: 'loading' }))
+            : read;
         }),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe((listing) => this.listingState.set(listing));
+      .subscribe((listing) => {
+        this.listingState.set(listing);
+        if (listing.kind === 'loading') return;
+        this.savingState.set(false);
+        if (listing.kind === 'failed') this.announcementState.set(LOAD_FAILED);
+      });
   }
 
   reload(): void {
-    this.reloads.next();
+    this.reloads.next(true);
   }
 
-  /** Applies at once; the switch shows the new value and reverts if the server refuses. */
+  /** Applies at once; the switch shows the new value and settles on the server's answer. */
   setListed(listed: boolean): void {
     const target = this.target();
     const current = this.listing();
@@ -110,17 +126,38 @@ export class RoomSettingsDirectoryComponent implements OnInit {
       .setListed(target, listed)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        complete: () => this.savingState.set(false),
-        error: (error: unknown) => {
+        complete: () => {
           this.savingState.set(false);
-          this.listingState.set({ kind: 'loaded', listed: !listed });
-          this.errorState.set(
-            settingsActionFailure(
-              error,
-              "Couldn't change the directory listing. Try again.",
-            ),
+          this.announcementState.set(
+            `${listed ? 'Listed' : 'Not listed'} in ${this.server()}'s room directory.`,
           );
+        },
+        error: (error: unknown) => {
+          const message = settingsActionFailure(
+            error,
+            "Couldn't change the directory listing. Try again.",
+          );
+          this.errorState.set(message);
+          if (isRefusal(error)) {
+            this.savingState.set(false);
+            this.listingState.set({ kind: 'loaded', listed: !listed });
+            this.announcementState.set(
+              `${listed ? 'Not listed' : 'Still listed'}. ${message}`,
+            );
+            return;
+          }
+          // Whether the change landed is unknown; stay busy until the server says.
+          this.announcementState.set(message);
+          this.reloads.next(false);
         },
       });
   }
+}
+
+/** The server or the role refused, so nothing changed. */
+function isRefusal(error: unknown): boolean {
+  return (
+    error instanceof RoomAdministrationError &&
+    error.outcome.failure === 'permission-denied'
+  );
 }
