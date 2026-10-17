@@ -295,7 +295,7 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
             PushRenderRules.present(NotificationTextMode.mirrored(by: store), on: probe)
             call.resolve(probe.result)
         }
-        guard NotificationTextMode.mirrored(by: store) != .alwaysHide,
+        guard PushRenderRules.rendersMessage(store: store),
               let render = PushRender(userInfo: userInfo, store: store, api: URLSessionMatrixPushAPI())
         else {
             let aps = payload["aps"] as? JSObject

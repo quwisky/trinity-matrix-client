@@ -19,18 +19,13 @@ final class NotificationService: UNNotificationServiceExtension {
             return
         }
         let store = PushHandoffStore.fromMainBundle()
-        // App lock's Notification text is read again just before iOS gets the content, on time
-        // or when time runs out, so a change made meanwhile still applies.
-        let present: (UNMutableNotificationContent) -> Void = { content in
-            PushRenderRules.present(NotificationTextMode.mirrored(by: store), on: content)
-            contentHandler(content)
-        }
-        // Always hide: no fallback (it names the room) and no fetch at all.
-        guard NotificationTextMode.mirrored(by: store) != .alwaysHide,
+        let present: (UNMutableNotificationContent) -> Void =
+            PushRenderRules.presenting(store: store, handler: contentHandler)
+        guard PushRenderRules.rendersMessage(store: store),
               let render = PushRender(userInfo: request.content.userInfo, store: store, api: URLSessionMatrixPushAPI())
         else {
-            // Or an unknown or removed account, or another kind of push: the gateway's alert,
-            // which carries no message text.
+            // Always hide (no fallback naming the room, no fetch), or an unknown account or
+            // another kind of push: the gateway's alert, which carries no message text.
             present(content)
             return
         }
@@ -44,7 +39,7 @@ final class NotificationService: UNNotificationServiceExtension {
     }
 
     /// Delivers whatever each pending request has ready: its rendered text, or its room-name
-    /// fallback.
+    /// fallback; under Always hide, "New message".
     override func serviceExtensionTimeWillExpire() {
         deliveries.finishAll()
     }

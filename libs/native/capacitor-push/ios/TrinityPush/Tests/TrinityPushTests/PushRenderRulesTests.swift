@@ -102,6 +102,49 @@ final class PushRenderRulesTests: XCTestCase {
         }
     }
 
+    private final class ChangingReader: HandoffReading {
+        var mode: NotificationTextMode
+        init(_ mode: NotificationTextMode) { self.mode = mode }
+        func account(_ userId: String) -> HandoffAccount? { nil }
+        func room(_ userId: String, _ roomId: String) -> HandoffRoom? { nil }
+        func notificationText() -> NotificationTextMode { mode }
+    }
+
+    func testAChangeMadeWhileAPushResolvesAppliesWhenTimeRunsOut() {
+        let reader = ChangingReader(.show)
+        var delivered: [FakeContent] = []
+        let deliveries = PushDeliveries<FakeContent>()
+        XCTAssertTrue(PushRenderRules.rendersMessage(store: reader))
+        _ = deliveries.begin(FakeContent(), handler: PushRenderRules.presenting(store: reader) { delivered.append($0) })
+        reader.mode = .alwaysHide
+        deliveries.finishAll()
+        XCTAssertEqual(delivered.count, 1)
+        XCTAssertEqual(
+            delivered.map { [$0.title, $0.subtitle, $0.body, $0.categoryIdentifier] },
+            [["", "", "New message", ""]]
+        )
+    }
+
+    func testTheModeAtHandOverWinsOverTheModeAtTheStart() {
+        let reader = ChangingReader(.alwaysHide)
+        XCTAssertFalse(PushRenderRules.rendersMessage(store: reader))
+        var delivered: [FakeContent] = []
+        let present: (FakeContent) -> Void = PushRenderRules.presenting(store: reader) { delivered.append($0) }
+        reader.mode = .hideOnLockScreen
+        present(FakeContent())
+        XCTAssertEqual(delivered.first?.categoryIdentifier, "trinity.message.private")
+        XCTAssertEqual(delivered.first?.body, "Secret plans")
+    }
+
+    func testWithNoStoreNothingIsRenderedAndEverythingIsHidden() {
+        XCTAssertFalse(PushRenderRules.rendersMessage(store: nil))
+        var delivered: [FakeContent] = []
+        let present: (FakeContent) -> Void = PushRenderRules.presenting(store: nil) { delivered.append($0) }
+        present(FakeContent())
+        XCTAssertEqual(delivered.first?.body, "New message")
+        XCTAssertEqual(delivered.first?.title, "")
+    }
+
     /// The repository's shared fixture, found by walking up from this file, so moving the
     /// package cannot point the suite at a path that does not exist.
     private static func sharedFixture(from file: String = #filePath) -> URL? {

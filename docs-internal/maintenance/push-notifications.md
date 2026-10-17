@@ -346,8 +346,9 @@ only applies while App lock is on. Show leaves the lock screen to the system's p
 Hide on the lock screen adds the `trinity.message.private` category on iOS, which shows "New
 message" while Show Previews hides previews, and `VISIBILITY_PRIVATE` with a generic public
 version on Android, which is used where the lock-screen setting hides sensitive content. Always
-hide renders only "New message" with no title (the system shows the app's name), without reading
-the event, and on iOS without any network request. Both renderers read the mode again just
+hide renders only "New message" with no title (the system shows the app's name); on iOS without
+reading the event or making any network request, while on Android the renderer still fetches it
+and drops the text before posting. Both renderers read the mode again just
 before posting; with no store, iOS hides everything.
 
 **Who presents in the background.** Once Android push is registered,

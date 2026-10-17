@@ -143,6 +143,26 @@ public extension PushRenderRules {
     }
 }
 
+public extension PushRenderRules {
+    /// Whether to render the message at all: not under Always hide (no fallback naming the room,
+    /// no fetch), nor without a store.
+    static func rendersMessage(store: HandoffReading?) -> Bool {
+        NotificationTextMode.mirrored(by: store) != .alwaysHide
+    }
+
+    /// `handler`, reading the mirror again and applying it just before the content is handed
+    /// over, on time or when time runs out, so a change made meanwhile still applies.
+    static func presenting<Content: PushTextContent>(
+        store: HandoffReading?,
+        handler: @escaping (Content) -> Void
+    ) -> (Content) -> Void {
+        { content in
+            present(NotificationTextMode.mirrored(by: store), on: content)
+            handler(content)
+        }
+    }
+}
+
 public extension NotificationTextMode {
     /// What `store` holds; with no store (no app group), everything is hidden.
     static func mirrored(by store: HandoffReading?) -> NotificationTextMode {

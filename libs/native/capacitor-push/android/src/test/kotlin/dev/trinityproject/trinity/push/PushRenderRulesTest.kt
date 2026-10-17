@@ -24,13 +24,15 @@ class PushRenderRulesTest {
                 HandoffRoom(it.getString("name"), it.getBoolean("direct"))
             }
             val expected = case.getJSONObject("expected")
+            val mode = case.optString("mode", NotificationTextMode.SHOW)
+            assertTrue("${case.getString("name")}: unknown mode", mode in NotificationTextMode.ALL)
             val actual = PushRenderRules.render(
                 case.optJSONObject("event"),
                 storedRoom,
                 case.opt("stateRoomName") as? String,
                 case.opt("senderName") as? String,
                 case.optBoolean("tokenExpired", false),
-                case.optString("mode", NotificationTextMode.SHOW),
+                mode,
             )
             assertEquals(
                 case.getString("name"),

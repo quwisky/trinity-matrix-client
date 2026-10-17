@@ -746,7 +746,7 @@
       }
     },
     {
-      "name": "always hide: an encrypted event and an expired token look the same",
+      "name": "always hide: an expired token says only New message",
       "mode": "always-hide",
       "event": null,
       "storedRoom": {
@@ -803,6 +803,29 @@
         "title": "Team",
         "subtitle": "Alice",
         "body": "Lunch?"
+      }
+    },
+    {
+      "name": "always hide: an encrypted event says only New message",
+      "mode": "always-hide",
+      "event": {
+        "type": "m.room.encrypted",
+        "sender": "@alice:hs",
+        "content": {
+          "algorithm": "m.megolm.v1.aes-sha2",
+          "ciphertext": "AwgAEnAC"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "",
+        "subtitle": "",
+        "body": "New message"
       }
     }
   ]

@@ -61,13 +61,6 @@ class DevicePushHandler(
         ensureChannel()
         val key = roomNotificationKey(outcome.accountId, outcome.roomId ?: outcome.eventId)
         val rendered = outcome.notification
-        val previous = platformManager()?.activeNotifications
-            ?.firstOrNull { it.tag == key.tag && it.id == key.id }
-            ?.notification
-        val style = previous?.let { NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(it) }
-            ?: NotificationCompat.MessagingStyle(
-                Person.Builder().setName(context.applicationInfo.loadLabel(context.packageManager)).build(),
-            )
         // App lock's Notification text, read as late as possible.
         val presentation = presentationFor(handoff)
         if (presentation == DevicePresentation.GENERIC_ONLY) {
@@ -75,6 +68,13 @@ class DevicePushHandler(
             compat.notify(key.tag, key.id, genericNotification(outcome, key, messageId).build())
             return
         }
+        val previous = platformManager()?.activeNotifications
+            ?.firstOrNull { it.tag == key.tag && it.id == key.id }
+            ?.notification
+        val style = previous?.let { NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(it) }
+            ?: NotificationCompat.MessagingStyle(
+                Person.Builder().setName(context.applicationInfo.loadLabel(context.packageManager)).build(),
+            )
         style.setConversationTitle(if (outcome.direct) null else rendered.title)
         style.setGroupConversation(!outcome.direct)
         style.addMessage(
