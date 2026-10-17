@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { ConnectionError, MatrixError } from '@trinity/util/matrix';
+import { ConnectionError, HTTPError, MatrixError } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -45,6 +45,7 @@ function setup(
   };
   let tokenDied = false;
   const release = vi.fn();
+  const onTokenDied: (() => void)[] = [];
   const order: string[] = [];
   TestBed.configureTestingModule({
     providers: [
@@ -53,13 +54,18 @@ function setup(
         clientFor: vi.fn(() =>
           options.client === false ? null : (client as never),
         ),
-        holdServerLogout: vi.fn(() => ({
-          tokenDied: () => tokenDied,
-          release: (outcome: { deleted: boolean }) => {
-            order.push(`release:${outcome.deleted}`);
-            release(outcome);
+        holdServerLogout: vi.fn(
+          (_id: string, hooks?: { onTokenDied?: () => void }) => {
+            if (hooks?.onTokenDied) onTokenDied.push(hooks.onTokenDied);
+            return {
+              tokenDied: () => tokenDied,
+              release: (outcome: { deleted: boolean }) => {
+                order.push(`release:${outcome.deleted}`);
+                release(outcome);
+              },
+            };
           },
-        })),
+        ),
         accountStatus: vi.fn(() => of(options.status ?? 'active')),
       }),
       MockProvider(AccountRuntimeService, {
@@ -85,6 +91,7 @@ function setup(
     order,
     killToken: () => {
       tokenDied = true;
+      onTokenDied.forEach((hook) => hook());
     },
   };
 }
@@ -162,7 +169,10 @@ describe('AccountDeletionWorkflow', () => {
     await firstValueFrom(test.workflow.delete(request(test.stages)));
 
     expect(test.matrix.clientFor).toHaveBeenCalledWith(ALICE);
-    expect(test.matrix.holdServerLogout).toHaveBeenCalledWith(ALICE);
+    expect(test.matrix.holdServerLogout).toHaveBeenCalledWith(
+      ALICE,
+      expect.anything(),
+    );
   });
 
   it.each([
@@ -364,7 +374,131 @@ describe('AccountDeletionWorkflow', () => {
       await expect(
         firstValueFrom(test.workflow.checkDeletion(ALICE)),
       ).resolves.toEqual(expected);
-      expect(test.matrix.holdServerLogout).toHaveBeenCalledWith(ALICE);
+      expect(test.matrix.holdServerLogout).toHaveBeenCalledWith(
+        ALICE,
+        expect.anything(),
+      );
+    });
+  });
+
+  describe('an ambiguous failure of the authenticated request', () => {
+    function failsAfterPassword(error: unknown, status: AccountServerStatus) {
+      const deactivate = vi
+        .fn()
+        .mockRejectedValueOnce(uia(['m.login.password']))
+        .mockRejectedValueOnce(error);
+      return setup({ deactivate, status });
+    }
+
+    it('counts a 502 after the token died as deleted', async () => {
+      const test = setup({
+        status: 'unreachable',
+        deactivate: vi.fn(async (auth: unknown) => {
+          if (!auth) throw uia(['m.login.password']);
+          test.killToken();
+          throw new MatrixError({}, 502);
+        }),
+      });
+
+      await expect(
+        firstValueFrom(test.workflow.delete(request(test.stages))),
+      ).resolves.toMatchObject({ kind: 'deleted' });
+      expect(test.release).toHaveBeenCalledWith({ deleted: true });
+    });
+
+    it.each([
+      ['a 500', new MatrixError({ errcode: 'M_UNKNOWN' }, 500)],
+      ['a non-Matrix HTTP error', new HTTPError('bad gateway', 502)],
+    ])('asks the server after %s', async (_label, error) => {
+      const gone = failsAfterPassword(error, 'gone');
+      await expect(
+        firstValueFrom(gone.workflow.delete(request(gone.stages))),
+      ).resolves.toMatchObject({ kind: 'deleted' });
+      TestBed.resetTestingModule();
+
+      const active = failsAfterPassword(error, 'active');
+      await expect(
+        firstValueFrom(active.workflow.delete(request(active.stages))),
+      ).resolves.toEqual({
+        kind: 'kept',
+        accountId: ALICE,
+        reason: 'still-active',
+      });
+    });
+
+    it('counts a token that died before a refused probe as deleted', async () => {
+      const test = setup({
+        deactivate: vi.fn(async () => {
+          test.killToken();
+          throw new MatrixError({ errcode: 'M_UNKNOWN' }, 500);
+        }),
+      });
+
+      await expect(
+        firstValueFrom(test.workflow.delete(request(test.stages))),
+      ).resolves.toMatchObject({ kind: 'deleted' });
+    });
+  });
+
+  describe('an unconfirmed deletion', () => {
+    function unconfirmed() {
+      const deactivate = vi
+        .fn()
+        .mockRejectedValueOnce(uia(['m.login.password']))
+        .mockRejectedValueOnce(new ConnectionError('reset'));
+      return setup({ deactivate, status: 'unreachable' });
+    }
+
+    it('keeps holding the wipe', async () => {
+      const test = unconfirmed();
+
+      await expect(
+        firstValueFrom(test.workflow.delete(request(test.stages))),
+      ).resolves.toEqual({ kind: 'unconfirmed', accountId: ALICE });
+      expect(test.release).not.toHaveBeenCalled();
+    });
+
+    it('finishes the deletion when the token dies later, and says so', async () => {
+      const test = unconfirmed();
+      const late: unknown[] = [];
+      test.workflow.lateDeletions.subscribe((result) => late.push(result));
+      await firstValueFrom(test.workflow.delete(request(test.stages)));
+
+      test.killToken();
+
+      expect(test.accounts.removeDeletedAccount).toHaveBeenCalledWith(ALICE);
+      expect(test.release).toHaveBeenCalledWith({ deleted: true });
+      expect(late).toEqual([
+        { kind: 'deleted', accountId: ALICE, cleanup: CLEANED },
+      ]);
+    });
+
+    it('answers Check again from what it already finished', async () => {
+      const test = unconfirmed();
+      await firstValueFrom(test.workflow.delete(request(test.stages)));
+      test.killToken();
+      vi.mocked(test.matrix.accountStatus).mockClear();
+
+      await expect(
+        firstValueFrom(test.workflow.checkDeletion(ALICE)),
+      ).resolves.toEqual({
+        kind: 'deleted',
+        accountId: ALICE,
+        cleanup: CLEANED,
+      });
+      expect(test.matrix.accountStatus).not.toHaveBeenCalled();
+    });
+
+    it('lets go of the wipe once the server says the account still exists', async () => {
+      const test = unconfirmed();
+      await firstValueFrom(test.workflow.delete(request(test.stages)));
+      vi.mocked(test.matrix.accountStatus).mockReturnValue(of('active'));
+
+      await firstValueFrom(test.workflow.checkDeletion(ALICE));
+
+      expect(test.release).toHaveBeenCalledTimes(2);
+      expect(test.release).toHaveBeenNthCalledWith(1, { deleted: false });
+      expect(test.release).toHaveBeenNthCalledWith(2, { deleted: false });
     });
   });
 });

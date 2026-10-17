@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { Observable, ReplaySubject, defer, finalize, map } from 'rxjs';
 import {
@@ -46,6 +47,13 @@ export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
   private readonly presented = new Set<string>();
   private readonly notice = signal<string | null>(null);
   readonly deletedNotice = this.notice.asReadonly();
+
+  constructor() {
+    // A deletion left unconfirmed can settle later, after its dialog has gone.
+    this.workflow.lateDeletions
+      .pipe(takeUntilDestroyed())
+      .subscribe((result) => this.settle(result));
+  }
 
   plan(accountId: string): Observable<AccountDeletionPlan> {
     return this.auth.accountManagementFor(accountId).pipe(

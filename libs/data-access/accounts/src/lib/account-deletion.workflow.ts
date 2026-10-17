@@ -21,6 +21,7 @@ import {
   map,
   of,
   switchMap,
+  Subject,
 } from 'rxjs';
 import { AccountRuntimeService } from './account-runtime.service';
 import type { AccountSignOutOutcome } from './account-runtime.models';
@@ -88,6 +89,18 @@ type ServerAnswer =
 export class AccountDeletionWorkflow {
   private readonly matrix = inject(MatrixClientService);
   private readonly accounts = inject(AccountRuntimeService);
+  /**
+   * Holds kept after an unconfirmed deletion: the account was most likely deleted, so a
+   * later dead token must run the deletion cleanup rather than the plain hard-logout wipe.
+   */
+  private readonly unconfirmed = new Map<string, ServerLogoutHold>();
+  /** Deletions finished this session, so a later check answers without the gone client. */
+  private readonly finished = new Map<string, AccountDeletionResult>();
+  private readonly late = new Subject<AccountDeletionResult>();
+
+  /** Deletions settled after their request reported them unconfirmed. Hot; never replays. */
+  readonly lateDeletions: Observable<AccountDeletionResult> =
+    this.late.asObservable();
 
   delete(request: AccountDeletionRequest): Observable<AccountDeletionResult> {
     return defer(() => {
@@ -99,7 +112,7 @@ export class AccountDeletionWorkflow {
       if (!client) {
         return of(kept(accountId, 'account-unavailable'));
       }
-      const hold = this.matrix.holdServerLogout(accountId);
+      const hold = this.holdFor(accountId);
       let authenticated = false;
       const sent = driveUia(
         (auth) => {
@@ -128,7 +141,9 @@ export class AccountDeletionWorkflow {
   /** Ask the server whether the account still exists, and clean up when it does not. */
   checkDeletion(accountId: string): Observable<AccountDeletionResult> {
     return defer(() => {
-      const hold = this.matrix.holdServerLogout(accountId);
+      const known = this.finished.get(accountId);
+      if (known) return of(known);
+      const hold = this.holdFor(accountId);
       return this.resolveUnknown(accountId, hold, true).pipe(
         switchMap((answer) => this.settle(accountId, hold, answer)),
       );
@@ -137,11 +152,29 @@ export class AccountDeletionWorkflow {
 
   /** Clean up an account whose deletion is already known, such as at its provider. */
   removeDeleted(accountId: string): Observable<AccountDeletionResult> {
-    return this.accounts
-      .removeDeletedAccount(accountId)
-      .pipe(
-        map((cleanup) => ({ kind: 'deleted', accountId, cleanup }) as const),
-      );
+    return this.accounts.removeDeletedAccount(accountId).pipe(
+      map((cleanup): AccountDeletionResult => {
+        const result = { kind: 'deleted', accountId, cleanup } as const;
+        this.finished.set(accountId, result);
+        return result;
+      }),
+    );
+  }
+
+  private holdFor(accountId: string): ServerLogoutHold {
+    return this.matrix.holdServerLogout(accountId, {
+      onTokenDied: () => this.finishUnconfirmed(accountId),
+    });
+  }
+
+  /** The token of an account left unconfirmed died: it was deleted after all. */
+  private finishUnconfirmed(accountId: string): void {
+    const hold = this.unconfirmed.get(accountId);
+    if (!hold) return;
+    this.unconfirmed.delete(accountId);
+    this.removeDeleted(accountId)
+      .pipe(finalize(() => hold.release({ deleted: true })))
+      .subscribe((result) => this.late.next(result));
   }
 
   private classify(
@@ -157,10 +190,8 @@ export class AccountDeletionWorkflow {
     if (err instanceof UiaUnsupportedError) {
       return of(refused('no-usable-stage'));
     }
+    if (hold.tokenDied()) return of({ kind: 'deleted' });
     const failure = describeMatrixRequestFailure(err);
-    if (failure.kind === 'network' || failure.kind === 'timeout') {
-      return this.resolveUnknown(accountId, hold, authenticated);
-    }
     if (failure.kind === 'rate-limit') {
       const retryAfterMs = failure.diagnostic.retryAfterMs;
       return of({
@@ -169,7 +200,17 @@ export class AccountDeletionWorkflow {
         ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
       } as const);
     }
-    return of(refused(refusalOf(err)));
+    const refusal = refusalOf(err);
+    // Only a definite refusal proves nothing was deleted; a 5xx, a proxy error or a lost
+    // answer may follow a deactivation the server completed.
+    if (
+      failure.kind === 'network' ||
+      failure.kind === 'timeout' ||
+      (authenticated && refusal === 'failed')
+    ) {
+      return this.resolveUnknown(accountId, hold, authenticated);
+    }
+    return of(refused(refusal));
   }
 
   /**
@@ -198,16 +239,26 @@ export class AccountDeletionWorkflow {
     hold: ServerLogoutHold,
     answer: ServerAnswer,
   ): Observable<AccountDeletionResult> {
-    if (answer.kind !== 'deleted') {
+    const pending = this.unconfirmed.get(accountId);
+    if (answer.kind === 'unconfirmed') {
+      if (pending) {
+        hold.release({ deleted: false });
+      } else {
+        this.unconfirmed.set(accountId, hold);
+      }
+      return of({ kind: 'unconfirmed', accountId });
+    }
+    this.unconfirmed.delete(accountId);
+    if (answer.kind === 'kept') {
       hold.release({ deleted: false });
-      return of(
-        answer.kind === 'unconfirmed'
-          ? { kind: 'unconfirmed', accountId }
-          : { ...answer, accountId },
-      );
+      pending?.release({ deleted: false });
+      return of({ ...answer, accountId });
     }
     return this.removeDeleted(accountId).pipe(
-      finalize(() => hold.release({ deleted: true })),
+      finalize(() => {
+        hold.release({ deleted: true });
+        pending?.release({ deleted: true });
+      }),
     );
   }
 }

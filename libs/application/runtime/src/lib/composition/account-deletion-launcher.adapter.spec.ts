@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom, of } from 'rxjs';
+import { Subject, firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   TrnSurfaceService,
@@ -53,10 +53,12 @@ function setup(
 ) {
   const onTokenDied: (() => void)[] = [];
   const release = vi.fn();
+  const late = new Subject<AccountDeletionResult>();
   TestBed.configureTestingModule({
     providers: [
       AccountDeletionLauncherAdapter,
       MockProvider(AccountDeletionWorkflow, {
+        lateDeletions: late.asObservable(),
         delete: vi.fn(() => of(options.result ?? deleted(cleanup([BOB])))),
         checkDeletion: vi.fn(() =>
           of(options.result ?? deleted(cleanup([BOB]))),
@@ -98,6 +100,7 @@ function setup(
     router: TestBed.inject(Router),
     prompts,
     release,
+    late,
     tokenDies: () => onTokenDied.forEach((hook) => hook()),
   };
 }
@@ -297,6 +300,18 @@ describe('AccountDeletionLauncherAdapter', () => {
       expect(test.toast.show).toHaveBeenCalledOnce();
       expect(test.router.navigateByUrl).toHaveBeenCalledOnce();
     });
+  });
+
+  it('presents a deletion that settles after it was reported unconfirmed', () => {
+    const test = setup();
+
+    test.late.next(deleted(cleanup([])));
+
+    expect(test.surfaces.closeAll).toHaveBeenCalled();
+    expect(test.router.navigateByUrl).toHaveBeenCalledWith('/login', {
+      replaceUrl: true,
+    });
+    expect(test.launcher.deletedNotice()).toBe(ALICE);
   });
 
   it('checks with the server on Check now', async () => {
