@@ -47,6 +47,7 @@ import {
 } from '@trinity/data-access/auth';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
+  ACCOUNT_DELETION_LAUNCHER,
   AppRestartService,
   BUG_REPORT_LAUNCHER,
   SessionStorageService,
@@ -84,6 +85,9 @@ function describeSignInError(error: unknown, fallback: string): string {
     (error instanceof Error && error.message === ACCOUNT_NOT_STORED)
   ) {
     return error.message;
+  }
+  if (error instanceof MatrixError && error.errcode === 'M_USER_DEACTIVATED') {
+    return 'This account has been deleted.';
   }
   if (
     error instanceof HTTPError &&
@@ -129,6 +133,14 @@ export class LoginPage {
   private readonly bugReport = inject(BUG_REPORT_LAUNCHER, { optional: true });
   private readonly usernameInput =
     viewChild<ElementRef<HTMLInputElement>>('usernameInput');
+  private readonly deletedNoticeHeading =
+    viewChild<ElementRef<HTMLElement>>('deletedNotice');
+
+  /** The account whose deletion left none behind; its confirmation is read first. */
+  readonly deletedAccountId =
+    inject(ACCOUNT_DELETION_LAUNCHER, {
+      optional: true,
+    })?.takeDeletedNotice() ?? null;
 
   /** `/login?add` — add a second account instead of replacing the current one. */
   readonly addMode = this.route.snapshot.queryParamMap.has('add');
@@ -190,6 +202,15 @@ export class LoginPage {
         DISCOVERY_FALLBACK,
       ).subscribe(({ flows, oidc, registration }) =>
         this.applyFlows(flows, oidc, registration),
+      );
+    }
+
+    if (this.deletedAccountId) {
+      afterNextRender(
+        () => this.deletedNoticeHeading()?.nativeElement.focus(),
+        {
+          injector: this.injector,
+        },
       );
     }
 
