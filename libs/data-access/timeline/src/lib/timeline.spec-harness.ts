@@ -3,7 +3,7 @@
 // TimelineService (the open-room projection) and TimelineActionsService (the write
 // surface) are two services over the SAME fake room + client, so their specs need the
 // same doubles. This holds them so neither file owns a private copy that can drift.
-import { signal } from '@angular/core';
+import { signal, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -389,4 +389,22 @@ export function setupActions(
     timeline.openContext(),
   );
   return TestBed.inject(TimelineActionsService);
+}
+
+/** Opens `!r:hs` on a TimelineService over `client`, plus any per-test providers. */
+export function openTimeline(client: unknown, extraProviders: Provider[] = []) {
+  TestBed.configureTestingModule({
+    providers: [TimelineService, matrixProvider(client), ...extraProviders],
+  });
+  const svc = TestBed.inject(TimelineService);
+  svc.open('!r:hs');
+  return svc;
+}
+
+/** The harness client over a room a test has tweaked (the harness types its own room strictly). */
+export function clientFor(room: object, overrides: object = {}) {
+  return {
+    ...fakeClient(room as ReturnType<typeof fakeRoom>, []),
+    ...overrides,
+  };
 }
