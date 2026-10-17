@@ -691,7 +691,8 @@ This describes the original bootstrap under the old develop/main model.
 
 `0.1.0` predates release-please. After the migration merge, push the `v0.1.0`
 tag on the migration commit **first**, then create `main` from that commit, and
-create a draft `v0.1.0` release for it (`gh release create v0.1.0 --draft --verify-tag`), then
+create a draft `v0.1.0` release for it (`gh release create v0.1.0 --draft --verify-tag --notes "Initial release"`; the body must not be empty,
+or the release-notes build finds no notes for the version), then
 dispatch `release.yml` with `tag: v0.1.0` to build it. In the other order,
 the stable line's first run finds no `v0.1.0` release and proposes a stable release for
 whatever reached the integration branch after the bootstrap commit. Both configs carry a

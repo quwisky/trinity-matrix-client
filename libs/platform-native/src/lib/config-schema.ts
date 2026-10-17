@@ -4,6 +4,7 @@ export type ConfigOwner =
   | 'data-access/timeline'
   | 'platform-native'
   | 'data-access/gif'
+  | 'data-access/whats-new'
   | 'data-access/notifications'
   | 'data-access/room-library'
   | 'data-access/diagnostic-log'
@@ -239,7 +240,7 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
   {
     disposition: 'excluded',
     key: 'trinity.whats-new.last-seen-version',
-    owner: 'platform-native',
+    owner: 'data-access/whats-new',
     reason:
       'The app version this device last opened. It records how one device was used, ' +
       'not a setting, so another device must not inherit it.',
