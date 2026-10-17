@@ -261,7 +261,7 @@ describe('file, lifecycle and update host operation contracts', () => {
     };
   }
 
-  function fileExportAdapter(save: FileSaveService['save']) {
+  function configureFileExport(save: FileSaveService['save']) {
     TestBed.configureTestingModule({
       providers: [
         HostFileExportAdapter,
@@ -271,12 +271,12 @@ describe('file, lifecycle and update host operation contracts', () => {
         MockProvider(FileSaveService, { save }),
       ],
     });
-    return TestBed.inject(HostFileExportAdapter);
   }
 
   it('keeps file export cold, finite and normalized through the selected host adapter', async () => {
     const save = vi.fn(() => of('saved' as const));
-    const adapter = fileExportAdapter(save);
+    configureFileExport(save);
+    const adapter = TestBed.inject(HostFileExportAdapter);
     const request = { bytes: new Blob(['safe']), filename: 'safe.txt' };
     const command = adapter.save(request);
 
@@ -291,7 +291,7 @@ describe('file, lifecycle and update host operation contracts', () => {
   });
 
   it('reports a dismissed native save as cancelled, never completed', async () => {
-    fileExportAdapter(() => of('cancelled' as const));
+    configureFileExport(() => of('cancelled' as const));
 
     await expect(
       firstValueFrom(
@@ -304,7 +304,9 @@ describe('file, lifecycle and update host operation contracts', () => {
   });
 
   it('contains file-host failures behind a secret-safe rejection', async () => {
-    fileExportAdapter(() => throwError(() => new Error('secret file payload')));
+    configureFileExport(() =>
+      throwError(() => new Error('secret file payload')),
+    );
 
     await expect(
       firstValueFrom(
@@ -444,7 +446,7 @@ describe('file, lifecycle and update host operation contracts', () => {
     ).resolves.toEqual({ kind: 'unavailable', reason: 'not-supported' });
   });
 
-  function updatesAdapter(
+  function configureUpdates(
     isEnabled: boolean,
     checkForUpdate: SwUpdate['checkForUpdate'],
     ...extra: Provider[]
@@ -456,12 +458,12 @@ describe('file, lifecycle and update host operation contracts', () => {
         MockProvider(SwUpdate, { isEnabled, checkForUpdate }),
       ],
     });
-    return TestBed.inject(ServiceWorkerHostUpdatesAdapter);
   }
 
   it('returns explicit update unavailability when this host has no service worker', async () => {
     const checkForUpdate = vi.fn();
-    const command = updatesAdapter(false, checkForUpdate).check();
+    configureUpdates(false, checkForUpdate);
+    const command = TestBed.inject(ServiceWorkerHostUpdatesAdapter).check();
 
     expect(checkForUpdate).not.toHaveBeenCalled();
     await expect(firstValueFrom(command)).resolves.toEqual({
@@ -473,7 +475,8 @@ describe('file, lifecycle and update host operation contracts', () => {
 
   it('runs a supported update check lazily through the shared operation', async () => {
     const checkForUpdate = vi.fn().mockResolvedValue(true);
-    const command = updatesAdapter(true, checkForUpdate).check();
+    configureUpdates(true, checkForUpdate);
+    const command = TestBed.inject(ServiceWorkerHostUpdatesAdapter).check();
 
     expect(checkForUpdate).not.toHaveBeenCalled();
     await expect(firstValueFrom(command)).resolves.toEqual({
@@ -485,7 +488,10 @@ describe('file, lifecycle and update host operation contracts', () => {
   it('rejects a supported update check that never settles', async () => {
     vi.useFakeTimers();
     const checkForUpdate = vi.fn(() => new Promise<boolean>(() => undefined));
-    const result = firstValueFrom(updatesAdapter(true, checkForUpdate).check());
+    configureUpdates(true, checkForUpdate);
+    const result = firstValueFrom(
+      TestBed.inject(ServiceWorkerHostUpdatesAdapter).check(),
+    );
 
     await vi.advanceTimersByTimeAsync(5_000);
 
@@ -497,15 +503,11 @@ describe('file, lifecycle and update host operation contracts', () => {
 
   it('keeps Web update discovery aligned with the shared operation', async () => {
     const checkForUpdate = vi.fn().mockResolvedValue(true);
-    const adapter = updatesAdapter(
-      true,
-      checkForUpdate,
-      WebHostCapabilityAdapter,
-    );
+    configureUpdates(true, checkForUpdate, WebHostCapabilityAdapter);
     const manifest = await firstValueFrom(
       TestBed.inject(WebHostCapabilityAdapter).manifest(),
     );
-    const command = adapter.check();
+    const command = TestBed.inject(ServiceWorkerHostUpdatesAdapter).check();
 
     expect(manifest.operations.updates).toEqual({ kind: 'supported' });
     expect(checkForUpdate).not.toHaveBeenCalled();
