@@ -83,59 +83,21 @@ import { WhatsNewLauncherAdapter } from './whats-new-launcher.adapter';
 import { DeviceConfirmationCoordinator } from './device-confirmation.coordinator';
 import { CapabilityHealthService } from '../capability-health.service';
 
-interface SessionHarness {
-  readonly adapter: TrinityApplicationSessionAdapter;
-  readonly deepLinks: Subject<{ readonly url: string }>;
-  readonly backIntents: Subject<{ readonly canGoBack: boolean }>;
-  readonly notificationEvents: Subject<NotificationRuntimeEvent>;
-  readonly pushActivations: Subject<NativePushLifetimeEvent>;
-  readonly lifecycleEvents: Subject<
-    { readonly kind: 'active' } | { readonly kind: 'background' }
-  >;
-  readonly memoryRelease: Subject<never>;
-  readonly timelineTrim: Subject<never>;
-  readonly navigate: ReturnType<typeof vi.fn>;
-  readonly workspaceNavigate: ReturnType<typeof vi.fn>;
-  readonly closeAuthentication: ReturnType<typeof vi.fn>;
-  readonly locationBack: ReturnType<typeof vi.fn>;
-  readonly background: ReturnType<typeof vi.fn>;
-  readonly appLockStatus: ReturnType<typeof signal<AppLockStatus>>;
-  readonly dialogOpen: ReturnType<typeof signal<boolean>>;
-  readonly hasDialog: ReturnType<typeof vi.fn>;
-  readonly closeTopmost: ReturnType<typeof vi.fn>;
-  readonly workspaceActive: ReturnType<typeof signal<boolean>>;
-  readonly workspaceSurface: ReturnType<typeof signal<WorkspaceSurface | null>>;
-  readonly conversationOverList: ReturnType<typeof signal<boolean>>;
-  readonly routedSurface: ReturnType<typeof signal<WorkspaceSurface | null>>;
-  readonly workspaceOwnsOverlay: ReturnType<typeof vi.fn>;
-  readonly workspaceBack: ReturnType<typeof vi.fn>;
-  readonly setHistoryGesturesEnabled: ReturnType<typeof vi.fn>;
-  readonly versionUpdates: Subject<VersionEvent>;
-  readonly unrecoverable: Subject<UnrecoverableStateEvent>;
-  readonly checkForUpdate: ReturnType<typeof vi.fn>;
-  readonly hostUpdateCheck: ReturnType<typeof vi.fn>;
-  readonly activateUpdate: ReturnType<typeof vi.fn>;
-  readonly showToast: ReturnType<typeof vi.fn>;
-  readonly health: CapabilityHealthService;
-  readonly recoverTrust: ReturnType<typeof vi.fn>;
-  readonly recoverPresentation: ReturnType<typeof vi.fn>;
-  readonly recoverRoomAdministration: ReturnType<typeof vi.fn>;
-}
-
-function setup(
-  pushSession?: Observable<NativePushLifetimeEvent>,
-  roomLibrarySession: Observable<RoomLibraryLifetimeEvent> = of({
-    kind: 'prepared',
-  }),
-  trustSession: Observable<TrustLifetimeEvent> = of({ kind: 'prepared' }),
-  identitySession: Observable<IdentityLifetimeEvent> = of({ kind: 'prepared' }),
-  notificationSession: Observable<NotificationLifetimeEvent> = of({
-    kind: 'prepared',
-  }),
-  roomAdministrationSession: Observable<RoomAdministrationLifetimeEvent> = of({
-    kind: 'prepared',
-  }),
-): SessionHarness {
+function setup({
+  push,
+  roomLibrary = of({ kind: 'prepared' }),
+  trust = of({ kind: 'prepared' }),
+  identity = of({ kind: 'prepared' }),
+  notifications = of({ kind: 'prepared' }),
+  roomAdministration = of({ kind: 'prepared' }),
+}: {
+  readonly push?: Observable<NativePushLifetimeEvent>;
+  readonly roomLibrary?: Observable<RoomLibraryLifetimeEvent>;
+  readonly trust?: Observable<TrustLifetimeEvent>;
+  readonly identity?: Observable<IdentityLifetimeEvent>;
+  readonly notifications?: Observable<NotificationLifetimeEvent>;
+  readonly roomAdministration?: Observable<RoomAdministrationLifetimeEvent>;
+} = {}) {
   const deepLinks = new Subject<{ readonly url: string }>();
   const backIntents = new Subject<{ readonly canGoBack: boolean }>();
   const notificationEvents = new Subject<NotificationRuntimeEvent>();
@@ -146,12 +108,16 @@ function setup(
   const memoryRelease = new Subject<never>();
   const timelineTrim = new Subject<never>();
   const navigate = vi.fn().mockResolvedValue(true);
-  const workspaceNavigate = vi.fn(() =>
+  const workspaceNavigate = vi.fn<WorkspaceNavigationService['navigate']>(() =>
     of({ kind: 'ready', change: 'committed' } as const),
   );
-  const closeAuthentication = vi.fn(() => of({ kind: 'completed' as const }));
+  const closeAuthentication = vi.fn<
+    HostDeepLinksService['closeAuthentication']
+  >(() => of({ kind: 'completed' as const }));
   const locationBack = vi.fn();
-  const background = vi.fn(() => of({ kind: 'completed' as const }));
+  const background = vi.fn<HostBackService['background']>(() =>
+    of({ kind: 'completed' as const }),
+  );
   const appLockStatus = signal<AppLockStatus>('off');
   const dialogOpen = signal(false);
   const hasDialog = vi.fn(() => dialogOpen());
@@ -166,7 +132,9 @@ function setup(
   const versionUpdates = new Subject<VersionEvent>();
   const unrecoverable = new Subject<UnrecoverableStateEvent>();
   const checkForUpdate = vi.fn().mockResolvedValue(true);
-  const hostUpdateCheck = vi.fn(() => of({ kind: 'completed' as const }));
+  const hostUpdateCheck = vi.fn<HostUpdatesService['check']>(() =>
+    of({ kind: 'completed' as const }),
+  );
   const activateUpdate = vi.fn().mockResolvedValue(true);
   const showToast = vi.fn();
   const roomProjectionDemand = signal(true);
@@ -189,7 +157,7 @@ function setup(
         recoverPresentation,
       }),
       MockProvider(NativePushLifetime, {
-        run: () => pushSession ?? pushActivations,
+        run: () => push ?? pushActivations,
         recover: () => of({ kind: 'success' as const }),
       }),
       MockProvider(PushHandoffService, {
@@ -214,21 +182,21 @@ function setup(
       }),
       MockProvider(SpaceRoomOrderService, { run: () => EMPTY }),
       MockProvider(RoomLibraryLifetime, {
-        run: () => roomLibrarySession,
+        run: () => roomLibrary,
       }),
       MockProvider(TrustLifetime, {
-        run: () => trustSession,
+        run: () => trust,
         recover: recoverTrust,
       }),
       MockProvider(TrustAccountStatusService, { run: () => EMPTY }),
       MockProvider(DeviceConfirmationCoordinator, { run: () => EMPTY }),
-      MockProvider(IdentityLifetime, { run: () => identitySession }),
+      MockProvider(IdentityLifetime, { run: () => identity }),
       MockProvider(NotificationLifetime, {
-        run: () => notificationSession,
+        run: () => notifications,
         recover: recoverNotifications,
       }),
       MockProvider(RoomAdministrationLifetime, {
-        run: () => roomAdministrationSession,
+        run: () => roomAdministration,
         recover: recoverRoomAdministration,
       }),
       MockProvider(HostDeepLinksService, {
@@ -382,7 +350,7 @@ describe('TrinityApplicationSessionAdapter', () => {
   it('prepares Room Library before readiness opens the live session', () => {
     const preparation = new Subject<RoomLibraryLifetimeEvent>();
     const readiness = new Subject<void>();
-    const test = setup(undefined, preparation);
+    const test = setup({ roomLibrary: preparation });
     const events: unknown[] = [];
     const lifetime = test.adapter
       .run(readiness)
@@ -443,15 +411,14 @@ describe('TrinityApplicationSessionAdapter', () => {
   });
 
   it('maps blocked Room Library preparation without opening live streams', () => {
-    const test = setup(
-      undefined,
-      of({
+    const test = setup({
+      roomLibrary: of({
         kind: 'blocked',
         diagnostic: {
           code: 'room-library-projection-preparation-failed',
         },
       }),
-    );
+    });
     const events: unknown[] = [];
 
     test.adapter.run(of(void 0)).subscribe((event) => events.push(event));
@@ -474,7 +441,7 @@ describe('TrinityApplicationSessionAdapter', () => {
   it('classifies a required Room Library failure after readiness and releases the session', () => {
     const roomLibrary = new Subject<RoomLibraryLifetimeEvent>();
     const readiness = new Subject<void>();
-    const test = setup(undefined, roomLibrary);
+    const test = setup({ roomLibrary });
     const events: unknown[] = [];
     const completed = vi.fn();
     const lifetime = test.adapter.run(readiness).subscribe({
@@ -510,14 +477,13 @@ describe('TrinityApplicationSessionAdapter', () => {
     const identity = new Subject<IdentityLifetimeEvent>();
     const notifications = new Subject<NotificationLifetimeEvent>();
     const roomAdministration = new Subject<RoomAdministrationLifetimeEvent>();
-    const test = setup(
-      undefined,
+    const test = setup({
       roomLibrary,
       trust,
       identity,
       notifications,
       roomAdministration,
-    );
+    });
     const events: unknown[] = [];
 
     test.adapter.run(of(void 0)).subscribe((event) => events.push(event));
@@ -549,14 +515,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const notifications = new Subject<NotificationLifetimeEvent>();
     const roomAdministration = new Subject<RoomAdministrationLifetimeEvent>();
     const readiness = new Subject<void>();
-    const test = setup(
-      undefined,
-      of({ kind: 'prepared' }),
-      trust,
-      identity,
-      notifications,
-      roomAdministration,
-    );
+    const test = setup({ trust, identity, notifications, roomAdministration });
     const events: unknown[] = [];
     const lifetime = test.adapter
       .run(readiness)
@@ -622,14 +581,7 @@ describe('TrinityApplicationSessionAdapter', () => {
   it('does not let an unsettled optional lifetime hold required preparation open', () => {
     const readiness = new Subject<void>();
     const optional = new Subject<TrustLifetimeEvent>();
-    const test = setup(
-      undefined,
-      of({ kind: 'prepared' }),
-      optional,
-      of({ kind: 'prepared' }),
-      of({ kind: 'prepared' }),
-      of({ kind: 'prepared' }),
-    );
+    const test = setup({ trust: optional });
     const events: unknown[] = [];
     const lifetime = test.adapter
       .run(readiness)
@@ -647,23 +599,19 @@ describe('TrinityApplicationSessionAdapter', () => {
   it('registers Room Administration health and targeted recovery without a legacy warning', () => {
     const readiness = new Subject<void>();
     const context = Symbol();
-    const test = setup(
-      undefined,
-      of({ kind: 'prepared' }),
-      of({ kind: 'prepared' }),
-      of({ kind: 'prepared' }),
-      of(
+    const test = setup({
+      notifications: of(
         { kind: 'health' as const, fact: notificationRuleHealth(context) },
         { kind: 'prepared' as const },
       ),
-      of(
+      roomAdministration: of(
         {
           kind: 'health' as const,
           fact: roomAdministrationHealth(context),
         },
         { kind: 'prepared' as const },
       ),
-    );
+    });
     const events: unknown[] = [];
     const lifetime = test.adapter
       .run(readiness)
@@ -718,14 +666,7 @@ describe('TrinityApplicationSessionAdapter', () => {
         return () => (administrationTeardowns += 1);
       },
     );
-    const test = setup(
-      undefined,
-      of({ kind: 'prepared' }),
-      of({ kind: 'prepared' }),
-      of({ kind: 'prepared' }),
-      notifications,
-      roomAdministration,
-    );
+    const test = setup({ notifications, roomAdministration });
 
     const first = test.adapter.run(of(void 0)).subscribe();
     expect(notificationSubscriptions).toBe(1);
@@ -746,7 +687,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const context = Symbol();
     const trust = new Subject<TrustLifetimeEvent>();
     const readiness = new Subject<void>();
-    const test = setup(undefined, of({ kind: 'prepared' }), trust);
+    const test = setup({ trust });
     const events: unknown[] = [];
     const lifetime = test.adapter
       .run(readiness)
@@ -769,7 +710,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const trust = new Subject<TrustLifetimeEvent>();
     const identity = new Subject<IdentityLifetimeEvent>();
     const readiness = new Subject<void>();
-    const test = setup(undefined, of({ kind: 'prepared' }), trust, identity);
+    const test = setup({ trust, identity });
     const events: unknown[] = [];
     const lifetime = test.adapter
       .run(readiness)
@@ -793,11 +734,7 @@ describe('TrinityApplicationSessionAdapter', () => {
   it('keeps broken lifetime adapters on the Observable error channel', () => {
     const failure = new Error('broken Trust lifetime adapter');
     const error = vi.fn();
-    const test = setup(
-      undefined,
-      of({ kind: 'prepared' }),
-      throwError(() => failure),
-    );
+    const test = setup({ trust: throwError(() => failure) });
 
     test.adapter.run(of(void 0)).subscribe({ error });
 
@@ -1094,7 +1031,7 @@ describe('TrinityApplicationSessionAdapter', () => {
         return () => teardowns++;
       },
     );
-    const test = setup(pushSession);
+    const test = setup({ push: pushSession });
     const firstLifetime = test.adapter.run(of(void 0)).subscribe();
 
     await vi.waitFor(() =>
