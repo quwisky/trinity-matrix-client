@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { CONFIG_EXPORT_VERSION } from './config-entry';
 import {
   CONFIG_EXCLUSION_NOTES,
-  CONFIG_EXPORT_VERSION,
   CONFIG_KEY_LEDGER,
   exportedKeysFor,
 } from './config-schema';

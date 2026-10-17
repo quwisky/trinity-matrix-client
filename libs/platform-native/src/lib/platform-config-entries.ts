@@ -7,7 +7,7 @@ import {
   isDateFormat,
   isTimeFormat,
 } from '@trinity/util/matrix';
-import { provideConfigEntries, type ConfigEntry } from './config-schema';
+import { provideConfigEntries, type ConfigEntry } from './config-entry';
 import {
   boundedNumberSetting,
   choiceSetting,

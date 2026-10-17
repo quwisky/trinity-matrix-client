@@ -1,4 +1,4 @@
-import type { ConfigAction, ConfigEntry } from './config-schema';
+import type { ConfigAction, ConfigEntry } from './config-entry';
 
 /**
  * The building blocks every {@link ConfigEntry} validator is made of.

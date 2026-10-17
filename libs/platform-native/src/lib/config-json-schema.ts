@@ -2,7 +2,7 @@ import {
   CONFIG_EXPORT_VERSION,
   type ConfigEntry,
   type ConfigJsonType,
-} from './config-schema';
+} from './config-entry';
 
 /**
  * The exported configuration described as a JSON Schema document.

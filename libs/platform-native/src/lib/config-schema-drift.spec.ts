@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppConfigService } from './app-config.service';
 import { configSchemaDrift } from './config-schema-drift';
-import type { ConfigEntry, ConfigValue } from './config-schema';
+import type { ConfigEntry, ConfigValue } from './config-entry';
 import { choiceSetting, flagSetting } from './config-validation';
 import { providePlatformConfigEntries } from './platform-config-entries';
 
