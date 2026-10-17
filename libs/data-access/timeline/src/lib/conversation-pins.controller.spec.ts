@@ -19,6 +19,8 @@ const KEY = {
   roomId: '!room:example.org',
 } as const;
 
+const flush = () => new Promise((resolve) => setTimeout(resolve));
+
 function setup() {
   let pinned = ['$one'];
   const events = new Map([
@@ -120,6 +122,9 @@ function setup() {
   });
   const controller = TestBed.inject(ConversationPinsController);
   controller.attach(KEY, client as never);
+  const setPinned = (next: string[]) => {
+    pinned = next;
+  };
   return {
     controller,
     client,
@@ -128,8 +133,14 @@ function setup() {
     sendStateEvent,
     remote,
     fetchRoomEvent,
-    setPinned: (next: string[]) => {
-      pinned = next;
+    setPinned,
+    // Sets the pinned ids, announces the change as the SDK would, then lets fetches settle.
+    pin: async (ids: string[]) => {
+      setPinned(ids);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
     },
   };
 }
@@ -244,7 +255,6 @@ describe('ConversationPinsController', () => {
       content: { body: `Old ${id}` },
       ...over,
     });
-    const flush = () => new Promise((resolve) => setTimeout(resolve));
     beforeEach(() => vi.useFakeTimers({ toFake: ['Date'] }));
     afterEach(() => vi.useRealTimers());
 
@@ -270,13 +280,9 @@ describe('ConversationPinsController', () => {
     });
 
     it('fetches each unloaded pin once, not on every recompute', async () => {
-      const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
+      const { controller, remote, fetchRoomEvent, room, pin } = setup();
       remote.set('$old', raw('$old'));
-      setPinned(['$old']);
-      room.emit(RoomStateEvent.Events, {
-        getType: () => EventType.RoomPinnedEvents,
-      });
-      await flush();
+      await pin(['$old']);
       room.emit(RoomEvent.Timeline);
       await flush();
       room.emit(RoomStateEvent.Events, {
@@ -289,12 +295,8 @@ describe('ConversationPinsController', () => {
     });
 
     it('shows an unavailable row when the server will not return the event', async () => {
-      const { controller, setPinned, room } = setup();
-      setPinned(['$gone', '$one']);
-      room.emit(RoomStateEvent.Events, {
-        getType: () => EventType.RoomPinnedEvents,
-      });
-      await flush();
+      const { controller, pin } = setup();
+      await pin(['$gone', '$one']);
 
       expect(controller.messages().map((m) => [m.id, m.status])).toEqual([
         ['$gone', 'unavailable'],
@@ -303,7 +305,7 @@ describe('ConversationPinsController', () => {
     });
 
     it('decrypts an encrypted pin before showing it', async () => {
-      const { controller, remote, setPinned, room } = setup();
+      const { controller, remote, pin } = setup();
       remote.set(
         '$secret',
         raw('$secret', {
@@ -311,11 +313,7 @@ describe('ConversationPinsController', () => {
           clear_body: 'Decrypted text',
         }),
       );
-      setPinned(['$secret']);
-      room.emit(RoomStateEvent.Events, {
-        getType: () => EventType.RoomPinnedEvents,
-      });
-      await flush();
+      await pin(['$secret']);
 
       expect(controller.messages()[0]).toMatchObject({
         status: 'loaded',
@@ -324,25 +322,17 @@ describe('ConversationPinsController', () => {
     });
 
     it('skips a redacted pin as before', async () => {
-      const { controller, remote, setPinned, room } = setup();
+      const { controller, remote, pin } = setup();
       remote.set('$old', raw('$old', { redacted: true }));
-      setPinned(['$old']);
-      room.emit(RoomStateEvent.Events, {
-        getType: () => EventType.RoomPinnedEvents,
-      });
-      await flush();
+      await pin(['$old']);
 
       expect(controller.messages()).toEqual([]);
     });
 
     it('reports a pin whose fetch fails as failed, not unavailable', async () => {
-      const { controller, fetchRoomEvent, setPinned, room } = setup();
+      const { controller, fetchRoomEvent, pin } = setup();
       fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
-      setPinned(['$old']);
-      room.emit(RoomStateEvent.Events, {
-        getType: () => EventType.RoomPinnedEvents,
-      });
-      await flush();
+      await pin(['$old']);
 
       expect(controller.messages().map((m) => [m.id, m.status])).toEqual([
         ['$old', 'failed'],
@@ -350,28 +340,20 @@ describe('ConversationPinsController', () => {
     });
 
     it('reports a pin the server will not return as unavailable', async () => {
-      const { controller, fetchRoomEvent, setPinned, room } = setup();
+      const { controller, fetchRoomEvent, pin } = setup();
       fetchRoomEvent.mockRejectedValueOnce(
         Object.assign(new Error('Not found'), { httpStatus: 404 }),
       );
-      setPinned(['$old']);
-      room.emit(RoomStateEvent.Events, {
-        getType: () => EventType.RoomPinnedEvents,
-      });
-      await flush();
+      await pin(['$old']);
 
       expect(controller.messages()[0]?.status).toBe('unavailable');
     });
 
     it('retries a failed pin after the next invalidation', async () => {
-      const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
+      const { controller, remote, fetchRoomEvent, room, pin } = setup();
       remote.set('$old', raw('$old'));
       fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
-      setPinned(['$old']);
-      room.emit(RoomStateEvent.Events, {
-        getType: () => EventType.RoomPinnedEvents,
-      });
-      await flush();
+      await pin(['$old']);
       expect(controller.messages()[0]?.status).toBe('failed');
 
       room.emit(RoomStateEvent.Events, {
@@ -392,15 +374,11 @@ describe('ConversationPinsController', () => {
     ] as const)(
       'retries a failed pin after a %s event',
       async (_name, args) => {
-        const { controller, remote, client, room, fetchRoomEvent, setPinned } =
+        const { controller, remote, client, room, fetchRoomEvent, pin } =
           setup();
         remote.set('$old', raw('$old'));
         fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
-        setPinned(['$old']);
-        room.emit(RoomStateEvent.Events, {
-          getType: () => EventType.RoomPinnedEvents,
-        });
-        await flush();
+        await pin(['$old']);
         expect(controller.messages()[0]?.status).toBe('failed');
 
         vi.setSystemTime(Date.now() + 30_000);
@@ -417,13 +395,9 @@ describe('ConversationPinsController', () => {
     );
 
     it('throttles automatic retries to one per 30 seconds', async () => {
-      const { controller, room, fetchRoomEvent, setPinned } = setup();
+      const { controller, room, fetchRoomEvent, pin } = setup();
       fetchRoomEvent.mockRejectedValue(new Error('network down'));
-      setPinned(['$old']);
-      room.emit(RoomStateEvent.Events, {
-        getType: () => EventType.RoomPinnedEvents,
-      });
-      await flush();
+      await pin(['$old']);
       expect(fetchRoomEvent).toHaveBeenCalledTimes(1);
 
       vi.setSystemTime(Date.now() + 10_000);
@@ -440,14 +414,10 @@ describe('ConversationPinsController', () => {
     });
 
     it('keeps showing failed, never loading, while a failed pin is re-fetched', async () => {
-      const { controller, remote, room, fetchRoomEvent, setPinned } = setup();
+      const { controller, remote, fetchRoomEvent, pin } = setup();
       remote.set('$old', raw('$old'));
       fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
-      setPinned(['$old']);
-      room.emit(RoomStateEvent.Events, {
-        getType: () => EventType.RoomPinnedEvents,
-      });
-      await flush();
+      await pin(['$old']);
       let release!: () => void;
       fetchRoomEvent.mockImplementationOnce(
         () =>
@@ -467,14 +437,10 @@ describe('ConversationPinsController', () => {
     });
 
     it('retries failed pins on retryFailed but never an unavailable one', async () => {
-      const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
+      const { controller, remote, fetchRoomEvent, pin } = setup();
       remote.set('$old', raw('$old'));
       fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
-      setPinned(['$old', '$gone']);
-      room.emit(RoomStateEvent.Events, {
-        getType: () => EventType.RoomPinnedEvents,
-      });
-      await flush();
+      await pin(['$old', '$gone']);
       expect(fetchRoomEvent).toHaveBeenCalledTimes(2);
 
       controller.retryFailed();
@@ -488,18 +454,15 @@ describe('ConversationPinsController', () => {
     });
 
     it('drops a fetch that resolves after the pin list changed', async () => {
-      const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
+      const { controller, remote, fetchRoomEvent, setPinned, room, pin } =
+        setup();
       remote.set('$old', raw('$old'));
       remote.set('$newer', raw('$newer'));
       setPinned(['$old']);
       room.emit(RoomStateEvent.Events, {
         getType: () => EventType.RoomPinnedEvents,
       });
-      setPinned(['$newer']);
-      room.emit(RoomStateEvent.Events, {
-        getType: () => EventType.RoomPinnedEvents,
-      });
-      await flush();
+      await pin(['$newer']);
 
       expect(fetchRoomEvent).toHaveBeenCalledTimes(2);
       expect(controller.messages().map((m) => m.id)).toEqual(['$newer']);
