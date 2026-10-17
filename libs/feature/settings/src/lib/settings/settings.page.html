@@ -29,18 +29,20 @@
   <p settings-nav-footer data-testid="settings-build">
     {{ buildLabel }}
     @if (notes.length && whatsNew) {
-      ·
-      <button
-        trnBtn
-        type="button"
-        presentation="link"
-        shape="inline"
-        size="xs"
-        data-testid="settings-whats-new"
-        (click)="whatsNew.showAll()"
+      <span class="whitespace-nowrap"
+        >·
+        <button
+          trnBtn
+          type="button"
+          presentation="link"
+          shape="inline"
+          size="xs"
+          data-testid="settings-whats-new"
+          (click)="whatsNew.showAll()"
+        >
+          What's new
+        </button></span
       >
-        What's new
-      </button>
     }
   </p>
 </trn-settings-layout>
