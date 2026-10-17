@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **75 Nx projects** and **295 dependencies**. No project cycles detected.
+This snapshot contains **76 Nx projects** and **296 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -33,7 +33,7 @@ Capability-to-capability dependencies are valid only inside the same named capab
 | -------------------- | -------: | ------------------------------------------------------------------------------------------------------ |
 | `role:app`           |        5 | `role:app`, `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system` |
 | `role:application`   |        7 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
-| `role:capability`    |       16 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
+| `role:capability`    |       17 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
 | `role:kernel`        |        5 | `role:kernel`                                                                                          |
 | `role:adapter`       |        9 | `role:adapter`, `role:kernel`                                                                          |
 | `role:design-system` |       19 | `role:design-system`, `role:kernel`, `role:adapter`                                                    |
@@ -85,6 +85,7 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `data-access-room-library`        | `@trinity/data-access/room-library`        | `./libs/data-access/room-library/src/index.ts`        |
 | `data-access-timeline`            | `@trinity/data-access/timeline`            | `./libs/data-access/timeline/src/index.ts`            |
 | `data-access-trust`               | `@trinity/data-access/trust`               | `./libs/data-access/trust/src/index.ts`               |
+| `data-access-whats-new`           | `@trinity/data-access/whats-new`           | `./libs/data-access/whats-new/src/index.ts`           |
 | `data-access-widgets`             | `@trinity/data-access/widgets`             | `./libs/data-access/widgets/src/index.ts`             |
 | `feature-auth`                    | `@trinity/feature/auth`                    | `./libs/feature/auth/src/index.ts`                    |
 | `feature-crypto`                  | `@trinity/feature/crypto`                  | `./libs/feature/crypto/src/index.ts`                  |
@@ -150,6 +151,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `data-access-room-library`          | `libs/data-access/room-library`          | role:capability; capability:room-library        |                   6 |
 | `data-access-timeline`              | `libs/data-access/timeline`              | role:capability; capability:conversations       |                   6 |
 | `data-access-trust`                 | `libs/data-access/trust`                 | role:capability; capability:trust               |                   4 |
+| `data-access-whats-new`             | `libs/data-access/whats-new`             | role:capability; capability:whats-new           |                   1 |
 | `data-access-widgets`               | `libs/data-access/widgets`               | role:capability; capability:conversations       |                   3 |
 | `docs-developers`                   | `apps/docs-developers`                   | unmanaged tooling/test                          |                   1 |
 | `docs-e2e`                          | `e2e/docs`                               | unmanaged tooling/test                          |                   0 |

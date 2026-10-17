@@ -60,6 +60,9 @@
       ],
       "@trinity/data-access/media": ["./libs/data-access/media/src/index.ts"],
       "@trinity/data-access/gif": ["./libs/data-access/gif/src/index.ts"],
+      "@trinity/data-access/whats-new": [
+        "./libs/data-access/whats-new/src/index.ts"
+      ],
       "@trinity/data-access/homeserver": [
         "./libs/data-access/homeserver/src/index.ts"
       ],

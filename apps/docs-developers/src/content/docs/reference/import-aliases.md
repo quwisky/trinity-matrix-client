@@ -27,7 +27,7 @@ platforms: [web, desktop, android, ios]
 
 `@trinity/helm/*` aliases belong to the generated UI implementation tier and are not feature APIs.
 
-Representative exact entrypoints include `@trinity/application/runtime`, `@trinity/data-access/timeline`, `@trinity/feature/rooms`, `@trinity/components/controls`, `@trinity/runtime/host`, `@trinity/util/matrix`, `@trinity/platform-native`, `@trinity/theme-foundation`, and `@trinity/testing`.
+Representative exact entrypoints include `@trinity/application/runtime`, `@trinity/data-access/timeline`, `@trinity/data-access/whats-new`, `@trinity/feature/rooms`, `@trinity/components/controls`, `@trinity/runtime/host`, `@trinity/util/matrix`, `@trinity/platform-native`, `@trinity/theme-foundation`, and `@trinity/testing`.
 
 ## Apply the boundary {#apply-alias}
 

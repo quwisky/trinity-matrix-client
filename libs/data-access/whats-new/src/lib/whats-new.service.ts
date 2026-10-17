@@ -1,0 +1,46 @@
+import { Injectable, inject } from '@angular/core';
+import {
+  BUILD_INFO,
+  DevicePreferenceStorageService,
+} from '@trinity/platform-native';
+import { catchError, map, of, switchMap, type Observable } from 'rxjs';
+import { RELEASE_NOTES, type ReleaseNote } from './release-notes';
+import { compareReleaseVersions, releasesSince } from './release-version';
+
+const LAST_SEEN_KEY = 'trinity.whats-new.last-seen-version';
+
+/** Decides which bundled release notes this device has not seen yet. Never errors. */
+@Injectable({ providedIn: 'root' })
+export class WhatsNewService {
+  private readonly storage = inject(DevicePreferenceStorageService);
+  private readonly running = inject(BUILD_INFO).version;
+
+  readonly all: readonly ReleaseNote[] = inject(RELEASE_NOTES);
+
+  /**
+   * Notes newer than the stored version. When it returns none it stores the running
+   * version itself (not when storage cannot be read); when it returns notes the
+   * caller stores it through {@link markSeen} as the dialog opens.
+   */
+  pending(): Observable<readonly ReleaseNote[]> {
+    return this.storage.get(LAST_SEEN_KEY).pipe(
+      switchMap((stored) => {
+        const unseen =
+          stored !== null &&
+          compareReleaseVersions(stored, this.running) !== null
+            ? releasesSince(this.all, stored, this.running)
+            : [];
+        return unseen.length > 0
+          ? of<readonly ReleaseNote[]>(unseen)
+          : this.markSeen().pipe(map((): readonly ReleaseNote[] => []));
+      }),
+      catchError(() => of<readonly ReleaseNote[]>([])),
+    );
+  }
+
+  markSeen(): Observable<void> {
+    return this.storage
+      .set(LAST_SEEN_KEY, this.running)
+      .pipe(catchError(() => of(undefined)));
+  }
+}
