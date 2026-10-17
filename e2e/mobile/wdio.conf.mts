@@ -18,8 +18,13 @@ export const config = mobileWdioConfig({
       '.appium/chromedriver',
     ),
     'appium:ensureWebviewsHavePages': true,
+    // A chromedriver that fails to attach after an app relaunch ("chrome not reachable" at
+    // 60 s) must not stay cached: stop it on leaving the WebView, so connectionRetryCount's
+    // retry of the switch starts a fresh one for the running app.
+    'appium:recreateChromeDriverSessions': true,
     'appium:nativeWebScreenshot': true,
     acceptInsecureCerts: true,
   },
   appiumArgs: { allowInsecure: '*:chromedriver_autodownload,*:adb_shell' },
+  connectionRetryCount: 3,
 });
