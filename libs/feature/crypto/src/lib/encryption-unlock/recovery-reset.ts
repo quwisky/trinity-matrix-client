@@ -7,12 +7,8 @@ import { firstValueFrom, map, type Observable } from 'rxjs';
 export const RESET_CONFIRMATION_WORD = 'RESET';
 
 /**
- * What the user is agreeing to, cost first.
- *
- * Written out here rather than inline so the wording is reviewed as prose and cannot
- * drift between the surfaces that offer the reset. Each line is a consequence the user
- * cannot discover afterwards, and the order is deliberate: what is destroyed, what is
- * disrupted, what they get back.
+ * What the user is agreeing to, cost first: what is destroyed, what is disrupted, what
+ * they get back. Shared so the wording cannot drift between surfaces offering the reset.
  */
 export const RESET_CONSEQUENCES = [
   'Your message backup on the server is deleted. Messages your devices cannot already read stay unreadable — forever.',
@@ -23,15 +19,12 @@ export const RESET_CONSEQUENCES = [
 /** What the type-to-confirm gate decided. Cancelling and mistyping are both "no". */
 export type ResetIntent = 'confirmed' | 'cancelled' | 'mistyped';
 
-/** Said after a mistype — silence there is indistinguishable from a broken button. */
+/** Said after a mistype; silence would look like a broken button. */
 export const RESET_MISTYPED_MESSAGE = `Nothing was reset. Type ${RESET_CONFIRMATION_WORD} exactly to confirm.`;
 
 /**
- * Ask for the confirmation word before anything is destroyed.
- *
- * This is the only thing between a user and an irreversible, account-wide deletion, so
- * it states the cost first and demands the word: a mis-tap is not an acceptable way to
- * reach it.
+ * Ask for the confirmation word before anything is destroyed. It is the only thing
+ * between a user and an irreversible, account-wide deletion, so it states the cost first.
  */
 export function confirmResetIntent(
   alert: TrnAlertService,
@@ -58,10 +51,7 @@ export function confirmResetIntent(
     );
 }
 
-/**
- * Password prompt for the reset's device-signing-key upload. Worded like encryption
- * setup's prompt for the identical UIA stage, but naming the identity reset.
- */
+/** Password prompt for the reset's device-signing-key upload (a UIA stage). */
 export function resetPasswordPrompt(alert: TrnAlertService): PasswordPrompt {
   return () =>
     firstValueFrom(
@@ -85,19 +75,16 @@ export interface ResetFailure {
 /**
  * Triage a failed reset into something to show, or null when there is nothing to say.
  *
- * Trust classifies provider-owned recovery at its boundary; this presentation helper
- * consumes only that stable recovery meaning and an already-resolved provider link.
- *
- * `readManagement` is swallowed rather than awaited bare: the whole job of this branch is
- * to say something, and a rejected metadata read (a locked keychain, say) must not leave
- * the user staring at a screen that appears to have done nothing.
+ * Trust classifies provider-owned recovery at its boundary; this helper consumes only
+ * that recovery meaning and an already-resolved provider link. A rejected provider-link
+ * read (a locked keychain, say) is swallowed so the user still gets a message.
  */
 export async function describeResetFailure(
   err: unknown,
   readProviderUrl: () => Promise<string | null>,
 ): Promise<ResetFailure | null> {
   if (err instanceof TrustOperationError && err.kind === 'cancelled') {
-    return null; // they stopped it themselves, before anything was touched
+    return null; // cancelled before anything was touched
   }
   if (
     !(err instanceof TrustOperationError) ||

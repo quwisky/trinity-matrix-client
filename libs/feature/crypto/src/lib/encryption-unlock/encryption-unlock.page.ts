@@ -44,14 +44,13 @@ import {
 } from './recovery-reset';
 
 /**
- * New-device unlock (flow B). The account already has secret storage; the user
- * enters their recovery key to trust this device — {@link TrustService.recoverWithKey}
- * imports the cross-signing secrets and enables key backup. Key-only by design:
- * Trinity provisions a random recovery key (no passphrase) during setup.
+ * New-device unlock. The account already has secret storage; the user enters their
+ * recovery key to trust this device ({@link TrustService.recoverWithKey} imports the
+ * cross-signing secrets and enables key backup). Key-only: setup provisions a random
+ * recovery key, no passphrase.
  *
- * Also the one home of the irreversible reset. An Account without secret storage (an
- * identity set up on another device without recovery) arrives here only for that reset,
- * so the page asks for no recovery key it does not have.
+ * Also the one home of the irreversible reset. An Account without secret storage arrives
+ * here only for that reset, so the page asks for no recovery key it does not have.
  */
 @Component({
   selector: 'trn-encryption-unlock',
@@ -84,20 +83,15 @@ export class EncryptionUnlockPage {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly busy = signal(false);
-  /**
-   * A reset specifically is in flight. Distinct from {@link busy}, which the ordinary
-   * unlock also sets — the two need different copy, and one of them cannot be abandoned.
-   */
+  /** A reset specifically is in flight; unlike {@link busy}, it cannot be abandoned. */
   readonly resetting = signal(false);
 
   private readonly keyModel = signal({ recoveryKey: '' });
-  // Disabled belongs to the schema, not to a [disabled] binding on the input: Signal
-  // Forms owns the field's disabled state and rejects the binding at compile time
-  // (NG8022). Declared after `busy` because the schema reads it.
+  // Disabled belongs to the schema: Signal Forms owns it and rejects a [disabled] binding
+  // at compile time (NG8022). Declared after `busy`, which the schema reads.
   readonly unlockForm = form(this.keyModel, (path) => {
     disabled(path.recoveryKey, { when: () => this.busy() });
   });
-  /** Whether there is a key to try — keeps the trim out of the template. */
   readonly hasKey = computed(
     () => this.keyModel().recoveryKey.trim().length > 0,
   );
@@ -106,23 +100,18 @@ export class EncryptionUnlockPage {
   /**
    * The identity provider's own reset page, when a refused reset can point at one.
    *
-   * Rendered as a link rather than only handed to `Browser.open`: by the time we know to
-   * open it, several awaits and a network round-trip have passed since the user's click,
-   * so the browser no longer counts it as user-initiated and blocks the popup. A link
-   * they can press is the difference between an explanation and a dead end.
+   * Rendered as a link, not only handed to `Browser.open`: by the time it is known the
+   * user's click is long over, so the browser blocks the popup.
    *
-   * Linked to {@link error} so it cannot outlive the message it is the second half of.
-   * Every action on this page clears `error` first ({@link runWithBusy} included), and
-   * this link surviving that would sit next to an unrelated failure — or next to none —
-   * telling the user two contradictory things. Structural on purpose: the next action
-   * added here gets the clearing for free rather than having to remember it.
+   * Linked to {@link error} so it cannot outlive the message it belongs to: every action
+   * clears `error` first, and a surviving link would contradict an unrelated failure.
+   * New actions get the clearing for free.
    */
   readonly providerResetUrl = linkedSignal<string | null, string | null>({
     source: this.error,
     computation: () => null,
   });
 
-  /** What the busy spinner says — the two operations are not interchangeable. */
   readonly progressMessage = computed(() =>
     this.resetting()
       ? 'Resetting your identity…'
@@ -132,12 +121,11 @@ export class EncryptionUnlockPage {
   /**
    * The Account's identity lives on another device and no secret storage backs it, so
    * there is no recovery key to enter and the page offers only the reset. Every other
-   * reading, `unknown` included, keeps the key form: a status that is not in yet must not
-   * hide the ordinary path.
+   * reading, `unknown` included, keeps the key form: a status not in yet must not hide
+   * the ordinary path.
    *
-   * Held while a reset runs: the reset moves the live status through other readings
-   * (parking the 4S pointer, publishing the new identity), and following them would swap
-   * the page's copy under the user mid-reset.
+   * Held while a reset runs: the reset moves the live status through other readings, and
+   * following them would swap the page's copy mid-reset.
    */
   readonly identityWithoutRecovery = linkedSignal<
     { readonly live: boolean; readonly resetting: boolean },
@@ -153,7 +141,6 @@ export class EncryptionUnlockPage {
       resetting && previous ? previous.value : live,
   }).asReadonly();
 
-  /** Page/modal title, which has to follow what the page is actually doing. */
   readonly title = computed(() => {
     if (this.newRecoveryKey()) {
       return 'Identity reset';
@@ -164,27 +151,24 @@ export class EncryptionUnlockPage {
   });
 
   /**
-   * The recovery key minted by a reset, shown once. Non-null switches the page from
-   * "enter your key" to "save this key" — the reset leaves the account `ready`, so status
-   * cannot be what decides this.
+   * The recovery key minted by a reset, shown once. Non-null switches the page to "save
+   * this key"; status cannot decide this because the reset leaves the account `ready`.
    */
   readonly newRecoveryKey = signal<string | null>(null);
 
   /** When true the page is modal content (desktop); else a routed page. */
   readonly asModal = input(false);
-  /** Asks an @Output-bound host modal to dismiss. */
   readonly closed = output<void>();
 
   /**
-   * Arrive with the reset already offered, for an entry point whose own label promised
-   * it (Settings → Security's "I’ve lost my recovery key" or "Reset my identity"). Set as
-   * an input by the modal presentation and as `?reset=1` by the routed one.
+   * Arrive with the reset already offered, for an entry point whose label promised it
+   * (Settings → Security). An input in the modal, `?reset=1` on the routed page.
    */
   readonly offerReset = input(false);
 
   constructor() {
-    // Honour the caller's intent once, after the view exists so the confirm dialog has
-    // something to sit over. A gate, not the action — the user still has to type the word.
+    // After the view exists, so the confirm dialog has something to sit over. This only
+    // opens the gate; the user still has to type the confirmation word.
     afterNextRender(() => {
       const asked =
         this.offerReset() ||
@@ -202,7 +186,7 @@ export class EncryptionUnlockPage {
       return;
     }
     this.withBusy(this.crypto.recoverWithKey(key)).subscribe(() => {
-      this.clearKey(); // drop the key from memory once it's been used
+      this.clearKey();
       this.leave();
     });
   }
@@ -212,15 +196,14 @@ export class EncryptionUnlockPage {
    * recovery key and no other verified device.
    *
    * Gated on typing the confirmation word: this destroys the account's server-side message
-   * backup, and a mis-tap is not an acceptable way to reach it. Cancelling and mistyping
-   * are the same answer — no.
+   * backup, and a mis-tap must not reach it.
    */
   resetRecovery(): void {
     confirmResetIntent(this.alert)
       .pipe(take(1), takeUntilDestroyed(this.destroyRef))
       .subscribe((intent) => {
         if (intent === 'cancelled') {
-          return; // they said no, and that needs no explanation
+          return;
         }
         if (intent === 'mistyped') {
           this.error.set(RESET_MISTYPED_MESSAGE);
@@ -231,8 +214,8 @@ export class EncryptionUnlockPage {
   }
 
   private beginRecoveryReset(): void {
-    // Deliberately NOT runWithBusy: it turns a failure into EMPTY, so an error handler
-    // never runs — and this is the one path that has to inspect WHY it failed.
+    // Not runWithBusy: it turns a failure into EMPTY, but this path must inspect WHY it
+    // failed.
     this.busy.set(true);
     this.resetting.set(true);
     this.error.set(null);
@@ -265,8 +248,7 @@ export class EncryptionUnlockPage {
     // Order matters: providerResetUrl is linked to error and clears when it changes.
     this.error.set(failure.message);
     if (failure.providerUrl) {
-      // Rendered as a link too — see providerResetUrl. Native has no popup blocker, so
-      // this still opens straight away there.
+      // Also rendered as a link (see providerResetUrl); native has no popup blocker.
       this.providerResetUrl.set(failure.providerUrl);
       this.externalBrowser
         .open(failure.providerUrl)
@@ -275,19 +257,16 @@ export class EncryptionUnlockPage {
     }
   }
 
-  /** Finish after a reset: the key has been shown and the user says it is saved. */
   finishReset(): void {
     this.newRecoveryKey.set(null);
     this.leave();
   }
 
   /**
-   * Whether closing right now would throw something away.
-   *
-   * The reset cannot be cancelled once it is running — unsubscribing does not abort the
-   * promise — and the key it mints is shown exactly once. Both are reasons to ask first,
-   * and neither is a reason to disable the button: the desktop dialog opens with
-   * `disableClose`, so this is the only way out and taking it away would trap the user.
+   * Whether closing right now would throw something away: a running reset cannot be
+   * cancelled (unsubscribing does not abort the promise) and its key is shown once. Ask
+   * first rather than disabling Close: the desktop dialog opens with `disableClose`, so
+   * Close is the only way out.
    */
   private closeWouldDiscard(): LeaveRisk | null {
     if (this.newRecoveryKey()) {
@@ -299,15 +278,13 @@ export class EncryptionUnlockPage {
   /**
    * Whether it is safe to leave, asking the user when it is not.
    *
-   * Shared by the modal's Close button and by the route guard, because the routed page
-   * is dismissed by the browser's own back button and would otherwise throw a shown-once
-   * key away without a word — which is the path most users are on.
+   * Shared by the modal's Close button and the route guard: the browser's back button
+   * would otherwise discard a shown-once key silently.
    */
   confirmLeave(): Observable<boolean> {
     return confirmLeaving(this.alert, this.closeWouldDiscard());
   }
 
-  /** Close without unlocking (modal Close / return on the routed page). */
   close(): void {
     this.confirmLeave()
       .pipe(take(1), takeUntilDestroyed(this.destroyRef))
@@ -316,27 +293,24 @@ export class EncryptionUnlockPage {
           return;
         }
         this.clearKey();
-        // The shown-once key is the more sensitive of the two; dropping it here keeps this
-        // symmetrical with finishReset(), which has always cleared it.
+        // The shown-once key is the more sensitive; finishReset() clears it too.
         this.newRecoveryKey.set(null);
         this.leave();
       });
   }
 
   /**
-   * Wipe the entered key. `reset` rather than a bare model write so the field's
-   * touched/dirty state goes with it — this runs on the security-relevant path where
-   * the key must not outlive its use.
+   * Wipe the entered key. `reset` rather than a bare model write so touched/dirty state
+   * goes with it: the key must not outlive its use.
    */
   private clearKey(): void {
     this.unlockForm().reset({ recoveryKey: '' });
   }
 
-  /** Close the dialog, or (routed) return to the launch route / /rooms. */
   private leave(): void {
     if (this.asModal()) {
-      // @Outputs aren't bound on dialog-created components, so close the host
-      // dialog ourselves; `closed` stays for any @Output-bound host.
+      // @Outputs aren't bound on dialog-created components, so close the dialog ourselves;
+      // `closed` stays for any @Output-bound host.
       this.closed.emit();
       this.dialogRef?.close();
       return;
@@ -347,7 +321,6 @@ export class EncryptionUnlockPage {
     });
   }
 
-  /** Wrap a one-shot action with shared busy/error handling. */
   private withBusy<T>(source: Observable<T>): Observable<T> {
     return runWithBusy(source, {
       busy: this.busy,

@@ -37,11 +37,9 @@ import { SasCompareComponent } from './sas-compare.component';
 
 /**
  * Drives an interactive device verification (emoji SAS) against
- * {@link TrustVerificationService}. Renders all stages — request/accept, the SAS emoji
- * comparison, and the done/cancelled outcomes. Used in two chromes: a routed page
- * (`/encryption/verify`) and the content of a modal, opened either by the application
- * presenter (a self-initiated flow on a wide layout) or by the verification host (an
- * incoming or cross-user request); `asModal` flips the close/finish behaviour.
+ * {@link TrustVerificationService}, rendering every stage. Used as a routed page
+ * (`/encryption/verify`) and as modal content, opened by the application presenter or by
+ * the verification host; `asModal` flips the close/finish behaviour.
  */
 @Component({
   selector: 'trn-device-verification',
@@ -73,7 +71,6 @@ export class DeviceVerificationPage {
   );
   private readonly destroyRef = inject(DestroyRef);
 
-  /** The active verification view (null until one starts). */
   readonly active = this.verification.active;
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
@@ -99,9 +96,9 @@ export class DeviceVerificationPage {
   /**
    * An identity set up elsewhere without recovery can only be verified from a device that
    * holds it. Before this device sends a request, while its own request is unanswered, or
-   * once it has stopped, point someone without that device to Security settings, where the confirmed reset lives;
-   * this dialog never offers the reset itself. A modal offers it only when its opener said
-   * closing can land there.
+   * once it has stopped, point someone without that device to Security settings, where the
+   * confirmed reset lives; this dialog never offers the reset itself. A modal offers it
+   * only when its opener said closing can land there.
    */
   readonly offerSecuritySettings = computed(() => {
     if (
@@ -139,7 +136,6 @@ export class DeviceVerificationPage {
     });
   });
 
-  /** When true the page is dialog content (an incoming request, or one this device opened); else a routed page. */
   readonly asModal = input(false);
   /**
    * Set by the application presenter when closing this modal with `MANAGE_IDENTITY` lands
@@ -147,7 +143,6 @@ export class DeviceVerificationPage {
    * over another Settings section, where the button's label would not be true.
    */
   readonly canOpenSecuritySettings = input(false);
-  /** Asks the host modal to dismiss. */
   readonly closed = output<void>();
 
   start(): void {
@@ -211,7 +206,6 @@ export class DeviceVerificationPage {
     this.run(this.verification.cancel());
   }
 
-  /** What focus belongs to: the request, its stage, and which element takes it. */
   private focusView(): string {
     const active = this.active();
     const taker = this.initialFocus() ? 'answer' : 'heading';
@@ -224,13 +218,11 @@ export class DeviceVerificationPage {
     this.qrCodeUrl.set(null);
   }
 
-  /** Finish: drop the verification and leave (close the modal / go to /rooms). */
   finish(): void {
     this.verification.dismiss();
     this.leave();
   }
 
-  /** Cancel any in-flight verification, then leave. */
   cancelAndLeave(): void {
     this.cancelInFlight();
     this.leave();
@@ -257,7 +249,6 @@ export class DeviceVerificationPage {
     void this.router.navigateByUrl('/settings/security', { replaceUrl: true });
   }
 
-  /** Cancel a verification still running (not one already finished), then drop it. */
   private cancelInFlight(): void {
     const stage = this.active()?.stage;
     if (stage && stage !== 'done' && stage !== 'cancelled') {
@@ -268,17 +259,16 @@ export class DeviceVerificationPage {
 
   private leave(): void {
     if (this.asModal()) {
-      // @Outputs aren't bound on dialog-created components, so close the host
-      // dialog ourselves; `closed` is still emitted for any @Output-bound host.
-      // The incoming-request dialog is also owned by VerificationHostComponent,
-      // which closes it once `active()` clears — CDK's close() is idempotent, so
-      // either path (or both) tears the dialog down exactly once.
+      // @Outputs aren't bound on dialog-created components, so close the dialog ourselves;
+      // `closed` is still emitted for any @Output-bound host. VerificationHostComponent
+      // also closes the incoming-request dialog once `active()` clears; CDK's close() is
+      // idempotent, so either path tears it down once.
       this.closed.emit();
       this.dialogRef?.close();
       return;
     }
-    // Return to where the flow was launched from (e.g. /settings), defaulting to
-    // /rooms; off-app targets are rejected by resolveInternalReturnTo.
+    // Return to where the flow was launched from; off-app targets are rejected by
+    // resolveInternalReturnTo.
     const returnTo = this.route.snapshot.queryParamMap.get('returnTo');
     void this.router.navigateByUrl(resolveInternalReturnTo(returnTo), {
       replaceUrl: true,

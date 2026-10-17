@@ -21,18 +21,15 @@ import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { accountEstablishmentError } from '../account-establishment-outcome';
 
 /**
- * Landing route for the auth redirect. Handles BOTH login flows, which are mutually
- * exclusive and distinguished by their callback params: legacy SSO returns
- * `?loginToken=` (+ our `sso_state`), while OIDC ("next-gen auth") returns
- * `?code=&state=` (or `?error=`). Each is exchanged for a session using the state
- * stashed before the redirect, then routes into the app.
+ * Landing route for the auth redirect, for both login flows: legacy SSO returns
+ * `?loginToken=` (+ our `sso_state`), OIDC returns `?code=&state=` (or `?error=`). Each is
+ * exchanged for a session using the state stashed before the redirect.
  *
- * It subscribes to the query params (rather than reading the snapshot once) so that a
- * SECOND navigation to this route still runs — the native deep link reuses this
- * component, so if a forged callback lands first, the genuine one must still be
- * processed. The stash is only consumed once the callback's state matches, so a
- * forged/mismatched callback (any app can fire the shared deep-link scheme) can't wipe
- * an in-flight login. A `claimed` latch makes the exchange run at most once.
+ * It subscribes to the query params so a SECOND navigation still runs: the native deep
+ * link reuses this component, so the genuine callback must be processed even if a forged
+ * one lands first. The stash is only consumed once the callback's state matches, so a
+ * forged callback (any app can fire the shared deep-link scheme) can't wipe an in-flight
+ * login. A `claimed` latch makes the exchange run at most once.
  */
 @Component({
   selector: 'trn-sso-callback',
@@ -50,7 +47,7 @@ export class SsoCallbackPage implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly error = signal<string | null>(null);
-  /** Set once a callback's state matches and we begin the exchange — ignore further ones. */
+  /** Set once a callback's state matches and the exchange begins; later ones are ignored. */
   private claimed = false;
   /** Tail of the serialized handler chain; see the comment in {@link ngOnInit}. */
   private inFlight: Promise<void> = Promise.resolve();
@@ -58,22 +55,16 @@ export class SsoCallbackPage implements OnInit {
   ngOnInit(): void {
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
-      // Serialized, not fire-and-forget. `claimed` cannot be set until the callback's
-      // state has been verified against the stash — that ordering is what stops a forged
-      // deep-link from latching and locking out the genuine one — but verifying requires
-      // an await, so two emissions delivered in the same tick would BOTH pass the guard
-      // and both redeem the code. Queueing means the second runs only once the first has
-      // finished and set the latch, which preserves the ordering and closes the race.
+      // Serialized: `claimed` is set only after the state is verified (so a forged
+      // deep-link can't lock out the genuine one), but verifying awaits, so two emissions
+      // in the same tick would both pass the guard and redeem the code twice.
       .subscribe((params) => {
         this.inFlight = this.inFlight
           .then(() => this.handle(params))
-          // A failure must not poison the queue: later emissions still need to run.
-          // handle() reports its own errors through `error` for everything it can
-          // anticipate, but not for a THROW — a rejecting stash read (storage blocked,
-          // quota exhausted, a native deep-link plugin failure) escapes it. Swallowing
-          // that silently leaves the template on its spinner with no Back button, so
-          // surface it — unless a callback already claimed the exchange, in which case
-          // that one owns the outcome and this emission is a straggler.
+          // A failure must not poison the queue. handle() reports anticipated errors, but
+          // a THROW (rejecting stash read, deep-link plugin failure) escapes it, and
+          // swallowing it leaves a spinner with no Back button. Skipped once a callback
+          // has claimed the exchange: that one owns the outcome.
           .catch(() => {
             if (!this.claimed) {
               this.error.set(
@@ -92,11 +83,11 @@ export class SsoCallbackPage implements OnInit {
     const code = params.get('code');
     const authError = params.get('error');
     if (!loginToken && !code && !authError) {
-      return; // no callback params on this emission (e.g. our own replaceState)
+      return; // e.g. our own replaceState
     }
 
-    // Strip the single-use token/code + state from the URL/history immediately so they
-    // can't leak via the address bar, browser history, or a Referer header.
+    // Strip the single-use token/code + state so they can't leak via the address bar,
+    // history, or a Referer header.
     this.location.replaceState('/sso-callback');
 
     if (code || authError) {
@@ -112,18 +103,15 @@ export class SsoCallbackPage implements OnInit {
     loginToken: string | null,
   ): Promise<void> {
     const returnedState = params.get('sso_state');
-    // Peek (survives a native cold-start, unlike sessionStorage) WITHOUT clearing, so a
-    // forged callback can't wipe a live stash.
+    // Peek without clearing, so a forged callback can't wipe a live stash. The store
+    // survives a native cold start, unlike sessionStorage.
     const stash = await this.ssoState.peek();
     if (!stash.state || returnedState !== stash.state) {
-      // A mismatch against a live stash is a forged callback — stay quiet and let the
-      // genuine one arrive; only report when there's genuinely no pending login.
       this.reportUnverified(stash.state);
       return;
     }
     this.claimed = true;
-    // A genuine callback is now in charge, so any message an earlier straggler left
-    // behind is obsolete — don't show it alongside a sign-in that is going through.
+    // A genuine callback is in charge: drop any message an earlier straggler left.
     this.error.set(null);
     await this.ssoState.clear();
 
@@ -165,14 +153,13 @@ export class SsoCallbackPage implements OnInit {
     const returnedState = params.get('state');
     const stash = await this.oidcState.peek();
     // Verify the OAuth state round-trips BEFORE consuming (defence-in-depth against a
-    // forged/injected deep-link callback that any app can fire on the shared scheme).
+    // forged deep-link callback that any app can fire on the shared scheme).
     if (!stash.state || returnedState !== stash.state) {
       this.reportUnverified(stash.state);
       return;
     }
     this.claimed = true;
-    // A genuine callback is now in charge, so any message an earlier straggler left
-    // behind is obsolete — don't show it alongside a sign-in that is going through.
+    // A genuine callback is in charge: drop any message an earlier straggler left.
     this.error.set(null);
     await this.oidcState.clear();
 
@@ -182,8 +169,8 @@ export class SsoCallbackPage implements OnInit {
       );
       return;
     }
-    // Every field below is required to rebuild the OAuth2 client for the exchange —
-    // matrix-js-sdk 42 keeps no sign-in state of its own, so the stash is the only source.
+    // Every field is needed to rebuild the OAuth2 client; matrix-js-sdk keeps no sign-in
+    // state of its own, so the stash is the only source.
     if (
       !code ||
       !stash.baseUrl ||
@@ -236,9 +223,9 @@ export class SsoCallbackPage implements OnInit {
   }
 
   /**
-   * Report a callback whose state we couldn't verify. When a live stash exists the
-   * mismatch means a forged callback — stay silent so the genuine callback (which reuses
-   * this component) can still complete; only surface an error when nothing is pending.
+   * Report a callback whose state we couldn't verify. A mismatch against a live stash is a
+   * forged callback: stay silent so the genuine one can still complete; report only when
+   * nothing is pending.
    */
   private reportUnverified(pendingState: string | null): void {
     if (!pendingState) {

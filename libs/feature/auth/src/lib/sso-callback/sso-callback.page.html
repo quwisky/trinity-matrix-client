@@ -1,7 +1,6 @@
 <trn-auth-card>
-  <!-- Utilities rather than a stylesheet: this page draws two elements and neither is
-       shared with the login form, whose own `.login-card__*` rules it must not reach for
-       (see scripts/component-styling.spec.mjs). -->
+  <!-- Utilities, not a stylesheet: must not reach for the login form's `.login-card__*`
+       rules (see scripts/component-styling.spec.mjs). -->
   <p
     trnAuthCardSubtitle
     class="m-0 text-base/[1.4] text-[var(--trinity-text-muted)]"

@@ -29,11 +29,10 @@ import {
 } from '../recovery-key-save/leave-confirmation';
 
 /**
- * First-device encryption setup (flow A). Triggers
- * {@link TrustService.setUp}, answering its UIA password challenge via an Ionic
- * alert, then displays the generated recovery key once behind an explicit
- * "I've saved it" gate before continuing to the app. The key is held only in a
- * signal for this view and is never persisted.
+ * First-device encryption setup. Triggers {@link TrustService.setUp}, answering its UIA
+ * password challenge, then shows the generated recovery key once behind an explicit
+ * "I've saved it" gate. The key is held only in a signal for this view and never
+ * persisted.
  */
 @Component({
   selector: 'trn-encryption-setup',
@@ -61,9 +60,8 @@ export class EncryptionSetupPage {
   readonly error = signal<string | null>(null);
 
   /**
-   * Whether the error's answer lives in Security settings. A refused setup on an Account
-   * whose identity is held elsewhere tells the user to verify this device or reset the
-   * identity, and both live there; without the way to it the message is a dead end.
+   * Whether the error's answer lives in Security settings: a refused setup on an Account
+   * whose identity is held elsewhere says to verify or reset, and both live there.
    */
   readonly offerSecuritySettings = computed(() => {
     const recovery = this.failureRecovery();
@@ -77,7 +75,7 @@ export class EncryptionSetupPage {
   /** The generated recovery key — shown once, never persisted. */
   readonly recoveryKey = signal<string | null>(null);
 
-  /** Kick off cross-signing + secret-storage + key-backup bootstrap. */
+  /** Bootstrap cross-signing, secret storage and key backup. */
   setUp(): void {
     this.failureRecovery.set(null);
     const setUp = this.crypto.setUp(this.promptPassword).pipe(
@@ -100,7 +98,7 @@ export class EncryptionSetupPage {
 
   /** Leave for the app once the user has saved their recovery key. */
   finish(): void {
-    // Drop our reference to the key as early as possible (it's never persisted).
+    // Drop our reference to the key as early as possible.
     this.recoveryKey.set(null);
     void this.router.navigateByUrl('/rooms', { replaceUrl: true });
   }
@@ -108,15 +106,15 @@ export class EncryptionSetupPage {
   /**
    * Whether leaving right now would throw something away.
    *
-   * A setup already running is the worse of the two: unsubscribing does not abort it
-   * ({@link TrustService.setUp} is a promise behind `defer`), so it goes on to provision
-   * 4S and a key backup whose only recovery key was emitted to a subscriber that no
-   * longer exists — after which Settings → Security reports the account as secured and
-   * nothing ever prompts the user to fix it. A key already on screen is the more urgent
-   * of the two only because it is one press from being saved.
+   * Leaving mid-setup is the worse case: unsubscribing does not abort
+   * {@link TrustService.setUp} (a promise behind `defer`), so it still provisions 4S and
+   * a key backup whose only recovery key went to a gone subscriber, and Settings →
+   * Security then reports the account as secured, and nothing ever prompts the user to
+   * fix it. A key already on screen is checked first only because it is one press from
+   * being saved.
    *
-   * `busy` is a safe proxy for "setup in flight" here because {@link setUp} is the page's
-   * only action; the unlock page needs a separate signal precisely because it has two.
+   * `busy` proxies "setup in flight" only because {@link setUp} is this page's only
+   * action; the unlock page has two and needs a separate signal.
    */
   private leaveWouldDiscard(): LeaveRisk | null {
     if (this.recoveryKey()) {
@@ -128,9 +126,8 @@ export class EncryptionSetupPage {
   /**
    * Whether it is safe to leave, asking the user when it is not.
    *
-   * Called by the route guard. The browser's own back button dismisses this page without
-   * asking anyone — on the path every new account takes. Same fail-towards-staying
-   * semantics as the unlock page's guard.
+   * Called by the route guard, since the browser's back button would otherwise dismiss
+   * the page silently. Fails towards staying, like the unlock page's guard.
    */
   confirmLeave(): Observable<boolean> {
     return confirmLeaving(this.alert, this.leaveWouldDiscard());
@@ -152,7 +149,6 @@ export class EncryptionSetupPage {
       }),
     );
 
-  /** Wrap a one-shot action with shared busy/error handling. */
   private withBusy<T>(source: Observable<T>): Observable<T> {
     return runWithBusy(source, {
       busy: this.busy,

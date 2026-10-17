@@ -4,7 +4,6 @@
   <section class="crypto-surface" trnCard variant="muted" size="md">
     <div trnCardContent>
       @if (recoveryKey(); as key) {
-        <!-- Step 2: the key exists — show it once behind a confirm-saved gate. -->
         <trn-recovery-key-save
           [recoveryKey]="key"
           heading="Save your recovery key"
@@ -14,7 +13,6 @@
           (confirmed)="finish()"
         />
       } @else {
-        <!-- Step 1: introduce the flow and trigger setup. -->
         <h2 class="heading">Secure your messages</h2>
         <p class="lead">
           Set up end-to-end encryption so only you and the people you message

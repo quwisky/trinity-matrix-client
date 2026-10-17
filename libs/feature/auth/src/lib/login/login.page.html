@@ -2,9 +2,7 @@
   <!-- Visually hidden page title for assistive technology. -->
   <h1 class="sr-only">Sign in to Trinity</h1>
 
-  <!-- ── Branding ───────────────────────────────────────── -->
-  <!-- Projected into the card's header, beneath the wordmark it draws. The branches are
-       why this is markup rather than a string input on the card. -->
+  <!-- Projected into the card's header; the branches are why this is not a string input. -->
   <ng-container trnAuthCardSubtitle>
     @if (!baseUrl()) {
       <p trnCardDescription class="login-card__subtitle">
@@ -33,7 +31,7 @@
   </ng-container>
 
   @if (!baseUrl() && !reauthUserId()) {
-    <!-- ── Step 1: Homeserver (skipped in re-auth: the HS is known) ── -->
+    <!-- Step 1: Homeserver (skipped in re-auth: the homeserver is known) -->
     <trn-field class="login-card__field" [invalid]="!!homeserverError()">
       <trn-field-label
         controlId="homeserver"
@@ -74,7 +72,6 @@
       Continue
     </button>
   } @else {
-    <!-- ── Step 2: Username + Password ────────────────── -->
     @if (passwordSupported()) {
       <trn-field class="login-card__field">
         <trn-field-label controlId="username" emphasis="strong">
@@ -133,7 +130,6 @@
       </button>
     }
 
-    <!-- ── Step 2b: SSO ───────────────────────────────── -->
     @if (ssoSupported()) {
       <button
         trnBtn
@@ -163,7 +159,6 @@
       </button>
     }
 
-    <!-- ── Step 2c: OIDC (next-gen auth) ──────────────── -->
     @if (oidcSupported()) {
       <button
         trnBtn
@@ -192,7 +187,6 @@
     }
   }
 
-  <!-- ── Loading state ──────────────────────────────────── -->
   @if (busy()) {
     <div class="login-card__busy text-center" role="status" aria-live="polite">
       <trn-spinner />
@@ -200,14 +194,12 @@
     </div>
   }
 
-  <!-- ── Error state ────────────────────────────────────── -->
   @if (error(); as message) {
     <p class="login-card__error text-danger" role="alert">
       {{ message }}
     </p>
   }
 
-  <!-- ── Add / re-auth: cancel back to the app ──────────── -->
   @if (addMode || reauthUserId()) {
     <button
       trnBtn
@@ -221,9 +213,9 @@
     </button>
   }
 
-  <!-- Secondary actions. Erasing is the way out of a wedged installation and stays last.
-       Danger carries meaning while ghost keeps this last-resort action subordinate to
-       signing in. The public recipe owns every rest, hover, focus and disabled colour. -->
+  <!-- Secondary actions. Erasing is the way out of a wedged installation and stays last;
+       ghost keeps it subordinate to signing in. The public recipe owns every rest, hover,
+       focus and disabled colour. -->
   <div class="mt-4 flex flex-col gap-2">
     @if (canReportBug) {
       <button

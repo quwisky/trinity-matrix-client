@@ -1,16 +1,11 @@
 @use '../styles/auth-form' as auth;
 
-// The login form's own fields, on the surface `auth-card.component.scss` paints.
-
-// The split is the styling guard's doing and it is right: a component may only style what
-// it renders, and the card is now a separate component. What is left here is everything
-// the page itself draws INTO the card.
+// The login form's own fields, on the surface `auth-card.component.scss` paints. A
+// component may only style what it renders (styling guard).
 
 @layer components {
-  // The line under the wordmark, projected into the card's header. Styled HERE and not in
-  // the card, because the card does not write it: the login page's is four conditional
-  // branches, and the callback leg's is one line of utilities. Emulated encapsulation scopes
-  // this to whoever declared the element, which is the same rule the styling guard enforces.
+  // The projected line under the wordmark: styled here, not in the card, because the
+  // declaring component's scope applies.
   .login-card__subtitle {
     @include auth.subtitle;
   }
@@ -19,8 +14,7 @@
     @include auth.homeserver;
   }
 
-  // Public field and input recipes own label/control appearance. This class only separates
-  // one complete field from the next.
+  // Only separates one complete field from the next.
   .login-card__field {
     @include auth.field;
   }

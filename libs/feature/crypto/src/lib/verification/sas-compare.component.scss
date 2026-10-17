@@ -46,9 +46,8 @@
     justify-content: center;
     gap: 8px;
 
-    // The gap to .actions lives here, not on the child: align-items centres each
-    // item's *margin* box, so .hint's own bottom margin would offset the text
-    // against the spinner instead of spacing the row.
+    // The gap to .actions lives here, not on .hint: align-items centres each item's
+    // *margin* box, so .hint's own margin would offset the text against the spinner.
     margin-bottom: 16px;
 
     .hint {
