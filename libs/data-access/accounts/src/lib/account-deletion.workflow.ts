@@ -52,6 +52,7 @@ export type AccountDeletionRefusal =
   | 'rate-limited'
   | 'unreachable'
   | 'still-active'
+  | 'signed-out'
   | 'busy'
   | 'account-unavailable'
   | 'failed';
@@ -114,9 +115,11 @@ export class AccountDeletionWorkflow {
       }
       const hold = this.holdFor(accountId);
       let authenticated = false;
+      let sentAlive = false;
       const sent = driveUia(
         (auth) => {
           authenticated ||= auth !== null;
+          sentAlive = !hold.tokenDied();
           return client.deactivateAccount(auth ?? undefined, request.erase);
         },
         {
@@ -131,7 +134,7 @@ export class AccountDeletionWorkflow {
       return from(sent).pipe(
         map((): ServerAnswer => ({ kind: 'deleted' })),
         catchError((err: unknown) =>
-          this.classify(err, accountId, hold, authenticated),
+          this.classify(err, accountId, hold, authenticated, sentAlive),
         ),
         switchMap((answer) => this.settle(accountId, hold, answer)),
       );
@@ -184,6 +187,7 @@ export class AccountDeletionWorkflow {
     accountId: string,
     hold: ServerLogoutHold,
     authenticated: boolean,
+    sentAlive: boolean,
   ): Observable<ServerAnswer> {
     if (err instanceof UiaCancelledError) return of(refused('cancelled'));
     if (err instanceof UiaAttemptsExceededError) {
@@ -192,7 +196,14 @@ export class AccountDeletionWorkflow {
     if (err instanceof UiaUnsupportedError) {
       return of(refused('no-usable-stage'));
     }
-    if (hold.tokenDied()) return of({ kind: 'deleted' });
+    if (hold.tokenDied()) {
+      // A token already dead when the request left, or that the server refused it with, was
+      // ended by something else: the server checks the token before it deactivates anything.
+      const endedElsewhere =
+        !sentAlive ||
+        (err instanceof MatrixError && err.errcode === 'M_UNKNOWN_TOKEN');
+      return of(endedElsewhere ? refused('signed-out') : { kind: 'deleted' });
+    }
     const failure = describeMatrixRequestFailure(err);
     if (failure.kind === 'rate-limit') {
       const retryAfterMs = failure.diagnostic.retryAfterMs;

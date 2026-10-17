@@ -29,6 +29,7 @@ export type AccountDeletionRefusal =
   | 'rate-limited'
   | 'unreachable'
   | 'still-active'
+  | 'signed-out'
   | 'busy'
   | 'account-unavailable'
   | 'failed';
