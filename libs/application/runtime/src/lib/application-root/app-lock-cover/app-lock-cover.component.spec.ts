@@ -313,7 +313,7 @@ describe('AppLockCoverComponent', () => {
     it('reveals the PIN from a toggle inside the PIN field', async () => {
       const { settle } = await setup({ support: PIN_ONLY });
       const input = pinField() as HTMLInputElement;
-      const toggle = screen.getByRole('button', { name: 'Show password' });
+      const toggle = screen.getByRole('button', { name: 'Show PIN' });
 
       expect(input.parentElement?.localName).toBe('trn-password-input');
       expect(input.type).toBe('password');

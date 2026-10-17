@@ -33,7 +33,7 @@
         <trn-field-label controlId="app-lock-pin-input" [invalid]="!!pinError">
           {{ mode() === 'set' ? 'New PIN' : appName + ' PIN' }}
         </trn-field-label>
-        <trn-password-input>
+        <trn-password-input label="PIN">
           <input
             #pinInput
             trnInput
@@ -79,7 +79,7 @@
           >
             Confirm PIN
           </trn-field-label>
-          <trn-password-input>
+          <trn-password-input label="PIN">
             <input
               #confirmInput
               trnInput

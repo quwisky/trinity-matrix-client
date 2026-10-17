@@ -36,7 +36,7 @@ import { TrnInput } from '../input/trn-input';
       size="sm"
       type="button"
       class="absolute end-0.5 top-1/2 -translate-y-1/2 pointer-coarse:size-10"
-      [attr.aria-label]="visible() ? 'Hide password' : 'Show password'"
+      [attr.aria-label]="(visible() ? 'Hide ' : 'Show ') + label()"
       [attr.aria-pressed]="visible()"
       [disabled]="disabled()"
       (click)="visible.set(!visible())"
@@ -49,6 +49,8 @@ export class TrnPasswordInputComponent {
   private readonly field = contentChild(TrnInput, { read: ElementRef });
 
   readonly disabled = input(false, { transform: booleanAttribute });
+  /** What the field holds, for the button's name: "Show PIN" rather than "Show password". */
+  readonly label = input('password');
   protected readonly visible = signal(false);
 
   constructor() {

@@ -59,7 +59,7 @@ describe('AppLockPinDialogComponent', () => {
   it('reveals each PIN from a toggle inside its own field', async () => {
     const { view } = await setup('set', null);
     const [pinToggle] = screen.getAllByRole('button', {
-      name: 'Show password',
+      name: 'Show PIN',
     });
 
     expect(field('New PIN').parentElement?.localName).toBe(
