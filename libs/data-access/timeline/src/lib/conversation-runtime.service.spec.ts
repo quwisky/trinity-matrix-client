@@ -14,14 +14,16 @@ import {
 import {
   CONVERSATION_RETENTION_LIMIT,
   CONVERSATION_TEXT_SENDER,
-  CONVERSATION_TIMELINE_FACTORY,
   ConversationRuntime,
   type ConversationTextSendRequest,
   type ConversationTextSender,
+} from './conversation-runtime.service';
+import {
+  CONVERSATION_TIMELINE_FACTORY,
   type ConversationTimeline,
   type ConversationTimelineController,
   type ConversationTimelineFactory,
-} from './conversation-runtime.service';
+} from './conversation-timeline-factory';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
 import type {
   ConversationMessageAdapter,
