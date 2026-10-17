@@ -1,18 +1,12 @@
 /*
- * App Global CSS
- * ----------------------------------------------------------------------------
- * Global styles for the whole app. Ionic is fully removed: the base reset now comes
- * from Tailwind's preflight and the design tokens from Theme Foundation's aggregate
- * stylesheet. Dark mode is keyed off the `.dark` class the Appearance document adapter owns.
+ * Global app styles. The base reset comes from Tailwind's preflight and the tokens from
+ * Theme Foundation's aggregate stylesheet. Dark mode keys off the `.dark` class the
+ * Appearance document adapter owns.
  */
 
 @layer base {
-  /*
- * Keyboard-focus baseline. The custom Discord-style controls strip native
- * outlines for the look, so guarantee a visible focus ring for keyboard users.
- * Scoped to native focusable elements — Ionic web components manage their own
- * focus inside shadow DOM and are unaffected.
- */
+  /* Keyboard-focus baseline: the custom controls strip native outlines, so guarantee a
+   * visible focus ring for keyboard users. */
   button:focus-visible,
   a:focus-visible,
   [role='button']:focus-visible,
@@ -27,8 +21,8 @@
 }
 
 @layer components {
-  /* Touch pointers cannot hover a tooltip. A blocked action therefore announces the same
- * reason in a short, non-interactive surface near the thumb zone. */
+  /* Touch pointers cannot hover a tooltip, so a blocked action announces its reason in a
+   * short, non-interactive surface near the thumb zone. */
   .trn-action-feedback {
     position: fixed;
     z-index: var(--trinity-z-feedback);
@@ -50,14 +44,13 @@
   }
 
   /*
- * Shared visible-scrollbar contract. The selector has deliberately zero specificity so a
- * component can opt out with `.no-scrollbar`; that utility keeps compact navigation and
- * select panels scrollable without drawing a second bar. Chromium gives the standards
- * properties precedence over its pseudo-elements, so Firefox receives those properties in
- * a separate engine branch while Blink/WebKit keep the exact tokenized geometry below.
- * Firefox 153 claims support for the WebKit selector family without painting it, which makes
- * selector-based feature detection a false positive; `-moz-appearance` is the reliable split.
- */
+   * Shared visible-scrollbar contract. The selector has deliberately zero specificity so a
+   * component can opt out with `.no-scrollbar`. Chromium gives the standards properties
+   * precedence over its pseudo-elements, so Firefox gets them in a separate engine branch
+   * while Blink/WebKit keep the tokenized geometry below. Firefox 153 claims support for the
+   * WebKit selector family without painting it, so selector-based feature detection is a
+   * false positive; `-moz-appearance` is the reliable split.
+   */
   @supports (-moz-appearance: none) {
     :where(:not(.no-scrollbar)) {
       scrollbar-width: thin;
@@ -85,9 +78,8 @@
 }
 
 @layer overrides {
-  /* Disabled interaction is a semantic invariant rather than a component default. A public
-   * locked-selection row is the one exception: it is unavailable because its checked value is
-   * guaranteed, not because the choice itself is excluded. */
+  /* Disabled interaction is a semantic invariant, not a component default. A public
+   * locked-selection row is the exception: its checked value is guaranteed, not excluded. */
   button:disabled:not([data-trn-selection-locked]),
   [aria-disabled='true']:not([data-trn-selection-locked]) {
     opacity: var(--trinity-disabled-opacity);
@@ -97,13 +89,12 @@
     opacity: 1;
   }
 
-  /* Fading a solid primary or danger button took its tinted fill and label toward the pane
-   * together, to 2.0:1 (#1355). It takes a neutral fill and the muted label instead, at full
-   * opacity: this selector out-ranks the fade above. Losing its tone marks the state. A solid
-   * secondary button already rests on that neutral fill, so it keeps the fade, as outline,
-   * ghost and link buttons do: their glyphs and emoji ignore a text colour. A focused
-   * `trnActionAllowed` button keeps its focus border. Forced colours replace these colours,
-   * so the system's disabled colour marks the state there instead of the fade. */
+  /* A faded solid primary or danger button loses contrast (fill and label both fade toward
+   * the pane), so it takes a neutral fill and the muted label at full opacity; this selector
+   * out-ranks the fade above. Losing its tone marks the state. A solid secondary button
+   * already rests on that neutral fill, so it keeps the fade, as outline, ghost and link
+   * buttons do: their glyphs and emoji ignore a text colour. A focused `trnActionAllowed` button keeps its focus border. Forced
+   * colours replace these colours, so the system's disabled colour marks the state there. */
   :is(button, a)[trnBtn][data-trn-presentation='solid']:not(
       [data-trn-variant='secondary']
     ):is(:disabled, [aria-disabled='true']) {
@@ -126,15 +117,13 @@
   }
 
   /*
- * Shared icon-button interaction contract.
- *
- * `TrnButton` publishes the marker for every `size="icon*"` public button, while
- * `TrnIconButton` lets purpose-built controls keep meaningful component-owned geometry. These
- * These rules are an allowlisted invariant in the final `overrides` layer, so their state
- * treatment wins over vendor and utility declarations without escaping the layer contract.
- * Contextual rest treatments still belong to the caller; cursor and interaction
- * feedback are shared everywhere, while only public square controls receive the common radius.
- */
+   * Shared icon-button interaction contract. `TrnButton` publishes the marker for every
+   * `size="icon*"` public button; `TrnIconButton` lets purpose-built controls keep their own
+   * geometry. These rules are an allowlisted invariant in the final `overrides` layer, so
+   * their state treatment wins over vendor and utility declarations without escaping the
+   * layer contract. Contextual rest treatments belong to the caller; only public square
+   * controls receive the common radius.
+   */
   :is(button, a)[data-trn-icon-button] {
     cursor: pointer;
     transition:
@@ -174,8 +163,8 @@
     &:active {
       background: var(--trinity-state-pressed-surface);
 
-      // Helm moves every pressed button down by 1px. Icon actions animate only their inner glyph,
-      // so keep the control and its hit target fixed in both normal and reduced-motion modes.
+      // Helm moves every pressed button down by 1px; icon actions animate only their glyph,
+      // so keep the control and its hit target fixed, including under reduced motion.
       translate: none;
     }
   }
@@ -191,13 +180,10 @@
 }
 
 @layer components {
-  /*
- * App-shell layout. <trn-root> is a fixed-height flex column (h-dvh); the shell adds
- * `.trn-routed-page` to each activated routed host (markRoutedPage), so make that page
- * fill the remaining space and be its own flex column (its <header> is shrink-0, its
- * <main>/body is flex-1 overflow-auto). This replaces Ionic's `.ion-page`, which
- * `ion-router-outlet` used to apply to every routed host.
- */
+  /* App-shell layout. <trn-root> is a fixed-height flex column (h-dvh); the shell adds
+   * `.trn-routed-page` to each activated routed host (markRoutedPage), so the page fills the
+   * remaining space as its own flex column (<header> shrink-0, <main>/body flex-1
+   * overflow-auto). */
   .trn-routed-page {
     flex: 1 1 auto;
     min-height: 0;
@@ -206,13 +192,13 @@
   }
 
   /*
- * Desktop title row. While it shows, TitleBarComponent sets `.trn-title-row` on <body>,
- * and every viewport-fixed layer starts below the row: in Electron the row's drag region
- * and the native window buttons (macOS traffic lights included) keep receiving clicks in
- * that band even when something is painted over it. The row follows the native strip's
- * zoomed height, so the inset does too. Viewport-sized panes subtract the same inset.
- * CDK overlays are moved in the `overrides` layer below.
- */
+   * Desktop title row. While it shows, TitleBarComponent sets `.trn-title-row` on <body>,
+   * and every viewport-fixed layer starts below the row: in Electron the row's drag region
+   * and the native window buttons (macOS traffic lights included) keep receiving clicks in
+   * that band even when something is painted over it. The row follows the native strip's
+   * zoomed height, so the inset does too. Viewport-sized panes subtract the same inset.
+   * CDK overlays are moved in the `overrides` layer below.
+   */
   .trn-title-row {
     --trinity-title-row-inset: env(
       titlebar-area-height,
@@ -220,8 +206,7 @@
     );
   }
 
-  /* Dialog and sheet entrances. The overlay shell opts in with these classes; the reduced-motion
-   * blanket in `overrides` shortens them to nothing. */
+  /* Dialog and sheet entrances; the reduced-motion blanket in `overrides` shortens them. */
   @keyframes trn-dialog-in {
     from {
       opacity: 0;
@@ -246,14 +231,11 @@
 
 @layer utilities {
   /*
- * Safe-area insets (notch / status bar / home indicator). Ionic's ion-content /
- * ion-toolbar used to pad content clear of the device chrome automatically; with the
- * plain shell we do it here. `env(safe-area-inset-*)` resolves to 0 on web and
- * desktop (and inside a keyboard-resized native WebView), so these helpers are inert
- * off-device and only pad on notched native devices — index.html sets
- * `viewport-fit=cover`. Pair `.safe-top` with `min-h-*` (not a fixed `h-*`) so the
- * bar grows by the inset and its content keeps full height below the cutout.
- */
+   * Safe-area insets (notch / status bar / home indicator). `env(safe-area-inset-*)` is 0 on
+   * web and desktop (and inside a keyboard-resized native WebView), so these helpers only pad
+   * on notched native devices; index.html sets `viewport-fit=cover`. Pair `.safe-top` with
+   * `min-h-*` (not a fixed `h-*`) so the bar grows by the inset and keeps full content height.
+   */
   .safe-top {
     padding-top: env(safe-area-inset-top);
   }
@@ -306,8 +288,8 @@
     }
   }
 
-  /* Respect users who prefer reduced motion. Transitions are removed, not shortened:
-     see the reduced-motion note in theme-foundation's variables.scss (#962). */
+  /* Reduced motion: transitions are removed, not shortened; see the reduced-motion note in
+     theme-foundation's variables.scss. */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -337,12 +319,11 @@
 }
 
 @layer overrides {
-  /* Touch targets. On coarse-pointer (touch) devices only, lift every Helm button to
- * the ~44px minimum tap size. Keyed on the trnBtn attribute rather than [data-slot="button"]:
- * a menu trigger (`hlmDropdownMenuTrigger`) overwrites the slot with "dropdown-menu-trigger".
- * It covers all size="icon" call sites with no markup changes. `(pointer: coarse)`
- * is false for a mouse — including a narrow Electron window — so the desktop layout
- * is untouched (icon buttons stay 32×32 there). */
+  /* Touch targets: on coarse-pointer devices only, lift every Helm button to the ~44px
+   * minimum tap size. Keyed on the trnBtn attribute rather than [data-slot="button"]
+   * because a menu trigger (`hlmDropdownMenuTrigger`) overwrites the slot. `(pointer: coarse)`
+   * is false for a mouse, including a narrow Electron window, so desktop icon buttons stay
+   * 32×32. */
   @media (pointer: coarse) {
     button[trnBtn],
     a[trnBtn] {
