@@ -19,10 +19,14 @@ import {
   IdentityPresenceService,
   IdentityService,
 } from '@trinity/data-access/identity';
-import { RoomLibraryService } from '@trinity/data-access/room-library';
+import {
+  InviteBlockedError,
+  RoomLibraryService,
+} from '@trinity/data-access/room-library';
 import { TrustVerificationService } from '@trinity/data-access/trust';
 import { MockProvider } from 'ng-mocks';
-import { BehaviorSubject, of } from 'rxjs';
+import { BehaviorSubject, NEVER, of, throwError } from 'rxjs';
+import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { MembersSettingsComponent } from './members-settings.component';
@@ -113,6 +117,7 @@ async function build(options: { readonly canManage?: boolean } = {}) {
       }),
       MockProvider(IgnoredUsersService, {
         isIgnored: () => false,
+        runProjection: () => NEVER,
         ignore: () => of(undefined),
         unignore: () => of(undefined),
       }),
@@ -217,5 +222,19 @@ describe('MembersSettingsComponent', () => {
       confirmLabel: 'Invite',
     });
     expect(inviteUser).toHaveBeenCalledWith(TARGET, '@invitee:hs');
+  });
+
+  it('says the invitee is not accepting invites when their server blocks them', async () => {
+    const { cmp, inviteUser } = await build();
+    inviteUser.mockReturnValue(
+      throwError(() => new InviteBlockedError('@invitee:hs')),
+    );
+
+    cmp.invite();
+
+    expect(TestBed.inject(TrnToastService).show).toHaveBeenCalledWith(
+      "@invitee:hs isn't accepting invites.",
+      expect.objectContaining({ variant: 'danger' }),
+    );
   });
 });

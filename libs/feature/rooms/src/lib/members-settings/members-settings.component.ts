@@ -23,7 +23,10 @@ import {
   type RoomMembersSnapshot,
   type RoomSettingsTarget,
 } from '@trinity/data-access/room-administration';
-import { RoomLibraryService } from '@trinity/data-access/room-library';
+import {
+  InviteBlockedError,
+  RoomLibraryService,
+} from '@trinity/data-access/room-library';
 import { filter, map, switchMap } from 'rxjs';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
 import { MemberInfoComponent } from '../member-info/member-info.component';
@@ -152,12 +155,14 @@ export class MembersSettingsComponent implements OnInit {
             variant: 'success',
           });
         },
-        error: () => {
+        error: (error: unknown) => {
           this.inviting.set(false);
-          this.toast.show(`Could not invite this person to ${targetName}.`, {
-            duration: 4000,
-            variant: 'danger',
-          });
+          this.toast.show(
+            error instanceof InviteBlockedError
+              ? error.message
+              : `Could not invite this person to ${targetName}.`,
+            { duration: 4000, variant: 'danger' },
+          );
         },
       });
   }

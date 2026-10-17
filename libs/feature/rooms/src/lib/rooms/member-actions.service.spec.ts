@@ -19,7 +19,7 @@ import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { TrustVerificationService } from '@trinity/data-access/trust';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemberActionsService } from './member-actions.service';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -98,7 +98,10 @@ function build({ narrow = false } = {}) {
         }),
         role: () => ALLOWED,
       }),
-      MockProvider(IgnoredUsersService, { isIgnored: () => false }),
+      MockProvider(IgnoredUsersService, {
+        isIgnored: () => false,
+        runProjection: () => NEVER,
+      }),
       MockProvider(TrustVerificationService),
     ],
   });

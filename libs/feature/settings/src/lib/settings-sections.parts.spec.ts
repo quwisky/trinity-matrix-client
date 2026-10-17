@@ -25,6 +25,7 @@ import { AuthService } from '@trinity/data-access/auth';
 import {
   AccountIdentitiesService,
   IdentityPresenceService,
+  IgnoredUsersService,
   IdentityService,
   type IdentityProfile,
 } from '@trinity/data-access/identity';
@@ -38,6 +39,7 @@ import {
   ReactionNotificationSettingsService,
 } from '@trinity/data-access/notifications';
 import {
+  InvitePermissionService,
   SpaceRoomOrderService,
   TRINITY_ROOM_SORTS,
   provideRoomLibraryPreferences,
@@ -219,12 +221,27 @@ const SETUPS: Record<string, () => Setup> = {
       MockProvider(TrnSurfaceService),
     ],
   }),
+  // Invites renders only where the server enforces invite blocking.
   privacy: () => ({
     providers: [
       provideConversationPrivacyPreferences(),
       providePrivacyPreferenceSet(CONVERSATION_PRIVACY_PREFERENCES),
       STORAGE,
       MockProvider(UrlPreviewService, { supported: signal(null) }),
+      MockProvider(InvitePermissionService, {
+        supported: signal<boolean | null>(true).asReadonly(),
+        blocked: signal(false).asReadonly(),
+        runProjection: () => NEVER,
+      }),
+      MockProvider(IgnoredUsersService, {
+        ignoredUsers: signal([]).asReadonly(),
+        runProjection: () => NEVER,
+      }),
+      MockProvider(MatrixClientService, {
+        activeUserId: signal<string | null>('@me:hs').asReadonly(),
+        accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
+      }),
+      MockProvider(TrnToastService),
     ],
   }),
   server: () => ({
@@ -304,7 +321,6 @@ const SINGLE_GROUP = [
   'presence',
   'devices',
   'account',
-  'privacy',
   'server',
   'gifs',
   'shortcuts',

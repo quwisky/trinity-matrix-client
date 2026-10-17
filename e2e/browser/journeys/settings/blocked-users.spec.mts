@@ -1,0 +1,156 @@
+import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
+import {
+  login,
+  homeserverSession,
+  type HomeserverSession,
+} from '../../../support/app.mts';
+import { passwordLogin, registerUser } from '../../../support/account.mts';
+import {
+  closeSettings,
+  openSettingsSection,
+} from '../../../support/journeys/navigation.mts';
+
+// Covers Settings › Privacy › Blocked users: a member blocked from their card is listed
+// there (IgnoredUsersService.ignoredUsers over m.ignored_user_list), unblocking from the
+// list removes them, and the card follows the same list back to "Block". Needs a
+// homeserver; self-skips otherwise.
+const session = homeserverSession();
+
+async function openRoom(page: Page, roomName: string): Promise<void> {
+  await page.getByTestId('rail-rooms').click();
+  const channel = page.locator('.channel', { hasText: roomName });
+  await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
+  await channel.first().click();
+  await expect(page.getByTestId('composer-input')).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+async function openMemberCard(page: Page, memberName: string): Promise<void> {
+  if (!(await page.locator('.chat-members').isVisible())) {
+    await page.getByTestId('toggle-members').click();
+  }
+  const memberRow = page.locator('[data-testid="member-row"]', {
+    hasText: memberName,
+  });
+  await memberRow.first().waitFor({ state: 'visible', timeout: 20_000 });
+  await memberRow.first().click();
+  await expect(page.getByTestId('member-info')).toBeVisible({
+    timeout: 10_000,
+  });
+}
+
+test.describe('Blocked users in Settings', () => {
+  test.skip(!session.available, 'needs a homeserver');
+
+  test('a member blocked from their card is listed, and unblocking there reaches the card', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}bu`;
+    const viewer = `blocked-viewer-${runId}`;
+    const viewerPass = `${viewer}-pass`;
+    const other = `blocked-other-${runId}`;
+    const otherPass = `${other}-pass`;
+    const roomName = `Blocked users ${runId}`;
+    const otherName = `Blocked ${runId}`;
+
+    await registerUser(request, viewer, viewerPass);
+    await registerUser(request, other, otherPass);
+    const viewerApi = await passwordLogin(request, hs, viewer, viewerPass);
+    const otherApi = await passwordLogin(request, hs, other, otherPass);
+    const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
+    await request.put(
+      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(otherApi.userId)}/displayname`,
+      { headers: auth(otherApi.accessToken), data: { displayname: otherName } },
+    );
+    const { room_id } = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: auth(viewerApi.accessToken),
+        data: {
+          name: roomName,
+          preset: 'private_chat',
+          invite: [otherApi.userId],
+        },
+      })
+      .then((r) => r.json());
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
+      { headers: auth(otherApi.accessToken) },
+    );
+
+    await login(page, {
+      available: true,
+      hs,
+      user: viewer,
+      pass: viewerPass,
+    } as HomeserverSession);
+    await openRoom(page, roomName);
+    await openMemberCard(page, otherName);
+    const cardAction = page.getByTestId('member-info-ignore');
+    await expect(cardAction).toHaveText('Block');
+    await cardAction.click();
+    await expect(cardAction).toHaveText('Unblock', { timeout: 30_000 });
+    await page.getByTestId('member-info-close').click();
+    await expect(page.getByTestId('member-info')).toBeHidden();
+
+    await openSettingsSection(page, 'privacy');
+    const blocked = page.getByTestId('privacy-blocked-users');
+    const row = blocked.getByTestId('blocked-user-row');
+    await expect(row).toHaveCount(1, { timeout: 20_000 });
+    await expect(row).toContainText(otherName);
+    await expect(row).toContainText(otherApi.userId);
+
+    await blocked.getByRole('button', { name: `Unblock ${otherName}` }).click();
+    await expect(blocked.getByText("You haven't blocked anyone.")).toBeVisible({
+      timeout: 30_000,
+    });
+    await closeSettings(page);
+
+    await openMemberCard(page, otherName);
+    await expect(page.getByTestId('member-info-ignore')).toHaveText('Block', {
+      timeout: 15_000,
+    });
+  });
+
+  test('blocking by user ID refuses yourself and lists someone else', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}bi`;
+    const viewer = `blockid-viewer-${runId}`;
+    const viewerPass = `${viewer}-pass`;
+    await registerUser(request, viewer, viewerPass);
+    const viewerApi = await passwordLogin(request, hs, viewer, viewerPass);
+    const serverName = viewerApi.userId.slice(
+      viewerApi.userId.indexOf(':') + 1,
+    );
+    const target = `@nobody-${runId}:${serverName}`;
+
+    await login(page, {
+      available: true,
+      hs,
+      user: viewer,
+      pass: viewerPass,
+    } as HomeserverSession);
+    await openSettingsSection(page, 'privacy');
+    const blocked = page.getByTestId('privacy-blocked-users');
+    const field = blocked.getByLabel('Block someone by user ID');
+
+    await field.fill(viewerApi.userId);
+    await blocked.getByRole('button', { name: 'Block', exact: true }).click();
+    await expect(blocked.getByRole('alert')).toHaveText(
+      "You can't block yourself.",
+    );
+
+    await field.fill(target);
+    await blocked.getByRole('button', { name: 'Block', exact: true }).click();
+    await expect(blocked.getByTestId('blocked-user-row')).toContainText(
+      target,
+      { timeout: 30_000 },
+    );
+    await expect(field).toHaveValue('');
+  });
+});

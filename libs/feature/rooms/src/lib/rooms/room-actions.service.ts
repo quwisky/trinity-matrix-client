@@ -2,6 +2,7 @@ import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PublicRoomsService } from '@trinity/data-access/discovery';
 import {
+  InviteBlockedError,
   RoomLibraryService,
   RoomReadinessService,
   SpacesService,
@@ -12,7 +13,10 @@ import {
   TrnAlertService,
   TrnSurfaceService,
 } from '@trinity/components/overlay';
-import { matrixRequestErrorHandling } from '@trinity/util/matrix';
+import {
+  matrixRequestErrorHandling,
+  type MatrixRequestErrorHandling,
+} from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import {
@@ -27,6 +31,21 @@ import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
 import { EMPTY, filter, forkJoin, map, switchMap, type Observable } from 'rxjs';
+
+/** The shared invite failure copy, with a block on the invitee's side named as such. */
+function inviteErrorHandling(): MatrixRequestErrorHandling {
+  const failure = matrixRequestErrorHandling(
+    'invite user to room',
+    'Could not invite this user. Try again.',
+  );
+  return {
+    ...failure,
+    formatError: (error) =>
+      error instanceof InviteBlockedError
+        ? error.message
+        : failure.formatError(error),
+  };
+}
 
 /**
  * The life of a room: creating one, starting a DM, joining from the directory, inviting
@@ -309,10 +328,7 @@ export class RoomActionsService {
           runWithBusy(
             this.rooms.inviteUser(targetId, userId),
             this.status,
-            matrixRequestErrorHandling(
-              'invite user to room',
-              'Could not invite this user. Try again.',
-            ),
+            inviteErrorHandling(),
           ).pipe(map(() => userId)),
         ),
         takeUntilDestroyed(this.destroyRef),

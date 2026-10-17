@@ -6,13 +6,20 @@ import {
 import { UrlPreviewService } from '@trinity/data-access/timeline';
 import { PreferenceCatalogSectionComponent } from '../shared/preference-catalog-section/preference-catalog-section.component';
 import { TrnSettingsGroupComponent } from '@trinity/components/overlay';
+import { BlockedUsersComponent } from './blocked-users.component';
+import { InvitePermissionSettingComponent } from './invite-permission-setting.component';
 
-/** Privacy settings sub-page: device-scoped toggles for what others can see. */
+/** Privacy settings: device-scoped toggles, then the active account's invite and block settings. */
 @Component({
   selector: 'trn-privacy-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './privacy-settings.component.html',
-  imports: [TrnSettingsGroupComponent, PreferenceCatalogSectionComponent],
+  imports: [
+    TrnSettingsGroupComponent,
+    PreferenceCatalogSectionComponent,
+    InvitePermissionSettingComponent,
+    BlockedUsersComponent,
+  ],
 })
 export class PrivacySettingsComponent {
   readonly privacy = inject(PrivacySettingsService);

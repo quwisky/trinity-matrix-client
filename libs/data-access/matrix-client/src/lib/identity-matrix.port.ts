@@ -11,6 +11,7 @@ import { projectFromClient } from './project-from-client';
 
 /** SDK event spellings kept at the Matrix adapter boundary. */
 export const IDENTITY_MATRIX_EVENTS = {
+  accountData: ClientEvent.AccountData,
   avatarUrl: UserEvent.AvatarUrl,
   displayName: UserEvent.DisplayName,
   presence: UserEvent.Presence,
