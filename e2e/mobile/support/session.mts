@@ -262,7 +262,7 @@ export async function restartApp(): Promise<void> {
 /**
  * Android's system Back. iOS has no equivalent for an open dialog, sheet or panel: WebKit's
  * edge swipe is off while one is active (see the gesture policy in
- * trinity-application-session.adapter), so iOS specs use their in-app controls there. On a
+ * trinity-host-navigation.adapter), so iOS specs use their in-app controls there. On a
  * routed page the swipe is history Back; {@link historyGestures} shows it switched on.
  */
 export async function goBack(): Promise<void> {
