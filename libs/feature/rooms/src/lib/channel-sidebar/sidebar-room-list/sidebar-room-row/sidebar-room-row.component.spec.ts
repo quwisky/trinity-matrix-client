@@ -2,7 +2,6 @@ import { signal } from '@angular/core';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
-import type { RoomSummary } from '@trinity/data-access/room-library';
 import { ContentReportingService } from '@trinity/data-access/room-administration';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
@@ -11,29 +10,7 @@ import {
   SidebarRoomRowComponent,
   type SidebarRoomAction,
 } from './sidebar-room-row.component';
-
-function room(over: Partial<RoomSummary> = {}): RoomSummary {
-  return {
-    id: '!a:hs',
-    accountId: '@me:hs',
-    accountIds: ['@me:hs'],
-    name: 'general',
-    initial: 'G',
-    avatarMxc: null,
-    topic: '',
-    memberCount: 0,
-    encrypted: false,
-    unreadCount: 0,
-    highlightCount: 0,
-    hasUnread: false,
-    markedUnread: false,
-    lastMessage: '',
-    activityTs: 0,
-    favourite: false,
-    lowPriority: false,
-    ...over,
-  };
-}
+import { roomSummary as room } from '../../../testing/room-summary.fixture';
 
 async function renderRow(
   inputs: Record<string, unknown> = {},

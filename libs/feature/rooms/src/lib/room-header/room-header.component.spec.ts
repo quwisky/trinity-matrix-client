@@ -8,26 +8,14 @@ import {
   RoomHeaderComponent,
   type RoomHeaderAction,
 } from './room-header.component';
+import { roomSummary } from '../testing/room-summary.fixture';
 
-const ROOM: RoomSummary = {
+const ROOM: RoomSummary = roomSummary({
   id: '!r:hs',
   accountId: '@me:hs',
-  accountIds: ['@me:hs'],
   name: 'General',
-  initial: 'G',
-  avatarMxc: null,
-  topic: '',
   memberCount: 2,
-  encrypted: false,
-  unreadCount: 0,
-  highlightCount: 0,
-  hasUnread: false,
-  markedUnread: false,
-  lastMessage: '',
-  activityTs: 0,
-  favourite: false,
-  lowPriority: false,
-};
+});
 
 async function build(inputs: Record<string, unknown> = {}) {
   const actions: RoomHeaderAction[] = [];

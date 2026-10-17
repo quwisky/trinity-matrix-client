@@ -50,6 +50,7 @@ import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
+import { roomSummary, spaceSummary } from '../testing/room-summary.fixture';
 
 // The open room lives in the URL, and the harness's route is module state that outlives a
 // single TestBed — so a room one test opens is still in the URL when the next one builds.
@@ -208,25 +209,15 @@ describe('RoomsPage action error feedback', () => {
 
   it('applies shared room flags once to each exact owning Account', () => {
     const shell = build();
-    const row = {
+    const row = roomSummary({
       id: '!shared:hs',
       accountId: '@me:hs',
       accountIds: ['@me:hs', '@alt:hs', '@me:hs'],
       name: 'Shared',
       initial: 'S',
-      avatarMxc: null,
-      topic: '',
       memberCount: 2,
       encrypted: true,
-      unreadCount: 0,
-      highlightCount: 0,
-      hasUnread: false,
-      markedUnread: false,
-      lastMessage: '',
-      activityTs: 0,
-      favourite: false,
-      lowPriority: false,
-    } satisfies RoomSummary;
+    });
 
     shell.rooms.onToggleFavourite(row);
     shell.rooms.onToggleLowPriority(row);
@@ -394,14 +385,11 @@ describe('RoomsPage action error feedback', () => {
 
   /** A rail space owned by `accountId`, which is what the mixed-account gate turns on. */
   function railSpace(id: string, accountId = '@me:hs') {
-    return {
+    return spaceSummary({
       id,
       accountId,
       name: `Space ${id}`,
-      initial: 'S',
-      avatarMxc: null,
-      childRoomIds: [],
-    };
+    });
   }
 
   it('opens the exact Space settings Members destination from the shortcut', async () => {
@@ -631,37 +619,23 @@ describe('RoomsPage action error feedback', () => {
   it('passes the spaces a Room sits in to its exact settings lifetime', async () => {
     const shell = build();
     roomsSignal.set([
-      {
+      roomSummary({
         id: '!r:hs',
         accountId: '@me:hs',
-        accountIds: ['@me:hs'],
         name: 'General',
-        initial: 'G',
-        avatarMxc: null,
-        topic: '',
         memberCount: 2,
-        encrypted: false,
-        unreadCount: 0,
-        highlightCount: 0,
-        hasUnread: false,
-        markedUnread: false,
-        lastMessage: '',
-        activityTs: 0,
-        favourite: false,
-        lowPriority: false,
-      },
+      }),
     ]);
     setRouteRoom('!r:hs');
     await settleWorkspace();
     railSpacesSignal.set([
-      {
+      spaceSummary({
         id: '!s:hs',
         accountId: '@me:hs',
         name: 'Design',
         initial: 'D',
-        avatarMxc: null,
         childRoomIds: ['!r:hs'],
-      },
+      }),
     ]);
     parentSpaceIds.mockReturnValue(['!s:hs']);
     shell.rooms.onOpenRoomSettings();

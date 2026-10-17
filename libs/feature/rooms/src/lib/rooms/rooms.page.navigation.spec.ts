@@ -56,6 +56,7 @@ import { type RenderedRoomSurface } from './room-surface-lifecycle';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { desktopBridgeFixture } from '@trinity/testing';
+import { roomSummary as baseRoomSummary } from '../testing/room-summary.fixture';
 
 // The open room is the URL now, and the route the store reads outlives any one TestBed —
 // it is one stream in the harness, shared by every block in this file. Without this reset a
@@ -1128,25 +1129,14 @@ describe('RoomsPage account switcher summary', () => {
 // chord opens what, the desktop gate, and the overlay guard.
 describe('RoomsPage keyboard room switching', () => {
   function roomSummary(id: string, unread = 0): RoomSummary {
-    return {
+    return baseRoomSummary({
       id,
       accountId: '@me:hs',
-      accountIds: ['@me:hs'],
       name: id,
       initial: id[1].toUpperCase(),
-      avatarMxc: null,
-      topic: '',
-      memberCount: 0,
-      encrypted: false,
       unreadCount: unread,
-      highlightCount: 0,
       hasUnread: unread > 0,
-      markedUnread: false,
-      lastMessage: '',
-      activityTs: 0,
-      favourite: false,
-      lowPriority: false,
-    };
+    });
   }
 
   let dialogOpen = false;

@@ -33,6 +33,7 @@ import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
+import { roomSummary, spaceSummary } from '../testing/room-summary.fixture';
 
 /**
  * The view model's own spec, for the two surfaces it derives from the projections this
@@ -212,36 +213,23 @@ function room(
   accountId: string,
   accountIds: readonly string[] = [accountId],
 ): RoomSummary {
-  return {
+  return roomSummary({
     id,
     accountId,
     accountIds,
     name: id,
     initial: 'R',
-    avatarMxc: null,
-    topic: '',
     memberCount: 2,
-    encrypted: false,
-    unreadCount: 0,
-    highlightCount: 0,
-    hasUnread: false,
-    markedUnread: false,
-    lastMessage: '',
-    activityTs: 0,
-    favourite: false,
-    lowPriority: false,
-  };
+  });
 }
 
 describe('RoomShellViewModel selected space', () => {
-  const team = {
+  const team = spaceSummary({
     id: '!s:hs',
     accountId: '@me:hs',
     name: 'Team',
     initial: 'T',
-    avatarMxc: null,
-    childRoomIds: [],
-  };
+  });
 
   // #1401: a restored space can be named before the account's sync lists it.
   it("titles a selected space it cannot list yet 'Loading space…', never 'Direct messages'", () => {
@@ -315,14 +303,12 @@ describe('RoomShellViewModel.listsShowing', () => {
   const dm = { ...room('!dm:hs', '@me:hs'), directUserId: '@ben:hs' };
   const group = room('!group:hs', '@me:hs');
   const child = room('!child:hs', '@me:hs');
-  const space = {
+  const space = spaceSummary({
     id: '!s:hs',
     accountId: '@me:hs',
     name: 'Space',
-    initial: 'S',
-    avatarMxc: null,
     childRoomIds: ['!child:hs', '!dm:hs'],
-  };
+  });
   const lists = (selection: { accountId: string; roomId: string }) =>
     build({
       selectedView: {

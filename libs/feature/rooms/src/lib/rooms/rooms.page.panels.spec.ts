@@ -48,6 +48,7 @@ import { RoomSettingsComponent } from '../room-settings/room-settings.component'
 import { RoomDirectoryComponent } from '../room-directory/room-directory.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
+import { roomSummary } from '../testing/room-summary.fixture';
 
 // The open room is the URL now, and the route the store reads outlives any one TestBed —
 // it is one stream in the harness, shared by every test in this file. Without this reset a
@@ -181,25 +182,13 @@ describe('RoomsPage panels, pins and media', () => {
   it('opens Room settings with an immutable Account-and-Room target', async () => {
     const shell = build();
     roomsSignal.set([
-      {
+      roomSummary({
         id: '!r:hs',
         accountId: '@me:hs',
-        accountIds: ['@me:hs'],
         name: 'General',
-        initial: 'G',
-        avatarMxc: null,
         topic: 'The topic',
         memberCount: 2,
-        encrypted: false,
-        unreadCount: 0,
-        highlightCount: 0,
-        hasUnread: false,
-        markedUnread: false,
-        lastMessage: '',
-        activityTs: 0,
-        favourite: false,
-        lowPriority: false,
-      },
+      }),
     ]);
     setRouteRoom('!r:hs'); // the open room comes from /rooms/:roomId now
     await settleWorkspace();
@@ -225,25 +214,13 @@ describe('RoomsPage panels, pins and media', () => {
   it('opens Room settings without choosing a placement of its own', async () => {
     const shell = build();
     roomsSignal.set([
-      {
+      roomSummary({
         id: '!r:hs',
         accountId: '@me:hs',
-        accountIds: ['@me:hs'],
         name: 'General',
-        initial: 'G',
-        avatarMxc: null,
         topic: 'The topic',
         memberCount: 2,
-        encrypted: false,
-        unreadCount: 0,
-        highlightCount: 0,
-        hasUnread: false,
-        markedUnread: false,
-        lastMessage: '',
-        activityTs: 0,
-        favourite: false,
-        lowPriority: false,
-      },
+      }),
     ]);
     setRouteRoom('!r:hs'); // the open room comes from /rooms/:roomId now
     await settleWorkspace();
@@ -325,25 +302,13 @@ describe('RoomsPage panels, pins and media', () => {
   it('joins a room chosen in Room settings for the Account that opened them', async () => {
     const shell = build();
     roomsSignal.set([
-      {
+      roomSummary({
         id: '!r:hs',
         accountId: '@me:hs',
-        accountIds: ['@me:hs'],
         name: 'General',
-        initial: 'G',
-        avatarMxc: null,
         topic: 'The topic',
         memberCount: 2,
-        encrypted: false,
-        unreadCount: 0,
-        highlightCount: 0,
-        hasUnread: false,
-        markedUnread: false,
-        lastMessage: '',
-        activityTs: 0,
-        favourite: false,
-        lowPriority: false,
-      },
+      }),
     ]);
     setRouteRoom('!r:hs');
     await settleWorkspace();
@@ -474,25 +439,17 @@ describe('RoomsPage panels, pins and media', () => {
       id: string,
       accountId: string,
       hasUnread: boolean,
-    ): RoomSummary => ({
-      id,
-      accountId,
-      accountIds: [accountId],
-      name: id,
-      initial: 'X',
-      avatarMxc: null,
-      topic: '',
-      memberCount: 2,
-      encrypted: false,
-      unreadCount: hasUnread ? 3 : 0,
-      highlightCount: 0,
-      hasUnread,
-      markedUnread: false,
-      lastMessage: '',
-      activityTs: 0,
-      favourite: false,
-      lowPriority: false,
-    });
+    ): RoomSummary =>
+      roomSummary({
+        id,
+        accountId,
+        accountIds: [accountId],
+        name: id,
+        initial: 'X',
+        memberCount: 2,
+        unreadCount: hasUnread ? 3 : 0,
+        hasUnread,
+      });
     roomsSignal.set([
       unreadRoom('!a:hs', '@me:hs', true),
       unreadRoom('!b:hs', '@me:hs', false),
@@ -510,25 +467,16 @@ describe('RoomsPage panels, pins and media', () => {
     // The header button selects on hasUnread, which now includes the flag. Narrowing it
     // to a notification count would leave the button offering to clear a row it skips.
     const shell = build();
-    const flagged = (id: string): RoomSummary => ({
-      id,
-      accountId: '@me:hs',
-      accountIds: ['@me:hs'],
-      name: id,
-      initial: 'X',
-      avatarMxc: null,
-      topic: '',
-      memberCount: 2,
-      encrypted: false,
-      unreadCount: 0,
-      highlightCount: 0,
-      hasUnread: true,
-      markedUnread: true,
-      lastMessage: '',
-      activityTs: 0,
-      favourite: false,
-      lowPriority: false,
-    });
+    const flagged = (id: string): RoomSummary =>
+      roomSummary({
+        id,
+        accountId: '@me:hs',
+        name: id,
+        initial: 'X',
+        memberCount: 2,
+        hasUnread: true,
+        markedUnread: true,
+      });
     roomsSignal.set([flagged('!f:hs')]);
 
     shell.readState.onMarkAllRead();
@@ -540,25 +488,16 @@ describe('RoomsPage panels, pins and media', () => {
     // Mirrors the ⋮ path: acking only the winning account leaves a merged row unread
     // with the header button still offering to clear it, forever.
     const shell = build();
-    const merged: RoomSummary = {
+    const merged: RoomSummary = roomSummary({
       id: '!m:hs',
       accountId: '@me:hs',
       accountIds: ['@me:hs', '@alt:hs'],
       name: 'merged',
       initial: 'M',
-      avatarMxc: null,
-      topic: '',
       memberCount: 2,
-      encrypted: false,
-      unreadCount: 0,
-      highlightCount: 0,
       hasUnread: true,
       markedUnread: true,
-      lastMessage: '',
-      activityTs: 0,
-      favourite: false,
-      lowPriority: false,
-    };
+    });
     roomsSignal.set([merged]);
 
     shell.readState.onMarkAllRead();

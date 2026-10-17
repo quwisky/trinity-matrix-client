@@ -20,29 +20,7 @@ import {
   type InviteAnswered,
 } from '../../rooms/invite-actions.service';
 import { Subject } from 'rxjs';
-
-function room(over: Partial<RoomSummary> = {}): RoomSummary {
-  return {
-    id: '!a:hs',
-    accountId: '@me:hs',
-    accountIds: ['@me:hs'],
-    name: 'general',
-    initial: 'G',
-    avatarMxc: null,
-    topic: '',
-    memberCount: 0,
-    encrypted: false,
-    unreadCount: 0,
-    highlightCount: 0,
-    hasUnread: false,
-    markedUnread: false,
-    lastMessage: '',
-    activityTs: 0,
-    favourite: false,
-    lowPriority: false,
-    ...over,
-  };
-}
+import { roomSummary } from '../../testing/room-summary.fixture';
 
 async function renderRows(
   rooms: RoomSummary[],
@@ -75,8 +53,8 @@ async function renderRows(
 
 describe('SidebarRoomListComponent rows', () => {
   it('re-reads the notification level of only the rows whose summary object changed', async () => {
-    const a = room({ id: '!a:hs' });
-    const b = room({ id: '!b:hs', name: 'other' });
+    const a = roomSummary({ id: '!a:hs' });
+    const b = roomSummary({ id: '!b:hs', name: 'other' });
     const { fixture } = await renderRows([a, b]);
     const modeFor = TestBed.inject(RoomNotificationsService)
       .modeForAccounts as ReturnType<typeof vi.fn>;
@@ -90,7 +68,10 @@ describe('SidebarRoomListComponent rows', () => {
 
   it('marks the selected room', async () => {
     const { container } = await renderRows(
-      [room({ id: '!a:hs' }), room({ id: '!b:hs', name: 'other' })],
+      [
+        roomSummary({ id: '!a:hs' }),
+        roomSummary({ id: '!b:hs', name: 'other' }),
+      ],
       '!a:hs',
     );
 
@@ -101,7 +82,7 @@ describe('SidebarRoomListComponent rows', () => {
 
   it('marks plain unread with the marker and no badge', async () => {
     const { container } = await renderRows([
-      room({ hasUnread: true, unreadCount: 5 }),
+      roomSummary({ hasUnread: true, unreadCount: 5 }),
     ]);
 
     expect(container.querySelector('.channel--unread')).not.toBeNull();
@@ -110,7 +91,7 @@ describe('SidebarRoomListComponent rows', () => {
 
   it('shows a danger badge with the mention count', async () => {
     const { container } = await renderRows([
-      room({ hasUnread: true, unreadCount: 4, highlightCount: 2 }),
+      roomSummary({ hasUnread: true, unreadCount: 4, highlightCount: 2 }),
     ]);
 
     const badge = container.querySelector('[trnBadge]')!;
@@ -120,7 +101,7 @@ describe('SidebarRoomListComponent rows', () => {
 
   it('says "unread" to assistive tech for a plain unread row', async () => {
     const { container } = await renderRows([
-      room({ hasUnread: true, unreadCount: 3 }),
+      roomSummary({ hasUnread: true, unreadCount: 3 }),
     ]);
 
     expect(
@@ -130,7 +111,7 @@ describe('SidebarRoomListComponent rows', () => {
 
   it('says the mention count inside the row button, not "unread"', async () => {
     const { container } = await renderRows([
-      room({ hasUnread: true, unreadCount: 4, highlightCount: 2 }),
+      roomSummary({ hasUnread: true, unreadCount: 4, highlightCount: 2 }),
     ]);
 
     expect(
@@ -139,7 +120,7 @@ describe('SidebarRoomListComponent rows', () => {
   });
 
   it('adds no hidden unread text to a read row', async () => {
-    const { container } = await renderRows([room()]);
+    const { container } = await renderRows([roomSummary()]);
 
     expect(container.querySelector('.channel .sr-only')).toBeNull();
   });
@@ -150,14 +131,14 @@ describe('SidebarRoomListComponent rows', () => {
     ['mixed', false],
     ['all', false],
   ] as const)('notify mode %s dims the row: %s', async (mode, dimmed) => {
-    const { container } = await renderRows([room()], null, mode);
+    const { container } = await renderRows([roomSummary()], null, mode);
 
     expect(container.querySelector('.channel--muted') !== null).toBe(dimmed);
   });
 
   it('keeps the danger badge on a muted room', async () => {
     const { container } = await renderRows(
-      [room({ hasUnread: true, highlightCount: 1 })],
+      [roomSummary({ hasUnread: true, highlightCount: 1 })],
       null,
       'mute',
     );
@@ -171,7 +152,7 @@ describe('SidebarRoomListComponent rows', () => {
   });
 
   it('draws a 36px avatar in rich rows', async () => {
-    const { container } = await renderRows([room()]);
+    const { container } = await renderRows([roomSummary()]);
 
     expect(
       container.querySelector('trn-avatar')!.getAttribute('data-exact-size'),
@@ -179,7 +160,12 @@ describe('SidebarRoomListComponent rows', () => {
   });
 
   it('draws a 20px avatar in compact rows', async () => {
-    const { container } = await renderRows([room()], null, 'all', 'compact');
+    const { container } = await renderRows(
+      [roomSummary()],
+      null,
+      'all',
+      'compact',
+    );
 
     expect(
       container.querySelector('trn-avatar')!.getAttribute('data-exact-size'),
@@ -188,7 +174,7 @@ describe('SidebarRoomListComponent rows', () => {
 
   it('keeps the presence dot and account badge at their floors in compact rows', async () => {
     const { container } = await renderRows(
-      [room({ directUserId: '@bob:hs' })],
+      [roomSummary({ directUserId: '@bob:hs' })],
       null,
       'all',
       'compact',
@@ -209,7 +195,7 @@ describe('SidebarRoomListComponent rows', () => {
 
   it('dims a muted room but keeps its mention badge outside the dimmed parts', async () => {
     const { container } = await renderRows(
-      [room({ hasUnread: true, highlightCount: 1 })],
+      [roomSummary({ hasUnread: true, highlightCount: 1 })],
       null,
       'mute',
     );
@@ -224,7 +210,7 @@ describe('SidebarRoomListComponent rows', () => {
 
   it('keeps the dot for a room marked unread', async () => {
     const { container } = await renderRows([
-      room({ hasUnread: true, markedUnread: true }),
+      roomSummary({ hasUnread: true, markedUnread: true }),
     ]);
 
     expect(
@@ -438,7 +424,7 @@ describe('SidebarRoomListComponent windowing (#1312)', () => {
     over: (i: number) => Partial<RoomSummary> = () => ({}),
   ) =>
     Array.from({ length: n }, (_, i) =>
-      room({ id: `!r${i}:hs`, name: `room ${i}`, ...over(i) }),
+      roomSummary({ id: `!r${i}:hs`, name: `room ${i}`, ...over(i) }),
     );
   /** A scroll element with a real-looking viewport; jsdom has no layout. */
   function scroller(height = 600): HTMLElement {
