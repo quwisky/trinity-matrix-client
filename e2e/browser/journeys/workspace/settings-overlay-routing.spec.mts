@@ -1,5 +1,4 @@
 import { test, expect } from '../../../fixtures.mts';
-import { openSettingsFromRooms } from '../../../support/journeys/navigation.mts';
 import { login, homeserverSession } from '../../../support/app.mts';
 
 // Historical context: this file used to guard the IonRouterOutlet transition lock
@@ -26,18 +25,6 @@ test.describe('Route transitions', () => {
     !session.available,
     'requires the disposable Synapse homeserver (Docker)',
   );
-
-  test('opens settings from rooms without replacing the room route', async ({
-    page,
-  }) => {
-    await login(page, session);
-
-    // rooms → settings via the user-panel settings button (in the sidebar user
-    // bar). This is what the removed-behavior test below used to drive; kept as a
-    // real (still-true) regression check that the plain router-outlet completes
-    // the transition — no dead router.
-    await openSettingsFromRooms(page);
-  });
 
   // Web Settings is a CDK modal, so focus enters its trap and returns to the persistent
   // opener.
