@@ -22,7 +22,7 @@
 //
 // `pnpm e2e:emoji` builds dev, starts the harness, runs this, and tears down.
 import { applicationOrigin } from '../support/session.mts';
-import { protocolResponseFailure } from './diagnostics.mts';
+import { apiLogin, csPost } from './cs-api.mjs';
 import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
@@ -42,38 +42,6 @@ const log = (m) => console.log(`[emoji] ${m}`);
 // CS-API helpers
 // ---------------------------------------------------------------------------
 
-async function apiLogin(user, pass) {
-  const res = await fetch(`${HS}/_matrix/client/v3/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    }),
-  });
-  if (!res.ok) {
-    throw protocolResponseFailure(`login ${user}`, res);
-  }
-  return res.json();
-}
-
-async function csPost(token, path, body) {
-  const res = await fetch(`${HS}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    throw protocolResponseFailure(`POST ${path}`, res);
-  }
-  const ct = res.headers.get('content-type') ?? '';
-  return ct.includes('application/json') ? res.json() : {};
-}
-
 // ---------------------------------------------------------------------------
 // UI helpers
 // ---------------------------------------------------------------------------
@@ -91,9 +59,10 @@ async function typeInComposer(page, textarea, text) {
 
 async function main(protocolBrowser) {
   // ── CS-API pre-setup: one plaintext room to chat in ────────────────────────
-  const { access_token: token } = await apiLogin(USER, PASS);
+  const { access_token: token } = await apiLogin(HS, USER, PASS);
   log('api login ok');
   const { room_id: roomId } = await csPost(
+    HS,
     token,
     '/_matrix/client/v3/createRoom',
     { name: ROOM, preset: 'private_chat' }, // plaintext → instant local echo

@@ -20,6 +20,7 @@
 //
 // `pnpm e2e:search` builds dev, starts the harness, runs this, and tears down.
 import { applicationOrigin } from '../support/session.mts';
+import { apiLogin, csPost, poll } from './cs-api.mjs';
 import { protocolResponseFailure } from './diagnostics.mts';
 import { test, expect } from './fixtures.mts';
 
@@ -53,38 +54,6 @@ const log = (m) => console.log(`[search] ${m}`);
 // CS-API helpers
 // ---------------------------------------------------------------------------
 
-async function apiLogin(user, pass) {
-  const res = await fetch(`${HS}/_matrix/client/v3/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    }),
-  });
-  if (!res.ok) {
-    throw protocolResponseFailure(`login ${user}`, res);
-  }
-  return res.json(); // { access_token, user_id, … }
-}
-
-async function csPost(token, path, body) {
-  const res = await fetch(`${HS}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    throw protocolResponseFailure(`POST ${path}`, res);
-  }
-  const ct = res.headers.get('content-type') ?? '';
-  return ct.includes('application/json') ? res.json() : {};
-}
-
 /** PUT a room event with an idempotent txnId — used for send/m.room.message. */
 async function csPut(token, path, body) {
   const res = await fetch(`${HS}${path}`, {
@@ -100,16 +69,6 @@ async function csPut(token, path, body) {
   }
   const ct = res.headers.get('content-type') ?? '';
   return ct.includes('application/json') ? res.json() : {};
-}
-
-/** Retry `fn` until it returns a truthy value or the attempt limit is reached. */
-async function poll(fn, { tries = 30, delayMs = 1000 } = {}) {
-  for (let i = 0; i < tries; i++) {
-    const v = await fn().catch(() => null);
-    if (v) return v;
-    await new Promise((r) => setTimeout(r, delayMs));
-  }
-  throw new Error('poll timed out');
 }
 
 // ---------------------------------------------------------------------------
@@ -142,6 +101,7 @@ async function waitForModalGone(page) {
 async function main(protocolBrowser) {
   // ── CS-API pre-setup ───────────────────────────────────────────────────────
   const { access_token: aliceToken, user_id: aliceId } = await apiLogin(
+    HS,
     USER,
     PASS,
   );
@@ -150,6 +110,7 @@ async function main(protocolBrowser) {
 
   // Scenario 1: two rooms for quick-switcher jump.
   const { room_id: roomAId } = await csPost(
+    HS,
     aliceToken,
     '/_matrix/client/v3/createRoom',
     { name: ROOM_A, preset: 'private_chat' },
@@ -157,6 +118,7 @@ async function main(protocolBrowser) {
   log(`created ROOM_A: ${roomAId} ("${ROOM_A}")`);
 
   const { room_id: roomBId } = await csPost(
+    HS,
     aliceToken,
     '/_matrix/client/v3/createRoom',
     { name: ROOM_B, preset: 'private_chat' },
@@ -165,6 +127,7 @@ async function main(protocolBrowser) {
 
   // Scenario 2: plaintext room with seeded messages.
   const { room_id: searchRoomId } = await csPost(
+    HS,
     aliceToken,
     '/_matrix/client/v3/createRoom',
     {
@@ -198,6 +161,7 @@ async function main(protocolBrowser) {
 
   // Scenario 3: seed the fixture-owned BOB account into the user directory.
   const { access_token: bobToken, user_id: bobId } = await apiLogin(
+    HS,
     BOB_USER,
     BOB_PASS,
   );
@@ -205,7 +169,7 @@ async function main(protocolBrowser) {
   log(`BOB api login ok`);
 
   // BOB creates a public room → Synapse indexes BOB in the user directory.
-  await csPost(bobToken, '/_matrix/client/v3/createRoom', {
+  await csPost(HS, bobToken, '/_matrix/client/v3/createRoom', {
     preset: 'public_chat',
     name: `Bob-stub-${RUN_ID}`,
   });

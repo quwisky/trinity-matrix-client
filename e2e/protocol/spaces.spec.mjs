@@ -19,6 +19,7 @@
 //
 // `pnpm e2e:spaces` builds dev, starts the harness, runs this, and tears down.
 import { applicationOrigin } from '../support/session.mts';
+import { poll } from './cs-api.mjs';
 import { protocolResponseFailure } from './diagnostics.mts';
 import { test, expect } from './fixtures.mts';
 
@@ -64,16 +65,6 @@ async function get(token, path) {
     status: res.status,
     body: res.ok ? await res.json() : null,
   };
-}
-
-/** Retry `fn` until it returns a truthy value or the attempt limit is reached. */
-async function poll(fn, { tries = 30, delayMs = 1000 } = {}) {
-  for (let i = 0; i < tries; i++) {
-    const v = await fn().catch(() => null);
-    if (v) return v;
-    await new Promise((r) => setTimeout(r, delayMs));
-  }
-  throw new Error('poll timed out');
 }
 
 async function joinedRooms(token) {
