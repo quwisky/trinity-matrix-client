@@ -12,31 +12,12 @@ import {
   ConversationPinsController,
 } from './conversation-pins.controller';
 import type { ConversationPinPolicy } from './conversation-pins';
+import { fakeEmitter } from '@trinity/testing';
 
 const KEY = {
   accountId: '@alice:example.org',
   roomId: '!room:example.org',
 } as const;
-
-function emitter() {
-  const handlers = new Map<string, Set<(...args: unknown[]) => void>>();
-  return {
-    on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
-      const listeners = handlers.get(event) ?? new Set();
-      listeners.add(handler);
-      handlers.set(event, listeners);
-    }),
-    off: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
-      handlers.get(event)?.delete(handler);
-    }),
-    emit(event: string, ...args: unknown[]) {
-      for (const handler of handlers.get(event) ?? []) handler(...args);
-    },
-    listenerCount(event: string) {
-      return handlers.get(event)?.size ?? 0;
-    },
-  };
-}
 
 function setup() {
   let pinned = ['$one'];
@@ -70,7 +51,7 @@ function setup() {
         ? { getContent: () => ({ pinned }) }
         : null,
   };
-  const roomEmitter = emitter();
+  const roomEmitter = fakeEmitter();
   const room = {
     roomId: KEY.roomId,
     getLiveTimeline: () => ({ getState: () => state }),
@@ -80,7 +61,7 @@ function setup() {
     }),
     ...roomEmitter,
   };
-  const clientEmitter = emitter();
+  const clientEmitter = fakeEmitter();
   // Events the server holds but the loaded timeline does not.
   const remote = new Map<string, Record<string, unknown>>();
   const fetchRoomEvent = vi.fn((_roomId: string, eventId: string) => {

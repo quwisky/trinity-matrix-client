@@ -30,31 +30,13 @@ import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
 import { switchableMatrixProvider } from './timeline.spec-harness';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
 import type { ConversationMessageOutcome } from './conversation-messages';
+import { fakeEmitter } from '@trinity/testing';
 
 const MEMBERS: Record<string, string> = {
   '@me:hs': 'Me',
   '@a:hs': 'Alice',
   '@b:hs': 'Bob',
 };
-
-/** Minimal mutable event-emitter shim so tests can fire SDK listeners. */
-function emitter() {
-  const handlers: Record<string, ((...a: unknown[]) => void)[]> = {};
-  return {
-    on(ev: string, h: (...a: unknown[]) => void) {
-      (handlers[ev] ??= []).push(h);
-    },
-    off(ev: string, h: (...a: unknown[]) => void) {
-      handlers[ev] = (handlers[ev] ?? []).filter((x) => x !== h);
-    },
-    emit(ev: string, ...args: unknown[]) {
-      (handlers[ev] ?? []).slice().forEach((h) => h(...args));
-    },
-    listenerCount(ev: string) {
-      return (handlers[ev] ?? []).length;
-    },
-  };
-}
 
 /** A settled edit as `replacingEvent()` returns it, in the clear unless told otherwise. */
 function fakeEdit(id: string, encrypted = false) {
@@ -133,7 +115,7 @@ function fakeThread(o: {
     replyToEvent: o.replyToEvent ?? null,
     length: o.length ?? o.events?.length ?? 0,
     liveTimeline,
-    ...emitter(),
+    ...fakeEmitter(),
   };
 }
 
@@ -234,7 +216,7 @@ function setup(
           : undefined,
     },
     hasEncryptionStateEvent: () => roomEncrypted,
-    ...emitter(),
+    ...fakeEmitter(),
   };
   const client = {
     getRoom: () => room,
@@ -293,7 +275,7 @@ function setup(
           }),
         }
       : {}),
-    ...emitter(),
+    ...fakeEmitter(),
   };
   const acknowledge = vi.fn(() =>
     of<ConversationMessageOutcome>({
@@ -996,13 +978,13 @@ describe('ThreadsService', () => {
       getUsersReadUpTo: (): string[] => [],
       relations: { getChildEventsForEvent: () => undefined },
       hasEncryptionStateEvent: () => false,
-      ...emitter(),
+      ...fakeEmitter(),
     };
     const makeClient = () => ({
       getRoom: () => room,
       getUserId: () => '@me:hs',
       sendReadReceipt: () => Promise.resolve({}),
-      ...emitter(),
+      ...fakeEmitter(),
     });
     const clientA = makeClient();
     const clientB = makeClient();

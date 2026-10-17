@@ -14,22 +14,7 @@ import { TrustVerificationService } from './trust-verification.service';
 import { TrustDevicesService, type DeviceInfo } from './trust-devices.service';
 import { TrustHealthService } from './trust-health.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-
-// Minimal event emitter shaped like matrix-js-sdk's TypedEventEmitter.
-function emitter() {
-  const handlers = new Map<string, Set<(...a: unknown[]) => void>>();
-  return {
-    on(evt: string, h: (...a: unknown[]) => void) {
-      (handlers.get(evt) ?? handlers.set(evt, new Set()).get(evt)!).add(h);
-    },
-    off(evt: string, h: (...a: unknown[]) => void) {
-      handlers.get(evt)?.delete(h);
-    },
-    emit(evt: string, ...args: unknown[]) {
-      handlers.get(evt)?.forEach((h) => h(...args));
-    },
-  };
-}
+import { fakeEmitter } from '@trinity/testing';
 
 function fakeSas(
   emoji: [string, string][] = [
@@ -51,7 +36,7 @@ function fakeSas(
 }
 
 function fakeVerifier() {
-  const e = emitter();
+  const e = fakeEmitter();
   let currentSas: ReturnType<typeof fakeSas> | null = null;
   let currentQr: {
     confirm: ReturnType<typeof vi.fn>;
@@ -88,7 +73,7 @@ function fakeRequest(
     supportedMethods?: string[];
   } = {},
 ) {
-  const e = emitter();
+  const e = fakeEmitter();
   let verifier: ReturnType<typeof fakeVerifier> | null = null;
   const req = {
     ...e,
@@ -140,7 +125,7 @@ function setup(
     ),
   };
   const client = {
-    ...emitter(),
+    ...fakeEmitter(),
     getCrypto: () => crypto,
     getUserId: () => '@me:hs',
   };
@@ -841,7 +826,7 @@ describe('TrustVerificationService', () => {
     TestBed.inject(ApplicationRef).tick(); // effect's first run: still A
 
     const clientB = {
-      ...emitter(),
+      ...fakeEmitter(),
       getCrypto: () => ({
         getVerificationRequestsToDeviceInProgress: vi.fn(() => []),
       }),
@@ -1094,7 +1079,7 @@ describe('TrustVerificationService', () => {
         expect(svc.active()?.newSession?.deviceId).toBe('PHONE');
 
         ngMocks.stubMember(matrix, 'instance', {
-          ...emitter(),
+          ...fakeEmitter(),
           getCrypto: () => ({
             getVerificationRequestsToDeviceInProgress: vi.fn(() => []),
           }),
