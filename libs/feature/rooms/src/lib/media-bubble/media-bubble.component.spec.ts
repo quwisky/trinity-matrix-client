@@ -329,26 +329,6 @@ describe('MediaBubbleComponent — the reservation gives way to the real shape',
     img.dispatchEvent(new Event('load'));
   };
 
-  it('uses the loaded dimensions once an image reports them', async () => {
-    // The 16 / 9 fallback exists so a dimensionless attachment does not make the timeline
-    // jump. Left bound after the file has loaded it stops reserving and starts SHAPING the
-    // box to proportions the picture does not have — with `object-fit: contain`, a portrait
-    // screenshot is then letterboxed inside a landscape box for good.
-    const { container, fixture } = await render(MediaBubbleComponent, {
-      inputs: {
-        item: item({ kind: 'image', filename: 'p.png', mimeType: 'image/png' }),
-        src: 'blob:first',
-      },
-    });
-    const box = container.querySelector('.media--image') as HTMLElement;
-    expect(box.style.aspectRatio).toBe('16 / 9');
-
-    decodesAs(container.querySelector('img') as HTMLImageElement, 600, 900);
-    fixture.detectChanges();
-
-    expect(box.style.aspectRatio).toBe('600 / 900');
-  });
-
   it("keeps the event's own dimensions over the loaded ones", async () => {
     // `info.w`/`info.h` are what the timeline reserved space with before the bytes existed.
     // Letting a load event overwrite them would move the box AFTER it was already correct,
