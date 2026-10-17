@@ -3,18 +3,19 @@ import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   MAX_NAMED_REACTORS,
   collectMessageSenders,
-  firstUrl,
   isDisplayableMessage,
-  linkifyText,
   normalizeMediaPayload,
-  parseGeoUri,
-  parseLocationInput,
   reactionDetailsFor,
   reactionsFor,
   readReceiptsFor,
+} from './message-view';
+import {
+  firstUrl,
+  linkifyText,
   sanitizeMatrixHtml,
   sanitizeOutgoingHtml,
-} from './message-view';
+} from './message-html';
+import { parseGeoUri, parseLocationInput } from './geo-uri';
 
 describe('parseGeoUri', () => {
   it('parses lat/lng from a geo URI', () => {

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   linkifyMessageText,
-  renderNormalizedTextBody,
   sanitizeMatrixHtml,
   sanitizeOutgoingHtml,
-} from './message-view';
+} from './message-html';
+import { renderNormalizedTextBody } from './message-view';
 
 /** The sanitized body as a tree, for attribute assertions. */
 function parse(html: string): HTMLElement {

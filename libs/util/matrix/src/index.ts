@@ -1,4 +1,6 @@
 export * from './lib/message-view';
+export * from './lib/message-html';
+export * from './lib/geo-uri';
 export * from './lib/trim-trailing';
 export * from './lib/day-separator';
 export * from './lib/date-format';

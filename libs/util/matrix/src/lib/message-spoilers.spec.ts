@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeMatrixHtml, sanitizeOutgoingHtml } from './message-view';
+import { sanitizeMatrixHtml, sanitizeOutgoingHtml } from './message-html';
 
 function spoilerIn(html: string): Element {
   const element = document.createElement('div');
