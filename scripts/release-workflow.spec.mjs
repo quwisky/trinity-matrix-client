@@ -104,7 +104,7 @@ describe('macOS signing isolation', () => {
     ]);
   });
 
-  it('keeps the release environment, and its reviewers, on the signing job alone', () => {
+  it('keeps the release environment on the signing job alone', () => {
     expect(signJob().environment).toBe('release');
     for (const name of workflows) {
       const { jobs } = parse(
@@ -514,7 +514,7 @@ describe('release branches', () => {
   });
 
   it('mints the release App token only in the reviewer-free release-app environment', () => {
-    // Required reviewers on `release` gate packaging; they must not stall the automation.
+    // The App key stays out of `release`, which holds only the signing secrets.
     for (const name of [
       'release.yml',
       'release-stable.yml',

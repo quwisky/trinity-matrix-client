@@ -28,8 +28,8 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 20
     # The deploy key writes what every Homebrew user installs. The environment's
-    # deployment rule limits which refs may run this job with it, and its required
-    # reviewer approves each run.
+    # deployment rule limits which refs may run this job with it. It has no required
+    # reviewers, so a published release updates the tap unattended.
     environment: homebrew
     env:
       HOMEBREW_NO_AUTO_UPDATE: '1'

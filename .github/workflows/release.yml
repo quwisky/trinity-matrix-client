@@ -348,9 +348,8 @@ jobs:
     # produces arm64 artifacts only, by choice. macos-26 brings Xcode 26's actool,
     # which compiles the Icon Composer app icon.
     runs-on: macos-26
-    # Gates the signing secrets behind an environment. Required reviewers on `release`
-    # gate this job only (the release App jobs use `release-app`); with them it is what
-    # stops a pushed tag from minting a signed installer unattended.
+    # Gates the signing secrets behind an environment whose deployment rule limits the
+    # refs that reach them. It has no required reviewers, so releases sign unattended.
     environment: release
     # Apple's notary queue alone can take most of an hour, and the first signed release
     # outlasted 45 minutes.

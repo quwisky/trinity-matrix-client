@@ -475,10 +475,10 @@ rules on those refs decide who can reach the credentials:
   as before. GitHub reads `CODEOWNERS` from the pull request's base branch, so each
   `release/X.Y.x` branch carries its own copy; `Release stable` refuses a prerelease
   without one.
-- `release` and `homebrew` require the maintainer's approval for each deployment, so every
-  signed macOS build and every tap update waits for it. `release-app` runs on every push
-  to `main` and `release/**` and `renovate` runs daily, so neither has reviewers; the
-  approval rules on those branches guard them instead.
+- No release environment has required reviewers, so releases sign, publish and update
+  the tap without waiting for the maintainer. The deployment rules of `release`,
+  `homebrew`, `release-app` and `renovate`, together with the tag and branch rulesets
+  above, guard the credentials instead.
 
 When a release job starts running a new script or configuration file, add it to
 `CODEOWNERS`.
@@ -649,7 +649,7 @@ run release-please.
 6. Change the deployment rules of the environments: `github-pages`, `homebrew` and `apt`
    (if present) to `main`, plus `release/**` where a job runs from a release tag. The
    `release` environment, which gates macOS signing in `release.yml`, must allow `main` and
-   `release/**`; it may have required reviewers, which gate that job only.
+   `release/**`, with no required reviewers.
 7. Update each local clone:
 
    ```bash
@@ -768,10 +768,8 @@ is why the packing moved into this job.
 Store the signing secrets in the `release` environment rather than as repository secrets, so
 no other job can read them.
 
-The environment's presence in YAML does not prove that required reviewers or environment
-protections are configured; maintainers must check the repository settings before relying
-on them. Reviewers on `release` gate macOS signing only: the release App jobs run in
-`release-app`.
+The environment's presence in YAML does not prove that its deployment rules are
+configured; maintainers must check the repository settings before relying on them.
 
 The workflow recognizes these secret names only:
 
@@ -838,8 +836,8 @@ commit predates `homebrew.yml` never triggers it; dispatch it from `main` instea
 2. Create the public repository `quwisky/homebrew-trinity` **with an initial commit**
    (a README is enough); checkout and push fail on an empty repository.
 3. Create the environment `homebrew` in this repository. Under deployment branches
-   and tags, allow only `main` and tags matching `v*`, and add the
-   maintainer as a required reviewer (see [Release credentials](#release-credentials)).
+   and tags, allow only `main` and tags matching `v*`. Add no required reviewers
+   (see [Release credentials](#release-credentials)).
 4. Run `ssh-keygen -t ed25519 -C homebrew-trinity -f homebrew-trinity`. Add
    `homebrew-trinity.pub` to the tap as a deploy key **with write access**, and store
    the private key as the **environment** secret `HOMEBREW_TAP_DEPLOY_KEY` in
