@@ -52,6 +52,7 @@ function setup(
   } = {},
 ) {
   const onTokenDied: (() => void)[] = [];
+  let held = true;
   const release = vi.fn();
   const late = new Subject<AccountDeletionResult>();
   TestBed.configureTestingModule({
@@ -76,7 +77,8 @@ function setup(
         holdServerLogout: vi.fn(
           (_id: string, hooks?: { onTokenDied?: () => void }) => {
             if (hooks?.onTokenDied) onTokenDied.push(hooks.onTokenDied);
-            return { tokenDied: () => false, release };
+            held = true;
+            return { tokenDied: () => false, isHeld: () => held, release };
           },
         ),
       }),
@@ -102,6 +104,9 @@ function setup(
     release,
     late,
     tokenDies: () => onTokenDied.forEach((hook) => hook()),
+    wipeHolds: () => {
+      held = false;
+    },
   };
 }
 
@@ -287,6 +292,16 @@ describe('AccountDeletionLauncherAdapter', () => {
       await firstValueFrom(test.launcher.openProvider(ALICE, 'https://a/'));
 
       expect(test.matrix.holdServerLogout).toHaveBeenCalledOnce();
+    });
+
+    it('holds again after the account left the device and came back', async () => {
+      const test = setup();
+      await firstValueFrom(test.launcher.openProvider(ALICE, 'https://a/'));
+      test.wipeHolds();
+
+      await firstValueFrom(test.launcher.openProvider(ALICE, 'https://a/'));
+
+      expect(test.matrix.holdServerLogout).toHaveBeenCalledTimes(2);
     });
 
     it('finishes once when Check now and the dead token both notice', async () => {

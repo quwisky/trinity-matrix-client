@@ -91,7 +91,7 @@ export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
 
   openProvider(accountId: string, url: string): Observable<boolean> {
     return defer(() => {
-      if (!this.providerHolds.has(accountId)) {
+      if (!this.providerHolds.get(accountId)?.isHeld()) {
         this.providerHolds.set(
           accountId,
           this.matrix.holdServerLogout(accountId, {
