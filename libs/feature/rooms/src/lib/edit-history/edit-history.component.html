@@ -6,8 +6,8 @@
 >
   @if (!busy() && !error() && entries().length > 1) {
     <div class="edit-history__toolbar">
-      <!-- Variant and presentation carry the pressed state visually; aria-pressed alone
-           would leave a sighted user unable to tell it apart. -->
+      <!-- Variant and presentation show the pressed state visually; aria-pressed alone
+           is invisible to sighted users. -->
       <button
         trnBtn
         type="button"

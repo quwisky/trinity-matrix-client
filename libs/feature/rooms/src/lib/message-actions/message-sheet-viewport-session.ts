@@ -7,12 +7,11 @@ const MIN_SHEET_HEIGHT_PX = 88;
 const SCROLLER_SELECTOR = '[data-message-scroller]';
 
 /**
- * One action sheet's temporary relationship with the timeline behind it.
- *
- * The modal correctly blocks user scrolling, but its fixed overlay does not participate in
- * timeline layout. This session adds only the measured occluded band as tail range, moves
- * the pressed row above the exact sheet invocation, then restores the row's original visual
- * position on close. It owns every DOM mutation it makes and is safe to release repeatedly.
+ * One action sheet's temporary relationship with the timeline behind it. The modal blocks
+ * user scrolling but its fixed overlay does not take part in timeline layout, so this
+ * session adds the measured occluded band as tail range, moves the pressed row above the
+ * sheet, and restores the row's original visual position on close. It owns every DOM
+ * mutation it makes and is safe to release repeatedly.
  */
 export class MessageSheetViewportSession {
   private readonly anchor: HTMLElement;
@@ -80,8 +79,8 @@ export class MessageSheetViewportSession {
       return;
     }
 
-    // Anchor-relative restoration survives a resize or newly-measured virtual rows. A saved
-    // raw scrollTop would replay stale geometry and land somewhere else in both cases.
+    // Anchor-relative restoration survives a resize or newly-measured virtual rows; a saved
+    // raw scrollTop would replay stale geometry.
     const currentTop = this.anchor.getBoundingClientRect().top;
     scroller.scrollTop = Math.max(
       0,
@@ -95,8 +94,8 @@ export class MessageSheetViewportSession {
     }
     const surface = this.resolveSurface();
     if (!surface?.isConnected) {
-      // Component queries settle with the dialog render. A bounded retry handles a frame in
-      // which CDK has attached the pane but Angular has not populated the sheet view yet.
+      // A bounded retry covers a frame where CDK has attached the pane but Angular has not
+      // populated the sheet view yet.
       if (++this.surfaceAttempts < 3) {
         this.schedule(() => this.position());
       }
@@ -108,9 +107,9 @@ export class MessageSheetViewportSession {
     const anchorRect = this.anchor.getBoundingClientRect();
     let surfaceRect = surface.getBoundingClientRect();
 
-    // A scrollable sheet may shrink to leave a normal message fully visible. Very tall
-    // messages cannot satisfy that invariant without reducing the sheet to nothing; they
-    // keep a useful minimum sheet and preserve the exact slice the reader pressed instead.
+    // A scrollable sheet may shrink to leave a normal message fully visible. A very tall
+    // message cannot, without reducing the sheet to nothing; it keeps a minimum sheet and
+    // preserves the slice the reader pressed.
     const fitHeight =
       surfaceRect.bottom -
       (scrollerRect.top + anchorRect.height + SHEET_GAP_PX);
@@ -136,8 +135,8 @@ export class MessageSheetViewportSession {
       this.scroller!.scrollTop = Math.max(0, this.scroller!.scrollTop + delta);
     }
 
-    // Layout clamping and virtual-window re-rendering happen after the first write. One
-    // invocation-scoped correction is enough; every read below revalidates connectivity.
+    // Layout clamping and virtual-window re-rendering follow the first write; one
+    // correction per invocation is enough. Every read below revalidates connectivity.
     this.schedule(() => this.correct());
   }
 
@@ -177,8 +176,7 @@ export class MessageSheetViewportSession {
       return 0;
     }
 
-    // Literal whole-row visibility is geometrically impossible. Keep the point that won
-    // the long press inside the unobscured band so the reader retains the context they chose.
+    // Whole-row visibility is impossible; keep the long-pressed point inside the unobscured band.
     const pressY = anchor.top + this.pressOffset;
     if (pressY > visibleBottom) {
       return pressY - visibleBottom;

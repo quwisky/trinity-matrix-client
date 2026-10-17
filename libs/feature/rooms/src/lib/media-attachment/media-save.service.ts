@@ -19,15 +19,14 @@ import { SNIFF_BYTES, hasExtension, sniffImage } from './media-filename';
 
 /**
  * Saves a timeline attachment to the device: full-resolution bytes (decrypted in encrypted
- * rooms by {@link MediaPipeline}), then the host file saver — the native share sheet on a
- * phone, a browser download elsewhere. The file card, the lightbox and the message menus all
- * save through here.
+ * rooms by {@link MediaPipeline}), then the host file saver (native share sheet on a
+ * phone, a browser download elsewhere).
  *
  * Root-scoped so a save outlives the row or viewer that started it. In-flight state is kept
  * per item: a repeat request for the same item is ignored (a native Share rejects a
- * concurrent invocation), while other items are unaffected, so one hung save cannot block
- * the rest. There is deliberately no timeout, because a large video legitimately takes long;
- * an account change cancels every save instead.
+ * concurrent invocation), so one hung save cannot block the rest. There is deliberately no
+ * timeout, because a large video legitimately takes long; an account change cancels every
+ * save instead.
  */
 @Injectable({ providedIn: 'root' })
 export class MediaSaveService {

@@ -43,9 +43,9 @@
     </p>
   }
 
-  <!-- Always rendered, never behind an @if: a live region that is created at the moment
-       its text appears is a region the screen reader was not yet watching, so nothing is
-       announced. Only the text changes. Silent until a filter is actually typed. -->
+  <!-- Always rendered, never behind an @if: a live region created at the moment its text
+       appears is not yet watched by the screen reader, so nothing is announced. Only the
+       text changes. Silent until a filter is typed. -->
   <p
     class="sr-only"
     role="status"
@@ -55,8 +55,7 @@
     {{ filterStatus() }}
   </p>
 
-  <!-- Spacers stand in for the rows outside the window so the scrollbar keeps its true
-       length; without them the list would shrink to whatever is rendered. -->
+  <!-- Spacers keep the scrollbar's true length for the rows outside the window. -->
   <div
     class="members__pad"
     aria-hidden="true"

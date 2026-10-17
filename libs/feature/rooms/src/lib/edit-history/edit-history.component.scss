@@ -50,10 +50,8 @@
     font-size: var(--trinity-type-caption-size);
   }
 
-  // The body rules the timeline applies live in message-row's own stylesheet, which is
-  // component-scoped and cannot reach a dialog rendered in an overlay — so they are
-  // restated here rather than borrowed. (The `.msg__text--html` class on the rich variant
-  // is a different matter: that one styles the *injected* markdown children and is global.)
+  // message-row's body rules are component-scoped and cannot reach an overlay dialog, so
+  // they are restated here.
   .revision__text {
     margin: 0;
     color: var(--trinity-text);
@@ -63,17 +61,16 @@
     --trinity-message-surface: var(--trinity-surface-overlay);
   }
 
-  // Only a plain-text revision preserves its own newlines; a rich one encodes them as
-  // <br>, so pre-wrap would double every gap. Scoped with :not() rather than overridden
-  // afterwards, because both selectors land on the same element at equal specificity and
-  // the winner was decided by source order alone. Mirrors message-row.component.scss.
+  // Only plain text keeps its own newlines; a rich revision encodes them as <br>, so
+  // pre-wrap would double every gap. Scoped with :not() because an override would tie on
+  // specificity. Mirrors message-row.component.scss.
   .revision__text:not(.msg__text--html) {
     white-space: pre-wrap;
   }
 
   // A formatted revision clips at its padding box (rendered-markdown.scss: `overflow: clip`,
-  // and WebKit cannot widen an overflow clip). Pad it by the focus-ring reach and take that
-  // back with a negative margin, so a ring at its edge stays whole and nothing moves.
+  // and WebKit cannot widen an overflow clip). Pad by the focus-ring reach and cancel it
+  // with a negative margin so a ring at the edge stays whole.
   .revision__text.msg__text--html {
     $focus-reach: calc(
       var(--trinity-focus-ring-width) + var(--trinity-focus-ring-offset)
@@ -88,7 +85,6 @@
     font-style: italic;
   }
 
-  // Pushed to the trailing edge of the row's head, away from the label and time.
   .revision__remove {
     margin-left: auto;
   }

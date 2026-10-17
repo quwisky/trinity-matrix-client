@@ -26,22 +26,18 @@ interface OpenRendition {
  * the overlay outlives the element that opened it, so the launcher closes its dialog when that
  * consumer is destroyed, or cancels the full image if it is still loading.
  *
- * The full image is pinned while the viewer is open and dropped from the media cache as soon
- * as it closes: it is large and rarely needed twice, so it does not wait for the LRU.
+ * The full image is pinned while the viewer is open and dropped from the media cache as
+ * soon as it closes, without waiting for the LRU.
  */
 @Injectable()
 export class MediaViewerLauncher implements OnDestroy {
   private readonly pipeline = inject(MediaPipeline);
   private readonly dialogs = inject(TrnSurfaceService);
   /**
-   * The image the viewer shows or is loading; at most one, and set for as long as a viewer is
-   * open or on its way.
-   *
-   * The one-at-a-time guard is not defensive tidiness. `resolveMedia` hands every caller the
-   * SAME in-flight observable, so a second tap while the full-resolution bytes are still
-   * arriving would open a second dialog, `ref` would keep only the second, and closing THAT one
-   * would drop a URL the first is still displaying — after which the cache is free to revoke it
-   * under a visible image.
+   * The image the viewer shows or is loading; at most one. The guard is load-bearing:
+   * `resolveMedia` hands every caller the SAME in-flight observable, so a second tap while
+   * the bytes arrive would open a second dialog, and closing it would drop a URL the first
+   * still displays, leaving the cache free to revoke it under a visible image.
    */
   private lightbox: OpenRendition | null = null;
   private ref: TrnDialogRef<void> | null = null;
@@ -97,18 +93,16 @@ export class MediaViewerLauncher implements OnDestroy {
   }
 
   /**
-   * Close the lightbox if it is open.
-   *
-   * Dropping the image is the `closed` subscription's job rather than this method's, so that
-   * a close the CDK performs on its own — Escape, a backdrop click — releases the URL too.
+   * Close the lightbox if it is open. Dropping the image is the `closed` subscription's job,
+   * so a close the CDK performs on its own (Escape, backdrop click) releases the URL too.
    */
   close(): void {
     this.ref?.close();
   }
 
   ngOnDestroy(): void {
-    // The overlay outlives its owner's element, so closing it here is not tidiness: the full
-    // image would otherwise stay pinned with nobody left to release it.
+    // The overlay outlives its owner's element; otherwise the full image stays pinned with
+    // nobody left to release it.
     if (this.ref) {
       this.ref.close();
     } else {
@@ -119,16 +113,14 @@ export class MediaViewerLauncher implements OnDestroy {
 
   private show(lightbox: OpenRendition, url: string): void {
     const { media } = lightbox;
-    // Pinned like a thumbnail: a burst of live media (the cache's eviction) would otherwise
-    // revoke it while it is on screen. Dropped on close.
+    // Pinned like a thumbnail: cache eviction would otherwise revoke it while on screen.
     this.pipeline.pin(url);
     lightbox.url = url;
     this.ref = this.dialogs.open<void, LightboxComponent>(LightboxComponent, {
       inputs: { src: url, filename: media.filename, media },
       ariaLabel: media.filename,
       kind: this.dialogs.prefersSheet() ? 'fullscreen' : 'auto',
-      // Keep the full viewer container as the initial focus target. The visible close button
-      // remains keyboard reachable, while Escape/backdrop dismissal stay intact.
+      // The viewer container is the initial focus target; the close button stays keyboard reachable.
       autoFocus: 'dialog',
     });
     this.ref.closed.subscribe(() => {

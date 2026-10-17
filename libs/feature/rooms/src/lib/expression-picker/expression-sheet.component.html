@@ -17,10 +17,9 @@
     (dismiss)="bridge().dismiss()"
     (manage)="bridge().manage()"
   />
-  <!-- The sheet's one dismiss control a screen reader can reach (by swipe or virtual cursor):
-       the handle is aria-hidden and the backdrop takes no focus. Last, after the picker, and
-       never visible, since the sheet shows no close button. Out of the Tab order, so it is
-       never a keyboard stop without a visible focus; the keyboard closes the sheet with Escape. -->
+  <!-- The one dismiss control a screen reader can reach (the handle is aria-hidden, the
+       backdrop takes no focus). Last and never visible; out of the Tab order so it is never
+       a keyboard stop without visible focus; the keyboard closes the sheet with Escape. -->
   <button
     type="button"
     class="sr-only"

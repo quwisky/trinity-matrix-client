@@ -88,18 +88,14 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
 };
 
 /**
- * Thread view: the root message plus its replies, with an in-thread composer.
- * Reuses the shared {@link MessageRowComponent} so a thread renders exactly like
- * the main timeline (avatars, markdown, media, reactions, the hover toolbar) and
- * the shared {@link MessageComposerComponent} so composing behaves identically
- * (Enter sends, edit/reply banners, emoji, attachments).
+ * Thread view: the root message plus its replies, with an in-thread composer. Reuses
+ * {@link MessageRowComponent} and {@link MessageComposerComponent} so a thread renders and
+ * composes exactly like the main timeline.
  *
- * Orchestration mirrors {@link MessageListComponent} but routes every action
- * through the exact {@link ConversationThread} child, whose commands carry the thread
- * relation so sends/edits/replies stay in the thread. Presentational: rendered in the
- * rooms shell's right-hand panel slot, with `roomId`/`rootEventId` as signal inputs; it
- * closes nothing itself, it announces {@link ThreadViewComponent.dismissed} and the
- * rooms page empties the slot.
+ * Orchestration mirrors {@link MessageListComponent} but routes every action through the
+ * exact {@link ConversationThread} child, whose commands carry the thread relation so
+ * sends/edits/replies stay in the thread. It closes nothing itself: it announces
+ * {@link ThreadViewComponent.dismissed} and the rooms page empties the slot.
  */
 @Component({
   selector: 'trn-thread-view',
@@ -144,8 +140,8 @@ export class ThreadViewComponent implements OnDestroy {
   readonly dismissed = output<void>();
 
   /**
-   * What the thread composer keys its draft by. Shared with a session handover's unsent thread
-   * replies (#1267), which go back under the same key.
+   * What the thread composer keys its draft by. Shared with a session handover's unsent
+   * thread replies, which go back under the same key.
    */
   readonly draftKey = computed(() => threadDraftKey(this.rootEventId()));
 
@@ -190,9 +186,7 @@ export class ThreadViewComponent implements OnDestroy {
         !prev ||
         prev.senderId !== m.senderId ||
         m.timestamp - prev.timestamp > GROUP_GAP_MS ||
-        // A reply always shows its own header: the quoted preview breaks the
-        // visual flow, so a headerless continuation would look like the reply
-        // lost its author (name + avatar).
+        // A reply always shows its own header: the quoted preview breaks the visual flow.
         !!m.replyTo;
       return { ...m, showHeader };
     });
@@ -222,8 +216,8 @@ export class ThreadViewComponent implements OnDestroy {
   );
 
   constructor() {
-    // A thread closed by a press or key inside it (its close button, Escape) would otherwise
-    // stay in memory, detached, as the CDK's last input target until the next one (#1361).
+    // Otherwise a thread closed by a press or key inside it stays in memory, detached, as
+    // the CDK's last input target.
     releaseInputTargetOnDestroy();
   }
 
@@ -234,8 +228,8 @@ export class ThreadViewComponent implements OnDestroy {
     this.openedThread()?.release();
     this.openedThread.set(null);
     // Closing the panel mid-reply otherwise leaves us marked as typing until the server's
-    // own TYPING_TIMEOUT_MS lapses. Owner-keyed, so this cannot clear the flag when the
-    // main composer still holds a draft — which is why the naive one-liner was wrong.
+    // TYPING_TIMEOUT_MS lapses. Owner-keyed, so it cannot clear the flag while the main
+    // composer still holds a draft.
     this.timeline.setTyping(false, 'thread');
   }
 
@@ -243,13 +237,11 @@ export class ThreadViewComponent implements OnDestroy {
    * Which way a thread reply is dragged to act on it.
    *
    * Read from the preference DIRECTLY, unlike the main timeline, whose page forces the
-   * gesture off while the drawer is open. This panel only exists while the drawer is open,
-   * so that rule would leave the gesture permanently dead here — on the one device it is
-   * for. The competition with the drawer's own close-drag is resolved at the row instead: an
-   * armed swipe stops the `pointerdown` from reaching it. See `armSwipe`.
-   *
-   * Still phones only, and for the same reason: above `max-width: 1099.98px` the scroller
-   * does not claim the horizontal axis and the browser eats the drag.
+   * gesture off while the drawer is open: this panel only exists while the drawer is open,
+   * so that rule would leave the gesture dead here. The competition with the drawer's own
+   * close-drag is resolved at the row: an armed swipe stops the `pointerdown` from reaching
+   * it (see `armSwipe`). Still phones only: above `max-width: 1099.98px` the scroller does
+   * not claim the horizontal axis and the browser eats the drag.
    */
   protected readonly swipeDirection = computed<SwipeDirection>(() =>
     this.belowMembers() && isMobileOs() ? this.gestures.messageSwipe() : 'off',
@@ -263,11 +255,9 @@ export class ThreadViewComponent implements OnDestroy {
   );
 
   /**
-   * Dispatch the semantic action the row captured when its sideways drag committed.
-   *
-   * The row snapshot remains valid after it leaves this panel's live caps map, so this
-   * mirrors `MessageListBase.onRowSwipe` without revalidating capabilities and changing the
-   * action after the reader has already committed it.
+   * Dispatch the semantic action the row captured when its sideways drag committed. The
+   * snapshot stays valid after the row leaves the live caps map, so this mirrors
+   * `MessageListBase.onRowSwipe` without revalidating capabilities.
    */
   onRowSwipe(row: MessageRow, action: MessageSwipeAction): void {
     this.haptics.gestureCommitted();
@@ -279,13 +269,9 @@ export class ThreadViewComponent implements OnDestroy {
   }
 
   /**
-   * A long press on a thread reply, on a phone or tablet.
-   *
-   * Present for the same reason the timeline has one, and easy to forget: this component
+   * A long press on a thread reply, on a phone or tablet. Easy to forget: this component
    * renders `trn-message-row` but does NOT extend `MessageListBase`, so it inherits none of
-   * that wiring. Without this the row emitted `longPress` into nothing and — the Android
-   * `contextmenu` fallback having gone with it — every action on a thread reply was
-   * unreachable by touch.
+   * that wiring, and without this the row's `longPress` goes nowhere.
    */
   onRowLongPress(row: MessageRow, context?: MessageLongPressContext): void {
     this.messageSheet.open(
@@ -314,20 +300,17 @@ export class ThreadViewComponent implements OnDestroy {
   }
 
   /**
-   * The room's typists, for the row above the thread composer.
-   *
-   * Room's, not thread's: `m.typing` is a room-level EDU with no thread dimension, so
-   * somebody typing in the main timeline shows here too. That is the protocol rather than a
-   * bug, and it is why the row here does not own the announcement — the list behind it
+   * The room's typists, for the row above the thread composer. Room's, not thread's:
+   * `m.typing` is a room-level EDU with no thread dimension, so somebody typing in the main
+   * timeline shows here too. The row does not own the announcement; the list behind it
    * already announces the same names.
    */
   protected readonly typingNames = this.timeline.typingNames;
 
   /**
-   * Composer typing state → the room's (throttled) typing notification.
-   *
-   * Tagged `'thread'` so a send here cannot clear the flag while the main composer still
-   * holds a draft — `m.typing` is one flag per room and both composers feed it.
+   * Composer typing state → the room's (throttled) typing notification. Tagged `'thread'`
+   * so a send here cannot clear the flag while the main composer still holds a draft:
+   * `m.typing` is one flag per room and both composers feed it.
    */
   onTyping(typing: boolean): void {
     this.timeline.setTyping(typing, 'thread');
@@ -386,9 +369,9 @@ export class ThreadViewComponent implements OnDestroy {
   }
 
   /**
-   * Per-row caps keyed by event id, memoized so the reference is stable across
-   * change-detection ticks that don't change the thread's messages — a fresh object
-   * per CD would defeat the OnPush {@link MessageRowComponent} and re-render every row.
+   * Per-row caps keyed by event id, memoized so the reference is stable across ticks that
+   * don't change the messages; a fresh object would defeat the OnPush
+   * {@link MessageRowComponent} and re-render every row.
    */
   private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
     this.prevRowCaps = buildRowCapsMap(
@@ -437,8 +420,8 @@ export class ThreadViewComponent implements OnDestroy {
         },
         react: (id, key) => this.onReact(id, key),
         quote: (r) => this.startQuote(r),
-        // The thread panel routes no permalinks (its rows don't bind matrixLink either),
-        // so a link followed out of the edit-history dialog just closes it.
+        // The thread panel routes no permalinks (its rows don't bind matrixLink), so a link
+        // followed out of the edit-history dialog just closes it.
       })
     ) {
       return;
@@ -474,9 +457,9 @@ export class ThreadViewComponent implements OnDestroy {
   }
 
   /**
-   * A reply preview's target starts expanded, as in the timeline. When that grows the row, the
-   * scroll waits for the render that shows it whole: the thread has no re-aim after a row
-   * measurement, so scrolling to the collapsed row would leave the reader off target.
+   * A reply preview's target starts expanded, as in the timeline. When that grows the row,
+   * the scroll waits for the render that shows it whole: the thread has no re-aim after a
+   * row measurement, so scrolling to the collapsed row would miss.
    */
   private jumpToRequested(id: string): void {
     const store = this.expandedBodies;
@@ -490,10 +473,10 @@ export class ThreadViewComponent implements OnDestroy {
 
   /**
    * Keyboard focus moving into a collapsed reply expands it (`MessageRowComponent
-   * .expandBodyForFocus`, which handles the event first); the browser scrolled to the control
-   * while it was still clipped, so bring it into view once the reply shows whole. The thread
-   * makes no scroll corrections of its own for a taller row, so the frame after the render is
-   * enough; the timeline does this after its corrections (`MessageListComponent.revealFocusIn`).
+   * .expandBodyForFocus`, which handles the event first); the browser scrolled to the
+   * control while it was still clipped, so bring it into view once the reply shows whole.
+   * The thread makes no scroll corrections, so the frame after the render is enough (the
+   * timeline does this after its corrections: `MessageListComponent.revealFocusIn`).
    */
   revealFocusAfterExpand(event: FocusEvent): void {
     const target = event.target;

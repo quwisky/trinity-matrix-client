@@ -34,25 +34,23 @@ interface OpenRendition {
 
 /**
  * Smart wrapper bridging the timeline's opaque media reference to the presentational
- * {@link MediaBubbleComponent}: resolves the thumbnail object URL via
- * {@link MediaPipeline}, pins it on screen so
- * the cache won't revoke it, and drives full-resolution view + download. The full-resolution
- * viewer is {@link MediaViewerLauncher}'s, shared with the inline images of message bodies.
+ * {@link MediaBubbleComponent}: resolves the thumbnail object URL via {@link MediaPipeline},
+ * pins it on screen so the cache won't revoke it, and drives full-resolution view and
+ * download (the viewer is {@link MediaViewerLauncher}'s).
  *
  * A video or audio clip is the exception to "resolve on render": the whole file would be
  * fetched, decrypted and pinned for every row on screen, so only a video's bundled thumbnail
- * (its poster) is resolved up front and the clip itself waits for {@link play}.
+ * (its poster) is resolved up front and the clip waits for {@link play}.
  *
  * In a timeline that loads images after fast scrolling (Settings › Experimental), the
- * thumbnail or poster waits for the list's {@link TimelineMediaGate}: until the row is near
- * the viewport and the list is no longer flinging. One still loading when the row goes is
- * cancelled, so a row the reader only passed leaves no blob, decode or upload behind.
+ * thumbnail or poster waits for the list's {@link TimelineMediaGate} (row near the viewport,
+ * list not flinging). One still loading when the row goes is cancelled, so a row the reader
+ * only passed leaves no blob, decode or upload behind.
  *
  * Full-size renditions are large and rarely needed twice, so they are dropped from the media
- * cache as soon as they are closed instead of waiting for the LRU: the lightbox image when the
- * lightbox closes ({@link MediaViewerLauncher}'s job), a clip when its playback ends (the player
- * returns to its play control), when the row is recycled for another message, and when the row
- * is destroyed.
+ * cache as soon as they close rather than waiting for the LRU: the lightbox image on close
+ * ({@link MediaViewerLauncher}'s job), a clip when playback ends, when the row is recycled
+ * for another message, and when the row is destroyed.
  */
 @Component({
   selector: 'trn-media-attachment',
@@ -101,16 +99,14 @@ export class MediaAttachmentComponent {
   private clip: OpenRendition | null = null;
 
   constructor() {
-    // Re-resolve whenever the bound message changes — instances are recycled
-    // across `@for` rows, so each new `media` re-fetches and re-pins.
+    // Rows are recycled across `@for`, so each new `media` re-fetches and re-pins.
     effect(() => {
       const media = this.media();
       const previous = this.current;
       this.current = media;
       // Under the gate, a receipt or reaction re-projects the message with a new reference to
-      // the same file: keep the thumbnail shown or still loading rather than cancel and fetch it
-      // again (an encrypted original is a full download and decrypt each time).
-      // A failed one is tried again, as before.
+      // the same file: keep the thumbnail shown or loading rather than refetch (an encrypted
+      // original is a full download and decrypt each time). A failed one is tried again.
       if (
         previous &&
         !this.thumbnailFailed &&
@@ -120,12 +116,12 @@ export class MediaAttachmentComponent {
         return;
       }
       this.thumbnailFailed = false;
-      // A row that already shows its image is re-rendering its message (an edit, a receipt,
-      // a reaction): load at once rather than blank it mid-scroll. Read before the reset.
+      // A row already showing its image is re-rendering its message: load at once rather than
+      // blank it mid-scroll. Read before the reset.
       const shown = this.pinnedUrl !== null;
       this.releaseThumbnail();
-      // A clip playing in a recycled row belongs to the previous message: closing it. A
-      // re-projection of the same file, whatever the gate, keeps it loading or playing.
+      // A clip playing in a recycled row belongs to the previous message: close it. A
+      // re-projection of the same file keeps it loading or playing.
       const keepClip =
         !!this.clip && this.mediaPipeline.sameMedia(this.clip.media, media);
       if (!keepClip) {
@@ -135,15 +131,10 @@ export class MediaAttachmentComponent {
       this.poster.set(null);
       this.errorMsg.set(null);
       this.repin(null);
-      // Note what is NOT here any more: a force-close of the lightbox. While it rendered
-      // inside this row, a recycled instance would have shown the previous message's image,
-      // so the row had to slam it shut and skip the focus restore to avoid moving focus to
-      // an unrelated button. An overlay is not inside the row — it holds its own URL, pinned
-      // for as long as it is open — so a message arriving under it is no longer its problem,
-      // and the image the reader opened stays open.
-      // A file card is a pure download affordance — it never binds `src`, so it resolves
-      // nothing: an encrypted file would otherwise be fetched and fully AES-decrypted into
-      // pinned memory on every render, just to be discarded (an OOM/privacy hazard when
+      // The lightbox is an overlay holding its own pinned URL, so a recycled row never
+      // closes it. A file card is a pure download affordance and never binds `src`, so it
+      // resolves nothing: an encrypted file would otherwise be fetched and fully
+      // AES-decrypted into pinned memory on every render (an OOM/privacy hazard when
       // scrolling a room of attachments). Video and audio get the same treatment below.
       if (media.kind === 'image') {
         // Only an image may stand in with its thumbnail: a <video>/<audio> plays its src, and a
@@ -262,7 +253,7 @@ export class MediaAttachmentComponent {
     resolve: Observable<string>,
     show: (url: string) => void,
   ): void {
-    // Only with the gate on is a row that goes mid-load cancelled; off, it loads as before.
+    // Only with the gate on is a row that goes mid-load cancelled.
     const cancellable = this.gate?.enabled ?? false;
     this.pending = cancellable ? media : null;
     let resolved = false;

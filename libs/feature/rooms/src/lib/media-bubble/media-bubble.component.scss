@@ -17,10 +17,7 @@
   .media--image {
     width: 100%;
 
-    // `max-height` still clamps a very tall image — what changed is that it no longer CROPS
-    // one. It used to pair with `object-fit: cover`, so a tall screenshot was clipped to 20rem
-    // and then had its edges cut off to fill the box: reserved at one shape, drawn at another.
-    // With `contain` the whole image stays inside whatever height survives the clamp.
+    // `max-height` clamps a very tall image; `contain` keeps the whole image inside it.
     max-height: 20rem;
     border-radius: var(--trinity-shape-container-radius);
     overflow: hidden;
@@ -32,8 +29,7 @@
     width: 100%;
     height: 100%;
 
-    // `contain`, not `cover`: cover crops to fill, which silently hides the edges of a tall
-    // screenshot — the case people most often share and most need to read.
+    // `contain`, not `cover`: cover would silently crop the edges of a tall screenshot.
     object-fit: contain;
   }
 
@@ -43,9 +39,8 @@
     height: 100%;
     min-height: 8rem;
 
-    // NOT `--trinity-sidebar`: that is what `.media--image` paints its own box with, so the
-    // skeleton was the same colour as the thing it sits inside and could not be seen at all.
-    // This is the one skeleton in the workspace and it was invisible.
+    // NOT `--trinity-sidebar`: `.media--image` paints its own box with it, so the skeleton
+    // would be invisible.
     background: var(--trinity-state-hover-surface);
   }
 
@@ -150,8 +145,8 @@
     }
   }
 
-  // Always paired with .media--file in the template; the compound selector outranks it
-  // outright so the tint no longer depends on staying below it in source order.
+  // Always paired with .media--file in the template; the compound selector outranks it, so
+  // the tint does not depend on source order.
   .media--file.media--error {
     // A pale error card, not a saturated alert fill. Theme Foundation owns the opaque ramp so
     // this treatment stays stable on every surface and never reaches through to Helm tokens.

@@ -1,16 +1,15 @@
 import { Injectable } from '@angular/core';
 
-/** How far ahead of view an inline image starts loading: one scroller height (spec A2). */
+/** How far ahead of view an inline image starts loading: one scroller height. */
 const ROOT_MARGIN = '100% 0px';
 
 /**
  * Tells inline images when they come within one viewport of view, so a long room does not
- * fetch every image in its history. One `IntersectionObserver` per scroll root — the timeline's
- * and the thread's `[data-message-scroller]`, or the page for bodies outside them (the composer
- * preview, edit history) — shared by every image under it. A root margin on the page alone
- * would not reach past a scroller's clip, hence one per root. `loading="lazy"` cannot do this:
- * it does not apply to the blob URLs authenticated media resolves to. Where
- * `IntersectionObserver` is missing, an image counts as near at once.
+ * fetch every image in its history. One `IntersectionObserver` per scroll root (the
+ * timeline's and the thread's `[data-message-scroller]`, or the page for other bodies),
+ * shared by every image under it: a root margin on the page alone would not reach past a
+ * scroller's clip. `loading="lazy"` cannot do this: it does not apply to the blob URLs
+ * authenticated media resolves to. Without `IntersectionObserver`, an image counts as near.
  */
 @Injectable({ providedIn: 'root' })
 export class InlineImageVisibility {

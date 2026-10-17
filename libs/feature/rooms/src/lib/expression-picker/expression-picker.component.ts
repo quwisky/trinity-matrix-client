@@ -42,21 +42,18 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
 };
 
 /**
- * The composer's one panel for GIFs, stickers and emoji, each on its own tab and each the
- * existing picker.
+ * The composer's one panel for GIFs, stickers and emoji, each on its own tab.
  *
- * It is one surface. As a popover it draws one overlay card: the tabs are its header and the
- * active picker sits inside it, drawing no card of its own (the emoji grid is embedded
- * without its frame). In a bottom sheet the sheet is the only surface, so it draws none.
+ * One surface: as a popover it draws one overlay card (tabs as header, the active picker
+ * inside with no card of its own); in a bottom sheet the sheet is the only surface.
  *
- * Only the tabs that can be used are offered, and with Emoji alone there is no tab bar at
- * all. The tabs follow the WAI-ARIA tab pattern with MANUAL activation: the arrow keys,
- * Home and End move focus, and Enter, Space or a click selects. Automatic activation would
- * fight the pickers, because the GIF and sticker pickers move focus into their own search
- * field when they appear, which would take it off the tab row after one arrow press.
+ * Only usable tabs are offered; with Emoji alone there is no tab bar. The tabs follow the
+ * WAI-ARIA tab pattern with MANUAL activation (arrows, Home and End move focus; Enter,
+ * Space or a click selects): the GIF and sticker pickers move focus into their search
+ * field when they appear, so automatic activation would take it off the tab row.
  *
  * The composer owns whether it is open and what each pick does; the panel owns which tab
- * shows, and remembers it per device through {@link ComposerExpressionTabPreference}.
+ * shows, remembered per device through {@link ComposerExpressionTabPreference}.
  */
 @Component({
   selector: 'trn-expression-picker',
@@ -71,10 +68,9 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
   templateUrl: './expression-picker.component.html',
   host: {
     class: 'flex flex-col items-stretch',
-    // As a popover: the emoji picker's 302px expressed in rem, so it follows the text size
-    // and stays one width across tabs, clamped to the viewport less the overlay's 8px
-    // margins. The emoji grid fills the card inside it, its columns following from that
-    // width and the real scrollbar. As a sheet: the sheet's full width.
+    // Popover: the emoji picker's 302px in rem, so it follows the text size and stays one
+    // width across tabs, clamped to the viewport less the overlay's 8px margins. Sheet:
+    // full width.
     '[style.width]':
       "presentation() === 'sheet' ? '100%' : 'calc(302rem / 16)'",
     '[style.max-width]':
@@ -95,16 +91,15 @@ export class ExpressionPickerComponent {
   private readonly gifPicker = viewChild(GifPickerComponent);
   private readonly stickerPicker = viewChild(StickerPickerComponent);
   /**
-   * The anchored layer holding the panel, when it is one. It keeps the panel between opens
-   * (#1320), so the panel is not created again on a reopen; a sheet has no such layer.
+   * The anchored layer holding the panel, when it is one. It keeps the panel between opens,
+   * so a reopen does not create it again; a sheet has no such layer.
    */
   private readonly layer = inject(TrnAnchoredOverlayDirective, {
     optional: true,
   });
   /**
    * The tab chosen since the panel was last shown; null until one is. Cleared on each show,
-   * so a kept panel opens on the remembered tab, as a new one does, even if another panel
-   * (the phone's sheet) chose a different tab meanwhile.
+   * so a kept panel opens on the remembered tab even if the phone's sheet chose another.
    */
   private readonly chosen = signal<ComposerExpressionTab | null>(null);
   /** The tab holding the single tab stop; null means the selected one. */
@@ -168,9 +163,8 @@ export class ExpressionPickerComponent {
   });
 
   constructor() {
-    // Shown again without being created again: do what creating it did. The GIF and sticker
-    // pickers focus their search when they are created, and the emoji grid refreshes its
-    // frequently-used row from `shown`.
+    // Shown again without being created again: redo what creation did (the GIF and sticker
+    // pickers focus their search; the emoji grid refreshes its frequently-used row).
     const injector = inject(Injector);
     let firstShown = true;
     effect(() => {
@@ -192,10 +186,9 @@ export class ExpressionPickerComponent {
       });
     });
 
-    // A sheet opens with focus on its content. Done here rather than by the dialog's own
-    // autofocus, which runs later and would take focus back out of a search field a picker
-    // has already focused (the emoji grid does as soon as its chunk is loaded); so only when
-    // focus is not inside the content already.
+    // A sheet opens with focus on its content, unless focus is already inside. Not the
+    // dialog's own autofocus: it runs later and would pull focus out of a search field a
+    // picker has already focused (the emoji grid does once its chunk loads).
     afterNextRender(() => {
       const content = this.content().nativeElement;
       if (
@@ -244,8 +237,8 @@ export class ExpressionPickerComponent {
         break;
       case 'Enter':
       case ' ':
-        // Handled here rather than left to the button's own activation, so a held key
-        // selects once and the behaviour does not depend on how the host synthesises clicks.
+        // Not left to the button's own activation: a held key must select once, whatever
+        // the host does with synthesised clicks.
         event.preventDefault();
         this.select(this.tabStop());
         return;

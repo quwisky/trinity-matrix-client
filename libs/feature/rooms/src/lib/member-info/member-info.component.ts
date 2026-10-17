@@ -48,11 +48,10 @@ import { AvatarComponent } from '@trinity/components/generic-content';
 /**
  * A room-scoped info card for a member (avatar, name, id, live presence, role), shown
  * when a member row is clicked: a dialog on a large screen, a bottom sheet on a phone or
- * tablet or below `md`, or in place inside settings. It is the launch surface for member
- * actions: **Message** (closes resolving the user id so the host opens/reuses a DM),
- * **Copy user ID**, and —
- * when the viewer's power permits — **change role** and **remove / ban**. The moderation
- * writes run here; the host only handles the DM and computes the permission caps.
+ * tablet or below `md`, or in place inside settings. It launches member actions:
+ * **Message** (closes resolving the user id so the host opens/reuses a DM), **Copy user
+ * ID**, and, when the viewer's power permits, **change role** and **remove / ban**. The
+ * moderation writes run here; the host only handles the DM and computes the permission caps.
  */
 @Component({
   selector: 'trn-member-info',
@@ -70,9 +69,9 @@ import { AvatarComponent } from '@trinity/components/generic-content';
   templateUrl: './member-info.component.html',
   styleUrl: './member-info.component.scss',
   host: {
-    // Embedded in settings, the detail column owns the height, so the panel surface fills it.
+    // Embedded in settings, the detail column owns the height, so the panel fills it.
     class: 'flex h-full flex-col',
-    // Drives the panel presentation in the stylesheet — see the note on {@link isPanel}.
+    // Drives the panel presentation in the stylesheet (see {@link isPanel}).
     '[class.member-info--panel]': 'isPanel',
   },
 })
@@ -102,12 +101,9 @@ export class MemberInfoComponent {
   readonly embedded = input(false);
 
   /**
-   * Present when this is a dialog or sheet, absent when a host renders it in place.
-   *
-   * The one surface that has to work both ways. Member info from the member list opens
-   * through `TrnSurfaceService`; settings embeds the same content inside its owning dialog.
-   * Rather than fork the component, every exit goes through {@link finish}, which closes
-   * its own dialog when present and otherwise announces itself for the host to act on.
+   * Present when this is a dialog or sheet (opened through `TrnSurfaceService`), absent when
+   * settings embeds it in place. Every exit goes through {@link finish}, which closes the
+   * dialog when present and otherwise announces itself for the host to act on.
    */
   private readonly dialogRef = inject<TrnDialogRef<string | null>>(
     TrnDialogRef,
@@ -121,12 +117,8 @@ export class MemberInfoComponent {
 
   /**
    * Whether this renders in place (embedded in settings) rather than as a dialog or sheet.
-   *
-   * The two presentations are genuinely different surfaces, not a skin: a dialog or sheet
-   * is a profile card on the shared shell that its X, the backdrop and Escape dismiss,
-   * while in place it is a full-height panel with no backdrop of its own, so it carries its
-   * own header and close button. Read from the ref rather than passed in, so the two can
-   * never disagree.
+   * In place there is no backdrop or Escape of its own, so it carries its own header and
+   * close button. Read from the ref rather than passed in, so the two cannot disagree.
    */
   get isPanel(): boolean {
     return this.embedded() || !this.dialogRef;
@@ -269,9 +261,8 @@ export class MemberInfoComponent {
   }
 
   /**
-   * Copy the member's user id, confirming with a toast — but only once the write has
-   * actually resolved. A rejected write (denied permission, non-secure context) must
-   * not be reported as success: the user walks away believing they have the id.
+   * Copy the member's user id, confirming with a toast only once the write has resolved:
+   * a rejected write (denied permission, non-secure context) must not be reported as success.
    */
   copyId(): void {
     const value = this.member().userId;

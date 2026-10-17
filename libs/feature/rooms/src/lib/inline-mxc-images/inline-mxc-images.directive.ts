@@ -29,7 +29,7 @@ import {
 import { InlineImageVisibility } from './inline-image-visibility';
 
 const MAX_INLINE_EMOTES = 50;
-/** Inline images one message may fetch (spec A2), counted apart from emoji. */
+/** Inline images one message may fetch, counted apart from emoji. */
 const MAX_INLINE_IMAGES = 10;
 /** A plain `mxc://server/media-id`, the shape the SDK accepts. */
 const MXC_URI = /^mxc:\/\/[^/\s]+\/[\w-]+$/;
@@ -46,16 +46,16 @@ interface Declaration {
 }
 
 /**
- * Resolves the inline `mxc://` images of a sanitized body — MSC2545 custom emoji and, since
- * spec A2, ordinary images — through authenticated media, without the browser ever seeing an
- * `mxc:` URL. `sanitizeMatrixHtml` moved each source to `data-mx-src`, which Angular strips at
- * the leaf, so the sources are re-read from the sanitized string — parsed once, and only when it
- * declares one — and paired with the live elements in document order. Emoji resolve at once
- * (cap 50), or inside a concealed spoiler once it is revealed: hidden is not enough, because the
- * fetch itself tells the media server the emoji was shown. Images (cap 10) wait until they come
- * within one viewport of view and, inside a concealed spoiler, until it is revealed; the sender's `width`/`height` reserve their box
- * within the stylesheet's height cap (see `inline-image-box.ts`). Click, Enter or Space on an image opens the full image in the shared
- * viewer; an image inside a link is left to the link.
+ * Resolves the inline `mxc://` images of a sanitized body (MSC2545 custom emoji and
+ * ordinary images) through authenticated media, without the browser ever seeing an `mxc:`
+ * URL. `sanitizeMatrixHtml` moved each source to `data-mx-src`, which Angular strips at the
+ * leaf, so the sources are re-read from the sanitized string and paired with the live
+ * elements in document order. Emoji resolve at once (cap 50), or inside a concealed
+ * spoiler once it is revealed: hidden is not enough, because the fetch itself tells the
+ * media server the emoji was shown. Images (cap 10) wait until they come within one
+ * viewport of view and, inside a concealed spoiler, until it is revealed. Click, Enter or
+ * Space on an image opens the full image in the shared viewer; an image inside a link is
+ * left to the link.
  */
 @Directive({
   selector: '[trnInlineMxcImages]',
@@ -70,8 +70,7 @@ export class InlineMxcImagesDirective implements OnDestroy {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly media = inject(MediaService);
   private readonly visibility = inject(InlineImageVisibility);
-  // The viewer, MediaPipeline and the toast are needed only on activation, so they are
-  // resolved then, not for every body rendered.
+  // The viewer, MediaPipeline and toast are resolved on activation, not per rendered body.
   private readonly injector = inject(Injector);
   private readonly spoilers = inject(SpoilerRevealDirective, {
     optional: true,
@@ -81,9 +80,8 @@ export class InlineMxcImagesDirective implements OnDestroy {
   private subscriptions = new Subscription();
   /**
    * Viewer requests outlive a re-render of the body (an edit arriving while the full image
-   * loads must not swallow the reader's tap); they end with the directive. The launcher, a
-   * provider of this directive, is destroyed first and cancels or closes on its own; this
-   * only covers the reverse order.
+   * loads must not swallow the tap); they end with the directive. The launcher is destroyed
+   * first and cancels on its own; this covers the reverse order.
    */
   private readonly viewerRequests = new Subscription();
   /** One entry per pin taken: the same emoji twice in a body pins its shared URL twice. */
@@ -169,7 +167,7 @@ export class InlineMxcImagesDirective implements OnDestroy {
   }
 
   private resolve(sourceHtml: string): void {
-    // Most bodies declare no inline image, and parsing every one of them is real work.
+    // Most bodies declare no inline image; parsing every one is real work.
     const source = sourceHtml.includes('data-mx-src')
       ? new DOMParser().parseFromString(sourceHtml, 'text/html')
       : null;
@@ -214,8 +212,7 @@ export class InlineMxcImagesDirective implements OnDestroy {
       this.images.set(target, declaration);
       reserveBox(target);
       target.classList.add('mx-image--loading');
-      // Something decodable to draw until the thumbnail arrives: an image with no source draws
-      // the browser's broken-image icon in the loading box.
+      // A source without one draws the browser's broken-image icon in the loading box.
       target.src = LOADING_PLACEHOLDER;
       const start = (): void => {
         this.subscriptions.add(
@@ -337,8 +334,8 @@ function payloadFor({ mxc, alt }: Declaration): MediaPayload {
     mxc,
     file: null,
     filename: alt,
-    // Unknown: an inline image declares no type. Its bytes say what it is when it is shown or
-    // saved; claiming PNG would flatten an animated GIF the full view downscales.
+    // Unknown: an inline image declares no type; claiming PNG would flatten an animated GIF
+    // the full view downscales.
     mimeType: 'application/octet-stream',
     thumbnailMxc: null,
     thumbnailFile: null,

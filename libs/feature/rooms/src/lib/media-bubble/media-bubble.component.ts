@@ -92,13 +92,9 @@ export class MediaBubbleComponent {
   readonly imgFailed = signal(false);
 
   /**
-   * The real shape, once the bytes arrive and can be asked.
-   *
-   * The fallback below is a RESERVATION — a guess made before anything is known, so the row
-   * does not jump. Left bound after the file has loaded it stops being a guess and becomes
-   * the box: an image whose event omits `info.w`/`info.h` would be letterboxed into 16 / 9
-   * permanently, which is worse than the jump it was preventing. So the moment the element
-   * can report its own dimensions, they win.
+   * The real shape, once the element can report it. The fallback below is only a
+   * RESERVATION made before anything is known; left bound after load, an image whose event
+   * omits `info.w`/`info.h` would be letterboxed into 16 / 9 permanently.
    */
   private readonly loadedRatio = signal<string | null>(null);
 
@@ -130,14 +126,9 @@ export class MediaBubbleComponent {
 
   /**
    * CSS aspect-ratio from intrinsic dimensions, so the box is the right size before the
-   * bytes arrive and the timeline does not jump when they do.
-   *
-   * Falls back to 16 / 9 rather than to nothing. An event whose `info` omits `w`/`h` is
-   * common — plenty of clients send it, and an encrypted attachment may carry no dimensions
-   * at all — and reserving nothing means the row is one line tall until the image decodes
-   * and then several hundred pixels tall afterwards, which is the layout shift this computed
-   * exists to prevent. A wrong-but-reasonable reservation moves the content once by a little
-   * instead of once by everything.
+   * bytes arrive. Falls back to 16 / 9 rather than nothing: events often omit `info.w`/`h`
+   * (an encrypted attachment may carry none), and reserving nothing makes the row jump from
+   * one line to full height on decode.
    */
   readonly aspectRatio = computed(() => {
     const w = this.item().width;
@@ -150,10 +141,10 @@ export class MediaBubbleComponent {
   });
 
   /**
-   * Only an image whose size the event states may load lazily. Its box is reserved up front,
-   * so deferring the decode cannot move anything. Without `info.w`/`info.h` the box is a 16 / 9
-   * guess that the image corrects on load; deferring that load would make the correction land
-   * while the reader scrolls, shifting rows the virtual list has already measured. Those stay eager.
+   * Only an image whose size the event states may load lazily: its box is reserved, so
+   * deferring the decode moves nothing. Without `info.w`/`info.h` the 16 / 9 guess is
+   * corrected on load; deferring that would shift rows the virtual list has already
+   * measured while the reader scrolls, so those stay eager.
    */
   readonly hasIntrinsicSize = computed(
     () => !!this.item().width && !!this.item().height,
@@ -212,13 +203,12 @@ export class MediaBubbleComponent {
   }
 
   constructor() {
-    // Reset the per-image failure flag when the source changes (instances are
-    // reused across @for rows).
+    // Reset the failure flag when the source changes (instances are reused across @for rows).
     effect(() => {
       this.src();
       this.imgFailed.set(false);
-      // The measured shape belongs to the previous file, and these instances are reused
-      // across rows — keeping it would size one attachment to another one's proportions.
+      // The measured shape belongs to the previous file; rows are reused, so keeping it would
+      // size one attachment to another's proportions.
       this.loadedRatio.set(null);
     });
   }

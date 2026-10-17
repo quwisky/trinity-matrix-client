@@ -4,19 +4,18 @@
   .member-info {
     @include profile-card;
 
-    // The hosts own the bottom safe area: the sheet frame pads it, and so does the settings
-    // column that embeds this. The card only keeps its own inset below the last action.
+    // The hosts (sheet frame, embedding settings column) own the bottom safe area; the card
+    // keeps only its own inset below the last action.
     padding-bottom: var(--trinity-space-5);
 
-    // Mounted outside .members either way — the CDK overlay as a dialog or sheet, settings'
-    // detail column in place — so tell the avatar's presence dot what surface it rings
-    // against, else the ring halos (see member-list).
+    // Mounted outside .members either way (CDK overlay, or settings' detail column), so
+    // tell the presence dot what surface it rings against, else the ring halos (see
+    // member-list).
     --trn-presence-ring: var(--trinity-surface-raised);
   }
 
-  // Two presentations, one component (see `isPanel`). A dialog or sheet is the profile card
-  // above; embedded in settings it fills the detail column as a full-height panel instead
-  // of a small card floating in it.
+  // Two presentations, one component (see `isPanel`): the profile card above, or, embedded
+  // in settings, a full-height panel filling the detail column.
   :host.member-info--panel {
     display: flex;
     flex-direction: column;
