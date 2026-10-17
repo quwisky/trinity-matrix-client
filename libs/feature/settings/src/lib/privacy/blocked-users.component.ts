@@ -66,7 +66,7 @@ export class BlockedUsersComponent {
   protected readonly description = computed(() => {
     const account = this.matrix.activeUserId();
     return this.matrix.accountIds().length > 1 && account
-      ? `You won't see messages or invites from people you block on ${account}.`
+      ? `Blocks on ${account}: you won't see messages or invites from these people.`
       : "You won't see messages or invites from people you block.";
   });
 

@@ -98,6 +98,8 @@
           presentation="ghost"
           class="w-full"
           (click)="toggleIgnore()"
+          [trnActionAllowed]="blockUnavailableReason() === null"
+          [trnActionDisabledReason]="blockUnavailableReason()"
           data-testid="member-info-ignore"
         >
           {{ ignored() ? 'Unblock' : 'Block' }}

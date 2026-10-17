@@ -1,10 +1,20 @@
-import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+  type Page,
+} from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { passwordLogin, registerUser } from '../../../support/account.mts';
+import {
+  passwordLogin,
+  registerUser,
+  type AccountSession,
+} from '../../../support/account.mts';
 import {
   closeSettings,
   openSettingsSection,
@@ -12,8 +22,8 @@ import {
 
 // Covers Settings › Privacy › Blocked users: a member blocked from their card is listed
 // there (IgnoredUsersService.ignoredUsers over m.ignored_user_list), unblocking from the
-// list removes them, and the card follows the same list back to "Block". Needs a
-// homeserver; self-skips otherwise.
+// list removes them, and the card follows the same list back to "Block", including changes
+// made on another device. A message sent while blocked appears on unblock without a reload.
 const session = homeserverSession();
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
@@ -38,6 +48,28 @@ async function openMemberCard(page: Page, memberName: string): Promise<void> {
   await expect(page.getByTestId('member-info')).toBeVisible({
     timeout: 10_000,
   });
+}
+
+function serverOf(userId: string): string {
+  return userId.slice(userId.indexOf(':') + 1);
+}
+
+async function putIgnored(
+  request: APIRequestContext,
+  hs: string,
+  account: AccountSession,
+  userIds: readonly string[],
+): Promise<void> {
+  const res = await request.put(
+    `${hs}/_matrix/client/v3/user/${encodeURIComponent(account.userId)}/account_data/m.ignored_user_list`,
+    {
+      headers: { Authorization: `Bearer ${account.accessToken}` },
+      data: {
+        ignored_users: Object.fromEntries(userIds.map((id) => [id, {}])),
+      },
+    },
+  );
+  expect(res.ok()).toBe(true);
 }
 
 test.describe('Blocked users in Settings', () => {
@@ -95,6 +127,19 @@ test.describe('Blocked users in Settings', () => {
     await page.getByTestId('member-info-close').click();
     await expect(page.getByTestId('member-info')).toBeHidden();
 
+    // A message sent while blocked stays hidden until the block is lifted.
+    const whileBlocked = `while blocked ${runId}`;
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/${runId}wb`,
+      {
+        headers: auth(otherApi.accessToken),
+        data: { msgtype: 'm.text', body: whileBlocked },
+      },
+    );
+    const hiddenMessage = page.locator('.scroll .msg[data-mid]', {
+      hasText: whileBlocked,
+    });
+
     await openSettingsSection(page, 'privacy');
     const blocked = page.getByTestId('privacy-blocked-users');
     const row = blocked.getByTestId('blocked-user-row');
@@ -102,16 +147,27 @@ test.describe('Blocked users in Settings', () => {
     await expect(row).toContainText(otherName);
     await expect(row).toContainText(otherApi.userId);
 
+    // Another device adds someone: the open list follows the synced account data.
+    const elsewhere = `@elsewhere-${runId}:${serverOf(viewerApi.userId)}`;
+    await putIgnored(request, hs, viewerApi, [otherApi.userId, elsewhere]);
+    await expect(row).toHaveCount(2, { timeout: 30_000 });
+    await expect(row.nth(1)).toContainText(elsewhere);
+
     await blocked.getByRole('button', { name: `Unblock ${otherName}` }).click();
-    await expect(blocked.getByText("You haven't blocked anyone.")).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(row).toHaveCount(1, { timeout: 30_000 });
+    await expect(row).toContainText(elsewhere);
     await closeSettings(page);
 
+    // No reload: the message sent while blocked appears once unblocked.
+    await expect(hiddenMessage.first()).toBeVisible({ timeout: 30_000 });
+
     await openMemberCard(page, otherName);
-    await expect(page.getByTestId('member-info-ignore')).toHaveText('Block', {
-      timeout: 15_000,
-    });
+    const card = page.getByTestId('member-info-ignore');
+    await expect(card).toHaveText('Block', { timeout: 15_000 });
+
+    // Another device blocks them again: the open card follows.
+    await putIgnored(request, hs, viewerApi, [otherApi.userId]);
+    await expect(card).toHaveText('Unblock', { timeout: 30_000 });
   });
 
   test('blocking by user ID refuses yourself and lists someone else', async ({

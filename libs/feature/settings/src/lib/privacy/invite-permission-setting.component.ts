@@ -15,8 +15,9 @@ import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { InvitePermissionService } from '@trinity/data-access/room-library';
-import { Subscription } from 'rxjs';
+import { Subject, catchError, concatMap, last, map, of } from 'rxjs';
 
 type InviteChoice = 'allow' | 'block';
 
@@ -48,17 +49,27 @@ const OPTIONS: readonly TrnRadioOption<InviteChoice>[] = [
 })
 export class InvitePermissionSettingComponent {
   private readonly permission = inject(InvitePermissionService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly destroyRef = inject(DestroyRef);
   /**
    * The choice shown ahead of the server. The native radio checks itself on click, so a failed
    * save must move the bound value back for the control to follow.
    */
   private readonly pending = signal<InviteChoice | null>(null);
-  private saving$ = Subscription.EMPTY;
+  /** Writes run one after another, so the newest choice is also the last one stored. */
+  private readonly choices = new Subject<InviteChoice>();
+  private queued = 0;
 
   protected readonly options = OPTIONS;
   protected readonly supported = this.permission.supported;
   protected readonly error = signal<string | null>(null);
+  /** With several accounts signed in, says which one the setting belongs to. */
+  protected readonly description = computed(() => {
+    const account = this.matrix.activeUserId();
+    return this.matrix.accountIds().length > 1 && account
+      ? `Invites to ${account}.`
+      : undefined;
+  });
   protected readonly choice = computed<InviteChoice>(
     () => this.pending() ?? (this.permission.blocked() ? 'block' : 'allow'),
   );
@@ -68,23 +79,29 @@ export class InvitePermissionSettingComponent {
       .runProjection()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+    this.choices
+      .pipe(
+        concatMap((choice) =>
+          this.permission.setBlocked(choice === 'block').pipe(
+            last(undefined, undefined),
+            map(() => true),
+            catchError(() => of(false)),
+          ),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((saved) => {
+        this.queued -= 1;
+        this.error.set(saved ? null : "Couldn't change this. Try again.");
+        if (this.queued === 0) this.pending.set(null);
+      });
   }
 
   protected choose(choice: InviteChoice): void {
     if (choice === this.choice()) return;
     this.error.set(null);
     this.pending.set(choice);
-    // The newer choice wins; the radios stay enabled so keyboard focus is never dropped.
-    this.saving$.unsubscribe();
-    this.saving$ = this.permission
-      .setBlocked(choice === 'block')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => this.pending.set(null),
-        error: () => {
-          this.pending.set(null);
-          this.error.set("Couldn't change this. Try again.");
-        },
-      });
+    this.queued += 1;
+    this.choices.next(choice);
   }
 }

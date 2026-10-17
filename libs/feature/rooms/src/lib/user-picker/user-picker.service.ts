@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnSurfaceService } from '@trinity/components/overlay';
-import { type Observable } from 'rxjs';
-import { UserPickerComponent } from './user-picker.component';
+import { map, type Observable } from 'rxjs';
+import { UserPickerComponent, type PickedUser } from './user-picker.component';
 
 /** Heading / labels for a {@link UserPickerService.pick$} presentation. */
 export interface UserPickerOptions {
@@ -21,7 +21,12 @@ export class UserPickerService {
 
   /** Open the picker; resolves the selected MXID, or null if cancelled/dismissed. */
   pick$(options: UserPickerOptions): Observable<string | null> {
-    return this.dialog.openAndWait$<string, UserPickerComponent>(
+    return this.pickUser$(options).pipe(map((user) => user?.userId ?? null));
+  }
+
+  /** Open the picker; resolves who was picked, with their name when known. */
+  pickUser$(options: UserPickerOptions): Observable<PickedUser | null> {
+    return this.dialog.openAndWait$<PickedUser, UserPickerComponent>(
       UserPickerComponent,
       {
         autoFocus: '[data-autofocus]',

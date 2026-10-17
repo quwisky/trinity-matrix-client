@@ -1,5 +1,6 @@
 import { signal } from '@angular/core';
 import { InvitePermissionService } from '@trinity/data-access/room-library';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, type Observable } from 'rxjs';
@@ -11,6 +12,7 @@ async function setup(
     supported?: boolean | null;
     blocked?: boolean;
     setBlocked?: Mock<(blocked: boolean) => Observable<void>>;
+    accounts?: readonly string[];
   } = {},
 ) {
   const supported = signal<boolean | null>(
@@ -31,6 +33,12 @@ async function setup(
         blocked: blocked.asReadonly(),
         runProjection: () => projection,
         setBlocked,
+      }),
+      MockProvider(MatrixClientService, {
+        activeUserId: signal<string | null>('@me:hs').asReadonly(),
+        accountIds: signal<readonly string[]>(
+          opts.accounts ?? ['@me:hs'],
+        ).asReadonly(),
       }),
     ],
   });
@@ -102,5 +110,48 @@ describe('InvitePermissionSettingComponent', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       "Couldn't change this. Try again.",
     );
+  });
+
+  it('queues quick changes, so the newest choice is the last write', async () => {
+    const writes: Subject<void>[] = [];
+    const setBlocked = vi.fn((): Observable<void> => {
+      const write = new Subject<void>();
+      writes.push(write);
+      return write;
+    });
+    const { fixture } = await setup({ blocked: false, setBlocked });
+
+    screen.getByRole('radio', { name: /Block all invites/ }).click();
+    fixture.detectChanges();
+    screen.getByRole('radio', { name: /Allow all invites/ }).click();
+    fixture.detectChanges();
+
+    expect(setBlocked).toHaveBeenCalledTimes(1);
+    expect(setBlocked).toHaveBeenLastCalledWith(true);
+    writes[0].next();
+    writes[0].complete();
+    fixture.detectChanges();
+
+    expect(setBlocked).toHaveBeenCalledTimes(2);
+    expect(setBlocked).toHaveBeenLastCalledWith(false);
+    expect(
+      screen.getByRole('radio', { name: /Allow all invites/ }),
+    ).toBeChecked();
+  });
+
+  it('names the account it applies to when several are signed in', async () => {
+    const { container } = await setup({ accounts: ['@me:hs', '@work:hs'] });
+
+    expect(
+      container.querySelector('[data-testid=privacy-invites]')?.textContent,
+    ).toContain('Invites to @me:hs.');
+  });
+
+  it('does not name the account when only one is signed in', async () => {
+    const { container } = await setup();
+
+    expect(
+      container.querySelector('[data-testid=privacy-invites]')?.textContent,
+    ).not.toContain('@me:hs');
   });
 });

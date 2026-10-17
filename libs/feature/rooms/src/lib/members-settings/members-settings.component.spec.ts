@@ -63,6 +63,9 @@ async function build(options: { readonly canManage?: boolean } = {}) {
   const snapshots = new BehaviorSubject(snapshot());
   const inviteUser = vi.fn(() => of(undefined));
   const pick = vi.fn(() => of('@invitee:hs'));
+  const pickUser = vi.fn(() =>
+    of({ userId: '@invitee:hs', displayName: 'Ivy' as string | null }),
+  );
   const navigate = vi.fn(() =>
     of({ kind: 'ready' as const, change: 'committed' as const }),
   );
@@ -101,7 +104,10 @@ async function build(options: { readonly canManage?: boolean } = {}) {
         inviteUser,
         createDirectMessage: () => of('!dm:hs'),
       }),
-      MockProvider(UserPickerService, { pick$: pick }),
+      MockProvider(UserPickerService, {
+        pick$: pick,
+        pickUser$: pickUser,
+      }),
       MockProvider(WorkspaceNavigationService, { navigate }),
       MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: vi.fn() }),
@@ -132,7 +138,7 @@ async function build(options: { readonly canManage?: boolean } = {}) {
     container,
     snapshots,
     inviteUser,
-    pick,
+    pick: pickUser,
     navigate,
     close,
   };
@@ -233,7 +239,7 @@ describe('MembersSettingsComponent', () => {
     cmp.invite();
 
     expect(TestBed.inject(TrnToastService).show).toHaveBeenCalledWith(
-      "@invitee:hs isn't accepting invites.",
+      "Ivy isn't accepting invites.",
       expect.objectContaining({ variant: 'danger' }),
     );
   });

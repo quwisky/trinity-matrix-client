@@ -21,11 +21,7 @@
         /></trn-empty-state>
       }
       @for (user of results(); track user.userId) {
-        <button
-          type="button"
-          class="picker__result"
-          (click)="choose(user.userId)"
-        >
+        <button type="button" class="picker__result" (click)="choose(user)">
           <trn-avatar
             [mxc]="user.avatarMxc"
             [initial]="initialOf(user.displayName)"

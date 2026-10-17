@@ -656,7 +656,17 @@ describe('RoomsPage room / DM / invite actions', () => {
           acceptInvite,
           declineInvite,
         }),
-        MockProvider(UserPickerService, { pick$: pick }),
+        MockProvider(UserPickerService, {
+          pick$: pick,
+          pickUser$: (options: unknown) =>
+            pick(options).pipe(
+              map((picked: unknown) =>
+                typeof picked === 'string'
+                  ? { userId: picked, displayName: null }
+                  : picked,
+              ),
+            ),
+        }),
         MockProvider(RoomModerationService, { canModerate }),
         MockProvider(QuickSwitcherService),
         MockProvider(TimelineActionsService),
@@ -1370,7 +1380,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     setRouteRoom('!r:hs');
     await settleWorkspace();
-    pick.mockReturnValue(of('@bob:hs'));
+    pick.mockReturnValue(of({ userId: '@bob:hs', displayName: 'Bob' }));
     inviteUser.mockReturnValue(
       throwError(() => new InviteBlockedError('@bob:hs')),
     );
@@ -1380,7 +1390,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     await Promise.resolve();
 
     expect(toastShow).toHaveBeenCalledWith(
-      "@bob:hs isn't accepting invites.",
+      "Bob isn't accepting invites.",
       expect.objectContaining({ variant: 'danger' }),
     );
     warn.mockRestore();

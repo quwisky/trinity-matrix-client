@@ -1,6 +1,6 @@
 import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ClientEvent } from 'matrix-js-sdk';
+import { ClientEvent, UserEvent } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
@@ -37,6 +37,11 @@ function fakeClient(
     },
     emit(event: string) {
       for (const fn of listeners.get(event) ?? []) fn();
+    },
+    /** A profile this account knows changed, as the SDK's User events report. */
+    renameUser(id: string, displayName: string) {
+      names[id] = { ...names[id], displayName };
+      client.emit(UserEvent.DisplayName);
     },
     /** Another device changed the list: only the sync echo arrives here. */
     replaceFromSync(next: string[]) {
@@ -160,6 +165,64 @@ describe('IgnoredUsersService', () => {
     expect(client.setIgnoredUsers).toHaveBeenCalledWith(['@eve:hs']);
     expect(svc.ignoredUserIds()).toEqual(['@eve:hs']);
     lifetime.unsubscribe();
+  });
+
+  it('follows a blocked user renaming themselves', async () => {
+    const client = fakeClient('@me:hs', ['@bob:hs'], {
+      '@bob:hs': { displayName: 'Bob' },
+    });
+    const { svc } = setup(client);
+    const lifetime = svc.runProjection().subscribe();
+
+    client.renameUser('@bob:hs', 'Robert');
+    await flush();
+
+    expect(svc.ignoredUsers()[0].displayName).toBe('Robert');
+    lifetime.unsubscribe();
+  });
+
+  it('serialises writes, so each reads the list the previous one left', async () => {
+    const client = fakeClient('@me:hs', ['@a:hs', '@b:hs']);
+    // setAccountData resolves only once the server echoes the change.
+    const echoes: (() => void)[] = [];
+    client.setIgnoredUsers.mockImplementation(
+      (next: string[]) =>
+        new Promise((resolve) =>
+          echoes.push(() => {
+            client.replaceFromSync(next);
+            resolve({});
+          }),
+        ),
+    );
+    const { svc } = setup(client);
+
+    const first = firstValueFrom(svc.unignore('@a:hs'));
+    const second = firstValueFrom(svc.unignore('@b:hs'));
+    await flush();
+
+    expect(client.setIgnoredUsers).toHaveBeenCalledTimes(1);
+    expect(client.setIgnoredUsers).toHaveBeenLastCalledWith(['@b:hs']);
+    echoes.shift()?.();
+    await first;
+    await flush();
+
+    expect(client.setIgnoredUsers).toHaveBeenCalledTimes(2);
+    expect(client.setIgnoredUsers).toHaveBeenLastCalledWith([]);
+    echoes.shift()?.();
+    await second;
+    expect(client.getIgnoredUsers()).toEqual([]);
+  });
+
+  it('keeps the queue moving after a failed write', async () => {
+    const client = fakeClient('@me:hs', ['@a:hs', '@b:hs']);
+    client.setIgnoredUsers.mockRejectedValueOnce(new TypeError('offline'));
+    const { svc } = setup(client);
+
+    const first = firstValueFrom(svc.unignore('@a:hs')).catch(() => 'failed');
+    await firstValueFrom(svc.unignore('@b:hs'));
+
+    expect(await first).toBe('failed');
+    expect(client.getIgnoredUsers()).toEqual(['@a:hs']);
   });
 
   it('maps a network failure to a typed retryable offline failure', async () => {

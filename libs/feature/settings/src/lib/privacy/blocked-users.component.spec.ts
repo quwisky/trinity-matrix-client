@@ -159,7 +159,7 @@ describe('BlockedUsersComponent', () => {
     const { container } = await setup({ accounts: ['@me:hs', '@work:hs'] });
 
     expect(container.textContent).toContain(
-      "You won't see messages or invites from people you block on @me:hs.",
+      "Blocks on @me:hs: you won't see messages or invites from these people.",
     );
   });
 

@@ -1,5 +1,9 @@
 @if (supported()) {
-  <trn-settings-group title="Invites" data-testid="privacy-invites">
+  <trn-settings-group
+    title="Invites"
+    [description]="description()"
+    data-testid="privacy-invites"
+  >
     <trn-settings-row
       label="Who can invite you"
       labelId="privacy-invites-heading"

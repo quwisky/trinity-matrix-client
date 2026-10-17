@@ -175,10 +175,10 @@ function sameNames(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((name, i) => name === b[i]);
 }
 
-/** The invitee's server turned the invite down because they block invites (MSC4380). */
+/** The invitee blocks invites (MSC4380), so the invite was refused. Carries no user copy. */
 export class InviteBlockedError extends Error {
   constructor(readonly userId: string) {
-    super(`${userId} isn't accepting invites.`);
+    super('M_INVITE_BLOCKED');
     this.name = 'InviteBlockedError';
   }
 }

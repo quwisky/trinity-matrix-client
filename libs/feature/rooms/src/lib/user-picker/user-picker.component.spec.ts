@@ -74,7 +74,10 @@ describe('UserPickerComponent', () => {
 
     c.confirmTyped();
 
-    expect(dismiss).toHaveBeenCalledWith('@bob:hs');
+    expect(dismiss).toHaveBeenCalledWith({
+      userId: '@bob:hs',
+      displayName: null,
+    });
   });
 
   it('does not dismiss when confirming an invalid MXID', async () => {
@@ -91,9 +94,12 @@ describe('UserPickerComponent', () => {
     const { fixture } = await renderPicker();
     const c = fixture.componentInstance;
 
-    c.choose('@carol:hs');
+    c.choose({ userId: '@carol:hs', displayName: 'Carol', avatarMxc: null });
 
-    expect(dismiss).toHaveBeenCalledWith('@carol:hs');
+    expect(dismiss).toHaveBeenCalledWith({
+      userId: '@carol:hs',
+      displayName: 'Carol',
+    });
   });
 
   it('cancels by dismissing with null', async () => {

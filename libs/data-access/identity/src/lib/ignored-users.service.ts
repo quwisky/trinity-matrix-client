@@ -28,6 +28,7 @@ const NONE: readonly IgnoredUser[] = [];
 @Injectable({ providedIn: 'root' })
 export class IgnoredUsersService {
   private readonly matrix = inject(IdentityMatrixPort);
+  private writes: Promise<void> = Promise.resolve();
   private readonly _ignoredUsers = signal<readonly IgnoredUser[]>(NONE, {
     equal: sameUsers,
   });
@@ -43,7 +44,11 @@ export class IgnoredUsersService {
 
   private readonly projection = this.matrix.project({
     id: 'identity.ignored-users',
-    events: [IDENTITY_MATRIX_EVENTS.accountData],
+    events: [
+      IDENTITY_MATRIX_EVENTS.accountData,
+      IDENTITY_MATRIX_EVENTS.displayName,
+      IDENTITY_MATRIX_EVENTS.avatarUrl,
+    ],
     rebuild: (client) => this._ignoredUsers.set(readIgnored(client)),
     reset: () => this._ignoredUsers.set(NONE),
   });
@@ -53,7 +58,10 @@ export class IgnoredUsersService {
     return this.projection.run();
   }
 
-  /** Whether `userId` is blocked by the active account, as projected. */
+  /**
+   * Whether the active account blocks `userId`, as projected. False while no
+   * {@link runProjection} is held, so a caller outside a surface that holds it must hold it too.
+   */
   isIgnored(userId: string): boolean {
     return this.ignoredUserIds().includes(userId);
   }
@@ -69,22 +77,29 @@ export class IgnoredUsersService {
   }
 
   private write(userId: string, ignored: boolean): Observable<void> {
+    const operation: IdentityOperation = ignored
+      ? 'ignore-user'
+      : 'unignore-user';
     return defer(() => {
-      const operation: IdentityOperation = ignored
-        ? 'ignore-user'
-        : 'unignore-user';
       if (!this.matrix.isAvailable()) {
         throw identityNotReady(operation);
       }
       const client = this.matrix.active().client;
-      const current = client.getIgnoredUsers();
-      const next = ignored
-        ? [...new Set([...current, userId])]
-        : current.filter((id) => id !== userId);
-      return from(client.setIgnoredUsers(next)).pipe(map(() => void 0));
-    }).pipe(
-      recoverIdentityOperation(ignored ? 'ignore-user' : 'unignore-user'),
-    );
+      // The list is read-modify-write and setIgnoredUsers resolves only after the server
+      // echoes it, so each write waits for the previous one or two quick changes undo each other.
+      const run = this.writes.then(() => {
+        const current = client.getIgnoredUsers();
+        const next = ignored
+          ? [...new Set([...current, userId])]
+          : current.filter((id) => id !== userId);
+        return client.setIgnoredUsers(next);
+      });
+      this.writes = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      return from(run).pipe(map(() => void 0));
+    }).pipe(recoverIdentityOperation(operation));
   }
 }
 

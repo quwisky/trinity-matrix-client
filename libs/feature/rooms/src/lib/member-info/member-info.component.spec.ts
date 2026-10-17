@@ -648,6 +648,36 @@ describe('MemberInfoComponent', () => {
     expect(ignore).not.toHaveBeenCalled();
   });
 
+  it('disables Block, with the reason, while another account is active', async () => {
+    const { fixture, container } = await build(member(), {
+      activeUserId: '@other:hs',
+    });
+    fixture.componentRef.setInput('owningAccountId', '@me:hs');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const block = container.querySelector<HTMLElement>(
+      '[data-testid="member-info-ignore"]',
+    )!;
+    expect(block.getAttribute('aria-disabled')).toBe('true');
+    expect(block.getAttribute('aria-description')).toBe(
+      'Switch back to @me:hs to block or unblock from this card.',
+    );
+  });
+
+  it('leaves Block enabled for the active owning account', async () => {
+    const { fixture, container } = await build(member());
+    fixture.componentRef.setInput('owningAccountId', '@me:hs');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(
+      container
+        .querySelector('[data-testid="member-info-ignore"]')!
+        .getAttribute('aria-disabled'),
+    ).toBeNull();
+  });
+
   it('confirms exact Space context and keeps the command on the opening Account', async () => {
     const alertPrompt = vi.fn(() => of('spam'));
     const { cmp, fixture, kick, close } = await build(member(), {

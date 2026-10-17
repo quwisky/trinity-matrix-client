@@ -8,8 +8,8 @@ import { passwordLogin, registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 
 // Covers Settings › Privacy › Invites: choosing "Block all invites" stores the MSC4380
-// invite permission config, after which the inviter's homeserver turns the invite down
-// (M_INVITE_BLOCKED). The inviter sees "{user} isn't accepting invites." and the invitee
+// invite permission config, after which the invitee's homeserver turns the invite down
+// (M_INVITE_BLOCKED). The inviter sees "{name} isn't accepting invites." and the invitee
 // never receives the invite. Needs a homeserver that supports invite blocking.
 const session = homeserverSession();
 
@@ -45,6 +45,14 @@ test.describe('Block unwanted invites', () => {
     const bob = await passwordLogin(request, hs, invitee, inviteePass);
     const alice = await passwordLogin(request, hs, inviter, inviterPass);
     const aliceAuth = { Authorization: `Bearer ${alice.accessToken}` };
+    const bobName = `Bob ${runId}`;
+    await request.put(
+      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(bob.userId)}/displayname`,
+      {
+        headers: { Authorization: `Bearer ${bob.accessToken}` },
+        data: { displayname: bobName },
+      },
+    );
     const { room_id } = await request
       .post(`${hs}/_matrix/client/v3/createRoom`, {
         headers: aliceAuth,
@@ -110,8 +118,15 @@ test.describe('Block unwanted invites', () => {
     await alicePage
       .getByRole('button', { name: 'Invite', exact: true })
       .click();
+    // The picker names Bob when its directory search returned him, else by his user ID.
     await expect(
-      alicePage.getByText(`${bob.userId} isn't accepting invites.`),
+      alicePage
+        .getByText(
+          new RegExp(
+            `^(${bobName}|${bob.userId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}) isn't accepting invites\\.$`,
+          ),
+        )
+        .first(),
     ).toBeVisible({ timeout: 20_000 });
 
     // The invite never reached Bob.

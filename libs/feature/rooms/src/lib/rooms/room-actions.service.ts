@@ -19,6 +19,7 @@ import {
 } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import { UserPickerService } from '../user-picker/user-picker.service';
+import type { PickedUser } from '../user-picker/user-picker.component';
 import {
   RoomDirectoryComponent,
   type DirectoryJoin,
@@ -32,8 +33,8 @@ import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
 import { EMPTY, filter, forkJoin, map, switchMap, type Observable } from 'rxjs';
 
-/** The shared invite failure copy, with a block on the invitee's side named as such. */
-function inviteErrorHandling(): MatrixRequestErrorHandling {
+/** The shared invite failure copy, naming an invitee who blocks invites. */
+function inviteErrorHandling(name: string): MatrixRequestErrorHandling {
   const failure = matrixRequestErrorHandling(
     'invite user to room',
     'Could not invite this user. Try again.',
@@ -42,7 +43,7 @@ function inviteErrorHandling(): MatrixRequestErrorHandling {
     ...failure,
     formatError: (error) =>
       error instanceof InviteBlockedError
-        ? error.message
+        ? `${name} isn't accepting invites.`
         : failure.formatError(error),
   };
 }
@@ -318,18 +319,18 @@ export class RoomActionsService {
   private invitePeople(targetId: string, label: string): void {
     this.status.error.set(null);
     this.userPicker
-      .pick$({
+      .pickUser$({
         title: `Invite to ${label}`,
         confirmLabel: 'Invite',
       })
       .pipe(
-        filter((userId): userId is string => Boolean(userId)),
-        switchMap((userId) =>
+        filter((picked): picked is PickedUser => picked !== null),
+        switchMap((picked) =>
           runWithBusy(
-            this.rooms.inviteUser(targetId, userId),
+            this.rooms.inviteUser(targetId, picked.userId),
             this.status,
-            inviteErrorHandling(),
-          ).pipe(map(() => userId)),
+            inviteErrorHandling(picked.displayName ?? picked.userId),
+          ).pipe(map(() => picked.userId)),
         ),
         takeUntilDestroyed(this.destroyRef),
       )

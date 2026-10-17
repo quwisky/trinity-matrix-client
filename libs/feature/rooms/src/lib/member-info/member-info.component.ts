@@ -154,6 +154,16 @@ export class MemberInfoComponent {
     return owner !== null && owner !== this.identity.activeUserId();
   });
 
+  /**
+   * Blocking acts on the active account's list, so while another account is active the card
+   * can neither show nor change this owner's block.
+   */
+  readonly blockUnavailableReason = computed(() =>
+    this.ownerInactive()
+      ? `Switch back to ${this.owningAccountId()} to block or unblock from this card.`
+      : null,
+  );
+
   /** The Account the commands run as, when one is known. */
   private readonly commandAccountId = computed(
     () => this.accountId() ?? this.owningAccountId(),

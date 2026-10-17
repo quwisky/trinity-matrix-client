@@ -1,5 +1,9 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { ClientEvent, type MatrixClient } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  type MatrixClient,
+  type MatrixEvent,
+} from 'matrix-js-sdk';
 import {
   Observable,
   combineLatest,
@@ -23,18 +27,22 @@ export const INVITE_PERMISSION_EVENT = 'm.invite_permission_config';
 export const UNSTABLE_INVITE_PERMISSION_EVENT =
   'org.matrix.msc4380.invite_permission_config';
 
-/** Which account-data types the server honours; null while unknown. */
-interface InvitePermissionSupport {
+/** One flag for each of the two account-data types. */
+interface PerType {
   readonly stable: boolean;
   readonly unstable: boolean;
 }
 
-interface Slots {
-  readonly stable: boolean;
-  readonly unstable: boolean;
-}
+const NO_BLOCK: PerType = { stable: false, unstable: false };
 
-const NO_BLOCK: Slots = { stable: false, unstable: false };
+/** The two invite permission types, which the SDK's closed account-data map does not list. */
+type InvitePermissionType =
+  typeof INVITE_PERMISSION_EVENT | typeof UNSTABLE_INVITE_PERMISSION_EVENT;
+
+interface InvitePermissionAccountData {
+  getAccountData(type: InvitePermissionType): MatrixEvent | undefined;
+  setAccountData(type: InvitePermissionType, content: object): Promise<unknown>;
+}
 
 /**
  * The active account's server-enforced "Who can invite you" setting (MSC4380). Blocking makes
@@ -43,12 +51,11 @@ const NO_BLOCK: Slots = { stable: false, unstable: false };
 @Injectable({ providedIn: 'root' })
 export class InvitePermissionService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly supportByClient = new WeakMap<
-    MatrixClient,
-    InvitePermissionSupport
-  >();
-  private readonly support = signal<InvitePermissionSupport | null>(null);
-  private readonly slots = signal<Slots>(NO_BLOCK, {
+  private readonly supportByClient = new WeakMap<MatrixClient, PerType>();
+  /** Which types the server honours; null while unknown. */
+  private readonly support = signal<PerType | null>(null);
+  /** Which types currently hold a block. */
+  private readonly slots = signal<PerType>(NO_BLOCK, {
     equal: (a, b) => a.stable === b.stable && a.unstable === b.unstable,
   });
 
@@ -137,9 +144,7 @@ export class InvitePermissionService {
     });
   }
 
-  private probe(
-    client: MatrixClient,
-  ): Observable<InvitePermissionSupport | null> {
+  private probe(client: MatrixClient): Observable<PerType | null> {
     const known = this.supportByClient.get(client);
     if (known) return of(known);
     return combineLatest([
@@ -159,15 +164,21 @@ export class InvitePermissionService {
   }
 }
 
-function readSlots(client: MatrixClient): Slots {
+function readSlots(client: MatrixClient): PerType {
   return {
     stable: blocks(client, INVITE_PERMISSION_EVENT),
     unstable: blocks(client, UNSTABLE_INVITE_PERMISSION_EVENT),
   };
 }
 
-function blocks(client: MatrixClient, type: string): boolean {
-  const content: unknown = client.getAccountData(type as never)?.getContent();
+function accountData(client: MatrixClient): InvitePermissionAccountData {
+  return client as unknown as InvitePermissionAccountData;
+}
+
+function blocks(client: MatrixClient, type: InvitePermissionType): boolean {
+  const content: unknown = accountData(client)
+    .getAccountData(type)
+    ?.getContent();
   return (
     typeof content === 'object' &&
     content !== null &&
@@ -177,10 +188,10 @@ function blocks(client: MatrixClient, type: string): boolean {
 
 function write(
   client: MatrixClient,
-  type: string,
+  type: InvitePermissionType,
   content: object,
 ): Observable<void> {
-  return from(client.setAccountData(type as never, content as never)).pipe(
+  return from(accountData(client).setAccountData(type, content)).pipe(
     map(() => void 0),
   );
 }
