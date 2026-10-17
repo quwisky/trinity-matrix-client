@@ -1,0 +1,51 @@
+<trn-dialog-shell
+  title="What's new in Trinity"
+  size="md"
+  closeLabel="Close What's new"
+  (closed)="close()"
+  data-testid="whats-new-dialog"
+>
+  <div class="flex flex-col gap-5">
+    @for (release of releases(); track release.version) {
+      <section>
+        <!-- A bare date parses as local midnight, so pin it to UTC before formatting in UTC. -->
+        <h3 class="text-15 m-0 font-bold">
+          v{{ release.version }} ·
+          {{ release.date + 'T00:00:00Z' | date: 'mediumDate' : 'UTC' }}
+        </h3>
+        @for (section of sections; track section[0]) {
+          @if (release.sections[section[0]]; as entries) {
+            <h4 class="m-0 pt-3 text-13 font-bold text-muted-foreground">
+              {{ section[1] }}
+            </h4>
+            <ul class="m-0 pl-5 text-sm">
+              @for (entry of entries; track $index) {
+                <li>{{ entry }}</li>
+              }
+            </ul>
+          }
+        }
+      </section>
+    }
+  </div>
+
+  <div trnDialogActions>
+    <button
+      trnBtn
+      type="button"
+      presentation="outline"
+      (click)="openReleasePage()"
+      data-testid="whats-new-full-notes"
+    >
+      Full release notes
+    </button>
+    <button
+      trnBtn
+      type="button"
+      (click)="close()"
+      data-testid="whats-new-close"
+    >
+      Close
+    </button>
+  </div>
+</trn-dialog-shell>

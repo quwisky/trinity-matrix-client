@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **76 Nx projects** and **296 dependencies**. No project cycles detected.
+This snapshot contains **77 Nx projects** and **302 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -32,7 +32,7 @@ Capability-to-capability dependencies are valid only inside the same named capab
 | Source role          | Projects | May depend on                                                                                          |
 | -------------------- | -------: | ------------------------------------------------------------------------------------------------------ |
 | `role:app`           |        5 | `role:app`, `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system` |
-| `role:application`   |        7 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
+| `role:application`   |        8 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
 | `role:capability`    |       17 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
 | `role:kernel`        |        5 | `role:kernel`                                                                                          |
 | `role:adapter`       |        9 | `role:adapter`, `role:kernel`                                                                          |
@@ -91,6 +91,7 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `feature-crypto`                  | `@trinity/feature/crypto`                  | `./libs/feature/crypto/src/index.ts`                  |
 | `feature-rooms`                   | `@trinity/feature/rooms`                   | `./libs/feature/rooms/src/index.ts`                   |
 | `feature-settings`                | `@trinity/feature/settings`                | `./libs/feature/settings/src/index.ts`                |
+| `feature-whats-new`               | `@trinity/feature/whats-new`               | `./libs/feature/whats-new/src/index.ts`               |
 | `avatar`                          | `@trinity/helm/avatar`                     | `./libs/spartan/avatar/src/index.ts`                  |
 | `button`                          | `@trinity/helm/button`                     | `./libs/spartan/button/src/index.ts`                  |
 | `card`                            | `@trinity/helm/card`                       | `./libs/spartan/card/src/index.ts`                    |
@@ -162,6 +163,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `feature-crypto`                    | `libs/feature/crypto`                    | role:capability; capability:trust               |                  11 |
 | `feature-rooms`                     | `libs/feature/rooms`                     | role:application; capability:workspace          |                  26 |
 | `feature-settings`                  | `libs/feature/settings`                  | role:application; capability:settings           |                  26 |
+| `feature-whats-new`                 | `libs/feature/whats-new`                 | role:application; capability:whats-new          |                   6 |
 | `label`                             | `libs/spartan/label`                     | role:design-system; capability:design-system    |                   1 |
 | `native-capacitor-app-lock`         | `libs/native/capacitor-app-lock`         | role:adapter; capability:host                   |                   0 |
 | `native-capacitor-app-lock-android` | `libs/native/capacitor-app-lock/android` | role:adapter; capability:host                   |                   0 |

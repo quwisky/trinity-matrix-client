@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "feature-whats-new",
+  "projectType": "library",
+  "sourceRoot": "libs/feature/whats-new/src",
+  "prefix": "trn",
+  "tags": [
+    "type:feature",
+    "scope:matrix",
+    "role:application",
+    "capability:whats-new"
+  ],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}
