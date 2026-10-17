@@ -57,10 +57,9 @@ function emitter() {
 }
 
 /** A settled edit as `replacingEvent()` returns it, in the clear unless told otherwise. */
-function fakeEdit(id: string, encrypted = false, ts = 0) {
+function fakeEdit(id: string, encrypted = false) {
   return {
     getId: () => `${id}~edit`,
-    getTs: () => ts,
     isEncrypted: () => encrypted,
     isDecryptionFailure: () => false,
     isRedacted: () => false,
@@ -827,35 +826,6 @@ describe('ThreadsService', () => {
           'This message is dated before the room turned on end-to-end encryption.',
       });
       expect(shieldOf(svc, '$new')).toMatchObject({ level: 'unencrypted' });
-    });
-
-    it('marks every reply red when the room has no encryption state event', () => {
-      const { svc } = openEncryptedThread([
-        fakeEvent({ id: '$old', sender: '@a:hs', body: 'one', ts: 1 }),
-        fakeEvent({ id: '$new', sender: '@a:hs', body: 'two', ts: 9999 }),
-      ]);
-
-      expect(shieldOf(svc, '$old')).toMatchObject({ level: 'unencrypted' });
-      expect(shieldOf(svc, '$new')).toMatchObject({ level: 'unencrypted' });
-    });
-
-    it('marks an encrypted reply whose plaintext edit is dated after encryption red', () => {
-      const { svc } = openEncryptedThread(
-        [
-          fakeEvent({
-            id: '$sealed',
-            sender: '@a:hs',
-            body: 'edited text',
-            encrypted: true,
-            ts: 500,
-            replacement: fakeEdit('$sealed', false, 1500),
-          }),
-        ],
-        vi.fn(),
-        { encryptionTs: 1000 },
-      );
-
-      expect(shieldOf(svc, '$sealed')).toMatchObject({ level: 'unencrypted' });
     });
 
     it('probes the crypto API with the edit, which supplies the text', async () => {

@@ -121,10 +121,9 @@ export function switchableMatrixProvider(active: {
  * The edit a fake event reports as its replacement: settled, and in the clear unless told
  * otherwise. Pass it as `replacement` to give a test an edit of the opposite kind.
  */
-export function fakeEdit(id: string, encrypted = false, ts = 0) {
+export function fakeEdit(id: string, encrypted = false) {
   return {
     getId: () => `${id}~edit`,
-    getTs: () => ts,
     isEncrypted: () => encrypted,
     isDecryptionFailure: () => false,
     isRedacted: () => false,
