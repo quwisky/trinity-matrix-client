@@ -43,10 +43,12 @@ test.describe('Decline and report an invite', () => {
     // Every membership-changing request Bob's app makes, in order.
     const membershipRequests: string[] = [];
     page.on('request', (r) => {
+      if (r.method() !== 'POST') return;
       const path = new URL(r.url()).pathname;
-      if (r.method() === 'POST' && /\/(join|leave|report)$/.test(path)) {
-        membershipRequests.push(path.slice(path.lastIndexOf('/') + 1));
-      }
+      // The SDK joins with POST /join/{roomIdOrAlias}; the room endpoints end in the action.
+      if (/\/join\/[^/]+$/.test(path)) membershipRequests.push('join');
+      const action = /\/rooms\/[^/]+\/(join|leave|report)$/.exec(path)?.[1];
+      if (action) membershipRequests.push(action);
     });
 
     await login(page, {
