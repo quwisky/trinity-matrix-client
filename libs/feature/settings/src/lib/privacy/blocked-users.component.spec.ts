@@ -99,7 +99,7 @@ describe('BlockedUsersComponent', () => {
 
     expect(unignore).toHaveBeenCalledExactlyOnceWith('@bob:hs');
     expect(show).toHaveBeenCalledWith(
-      expect.stringContaining('Unblocked Bob.'),
+      'Unblocked Bob. Their earlier messages appear after you reload.',
       expect.anything(),
     );
   });

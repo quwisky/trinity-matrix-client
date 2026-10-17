@@ -893,13 +893,19 @@ describe('MemberInfoComponent', () => {
   });
 
   it('offers Unblock for an ignored member and unblocks them on click', async () => {
-    const { cmp, unignore } = await build(member(), { isIgnored: true });
+    const { cmp, unignore, toastShow } = await build(member(), {
+      isIgnored: true,
+    });
     expect(cmp.ignored()).toBe(true);
 
     cmp.toggleIgnore();
 
     expect(unignore).toHaveBeenCalledWith('@bob:hs');
     expect(cmp.ignored()).toBe(false);
+    expect(toastShow).toHaveBeenCalledWith(
+      'Unblocked. Their earlier messages appear after you reload.',
+      expect.anything(),
+    );
   });
 
   it('hides Block on your own row', async () => {

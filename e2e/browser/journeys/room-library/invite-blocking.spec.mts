@@ -121,11 +121,8 @@ test.describe('Block unwanted invites', () => {
     // The picker names Bob when its directory search returned him, else by his user ID.
     await expect(
       alicePage
-        .getByText(
-          new RegExp(
-            `^(${bobName}|${bob.userId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}) isn't accepting invites\\.$`,
-          ),
-        )
+        .getByText(`${bobName} isn't accepting invites.`)
+        .or(alicePage.getByText(`${bob.userId} isn't accepting invites.`))
         .first(),
     ).toBeVisible({ timeout: 20_000 });
 

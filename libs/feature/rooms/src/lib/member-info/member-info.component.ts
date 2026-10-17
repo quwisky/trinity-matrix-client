@@ -329,7 +329,9 @@ export class MemberInfoComponent {
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
         this.toast.show(
-          wasIgnored ? 'Unblocked.' : "Blocked — you won't see their messages.",
+          wasIgnored
+            ? 'Unblocked. Their earlier messages appear after you reload.'
+            : "Blocked — you won't see their messages.",
           { duration: 2500 },
         );
       },
