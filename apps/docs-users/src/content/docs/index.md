@@ -15,6 +15,9 @@ Trinity is an end-to-end encrypted [Matrix](https://matrix.org) client. Release 
 available for macOS, Windows and Linux, and as a self-hostable web app (PWA). Android and
 iOS apps are still in development.
 
+After an update, Trinity shows what changed once, the first time you open it. To see it
+again, open Settings and choose **What's new**.
+
 Downloads are attached to [the latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest).
 
 ## macOS {#macos}
