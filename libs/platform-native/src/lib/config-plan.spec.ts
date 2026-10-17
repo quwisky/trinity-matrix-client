@@ -9,7 +9,7 @@ import {
   type ConfigEntry,
   type ConfigValidation,
   type ConfigValue,
-} from './config-schema';
+} from './config-entry';
 
 /** A setting that takes any text, standing in for the real registry. */
 function textEntry(path: string, current: ConfigValue): ConfigEntry {

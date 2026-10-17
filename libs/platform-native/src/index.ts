@@ -34,6 +34,7 @@ export * from './lib/bug-report-launcher';
 export * from './lib/account-removal-launcher';
 export * from './lib/account-deletion-launcher';
 export * from './lib/account-switch-launcher';
+export * from './lib/config-entry';
 export * from './lib/config-schema';
 export * from './lib/config-reset.policy';
 export * from './lib/config-json-schema';

@@ -3,7 +3,7 @@ import type {
   ConfigEntry,
   ConfigValidation,
   ConfigValue,
-} from '../config-schema';
+} from '../config-entry';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
 import { hasModifier, isBrowserReserved, isChord, type Chord } from './chord';
 import {

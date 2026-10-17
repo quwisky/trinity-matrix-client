@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Preferences } from '@capacitor/preferences';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ConfigEntry } from '../config-schema';
+import type { ConfigEntry } from '../config-entry';
 import { KeyboardShortcutsService } from './keyboard-shortcuts.service';
 import {
   shortcutOverridesEntry,

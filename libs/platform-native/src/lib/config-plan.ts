@@ -2,7 +2,7 @@ import {
   CONFIG_EXPORT_VERSION,
   type ConfigEntry,
   type ConfigValue,
-} from './config-schema';
+} from './config-entry';
 import { isConfigRecord } from './config-validation';
 
 const MAX_SUMMARY = 60;

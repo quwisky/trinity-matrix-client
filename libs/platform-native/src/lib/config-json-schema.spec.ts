@@ -11,7 +11,7 @@ import {
   CONFIG_EXPORT_VERSION,
   type ConfigEntry,
   type ConfigJsonType,
-} from './config-schema';
+} from './config-entry';
 import { choiceSetting, flagSetting } from './config-validation';
 import { providePlatformConfigEntries } from './platform-config-entries';
 

@@ -10,13 +10,13 @@ import { AppConfigService } from './app-config.service';
 import {
   CONFIG_EXPORT_VERSION,
   CONFIG_RESET_OBSERVATION_BUDGET_MS,
-  exportedKeysFor,
   provideConfigEntries,
   type ConfigDocument,
   type ConfigEntry,
   type ConfigSettings,
   type ConfigValue,
-} from './config-schema';
+} from './config-entry';
+import { exportedKeysFor } from './config-schema';
 import { DraftStoreService } from './draft-store.service';
 import { providePlatformConfigEntries } from './platform-config-entries';
 import {

@@ -32,7 +32,7 @@ import {
   type ConfigResetOutcome,
   type ConfigSettings,
   type ConfigValue,
-} from './config-schema';
+} from './config-entry';
 
 type ConfigTreeNode = { [key: string]: ConfigValue };
 
