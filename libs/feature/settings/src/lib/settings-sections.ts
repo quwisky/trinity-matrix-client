@@ -76,7 +76,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     icon: 'key-round',
     group: 'Account',
     component: AccountSectionComponent,
-    parts: [],
+    parts: [{ id: 'delete-account', label: 'Delete account' }],
   },
   {
     path: 'security',

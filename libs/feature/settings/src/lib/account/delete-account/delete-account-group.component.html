@@ -1,0 +1,86 @@
+@if (plan(); as plan) {
+  <trn-settings-group
+    title="Delete account"
+    partId="delete-account"
+    [description]="copy.groupDescription"
+  >
+    @if (plan.kind === 'in-app') {
+      <trn-settings-row
+        label="Delete account"
+        [description]="copy.rowDescription(accountId())"
+      >
+        <button
+          trnBtn
+          type="button"
+          variant="danger"
+          presentation="outline"
+          (click)="openDialog()"
+          data-testid="delete-account"
+        >
+          Delete account…
+        </button>
+      </trn-settings-row>
+    } @else if (plan.url) {
+      <trn-settings-row
+        label="Delete account"
+        [description]="copy.providerRowDescription(server())"
+      >
+        <div class="flex flex-col items-end gap-1 max-sm:items-stretch">
+          <button
+            trnBtn
+            type="button"
+            variant="danger"
+            presentation="outline"
+            aria-describedby="delete-account-provider-hint"
+            (click)="openProvider()"
+            data-testid="delete-account-provider"
+          >
+            Delete account at provider
+          </button>
+          @if (providerHost(); as host) {
+            <p
+              id="delete-account-provider-hint"
+              class="m-0 text-13 text-muted-foreground"
+            >
+              {{ copy.providerHint(host) }}
+            </p>
+          }
+        </div>
+      </trn-settings-row>
+      @if (providerOpened()) {
+        <div class="flex flex-col gap-2 py-3">
+          <p class="m-0 text-sm text-muted-foreground">
+            {{ copy.providerOpened }}
+          </p>
+          <div>
+            <button
+              trnBtn
+              type="button"
+              presentation="outline"
+              size="sm"
+              [disabled]="checking()"
+              (click)="checkNow()"
+              data-testid="delete-account-check-now"
+            >
+              Check now
+            </button>
+          </div>
+          <p
+            class="m-0 text-13 text-muted-foreground"
+            aria-live="polite"
+            data-testid="delete-account-check-result"
+          >
+            {{ checkMessage() }}
+          </p>
+        </div>
+      }
+    } @else {
+      <p
+        class="m-0 py-3 text-sm text-muted-foreground"
+        data-testid="delete-account-provider-missing"
+      >
+        {{ copy.providerMissing(server()) }}
+      </p>
+    }
+  </trn-settings-group>
+}

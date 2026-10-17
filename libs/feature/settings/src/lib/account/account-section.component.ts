@@ -28,6 +28,7 @@ import { AuthService } from '@trinity/data-access/auth';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { DeleteAccountGroupComponent } from './delete-account/delete-account-group.component';
 import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
@@ -94,6 +95,7 @@ const passwordSchema = schema<PasswordModel>((path) => {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './account-section.component.html',
   imports: [
+    DeleteAccountGroupComponent,
     TrnSettingsRowComponent,
     TrnSettingsGroupComponent,
     FormField,

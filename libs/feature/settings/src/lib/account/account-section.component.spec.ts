@@ -7,7 +7,10 @@ import { signal } from '@angular/core';
 import { AuthService, type AccountServerApi } from '@trinity/data-access/auth';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TrnToastService } from '@trinity/components/overlay';
-import { ExternalBrowserService } from '@trinity/platform-native';
+import {
+  ACCOUNT_DELETION_LAUNCHER,
+  ExternalBrowserService,
+} from '@trinity/platform-native';
 import { AccountSectionComponent } from './account-section.component';
 
 /**
@@ -43,6 +46,10 @@ describe('AccountSectionComponent', () => {
         }),
         MockProvider(TrnToastService),
         MockProvider(ExternalBrowserService, { open: vi.fn(() => of(true)) }),
+        {
+          provide: ACCOUNT_DELETION_LAUNCHER,
+          useValue: { plan: vi.fn(() => of({ kind: 'in-app' })) },
+        },
       ],
     });
     const auth = TestBed.inject(AuthService);
@@ -65,6 +72,19 @@ describe('AccountSectionComponent', () => {
     expect(auth.accountManagementFor).toHaveBeenCalledWith(
       '@alice:example.org',
     );
+  });
+
+  it('ends with the Delete account group for the account it shows', async () => {
+    await renderSection();
+
+    expect(
+      screen.getByRole('heading', { name: 'Delete account' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Close @alice:example.org for good. This can’t be undone.',
+      ),
+    ).toBeTruthy();
   });
 
   it('hides the password form on an OAuth server that publishes no account page', async () => {
