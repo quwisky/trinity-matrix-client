@@ -2,7 +2,6 @@ import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
-  DestroyRef,
   ElementRef,
   computed,
   inject,
@@ -56,7 +55,6 @@ export interface TrnSettingsLayoutSection {
 })
 export class TrnSettingsLayoutComponent {
   private readonly registry = inject(TrnSettingsParts);
-  private readonly destroyRef = inject(DestroyRef);
   private readonly directory = viewChild<ElementRef<HTMLElement>>('directory');
   private readonly detail = viewChild<ElementRef<HTMLElement>>('detail');
   private readonly scrollSpy: TrnSettingsScrollSpy;
@@ -139,13 +137,11 @@ export class TrnSettingsLayoutComponent {
 
   constructor() {
     this.scrollSpy = new TrnSettingsScrollSpy(
-      this.registry,
       this.detail,
       this.selectedSection,
       this.initialPart,
       this.compact,
       (id) => this.partSelected.emit(id),
-      this.destroyRef,
     );
   }
 

@@ -1,11 +1,12 @@
 import {
-  type DestroyRef,
+  DestroyRef,
   type ElementRef,
   type Signal,
   effect,
+  inject,
   untracked,
 } from '@angular/core';
-import type { TrnSettingsParts } from './trn-settings-parts';
+import { TrnSettingsParts } from './trn-settings-parts';
 
 /**
  * Part navigation for the settings layout: scrolls to a part, follows the reader's scroll
@@ -13,6 +14,8 @@ import type { TrnSettingsParts } from './trn-settings-parts';
  * constructor so its effects and teardown share the layout's injection context and lifetime.
  */
 export class TrnSettingsScrollSpy {
+  private readonly registry = inject(TrnSettingsParts);
+  private readonly destroyRef = inject(DestroyRef);
   private shownSection: string | null | undefined;
   private pendingPart: string | null = null;
   private visibleParts = new Set<string>();
@@ -23,13 +26,11 @@ export class TrnSettingsScrollSpy {
   private scrollLocked = false;
 
   constructor(
-    private readonly registry: TrnSettingsParts,
     private readonly detail: Signal<ElementRef<HTMLElement> | undefined>,
     private readonly selectedSection: Signal<string | null>,
     private readonly initialPart: Signal<string | null>,
     private readonly compact: Signal<boolean>,
     private readonly emit: (id: string | null) => void,
-    destroyRef: DestroyRef,
   ) {
     // A section change abandons any pending or in-flight scroll and starts at the top.
     effect(() => {
@@ -117,7 +118,7 @@ export class TrnSettingsScrollSpy {
       }
     });
 
-    destroyRef.onDestroy(() => {
+    this.destroyRef.onDestroy(() => {
       clearTimeout(this.emitTimer);
       clearTimeout(this.lockTimer);
       clearTimeout(this.settleTimer);
