@@ -19,7 +19,7 @@ import {
 } from '@trinity/data-access/accounts';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import { AUTH_METADATA } from './auth-metadata.fixture';
-import { AuthService } from './auth.service';
+import { AuthService, deletionLink } from './auth.service';
 import { ReauthAccountMismatchError } from './account-establishment';
 import {
   NEW_DEVICE_SIGN_IN,
@@ -166,11 +166,35 @@ describe('AuthService', () => {
       });
     });
 
-    it('returns null for a non-OIDC (password/SSO) account', async () => {
+    it('returns the provider surface for a password sign-in on an OAuth server', async () => {
       const storage = TestBed.inject(SessionStorageService);
       vi.mocked(storage.load).mockReturnValue(
         of({ ...oidcSession, oidc: undefined }) as never,
       );
+      createClientMock.mockReturnValue({
+        getAuthMetadata: vi.fn().mockResolvedValue({
+          account_management_uri: 'https://op/account',
+        }),
+      } as never);
+
+      expect(await firstValueFrom(auth.getAccountManagement())).toEqual({
+        url: 'https://op/account',
+        actionsSupported: [],
+      });
+    });
+
+    it('returns null for an account on a server without OAuth metadata', async () => {
+      const storage = TestBed.inject(SessionStorageService);
+      vi.mocked(storage.load).mockReturnValue(
+        of({ ...oidcSession, oidc: undefined }) as never,
+      );
+      createClientMock.mockReturnValue({
+        getAuthMetadata: vi
+          .fn()
+          .mockRejectedValue(
+            new MatrixError({ errcode: 'M_UNRECOGNIZED' }, 404),
+          ),
+      } as never);
 
       expect(await firstValueFrom(auth.getAccountManagement())).toBeNull();
     });
@@ -185,6 +209,86 @@ describe('AuthService', () => {
       } as never);
 
       expect(await firstValueFrom(auth.getAccountManagement())).toBeNull();
+    });
+  });
+
+  describe('accountManagementFor', () => {
+    it("asks the named account's own server", async () => {
+      const matrix = TestBed.inject(MatrixClientService);
+      vi.mocked(matrix.clientFor).mockReturnValue({
+        baseUrl: 'https://alice.hs',
+      } as never);
+      createClientMock.mockReturnValue({
+        getAuthMetadata: vi.fn().mockResolvedValue({
+          account_management_uri: 'https://auth.alice.hs/account/',
+          account_management_actions_supported: [],
+        }),
+      } as never);
+
+      await expect(
+        firstValueFrom(auth.accountManagementFor('@alice:alice.hs')),
+      ).resolves.toEqual({
+        kind: 'oauth',
+        management: {
+          url: 'https://auth.alice.hs/account/',
+          actionsSupported: [],
+        },
+      });
+      expect(matrix.clientFor).toHaveBeenCalledWith('@alice:alice.hs');
+      expect(createClientMock).toHaveBeenCalledWith({
+        baseUrl: 'https://alice.hs',
+      });
+    });
+
+    it('falls back to the stored record for an account without a live client', async () => {
+      const storage = TestBed.inject(SessionStorageService);
+      vi.mocked(storage.record).mockReturnValue(
+        of({ userId: '@alice:alice.hs', baseUrl: 'https://alice.hs' }) as never,
+      );
+      createClientMock.mockReturnValue({
+        getAuthMetadata: vi.fn().mockRejectedValue(new Error('404')),
+      } as never);
+
+      await expect(
+        firstValueFrom(auth.accountManagementFor('@alice:alice.hs')),
+      ).resolves.toEqual({ kind: 'legacy' });
+      expect(createClientMock).toHaveBeenCalledWith({
+        baseUrl: 'https://alice.hs',
+      });
+    });
+
+    it('reports an OAuth server that publishes no account page', async () => {
+      const matrix = TestBed.inject(MatrixClientService);
+      vi.mocked(matrix.clientFor).mockReturnValue({
+        baseUrl: 'https://hs',
+      } as never);
+      createClientMock.mockReturnValue({
+        getAuthMetadata: vi.fn().mockResolvedValue({ issuer: 'https://op/' }),
+      } as never);
+
+      await expect(
+        firstValueFrom(auth.accountManagementFor('@me:hs')),
+      ).resolves.toEqual({ kind: 'oauth', management: null });
+    });
+  });
+
+  describe('deletionLink', () => {
+    it('opens the bare account page when the provider does not advertise deletion', () => {
+      expect(
+        deletionLink({
+          url: 'https://auth.hs/account/',
+          actionsSupported: ['org.matrix.cross_signing_reset'],
+        }),
+      ).toBe('https://auth.hs/account/');
+    });
+
+    it('deep-links the deletion action only when advertised', () => {
+      expect(
+        deletionLink({
+          url: 'https://auth.hs/account/',
+          actionsSupported: ['org.matrix.account_deactivate'],
+        }),
+      ).toBe('https://auth.hs/account/?action=org.matrix.account_deactivate');
     });
   });
 

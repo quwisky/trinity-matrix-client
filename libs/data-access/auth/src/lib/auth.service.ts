@@ -62,6 +62,37 @@ export interface AccountManagement {
 }
 
 /**
+ * Which Matrix API a server uses for accounts: the legacy API (in-app password and deletion
+ * forms) or OAuth 2.0, whose provider owns credentials and deletion.
+ */
+export type AccountServerApi =
+  | { readonly kind: 'legacy' }
+  | {
+      readonly kind: 'oauth';
+      /** Null when the provider publishes no usable account page. */
+      readonly management: AccountManagement | null;
+    };
+
+const ACCOUNT_DEACTIVATE_ACTION = 'org.matrix.account_deactivate';
+
+/**
+ * The provider page to delete an account at. The action is added only when advertised:
+ * MAS rejects actions it does not list, and its account home page holds Delete account.
+ */
+export function deletionLink(management: AccountManagement): string {
+  if (!management.actionsSupported.includes(ACCOUNT_DEACTIVATE_ACTION)) {
+    return management.url;
+  }
+  try {
+    const url = new URL(management.url);
+    url.searchParams.set('action', ACCOUNT_DEACTIVATE_ACTION);
+    return url.toString();
+  } catch {
+    return management.url;
+  }
+}
+
+/**
  * Handles homeserver discovery and authentication exchanges. Successful login methods
  * issue an opaque Account grant to Account Runtime, which owns persistence and startup.
  *
@@ -254,31 +285,58 @@ export class AuthService {
   }
 
   /**
-   * The active account's provider-hosted account management, or `null` when it isn't an
-   * OIDC account (or the provider exposes none). OIDC-native servers own credentials and
-   * device management at the provider, so the in-app password form is replaced by a link.
-   * The URL comes from homeserver-controlled metadata, so it is validated as https before
-   * it is surfaced; a non-https value is rejected, not opened.
+   * The active account's provider-hosted account management, or `null` when its server
+   * does not use OAuth 2.0 (or the provider exposes none).
    */
   getAccountManagement(): Observable<AccountManagement | null> {
     return this.storage.load().pipe(
-      switchMap((session) => {
-        if (!session?.oidc) {
-          return of(null);
+      switchMap((session) =>
+        session ? this.serverApi(session.baseUrl) : of(null),
+      ),
+      map((api) => (api?.kind === 'oauth' ? api.management : null)),
+    );
+  }
+
+  /**
+   * Which account API `accountId`'s server uses, decided by the server's OAuth 2.0
+   * metadata rather than by how the account signed in: a password login through MAS's
+   * compatibility layer has no `oidc` binding, yet its server serves no legacy account API.
+   */
+  accountManagementFor(accountId: string): Observable<AccountServerApi> {
+    return defer(() => {
+      const baseUrl = this.matrix.clientFor(accountId)?.baseUrl;
+      return baseUrl
+        ? of(baseUrl)
+        : this.storage.record(accountId).pipe(map((r) => r?.baseUrl ?? null));
+    }).pipe(
+      switchMap((baseUrl) =>
+        baseUrl ? this.serverApi(baseUrl) : of({ kind: 'legacy' } as const),
+      ),
+    );
+  }
+
+  /**
+   * The URL comes from homeserver-controlled metadata, so it is validated as https before
+   * it is surfaced; a non-https value is rejected, not opened.
+   */
+  private serverApi(baseUrl: string): Observable<AccountServerApi> {
+    return this.getDelegatedAuthConfig(baseUrl).pipe(
+      map((config): AccountServerApi => {
+        if (!config) {
+          return { kind: 'legacy' };
         }
-        return this.getDelegatedAuthConfig(session.baseUrl).pipe(
-          map((config) => {
-            const url = config?.account_management_uri;
-            if (!url || !/^https:\/\//i.test(url)) {
-              return null;
-            }
-            return {
-              url,
-              actionsSupported:
-                config?.account_management_actions_supported ?? [],
-            };
-          }),
-        );
+        const url = config.account_management_uri;
+        return {
+          kind: 'oauth',
+          management:
+            url && /^https:\/\//i.test(url)
+              ? {
+                  url,
+                  actionsSupported:
+                    config.account_management_actions_supported ?? [],
+                }
+              : null,
+        };
       }),
     );
   }
