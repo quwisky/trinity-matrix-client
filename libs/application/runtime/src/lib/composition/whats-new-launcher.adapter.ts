@@ -1,9 +1,11 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
   TrnSurfaceService,
   type TrnDialogRef,
 } from '@trinity/components/overlay';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
 import {
   WhatsNewService,
@@ -32,13 +34,21 @@ export class WhatsNewLauncherAdapter implements WhatsNewLauncher {
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly whatsNew = inject(WhatsNewService);
   private readonly log = inject(DiagnosticLogService);
+  private readonly accounts = inject(AccountRuntimeService);
+  private readonly appLock = inject(AppLockService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly signedIn = toObservable(this.accounts.hasActiveAccount);
   private loading = false;
   private current: TrnDialogRef<unknown> | null = null;
 
   /** Opens the notes newer than the last-seen version, once; completes without emitting. */
   runPending(): Observable<never> {
-    return this.whatsNew.pending().pipe(
+    // runLive() also runs on the sign-in screen, so wait for an account and an unlocked app.
+    return this.signedIn.pipe(
+      filter(Boolean),
+      take(1),
+      switchMap(() => this.appLock.whenUnlocked()),
+      switchMap(() => this.whatsNew.pending()),
       filter((releases) => releases.length > 0),
       // Missing the dialog once beats showing it on every launch: open only once the
       // version is stored.

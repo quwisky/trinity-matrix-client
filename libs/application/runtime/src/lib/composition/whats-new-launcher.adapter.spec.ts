@@ -6,7 +6,10 @@ import {
   WhatsNewService,
   type ReleaseNote,
 } from '@trinity/data-access/whats-new';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import { MockProvider } from 'ng-mocks';
+import { signal } from '@angular/core';
 import { Subject, of, throwError, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { WHATS_NEW_DIALOG_COMPONENT } from '../application-dialog-loaders';
@@ -37,11 +40,20 @@ function setup(
   const markSeen = vi.fn(() => of(true));
   const queue = [...pending];
   const record = vi.fn();
+  const signedIn = signal(true);
+  const unlocked = new Subject<void>();
+  const unlockedNow = signal(true);
   TestBed.configureTestingModule({
     providers: [
       { provide: WHATS_NEW_DIALOG_COMPONENT, useValue: vi.fn(load) },
       MockProvider(TrnSurfaceService, { open } as never),
       MockProvider(DiagnosticLogService, { record }),
+      MockProvider(AccountRuntimeService, {
+        hasActiveAccount: signedIn.asReadonly() as never,
+      }),
+      MockProvider(AppLockService, {
+        whenUnlocked: () => (unlockedNow() ? of(undefined) : unlocked),
+      }),
       MockProvider(WhatsNewService, {
         all: bundled,
         pending: () => queue.shift() ?? of([]),
@@ -53,6 +65,10 @@ function setup(
     launcher: TestBed.inject(WhatsNewLauncherAdapter),
     open,
     markSeen,
+    pending: queue,
+    signedIn,
+    unlockedNow,
+    unlocked,
     record,
     closed,
   };
@@ -63,6 +79,7 @@ describe('WhatsNewLauncherAdapter', () => {
     const { launcher, open, markSeen } = setup([of(newer)]);
 
     launcher.runPending().subscribe();
+    TestBed.tick();
 
     expect(markSeen).toHaveBeenCalledOnce();
     expect(open).toHaveBeenCalledWith(FakeWhatsNewDialogComponent, {
@@ -72,10 +89,30 @@ describe('WhatsNewLauncherAdapter', () => {
     });
   });
 
+  it('waits for a signed-in, unlocked session before checking', () => {
+    const { launcher, open, signedIn, unlockedNow, unlocked } = setup([
+      of(newer),
+    ]);
+    signedIn.set(false);
+    unlockedNow.set(false);
+
+    launcher.runPending().subscribe();
+    TestBed.tick();
+    expect(open).not.toHaveBeenCalled();
+
+    signedIn.set(true);
+    TestBed.tick();
+    expect(open).not.toHaveBeenCalled();
+
+    unlocked.next();
+    expect(open).toHaveBeenCalledOnce();
+  });
+
   it('does nothing when nothing is pending', () => {
     const { launcher, open, markSeen } = setup([of([])]);
 
     launcher.runPending().subscribe();
+    TestBed.tick();
 
     expect(open).not.toHaveBeenCalled();
     expect(markSeen).not.toHaveBeenCalled();
@@ -85,8 +122,11 @@ describe('WhatsNewLauncherAdapter', () => {
     const { launcher, open } = setup([of(newer), of([])]);
 
     launcher.runPending().subscribe();
+    TestBed.tick();
     launcher.showAll();
     launcher.runPending().subscribe();
+    TestBed.tick();
+    TestBed.tick();
 
     expect(open).toHaveBeenCalledOnce();
   });
@@ -108,6 +148,7 @@ describe('WhatsNewLauncherAdapter', () => {
     markSeen.mockReturnValue(of(false));
 
     launcher.runPending().subscribe();
+    TestBed.tick();
 
     expect(open).not.toHaveBeenCalled();
   });
@@ -118,6 +159,7 @@ describe('WhatsNewLauncherAdapter', () => {
     );
 
     expect(() => launcher.runPending().subscribe()).not.toThrow();
+    TestBed.tick();
 
     expect(open).not.toHaveBeenCalled();
     expect(record).toHaveBeenCalledOnce();
