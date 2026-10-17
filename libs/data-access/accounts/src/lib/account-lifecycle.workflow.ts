@@ -40,6 +40,10 @@ type InFlightLifecycle =
       readonly accountId: string;
     })
   | (OwnedLifecycleBase & {
+      readonly kind: 'delete';
+      readonly accountId: string;
+    })
+  | (OwnedLifecycleBase & {
       readonly kind: 'reset';
     });
 
@@ -70,10 +74,7 @@ export class AccountLifecycleWorkflow {
   readonly busy = this.busyState.asReadonly();
 
   get operation(): AccountLifecycleOperation | null {
-    if (!this.attempt) return null;
-    return this.attempt.kind === 'sign-out'
-      ? 'signing-out-account'
-      : 'resetting-installation';
+    return this.attempt ? operationOf(this.attempt) : null;
   }
 
   signOut(
@@ -89,6 +90,38 @@ export class AccountLifecycleWorkflow {
           : of(this.signOutTransition(accountId, this.operation!));
       }
       const attempt = this.startSignOut(accountId);
+      return this.observe<AccountSignOutOutcome>(attempt);
+    });
+  }
+
+  /** Local removal of an account its homeserver deleted; joins a removal already under way. */
+  removeDeleted(
+    accountId: string,
+    blocking: BlockingOperation | null,
+  ): Observable<AccountSignOutOutcome> {
+    return defer(() => {
+      if (blocking) return of(this.signOutTransition(accountId, blocking));
+      if (this.attempt) {
+        return this.attempt.kind === 'delete' &&
+          this.attempt.accountId === accountId
+          ? this.observe<AccountSignOutOutcome>(this.attempt)
+          : of(this.signOutTransition(accountId, this.operation!));
+      }
+      const attempt = {
+        id: ++this.nextAttempt,
+        kind: 'delete' as const,
+        accountId,
+        updates: new ReplaySubject<LifecycleOutcome>(1),
+        owner: new Subscription(),
+        latest: null,
+        settled: false,
+      };
+      this.attempt = attempt;
+      this.busyState.set(true);
+      this.own(
+        attempt,
+        defer(() => this.adapter.removeDeletedAccount(accountId)),
+      );
       return this.observe<AccountSignOutOutcome>(attempt);
     });
   }
@@ -191,10 +224,7 @@ export class AccountLifecycleWorkflow {
   private accept(attempt: InFlightLifecycle, outcome: LifecycleOutcome): void {
     if (attempt.settled) return;
     attempt.latest = outcome;
-    const operation =
-      attempt.kind === 'sign-out'
-        ? 'signing-out-account'
-        : 'resetting-installation';
+    const operation = operationOf(attempt);
     this.lifecycleState.set({
       phase: outcome.kind === 'uncertain-cleanup' ? 'running' : 'settled',
       attempt: attempt.id,
@@ -209,6 +239,8 @@ export class AccountLifecycleWorkflow {
       if (outcome.kind === 'ready' || outcome.kind === 'partial-cleanup') {
         this.resetSettlement = outcome;
       }
+    } else if (attempt.kind === 'delete') {
+      this.signOutSettlements.delete(attempt.accountId);
     } else if (outcome.kind === 'ready') {
       this.signOutSettlements.delete(attempt.accountId);
     } else if (outcome.kind === 'partial-cleanup') {
@@ -224,12 +256,10 @@ export class AccountLifecycleWorkflow {
   }
 
   private faultOutcome(attempt: InFlightLifecycle): LifecycleOutcome {
-    return attempt.kind === 'sign-out'
+    return attempt.kind !== 'reset'
       ? {
           kind: 'failed',
-          accountId: (
-            attempt as Extract<InFlightLifecycle, { kind: 'sign-out' }>
-          ).accountId,
+          accountId: attempt.accountId,
           failure: 'local-state-unavailable',
           recovery: 'retry-sign-out',
         }
@@ -265,20 +295,15 @@ export class AccountLifecycleWorkflow {
       {
         scope: 'account-registry' as const,
         recovery:
-          attempt.kind === 'sign-out'
+          attempt.kind !== 'reset'
             ? ('retry-sign-out' as const)
             : ('retry-installation-reset' as const),
       },
     ];
-    return attempt.kind === 'sign-out'
+    return attempt.kind !== 'reset'
       ? {
           kind: 'uncertain-cleanup',
-          accountId: (
-            attempt as unknown as Extract<
-              InFlightLifecycle,
-              { kind: 'sign-out' }
-            >
-          ).accountId,
+          accountId: attempt.accountId,
           issues: [],
           pending,
         }
@@ -297,5 +322,16 @@ export class AccountLifecycleWorkflow {
     operation: AccountRuntimeOperation,
   ): AccountSignOutOutcome {
     return { kind: 'transition-in-progress', accountId, operation };
+  }
+}
+
+function operationOf(attempt: InFlightLifecycle): AccountLifecycleOperation {
+  switch (attempt.kind) {
+    case 'sign-out':
+      return 'signing-out-account';
+    case 'delete':
+      return 'deleting-account';
+    case 'reset':
+      return 'resetting-installation';
   }
 }

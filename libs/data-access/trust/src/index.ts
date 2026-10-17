@@ -17,3 +17,4 @@ export {
   FORECAST_HOLD_MS,
   type SlotForecast,
 } from './lib/trust-slot-forecast';
+export { TRUST_ACCOUNT_PREFERENCES } from './lib/trust-account-preferences';

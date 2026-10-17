@@ -287,6 +287,10 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
     return this.lifecycleAdapter.signOutAccount(accountId);
   }
 
+  removeDeletedAccount(accountId: string): Observable<AccountSignOutOutcome> {
+    return this.lifecycleAdapter.removeDeletedAccount(accountId);
+  }
+
   retrySignOutCleanup(
     accountId: string,
     issues: readonly AccountCleanupIssue[],

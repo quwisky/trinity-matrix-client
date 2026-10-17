@@ -26,6 +26,8 @@ export interface AccountLifecyclePort {
   resumeDiagnosticLog(): Observable<void>;
   releaseSharedCaches(): void;
   clearDrafts(): void;
+  /** Forget a deleted account's account- and conversation-scoped device preferences. */
+  forgetAccountPreferences(accountId: string): Observable<void>;
 }
 
 const NOOP_ACCOUNT_LIFECYCLE_PORT: AccountLifecyclePort = {
@@ -37,6 +39,7 @@ const NOOP_ACCOUNT_LIFECYCLE_PORT: AccountLifecyclePort = {
   resumeDiagnosticLog: () => of(void 0),
   releaseSharedCaches: () => undefined,
   clearDrafts: () => undefined,
+  forgetAccountPreferences: () => of(void 0),
 };
 
 export const ACCOUNT_LIFECYCLE_PORT = new InjectionToken<AccountLifecyclePort>(

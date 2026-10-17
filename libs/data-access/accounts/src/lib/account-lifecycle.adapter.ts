@@ -132,6 +132,80 @@ export class AccountLifecycleAdapter {
     });
   }
 
+  /**
+   * Remove an account its homeserver has deleted. The server already dropped its devices,
+   * pushers and tokens, so nothing remote is attempted: a `logout` would only fail with
+   * `M_UNKNOWN_TOKEN`. Unlike ordinary removal, its device preferences are forgotten too.
+   */
+  removeDeletedAccount(accountId: string): Observable<AccountSignOutOutcome> {
+    return defer(() => {
+      let terminalOverride: AccountSignOutOutcome | null = null;
+      let remainingAccountIds: readonly string[] = [];
+      return runDetachedCleanupAttempt<AccountSignOutOutcome>(
+        (issues, pending) => ({
+          kind: 'uncertain-cleanup',
+          accountId,
+          issues,
+          pending,
+        }),
+        (attempt) =>
+          attempt
+            .step(
+              this.storage.list().pipe(
+                map((accounts) => ({ kind: 'available' as const, accounts })),
+                catchError(() => of({ kind: 'unavailable' as const })),
+              ),
+              {
+                budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryRead,
+                scope: 'account-registry',
+                recovery: 'retry-sign-out',
+                waitAfterBudget: true,
+              },
+            )
+            .pipe(
+              switchMap((registry) => {
+                if (
+                  registry.kind === 'unavailable' ||
+                  !registry.accounts.some((entry) => entry.userId === accountId)
+                ) {
+                  terminalOverride = {
+                    kind: 'failed',
+                    accountId,
+                    failure:
+                      registry.kind === 'unavailable'
+                        ? 'local-state-unavailable'
+                        : 'account-unavailable',
+                    recovery: 'retry-sign-out',
+                  };
+                  return of(void 0);
+                }
+                remainingAccountIds = registry.accounts
+                  .map((entry) => entry.userId)
+                  .filter((id) => id !== accountId);
+                return this.runDeletedRemoval(
+                  attempt,
+                  accountId,
+                  remainingAccountIds,
+                );
+              }),
+            ),
+        (attempt) =>
+          terminalOverride ??
+          accountSignOutSettlement(
+            this.matrix.activeUserId(),
+            { accountId, remainingAccountIds },
+            attempt.settledIssues(),
+          ),
+        () => ({
+          kind: 'failed',
+          accountId,
+          failure: 'local-state-unavailable',
+          recovery: 'retry-sign-out',
+        }),
+      );
+    });
+  }
+
   /** Retry only residue retained by a settled removal attempt. */
   retrySignOutCleanup(
     accountId: string,
@@ -223,6 +297,46 @@ export class AccountLifecycleAdapter {
         concatMap(() =>
           remainingAccountIds.length === 0
             ? this.clearLastAccount(attempt, accountId)
+            : this.removeOneAccount(attempt, accountId, remainingAccountIds),
+        ),
+      );
+  }
+
+  private runDeletedRemoval(
+    attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
+    accountId: string,
+    remainingAccountIds: readonly string[],
+  ): Observable<void> {
+    return attempt
+      .capture(
+        this.lifecycle.forgetPushHandoff(accountId),
+        'notifications',
+        'retry-sign-out',
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
+      )
+      .pipe(
+        concatMap(() =>
+          attempt.capture(
+            this.lifecycle.forgetAccountPreferences(accountId),
+            'preferences',
+            'retry-sign-out',
+            ACCOUNT_CLEANUP_STEP_BUDGET_MS.preferencesWipe,
+          ),
+        ),
+        concatMap(() =>
+          remainingAccountIds.length === 0
+            ? this.clearLastAccount(attempt, accountId).pipe(
+                // After the client is gone: with it still listed, this would try to remove
+                // its pusher with the revoked token.
+                concatMap(() =>
+                  attempt.capture(
+                    this.lifecycle.unregisterNotifications(),
+                    'notifications',
+                    'retry-sign-out',
+                    ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
+                  ),
+                ),
+              )
             : this.removeOneAccount(attempt, accountId, remainingAccountIds),
         ),
       );

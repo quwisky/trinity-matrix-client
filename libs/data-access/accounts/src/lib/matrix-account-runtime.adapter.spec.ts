@@ -74,6 +74,7 @@ function setup(activeAccountId: string | null = '@old:hs') {
     resumeDiagnosticLog: vi.fn(() => of(void 0)),
     releaseSharedCaches: vi.fn(),
     clearDrafts: vi.fn(),
+    forgetAccountPreferences: vi.fn(() => of(void 0)),
   };
   TestBed.configureTestingModule({
     providers: [
@@ -144,6 +145,117 @@ const OIDC_STORED = {
 } as never;
 
 describe('MatrixAccountRuntimeAdapter', () => {
+  describe('removing a deleted account', () => {
+    function deletedAccount(
+      accountIds: readonly string[],
+      test = setup(accountIds[0]),
+    ) {
+      const client = { logout: vi.fn(() => Promise.resolve()) };
+      vi.mocked(test.matrix.clientFor).mockReturnValue(client as never);
+      vi.mocked(test.storage.list).mockReturnValue(
+        of(
+          accountIds.map((userId, index) => ({
+            userId,
+            baseUrl: 'https://hs',
+            deviceId: `D${index}`,
+          })),
+        ),
+      );
+      vi.mocked(test.matrix.remove).mockImplementation(() => {
+        test.active.set(accountIds[1] ?? null);
+        return of(void 0);
+      });
+      vi.mocked(test.storage.remove).mockReturnValue(of(void 0));
+      vi.mocked(test.storage.setActive).mockReturnValue(of(void 0));
+      vi.mocked(test.storage.clear).mockReturnValue(of(void 0));
+      return { ...test, client };
+    }
+
+    it('removes it locally without contacting its homeserver', async () => {
+      const test = deletedAccount(['@deleted:hs', '@survivor:hs']);
+
+      await expect(
+        firstValueFrom(test.adapter.removeDeletedAccount('@deleted:hs')),
+      ).resolves.toEqual({
+        kind: 'ready',
+        accountId: '@deleted:hs',
+        activeAccountId: '@survivor:hs',
+        remainingAccountIds: ['@survivor:hs'],
+      });
+      expect(test.client.logout).not.toHaveBeenCalled();
+      expect(test.lifecycle.unregisterNotifications).not.toHaveBeenCalled();
+      expect(test.lifecycle.revokeProviderSession).not.toHaveBeenCalled();
+      expect(test.lifecycle.forgetPushHandoff).toHaveBeenCalledWith(
+        '@deleted:hs',
+      );
+      expect(test.matrix.remove).toHaveBeenCalledWith('@deleted:hs');
+      expect(test.storage.remove).toHaveBeenCalledWith('@deleted:hs');
+      expect(test.storage.setActive).toHaveBeenCalledWith('@survivor:hs');
+    });
+
+    it('forgets its account-scoped device preferences', async () => {
+      const test = deletedAccount(['@deleted:hs', '@survivor:hs']);
+
+      await firstValueFrom(test.adapter.removeDeletedAccount('@deleted:hs'));
+
+      expect(test.lifecycle.forgetAccountPreferences).toHaveBeenCalledWith(
+        '@deleted:hs',
+      );
+    });
+
+    it('clears the local push registration after the client is gone when it was the last account', async () => {
+      const test = deletedAccount(['@deleted:hs']);
+
+      await expect(
+        firstValueFrom(test.adapter.removeDeletedAccount('@deleted:hs')),
+      ).resolves.toEqual({
+        kind: 'ready',
+        accountId: '@deleted:hs',
+        activeAccountId: null,
+        remainingAccountIds: [],
+      });
+      expect(test.lifecycle.unregisterNotifications).toHaveBeenCalledWith();
+      expect(
+        vi.mocked(test.matrix.remove).mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        vi.mocked(test.lifecycle.unregisterNotifications).mock
+          .invocationCallOrder[0],
+      );
+      expect(test.lifecycle.releaseSharedCaches).toHaveBeenCalledOnce();
+      expect(test.storage.clear).toHaveBeenCalledOnce();
+      expect(test.client.logout).not.toHaveBeenCalled();
+    });
+
+    it('reports preferences it could not forget as partial cleanup', async () => {
+      const test = deletedAccount(['@deleted:hs', '@survivor:hs']);
+      vi.mocked(test.lifecycle.forgetAccountPreferences).mockReturnValue(
+        throwError(() => new Error('disk full')),
+      );
+
+      await expect(
+        firstValueFrom(test.adapter.removeDeletedAccount('@deleted:hs')),
+      ).resolves.toMatchObject({
+        kind: 'partial-cleanup',
+        issues: [{ scope: 'preferences', recovery: 'retry-sign-out' }],
+      });
+      expect(test.storage.remove).toHaveBeenCalledWith('@deleted:hs');
+    });
+
+    it('fails for an account the registry does not hold', async () => {
+      const test = deletedAccount(['@survivor:hs'], setup('@survivor:hs'));
+
+      await expect(
+        firstValueFrom(test.adapter.removeDeletedAccount('@deleted:hs')),
+      ).resolves.toEqual({
+        kind: 'failed',
+        accountId: '@deleted:hs',
+        failure: 'account-unavailable',
+        recovery: 'retry-sign-out',
+      });
+      expect(test.matrix.remove).not.toHaveBeenCalled();
+    });
+  });
+
   it('signs out one explicit Account while keeping the surviving Account active', async () => {
     const { adapter, matrix, storage, lifecycle, active } =
       setup('@outgoing:hs');
