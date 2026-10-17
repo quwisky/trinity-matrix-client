@@ -34,7 +34,7 @@ function setup(
 ) {
   const closed = new Subject<void>();
   const open = vi.fn(() => ({ closed }));
-  const markSeen = vi.fn(() => of(undefined));
+  const markSeen = vi.fn(() => of(true));
   const queue = [...pending];
   const record = vi.fn();
   TestBed.configureTestingModule({
@@ -66,7 +66,7 @@ describe('WhatsNewLauncherAdapter', () => {
 
     expect(markSeen).toHaveBeenCalledOnce();
     expect(open).toHaveBeenCalledWith(FakeWhatsNewDialogComponent, {
-      ariaLabel: 'What’s new in Trinity',
+      ariaLabel: "What's new in Trinity",
       autoFocus: 'first-heading',
       inputs: { releases: newer },
     });
@@ -101,6 +101,15 @@ describe('WhatsNewLauncherAdapter', () => {
       expect.objectContaining({ inputs: { releases: bundled } }),
     );
     expect(markSeen).not.toHaveBeenCalled();
+  });
+
+  it('skips the dialog when the seen version cannot be stored', () => {
+    const { launcher, open, markSeen } = setup([of(newer)]);
+    markSeen.mockReturnValue(of(false));
+
+    launcher.runPending().subscribe();
+
+    expect(open).not.toHaveBeenCalled();
   });
 
   it('swallows a loader failure', () => {

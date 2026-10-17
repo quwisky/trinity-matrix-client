@@ -38,9 +38,11 @@ export class WhatsNewService {
     );
   }
 
-  markSeen(): Observable<void> {
-    return this.storage
-      .set(LAST_SEEN_KEY, this.running)
-      .pipe(catchError(() => of(undefined)));
+  /** Stores the running version: true when written, false when the write failed. Never errors. */
+  markSeen(): Observable<boolean> {
+    return this.storage.set(LAST_SEEN_KEY, this.running).pipe(
+      map(() => true),
+      catchError(() => of(false)),
+    );
   }
 }

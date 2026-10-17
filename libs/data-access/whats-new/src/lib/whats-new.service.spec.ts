@@ -110,13 +110,11 @@ describe('WhatsNewService', () => {
     expect(storage.map.get(KEY)).toBe('0.5.0-next.1');
   });
 
-  it('markSeen writes the running version and swallows a write failure', async () => {
+  it('markSeen writes the running version and reports a write failure', async () => {
     const { storage, service } = setup(null);
-    await firstValueFrom(service.markSeen(), { defaultValue: undefined });
+    expect(await firstValueFrom(service.markSeen())).toBe(true);
     expect(storage.map.get(KEY)).toBe('0.5.0-next.3');
     storage.failWrite = true;
-    await expect(
-      firstValueFrom(service.markSeen(), { defaultValue: undefined }),
-    ).resolves.toBeUndefined();
+    expect(await firstValueFrom(service.markSeen())).toBe(false);
   });
 });

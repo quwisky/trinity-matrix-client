@@ -11,15 +11,13 @@ import {
   type WhatsNewLauncher,
 } from '@trinity/data-access/whats-new';
 import {
-  EMPTY,
-  catchError,
-  concat,
   defer,
   filter,
   finalize,
   ignoreElements,
   switchMap,
   take,
+  tap,
   type Observable,
 } from 'rxjs';
 import { WHATS_NEW_DIALOG_COMPONENT } from '../application-dialog-loaders';
@@ -42,17 +40,16 @@ export class WhatsNewLauncherAdapter implements WhatsNewLauncher {
   runPending(): Observable<never> {
     return this.whatsNew.pending().pipe(
       filter((releases) => releases.length > 0),
+      // Missing the dialog once beats showing it on every launch: open only once the
+      // version is stored.
       switchMap((releases) =>
-        concat(
-          this.whatsNew.markSeen().pipe(ignoreElements()),
-          defer(() => {
-            this.open(releases);
-            return EMPTY;
+        this.whatsNew.markSeen().pipe(
+          tap((stored) => {
+            if (stored) this.open(releases);
           }),
+          ignoreElements(),
         ),
       ),
-      // A storage failure skips the dialog; it must not end the live session.
-      catchError(() => EMPTY),
     );
   }
 
@@ -74,7 +71,7 @@ export class WhatsNewLauncherAdapter implements WhatsNewLauncher {
       .subscribe({
         next: (component) => {
           const ref = this.surfaces.open(component, {
-            ariaLabel: 'What’s new in Trinity',
+            ariaLabel: "What's new in Trinity",
             autoFocus: 'first-heading',
             inputs: { releases },
           });
