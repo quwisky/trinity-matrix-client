@@ -1,23 +1,15 @@
-import { existsSync, globSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import {
+  workspaceRoot,
+  read as source,
+  productionSources,
+} from './workspace-sources.mjs';
 
-const workspaceRoot = join(import.meta.dirname, '..');
 const timelineRoot = 'libs/data-access/timeline/src/lib';
 const utilEntrypoint = 'libs/util/matrix/src/index.ts';
 const utilMessageView = 'libs/util/matrix/src/lib/message-view.ts';
-
-function source(file) {
-  return readFileSync(join(workspaceRoot, file), 'utf8');
-}
-
-const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
-  cwd: workspaceRoot,
-})
-  .filter(
-    (file) => !file.endsWith('.spec.ts') && !file.endsWith('.spec-harness.ts'),
-  )
-  .sort();
 
 /**
  * Freeze the Message Presentation boundary introduced by #305.

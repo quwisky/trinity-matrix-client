@@ -1,39 +1,13 @@
-import { globSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { globSync } from 'node:fs';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import {
+  workspaceRoot,
+  read as source,
+  publicMethods,
+} from './workspace-sources.mjs';
 
-const workspaceRoot = join(import.meta.dirname, '..');
 const featureRoot = 'libs/feature/rooms/src/lib/rooms';
-
-function source(file) {
-  return readFileSync(join(workspaceRoot, file), 'utf8');
-}
-
-function publicMethods(file, className) {
-  const parsed = ts.createSourceFile(
-    file,
-    source(file),
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  const declaration = parsed.statements.find(
-    (statement) =>
-      ts.isClassDeclaration(statement) && statement.name?.text === className,
-  );
-  if (!declaration || !ts.isClassDeclaration(declaration)) return [];
-  return declaration.members
-    .filter(ts.isMethodDeclaration)
-    .filter(
-      (member) =>
-        !member.modifiers?.some(
-          (modifier) =>
-            modifier.kind === ts.SyntaxKind.PrivateKeyword ||
-            modifier.kind === ts.SyntaxKind.ProtectedKeyword,
-        ),
-    )
-    .map((member) => member.name.getText(parsed));
-}
 
 /** The completed #378–#380 contraction has no compatibility caller allowlist.
  * Include specs: setting implementation state in a fixture would bypass the same

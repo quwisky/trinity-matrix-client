@@ -1,6 +1,7 @@
 import { existsSync, globSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { stripSourceComments as strip } from './source-style-blocks.mjs';
 
 /**
  * A component's rules must be able to reach the markup they target.
@@ -29,10 +30,6 @@ import { describe, expect, it } from 'vitest';
 const workspaceRoot = join(import.meta.dirname, '..');
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 const exists = (file) => existsSync(join(workspaceRoot, file));
-
-/** Comments are prose; a class named in one is not a rule and not a usage. */
-const strip = (text) =>
-  text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
 
 /**
  * A component's stylesheet, with the local partials it `@use`s folded in.

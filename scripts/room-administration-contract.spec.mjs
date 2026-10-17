@@ -1,18 +1,8 @@
-import { globSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-
-const workspaceRoot = join(import.meta.dirname, '..');
-
-function source(file) {
-  return readFileSync(join(workspaceRoot, file), 'utf8');
-}
-
-const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
-  cwd: workspaceRoot,
-})
-  .filter((file) => !file.endsWith('.spec.ts'))
-  .sort();
+import {
+  read as source,
+  sourcesWithHarnesses as productionSources,
+} from './workspace-sources.mjs';
 
 const governanceSymbols =
   /\b(?:RoomActionPermissionsService|RoomSettingsService|RoomModerationService|RoomAliasesService|RoomMessageGovernanceService|RoomPinGovernanceService|RoomMembersService|MemberSummary|BannedMember|MemberRole|MEMBER_ROLE_LABEL|MEMBER_ROLE_ORDER|ASSIGNABLE_MEMBER_ROLES|memberRole|ModerationCaps|ActionAvailability|RoomAdministrationError)\b/;

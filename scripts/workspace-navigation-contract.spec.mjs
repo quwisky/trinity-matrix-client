@@ -1,43 +1,19 @@
-import { existsSync, globSync, readFileSync } from 'node:fs';
+import { existsSync, globSync } from 'node:fs';
 import { join } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import {
+  workspaceRoot,
+  read as source,
+  productionSources,
+  publicMethods,
+} from './workspace-sources.mjs';
 
-const workspaceRoot = join(import.meta.dirname, '..');
 const applicationRoot = 'libs/application/workspace/src/lib';
 const featureRoot = 'libs/feature/rooms/src/lib/rooms';
 
-function source(file) {
-  return readFileSync(join(workspaceRoot, file), 'utf8');
-}
-
 function exists(file) {
   return existsSync(join(workspaceRoot, file));
-}
-
-function publicMethods(file, className) {
-  const parsed = ts.createSourceFile(
-    file,
-    source(file),
-    ts.ScriptTarget.Latest,
-    true,
-  );
-  const declaration = parsed.statements.find(
-    (statement) =>
-      ts.isClassDeclaration(statement) && statement.name?.text === className,
-  );
-  if (!declaration || !ts.isClassDeclaration(declaration)) return [];
-  return declaration.members
-    .filter(ts.isMethodDeclaration)
-    .filter(
-      (member) =>
-        !member.modifiers?.some(
-          (modifier) =>
-            modifier.kind === ts.SyntaxKind.PrivateKeyword ||
-            modifier.kind === ts.SyntaxKind.ProtectedKeyword,
-        ),
-    )
-    .map((member) => member.name.getText(parsed));
 }
 
 function methodSource(file, className, methodName) {
@@ -109,12 +85,6 @@ describe('Workspace semantic navigation boundary', () => {
       'libs/application/runtime/src/lib/composition/trinity-application.providers.ts',
     );
     const entrypoint = source('libs/application/workspace/src/index.ts');
-    const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
-      cwd: workspaceRoot,
-    }).filter(
-      (file) =>
-        !file.endsWith('.spec.ts') && !file.endsWith('.spec-harness.ts'),
-    );
 
     expect(publicModels).not.toContain('interface WorkspaceNavigation');
     expect(publicModels).not.toContain('WorkspaceDestination');

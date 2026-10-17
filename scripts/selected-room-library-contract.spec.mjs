@@ -1,8 +1,12 @@
-import { existsSync, globSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import {
+  workspaceRoot,
+  read as source,
+  productionSources,
+} from './workspace-sources.mjs';
 
-const workspaceRoot = join(import.meta.dirname, '..');
 const selectedImplementation =
   'libs/data-access/room-library/src/lib/selected-room-library.service.ts';
 const selectedProjection =
@@ -11,18 +15,6 @@ const roomLibraryLifetime =
   'libs/data-access/room-library/src/lib/room-library-lifetime.ts';
 const searchImplementation =
   'libs/data-access/room-library/src/lib/room-library-search.service.ts';
-
-function source(file) {
-  return readFileSync(join(workspaceRoot, file), 'utf8');
-}
-
-const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
-  cwd: workspaceRoot,
-})
-  .filter(
-    (file) => !file.endsWith('.spec.ts') && !file.endsWith('.spec-harness.ts'),
-  )
-  .sort();
 
 const selectedConsumers = [
   'libs/application/workspace/src/lib/workspace-availability.ts',

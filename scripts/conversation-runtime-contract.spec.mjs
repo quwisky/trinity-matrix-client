@@ -1,8 +1,12 @@
-import { existsSync, globSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import {
+  workspaceRoot,
+  read as source,
+  productionSources,
+} from './workspace-sources.mjs';
 
-const workspaceRoot = join(import.meta.dirname, '..');
 const runtimeImplementation =
   'libs/data-access/timeline/src/lib/conversation-runtime.service.ts';
 const timelineFactoryImplementation =
@@ -24,18 +28,6 @@ const threadChildrenImplementation =
   'libs/data-access/timeline/src/lib/conversation-thread-children.ts';
 const searchImplementation =
   'libs/data-access/timeline/src/lib/conversation-search.service.ts';
-
-function source(file) {
-  return readFileSync(join(workspaceRoot, file), 'utf8');
-}
-
-const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
-  cwd: workspaceRoot,
-})
-  .filter(
-    (file) => !file.endsWith('.spec.ts') && !file.endsWith('.spec-harness.ts'),
-  )
-  .sort();
 
 /**
  * Freeze the production tracer for #304.

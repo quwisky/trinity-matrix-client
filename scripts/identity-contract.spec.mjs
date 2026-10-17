@@ -1,18 +1,11 @@
-import { existsSync, globSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-
-const workspaceRoot = join(import.meta.dirname, '..');
-
-function source(file) {
-  return readFileSync(join(workspaceRoot, file), 'utf8');
-}
-
-const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
-  cwd: workspaceRoot,
-})
-  .filter((file) => !file.endsWith('.spec.ts'))
-  .sort();
+import {
+  workspaceRoot,
+  read as source,
+  sourcesWithHarnesses as productionSources,
+} from './workspace-sources.mjs';
 
 /** Freeze #320's Identity expand-contract migration. */
 describe('Identity production boundary', () => {
