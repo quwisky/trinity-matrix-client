@@ -25,11 +25,8 @@ export const DEFAULT_FLING_PLACEHOLDERS = false;
 /**
  * User-toggleable experimental feature flags, persisted across launches.
  *
- * These are non-secret UI preferences, so — like the theme — they live in
- * Capacitor `Preferences` (the non-secure key/value store, backed by
- * localStorage on web and native KV on device), never in secure storage, which
- * is reserved for the access token. Exposed as signals so the settings UI can
- * bind them and feature code can react.
+ * Non-secret UI preferences: they live in Capacitor `Preferences`, never in secure storage,
+ * which is reserved for the access token.
  */
 @Injectable({ providedIn: 'root' })
 export class FeatureFlagsService {
@@ -40,31 +37,25 @@ export class FeatureFlagsService {
   private readonly _flingPlaceholders = signal(DEFAULT_FLING_PLACEHOLDERS);
 
   /**
-   * Windowed (virtualized) message timeline: render only the on-screen rows plus
-   * spacers so the DOM stays bounded in long rooms.
+   * Windowed message timeline: render only the on-screen rows plus spacers so the DOM
+   * stays bounded in long rooms.
    *
-   * ON by default. The non-windowed list renders every loaded row and nothing caps
-   * retention — the auto-backfill alone pulls up to 600 rows to fill the viewport, and
-   * every scroll-to-top adds 30 more for the life of the session, each a heavy subtree
-   * (avatar, toolbar, reactions, receipts, previews). An explicit stored preference
-   * still wins, so anyone who opted out keeps that; Settings → Experimental toggles it.
+   * ON by default: the non-windowed list renders every loaded row and nothing caps
+   * retention. An explicit stored preference wins.
    */
   readonly virtualTimeline = this._virtualTimeline.asReadonly();
 
   /**
    * Timeline images (and video posters) wait to load until their row is near the
-   * viewport and the list is no longer scrolling fast. A fast scroll otherwise fetches,
-   * decodes and uploads to the GPU every image it passes. OFF by default: an opt-in in
-   * Settings → Experimental.
+   * viewport and the list is no longer scrolling fast. OFF by default (opt-in).
    */
   readonly deferMediaWhileScrolling =
     this._deferMediaWhileScrolling.asReadonly();
 
   /**
    * While the timeline moves faster than anyone reads, rows entering the window render as
-   * blank placeholders of their known (or estimated) height, and the real rows mount once
-   * the scroll slows or stops. A fast scroll otherwise builds and throws away about a
-   * hundred full rows a second. OFF by default: an opt-in in Settings → Experimental.
+   * blank placeholders of their known (or estimated) height; real rows mount once the scroll
+   * slows or stops. OFF by default (opt-in).
    */
   readonly flingPlaceholders = this._flingPlaceholders.asReadonly();
 

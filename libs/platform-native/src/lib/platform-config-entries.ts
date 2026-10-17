@@ -216,13 +216,7 @@ function formatEntries(format: DateTimeFormatService): readonly ConfigEntry[] {
   ];
 }
 
-/**
- * A top-level `gestures` group, which is new to the exported document.
- *
- * It is not filed under `composer` or `theme` because it is neither: this describes how the
- * app reads a touch, and the next such preference (a pull-to-refresh, a two-finger anything)
- * belongs beside it rather than wherever it happened to be implemented.
- */
+/** A top-level `gestures` group: how the app reads a touch, not a `composer` or `theme` setting. */
 function gestureEntries(
   gestures: MessageGestureSettingsService,
 ): readonly ConfigEntry[] {
@@ -279,8 +273,7 @@ function flagEntries(flags: FeatureFlagsService): readonly ConfigEntry[] {
 
 /**
  * The shortcut overrides, whose read, checks and write live beside the service that owns
- * them — the only setting here whose value is a map the user writes freely, and the one the
- * issue singles out as reaching `resolve` unchecked.
+ * them. The only setting here whose value is a map the user writes freely.
  */
 function shortcutEntries(
   shortcuts: KeyboardShortcutsService,
