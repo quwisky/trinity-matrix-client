@@ -36,6 +36,7 @@ import {
   type SlotForecast as TrustSlotForecast,
 } from '@trinity/data-access/trust';
 import {
+  ACCOUNT_DELETION_LAUNCHER,
   ACCOUNT_REMOVAL_LAUNCHER,
   ACCOUNT_SWITCH_LAUNCHER,
   BUG_REPORT_LAUNCHER,
@@ -55,6 +56,7 @@ import {
 import { applicationCapabilityProviders } from './application-capability.providers';
 import { appLockProviders } from './app-lock.providers';
 import { trinityDiagnosticProviders } from './diagnostic-log.providers';
+import { AccountDeletionLauncherAdapter } from './account-deletion-launcher.adapter';
 import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
 import { AccountSwitchLauncherAdapter } from './account-switch-launcher.adapter';
 import { ReportBugLauncherAdapter } from './report-bug-launcher.adapter';
@@ -171,6 +173,10 @@ export function provideTrinityApplication(
     {
       provide: ACCOUNT_REMOVAL_LAUNCHER,
       useExisting: AccountRemovalLauncherAdapter,
+    },
+    {
+      provide: ACCOUNT_DELETION_LAUNCHER,
+      useExisting: AccountDeletionLauncherAdapter,
     },
     {
       provide: ACCOUNT_SWITCH_LAUNCHER,
