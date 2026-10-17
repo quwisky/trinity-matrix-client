@@ -339,29 +339,17 @@ jobs:
   # and src/release-channel.ts from this checkout) and its afterPack hook: no workspace install,
   # no Nx, no renderer build. electron-builder signs and notarizes only while it packs, never
   # a --prepackaged app, so it packs the shell from desktop-shell here.
-  # A release the App tags in this run signs unattended. A dispatch re-packages by hand,
-  # so it waits for the maintainer's approval in release-approval, which holds no secrets.
-  approve-sign:
-    name: Approve manual signing
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: release-approval
-    steps:
-      - run: echo "Approved by a release-approval reviewer."
-
   sign-mac:
     name: Sign and package (mac)
-    needs: [verify, desktop-shell, approve-sign]
-    # Explicit, not the default success(): a dispatch skips release-please upstream, and
-    # a push skips approve-sign.
-    if: ${{ !cancelled() && needs.desktop-shell.result == 'success' && (needs.approve-sign.result == 'success' || needs.approve-sign.result == 'skipped') }}
+    needs: [verify, desktop-shell]
+    # Explicit, not the default success(): a dispatch skips release-please upstream.
+    if: ${{ !cancelled() && needs.desktop-shell.result == 'success' }}
     # Apple Silicon, and electron-builder defaults to the host architecture — this
     # produces arm64 artifacts only, by choice. macos-26 brings Xcode 26's actool,
     # which compiles the Icon Composer app icon.
     runs-on: macos-26
     # Gates the signing secrets behind an environment whose deployment rule limits the
-    # refs that reach them; approve-sign gates a dispatch.
+    # refs that reach them. It has no required reviewers, so releases sign unattended.
     environment: release
     # Apple's notary queue alone can take most of an hour, and the first signed release
     # outlasted 45 minutes.

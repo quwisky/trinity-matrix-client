@@ -23,27 +23,13 @@ permissions:
   contents: read
 
 jobs:
-  # The release App publishes releases, so its runs update the tap unattended. A run
-  # anyone else starts (a dispatch, a hand-published release, a re-run) waits for the
-  # maintainer's approval in release-approval, which holds no secrets.
-  approve:
-    name: Approve a manual tap update
-    if: ${{ github.triggering_actor != 'trinity-release[bot]' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: release-approval
-    steps:
-      - run: echo "Approved by a release-approval reviewer."
-
   tap:
     name: Update the Homebrew tap
-    needs: approve
-    if: ${{ !cancelled() && (needs.approve.result == 'success' || needs.approve.result == 'skipped') }}
     runs-on: macos-latest
     timeout-minutes: 20
     # The deploy key writes what every Homebrew user installs. The environment's
-    # deployment rule limits which refs may run this job with it; the approve job gates
-    # every run the release App did not start.
+    # deployment rule limits which refs may run this job with it. It has no required
+    # reviewers, so a published release updates the tap unattended.
     environment: homebrew
     env:
       HOMEBREW_NO_AUTO_UPDATE: '1'
