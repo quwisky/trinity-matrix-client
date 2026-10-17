@@ -61,6 +61,19 @@ describe('Homebrew tap workflow', () => {
     expect(job.env.HOMEBREW_GITHUB_API_TOKEN).toBe('${{ github.token }}');
   });
 
+  it('waits for approval unless the release App started the run', () => {
+    const approve = workflow.jobs.approve;
+    expect(approve.if).toBe(
+      "${{ github.triggering_actor != 'trinity-release[bot]' }}",
+    );
+    expect(approve.environment).toBe('release-approval');
+    expect(approve.steps.every((step) => !('uses' in step))).toBe(true);
+    expect(job.needs).toBe('approve');
+    expect(job.if).toBe(
+      "${{ !cancelled() && (needs.approve.result == 'success' || needs.approve.result == 'skipped') }}",
+    );
+  });
+
   it('allowlists trinity@next for the GitHub prerelease audit only while the tap has it', () => {
     const run = job.steps[stepIndex('Write, check and push the cask')].run;
     expect(run).toContain('audit_exceptions/github_prerelease_allowlist.json');

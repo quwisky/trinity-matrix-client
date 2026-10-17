@@ -119,6 +119,13 @@ describe('macOS signing isolation', () => {
     }
   });
 
+  it('signs a release-please run unattended and a dispatch only after approval', () => {
+    const approve = workflow.jobs['approve-sign'];
+    expect(approve.if).toBe("${{ github.event_name == 'workflow_dispatch' }}");
+    expect(approve.environment).toBe('release-approval');
+    expect(approve.steps.every((step) => !('uses' in step))).toBe(true);
+  });
+
   it('never hands a job every secret at once', () => {
     for (const name of workflows) {
       const text = readFileSync(
@@ -189,9 +196,9 @@ describe('macOS signing isolation', () => {
     expect(platforms).not.toContain('mac');
 
     const job = signJob();
-    expect(job.needs).toEqual(['verify', 'desktop-shell']);
+    expect(job.needs).toEqual(['verify', 'desktop-shell', 'approve-sign']);
     expect(job.if).toBe(
-      "${{ !cancelled() && needs.desktop-shell.result == 'success' }}",
+      "${{ !cancelled() && needs.desktop-shell.result == 'success' && (needs.approve-sign.result == 'success' || needs.approve-sign.result == 'skipped') }}",
     );
     const download = job.steps.find((s) =>
       s.uses?.startsWith('actions/download-artifact@'),
