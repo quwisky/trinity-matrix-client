@@ -14,11 +14,11 @@ import {
   signal,
   untracked,
   viewChild,
-  viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   TrnEmojiPickerComponent,
+  TrnTabsImports,
   type TrnEmojiPick,
 } from '@trinity/components/controls';
 import {
@@ -47,10 +47,9 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
  * One surface: as a popover it draws one overlay card (tabs as header, the active picker
  * inside with no card of its own); in a bottom sheet the sheet is the only surface.
  *
- * Only usable tabs are offered; with Emoji alone there is no tab bar. The tabs follow the
- * WAI-ARIA tab pattern with MANUAL activation (arrows, Home and End move focus; Enter,
- * Space or a click selects): the GIF and sticker pickers move focus into their search
- * field when they appear, so automatic activation would take it off the tab row.
+ * Only usable tabs are offered; with Emoji alone there is no tab bar. The tabs use MANUAL
+ * activation: the GIF and sticker pickers move focus into their search field when they
+ * appear, so automatic activation would take it off the tab row.
  *
  * The composer owns whether it is open and what each pick does; the panel owns which tab
  * shows, remembered per device through {@link ComposerExpressionTabPreference}.
@@ -64,6 +63,7 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
     StickerPickerComponent,
     TrnEmojiPickerComponent,
     TrnOverlaySurfaceDirective,
+    TrnTabsImports,
   ],
   templateUrl: './expression-picker.component.html',
   host: {
@@ -84,8 +84,6 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
 export class ExpressionPickerComponent {
   private readonly remembered = inject(ComposerExpressionTabPreference);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly tabButtons =
-    viewChildren<ElementRef<HTMLButtonElement>>('tab');
   private readonly content =
     viewChild.required<ElementRef<HTMLElement>>('content');
   private readonly gifPicker = viewChild(GifPickerComponent);
@@ -102,8 +100,6 @@ export class ExpressionPickerComponent {
    * so a kept panel opens on the remembered tab even if the phone's sheet chose another.
    */
   private readonly chosen = signal<ComposerExpressionTab | null>(null);
-  /** The tab holding the single tab stop; null means the selected one. */
-  private readonly focusTarget = signal<ComposerExpressionTab | null>(null);
 
   protected readonly labels = TAB_LABELS;
   /** How many times the panel has been shown; see {@link TrnAnchoredOverlayDirective.shown}. */
@@ -157,11 +153,6 @@ export class ExpressionPickerComponent {
       : 'var(--trinity-space-3)',
   );
 
-  protected readonly tabStop = computed(() => {
-    const target = this.focusTarget();
-    return target && this.tabs().includes(target) ? target : this.active();
-  });
-
   constructor() {
     // Shown again without being created again: redo what creation did (the GIF and sticker
     // pickers focus their search; the emoji grid refreshes its frequently-used row).
@@ -175,7 +166,6 @@ export class ExpressionPickerComponent {
           return;
         }
         this.chosen.set(null);
-        this.focusTarget.set(null);
         afterNextRender(
           () => {
             this.gifPicker()?.focusSearch();
@@ -200,67 +190,17 @@ export class ExpressionPickerComponent {
     });
   }
 
-  protected tabId(tab: ComposerExpressionTab): string {
-    return `${this.panelId()}-tab-${tab}`;
-  }
-
-  /** One panel whose content swaps, so its element and id survive a tab change. */
-  protected tabPanelId(): string {
-    return `${this.panelId()}-tabpanel`;
-  }
-
-  protected select(tab: ComposerExpressionTab): void {
+  /** A tab chosen in the row; the value is always one of {@link tabs}. */
+  protected onTabChange(value: string | undefined): void {
+    const tab = this.tabs().find((candidate) => candidate === value);
+    if (!tab) {
+      return;
+    }
     this.chosen.set(tab);
-    this.focusTarget.set(null);
     this.remembered
       .remember(tab)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
-  }
-
-  protected onTabKeydown(event: KeyboardEvent): void {
-    const tabs = this.tabs();
-    const from = tabs.indexOf(this.tabStop());
-    let to: number;
-    switch (event.key) {
-      case 'ArrowRight':
-        to = (from + 1) % tabs.length;
-        break;
-      case 'ArrowLeft':
-        to = (from - 1 + tabs.length) % tabs.length;
-        break;
-      case 'Home':
-        to = 0;
-        break;
-      case 'End':
-        to = tabs.length - 1;
-        break;
-      case 'Enter':
-      case ' ':
-        // Not left to the button's own activation: a held key must select once, whatever
-        // the host does with synthesised clicks.
-        event.preventDefault();
-        this.select(this.tabStop());
-        return;
-      default:
-        return;
-    }
-    event.preventDefault();
-    const tab = tabs[to];
-    if (!tab) {
-      return;
-    }
-    this.focusTarget.set(tab);
-    this.tabButtons()[to]?.nativeElement.focus();
-  }
-
-  /** Focus left the tab row: the selected tab holds the tab stop again. */
-  protected onTabFocusOut(event: FocusEvent): void {
-    const next = event.relatedTarget;
-    const row = event.currentTarget as HTMLElement;
-    if (!(next instanceof Node) || !row.contains(next)) {
-      this.focusTarget.set(null);
-    }
   }
 
   protected onEscape(event: Event): void {

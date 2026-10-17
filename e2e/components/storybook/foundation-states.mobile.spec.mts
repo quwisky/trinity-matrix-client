@@ -99,3 +99,20 @@ for (const width of [320, 360, 393, 430]) {
     expect(promptBox.height).toBeCloseTo(statusBox.height, 1);
   });
 }
+
+test('compact tabs retain the coarse-pointer target floor', async ({
+  page,
+}) => {
+  const globals = encodeURIComponent('mode:dark;theme:trinity;density:compact');
+  await page.goto(
+    `/iframe.html?id=components-tabs--coarse-pointer&viewMode=story&globals=${globals}`,
+  );
+
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveCount(3);
+  for (const tab of await tabs.all()) {
+    const bounds = await tab.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.height).toBeGreaterThanOrEqual(44);
+  }
+});

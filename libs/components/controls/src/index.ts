@@ -43,12 +43,27 @@ export {
   type TrnSelectSize,
 } from './lib/select/trn-select.component';
 export { TrnSwitchComponent } from './lib/switch/trn-switch.component';
+export { TrnTab } from './lib/tabs/trn-tab';
+export { TrnTabList } from './lib/tabs/trn-tab-list';
+export { TrnTabPanel } from './lib/tabs/trn-tab-panel';
+export { TrnTabs, type TrnTabsActivation } from './lib/tabs/trn-tabs';
 export { TrnTextarea } from './lib/textarea/trn-textarea';
 
 import { TrnFieldComponent } from './lib/field/field/trn-field.component';
 import { TrnFieldLabelComponent } from './lib/field/field-label/trn-field-label.component';
+import { TrnTab } from './lib/tabs/trn-tab';
+import { TrnTabList } from './lib/tabs/trn-tab-list';
+import { TrnTabPanel } from './lib/tabs/trn-tab-panel';
+import { TrnTabs } from './lib/tabs/trn-tabs';
 
 export const TrnFieldImports = [
   TrnFieldComponent,
   TrnFieldLabelComponent,
+] as const;
+
+export const TrnTabsImports = [
+  TrnTabs,
+  TrnTabList,
+  TrnTab,
+  TrnTabPanel,
 ] as const;

@@ -1417,6 +1417,130 @@ test.describe('semantic design foundations', () => {
     });
   }
 
+  for (const { theme, mode } of STORYBOOK_THEME_PREVIEWS) {
+    test(`${theme.id} ${mode.id} tabs keep the selected, hover and focus states readable`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await openStory(page, 'components-tabs--default', theme.id, mode.id);
+      const selected = page.getByRole('tab', { name: 'Emoji' });
+      const resting = page.getByRole('tab', { name: 'Stickers' });
+      await expect(selected).toHaveAttribute('aria-selected', 'true');
+      await selected.evaluate((element) =>
+        element.setAttribute('data-testid', 'selected-tab'),
+      );
+
+      expect(await computedColour(selected, 'background-color')).toEqual(
+        await resolveTokenSrgb(
+          page,
+          'selected-tab',
+          '--trinity-state-selected-surface',
+        ),
+      );
+      const ratios: Record<string, number> = {
+        selected: (await measureLocatorContrast(selected)).ratio,
+        resting: (await measureLocatorContrast(resting)).ratio,
+      };
+
+      await resting.hover();
+      await expect
+        .poll(() => computedColour(resting, 'background-color'))
+        .toEqual(
+          await resolveTokenSrgb(
+            page,
+            'selected-tab',
+            '--trinity-state-hover-surface',
+          ),
+        );
+      ratios.hover = (await measureLocatorContrast(resting)).ratio;
+
+      // Hovering the selected tab keeps its pill.
+      const pill = await resolveTokenSrgb(
+        page,
+        'selected-tab',
+        '--trinity-state-selected-surface',
+      );
+      await selected.hover();
+      await expect
+        .poll(() => computedColour(selected, 'background-color'))
+        .toEqual(pill);
+      ratios.selectedHover = (await measureLocatorContrast(selected)).ratio;
+      await page.mouse.move(0, 0);
+
+      const surface = await resolveTokenSrgb(
+        page,
+        'selected-tab',
+        '--trinity-surface-overlay',
+      );
+      const focusRing = await resolveTokenSrgb(
+        page,
+        'selected-tab',
+        '--trinity-focus-ring',
+      );
+      // Keyboard modality first, so the tab matches :focus-visible.
+      await page.keyboard.press('Tab');
+      await selected.focus();
+      await expect(selected).toBeFocused();
+      const selectedRing = await expectPaintedRing(selected, focusRing);
+      ratios.selectedRingOnPill = contrastRatio(selectedRing, pill);
+      ratios.selectedRingOnSurface = contrastRatio(selectedRing, surface);
+
+      // Manual activation: focus moves to a tab that stays unselected.
+      await openStory(page, 'components-tabs--manual', theme.id, mode.id);
+      await page.keyboard.press('Tab');
+      await page.getByRole('tab', { name: 'Emoji' }).focus();
+      await page.keyboard.press('ArrowLeft');
+      const focused = page.getByRole('tab', { name: 'Stickers' });
+      await expect(focused).toBeFocused();
+      await expect(focused).toHaveAttribute('aria-selected', 'false');
+      ratios.focusRing = contrastRatio(
+        await expectPaintedRing(focused, focusRing),
+        surface,
+      );
+
+      await openStory(page, 'components-tabs--disabled-tab', theme.id, mode.id);
+      const disabled = page.getByRole('tab', { name: 'Stickers' });
+      await expect(disabled).toBeDisabled();
+      const [opacity, token] = await disabled.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return [
+          Number.parseFloat(style.opacity),
+          Number.parseFloat(
+            style.getPropertyValue('--trinity-disabled-opacity'),
+          ),
+        ];
+      });
+      expect(opacity, 'disabled tab fades').toBe(token);
+
+      expect(ratios.selected, 'selected label on pill').toBeGreaterThanOrEqual(
+        AA_NORMAL_TEXT,
+      );
+      expect(ratios.resting, 'resting label').toBeGreaterThanOrEqual(
+        AA_NORMAL_TEXT,
+      );
+      expect(ratios.hover, 'hovered label').toBeGreaterThanOrEqual(
+        AA_NORMAL_TEXT,
+      );
+      expect(
+        ratios.selectedHover,
+        'hovered selected label',
+      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+      expect(ratios.focusRing, 'focus ring').toBeGreaterThanOrEqual(3);
+      expect(
+        ratios.selectedRingOnPill,
+        'selected ring on pill',
+      ).toBeGreaterThanOrEqual(3);
+      expect(
+        ratios.selectedRingOnSurface,
+        'selected ring on surface',
+      ).toBeGreaterThanOrEqual(3);
+      test.info().annotations.push({
+        type: 'contrast',
+        description: `${theme.id} ${mode.id} tabs ${JSON.stringify(ratios)}`,
+      });
+    });
+  }
+
   for (const [story, label] of [
     ['components-input--default', 'Room name'],
     ['components-textarea--default', 'Room topic'],
