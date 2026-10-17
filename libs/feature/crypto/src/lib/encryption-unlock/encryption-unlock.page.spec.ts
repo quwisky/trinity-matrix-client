@@ -670,7 +670,7 @@ describe('EncryptionUnlockPage', () => {
   describe('when the reset does not run', () => {
     it('says so when the confirmation word is wrong', async () => {
       // A bare return here is indistinguishable from a broken button.
-      const { fixture, crypto } = await renderPage({ typed: 'yes please' });
+      const { fixture, crypto } = await renderPage({ typed: 'reset please' });
 
       await fixture.componentInstance.resetRecovery();
 
