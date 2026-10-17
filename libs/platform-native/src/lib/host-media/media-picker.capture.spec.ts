@@ -66,6 +66,20 @@ function serveBlob(bytes: number, type: string): Mock {
   return fetchMock;
 }
 
+function photoResult(
+  metadata: object,
+  extra: object = {},
+): { type: 0; webPath: string; saved: false; metadata: object } {
+  return { type: 0, webPath: 'blob:p', saved: false, metadata, ...extra };
+}
+
+function videoResult(
+  metadata: object,
+  extra: object = {},
+): { type: 1; webPath: string; saved: false; metadata: object } {
+  return { type: 1, webPath: 'blob:v', saved: false, metadata, ...extra };
+}
+
 function decodeThumbnailsAs(width: number, height: number): void {
   vi.stubGlobal(
     'createImageBitmap',
@@ -141,13 +155,15 @@ describe('MediaPickerService capture', () => {
   it('takes a photo with metadata and orientation, named and typed from its format', async () => {
     serveBlob(3, 'image/jpeg');
     decodeThumbnailsAs(160, 120);
-    takePhoto.mockResolvedValue({
-      type: 0,
-      webPath: 'capacitor://localhost/_capacitor_file_/photo',
-      thumbnail: JPEG_BASE64,
-      saved: false,
-      metadata: { format: 'jpg', resolution: '4032x3024', size: 3 },
-    });
+    takePhoto.mockResolvedValue(
+      photoResult(
+        { format: 'jpg', resolution: '4032x3024', size: 3 },
+        {
+          thumbnail: JPEG_BASE64,
+          webPath: 'capacitor://localhost/_capacitor_file_/photo',
+        },
+      ),
+    );
     const svc = makeService();
 
     const captured = await firstValueFrom(
@@ -218,13 +234,9 @@ describe('MediaPickerService capture', () => {
       'createImageBitmap',
       vi.fn(() => Promise.reject(new Error('bad'))),
     );
-    takePhoto.mockResolvedValue({
-      type: 0,
-      webPath: 'blob:p',
-      thumbnail: JPEG_BASE64,
-      saved: false,
-      metadata: { format: 'jpeg' },
-    });
+    takePhoto.mockResolvedValue(
+      photoResult({ format: 'jpeg' }, { thumbnail: JPEG_BASE64 }),
+    );
     const svc = makeService();
 
     const captured = await firstValueFrom(
@@ -241,13 +253,12 @@ describe('MediaPickerService capture', () => {
       'createImageBitmap',
       vi.fn(() => Promise.reject(new Error('bad'))),
     );
-    takePhoto.mockResolvedValue({
-      type: 0,
-      webPath: 'blob:p',
-      thumbnail: JPEG_BASE64,
-      saved: false,
-      metadata: { format: 'jpeg', resolution: '4032x3024' },
-    });
+    takePhoto.mockResolvedValue(
+      photoResult(
+        { format: 'jpeg', resolution: '4032x3024' },
+        { thumbnail: JPEG_BASE64 },
+      ),
+    );
     const svc = makeService();
 
     const captured = await firstValueFrom(
@@ -260,12 +271,9 @@ describe('MediaPickerService capture', () => {
 
   it('leaves the size to the probe when the capture has no thumbnail', async () => {
     serveBlob(3, 'image/jpeg');
-    takePhoto.mockResolvedValue({
-      type: 0,
-      webPath: 'blob:p',
-      saved: false,
-      metadata: { format: 'jpeg', resolution: '4032x3024' },
-    });
+    takePhoto.mockResolvedValue(
+      photoResult({ format: 'jpeg', resolution: '4032x3024' }),
+    );
     const svc = makeService();
 
     const captured = await firstValueFrom(
@@ -283,12 +291,7 @@ describe('MediaPickerService capture', () => {
       blob: () => Promise.resolve(new Blob(['<h1>Not found</h1>'])),
     });
     vi.stubGlobal('fetch', fetchMock);
-    takePhoto.mockResolvedValue({
-      type: 0,
-      webPath: 'blob:p',
-      saved: false,
-      metadata: { format: 'jpeg' },
-    });
+    takePhoto.mockResolvedValue(photoResult({ format: 'jpeg' }));
     const svc = makeService();
 
     await expect(
@@ -299,13 +302,12 @@ describe('MediaPickerService capture', () => {
   it('turns a sensor-oriented photo resolution to match its portrait thumbnail', async () => {
     serveBlob(3, 'image/jpeg');
     decodeThumbnailsAs(120, 160);
-    takePhoto.mockResolvedValue({
-      type: 0,
-      webPath: 'blob:p',
-      thumbnail: JPEG_BASE64,
-      saved: false,
-      metadata: { format: 'jpeg', resolution: '4032x3024' },
-    });
+    takePhoto.mockResolvedValue(
+      photoResult(
+        { format: 'jpeg', resolution: '4032x3024' },
+        { thumbnail: JPEG_BASE64 },
+      ),
+    );
     const svc = makeService();
 
     const captured = await firstValueFrom(
@@ -331,12 +333,7 @@ describe('MediaPickerService capture', () => {
   it('asks for camera access when it has not been answered, then captures', async () => {
     checkPermissions.mockResolvedValue({ camera: 'prompt', photos: 'prompt' });
     serveBlob(3, 'image/jpeg');
-    takePhoto.mockResolvedValue({
-      type: 0,
-      webPath: 'blob:p',
-      saved: false,
-      metadata: { format: 'jpeg' },
-    });
+    takePhoto.mockResolvedValue(photoResult({ format: 'jpeg' }));
     const svc = makeService();
 
     await firstValueFrom(svc.capturePhoto({ saveToGallery: false }));
@@ -383,12 +380,7 @@ describe('MediaPickerService capture', () => {
 
   it('refuses a capture over the upload limit before reading its bytes', async () => {
     const fetchMock = serveBlob(3, 'video/mp4');
-    recordVideo.mockResolvedValue({
-      type: 1,
-      webPath: 'blob:v',
-      saved: false,
-      metadata: { format: 'mp4', size: 200 },
-    });
+    recordVideo.mockResolvedValue(videoResult({ format: 'mp4', size: 200 }));
     const svc = makeService();
 
     const error = await firstValueFrom(
@@ -402,12 +394,7 @@ describe('MediaPickerService capture', () => {
 
   it('refuses by the real size when the plugin did not report one', async () => {
     serveBlob(3, 'image/jpeg');
-    takePhoto.mockResolvedValue({
-      type: 0,
-      webPath: 'blob:p',
-      saved: false,
-      metadata: { format: 'jpeg' },
-    });
+    takePhoto.mockResolvedValue(photoResult({ format: 'jpeg' }));
     const svc = makeService();
 
     const error = await firstValueFrom(
@@ -429,12 +416,7 @@ describe('MediaPickerService capture', () => {
 
     it('opens the camera before the limit is known and checks the size once it is', async () => {
       const fetchMock = serveBlob(3, 'video/mp4');
-      recordVideo.mockResolvedValue({
-        type: 1,
-        webPath: 'blob:v',
-        saved: false,
-        metadata: { format: 'mp4', size: 200 },
-      });
+      recordVideo.mockResolvedValue(videoResult({ format: 'mp4', size: 200 }));
       const limit = deferredLimit();
       const svc = makeService();
 
@@ -456,12 +438,7 @@ describe('MediaPickerService capture', () => {
 
     it('stages a capture that fits a late limit', async () => {
       serveBlob(3, 'image/jpeg');
-      takePhoto.mockResolvedValue({
-        type: 0,
-        webPath: 'blob:p',
-        saved: false,
-        metadata: { format: 'jpeg', size: 3 },
-      });
+      takePhoto.mockResolvedValue(photoResult({ format: 'jpeg', size: 3 }));
       const limit = deferredLimit();
       const svc = makeService();
 
@@ -476,12 +453,7 @@ describe('MediaPickerService capture', () => {
 
     it('stages a capture when the late limit turns out to be unknown', async () => {
       serveBlob(3, 'image/jpeg');
-      takePhoto.mockResolvedValue({
-        type: 0,
-        webPath: 'blob:p',
-        saved: false,
-        metadata: { format: 'jpeg', size: 3 },
-      });
+      takePhoto.mockResolvedValue(photoResult({ format: 'jpeg', size: 3 }));
       const svc = makeService();
 
       const captured = await firstValueFrom(
@@ -515,12 +487,7 @@ describe('MediaPickerService capture', () => {
 
   it('still honours a plain number limit', async () => {
     serveBlob(3, 'image/jpeg');
-    takePhoto.mockResolvedValue({
-      type: 0,
-      webPath: 'blob:p',
-      saved: false,
-      metadata: { format: 'jpeg', size: 3 },
-    });
+    takePhoto.mockResolvedValue(photoResult({ format: 'jpeg', size: 3 }));
     const svc = makeService();
 
     const captured = await firstValueFrom(
