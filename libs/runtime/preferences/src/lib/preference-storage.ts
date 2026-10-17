@@ -29,12 +29,26 @@ export type PreferenceStorageWriteOutcome =
       readonly diagnostic: PreferenceSourceDiagnostic;
     };
 
+/** A removal target: one context, or every conversation context of one account. */
+export interface PreferenceStorageRemoveRequest extends Omit<
+  PreferenceStorageRequest,
+  'context'
+> {
+  readonly context:
+    | PreferenceContext
+    | { readonly kind: 'every-conversation'; readonly accountId: string };
+}
+
 export interface PreferenceStorageAdapter {
   read(
     request: PreferenceStorageRequest,
   ): Observable<PreferenceStorageReadOutcome>;
   write(
     request: PreferenceStorageRequest & { readonly payload: string },
+  ): Observable<PreferenceStorageWriteOutcome>;
+  /** Optional: an adapter without it cannot forget a deleted account's values. */
+  remove?(
+    request: PreferenceStorageRemoveRequest,
   ): Observable<PreferenceStorageWriteOutcome>;
 }
 

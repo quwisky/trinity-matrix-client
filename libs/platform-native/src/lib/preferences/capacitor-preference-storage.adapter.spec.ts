@@ -4,16 +4,87 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { CapacitorPreferenceStorageAdapter } from './capacitor-preference-storage.adapter';
 
 vi.mock('@capacitor/preferences', () => ({
-  Preferences: { get: vi.fn(), set: vi.fn() },
+  Preferences: { get: vi.fn(), set: vi.fn(), remove: vi.fn(), keys: vi.fn() },
 }));
 
 const get = Preferences.get as unknown as Mock;
 const set = Preferences.set as unknown as Mock;
+const remove = Preferences.remove as unknown as Mock;
+const keys = Preferences.keys as unknown as Mock;
 
 describe('CapacitorPreferenceStorageAdapter', () => {
   beforeEach(() => {
     get.mockReset().mockResolvedValue({ value: null });
     set.mockReset().mockResolvedValue(undefined);
+    remove.mockReset().mockResolvedValue(undefined);
+    keys.mockReset().mockResolvedValue({ keys: [] });
+  });
+
+  it("removes one account's value under its scoped key", async () => {
+    const adapter = new CapacitorPreferenceStorageAdapter();
+
+    await expect(
+      firstValueFrom(
+        adapter.remove({
+          key: 'trinity.example',
+          context: { kind: 'account', accountId: '@alice:example.org' },
+          sensitivity: 'private',
+          storage: 'device-preferences',
+        }),
+      ),
+    ).resolves.toEqual({ kind: 'completed' });
+    expect(remove).toHaveBeenCalledWith({
+      key: 'trinity.example.account.%40alice%3Aexample.org',
+    });
+  });
+
+  it("removes every conversation value of one account and no one else's", async () => {
+    keys.mockResolvedValue({
+      keys: [
+        'trinity.example.conversation.%40alice%3Aexample.org.!a%3Aexample.org',
+        'trinity.example.conversation.%40alice%3Aexample.org.!b%3Aexample.org',
+        'trinity.example.conversation.%40alicia%3Aexample.org.!a%3Aexample.org',
+        'trinity.example.account.%40alice%3Aexample.org',
+        'trinity.other.conversation.%40alice%3Aexample.org.!a%3Aexample.org',
+      ],
+    });
+    const adapter = new CapacitorPreferenceStorageAdapter();
+
+    await firstValueFrom(
+      adapter.remove({
+        key: 'trinity.example',
+        context: {
+          kind: 'every-conversation',
+          accountId: '@alice:example.org',
+        },
+        sensitivity: 'private',
+        storage: 'device-preferences',
+      }),
+    );
+
+    expect(remove.mock.calls.map(([{ key }]) => key)).toEqual([
+      'trinity.example.conversation.%40alice%3Aexample.org.!a%3Aexample.org',
+      'trinity.example.conversation.%40alice%3Aexample.org.!b%3Aexample.org',
+    ]);
+  });
+
+  it('turns a removal failure into a stable unavailable outcome', async () => {
+    remove.mockRejectedValue(new Error('disk full'));
+    const adapter = new CapacitorPreferenceStorageAdapter();
+
+    await expect(
+      firstValueFrom(
+        adapter.remove({
+          key: 'trinity.example',
+          context: { kind: 'account', accountId: '@alice:example.org' },
+          sensitivity: 'private',
+          storage: 'device-preferences',
+        }),
+      ),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+      diagnostic: { code: 'device-preferences-remove-failed' },
+    });
   });
 
   it('keeps account and conversation keys physically distinct', async () => {

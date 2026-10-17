@@ -15,6 +15,7 @@ import {
 import {
   PREFERENCE_STORAGE_ADAPTER,
   type PreferenceStorageAdapter,
+  type PreferenceStorageRemoveRequest,
   type PreferenceStorageRequest,
 } from './preference-storage';
 import { PreferenceStoreService } from './preference-store.service';
@@ -615,5 +616,122 @@ describe('PreferenceStoreService.readSaved', () => {
     await expect(
       firstValueFrom(store.readSaved(descriptor, { kind: 'installation' })),
     ).resolves.toBe(true);
+  });
+
+  describe('forgetAccount', () => {
+    const accountPreference = booleanPreference({
+      id: 'accounts.test.flag',
+      owner: 'accounts',
+      scope: 'account',
+      persistence: {
+        key: 'test.account-flag',
+        migration: { currentVersion: 1, migrate: booleanMigration },
+      },
+    });
+    const conversationPreference = booleanPreference({
+      id: 'conversations.test.conversation-flag',
+      scope: 'conversation',
+      persistence: {
+        key: 'test.conversation-flag',
+        migration: { currentVersion: 1, migrate: booleanMigration },
+      },
+    });
+    const installationPreference = booleanPreference();
+    const alice: PreferenceContext = { kind: 'account', accountId: '@a:hs' };
+    const bob: PreferenceContext = { kind: 'account', accountId: '@b:hs' };
+
+    function removingAdapter(
+      remove: PreferenceStorageAdapter['remove'] = vi.fn(() =>
+        of({ kind: 'completed' } as const),
+      ),
+    ) {
+      return {
+        read: vi.fn(() => of({ kind: 'missing' } as const)),
+        write: vi.fn(() => of({ kind: 'completed' } as const)),
+        remove,
+      } satisfies PreferenceStorageAdapter;
+    }
+
+    it("removes only that account's account and conversation values", async () => {
+      const adapter = removingAdapter();
+      const store = setup(
+        [accountPreference, conversationPreference, installationPreference],
+        adapter,
+      );
+
+      await expect(
+        firstValueFrom(store.forgetAccount('@a:hs')),
+      ).resolves.toEqual({ kind: 'completed' });
+
+      const removed = vi
+        .mocked(adapter.remove)
+        .mock.calls.map(([request]: [PreferenceStorageRemoveRequest]) => [
+          request.key,
+          request.context,
+        ]);
+      expect(removed).toEqual([
+        ['test.account-flag', alice],
+        [
+          'test.conversation-flag',
+          { kind: 'every-conversation', accountId: '@a:hs' },
+        ],
+      ]);
+    });
+
+    it("includes a capability's own descriptor that is not in the catalog", async () => {
+      const adapter = removingAdapter();
+      const store = setup([], adapter);
+
+      await firstValueFrom(store.forgetAccount('@a:hs', [accountPreference]));
+
+      expect(adapter.remove).toHaveBeenCalledWith(
+        expect.objectContaining({ key: 'test.account-flag', context: alice }),
+      );
+    });
+
+    it('resets the in-memory value for that account and keeps the others', async () => {
+      const store = setup([accountPreference], removingAdapter());
+      await firstValueFrom(store.set(accountPreference.id, alice, false));
+      await firstValueFrom(store.set(accountPreference.id, bob, false));
+
+      await firstValueFrom(store.forgetAccount('@a:hs'));
+
+      expect(store.state(accountPreference.id, alice)()).toEqual({
+        kind: 'default',
+        value: true,
+      });
+      expect(store.value(accountPreference.id, bob)()).toBe(false);
+    });
+
+    it('reports a storage failure as a retryable outcome', async () => {
+      const store = setup(
+        [accountPreference],
+        removingAdapter(() =>
+          of({
+            kind: 'unavailable',
+            diagnostic: { code: 'device-preferences-remove-failed' },
+          } as const),
+        ),
+      );
+
+      await expect(
+        firstValueFrom(store.forgetAccount('@a:hs')),
+      ).resolves.toEqual({
+        kind: 'unavailable',
+        recovery: 'retry-storage',
+        diagnostic: { code: 'preference-storage-write-failed' },
+      });
+    });
+
+    it('reports an adapter that cannot remove as unavailable', async () => {
+      const store = setup([accountPreference], {
+        read: () => of({ kind: 'missing' }),
+        write: () => of({ kind: 'completed' }),
+      });
+
+      await expect(
+        firstValueFrom(store.forgetAccount('@a:hs')),
+      ).resolves.toMatchObject({ kind: 'unavailable' });
+    });
   });
 });

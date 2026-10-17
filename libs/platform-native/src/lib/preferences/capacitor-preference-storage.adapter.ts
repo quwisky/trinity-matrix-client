@@ -8,6 +8,7 @@ import {
   PREFERENCE_STORAGE_ADAPTER,
   type PreferenceContext,
   type PreferenceStorageAdapter,
+  type PreferenceStorageRemoveRequest,
   type PreferenceStorageRequest,
 } from '@trinity/runtime/preferences';
 import { catchError, defer, from, map, of } from 'rxjs';
@@ -51,6 +52,44 @@ export class CapacitorPreferenceStorageAdapter implements PreferenceStorageAdapt
       );
     });
   }
+
+  remove(request: PreferenceStorageRemoveRequest) {
+    return defer(() => {
+      const { context } = request;
+      const unavailable = unavailableReason({
+        ...request,
+        context: context.kind === 'every-conversation' ? null : context,
+      });
+      if (unavailable) return of(unavailable);
+      if (context.kind !== 'every-conversation') {
+        const scoped = { ...request, context };
+        return from(Preferences.remove({ key: scopedKey(scoped) })).pipe(
+          map(() => ({ kind: 'completed' }) as const),
+          catchError(() => of(removeFailed())),
+        );
+      }
+      const prefix = `${request.key}.conversation.${encodeURIComponent(context.accountId)}.`;
+      return from(
+        Preferences.keys().then(({ keys }) =>
+          Promise.all(
+            keys
+              .filter((key) => key.startsWith(prefix))
+              .map((key) => Preferences.remove({ key })),
+          ),
+        ),
+      ).pipe(
+        map(() => ({ kind: 'completed' }) as const),
+        catchError(() => of(removeFailed())),
+      );
+    });
+  }
+}
+
+function removeFailed() {
+  return {
+    kind: 'unavailable',
+    diagnostic: { code: 'device-preferences-remove-failed' },
+  } as const;
 }
 
 export function provideCapacitorPreferenceStorage(): EnvironmentProviders {
@@ -62,7 +101,11 @@ export function provideCapacitorPreferenceStorage(): EnvironmentProviders {
   ]);
 }
 
-function unavailableReason(request: PreferenceStorageRequest) {
+function unavailableReason(
+  request: Omit<PreferenceStorageRequest, 'context'> & {
+    readonly context: PreferenceContext | null;
+  },
+) {
   if (request.sensitivity === 'secret') {
     return {
       kind: 'unavailable',
@@ -75,7 +118,7 @@ function unavailableReason(request: PreferenceStorageRequest) {
       diagnostic: { code: 'preference-storage-policy-unavailable' },
     } as const;
   }
-  if (request.context.kind === 'server-authoritative') {
+  if (request.context?.kind === 'server-authoritative') {
     return {
       kind: 'unavailable',
       diagnostic: { code: 'server-preference-requires-matrix-adapter' },

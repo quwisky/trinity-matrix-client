@@ -2,6 +2,7 @@ import { catchError, defer, of, type Observable } from 'rxjs';
 import type {
   PreferenceStorageAdapter,
   PreferenceStorageReadOutcome,
+  PreferenceStorageRemoveRequest,
   PreferenceStorageRequest,
   PreferenceStorageWriteOutcome,
 } from './preference-storage';
@@ -25,6 +26,27 @@ export function writePreferenceStorage(
   request: PreferenceStorageRequest & { readonly payload: string },
 ): Observable<PreferenceStorageWriteOutcome> {
   return defer(() => adapter.write(request)).pipe(
+    catchError(() =>
+      of({
+        kind: 'unavailable',
+        diagnostic: { code: 'preference-storage-write-failed' },
+      } as const),
+    ),
+  );
+}
+
+export function removePreferenceStorage(
+  adapter: PreferenceStorageAdapter,
+  request: PreferenceStorageRemoveRequest,
+): Observable<PreferenceStorageWriteOutcome> {
+  return defer(() =>
+    adapter.remove
+      ? adapter.remove(request)
+      : of({
+          kind: 'unavailable',
+          diagnostic: { code: 'preference-storage-unavailable' },
+        } as const),
+  ).pipe(
     catchError(() =>
       of({
         kind: 'unavailable',
