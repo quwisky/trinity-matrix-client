@@ -62,6 +62,33 @@ function child(over: Partial<SpaceChildRoom> = {}): SpaceChildRoom {
  * represented by a merged row contributes to the displayed state. */
 let modeForSpy: Mock;
 
+/** Open the space header's overflow menu, which renders into the CDK overlay. */
+function openSpaceMenu(
+  fixture: ComponentFixture<ChannelSidebarComponent>,
+  container: HTMLElement,
+): void {
+  container.querySelector<HTMLElement>('[data-testid="space-header"]')!.click();
+  fixture.detectChanges();
+}
+
+/** Open the kebab menu of the room row at `index`. */
+function openRoomMenu(
+  fixture: ComponentFixture<ChannelSidebarComponent>,
+  container: HTMLElement,
+  index = 0,
+): void {
+  container.querySelectorAll<HTMLElement>('.channel__menu')[index].click();
+  fixture.detectChanges();
+}
+
+/** Reveal the Notifications submenu of an open room kebab menu. */
+function openNotifySubmenu(
+  fixture: ComponentFixture<ChannelSidebarComponent>,
+): void {
+  document.querySelector<HTMLElement>('[data-testid="room-notify"]')!.click();
+  fixture.detectChanges();
+}
+
 async function renderSidebar(
   opts: {
     inputs?: {
@@ -303,10 +330,7 @@ describe('ChannelSidebarComponent', () => {
     let marked = false;
     fixture.componentInstance.markAllRead.subscribe(() => (marked = true));
 
-    container
-      .querySelector<HTMLElement>('[data-testid="space-header"]')!
-      .click();
-    fixture.detectChanges();
+    openSpaceMenu(fixture, container);
 
     const row = document.querySelector<HTMLElement>(
       '[data-testid="mark-all-read"]',
@@ -328,10 +352,7 @@ describe('ChannelSidebarComponent', () => {
       },
     });
 
-    container
-      .querySelector<HTMLElement>('[data-testid="space-header"]')!
-      .click();
-    fixture.detectChanges();
+    openSpaceMenu(fixture, container);
 
     expect(document.querySelector('[data-testid="mark-all-read"]')).toBeNull();
   });
@@ -372,16 +393,10 @@ describe('ChannelSidebarComponent', () => {
     container
       .querySelector<HTMLElement>('[aria-label="Create a room"]')!
       .click();
-    container
-      .querySelector<HTMLElement>('[data-testid="space-header"]')!
-      .click();
-    fixture.detectChanges();
+    openSpaceMenu(fixture, container);
     document.querySelector<HTMLElement>('[data-testid="space-leave"]')!.click();
     fixture.detectChanges();
-    container
-      .querySelector<HTMLElement>('[data-testid="space-header"]')!
-      .click();
-    fixture.detectChanges();
+    openSpaceMenu(fixture, container);
     document
       .querySelector<HTMLElement>('[data-testid="space-invite"]')!
       .click();
@@ -405,10 +420,7 @@ describe('ChannelSidebarComponent', () => {
 
     let opened = false;
     fixture.componentInstance.openSpaceMembers.subscribe(() => (opened = true));
-    container
-      .querySelector<HTMLElement>('[data-testid="space-header"]')!
-      .click();
-    fixture.detectChanges();
+    openSpaceMenu(fixture, container);
     document
       .querySelector<HTMLElement>('[data-testid="open-space-members"]')!
       .click();
@@ -428,18 +440,12 @@ describe('ChannelSidebarComponent', () => {
       () => (organised = true),
     );
 
-    container
-      .querySelector<HTMLElement>('[data-testid="space-header"]')!
-      .click();
-    fixture.detectChanges();
+    openSpaceMenu(fixture, container);
     document
       .querySelector<HTMLElement>('[data-testid="space-add-rooms"]')!
       .click();
     fixture.detectChanges();
-    container
-      .querySelector<HTMLElement>('[data-testid="space-header"]')!
-      .click();
-    fixture.detectChanges();
+    openSpaceMenu(fixture, container);
     document
       .querySelector<HTMLElement>('[data-testid="space-manage-rooms"]')!
       .click();
@@ -466,10 +472,7 @@ describe('ChannelSidebarComponent', () => {
       () => (organised = true),
     );
 
-    container
-      .querySelector<HTMLElement>('[data-testid="space-header"]')!
-      .click();
-    fixture.detectChanges();
+    openSpaceMenu(fixture, container);
 
     const add = document.querySelector<HTMLElement>(
       '[data-testid="space-add-rooms"]',
@@ -509,10 +512,7 @@ describe('ChannelSidebarComponent', () => {
     fixture.componentInstance.openSpaceMembers.subscribe(
       () => (members = true),
     );
-    container
-      .querySelector<HTMLElement>('[data-testid="space-header"]')!
-      .click();
-    fixture.detectChanges();
+    openSpaceMenu(fixture, container);
 
     for (const testId of ['space-leave', 'open-space-members']) {
       const row = document.querySelector<HTMLElement>(
@@ -535,10 +535,7 @@ describe('ChannelSidebarComponent', () => {
     fixture.componentInstance.openSpaceSettings.subscribe(
       () => (opened = true),
     );
-    container
-      .querySelector<HTMLElement>('[data-testid="space-header"]')!
-      .click();
-    fixture.detectChanges();
+    openSpaceMenu(fixture, container);
     document
       .querySelector<HTMLElement>('[data-testid="open-space-settings"]')!
       .click();
@@ -554,10 +551,7 @@ describe('ChannelSidebarComponent', () => {
       inputs: { spaceActive: true, canConfigureSpace: false },
     });
 
-    container
-      .querySelector<HTMLElement>('[data-testid="space-header"]')!
-      .click();
-    fixture.detectChanges();
+    openSpaceMenu(fixture, container);
 
     expect(
       document.querySelector('[data-testid="open-space-settings"]'),
@@ -857,8 +851,7 @@ describe('ChannelSidebarComponent', () => {
       (room) => (changed = room),
     );
 
-    container.querySelector<HTMLElement>('.channel__menu')!.click();
-    fixture.detectChanges();
+    openRoomMenu(fixture, container);
 
     const item = document.querySelector<HTMLElement>(
       '[data-testid="room-low-priority"]',
@@ -959,8 +952,7 @@ describe('ChannelSidebarComponent', () => {
     let left: string | undefined;
     fixture.componentInstance.leaveRoom.subscribe((e) => (left = e.roomId));
 
-    container.querySelector<HTMLElement>('.channel__menu')!.click();
-    fixture.detectChanges();
+    openRoomMenu(fixture, container);
     document.querySelector<HTMLElement>('[data-testid="room-leave"]')!.click();
 
     expect(left).toBe('!a:hs');
@@ -975,8 +967,7 @@ describe('ChannelSidebarComponent', () => {
     let marked: string | undefined;
     fixture.componentInstance.markRead.subscribe((e) => (marked = e.roomId));
 
-    container.querySelector<HTMLElement>('.channel__menu')!.click();
-    fixture.detectChanges();
+    openRoomMenu(fixture, container);
     document
       .querySelector<HTMLElement>('[data-testid="room-mark-read"]')!
       .click();
@@ -992,8 +983,7 @@ describe('ChannelSidebarComponent', () => {
         ],
       },
     });
-    container.querySelector<HTMLElement>('.channel__menu')!.click();
-    fixture.detectChanges();
+    openRoomMenu(fixture, container);
     expect(document.querySelector('[data-testid="room-mark-read"]')).toBeNull();
   });
 
@@ -1008,8 +998,7 @@ describe('ChannelSidebarComponent', () => {
     let flagged: string | undefined;
     fixture.componentInstance.markUnread.subscribe((e) => (flagged = e.roomId));
 
-    container.querySelector<HTMLElement>('.channel__menu')!.click();
-    fixture.detectChanges();
+    openRoomMenu(fixture, container);
     document
       .querySelector<HTMLElement>('[data-testid="room-mark-unread"]')!
       .click();
@@ -1029,8 +1018,7 @@ describe('ChannelSidebarComponent', () => {
         activeRoomId: '!a:hs',
       },
     });
-    container.querySelector<HTMLElement>('.channel__menu')!.click();
-    fixture.detectChanges();
+    openRoomMenu(fixture, container);
 
     expect(
       document.querySelector('[data-testid="room-mark-unread"]'),
@@ -1043,8 +1031,7 @@ describe('ChannelSidebarComponent', () => {
         rooms: [roomSummary({ id: '!a:hs', name: 'general', hasUnread: true })],
       },
     });
-    container.querySelector<HTMLElement>('.channel__menu')!.click();
-    fixture.detectChanges();
+    openRoomMenu(fixture, container);
     expect(
       document.querySelector('[data-testid="room-mark-unread"]'),
     ).toBeNull();
@@ -1134,8 +1121,7 @@ describe('ChannelSidebarComponent', () => {
       (e) => (emitted = e.accountIds),
     );
 
-    container.querySelector<HTMLElement>('.channel__menu')!.click();
-    fixture.detectChanges();
+    openRoomMenu(fixture, container);
     document
       .querySelector<HTMLElement>('[data-testid="room-mark-unread"]')!
       .click();
@@ -1198,8 +1184,7 @@ describe('ChannelSidebarComponent', () => {
       inputs: { rooms: [roomSummary({ id: '!a:hs', name: 'general' })] },
     });
 
-    container.querySelector<HTMLElement>('.channel__menu')!.click();
-    fixture.detectChanges();
+    openRoomMenu(fixture, container);
 
     const notify = document.querySelector<HTMLElement>(
       '[data-testid="room-notify"]',
@@ -1247,10 +1232,8 @@ describe('ChannelSidebarComponent', () => {
         .querySelector('[data-testid="room-muted"]')
         ?.getAttribute('aria-label'),
     ).toBe('Notification settings differ between accounts');
-    container.querySelector<HTMLElement>('.channel__menu')!.click();
-    fixture.detectChanges();
-    document.querySelector<HTMLElement>('[data-testid="room-notify"]')!.click();
-    fixture.detectChanges();
+    openRoomMenu(fixture, container);
+    openNotifySubmenu(fixture);
 
     expect(
       document.querySelector('[data-testid="room-notify-mixed"]')?.textContent,
@@ -1275,10 +1258,8 @@ describe('ChannelSidebarComponent', () => {
     );
 
     // Open the kebab, reveal the Notifications submenu, then pick Mute.
-    container.querySelector<HTMLElement>('.channel__menu')!.click();
-    fixture.detectChanges();
-    document.querySelector<HTMLElement>('[data-testid="room-notify"]')!.click();
-    fixture.detectChanges();
+    openRoomMenu(fixture, container);
+    openNotifySubmenu(fixture);
     const muteItem = document.querySelector<HTMLElement>(
       '[data-testid="room-notify-mute"]',
     );
@@ -1305,12 +1286,8 @@ describe('ChannelSidebarComponent', () => {
         inputs: { rooms: [roomSummary({ id: '!a:hs', name: 'general' })] },
         notifyMode: mode,
       });
-      container.querySelector<HTMLElement>('.channel__menu')!.click();
-      fixture.detectChanges();
-      document
-        .querySelector<HTMLElement>('[data-testid="room-notify"]')!
-        .click();
-      fixture.detectChanges();
+      openRoomMenu(fixture, container);
+      openNotifySubmenu(fixture);
 
       const ariaChecked = (id: string): string | null | undefined =>
         document
@@ -1335,10 +1312,8 @@ describe('ChannelSidebarComponent', () => {
       picks.push(event),
     );
 
-    container.querySelector<HTMLElement>('.channel__menu')!.click();
-    fixture.detectChanges();
-    document.querySelector<HTMLElement>('[data-testid="room-notify"]')!.click();
-    fixture.detectChanges();
+    openRoomMenu(fixture, container);
+    openNotifySubmenu(fixture);
     document
       .querySelector<HTMLElement>('[data-testid="room-notify-mentions"]')!
       .click();
@@ -1368,8 +1343,7 @@ describe('ChannelSidebarComponent', () => {
     expect(kebabs).toHaveLength(2);
     kebabs[1].click();
     fixture.detectChanges();
-    document.querySelector<HTMLElement>('[data-testid="room-notify"]')!.click();
-    fixture.detectChanges();
+    openNotifySubmenu(fixture);
     document
       .querySelector<HTMLElement>('[data-testid="room-notify-mute"]')!
       .click();
@@ -1437,17 +1411,13 @@ describe('ChannelSidebarComponent', () => {
     ]);
     const { container } = await renderSidebar({
       invites: [
-        {
+        pendingInvite({
           roomId: '!i:hs',
           accountId: '@alt:hs',
           name: 'Ops',
           initial: 'O',
-          avatarMxc: null,
           inviterName: 'Al',
-          inviterId: '',
-          isSpace: false,
-          isDirect: false,
-        },
+        }),
       ],
       inputs: { accountBadges: badges },
     });
@@ -1463,17 +1433,13 @@ describe('ChannelSidebarComponent', () => {
   it('answers an invite on the account it was sent to', async () => {
     const { fixture, container } = await renderSidebar({
       invites: [
-        {
+        pendingInvite({
           roomId: '!i:hs',
           accountId: '@alt:hs',
           name: 'Ops',
           initial: 'O',
-          avatarMxc: null,
           inviterName: 'Al',
-          inviterId: '',
-          isSpace: false,
-          isDirect: false,
-        },
+        }),
       ],
     });
     const accepted: PendingInvite[] = [];
@@ -1503,10 +1469,7 @@ describe('ChannelSidebarComponent space sort menu', () => {
       inputs: { spaceActive: true, ...inputs },
     });
     // The sort menu is a SUBMENU now: open the header overflow first, then its row.
-    rendered.container
-      .querySelector<HTMLElement>('[data-testid="space-header"]')!
-      .click();
-    rendered.fixture.detectChanges();
+    openSpaceMenu(rendered.fixture, rendered.container);
     const trigger = document.querySelector<HTMLElement>(
       '[data-testid="space-sort"]',
     )!;
@@ -1525,10 +1488,7 @@ describe('ChannelSidebarComponent space sort menu', () => {
     // Not on the header itself any more — it is a row in the overflow menu.
     expect(container.querySelector('[data-testid="space-sort"]')).toBeNull();
 
-    container
-      .querySelector<HTMLElement>('[data-testid="space-header"]')!
-      .click();
-    fixture.detectChanges();
+    openSpaceMenu(fixture, container);
 
     expect(document.querySelector('[data-testid="space-sort"]')).not.toBeNull();
   });
