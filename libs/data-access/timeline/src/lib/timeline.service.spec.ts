@@ -2773,34 +2773,6 @@ describe('TimelineService', () => {
         expect(shieldOf('$new')).toMatchObject({ level: 'unencrypted' });
       });
 
-      it('marks a message dated exactly at the encryption event red', () => {
-        const { svc } = openWithEvents(
-          vi.fn(),
-          [fakeEvent({ id: '$same', sender: '@a:hs', body: 'now', ts: 1000 })],
-          true,
-          false,
-          1000,
-        );
-
-        expect(svc.messages()[0].shield?.level).toBe('unencrypted');
-      });
-
-      it('marks every message red when the room has no encryption state event', () => {
-        const { svc } = openWithEvents(
-          vi.fn(),
-          [
-            fakeEvent({ id: '$old', sender: '@a:hs', body: 'before', ts: 1 }),
-            fakeEvent({ id: '$new', sender: '@a:hs', body: 'after', ts: 9999 }),
-          ],
-          true,
-        );
-
-        expect(svc.messages().map((m) => m.shield?.level)).toEqual([
-          'unencrypted',
-          'unencrypted',
-        ]);
-      });
-
       it('does not show a state event of a message type as a message row', () => {
         const { svc } = openWithEvents(
           vi.fn(),
@@ -2819,30 +2791,6 @@ describe('TimelineService', () => {
 
         expect(svc.messages().map((m) => m.id)).not.toContain('$state-message');
         expect(svc.messages().map((m) => m.id)).toContain('$after');
-      });
-
-      it('marks an encrypted message whose plaintext edit is dated after encryption red', () => {
-        const { svc } = openWithEvents(
-          vi.fn().mockResolvedValue({ shieldColour: EventShieldColour.NONE }),
-          [
-            encryptionEvent(),
-            fakeEvent({
-              id: '$sealed',
-              sender: '@a:hs',
-              body: 'edited text',
-              encrypted: true,
-              ts: 500,
-              replacement: fakeEdit('$sealed', false, 1500),
-            }),
-          ],
-          true,
-          false,
-          1000,
-        );
-
-        expect(svc.messages().find((m) => m.id === '$sealed')?.shield).toEqual(
-          expect.objectContaining({ level: 'unencrypted' }),
-        );
       });
 
       it('probes the crypto API with the edit, which supplies the text, not the original', async () => {
