@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, ReplaySubject, defer, finalize, map } from 'rxjs';
 import {
@@ -44,7 +44,8 @@ export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
   private readonly providerHolds = new Map<string, ServerLogoutHold>();
   /** Accounts whose deletion has been presented, so two detections say it once. */
   private readonly presented = new Set<string>();
-  private deletedNotice: string | null = null;
+  private readonly notice = signal<string | null>(null);
+  readonly deletedNotice = this.notice.asReadonly();
 
   plan(accountId: string): Observable<AccountDeletionPlan> {
     return this.auth.accountManagementFor(accountId).pipe(
@@ -94,10 +95,8 @@ export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
     });
   }
 
-  takeDeletedNotice(): string | null {
-    const notice = this.deletedNotice;
-    this.deletedNotice = null;
-    return notice;
+  dismissDeletedNotice(): void {
+    this.notice.set(null);
   }
 
   /**
@@ -158,7 +157,7 @@ export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
       : (this.matrix.accountIds().find((id) => id !== accountId) ?? null);
     const complete = cleanup.kind === 'ready';
     if (!next) {
-      this.deletedNotice = accountId;
+      this.notice.set(accountId);
       void this.router.navigateByUrl('/login', { replaceUrl: true });
       if (complete) return;
     } else {

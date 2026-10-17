@@ -268,6 +268,8 @@ export class DeleteAccountDialogComponent {
     this.answerBrowser = null;
     switch (outcome.kind) {
       case 'deleted':
+        // With a result, so the dismiss guard that holds it open while deleting lets go.
+        this.ref?.close(outcome.kind);
         return;
       case 'unconfirmed':
         this.step.set({ kind: 'unconfirmed', checking: false });

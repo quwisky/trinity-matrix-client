@@ -1,3 +1,4 @@
+import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -55,7 +56,7 @@ async function renderLogin(
     /** The app's Report a bug launcher; absent unless a test provides one. */
     bugReport?: { open: () => void };
     /** The account whose deletion led here, as the deletion launcher hands it over. */
-    deleted?: string;
+    deleted?: string | WritableSignal<string | null>;
   } = {},
 ): Promise<{
   fixture: Awaited<ReturnType<typeof render<LoginPage>>>['fixture'];
@@ -145,7 +146,13 @@ async function renderLogin(
         ? [
             {
               provide: ACCOUNT_DELETION_LAUNCHER,
-              useValue: { takeDeletedNotice: () => opts.deleted },
+              useValue: {
+                deletedNotice:
+                  typeof opts.deleted === 'string'
+                    ? signal(opts.deleted).asReadonly()
+                    : opts.deleted.asReadonly(),
+                dismissDeletedNotice: vi.fn(),
+              },
             },
           ]
         : []),
@@ -551,6 +558,22 @@ describe('LoginPage', () => {
     );
     expect(notice?.tagName).toBe('H2');
     expect(document.activeElement).toBe(notice);
+  });
+
+  it('shows the notice when the deletion settles after sign-in has opened', async () => {
+    const notice = signal<string | null>(null);
+    const { fixture } = await renderLogin({}, { deleted: notice });
+    const root = fixture.nativeElement as HTMLElement;
+    expect(
+      root.querySelector('[data-testid="login-account-deleted"]'),
+    ).toBeNull();
+
+    notice.set('@alice:example.org');
+    await fixture.whenStable();
+
+    expect(
+      root.querySelector('[data-testid="login-account-deleted"]')?.textContent,
+    ).toContain('Your account @alice:example.org was deleted.');
   });
 
   it('shows no deletion notice on an ordinary visit', async () => {

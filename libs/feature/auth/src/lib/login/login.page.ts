@@ -10,6 +10,7 @@ import {
   inject,
   signal,
   viewChild,
+  type Signal,
   type WritableSignal,
 } from '@angular/core';
 import { FormField, disabled, form } from '@angular/forms/signals';
@@ -135,12 +136,13 @@ export class LoginPage {
     viewChild<ElementRef<HTMLInputElement>>('usernameInput');
   private readonly deletedNoticeHeading =
     viewChild<ElementRef<HTMLElement>>('deletedNotice');
+  private readonly deletion = inject(ACCOUNT_DELETION_LAUNCHER, {
+    optional: true,
+  });
 
   /** The account whose deletion left none behind; its confirmation is read first. */
-  readonly deletedAccountId =
-    inject(ACCOUNT_DELETION_LAUNCHER, {
-      optional: true,
-    })?.takeDeletedNotice() ?? null;
+  readonly deletedAccountId: Signal<string | null> =
+    this.deletion?.deletedNotice ?? signal(null);
 
   /** `/login?add` — add a second account instead of replacing the current one. */
   readonly addMode = this.route.snapshot.queryParamMap.has('add');
@@ -205,14 +207,17 @@ export class LoginPage {
       );
     }
 
-    if (this.deletedAccountId) {
-      afterNextRender(
-        () => this.deletedNoticeHeading()?.nativeElement.focus(),
-        {
-          injector: this.injector,
-        },
-      );
-    }
+    effect(() => {
+      if (this.deletedAccountId()) {
+        afterNextRender(
+          () => this.deletedNoticeHeading()?.nativeElement.focus(),
+          { injector: this.injector },
+        );
+      }
+    });
+    this.destroyRef.onDestroy(() => {
+      if (this.deletedAccountId()) this.deletion?.dismissDeletedNotice();
+    });
 
     // The username step appears after discovery, and a document flushes `autofocus` only
     // once (on the homeserver step), so focus it programmatically.

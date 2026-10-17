@@ -176,7 +176,7 @@ describe('AccountDeletionLauncherAdapter', () => {
       `${ALICE} was deleted. You’re now using ${BOB}.`,
       { duration: 8000, variant: 'success' },
     );
-    expect(test.launcher.takeDeletedNotice()).toBeNull();
+    expect(test.launcher.deletedNotice()).toBeNull();
   });
 
   it('goes to sign-in with a notice when it was the last account', async () => {
@@ -194,8 +194,9 @@ describe('AccountDeletionLauncherAdapter', () => {
       replaceUrl: true,
     });
     expect(test.toast.show).not.toHaveBeenCalled();
-    expect(test.launcher.takeDeletedNotice()).toBe(ALICE);
-    expect(test.launcher.takeDeletedNotice()).toBeNull();
+    expect(test.launcher.deletedNotice()).toBe(ALICE);
+    test.launcher.dismissDeletedNotice();
+    expect(test.launcher.deletedNotice()).toBeNull();
   });
 
   it('reports leftover local data without calling the deletion failed', async () => {

@@ -1,4 +1,4 @@
-import { InjectionToken } from '@angular/core';
+import { InjectionToken, type Signal } from '@angular/core';
 import type { Observable } from 'rxjs';
 
 /** How deletion works for an account, decided by what its server supports. */
@@ -56,8 +56,12 @@ export interface AccountDeletionLauncher {
   confirm(accountId: string): Observable<AccountDeletionOutcome>;
   /** Open the provider page and remove the account here once its token stops working. */
   openProvider(accountId: string, url: string): Observable<boolean>;
-  /** The account whose deletion left no account behind, once, for the sign-in page. */
-  takeDeletedNotice(): string | null;
+  /**
+   * The account whose deletion left no account behind, for the sign-in page's notice. It
+   * can arrive after sign-in has opened: the last account's removal leads there itself.
+   */
+  readonly deletedNotice: Signal<string | null>;
+  dismissDeletedNotice(): void;
 }
 
 /**

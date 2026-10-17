@@ -270,6 +270,15 @@ describe('DeleteAccountDialogComponent', () => {
     expect(test.removal.remove).toHaveBeenCalledWith(ALICE);
   });
 
+  it('closes itself with a result once the account is deleted', async () => {
+    const test = await setup();
+    await typeAndSubmit(test, 'DELETE');
+
+    test.outcome.next({ kind: 'deleted' });
+
+    expect(test.close).toHaveBeenCalledWith('deleted');
+  });
+
   it('answers an open prompt when the dialog goes away', async () => {
     const test = await setup();
     await typeAndSubmit(test, 'DELETE');

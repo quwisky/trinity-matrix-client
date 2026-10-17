@@ -2,7 +2,7 @@
   <!-- Visually hidden page title for assistive technology. -->
   <h1 class="sr-only">Sign in to Trinity</h1>
 
-  @if (deletedAccountId) {
+  @if (deletedAccountId(); as deletedAccountId) {
     <h2
       #deletedNotice
       tabindex="-1"
