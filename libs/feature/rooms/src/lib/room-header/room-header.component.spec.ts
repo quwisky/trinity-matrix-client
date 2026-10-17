@@ -338,13 +338,34 @@ describe('RoomHeaderComponent actions and search field', () => {
     ['overflow-jump-to-date', 'jump-to-date'],
     ['overflow-toggle-members', 'members'],
     ['overflow-open-system-status', 'system-status'],
+    ['overflow-report-room', 'report'],
   ])('emits the %s menu item as %s', async (id, type) => {
     const { byId, actions } = await build({
       invitePermission: { available: true, reason: null },
+      canReport: true,
     });
     byId('room-actions-overflow')?.click();
     document.querySelector<HTMLElement>(`[data-testid="${id}"]`)?.click();
     expect(actions).toEqual([{ type }]);
+  });
+
+  it('names the report item and leaves it out where reports are not taken', async () => {
+    const { byId, fixture } = await build({ canReport: true });
+    byId('room-actions-overflow')?.click();
+    expect(
+      document
+        .querySelector('[data-testid="overflow-report-room"]')
+        ?.textContent?.trim(),
+    ).toBe('Report room');
+    document.body.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    fixture.componentRef.setInput('canReport', false);
+    fixture.detectChanges();
+    byId('room-actions-overflow')?.click();
+    expect(
+      document.querySelector('[data-testid="overflow-report-room"]'),
+    ).toBeNull();
   });
 
   it('flags a system-status problem in the overflow menu', async () => {

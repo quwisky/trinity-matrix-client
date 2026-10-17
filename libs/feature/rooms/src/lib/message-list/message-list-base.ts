@@ -825,6 +825,7 @@ export abstract class MessageListBase {
     if (
       dispatchSharedRowAction(action, row, {
         roomId: this.roomId() ?? '',
+        accountId: this.accountId(),
         destroyRef: this.listDestroyRef,
         dialog: this.dialog,
         timeline: this.timeline,

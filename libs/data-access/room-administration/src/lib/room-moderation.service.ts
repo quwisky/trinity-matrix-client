@@ -92,22 +92,23 @@ export class RoomModerationService {
   }
 
   /**
-   * Report a message to the room's server admins (`reportEvent`, MSC/CS report API),
-   * with a reason. Score -100 flags it as the most offensive. Cold — runs on subscribe.
+   * Report a message to the reporter's server admins (`reportEvent`) with a reason, as the
+   * account that saw it. Score -100 flags it as the most offensive. Cold.
    */
   reportMessage(
-    roomId: string,
+    target: string | RoomActionPermissionsKey,
     eventId: string,
     reason: string,
   ): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const client = this.clientFor(target);
+      if (!client) {
         return throwError(() =>
           roomAdministrationNotSignedIn('report-message'),
         );
       }
       return from(
-        this.matrix.instance.reportEvent(roomId, eventId, -100, reason),
+        client.reportEvent(this.roomIdOf(target), eventId, -100, reason),
       ).pipe(
         map(() => void 0),
         recoverRoomAdministrationRequest('report-message'),

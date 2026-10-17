@@ -211,4 +211,33 @@ describe('RoomModerationService', () => {
       myPower: 100,
     });
   });
+
+  it('reportMessage reports as the named account, not the active one', async () => {
+    const { svc, reportEvent } = setup();
+
+    await firstValueFrom(
+      svc.reportMessage(
+        { accountId: '@me:hs', roomId: '!r:hs' },
+        '$evt',
+        'spam',
+      ),
+    );
+
+    expect(reportEvent).toHaveBeenCalledWith('!r:hs', '$evt', -100, 'spam');
+  });
+
+  it('reportMessage refuses an account that is no longer signed in', async () => {
+    const { svc, reportEvent } = setup();
+
+    await expect(
+      firstValueFrom(
+        svc.reportMessage(
+          { accountId: '@gone:hs', roomId: '!r:hs' },
+          '$evt',
+          '',
+        ),
+      ),
+    ).rejects.toThrow();
+    expect(reportEvent).not.toHaveBeenCalled();
+  });
 });

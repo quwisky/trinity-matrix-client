@@ -18,6 +18,7 @@ const row = { id: '$e', body: 'hello' } as MessageRow;
 function setup(overrides: Partial<SharedRowActionContext> = {}) {
   const ctx = {
     roomId: '!r:hs',
+    accountId: null as string | null,
     destroyRef: { onDestroy: () => () => undefined } as unknown as DestroyRef,
     dialog: {
       open: vi.fn(),
@@ -157,6 +158,17 @@ describe('dispatchSharedRowAction', () => {
     expect(ctx.report.report$).toHaveBeenCalledWith('!r:hs', '$e');
     expect(ctx.reactions.open$).toHaveBeenCalledWith('$e');
     expect(ctx.editHistory.openHistory$).toHaveBeenCalledWith('!r:hs', '$e');
+  });
+
+  it('reports a message as the account that sees the conversation', () => {
+    const ctx = setup({ accountId: '@me:hs' });
+
+    dispatchSharedRowAction({ type: 'report' }, row, ctx);
+
+    expect(ctx.report.report$).toHaveBeenCalledWith(
+      { accountId: '@me:hs', roomId: '!r:hs' },
+      '$e',
+    );
   });
 
   it('reports a permalink followed out of the edit history', () => {

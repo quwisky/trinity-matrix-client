@@ -41,6 +41,7 @@ export type RoomHeaderAction =
   | { type: 'invite' }
   | { type: 'settings' }
   | { type: 'jump-to-date' }
+  | { type: 'report' }
   | { type: 'system-status' };
 
 /** The identity the shell is acting as, shown only while accounts are mixed. */
@@ -93,6 +94,8 @@ export class RoomHeaderComponent {
     reason: null,
   });
   readonly systemStatusProblems = input(false);
+  /** Whether this account's server may still take room reports. */
+  readonly canReport = input(false);
   /** Shared by the header field and the search panel's own field. */
   readonly searchQuery = model('');
 
