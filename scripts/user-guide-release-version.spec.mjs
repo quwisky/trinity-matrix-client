@@ -1,7 +1,7 @@
 /** Stable release PRs carry the user guide to the new version; prereleases leave it alone. */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { parse } from 'yaml';
+import { workflow as loadWorkflow } from './workspace-sources.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const readJson = (path) =>
@@ -40,9 +40,7 @@ describe('user guide release version', () => {
   });
 
   describe('documentation Pages workflow', () => {
-    const workflow = parse(
-      readFileSync(resolve(root, '.github/workflows/docs-pages.yml'), 'utf8'),
-    );
+    const workflow = loadWorkflow('docs-pages.yml');
 
     it('redeploys from main when a stable release is published', () => {
       expect(workflow.on.release.types).toEqual(['published']);

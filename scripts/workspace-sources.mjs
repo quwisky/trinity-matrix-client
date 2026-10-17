@@ -1,11 +1,19 @@
-import { globSync, readFileSync } from 'node:fs';
+import { globSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import ts from 'typescript';
+import { parse } from 'yaml';
 
 export const workspaceRoot = join(import.meta.dirname, '..');
 
 /** Read a workspace-relative file as UTF-8 text. */
 export const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
+
+/** Parse `.github/workflows/<name>` (a fresh object per call, safe to mutate). */
+export const workflow = (name) => parse(read(`.github/workflows/${name}`));
+
+/** File names under `.github/workflows`, sorted. */
+export const workflows = () =>
+  readdirSync(join(workspaceRoot, '.github/workflows')).sort();
 
 const applicationSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
   cwd: workspaceRoot,

@@ -12,10 +12,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { CODE_JOB_IDS } from './ci-classify.mjs';
+import { workflow as loadWorkflow } from './workspace-sources.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const yaml = (path) => parse(readFileSync(resolve(root, path), 'utf8'));
-const workflow = yaml('.github/workflows/ci.yml');
+const workflow = loadWorkflow('ci.yml');
 
 /** The single step of every result job that reports split jobs under one required check. */
 const RESULT_GATE_STEP = {
@@ -677,7 +678,7 @@ describe('Unit test selection', () => {
 });
 
 describe('iOS nightly E2E workflow', () => {
-  const ios = yaml('.github/workflows/e2e-ios-nightly.yml');
+  const ios = loadWorkflow('e2e-ios-nightly.yml');
   const steps = ios.jobs.ios.steps;
 
   it('runs the iOS suite on macOS against native Synapse', () => {

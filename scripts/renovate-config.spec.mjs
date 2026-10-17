@@ -1,7 +1,7 @@
 /** Renovate merges nothing on its own, and proposes nothing brand new. */
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parse } from 'yaml';
+import { workflow, workflows } from './workspace-sources.mjs';
 
 const source = readFileSync(
   resolve(import.meta.dirname, '../.github/renovate.json'),
@@ -86,19 +86,17 @@ describe('Renovate update policy', () => {
 });
 
 describe('Renovate App key', () => {
-  const dir = resolve(import.meta.dirname, '../.github/workflows');
-
   it('is read only by the Renovate job, inside the renovate environment', () => {
     const readers = [];
-    for (const name of readdirSync(dir)) {
-      const { jobs } = parse(readFileSync(resolve(dir, name), 'utf8'));
+    for (const name of workflows()) {
+      const { jobs } = workflow(name);
       for (const [id, job] of Object.entries(jobs)) {
         if (JSON.stringify(job).includes('secrets.RENOVATE_APP_PRIVATE_KEY'))
           readers.push(`${name} ${id}`);
       }
     }
     expect(readers).toEqual(['renovate.yml renovate']);
-    const { jobs } = parse(readFileSync(resolve(dir, 'renovate.yml'), 'utf8'));
+    const { jobs } = workflow('renovate.yml');
     expect(jobs.renovate.environment).toBe('renovate');
   });
 });

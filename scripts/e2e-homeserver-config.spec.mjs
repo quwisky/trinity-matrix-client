@@ -24,6 +24,7 @@ import {
   MAS_ISSUER,
   MAS_SERVER_NAME,
 } from '../e2e/support/homeserver/constants.mjs';
+import { workflow as loadWorkflow } from './workspace-sources.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
 const HERE = 'e2e/support/homeserver';
@@ -59,7 +60,7 @@ describe('E2E homeserver selection', () => {
 
 describe('PR E2E job', () => {
   it('names the homeserver generically, since the default is no longer Synapse', () => {
-    const ci = parse(read('.github/workflows/ci.yml'));
+    const ci = loadWorkflow('ci.yml');
     const names = Object.values(ci.jobs).map((job) => job.name);
     expect(names).toContain('E2E (Playwright + homeserver)');
     expect(names).not.toContain('E2E (Playwright + Synapse)');
@@ -133,8 +134,7 @@ describe('Tuwunel E2E configuration', () => {
 });
 
 describe('Nightly Synapse workflow', () => {
-  const path = '.github/workflows/e2e-synapse-nightly.yml';
-  const workflow = () => parse(read(path));
+  const workflow = () => loadWorkflow('e2e-synapse-nightly.yml');
   const commands = (job) => job.steps.map((step) => step.run ?? '').join('\n');
   /** The suite jobs; `notify` only calls the reusable alert workflow and has no steps. */
   const suites = () =>

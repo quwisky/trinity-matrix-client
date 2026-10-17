@@ -1,14 +1,8 @@
 /** Release stable only cuts a new line from a published prerelease and never overwrites one. */
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { parse } from 'yaml';
+import { read, workflow as loadWorkflow } from './workspace-sources.mjs';
 
-const root = resolve(import.meta.dirname, '..');
-const source = readFileSync(
-  resolve(root, '.github/workflows/release-stable.yml'),
-  'utf8',
-);
-const workflow = parse(source);
+const source = read('.github/workflows/release-stable.yml');
+const workflow = loadWorkflow('release-stable.yml');
 const job = workflow.jobs.cut;
 const index = (name) => {
   const at = job.steps.findIndex((step) => step.name === name);

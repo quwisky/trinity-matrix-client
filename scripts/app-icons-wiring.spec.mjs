@@ -1,7 +1,7 @@
 /** Each platform references the generated icons it needs. */
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { parse } from 'yaml';
+import { workflow } from './workspace-sources.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const read = (path) => readFileSync(join(root, path), 'utf8');
@@ -110,7 +110,7 @@ describe('desktop icon wiring', () => {
       existsSync(join(root, 'electron/build/Trinity.icon/icon.json')),
     ).toBe(true);
     // The job that packs the macOS app runs actool, so it needs Xcode 26.
-    const { jobs } = parse(read('.github/workflows/release.yml'));
+    const { jobs } = workflow('release.yml');
     const packing = Object.values(jobs).filter((job) =>
       job.steps?.some((step) =>
         /\belectron-builder\b.*\s--mac\b/.test(step.run ?? ''),
