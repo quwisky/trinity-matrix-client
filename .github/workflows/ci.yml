@@ -84,7 +84,7 @@ jobs:
               'libs/components/(overlay|navigation-layout)/'
               'libs/theme-foundation/'
               'apps/trinity/src/(global|rendered-markdown)\.scss$'
-              'libs/util/matrix/src/lib/(message-view|message-content)\.ts$'
+              'libs/util/matrix/src/lib/(message-view|message-content|message-html|markdown-render)\.ts$'
               'libs/feature/rooms/src/lib/message-presentation/'
               'libs/feature/rooms/src/lib/message-row/message-row\.component\.(html|scss)$'
               'e2e/components/(scrollbars/|playwright\.scrollbars\.config\.mts$|project\.json$)'
