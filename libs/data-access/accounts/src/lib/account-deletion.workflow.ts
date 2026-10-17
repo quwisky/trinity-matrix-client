@@ -172,6 +172,8 @@ export class AccountDeletionWorkflow {
     const hold = this.unconfirmed.get(accountId);
     if (!hold) return;
     this.unconfirmed.delete(accountId);
+    // A hold the account took with it when it left; a later deletion settles itself.
+    if (!hold.isHeld()) return;
     this.removeDeleted(accountId)
       .pipe(finalize(() => hold.release({ deleted: true })))
       .subscribe((result) => this.late.next(result));

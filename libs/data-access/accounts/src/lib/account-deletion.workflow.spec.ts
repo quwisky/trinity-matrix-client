@@ -521,6 +521,27 @@ describe('AccountDeletionWorkflow', () => {
       ]);
     });
 
+    it('leaves a later deletion to finish itself once the old one is forgotten', async () => {
+      const test = unconfirmed();
+      const late: unknown[] = [];
+      test.workflow.lateDeletions.subscribe((result) => late.push(result));
+      await firstValueFrom(test.workflow.delete(request(test.stages)));
+      test.wipeHolds();
+      vi.mocked(test.client.deactivateAccount)
+        .mockRejectedValueOnce(uia(['m.login.password']))
+        .mockImplementationOnce(async () => {
+          test.killToken();
+          return {};
+        });
+
+      await expect(
+        firstValueFrom(test.workflow.delete(request(test.stages))),
+      ).resolves.toMatchObject({ kind: 'deleted' });
+
+      expect(test.accounts.removeDeletedAccount).toHaveBeenCalledOnce();
+      expect(late).toEqual([]);
+    });
+
     it('lets go of the wipe once the server says the account still exists', async () => {
       const test = unconfirmed();
       await firstValueFrom(test.workflow.delete(request(test.stages)));
