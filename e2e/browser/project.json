@@ -13,8 +13,11 @@
       "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-browser"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/support/run-playwright.mts --config=e2e/browser/playwright.config.mts --build=trinity:build:development --resource=homeserver",
-        "cwd": "{workspaceRoot}"
+        "command": "node e2e/support/write-release-notes-fixture.mts && node e2e/support/run-playwright.mts --config=e2e/browser/playwright.config.mts --build=trinity:build:development --resource=homeserver",
+        "cwd": "{workspaceRoot}",
+        "env": {
+          "TRINITY_RELEASE_NOTES_FIXTURE": "dist/e2e-release-notes.json"
+        }
       }
     },
     "lint": {
