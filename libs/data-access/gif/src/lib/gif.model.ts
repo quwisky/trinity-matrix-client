@@ -13,17 +13,12 @@ export function isGifProviderId(value: unknown): value is GifProviderId {
 }
 
 /**
- * Provider ids Trinity used to support, and what each one becomes now.
+ * Provider ids Trinity used to support, and what each becomes.
  *
- * Google shut the Tenor API down on 30 June 2026, so `tenor` is not a provider any more —
- * but it is still sitting in `trinity.gif.config` on every device that chose it, and in
- * every configuration document exported before this change. Both paths have to land
- * somewhere deliberate rather than falling through a guard, which is why the mapping is a
- * named export rather than an `if` at each call site.
- *
- * A retired id keeps its own key OUT of the migration: a Tenor key cannot authenticate
- * against KLIPY, so carrying it over would present as a working configuration that fails
- * every search. See {@link GifSettingsService.init} and the `gif.provider` config entry.
+ * `tenor` (API shut down by Google) can still sit in `trinity.gif.config` and in exported
+ * configuration documents, so the mapping is a named export. A retired id keeps its key OUT of
+ * the migration: a Tenor key cannot authenticate against KLIPY. See
+ * {@link GifSettingsService.init} and the `gif.provider` config entry.
  */
 export const RETIRED_GIF_PROVIDERS: Readonly<Record<string, GifProviderId>> = {
   tenor: 'klipy',

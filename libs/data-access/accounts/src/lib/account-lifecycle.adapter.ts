@@ -209,8 +209,8 @@ export class AccountLifecycleAdapter {
               'retry-sign-out',
               ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
             ),
-            // One remote step. A separate provider revocation would revoke every OAuth
-            // token twice now that logout() does it.
+            // One remote step: a separate provider revocation would revoke every OAuth token
+            // twice, since logout() already does it.
             attempt.capture(
               remoteLogout(context, this.matrix),
               remoteLogoutScope(context),

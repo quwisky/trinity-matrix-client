@@ -21,8 +21,7 @@ import {
   type IdentityOperation,
 } from './identity-operation-error';
 
-/** The signed-in user's profile. The avatar is the raw `mxc://`; the UI resolves
- * it (authenticated) via the shared avatar resolver. */
+/** The signed-in user's profile. The avatar is the raw `mxc://`; the UI resolves it (authenticated). */
 export interface IdentityProfile {
   readonly userId: string;
   readonly displayName: string;
@@ -38,9 +37,8 @@ export interface IdentitySummary {
 }
 
 /**
- * Reads and updates the current user's Matrix profile (display name + avatar),
- * wrapping the SDK so components never touch matrix-js-sdk directly. Exposes the
- * profile as a signal that edits patch optimistically.
+ * Reads and updates the current user's Matrix profile (display name + avatar), wrapping the
+ * SDK. Exposes the profile as a signal that edits patch optimistically.
  */
 @Injectable({ providedIn: 'root' })
 export class IdentityService {
@@ -63,8 +61,7 @@ export class IdentityService {
         map((info) =>
           this.buildProfile(userId, info.displayname, info.avatar_url ?? null),
         ),
-        // A brand-new account has no profile yet (the homeserver 404s); treat
-        // that as an empty profile so the editor still renders and can set one.
+        // A brand-new account has no profile yet (the homeserver 404s): treat it as empty.
         catchError((err) =>
           isNotFound(err)
             ? of(this.buildProfile(userId, undefined, null))
@@ -132,9 +129,8 @@ export class IdentityService {
     avatarMxc: string | null,
   ): IdentityProfile {
     return {
-      // Raw display name ('' when unset) — callers render `displayName || userId`.
-      // Keeping it raw lets the name editor show an empty field for a nameless
-      // user and lets clearing the name settle correctly.
+      // Raw display name ('' when unset): callers render `displayName || userId`, and the
+      // editor shows an empty field for a nameless user.
       userId,
       displayName: displayname ?? '',
       avatarMxc,

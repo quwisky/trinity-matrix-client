@@ -1,16 +1,13 @@
 import type { GifProviderId, GifResult } from './gif.model';
 
-// KLIPY is a deliberate drop-in for the Tenor API it replaces: their migration guide is
-// "replace tenor.googleapis.com with api.klipy.com … and your GIF experience continues to
-// work", so the paths, the parameter names and the response shape below are Tenor's, and the
-// parser is the Tenor one renamed. Google shut the Tenor API down on 30 June 2026.
+// KLIPY is a drop-in for the Tenor API it replaces, so the paths, parameter names and
+// response shape below are Tenor's and the parser is the Tenor one renamed.
 const KLIPY_BASE = 'https://api.klipy.com/v2';
 const GIPHY_BASE = 'https://api.giphy.com/v1/gifs';
 
 /**
- * Build a provider's request URL. A null `query` targets the trending/featured
- * feed; a non-null query targets search. Results are content-filtered to a safe
- * rating and capped at `limit`.
+ * Build a provider's request URL. A null `query` targets the trending feed; otherwise search.
+ * Results are content-filtered to a safe rating and capped at `limit`.
  */
 export function buildGifRequestUrl(
   provider: GifProviderId,
@@ -19,8 +16,7 @@ export function buildGifRequestUrl(
   limit: number,
 ): string {
   if (provider === 'klipy') {
-    // `client_key` is not carried over: it was Tenor's registered-app identifier and means
-    // nothing to KLIPY, which authenticates on `key` alone.
+    // No `client_key`: it was Tenor's app identifier; KLIPY authenticates on `key` alone.
     const params = new URLSearchParams({
       key: apiKey,
       limit: String(limit),

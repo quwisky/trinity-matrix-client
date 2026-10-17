@@ -1,15 +1,13 @@
 /**
  * Every icon Trinity uses, named in Trinity's own vocabulary.
  *
- * Declared as a `const` array so the same list is both a compile-time union and a runtime
- * one — `trn-icon-name.spec.ts` walks it to prove no name has gone unused, which matters
- * because the vendor map below is provided eagerly at the app root and can therefore never
- * tree-shake an entry away.
+ * A `const` array so the list is both a compile-time union and a runtime one:
+ * `trn-icon-name.spec.ts` walks it to prove no name is unused (the vendor map is provided
+ * eagerly at the app root, so it can never tree-shake an entry away).
  *
- * These are deliberately NOT the lucide identifiers. The union is ours, so swapping icon
- * packs is a change to {@link TRN_ICONS} alone rather than to 116 call sites; and unlike
- * `@ng-icons`' own `IconType = IconName | (string & {})`, which accepts any string at all,
- * a typo here is a compile error.
+ * Deliberately NOT the lucide identifiers: swapping icon packs is then a change to
+ * {@link TRN_ICONS} alone, and unlike `@ng-icons`' `IconType` (any string), a typo is a
+ * compile error.
  */
 export const TRN_ICON_NAMES = [
   'archive',

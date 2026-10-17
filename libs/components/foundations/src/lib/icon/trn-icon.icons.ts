@@ -92,13 +92,9 @@ import {
 import type { TrnIconName } from './trn-icon-name';
 
 /**
- * The one place Trinity names a vendor icon.
- *
- * Typed `Record<TrnIconName, string>` on purpose: a name added to the union without a
- * mapping is a compile error, and a mapping without a name is too, so the two cannot drift.
- * This file and the component beside it are the only importers of `@ng-icons/*` outside the
- * vendored kit — `eslint.config.mjs` enforces that, and `lint-invariants.spec.mjs` proves
- * the rule is still applied.
+ * The one place Trinity names a vendor icon. Typed `Record<TrnIconName, string>` so a name
+ * without a mapping (or the reverse) is a compile error. Only this file and the component
+ * beside it may import `@ng-icons/*` outside the vendored kit (`eslint.config.mjs`).
  */
 export const TRN_ICONS: Record<TrnIconName, string> = {
   archive: lucideArchive,
@@ -191,22 +187,11 @@ export const TRN_ICONS: Record<TrnIconName, string> = {
   x: lucideX,
 };
 
-/**
- * Registers every Trinity icon once, at the app root.
- *
- * Replaces 32 per-component `provideIcons({…})` calls, each of which re-declared the subset
- * its own component happened to use — so an icon rendered fine in one component and silently
- * nowhere in another. Measured before this change: all icons already resolved into the eager
- * `main` chunk, so central registration is size-neutral rather than a regression.
- */
+/** Registers every Trinity icon once, at the app root. */
 export function provideTrnIcons(): ReturnType<typeof provideIcons> {
-  // Registered under camelCase keys, deliberately, even though our vocabulary is kebab.
-  //
-  // NgIcon does NOT look up the name it was given: it runs it through `toPropertyName()`
-  // first (kebab/any-separator -> lowerCamelCase, ng-icons-core.mjs:333) and looks up
-  // *that*. So a literal 'shield-alert' key is searched for as 'shieldAlert' and misses —
-  // silently. The icon renders nothing, no error is thrown, and only a console line says
-  // so. Registering pre-normalised keys is what makes the kebab vocabulary work at all.
+  // Registered under camelCase keys, even though our vocabulary is kebab: NgIcon runs the
+  // name through `toPropertyName()` (ng-icons-core.mjs:333) before lookup, so a literal
+  // 'shield-alert' key misses silently (renders nothing, no error).
   return provideIcons(
     Object.fromEntries(
       Object.entries(TRN_ICONS).map(([name, svg]) => [
@@ -218,10 +203,8 @@ export function provideTrnIcons(): ReturnType<typeof provideIcons> {
 }
 
 /**
- * Mirrors NgIcon's own name normalisation (`ng-icons-core.mjs:333`). Duplicated rather
- * than imported because the vendor does not export it; `trn-icon.component.spec.ts`
- * renders a hyphenated icon and asserts an actual `<svg>` appears, so the two cannot
- * drift apart without a test failing.
+ * Mirrors NgIcon's name normalisation (`ng-icons-core.mjs:333`), which the vendor does not
+ * export; `trn-icon.component.spec.ts` asserts a hyphenated icon renders an `<svg>`.
  */
 function toPropertyName(name: string): string {
   return name

@@ -23,16 +23,9 @@ if (!defaultPreviewMode) {
 }
 
 /**
- * Theme, Mode and density, exposed as toolbar controls so every story can be flipped through
- * every combination.
- *
- * This is the reason Storybook is here. A palette is meant to be a data change — a block of
- * token overrides plus a registry entry — and the only way to know that held was to launch
- * the app and navigate to each surface. Three dropdowns make it something you look at.
- *
- * Theme and Mode choices come from Theme Foundation's read-only catalog, so preview metadata
- * has the same single owner as the application selector. If a Theme looks wrong here, the
- * token layer is incomplete — which is the contract, stated in the redesign epic.
+ * Theme, Mode and density as toolbar controls, so every story can be flipped through every
+ * combination. Choices come from Theme Foundation's read-only catalog. If a Theme looks wrong
+ * here, the token layer is incomplete.
  */
 
 /** How the app applies these axes: a class for Mode and attributes for Theme/density. */
@@ -117,9 +110,8 @@ const preview: Preview = {
   },
   parameters: {
     controls: { expanded: true },
-    // Not a substitute for the contrast spec — that measures the token values themselves.
-    // This catches what a component does with them: an icon-only button with no name, a
-    // control whose label is not associated with it.
+    // Not a substitute for the contrast spec (which measures token values): this catches what
+    // a component does with them, e.g. an icon-only button with no name.
     a11y: { test: 'error' },
   },
 };

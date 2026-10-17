@@ -1,11 +1,9 @@
 @layer components {
-  // `inline-flex`, NOT `inline-block`, and the difference is visible on ~115 call sites.
-  // An inline-block host sizes its height from its line box, so it is taller than the glyph by
-  // the strut's half-leading and descent. As an `hlmBtn` flex item that taller box is centred,
-  // putting the glyph above the button's true middle. Measured in Chromium, `inline-flex`
-  // restores the same 6/6px or 8/8px gaps as the direct `<ng-icon>` this wrapper replaced.
-  // Motion is composed on the inner glyph. The host remains an unchanged layout box and does
-  // not gain a transformed stacking context; consumers can still transform the host itself.
+  // `inline-flex`, NOT `inline-block`: an inline-block host sizes its height from its line box,
+  // so the box is taller than the glyph, and as an `hlmBtn` flex item it is centred, putting the
+  // glyph above the button's middle.
+  // Motion is composed on the inner glyph, so the host stays an unchanged layout box with no
+  // transformed stacking context; consumers can still transform the host itself.
   :host {
     display: inline-flex;
   }

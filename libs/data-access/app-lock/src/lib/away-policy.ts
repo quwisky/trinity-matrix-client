@@ -3,7 +3,7 @@ import type { LockAfter } from './app-lock.preferences';
 /** Mobile counts time in the background; the desktop also counts time without focus. */
 export type AppLockSurface = 'mobile' | 'desktop';
 
-/** "Immediately" on desktop: 10 s after blur or minimise (decision 17). */
+/** "Immediately" on desktop: 10 s after blur or minimise (the away policy). */
 export const DESKTOP_IMMEDIATE_GRACE_MS = 10_000;
 
 const MINUTES: Readonly<Record<Exclude<LockAfter, 'immediately'>, number>> = {

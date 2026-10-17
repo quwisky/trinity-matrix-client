@@ -135,8 +135,8 @@ export class AppearancePreferences {
   }
 
   /**
-   * The saved Appearance, read without hydrating or writing (#1267): what a tab that cannot
-   * start yet shows. Any axis that is missing, unreadable or invalid is its default.
+   * The saved Appearance, read without hydrating or writing: what a tab that cannot start
+   * yet shows. Any axis that is missing, unreadable or invalid is its default.
    */
   readSaved(): Observable<AppearanceValue> {
     const read = <T extends PreferenceValue>(

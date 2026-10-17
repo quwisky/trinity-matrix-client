@@ -9,9 +9,10 @@ export interface HomeserverDiscoveryResult {
   readonly baseUrl: string;
 }
 
-// #978: the SDK's own 5 s abort is hard-coded and its fetch failures look like a definitive "no
-// homeserver". Only the first (cold) request is slow, so it gets 8 s and the retries 5 s each, with
-// 0.5 s and 1 s backoff: at most 8 + 0.5 + 5 + 1 + 5 = 19.5 s per request, 39 s for well-known + versions.
+// The SDK's own 5 s abort is hard-coded and its fetch failures look like a definitive "no
+// homeserver". Only the first (cold) request is slow, so it gets 8 s and the retries 5 s each,
+// with 0.5 s and 1 s backoff: at most 8 + 0.5 + 5 + 1 + 5 = 19.5 s per request, 39 s for
+// well-known + versions.
 const ATTEMPT_TIMEOUTS_MS = [8_000, 5_000, 5_000];
 const RETRY_DELAYS_MS = [500, 1_000];
 const RETRIED_PATH =
