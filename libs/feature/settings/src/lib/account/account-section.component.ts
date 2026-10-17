@@ -22,12 +22,14 @@ import {
   validateTree,
 } from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnInput } from '@trinity/components/controls';
+import {
+  TrnInput,
+  TrnPasswordInputComponent,
+} from '@trinity/components/controls';
 import { runWithBusy } from '@trinity/util/ui';
 import { AuthService } from '@trinity/data-access/auth';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ExternalBrowserService } from '@trinity/platform-native';
-import { TrnIconComponent } from '@trinity/components/foundations';
 import { DeleteAccountGroupComponent } from './delete-account/delete-account-group.component';
 import { serverNameOf } from './delete-account/delete-account.copy';
 import {
@@ -39,7 +41,7 @@ import {
 /** Minimum length we require for a new password (a light client-side guard). */
 const MIN_PASSWORD = 8;
 
-/** The password fields, each with its own show/hide reveal toggle. */
+/** The change-password form's fields. */
 type PasswordField = 'currentPassword' | 'newPassword' | 'confirmPassword';
 
 /** The change-password form's model. */
@@ -101,9 +103,9 @@ const passwordSchema = schema<PasswordModel>((path) => {
     TrnSettingsGroupComponent,
     FormField,
     FormRoot,
-    TrnIconComponent,
     TrnButton,
     TrnInput,
+    TrnPasswordInputComponent,
   ],
 })
 export class AccountSectionComponent {
@@ -182,18 +184,6 @@ export class AccountSectionComponent {
   readonly saving = signal(false);
   /** Last failure (bad password, mismatch, server error), or null. */
   readonly error = signal<string | null>(null);
-
-  /** Which password fields are currently shown as plain text. */
-  readonly revealed = signal<Record<PasswordField, boolean>>({
-    currentPassword: false,
-    newPassword: false,
-    confirmPassword: false,
-  });
-
-  /** Flip a single password field between masked and revealed. */
-  toggleReveal(field: PasswordField): void {
-    this.revealed.update((state) => ({ ...state, [field]: !state[field] }));
-  }
 
   private readonly passwords = signal<PasswordModel>({ ...EMPTY_PASSWORDS });
   readonly form = form(this.passwords, passwordSchema);
