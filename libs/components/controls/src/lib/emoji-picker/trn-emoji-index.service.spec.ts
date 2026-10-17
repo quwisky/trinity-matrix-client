@@ -64,4 +64,33 @@ describe('TrnEmojiIndex', () => {
     // and a passthrough would leave an unresolved shortcode looking resolved.
     expect((await index()).nativeFor('definitely-not-an-emoji')).toBeNull();
   });
+
+  it('finds the vendor id for a character, with or without its variation selector', async () => {
+    const loaded = await index();
+
+    expect(loaded.idFor('🚀')).toBe('rocket');
+    expect(loaded.idFor('❤️')).toBe('heart');
+    expect(loaded.idFor('❤')).toBe('heart');
+  });
+
+  it('finds the base emoji for a skin-toned character', async () => {
+    expect((await index()).idFor('👍🏽')).toBe('+1');
+  });
+
+  it('finds joined emoji, with a skin tone or a variation selector inside', async () => {
+    const loaded = await index();
+
+    expect(loaded.idFor('👩🏽‍💻')).toBe('female-technologist');
+    expect(loaded.idFor('🏳️‍🌈')).toBe('rainbow-flag');
+  });
+
+  it('returns null for text that names no emoji, and until the vendor has loaded', async () => {
+    const lazy = TestBed.inject(TrnEmojiIndex);
+    expect(lazy.idFor('🚀')).toBeNull();
+
+    await lazy.load();
+
+    expect(lazy.idFor('rocket')).toBeNull();
+    expect(lazy.idFor('mxc://hs/party')).toBeNull();
+  });
 });

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   TrnDialogRef,
   TrnDialogShellComponent,
@@ -7,6 +8,7 @@ import {
   TrnEmojiPickerComponent,
   type TrnEmojiPick,
 } from '@trinity/components/controls';
+import { RecentEmojiService } from '@trinity/data-access/media';
 
 /**
  * The full `emoji-mart` picker presented as a dialog for reacting with any emoji,
@@ -25,11 +27,20 @@ import {
 export class ReactionPickerComponent {
   private readonly dialogRef =
     inject<TrnDialogRef<string | null>>(TrnDialogRef);
+  private readonly recentEmoji = inject(RecentEmojiService);
+
+  protected readonly recent = this.recentEmoji.recent;
+
+  constructor() {
+    this.recentEmoji.run().pipe(takeUntilDestroyed()).subscribe();
+  }
+
   /**
    * A reaction was chosen: close with its character. The wrapper drops a pick that has no
    * `native`, so anything arriving here is insertable.
    */
   onSelect(pick: TrnEmojiPick): void {
+    this.recentEmoji.record(pick.native);
     this.dialogRef.close(pick.native);
   }
 }

@@ -10,6 +10,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { TrnIconButton } from '@trinity/components/controls';
+import { RecentEmojiService } from '@trinity/data-access/media';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import {
@@ -88,6 +89,7 @@ let nextPickerId = 0;
 })
 export class MessageToolbarComponent {
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly recentEmoji = inject(RecentEmojiService);
   private readonly overflowOpen = signal(false);
   /** A plain field, not a signal: the open state last reported, to emit only on change. */
   private reportedOpen = false;
@@ -225,6 +227,7 @@ export class MessageToolbarComponent {
   }
 
   pick(emoji: string): void {
+    this.recentEmoji.record(emoji);
     this.action.emit({ type: 'react', key: emoji });
     this.setPickerOpen(false);
   }

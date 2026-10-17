@@ -483,6 +483,19 @@ export const EmojiPickerSmall = emojiPickerStory(EMOJI_PICKER_SIZES[0]);
 export const EmojiPickerMedium = emojiPickerStory(EMOJI_PICKER_SIZES[1]);
 export const EmojiPickerLarge = emojiPickerStory(EMOJI_PICKER_SIZES[2]);
 
+/** The account's recent emoji, synced across devices, in place of the per-device row. */
+export const EmojiPickerRecent: Story = {
+  render: () => ({
+    props: { recent: ['🎉', '🚀', '👍'] },
+    template: `
+      <div class="grid min-w-0 gap-2 p-4">
+        <h1 class="font-semibold">Emoji picker with recent emoji</h1>
+        <trn-emoji-picker pickerId="catalog-emoji-recent" [recent]="recent" />
+      </div>
+    `,
+  }),
+};
+
 export const QrScannerStarting: Story = {
   render: () => ({ template: '<trn-qr-starting-story />' }),
 };

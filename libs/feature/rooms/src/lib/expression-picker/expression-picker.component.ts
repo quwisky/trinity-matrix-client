@@ -26,7 +26,11 @@ import {
   TrnOverlaySurfaceDirective,
 } from '@trinity/components/overlay';
 import { type GifResult } from '@trinity/data-access/gif';
-import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
+import {
+  RecentEmojiService,
+  type ImagePack,
+  type ImagePackImage,
+} from '@trinity/data-access/media';
 import {
   COMPOSER_EXPRESSION_TABS,
   ComposerExpressionTabPreference,
@@ -83,6 +87,7 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
 })
 export class ExpressionPickerComponent {
   private readonly remembered = inject(ComposerExpressionTabPreference);
+  private readonly recentEmoji = inject(RecentEmojiService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly content =
     viewChild.required<ElementRef<HTMLElement>>('content');
@@ -102,6 +107,7 @@ export class ExpressionPickerComponent {
   private readonly chosen = signal<ComposerExpressionTab | null>(null);
 
   protected readonly labels = TAB_LABELS;
+  protected readonly recent = this.recentEmoji.recent;
   /** How many times the panel has been shown; see {@link TrnAnchoredOverlayDirective.shown}. */
   protected readonly shown = computed(() => this.layer?.shown() ?? 0);
 
@@ -154,6 +160,8 @@ export class ExpressionPickerComponent {
   );
 
   constructor() {
+    this.recentEmoji.run().pipe(takeUntilDestroyed()).subscribe();
+
     // Shown again without being created again: redo what creation did (the GIF and sticker
     // pickers focus their search; the emoji grid refreshes its frequently-used row).
     const injector = inject(Injector);
@@ -201,6 +209,11 @@ export class ExpressionPickerComponent {
       .remember(tab)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+  }
+
+  protected onEmojiPick(pick: TrnEmojiPick): void {
+    this.recentEmoji.record(pick.native);
+    this.emojiPick.emit(pick);
   }
 
   protected onEscape(event: Event): void {

@@ -5,5 +5,9 @@
   accessible name instead.
 -->
 <trn-dialog-shell title="Pick a reaction" bodyClass="p-0">
-  <trn-emoji-picker class="reaction-picker" (picked)="onSelect($event)" />
+  <trn-emoji-picker
+    class="reaction-picker"
+    [recent]="recent()"
+    (picked)="onSelect($event)"
+  />
 </trn-dialog-shell>

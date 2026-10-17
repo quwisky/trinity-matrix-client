@@ -363,3 +363,18 @@ for (const [size, storyId] of [
     expect(formatAxeResults(scan.incomplete)).toEqual([]);
   });
 }
+
+test("emoji picker shows the account's recent emoji first, in order", async ({
+  page,
+}) => {
+  await page.goto(
+    `/iframe.html?id=components-control-recipe-matrix--emoji-picker-recent&viewMode=story&globals=${storybookThemeGlobals(DEFAULT_STORYBOOK_THEME_PREVIEW)}`,
+  );
+  const row = page.locator(
+    'section.emoji-mart-category[aria-label="Frequently Used"] .emoji-mart-emoji',
+  );
+  await expect(row.first()).toBeVisible();
+  expect(
+    (await row.allTextContents()).map((emoji) => emoji.trim()).slice(0, 3),
+  ).toEqual(['🎉', '🚀', '👍']);
+});

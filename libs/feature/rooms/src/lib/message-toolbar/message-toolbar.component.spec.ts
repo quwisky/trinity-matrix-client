@@ -1,6 +1,8 @@
 import { ComponentFixture } from '@angular/core/testing';
+import { signal } from '@angular/core';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { render } from '@trinity/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   MessageToolbarComponent,
   type MessageAction,
@@ -313,5 +315,43 @@ describe('MessageToolbarComponent save media', () => {
     expect(item.textContent).toContain(label);
     item.click();
     expect(seen).toEqual([{ type: 'save-media' }]);
+  });
+
+  it('saves a quick reaction as a recently used emoji with no picker open', async () => {
+    vi.useFakeTimers();
+    try {
+      const setAccountDataRaw = vi.fn(async () => ({}));
+      const client = {
+        getUserId: () => '@alice:hs',
+        getAccountData: () => undefined,
+        setAccountDataRaw,
+        http: {
+          authedRequest: vi.fn(async () => ({ recent_emoji: [] })),
+        },
+        on: vi.fn(),
+        off: vi.fn(),
+      };
+      const { fixture } = await render(MessageToolbarComponent, {
+        providers: [
+          {
+            provide: MatrixClientService,
+            useValue: {
+              isInitialized: true,
+              instance: client,
+              activeUserId: signal('@alice:hs').asReadonly(),
+            },
+          },
+        ],
+      });
+
+      fixture.componentInstance.pick('🎉');
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(setAccountDataRaw).toHaveBeenCalledWith('m.recent_emoji', {
+        recent_emoji: [{ emoji: '🎉', total: 1 }],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
