@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 import {
   workspaceRoot,
   read as source,
-  sourcesWithHarnesses as productionSources,
-  productionSources as harnessFreeSources,
+  sourcesWithHarnesses,
+  productionSources,
 } from './workspace-sources.mjs';
 
 /** Freeze #319's Trust expand-contract migration. */
@@ -32,7 +32,7 @@ describe('Trust production boundary', () => {
 
   it('depends on a lifecycle-free Matrix crypto port', () => {
     // The Trust spec harness mocks MatrixClientService; only production code is frozen.
-    const trust = harnessFreeSources
+    const trust = productionSources
       .filter((file) => file.startsWith('libs/data-access/trust/'))
       .map(source)
       .join('\n');
@@ -68,7 +68,7 @@ describe('Trust production boundary', () => {
   });
 
   it('keeps commands cold and exposes typed recovery meaning', () => {
-    const trust = productionSources
+    const trust = sourcesWithHarnesses
       .filter((file) => file.startsWith('libs/data-access/trust/'))
       .map(source)
       .join('\n');
@@ -104,7 +104,7 @@ describe('Trust production boundary', () => {
     const composition = source(
       'libs/application/runtime/src/lib/composition/application-capability.providers.ts',
     );
-    const feature = productionSources
+    const feature = sourcesWithHarnesses
       .filter((file) => file.startsWith('libs/feature/crypto/'))
       .map(source)
       .join('\n');
