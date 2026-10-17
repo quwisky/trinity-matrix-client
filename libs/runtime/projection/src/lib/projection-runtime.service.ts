@@ -63,7 +63,7 @@ export class ProjectionRuntime {
   private readonly entries = new Map<string, ProjectionEntry>();
   private readonly runtimeChanges = new Subject<void>();
   private readonly runtimeDiagnostics = signal(INITIAL_DIAGNOSTICS);
-  // The runtime's canonical generation (publish, acknowledgement, failure); not a latest-wins guard (#927).
+  // Canonical generation (publish, acknowledgement, failure); not a latest-wins guard.
   private nextGeneration = 0;
 
   readonly diagnostics = this.runtimeDiagnostics.asReadonly();
@@ -122,10 +122,8 @@ export class ProjectionRuntime {
 
   /**
    * Reattach every live projection in `scope`, then acknowledge their new generations.
-   *
-   * Account switching uses this after committing the new Active Account. Attachment
-   * callbacks resolve their authoritative source at reattach time, so no caller has to
-   * know which listeners or read models participate in the transition.
+   * Attachment callbacks resolve their source at reattach time, so callers need not know which
+   * listeners participate (used after committing a new Active Account).
    */
   transition(scope: ProjectionScope): Observable<ProjectionReadiness> {
     return defer(() => {

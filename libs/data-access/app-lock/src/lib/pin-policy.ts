@@ -5,7 +5,7 @@
 /** Whole string, 4–16 ASCII digits: `[0-9]`, never `\d` or `\p{Nd}`, and no `m` flag. */
 export const PIN_PATTERN = /^[0-9]{4,16}$/;
 export const PIN_MAX_LENGTH = 16;
-/** Setup suggests at least this many digits (decision 18 allows 4). */
+/** Setup suggests at least this many digits (the policy allows 4). */
 export const PIN_SUGGESTED_LENGTH = 6;
 
 /** Checks the PIN exactly as typed: no trimming and no Unicode normalisation. */

@@ -24,38 +24,17 @@ interface AccountListener {
 }
 
 /**
- * Projects **every signed-in account's own profile** — display name and avatar — into one
- * signal, each read through that account's own client.
+ * Projects every signed-in account's own profile (display name and avatar) into one signal,
+ * each read through that account's own client.
  *
- * Replaces a `RoomLibraryService.revision`/`profileRevision` bump counter that stood for "some
- * profile somewhere may have changed". Two things made it the wrong shape:
+ * Keyed on the account set, not one active client, so it reconciles its own listeners.
  *
- * - It was bumped only by the ACTIVE client's rebuild, while two of its consumers resolve
- *   profiles from OTHER accounts' clients. A mixed-in account whose profile hydrated later
- *   kept a stale badge — its mxid and a hashed letter instead of its name and picture —
- *   until the active account happened to sync. `AccountBadgesService` documented that gap
- *   and papered over it by also reading the unread aggregator, which is fed by every
- *   client. That workaround is what this removes.
- * - It carried no value, so nothing could tell whether a profile had actually changed.
- *
- * Listener set rather than {@link projectFromClient}: this is keyed on the ACCOUNT SET, not
- * on one active client, so it takes the batching primitive alone and reconciles its own
- * listeners — the same shape selected Room Library and `UnreadAggregatorService` use,
- * including the identity re-check that catches a new client object for the same user id.
- *
- * **Why it listens to `ClientEvent.Sync` and not only to `UserEvent.*`**, which is the trap
- * here: the client re-emits `User.displayName`/`User.avatarUrl` only for `User` objects
- * built by `User.createUser`, and an account's OWN user is not one of them.
- * `startClient()` seeds it as `store.storeUser(new User(userId))` — the plain constructor,
- * no re-emitter — precisely so it exists before the first sync
- * (`matrix-js-sdk/src/client.ts`, "Create our own user object artificially"). Nothing
- * later replaces it, and `client.setDisplayName` emits on that same object, so a listener
- * for the account's own profile would never fire once. `IdentityPresenceService` is not a
- * counter-example: it consumes the re-emission for OTHER users and hardcodes self to
- * `online`.
- *
- * So the sync tick is the real trigger, and the `UserEvent` listeners are the fast path for
- * the case they do cover. `equal: sameProfiles` makes the ticks that changed nothing free.
+ * Listens to `ClientEvent.Sync` as well as `UserEvent.*`: the client re-emits
+ * `User.displayName`/`User.avatarUrl` only for users built by `User.createUser`, and an
+ * account's OWN user is not one of them (`startClient()` seeds it with the plain `new User`
+ * constructor, so no re-emitter). Without the sync tick the own profile would never update.
+ * `IdentityPresenceService` consumes the re-emission for OTHER users and hardcodes self to
+ * `online`. `equal: sameProfiles` makes ticks that changed nothing free.
  */
 @Injectable({ providedIn: 'root' })
 export class AccountIdentitiesService {
@@ -71,8 +50,8 @@ export class AccountIdentitiesService {
   private readonly listeners = new Map<string, AccountListener>();
 
   constructor() {
-    // Accounts come and go, and a switch can hand the same user id a NEW client object.
-    // Both are read here so the effect re-runs on either.
+    // Accounts come and go, and a switch can hand the same user id a NEW client object;
+    // read both so the effect re-runs on either.
     effect(() => {
       this.matrix.accountIds();
       this.matrix.activeAccountId();
@@ -86,11 +65,7 @@ export class AccountIdentitiesService {
     return this._identities().get(userId) ?? bareIdentity(userId);
   }
 
-  /**
-   * A burst of profile events — several accounts hydrating at once on startup — collapses
-   * into one rebuild. The rebuild is O(accounts), which is small, but it writes a signal
-   * several surfaces derive from.
-   */
+  /** Collapses a burst of profile events (accounts hydrating at startup) into one rebuild. */
   private readonly flusher = coalesce(() => this.refresh());
 
   private refresh(): void {
@@ -121,9 +96,8 @@ export class AccountIdentitiesService {
       const client = this.matrix.forAccount(userId);
       const held = this.listeners.get(userId);
       if (held) {
-        // The same user id can get a NEW client object — re-adding an already signed-in
-        // account stops and re-creates it. Holding the old one strands the listener on a
-        // stopped client, and that account's profile silently stops updating.
+        // The same user id can get a NEW client object (re-adding a signed-in account);
+        // holding the old one strands the listener on a stopped client.
         if (held.client === client) {
           continue;
         }
@@ -133,16 +107,15 @@ export class AccountIdentitiesService {
       if (!client) {
         continue; // not fully started yet; a later account change re-checks it
       }
-      // Filtered to the account's OWN user: the client re-emits these for every user it
-      // knows about, which in a busy session is everyone in every room. See the class doc
-      // for why this listener alone is NOT enough for the own user.
+      // Filtered to the account's OWN user: the client re-emits these for every known user.
+      // Not enough alone for the own user; see the class doc.
       const onUser = (_event: unknown, user: IdentitySdkUser): void => {
         if (user.userId === userId) {
           this.flusher.schedule();
         }
       };
-      // The trigger that actually fires for the account's own profile. Per account, so a
-      // background account hydrating is heard without the active one having to sync.
+      // The trigger that fires for the account's own profile. Per account, so a background
+      // account hydrating is heard without the active one syncing.
       const onSync = (): void => this.flusher.schedule();
       client.on(IDENTITY_MATRIX_EVENTS.displayName, onUser);
       client.on(IDENTITY_MATRIX_EVENTS.avatarUrl, onUser);
@@ -163,10 +136,7 @@ function bareIdentity(userId: string): AccountIdentity {
   return { userId, displayName: userId, avatarMxc: null };
 }
 
-/**
- * Whether two profile maps say the same thing, so a coalesced rebuild that changed nothing
- * does not tick the header chip, the account switcher and every mixed-account badge.
- */
+/** Whether two profile maps are equal, so a no-op rebuild does not tick every consumer. */
 function sameIdentities(
   a: ReadonlyMap<string, AccountIdentity>,
   b: ReadonlyMap<string, AccountIdentity>,

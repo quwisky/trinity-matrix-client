@@ -26,8 +26,7 @@ export class IdentityPresenceService {
     ReturnType<typeof signal<PresenceState | null>>
   >();
 
-  // The signed-in user's own presence + status message, as last set from this client.
-  // Seeded by loadOwnPresence(); the presence-settings control reads and writes these.
+  // The signed-in user's own presence and status message, seeded by loadOwnPresence().
   private readonly _myPresence = signal<PresenceState>('online');
   readonly myPresence = this._myPresence.asReadonly();
   private readonly _myStatusMessage = signal('');
@@ -44,8 +43,7 @@ export class IdentityPresenceService {
       this.states.set(userId, state);
       view = computed(() => (this.available() ? state() : null));
       this.views.set(userId, view);
-      // Consumers register views from computed member rows. Schedule outside that
-      // read context because invalidation publishes Projection Runtime signals.
+      // Schedule outside the computed read context: invalidation publishes Projection Runtime signals.
       if (this.available()) queueMicrotask(() => this.projection.schedule());
     }
     return view;
@@ -55,8 +53,7 @@ export class IdentityPresenceService {
   private readonly projection = this.matrix.project({
     id: 'identity.presence',
     events: [IDENTITY_MATRIX_EVENTS.presence],
-    // Re-seed any already-tracked users from this client (a re-login brings a fresh
-    // client whose users may differ), so stale signals don't linger at the old value.
+    // Re-seed tracked users: a re-login brings a fresh client whose users may differ.
     rebuild: (client) => {
       for (const [userId, state] of this.states) {
         state.set(this.currentPresence(userId, client));
@@ -127,9 +124,8 @@ export class IdentityPresenceService {
         }),
       ).pipe(
         tap(() => {
-          // A command may finish after the user has switched Accounts. Its remote write
-          // still belongs to the captured Account, but it must not publish into the new
-          // Active Account's presentation state.
+          // The command may finish after an Account switch: its remote write belongs to the
+          // captured Account but must not publish into the new Active Account's state.
           if (this.matrix.activeAccountId() === accountId) {
             this._myPresence.set(presence);
             this._myStatusMessage.set(trimmed);

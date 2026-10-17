@@ -2,7 +2,7 @@ import type { RoomWidget, WidgetEmbed, WidgetLaunch } from './widget.model';
 
 const CALL_WIDGET_TYPES = new Set(['jitsi', 'm.jitsi', 'm.call']);
 
-/** Call-adjacent widget types remain outside issue #51 on every management path. */
+/** Call-adjacent widget types remain excluded on every management path. */
 export function isCallWidgetType(type: string): boolean {
   return CALL_WIDGET_TYPES.has(type.trim().toLowerCase());
 }

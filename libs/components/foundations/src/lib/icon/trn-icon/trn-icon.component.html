@@ -1,14 +1,8 @@
 <!--
-  Written as a static attribute, not a binding. NgIcon reads `aria-hidden` via
-  HostAttributeToken at construction and force-hides itself when it is absent, so the icon
-  ends up hidden either way — this states the intent rather than inheriting it from vendor
-  default behaviour. What actually matters is above: the label goes on the HOST. Putting an
-  `[attr.aria-label]` here instead is silently suppressed by that same force-hiding, which
-  is the bug this component was built to make unwritable.
--->
-<!--
-  `size` is bound rather than left off: the public null default resolves to '', which
-  coerceCssPixelValue returns untouched, so Angular drops `--ng-icon__size` and the `1em`
-  default applies — an unsized icon behaves exactly as before.
+  Static attribute, not a binding: NgIcon reads `aria-hidden` via HostAttributeToken at
+  construction and force-hides itself when it is absent. The label goes on the HOST; an
+  `[attr.aria-label]` here is silently suppressed by that same force-hiding.
+  `size` is bound: the public null default resolves to '', so Angular drops `--ng-icon__size`
+  and the `1em` default applies.
 -->
 <ng-icon aria-hidden="true" [name]="name()" [size]="resolvedSize()" />

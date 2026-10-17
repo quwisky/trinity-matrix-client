@@ -25,10 +25,10 @@ export interface SignOutRetryContext {
 }
 
 /**
- * End the account's remote session once. matrix-js-sdk 43's `logout()` revokes an
- * OAuth-native session's tokens at its provider (and sends no `POST /logout`), and logs a
- * password or SSO session out at the homeserver. Without a live client, a stored OAuth
- * session is logged out through a detached client so its tokens are still revoked.
+ * End the account's remote session once. matrix-js-sdk 43's `logout()` revokes an OAuth-native
+ * session's tokens at its provider (and sends no `POST /logout`) and logs a password or SSO
+ * session out at the homeserver. With no live client, a stored OAuth session is logged out
+ * through a detached client so its tokens are still revoked.
  */
 export function remoteLogout(
   context: SignOutRetryContext,

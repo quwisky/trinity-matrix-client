@@ -17,25 +17,18 @@ export type {
 } from './trn-page-header-recipe';
 
 /**
- * The shared routed-page header shell. Renders exactly one native `<header>` and
- * exactly one `<h1>`. Semantic treatment and structure are separate axes:
- *  - `layout="page"` (default): the standard settings / crypto / home header
- *    (`safe-top`, `min-h-14`, and page spacing).
- *  - `layout="toolbar"`: tighter spacing and no `safe-top` (the rooms
- *    `.main` column already pads the safe-area top).
- *  - `variant="neutral|accent"`: the semantic surface treatment independent
- *    of that geometry.
+ * The shared routed-page header shell. Renders exactly one native `<header>` and one `<h1>`.
+ *  - `layout="page"` (default): the standard settings / crypto / home header (`safe-top`,
+ *    `min-h-14`, page spacing).
+ *  - `layout="toolbar"`: tighter spacing and no `safe-top` (the rooms `.main` column already
+ *    pads the safe-area top).
+ *  - `variant="neutral|accent"`: the surface treatment, independent of geometry.
  *
- * Everything caller-specific is projected, so this shell imports nothing from
- * helm or the feature libs: consumers supply `hlmBtn` / `trnTooltip` / `<trn-icon>`
- * in the projected content, and projected nodes keep their origin component's
- * style encapsulation (so e.g. trn-room-header's scoped `.title-room` / `.title-lock`
- * styles still apply to a projected title).
+ * Everything caller-specific is projected, so this shell imports nothing from helm or the
+ * feature libs; projected nodes keep their origin component's style encapsulation.
  *
- * The `<h1>` is always rendered by the shell — its body is the `title` string
- * when provided, else the `[trnHeaderTitle]` slot — so a page never ends up with
- * a heading nested inside another heading. Projected title content must stay
- * heading-free (inline spans + icons only).
+ * The `<h1>` is always rendered by the shell (the `title` string, else the `[trnHeaderTitle]`
+ * slot), so projected title content must stay heading-free (inline spans and icons only).
  *
  * ```html
  * <trn-page-header title="Settings">
@@ -50,8 +43,7 @@ export type {
 @Component({
   selector: 'trn-page-header',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  // display:contents => the rendered <header> is the real flex child of the page
-  // column; the trn-page-header host adds no box of its own.
+  // display:contents: the rendered <header> is the real flex child of the page column.
   host: { class: 'contents' },
   templateUrl: './page-header.component.html',
 })
@@ -72,17 +64,14 @@ export class PageHeaderComponent {
 
   /**
    * The accent variant paints the attention surface in both layouts (its fill outranks the
-   * toolbar background), so it declares that context for the projected actions: `trnBtn`
-   * reads `data-trn-surface="attention"` and inverts its solid fill, which would otherwise
-   * be the same accent as the header (#1224).
+   * toolbar background), so it declares that context: `trnBtn` reads
+   * `data-trn-surface="attention"` and inverts its solid fill, which would match the header.
    */
   protected readonly surface = computed(() =>
     this.variant() === 'accent' ? 'attention' : null,
   );
 
-  /** Classes for the single `<h1>`. The toolbar recipe is a flex row so a `#`hash +
-   * name + lock icon sit inline and truncate; its color is inherited from the
-   * header (matching the pre-migration markup, where the h1 had no color class). */
+  /** Classes for the single `<h1>`; the toolbar recipe is a flex row that truncates the title. */
   protected readonly titleClass = computed(() =>
     trnPageHeaderTitleRecipe(this.layout()),
   );

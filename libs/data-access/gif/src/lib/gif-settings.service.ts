@@ -18,12 +18,9 @@ const CONFIG_KEY = 'trinity.gif.config';
 export const DEFAULT_GIF_PROVIDER: GifProviderId = 'klipy';
 
 /**
- * Persists the user's GIF-picker configuration (provider + API key). Like the
- * theme and feature flags, this is non-secret UI config, so it lives in Capacitor
- * `Preferences` (localStorage on web, native KV on device) rather than secure
- * storage — the third-party key is not an account credential. Exposed as signals
- * so the composer can gate its GIF affordance on {@link configured} and the
- * settings form can bind the current values.
+ * Persists the user's GIF-picker configuration (provider + API key) in Capacitor
+ * `Preferences`, not secure storage: the third-party key is not an account credential.
+ * Exposed as signals so the composer can gate on {@link configured}.
  */
 @Injectable({ providedIn: 'root' })
 export class GifSettingsService {
@@ -41,10 +38,7 @@ export class GifSettingsService {
   readonly configured = computed(() => this._apiKey().trim().length > 0);
 
   private readonly _migratedFrom = signal<string | null>(null);
-  /**
-   * The retired provider this device was moved off at startup, or null. Set once, on the
-   * boot that migrates; the settings page reads it to explain why the key box is empty.
-   */
+  /** The retired provider this device was moved off at startup, or null (set on that boot only). */
   readonly migratedFrom = this._migratedFrom.asReadonly();
 
   /** Read the saved config. Wired as an app initializer at startup. */
@@ -65,11 +59,8 @@ export class GifSettingsService {
     try {
       const replacement = retiredGifProvider(parsed.provider);
       if (replacement) {
-        // A retired provider keeps NEITHER its id nor its key. Reading the two fields
-        // independently — as the branches below do — would leave the dead provider's key
-        // attached to its replacement, and `configured` only asks whether a key is
-        // non-empty: the picker would open against KLIPY holding a Tenor key and fail
-        // every search, which reads as a broken new provider rather than a migration.
+        // A retired provider keeps NEITHER its id nor its key: `configured` only checks that
+        // a key is non-empty, so a dead key left on the replacement would fail every search.
         this._migratedFrom.set(String(parsed.provider));
         this.save(replacement, '');
         return preferenceInitializationDefaulted('invalid-stored-value');
@@ -105,9 +96,8 @@ export class GifSettingsService {
   /** Clear the API key (disabling the picker); leaves the provider choice intact. */
   clear(): void {
     this._apiKey.set('');
-    // Rewrite the blob with an empty key rather than removing it: provider and
-    // apiKey share one stored value, so a remove() would drop the provider too
-    // and the next boot would silently fall back to DEFAULT_GIF_PROVIDER.
+    // Rewrite the blob with an empty key: provider and apiKey share one stored value, so
+    // remove() would drop the provider too.
     void firstValueFrom(
       this.storage.set(
         CONFIG_KEY,

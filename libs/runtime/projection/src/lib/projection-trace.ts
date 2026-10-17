@@ -27,7 +27,7 @@ function flagged(): boolean {
 }
 
 /**
- * Development-only lifetime trace (#927). Call sites wrap it in `ngDevMode`, so production
+ * Development-only lifetime trace. Call sites wrap it in `ngDevMode`, so production
  * builds drop both the calls and this module; in development it stays silent unless
  * `localStorage['trinity.debug.projections'] = '1'`.
  */

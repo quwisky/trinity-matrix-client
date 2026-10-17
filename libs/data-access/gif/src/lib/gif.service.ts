@@ -9,12 +9,9 @@ import type { GifResult } from './gif.model';
 const RESULT_LIMIT = 24;
 
 /**
- * Searches the configured GIF provider (KLIPY or Giphy) and downloads a chosen
- * GIF as a `File` for the media send path. Provider selection + the API key come
- * from {@link GifSettingsService}; the provider REST shapes are normalized in
- * `gif-providers.ts`. Follows the app convention of `fetch()` wrapped in RxJS
- * rather than Angular `HttpClient`. Callers should only reach these once
- * {@link GifSettingsService.configured} is true.
+ * Searches the configured GIF provider (KLIPY or Giphy) and downloads a chosen GIF as a
+ * `File` for the media send path. Provider and key come from {@link GifSettingsService};
+ * callers should only reach these once {@link GifSettingsService.configured} is true.
  */
 @Injectable({ providedIn: 'root' })
 export class GifService {
@@ -43,10 +40,9 @@ export class GifService {
   }
 
   /**
-   * Fetch a preview GIF's bytes and bind them as a `blob:` object URL. The app's
-   * CSP forbids a remote `<img src>` (tracking-pixel guard), so previews — like
-   * avatars and media — are fetched over `connect-src` and shown as blobs, typed only with a
-   * display-safe media type. The caller owns the returned URL and must revoke it.
+   * Fetch a preview GIF's bytes and bind them as a `blob:` object URL: the CSP forbids a
+   * remote `<img src>` (tracking-pixel guard), so previews are fetched over `connect-src` and
+   * typed only with a display-safe media type. The caller must revoke the returned URL.
    */
   fetchPreview(url: string): Observable<string> {
     return from(fetch(url)).pipe(
@@ -88,8 +84,7 @@ export class GifService {
   }
 }
 
-/** Wrap downloaded bytes in a named `image/gif` File (forces the type so the
- * media pipeline classifies it as an image regardless of the CDN's headers). */
+/** Wrap bytes in a named `image/gif` File; the forced type makes the media pipeline see an image. */
 function toGifFile(blob: Blob, gif: GifResult): File {
   return new File([blob], filenameFor(gif), { type: 'image/gif' });
 }

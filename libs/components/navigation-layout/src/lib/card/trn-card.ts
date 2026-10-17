@@ -17,18 +17,12 @@ export type { TrnCardSize, TrnCardVariant } from './trn-card-recipe';
  * Trinity's card, as four attribute directives.
  *
  * Attributes rather than elements because the call site chooses the semantics: the card has no
- * title slot, so projected content supplies its own correctly levelled heading. Turning those
- * into `<trn-card>` elements would flatten the document outline. The kit's own
- * layout depends on the parent/child relationship (`has-data-[slot=card-footer]` and friends),
- * which attributes preserve exactly.
+ * title slot, so projected content supplies its own correctly levelled heading, and `<trn-card>`
+ * elements would flatten the document outline. The kit's layout depends on the parent/child
+ * relationship (`has-data-[slot=card-footer]` and friends), which attributes preserve.
  *
- * The root owns its bounded semantic surface and size recipe. The structural slots still
- * compose the kit directives because their private grid/spacing relationship is useful and
- * does not cross the public API.
- *
- * `trnCardFooter` and `trnCardAction` exist in the kit and are not wrapped: nothing uses
- * them. Both are one line to add when something needs them, and until then they are surface
- * nobody has to maintain or reimplement.
+ * The root owns its semantic surface and size recipe; the structural slots still compose the
+ * kit directives. `trnCardFooter` and `trnCardAction` are not wrapped because nothing uses them.
  */
 @Directive({
   selector: '[trnCard]',
@@ -65,12 +59,7 @@ export class TrnCardDescription {}
 })
 export class TrnCardContent {}
 
-/**
- * Every card directive, for a call site that composes the whole thing.
- *
- * A card is four cooperating attributes,
- * and listing them one by one in a component's `imports` is noise at every call site.
- */
+/** Every card directive, for a call site that composes the whole card. */
 export const TrnCardImports = [
   TrnCard,
   TrnCardHeader,

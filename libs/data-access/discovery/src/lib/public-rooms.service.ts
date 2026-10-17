@@ -30,19 +30,16 @@ export interface PublicRoomsPage {
 const PAGE_SIZE = 30;
 
 /**
- * Browses and joins rooms from the homeserver's public room directory
- * (`publicRooms`). Reads are cold Observables (fire on subscribe) that project the
- * SDK's chunk shape into {@link PublicRoomSummary}; joining resolves to the joined
- * room's ID so the caller can select it.
+ * Browses and joins rooms from the homeserver's public room directory (`publicRooms`). Reads
+ * are cold Observables; joining resolves to the joined room's ID.
  */
 @Injectable({ providedIn: 'root' })
 export class PublicRoomsService {
   private readonly matrix = inject(MatrixClientService);
 
   /**
-   * Fetch a page of the public directory. `term` filters by search text, `since`
-   * paginates, and `spaces: true` restricts to Spaces (`room_type: m.space`) instead of
-   * normal rooms. Cold — runs the query on subscribe.
+   * Fetch a page of the public directory. `term` filters by search text, `since` paginates,
+   * and `spaces: true` restricts to Spaces (`room_type: m.space`). Cold.
    */
   search(
     accountId: string,

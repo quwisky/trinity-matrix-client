@@ -5,10 +5,9 @@ import { HostAuthenticationHandoffService } from './host-operation.services';
 const DEFAULT_APP_NAME = 'Trinity';
 
 /**
- * The app's own name: "Trinity", or "Trinity Next" in the desktop prerelease. The host names
- * its Matrix devices after the app, so this reads the same name. A shell that reports no
- * identity fails sign-in on its own; the name falls back rather than break the caller.
- * Call it in an injection context; the name is fixed for the process.
+ * The app's own name: "Trinity", or "Trinity Next" in the desktop prerelease; the host names
+ * its Matrix devices after it. A shell that reports no identity fails sign-in on its own, so
+ * the name falls back rather than break the caller. Call it in an injection context.
  */
 export function injectHostAppName(): string {
   const handoff = inject(HostAuthenticationHandoffService);

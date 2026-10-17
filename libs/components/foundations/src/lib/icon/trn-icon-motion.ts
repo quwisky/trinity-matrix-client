@@ -1,9 +1,8 @@
 /**
  * Small, transform-only gestures an icon may perform with its interactive ancestor.
  *
- * This is a closed vocabulary on purpose. A motion is added only when a real control needs
- * it, so Storybook and the browser interaction matrix can keep covering every supported
- * gesture rather than turning this into an open-ended animation utility.
+ * A closed vocabulary on purpose: a motion is added only when a real control needs it, so
+ * Storybook and the browser interaction matrix keep covering every supported gesture.
  */
 export const TRN_ICON_MOTIONS = [
   'nudge-left',
