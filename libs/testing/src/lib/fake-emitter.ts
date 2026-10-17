@@ -2,10 +2,7 @@ import { vi } from 'vitest';
 
 type Handler = (...args: unknown[]) => void;
 
-/**
- * Minimal event emitter shaped like matrix-js-sdk's TypedEventEmitter. Handlers are
- * kept in an array, so subscribing the same handler twice shows in `listenerCount`.
- */
+/** Minimal TypedEventEmitter stand-in; an array, not a Set, so a double subscription counts until `off`. */
 export function fakeEmitter() {
   const handlers: Record<string, Handler[]> = {};
   return {
