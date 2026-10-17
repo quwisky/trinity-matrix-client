@@ -74,13 +74,13 @@ describe('Conversation Runtime production boundary', () => {
   });
 
   it('does not expose the raw timeline SDK context through the Conversation capability', () => {
-    const runtime = source(runtimeImplementation);
+    const factory = source(timelineFactoryImplementation);
     const roomFeature = productionSources
       .filter((file) => file.startsWith('libs/feature/rooms/'))
       .map(source)
       .join('\n');
 
-    expect(runtime).not.toMatch(/ConversationTimeline[\s\S]*?\| 'openContext'/);
+    expect(factory).not.toMatch(/ConversationTimeline[\s\S]*?\| 'openContext'/);
     expect(roomFeature).not.toContain('.openContext()');
   });
 
