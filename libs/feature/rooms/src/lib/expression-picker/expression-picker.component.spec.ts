@@ -16,7 +16,11 @@ import {
   GifSettingsService,
   type GifProviderId,
 } from '@trinity/data-access/gif';
-import { MediaService, type ImagePack } from '@trinity/data-access/media';
+import {
+  MediaService,
+  RecentEmojiService,
+  type ImagePack,
+} from '@trinity/data-access/media';
 import {
   ComposerExpressionTabPreference,
   type ComposerExpressionTab,
@@ -49,6 +53,7 @@ class EmojiPickerStubComponent {
   readonly layout = input<'fixed' | 'fill'>('fixed');
   readonly size = input<'sm' | 'md' | 'lg'>('md');
   readonly shown = input(0);
+  readonly recent = input<readonly string[] | undefined>(undefined);
   readonly picked = output<TrnEmojiPick>();
 }
 
@@ -107,6 +112,7 @@ async function renderPanel(options: Options = {}) {
     remembered.set(tab);
     return of({ kind: 'completed' as const });
   });
+  const record = vi.fn();
   const handlers = {
     emojiPick: vi.fn(),
     gifSelect: vi.fn(),
@@ -161,11 +167,16 @@ async function renderPanel(options: Options = {}) {
         pin: vi.fn(),
         unpin: vi.fn(),
       }),
+      MockProvider(RecentEmojiService, {
+        recent: signal(['🎉', '👍']).asReadonly(),
+        run: () => of(undefined),
+        record,
+      }),
     ],
   });
   await result.fixture.whenStable();
   view = result;
-  return { ...result, remember, handlers };
+  return { ...result, remember, handlers, record };
 }
 
 const expressionContent = () =>
@@ -373,6 +384,26 @@ describe('ExpressionPickerComponent', () => {
     expect(handlers.emojiPick).toHaveBeenCalledWith(
       expect.objectContaining({ native: '😎' }),
     );
+  });
+
+  it("gives the emoji grid the account's recent emoji", async () => {
+    const { fixture } = await renderPanel();
+
+    expect(emojiPicker(fixture).recent()).toEqual(['🎉', '👍']);
+  });
+
+  it('records an emoji pick for the account', async () => {
+    const { fixture, record } = await renderPanel();
+
+    fixture.debugElement
+      .query((el) => el.name === 'trn-emoji-picker')
+      .triggerEventHandler('picked', {
+        native: '😎',
+        id: 'sunglasses',
+        colons: ':sunglasses:',
+      });
+
+    expect(record).toHaveBeenCalledWith('😎');
   });
 
   it('forwards a GIF pick', async () => {

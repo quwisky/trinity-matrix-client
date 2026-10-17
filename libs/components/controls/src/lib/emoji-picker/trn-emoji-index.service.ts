@@ -1,4 +1,5 @@
 import {
+  computed,
   DestroyRef,
   Injectable,
   Injector,
@@ -26,6 +27,10 @@ export class TrnEmojiIndex {
     emoji: EmojiService;
   } | null>(null);
   private loading: Promise<void> | null = null;
+  private ids: Map<string, string> | null = null;
+
+  /** Whether the vendor has loaded, so lookups answer. */
+  readonly loaded = computed(() => this.vendor() !== null);
 
   constructor() {
     inject(DestroyRef).onDestroy(() => (this.destroyed = true));
@@ -78,4 +83,34 @@ export class TrnEmojiIndex {
     if (!data) return null;
     return vendor.emoji.getSanitizedData(data).native ?? null;
   }
+
+  /**
+   * The vendor id for an emoji character, or null when it names none. A variation selector or
+   * skin tone the vendor's own data lacks is ignored, so another client's spelling still maps.
+   */
+  idFor(native: string): string | null {
+    const vendor = this.vendor();
+    if (!vendor) {
+      void this.load();
+      return null;
+    }
+    this.ids ??= new Map(
+      vendor.emoji.emojis.flatMap((data) => {
+        const id = String(data.id ?? '');
+        const char = String(data.native ?? '');
+        return [
+          [char, id],
+          [withoutModifiers(char), id],
+        ] as const;
+      }),
+    );
+    return (
+      this.ids.get(native) ?? this.ids.get(withoutModifiers(native)) ?? null
+    );
+  }
+}
+
+/** Drops variation selector 16 and the skin tone modifiers. */
+function withoutModifiers(native: string): string {
+  return native.replace(/\uFE0F|[\u{1F3FB}-\u{1F3FF}]/gu, '');
 }

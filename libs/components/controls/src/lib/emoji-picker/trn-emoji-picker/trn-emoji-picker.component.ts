@@ -83,6 +83,11 @@ export class TrnEmojiPickerComponent {
    * row, which the vendor reads only when it is created.
    */
   readonly shown = input(0);
+  /**
+   * The account's recent emoji, most used first, shown in place of the vendor's per-device
+   * frequently-used row. Undefined keeps that row.
+   */
+  readonly recent = input<readonly string[] | undefined>(undefined);
 
   /** A usable pick. Entries without a `native` character never reach here. */
   readonly picked = output<TrnEmojiPick>();

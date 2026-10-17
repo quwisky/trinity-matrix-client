@@ -1,6 +1,10 @@
+import { signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { TrnDialogRef } from '@trinity/components/overlay';
+import { RecentEmojiService } from '@trinity/data-access/media';
 import { render, screen, within } from '@trinity/testing';
-import { MockComponent } from 'ng-mocks';
+import { MockComponent, MockProvider } from 'ng-mocks';
+import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ReactionPickerComponent } from './reaction-picker.component';
 import {
@@ -18,11 +22,22 @@ const pick = (native: string): TrnEmojiPick => ({
 describe('ReactionPickerComponent', () => {
   async function setup() {
     const close = vi.fn();
+    const record = vi.fn();
     const { fixture } = await render(ReactionPickerComponent, {
-      providers: [{ provide: TrnDialogRef, useValue: { close } }],
+      providers: [
+        { provide: TrnDialogRef, useValue: { close } },
+        MockProvider(RecentEmojiService, {
+          recent: signal(['🎉', '👍']).asReadonly(),
+          run: () => of(undefined),
+          record,
+        }),
+      ],
       componentImports: [MockComponent(TrnEmojiPickerComponent)],
     });
-    return { cmp: fixture.componentInstance, close };
+    const picker = fixture.debugElement.query(
+      By.directive(TrnEmojiPickerComponent),
+    ).componentInstance as TrnEmojiPickerComponent;
+    return { cmp: fixture.componentInstance, close, record, picker };
   }
 
   it('names itself with the shared dialog shell heading', async () => {
@@ -40,6 +55,20 @@ describe('ReactionPickerComponent', () => {
     const { cmp, close } = await setup();
     cmp.onSelect(pick('🚀'));
     expect(close).toHaveBeenCalledWith('🚀');
+  });
+
+  it("shows the account's recent emoji first", async () => {
+    const { picker } = await setup();
+
+    expect(picker.recent()).toEqual(['🎉', '👍']);
+  });
+
+  it('records the chosen emoji for the account', async () => {
+    const { cmp, record } = await setup();
+
+    cmp.onSelect(pick('🚀'));
+
+    expect(record).toHaveBeenCalledWith('🚀');
   });
 
   // The "no native character" case is gone on purpose: it is now unreachable here. The

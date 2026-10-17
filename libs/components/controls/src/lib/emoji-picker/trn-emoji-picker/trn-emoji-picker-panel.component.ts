@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import { PickerComponent } from '@ctrl/ngx-emoji-mart';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
+import { TrnEmojiIndex } from '../trn-emoji-index.service';
 import {
   TRN_EMOJI_TOUCH_CELL,
   VENDOR_CELL_PADDING,
@@ -51,6 +52,7 @@ const MAX_VENDOR_PER_LINE = 16;
 })
 export class TrnEmojiPickerPanelComponent {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly index = inject(TrnEmojiIndex);
   /** Width of the vendor's emoji rows, measured while filling; null until measured. */
   private readonly rowWidth = signal<number | null>(null);
   /** The host had no width to measure when it rendered (it has no layout yet). */
@@ -65,6 +67,8 @@ export class TrnEmojiPickerPanelComponent {
   readonly fill = input(false);
   /** See {@link TrnEmojiPickerComponent.shown}. */
   readonly shown = input(0);
+  /** See {@link TrnEmojiPickerComponent.recent}. */
+  readonly recent = input<readonly string[] | undefined>(undefined);
   readonly emojiSelect = output<EmojiEvent>();
 
   private readonly vendor = viewChild(PickerComponent);
@@ -107,6 +111,17 @@ export class TrnEmojiPickerPanelComponent {
   });
 
   /**
+   * The vendor's `recent`: ids in place of its own per-device row. Undefined, or nothing it
+   * can show, keeps that row.
+   */
+  protected readonly vendorRecent = computed(() => {
+    const ids = (this.recent() ?? []).flatMap(
+      (native) => this.index.idFor(native) ?? [],
+    );
+    return ids.length > 0 ? ids : undefined;
+  });
+
+  /**
    * The vendor computes its width from `perLine` unless its `style` names one. Filling, it
    * takes the host's width, and the columns follow from that instead.
    */
@@ -116,13 +131,20 @@ export class TrnEmojiPickerPanelComponent {
 
   /**
    * Filling, the vendor waits for the first measurement: it sizes its frequently-used row from
-   * `perLine` once, when it is created, so it must be created with the right one.
+   * `perLine` once, when it is created, so it must be created with the right one. Given recent
+   * emoji, it waits for the index that maps them, for the same reason.
    */
   protected readonly ready = computed(
-    () => !this.fill() || this.fit() !== null || this.unmeasured(),
+    () =>
+      (!this.fill() || this.fit() !== null || this.unmeasured()) &&
+      (!this.recent()?.length || this.index.loaded()),
   );
 
   constructor() {
+    effect(() => {
+      if (this.recent()?.length) void this.index.load();
+    });
+
     const injector = inject(Injector);
     let firstShown = true;
     effect(() => {

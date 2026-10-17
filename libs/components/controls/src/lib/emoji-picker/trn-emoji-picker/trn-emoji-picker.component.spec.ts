@@ -509,6 +509,49 @@ describe('TrnEmojiPickerComponent', () => {
     }
   });
 
+  describe('with recent emoji from the account', () => {
+    const recentRow = (fixture: { nativeElement: HTMLElement }) =>
+      Array.from(
+        fixture.nativeElement.querySelectorAll(
+          'section.emoji-mart-category[aria-label="Frequently Used"] .emoji-mart-emoji',
+        ),
+        (emoji) => emoji.textContent?.trim(),
+      );
+
+    it('shows them first, in their order, instead of this device’s own row', async () => {
+      const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
+        inputs: { recent: ['🎉', '🚀'] },
+      });
+
+      await vi.waitFor(() => {
+        fixture.detectChanges();
+        expect(recentRow(fixture)).toEqual(['🎉', '🚀']);
+      });
+    });
+
+    it('keeps this device’s own row without them', async () => {
+      const { fixture } = await renderLoaded(TrnEmojiPickerComponent);
+      const vendor = fixture.debugElement.query(By.directive(PickerComponent))
+        .componentInstance as PickerComponent;
+
+      expect(vendor.recent).toBeUndefined();
+    });
+
+    it('shows a changed list when its surface shows it again', async () => {
+      const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
+        inputs: { recent: ['🎉'], shown: 1 },
+      });
+
+      fixture.componentRef.setInput('recent', ['🚀', '🎉']);
+      fixture.componentRef.setInput('shown', 2);
+
+      await vi.waitFor(() => {
+        fixture.detectChanges();
+        expect(recentRow(fixture)).toEqual(['🚀', '🎉']);
+      });
+    });
+  });
+
   it('creates the vendor grid with the measured line, when filling a host that has a width', async () => {
     // The vendor sizes its frequently-used row from `perLine` once, when it is created, so
     // the grid waits for the host's width rather than starting at nine and changing.
