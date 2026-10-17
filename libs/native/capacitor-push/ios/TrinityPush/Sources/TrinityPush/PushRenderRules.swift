@@ -33,6 +33,8 @@ public enum PushRenderRules {
     /// running app can renew an OAuth token, and opening Trinity does.
     public static let expiredTokenBody = "Open Trinity to read this message"
     public static let encryptedBody = "Encrypted message"
+    /// Registered by the app at launch with the placeholder "New message".
+    public static let privateCategory = "trinity.message.private"
     static let maxBodyCodePoints = 200
 
     private static let mediaBodies: [String: String] = [
@@ -50,8 +52,13 @@ public enum PushRenderRules {
         storedRoom: HandoffRoom?,
         stateRoomName: String?,
         senderName: String?,
-        tokenExpired: Bool = false
+        tokenExpired: Bool = false,
+        mode: NotificationTextMode = .show
     ) -> RenderedNotification {
+        // Before anything reads the event. No title: the system shows the app's own name.
+        if mode == .alwaysHide {
+            return RenderedNotification(title: "", subtitle: "", body: fallbackBody)
+        }
         let title = nonBlank(storedRoom?.name) ?? nonBlank(stateRoomName) ?? fallbackTitle
         let sender = nonBlank(senderName) ?? (event?["sender"] as? String)
         let subtitle = storedRoom?.direct == true ? "" : (sender ?? "")
@@ -105,5 +112,40 @@ public enum PushRenderRules {
         var kept = String.UnicodeScalarView()
         kept.append(contentsOf: trimmed.prefix(maxBodyCodePoints - 1))
         return String(kept) + "\u{2026}"
+    }
+}
+
+/// The text fields of a notification's content, so the presentation step stays testable without
+/// UserNotifications.
+public protocol PushTextContent: AnyObject {
+    var title: String { get set }
+    var subtitle: String { get set }
+    var body: String { get set }
+    var categoryIdentifier: String { get set }
+}
+
+public extension PushRenderRules {
+    /// The last change before the content goes to the system. Always hide drops everything about
+    /// the message (no title: the system shows the app's own name); Hide on the lock screen keeps
+    /// the text and lets iOS show the private category's placeholder while it hides previews.
+    static func present(_ mode: NotificationTextMode, on content: PushTextContent) {
+        switch mode {
+        case .show:
+            break
+        case .hideOnLockScreen:
+            content.categoryIdentifier = privateCategory
+        case .alwaysHide:
+            content.title = ""
+            content.subtitle = ""
+            content.body = fallbackBody
+            content.categoryIdentifier = ""
+        }
+    }
+}
+
+public extension NotificationTextMode {
+    /// What `store` holds; with no store (no app group), everything is hidden.
+    static func mirrored(by store: HandoffReading?) -> NotificationTextMode {
+        store?.notificationText() ?? .alwaysHide
     }
 }

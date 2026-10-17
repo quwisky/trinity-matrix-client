@@ -291,28 +291,65 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let userInfo: [AnyHashable: Any] = payload
-        guard let render = PushRender(userInfo: userInfo, store: store, api: URLSessionMatrixPushAPI()) else {
+        let resolve = { [store] (probe: ProbeContent) in
+            PushRenderRules.present(NotificationTextMode.mirrored(by: store), on: probe)
+            call.resolve(probe.result)
+        }
+        guard NotificationTextMode.mirrored(by: store) != .alwaysHide,
+              let render = PushRender(userInfo: userInfo, store: store, api: URLSessionMatrixPushAPI())
+        else {
             let aps = payload["aps"] as? JSObject
             let alert = aps?["alert"] as? JSObject
-            call.resolve([
-                "title": alert?["title"] as? String ?? "",
-                "subtitle": alert?["subtitle"] as? String ?? "",
-                "body": alert?["body"] as? String ?? "",
-                "threadIdentifier": aps?["thread-id"] as? String ?? "",
-                "sound": aps?["sound"] != nil,
-            ])
+            resolve(ProbeContent(
+                title: alert?["title"] as? String ?? "",
+                subtitle: alert?["subtitle"] as? String ?? "",
+                body: alert?["body"] as? String ?? "",
+                threadIdentifier: aps?["thread-id"] as? String ?? "",
+                sound: aps?["sound"] != nil
+            ))
             return
         }
         Task {
             let content = await render.resolve()
-            call.resolve([
-                "title": content.title,
-                "subtitle": content.subtitle,
-                "body": content.body,
-                "threadIdentifier": content.threadIdentifier,
-                "sound": content.sound,
-            ])
+            resolve(ProbeContent(
+                title: content.title,
+                subtitle: content.subtitle,
+                body: content.body,
+                threadIdentifier: content.threadIdentifier,
+                sound: content.sound
+            ))
         }
     }
     #endif
 }
+
+#if DEBUG
+/// What the render probe answers, after the same presentation step as the extension.
+private final class ProbeContent: PushTextContent {
+    var title: String
+    var subtitle: String
+    var body: String
+    var categoryIdentifier = ""
+    let threadIdentifier: String
+    let sound: Bool
+
+    init(title: String, subtitle: String, body: String, threadIdentifier: String, sound: Bool) {
+        self.title = title
+        self.subtitle = subtitle
+        self.body = body
+        self.threadIdentifier = threadIdentifier
+        self.sound = sound
+    }
+
+    var result: [String: Any] {
+        [
+            "title": title,
+            "subtitle": subtitle,
+            "body": body,
+            "threadIdentifier": threadIdentifier,
+            "sound": sound,
+            "categoryIdentifier": categoryIdentifier,
+        ]
+    }
+}
+#endif

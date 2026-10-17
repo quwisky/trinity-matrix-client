@@ -41,7 +41,10 @@ object PushRenderRules {
         stateRoomName: String?,
         senderName: String?,
         tokenExpired: Boolean = false,
+        mode: String = NotificationTextMode.SHOW,
     ): RenderedNotification {
+        // Before anything reads the event. No title: the system shows the app's own name.
+        if (mode == NotificationTextMode.ALWAYS_HIDE) return RenderedNotification("", "", FALLBACK_BODY)
         val title = storedRoom?.name?.takeIf(::hasText)
             ?: stateRoomName?.takeIf(::hasText)
             ?: FALLBACK_TITLE

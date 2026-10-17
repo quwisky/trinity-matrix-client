@@ -698,6 +698,112 @@
         "subtitle": "Alice",
         "body": "\u001fkept\u001f"
       }
+    },
+    {
+      "name": "always hide: a text message says only New message",
+      "mode": "always-hide",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "Secret plans"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "",
+        "subtitle": "",
+        "body": "New message"
+      }
+    },
+    {
+      "name": "always hide: a direct message names nobody",
+      "mode": "always-hide",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@bob:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "Call me"
+        }
+      },
+      "storedRoom": {
+        "name": "Bob",
+        "direct": true
+      },
+      "stateRoomName": null,
+      "senderName": "Bob",
+      "expected": {
+        "title": "",
+        "subtitle": "",
+        "body": "New message"
+      }
+    },
+    {
+      "name": "always hide: an encrypted event and an expired token look the same",
+      "mode": "always-hide",
+      "event": null,
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": null,
+      "tokenExpired": true,
+      "expected": {
+        "title": "",
+        "subtitle": "",
+        "body": "New message"
+      }
+    },
+    {
+      "name": "always hide: no room name leaves the title to the system, not Trinity",
+      "mode": "always-hide",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "Hi"
+        }
+      },
+      "storedRoom": null,
+      "stateRoomName": "General",
+      "senderName": null,
+      "expected": {
+        "title": "",
+        "subtitle": "",
+        "body": "New message"
+      }
+    },
+    {
+      "name": "hide on the lock screen keeps the full text for the unlocked phone",
+      "mode": "hide-on-lock-screen",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "Lunch?"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "Lunch?"
+      }
     }
   ]
 }
