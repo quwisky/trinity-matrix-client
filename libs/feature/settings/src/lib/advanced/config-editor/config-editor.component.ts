@@ -36,9 +36,9 @@ import {
 } from '@codemirror/view';
 import { AppConfigService, configJsonSchema } from '@trinity/platform-native';
 import type { ConfigEditorHost } from '../config-editor-loader';
+import { configDiagnostics } from './config-diagnostics';
 import {
   configCompletionSource,
-  configDiagnostics,
   configHoverInfo,
   type ConfigHoverInfo,
 } from './config-intellisense';
