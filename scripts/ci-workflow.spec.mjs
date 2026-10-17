@@ -461,6 +461,8 @@ describe('MAS sign-in journeys', () => {
       'e2e/support/homeserver/start.mjs.bak',
       'libs/platform-native/src/lib/file-save.service.ts',
       'libs/util/matrix/src/lib/message-view.ts',
+      'libs/util/matrix/src/lib/message-html.ts',
+      'libs/util/matrix/src/lib/markdown-render.ts',
       'e2e/support/homeserver/Caddyfile.mas',
       'e2e/browser/journeys/accounts/oidc-login.spec.mts',
       'apps/trinity/src/main.ts',
