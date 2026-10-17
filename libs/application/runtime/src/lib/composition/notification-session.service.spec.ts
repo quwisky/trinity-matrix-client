@@ -78,25 +78,41 @@ describe('NotificationSessionService', () => {
       text?: NotificationText;
       writeNotificationText?: (mode: NotificationText) => Observable<void>;
       notificationTextLost?: Observable<void>;
+      beforeRun?: (
+        lifecycle: Subject<LifecycleEvent>,
+        appLock: ReturnType<typeof fakeAppLock>,
+      ) => void;
     } = {},
   ) {
     const appLock = fakeAppLock(options.status ?? 'off', options.text);
+    const notifications = new Subject<NotificationRuntimeEvent>();
+    const pushes = new Subject<NativePushLifetimeEvent>();
+    const lifecycle = new Subject<LifecycleEvent>();
+    options.beforeRun?.(lifecycle, appLock);
     const writeNotificationText = vi.fn(
       options.writeNotificationText ??
         ((_mode: NotificationText): Observable<void> => of(void 0)),
     );
     const clearDelivered = vi.fn((): Observable<void> => of(void 0));
     const focused = signal<FocusedConversation | null>(null);
-    const lifecycle = new Subject<LifecycleEvent>();
+    const navigate = vi.fn((_intent: unknown) =>
+      of({ kind: 'ready' as const }),
+    );
+    const report = vi.fn();
     const clearRoom = vi.fn(
       (_userId: string, _roomId: string): Observable<void> => of(void 0),
     );
     const refreshBeforeBackground = vi.fn((): Observable<void> => of(void 0));
+    const bringForward = vi
+      .spyOn(window, 'focus')
+      .mockImplementation(() => undefined);
     TestBed.configureTestingModule({
       providers: [
         NotificationSessionService,
-        MockProvider(NotificationService, { run: () => EMPTY }),
-        MockProvider(NativePushLifetime, { run: () => EMPTY }),
+        MockProvider(NotificationService, {
+          run: () => notifications as never,
+        }),
+        MockProvider(NativePushLifetime, { run: () => pushes as never }),
         MockProvider(PushHandoffService, {
           run: () => EMPTY,
           clearRoom,
@@ -111,8 +127,10 @@ describe('NotificationSessionService', () => {
         MockProvider(HostLifecycleService, {
           events: lifecycle.asObservable(),
         }),
-        MockProvider(WorkspaceNavigationService),
-        MockProvider(CapabilityHealthService),
+        MockProvider(WorkspaceNavigationService, {
+          navigate: navigate as never,
+        }),
+        MockProvider(CapabilityHealthService, { report }),
         MockProvider(TrnToastService),
         appLock.provider,
       ],
@@ -125,6 +143,11 @@ describe('NotificationSessionService', () => {
       .run()
       .subscribe();
     TestBed.tick();
+    const tap = (roomId: string): void =>
+      notifications.next({
+        kind: 'activated',
+        destination: { accountId: '@me:hs', roomId, eventId: '$e' },
+      });
     return {
       focused,
       lifecycle,
@@ -135,6 +158,12 @@ describe('NotificationSessionService', () => {
       appLock,
       writeNotificationText,
       clearDelivered,
+      notifications,
+      pushes,
+      navigate,
+      report,
+      bringForward,
+      tap,
     };
   }
 
@@ -367,84 +396,10 @@ describe('NotificationSessionService', () => {
     expect(clearRoom.mock.calls).toEqual([['@me:hs', '!a:hs']]);
   });
   describe('while App lock covers the app', () => {
-    function covered(
-      initial: AppLockStatus = 'locked',
-      beforeRun?: (
-        lifecycle: Subject<LifecycleEvent>,
-        appLock: ReturnType<typeof fakeAppLock>,
-      ) => void,
-    ) {
-      const appLock = fakeAppLock(initial);
-      const notifications = new Subject<NotificationRuntimeEvent>();
-      const pushes = new Subject<NativePushLifetimeEvent>();
-      const lifecycle = new Subject<LifecycleEvent>();
-      beforeRun?.(lifecycle, appLock);
-      const focused = signal<FocusedConversation | null>(null);
-      const navigate = vi.fn((_intent: unknown) =>
-        of({ kind: 'ready' as const }),
-      );
-      const report = vi.fn();
-      const clearRoom = vi.fn(
-        (_userId: string, _roomId: string): Observable<void> => of(void 0),
-      );
-      const bringForward = vi
-        .spyOn(window, 'focus')
-        .mockImplementation(() => undefined);
-      TestBed.configureTestingModule({
-        providers: [
-          NotificationSessionService,
-          MockProvider(NotificationService, {
-            run: () => notifications as never,
-          }),
-          MockProvider(NativePushLifetime, { run: () => pushes as never }),
-          MockProvider(PushHandoffService, {
-            run: () => EMPTY,
-            clearRoom,
-            refreshBeforeBackground: () => of(void 0),
-            writeNotificationText: () => of(void 0),
-            clearDelivered: () => of(void 0),
-            notificationTextLost: EMPTY,
-          }),
-          MockProvider(ConversationRuntime, {
-            focused: focused.asReadonly() as never,
-          }),
-          MockProvider(HostLifecycleService, {
-            events: lifecycle.asObservable(),
-          }),
-          MockProvider(WorkspaceNavigationService, {
-            navigate: navigate as never,
-          }),
-          MockProvider(CapabilityHealthService, { report }),
-          MockProvider(TrnToastService),
-          appLock.provider,
-        ],
-      });
-      const lifetime = TestBed.inject(NotificationSessionService)
-        .run()
-        .subscribe();
-      TestBed.tick();
-      const tap = (roomId: string): void =>
-        notifications.next({
-          kind: 'activated',
-          destination: { accountId: '@me:hs', roomId, eventId: '$e' },
-        });
-      return {
-        appLock,
-        notifications,
-        pushes,
-        lifecycle,
-        focused,
-        navigate,
-        report,
-        clearRoom,
-        bringForward,
-        lifetime,
-        tap,
-      };
-    }
-
     it('opens a tapped notification only once App lock is unlocked', () => {
-      const { appLock, navigate, bringForward, lifetime, tap } = covered();
+      const { appLock, navigate, bringForward, lifetime, tap } = setup({
+        status: 'locked',
+      });
 
       tap('!r:hs');
       expect(bringForward).toHaveBeenCalledOnce(); // forward, to the lock screen
@@ -461,7 +416,9 @@ describe('NotificationSessionService', () => {
     });
 
     it('opens a tapped push notification only once App lock is unlocked', () => {
-      const { appLock, pushes, navigate, lifetime } = covered();
+      const { appLock, pushes, navigate, lifetime } = setup({
+        status: 'locked',
+      });
 
       pushes.next({
         kind: 'activated',
@@ -480,7 +437,7 @@ describe('NotificationSessionService', () => {
     });
 
     it('waits until the lock state is known before opening a tap', () => {
-      const { appLock, navigate, lifetime, tap } = covered('unknown');
+      const { appLock, navigate, lifetime, tap } = setup({ status: 'unknown' });
 
       tap('!r:hs');
       expect(navigate).not.toHaveBeenCalled();
@@ -491,7 +448,7 @@ describe('NotificationSessionService', () => {
     });
 
     it('opens only the latest notification tapped while locked', () => {
-      const { appLock, navigate, lifetime, tap } = covered();
+      const { appLock, navigate, lifetime, tap } = setup({ status: 'locked' });
 
       tap('!a:hs');
       tap('!b:hs');
@@ -504,7 +461,9 @@ describe('NotificationSessionService', () => {
     });
 
     it('keeps reporting notification health while a tap waits', () => {
-      const { notifications, report, lifetime, tap } = covered();
+      const { notifications, report, lifetime, tap } = setup({
+        status: 'locked',
+      });
       const fact = { context: Symbol('presentation'), generation: 1 };
 
       tap('!r:hs');
@@ -515,8 +474,9 @@ describe('NotificationSessionService', () => {
     });
 
     it('keeps the open room’s notifications on a return to the lock screen, and clears them after unlock', () => {
-      const { appLock, lifecycle, focused, clearRoom, lifetime } =
-        covered('unlocked');
+      const { appLock, lifecycle, focused, clearRoom, lifetime } = setup({
+        status: 'unlocked',
+      });
       focused.set({ key: { accountId: '@me:hs', roomId: '!r:hs' } });
       TestBed.tick();
       expect(clearRoom).toHaveBeenCalledOnce();
@@ -547,12 +507,13 @@ describe('NotificationSessionService', () => {
             if (event.kind === 'active') appLock.set('locked');
           });
         let away: Subscription | undefined;
-        const { appLock, lifecycle, focused, clearRoom, lifetime } = covered(
-          'unlocked',
-          order === 'before'
-            ? (events, lock) => (away = awayTimer(events, lock))
-            : undefined,
-        );
+        const { appLock, lifecycle, focused, clearRoom, lifetime } = setup({
+          status: 'unlocked',
+          beforeRun:
+            order === 'before'
+              ? (events, lock) => (away = awayTimer(events, lock))
+              : undefined,
+        });
         if (order === 'after') away = awayTimer(lifecycle, appLock);
         focused.set({ key: { accountId: '@me:hs', roomId: '!r:hs' } });
         TestBed.tick();
@@ -572,7 +533,9 @@ describe('NotificationSessionService', () => {
     );
 
     it('clears the open room on a return that does not lock, once the event is over', async () => {
-      const { lifecycle, focused, clearRoom, lifetime } = covered('unlocked');
+      const { lifecycle, focused, clearRoom, lifetime } = setup({
+        status: 'unlocked',
+      });
       focused.set({ key: { accountId: '@me:hs', roomId: '!r:hs' } });
       TestBed.tick();
       clearRoom.mockClear();
@@ -585,7 +548,9 @@ describe('NotificationSessionService', () => {
     });
 
     it('does not clear a room selected while locked until unlock', () => {
-      const { appLock, focused, clearRoom, lifetime } = covered();
+      const { appLock, focused, clearRoom, lifetime } = setup({
+        status: 'locked',
+      });
       focused.set({ key: { accountId: '@me:hs', roomId: '!b:hs' } });
       TestBed.tick();
       expect(clearRoom).not.toHaveBeenCalled();
