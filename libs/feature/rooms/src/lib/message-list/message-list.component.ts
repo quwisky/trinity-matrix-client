@@ -48,10 +48,7 @@ const NEAR_BOTTOM_PX = 120;
 /** Safety cap on consecutive auto-backfill rounds for one fill sequence. */
 const MAX_BACKFILL_ROUNDS = 20;
 
-/**
- * Seed height (px) for a row not yet rendered/measured — a rough average message
- * height, used only to size the off-screen spacers until real heights are recorded.
- */
+/** Seed height (px) for a row not yet measured; sizes the off-screen spacers until real heights arrive. */
 const ESTIMATED_ROW_HEIGHT_PX = 64;
 
 /**
@@ -70,11 +67,11 @@ const NO_PLACEHOLDERS: ReadonlyMap<string, number> = new Map();
 const OVERSCAN_PX = 800;
 
 /**
- * What an unmeasured row is counted at when the list says what it keeps on screen (#1366):
- * the shortest row it renders, a one-line system line in compact density at the small text
- * scale. Rows that arrive while a web tab is hidden are rendered but never measured, and
- * counting them at the 64 px estimate could name too few rows to fill the viewport when
- * the window is shown again; at this height they can only name more.
+ * What an unmeasured row is counted at when the list says what it keeps on screen: the
+ * shortest row it renders (a one-line compact system line at the small text scale). Rows that
+ * arrive while a web tab is hidden are rendered but never measured, and counting them at the
+ * 64 px estimate could name too few rows to fill the viewport when the window is shown again.
+ * At this height they can only name more.
  */
 const MIN_UNMEASURED_ROW_PX = 16;
 
@@ -85,14 +82,13 @@ const SMALL_LIST_ROWS = 80;
 const SCROLL_IDLE_MS = 150;
 
 /**
- * The room timeline. With `windowed` on (the default) it renders only the rows in and near
- * the viewport, plus top and bottom spacers, so the DOM stays bounded in long rooms. With it
- * off (Settings → Experimental) it renders every loaded row through the same anchoring,
- * measurement and jump code. Rooms of {@link SMALL_LIST_ROWS} rows or fewer render in full
- * either way. Domain logic lives in {@link MessageListBase}.
+ * The room timeline. With `windowed` on (the default) it renders only the rows in and near the
+ * viewport plus top and bottom spacers, so the DOM stays bounded in long rooms; off (Settings →
+ * Experimental) it renders every loaded row through the same anchoring, measurement and jump
+ * code. Rooms of {@link SMALL_LIST_ROWS} rows or fewer render in full either way.
  *
- * Trade-off of windowing: native in-page find (Ctrl-F), linear screen-reader reading order
- * and cross-row text selection only cover the rendered rows.
+ * Windowing trade-off: native find (Ctrl-F), linear screen-reader order and cross-row text
+ * selection only cover the rendered rows.
  */
 @Component({
   selector: 'trn-message-list',
@@ -107,22 +103,21 @@ const SCROLL_IDLE_MS = 150;
     TimelineDividerComponent,
     TypingIndicatorComponent,
   ],
-  // The whole conversation is the drop target — "drop it on the room" is the gesture, and
-  // these templates are host fragments with no element of their own to carry it.
+  // The whole conversation is the drop target; these templates are host fragments with no
+  // element of their own to carry it.
   hostDirectives: [
     {
       directive: TrnFileDropDirective,
-      // Neither is exposed on this element, and both are stated so that is a decision rather
-      // than an omission (see `scripts/host-directives.spec.mjs`). `filesDropped` in
-      // particular is deliberately NOT re-exported: `MessageListBase` subscribes to it
-      // directly, so a host binding would be a second, silently divergent way in.
+      // Neither is exposed on this element, stated so that is a decision rather than an
+      // omission (see `scripts/host-directives.spec.mjs`). `filesDropped` is deliberately NOT
+      // re-exported: `MessageListBase` subscribes to it directly, and a host binding would be
+      // a second, silently divergent way in.
       inputs: [],
       outputs: [],
     },
   ],
-  // Rows read the scroll activity to hold their hover work back while the list scrolls, wait
-  // on the media gate to load their images, and share one ResizeObserver for every row body
-  // in this list (Show more).
+  // Rows read the scroll activity to hold hover work back while scrolling, use the media gate to
+  // load images, and share one ResizeObserver for every row body (Show more).
   providers: [TimelineScrollActivity, TimelineMediaGate, BodyOverflowObserver],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.scss',
@@ -131,26 +126,24 @@ export class MessageListComponent extends MessageListBase {
   private lastId = '';
   /** The first row as last rendered, to tell rows trimmed away above the reader. */
   private lastFirstRowId: string | null = null;
-  /** Whether the user is scrolled to (or near) the bottom — gates auto-scroll and
-   * pins the window to the newest row. A signal so windowing reacts to it. */
+  /** True when scrolled to (or near) the bottom: gates auto-scroll and pins the window to the newest row. */
   private readonly atBottomSig = signal(true);
 
-  // Scroll-anchoring state while older history is being prepended.
+  // Scroll-anchoring state while older history is prepended.
   private pendingPrepend = false;
   private prevScrollHeight = 0;
   private prevScrollTop = 0;
 
-  // Backfill state — tracked by oldest id.
+  // Backfill state, tracked by oldest id.
   private backfilling = false;
-  // Null (not '') so an EMPTY projection still counts as "history not yet requested" — a
-  // room whose whole loaded window is hidden system lines would otherwise compare '' to ''
-  // and never backfill, leaving a permanently blank timeline with no scrollbar to recover
-  // from.
+  // Null (not '') so an EMPTY projection still counts as "history not yet requested": a room
+  // whose loaded window is all hidden system lines would otherwise compare '' to '' and never
+  // backfill, leaving a blank timeline with no scrollbar to recover from.
   private lastBackfillOldestId: string | null = null;
   private backfillRounds = 0;
 
-  // Windowing state. `scrollTop`/`viewportH` drive which rows are in view; `measured`
-  // records real row heights (bumping `heightVersion` to recompute the prefix sums).
+  // Windowing state: `scrollTop`/`viewportH` pick the rows in view; `measured` records real
+  // heights (bumping `heightVersion` recomputes the prefix sums).
   private readonly scrollTop = signal(0);
   private readonly viewportH = signal(0);
   private readonly heightVersion = signal(0);
@@ -158,29 +151,24 @@ export class MessageListComponent extends MessageListBase {
   private ro?: ResizeObserver;
   /** Currently-observed `.msg` elements → their row id. */
   private readonly observed = new Map<Element, string>();
-  // Reference row + its viewport offset, captured before a load-older so scroll can
-  // be restored to it afterward (a raw scrollHeight delta drifts under windowing,
-  // where the prepended rows are estimated spacer height, not real).
+  // Reference row + viewport offset captured before a load-older, to restore scroll afterwards
+  // (a raw scrollHeight delta drifts under windowing, where prepended rows are estimated spacer height).
   private prependAnchorId = '';
   private prependAnchorOffset = 0;
   /** Keep the captured row fixed while the first rendered rows settle their heights. */
   private prependAnchorActive = false;
-  // Scroll-anchor session token, bumped by every gesture that owns the anchor; not a latest-wins guard (#927).
+  // Scroll-anchor session token, bumped by every gesture that owns the anchor; not a latest-wins guard.
   private prependAnchorGeneration = 0;
   /** Last scrollTop written by our own correction; distinguishes it from user movement. */
   private expectedProgrammaticScrollTop: number | null = null;
   /** Pending end of the current scroll; see {@link markScrolling}. */
   private scrollIdle: ReturnType<typeof setTimeout> | null = null;
   /**
-   * The height an unmeasured row is counted at: {@link ESTIMATED_ROW_HEIGHT_PX}, or with
-   * "Blank rows while scrolling fast" on, the room's average measured row
-   * ({@link adaptEstimate}), since placeholders and spacers stand in at it during a fling.
+   * The height an unmeasured row is counted at: {@link ESTIMATED_ROW_HEIGHT_PX}, or with "Blank
+   * rows while scrolling fast" on, the room's average measured row ({@link adaptEstimate}).
    */
   private readonly rowEstimate = signal(ESTIMATED_ROW_HEIGHT_PX);
-  /**
-   * A jump (to an event, to unread, to the newest message) is scrolling until the list
-   * settles: its smooth scroll is the list's doing, not the reader flinging.
-   */
+  /** A jump is scrolling until the list settles: its smooth scroll is the list's doing, not a fling. */
   private jumping = false;
   /** Ends {@link jumping} once the jump has been still for the idle window. */
   private jumpIdle: ReturnType<typeof setTimeout> | null = null;
@@ -193,7 +181,7 @@ export class MessageListComponent extends MessageListBase {
     read: ElementRef,
   });
 
-  /** Row ids in timeline order — the windowing key. */
+  /** Row ids in timeline order (the windowing key). */
   private readonly ids = computed(() => this.rows().map((r) => r.id));
 
   /** Prefix sums of row heights; recomputed when rows change or a height updates. */
@@ -223,11 +211,10 @@ export class MessageListComponent extends MessageListBase {
   );
 
   /**
-   * The oldest event the list keeps on screen while it follows the newest message: the
-   * first event of the oldest row within the viewport and its overscan of the end, counting
-   * a row not yet measured at {@link MIN_UNMEASURED_ROW_PX}. Null while the reader is
-   * scrolled back, history is being paged in, or the viewport has no height (a window
-   * shrunk to nothing would otherwise keep only the overscan).
+   * The oldest event the list keeps on screen while following the newest message: the first
+   * event of the oldest row within the viewport and its overscan of the end, counting an
+   * unmeasured row at {@link MIN_UNMEASURED_ROW_PX}. Null while the reader is scrolled back,
+   * history is paging in, or the viewport has no height (else a shrunk window keeps only the overscan).
    */
   private readonly liveViewFrom = computed(() => {
     const rows = this.rows();
@@ -272,9 +259,8 @@ export class MessageListComponent extends MessageListBase {
   readonly introShown = input(false);
 
   /**
-   * {@link liveViewFrom} as it changes. The host passes it to the Conversation, which while
-   * the window is hidden trims the room no further back than this (#1366), so the list
-   * looks the same when the window is shown again.
+   * {@link liveViewFrom} as it changes. The host passes it to the conversation, which while the
+   * window is hidden trims the room no further back than this, so the list looks the same when shown again.
    */
   readonly liveView = outputFromObservable(toObservable(this.liveViewFrom));
 
@@ -285,8 +271,7 @@ export class MessageListComponent extends MessageListBase {
       return [];
     }
     const all = this.rows();
-    // Short room: the window is the whole list — return the same reference so `@for`
-    // sees no change and nothing is copied.
+    // Short room: return the same reference so `@for` sees no change and nothing is copied.
     if (w.startIndex === 0 && w.endIndex === all.length - 1) {
       return all;
     }
@@ -342,12 +327,10 @@ export class MessageListComponent extends MessageListBase {
       this.lastFirstRowId = ids[0] ?? null;
 
       if (this.pendingPrepend) {
-        // The viewport moves before the browser delivers its scroll event. Capture
-        // that movement before the loading strip or the landed page changes the row
-        // geometry: this effect runs before the view renders either, so the current
-        // position is still the reader's. Recapturing only while loading would let a
-        // page that lands in the same frame as a scroll drag the reader back to where
-        // the request was made.
+        // The viewport moves before the browser delivers its scroll event. Capture that
+        // movement before the strip or landed page changes row geometry (this effect runs
+        // before the view renders either). Recapturing only while loading would let a page
+        // landing in the same frame as a scroll drag the reader back to the request point.
         if (
           el.scrollTop !==
           (this.expectedProgrammaticScrollTop ?? this.prevScrollTop)
@@ -358,8 +341,7 @@ export class MessageListComponent extends MessageListBase {
           this.prependAnchorGeneration++;
           this.expectedProgrammaticScrollTop = null;
         }
-        // Keep the viewport anchored on what the user was reading.
-        // Keep the same restore point through the loading strip and the final prepend.
+        // Keep the viewport on what the user was reading, through the strip and the final prepend.
         this.pendingPrepend = this.loadingOlder();
         this.lastId = msgs[msgs.length - 1]?.id ?? this.lastId;
         const prevHeight = this.prevScrollHeight;
@@ -368,8 +350,8 @@ export class MessageListComponent extends MessageListBase {
         const anchorOffset = this.prependAnchorOffset;
         const anchorGeneration = this.prependAnchorGeneration;
         this.prependAnchorActive = true;
-        // Correct as soon as the strip/prepend renders, before another scroll event
-        // can capture its displaced geometry as the reader's intended position.
+        // Correct as soon as the strip/prepend renders, before another scroll event can
+        // capture its displaced geometry as the reader's intended position.
         untracked(() =>
           afterNextRender(
             () => {
@@ -414,8 +396,7 @@ export class MessageListComponent extends MessageListBase {
       ) {
         this.keepPlaceAfterTrim(el, ids);
       }
-      // Read the at-bottom signal untracked so this effect keeps firing only on
-      // messages().
+      // Untracked so this effect keeps firing only on messages().
       const stickToBottom =
         (newestChanged &&
           (untracked(() => this.atBottomSig()) || !!latest?.isOwn)) ||
@@ -451,11 +432,10 @@ export class MessageListComponent extends MessageListBase {
       });
     });
 
-    // Scroll to an externally-requested event (search / reply / pinned-panel jump).
-    // jumpTo reads ids()/prefix(); run it untracked so this fires only on a NEW jump
-    // request — not on every timeline/height change, which would keep yanking the
-    // viewport back. jumpToNonce makes a repeat request to the same id re-fire.
-    // The target is expanded first, so the row measures and scrolls at its full height.
+    // Scroll to an externally-requested event (search / reply / pinned-panel jump). Untracked so
+    // it fires only on a NEW request, not on timeline/height changes (which would yank the
+    // viewport back); jumpToNonce re-fires a repeat to the same id. The target is expanded
+    // first, so the row measures and scrolls at its full height.
     effect(() => {
       this.jumpToNonce();
       const id = this.jumpToId();
@@ -464,12 +444,11 @@ export class MessageListComponent extends MessageListBase {
       }
     });
 
-    // An effect, not a computed: turning the flag off must also release the loads the gate
-    // holds, and the gate is plain state that scroll events read without change detection.
+    // An effect, not a computed: turning the flag off must also release the loads the gate holds,
+    // and the gate is plain state that scroll events read without change detection.
     effect(() => this.mediaGate.setEnabled(this.deferMediaWhileScrolling()));
 
-    // Turning "Blank rows while scrolling fast" off mounts every row and returns to the fixed
-    // estimate, exactly as with the flag never on.
+    // Turning "Blank rows while scrolling fast" off mounts every row and returns to the fixed estimate.
     effect(() => {
       if (this.flingPlaceholders()) return;
       untracked(() => {
@@ -479,7 +458,7 @@ export class MessageListComponent extends MessageListBase {
       });
     });
 
-    // Keep the observed set of rendered rows in sync with the window.
+    // Keep the observed rendered rows in sync with the window.
     effect(() => {
       const hosts = this.rowHosts();
       this.reconcileObserved(hosts);
@@ -527,8 +506,7 @@ export class MessageListComponent extends MessageListBase {
     this.prependAnchorGeneration++;
     this.expectedProgrammaticScrollTop = null;
     this.atBottomSig.set(true);
-    // Forget the old room's measured heights and scroll position so the new room
-    // starts from the top with fresh estimates.
+    // Forget the old room's measured heights and scroll position: the new room starts from the top.
     this.measured.clear();
     this.bodyOverflow.clear();
     this.scrollActivity.reset();
@@ -542,11 +520,10 @@ export class MessageListComponent extends MessageListBase {
   }
 
   /**
-   * Older rows were trimmed away above the reader while nothing arrived below (the room's
-   * history released while the window was hidden, #1366). Everything from the rows on
-   * screen down stays, so keeping the same distance from the end keeps the reader exactly
-   * where they were; left alone, a reader just above the bottom would be moved by the
-   * browser clamping the shorter list. Measured heights of the trimmed rows go too.
+   * Older rows were trimmed above the reader while nothing arrived below (history released while
+   * the window was hidden). Keeping the same distance from the end keeps the reader in place;
+   * left alone, a reader just above the bottom would be moved by the browser clamping the
+   * shorter list. Measured heights of the trimmed rows go too.
    */
   private keepPlaceAfterTrim(el: HTMLElement, ids: readonly string[]): void {
     const fromEnd = el.scrollHeight - el.scrollTop;
@@ -572,8 +549,8 @@ export class MessageListComponent extends MessageListBase {
       return;
     }
     this.markScrolling();
-    // How fast the reader moves the list. The list's own writes were taken out as it made
-    // them (`writeScrollTop`), so this is the reader's movement alone.
+    // How fast the reader moves the list. The list's own writes are taken out as made
+    // (`writeScrollTop`), so this is the reader's movement alone.
     this.scrollActivity.moved(el.scrollTop, performance.now());
     if (this.jumping) {
       this.armJumpEnd(); // the jump is still animating
@@ -589,8 +566,7 @@ export class MessageListComponent extends MessageListBase {
         this.expectedProgrammaticScrollTop = null;
       }
     } else if (this.prependAnchorActive) {
-      // A subsequent user scroll starts a new read position; the prepend lock must not
-      // keep correcting that intentional movement.
+      // A later user scroll starts a new read position; the prepend lock must not keep correcting it.
       this.prependAnchorActive = false;
       this.prependAnchorGeneration++;
     }
@@ -601,9 +577,8 @@ export class MessageListComponent extends MessageListBase {
     this.updateJumpToUnread(); // divider may have scrolled in/out of the window
     const bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight;
     if (this.loadingOlder() && bottomGap >= 1) {
-      // A reader can move while an earlier automatic backfill is still in flight.
-      // Transfer its restore point even inside the incoming-message near-bottom
-      // threshold: only an exact bottom pin has no reading offset to preserve.
+      // A reader can move while an earlier automatic backfill is in flight. Transfer its restore
+      // point even inside the near-bottom threshold: only an exact bottom pin has no offset to preserve.
       this.prevScrollHeight = el.scrollHeight;
       this.prevScrollTop = el.scrollTop;
       this.capturePrependAnchor(el);
@@ -629,10 +604,9 @@ export class MessageListComponent extends MessageListBase {
   }
 
   /**
-   * Note the scroll for the rows, and settle it once it has been still for
-   * {@link SCROLL_IDLE_MS}, so the row the pointer rests on then mounts its toolbar
-   * ({@link TimelineScrollActivity}). A plain timer, not a signal: it changes no template
-   * state, so it must not schedule change detection on every scroll event.
+   * Note the scroll for the rows, and settle it once still for {@link SCROLL_IDLE_MS}, so the row
+   * under the pointer then mounts its toolbar ({@link TimelineScrollActivity}). A plain timer, not
+   * a signal: it changes no template state and must not schedule change detection per scroll event.
    */
   private markScrolling(): void {
     this.scrollActivity.start();
@@ -647,10 +621,9 @@ export class MessageListComponent extends MessageListBase {
   }
 
   /**
-   * Start a jump: end any fling, and with blank rows on, start none until the jump has been
-   * still for the idle window (its own timer, so a jump that scrolls nothing ends too). With
-   * the flag off this is the plain `fling.end()` no-op: the scroll activity, which holds row
-   * hover work back, is left alone.
+   * Start a jump: end any fling and, with blank rows on, start none until the jump has been still
+   * for the idle window (its own timer, so a jump that scrolls nothing ends too). With the flag
+   * off this is the plain `fling.end()` no-op and the scroll activity is left alone.
    */
   private beginJump(): void {
     this.fling.end();
@@ -675,22 +648,19 @@ export class MessageListComponent extends MessageListBase {
     if (!el) {
       return;
     }
-    // This explicit destination supersedes both an in-flight history restore and
-    // any measurement correction already queued for its old reading position.
+    // This explicit destination supersedes an in-flight history restore and any queued measurement correction.
     this.pendingPrepend = false;
     this.prependAnchorActive = false;
     this.prependAnchorGeneration++;
     this.expectedProgrammaticScrollTop = null;
-    // Pin the window to the bottom, then scroll to the end once it has re-rendered
-    // the newest rows (the spacer heights shift when the window moves).
+    // Pin the window to the bottom, then scroll once it has re-rendered the newest rows (spacer heights shift).
     this.atBottomSig.set(true);
     requestAnimationFrame(() => this.writeScrollTop(el, el.scrollHeight));
   }
 
   /**
-   * Record the first rendered `.msg` reaching into the viewport and its offset from
-   * the viewport top, so scroll position can be restored to it after older history
-   * prepends (see the prepend branch of the anchoring effect).
+   * Record the first rendered `.msg` reaching into the viewport and its offset from the top, so
+   * scroll can be restored to it after older history prepends (see the anchoring effect).
    */
   private capturePrependAnchor(el: HTMLElement): void {
     this.prependAnchorId = '';
@@ -712,10 +682,9 @@ export class MessageListComponent extends MessageListBase {
   }
 
   /**
-   * Content offset of the row region (the first `.vpad` spacer) from the scroll
-   * origin — the `.scroll` padding plus any `.load-older` banner rendered above the
-   * rows. `offsetOf()` measures from the top of that region while `scrollTop` is
-   * physical, so this bridges the two coordinate systems.
+   * Content offset of the row region (first `.vpad` spacer) from the scroll origin: the `.scroll`
+   * padding plus any `.load-older` banner. `offsetOf()` measures from that region while
+   * `scrollTop` is physical, so this bridges the two coordinate systems.
    */
   private rowsRegionTop(el: HTMLElement): number {
     const firstVpad = el.querySelector('.vpad');
@@ -730,9 +699,8 @@ export class MessageListComponent extends MessageListBase {
   }
 
   /**
-   * Observe the `.msg` box of every rendered row (adding new ones, dropping rows
-   * that left the window). Observing a fresh element fires an immediate callback with
-   * its size — that's how newly-rendered rows get measured.
+   * Observe the `.msg` box of every rendered row, dropping rows that left the window. Observing a
+   * fresh element fires an immediate callback with its size, which is how new rows get measured.
    */
   private reconcileObserved(hosts: readonly ElementRef<HTMLElement>[]): void {
     if (!this.ro) {
@@ -762,8 +730,8 @@ export class MessageListComponent extends MessageListBase {
   }
 
   /**
-   * Record measured row heights and keep the read position stable. The signal writes
-   * below schedule change detection on their own under zoneless.
+   * Record measured row heights and keep the read position stable. The signal writes below
+   * schedule change detection on their own under zoneless.
    */
   private onRowsResized(entries: ResizeObserverEntry[]): void {
     const el = this.scrollEl()?.nativeElement;
@@ -777,7 +745,7 @@ export class MessageListComponent extends MessageListBase {
     const changes: HeightChange[] = [];
     let changed = false;
     // How much the rendered rows grew in this batch. A first measurement changes no layout (the
-    // row already drew at that height; only the estimate behind the prefix sums changes).
+    // row already drew at that height); only the estimate behind the prefix sums changes.
     let grown = 0;
     const resized: Element[] = [];
     for (const entry of entries) {
@@ -797,7 +765,7 @@ export class MessageListComponent extends MessageListBase {
       changed = true;
       const idx = idList.indexOf(mid);
       if (idx >= 0) {
-        // `prior` is the pre-update height — the estimate for a first measurement.
+        // `prior` is the pre-update height (the estimate for a first measurement).
         changes.push({
           index: idx,
           prior: prior ?? this.rowEstimate(),
@@ -808,17 +776,15 @@ export class MessageListComponent extends MessageListBase {
     if (!changed) {
       return;
     }
-    // A jump made while rows were still unmeasured (a linked message, right as the list
-    // mounts) aimed at estimated heights, and the first real measurements cut that smooth
-    // scroll short. Re-aim once the corrections below have landed; bounded by the same
-    // window as a width change.
+    // A jump made while rows were unmeasured (a linked message, as the list mounts) aimed at
+    // estimated heights, and the first real measurements cut that smooth scroll short. Re-aim
+    // once the corrections below have landed; bounded by the same window as a width change.
     afterNextRender(() => this.reapplyRecentJump(), {
       injector: this.injector,
     });
-    // A reader exactly at the bottom before this batch (the newest message expanding behind
-    // Show more, a late image) stays at the bottom. That wins over a history anchor, which
-    // otherwise outlives its restore until the reader scrolls, and ends it: the bottom is now
-    // the reader's place. Only an exact pin: a reader near the bottom keeps the anchored row.
+    // A reader exactly at the bottom before this batch (newest message expanding behind Show more,
+    // a late image) stays there. That wins over a history anchor, which would outlive its restore
+    // until the reader scrolls, and ends it. Only an exact pin: near the bottom keeps the anchored row.
     if (
       atBottom &&
       this.prependAnchorActive &&
@@ -830,9 +796,8 @@ export class MessageListComponent extends MessageListBase {
       this.expectedProgrammaticScrollTop = null;
     }
     if (this.prependAnchorActive) {
-      // ResizeObserver runs after the prepend restore and can replace estimated spacer
-      // heights with real measurements. Correct from the rendered anchor after each such
-      // batch so the measured row remains in the same viewport position.
+      // ResizeObserver runs after the prepend restore and can replace estimated spacer heights
+      // with real ones. Correct from the rendered anchor after each batch so the row keeps its position.
       const anchorGeneration = this.prependAnchorGeneration;
       const anchorId = this.prependAnchorId;
       const anchorOffset = this.prependAnchorOffset;
@@ -863,11 +828,9 @@ export class MessageListComponent extends MessageListBase {
       // Stay pinned to the newest message as measured heights settle.
       this.writeScrollTop(el, el.scrollHeight);
     } else {
-      // While scrolled up, a change to a row ABOVE the fold shoves the read
-      // position (native anchoring is off) — a genuine reflow OR a first
-      // estimate→real measurement of an overscan row entering from the top.
-      // Compensate in the same coordinate space as scrollTop (past the padding +
-      // load-older banner).
+      // While scrolled up, a change to a row ABOVE the fold shoves the read position (native
+      // anchoring is off): a real reflow or the first estimate-to-real measurement of an overscan
+      // row entering from the top. Compensate in scrollTop's coordinate space (past padding + banner).
       const delta = scrollCompensation(
         changes,
         prefixSnapshot,
@@ -884,10 +847,9 @@ export class MessageListComponent extends MessageListBase {
   }
 
   /**
-   * With "Blank rows while scrolling fast" on, count unmeasured rows at the room's average
-   * measured row. A fling never measures the rows it passes (they are placeholders), so at
-   * the fixed 64 px a long room would come out far shorter than it is, and every fling would
-   * cover more of it than the same gesture does with full rows.
+   * With "Blank rows while scrolling fast" on, count unmeasured rows at the room's average measured
+   * row. A fling never measures the rows it passes (placeholders), so at a fixed 64 px a long room
+   * would come out far shorter than it is and every fling would cover more of it.
    */
   private adaptEstimate(el: HTMLElement): void {
     if (this.measured.size < MIN_MEASURED_FOR_ESTIMATE) return;
@@ -900,11 +862,10 @@ export class MessageListComponent extends MessageListBase {
   }
 
   /**
-   * Count unmeasured rows at `next` px, keeping the reader in place: every unmeasured row
-   * wholly above the viewport changes height by the difference, so the position moves by
-   * that much times their number, as for a first measurement above the fold. The move is
-   * made after the render that resizes the spacers: before it, the scroller is still its
-   * old height, and the browser would clamp a position near its bottom.
+   * Count unmeasured rows at `next` px, keeping the reader in place: each unmeasured row wholly above
+   * the viewport changes height by the difference, so the position moves by that times their number.
+   * The move is made after the render that resizes the spacers; before it the scroller is still its
+   * old height and the browser would clamp a position near the bottom.
    */
   private shiftEstimate(el: HTMLElement, next: number): void {
     const prev = this.rowEstimate();
@@ -938,14 +899,14 @@ export class MessageListComponent extends MessageListBase {
   }
 
   /**
-   * Set the scroll position from the list's own code (a pin, a correction, a restore, a
-   * jump), telling the scroll activity at once so the move never reads as the reader's. The
-   * keyboard/composer pin (`observeScrollerHeight`) reports its write the same way.
+   * Set the scroll position from the list's own code (pin, correction, restore, jump), telling the
+   * scroll activity at once so the move never reads as the reader's. The keyboard/composer pin
+   * (`observeScrollerHeight`) reports its write the same way.
    *
-   * Known exceptions, which the speed estimate sees as movement: smooth `scrollIntoView`
-   * calls (`scrollToJumpTarget`, `revealFocusIn`, a row's Show less), whose browser animation
-   * has no single write to take out, and the mobile action sheet's own viewport writes
-   * (`MessageSheetViewportSession`), which run while a modal sheet covers the list.
+   * Known exceptions, which the speed estimate sees as movement: smooth `scrollIntoView` calls
+   * (`scrollToJumpTarget`, `revealFocusIn`, a row's Show less), whose animation has no single
+   * write to take out, and the mobile action sheet's viewport writes (`MessageSheetViewportSession`),
+   * which run while a modal sheet covers the list.
    */
   private writeScrollTop(el: HTMLElement, top: number): void {
     const before = el.scrollTop;
@@ -955,14 +916,13 @@ export class MessageListComponent extends MessageListBase {
   }
 
   /**
-   * Keep keyboard focus inside a message body in view when its row just changed height, once
-   * the corrections above have moved the list. Tabbing to a link past a Show more cut expands
-   * its body (`MessageRowComponent.expandBodyForFocus`); the browser scrolled to the link while
-   * it was still clipped, and the pin, compensation or anchor restore for the taller row decides
-   * where the row ends up, so only after them can the link be brought into view. Only focus in
-   * the body (`.msg__clamp`): the Show more button itself sits after the body, and following it
-   * would skip the text it just revealed (and fight the row-top reveal on Show less). Keyboard
-   * focus only (`:focus-visible`): a pointer user is already looking at what they clicked.
+   * Keep keyboard focus inside a message body in view when its row just changed height, after the
+   * corrections above have moved the list. Tabbing to a link past a Show more cut expands the body
+   * (`MessageRowComponent.expandBodyForFocus`); the browser scrolled to the link while still
+   * clipped, and the pin, compensation or restore for the taller row decides where it ends up.
+   * Only focus in the body (`.msg__clamp`): the Show more button sits after the body, and following
+   * it would skip the text it revealed (and fight the row-top reveal on Show less). Keyboard focus
+   * only (`:focus-visible`): a pointer user is already looking at what they clicked.
    */
   private revealFocusIn(rows: readonly Element[]): void {
     const active = rows[0]?.ownerDocument.activeElement;
@@ -992,9 +952,9 @@ export class MessageListComponent extends MessageListBase {
     ) {
       return;
     }
-    // A reader at the bottom stays there: a restore queued before a live message pinned the
-    // list (or before the reader reached the bottom) would nudge the newest message up. Older
-    // history landing above a reader moves them off the bottom, so a real restore still runs.
+    // A reader at the bottom stays there: a restore queued before a live message pinned the list
+    // (or before the reader reached the bottom) would nudge the newest message up. History landing
+    // above a reader moves them off the bottom, so a real restore still runs.
     if (
       untracked(() => this.atBottomSig()) &&
       el.scrollHeight - el.scrollTop - el.clientHeight < 1
@@ -1026,17 +986,15 @@ export class MessageListComponent extends MessageListBase {
     }
     this.writeScrollTop(el, top);
     this.expectedProgrammaticScrollTop = el.scrollTop;
-    // A recent jump wins over the anchor: the page the jump's own scroll asked for keeps the
-    // anchored row in place, which can leave the target off its aim (half-hidden at the top
-    // when it is tall). Re-aim it; a no-op once the jump is old or the reader has moved.
+    // A recent jump wins over the anchor: the page the jump's own scroll asked for keeps the anchored
+    // row in place, which can leave a tall target half-hidden at the top. Re-aim; a no-op once old or the reader moved.
     this.reapplyRecentJump();
   }
 
   /**
-   * Scroll a message into view (reply-preview click or search jump). When the target
-   * row is windowed out of the DOM, first scroll near its computed offset so the
-   * window renders it, then aim at it precisely once it's on screen: centred, or by its top
-   * when it is taller than the scroller. A no-op when the event isn't loaded.
+   * Scroll a message into view (reply-preview click or search jump). A target windowed out of the
+   * DOM is first scrolled to near its computed offset so the window renders it, then aimed at
+   * precisely: centred, or by its top when taller than the scroller. A no-op when not loaded.
    */
   jumpTo(messageId: string, options?: JumpOptions): void {
     messageId = this.revealEvent(messageId);
@@ -1051,22 +1009,19 @@ export class MessageListComponent extends MessageListBase {
     // Remembered so a width change can re-aim it: every branch below ends in a measurement
     // that is only correct for the layout at this instant. See `notePendingJump`.
     this.notePendingJump(messageId);
-    // A jump ends a fling and starts none while it scrolls. A target still shown as a
-    // placeholder has no `data-mid` yet, so it takes the path below and is revealed after the
-    // render that mounts it.
+    // A jump ends a fling and starts none while it scrolls. A target still shown as a placeholder
+    // has no `data-mid` yet, so it takes the path below and is revealed after the render that mounts it.
     this.beginJump();
-    // The jump is the reader's new position. A correction queued for the history restore
-    // before it (a date jump pages history in right before jumping) would otherwise scroll
-    // back to the old anchor and cancel the smooth scroll below.
+    // The jump is the reader's new position. A correction queued for the history restore before it
+    // (a date jump pages history in right before jumping) would scroll back and cancel the smooth scroll.
     this.prependAnchorActive = false;
     this.prependAnchorGeneration++;
     this.expectedProgrammaticScrollTop = null;
     this.atBottomSig.set(false);
-    // Only a row in the CURRENT window counts as rendered. A scroll written just before the
-    // jump (a history restore as a date jump's last page lands) has already moved the window
-    // while the DOM still holds the old rows; smooth-scrolling to one of those chases an
-    // element the next render removes, and the first measurement write then cancels the
-    // scroll mid-list.
+    // Only a row in the CURRENT window counts as rendered. A scroll written just before the jump
+    // (a history restore as a date jump's last page lands) has moved the window while the DOM holds
+    // the old rows; smooth-scrolling to one chases an element the next render removes, and the first
+    // measurement write then cancels the scroll mid-list.
     const { startIndex, endIndex } = this.windowResult();
     const existing =
       idx >= startIndex && idx <= endIndex
@@ -1098,10 +1053,7 @@ export class MessageListComponent extends MessageListBase {
     });
   }
 
-  /**
-   * Bring a rendered row into view (centred, or top-aligned when taller than the scroller) and
-   * flash it; a no-op when it is not rendered.
-   */
+  /** Bring a rendered row into view (centred, or top-aligned when taller than the scroller) and flash it. */
   private revealRow(el: HTMLElement, messageId: string): void {
     this.beginJump();
     const target = el.querySelector(`[data-mid="${messageId}"]`);

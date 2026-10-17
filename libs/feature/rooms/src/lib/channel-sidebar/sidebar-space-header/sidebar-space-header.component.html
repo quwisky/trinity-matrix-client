@@ -30,11 +30,10 @@
         <trn-icon name="command" motion="pop" />
       </button>
     }
-    <!-- A space keeps only its most-reached-for action out here; the rest live in the
-         space-name menu. The sidebar is a fixed 280px at EVERY breakpoint, so this is not a
-         narrow-layout concern the way the room header's `md:hidden` demotion is: six
-         buttons left the space name about six characters of room on a desktop, and on
-         touch (44px targets) they were wider than the sidebar itself. -->
+    <!-- A space keeps only its most-reached-for action out here; the rest live in the space-name menu.
+         The sidebar is a fixed 280px at EVERY breakpoint, so this is not a narrow-layout concern: six
+         buttons left the space name about six characters on desktop, and on touch (44px targets) were
+         wider than the sidebar. -->
     @if (spaceActive()) {
       <button
         trnIconButton
@@ -48,8 +47,8 @@
         <trn-icon name="plus" motion="rotate" />
       </button>
     } @else {
-      <!-- Home has three buttons and already fits, so it keeps the flat row: an overflow
-           holding a single conditional item would be worse than the row it replaced. -->
+      <!-- Home has three buttons and already fits, so it keeps the flat row: an overflow holding a
+           single conditional item would be worse. -->
       @if (hasAnyUnread()) {
         <button
           trnIconButton
@@ -76,10 +75,9 @@
   </div>
 </header>
 
-<!-- The space's own actions. Ordered by how often they are reached for, with the two
-     destructive-adjacent ones last and separated: Leave sat one 30px target from Invite in
-     the old row, on exactly the platform where targets are hardest to hit. #40 adds Space
-     settings here. -->
+<!-- The space's own actions, ordered by how often they are reached for, with the two
+     destructive-adjacent ones last and separated, so on touch, where targets are hardest to hit,
+     Leave is never one small target from Invite. -->
 <ng-template #spaceMenu>
   <div trnDropdownMenu aria-label="Space actions">
     @if (hasAnyUnread()) {
@@ -92,9 +90,8 @@
         Mark all as read
       </button>
     }
-    <!-- The effective ordering is named on the row rather than left to be discovered by
-         opening the submenu — it was on the old trigger's aria-label, and a screen-reader
-         user should not have to walk into a radio group to learn the current value. -->
+    <!-- The effective ordering is named on the row, so a screen-reader user need not walk into a radio
+         group to learn the current value (it was on the old trigger's aria-label). -->
     <button
       trnDropdownMenuItem
       [trnDropdownMenuSubTrigger]="sortMenu"
@@ -103,9 +100,9 @@
     >
       <trn-icon name="arrow-down-wide-narrow" />
       Order rooms
-      <!-- No auto margin here: the sub-indicator already carries `ms-auto`, and a second
-           one splits the free space between the two rather than pinning either. `ps-3`
-           (logical, like every Helm class around it) just spaces the value off the label. -->
+      <!-- No auto margin: the sub-indicator already carries `ms-auto`, and a second would split the free
+           space between them rather than pinning either. `ps-3` (logical, like every Helm class here)
+           spaces the value off the label. -->
       <span class="ps-3 text-xs font-normal text-muted-foreground">
         {{ sortModeLabel() }}
       </span>
@@ -222,10 +219,9 @@
           </span>
         </button>
       }
-      <!-- Favourites are lifted into their own group before any of these orderings is
-         visible, so say so rather than letting "Space order" look broken. Trailing helper
-         text, NOT an trnDropdownMenuLabel: that directive captions the group that follows
-         it, and there is nothing after this. -->
+      <!-- Favourites are lifted into their own group before any of these orderings is visible, so say so
+         rather than let "Space order" look broken. Trailing helper text, NOT a trnDropdownMenuLabel: that
+         directive captions the group that follows it, and nothing follows. -->
       <p class="px-3 py-2.5 text-xs text-muted-foreground">
         Favourites stay in their own group.
       </p>

@@ -38,8 +38,8 @@ import { formatTypingNotice } from '@trinity/util/matrix';
 import { unreadBadgeLabel } from '../../../shared/unread-badge';
 
 /**
- * What a row asks its list to do. Every variant carries the row's room, so the list can
- * route it to the same outputs it always had (a merged row's `accountIds` ride along).
+ * What a row asks its list to do. Every variant carries the row's room (a merged row's `accountIds`
+ * ride along).
  */
 export type SidebarRoomAction =
   | {
@@ -56,16 +56,12 @@ export type SidebarRoomAction =
   | { kind: 'notify'; room: RoomSummary; mode: RoomNotifyMode };
 
 /**
- * One room in the sidebar list: the select button, the kebab and its menu with the
- * Notifications submenu.
+ * One room in the sidebar list: the select button, the kebab and its menu with the Notifications submenu.
  *
- * Everything the old row template called per change detection (`typingIn`, `presenceOf`,
- * `notifyMode`, the badge label) is a `computed()` here, so typing, active-room, presence,
- * filter and style changes no longer re-run those helpers. It is not memoised across syncs:
- * `projectSelectedRooms` rebuilds every `RoomSummary` on each sync, so every row's `room`
- * input changes then and its computeds re-read the push rule and presence (a few cheap
- * lookups). The host is `display: contents` so `.channel-row` lays out as a direct child of
- * the scrolling list.
+ * Per-row helpers (`typingIn`, `presenceOf`, `notifyMode`, the badge label) are `computed()`. Not
+ * memoised across syncs: `projectSelectedRooms` rebuilds every `RoomSummary` on each sync, so every
+ * row's `room` input changes then and its computeds re-read the push rule and presence (cheap
+ * lookups). The host is `display: contents` so `.channel-row` lays out as a direct child of the list.
  */
 @Component({
   selector: 'trn-sidebar-room-row',
@@ -119,9 +115,8 @@ export class SidebarRoomRowComponent {
     return this.notifications.modeForAccounts(id, accountIds);
   });
   protected readonly presence = computed(() => {
-    // Presence is projected from the ACTIVE client only, so a mixed-in account's DM partner
-    // has no entry there and would render a grey dot — indistinguishable from genuinely
-    // offline. Show nothing rather than something false.
+    // Presence is projected from the ACTIVE client only, so a mixed-in account's DM partner has no
+    // entry and would render a grey dot, indistinguishable from offline. Show nothing rather than something false.
     const { directUserId, accountId } = this.room();
     const active = this.activeUserId();
     if (!directUserId || (active && accountId && accountId !== active)) {

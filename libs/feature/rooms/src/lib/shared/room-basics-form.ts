@@ -13,14 +13,9 @@ export interface RoomBasicsGates {
 /**
  * Disable whichever of name / topic / join rule this viewer's power level does not reach.
  *
- * Both dialogs used to do this imperatively in `ngOnInit`, reading each `canEdit*` input
- * once and calling `control.disable()`. The gates are signals, so that was a snapshot of a
- * reactive value: a power-level change arriving mid-dialog left the field in whatever state
- * it had on open. Expressed as schema logic it simply tracks.
- *
- * Takes the field paths rather than the parent path because the two models are not the same
- * type — sharing the parent would mean making one dialog's model assignable to the other's,
- * which is a worse trade than passing three paths.
+ * Expressed as schema logic so it tracks the gates, which are signals: an imperative `disable()` in
+ * `ngOnInit` would snapshot them and miss a power-level change arriving mid-dialog. Takes the field
+ * paths rather than the parent path because the two dialogs' models are not the same type.
  */
 export function applyRoomBasicsGates(
   paths: {

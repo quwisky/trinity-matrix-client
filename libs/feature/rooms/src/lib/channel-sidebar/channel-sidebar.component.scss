@@ -1,14 +1,12 @@
 @use '../styles/mixins' as *;
 
 @layer components {
-  // The room list takes whatever the shell column has left after the 72px rail, which is what
-  // makes the shell's drag handle move THIS rather than an empty box. It was a fixed 280px, and
-  // the two together made up the 352px the shell shipped with — but with the column's width now
-  // a dragged custom property, a fixed list left the difference as bare rail colour when the
-  // column grew and overflowed it over the timeline when it shrank. `min-width: 0` because a
-  // flex item's automatic minimum is its content, which would floor the column at the widest
-  // room name in it. `rooms.page.scss` owns the column's width and the bounds live in
-  // `ShellLayoutService`.
+  // The room list takes whatever the shell column has left after the 72px rail, so the shell's drag
+  // handle moves THIS rather than an empty box: with the column's width a dragged custom property, a
+  // fixed list would leave bare rail colour when the column grew and overflow the timeline when it
+  // shrank. `min-width: 0` because a flex item's automatic minimum is its content, which would floor
+  // the column at the widest room name. `rooms.page.scss` owns the column's width; the bounds live
+  // in `ShellLayoutService`.
   :host {
     flex: 1;
     min-width: 0;
@@ -23,9 +21,9 @@
     --trn-presence-ring: var(--trinity-surface-sidebar);
   }
 
-  // Outside `.sidebar__scroll` on purpose: the box stays put while the list it narrows
-  // scrolls under it. The input itself is `trnInput`, so this only positions the row and
-  // overlays the clear button — no colours here, or it would stop re-theming.
+  // Outside `.sidebar__scroll` on purpose: the box stays put while the list it narrows scrolls under
+  // it. The input is `trnInput`, so this only positions the row and overlays the clear button; no
+  // colours here, or it would stop re-theming.
   .sidebar__filter {
     position: relative;
     flex: 0 0 auto;
@@ -60,9 +58,9 @@
     padding: 12px var(--trinity-density-shell-padding-inline);
 
     @media #{$md} {
-      // The desktop identity dock floats over this scroller. Leave enough real content space
-      // for the last room and tell focus-driven scrolling about the same obstruction, so a
-      // keyboard-selected row can always settle fully above the dock.
+      // The desktop identity dock floats over this scroller. Leave enough real content space for the
+      // last room and tell focus-driven scrolling about the same obstruction, so a keyboard-selected
+      // row can always settle fully above the dock.
       padding-block-end: calc(
         var(--trinity-navigation-dock-height) + var(--trinity-space-5)
       );

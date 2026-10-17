@@ -1,13 +1,13 @@
 @layer components {
-  // `display: contents` so the host takes no slot in the list's flex column — the sheet inside
-  // positions against the list itself, which is `position: relative`.
+  // `display: contents` so the host takes no slot in the list's flex column; the sheet inside
+  // positions against the list, which is `position: relative`.
   :host {
     display: contents;
   }
 
-  // `pointer-events: none` is load-bearing: the overlay sits under the pointer for the whole
-  // drag, and without it the `dragleave`/`drop` would fire against THIS element rather than the
-  // list beneath, so the counter would never settle and the drop would never be handled.
+  // `pointer-events: none` is load-bearing: the overlay sits under the pointer for the whole drag,
+  // and otherwise `dragleave`/`drop` would fire on THIS element, so the counter never settles and
+  // the drop is never handled.
   .drop-overlay {
     position: absolute;
     inset: 0;
@@ -17,16 +17,14 @@
     justify-content: center;
     pointer-events: none;
 
-    // Tint, not a curtain: the conversation stays legible underneath, which is what tells the
-    // user WHICH room they are about to drop into. `--trinity-chat` because that is what the
-    // message list paints itself with. The Theme authors the translucent stop explicitly so a
-    // changing workspace colour cannot alter this state at runtime.
+    // Tint, not a curtain: the conversation stays legible, which tells the user WHICH room they
+    // are dropping into. `--trinity-chat` is what the message list paints itself with; the theme
+    // authors the translucent stop explicitly so a changing workspace colour cannot alter this state.
     background: var(--trinity-surface-drop-overlay);
   }
 
-  // The dashed frame spans the whole droppable area rather than boxing a label in the middle:
-  // what it outlines is exactly what will accept the drop. Inset a little so the dash reads as
-  // a border rather than being shaved by the list's edges.
+  // The dashed frame spans the whole droppable area, so it outlines exactly what accepts the drop.
+  // Inset a little so the dash is not shaved by the list's edges.
   .drop-overlay__frame {
     position: absolute;
     inset: 10px;

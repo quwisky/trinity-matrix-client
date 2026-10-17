@@ -60,8 +60,8 @@
   }
 }
 
-<!-- Favourites, the rest and low priority as one windowed list (#1312): with a scroller
-     and enough rooms, only the lines near the viewport render, between two spacers. -->
+<!-- Favourites, the rest and low priority as one windowed list: with a scroller and enough rooms,
+     only the lines near the viewport render, between two spacers. -->
 <div class="sidebar__pad" #topSpacer [style.height.px]="topPad()"></div>
 @for (item of windowedItems(); track item.key) {
   @if (item.kind === 'room') {
@@ -97,10 +97,9 @@
 }
 <div class="sidebar__pad" [style.height.px]="bottomPad()"></div>
 
-<!-- Two different statements, so they have two different conditions. "No channels here yet"
-     is about the room list alone and shows under a pending invite exactly as it always did.
-     "Nothing matched" is about the filter, and an invite that DID match is a match — saying
-     nothing matched above a visible result would be a plain contradiction. -->
+<!-- Two statements, two conditions. "No channels here yet" is about the room list alone and shows
+     under a pending invite. "Nothing matched" is about the filter, and an invite that DID match is a
+     match: saying nothing matched above a visible result would be a contradiction. -->
 @if (filterActive() ? !rooms().length && !invites().length : !rooms().length) {
   <trn-empty-state
     layout="line"

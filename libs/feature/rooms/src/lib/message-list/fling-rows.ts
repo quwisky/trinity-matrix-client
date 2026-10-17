@@ -1,20 +1,19 @@
 import { linkedSignal, signal, type Signal } from '@angular/core';
 import { READING_SPEED_PX_PER_S } from '../shared/timeline-scroll-activity';
 
-/** Faster than this the list is flinging: rows only fly past (the study's flings ran 3,000–10,000 px/s). */
+/** Faster than this the list is flinging: rows only fly past. */
 export const FLING_SPEED_PX_PER_S = 3_000;
 
 const NONE: ReadonlySet<string> = new Set();
 
 /**
- * Which rows of the window render as blank placeholders during a fling, behind the "Blank
- * rows while scrolling fast" flag (Settings › Experimental).
+ * Which rows of the window render as blank placeholders during a fling ("Blank rows while
+ * scrolling fast", Settings › Experimental).
  *
- * A fling starts once the reader moves the list at {@link FLING_SPEED_PX_PER_S} or more, and
- * ends when it slows to reading speed, settles, jumps, or the flag goes off. While it lasts,
- * a row that enters the window is a placeholder; every row already rendered when it started
- * stays real for as long as it stays in the window, so the rows on screen, the one holding
- * focus and any selection are never swapped out. When the fling ends every row is real again.
+ * A fling starts at {@link FLING_SPEED_PX_PER_S} or more and ends when the list slows to reading
+ * speed, settles, jumps, or the flag goes off. During it, rows entering the window are placeholders;
+ * rows already rendered stay real while in the window, so the rows on screen, the focused row and
+ * any selection are never swapped out.
  */
 export class FlingRows {
   private readonly flinging = signal(false);

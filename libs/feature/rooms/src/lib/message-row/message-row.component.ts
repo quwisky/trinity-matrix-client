@@ -68,13 +68,12 @@ export interface MessageRow extends MessageView {
   /** Discord-style grouping: own header, or a continuation of the row above. */
   showHeader: boolean;
   /**
-   * Label for a day separator rendered ABOVE this row ("Today"/"Yesterday"/a date), or
-   * absent when this row does not begin a new local calendar day.
+   * Label for a day separator rendered ABOVE this row ("Today"/"Yesterday"/a date), or absent
+   * when the row does not begin a new local calendar day.
    *
-   * The finished label rather than a flag or an epoch, because at midnight a row that read
-   * "Today" becomes "Yesterday" while both of those stay identical — the list's row cache
-   * would hit, hand back the same object, and the OnPush row would never re-render. Making
-   * the label the cached value means a rollover invalidates the row for free.
+   * The finished label rather than a flag or epoch: at midnight "Today" becomes "Yesterday" while
+   * those stay identical, so the list's row cache would hit and the OnPush row never re-render.
+   * With the label as the cached value, a rollover invalidates the row.
    */
   daySeparator?: string | null;
   /** Present when this row stands for a run of adjacent system lines. */
@@ -114,8 +113,7 @@ export type MessageRowAction =
   | MessageAction
   | { type: 'retry' }
   | { type: 'jump'; id: string }
-  /** Show this message's earlier versions — raised by the "(edited)" marker, which is
-   *  part of the row rather than the toolbar, so it stays out of `MessageAction`. */
+  /** Show this message's earlier versions; raised by the "(edited)" marker, which is part of the row, not `MessageAction`. */
   | { type: 'edit-history' }
   /** Show everyone who reacted — raised by the reaction pills' trailing chip. */
   | { type: 'reactors' }
@@ -136,16 +134,12 @@ export type MessageSwipeAction = 'edit' | 'reply';
 let nextBodyId = 0;
 
 /**
- * One presentational message row, shared by the main timeline ({@link
- * MessageListComponent}) and the thread
- * view so all render identically — sender
- * header/continuation, reply preview, media/markdown/text body, reactions, the
- * hover toolbar, and (main timeline only) a thread indicator.
+ * One presentational message row, shared by the main timeline ({@link MessageListComponent}) and
+ * the thread view so both render identically: header/continuation, reply preview, body,
+ * reactions, hover toolbar and (main timeline only) a thread indicator.
  *
- * Stateless: it raises intent outputs and leaves the orchestration (edit/reply
- * mode, sending, presenting the thread view) to its host. In `readOnly` mode the
- * hover toolbar and failed/retry affordance are suppressed (the view-only thread
- * panel), keeping reactions visible.
+ * Stateless: it raises intent outputs and leaves orchestration to its host. In `readOnly` mode
+ * the hover toolbar and retry affordance are suppressed (view-only thread panel).
  */
 @Component({
   selector: 'trn-message-row',
@@ -218,13 +212,12 @@ export class MessageRowComponent {
   private pointerInside = false;
   /**
    * Whether the toolbar's quick reactions or overflow menu is open. It keeps the bar mounted
-   * ({@link releaseToolbar}) and visible (`.msg--menu-open`) while the pointer or focus is
-   * elsewhere: WebKit doesn't focus a clicked button, so `:has(:focus)` alone can't.
+   * ({@link releaseToolbar}) and visible (`.msg--menu-open`) while pointer or focus is elsewhere:
+   * WebKit doesn't focus a clicked button, so `:has(:focus)` alone can't.
    *
-   * Reset whenever the toolbar mounts or unmounts: a toolbar removed with a menu open (a
-   * revealed bar hidden by a scroll or an outside tap) never reports the menu closed, and a
-   * stale flag would pin every later bar. Derived rather than an effect, which every row
-   * would otherwise create and schedule.
+   * Reset whenever the toolbar mounts or unmounts: a toolbar removed with a menu open never
+   * reports it closed, and a stale flag would pin every later bar. Derived rather than an effect,
+   * which every row would otherwise create and schedule.
    */
   protected readonly menuOpen = linkedSignal({
     source: this.toolbar,
@@ -242,19 +235,15 @@ export class MessageRowComponent {
   /**
    * Whether this row's action bar is pinned open, which is how touch reaches it.
    *
-   * The bar is revealed on hover, and a touchscreen has no hover. It used to be forced open
-   * on every row under `@media (hover: none)` — which is why each row permanently wore a
-   * toolbar — and removing that is what made the timeline quiet. But the long press that
-   * replaced it opens the OVERFLOW menu, and Reply, Add reaction and Reply in thread are not
-   * in that menu: they are the bar's own buttons. So the long press reveals the bar itself,
-   * and its "⋯" still reaches everything else. One row at a time, gone on the next tap.
+   * The bar is revealed on hover and touch has none. The long press opens the OVERFLOW menu, which
+   * lacks Reply, Add reaction and Reply in thread (the bar's own buttons), so the long press
+   * reveals the bar itself. One row at a time, gone on the next tap.
    */
   readonly revealed = signal(false);
 
   constructor() {
-    // The list keeps a row's measurement only while the row holds it (#1361), and hands it out
-    // only with the hold. Keyed by the id alone, so a row update (a reaction, a receipt) does
-    // not let go and take it again.
+    // The list keeps a row's measurement only while the row holds it, keyed by the id alone, so a
+    // row update (a reaction, a receipt) does not let go and take it again.
     const bodyOverflow = this.bodyOverflow;
     if (this.bodyClampable && bodyOverflow) {
       const id = computed(() => this.row().id);
@@ -274,23 +263,20 @@ export class MessageRowComponent {
   /**
    * Right-click opens the message's own actions instead of the browser's.
    *
-   * Not suppressed over a selection: a user who has highlighted part of a message is asking
-   * for Copy, and taking that menu away to offer our own would be a downgrade. The native
+   * Not suppressed over a selection: a user with highlighted text is asking for Copy. The native
    * menu is only prevented where this row actually handles the event.
    */
   onContextMenu(event: Event): void {
     if (this.hasTextSelection()) {
       return;
     }
-    // A right-click on a link or an attachment wants the BROWSER's menu — "Open link in new
-    // tab", "Save image as…". Those live nowhere else, so taking them away to offer message
-    // actions is a straight loss. Same reasoning as the selection guard above.
+    // A right-click on a link or attachment wants the BROWSER's menu ("Open link in new tab",
+    // "Save image as…"), which lives nowhere else. Same reasoning as the selection guard above.
     if ((event.target as HTMLElement | null)?.closest('a, img, video, audio')) {
       return;
     }
-    // Android fires `contextmenu` at the end of a long press, so on a mobile OS this
-    // arrives right after the sheet has opened. Swallowing the native menu is still
-    // wanted; opening a SECOND menu on top of the sheet is not.
+    // Android fires `contextmenu` at the end of a long press, right after the sheet opened.
+    // Swallowing the native menu is still wanted; opening a SECOND menu over the sheet is not.
     if (this.mobileActions) {
       if (!this.hasMessageActions()) {
         return;
@@ -309,68 +295,53 @@ export class MessageRowComponent {
       bar.openMoreMenu(options);
       return;
     }
-    // Not mounted yet (a context menu with no hover or focus first): mount it, then open
-    // the menu once it exists.
+    // Not mounted yet (context menu with no hover or focus first): mount it, then open the menu.
     this.toolbarActive.set(true);
     afterNextRender(() => this.toolbar()?.openMoreMenu(options), {
       injector: this.injector,
     });
   }
 
-  /**
-   * Touch has no right-click, so a long press stands in for it — the same actions, reached
-   * the way every other app on the device reaches them.
-   */
+  /** Touch has no right-click, so a long press stands in for it with the same actions. */
   onPointerDown(event: PointerEvent): void {
     // Neither gesture belongs to a mouse: the pointer has a hover bar and a right-click.
     if (event.pointerType === 'mouse') {
       return;
     }
-    // Only the first finger arms anything. Without this a second pointer overwrote the
-    // timer handle while the first timer stayed scheduled: pinch-zooming a message
-    // cancelled the one that could be cancelled and let the orphan fire, and the overwrite
-    // measured finger one's travel against finger two's origin.
+    // Only the first finger arms anything. Otherwise a second pointer overwrote the timer handle
+    // while the first timer stayed scheduled (pinch-zoom let the orphan fire) and measured finger
+    // one's travel against finger two's origin.
     if (!event.isPrimary) {
       return;
     }
 
-    // The swipe is armed FIRST, and on rows the long press skips, which is why the two
-    // guards below sit under it rather than at the top of this method:
-    //
-    //  - `toolbar()` is absent on decryption failures and redacted rows, and those still
-    //    swipe to Reply — the gesture's whole promise is that it always does the most useful
-    //    available thing.
-    //  - the media/link bail exists because the OS offers its own menu on those elements. A
-    //    horizontal drag is not a menu, and media rows are exactly the ones whose swipe
-    //    means Reply, so sharing that bail would kill the gesture across most of a timeline.
+    // The swipe is armed FIRST, and on rows the long press skips, which is why the two guards
+    // below sit under it:
+    //  - `toolbar()` is absent on decryption failures and redacted rows, and those still swipe to Reply.
+    //  - the media/link bail exists because the OS offers its own menu on those elements; a
+    //    horizontal drag is not a menu, and media rows are exactly where swipe means Reply.
     if (this.swipeGesture()?.arm(event)) {
-      // The shell's drawer arms on this same `pointerdown`, bubbling, on `.chat-body` — and
-      // while it is open it arms ANYWHERE, with no edge zone. Stopping propagation is what
-      // keeps a thread reply's swipe from also closing the drawer. Only when the gesture
-      // actually armed: off, mouse and the dead zone all leave the drawer exactly as it was.
+      // The shell's drawer arms on this same bubbling `pointerdown` on `.chat-body`, and while open
+      // arms ANYWHERE. Stopping propagation keeps a thread reply's swipe from also closing the
+      // drawer. Only when the gesture actually armed: off, mouse and the dead zone leave the drawer alone.
       event.stopPropagation();
     }
 
     if (!this.hasMessageActions()) {
       return;
     }
-    // A long press on a link or an attachment belongs to the BROWSER — "Open in new tab",
-    // "Save image". Those live nowhere else, so taking them away to offer message actions
-    // is a straight loss. `onContextMenu` has always guarded this; the touch path did not,
-    // which meant the same press that raised the OS menu also opened ours behind it.
+    // A long press on a link or attachment belongs to the BROWSER ("Open in new tab", "Save image"),
+    // which lives nowhere else; otherwise the press that raised the OS menu also opens ours behind it.
     //
-    // `img` also catches the sender avatar — but only sometimes, which is worth stating
-    // precisely: `trn-avatar` renders an `<img>` only once the image has LOADED, and falls
-    // back to a `<span>` with the initial otherwise. So a press on the 40px avatar column
-    // gets the browser's image menu and no sheet for a sender who has one, and opens the
-    // sheet for a sender who does not. Deliberate, because the rule is "whatever the OS
-    // offers on this element wins" and a per-element exception list is the thing that rots —
-    // but not uniform, and the message body either side of it is a much larger target.
+    // `img` also catches the sender avatar, but only sometimes: `trn-avatar` renders an `<img>` only
+    // once the image has LOADED, else a `<span>` with the initial. So a loaded avatar gets the
+    // browser's image menu and no sheet. Deliberate: "whatever the OS offers on this element wins",
+    // since a per-element exception list rots.
     if ((event.target as HTMLElement | null)?.closest('a, img, video, audio')) {
       return;
     }
-    // `currentTarget` is the concrete `.msg` while the event is being dispatched. It is
-    // reset to null afterward, so capture it now rather than reading it in the 500ms timer.
+    // `currentTarget` is the concrete `.msg` during dispatch and reset to null afterward, so
+    // capture it now rather than in the 500ms timer.
     const anchor =
       event.currentTarget instanceof HTMLElement
         ? event.currentTarget
@@ -380,7 +351,7 @@ export class MessageRowComponent {
     if (!anchor) {
       return;
     }
-    // Any press already pending is cleared before a new one is scheduled.
+    // Clear any pending press before scheduling a new one.
     this.cancelLongPress();
     const context = { x: event.clientX, y: event.clientY, anchor };
     this.longPressOrigin = context;
@@ -389,13 +360,11 @@ export class MessageRowComponent {
       if (this.hasTextSelection()) {
         return;
       }
-      // On a phone or tablet the actions are a bottom sheet, which is what those
-      // platforms do for a long press — and which cannot cover the message it acts on,
-      // be dismissed by a stray scroll, or open a picker off the top of the scroller.
-      // Everywhere else the hover bar is right, and is left exactly as it was.
+      // On a phone or tablet the actions are a bottom sheet, which cannot cover the message it acts
+      // on, be dismissed by a stray scroll, or open a picker off the top of the scroller.
+      // Elsewhere the hover bar is right and is left as it was.
       if (this.mobileActions) {
-        // The press won; the drag is no longer a candidate. Without this the sheet opens and
-        // a continued drag still commits underneath its backdrop.
+        // The press won; the drag is no longer a candidate, or a continued drag would still commit under the backdrop.
         this.swipeGesture()?.cancel();
         this.longPress.emit({ anchor: context.anchor, clientY: context.y });
         return;
@@ -412,10 +381,7 @@ export class MessageRowComponent {
     );
   }
 
-  /**
-   * A press that travels is a scroll, and a timeline is mostly scrolled. Cancelling on
-   * movement is what keeps the menu from firing at the end of a flick.
-   */
+  /** A press that travels is a scroll: cancelling on movement keeps the menu from firing at the end of a flick. */
   onPointerMove(event: PointerEvent): void {
     this.swipeGesture()?.track(event);
     const origin = this.longPressOrigin;
@@ -451,11 +417,9 @@ export class MessageRowComponent {
   }
 
   /**
-   * Pin the action bar open, until the next tap outside this row or the next scroll.
-   *
-   * Both dismissals are captured at the document, because the thing that should close it is
-   * usually not inside this component — and the listeners exist only while a row is actually
-   * revealed, so the timeline is not carrying one per row.
+   * Pin the action bar open until the next tap outside this row or the next scroll. Both dismissals
+   * are captured at the document (the closer is usually outside this component), and the listeners
+   * exist only while a row is revealed, not one per row.
    */
   private revealToolbar(): void {
     if (this.revealed()) {
@@ -469,8 +433,8 @@ export class MessageRowComponent {
       }
     };
     const onScroll = () => this.hideToolbar();
-    // Capture phase, and `scroll` does not bubble — without `true` a scroll inside the
-    // timeline's own scroller would never reach a listener on the document.
+    // Capture phase: `scroll` does not bubble, so a scroll in the timeline's own scroller would
+    // not otherwise reach a document listener.
     document.addEventListener('pointerdown', onPointerDown, true);
     document.addEventListener('scroll', onScroll, true);
     this.dismissReveal = () => {
@@ -492,8 +456,8 @@ export class MessageRowComponent {
    */
   onPointerEnter(event?: PointerEvent): void {
     this.pointerInside = true;
-    // A row slid under a still pointer by a scroll is passed, not pointed at: mount nothing
-    // until the scroll settles, and only then on the row the pointer rests on (#1288).
+    // A row slid under a still pointer by a scroll is passed, not pointed at: mount nothing until
+    // the scroll settles, then only on the row the pointer rests on.
     if (this.scrollActivity?.active) {
       this.deferredPointerType = event?.pointerType;
       this.scrollActivity.defer(this.deferredHover);
@@ -509,9 +473,9 @@ export class MessageRowComponent {
   }
 
   /**
-   * Create the time's tooltip when a mouse or pen first reaches the row. A tooltip registers
-   * window listeners and a focus monitor, which is a lot to pay for every row a scroll builds.
-   * Touch never opens one, and the `<time>` is not focusable, so nothing else needs it earlier.
+   * Create the time's tooltip when a mouse or pen first reaches the row. A tooltip registers window
+   * listeners and a focus monitor, too much to pay for every row a scroll builds. Touch never opens
+   * one and the `<time>` is not focusable, so nothing else needs it earlier.
    */
   private armTimeTip(pointerType: string | undefined): void {
     if (pointerType === 'mouse' || pointerType === 'pen') {
@@ -548,17 +512,16 @@ export class MessageRowComponent {
   }
 
   /**
-   * Unmount the toolbar unless something still needs it: the pointer, keyboard focus inside
-   * the row (`focus` is where focus is going or now sits), or its overflow menu, which lives in
-   * an overlay outside the row and would close under the user. `revealed()` keeps it mounted
-   * through the template on its own.
+   * Unmount the toolbar unless something still needs it: the pointer, keyboard focus in the row
+   * (`focus` is where focus is going or sits), or its overflow menu, which lives in an overlay
+   * outside the row and would close under the user. `revealed()` keeps it mounted on its own.
    */
   private releaseToolbar(focus: EventTarget | null): void {
     if (
       this.pointerInside ||
       this.menuOpen() ||
-      // Only keyboard focus pins the bar: a click also focuses the row, and that must not
-      // keep it there while the pointer is over another row (#986 K6).
+      // Only keyboard focus pins the bar: a click also focuses the row, and must not keep the bar
+      // there while the pointer is over another row.
       (focus instanceof Element &&
         this.host.nativeElement.contains(focus) &&
         focus.matches(':focus-visible'))
@@ -575,11 +538,9 @@ export class MessageRowComponent {
   }
 
   /**
-   * Whether the user has text selected IN THIS ROW — their selection, their menu.
-   *
-   * Scoped to the row rather than the document: a selection is a statement about one
-   * message, and a document-wide check let text highlighted in one message suppress the
-   * context menu on every other row in the timeline until it was cleared.
+   * Whether the user has text selected IN THIS ROW. Scoped to the row, not the document: a
+   * document-wide check let text highlighted in one message suppress the context menu on every
+   * other row until cleared.
    */
   private hasTextSelection(): boolean {
     const selection = document.getSelection();
@@ -630,55 +591,43 @@ export class MessageRowComponent {
   readonly toggleRun = output<void>();
 
   /**
-   * A long press on a phone or tablet — the host offers this row's actions as a sheet.
+   * A long press on a phone or tablet; the host offers this row's actions as a sheet.
    *
-   * An output rather than a sheet opened here, and the distinction is the design: this
-   * component is destroyed by a redaction, an edit, the local-echo id swap when a send
-   * lands, or simply scrolling out of the virtual window. A sheet holding handlers that
-   * call back into it would go silent the moment that happened, with every row still
-   * tappable and nothing to see. The list owns the sheet; see `onRowLongPress` there.
+   * An output rather than a sheet opened here, by design: this component is destroyed by a
+   * redaction, an edit, the local-echo id swap when a send lands, or scrolling out of the virtual
+   * window, and a sheet calling back into it would go silent. The list owns the sheet
+   * (`onRowLongPress`).
    */
   readonly longPress = output<MessageLongPressContext>();
 
   /**
-   * Which way this row is dragged to act on it, already resolved by whoever renders it.
-   *
-   * Resolved by the caller and not read here, deliberately: the answer depends on the
-   * preference, on whether the shell's drawer is open, and on the breakpoint — three things
-   * a presentational row has no business knowing. The row is handed a direction and obeys it.
+   * Which way this row is dragged to act on it, resolved by the caller: the answer depends on the
+   * preference, whether the shell's drawer is open and the breakpoint, which a presentational row
+   * should not know.
    */
   readonly swipeDirection = input<SwipeDirection>('off');
 
   /**
-   * A committed sideways drag — the host edits this row or replies to it.
+   * A committed sideways drag; the host edits or replies to this row.
    *
-   * The semantic action is captured from the affordance at commit time, before gesture
-   * cleanup, then dispatched by the host against its row snapshot. The host must not
-   * re-read live capabilities: the row may already have left its virtual window or caps
-   * map, and the action must remain the one the reader saw when they released.
+   * The action is captured from the affordance at commit time, before gesture cleanup. The host
+   * must not re-read live capabilities: the row may have left its window or caps map, and the
+   * action must stay the one the reader saw on release.
    */
   readonly swipe = output<MessageSwipeAction>();
 
   /**
-   * What a committed swipe would do to this row — the affordance and the action in one value.
-   *
-   * Bound to both the icon's name and the row's `data-swipe-action`, so a test that reads
-   * either is reading the same expression. Two parallel ternaries in the template would have
-   * been two things that could disagree, which is the defect this whole gesture is designed
-   * around.
+   * What a committed swipe would do to this row: the affordance and the action in one value.
+   * Bound to both the icon name and `data-swipe-action`, so the two cannot disagree.
    */
   readonly swipeAction = computed<MessageSwipeAction>(() =>
     this.caps().editable ? 'edit' : 'reply',
   );
 
   /**
-   * The glyph for that action, derived from it rather than re-deciding it.
-   *
-   * The template used to bind `swipeAction() === 'edit' ? 'pencil' : 'reply'` beside
-   * `[attr.data-swipe-action]="swipeAction()"` — two expressions sharing an input, which is
-   * not the same as one expression. Swapping the two icon names left every test green,
-   * because the tests read the attribute and `TrnIconName` only type-checks that a name is
-   * registered, not that it is the right one.
+   * The glyph for that action, derived from it rather than re-deciding it. Two expressions sharing
+   * an input are not one expression: swapping the icon names would leave tests green, since they
+   * read the attribute and `TrnIconName` only checks a name is registered.
    */
   readonly swipeIcon = computed<TrnIconName>(() =>
     this.swipeAction() === 'edit' ? 'pencil' : 'reply',
@@ -698,11 +647,9 @@ export class MessageRowComponent {
   /**
    * Whether to offer the "(edited)" marker, which opens the edit history.
    *
-   * `edited` alone isn't enough. It comes from the SDK's replacing event, which survives
-   * a redaction that arrived from the server (only a locally-applied one clears it), so a
-   * deleted message can still claim to be edited — and its edits do still exist server-side.
-   * A message we couldn't decrypt is excluded for the same reason: we can't show versions
-   * of something we can't read.
+   * `edited` alone isn't enough: it comes from the SDK's replacing event, which survives a
+   * server-side redaction (only a locally-applied one clears it), so a deleted message could claim
+   * to be edited. An undecryptable message is excluded too: its versions can't be shown.
    */
   readonly showEditedMarker = computed(() => {
     const row = this.row();
@@ -755,10 +702,7 @@ export class MessageRowComponent {
     return r.media ? (r.caption ?? '') : r.body;
   });
 
-  /**
-   * Long bodies collapse only on rows a list measures and whose state the rooms page keeps:
-   * the timeline and the thread view (spec C).
-   */
+  /** Long bodies collapse only on rows a list measures and whose state the rooms page keeps: the timeline and thread view. */
   readonly bodyClampable = !!this.expandedBodies && !!this.bodyOverflow;
 
   /** Whether the body is taller than 24 lines, as the list last measured it. */
@@ -773,8 +717,8 @@ export class MessageRowComponent {
   );
 
   /**
-   * Show more / Show less. The button stays the same element, so focus stays on it. Collapsing
-   * a body taller than the screen can leave its row's top above the list; bring it back.
+   * Show more / Show less. The button stays the same element, so focus stays on it. Collapsing a
+   * body taller than the screen can leave its row's top above the list; bring it back.
    */
   toggleBody(): void {
     const store = this.expandedBodies;
@@ -790,13 +734,12 @@ export class MessageRowComponent {
   }
 
   /**
-   * Keyboard focus moving into a collapsed body (Tab to a link, mention, image or spoiler past
-   * the cut) shows it whole, so the focused control is never hidden behind the fade. Only
-   * keyboard focus (`:focus-visible`): a mouse press focuses links too, and expanding then would
-   * move the content (the list re-pins to the bottom) before the button is released, so the
-   * click would miss. The list that holds the row brings the focused control into view once
-   * it has corrected its scroll for the taller row (`MessageListComponent.revealFocusIn`,
-   * `ThreadViewComponent.revealFocusAfterExpand`).
+   * Keyboard focus moving into a collapsed body (Tab to a link, mention, image or spoiler past the
+   * cut) shows it whole, so the focused control is never hidden behind the fade. Keyboard only
+   * (`:focus-visible`): a mouse press focuses links too, and expanding then would move the content
+   * (the list re-pins to the bottom) before the button is released, so the click would miss. The
+   * list brings the focused control into view after correcting its scroll for the taller row
+   * (`MessageListComponent.revealFocusIn`, `ThreadViewComponent.revealFocusAfterExpand`).
    */
   expandBodyForFocus(event: FocusEvent): void {
     const target = event.target;
@@ -824,16 +767,16 @@ export class MessageRowComponent {
     }
   }
 
-  /** Whether a shield is drawn in the red warning tone. The not-encrypted mark for a
-   * message dated before encryption was turned on is as quiet as the grey caution. */
+  /** Whether a shield is drawn in the red warning tone; the not-encrypted mark for a pre-encryption message is as quiet as the grey caution. */
   shieldIsRed(level: MessageShield['level']): boolean {
     return level === 'red' || level === 'unencrypted';
   }
 
-  /** Icon shape for an authenticity shield's severity: a distinct glyph per tone so the
-   * warning (red) and caution (grey) are distinguishable by shape, not colour alone. The
-   * quiet not-encrypted mark has its own open-lock glyph, so it never reads as the grey
-   * caution of an unverified device. */
+  /**
+   * Icon shape per authenticity-shield severity: a distinct glyph per tone so warning (red) and
+   * caution (grey) differ by shape, not colour alone. The quiet not-encrypted mark has its own
+   * open-lock glyph so it never reads as an unverified device's grey caution.
+   */
   shieldIcon(level: MessageShield['level']): TrnIconName {
     if (level === 'unencrypted-history') return 'lock-open';
     return this.shieldIsRed(level) ? 'shield-alert' : 'shield-question';

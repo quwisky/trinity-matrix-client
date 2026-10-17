@@ -1,6 +1,5 @@
 @layer components {
-  // Moved from room-settings.component.scss when this row became shared. The host is the flex
-  // child in the dialog's form column, so the row itself owns only its own layout.
+  // The host is the flex child in the dialog's form column, so the row itself owns only its own layout.
   .avatar-field {
     display: flex;
     align-items: center;

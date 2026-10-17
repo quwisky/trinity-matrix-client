@@ -1,8 +1,7 @@
 @use '../../styles/mixins' as *;
 
 @layer components {
-  // The host must not introduce a box: `.sidebar__header` is a flex item of the sidebar
-  // column and has to stay one.
+  // The host must not introduce a box: `.sidebar__header` is a flex item of the sidebar column and must stay one.
   :host {
     display: contents;
   }
@@ -28,8 +27,8 @@
     min-width: 0;
   }
 
-  // Space name as a menu trigger: the recipe owns colour and hover; this keeps the label
-  // ellipsised and the chevron beside it.
+  // Space name as a menu trigger: the recipe owns colour and hover; this keeps the label ellipsised
+  // and the chevron beside it.
   .sidebar__title--button {
     justify-content: flex-start;
     gap: 4px;

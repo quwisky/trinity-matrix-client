@@ -10,16 +10,12 @@ import {
 /**
  * How far in from either viewport edge a message swipe refuses to START.
  *
- * Both competitors are viewport-anchored, and neither can be argued with once it has the
- * gesture: the shell's drawer opens in a 24px band immediately inside a 32px native-history
- * strip, and native recognisers are outside CSS entirely. So the only lever is to refuse to
- * arm through that combined region, measured at `pointerdown` because that is the only moment
- * the decision can be made without having already competed.
- *
- * Wider than the drawer's zone and wider than the platform regions, whose widths Apple and
- * Google do not publish — chosen with margin rather than derived. `message-row.swipe.spec.ts`
- * pins that it is never narrower than the drawer's; a device is what confirms it clears the
- * platform's.
+ * The shell's drawer opens in a 24px band inside a 32px native-history strip, and native
+ * recognisers are outside CSS, so the only lever is refusing to arm through that region, measured
+ * at `pointerdown` because that is the only moment the decision can be made without having already
+ * competed. Wider than the drawer's zone and the platform regions (widths Apple and Google
+ * do not publish), chosen with margin. `message-row.swipe.spec.ts` pins that it is never narrower
+ * than the drawer's; a device confirms it clears the platform's.
  */
 export const SWIPE_DEAD_ZONE_PX = 56;
 
@@ -38,9 +34,9 @@ export type SwipeDirection = 'off' | 'left' | 'right';
 /**
  * The sideways drag on a message row: arm, follow the finger, commit or spring back.
  *
- * It owns no listeners. The row forwards `pointerdown`/`pointermove`/`pointerup` so the
- * swipe, the long press and the drawer's `stopPropagation` keep one ordering, and calls
- * {@link cancel} when the long press wins. The host element is the box that moves.
+ * It owns no listeners: the row forwards `pointerdown`/`pointermove`/`pointerup` so the swipe, the
+ * long press and the drawer's `stopPropagation` keep one ordering, and calls {@link cancel} when
+ * the long press wins. The host element is the box that moves.
  */
 @Directive({ selector: '[trnMessageSwipe]' })
 export class MessageSwipeDirective {
@@ -53,15 +49,15 @@ export class MessageSwipeDirective {
   readonly direction = input<SwipeDirection>('off', {
     alias: 'trnMessageSwipe',
   });
-  /** Both outcomes are unavailable on a read-only row — there is no composer to reply into. */
+  /** Both outcomes are unavailable on a read-only row: there is no composer to reply into. */
   readonly swipeEnabled = input(true);
   /** A drag that travelled far enough was released. */
   readonly swipe = output<void>();
 
   constructor() {
-    // A row destroyed mid-drag leaves `start` set, and `release` early-returns on a null one,
-    // so this is what makes a destroyed row unable to commit. NOT a capture release: the
-    // browser drops the capture when the element leaves the document.
+    // A row destroyed mid-drag leaves `start` set and `release` early-returns on a null one, so
+    // this stops a destroyed row committing. NOT a capture release: the browser drops capture
+    // when the element leaves the document.
     inject(DestroyRef).onDestroy(() => this.cancel());
   }
 
@@ -70,9 +66,8 @@ export class MessageSwipeDirective {
     if (this.direction() === 'off' || !this.swipeEnabled()) {
       return false;
     }
-    // Measured at the START, in viewport coordinates, because that is where the competitors
-    // live. A drag that begins in the middle and travels INTO an edge is fine: these are
-    // edge-start recognisers, so nothing takes it away mid-gesture.
+    // Measured at the START in viewport coordinates, where the competitors live. A drag that
+    // begins in the middle and travels INTO an edge is fine: those recognisers are edge-start.
     const width = typeof window === 'undefined' ? 0 : window.innerWidth;
     if (
       event.clientX <= SWIPE_DEAD_ZONE_PX ||
@@ -82,10 +77,9 @@ export class MessageSwipeDirective {
     }
     this.start = { x: event.clientX, y: event.clientY, id: event.pointerId };
     this.swiping = false;
-    // Without capture, a drag that drifts off a one-line continuation row never sees its
-    // `pointerup` and leaves the row translated with nothing to put it back. The host, not
-    // `event.target`: the deepest hit element (a link, an avatar) takes the capture with it.
-    // jsdom has no pointer capture at all, hence the optional call.
+    // Without capture, a drag drifting off a one-line continuation row never sees its `pointerup`
+    // and leaves the row translated. The host, not `event.target`: the deepest hit element (a link,
+    // an avatar) takes the capture with it. jsdom has no pointer capture, hence the optional call.
     this.el.setPointerCapture?.(event.pointerId);
     return true;
   }
@@ -101,8 +95,7 @@ export class MessageSwipeDirective {
       return;
     }
     const travelled = this.travelled(event);
-    // The press → pause → drag case is handled the other way round, by the row's long-press
-    // timer calling `cancel()` when it fires.
+    // Press, pause, drag is handled the other way round: the row's long-press timer calls `cancel()`.
     if (travelled > SWIPE_SLOP_PX) {
       this.swiping = true;
     }
@@ -116,7 +109,7 @@ export class MessageSwipeDirective {
       return;
     }
     const travelled = this.travelled(event);
-    // The host is the `.msg` that moves; the component around it has no box of its own.
+    // The host is the `.msg` that moves; the component around it has no box.
     const width = this.el.getBoundingClientRect().width;
     const committed =
       this.swiping && width > 0 && travelled >= width * SWIPE_COMMIT_FRACTION;
@@ -142,11 +135,9 @@ export class MessageSwipeDirective {
   }
 
   /**
-   * Move the row under the finger.
-   *
-   * Custom properties written straight to the element per `pointermove`, as the drawer and
-   * the pane handle do: a signal write per move on an OnPush row would run change detection
-   * over the whole timeline for a value only CSS reads.
+   * Move the row under the finger. Custom properties are written straight to the element per
+   * `pointermove`, as the drawer and pane handle do: a signal write per move on an OnPush row
+   * would run change detection over the whole timeline for a value only CSS reads.
    */
   private paint(distance: number): void {
     const msg = this.el;
@@ -159,17 +150,15 @@ export class MessageSwipeDirective {
     const signed = this.direction() === 'left' ? -distance : distance;
     msg.style.setProperty('--swipe-drag', `${Math.round(signed)}px`);
 
-    // How far along the gesture is, 0 → 1: the affordance grows with the drag rather than
-    // snapping on, so a reader can see the action arriving and let go before it does. A
-    // property CSS interpolates directly, not a transition chasing the finger.
+    // How far along the gesture is, 0 to 1: the affordance grows with the drag so a reader can see
+    // the action arriving and let go before it does. A property CSS interpolates, not a transition.
     const commitAt = msg.getBoundingClientRect().width * SWIPE_COMMIT_FRACTION;
-    // Clamped, and the clamp is load-bearing: without it a long drag drives the icon's scale
-    // past 1 and on up with the finger, unbounded.
+    // The clamp is load-bearing: otherwise a long drag scales the icon unbounded.
     const progress = commitAt > 0 ? Math.min(1, distance / commitAt) : 0;
     msg.style.setProperty('--swipe-progress', `${progress.toFixed(3)}`);
 
-    // Drives the icon's visibility and the 1:1 follow; the eased spring-back returns when
-    // this comes off. Past the threshold, releasing now WILL act.
+    // Drives the icon's visibility and the 1:1 follow; the eased spring-back returns when this
+    // comes off. Past the threshold, releasing now WILL act.
     msg.classList.add('msg--swiping');
     msg.classList.toggle('msg--swipe-armed', progress >= 1);
   }

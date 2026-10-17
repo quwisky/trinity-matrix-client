@@ -47,9 +47,8 @@
     flex: 0 0 auto;
   }
 
-  // Duplicated from SidebarRoomListComponent's stylesheet rather than shared, because
-  // emulated encapsulation scopes each rule to its own component's elements. The shared
-  // `category-label` mixin is what keeps them identical.
+  // Duplicated from SidebarRoomListComponent's stylesheet rather than shared: emulated encapsulation
+  // scopes each rule to its own component's elements. The shared `category-label` mixin keeps them identical.
   .category {
     @include category-label;
 

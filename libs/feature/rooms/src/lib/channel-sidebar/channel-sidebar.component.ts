@@ -61,12 +61,9 @@ export class ChannelSidebarComponent {
   private readonly selectedLibrary = inject(SelectedRoomLibraryService);
   private readonly roomsSvc = inject(RoomLibraryService);
   /**
-   * Who is typing, per room, read here and passed DOWN to the row list.
-   *
-   * The row list takes it as an input rather than injecting the service itself: one
-   * `MockProvider(RoomLibraryService)` helper backs 85 tests in this component's spec, and
-   * ng-mocks does not reflect instance fields, so a read from inside the row template
-   * would throw in all of them.
+   * Who is typing, per room, read here and passed DOWN to the row list as an input: one
+   * `MockProvider(RoomLibraryService)` helper backs this component's spec, and ng-mocks does not
+   * reflect instance fields, so a read from inside the row template would throw in every test.
    */
   protected readonly typingByRoom = this.roomsSvc.typingByRoom;
   private readonly presence = inject(IdentityPresenceService);
@@ -80,15 +77,14 @@ export class ChannelSidebarComponent {
   /** Desktop's title row owns the quick switcher; the sidebar button then steps aside. */
   readonly showSwitcher = input(true);
   /**
-   * Whether the active space belongs to the signed-in account. Writes always go through the
-   * ACTIVE client, so in the mixed-account view another account's space would open a dialog
-   * that is read-only and blank — hide the row instead of offering that.
+   * Whether the active space belongs to the signed-in account. Writes go through the ACTIVE client,
+   * so in the mixed-account view another account's space would open a read-only, blank dialog; hide
+   * the row instead.
    */
   readonly canConfigureSpace = input(false);
   /**
-   * Whether the viewer may curate this space's child list (`m.space.child`). Separate
-   * from {@link canConfigureSpace}: curating is its own power level, so a moderator can
-   * hold it without being able to rename the space, and vice versa.
+   * Whether the viewer may curate this space's child list (`m.space.child`). Separate from
+   * {@link canConfigureSpace}: curating is its own power level, so a moderator can hold one without the other.
    */
   readonly canCurateSpace = input(false);
   readonly curateSpaceReason = input<string | null>(null);
@@ -97,26 +93,20 @@ export class ChannelSidebarComponent {
   /** Whether "Leave space" and "Members" may act as the active account in this space. */
   readonly canUseSpaceMembership = input(false);
   readonly spaceMembershipReason = input<string | null>(null);
-  /** Already narrowed by {@link filterQuery} — the shell filters, so that the Alt+↑/↓ room
-   * walk steps through exactly what is on screen (`RoomShellStore.roomFilter`). */
+  /** Already narrowed by {@link filterQuery}: the shell filters so the Alt+↑/↓ room walk steps through exactly what is on screen (`RoomShellStore.roomFilter`). */
   readonly rooms = input<readonly RoomSummary[]>([]);
 
   /**
-   * Whether any room has unread messages — gates the "Mark all as read" affordance.
-   *
-   * An input rather than a computed over {@link rooms}, because that list arrives filtered:
-   * the button marks EVERY room read, so hiding it because the current filter excludes the
-   * unread ones would misrepresent what it does.
+   * Whether any room has unread messages; gates "Mark all as read". An input rather than a computed
+   * over {@link rooms}, because that list arrives filtered and the button marks EVERY room read, so
+   * hiding it under a filter would misrepresent what it does.
    */
   readonly hasAnyUnread = input(false);
 
   /**
-   * The sidebar's in-place filter, two-way bound to the shell. Separate from the Ctrl/Cmd+K
-   * switcher, which closes on selection: this one narrows the list and stays out of the way
-   * while you work through the result.
-   *
-   * The shell owns the value (and resets it on a view change) because the room walk has to
-   * see the same narrowing; this component owns the box that edits it.
+   * The sidebar's in-place filter, two-way bound to the shell. Unlike the Ctrl/Cmd+K switcher, which
+   * closes on selection, it narrows the list and stays out of the way. The shell owns the value (and
+   * resets it on a view change) because the room walk has to see the same narrowing.
    */
   readonly filterQuery = model('');
 
@@ -130,10 +120,7 @@ export class ChannelSidebarComponent {
     () => this.normalizedFilter() !== '',
   );
 
-  /**
-   * What the filter's live region announces. Counts everything the box narrows, not just
-   * joined rooms, because that is what changed on screen.
-   */
+  /** What the filter's live region announces. Counts everything the box narrows, not just joined rooms. */
   protected readonly filterStatus = computed(() => {
     const count =
       this.rooms().length +
@@ -147,9 +134,9 @@ export class ChannelSidebarComponent {
   }
 
   /**
-   * Escape clears the box, and only then. Left to bubble when the box is already empty so
-   * the shell's own Escape handling (closing the panel behind it) still works — swallowing
-   * it unconditionally would strand a user whose focus happens to sit here.
+   * Escape clears the box, and only then: left to bubble when the box is empty so the shell's own
+   * Escape handling (closing the panel) still works, and swallowing it would strand a user whose
+   * focus sits here.
    */
   protected onFilterEscape(event: Event): void {
     if (!this.filterQuery()) {
@@ -172,10 +159,7 @@ export class ChannelSidebarComponent {
   readonly activeRoomId = input<string | null>(null);
   /** The user id of the account currently in view (marked with a check). */
   readonly activeUserId = input<string | null>(null);
-  /**
-   * Owning-account badge per account id (mixed-account view): account id → its avatar/
-   * initial/name. Empty when not in mixed mode — room rows then show no badge.
-   */
+  /** Owning-account badge per account id (mixed-account view); empty otherwise, so rows show no badge. */
   readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
   readonly selectRoom = output<{ roomId: string; accountId: string }>();
   /** Header "+" on Home — raise the new-room / new-DM chooser beside this button. */
@@ -200,8 +184,7 @@ export class ChannelSidebarComponent {
   readonly joinRoom = output<SpaceChildRoom>();
   /** Remove (unlink) a joined channel from the active space, by room id. */
   readonly removeRoom = output<string>();
-  /** Leave a joined room entirely (not just unlink from a space); carries the owning
-   * account so a mixed-in row leaves on ITS account, never the active one. */
+  /** Leave a joined room entirely (not just unlink from a space); carries the owning account so a mixed-in row leaves on ITS account. */
   readonly leaveRoom = output<{ roomId: string; accountId: string }>();
   /** Open a joined sub-space (select it in the rail), by room id. */
   readonly openChildSpace = output<ExactSpaceSelection>();
@@ -218,14 +201,12 @@ export class ChannelSidebarComponent {
     mode: RoomNotifyMode;
     accountIds: readonly string[];
   }>();
-  /** Mark a single room read (from its ⋮ menu); carries every owning account, since a row
-   * merged from two mixed accounts only clears when both are acked. */
+  /** Mark a single room read; carries every owning account, since a row merged from two accounts only clears when both are acked. */
   readonly markRead = output<{
     roomId: string;
     accountIds: readonly string[];
   }>();
-  /** Flag a read room to come back to. Carries every owning account for the same reason
-   * {@link markRead} does: a merged row is only flagged where the write actually lands. */
+  /** Flag a read room to come back to. Carries every owning account for the same reason as {@link markRead}. */
   readonly markUnread = output<{
     roomId: string;
     accountIds: readonly string[];
@@ -244,9 +225,8 @@ export class ChannelSidebarComponent {
   /** Whose default that is, when not the account on screen's; `null` reads "my". */
   readonly defaultSortOwner = input<string | null>(null);
   /**
-   * Order this space's rooms this way, from the "Order rooms" submenu of the space overflow.
-   * `null` means "follow my account default", which drops the override. One output because
-   * the rows are one radio group.
+   * Order this space's rooms this way, from the "Order rooms" submenu. `null` means "follow my
+   * account default", which drops the override. One output because the rows are one radio group.
    */
   readonly setSortMode = output<RoomSortMode | null>();
 

@@ -3,15 +3,15 @@ import { DOCUMENT, Injectable, inject, signal } from '@angular/core';
 /** KaTeX's renderer from the lazy `maths-render` chunk. */
 export type MathsRenderer = typeof import('./maths-render').renderMaths;
 
-/** The non-injected styles bundle `apps/trinity/project.json` emits for KaTeX (Task 16). */
+/** The non-injected styles bundle `apps/trinity/project.json` emits for KaTeX. */
 const KATEX_STYLESHEET = 'katex.css';
 
 /**
- * Loads KaTeX for {@link MathsDirective}, once for the app and only when asked: the
- * `maths-render` chunk with a dynamic `import()`, and the KaTeX stylesheet as one
- * `<link data-trinity-katex>`. {@link renderer} is set only when BOTH have loaded, so maths is
- * never drawn without its styles. If either fails, the sender's fallback stays and the next
- * {@link load} retries: a failed stylesheet's `<link>` is removed, a loaded one is kept.
+ * Loads KaTeX for {@link MathsDirective}, once for the app and only when asked: the `maths-render`
+ * chunk by dynamic `import()` and the KaTeX stylesheet as one `<link data-trinity-katex>`.
+ * {@link renderer} is set only when BOTH have loaded, so maths is never drawn without its styles.
+ * If either fails the sender's fallback stays and the next {@link load} retries (a failed
+ * stylesheet's `<link>` is removed, a loaded one kept).
  */
 @Injectable({ providedIn: 'root' })
 export class MathsLoader {

@@ -12,16 +12,16 @@ import {
 } from '@angular/core';
 
 /**
- * Lines a message body may have and still be shown whole (spec C). A longer body collapses to
- * 20 lines (`.msg__clamp--collapsed` in rendered-markdown.scss); a body of 21 to 24 lines is
- * shown whole, so the button never hides only a line or two.
+ * Lines a message body may have and still be shown whole. A longer body collapses to 20 lines
+ * (`.msg__clamp--collapsed` in rendered-markdown.scss); 21 to 24 lines are shown whole, so the
+ * button never hides only a line or two.
  */
 export const BODY_LIMIT_LINES = 24;
 
 /**
- * How many rows measured long a list remembers once they are no longer rendered, so a long
- * row the virtual timeline brings back starts collapsed instead of whole for a frame. Long
- * bodies are rare; past this many, the oldest are forgotten and measured again on return.
+ * How many rows measured long a list remembers once no longer rendered, so a long row the virtual
+ * timeline brings back starts collapsed instead of whole for a frame. Past this, the oldest are
+ * forgotten and measured again on return.
  */
 export const REMEMBERED_LONG_ROWS = 500;
 
@@ -47,15 +47,15 @@ interface Entry {
 
 /**
  * Which message bodies are taller than {@link BODY_LIMIT_LINES}: one `ResizeObserver` per list,
- * provided by the timeline and the thread view. The comparison happens inside the observer's
- * callback, after layout, and writes one signal per row, so no render path reads layout. The
- * observed element is the uncapped body inside the clamp wrapper, so content that arrives later
- * (an image, maths) fires the observer again.
+ * provided by the timeline and the thread view. The comparison runs inside the observer's callback,
+ * after layout, and writes one signal per row, so no render path reads layout. The observed element
+ * is the uncapped body inside the clamp wrapper, so content that arrives later (an image, maths)
+ * fires the observer again.
  *
- * A row's signal lives while the row holds it or a body for it is observed: a body replaced by
- * an edit keeps feeding the same row, and the entries stay as many as the rendered rows (#1361).
- * Past that, only the ids of rows measured long are remembered, up to
- * {@link REMEMBERED_LONG_ROWS} and until the list moves to another room or closes.
+ * A row's signal lives while the row holds it or a body for it is observed (a body replaced by an
+ * edit keeps feeding the same row), so entries stay as many as the rendered rows. Past that, only
+ * the ids of rows measured long are remembered, up to {@link REMEMBERED_LONG_ROWS} and until the
+ * list moves to another room or closes.
  */
 @Injectable()
 export class BodyOverflowObserver implements OnDestroy {
@@ -66,8 +66,8 @@ export class BodyOverflowObserver implements OnDestroy {
   private observer: ResizeObserver | null = null;
 
   /**
-   * Keep row `id`'s measurement while a row reads it. The measurement comes only with a hold,
-   * so nothing can read one that no row lets go of; call `release` when the row goes.
+   * Keep row `id`'s measurement while a row reads it. It comes only with a hold, so nothing can
+   * read one that no row lets go of; call `release` when the row goes.
    */
   hold(id: string): BodyOverflowHold {
     const entry = this.entry(id);
@@ -108,12 +108,10 @@ export class BodyOverflowObserver implements OnDestroy {
   }
 
   /**
-   * Forget the measurements of rows no longer shown: the list moved to another room. A row
-   * still holding its signal has it reset rather than dropped, so it keeps listening to the
-   * one that a later measurement writes. A body still shown (its room's rows arrived before
-   * the room id changed) keeps its measurement, which the observer goes on updating: row ids
-   * are event ids, unique across rooms, so the value is still that row's, and resetting it
-   * would show a long body uncollapsed for a frame.
+   * Forget the measurements of rows no longer shown (the list moved to another room). A row still
+   * holding its signal has it reset rather than dropped, so it keeps listening to later
+   * measurements. A body still shown keeps its measurement: row ids are event ids, unique across
+   * rooms, and resetting would show a long body uncollapsed for a frame.
    */
   clear(): void {
     const shown = new Set(this.rows.values());
@@ -173,12 +171,12 @@ export class BodyOverflowObserver implements OnDestroy {
 }
 
 /**
- * The body's content height from the entry itself, so no layout is read for it: its lines, and
- * the margins of its last element, which its bottom padding keeps inside. Not the border box: a
- * formatted body pads itself by the focus-ring reach (and takes that back with a negative
- * margin) so its overflow clip keeps rings whole, and that padding is not a line. Every browser
- * on the `.browserslistrc` floor reports `contentBoxSize` and `contentRect`; for an entry that
- * carries neither, `scrollHeight` less the block padding.
+ * The body's content height from the entry itself, so no layout is read: its lines plus the margins
+ * of its last element, which its bottom padding keeps inside. Not the border box: a formatted body
+ * pads itself by the focus-ring reach (taking that back with a negative margin) so its overflow
+ * clip keeps rings whole, and that padding is not a line. Every browser on the `.browserslistrc`
+ * floor reports `contentBoxSize` and `contentRect`; for an entry with neither, `scrollHeight` less
+ * the block padding.
  */
 function heightOf(entry: ResizeObserverEntry): number {
   const content =
@@ -196,8 +194,8 @@ function heightOf(entry: ResizeObserverEntry): number {
 }
 
 /**
- * The body's line height in pixels — `--trinity-type-message-line-height` × the font size, as
- * the browser resolved it. Read inside the observer callback, after layout.
+ * The body's line height in pixels: `--trinity-type-message-line-height` times the font size as
+ * resolved. Read inside the observer callback, after layout.
  */
 function lineHeightOf(element: Element): number {
   const style = element.ownerDocument.defaultView?.getComputedStyle(element);

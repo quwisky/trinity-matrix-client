@@ -5,8 +5,8 @@
   @include shared.message-list-shared;
 
   .scroll {
-    // Windowing keeps the read position via manual scrollTop math, so disable native
-    // scroll anchoring rather than letting it fight the changing spacer heights.
+    // Windowing keeps the read position by manual scrollTop math; native scroll anchoring would
+    // fight the changing spacer heights.
     overflow-anchor: none;
 
     // A body collapsing behind Show more must not toggle a classic scrollbar: the width it
@@ -14,8 +14,7 @@
     scrollbar-gutter: stable;
   }
 
-  // Spacers standing in for the off-screen rows above/below the window. Must not
-  // shrink in the flex column.
+  // Spacers for the off-screen rows above/below the window. Must not shrink in the flex column.
   .vpad {
     flex: 0 0 auto;
   }

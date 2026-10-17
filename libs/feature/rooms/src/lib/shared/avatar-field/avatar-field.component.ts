@@ -21,24 +21,19 @@ import {
 import { TrackFileChooserDirective } from '@trinity/platform-native';
 
 /**
- * Matrix caps an avatar at the homeserver's upload limit; 8 MB is the common Synapse default and
- * is well past what a sensible avatar needs. Checked here rather than letting the upload fail,
- * so the message names the actual problem.
+ * Matrix caps an avatar at the homeserver's upload limit; 8 MB is the common Synapse default and is
+ * well past what an avatar needs. Checked here so the message names the actual problem.
  */
 const MAX_AVATAR_BYTES = 8 * 1024 * 1024;
 
 /**
- * The avatar row of a settings dialog: the current image, a "Change photo" button, and the
- * upload.
+ * The avatar row of a settings dialog: the current image, a "Change photo" button, and the upload.
  *
- * Uploads on pick rather than on Save, unlike every other field in those dialogs. That is
- * deliberate and predates this component: an image is picked from a native file dialog, so the
- * user has already made the decision by the time it lands here, and holding the bytes to batch
- * them with a name change buys nothing.
+ * Uploads on pick rather than on Save, unlike the other fields: the user has already decided in the
+ * native file dialog, and holding the bytes to batch them with a name change buys nothing.
  *
- * Shared by the room and space dialogs, which differ only in wording. `noun` supplies that
- * ("room" / "space"), and `testid` keeps each dialog's own selector so the two are drivable
- * independently — `RoomSettingsService` itself is roomId-generic and needs no variant.
+ * Shared by the room and space dialogs, which differ only in wording (`noun`); `testid` keeps each
+ * dialog's own selector.
  */
 @Component({
   selector: 'trn-avatar-field',

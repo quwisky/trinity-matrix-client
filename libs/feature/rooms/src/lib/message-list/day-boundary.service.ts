@@ -2,21 +2,16 @@ import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { startOfLocalDay, startOfNextLocalDay } from '@trinity/util/matrix';
 
 /**
- * The local calendar day the user is currently in, as a signal — so anything deriving
- * "Today"/"Yesterday" re-derives when the day actually turns over, rather than whenever the
- * next message happens to arrive. A room left open overnight would otherwise keep calling
- * yesterday's messages "Today" until something else invalidated the timeline.
+ * The local calendar day the user is in, as a signal, so "Today"/"Yesterday" re-derive when the
+ * day turns over rather than when the next message arrives.
  *
- * One timer, armed for the next local midnight and re-armed on each fire, so the cost is a
- * single wake-up per day however many rooms are open. Under zoneless change detection the
- * signal write *is* the notification: it marks its consumers dirty and the scheduler picks
- * them up, so nothing here needs NgZone or ApplicationRef.
+ * One timer, armed for the next local midnight and re-armed on each fire: a single wake-up per day
+ * however many rooms are open. Under zoneless change
+ * detection the signal write *is* the notification, so nothing here needs NgZone or ApplicationRef.
  *
- * The timer alone is not enough. `setTimeout` deadlines are measured against a monotonic
- * clock that does not advance while a device is suspended, so a phone asleep at midnight
- * resumes with the timer still pending for the un-elapsed remainder — up to nearly a full
- * day of calling yesterday "Today". Foregrounding therefore re-derives from the wall clock
- * as well.
+ * The timer alone is not enough: `setTimeout` uses a monotonic clock that does not advance while
+ * a device is suspended, so a phone asleep at midnight resumes with the timer still pending for up
+ * to nearly a day. Foregrounding therefore re-derives from the wall clock as well.
  */
 @Injectable({ providedIn: 'root' })
 export class DayBoundaryService {
@@ -30,8 +25,7 @@ export class DayBoundaryService {
   constructor() {
     this.arm();
 
-    // Guarded for the non-DOM contexts the rest of the workspace guards for (SSR, unit
-    // code outside a browser environment).
+    // Guarded for non-DOM contexts (SSR, unit code outside a browser).
     const doc = typeof document !== 'undefined' ? document : null;
     const onVisibility = () => {
       if (doc?.visibilityState === 'visible') {
@@ -47,9 +41,9 @@ export class DayBoundaryService {
   }
 
   /**
-   * Re-read the wall clock and restart the timer. Called on foregrounding, where both halves
-   * matter: the published day may be stale, *and* the pending timer's deadline may be hours
-   * behind the wall clock after a suspend, so it is replaced rather than left to fire late.
+   * Re-read the wall clock and restart the timer (on foregrounding). Both halves matter: the
+   * published day may be stale, and after a suspend the pending timer may be hours behind the
+   * wall clock, so it is replaced rather than left to fire late.
    */
   private refresh(): void {
     this.disarm();
@@ -66,9 +60,8 @@ export class DayBoundaryService {
 
   /**
    * Sleep until the next local midnight, then republish the day and re-arm. The target is
-   * recomputed from `Date.now()` on every fire rather than carried forward, so a throttled
-   * tab and a timezone change both land on the correct day instead of accumulating drift.
-   * The delay is at most ~25h, well under the ~24.9 days that would overflow `setTimeout`.
+   * recomputed from `Date.now()` on every fire, so a throttled tab or timezone change lands on
+   * the correct day without drift. The delay is at most ~25h, under the ~24.9 days that overflow `setTimeout`.
    */
   private arm(): void {
     const now = Date.now();

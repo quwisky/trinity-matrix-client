@@ -14,18 +14,17 @@ interface Waiting {
 }
 
 /**
- * Holds timeline image loads back while the list moves faster than anyone reads, behind the
- * "Load images after fast scrolling" flag (Settings › Experimental).
+ * Holds timeline image loads back while the list moves faster than anyone reads, behind the "Load
+ * images after fast scrolling" flag (Settings › Experimental).
  *
- * A fast scroll mounts and destroys about a hundred rows a second, and every image among them
- * used to be fetched, decoded and uploaded to the GPU as its row mounted, only to be thrown
- * away a moment later. With the gate on, a row's image starts only when the row is near the
- * viewport and the list is still or moving at reading speed ({@link TimelineScrollActivity}).
- * A row that leaves before then never loads, and when a fling settles only the rows still near
- * the viewport start, not every row it passed.
+ * A fast scroll mounts and destroys about a hundred rows a second, and fetching, decoding and
+ * GPU-uploading each image as its row mounts is wasted work. With the gate on, a row's image starts
+ * only when the row is near the viewport and the list is still or at reading speed
+ * ({@link TimelineScrollActivity}). A row that leaves before then never loads, and when a fling
+ * settles only the rows still near the viewport start.
  *
- * Off, it starts every load at once, as the timeline always has. One per message list,
- * shared by its rows; a row rendered outside a list has no gate and loads at once too.
+ * Off, it starts every load at once. One per message list, shared by its rows; a row outside a list
+ * has no gate and loads at once too.
  */
 @Injectable()
 export class TimelineMediaGate {
@@ -76,9 +75,9 @@ export class TimelineMediaGate {
   }
 
   /**
-   * Run `start` once `target`'s row may load its image: at once while the gate is off,
-   * otherwise when it is near the viewport and the list is not scrolling fast. Returns the
-   * cancel, for a row destroyed (or given other media) before then.
+   * Run `start` once `target`'s row may load its image: at once while the gate is off, otherwise
+   * when it is near the viewport and the list is not scrolling fast. Returns the cancel, for a row
+   * destroyed (or given other media) before then.
    */
   whenReady(target: Element, start: () => void): () => void {
     if (!this.isEnabled) {

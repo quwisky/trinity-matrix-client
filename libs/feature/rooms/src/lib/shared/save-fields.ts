@@ -19,21 +19,16 @@ export interface FieldWriteResult {
 /**
  * Run each field's write independently and report the real outcome.
  *
- * Every field in a settings dialog is its own state event, so a partial failure is a normal
- * outcome rather than an edge case — the name can land while the topic is rejected. Each write
- * therefore carries its own `catchError`, so one rejection cannot cancel the siblings the way a
- * bare `forkJoin` would, and the caller gets both lists instead of a single boolean it would have
- * to translate into "nothing saved".
- *
- * Emits exactly once, including for an empty list. Callers own the messaging: the wording differs per surface ("room settings" vs
- * "space settings"), which is exactly why that stays out here.
+ * Every field in a settings dialog is its own state event, so partial failure is normal (the name
+ * can land while the topic is rejected). Each write carries its own `catchError`, so one rejection
+ * cannot cancel siblings as a bare `forkJoin` would, and the caller gets both lists. Emits exactly
+ * once, including for an empty list. Callers own the messaging, since wording differs per surface.
  */
 export function saveFields(
   writes: readonly FieldWrite[],
 ): Observable<FieldWriteResult> {
-  // `forkJoin([])` completes without ever emitting, which would leave a caller's `saving`
-  // flag stuck on and its dialog showing "Saving…" forever. "Nothing to write" is a real
-  // result, not the absence of one.
+  // `forkJoin([])` completes without emitting, which would leave a caller's `saving` flag stuck on.
+  // "Nothing to write" is a real result.
   if (writes.length === 0) {
     return of({ saved: [], failed: [] });
   }
@@ -92,9 +87,9 @@ export interface SectionSaverOptions {
 }
 
 /**
- * Build a settings draft's section saver. It runs a section's writes and publishes the
- * outcome as that section's feedback (plus a toast on failure). `blocked` names fields the
- * user changed but may not write; they stay unsaved.
+ * Build a settings draft's section saver. It runs a section's writes and publishes the outcome as
+ * that section's feedback (plus a toast on failure). `blocked` names fields the user changed but
+ * may not write; they stay unsaved.
  */
 export function sectionSaver(o: SectionSaverOptions) {
   return (

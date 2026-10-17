@@ -37,19 +37,16 @@ import swift from '@shikijs/langs/swift';
 import toml from '@shikijs/langs/toml';
 
 /**
- * Syntax highlighting for fenced code blocks, applied at the render leaf by
- * CodeHighlightDirective.
+ * Syntax highlighting for fenced code blocks, applied at the render leaf by CodeHighlightDirective.
  *
- * Never imported statically: the directive loads this module with a dynamic `import()` the
- * first time a rendered message holds a fenced block with a language. `@shikijs/langs` is
- * ~2.7 MB of minified output (78 % of the rooms chunk), so a room without code never
- * downloads it, and once loaded, only rendered rows are tokenized.
+ * Never imported statically: the directive loads this module with a dynamic `import()` the first
+ * time a rendered message holds a fenced block with a language. `@shikijs/langs` is ~2.7 MB minified
+ * (78 % of the rooms chunk), so a room without code never downloads it.
  */
 
 /**
- * The token roles we colour. Deliberately small: each one is a colour a Theme author has
- * to choose, while TextMate scopes are effectively unbounded. The mapping is scope-family →
- * role rather than theme-colour → role, so it stays stable across grammars.
+ * The token roles we colour. Deliberately small: each is a colour a Theme author must choose, while
+ * TextMate scopes are effectively unbounded. Mapped scope-family to role, so it stays stable across grammars.
  *
  * Keep in step with the `--trinity-syntax-*` roles in Theme Foundation.
  */
@@ -66,13 +63,10 @@ const TOKEN_ROLES = [
 
 type TokenRole = (typeof TOKEN_ROLES)[number];
 
-// Shiki has no class-based output mode: `createCssVariablesTheme` emits inline `style`, and
-// Angular's [innerHTML] sanitizer drops `style` outright at the render leaf. So the theme
-// carries a sentinel "colour" per role which we translate straight back into a class name.
-//
-// Keyed by ROLE NAME, not by position: THEME below references these in scope-precedence
-// order rather than TOKEN_ROLES order, so an index-based lookup would let inserting a role
-// silently recolour every token — with nothing to fail.
+// Shiki has no class-based output mode: `createCssVariablesTheme` emits inline `style`, and Angular's
+// [innerHTML] sanitizer drops `style` at the render leaf. So the theme carries a sentinel "colour" per
+// role which we translate back into a class name. Keyed by ROLE NAME, not position: THEME lists them in
+// scope-precedence order, so an index lookup would let inserting a role silently recolour every token.
 const SENTINEL = Object.fromEntries(
   TOKEN_ROLES.map((role, i) => [
     role,
@@ -86,10 +80,9 @@ const ROLE_BY_SENTINEL = new Map(
 
 const THEME_NAME = 'trinity-tokens';
 
-// Order matters: vscode-textmate resolves equally specific selectors in favour of the LAST
-// match, and a more specific scope always wins. `storage.type` sits with the keywords on
-// purpose — it is Python's `def` and TypeScript's `const`, which read as keywords; listing
-// it under the type role instead makes `def` render as a type.
+// Order matters: vscode-textmate resolves equally specific selectors to the LAST match, and a more
+// specific scope always wins. `storage.type` sits with the keywords on purpose (Python's `def`,
+// TypeScript's `const`); under the type role `def` would render as a type.
 const THEME: ThemeRegistrationRaw = {
   name: THEME_NAME,
   settings: [
@@ -149,26 +142,22 @@ const THEME: ThemeRegistrationRaw = {
   ],
 };
 
-// vscode-textmate FontStyle bit flags; @shikijs/core does not re-export them. Only the
-// styles some rule above actually sets are worth mapping — a flag no rule produces would
-// be dead code that reads as a supported feature.
+// vscode-textmate FontStyle bit flags; @shikijs/core does not re-export them. Only styles some rule
+// above sets are mapped: a flag no rule produces would be dead code that reads as supported.
 const FONT_ITALIC = 1;
 
 /**
- * Ceiling on what we will tokenize. Highlighting runs synchronously on the main thread, and
- * a sender can put a 60 KiB fenced block in every event. Past the cap the block still
- * renders, just as plain monospace.
+ * Ceiling on what we will tokenize. Highlighting runs synchronously on the main thread and a sender
+ * can put a 60 KiB fenced block in every event. Past the cap the block renders as plain monospace.
  */
 export const MAX_CODE_CHARS = 4_096;
 
 let highlighter: HighlighterCore | null = null;
-// Latched on the first construction failure. Without it a throwing constructor would be
-// retried — and re-thrown — for every code block in every message, forever.
+// Latched on the first construction failure; otherwise a throwing constructor would be retried for
+// every code block in every message.
 let unavailable = false;
 
-/**
- * Built on first use: the grammars are compiled lazily per rule by vscode-textmate.
- */
+/** Built on first use: the grammars are compiled lazily per rule by vscode-textmate. */
 function instance(): HighlighterCore {
   highlighter ??= createHighlighterCoreSync({
     themes: [THEME],
@@ -205,10 +194,9 @@ function instance(): HighlighterCore {
       xml,
       yaml,
     ],
-    // The pure-JS RegExp engine: no WASM binary to ship, host or allow through the CSP.
-    // `target: 'auto'` feature-detects, so the emitted patterns stay legal down to our
-    // browserslist floor (Safari 16.4); `forgiving` skips the few Oniguruma constructs it
-    // cannot express rather than throwing mid-render.
+    // The pure-JS RegExp engine: no WASM binary to ship, host or allow through the CSP. `target: 'auto'`
+    // feature-detects, so patterns stay legal down to our browserslist floor (Safari 16.4); `forgiving`
+    // skips the few Oniguruma constructs it cannot express rather than throwing mid-render.
     engine: createJavaScriptRegexEngine({ target: 'auto', forgiving: true }),
   });
   return highlighter;
@@ -227,12 +215,12 @@ function classFor(
 }
 
 /**
- * Tokenize `code` into one fragment per line of `<span class="tok-*">` runs, or null when
- * the language is unknown, the block is oversized, or the grammar fails. No token spans a
- * newline, so a caller may place each fragment inside its own line wrapper.
+ * Tokenize `code` into one fragment per line of `<span class="tok-*">` runs, or null when the language
+ * is unknown, the block is oversized, or the grammar fails. No token spans a newline, so a caller may
+ * wrap each fragment in its own line.
  *
- * Built with createElement/createTextNode, never innerHTML — no string of ours can become
- * markup, so this cannot reintroduce anything DOMPurify has just removed.
+ * Built with createElement/createTextNode, never innerHTML: no string of ours can become markup, so
+ * this cannot reintroduce anything DOMPurify has just removed.
  */
 export function highlightLines(
   code: string,
@@ -244,16 +232,16 @@ export function highlightLines(
   }
   let lines;
   try {
-    // Construction and language lookup are INSIDE the guard, not just tokenization: a
-    // highlighter that cannot be built must degrade to plain code, not throw at render.
+    // Construction and language lookup are INSIDE the guard: a highlighter that cannot be built must
+    // degrade to plain code, not throw at render.
     const shiki = instance();
     if (!shiki.getLoadedLanguages().includes(lang)) {
       return null;
     }
     lines = shiki.codeToTokens(code, { lang, theme: THEME_NAME }).tokens;
   } catch {
-    // A grammar tripping over one input degrades that block; a highlighter that cannot be
-    // built at all disables highlighting for the session rather than retrying per message.
+    // A grammar tripping over one input degrades that block; a highlighter that cannot be built at all
+    // disables highlighting for the session rather than retrying per message.
     unavailable = highlighter === null;
     return null;
   }

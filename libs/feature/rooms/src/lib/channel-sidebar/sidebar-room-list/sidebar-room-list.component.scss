@@ -1,8 +1,8 @@
 @use '../../styles/mixins' as *;
 
 @layer components {
-  // The host must not introduce a box: this sits between `.sidebar__scroll` and the rows it
-  // scrolls, so anything other than `contents` would add a flex item to that column.
+  // The host must not introduce a box: it sits between `.sidebar__scroll` and the rows it scrolls, so
+  // anything but `contents` would add a flex item to that column.
   :host {
     display: contents;
   }
@@ -13,9 +13,9 @@
     padding: 12px 8px 4px;
   }
 
-  // Spacing as padding, not margin: the windowed list measures each line's border box, and
-  // a margin would sit outside it and make every divider 12px short in the window's maths.
-  // The background stays on the 1px content box, so the line draws inset exactly as before.
+  // Spacing as padding, not margin: the windowed list measures each line's border box, and a margin
+  // would sit outside it and make every divider 12px short in the window's maths. The background
+  // stays on the 1px content box.
   .sidebar__divider {
     box-sizing: content-box;
     height: 1px;
@@ -47,7 +47,7 @@
     min-width: 0;
     align-items: center;
 
-    // Same avatar-to-text gap the row had before the open button wrapped them.
+    // Same avatar-to-text gap as before the open button wrapped them.
     gap: var(--trinity-space-3);
     padding: 0;
     color: inherit;
