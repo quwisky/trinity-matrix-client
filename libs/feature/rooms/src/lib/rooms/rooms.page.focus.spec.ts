@@ -27,7 +27,12 @@ import {
   type RoomSummary,
 } from '@trinity/data-access/room-library';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
-import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnAlertService,
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
+import { MediaPipeline } from '@trinity/data-access/media';
 import {
   FeatureFlagsService,
   HapticsService,
@@ -36,7 +41,7 @@ import {
 } from '@trinity/platform-native';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { NEVER, of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
@@ -62,8 +67,14 @@ import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomsPage } from './rooms.page';
 import {
   ROUTE_PROVIDER,
+  SHARED_MOCKS,
   SYSTEM_STATUS_PROVIDER,
+  RoomsTimelineStub,
+  UNREAD_AGGREGATOR_PROVIDER,
+  invitesProvider,
+  matrixClientProvider,
   setRouteRoom,
+  shellFrom,
 } from './rooms-page.spec-harness';
 import { SessionActionsService } from './session-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
@@ -71,6 +82,9 @@ import { ShellStatusService } from './shell-status.service';
 import { SpaceActionsService } from './space-actions.service';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { roomSummary } from '../testing/room-summary.fixture';
+import { type RenderedRoomSurface } from './room-surface-lifecycle';
+import { UserPickerService } from '../user-picker/user-picker.service';
+import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 
 const BOB: MemberSummary = {
   userId: '@bob:hs',
@@ -301,6 +315,28 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
   return { fixture: TestBed.createComponent(RoomsPage), vm, memberActions };
 }
 
+function showSurface(
+  shell: ReturnType<typeof shellFrom>,
+  surface: RenderedRoomSurface,
+): void {
+  if (surface.kind === 'thread') {
+    shell.surfaces.transition({
+      kind: 'open-thread',
+      rootEventId: surface.rootEventId,
+    });
+    return;
+  }
+  if (
+    surface.kind === 'threads' ||
+    surface.kind === 'pinned' ||
+    surface.kind === 'search'
+  ) {
+    shell.surfaces.transition({ kind: `open-${surface.kind}` });
+    return;
+  }
+  shell.surfaces.transition({ kind: 'open-members' });
+}
+
 describe('RoomsPage rendered right-panel focus', () => {
   it('keeps the rendered roster and its focused row when a row opens member info', () => {
     // Member info is a modal surface over the roster (#1041): the row asks for it and the
@@ -357,6 +393,318 @@ describe('RoomsPage rendered right-panel focus', () => {
       expect(document.activeElement).toBe(toggle);
     } finally {
       vi.unstubAllGlobals();
+    }
+  });
+
+  let timelineOpen: Mock;
+  let releaseAll: Mock;
+
+  function build() {
+    timelineOpen = vi.fn();
+    releaseAll = vi.fn();
+    TestBed.configureTestingModule({
+      providers: [
+        RoomsPage,
+        ...SHARED_MOCKS,
+        MockProvider(RoomLibraryService, {
+          selectionAvailability: () => 'available',
+          clearMarkedUnread: () => of(void 0),
+          // ng-mocks >= 14.18 no longer stubs signal fields; the selected-library
+          // projection reads this one.
+          rooms: signal<RoomSummary[]>([]),
+        }),
+        MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
+          spaces: signal([]),
+        }),
+        {
+          provide: RoomsTimelineStub,
+          useFactory: () => {
+            const timeline = new RoomsTimelineStub();
+            timeline.focusRoom = vi.fn((roomId: string) => {
+              timelineOpen(roomId);
+              timeline.open(roomId);
+            });
+            return timeline;
+          },
+        },
+        MockProvider(TimelineActionsService),
+        MockProvider(MediaPipeline, { releaseAll }),
+        matrixClientProvider(),
+        UNREAD_AGGREGATOR_PROVIDER,
+        invitesProvider(),
+        MockProvider(UserPickerService),
+        MockProvider(QuickSwitcherService),
+        MockProvider(TrnSurfaceService),
+        MockProvider(TrnToastService),
+      ],
+    });
+    return shellFrom();
+  }
+
+  it('gives focus back to whatever opened the slot once it empties', () => {
+    // CDK did this for the four dialogs these panels replaced. Without it a keyboard user who
+    // opens Threads, reads the list and closes it lands on `<body>` — and in-room search is
+    // worse, because it deliberately takes focus when it opens.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.page.closeRightPanel();
+    const trigger = document.createElement('button');
+    document.body.append(trigger);
+    try {
+      trigger.focus();
+
+      shell.surfaces.transition({ kind: 'open-threads' });
+      TestBed.tick();
+      trigger.blur(); // the panel took focus, then its removal orphans it
+      shell.page.clearRightPanel();
+      TestBed.tick();
+      TestBed.tick(); // the restore is deferred to after the render that removes the panel
+
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      trigger.remove();
+    }
+  });
+
+  it('leaves focus alone when something else has claimed it', () => {
+    // The room-change handoff, or a DM the panel just opened, has a better idea than a
+    // remembered button does — so the restore only fires when the removal orphaned focus.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.page.closeRightPanel();
+    const trigger = document.createElement('button');
+    const elsewhere = document.createElement('button');
+    document.body.append(trigger, elsewhere);
+    try {
+      trigger.focus();
+      shell.surfaces.transition({ kind: 'open-threads' });
+      TestBed.tick();
+
+      shell.page.clearRightPanel();
+      elsewhere.focus();
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(elsewhere);
+    } finally {
+      trigger.remove();
+      elsewhere.remove();
+    }
+  });
+
+  it.each<{
+    name: string;
+    from: RenderedRoomSurface;
+    to: RenderedRoomSurface;
+    targetTag: 'button' | 'input';
+  }>([
+    {
+      name: 'threads → thread',
+      from: { kind: 'threads' },
+      to: { kind: 'thread', rootEventId: '$root' },
+      targetTag: 'button',
+    },
+    {
+      name: 'members → pinned',
+      from: { kind: 'members' },
+      to: { kind: 'pinned' },
+      targetTag: 'button',
+    },
+    {
+      name: 'search → members',
+      from: { kind: 'search' },
+      to: { kind: 'members' },
+      targetTag: 'input',
+    },
+  ])('hands focus to the replacement on $name', ({ from, to, targetTag }) => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.page.closeRightPanel();
+    TestBed.tick();
+    const trigger = document.createElement('button');
+    const slot = document.createElement('div');
+    slot.dataset['rightPanelSlot'] = '';
+    document.body.append(trigger, slot);
+    try {
+      trigger.focus();
+      showSurface(shell, from);
+      TestBed.tick();
+
+      const source = document.createElement('button');
+      slot.append(source);
+      source.focus();
+      showSurface(shell, to);
+      source.remove(); // the outgoing panel's render removal orphans focus
+      const target = document.createElement(targetTag);
+      target.dataset['rightPanelFocus'] = '';
+      slot.append(target);
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(target);
+    } finally {
+      trigger.remove();
+      slot.remove();
+    }
+  });
+
+  it('restores the original external trigger after an inline swap then close', () => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.page.closeRightPanel();
+    TestBed.tick();
+    const trigger = document.createElement('button');
+    const slot = document.createElement('div');
+    slot.dataset['rightPanelSlot'] = '';
+    document.body.append(trigger, slot);
+    try {
+      trigger.focus();
+      shell.surfaces.transition({ kind: 'open-threads' });
+      TestBed.tick();
+
+      const source = document.createElement('button');
+      slot.append(source);
+      source.focus();
+      shell.surfaces.transition({
+        kind: 'open-thread',
+        rootEventId: '$root',
+      });
+      source.remove();
+      const threadClose = document.createElement('button');
+      threadClose.dataset['rightPanelFocus'] = '';
+      slot.append(threadClose);
+      TestBed.tick();
+      TestBed.tick();
+      expect(document.activeElement).toBe(threadClose);
+
+      shell.page.clearRightPanel();
+      slot.remove();
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      trigger.remove();
+      slot.remove();
+    }
+  });
+
+  it('remembers an outside opener when the wide roster was already open', () => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    showSurface(shell, { kind: 'members' });
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+    TestBed.tick(); // establish the already-rendered roster before its toolbar replacement
+    const trigger = document.createElement('button');
+    const slot = document.createElement('div');
+    slot.dataset['rightPanelSlot'] = '';
+    document.body.append(trigger, slot);
+    try {
+      trigger.focus();
+      shell.surfaces.transition({ kind: 'open-threads' });
+      TestBed.tick();
+
+      const threadRow = document.createElement('button');
+      slot.append(threadRow);
+      threadRow.focus();
+      shell.surfaces.transition({
+        kind: 'open-thread',
+        rootEventId: '$root',
+      });
+      threadRow.remove();
+      const threadClose = document.createElement('button');
+      threadClose.dataset['rightPanelFocus'] = '';
+      slot.append(threadClose);
+      TestBed.tick();
+      TestBed.tick();
+      expect(document.activeElement).toBe(threadClose);
+
+      shell.page.clearRightPanel();
+      slot.remove();
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      trigger.remove();
+      slot.remove();
+    }
+  });
+
+  it('remembers a timeline opener beside an open wide roster', () => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    showSurface(shell, { kind: 'members' });
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+    TestBed.tick();
+    const slot = document.createElement('div');
+    slot.dataset['rightPanelSlot'] = '';
+    const timelineTrigger = document.createElement('button');
+    slot.append(timelineTrigger);
+    document.body.append(slot);
+    try {
+      timelineTrigger.focus();
+      shell.surfaces.transition({
+        kind: 'open-thread',
+        rootEventId: '$root',
+      });
+      TestBed.tick();
+
+      const panel = document.createElement('div');
+      panel.dataset['rightPanelSurface'] = '';
+      const threadClose = document.createElement('button');
+      threadClose.dataset['rightPanelFocus'] = '';
+      panel.append(threadClose);
+      slot.append(panel);
+      threadClose.focus();
+
+      shell.page.clearRightPanel();
+      panel.remove();
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(timelineTrigger);
+    } finally {
+      slot.remove();
+    }
+  });
+
+  it('does not steal focus claimed while an inline swap renders', () => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    shell.page.closeRightPanel();
+    TestBed.tick();
+    const trigger = document.createElement('button');
+    const elsewhere = document.createElement('button');
+    const slot = document.createElement('div');
+    slot.dataset['rightPanelSlot'] = '';
+    document.body.append(trigger, elsewhere, slot);
+    try {
+      trigger.focus();
+      shell.surfaces.transition({ kind: 'open-threads' });
+      TestBed.tick();
+
+      const source = document.createElement('button');
+      slot.append(source);
+      source.focus();
+      shell.surfaces.transition({
+        kind: 'open-thread',
+        rootEventId: '$root',
+      });
+      source.remove();
+      const target = document.createElement('button');
+      target.dataset['rightPanelFocus'] = '';
+      slot.append(target);
+      elsewhere.focus();
+      TestBed.tick();
+      TestBed.tick();
+
+      expect(document.activeElement).toBe(elsewhere);
+    } finally {
+      trigger.remove();
+      elsewhere.remove();
+      slot.remove();
     }
   });
 });
