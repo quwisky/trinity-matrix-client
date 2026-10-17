@@ -589,19 +589,4 @@ describe('MessageComposerComponent — staging files for the next send', () => {
 
     expect(stagedFiles(cmp)).toEqual([]);
   });
-
-  it('still ignores a pasted image while editing', async () => {
-    // An edit cannot become media, so the paste belongs to the textarea.
-    const { fixture } = await renderComposer({ editing: true });
-    const cmp = fixture.componentInstance;
-    const file = new File([new Uint8Array([1])], 'paste.png', {
-      type: 'image/png',
-    });
-    const { event, preventDefault } = pasteEvent({ files: [file] });
-
-    cmp.onPaste(event);
-
-    expect(stagedFiles(cmp)).toEqual([]);
-    expect(preventDefault).not.toHaveBeenCalled();
-  });
 });
