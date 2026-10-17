@@ -5,6 +5,7 @@ import {
   UiaCancelledError,
   UiaUnsupportedError,
   completePasswordUia,
+  driveUia,
   isUiaRefusal,
   runPasswordUia,
 } from './password-uia';
@@ -256,5 +257,197 @@ describe('isUiaRefusal', () => {
       false,
     );
     expect(isUiaRefusal(new Error('network down'))).toBe(false);
+  });
+});
+
+/** A UIA 401 offering several flows. */
+function uiaFlows(
+  session: string,
+  flows: string[][],
+  completed: string[] = [],
+): MatrixError {
+  return new MatrixError(
+    { flows: flows.map((stages) => ({ stages })), session, completed },
+    401,
+  );
+}
+
+describe('driveUia', () => {
+  it('sends the probe without auth and returns when the server needs none', async () => {
+    const makeRequest = vi.fn().mockResolvedValue('ok');
+
+    await expect(
+      driveUia(makeRequest, { password: { user: USER, prompt: vi.fn() } }),
+    ).resolves.toEqual({ result: 'ok', password: null });
+    expect(makeRequest).toHaveBeenCalledTimes(1);
+    expect(makeRequest).toHaveBeenCalledWith(null);
+  });
+
+  it('tells the password prompt when the previous password was rejected', async () => {
+    const makeRequest = vi
+      .fn()
+      .mockRejectedValueOnce(uia('s1'))
+      .mockRejectedValueOnce(uia('s1'))
+      .mockResolvedValueOnce('done');
+    const prompt = vi
+      .fn()
+      .mockResolvedValueOnce('wrong')
+      .mockResolvedValueOnce('right');
+
+    await expect(
+      driveUia(makeRequest, { password: { user: USER, prompt } }),
+    ).resolves.toEqual({ result: 'done', password: 'right' });
+    expect(prompt.mock.calls.map(([context]) => context)).toEqual([
+      { rejected: false },
+      { rejected: true },
+    ]);
+  });
+
+  it('stops after three rejected passwords', async () => {
+    const makeRequest = vi.fn().mockRejectedValue(uia('s'));
+    const prompt = vi.fn().mockResolvedValue('nope');
+
+    await expect(
+      driveUia(makeRequest, { password: { user: USER, prompt } }),
+    ).rejects.toBeInstanceOf(UiaAttemptsExceededError);
+    expect(prompt).toHaveBeenCalledTimes(3);
+  });
+
+  it('completes a non-password stage through the fallback, retrying with the session only', async () => {
+    const makeRequest = vi
+      .fn()
+      .mockRejectedValueOnce(uia('s1', ['m.login.sso']))
+      .mockResolvedValueOnce('done');
+    const fallback = vi.fn().mockResolvedValue(true);
+
+    await expect(driveUia(makeRequest, { fallback })).resolves.toEqual({
+      result: 'done',
+      password: null,
+    });
+    expect(fallback).toHaveBeenCalledWith({
+      stage: 'm.login.sso',
+      session: 's1',
+      pending: false,
+    });
+    expect(makeRequest.mock.calls[1][0]).toEqual({ session: 's1' });
+  });
+
+  it('reports a fallback stage the server has not seen completed yet, as often as asked', async () => {
+    const makeRequest = vi
+      .fn()
+      .mockRejectedValueOnce(uia('s1', ['m.login.sso']))
+      .mockRejectedValueOnce(uia('s1', ['m.login.sso']))
+      .mockRejectedValueOnce(uia('s1', ['m.login.sso']))
+      .mockRejectedValueOnce(uia('s1', ['m.login.sso']))
+      .mockResolvedValueOnce('done');
+    const fallback = vi.fn().mockResolvedValue(true);
+
+    await expect(driveUia(makeRequest, { fallback })).resolves.toMatchObject({
+      result: 'done',
+    });
+    expect(fallback.mock.calls.map(([step]) => step.pending)).toEqual([
+      false,
+      true,
+      true,
+      true,
+    ]);
+  });
+
+  it('cancels when the fallback step is abandoned', async () => {
+    const makeRequest = vi
+      .fn()
+      .mockRejectedValueOnce(uia('s1', ['m.login.sso']));
+
+    await expect(
+      driveUia(makeRequest, { fallback: vi.fn().mockResolvedValue(false) }),
+    ).rejects.toBeInstanceOf(UiaCancelledError);
+    expect(makeRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('completes a multi-stage flow one stage at a time', async () => {
+    const makeRequest = vi
+      .fn()
+      .mockRejectedValueOnce(
+        uiaFlows('s', [['m.login.password', 'm.login.terms']]),
+      )
+      .mockRejectedValueOnce(
+        uiaFlows(
+          's',
+          [['m.login.password', 'm.login.terms']],
+          ['m.login.password'],
+        ),
+      )
+      .mockResolvedValueOnce('done');
+    const prompt = vi.fn().mockResolvedValue('pw');
+    const fallback = vi.fn().mockResolvedValue(true);
+
+    await expect(
+      driveUia(makeRequest, { password: { user: USER, prompt }, fallback }),
+    ).resolves.toEqual({ result: 'done', password: 'pw' });
+    expect(makeRequest.mock.calls[1][0]).toMatchObject({
+      type: 'm.login.password',
+      session: 's',
+    });
+    expect(fallback).toHaveBeenCalledWith({
+      stage: 'm.login.terms',
+      session: 's',
+      pending: false,
+    });
+    expect(makeRequest.mock.calls[2][0]).toEqual({ session: 's' });
+  });
+
+  it('moves on after a correct third password instead of reporting too many', async () => {
+    const flows = [['m.login.password', 'm.login.terms']];
+    const makeRequest = vi
+      .fn()
+      .mockRejectedValueOnce(uiaFlows('s', flows))
+      .mockRejectedValueOnce(uiaFlows('s', flows))
+      .mockRejectedValueOnce(uiaFlows('s', flows))
+      .mockRejectedValueOnce(uiaFlows('s', flows, ['m.login.password']))
+      .mockResolvedValueOnce('done');
+    const prompt = vi
+      .fn()
+      .mockResolvedValueOnce('wrong-1')
+      .mockResolvedValueOnce('wrong-2')
+      .mockResolvedValueOnce('right');
+    const fallback = vi.fn().mockResolvedValue(true);
+
+    await expect(
+      driveUia(makeRequest, { password: { user: USER, prompt }, fallback }),
+    ).resolves.toEqual({ result: 'done', password: 'right' });
+    expect(fallback).toHaveBeenCalledOnce();
+  });
+
+  it('prefers a flow it can finish in-app over one that needs the browser', async () => {
+    const makeRequest = vi
+      .fn()
+      .mockRejectedValueOnce(
+        uiaFlows('s', [['m.login.sso'], ['m.login.password']]),
+      )
+      .mockResolvedValueOnce('done');
+    const prompt = vi.fn().mockResolvedValue('pw');
+    const fallback = vi.fn();
+
+    await driveUia(makeRequest, { password: { user: USER, prompt }, fallback });
+    expect(fallback).not.toHaveBeenCalled();
+    expect(prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses when no offered flow has a stage it can complete', async () => {
+    const makeRequest = vi
+      .fn()
+      .mockRejectedValueOnce(uia('s', ['m.login.sso']));
+
+    await expect(
+      driveUia(makeRequest, { password: { user: USER, prompt: vi.fn() } }),
+    ).rejects.toBeInstanceOf(UiaUnsupportedError);
+  });
+
+  it('rethrows a non-UIA failure of the probe', async () => {
+    const failure = new MatrixError({ errcode: 'M_UNRECOGNIZED' }, 404);
+
+    await expect(
+      driveUia(vi.fn().mockRejectedValue(failure), { fallback: vi.fn() }),
+    ).rejects.toBe(failure);
   });
 });

@@ -2,10 +2,16 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  computed,
   inject,
   signal,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  takeUntilDestroyed,
+  toObservable,
+  toSignal,
+} from '@angular/core/rxjs-interop';
+import { of, switchMap } from 'rxjs';
 import {
   FormField,
   FormRoot,
@@ -18,9 +24,11 @@ import {
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import { runWithBusy } from '@trinity/util/ui';
-import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
+import { AuthService } from '@trinity/data-access/auth';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { DeleteAccountGroupComponent } from './delete-account/delete-account-group.component';
 import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
@@ -78,15 +86,16 @@ const passwordSchema = schema<PasswordModel>((path) => {
 });
 
 /**
- * Account settings sub-page. For a password account it changes the account's password;
- * for an OIDC-native account (whose provider owns credentials + device management) it
- * instead links out to the provider's account-management page.
+ * Account settings sub-page. On a server using the legacy account API it changes the
+ * account's password; on an OAuth 2.0 server (whose provider owns credentials and device
+ * management) it links out to the provider's account-management page instead.
  */
 @Component({
   selector: 'trn-account-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './account-section.component.html',
   imports: [
+    DeleteAccountGroupComponent,
     TrnSettingsRowComponent,
     TrnSettingsGroupComponent,
     FormField,
@@ -102,15 +111,24 @@ export class AccountSectionComponent {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** The provider's account-management surface for an OIDC account, else null. */
-  readonly accountManagement = signal<AccountManagement | null>(null);
+  /** The account this section shows. */
+  readonly accountId = inject(MatrixClientService).activeUserId;
 
-  constructor() {
-    this.auth
-      .getAccountManagement()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((management) => this.accountManagement.set(management));
-  }
+  /** The server's account API; null until it has answered. */
+  readonly serverApi = toSignal(
+    toObservable(this.accountId).pipe(
+      switchMap((id) => (id ? this.auth.accountManagementFor(id) : of(null))),
+    ),
+    { initialValue: null },
+  );
+
+  readonly usesProvider = computed(() => this.serverApi()?.kind === 'oauth');
+
+  /** The provider's account-management surface on an OAuth server, else null. */
+  readonly accountManagement = computed(() => {
+    const api = this.serverApi();
+    return api?.kind === 'oauth' ? api.management : null;
+  });
 
   /** Open the provider's account-management page (system browser on every platform). */
   openAccountManagement(): void {

@@ -71,23 +71,49 @@ interface UiaData {
 }
 
 /** What a completed UIA flow yields: the request's result and the accepted password. */
-interface UiaOutcome<T> {
-  result: T;
+export interface UiaOutcome<T> {
+  readonly result: T;
   /** The password the server accepted, or null when it never asked for one. */
-  password: string | null;
+  readonly password: string | null;
 }
 
+/** Answers an `m.login.password` stage; `rejected` is true when the previous password was refused. */
+export type UiaPasswordPrompt = (context: {
+  readonly rejected: boolean;
+}) => Promise<string | null>;
+
+/** A stage Trinity completes out of band, through the homeserver's fallback page. */
+export interface UiaFallbackStep {
+  readonly stage: string;
+  readonly session: string;
+  /** True when the server still reports this stage incomplete after the person said they finished. */
+  readonly pending: boolean;
+}
+
+/** Resolves true once the person reports the fallback page finished, false to cancel. */
+export type UiaFallback = (step: UiaFallbackStep) => Promise<boolean>;
+
+/** The stages a caller can complete; a stage without a handler makes its flow unusable. */
+export interface UiaStages {
+  readonly password?: {
+    readonly user: string;
+    readonly prompt: UiaPasswordPrompt;
+  };
+  readonly fallback?: UiaFallback;
+  readonly replayedAttempts?: number;
+}
+
+const PASSWORD_STAGE = 'm.login.password';
+
 /**
- * Drive a request that may require password UIA: `makeRequest(null)` probes, then a password
- * challenge prompts the user and retries with an `m.login.password` auth dict.
+ * Drive a request that may require UIA: `makeRequest(null)` probes, then each remaining
+ * stage of the first usable flow is completed in turn, in-app for a password and through
+ * the fallback page for anything else.
  */
-async function drivePasswordUia<T>(
+export async function driveUia<T>(
   makeRequest: (auth: AuthDict | null) => Promise<T>,
-  promptPassword: PasswordPrompt,
-  userId: string,
-  { replayedAttempts = 0 }: PasswordUiaOptions = {},
+  stages: UiaStages,
 ): Promise<UiaOutcome<T>> {
-  // Many servers complete without UIA; a 401 carries the session + flows.
   let challenge: UiaData;
   try {
     return { result: await makeRequest(null), password: null };
@@ -99,36 +125,59 @@ async function drivePasswordUia<T>(
     challenge = probe;
   }
 
-  const limit = MAX_ATTEMPTS + replayedAttempts;
-  for (let attempt = 0; attempt < limit; attempt++) {
-    if (!offersPassword(challenge)) {
+  const passwordLimit = MAX_ATTEMPTS + (stages.replayedAttempts ?? 0);
+  let passwordAttempts = 0;
+  let password: string | null = null;
+  let submitted: string | null = null;
+  for (;;) {
+    if (
+      submitted === PASSWORD_STAGE &&
+      passwordAttempts >= passwordLimit &&
+      !(challenge.completed ?? []).includes(PASSWORD_STAGE)
+    ) {
+      throw new UiaAttemptsExceededError();
+    }
+    const stage = nextStage(challenge, stages);
+    if (!stage) {
       throw new UiaUnsupportedError();
     }
     const session = challenge.session;
     if (!session) {
       throw new Error('Authentication failed: missing auth session.');
     }
-    const password = await promptPassword();
-    if (password === null) {
-      throw new UiaCancelledError();
+    const pending = submitted === stage;
+    let auth: AuthDict;
+    if (stage === PASSWORD_STAGE && stages.password) {
+      const answer = await stages.password.prompt({ rejected: pending });
+      if (answer === null) {
+        throw new UiaCancelledError();
+      }
+      passwordAttempts++;
+      password = answer;
+      auth = {
+        type: PASSWORD_STAGE,
+        identifier: { type: 'm.id.user', user: stages.password.user },
+        password: answer,
+        session,
+      };
+    } else {
+      const finished = await stages.fallback?.({ stage, session, pending });
+      if (!finished) {
+        throw new UiaCancelledError();
+      }
+      auth = { session };
     }
-    const auth: AuthDict = {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user: userId },
-      password,
-      session,
-    };
+    submitted = stage;
     try {
       return { result: await makeRequest(auth), password };
     } catch (err) {
       const next = uiaChallenge(err);
       if (!next) {
-        throw err; // a non-UIA failure (network/server) — give up
+        throw err;
       }
-      challenge = next; // wrong password / next stage — re-prompt
+      challenge = next;
     }
   }
-  throw new UiaAttemptsExceededError();
 }
 
 /**
@@ -147,12 +196,10 @@ export async function runPasswordUia<T>(
   userId: string,
   options?: PasswordUiaOptions,
 ): Promise<T> {
-  const { result } = await drivePasswordUia(
-    makeRequest,
-    promptPassword,
-    userId,
-    options,
-  );
+  const { result } = await driveUia(makeRequest, {
+    password: { user: userId, prompt: () => promptPassword() },
+    replayedAttempts: options?.replayedAttempts,
+  });
   return result;
 }
 
@@ -168,11 +215,9 @@ export async function completePasswordUia(
   promptPassword: PasswordPrompt,
   userId: string,
 ): Promise<string | null> {
-  const { password } = await drivePasswordUia(
-    makeRequest,
-    promptPassword,
-    userId,
-  );
+  const { password } = await driveUia(makeRequest, {
+    password: { user: userId, prompt: () => promptPassword() },
+  });
   return password;
 }
 
@@ -183,19 +228,28 @@ function uiaChallenge(err: unknown): UiaData | null {
 }
 
 /**
- * Whether a password stage is still available to complete. Unknown/empty flows attempt a
- * password; a flow set offering only non-password stages (e.g. SSO) returns false.
+ * The next stage to complete: from the first flow finishable in-app, else the first flow
+ * whose remaining stages all have a handler. Unknown or empty flows attempt a password.
  */
-function offersPassword(data: UiaData): boolean {
+function nextStage(data: UiaData, stages: UiaStages): string | null {
   const flows = data.flows;
   if (!Array.isArray(flows) || flows.length === 0) {
-    return true;
+    return stages.password ? PASSWORD_STAGE : null;
   }
   const completed = data.completed ?? [];
-  return flows.some(
-    (flow) =>
-      Array.isArray(flow.stages) &&
-      flow.stages.includes('m.login.password') &&
-      !completed.includes('m.login.password'),
-  );
+  const remaining = flows
+    .map((flow) =>
+      Array.isArray(flow.stages)
+        ? flow.stages.filter((stage) => !completed.includes(stage))
+        : [],
+    )
+    .filter((rest) => rest.length > 0);
+  const inApp = (stage: string) =>
+    stage === PASSWORD_STAGE && stages.password !== undefined;
+  const usable = (stage: string) =>
+    inApp(stage) || stages.fallback !== undefined;
+  const flow =
+    remaining.find((rest) => rest.every(inApp)) ??
+    remaining.find((rest) => rest.every(usable));
+  return flow?.[0] ?? null;
 }

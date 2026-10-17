@@ -102,6 +102,8 @@ export interface HomeserverSession {
    * `fullyParallel` runs the two SSO specs in different workers — see e2e/support/homeserver/dex.yaml.
    */
   ssoReset?: SsoAccount;
+  /** A third Dex identity, which the account-deletion journey deletes for good. */
+  ssoDelete?: SsoAccount;
   /** The opt-in MAS stack's account (TRINITY_E2E_MAS=1); absent when it is not running. */
   mas?: {
     hs: string;

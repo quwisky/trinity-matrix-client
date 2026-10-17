@@ -1,4 +1,10 @@
-import { expect, test, type APIRequestContext } from '../../../fixtures.mts';
+import {
+  expect,
+  test,
+  testResourceId,
+  type APIRequestContext,
+  type Page,
+} from '../../../fixtures.mts';
 import {
   databaseNames,
   homeserverSession,
@@ -6,9 +12,11 @@ import {
   preferenceKeys,
   waitForRooms,
 } from '../../../support/app.mts';
+import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 import {
   masEndpoints,
   openAddAccount,
+  registerMasUser,
   signInWithMas,
   trackMasTraffic,
   type MasAccount,
@@ -385,5 +393,80 @@ test.describe('MAS session lifecycle', () => {
       'refresh_token',
     ]);
     expect(traffic.logoutCalls).toEqual([]);
+  });
+});
+
+/** Settings › Account on a server whose provider owns the account. */
+async function openProviderDeletion(page: Page): Promise<void> {
+  await openSettingsSection(page, 'account');
+  await expect(page.getByTestId('delete-account-provider')).toBeVisible({
+    timeout: 30_000,
+  });
+  // OAuth 2.0 aware clients must not offer the legacy password and deletion forms.
+  await expect(page.getByTestId('change-password')).toHaveCount(0);
+  await expect(page.getByTestId('delete-account')).toHaveCount(0);
+}
+
+test.describe('MAS account deletion', () => {
+  test.skip(!mas, 'needs the opt-in MAS stack (TRINITY_E2E_MAS=1)');
+
+  test('deletes the account on the provider page and removes it here', async ({
+    page,
+    authPlatform,
+  }) => {
+    test.setTimeout(300_000);
+    const account = await registerMasUser(
+      masAccount(),
+      `mas-delete-${testResourceId('run')}`,
+    );
+    const userId = `@${account.user}:${account.serverName}`;
+    await signInWithMas(page, authPlatform, account);
+    await openProviderDeletion(page);
+
+    const [provider] = await Promise.all([
+      page.context().waitForEvent('page'),
+      page.getByTestId('delete-account-provider').click(),
+    ]);
+    await provider.waitForLoadState('domcontentloaded');
+    // MAS 1.26 advertises no account_deactivate action and rejects unknown ones, so the
+    // app opens the bare account page, whose home holds Delete account.
+    expect(new URL(provider.url()).searchParams.has('action')).toBe(false);
+    await provider
+      .getByRole('button', { name: 'Delete account' })
+      .first()
+      .click({ timeout: 30_000 });
+    const dialog = provider.getByRole('dialog');
+    const password = dialog.locator('input[type="password"]');
+    if ((await password.count()) > 0) {
+      await password.fill(account.pass);
+    } else {
+      await dialog.getByRole('textbox').first().fill(userId);
+    }
+    // Closing the tab before MAS answers would cancel the deactivation itself.
+    const deactivated = provider.waitForResponse(
+      (response) =>
+        response.url().endsWith('/graphql') &&
+        /deactivate/iu.test(response.request().postData() ?? ''),
+    );
+    await dialog.getByRole('button', { name: 'Delete account' }).click();
+    expect((await deactivated).ok()).toBe(true);
+
+    // MAS revokes the session; the app notices on its own, or on Check now.
+    const checkNow = page.getByTestId('delete-account-check-now');
+    await expect
+      .poll(
+        async () => {
+          if (new URL(page.url()).pathname === '/login') return true;
+          if (await checkNow.isEnabled().catch(() => false)) {
+            await checkNow.click().catch(() => undefined);
+          }
+          return false;
+        },
+        { timeout: 180_000, intervals: [5_000] },
+      )
+      .toBe(true);
+    await expect(page.getByTestId('login-account-deleted')).toHaveText(
+      `Your account ${userId} was deleted.`,
+    );
   });
 });

@@ -88,6 +88,14 @@ function testAdapter(
       remainingAccountIds: ['@survivor:hs'],
     }),
   );
+  const removeDeletedAccount = vi.fn((accountId: string) =>
+    of({
+      kind: 'ready' as const,
+      accountId,
+      activeAccountId: '@survivor:hs',
+      remainingAccountIds: ['@survivor:hs'],
+    }),
+  );
   const resetInstallation = vi.fn(() => of({ kind: 'ready' as const }));
   const retryInstallationCleanup = vi.fn(() => of({ kind: 'ready' as const }));
   const newDevices = new Subject<NewDeviceEstablishment>();
@@ -109,6 +117,7 @@ function testAdapter(
       commitActiveAccount,
       signOutAccount,
       retrySignOutCleanup,
+      removeDeletedAccount,
       resetInstallation,
       retryInstallationCleanup,
       newDevices: newDevices.asObservable(),
@@ -376,6 +385,91 @@ describe('AccountRuntimeService', () => {
       '@outgoing:hs',
       [{ scope: 'notifications', recovery: 'retry-sign-out' }],
     );
+  });
+
+  describe('removing a deleted account', () => {
+    function deletingRuntime() {
+      const test = testAdapter({
+        kind: 'available',
+        activeAccountId: '@deleted:hs',
+        accountIds: ['@deleted:hs', '@survivor:hs'],
+      });
+      const pending = new Subject<AccountSignOutOutcome>();
+      vi.mocked(test.adapter.removeDeletedAccount).mockReturnValue(pending);
+      return { test, pending, runtime: setup(test) };
+    }
+
+    it('blocks sign-out, reset, switching and establishment while it runs', async () => {
+      const { test, pending, runtime } = deletingRuntime();
+
+      runtime.removeDeletedAccount('@deleted:hs').subscribe();
+
+      expect(runtime.lifecycleBusy()).toBe(true);
+      expect(runtime.deletionBlocker()).toBe('deleting-account');
+      await expect(
+        firstValueFrom(runtime.signOutAccount('@survivor:hs')),
+      ).resolves.toEqual({
+        kind: 'transition-in-progress',
+        accountId: '@survivor:hs',
+        operation: 'deleting-account',
+      });
+      await expect(
+        firstValueFrom(runtime.resetInstallation()),
+      ).resolves.toEqual({
+        kind: 'transition-in-progress',
+        operation: 'deleting-account',
+      });
+      await expect(
+        firstValueFrom(runtime.switchActiveAccount('@survivor:hs')),
+      ).resolves.toMatchObject({ kind: 'transition-in-progress' });
+      await expect(
+        firstValueFrom(
+          runtime.establishAuthenticatedAccount(grant(), activeIntent),
+        ),
+      ).resolves.toMatchObject({ kind: 'transition-in-progress' });
+      expect(test.adapter.signOutAccount).not.toHaveBeenCalled();
+      expect(test.adapter.resetInstallation).not.toHaveBeenCalled();
+
+      pending.next({
+        kind: 'ready',
+        accountId: '@deleted:hs',
+        activeAccountId: '@survivor:hs',
+        remainingAccountIds: ['@survivor:hs'],
+      });
+      pending.complete();
+      expect(runtime.lifecycleBusy()).toBe(false);
+      expect(runtime.lifecycle()).toMatchObject({
+        phase: 'settled',
+        operation: 'deleting-account',
+      });
+    });
+
+    it('waits for a running sign-out instead of starting', async () => {
+      const test = testAdapter({
+        kind: 'available',
+        activeAccountId: '@deleted:hs',
+        accountIds: ['@deleted:hs', '@survivor:hs'],
+      });
+      vi.mocked(test.adapter.signOutAccount).mockReturnValue(NEVER);
+      const runtime = setup(test);
+      runtime.signOutAccount('@survivor:hs').subscribe();
+
+      expect(runtime.deletionBlocker()).toBe('signing-out-account');
+      await expect(
+        firstValueFrom(runtime.removeDeletedAccount('@deleted:hs')),
+      ).resolves.toEqual({
+        kind: 'transition-in-progress',
+        accountId: '@deleted:hs',
+        operation: 'signing-out-account',
+      });
+      expect(test.adapter.removeDeletedAccount).not.toHaveBeenCalled();
+    });
+
+    it('reports no blocker when nothing is running', () => {
+      const { runtime } = deletingRuntime();
+
+      expect(runtime.deletionBlocker()).toBeNull();
+    });
   });
 
   it('reports a destructive attempt as busy from its start until it settles', () => {

@@ -3,9 +3,14 @@ import { of, throwError } from 'rxjs';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
+import { signal } from '@angular/core';
+import { AuthService, type AccountServerApi } from '@trinity/data-access/auth';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TrnToastService } from '@trinity/components/overlay';
-import { ExternalBrowserService } from '@trinity/platform-native';
+import {
+  ACCOUNT_DELETION_LAUNCHER,
+  ExternalBrowserService,
+} from '@trinity/platform-native';
 import { AccountSectionComponent } from './account-section.component';
 
 /**
@@ -29,16 +34,22 @@ function fill(
 describe('AccountSectionComponent', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  async function renderSection(management: AccountManagement | null = null) {
+  async function renderSection(api: AccountServerApi = { kind: 'legacy' }) {
     const result = await render(AccountSectionComponent, {
       providers: [
-        // getAccountManagement is read in the constructor, so it must be stubbed
-        // before construction (not after render).
+        // Read on construction, so it must be stubbed before render.
         MockProvider(AuthService, {
-          getAccountManagement: () => of(management),
+          accountManagementFor: vi.fn(() => of(api)),
+        }),
+        MockProvider(MatrixClientService, {
+          activeUserId: signal('@alice:example.org').asReadonly(),
         }),
         MockProvider(TrnToastService),
         MockProvider(ExternalBrowserService, { open: vi.fn(() => of(true)) }),
+        {
+          provide: ACCOUNT_DELETION_LAUNCHER,
+          useValue: { plan: vi.fn(() => of({ kind: 'in-app' })) },
+        },
       ],
     });
     const auth = TestBed.inject(AuthService);
@@ -55,10 +66,41 @@ describe('AccountSectionComponent', () => {
     };
   }
 
-  it('shows a provider link (no password form) for an OIDC account', async () => {
+  it('asks about the server of the account it shows', async () => {
+    const { auth } = await renderSection();
+
+    expect(auth.accountManagementFor).toHaveBeenCalledWith(
+      '@alice:example.org',
+    );
+  });
+
+  it('ends with the Delete account group for the account it shows', async () => {
+    await renderSection();
+
+    expect(
+      screen.getByRole('heading', { name: 'Delete account' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Close @alice:example.org for good. This can’t be undone.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('hides the password form on an OAuth server that publishes no account page', async () => {
+    await renderSection({ kind: 'oauth', management: null });
+
+    expect(screen.queryByTestId('change-password')).toBeNull();
+    expect(screen.queryByTestId('manage-account')).toBeNull();
+  });
+
+  it('shows a provider link (no password form) for an account on an OAuth server', async () => {
     const { cmp, externalBrowser } = await renderSection({
-      url: 'https://op.example/account',
-      actionsSupported: [],
+      kind: 'oauth',
+      management: {
+        url: 'https://op.example/account',
+        actionsSupported: [],
+      },
     });
 
     expect(cmp.accountManagement()?.url).toBe('https://op.example/account');

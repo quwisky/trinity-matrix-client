@@ -6,6 +6,7 @@ import {
   ConnectionError,
   EventStatus,
   HttpApiEvent,
+  MatrixError,
   MsgType,
   MemoryStore,
   SyncState,
@@ -1145,6 +1146,174 @@ describe('MatrixClientService', () => {
 
     expect(svc.softLoggedOut()).not.toContain('@me:hs');
     expect(svc.isInitialized).toBe(true);
+  });
+
+  describe('a held server logout', () => {
+    it('stops the account without wiping or touching the registry, and reports it', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc, storage } = setup();
+      await firstValueFrom(svc.init(SESSION));
+      const onTokenDied = vi.fn();
+      const hold = svc.holdServerLogout('@me:hs', { onTokenDied });
+
+      loggedOutHandler(client)({ data: { soft_logout: false } });
+
+      expect(client.stopClient).toHaveBeenCalled();
+      expect(client.clearStores).not.toHaveBeenCalled();
+      expect(storage.remove).not.toHaveBeenCalled();
+      expect(hold.tokenDied()).toBe(true);
+      expect(onTokenDied).toHaveBeenCalledOnce();
+      expect(svc.accountIds()).toEqual(['@me:hs']);
+    });
+
+    it('replays the recorded logout through the hard path when released as not deleted', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc, storage } = setup();
+      vi.mocked(storage.remove).mockReturnValue(of(undefined));
+      await firstValueFrom(svc.init(SESSION));
+      const hold = svc.holdServerLogout('@me:hs');
+      loggedOutHandler(client)({ data: { soft_logout: false } });
+
+      hold.release({ deleted: false });
+
+      expect(client.clearStores).toHaveBeenCalledOnce();
+      expect(storage.remove).toHaveBeenCalledWith('@me:hs');
+    });
+
+    it('leaves the account to the deletion cleanup when released as deleted', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc, storage } = setup();
+      await firstValueFrom(svc.init(SESSION));
+      const hold = svc.holdServerLogout('@me:hs');
+      loggedOutHandler(client)({ data: { soft_logout: false } });
+
+      hold.release({ deleted: true });
+
+      expect(client.clearStores).not.toHaveBeenCalled();
+      expect(storage.remove).not.toHaveBeenCalled();
+    });
+
+    it('does nothing on release when the token never died', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc, storage } = setup();
+      await firstValueFrom(svc.init(SESSION));
+
+      svc.holdServerLogout('@me:hs').release({ deleted: false });
+
+      expect(client.stopClient).not.toHaveBeenCalled();
+      expect(storage.remove).not.toHaveBeenCalled();
+      expect(svc.isInitialized).toBe(true);
+    });
+
+    it('takes the hard path again once released', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc, storage } = setup();
+      vi.mocked(storage.remove).mockReturnValue(of(undefined));
+      await firstValueFrom(svc.init(SESSION));
+      svc.holdServerLogout('@me:hs').release({ deleted: false });
+
+      loggedOutHandler(client)({ data: { soft_logout: false } });
+
+      expect(storage.remove).toHaveBeenCalledWith('@me:hs');
+    });
+
+    it('leaves a soft logout to the ordinary soft path', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc, storage } = setup();
+      vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
+      await firstValueFrom(svc.init(SESSION));
+      const hold = svc.holdServerLogout('@me:hs');
+
+      loggedOutHandler(client)({ data: { soft_logout: true } });
+
+      expect(svc.softLoggedOut()).toContain('@me:hs');
+      expect(hold.tokenDied()).toBe(false);
+    });
+
+    it('holds only the named account', async () => {
+      const a = fakeClient();
+      const b = fakeClient();
+      vi.mocked(createClient)
+        .mockReturnValueOnce(a as never)
+        .mockReturnValueOnce(b as never);
+      const { svc, storage } = setup();
+      vi.mocked(storage.remove).mockReturnValue(of(undefined));
+      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(svc.add(SESSION_B));
+      svc.holdServerLogout('@me:hs');
+
+      loggedOutHandler(b)({ data: { soft_logout: false } });
+
+      expect(storage.remove).toHaveBeenCalledWith('@you:other');
+    });
+  });
+
+  describe('accountStatus', () => {
+    it('reports an account whose token the server still accepts', async () => {
+      const client = { ...fakeClient(), whoami: vi.fn().mockResolvedValue({}) };
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+      await firstValueFrom(svc.init(SESSION));
+
+      await expect(firstValueFrom(svc.accountStatus('@me:hs'))).resolves.toBe(
+        'active',
+      );
+    });
+
+    it.each(['M_UNKNOWN_TOKEN', 'M_USER_DEACTIVATED'])(
+      'reports the account gone on %s',
+      async (errcode) => {
+        const client = {
+          ...fakeClient(),
+          whoami: vi.fn().mockRejectedValue(new MatrixError({ errcode }, 401)),
+        };
+        vi.mocked(createClient).mockReturnValue(client as never);
+        const { svc } = setup();
+        await firstValueFrom(svc.init(SESSION));
+
+        await expect(firstValueFrom(svc.accountStatus('@me:hs'))).resolves.toBe(
+          'gone',
+        );
+      },
+    );
+
+    it('reports an unreachable server', async () => {
+      const client = {
+        ...fakeClient(),
+        whoami: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
+      };
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+      await firstValueFrom(svc.init(SESSION));
+
+      await expect(firstValueFrom(svc.accountStatus('@me:hs'))).resolves.toBe(
+        'unreachable',
+      );
+    });
+
+    it('asks the named account, not the active one', async () => {
+      const a = { ...fakeClient(), whoami: vi.fn().mockResolvedValue({}) };
+      const b = { ...fakeClient(), whoami: vi.fn().mockResolvedValue({}) };
+      vi.mocked(createClient)
+        .mockReturnValueOnce(a as never)
+        .mockReturnValueOnce(b as never);
+      const { svc } = setup();
+      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(svc.add(SESSION_B));
+      svc.setActive('@you:other');
+
+      await firstValueFrom(svc.accountStatus('@me:hs'));
+
+      expect(a.whoami).toHaveBeenCalledOnce();
+      expect(b.whoami).not.toHaveBeenCalled();
+    });
   });
 
   it('maps sync state to connectivity (offline while erroring/reconnecting)', async () => {

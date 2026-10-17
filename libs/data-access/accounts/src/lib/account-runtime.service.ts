@@ -38,6 +38,7 @@ import {
 } from './authenticated-account-grant';
 import type {
   AccountEstablishmentIntent,
+  AccountLifecycleOperation,
   AccountEstablishmentOutcome,
   AccountRestoreOutcome,
   AccountRestoreRole,
@@ -266,6 +267,21 @@ export class AccountRuntimeService {
     );
   }
 
+  /** Remove an account its homeserver deleted, serialized with the other lifecycle commands. */
+  removeDeletedAccount(accountId: string): Observable<AccountSignOutOutcome> {
+    return defer(() =>
+      this.lifecycleWorkflow.removeDeleted(
+        accountId,
+        this.blockingLifecycleOperation(),
+      ),
+    );
+  }
+
+  /** The operation that would make an account deletion wait, or null when it may start. */
+  deletionBlocker(): AccountRuntimeOperation | null {
+    return this.currentOperation();
+  }
+
   resetInstallation(): Observable<InstallationResetOutcome> {
     return defer(() =>
       this.lifecycleWorkflow.reset(this.blockingLifecycleOperation()),
@@ -282,10 +298,11 @@ export class AccountRuntimeService {
 
   private blockingLifecycleOperation(): Exclude<
     AccountRuntimeOperation,
-    'signing-out-account' | 'resetting-installation'
+    AccountLifecycleOperation
   > | null {
     const operation = this.currentOperation();
     return operation === 'signing-out-account' ||
+      operation === 'deleting-account' ||
       operation === 'resetting-installation'
       ? null
       : operation;

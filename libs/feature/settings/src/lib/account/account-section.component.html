@@ -1,20 +1,21 @@
 <trn-settings-group
   description="Manage the credentials and account controls provided by your homeserver."
 >
-  @if (accountManagement(); as management) {
-    <!-- OIDC account: credentials + device management live at the provider. -->
+  @if (usesProvider()) {
     <trn-settings-row
       label="Credentials and sessions"
       description="Your password and sessions are managed by your identity provider."
     >
-      <button
-        trnBtn
-        type="button"
-        (click)="openAccountManagement()"
-        data-testid="manage-account"
-      >
-        Manage account
-      </button>
+      @if (accountManagement()) {
+        <button
+          trnBtn
+          type="button"
+          (click)="openAccountManagement()"
+          data-testid="manage-account"
+        >
+          Manage account
+        </button>
+      }
     </trn-settings-row>
   } @else {
     <form [formRoot]="form" (submit)="submit()">
@@ -128,3 +129,7 @@
     </form>
   }
 </trn-settings-group>
+
+@if (accountId(); as id) {
+  <trn-delete-account-group [accountId]="id" />
+}

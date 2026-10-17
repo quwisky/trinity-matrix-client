@@ -27,6 +27,8 @@ export declare const SSO_PASS: string;
 export declare const SSO_USER: string;
 export declare const SSO_RESET_EMAIL: string;
 export declare const SSO_RESET_USER: string;
+export declare const SSO_DELETE_EMAIL: string;
+export declare const SSO_DELETE_USER: string;
 export declare const MAS_HS_TLS: string;
 export declare const MAS_SERVER_NAME: string;
 export declare const MAS_ISSUER: string;
@@ -79,6 +81,8 @@ export interface HomeserverHarness {
   sso?: HomeserverSsoAccount;
   /** A second SSO account, permanently seeded for the recovery-reset spec. */
   ssoReset?: HomeserverSsoAccount;
+  /** A third SSO account, which the account-deletion journey deletes for good. */
+  ssoDelete?: HomeserverSsoAccount;
   mas?: HomeserverMasAccount;
   /** Caddy's local root certificate (native runtime), for hosts that must trust it. */
   caddyRoot?: string;

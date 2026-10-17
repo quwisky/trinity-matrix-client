@@ -64,6 +64,8 @@ export interface AccountRuntimeAdapter {
     accountId: string,
     issues: readonly AccountCleanupIssue[],
   ): Observable<AccountSignOutOutcome>;
+  /** Remove an account its homeserver has deleted, without contacting that server. */
+  removeDeletedAccount(accountId: string): Observable<AccountSignOutOutcome>;
   resetInstallation(): Observable<InstallationResetOutcome>;
   retryInstallationCleanup(
     issues: readonly AccountCleanupIssue[],

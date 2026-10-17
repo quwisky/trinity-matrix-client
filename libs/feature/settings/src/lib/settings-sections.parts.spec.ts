@@ -51,6 +51,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { TrustDevicesService, TrustService } from '@trinity/data-access/trust';
 import {
+  ACCOUNT_DELETION_LAUNCHER,
   AppConfigService,
   BUILD_INFO,
   ExternalBrowserService,
@@ -123,9 +124,18 @@ const SETUPS: Record<string, () => Setup> = {
   }),
   account: () => ({
     providers: [
-      MockProvider(AuthService, { getAccountManagement: () => of(null) }),
+      MockProvider(AuthService, {
+        accountManagementFor: () => of({ kind: 'legacy' } as const),
+      }),
+      MockProvider(MatrixClientService, {
+        activeUserId: signal('@me:hs').asReadonly(),
+      }),
       MockProvider(TrnToastService),
       MockProvider(ExternalBrowserService),
+      {
+        provide: ACCOUNT_DELETION_LAUNCHER,
+        useValue: { plan: () => of({ kind: 'in-app' } as const) },
+      },
     ],
   }),
   security: () => ({
@@ -320,7 +330,6 @@ const SINGLE_GROUP = [
   'profile',
   'presence',
   'devices',
-  'account',
   'server',
   'gifs',
   'shortcuts',

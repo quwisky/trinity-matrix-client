@@ -1,3 +1,4 @@
+import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -11,6 +12,7 @@ import {
 } from '@trinity/data-access/auth';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
+  ACCOUNT_DELETION_LAUNCHER,
   AppRestartService,
   BUG_REPORT_LAUNCHER,
   SessionStorageService,
@@ -53,6 +55,8 @@ async function renderLogin(
     report?: { blocked: string[]; failed: string[] };
     /** The app's Report a bug launcher; absent unless a test provides one. */
     bugReport?: { open: () => void };
+    /** The account whose deletion led here, as the deletion launcher hands it over. */
+    deleted?: string | WritableSignal<string | null>;
   } = {},
 ): Promise<{
   fixture: Awaited<ReturnType<typeof render<LoginPage>>>['fixture'];
@@ -137,6 +141,20 @@ async function renderLogin(
       MockProvider(AppRestartService, { restart: vi.fn() }),
       ...(opts.bugReport
         ? [{ provide: BUG_REPORT_LAUNCHER, useValue: opts.bugReport }]
+        : []),
+      ...(opts.deleted
+        ? [
+            {
+              provide: ACCOUNT_DELETION_LAUNCHER,
+              useValue: {
+                deletedNotice:
+                  typeof opts.deleted === 'string'
+                    ? signal(opts.deleted).asReadonly()
+                    : opts.deleted.asReadonly(),
+                dismissDeletedNotice: vi.fn(),
+              },
+            },
+          ]
         : []),
       { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap } } },
     ],
@@ -501,6 +519,71 @@ describe('LoginPage', () => {
       undefined,
       '@bob:hs',
     );
+  });
+
+  it('says a deleted account has been deleted rather than calling the password wrong', async () => {
+    const { cmp, fixture } = await renderLogin({
+      loginWithPassword: vi.fn(() =>
+        throwError(
+          () =>
+            new MatrixError(
+              { errcode: 'M_USER_DEACTIVATED', error: 'deactivated' },
+              403,
+            ),
+        ),
+      ),
+    } as unknown as Partial<AuthService>);
+    cmp.baseUrl.set('https://hs.example');
+    cmp.passwordSupported.set(true);
+
+    cmp.loginPassword();
+    fixture.detectChanges();
+
+    expect(cmp.credentialsError()).toBe('This account has been deleted.');
+  });
+
+  it('opens with a focused notice naming the account that was deleted', async () => {
+    const { fixture } = await renderLogin(
+      {},
+      { deleted: '@alice:example.org' },
+    );
+    await fixture.whenStable();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const notice = root.querySelector<HTMLElement>(
+      '[data-testid="login-account-deleted"]',
+    );
+    expect(notice?.textContent).toContain(
+      'Your account @alice:example.org was deleted.',
+    );
+    expect(notice?.tagName).toBe('H2');
+    expect(document.activeElement).toBe(notice);
+  });
+
+  it('shows the notice when the deletion settles after sign-in has opened', async () => {
+    const notice = signal<string | null>(null);
+    const { fixture } = await renderLogin({}, { deleted: notice });
+    const root = fixture.nativeElement as HTMLElement;
+    expect(
+      root.querySelector('[data-testid="login-account-deleted"]'),
+    ).toBeNull();
+
+    notice.set('@alice:example.org');
+    await fixture.whenStable();
+
+    expect(
+      root.querySelector('[data-testid="login-account-deleted"]')?.textContent,
+    ).toContain('Your account @alice:example.org was deleted.');
+  });
+
+  it('shows no deletion notice on an ordinary visit', async () => {
+    const { fixture } = await renderLogin({});
+
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="login-account-deleted"]',
+      ),
+    ).toBeNull();
   });
 
   it('reads a wrong password in plain language, linked to the password field', async () => {

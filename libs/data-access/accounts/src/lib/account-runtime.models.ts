@@ -14,6 +14,7 @@ export type AccountRuntimeOperation =
   | 'establishing-account'
   | 'switching-account'
   | 'signing-out-account'
+  | 'deleting-account'
   | 'resetting-installation';
 
 /** Callbacks used by a caller coordinating work around an Active Account switch. */
@@ -26,7 +27,7 @@ export interface AccountSwitchCoordination {
 
 export type AccountLifecycleOperation = Extract<
   AccountRuntimeOperation,
-  'signing-out-account' | 'resetting-installation'
+  'signing-out-account' | 'deleting-account' | 'resetting-installation'
 >;
 
 export type AccountRestoreRole = 'active' | 'inactive';

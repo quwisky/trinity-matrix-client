@@ -58,6 +58,7 @@ import {
   provideConversationPrivacyPreferences,
 } from '@trinity/data-access/timeline';
 import {
+  TRUST_ACCOUNT_PREFERENCES,
   TRUST_PROVIDER_RECOVERY,
   type TrustProviderRecoveryPort,
 } from '@trinity/data-access/trust';
@@ -74,7 +75,8 @@ import {
   providePrivacyPreferenceSet,
 } from '@trinity/platform-native';
 import { HostBadgeService } from '@trinity/runtime/host';
-import { of } from 'rxjs';
+import { PreferenceStoreService } from '@trinity/runtime/preferences';
+import { map, of } from 'rxjs';
 import { appLockCovers, visibilityWhileLocked } from './app-lock.providers';
 import { NewDeviceSignInPresenter } from './new-device-sign-in.presenter';
 
@@ -193,6 +195,7 @@ export function applicationCapabilityProviders(
         const drafts = inject(DraftStoreService);
         const oidc = inject(OidcClientService);
         const diagnosticLog = inject(DiagnosticLogService);
+        const preferences = inject(PreferenceStoreService);
         return {
           forgetPushHandoff: (accountId) => handoff.forget(accountId),
           registerNotifications: () => push.register(),
@@ -211,6 +214,16 @@ export function applicationCapabilityProviders(
             media.releaseAll();
           },
           clearDrafts: () => drafts.clearAll(),
+          forgetAccountPreferences: (accountId) =>
+            preferences
+              .forgetAccount(accountId, TRUST_ACCOUNT_PREFERENCES)
+              .pipe(
+                map((outcome) => {
+                  if (outcome.kind !== 'completed') {
+                    throw new Error('Account preferences were not removed.');
+                  }
+                }),
+              ),
         };
       },
     },

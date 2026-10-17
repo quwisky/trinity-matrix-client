@@ -2,6 +2,17 @@
   <!-- Visually hidden page title for assistive technology. -->
   <h1 class="sr-only">Sign in to Trinity</h1>
 
+  @if (deletedAccountId(); as deletedAccountId) {
+    <h2
+      #deletedNotice
+      tabindex="-1"
+      class="m-0 rounded-md border border-border p-3 text-sm font-semibold"
+      data-testid="login-account-deleted"
+    >
+      Your account {{ deletedAccountId }} was deleted.
+    </h2>
+  }
+
   <!-- Projected into the card's header; the branches are why this is not a string input. -->
   <ng-container trnAuthCardSubtitle>
     @if (!baseUrl()) {

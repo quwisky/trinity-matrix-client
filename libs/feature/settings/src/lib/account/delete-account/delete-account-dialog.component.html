@@ -1,0 +1,282 @@
+<trn-dialog-shell
+  [title]="title()"
+  size="md"
+  [closable]="step().kind !== 'deleting'"
+  (closed)="close()"
+>
+  @switch (step().kind) {
+    @case ('confirm') {
+      <form
+        [formRoot]="confirmForm"
+        (submit)="submitConfirmation()"
+        class="flex flex-col gap-4"
+      >
+        <div
+          id="delete-account-body"
+          class="flex flex-col gap-2 text-sm text-muted-foreground"
+        >
+          <p class="m-0">{{ copy.confirmIntro }}</p>
+          <p class="m-0">{{ copy.confirmListIntro }}</p>
+          <ul class="m-0 flex list-disc flex-col gap-1 ps-5">
+            @for (item of consequences(); track $index) {
+              <li>{{ item }}</li>
+            }
+          </ul>
+          <p class="m-0">{{ copy.othersUnaffected }}</p>
+        </div>
+
+        <div class="flex items-start gap-2">
+          <trn-checkbox
+            inputId="delete-account-erase"
+            aria-describedby="delete-account-erase-description"
+            [checked]="erase()"
+            (checkedChange)="erase.set($event)"
+            data-testid="delete-account-erase"
+          />
+          <div class="pt-2.5">
+            <label trnLabel for="delete-account-erase">{{
+              copy.eraseLabel
+            }}</label>
+            <p
+              id="delete-account-erase-description"
+              class="m-0 pt-1 text-13 text-muted-foreground"
+            >
+              {{ eraseDescription() }}
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <label trnLabel for="delete-account-confirm-input">{{
+            copy.typeLabel
+          }}</label>
+          <input
+            trnInput
+            id="delete-account-confirm-input"
+            class="mt-1 w-full"
+            placeholder="DELETE"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            [formField]="confirmForm.typed"
+            [explicitInvalid]="mistyped()"
+            [aria-describedby]="
+              mistyped() ? 'delete-account-confirm-error' : null
+            "
+            data-testid="delete-account-confirm-input"
+          />
+          <p
+            id="delete-account-confirm-error"
+            class="m-0 pt-1 text-13 text-danger"
+            aria-live="polite"
+            data-testid="delete-account-confirm-error"
+          >
+            @if (mistyped()) {
+              {{ mistypedMessage }}
+            }
+          </p>
+        </div>
+
+        <div trnDialogActions>
+          <button
+            trnBtn
+            type="button"
+            presentation="outline"
+            (click)="close()"
+            data-autofocus
+            data-testid="delete-account-cancel"
+          >
+            Cancel
+          </button>
+          <button
+            trnBtn
+            type="submit"
+            variant="danger"
+            data-testid="delete-account-submit"
+          >
+            Delete account
+          </button>
+        </div>
+      </form>
+    }
+    @case ('password') {
+      <form
+        [formRoot]="passwordForm"
+        (submit)="submitPassword()"
+        class="flex flex-col gap-4"
+      >
+        <p id="delete-account-body" class="m-0 text-sm text-muted-foreground">
+          {{ copy.passwordBody(accountId()) }}
+        </p>
+        <div>
+          <label trnLabel for="delete-account-password">Password</label>
+          <trn-password-input class="mt-1">
+            <input
+              trnInput
+              id="delete-account-password"
+              autocomplete="current-password"
+              [formField]="passwordForm.password"
+              [explicitInvalid]="passwordRejected()"
+              [aria-describedby]="
+                passwordRejected() ? 'delete-account-password-error' : null
+              "
+              data-testid="delete-account-password"
+            />
+          </trn-password-input>
+          <p
+            id="delete-account-password-error"
+            class="m-0 pt-1 text-13 text-danger"
+            aria-live="polite"
+            data-testid="delete-account-password-error"
+          >
+            @if (passwordRejected()) {
+              {{ copy.passwordRejected }}
+            }
+          </p>
+        </div>
+        <div trnDialogActions>
+          <button
+            trnBtn
+            type="button"
+            presentation="outline"
+            (click)="back()"
+            data-testid="delete-account-back"
+          >
+            Back
+          </button>
+          <button
+            trnBtn
+            type="submit"
+            variant="danger"
+            data-testid="delete-account-password-submit"
+          >
+            Delete account
+          </button>
+        </div>
+      </form>
+    }
+    @case ('browser') {
+      <div class="flex flex-col gap-4">
+        <p id="delete-account-body" class="m-0 text-sm text-muted-foreground">
+          {{ copy.browserBody(server()) }}
+        </p>
+        <p
+          class="m-0 text-13 text-danger"
+          aria-live="polite"
+          data-testid="delete-account-browser-pending"
+        >
+          @if (browserPending()) {
+            {{ copy.browserPending(server()) }}
+          }
+        </p>
+        <div trnDialogActions>
+          <button
+            trnBtn
+            type="button"
+            presentation="ghost"
+            (click)="back()"
+            data-testid="delete-account-back"
+          >
+            Back
+          </button>
+          <button
+            trnBtn
+            type="button"
+            presentation="outline"
+            (click)="openConfirmationPage()"
+            data-testid="delete-account-open-page"
+          >
+            Open confirmation page
+          </button>
+          <button
+            trnBtn
+            type="button"
+            variant="danger"
+            [disabled]="!browserOpened()"
+            (click)="confirmInBrowserDone()"
+            data-testid="delete-account-browser-confirm"
+          >
+            I’ve confirmed, delete account
+          </button>
+        </div>
+      </div>
+    }
+    @case ('deleting') {
+      <div
+        id="delete-account-body"
+        role="status"
+        class="flex flex-col gap-1 text-sm"
+        data-testid="delete-account-deleting"
+      >
+        <p class="m-0 font-semibold">{{ copy.deletingTitle }}</p>
+        <p class="m-0 text-muted-foreground">{{ copy.deletingBody }}</p>
+      </div>
+    }
+    @case ('stopped') {
+      <div class="flex flex-col gap-4">
+        <p
+          id="delete-account-body"
+          class="m-0 text-sm"
+          aria-live="polite"
+          data-testid="delete-account-stopped"
+        >
+          {{ stoppedMessage() }}
+        </p>
+        <div trnDialogActions>
+          <button
+            trnBtn
+            type="button"
+            presentation="outline"
+            (click)="close()"
+            data-testid="delete-account-close"
+          >
+            Close
+          </button>
+          @if (retryable()) {
+            <button
+              trnBtn
+              type="button"
+              variant="danger"
+              (click)="tryAgain()"
+              data-testid="delete-account-retry"
+            >
+              Try again
+            </button>
+          }
+        </div>
+      </div>
+    }
+    @case ('unconfirmed') {
+      <div class="flex flex-col gap-4">
+        <p
+          id="delete-account-body"
+          class="m-0 text-sm"
+          aria-live="polite"
+          data-testid="delete-account-unconfirmed"
+        >
+          {{ copy.unconfirmed }}
+        </p>
+        <div trnDialogActions>
+          <button
+            trnBtn
+            type="button"
+            presentation="outline"
+            (click)="removeFromDevice()"
+            data-testid="delete-account-remove-here"
+          >
+            Remove from this device
+          </button>
+          <button
+            trnBtn
+            type="button"
+            [disabled]="checking()"
+            (click)="checkAgain()"
+            data-testid="delete-account-check-again"
+          >
+            Check again
+          </button>
+        </div>
+      </div>
+    }
+  }
+</trn-dialog-shell>

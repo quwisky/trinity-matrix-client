@@ -10,6 +10,7 @@ import {
   inject,
   signal,
   viewChild,
+  type Signal,
   type WritableSignal,
 } from '@angular/core';
 import { FormField, disabled, form } from '@angular/forms/signals';
@@ -47,6 +48,7 @@ import {
 } from '@trinity/data-access/auth';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
+  ACCOUNT_DELETION_LAUNCHER,
   AppRestartService,
   BUG_REPORT_LAUNCHER,
   SessionStorageService,
@@ -84,6 +86,9 @@ function describeSignInError(error: unknown, fallback: string): string {
     (error instanceof Error && error.message === ACCOUNT_NOT_STORED)
   ) {
     return error.message;
+  }
+  if (error instanceof MatrixError && error.errcode === 'M_USER_DEACTIVATED') {
+    return 'This account has been deleted.';
   }
   if (
     error instanceof HTTPError &&
@@ -129,6 +134,15 @@ export class LoginPage {
   private readonly bugReport = inject(BUG_REPORT_LAUNCHER, { optional: true });
   private readonly usernameInput =
     viewChild<ElementRef<HTMLInputElement>>('usernameInput');
+  private readonly deletedNoticeHeading =
+    viewChild<ElementRef<HTMLElement>>('deletedNotice');
+  private readonly deletion = inject(ACCOUNT_DELETION_LAUNCHER, {
+    optional: true,
+  });
+
+  /** The account whose deletion left none behind; its confirmation is read first. */
+  readonly deletedAccountId: Signal<string | null> =
+    this.deletion?.deletedNotice ?? signal(null);
 
   /** `/login?add` — add a second account instead of replacing the current one. */
   readonly addMode = this.route.snapshot.queryParamMap.has('add');
@@ -192,6 +206,18 @@ export class LoginPage {
         this.applyFlows(flows, oidc, registration),
       );
     }
+
+    effect(() => {
+      if (this.deletedAccountId()) {
+        afterNextRender(
+          () => this.deletedNoticeHeading()?.nativeElement.focus(),
+          { injector: this.injector },
+        );
+      }
+    });
+    this.destroyRef.onDestroy(() => {
+      if (this.deletedAccountId()) this.deletion?.dismissDeletedNotice();
+    });
 
     // The username step appears after discovery, and a document flushes `autofocus` only
     // once (on the homeserver step), so focus it programmatically.

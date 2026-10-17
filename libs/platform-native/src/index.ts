@@ -32,6 +32,7 @@ export * from './lib/build-info';
 export * from './lib/diagnostic-log-db-name';
 export * from './lib/bug-report-launcher';
 export * from './lib/account-removal-launcher';
+export * from './lib/account-deletion-launcher';
 export * from './lib/account-switch-launcher';
 export * from './lib/config-schema';
 export * from './lib/config-reset.policy';

@@ -34,8 +34,14 @@ import {
   rejectedPreferenceCommand,
   unavailablePreferenceCommand,
 } from './preference-store.helpers';
-import { PREFERENCE_STORAGE_ADAPTER } from './preference-storage';
-import { writePreferenceStorage } from './preference-storage.operations';
+import {
+  PREFERENCE_STORAGE_ADAPTER,
+  type PreferenceStorageRemoveRequest,
+} from './preference-storage';
+import {
+  removePreferenceStorage,
+  writePreferenceStorage,
+} from './preference-storage.operations';
 
 type PreferenceCell = WritableSignal<PreferenceState<PreferenceValue>>;
 
@@ -46,6 +52,13 @@ export class PreferenceStoreService {
     optional: true,
   });
   private readonly cells = new Map<string, PreferenceCell>();
+  private readonly cellOwners = new Map<
+    string,
+    {
+      readonly context: PreferenceContext;
+      readonly descriptor: PreferenceDescriptor<PreferenceValue>;
+    }
+  >();
   private readonly descriptorsById = new Map<
     string,
     PreferenceDescriptor<PreferenceValue>
@@ -269,6 +282,74 @@ export class PreferenceStoreService {
     });
   }
 
+  /**
+   * Remove every stored account- and conversation-scoped value of `accountId`, for the
+   * catalog, the descriptors seen this session and `descriptors`, and reset their cells.
+   * Only for an account that can never sign in again: ordinary removal keeps these values.
+   */
+  forgetAccount(
+    accountId: string,
+    descriptors: readonly PreferenceDescriptor<PreferenceValue>[] = [],
+  ): Observable<PreferenceCommandOutcome> {
+    return defer(() => {
+      descriptors.forEach((descriptor) => this.rememberDescriptor(descriptor));
+      const adapter = this.adapter;
+      if (!adapter) {
+        return of(
+          unavailablePreferenceCommand('preference-storage-unavailable'),
+        );
+      }
+      const scoped = [
+        ...new Set([
+          ...this.catalog.descriptors,
+          ...this.descriptorsById.values(),
+        ]),
+      ].filter(
+        (descriptor) =>
+          descriptor.scope === 'account' || descriptor.scope === 'conversation',
+      );
+      return from(scoped).pipe(
+        concatMap((descriptor) => {
+          const request: PreferenceStorageRemoveRequest = {
+            key: descriptor.persistence.key,
+            sensitivity: descriptor.sensitivity,
+            storage: descriptor.storage,
+            context:
+              descriptor.scope === 'account'
+                ? { kind: 'account', accountId }
+                : { kind: 'every-conversation', accountId },
+          };
+          return removePreferenceStorage(adapter, request);
+        }),
+        toArray(),
+        map((outcomes): PreferenceCommandOutcome => {
+          this.resetAccountCells(accountId);
+          for (const outcome of outcomes) {
+            if (outcome.kind !== 'completed') {
+              return preferenceStorageCommandFailure(outcome);
+            }
+          }
+          return { kind: 'completed' };
+        }),
+      );
+    });
+  }
+
+  private resetAccountCells(accountId: string): void {
+    for (const [key, owner] of this.cellOwners) {
+      const { context, descriptor } = owner;
+      if (
+        (context.kind === 'account' || context.kind === 'conversation') &&
+        context.accountId === accountId
+      ) {
+        this.cells.get(key)?.set({
+          kind: 'default',
+          value: descriptor.defaultValue,
+        });
+      }
+    }
+  }
+
   private catalogEntry(
     descriptor: PreferenceDescriptor<PreferenceValue>,
     context: PreferenceContext,
@@ -363,6 +444,7 @@ export class PreferenceStoreService {
         value: descriptor.defaultValue,
       });
       this.cells.set(key, cell);
+      this.cellOwners.set(key, { context, descriptor });
     }
     return cell;
   }

@@ -207,6 +207,30 @@ type TokenRefreshOwner =
   | { readonly kind: 'started'; readonly client: () => MatrixClient | null }
   | { readonly kind: 'detached' };
 
+/**
+ * Holds back the hard-logout wipe for one account while a deletion request is in flight:
+ * a non-soft `M_UNKNOWN_TOKEN` then only stops the client and is recorded.
+ */
+export interface ServerLogoutHold {
+  /** Whether the server revoked the account's token while held. */
+  readonly tokenDied: () => boolean;
+  /**
+   * `deleted: true` hands what follows to the deletion cleanup; `deleted: false` replays a
+   * recorded logout through the ordinary hard path.
+   */
+  release(outcome: { readonly deleted: boolean }): void;
+}
+
+/** What the homeserver says about one account's token: accepted, refused as gone, or no answer. */
+export type AccountServerStatus = 'active' | 'gone' | 'unreachable';
+
+interface LogoutHoldState {
+  readonly holds: Set<object>;
+  readonly listeners: Set<() => void>;
+  died: MatrixError | null;
+  deleted: boolean;
+}
+
 /** An access token the SDK refreshed for one account, published after storage accepted it. */
 export interface AccessTokenRotation {
   readonly userId: string;
@@ -231,6 +255,7 @@ export class MatrixClientService {
   private readonly hostNetworkPolicy = inject(HostNetworkPolicyService);
 
   private readonly clients = new Map<string, AccountClient>();
+  private readonly logoutHolds = new Map<string, LogoutHoldState>();
 
   /**
    * Tell the Electron main process which origins we legitimately talk to, so its CORS
@@ -678,6 +703,71 @@ export class MatrixClientService {
     });
   }
 
+  /**
+   * Hold the hard-logout wipe for `userId` until released. Deactivation revokes every token,
+   * so a concurrent sync can see `M_UNKNOWN_TOKEN` before the deactivate response arrives.
+   */
+  holdServerLogout(
+    userId: string,
+    options: { readonly onTokenDied?: () => void } = {},
+  ): ServerLogoutHold {
+    let state = this.logoutHolds.get(userId);
+    if (!state) {
+      state = {
+        holds: new Set(),
+        listeners: new Set(),
+        died: null,
+        deleted: false,
+      };
+      this.logoutHolds.set(userId, state);
+    }
+    const held = state;
+    const token = {};
+    const listener = options.onTokenDied;
+    held.holds.add(token);
+    if (listener) {
+      held.listeners.add(listener);
+    }
+    return {
+      tokenDied: () => held.died !== null,
+      release: ({ deleted }) => {
+        if (!held.holds.delete(token)) {
+          return;
+        }
+        if (listener) {
+          held.listeners.delete(listener);
+        }
+        held.deleted ||= deleted;
+        if (held.holds.size > 0 || this.logoutHolds.get(userId) !== held) {
+          return;
+        }
+        this.logoutHolds.delete(userId);
+        if (held.died && !held.deleted) {
+          this.handleServerLogout(userId, held.died);
+        }
+      },
+    };
+  }
+
+  /** Ask the homeserver whether `userId`'s token still works, with that account's own client. */
+  accountStatus(userId: string): Observable<AccountServerStatus> {
+    return defer(async (): Promise<AccountServerStatus> => {
+      const account = this.clients.get(userId);
+      if (!account) {
+        return 'unreachable';
+      }
+      try {
+        await account.client.whoami();
+        return 'active';
+      } catch (err) {
+        const errcode = (err as { errcode?: unknown } | null)?.errcode;
+        return errcode === 'M_UNKNOWN_TOKEN' || errcode === 'M_USER_DEACTIVATED'
+          ? 'gone'
+          : 'unreachable';
+      }
+    });
+  }
+
   /** The active account client, or null when none is signed in / active. */
   private active(): AccountClient | null {
     const id = this._activeUserId();
@@ -1107,6 +1197,7 @@ export class MatrixClientService {
     this.publishCorsOrigins();
     this._activeUserId.set(null);
     this._softLoggedOut.set([]);
+    this.logoutHolds.clear();
   }
 
   /**
@@ -1115,6 +1206,9 @@ export class MatrixClientService {
    */
   private removeInternal(userId: string, wipe: boolean): void {
     this.clearSoftLoggedOut(userId);
+    if (wipe) {
+      this.logoutHolds.delete(userId);
+    }
     const account = this.clients.get(userId);
     // Only the removed client's pair: a start in flight for this account keeps its own.
     this.forgetOAuthTokens(userId, account?.client ?? null);
@@ -1211,6 +1305,15 @@ export class MatrixClientService {
     }
     const soft =
       (err.data as { soft_logout?: boolean } | undefined)?.soft_logout === true;
+    const held = soft ? undefined : this.logoutHolds.get(userId);
+    if (held) {
+      this.clients.get(userId)?.client.stopClient();
+      held.died ??= err;
+      for (const listener of [...held.listeners]) {
+        listener();
+      }
+      return;
+    }
     if (soft) {
       // Keep the stores and registry entry for re-auth, but drop the dead token so a
       // restart's restore skips it instead of resurrecting a failing ghost account.

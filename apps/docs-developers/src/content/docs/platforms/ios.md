@@ -49,6 +49,15 @@ Firebase Messaging is a Swift package of the `App` target, pinned to 12.17.0, th
 
 The installed-app suite cannot show the extension launching: the Simulator does not start notification service extensions for simulated pushes. `push-render-ios.e2e.mts` drives the same rendering path through a debug-only probe in the app. It also stores an already expired token through the plugin and checks that the push reads "Open Trinity to read this message" without any read. A real FCM token, the extension on a device, locked-phone rendering, closed-app delivery and tap-to-open need a physical device.
 
+## App Review: account deletion {#app-review-account-deletion}
+
+App Store guideline 5.1.1(v) requires that an account created in the app can be deleted from it. Trinity offers this in **Settings › Account › Delete account**, for the account Settings shows:
+
+- On a server with the legacy Matrix account API, Trinity deletes the account itself (`/account/deactivate`) after the person types DELETE and confirms with their password, or in the browser for an account without one. Deletion is permanent: the ID can never sign in or be registered again.
+- On a server that uses OAuth 2.0 (Matrix Authentication Service), **Delete account at provider** opens the provider's account page in the system browser, which holds its own Delete account button. Trinity removes the account from the device once the server stops accepting its token.
+
+Give reviewers a disposable password account on a legacy-API homeserver in the review notes; deleting it consumes the account, so supply a fresh one for each submission.
+
 ## Respect native ownership {#native-ownership}
 
 Keep plugin access in `libs/platform-native` adapters and local plugin packages such as `@trinity/capacitor-push`, and consume shared host operations from application code. Test safe areas, keyboard resizing, system browser authentication, deep links, lifecycle, secure storage, notification activation, and Back behavior in the environment whose behavior changed.
