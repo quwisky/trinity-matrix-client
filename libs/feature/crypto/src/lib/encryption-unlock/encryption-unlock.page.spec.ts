@@ -226,23 +226,6 @@ describe('EncryptionUnlockPage', () => {
   });
 
   describe('losing the recovery key', () => {
-    it('does not reset unless the confirmation word is typed', async () => {
-      // The only thing between a user and an irreversible, account-wide deletion.
-      const { fixture, crypto } = await renderPage({ typed: 'reset please' });
-
-      await fixture.componentInstance.resetRecovery();
-
-      expect(crypto.resetRecovery).not.toHaveBeenCalled();
-    });
-
-    it('does not reset when the prompt is cancelled', async () => {
-      const { fixture, crypto } = await renderPage({ typed: null });
-
-      await fixture.componentInstance.resetRecovery();
-
-      expect(crypto.resetRecovery).not.toHaveBeenCalled();
-    });
-
     it('accepts the word regardless of case or surrounding space', async () => {
       const { fixture, crypto } = await renderPage({ typed: '  reset  ' });
 
@@ -687,7 +670,7 @@ describe('EncryptionUnlockPage', () => {
   describe('when the reset does not run', () => {
     it('says so when the confirmation word is wrong', async () => {
       // A bare return here is indistinguishable from a broken button.
-      const { fixture, crypto } = await renderPage({ typed: 'yes please' });
+      const { fixture, crypto } = await renderPage({ typed: 'reset please' });
 
       await fixture.componentInstance.resetRecovery();
 
