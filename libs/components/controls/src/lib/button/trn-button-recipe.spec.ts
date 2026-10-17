@@ -7,15 +7,6 @@ import {
   type TrnButtonVariant,
 } from './trn-button-recipe';
 
-function recipe(options: {
-  presentation: TrnButtonPresentation;
-  shape: TrnButtonShape;
-  size: TrnButtonSize;
-  variant: TrnButtonVariant;
-}): string {
-  return trnButtonRecipe(options);
-}
-
 it('carries no dark: text variants, which have no Helm class to override', () => {
   const presentations = ['solid', 'outline', 'ghost', 'link'] as const;
   const variants = ['primary', 'secondary', 'danger'] as const;
@@ -34,7 +25,7 @@ it('carries no dark: text variants, which have no Helm class to override', () =>
 });
 
 it('lets a row shape wrap its label instead of keeping the fixed height and nowrap', () => {
-  const row = recipe({
+  const row = trnButtonRecipe({
     presentation: 'ghost',
     shape: 'row',
     size: 'sm',
@@ -131,7 +122,7 @@ describe('inline shape', () => {
 });
 
 it('renders a solid danger action as a filled danger button, not a tint', () => {
-  const solidDanger = recipe({
+  const solidDanger = trnButtonRecipe({
     presentation: 'solid',
     shape: 'label',
     size: 'md',
@@ -191,19 +182,19 @@ it('inverts a solid primary action only inside an attention surface', () => {
 });
 
 it('preserves semantic tone across non-solid presentations', () => {
-  const primaryGhost = recipe({
+  const primaryGhost = trnButtonRecipe({
     presentation: 'ghost',
     shape: 'label',
     size: 'md',
     variant: 'primary',
   });
-  const secondaryGhost = recipe({
+  const secondaryGhost = trnButtonRecipe({
     presentation: 'ghost',
     shape: 'label',
     size: 'md',
     variant: 'secondary',
   });
-  const dangerGhost = recipe({
+  const dangerGhost = trnButtonRecipe({
     presentation: 'ghost',
     shape: 'label',
     size: 'md',
@@ -223,7 +214,7 @@ it('preserves semantic tone across non-solid presentations', () => {
 
 it('gives outline buttons the control border, and danger outlines a danger border in both modes', () => {
   const outline = (variant: TrnButtonVariant) =>
-    recipe({
+    trnButtonRecipe({
       presentation: 'outline',
       shape: 'label',
       size: 'md',
@@ -256,7 +247,7 @@ it('separates a solid primary focus ring from its fill with a gap that shows the
   ];
   for (const shape of ['label', 'icon', 'row', 'inline'] as const) {
     for (const size of ['xs', 'sm', 'md', 'lg'] as const) {
-      const solidPrimary = recipe({
+      const solidPrimary = trnButtonRecipe({
         presentation: 'solid',
         shape,
         size,
@@ -323,6 +314,7 @@ it('shares the global focus ring across every presentation and variant', () => {
     }
   }
 });
+
 it('keeps an outline action transparent with attention roles only inside an attention surface', () => {
   const recipe = (
     variant: TrnButtonVariant,
