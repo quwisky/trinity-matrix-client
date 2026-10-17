@@ -11,12 +11,7 @@ import {
 import { sendWithRetry } from '../../support/cs-api.mts';
 import { nextTestResourceId } from '../../../support/namespace.mts';
 
-// Covers the markdown render path end to end, through the REAL composer so the wire
-// format is exercised, not just the rendering:
-//   - a soft line break survives alongside formatting (issue #29's sharpest bug)
-//   - a plain multi-line message still goes as plain text, not formatted_body
-//   - task lists arrive as ☑/☐ rather than being silently dropped
-// Needs a Synapse homeserver (Docker); self-skips otherwise.
+// KaTeX maths in messages. Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = homeserverSession();
 
 // Maths (spec B): KaTeX renders inline and display maths with MathML, and neither its chunk
