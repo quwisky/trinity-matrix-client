@@ -348,8 +348,8 @@ message" while Show Previews hides previews, and `VISIBILITY_PRIVATE` with a gen
 version on Android, which is used where the lock-screen setting hides sensitive content. Always
 hide renders only "New message" with no title (the system shows the app's name); on iOS without
 reading the event or making any network request, while on Android the renderer still fetches it
-and drops the text before posting. Both renderers read the mode again just
-before posting; with no store, iOS hides everything.
+and drops the text before posting. Both renderers read the mode just before
+posting (iOS a second time); with no store, iOS hides everything.
 
 **Who presents in the background.** Once Android push is registered,
 `PushService.backgroundDelivery` is `push`, and the notification policy stops the running
