@@ -81,18 +81,24 @@ function validInput() {
   };
 }
 
+function errorsAfter(mutate) {
+  const input = validInput();
+  mutate(input);
+  const errors = [];
+  validateWebHostContract(input, errors);
+  return errors;
+}
+
 describe('web host contract', () => {
   it('validates the production host', () => {
     expect(validateCurrentWebHost).not.toThrow();
   });
 
   it('rejects product implementation imports from the thin host', () => {
-    const input = validInput();
-    input.main +=
-      "\nimport { PushService } from '@trinity/data-access/notifications';";
-    const errors = [];
-
-    validateWebHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.main +=
+        "\nimport { PushService } from '@trinity/data-access/notifications';";
+    });
 
     expect(errors).toContain(
       'Web host main.ts imports product implementation: @trinity/data-access/notifications',
@@ -100,11 +106,9 @@ describe('web host contract', () => {
   });
 
   it('rejects side-effect product implementation imports from the thin host', () => {
-    const input = validInput();
-    input.main += "\nimport '@trinity/feature/settings';";
-    const errors = [];
-
-    validateWebHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.main += "\nimport '@trinity/feature/settings';";
+    });
 
     expect(errors).toContain(
       'Web host main.ts imports product implementation: @trinity/feature/settings',
@@ -112,14 +116,12 @@ describe('web host contract', () => {
   });
 
   it('does not accept required ownership markers in comments', () => {
-    const input = validInput();
-    input.composition = input.composition.replace(
-      'applicationCapabilityProviders(options)',
-      '// applicationCapabilityProviders(options)',
-    );
-    const errors = [];
-
-    validateWebHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.composition = input.composition.replace(
+        'applicationCapabilityProviders(options)',
+        '// applicationCapabilityProviders(options)',
+      );
+    });
 
     expect(errors).toContain(
       'Application composition is missing ownership marker: applicationCapabilityProviders(options)',
@@ -127,14 +129,12 @@ describe('web host contract', () => {
   });
 
   it('does not accept required ownership markers in string literals', () => {
-    const input = validInput();
-    input.composition = input.composition.replace(
-      'applicationCapabilityProviders(options)',
-      "const decoy = 'applicationCapabilityProviders(options)'",
-    );
-    const errors = [];
-
-    validateWebHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.composition = input.composition.replace(
+        'applicationCapabilityProviders(options)',
+        "const decoy = 'applicationCapabilityProviders(options)'",
+      );
+    });
 
     expect(errors).toContain(
       'Application composition is missing ownership marker: applicationCapabilityProviders(options)',
@@ -142,11 +142,9 @@ describe('web host contract', () => {
   });
 
   it('requires the imported application runtime starter to be invoked', () => {
-    const input = validInput();
-    input.main = input.main.replace('.then(startApplicationRuntime)', '');
-    const errors = [];
-
-    validateWebHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.main = input.main.replace('.then(startApplicationRuntime)', '');
+    });
 
     expect(errors).toContain(
       'Web host main.ts is missing composition marker: .then(startApplicationRuntime)',
@@ -154,11 +152,9 @@ describe('web host contract', () => {
   });
 
   it('rejects a host artifact that diverges from wrapper input', () => {
-    const input = validInput();
-    input.project.targets.build.options.outputPath.base = 'dist/web';
-    const errors = [];
-
-    validateWebHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.project.targets.build.options.outputPath.base = 'dist/web';
+    });
 
     expect(errors).toContain(
       'Web host build must emit the flat shared www artifact',

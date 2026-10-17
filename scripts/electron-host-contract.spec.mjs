@@ -184,28 +184,32 @@ function validInput() {
   };
 }
 
+function errorsAfter(mutate) {
+  const input = validInput();
+  mutate(input);
+  const errors = [];
+  validateElectronHostContract(input, errors);
+  return errors;
+}
+
 describe('Electron host contract', () => {
   it('validates the checked-in desktop host', () => {
     expect(validateCurrentElectronHost).not.toThrow();
   });
 
   it('rejects a desktop shell outside the classified application graph', () => {
-    const input = validInput();
-    input.project.tags = [];
-    const errors = [];
-
-    validateElectronHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.project.tags = [];
+    });
 
     expect(errors).toContain('Electron host is missing type:app');
     expect(errors).toContain('Electron host is missing role:app');
   });
 
   it('rejects a build detached from the shared renderer', () => {
-    const input = validInput();
-    input.project.targets.build.dependsOn = ['install'];
-    const errors = [];
-
-    validateElectronHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.project.targets.build.dependsOn = ['install'];
+    });
 
     expect(errors).toContain(
       'Electron build must package the shared production renderer',
@@ -213,11 +217,9 @@ describe('Electron host contract', () => {
   });
 
   it('rejects release signing chained through a local development identity', () => {
-    const input = validInput();
-    input.project.targets['package-mac-signed'].dependsOn = ['build'];
-    const errors = [];
-
-    validateElectronHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.project.targets['package-mac-signed'].dependsOn = ['build'];
+    });
 
     expect(errors).toContain(
       'Electron package-mac-signed must delegate to the shell package:mac:signed command',
@@ -225,11 +227,9 @@ describe('Electron host contract', () => {
   });
 
   it('rejects a desktop watch target that escapes the standalone shell', () => {
-    const input = validInput();
-    input.project.targets.test.configurations.watch.command = 'vitest';
-    const errors = [];
-
-    validateElectronHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.project.targets.test.configurations.watch.command = 'vitest';
+    });
 
     expect(errors).toContain(
       'Electron watch tests must stay inside the standalone shell',
@@ -237,12 +237,10 @@ describe('Electron host contract', () => {
   });
 
   it('rejects cached or parallel desktop journeys', () => {
-    const input = validInput();
-    input.project.targets.e2e.cache = true;
-    input.project.targets.e2e.parallelism = true;
-    const errors = [];
-
-    validateElectronHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.project.targets.e2e.cache = true;
+      input.project.targets.e2e.parallelism = true;
+    });
 
     expect(errors).toContain(
       'Electron e2e must delegate only to the uncached lifecycle-owned full suite',
@@ -250,12 +248,10 @@ describe('Electron host contract', () => {
   });
 
   it('rejects a smoke journey coupled to the Synapse-backed config', () => {
-    const input = validInput();
-    input.project.targets['e2e-smoke'].options.command =
-      'pnpm exec nx run trinity-e2e-electron:full';
-    const errors = [];
-
-    validateElectronHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.project.targets['e2e-smoke'].options.command =
+        'pnpm exec nx run trinity-e2e-electron:full';
+    });
 
     expect(errors).toContain(
       'Electron smoke must delegate only to the uncached lifecycle-owned smoke suite',
@@ -263,11 +259,9 @@ describe('Electron host contract', () => {
   });
 
   it('rejects a no-op platform package target', () => {
-    const input = validInput();
-    input.project.targets['package-linux'].options.command = 'true';
-    const errors = [];
-
-    validateElectronHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.project.targets['package-linux'].options.command = 'true';
+    });
 
     expect(errors).toContain(
       'Electron package-linux must delegate to the shell package:linux command',
@@ -275,11 +269,9 @@ describe('Electron host contract', () => {
   });
 
   it('rejects duplicate package-script target inference', () => {
-    const input = validInput();
-    input.shellPackage.nx.includedScripts = ['test'];
-    const errors = [];
-
-    validateElectronHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.shellPackage.nx.includedScripts = ['test'];
+    });
 
     expect(errors).toContain(
       'Electron package scripts must not create duplicate inferred Nx targets',
@@ -287,18 +279,16 @@ describe('Electron host contract', () => {
   });
 
   it('rejects security and sender checks hidden in comments', () => {
-    const input = validInput();
-    input.window = input.window.replace(
-      'contextIsolation: true',
-      '// contextIsolation: true',
-    );
-    input.hostCapabilities = input.hostCapabilities.replace(
-      'event.sender !== win.webContents',
-      '// event.sender !== win.webContents',
-    );
-    const errors = [];
-
-    validateElectronHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.window = input.window.replace(
+        'contextIsolation: true',
+        '// contextIsolation: true',
+      );
+      input.hostCapabilities = input.hostCapabilities.replace(
+        'event.sender !== win.webContents',
+        '// event.sender !== win.webContents',
+      );
+    });
 
     expect(errors).toContain(
       'Electron window is missing security marker: contextIsolation: true',
@@ -309,14 +299,12 @@ describe('Electron host contract', () => {
   });
 
   it('rejects a preload that exposes operations without negotiated grants', () => {
-    const input = validInput();
-    input.preload = input.preload.replace(
-      'grantedOperations.has(',
-      '// grantedOperations.has(',
-    );
-    const errors = [];
-
-    validateElectronHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.preload = input.preload.replace(
+        'grantedOperations.has(',
+        '// grantedOperations.has(',
+      );
+    });
 
     expect(errors).toContain(
       'Electron preload is missing bounded bridge marker: grantedOperations.has(',
@@ -324,14 +312,12 @@ describe('Electron host contract', () => {
   });
 
   it('rejects commented-out protocol packaging', () => {
-    const input = validInput();
-    input.builder = input.builder.replace(
-      '  - dev.trinityproject.trinity',
-      '  # - dev.trinityproject.trinity',
-    );
-    const errors = [];
-
-    validateElectronHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.builder = input.builder.replace(
+        '  - dev.trinityproject.trinity',
+        '  # - dev.trinityproject.trinity',
+      );
+    });
 
     expect(errors).toContain(
       'Electron package must register the authentication protocol',

@@ -197,6 +197,14 @@ function validInput() {
   };
 }
 
+function errorsAfter(mutate) {
+  const input = validInput();
+  mutate(input);
+  const errors = [];
+  validateNativeHostContract(input, errors);
+  return errors;
+}
+
 describe('native host contract', () => {
   it('validates the checked-in Android and iOS hosts', () => {
     expect(validateCurrentNativeHosts).not.toThrow();
@@ -232,44 +240,40 @@ describe('native host contract', () => {
   });
 
   it('accepts the push library service with reordered attributes', () => {
-    const input = validInput();
-    input.androidPushLibraryManifest = pushLibraryManifest(
-      [
-        '<service android:exported="false"',
-        '    android:name=".TrinityMessagingService">',
-        '  <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT"/></intent-filter>',
-        '</service>',
-      ].join('\n'),
-    );
-    const errors = [];
-
-    validateNativeHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.androidPushLibraryManifest = pushLibraryManifest(
+        [
+          '<service android:exported="false"',
+          '    android:name=".TrinityMessagingService">',
+          '  <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT"/></intent-filter>',
+          '</service>',
+        ].join('\n'),
+      );
+    });
 
     expect(errors).toEqual([]);
   });
 
   it('accepts a reformatted push plugin declaration and reordered app marker', () => {
-    const input = validInput();
-    input.androidManifest = appManifest(
-      '<service xmlns:t="http://schemas.android.com/tools" t:node="remove"\n' +
-        '    android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"/>',
-    );
-    input.androidPushPlugin = input.androidPushPlugin.replace(
-      '@CapacitorPlugin(name = "PushHandoff")\npublic class',
-      '@CapacitorPlugin( name="PushHandoff" )\n\n\npublic   class',
-    );
-    input.iosPushPlugin = input.iosPushPlugin
-      .replace(
-        'PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin',
-        'PushHandoffPlugin :\n    CAPPlugin,\n    CAPBridgedPlugin',
-      )
-      .replace(
-        'public let jsName = "PushHandoff"',
-        'public  let jsName="PushHandoff"',
+    const errors = errorsAfter((input) => {
+      input.androidManifest = appManifest(
+        '<service xmlns:t="http://schemas.android.com/tools" t:node="remove"\n' +
+          '    android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"/>',
       );
-    const errors = [];
-
-    validateNativeHostContract(input, errors);
+      input.androidPushPlugin = input.androidPushPlugin.replace(
+        '@CapacitorPlugin(name = "PushHandoff")\npublic class',
+        '@CapacitorPlugin( name="PushHandoff" )\n\n\npublic   class',
+      );
+      input.iosPushPlugin = input.iosPushPlugin
+        .replace(
+          'PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin',
+          'PushHandoffPlugin :\n    CAPPlugin,\n    CAPBridgedPlugin',
+        )
+        .replace(
+          'public let jsName = "PushHandoff"',
+          'public  let jsName="PushHandoff"',
+        );
+    });
 
     expect(errors).toEqual([]);
   });
@@ -289,11 +293,9 @@ describe('native host contract', () => {
       // A platform override wins over the top-level value.
       `webDir: 'www',\n${optIn}\nandroid: { loggingBehavior: 'debug' },`,
     ]) {
-      const input = validInput();
-      input.capacitor = capacitor;
-      const errors = [];
-
-      validateNativeHostContract(input, errors);
+      const errors = errorsAfter((input) => {
+        input.capacitor = capacitor;
+      });
 
       expect(errors, capacitor).toContain(
         'Capacitor logging must default to none: the bridge logs plugin arguments and results',
@@ -311,22 +313,18 @@ describe('native host contract', () => {
         "  process.env['TRINITY_CAPACITOR_LOGS'] === '1' ? 'debug' : 'none',",
       ].join('\n'),
     ]) {
-      const input = validInput();
-      input.capacitor = capacitor;
-      const errors = [];
-
-      validateNativeHostContract(input, errors);
+      const errors = errorsAfter((input) => {
+        input.capacitor = capacitor;
+      });
 
       expect(errors, capacitor).toEqual([]);
     }
   });
 
   it('rejects a native lifecycle hidden outside Nx', () => {
-    const input = validInput();
-    input.projects.android.targets.run = undefined;
-    const errors = [];
-
-    validateNativeHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.projects.android.targets.run = undefined;
+    });
 
     expect(errors).toContain(
       'android run must launch the synchronized native host',
@@ -334,11 +332,9 @@ describe('native host contract', () => {
   });
 
   it('rejects a host that no longer builds the shared renderer before sync', () => {
-    const input = validInput();
-    input.projects.ios.targets.sync.dependsOn = [];
-    const errors = [];
-
-    validateNativeHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.projects.ios.targets.sync.dependsOn = [];
+    });
 
     expect(errors).toContain(
       'ios sync must build and copy the shared production renderer',
@@ -346,14 +342,12 @@ describe('native host contract', () => {
   });
 
   it('rejects platform capability drift', () => {
-    const input = validInput();
-    input.capabilityAdapter = input.capabilityAdapter.replace(
-      "platform === 'android' ? (['back'] as const) : []",
-      "// platform === 'android' ? (['back'] as const) : []",
-    );
-    const errors = [];
-
-    validateNativeHostContract(input, errors);
+    const errors = errorsAfter((input) => {
+      input.capabilityAdapter = input.capabilityAdapter.replace(
+        "platform === 'android' ? (['back'] as const) : []",
+        "// platform === 'android' ? (['back'] as const) : []",
+      );
+    });
 
     expect(errors).toContain(
       'Capacitor capability manifest is missing: platform ===',
@@ -383,11 +377,7 @@ describe('native host contract', () => {
       'android e2e must delegate to the uncached serialized installed-app journey',
     ],
   ])('rejects %s', (_label, mutate, expected) => {
-    const input = validInput();
-    mutate(input);
-    const errors = [];
-
-    validateNativeHostContract(input, errors);
+    const errors = errorsAfter(mutate);
 
     expect(errors).toContain(expected);
   });
@@ -480,11 +470,9 @@ describe('native host contract', () => {
   ])(
     'rejects commented-out %s wiring',
     (_label, field, active, comment, expected) => {
-      const input = validInput();
-      input[field] = input[field].replace(active, comment);
-      const errors = [];
-
-      validateNativeHostContract(input, errors);
+      const errors = errorsAfter((input) => {
+        input[field] = input[field].replace(active, comment);
+      });
 
       expect(errors).toContain(expected);
     },
@@ -752,11 +740,7 @@ describe('native host contract', () => {
       'Android host must brand device-rendered push notifications',
     ],
   ])('rejects %s', (_label, mutate, expected) => {
-    const input = validInput();
-    mutate(input);
-    const errors = [];
-
-    validateNativeHostContract(input, errors);
+    const errors = errorsAfter(mutate);
 
     expect(errors).toContain(expected);
   });
