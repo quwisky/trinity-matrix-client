@@ -24,6 +24,14 @@
     "build": {
       "executor": "@angular/build:application",
       "dependsOn": ["build-info", "release-notes"],
+      "//": "release-notes.ts is git-ignored, so the notes that scripts/gen-release-notes.mjs bundles reach the cache hash only through these variables.",
+      "inputs": [
+        "production",
+        "^production",
+        { "env": "TRINITY_RELEASE_NOTES_FIXTURE" },
+        { "env": "TRINITY_RELEASE_NOTES" },
+        { "env": "TRINITY_CURRENT_RELEASE_NOTES" }
+      ],
       "outputs": ["{workspaceRoot}/www"],
       "options": {
         "outputPath": {

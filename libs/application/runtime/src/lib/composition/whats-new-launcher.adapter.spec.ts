@@ -108,6 +108,21 @@ describe('WhatsNewLauncherAdapter', () => {
     expect(open).toHaveBeenCalledOnce();
   });
 
+  it('does not open when the account signs out while locked', () => {
+    const { launcher, open, signedIn, unlockedNow, unlocked } = setup([
+      of(newer),
+    ]);
+    unlockedNow.set(false);
+
+    launcher.runPending().subscribe();
+    TestBed.tick();
+    signedIn.set(false);
+    TestBed.tick();
+    unlocked.next();
+
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it('does nothing when nothing is pending', () => {
     const { launcher, open, markSeen } = setup([of([])]);
 

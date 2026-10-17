@@ -13,6 +13,7 @@ import {
   type WhatsNewLauncher,
 } from '@trinity/data-access/whats-new';
 import {
+  EMPTY,
   defer,
   filter,
   finalize,
@@ -44,10 +45,10 @@ export class WhatsNewLauncherAdapter implements WhatsNewLauncher {
   /** Opens the notes newer than the last-seen version, once; completes without emitting. */
   runPending(): Observable<never> {
     // runLive() also runs on the sign-in screen, so wait for an account and an unlocked app.
+    // Signing out while locked restarts the wait, so both conditions hold together.
     return this.signedIn.pipe(
-      filter(Boolean),
+      switchMap((on) => (on ? this.appLock.whenUnlocked() : EMPTY)),
       take(1),
-      switchMap(() => this.appLock.whenUnlocked()),
       switchMap(() => this.whatsNew.pending()),
       filter((releases) => releases.length > 0),
       // Missing the dialog once beats showing it on every launch: open only once the

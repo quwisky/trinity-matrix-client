@@ -3,6 +3,7 @@ import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   homeserverSession,
   login,
+  readPreference,
   seedPreference,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
@@ -39,6 +40,8 @@ test.describe("What's new", () => {
     const dialog = page.getByTestId('whats-new-dialog');
     await page.goto('/login');
     await expect(page.getByLabel('Homeserver', { exact: true })).toBeVisible();
+    // Nothing ran on the signed-out page: the stored version is untouched.
+    expect(await readPreference(page, KEY)).toBe(OLDER_VERSION);
     await expect(dialog).toBeHidden();
     await login(page, { ...session, user, pass });
     await expect(dialog).toContainText("What's new in Trinity");
@@ -59,6 +62,8 @@ test.describe("What's new", () => {
     const reloaded = await context.newPage();
     await reloaded.goto('/');
     await expect(reloaded.getByTestId('open-settings')).toBeVisible();
+    // The startup check has finished once it stores the running version.
+    await expect.poll(() => readPreference(reloaded, KEY)).toBe(newest.version);
     await expect(reloaded.getByTestId('whats-new-dialog')).toBeHidden();
   });
 
