@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **77 Nx projects** and **302 dependencies**. No project cycles detected.
+This snapshot contains **77 Nx projects** and **304 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -125,7 +125,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | ----------------------------------- | ---------------------------------------- | ----------------------------------------------- | ------------------: |
 | `application-appearance`            | `libs/application/appearance`            | role:application; capability:design-system      |                   4 |
 | `application-badge`                 | `libs/application/badge`                 | role:application; capability:badge              |                   2 |
-| `application-runtime`               | `libs/application/runtime`               | role:application; capability:runtime            |                  30 |
+| `application-runtime`               | `libs/application/runtime`               | role:application; capability:runtime            |                  31 |
 | `application-search`                | `libs/application/search`                | role:application; capability:search             |                   5 |
 | `application-workspace`             | `libs/application/workspace`             | role:application; capability:workspace          |                   7 |
 | `avatar`                            | `libs/spartan/avatar`                    | role:design-system; capability:design-system    |                   0 |
@@ -184,7 +184,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `testing`                           | `libs/testing`                           | unmanaged tooling/test                          |                   0 |
 | `theme-foundation`                  | `libs/theme-foundation`                  | role:kernel; capability:design-system           |                   0 |
 | `tooltip`                           | `libs/spartan/tooltip`                   | role:design-system; capability:design-system    |                   1 |
-| `trinity`                           | `apps/trinity`                           | role:app; capability:composition                |                   8 |
+| `trinity`                           | `apps/trinity`                           | role:app; capability:composition                |                   9 |
 | `trinity-android`                   | `android`                                | role:app; capability:composition                |                   3 |
 | `trinity-desktop`                   | `electron`                               | role:app; capability:composition                |                   1 |
 | `trinity-e2e`                       | `e2e`                                    | unmanaged tooling/test                          |                   2 |

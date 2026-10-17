@@ -21,4 +21,8 @@ export const APPLICATION_DIALOG_LOADERS = {
     defer(() => import('@trinity/feature/settings')).pipe(
       map((module) => module.ReportBugDialogComponent),
     ),
+  whatsNew: () =>
+    defer(() => import('@trinity/feature/whats-new')).pipe(
+      map((module) => module.WhatsNewDialogComponent),
+    ),
 } satisfies TrinityApplicationDialogLoaders;

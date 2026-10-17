@@ -50,6 +50,7 @@ import { NotificationSessionService } from './notification-session.service';
 import { BackgroundMemoryRelease } from './background-memory-release.service';
 import { DeviceConfirmationCoordinator } from './device-confirmation.coordinator';
 import { TrinityHostNavigationAdapter } from './trinity-host-navigation.adapter';
+import { WhatsNewLauncherAdapter } from './whats-new-launcher.adapter';
 
 /** Owns every live host and Workspace subscription for one Application Runtime session. */
 @Injectable({ providedIn: 'root' })
@@ -79,6 +80,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly roomAdministration = inject(RoomAdministrationLifetime);
   private readonly notificationSession = inject(NotificationSessionService);
   private readonly hostNavigation = inject(TrinityHostNavigationAdapter);
+  private readonly whatsNewLauncher = inject(WhatsNewLauncherAdapter);
 
   run(readiness: Observable<void>): Observable<ApplicationSessionEvent> {
     return new Observable<ApplicationSessionEvent>((subscriber) => {
@@ -235,6 +237,7 @@ export class TrinityApplicationSessionAdapter {
       this.hostNavigation.runDeepLinks().pipe(ignoreElements()),
       this.runInteractions(),
       this.runUpdates().pipe(ignoreElements()),
+      this.whatsNewLauncher.runPending(),
       this.memoryRelease.run(),
       this.timelineTrimmer.run(),
     );

@@ -31,3 +31,7 @@ export const ENCRYPTION_DIALOG_COMPONENTS =
  */
 export const REPORT_BUG_DIALOG_COMPONENT =
   new InjectionToken<ApplicationDialogLoader>('REPORT_BUG_DIALOG_COMPONENT');
+
+/** Keeps Application Runtime independent of the What's new feature that shows release notes. */
+export const WHATS_NEW_DIALOG_COMPONENT =
+  new InjectionToken<ApplicationDialogLoader>('WHATS_NEW_DIALOG_COMPONENT');

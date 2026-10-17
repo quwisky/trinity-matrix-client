@@ -31,6 +31,10 @@ import {
 } from '@trinity/data-access/matrix-client';
 import type { PushConfig } from '@trinity/data-access/notifications';
 import {
+  WHATS_NEW_LAUNCHER,
+  type ReleaseNote,
+} from '@trinity/data-access/whats-new';
+import {
   DEVICE_CONFIRMATION_POLICY,
   type DeviceConfirmationPolicy,
   type SlotForecast as TrustSlotForecast,
@@ -49,6 +53,7 @@ import { APPLICATION_RUNTIME_ADAPTER } from '../application-runtime.adapter';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   REPORT_BUG_DIALOG_COMPONENT,
+  WHATS_NEW_DIALOG_COMPONENT,
   SETTINGS_DIALOG_COMPONENT,
   type ApplicationDialogLoader,
   type EncryptionDialogLoaders,
@@ -60,6 +65,7 @@ import { AccountDeletionLauncherAdapter } from './account-deletion-launcher.adap
 import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
 import { AccountSwitchLauncherAdapter } from './account-switch-launcher.adapter';
 import { ReportBugLauncherAdapter } from './report-bug-launcher.adapter';
+import { WhatsNewLauncherAdapter } from './whats-new-launcher.adapter';
 import { TrinityApplicationRuntimeAdapter } from './trinity-application-runtime.adapter';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { CapabilityHealthService } from '../capability-health.service';
@@ -71,6 +77,8 @@ export interface TrinityApplicationDialogLoaders {
   readonly encryption: EncryptionDialogLoaders;
   /** Report a bug, for the sign-in screen and System status. */
   readonly reportBug: ApplicationDialogLoader;
+  /** The What's new dialog, opened once after an update and from Settings. */
+  readonly whatsNew: ApplicationDialogLoader;
 }
 
 export interface TrinityApplicationProviderOptions {
@@ -84,6 +92,8 @@ export interface TrinityApplicationProviderOptions {
    */
   readonly issueRepositoryUrl: string | null;
   readonly buildInfo: BuildInfo;
+  /** Bundled release notes, newest first; omitted means no What's new dialog. */
+  readonly releaseNotes?: readonly ReleaseNote[];
   readonly dialogLoaders: TrinityApplicationDialogLoaders;
   /** The new-device check's build policy; left out, no build offers the debug skip. */
   readonly deviceConfirmation?: DeviceConfirmationPolicy;
@@ -170,6 +180,11 @@ export function provideTrinityApplication(
       useValue: options.dialogLoaders.reportBug,
     },
     { provide: BUG_REPORT_LAUNCHER, useExisting: ReportBugLauncherAdapter },
+    {
+      provide: WHATS_NEW_DIALOG_COMPONENT,
+      useValue: options.dialogLoaders.whatsNew,
+    },
+    { provide: WHATS_NEW_LAUNCHER, useExisting: WhatsNewLauncherAdapter },
     {
       provide: ACCOUNT_REMOVAL_LAUNCHER,
       useExisting: AccountRemovalLauncherAdapter,

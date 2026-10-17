@@ -11,6 +11,7 @@ import {
 } from '@trinity/platform-native';
 import { APPLICATION_DIALOG_LOADERS } from './app/application-dialog-loaders';
 import { BUILD_INFO_VALUE } from './app/build-info';
+import { RELEASE_NOTES_VALUE } from './app/release-notes';
 import { routes } from './app/app.routes';
 import { environment } from './environments/environment';
 
@@ -32,6 +33,7 @@ void bootstrapApplication(ApplicationRootComponent, {
       matrixSdkLogLevel: environment.production ? 'warn' : 'debug',
       issueRepositoryUrl: environment.issueTracker?.repositoryUrl ?? null,
       buildInfo: BUILD_INFO_VALUE,
+      releaseNotes: RELEASE_NOTES_VALUE,
       dialogLoaders: APPLICATION_DIALOG_LOADERS,
       // Element X parity: only debug builds may skip the new-device check.
       deviceConfirmation: { allowSkip: !environment.production },

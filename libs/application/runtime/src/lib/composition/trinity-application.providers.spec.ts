@@ -167,6 +167,7 @@ describe('Trinity application provider composition', () => {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
+            whatsNew: () => NEVER,
           },
         }),
       ],
@@ -195,6 +196,7 @@ describe('Trinity application provider composition', () => {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
+            whatsNew: () => NEVER,
           },
         }),
         {
@@ -319,6 +321,7 @@ describe('Trinity application provider composition', () => {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
+            whatsNew: () => NEVER,
           },
         }),
       ],
@@ -347,6 +350,7 @@ describe('Trinity application provider composition', () => {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
+            whatsNew: () => NEVER,
           },
         }),
       ],
@@ -375,6 +379,7 @@ describe('Trinity application provider composition', () => {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
+            whatsNew: () => NEVER,
           },
         }),
       ],
@@ -401,6 +406,7 @@ describe('Trinity application provider composition', () => {
         settings: () => NEVER,
         encryption: { unlock: () => NEVER, verify: () => NEVER },
         reportBug: () => NEVER,
+        whatsNew: () => NEVER,
       },
     };
     for (const [options, allowSkip] of [
@@ -434,6 +440,7 @@ describe('Trinity application provider composition', () => {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => of(ReportBugDependencyProbeComponent),
+            whatsNew: () => NEVER,
           },
         }),
         {
