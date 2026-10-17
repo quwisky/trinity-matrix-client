@@ -40,6 +40,15 @@ test.describe('Decline and report an invite', () => {
       })
       .then((r) => r.json());
 
+    // Every membership-changing request Bob's app makes, in order.
+    const membershipRequests: string[] = [];
+    page.on('request', (r) => {
+      const path = new URL(r.url()).pathname;
+      if (r.method() === 'POST' && /\/(join|leave|report)$/.test(path)) {
+        membershipRequests.push(path.slice(path.lastIndexOf('/') + 1));
+      }
+    });
+
     await login(page, {
       available: true,
       hs,
@@ -75,6 +84,8 @@ test.describe('Decline and report an invite', () => {
       page.getByRole('button', { name: `Decline invite to ${roomName}` }),
     ).toHaveCount(0);
 
+    // Reported first, then declined, and never joined on the way.
+    expect(membershipRequests).toEqual(['report', 'leave']);
     // Bob never joined, and his invite is now a leave.
     const membership = await request
       .get(

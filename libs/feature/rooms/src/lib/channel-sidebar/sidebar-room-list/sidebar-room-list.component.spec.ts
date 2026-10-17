@@ -15,6 +15,11 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
 import { SidebarRoomListComponent } from './sidebar-room-list.component';
+import {
+  InviteActionsService,
+  type InviteAnswered,
+} from '../../rooms/invite-actions.service';
+import { Subject } from 'rxjs';
 
 function room(over: Partial<RoomSummary> = {}): RoomSummary {
   return {
@@ -46,6 +51,7 @@ async function renderRows(
   style: RoomListStyle = 'rich',
   extra: Record<string, unknown> = {},
   offers: (accountId: string, kind: string) => boolean = () => true,
+  answers?: Subject<InviteAnswered>,
 ) {
   return render(SidebarRoomListComponent, {
     inputs: { rooms, activeRoomId, ...extra },
@@ -56,6 +62,9 @@ async function renderRows(
         modeForAccounts: vi.fn(() => notifyMode),
       }),
       MockProvider(ContentReportingService, { offers }),
+      ...(answers
+        ? [MockProvider(InviteActionsService, { answered: answers })]
+        : []),
       {
         provide: IdentityPresenceService,
         useValue: { presenceFor: () => signal('offline') },
@@ -306,6 +315,74 @@ describe('SidebarRoomListComponent invite reporting', () => {
       container.querySelector('[aria-label="Decline invite to Book club"]'),
     ).not.toBeNull();
     expect(offers).toHaveBeenCalledWith('@me:hs', 'room');
+  });
+
+  it('waits for the report dialogs to finish before moving focus on', async () => {
+    const book = invite('!b:hs', 'Book club');
+    const chess = invite('!c:hs', 'Chess');
+    const answers = new Subject<InviteAnswered>();
+    const { fixture, container } = await renderRows(
+      [],
+      null,
+      'all',
+      'rich',
+      { invites: [book, chess] },
+      () => true,
+      answers,
+    );
+    container
+      .querySelector<HTMLButtonElement>(
+        '[aria-label="Decline and report Book club"]',
+      )!
+      .click();
+    // The "Report sent" dialog holds focus while sync removes the row.
+    const overlay = document.createElement('div');
+    overlay.className = 'cdk-overlay-container';
+    const dialogButton = document.createElement('button');
+    overlay.append(dialogButton);
+    document.body.append(overlay);
+    dialogButton.focus();
+    fixture.componentRef.setInput('invites', [chess]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(dialogButton);
+
+    overlay.remove();
+    answers.next({ roomId: '!b:hs', declined: true });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(document.activeElement?.getAttribute('aria-label')).toBe(
+      'Preview invite to Chess, Room from Ann',
+    );
+  });
+
+  it('forgets the row when the person keeps the invite', async () => {
+    const book = invite('!b:hs', 'Book club');
+    const chess = invite('!c:hs', 'Chess');
+    const answers = new Subject<InviteAnswered>();
+    const { fixture, container } = await renderRows(
+      [],
+      null,
+      'all',
+      'rich',
+      { invites: [book, chess] },
+      () => true,
+      answers,
+    );
+    container
+      .querySelector<HTMLButtonElement>(
+        '[aria-label="Decline and report Book club"]',
+      )!
+      .click();
+    answers.next({ roomId: '!b:hs', declined: false });
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    fixture.componentRef.setInput('invites', [chess]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(document.body);
   });
 
   it('moves focus to the next invite once a handled row disappears', async () => {

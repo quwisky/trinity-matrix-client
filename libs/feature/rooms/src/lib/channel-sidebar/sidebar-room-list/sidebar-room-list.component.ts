@@ -27,7 +27,9 @@ import {
   type PendingInvite,
   type RoomSummary,
 } from '@trinity/data-access/room-library';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ContentReportingService } from '@trinity/data-access/room-administration';
+import { InviteActionsService } from '../../rooms/invite-actions.service';
 import type { RoomNotifyMode } from '@trinity/data-access/notifications';
 import {
   SidebarRoomRowComponent,
@@ -84,11 +86,18 @@ export class SidebarRoomListComponent {
   private readonly reporting = inject(ContentReportingService);
   private readonly inviteOpeners =
     viewChildren<ElementRef<HTMLElement>>('inviteOpen');
-  /** The invite row just answered, so focus can move on once its row is gone. */
-  private answeredInvite: {
+  /**
+   * The invite row just answered. Focus moves on once its row is gone and the answer has
+   * finished (`done`), so a "Report sent" dialog still open keeps it.
+   */
+  private readonly answeredInvite = signal<{
     readonly roomId: string;
     readonly index: number;
-  } | null = null;
+    readonly done: boolean;
+  } | null>(null);
+  private readonly inviteAnswers = inject(InviteActionsService, {
+    optional: true,
+  });
   private readonly destroyRef = inject(DestroyRef);
 
   // Windowing state. `scrollTop` and `viewportH` come from the scroller; `regionTop` is where the
@@ -284,25 +293,42 @@ export class SidebarRoomListComponent {
     index: number,
     action: 'decline' | 'decline-and-report',
   ): void {
-    this.answeredInvite = { roomId: invite.roomId, index };
+    // Without a host that reports answers (a lone list), the click is the whole answer.
+    this.answeredInvite.set({
+      roomId: invite.roomId,
+      index,
+      done: !this.inviteAnswers,
+    });
     (action === 'decline' ? this.declineInvite : this.declineAndReport).emit(
       invite,
     );
   }
 
   constructor() {
+    this.inviteAnswers?.answered
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(({ roomId, declined }) => {
+        const answered = this.answeredInvite();
+        if (answered?.roomId !== roomId) return;
+        this.answeredInvite.set(declined ? { ...answered, done: true } : null);
+      });
+
     // The answered row's buttons vanish with it; land focus on the next invite, else the list.
     afterRenderEffect({
       write: () => {
         const invites = this.invites();
         const openers = this.inviteOpeners();
+        const answered = this.answeredInvite();
+        if (
+          !answered?.done ||
+          invites.some((i) => i.roomId === answered.roomId)
+        )
+          return;
         untracked(() => {
-          const answered = this.answeredInvite;
-          if (!answered || invites.some((i) => i.roomId === answered.roomId))
-            return;
-          this.answeredInvite = null;
+          this.answeredInvite.set(null);
           const active = document.activeElement;
           if (active && active !== document.body) return;
+          // The list is windowed: this is the first rendered row, not necessarily the first room.
           const next =
             openers[Math.min(answered.index, openers.length - 1)]
               ?.nativeElement ??

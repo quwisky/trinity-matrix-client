@@ -5,7 +5,7 @@ import {
   type PendingInvite,
 } from '@trinity/data-access/room-library';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { EMPTY, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomLinkPreviewComponent } from '../room-link-preview/room-link-preview.component';
 import { AccountRoutingService } from './account-routing.service';
@@ -137,5 +137,20 @@ describe('InviteActionsService.onDeclineAndReport', () => {
       inviterId: '@ann:hs',
       inviterName: 'Ann',
     });
+  });
+
+  it('announces when the answer has finished, declined or not', () => {
+    const { svc, declineAndReport$ } = setup(null);
+    const answered: unknown[] = [];
+    svc.answered.subscribe((a) => answered.push(a));
+
+    svc.onDeclineAndReport(invite);
+    declineAndReport$.mockReturnValueOnce(EMPTY as never);
+    svc.onDeclineAndReport(invite);
+
+    expect(answered).toEqual([
+      { roomId: '!inv:hs', declined: true },
+      { roomId: '!inv:hs', declined: false },
+    ]);
   });
 });

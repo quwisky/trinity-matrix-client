@@ -217,6 +217,8 @@ export class ReportService {
     const room = { accountId: invite.accountId, roomId: invite.roomId };
     return defer(() => {
       const ignoreList = this.ignoredUsers.runProjection().subscribe();
+      // Accepted or declined elsewhere: the question no longer applies.
+      const settled = this.invites.inviteSettled(room.roomId, room.accountId);
       return this.alert
         .prompt$({
           header: 'Report room',
@@ -225,13 +227,14 @@ export class ReportService {
           ...REASON,
           confirmText: 'Decline and report',
           variant: 'danger',
+          closeWhen: settled,
         })
         .pipe(
           switchMap((reason) =>
             reason === null
               ? EMPTY
               : this.reporting.reportRoom(room, reason).pipe(
-                  map(() => true),
+                  map((): boolean | 'kept' => true),
                   catchError((error: unknown) =>
                     this.alert
                       .confirm$({
@@ -240,46 +243,59 @@ export class ReportService {
                         confirmText: 'Decline',
                         cancelText: 'Keep invite',
                         variant: 'danger',
+                        closeWhen: settled,
                       })
-                      .pipe(
-                        switchMap((decline) =>
-                          decline ? of(false) : of<'kept'>('kept'),
-                        ),
-                      ),
+                      .pipe(map((decline) => (decline ? false : 'kept'))),
                   ),
                 ),
           ),
           switchMap((reported) =>
             reported === 'kept'
               ? of<InviteAnswer>('kept')
-              : this.invites.declineInvite(room.roomId, room.accountId).pipe(
-                  map((): InviteAnswer => 'declined'),
-                  catchError(() => {
-                    this.toast.show(
-                      reported
-                        ? 'Report sent, but the invite could not be declined. Try again.'
-                        : 'Could not decline the invitation. Try again.',
-                      { duration: 5000, variant: 'danger' },
-                    );
-                    return of<InviteAnswer>('kept');
-                  }),
-                  switchMap((answer) =>
-                    answer === 'declined' && reported
-                      ? this.offerBlock(
-                          {
-                            accountId: invite.accountId,
-                            userId: invite.inviterId,
-                            name: invite.inviterName,
-                          },
-                          `${NEXT_STEPS} The invite was declined.`,
-                        ).pipe(map(() => answer))
-                      : of(answer),
-                  ),
-                ),
+              : this.decline(invite, reported),
           ),
           finalize(() => ignoreList.unsubscribe()),
         );
     });
+  }
+
+  /** Decline unless the invite was accepted meanwhile; then offer to block the inviter. */
+  private decline(
+    invite: DeclineAndReportTarget,
+    reported: boolean,
+  ): Observable<InviteAnswer> {
+    const sent = reported ? 'Report sent. ' : '';
+    return this.invites.declineIfInvited(invite.roomId, invite.accountId).pipe(
+      catchError(() => {
+        this.toast.show(
+          reported
+            ? 'Report sent, but the invite could not be declined. Use Decline to try again.'
+            : 'Could not decline the invitation. Try again.',
+          { duration: 5000, variant: 'danger' },
+        );
+        return of('failed' as const);
+      }),
+      switchMap((result): Observable<InviteAnswer> => {
+        if (result === 'failed') return of('kept');
+        if (result === 'joined') {
+          this.toast.show(
+            `${sent}You joined this room on another device, so the invite wasn't declined.`,
+            { duration: 5000 },
+          );
+          return of('kept');
+        }
+        return reported
+          ? this.offerBlock(
+              {
+                accountId: invite.accountId,
+                userId: invite.inviterId,
+                name: invite.inviterName,
+              },
+              `${NEXT_STEPS} The invite was declined.`,
+            ).pipe(map((): InviteAnswer => 'declined'))
+          : of('declined');
+      }),
+    );
   }
 
   /** Blocking runs as the active account, so it is offered only when that is the reporter. */

@@ -7,6 +7,7 @@ import {
 } from '@trinity/data-access/room-library';
 import { matrixRequestErrorHandling } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
+import { Subject, finalize, type Observable } from 'rxjs';
 import {
   RoomLinkPreviewComponent,
   type RoomLinkPreviewResult,
@@ -14,6 +15,12 @@ import {
 import { ReportService } from '../report/report.service';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
+
+/** An invite answer that has finished, dialogs and all: declined, or still pending. */
+export interface InviteAnswered {
+  readonly roomId: string;
+  readonly declined: boolean;
+}
 
 /**
  * Accepting and declining room and space invites.
@@ -29,6 +36,10 @@ export class InviteActionsService {
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly reports = inject(ReportService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly answers = new Subject<InviteAnswered>();
+
+  /** Lets the invite list move focus on once a declined row is gone and no dialog holds it. */
+  readonly answered: Observable<InviteAnswered> = this.answers.asObservable();
 
   /**
    * The invite row itself: show the room before deciding. Accept in the preview joins as the
@@ -101,6 +112,7 @@ export class InviteActionsService {
   /** Decline a pending invite (leave the invited room/space). */
   onDeclineInvite({ roomId, accountId }: PendingInvite): void {
     this.status.error.set(null);
+    let declined = false;
     runWithBusy(
       this.invites.declineInvite(roomId, accountId),
       this.status,
@@ -108,11 +120,14 @@ export class InviteActionsService {
         'decline room invite',
         'Could not decline the invitation. Try again.',
       ),
-    ).subscribe();
+    )
+      .pipe(finalize(() => this.answers.next({ roomId, declined })))
+      .subscribe(() => (declined = true));
   }
 
   /** Report the invited room to the invited account's server admins, then decline. */
   onDeclineAndReport(invite: PendingInvite): void {
+    let declined = false;
     this.reports
       .declineAndReport$({
         accountId: invite.accountId,
@@ -120,7 +135,10 @@ export class InviteActionsService {
         inviterId: invite.inviterId,
         inviterName: invite.inviterName,
       })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+      .pipe(
+        finalize(() => this.answers.next({ roomId: invite.roomId, declined })),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((answer) => (declined = answer === 'declined'));
   }
 }

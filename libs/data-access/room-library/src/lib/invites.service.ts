@@ -1,11 +1,12 @@
 import { Injectable, inject, signal } from '@angular/core';
 import {
   ClientEvent,
+  KnownMembership,
   RoomEvent,
   type MatrixClient,
   type Room,
 } from 'matrix-js-sdk';
-import { Observable, defer, from, map, throwError } from 'rxjs';
+import { Observable, defer, from, map, of, throwError } from 'rxjs';
 import {
   MatrixClientService,
   projectFromClient,
@@ -89,6 +90,46 @@ export class InvitesService {
         return throwError(() => new Error('Not signed in.'));
       }
       return from(client.leave(roomId)).pipe(map(() => void 0));
+    });
+  }
+
+  /**
+   * Decline only if the invite is still pending on `accountId`: re-reads its membership just
+   * before leaving, so an invite accepted on another device is never left as a joined room.
+   * Resolves 'joined' then, and 'declined' when the invite is already gone. Cold.
+   */
+  declineIfInvited(
+    roomId: string,
+    accountId: string,
+  ): Observable<'declined' | 'joined'> {
+    return defer(() => {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      const membership = client.getRoom(roomId)?.getMyMembership();
+      if (membership === KnownMembership.Join) return of('joined' as const);
+      if (membership !== KnownMembership.Invite) return of('declined' as const);
+      return from(client.leave(roomId)).pipe(map(() => 'declined' as const));
+    });
+  }
+
+  /** Emits once, then completes, when `accountId`'s invite to `roomId` stops pending. */
+  inviteSettled(roomId: string, accountId: string): Observable<void> {
+    return new Observable<void>((subscriber) => {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) return;
+      const onMembership = (room: Room): void => {
+        if (
+          room.roomId === roomId &&
+          room.getMyMembership() !== KnownMembership.Invite
+        ) {
+          subscriber.next();
+          subscriber.complete();
+        }
+      };
+      client.on(RoomEvent.MyMembership, onMembership);
+      return () => client.off(RoomEvent.MyMembership, onMembership);
     });
   }
 
