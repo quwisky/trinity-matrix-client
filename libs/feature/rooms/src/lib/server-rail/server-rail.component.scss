@@ -4,9 +4,8 @@
   .rail {
     @include column(var(--trinity-surface-app));
 
-    // Ring the account badge against the rail surface, not the page background — the default
-    // resolves to --background, which is near-black in dark themes and reads as a punched
-    // hole around the badge rather than an overlay. (Mirrors channel-sidebar.)
+    // Ring the account badge against the rail surface: the default (--background) is
+    // near-black in dark themes and reads as a punched hole. Mirrors channel-sidebar.
     --trn-presence-ring: var(--trinity-surface-app);
 
     width: 72px;
@@ -37,14 +36,13 @@
     width: 100%;
 
     // Room above the first row inside the clip box, so its top badge and focus ring are not
-    // cut at scrollTop 0. This also spaces the scroller from the pinned group above it.
-    // The rail's last row is `.add`, so close the column with the rail's old bottom edge.
+    // cut at scrollTop 0. The rail's last row is `.add`, so the column closes at the bottom.
     padding-block: var(--trinity-density-shell-gap) var(--trinity-space-4);
     scroll-padding-block-start: var(--trinity-density-shell-gap);
 
     @media #{$md} {
-      // The identity dock spans this rail and the room list at desktop widths. Give the last
-      // Space the same visual and focus-driven clearance as the room scroller beside it.
+      // The identity dock spans this rail and the room list at desktop widths; the last
+      // Space needs the same visual and focus clearance as the room scroller.
       padding-block-end: calc(
         var(--trinity-navigation-dock-height) + var(--trinity-space-5)
       );
@@ -54,10 +52,8 @@
     }
   }
 
-  // A visible section divider on the rail. `--trinity-divider` is tuned for the lighter
-  // sidebar/chat surfaces and is near-invisible on the darker rail, so use `--trinity-active`
-  // (the selected-pill color), which contrasts against the rail in both themes. Full pill
-  // width (48px) so it reads as a line, not a dot.
+  // `--trinity-divider` is near-invisible on the darker rail, so use `--trinity-active`,
+  // which contrasts in both themes. Full pill width (48px) so it reads as a line, not a dot.
   .separator {
     width: 48px;
     height: 2px;

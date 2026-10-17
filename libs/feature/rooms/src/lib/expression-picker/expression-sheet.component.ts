@@ -30,17 +30,14 @@ export interface ExpressionSheetBridge {
 
 /**
  * The expression panel as a bottom sheet, for phones and narrow screens. Opened by the
- * composer through `TrnSurfaceService`, so it has the app's sheet frame: the handle, swipe
- * and Escape to close, the backdrop and focus restored to the trigger. It shows no close
- * button: the handle, the backdrop, Escape and a pick close it, and its top row holds only the
- * tabs. A visually hidden Close button at its end gives screen readers a control to reach.
- * The sheet is the only surface: the body adds no padding, and the panel and its pickers draw
- * no card inside it.
+ * composer through `TrnSurfaceService`, so it has the app's sheet frame (handle, swipe and
+ * Escape to close, backdrop, focus restored to the trigger). It shows no close button; a
+ * visually hidden Close button at its end gives screen readers a control to reach. The
+ * sheet is the only surface: no body padding, and no card inside it.
  *
- * It is as tall as its picker (each picker caps its own height). While the on-screen
- * keyboard is open, the sheet frame lifts the sheet above it, fits it to the visible area and
- * scrolls the focused search back into view (`TrnSheetKeyboardAvoidance`), so the search
- * stays visible even where the keyboard overlays the page rather than resizing it.
+ * While the on-screen keyboard is open, the sheet frame lifts the sheet above it and
+ * scrolls the focused search into view (`TrnSheetKeyboardAvoidance`), so the search stays
+ * visible even where the keyboard overlays the page rather than resizing it.
  */
 @Component({
   selector: 'trn-expression-sheet',

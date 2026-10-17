@@ -1,6 +1,6 @@
 /**
- * The box an inline image (spec A2) takes before and after it loads, and how a concealed
- * spoiler hides it. The height cap has one source: `--trinity-message-image-max-height` on
+ * The box an inline image takes before and after it loads, and how a concealed spoiler
+ * hides it. The height cap has one source: `--trinity-message-image-max-height` on
  * `img.mx-image` in `apps/trinity/src/rendered-markdown.scss`, which is also the image's
  * `max-height`; the reserved width below reads the same property.
  */
@@ -8,8 +8,8 @@
 /**
  * What a loading inline image shows until its thumbnail arrives: a 1×1 transparent GIF, inline
  * (CSP `img-src` allows `data:`), so nothing is fetched and nothing is pinned. Without a source
- * the browser draws its broken-image icon and the alt text in the loading box; the alt text
- * still names the image for assistive technology.
+ * the browser draws its broken-image icon in the loading box; the alt text still names the
+ * image for assistive technology.
  */
 export const LOADING_PLACEHOLDER =
   'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
@@ -31,11 +31,10 @@ export function senderSize(value: string | null): number | null {
 }
 
 /**
- * Reserve the box a sender's `width` and `height` describe, so the row does not jump when the
- * image arrives: the same aspect ratio, and a width no wider than the sender's and no wider than
- * the height cap allows. CSS `max-width: 100%` then fits it to the body, and the stylesheet's
- * `max-height` holds the cap whatever the reserved width rounds to. The attributes go either
- * way, so a sender's `height="20000"` is never drawn as a presentational hint.
+ * Reserve the box a sender's `width` and `height` describe, so the row does not jump: the
+ * same aspect ratio, no wider than the sender's width or the height cap allows. The
+ * stylesheet's `max-height` holds the cap whatever the width rounds to. The attributes go
+ * either way, so a sender's `height="20000"` is never drawn as a presentational hint.
  */
 export function reserveBox(image: HTMLImageElement): void {
   const width = senderSize(image.getAttribute('width'));
@@ -51,9 +50,8 @@ export function reserveBox(image: HTMLImageElement): void {
 
 /**
  * Take an image a spoiler conceals out of the tab order and the accessibility tree, so
- * assistive tech does not announce "View image: <alt>" inside a hidden spoiler. The
- * stylesheet's `visibility: hidden` on concealed content does the same; this is defence in
- * depth that does not depend on the stylesheet.
+ * assistive tech does not announce "View image: <alt>" inside a hidden spoiler. Defence in
+ * depth beside the stylesheet's `visibility: hidden`.
  */
 export function conceal(image: HTMLImageElement): void {
   image.setAttribute('aria-hidden', 'true');
@@ -75,11 +73,10 @@ export const IMAGE_ONLY_SPOILER = 'mx-spoiler--image-only';
 const CONCEALED_SPOILER = '.mx-spoiler:not(.is-revealed)';
 
 /**
- * Keep a concealed image's spoiler visible. A concealed image takes no space, so a spoiler
- * holding nothing else would draw no bar and could not be seen or tapped. The outermost
- * concealed spoiler around `image` (within `host`) is marked when it has no text of its own,
- * and the stylesheet draws a "Spoiler" bar for it. Only the outermost is marked, so nested
- * spoilers draw one bar; call it again after a reveal to mark the next one in.
+ * Keep a concealed image's spoiler visible: a concealed image takes no space, so a spoiler
+ * holding nothing else would draw no bar. Marks the outermost concealed spoiler around
+ * `image` (within `host`) that has no text of its own, so nested spoilers draw one bar;
+ * call it again after a reveal to mark the next one in.
  */
 export function markImageOnlySpoiler(
   image: HTMLImageElement,

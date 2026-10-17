@@ -41,16 +41,14 @@ interface RevisionEntry extends MessageRevisionView {
 }
 
 /**
- * How long to wait before re-reading the history after a removal. The homeserver needs a
- * moment to apply the redaction to its relations view; asking straight away can hand back
- * the version that was just removed.
+ * Delay before re-reading history after a removal: the homeserver needs a moment to apply
+ * the redaction to its relations view, or it can return the removed version.
  */
 const REFRESH_DELAY_MS = 600;
 
 /**
  * Dialog listing every version of an edited message, oldest first, each rendered the way
- * the timeline renders it. Fetches its own history (rather than being handed it) so the
- * marker that opens it responds immediately and the wait is shown here.
+ * the timeline renders it. Fetches its own history so the opening marker responds at once.
  */
 @Component({
   selector: 'trn-edit-history',
@@ -90,20 +88,15 @@ export class EditHistoryComponent {
   readonly error = signal<string | null>(null);
 
   /**
-   * Whether to highlight what each edit changed. On by default — "what changed" is the
-   * question the dialog exists to answer — but a reader who came to read an old version
-   * rather than compare can turn it off, which also restores the exact as-sent rendering
+   * Whether to highlight what each edit changed. Off restores the exact as-sent rendering
    * (a deleted run is re-inserted as plain text, so it loses its own formatting).
    */
   readonly showDiff = signal(true);
 
   /**
-   * The versions to render. Only the ends are named — they are what a reader orients by
-   * ("what did it say first" / "what does it say now"); the ones between are just edits.
-   * A lone entry is the original and nothing else, so it is never "Current version".
-   *
-   * Each version is annotated against the one before it, so a row reads as "what this
-   * edit changed" — matching its label. The original has nothing to compare against.
+   * The versions to render. Only the ends are labelled; a lone entry is the original, never
+   * "Current version". Each version is diffed against the one before it; the original has
+   * nothing to compare against.
    */
   readonly entries = computed<RevisionEntry[]>(() => {
     const revisions = this.revisions();
@@ -135,19 +128,13 @@ export class EditHistoryComponent {
       return {
         ...entry,
         html,
-        // A formatted body renders as markdown; a diffed plain-text body still needs its
-        // line breaks, so it keeps the plain container's white-space.
+        // A diffed plain-text body still needs its line breaks, so it keeps the plain container.
         rich: entry.html !== null,
         /**
-         * Any of your own versions can be removed — including the current one.
-         *
-         * Not the first row: that is the message itself rather than a revision, and
-         * removing it is the timeline's Delete action wearing a different label (the
-         * history then refuses to load at all, by design).
-         *
-         * Removing the NEWEST edit needs the repair in {@link refresh}: measured against a
-         * live server, the SDK re-aggregates the message back to the ORIGINAL instead of
-         * the version before it, and drops the "(edited)" marker with it.
+         * Any of your own versions can be removed, including the current one, but not the
+         * first row: that is the message itself, and removing it is the timeline's Delete.
+         * Removing the NEWEST edit needs the repair in {@link refresh}: the SDK
+         * re-aggregates the message back to the ORIGINAL and drops the "(edited)" marker.
          */
         removable: entry.isOwn && index > 0,
       };
@@ -155,9 +142,8 @@ export class EditHistoryComponent {
   });
 
   constructor() {
-    // The dialog service applies inputs with `setInput` *after* construction, so the
-    // required inputs cannot be read until change detection runs — hence an effect
-    // rather than a constructor fetch.
+    // The dialog service applies inputs with `setInput` after construction, so required
+    // inputs are unreadable until change detection runs; hence an effect.
     effect(() => {
       const roomId = this.roomId();
       const eventId = this.eventId();
@@ -179,10 +165,8 @@ export class EditHistoryComponent {
 
   /**
    * Remove one of your own versions: redact the edit that introduced it, drop the row,
-   * then re-read the history to confirm it and repair the message (see {@link refresh}).
-   *
-   * The row goes on the server's word rather than on the refetch — `/relations` can still
-   * return a just-redacted edit intact, so waiting for it would look like a failure.
+   * then re-read the history (see {@link refresh}). The row goes on the server's word, not
+   * the refetch: `/relations` can still return a just-redacted edit.
    */
   remove(revisionId: string): void {
     this.alert
@@ -199,9 +183,8 @@ export class EditHistoryComponent {
           return this.history.removeRevision(this.roomId(), revisionId);
         }),
       )
-      // Deliberately NOT tied to the dialog's lifetime: if it closes mid-flight the
-      // redaction still happens, and a failure the user never hears about is worse than a
-      // subscription that outlives the component by one request.
+      // Deliberately NOT tied to the dialog's lifetime: the redaction must complete even if
+      // the dialog closes mid-flight.
       .subscribe({
         next: () => {
           this.removed.add(revisionId);
@@ -211,8 +194,7 @@ export class EditHistoryComponent {
           this.removing.set(null);
           this.refresh();
         },
-        // A failure must not blank the list — the dialog's error state replaces everything,
-        // and one row failing is no reason to lose the history.
+        // A failure must not blank the list: the error state replaces everything.
         error: () => {
           this.removing.set(null);
           this.toast.show('Could not delete that version.', {
@@ -223,25 +205,17 @@ export class EditHistoryComponent {
   }
 
   /**
-   * Re-read the history from the server after a removal.
-   *
-   * Two jobs. It confirms what is actually left — and, more importantly, it repairs the
-   * message itself: removing the newest edit leaves matrix-js-sdk aggregating the message
-   * back to its ORIGINAL wording rather than the version before it, because it filters
-   * relations by a timestamp taken from the original event's stale bundle. Re-reading the
-   * relations re-fetches that event with a fresh bundle, which is what puts the timeline
-   * right.
-   *
-   * The delay is not cosmetic: `/relations` can still return a just-redacted edit intact
-   * if asked immediately. Anything we removed stays filtered out regardless, so a stale
-   * answer can never resurrect a row.
+   * Re-read the history after a removal, confirming what is left and repairing the
+   * message: removing the newest edit leaves matrix-js-sdk aggregating the message back to
+   * its ORIGINAL wording, because it filters relations by a timestamp from the original
+   * event's stale bundle. Re-reading the relations re-fetches that event with a fresh
+   * bundle. The delay is not cosmetic: `/relations` can still return a just-redacted
+   * edit if asked immediately; removed versions stay filtered out regardless.
    */
   private refresh(): void {
-    // NOT tied to the dialog's lifetime, for the same reason as the removal itself: the
-    // re-read is what repairs the message on the timeline, and a user who removes a
-    // version and immediately closes the dialog is the most likely user of all. Writing
-    // to a destroyed component's signals is harmless; leaving the timeline showing the
-    // wrong version is not.
+    // NOT tied to the dialog's lifetime: the re-read repairs the message on the timeline,
+    // even when the user closes the dialog right after removing. Writing to a destroyed
+    // component's signals is harmless.
     timer(REFRESH_DELAY_MS)
       .pipe(
         switchMap(() => this.history.revisions(this.roomId(), this.eventId())),
@@ -253,20 +227,17 @@ export class EditHistoryComponent {
           );
           this.truncated.set(result.truncated);
         },
-        // The local removal already reflects what the server accepted; a failed refresh
-        // is not worth telling the user about.
+        // The local removal already reflects what the server accepted.
         error: () => undefined,
       });
   }
 
   /**
    * A permalink inside an old version: close first and hand the target back, so the
-   * opener routes it. Following it under the dialog would leave the reader on a new
-   * message with a stale history still covering it.
+   * opener routes it; following it under the dialog would leave a stale history covering it.
    */
   onMatrixLink({ target }: MatrixLinkClick): void {
-    // The anchor is dropped on purpose: this closes first, so by the time the opener
-    // presents anything the element it would have been pinned to is gone.
+    // The anchor is dropped on purpose: the element it would pin to is gone once this closes.
     this.dialogRef.close(target);
   }
 

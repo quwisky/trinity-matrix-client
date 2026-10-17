@@ -23,17 +23,13 @@ import {
 const MAX_AVATARS = 4;
 
 /**
- * Threads-list panel: every thread in the active room, newest activity first,
- * each row showing the root preview, reply count, last-activity time, a
- * participant avatar cluster, and an unread badge. Reads the live
- * Conversation Runtime's live thread list (already projected for the active room),
- * so it reacts to new threads, replies, and unread changes.
+ * Threads-list panel: every thread in the active room, newest activity first, each row
+ * showing the root preview, reply count, last-activity time, participant avatars and an
+ * unread badge. Reads the Conversation Runtime's live thread list for the active room.
  *
- * Presentational: rendered in the rooms shell's right-hand panel slot, with `roomId`
- * as a signal input. It opens nothing itself — tapping a row announces the chosen root
- * id via {@link ThreadsListComponent.selected} and the rooms page swaps the slot to a
- * {@link ThreadViewComponent}, keeping this component free of any thread-open
- * dependency (and the two surfaces from stacking).
+ * Presentational: it opens nothing itself. Tapping a row announces the chosen root id via
+ * {@link ThreadsListComponent.selected} and the rooms page swaps the slot to a
+ * {@link ThreadViewComponent}, so the two surfaces never stack.
  */
 @Component({
   selector: 'trn-threads-list',
@@ -69,8 +65,8 @@ export class ThreadsListComponent {
   readonly maxAvatars = MAX_AVATARS;
 
   constructor() {
-    // Closed or replaced after a press or key inside it, the panel would otherwise stay in
-    // memory, detached, as the CDK's last input target until the next one (#1361).
+    // Closed after a press or key inside it, the panel would otherwise stay in memory,
+    // detached, as the CDK's last input target until the next one.
     releaseInputTargetOnDestroy();
   }
 

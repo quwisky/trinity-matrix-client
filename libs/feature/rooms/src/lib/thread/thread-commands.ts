@@ -75,8 +75,8 @@ export class ThreadCommands {
 
   /**
    * A batch caption, posted plainly into the thread. Deliberately NOT routed through
-   * {@link submit}: it was written before an upload that may have taken minutes, so the edit
-   * or reply the user has started since is not what it belongs to.
+   * {@link submit}: it predates an upload that may take minutes, so an edit or reply started
+   * since is not what it belongs to.
    */
   sendCaption({ text, mentions }: ComposerSubmit): void {
     this.run((t) => t.send(text, mentions), 'Could not send the caption.');
@@ -124,9 +124,9 @@ export class ThreadCommands {
       }
       this.uploadProgress.set(progress);
     };
-    // Pinned for the whole batch, for the same reason as the room path: the thread is
-    // resolved on SUBSCRIBE, and a batch subscribes item N long after it was pressed, so
-    // opening another thread mid-batch would deliver the rest into that one.
+    // Pinned for the whole batch, as on the room path: the thread is resolved on SUBSCRIBE
+    // and item N subscribes long after the press, so opening another thread mid-batch would
+    // deliver the rest into that one.
     const pinnedThread = this.thread();
     let abandoned = 0;
     sendMediaBatch(

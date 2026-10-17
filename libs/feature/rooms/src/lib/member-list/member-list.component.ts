@@ -47,12 +47,11 @@ interface MemberRow {
 /**
  * Row geometry, in pixels.
  *
- * Both are fixed by `member-list.component.scss` rather than measured, which is the one
- * meaningful difference from the timeline's use of this same windowing math: a message row
- * is whatever height its content makes it, a member row is an avatar and one ellipsised
- * line. `ROW_PX` is 32px of avatar plus 6px of padding either side; the stylesheet fixes
- * that border box at 44px for every pointer and density. If either measurement changes, the
- * spacers drift and the scrollbar lies; source and rendered-layout specs pin them together.
+ * Both are fixed by `member-list.component.scss` rather than measured (unlike the
+ * timeline's use of this windowing math). `ROW_PX` is 32px of avatar plus 6px of padding
+ * either side; the stylesheet fixes that border box at 44px for every pointer and density.
+ * If either measurement changes, the spacers drift and the scrollbar lies; source and
+ * rendered-layout specs pin them together.
  */
 const HEADER_PX = 34;
 const ROW_PX = 44; // member-list.component.scss pins the same 44px for the layout specs
@@ -69,11 +68,8 @@ const GROUP_LABEL: Record<MemberRole, string> = {
 const OVERSCAN_PX = 320;
 
 /**
- * Below this many rows the list renders whole.
- *
- * Windowing costs a scroll listener, a resize observer and a prefix-sum array; a room with
- * a handful of members gets nothing back for it. The threshold is generous on purpose —
- * the failure this exists for is a five-thousand-member room, not a fifty-member one.
+ * Below this many rows the list renders whole: windowing costs a scroll listener, a resize
+ * observer and a prefix-sum array, and only a huge room needs it.
  */
 const SMALL_LIST_ROWS = 80;
 
@@ -94,11 +90,8 @@ interface WindowedSection extends MemberSection {
   /** Whether the header's own flat index is inside the window. */
   readonly showHeader: boolean;
   /**
-   * How many members the section really has.
-   *
-   * Separate from `rows.length`, which is the window slice: the header prints a count, and
-   * printing the slice's length would make it read "Member — 16" in a 600-member room and
-   * change as the reader scrolled.
+   * How many members the section really has, apart from `rows.length` (the window slice):
+   * the header's count must not change as the reader scrolls.
    */
   readonly totalRows: number;
 }
@@ -111,9 +104,8 @@ const PRESENCE_RANK: Record<PresenceState, number> = {
 };
 
 /**
- * Icon per role header. The owner gets the key rather than a second crown: two crown-ish
- * glyphs stacked above each other is exactly the "which of these is which?" the separate
- * section exists to remove.
+ * Icon per role header. The owner gets the key rather than a second crown, so the two
+ * sections stay distinguishable.
  */
 const ROLE_ICON: Record<MemberRole, TrnIconName> = {
   owner: 'key-round',
@@ -184,12 +176,9 @@ export class MemberListComponent {
   );
 
   /**
-   * The rows the filter admits.
-   *
-   * Name AND user id, because the two answer different questions: a reader scanning for
-   * someone they can see types the display name, and one disambiguating two people with
-   * the same display name types the id. Case-folded on both sides; an empty query is not
-   * a filter and returns the same array reference.
+   * The rows the filter admits: name AND user id (the id disambiguates equal display
+   * names). Case-folded on both sides; an empty query is not a filter and returns the same
+   * array reference.
    */
   private readonly matchingRows = computed<MemberRow[]>(() => {
     const needle = this.query().trim().toLowerCase();
@@ -208,12 +197,9 @@ export class MemberListComponent {
   protected readonly filtering = computed(() => this.query().trim().length > 0);
 
   /**
-   * What the live region says while filtering.
-   *
-   * Windowing makes this necessary rather than nice: a sighted reader sees the list
-   * shorten, but the rows outside the window are not in the DOM at all, so a screen
-   * reader cannot count what is left by walking it. Empty while nothing is typed — an
-   * unfiltered roster's size is the group headers' job to report.
+   * What the live region says while filtering. Windowing makes it necessary: rows outside
+   * the window are not in the DOM, so a screen reader cannot count what is left. Empty
+   * while nothing is typed (the group headers report the unfiltered size).
    */
   protected readonly filterStatus = computed(() => {
     if (!this.filtering()) {
@@ -252,12 +238,9 @@ export class MemberListComponent {
   });
 
   /**
-   * The flat row order the windowing math sees: each section's header, then its members.
-   *
-   * `computeWindow` takes one `ids` array, and the list it is windowing is a set of groups
-   * — so the groups are flattened here and the result is folded back into sections below.
-   * Headers are rows too: leave them out and every group boundary shifts the spacers by
-   * 24px, which compounds down a long list until the scrollbar is visibly wrong.
+   * The flat row order the windowing math sees: each section's header, then its members
+   * (`computeWindow` takes one `ids` array). Headers are rows too: leaving them out shifts
+   * the spacers by `HEADER_PX` at every group boundary, compounding down a long list.
    */
   private readonly flatIds = computed<string[]>(() => {
     const ids: string[] = [];
@@ -271,11 +254,8 @@ export class MemberListComponent {
   });
 
   /**
-   * Heights by id.
-   *
-   * Fixed from CSS rather than measured, unlike the timeline's, so there is no
-   * `ResizeObserver` per row and no height version to invalidate on. `estimate` covers
-   * member rows; only the headers need naming.
+   * Heights by id: fixed from CSS rather than measured, so no `ResizeObserver` per row.
+   * `estimate` covers member rows; only the headers need naming.
    */
   private readonly heights = computed(() => ({
     measured: new Map(
@@ -296,8 +276,7 @@ export class MemberListComponent {
         scrollTop: this.scrollTop(),
         viewportHeight: this.viewportH(),
         overscanPx: OVERSCAN_PX,
-        // Never: a member list is read from the top. `pinBottom` is the timeline's
-        // "follow the newest message", which has no meaning for an alphabetical roster.
+        // Never: `pinBottom` is the timeline's "follow the newest message", meaningless for a roster.
         pinBottom: false,
         smallListThreshold: SMALL_LIST_ROWS,
         enabled: true,
@@ -314,11 +293,9 @@ export class MemberListComponent {
   );
 
   /**
-   * The sections as rendered: only those overlapping the window, each sliced to it.
-   *
-   * Sections are contiguous in the flat order, so a global window maps onto a per-section
-   * slice without any searching. A section whose header scrolled away still renders its
-   * `role="group"` and its name — the header is visual, the accessible name is not.
+   * The sections as rendered: only those overlapping the window, each sliced to it. A
+   * section whose header scrolled away still renders its `role="group"` and name: the
+   * header is visual, the accessible name is not.
    */
   protected readonly windowedSections = computed<WindowedSection[]>(() => {
     const { startIndex, endIndex } = this.windowResult();
@@ -333,9 +310,8 @@ export class MemberListComponent {
       const lastRow = cursor + section.rows.length;
       cursor = lastRow + 1;
       // `headerIndex`, not `firstRow`, on the right: the header is a row in the flat index
-      // and `computeWindow` has already counted its height as rendered. Testing the first
-      // MEMBER instead dropped a section whose header was the window's last index, leaving
-      // the rendered content HEADER_PX shorter than the spacers assume.
+      // and `computeWindow` already counted its height. Testing the first MEMBER would drop
+      // a section whose header is the window's last index, leaving content HEADER_PX short.
       if (lastRow < startIndex || headerIndex > endIndex) {
         continue; // entirely outside the window — the spacers stand in for it
       }
@@ -353,12 +329,11 @@ export class MemberListComponent {
   });
 
   constructor() {
-    // Closed or replaced after a press or key inside it, the roster would otherwise stay in
-    // memory, detached, as the CDK's last input target until the next one (#1361).
+    // Closed after a press or key inside it, the roster would otherwise stay in memory,
+    // detached, as the CDK's last input target until the next one.
     releaseInputTargetOnDestroy();
-    // The viewport height is an input to the window, so it has to be watched rather than
-    // read once: the members panel shares the right-hand slot with threads and search, and
-    // it is resized by the split-pane drag as well as by the browser window.
+    // The viewport height is an input to the window, so watch it: the panel shares the
+    // right-hand slot and is resized by the split-pane drag as well as the window.
     const host = this.scrollHost;
     if (typeof ResizeObserver !== 'undefined') {
       const observer = new ResizeObserver(([entry]) =>
@@ -381,12 +356,9 @@ export class MemberListComponent {
   }
 
   /**
-   * Take the filter's new value and go back to the top of the results.
-   *
-   * The reset is the point. Without it, a reader scrolled deep into a long roster who
-   * types a filter has the browser clamp `scrollTop` to the new, much shorter maximum —
-   * landing them at the END of the matches with nothing to say there are more above. The
-   * timeline's windowed list resets the same way when its row set is replaced.
+   * Take the filter's new value and go back to the top of the results. Without the reset
+   * the browser clamps `scrollTop` to the shorter maximum, landing the reader at the END of
+   * the matches. The timeline's windowed list resets the same way.
    */
   protected onQuery(value: string): void {
     this.query.set(value);

@@ -6,13 +6,9 @@ import { type MatrixLinkClickTarget } from '../matrix-link/matrix-link.directive
 
 /**
  * Presents {@link EditHistoryComponent} for a message and resolves a permalink the reader
- * followed out of it (or null), which the host then routes — mirroring
- * the in-room search panel, which announces the event to jump to.
- *
- * Named for the dialog it opens, not the data it shows: the fetching
- * `EditHistoryService` lives in `@trinity/data-access/timeline`.
- *
- * A re-entrancy guard makes a repeat trigger a no-op rather than stacking dialogs.
+ * followed out of it (or null), which the host then routes, mirroring the in-room search
+ * panel. A repeat trigger is a no-op.
+ * The fetching `EditHistoryService` lives in `@trinity/data-access/timeline`.
  */
 @Injectable({ providedIn: 'root' })
 export class EditHistoryDialogService {

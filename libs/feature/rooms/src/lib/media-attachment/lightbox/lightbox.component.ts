@@ -14,18 +14,13 @@ import { MediaSaveService } from '../media-save.service';
 /**
  * A full-resolution image, filling the viewport over a dark backdrop.
  *
- * Opened through {@link TrnSurfaceService} rather than rendered inline in the timeline row
- * that owns the attachment, which is what the row used to do. That version worked, and every
- * part of it that worked was hand-rolled: a `position: fixed` element at `z-index: 1000`, a
- * `tabindex="-1"` host focused by an effect, an Escape binding, and a remembered element to
- * hand focus back to. All four are the CDK dialog's job, and the CDK's versions are better —
- * a real focus trap rather than one focused element, the page behind it inert, and an overlay
- * at the top of the stacking order rather than one living inside a row whose ancestors are
- * free to clip it or open a stacking context around it.
+ * Opened through {@link TrnSurfaceService}, not rendered inline in the timeline row, so it
+ * gets the CDK dialog's focus trap, inert page behind it and top-of-stack overlay that a
+ * row whose ancestors may clip it or open a stacking context cannot give.
  *
- * The viewer fills the dialog pane and closes on any click, which is what `zoom-out` has
- * always promised. Its padded surround is therefore the usable backdrop; CDK's own backdrop
- * sits physically behind the full-viewport pane and still owns modal isolation.
+ * The viewer fills the dialog pane and closes on any click (`zoom-out`). Its padded
+ * surround is therefore the usable backdrop; CDK's own backdrop sits behind the
+ * full-viewport pane and still owns modal isolation.
  */
 @Component({
   selector: 'trn-lightbox',
@@ -55,8 +50,8 @@ export class LightboxComponent {
   /** Save without letting the click reach the host, which closes the viewer on any click. */
   protected download(event: Event): void {
     event.stopPropagation();
-    // Kept enabled (aria-disabled) while busy so keyboard focus stays put and a tap still
-    // stops here instead of falling through to the close-on-click host.
+    // Kept enabled (aria-disabled) while busy so focus stays put and a tap does not fall
+    // through to the close-on-click host.
     if (!this.busy()) this.mediaSave.save(this.media());
   }
 

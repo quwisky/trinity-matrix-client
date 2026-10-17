@@ -1,8 +1,8 @@
 @use '../styles/mixins' as *;
 
 @layer components {
-  // The header sits above the scroll host, not inside it: the windowing offsets are measured
-  // from the host's own scrollTop, so a header that scrolled with the rows would skew them.
+  // The header sits above the scroll host: windowing offsets are measured from the host's
+  // own scrollTop, so a header that scrolled with the rows would skew them.
   :host {
     display: flex;
     flex-direction: column;
@@ -20,14 +20,13 @@
     width: 100%;
     padding: 16px var(--trinity-density-shell-padding-inline);
 
-    // Windowing changes the rendered height on every scroll step, and the browser's scroll
-    // anchoring treats that as content shifting under the reader and compensates — which
-    // moves the scroll position, which moves the window again. The timeline's windowed
-    // scroller turns it off for exactly this reason.
+    // Windowing changes the rendered height on every scroll step; scroll anchoring would
+    // compensate, moving the scroll position and so the window again. The timeline's
+    // windowed scroller turns it off for the same reason.
     overflow-anchor: none;
 
-    // The avatar presence dot rings itself in the surrounding surface so it reads as an
-    // overlay — tell it what this panel's surface actually is (else it halos).
+    // The presence dot rings itself in the surrounding surface; tell it this panel's
+    // surface, else it halos.
     --trn-presence-ring: var(--trinity-surface-panel);
   }
 
@@ -47,22 +46,20 @@
     --trn-presence-ring: var(--trinity-surface-panel);
   }
 
-  // The spacers standing in for the rows outside the window. `.members` is a FLEX column, so
-  // a spacer with only an inline `height` has `flex-shrink: 1` and an automatic minimum size
-  // of zero — the browser collapses both of them to nothing to fit the rendered rows, and the
+  // Spacers for the rows outside the window. `.members` is a FLEX column, so a spacer with
+  // only an inline `height` shrinks to nothing (`flex-shrink: 1`, minimum size zero) and the
   // scrollbar then measures only the slice. The timeline's windowed list guards the same way.
   .members__pad {
     flex: 0 0 auto;
   }
 
-  // The section blocks must not be squeezed either: with the spacers pinned, any remaining
-  // negative free space would come out of these instead.
+  // Section blocks must not be squeezed either: with the spacers pinned, negative free
+  // space would come out of these.
   .members__section {
     flex: 0 0 auto;
   }
 
-  // The filter sits above the sections and does not scroll away with them: it is short, and
-  // a filter you have to scroll back up to reach is one people stop using.
+  // The filter stays above the sections and does not scroll away with them.
   .members__filter {
     position: sticky;
     top: 0;
@@ -77,13 +74,11 @@
     @include category-label;
   }
 
-  // A role group ("Admin — 2", "Moderator — 1", …). The space between groups lives in the
-  // HEADER's own padding rather than in an adjacent-sibling margin, and applies to every
-  // header including the first. That is a windowing requirement, not a taste: an
+  // A role group ("Admin — 2"). The space between groups lives in the HEADER's own padding
+  // (every header, including the first), not in a sibling margin: a
   // `.members__section + .members__section` margin exists only between two RENDERED
-  // siblings, so it appeared and disappeared as sections entered and left the window, and
-  // no per-row height model could account for it. Uniform padding is one number the model
-  // can name — see HEADER_PX.
+  // siblings and would come and go as sections enter the window, which no per-row height
+  // model can account for. See HEADER_PX.
   .members__section-label {
     box-sizing: border-box;
     height: 34px;
@@ -93,14 +88,12 @@
     padding: 12px var(--trinity-density-shell-padding-inline) 4px;
   }
 
-  // Reads "ADMINS — 1": the casing is presentation, so the text stays sentence case. Size,
-  // weight and muted colour come from the `category-label` mixin.
+  // Reads "ADMINS — 1": the casing is presentation, so the text stays sentence case.
   .member-group__label {
     text-transform: uppercase;
   }
 
-  // The role icon inherits the label's muted colour (currentColor) and sits a touch
-  // larger than the 11px text so it reads as an icon, not a glyph.
+  // The role icon inherits the label's colour and sits larger than the 11px text.
   .members__section-icon {
     flex: 0 0 auto;
     font-size: 13px;
@@ -112,10 +105,10 @@
     padding: 0;
   }
 
-  // Colour, hover, pressed and focus come from the `trnBtn` recipe, whose own height (32px,
-  // or a 44px minimum on touch) and centring out-rank a component-layer rule. The template
-  // therefore binds the height (from ROW_PX) and the density-driven inline padding on the
-  // element; the 44px here is what the layout specs pin. The name takes the free width so it reads from the start despite the centring.
+  // The `trnBtn` recipe's own height (32px, or a 44px minimum on touch) and centring
+  // out-rank a component-layer rule, so the template binds the height (from ROW_PX) and the
+  // density-driven inline padding on the element; the 44px here is what the layout specs
+  // pin. The name takes the free width so it reads from the start despite the centring.
   .member {
     box-sizing: border-box;
     height: 44px;
@@ -123,9 +116,8 @@
     text-align: left;
   }
 
-  /* Offline members are de-emphasised (Discord-style): fade the avatar and mute the name
-   to a designed muted token (rather than a heavy row opacity that drops the name below
-   AA contrast). Hover restores both. */
+  /* Offline members: fade the avatar and mute the name to a token (a row opacity would drop
+   the name below AA contrast). Hover restores both. */
   .member--offline {
     trn-avatar {
       opacity: 0.55;
@@ -156,8 +148,8 @@
     color: var(--trinity-text);
   }
 
-  // Two classes so the tint out-ranks `.member--offline .member__name`: a muted admin is
-  // still an admin, and the faded avatar already carries the offline cue.
+  // Two classes so the tint out-ranks `.member--offline .member__name`; the faded avatar
+  // already carries the offline cue.
   .member .member__name--admin {
     color: var(--trinity-danger);
   }

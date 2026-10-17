@@ -1,6 +1,6 @@
 @layer components {
-  // The scrollable replies area matches the chat surface (was ion-content's
-  // --background); the card header/footer keep the panel background.
+  // The scrollable replies area matches the chat surface; the card header/footer keep the
+  // panel background.
   .thread {
     padding: var(--trinity-space-5) var(--trinity-space-5)
       var(--trinity-space-3);
