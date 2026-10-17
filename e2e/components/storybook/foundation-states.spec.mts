@@ -7,6 +7,7 @@ import {
   type Srgb,
 } from '../../browser/support/contrast.mts';
 import { disabledContrast } from './catalog-accessibility.mts';
+import { expectSeparatedFocusRing } from './focus-ring-pixels.mts';
 import {
   type ResolvedThemeMode,
   type ThemeId,
@@ -123,8 +124,9 @@ async function expectPaintedRing(
 
 /**
  * #1217: a solid action on an attention surface inverts, so its fill stands out from the
- * surface at rest and on hover, its label stays readable on both, and its focus ring sits
- * on a gap in the surface colour. Returns the resolved attention hover fill.
+ * surface at rest and on hover, its label stays readable on both, and its focus ring stands
+ * apart from it across a transparent gap that shows the surface. Returns the resolved
+ * attention hover fill.
  */
 async function expectAttentionAction(
   page: Page,
@@ -173,31 +175,25 @@ async function expectAttentionAction(
   );
   await page.mouse.move(0, 0);
 
+  const onAttentionRing = await resolveTokenSrgb(
+    page,
+    'attention-action',
+    '--trinity-focus-ring-on-attention',
+  );
   await action.focus();
   await expect(action).toBeFocused();
-  const attentionRing = await expectPaintedRing(
-    action,
-    await resolveTokenSrgb(
-      page,
-      'attention-action',
-      '--trinity-focus-ring-on-attention',
-    ),
-  );
+  const attentionRing = await expectPaintedRing(action, onAttentionRing);
   expect(contrastRatio(attentionRing, attentionSurface)).toBeGreaterThanOrEqual(
     3,
   );
-  // The ring shares the inverted fill's colour, so a gap in the surface colour is what
-  // keeps it distinct from the button.
-  const ringOffset = await action.evaluate((element) => {
-    const style = getComputedStyle(element);
-    return {
-      colour: style.getPropertyValue('--tw-ring-offset-color').trim(),
-      width: style.getPropertyValue('--tw-ring-offset-width').trim(),
-    };
-  });
-  expect(ringOffset.width).not.toMatch(/^0(px)?$/);
-  expect(ringOffset.colour).not.toBe('');
   await action.evaluate((element: HTMLElement) => element.blur());
+  // The ring shares the inverted fill's colour, so a transparent gap that shows the surface
+  // is what keeps it distinct from the button.
+  const ratios = await expectSeparatedFocusRing(page, action, onAttentionRing);
+  test.info().annotations.push({
+    type: 'contrast',
+    description: `attention action ring ${JSON.stringify(ratios)}`,
+  });
   return hoverSurface;
 }
 
@@ -1307,7 +1303,7 @@ test.describe('semantic design foundations', () => {
     );
   });
 
-  test('an unavailable solid button keeps the disabled roles on hover and its focus border', async ({
+  test('an unavailable solid button keeps the disabled roles on hover and its focus ring', async ({
     page,
   }) => {
     await openStory(page, 'components-control-recipe-matrix--complete-catalog');
@@ -1328,16 +1324,24 @@ test.describe('semantic design foundations', () => {
       await action.evaluate((element) => getComputedStyle(element).opacity),
     ).toBe('1');
 
+    // A solid primary button's focus ring stands apart from its edge, so the disabled border
+    // must not replace it.
+    await expectSeparatedFocusRing(
+      page,
+      action,
+      await resolveTokenSrgb(page, testId, '--trinity-focus-ring'),
+    );
+
+    // Its fill is clipped to the padding box, so the border keeps its colour while focused:
+    // a transparent one would shrink the fill by a pixel.
     await action.focus();
     await expect(action).toBeFocused();
-    const focusRing = await resolveTokenSrgb(
-      page,
-      testId,
-      '--trinity-focus-ring',
+    expect(
+      await action.evaluate((element) => element.matches(':focus-visible')),
+    ).toBe(true);
+    expect(await computedColour(action, 'border-top-color')).toEqual(
+      await resolveTokenSrgb(page, testId, '--trinity-disabled-border'),
     );
-    await expect
-      .poll(() => computedColour(action, 'border-top-color'))
-      .toEqual(focusRing);
   });
 
   test('a disabled solid secondary or outline button keeps the shared fade', async ({

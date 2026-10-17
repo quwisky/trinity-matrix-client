@@ -9,9 +9,12 @@ import {
   expectStorybookThemeRoot,
   storybookThemeGlobals,
 } from './theme-preview.mts';
+import { expectSeparatedFocusRing } from './focus-ring-pixels.mts';
 
 const STORY =
   '/iframe.html?id=components-button--canonical-states&viewMode=story';
+const FOCUS_STORY =
+  '/iframe.html?id=components-button--solid-primary-focus&viewMode=story';
 
 const recipeStyle = (control: Locator) =>
   control.evaluate((element) => {
@@ -100,3 +103,65 @@ for (const preview of STORYBOOK_THEME_PREVIEWS.filter(
       .toEqual(secondary);
   });
 }
+
+for (const preview of STORYBOOK_THEME_PREVIEWS) {
+  test(`${preview.theme.id} ${preview.mode.id} solid primary focus ring stands apart from its fill on every surface`, async ({
+    page,
+  }) => {
+    await page.goto(`${FOCUS_STORY}&globals=${storybookThemeGlobals(preview)}`);
+    await expectStorybookThemeRoot(page, preview);
+
+    for (const surface of ['canvas', 'card', 'rail']) {
+      const testId = `focus-primary-${surface}`;
+      const button = page.getByTestId(testId);
+      await expect(button).toBeVisible();
+      const ratios = await expectSeparatedFocusRing(
+        page,
+        button,
+        await resolveTokenSrgb(page, testId, '--trinity-focus-ring'),
+      );
+      test.info().annotations.push({
+        type: 'contrast',
+        description: `${preview.theme.id} ${preview.mode.id} ${surface} ${JSON.stringify(ratios)}`,
+      });
+    }
+  });
+}
+
+test.describe('on a high-density display', () => {
+  test.use({ deviceScaleFactor: 2 });
+
+  test('solid primary focus ring is sampled in CSS pixels', async ({
+    page,
+  }) => {
+    await page.goto(FOCUS_STORY);
+    for (const surface of ['canvas', 'card']) {
+      const testId = `focus-primary-${surface}`;
+      await expectSeparatedFocusRing(
+        page,
+        page.getByTestId(testId),
+        await resolveTokenSrgb(page, testId, '--trinity-focus-ring'),
+      );
+    }
+  });
+});
+
+test('a focused solid primary keeps a visible outline under forced colours', async ({
+  page,
+}) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.goto(FOCUS_STORY);
+  const button = page.getByTestId('focus-primary-canvas');
+  await page.keyboard.press('Tab');
+  await button.focus();
+  await expect(button).toBeFocused();
+  const outline = await button.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      style: style.outlineStyle,
+      width: Number.parseFloat(style.outlineWidth),
+    };
+  });
+  expect(outline.style).not.toBe('none');
+  expect(outline.width).toBeGreaterThanOrEqual(2);
+});

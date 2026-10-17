@@ -126,3 +126,44 @@ export const CanonicalStates: Story = {
     `,
   }),
 };
+
+/** A solid primary action on the page canvas, a card and the rail, for focus-ring checks. */
+export const SolidPrimaryFocus: Story = {
+  render: () => ({
+    template: `
+      <div class="grid gap-4 p-4">
+        <div data-testid="focus-surface-canvas" class="flex items-center gap-3 p-4">
+          <button data-testid="focus-primary-canvas" type="button" trnBtn variant="primary" size="md">
+            Unlock
+          </button>
+        </div>
+        <div
+          data-testid="focus-surface-card"
+          class="flex items-center gap-3 p-4"
+          style="background: var(--trinity-surface-card)"
+        >
+          <button data-testid="focus-primary-card" type="button" trnBtn variant="primary" size="md">
+            Save changes
+          </button>
+        </div>
+        <div
+          data-testid="focus-surface-rail"
+          class="flex items-center gap-3 p-4"
+          style="background: var(--trinity-rail)"
+        >
+          <button
+            data-testid="focus-primary-rail"
+            type="button"
+            trnBtn
+            variant="primary"
+            shape="icon"
+            size="md"
+            aria-label="Search rooms"
+          >
+            <trn-icon name="search" motion="pop" />
+          </button>
+        </div>
+      </div>
+    `,
+  }),
+};
