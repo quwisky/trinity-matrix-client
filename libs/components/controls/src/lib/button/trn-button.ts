@@ -19,20 +19,15 @@ import {
 } from './trn-button-recipe';
 
 /**
- * Trinity's public button directive.
- *
- * Feature code owns the semantic element and asks for Trinity's button treatment with
- * `trnBtn`. Semantic variant, ordinal size, presentation and shape are independent inputs;
- * native button semantics (including `disabled`) remain owned by the host element. The
- * Helm directive remains behind this boundary so a substrate change does not touch feature
- * templates.
+ * Trinity's public button directive. Feature code owns the semantic element; variant, size,
+ * presentation and shape are independent inputs, and native button semantics (including
+ * `disabled`) stay with the host element. Helm stays behind this boundary.
  */
 @Directive({
   selector: 'button[trnBtn], a[trnBtn]',
   exportAs: 'trnBtn',
-  // HlmButton still owns the Brain behaviour and slot contract, but its default recipe
-  // must not compete with the Trinity recipe applied below. Null keeps only Helm's shared
-  // base classes; Trinity supplies the mapped variant and size through the same CVA table.
+  // Null keeps only Helm's shared base classes so Helm's default recipe doesn't compete with
+  // the Trinity recipe; Trinity supplies the mapped variant and size through the same CVA table.
   providers: [provideBrnButtonConfig({ variant: null, size: null })],
   host: {
     '[attr.data-trn-icon-button]': "iconButton() ? '' : null",
@@ -50,10 +45,7 @@ import {
   ],
 })
 export class TrnButton {
-  /**
-   * Icon shape opts into Trinity's shared icon-button interaction contract.
-   *
-   */
+  /** Icon shape opts into Trinity's shared icon-button interaction contract. */
   protected readonly iconButton = computed(() => this.shape() === 'icon');
 
   readonly variant = input<TrnButtonVariant>('primary');
@@ -77,11 +69,10 @@ export class TrnButton {
 /**
  * Keeps an unavailable action discoverable without letting it activate.
  *
- * Native disabled buttons cannot receive focus or pointer events, so their explanatory
- * tooltip is unreachable. This directive uses the ARIA disabled contract instead, exposes
- * the reason to assistive technology, and blocks pointer plus Enter/Space activation in the
- * capture phase. Arrow keys remain untouched so unavailable dropdown items stay in the
- * menu's normal roving-focus order.
+ * Native disabled buttons cannot receive focus or pointer events, so their tooltip is
+ * unreachable. This uses `aria-disabled` and exposes the reason to assistive technology. It
+ * blocks pointer plus Enter/Space activation in the capture phase; arrow keys stay untouched
+ * so unavailable dropdown items remain in the menu's roving-focus order.
  */
 @Directive({
   selector: '[trnActionAllowed]',
@@ -174,10 +165,9 @@ export class TrnActionAvailability {
 }
 
 /**
- * Opts a purpose-built icon control into Trinity's shared interaction contract.
- *
- * Use this only when `trnBtn` would replace meaningful component-owned geometry, such as a
- * circular avatar action, server-rail pill, reaction chip or compact message toolbar control.
+ * Opts a purpose-built icon control into Trinity's shared interaction contract. Use it only
+ * when `trnBtn` would replace component-owned geometry, such as an avatar action, server-rail
+ * pill, reaction chip or compact message toolbar control.
  */
 @Directive({
   selector: 'button[trnIconButton], a[trnIconButton]',

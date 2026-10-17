@@ -21,13 +21,12 @@ const base =
 /**
  * A field on an attention surface (an accent `trn-banner`, `trn-page-header` or
  * `trnOverlaySurface`, which mark themselves `data-trn-surface="attention"`) sits on the
- * accent, where the neutral value, placeholder and border colours fall near 1:1 (#1241). There
- * it switches to the attention control roles, and a disabled field stays transparent instead
- * of nesting a neutral fill. Its focus ring already follows the surface's on-attention ring.
- * An invalid field's border and ring take the attention danger role (#1244), which keeps 3:1
- * against the accent where the neutral danger falls near 1.4:1; the 2px ring is the cue that
- * does not rely on hue. Focused, the ring turns to the surface's focus ring and the danger
- * border stays; without that override the danger ring out-ranks the focus ring.
+ * accent, where the neutral value, placeholder and border colours fall near 1:1. There it
+ * switches to the attention control roles, and a disabled field stays transparent instead of
+ * nesting a neutral fill. Its focus ring already follows the surface's on-attention ring. An invalid field's border and ring take the attention danger role,
+ * which keeps 3:1 against the accent where the neutral danger falls near 1.4:1; the 2px ring
+ * is the cue that does not rely on hue. Focused, the ring turns to the surface's focus ring
+ * and the danger border stays; without that override the danger ring out-ranks the focus ring.
  */
 const onAttention =
   'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:text-[var(--trinity-state-attention-control-foreground)] in-data-[trn-surface=attention]:placeholder:text-[var(--trinity-state-attention-control-placeholder)] in-data-[trn-surface=attention]:disabled:bg-transparent in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:border-[var(--trinity-state-attention-control-danger)] in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-state-attention-control-danger)] in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)]';

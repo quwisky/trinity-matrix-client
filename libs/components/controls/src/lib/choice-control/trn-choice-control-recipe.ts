@@ -3,7 +3,7 @@ import { hlm } from '@trinity/helm/utils';
 /**
  * A choice control on an attention surface (an accent `trn-banner`, `trn-page-header` or
  * `trnOverlaySurface`, which mark themselves `data-trn-surface="attention"`) sits on the
- * accent, where its neutral border falls near 1:1 and its accent fill vanishes (#1244). There
+ * accent, where its neutral border falls near 1:1 and its accent fill vanishes. There
  * the resting border and unchecked track take the attention control border, and the checked
  * fill inverts like a solid action: the attention action surface with the attention action
  * foreground for the check mark and thumb. The focus ring shares the checked fill's colour,

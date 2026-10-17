@@ -34,13 +34,10 @@ const FIXED_PER_LINE = 9;
 const MAX_VENDOR_PER_LINE = 16;
 
 /**
- * The vendor `emoji-mart` picker, and nothing else.
- *
- * Internal to {@link TrnEmojiPickerComponent}, which loads it through `@defer` so the
- * vendor's chunk (about 1 MB) stays out of the initial bundle. It must stay unreachable
- * from the library barrel and from any static import, or the bundler pulls it back in.
- * Theming, ARIA and the pinned vendor inputs are explained on the wrapper and in the
- * template.
+ * The vendor `emoji-mart` picker, internal to {@link TrnEmojiPickerComponent}, which loads it
+ * through `@defer` to keep the vendor chunk (about 1 MB) out of the initial bundle. It must
+ * stay unreachable from the library barrel and from any static import, or the bundler pulls
+ * it back in.
  */
 @Component({
   selector: 'trn-emoji-picker-panel',
@@ -58,10 +55,7 @@ export class TrnEmojiPickerPanelComponent {
   private readonly rowWidth = signal<number | null>(null);
   /** The host had no width to measure when it rendered (it has no layout yet). */
   private readonly unmeasured = signal(false);
-  /**
-   * A touch screen needs 44px cells; a mouse keeps the vendor's own. Read once, when the
-   * picker is created: a pointer change while it lives keeps the cells it started with.
-   */
+  /** A touch screen needs 44px cells; a mouse keeps the vendor's own. Read once, at creation. */
   private readonly coarsePointer =
     globalThis.matchMedia?.('(pointer: coarse)').matches ?? false;
 
@@ -143,10 +137,8 @@ export class TrnEmojiPickerPanelComponent {
     });
 
     const destroyRef = inject(DestroyRef);
-    // The vendor's rows are the host's width, less its scrollbar (it takes the host's width
-    // and, filling, has no side insets). The host's width never depends on the columns, so a
-    // new column count cannot feed back into the measurement. Observed while the picker is
-    // open, so a rotation or a resized window recomputes the columns.
+    // The vendor's rows are the host's width less its scrollbar. The host's width never
+    // depends on the columns, so a new column count cannot feed back into the measurement.
     afterNextRender(() => {
       if (!this.fill()) {
         return;
@@ -158,9 +150,8 @@ export class TrnEmojiPickerPanelComponent {
           this.rowWidth.set(width - gutter);
         }
       };
-      // Measured once now, so the grid is created with its line. A host with no width yet
-      // shows the vendor's default line rather than nothing, and adopts the measured one
-      // when the observer reports a width.
+      // Measured now so the grid is created with its line; a host with no width yet shows
+      // the vendor's default line and adopts the measured one when the observer reports.
       const initial = host.getBoundingClientRect().width;
       if (initial > 0) {
         measure(initial);
@@ -181,29 +172,21 @@ export class TrnEmojiPickerPanelComponent {
     });
   }
 
-  /**
-   * Trinity's accent, handed to the vendor as its own `color`.
-   *
-   * A token rather than a literal, and passed rather than overridden: the vendor writes
-   * this value into inline styles, which a stylesheet cannot outrank without `!important`.
-   */
+  /** Trinity's accent, passed as the vendor's `color` because it lands in inline styles. */
   protected readonly accent = 'var(--trinity-accent)';
 
   /**
    * Shown again without being created again: bring the vendor up to date.
    *
-   * Its frequently-used row is read from storage only when the row is created, and drawn from
-   * a second list it derives then too (`emojisToDisplay`), so both are refreshed here. The
-   * vendor's own `enableFrequentEmojiSort` refreshes only the first, and only on its own
-   * picks, so it would neither draw the change nor see a pick made in another picker. The
-   * row is drawn at once so the vendor can measure it: it caches where each category starts
-   * (`updateCategoriesSize`), and a row that grew would otherwise shift the category the
-   * anchor bar marks while scrolling. The grid also came back scrolled to the top, while the
-   * anchor bar still marks the category it was scrolled to; `handleScroll` reads the position
-   * again.
+   * Its frequently-used row is read from storage only when created, and drawn from a second
+   * list derived then too (`emojisToDisplay`), so both are refreshed. The vendor's
+   * `enableFrequentEmojiSort` refreshes only the first, and only on its own picks. The row is
+   * drawn at once so the vendor can measure it (`updateCategoriesSize` caches where each
+   * category starts); `handleScroll` re-reads the position because the grid comes back
+   * scrolled to the top while the anchor bar still marks the old category.
    *
-   * These are the vendor's public members, but not a documented API; the panel's spec pins
-   * them against the installed version.
+   * These vendor members are public but not documented API; the panel's spec pins them
+   * against the installed version.
    */
   private refreshVendor(): void {
     const picker = this.vendor();

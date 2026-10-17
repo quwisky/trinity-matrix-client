@@ -36,44 +36,18 @@ export interface TrnSelectOption<T> {
 }
 
 /**
- * Trinity's select.
- *
- * **This is the collapse the whole wrapper layer exists for.** The kit needs five cooperating
- * elements and a structural directive, and every one of the seven call sites wrote all of
- * them out:
- *
- * ```html
- * <hlm-select [value] [itemToString] (valueChange)>
- *   <hlm-select-trigger class="w-full">
- *     <hlm-select-value placeholder="Select a text size" />
- *   </hlm-select-trigger>
- *   <hlm-select-content *hlmSelectPortal>
- *     <hlm-select-item [value]="…">…</hlm-select-item>
- *   </hlm-select-content>
- * </hlm-select>
- * ```
- *
- * Nothing about that shape is Trinity's; it is the vendor's, repeated. No other library
- * composes a select that way, so it is exactly what a swap would have to rewrite at every
- * site. Now it is `[options]`.
- *
- * **`itemToString` is gone, not renamed.** All four call sites that bound it passed the same
- * function — find the option with this id, return its label — which a component that already
- * holds the options can do itself. Four hand-written lookups deleted rather than moved.
- *
- * **The trigger fills the host by default.** Every call site used to pass the same
- * `triggerClass="w-full"` escape because the kit's trigger is `w-fit`. That repeated inner
- * appearance is now owned here; consumer `class` remains available for surrounding layout.
+ * Trinity's select, driven by `[options]` so call sites don't compose the kit's five elements
+ * and structural directive. The trigger fills the host (the kit's is `w-fit`); a consumer
+ * `class` remains available for surrounding layout.
  *
  * `aria-labelledby` is routed to the actual combobox button through Trinity's registered
- * `HlmSelectTrigger` divergence. The host keeps the consumer's `data-testid`, but it is
- * deliberately stripped of the naming attribute because it carries no interactive role.
+ * `HlmSelectTrigger` divergence. The host keeps the consumer's `data-testid` but is stripped
+ * of the naming attribute because it carries no interactive role.
  */
 @Component({
   selector: 'trn-select',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  // The host owns its outer display while the private trigger recipe owns the repeated
-  // full-width inner class. Consumer classes remain available for surrounding layout.
+  // The host owns its outer display; the private trigger recipe owns the full-width inner class.
   host: {
     class: 'block',
     '[attr.aria-labelledby]': 'null',
@@ -139,23 +113,15 @@ export class TrnSelectComponent<T> implements FormValueControl<T | null> {
   readonly options = input.required<readonly TrnSelectOption<T>[]>();
 
   /**
-   * A `model`, not an `input`, and that is what makes `[formField]` work on this element.
-   *
-   * Signal Forms' `FormValueControl` contract requires exactly one thing — a `model()` kept in
-   * sync with the bound field — and satisfying it is the difference between a select the
-   * schema can drive and one every call site has to bridge by hand. The alternative was
-   * `[value]` + `(valueChange)` at each site plus a hand-wired `[disabled]`, which is also
-   * NG8022 on any control still carrying `[formField]`.
-   *
-   * Existing call sites are unaffected: a model publishes the same `[value]` input and the
-   * same `valueChange` output an `input` + `output` pair did.
+   * A `model`, not an `input`: Signal Forms' `FormValueControl` contract requires a `model()`
+   * kept in sync with the bound field, which is what makes `[formField]` work here. It
+   * publishes the same `[value]` input and `valueChange` output as an `input` + `output` pair.
    */
   readonly value = model<T | null>(null);
 
   /**
    * Taken from the schema when bound through `[formField]`, so `disabled(path, { when })`
-   * reaches the control. Part of the same contract; without it a gated field would render
-   * enabled and the gate would silently do nothing.
+   * reaches the control; without it a gated field would render enabled.
    */
   readonly disabled = input<boolean>(false);
 
@@ -173,22 +139,18 @@ export class TrnSelectComponent<T> implements FormValueControl<T | null> {
   protected readonly triggerClass = trnSelectTriggerRecipe();
 
   /**
-   * What the trigger shows for the chosen value.
-   *
-   * A bound arrow rather than a method so the reference stays stable across change
-   * detection — the kit takes it as an input, and a new function identity every pass would
-   * churn its own computed.
+   * What the trigger shows for the chosen value. A bound arrow, not a method: the kit takes it
+   * as an input, and a new function identity every pass would churn its computed.
    */
   protected readonly labelFor = (value: T): string =>
     this.options().find((option) => option.value === value)?.label ??
     String(value ?? '');
 
   /**
-   * The kit emits `T | null | undefined` — three states, because brain distinguishes "no
-   * value" from "not yet initialised". A chosen option is never either, so the empty cases are
-   * dropped here rather than pushed to every call site: `valueChange` still only ever fires
-   * with a real choice, exactly as it did when it was an explicit `output<T>`.
-   * Caught by the AOT build; `nx typecheck` does not check templates.
+   * The kit emits `T | null | undefined` because brain distinguishes "no value" from "not yet
+   * initialised". A chosen option is neither, so the empty cases are dropped here and
+   * `valueChange` only fires with a real choice. The AOT build checks this; `nx typecheck`
+   * does not check templates.
    */
   protected onValueChange(value: T | null | undefined): void {
     if (value !== null && value !== undefined) {

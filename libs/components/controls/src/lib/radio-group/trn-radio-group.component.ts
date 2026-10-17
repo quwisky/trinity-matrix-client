@@ -32,45 +32,24 @@ export interface TrnRadioOption<T> {
 }
 
 /**
- * Trinity's radio group.
+ * Trinity's radio group, driven by `[options]`.
  *
- * **The composition is collapsed, and the `<label>` comes with it.** All three call sites
- * wrote the same three levels by hand — a group, a `<label>` carrying the click target, the
- * text and the `data-testid`, and inside it a radio wrapping a mandatory indicator element:
- *
- * ```html
- * <hlm-radio-group [value] (valueChange)>
- *   <label class="flex cursor-pointer items-center gap-3 …" data-testid="mode-dark">
- *     <hlm-radio value="dark"><hlm-radio-indicator /></hlm-radio>
- *     Dark
- *   </label>
- * </hlm-radio-group>
- * ```
- *
- * That is four pieces of vendor structure at every call site, one of which — the indicator —
- * renders nothing at all if forgotten. Now it is `[options]`.
- *
- * **The label is rendered here rather than left to the caller, and that is load-bearing in
- * two ways.** It keeps the click target label-sized, which is what makes the text clickable
- * and what e2e drives (`getByTestId('mode-dark').click()` addresses the label, not the
- * radio). Native radio inputs now own checked, disabled, focus and keyboard semantics; the
+ * The `<label>` is rendered here, not by the caller: it keeps the click target label-sized
+ * (the text is clickable, and e2e drives `getByTestId('mode-dark').click()` on the label, not
+ * the radio). Native radio inputs own checked, disabled, focus and keyboard semantics; the
  * recipe owns only the visible indicator and option treatment.
  *
- * `aria-labelledby` is forwarded to the element that actually carries `role="radiogroup"`
- * and removed from this host, so the reference resolves against the thing it names rather
- * than sitting on an outer element with no role.
+ * `aria-labelledby` is forwarded to the element that carries `role="radiogroup"` and removed
+ * from this host, so the reference resolves against the thing it names.
  */
 @Component({
   selector: 'trn-radio-group',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  // Wrapping moved the caller's layout class onto THIS host, so this host has to be a block.
-  // The inner group is a grid, so a layout class moved onto this host has to keep block
-  // geometry. Without a display the host falls back to `inline`: the padding lands
-  // on an inline box whose block-level grid child ignores it, so the options lose their
-  // indent and the vertical padding spills into empty line boxes instead of spacing them.
-  // Measured in Chromium against the real class strings — first option x=16 -> x=0 and the
-  // section 20px taller. Storybook's real-browser control contract pins the host display;
-  // jsdom cannot evaluate named cascade layers or layout.
+  // The caller's layout class lands on THIS host, so it must be a block. Without a display
+  // the host is `inline`: padding lands on an inline box whose block-level grid child ignores
+  // it, so options lose their indent and vertical padding spills into empty line boxes.
+  // Storybook's real-browser control contract pins the host display; jsdom cannot evaluate
+  // named cascade layers or layout.
   styles: ['@layer components { :host { display: block; } }'],
   host: {
     // Routed to the inner group below; a duplicate here would name an element with no role.

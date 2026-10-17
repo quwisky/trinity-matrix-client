@@ -13,16 +13,9 @@ import type { TrnEmojiSuggestion } from './trn-emoji.model';
 const SUGGESTION_LIMIT = 8;
 
 /**
- * The emoji index, behind Trinity's own API.
- *
- * The picker element hides only four of the seven files that named the vendor; the other
- * three are the `:shortcode` autocomplete, which never touches the picker at all. Without
- * this facade the vendor ban could not land — which is why it exists alongside the
- * component rather than after it.
- *
- * The vendor and its emoji data (most of a megabyte) load on the first lookup rather than at
- * startup, so the shortcode autocomplete no longer pins them to the initial bundle. Until
- * they arrive, lookups answer empty and the signal read re-runs the caller when they land.
+ * The emoji index behind Trinity's own API, so the `:shortcode` autocomplete never names the
+ * vendor. The vendor and its emoji data (most of a megabyte) load on the first lookup, not at
+ * startup; until they arrive lookups answer empty and the signal read re-runs the caller.
  */
 @Injectable({ providedIn: 'root' })
 export class TrnEmojiIndex {
@@ -72,10 +65,8 @@ export class TrnEmojiIndex {
   }
 
   /**
-   * The character for a shortcode, or null when it names nothing.
-   *
-   * Null rather than the input echoed back: the caller converts `:shrug:` in place, and a
-   * silent passthrough would leave an unresolved shortcode looking like a resolved one.
+   * The character for a shortcode, or null when it names nothing. Null rather than the input
+   * echoed back, so an unresolved shortcode never looks resolved.
    */
   nativeFor(shortcode: string): string | null {
     const vendor = this.vendor();
