@@ -334,7 +334,6 @@ describe('AccountDeletionLauncherAdapter', () => {
 
     test.late.next(deleted(cleanup([BOB])));
 
-    // Open surfaces may belong to the deleted account, so they go even with work in them.
     expect(test.surfaces.closeAll).toHaveBeenCalledOnce();
     expect(test.router.navigateByUrl).toHaveBeenCalledWith('/', {
       replaceUrl: true,
