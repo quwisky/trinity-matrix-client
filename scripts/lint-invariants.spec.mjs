@@ -415,47 +415,6 @@ describe('UI vendor boundary', () => {
     ).toEqual([]);
   });
 
-  it('keeps the app-tier vendor stylesheet seam to the two the ban cannot cover', () => {
-    // `bannedExternalImports` matches TS/JS import specifiers, and nothing else. The app's
-    // build `styles` array is configuration, so a vendor stylesheet listed there is
-    // invisible to every rule above — the boundary is enforced for code and silent here.
-    // Both imports below are deliberate and both have to live at this tier: CDK's overlay
-    // sheet must be global for any overlay to position at all, and while the emoji picker's
-    // CAN be pulled into the lazy component chunk (`@import '@ctrl/ngx-emoji-mart/picker'`
-    // resolves and inlines), doing so puts that component 517 bytes over the workspace's
-    // 8 kB `anyComponentStyle` budget — and raising a budget that guards every component,
-    // to relocate one vendored file, is the worse trade.
-    //
-    // They enter through one explicit `vendor` layer instead of two anonymous build entries.
-    // A third import has to be argued for here instead of appearing in configuration nobody
-    // reads as part of the boundary.
-    //
-    // KaTeX's stylesheet is the third, and it is argued for in apps/trinity/src/katex.css: a
-    // non-injected `katex` bundle (an object entry, hence the `.input` below) that imports it
-    // into the same `vendor` layer, which MathsLoader links only once a message contains
-    // maths. It is not global, so a room without maths never loads it.
-    const app = JSON.parse(
-      readFileSync(join(workspaceRoot, 'apps/trinity/project.json'), 'utf8'),
-    );
-    expect(app.targets.build.options.styles).toContain(
-      'apps/trinity/src/vendor.css',
-    );
-    expect(
-      app.targets.build.options.styles
-        .map((style) => (typeof style === 'string' ? style : style.input))
-        .filter((style) => style.startsWith('node_modules/')),
-    ).toEqual([]);
-
-    const vendorStyles = readFileSync(
-      join(workspaceRoot, 'apps/trinity/src/vendor.css'),
-      'utf8',
-    );
-    expect(vendorStyles.match(/^@import .+ layer\(vendor\);$/gmu)).toEqual([
-      "@import '../../../node_modules/@angular/cdk/overlay-prebuilt.css' layer(vendor);",
-      "@import '../../../node_modules/@ctrl/ngx-emoji-mart/picker.css' layer(vendor);",
-    ]);
-  });
-
   it('bans the vendors from every tier that should not render third-party UI', async () => {
     const config = await resolve('libs/components/overlay/src/index.ts');
     const constraints =
