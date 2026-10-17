@@ -382,7 +382,9 @@ describe('SettingsPage (shell)', () => {
     const { harness } = await harnessAt('/settings', [
       {
         provide: RELEASE_NOTES,
-        useValue: [{ version: '1.0.0', date: '2026-01-01', sections: {} }],
+        useValue: [
+          { version: '1.0.0', date: '2026-01-01', sections: { added: ['x'] } },
+        ],
       },
       { provide: WHATS_NEW_LAUNCHER, useValue: { showAll } },
     ]);

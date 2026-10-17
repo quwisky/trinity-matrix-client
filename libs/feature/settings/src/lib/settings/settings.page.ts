@@ -26,7 +26,7 @@ import {
 } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import {
-  RELEASE_NOTES,
+  WhatsNewService,
   WHATS_NEW_LAUNCHER,
 } from '@trinity/data-access/whats-new';
 import { BUILD_INFO } from '@trinity/platform-native';
@@ -69,7 +69,7 @@ export class SettingsPage {
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
   private readonly build = inject(BUILD_INFO);
-  private readonly notes = inject(RELEASE_NOTES);
+  private readonly notes = inject(WhatsNewService).all;
   private readonly whatsNew = inject(WHATS_NEW_LAUNCHER, { optional: true });
   private readonly document = inject(DOCUMENT);
   private readonly injector = inject(Injector);

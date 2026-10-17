@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **77 Nx projects** and **305 dependencies**. No project cycles detected.
+This snapshot contains **77 Nx projects** and **306 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -163,7 +163,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `feature-crypto`                    | `libs/feature/crypto`                    | role:capability; capability:trust               |                  11 |
 | `feature-rooms`                     | `libs/feature/rooms`                     | role:application; capability:workspace          |                  26 |
 | `feature-settings`                  | `libs/feature/settings`                  | role:application; capability:settings           |                  27 |
-| `feature-whats-new`                 | `libs/feature/whats-new`                 | role:application; capability:whats-new          |                   6 |
+| `feature-whats-new`                 | `libs/feature/whats-new`                 | role:application; capability:whats-new          |                   7 |
 | `label`                             | `libs/spartan/label`                     | role:design-system; capability:design-system    |                   1 |
 | `native-capacitor-app-lock`         | `libs/native/capacitor-app-lock`         | role:adapter; capability:host                   |                   0 |
 | `native-capacitor-app-lock-android` | `libs/native/capacitor-app-lock/android` | role:adapter; capability:host                   |                   0 |

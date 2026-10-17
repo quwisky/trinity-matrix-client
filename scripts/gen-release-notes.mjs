@@ -124,6 +124,7 @@ export async function generate(env, fetchImpl = fetch) {
     throw new Error(`Cannot bundle release notes for version ${current}`);
   }
   const repository = env.GITHUB_REPOSITORY || 'quwisky/trinity-matrix-client';
+  // shortcut: one page of 100 releases; page through when a line can fall outside the newest 100
   const response = await fetchImpl(
     `https://api.github.com/repos/${repository}/releases?per_page=100`,
     { headers: { Authorization: `Bearer ${env.GITHUB_TOKEN}` } },

@@ -11,7 +11,7 @@ const KEY = 'trinity.whats-new.last-seen-version';
 const note = (version: string): ReleaseNote => ({
   version,
   date: '2026-01-01',
-  sections: {},
+  sections: { added: ['Something'] },
 });
 const NOTES = [
   note('0.5.0-next.3'),
@@ -74,6 +74,14 @@ describe('WhatsNewService', () => {
     expect(storage.map.get(KEY)).toBe('0.5.0-next.1');
     await firstValueFrom(service.markSeen());
     expect(storage.map.get(KEY)).toBe('0.5.0-next.3');
+  });
+
+  it('leaves releases without entries out of all', () => {
+    const { service } = setup(null, [
+      note('0.5.0-next.3'),
+      { ...note('0.5.0-next.2'), sections: {} },
+    ]);
+    expect(service.all.map((n) => n.version)).toEqual(['0.5.0-next.3']);
   });
 
   it('returns nothing for the same version', async () => {

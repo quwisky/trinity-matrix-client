@@ -21,7 +21,12 @@ export function compareReleaseVersions(a: string, b: string): number | null {
   return 0;
 }
 
-/** Notes newer than `lastSeen` and no newer than `running`, newest first. */
+/** True when the release has at least one user-facing entry. */
+export function hasEntries(note: ReleaseNote): boolean {
+  return Object.values(note.sections).some((entries) => entries.length > 0);
+}
+
+/** Notes with entries, newer than `lastSeen` and no newer than `running`, newest first. */
 export function releasesSince(
   notes: readonly ReleaseNote[],
   lastSeen: string,
@@ -30,6 +35,7 @@ export function releasesSince(
   return notes
     .filter(
       (n) =>
+        hasEntries(n) &&
         (compareReleaseVersions(n.version, lastSeen) ?? -1) > 0 &&
         (compareReleaseVersions(n.version, running) ?? 1) <= 0,
     )

@@ -1,3 +1,4 @@
+import { DIAGNOSTIC_REPORT_CONFIG } from '@trinity/data-access/diagnostic-log';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import type { ReleaseNote } from '@trinity/data-access/whats-new';
 import { ExternalBrowserService } from '@trinity/platform-native';
@@ -20,7 +21,11 @@ const RELEASES: readonly ReleaseNote[] = [
   },
 ];
 
-async function setup(releases: readonly ReleaseNote[] = RELEASES) {
+async function setup(
+  releases: readonly ReleaseNote[] = RELEASES,
+  issueRepositoryUrl:
+    string | null = 'https://github.com/quwisky/trinity-matrix-client',
+) {
   const open = vi.fn(() => of(true));
   const close = vi.fn();
   const rendered = await render(WhatsNewDialogComponent, {
@@ -28,6 +33,7 @@ async function setup(releases: readonly ReleaseNote[] = RELEASES) {
     providers: [
       MockProvider(ExternalBrowserService, { open }),
       MockProvider(TrnDialogRef, { close }),
+      { provide: DIAGNOSTIC_REPORT_CONFIG, useValue: { issueRepositoryUrl } },
     ],
   });
   return { ...rendered, open, close };
@@ -78,5 +84,13 @@ describe('WhatsNewDialogComponent', () => {
     expect(open).toHaveBeenCalledWith(
       'https://github.com/quwisky/trinity-matrix-client/releases/tag/v0.5.0-next.3',
     );
+  });
+
+  it('hides the release page link without a repository', async () => {
+    await setup(RELEASES, null);
+
+    expect(
+      screen.queryByRole('button', { name: 'Full release notes' }),
+    ).toBeNull();
   });
 });

@@ -4,7 +4,7 @@ import { compareReleaseVersions, releasesSince } from './release-version';
 const note = (version: string): ReleaseNote => ({
   version,
   date: '2026-01-01',
-  sections: {},
+  sections: { added: ['Something'] },
 });
 
 describe('compareReleaseVersions', () => {
@@ -34,5 +34,15 @@ describe('releasesSince', () => {
         (n) => n.version,
       ),
     ).toEqual(['0.5.0-next.3', '0.5.0-next.2']);
+  });
+});
+
+describe('releasesSince with empty releases', () => {
+  it('skips a release without entries', () => {
+    const empty: ReleaseNote = { ...note('0.5.0-next.2'), sections: {} };
+    const notes = [note('0.5.0-next.3'), empty, note('0.5.0-next.1')];
+    expect(
+      releasesSince(notes, '0.4.0', '0.5.0-next.3').map((n) => n.version),
+    ).toEqual(['0.5.0-next.3', '0.5.0-next.1']);
   });
 });

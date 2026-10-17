@@ -86,7 +86,7 @@ import { NewDeviceSignInPresenter } from './new-device-sign-in.presenter';
 
 interface ApplicationCapabilityProviderOptions {
   readonly buildInfo: BuildInfo;
-  readonly releaseNotes?: readonly ReleaseNote[];
+  readonly releaseNotes: readonly ReleaseNote[];
   readonly pushConfig: PushConfig | null;
 }
 
@@ -253,6 +253,6 @@ export function applicationCapabilityProviders(
     provideRoomLibraryConfigEntries(),
     { provide: PUSH_CONFIG, useValue: options.pushConfig },
     { provide: BUILD_INFO, useValue: options.buildInfo },
-    { provide: RELEASE_NOTES, useValue: options.releaseNotes ?? [] },
+    { provide: RELEASE_NOTES, useValue: options.releaseNotes },
   ];
 }

@@ -5,7 +5,11 @@ import {
 } from '@trinity/platform-native';
 import { catchError, map, of, switchMap, type Observable } from 'rxjs';
 import { RELEASE_NOTES, type ReleaseNote } from './release-notes';
-import { compareReleaseVersions, releasesSince } from './release-version';
+import {
+  compareReleaseVersions,
+  hasEntries,
+  releasesSince,
+} from './release-version';
 
 const LAST_SEEN_KEY = 'trinity.whats-new.last-seen-version';
 
@@ -15,12 +19,15 @@ export class WhatsNewService {
   private readonly storage = inject(DevicePreferenceStorageService);
   private readonly running = inject(BUILD_INFO).version;
 
-  readonly all: readonly ReleaseNote[] = inject(RELEASE_NOTES);
+  /** Every bundled release that has user-facing entries, newest first. */
+  readonly all: readonly ReleaseNote[] =
+    inject(RELEASE_NOTES).filter(hasEntries);
 
   /**
    * Notes newer than the stored version. When it returns none it stores the running
-   * version itself (not when storage cannot be read); when it returns notes the
-   * caller stores it through {@link markSeen} as the dialog opens.
+   * version itself (not when storage cannot be read); when it returns notes it stores
+   * nothing: the caller calls {@link markSeen} before opening the dialog and opens it
+   * only if that write succeeded.
    */
   pending(): Observable<readonly ReleaseNote[]> {
     return this.storage.get(LAST_SEEN_KEY).pipe(

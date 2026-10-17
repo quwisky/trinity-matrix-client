@@ -219,7 +219,7 @@ describe('SettingsDialogComponent', () => {
   describe("What's new link", () => {
     const showAll = vi.fn();
     const notes = [
-      { version: '1.0.0', date: '2026-01-01', sections: {} },
+      { version: '1.0.0', date: '2026-01-01', sections: { added: ['x'] } },
     ] as never;
     const open = (provide: unknown[]): HTMLElement => {
       TestBed.configureTestingModule({ providers: provide as never[] });

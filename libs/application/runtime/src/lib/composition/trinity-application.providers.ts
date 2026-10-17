@@ -93,7 +93,7 @@ export interface TrinityApplicationProviderOptions {
   readonly issueRepositoryUrl: string | null;
   readonly buildInfo: BuildInfo;
   /** Bundled release notes, newest first; omitted means no What's new dialog. */
-  readonly releaseNotes?: readonly ReleaseNote[];
+  readonly releaseNotes: readonly ReleaseNote[];
   readonly dialogLoaders: TrinityApplicationDialogLoaders;
   /** The new-device check's build policy; left out, no build offers the debug skip. */
   readonly deviceConfirmation?: DeviceConfirmationPolicy;

@@ -30,15 +30,17 @@
   </div>
 
   <div trnDialogActions>
-    <button
-      trnBtn
-      type="button"
-      presentation="outline"
-      (click)="openReleasePage()"
-      data-testid="whats-new-full-notes"
-    >
-      Full release notes
-    </button>
+    @if (repositoryUrl) {
+      <button
+        trnBtn
+        type="button"
+        presentation="outline"
+        (click)="openReleasePage()"
+        data-testid="whats-new-full-notes"
+      >
+        Full release notes
+      </button>
+    }
     <button
       trnBtn
       type="button"

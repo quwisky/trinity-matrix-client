@@ -25,7 +25,7 @@ import { WorkspaceBackService } from '@trinity/application/workspace';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { TrnButton } from '@trinity/components/controls';
 import {
-  RELEASE_NOTES,
+  WhatsNewService,
   WHATS_NEW_LAUNCHER,
 } from '@trinity/data-access/whats-new';
 import { textScaledViewportSignal } from '@trinity/util/ui';
@@ -64,7 +64,7 @@ export class SettingsDialogComponent {
   private readonly directorySearch = viewChild(
     SettingsDirectorySearchComponent,
   );
-  private readonly notes = inject(RELEASE_NOTES);
+  private readonly notes = inject(WhatsNewService).all;
   private readonly whatsNew = inject(WHATS_NEW_LAUNCHER, { optional: true });
   private appliedInitialSection?: string;
 

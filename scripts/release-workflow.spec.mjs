@@ -685,14 +685,12 @@ describe('release notes in release builds', () => {
   });
 
   it('reads the release body for dispatch re-packages', () => {
-    expect(notes.needs).toBe('release-please');
+    expect(notes.needs).toEqual(['release-please', 'verify']);
     expect(notes.if).toBe(
       "${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.release-please.outputs.created == 'true') }}",
     );
     expect(notes.environment).toBe('release-app');
-    expect(JSON.stringify(notes)).toContain(
-      'inputs.tag || needs.release-please.outputs.tag',
-    );
+    expect(JSON.stringify(notes)).toContain('${{ needs.verify.outputs.tag }}');
     const read = notes.steps.find((s) => s.run?.includes('gh release view'));
     expect(read.run).toContain('--json body -q .body');
     expect(read.env.GH_TOKEN).toBe('${{ steps.app-token.outputs.token }}');
