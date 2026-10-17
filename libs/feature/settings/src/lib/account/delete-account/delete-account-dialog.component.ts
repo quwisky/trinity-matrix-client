@@ -13,7 +13,7 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormField, FormRoot, form } from '@angular/forms/signals';
+import { FormField, FormRoot, form, required } from '@angular/forms/signals';
 import {
   TrnButton,
   TrnCheckboxComponent,
@@ -110,7 +110,9 @@ export class DeleteAccountDialogComponent {
   private readonly confirmation = signal({ typed: '' });
   readonly confirmForm = form(this.confirmation);
   private readonly credentials = signal({ password: '' });
-  readonly passwordForm = form(this.credentials);
+  readonly passwordForm = form(this.credentials, (path) => {
+    required(path.password);
+  });
 
   protected readonly server = computed(() => serverNameOf(this.accountId()));
   protected readonly consequences = computed(() =>
@@ -127,6 +129,8 @@ export class DeleteAccountDialogComponent {
         return DELETE_ACCOUNT_COPY.browserTitle;
       case 'unconfirmed':
         return DELETE_ACCOUNT_COPY.unconfirmedTitle;
+      case 'stopped':
+        return DELETE_ACCOUNT_COPY.stoppedTitle;
       default:
         return DELETE_ACCOUNT_COPY.confirmTitle(this.accountId());
     }
@@ -200,9 +204,15 @@ export class DeleteAccountDialogComponent {
   submitPassword(): void {
     const answer = this.answerPassword;
     if (!answer) return;
+    if (this.passwordForm().invalid()) {
+      this.focus('#delete-account-password');
+      return;
+    }
+    const { password } = this.credentials();
+    this.credentials.set({ password: '' });
     this.answerPassword = null;
     this.step.set({ kind: 'deleting' });
-    answer(this.credentials().password);
+    answer(password);
   }
 
   openConfirmationPage(): void {
@@ -300,8 +310,6 @@ export class DeleteAccountDialogComponent {
   private focusStep(step: DeleteAccountStep): void {
     if (step.kind === 'password') {
       this.focus('#delete-account-password');
-    } else if (step.kind === 'confirm') {
-      this.focus('#delete-account-confirm-input');
     } else {
       this.focus('h2', true);
     }

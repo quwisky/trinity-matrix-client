@@ -174,7 +174,7 @@ export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
     this.toast.show(
       complete
         ? `${accountId} was deleted. You’re now using ${next}.`
-        : `${accountId} was deleted. Some data on this device couldn’t be removed yet. Restart Trinity to finish.`,
+        : `${accountId} was deleted. Some of its data couldn’t be removed from this device.`,
       { duration: DELETED_TOAST_MS, variant: complete ? 'success' : 'danger' },
     );
   }

@@ -217,7 +217,7 @@ describe('AccountDeletionLauncherAdapter', () => {
       ),
     ).resolves.toEqual({ kind: 'deleted' });
     expect(test.toast.show).toHaveBeenCalledWith(
-      `${ALICE} was deleted. Some data on this device couldn’t be removed yet. Restart Trinity to finish.`,
+      `${ALICE} was deleted. Some of its data couldn’t be removed from this device.`,
       { duration: 8000, variant: 'danger' },
     );
   });

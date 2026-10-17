@@ -166,6 +166,65 @@ describe('DeleteAccountDialogComponent', () => {
     ).toContain('That password is incorrect. Nothing was deleted.');
   });
 
+  it('does not send an empty password', async () => {
+    const test = await setup();
+    await typeAndSubmit(test, 'DELETE');
+    let answered = false;
+    void test
+      .prompts()
+      .password({ rejected: false })
+      .then(() => (answered = true));
+    await test.settle();
+
+    fireEvent.click(screen.getByTestId('delete-account-password-submit'));
+    await test.settle();
+
+    expect(answered).toBe(false);
+    expect(screen.getByTestId('delete-account-password')).toBeTruthy();
+  });
+
+  it('forgets the password once it is submitted', async () => {
+    const test = await setup();
+    await typeAndSubmit(test, 'DELETE');
+    void test.prompts().password({ rejected: false });
+    await test.settle();
+
+    fireEvent.input(screen.getByTestId('delete-account-password'), {
+      target: { value: 'secret' },
+    });
+    fireEvent.click(screen.getByTestId('delete-account-password-submit'));
+
+    expect(test.cmp.passwordForm.password().value()).toBe('');
+  });
+
+  it('titles a refusal as nothing deleted and names one control Cancel', async () => {
+    const test = await setup();
+    expect(screen.getAllByRole('button', { name: 'Cancel' })).toHaveLength(1);
+    await typeAndSubmit(test, 'DELETE');
+
+    test.outcome.next({ kind: 'kept', reason: 'forbidden' });
+    await test.settle();
+
+    expect(
+      screen.getByRole('heading', { name: 'Nothing was deleted' }),
+    ).toBeTruthy();
+  });
+
+  it('moves focus to the heading when Back returns to the first step', async () => {
+    const test = await setup();
+    await typeAndSubmit(test, 'DELETE');
+    void test.prompts().password({ rejected: false });
+    await test.settle();
+
+    fireEvent.click(screen.getByTestId('delete-account-back'));
+    test.outcome.next({ kind: 'kept', reason: 'cancelled' });
+    await test.settle();
+
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: `Delete ${ALICE}?` }),
+    );
+  });
+
   it('ends after too many passwords with only Close', async () => {
     const test = await setup();
     await typeAndSubmit(test, 'DELETE');
@@ -246,7 +305,9 @@ describe('DeleteAccountDialogComponent', () => {
     test.outcome.next({ kind: 'kept', reason: 'unreachable' });
     await test.settle();
 
-    const heading = screen.getByRole('heading', { name: `Delete ${ALICE}?` });
+    const heading = screen.getByRole('heading', {
+      name: 'Nothing was deleted',
+    });
     expect(heading.getAttribute('tabindex')).toBe('-1');
     expect(document.activeElement).toBe(heading);
     expect(screen.getByTestId('delete-account-stopped').textContent).toContain(

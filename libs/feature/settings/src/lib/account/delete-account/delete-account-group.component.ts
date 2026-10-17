@@ -24,7 +24,11 @@ import {
   type AccountDeletionOutcome,
 } from '@trinity/platform-native';
 import { DeleteAccountDialogComponent } from './delete-account-dialog.component';
-import { DELETE_ACCOUNT_COPY, serverNameOf } from './delete-account.copy';
+import {
+  DELETE_ACCOUNT_COPY,
+  refusalMessage,
+  serverNameOf,
+} from './delete-account.copy';
 
 /**
  * Settings › Account › Delete account. In-app on a server with the legacy account API;
@@ -110,7 +114,7 @@ export class DeleteAccountGroupComponent {
       case 'kept':
         return outcome.reason === 'still-active'
           ? DELETE_ACCOUNT_COPY.stillExists
-          : DELETE_ACCOUNT_COPY.unconfirmed;
+          : refusalMessage(outcome.reason, this.server());
       case 'unconfirmed':
         return DELETE_ACCOUNT_COPY.unconfirmed;
     }

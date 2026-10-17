@@ -396,6 +396,28 @@ describe('driveUia', () => {
     expect(makeRequest.mock.calls[2][0]).toEqual({ session: 's' });
   });
 
+  it('moves on after a correct third password instead of reporting too many', async () => {
+    const flows = [['m.login.password', 'm.login.terms']];
+    const makeRequest = vi
+      .fn()
+      .mockRejectedValueOnce(uiaFlows('s', flows))
+      .mockRejectedValueOnce(uiaFlows('s', flows))
+      .mockRejectedValueOnce(uiaFlows('s', flows))
+      .mockRejectedValueOnce(uiaFlows('s', flows, ['m.login.password']))
+      .mockResolvedValueOnce('done');
+    const prompt = vi
+      .fn()
+      .mockResolvedValueOnce('wrong-1')
+      .mockResolvedValueOnce('wrong-2')
+      .mockResolvedValueOnce('right');
+    const fallback = vi.fn().mockResolvedValue(true);
+
+    await expect(
+      driveUia(makeRequest, { password: { user: USER, prompt }, fallback }),
+    ).resolves.toEqual({ result: 'done', password: 'right' });
+    expect(fallback).toHaveBeenCalledOnce();
+  });
+
   it('prefers a flow it can finish in-app over one that needs the browser', async () => {
     const makeRequest = vi
       .fn()

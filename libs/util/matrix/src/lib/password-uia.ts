@@ -130,7 +130,11 @@ export async function driveUia<T>(
   let password: string | null = null;
   let submitted: string | null = null;
   for (;;) {
-    if (submitted === PASSWORD_STAGE && passwordAttempts >= passwordLimit) {
+    if (
+      submitted === PASSWORD_STAGE &&
+      passwordAttempts >= passwordLimit &&
+      !(challenge.completed ?? []).includes(PASSWORD_STAGE)
+    ) {
       throw new UiaAttemptsExceededError();
     }
     const stage = nextStage(challenge, stages);

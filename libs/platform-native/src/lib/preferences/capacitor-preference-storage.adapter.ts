@@ -68,7 +68,7 @@ export class CapacitorPreferenceStorageAdapter implements PreferenceStorageAdapt
           catchError(() => of(removeFailed())),
         );
       }
-      const prefix = `${request.key}.conversation.${encodeURIComponent(context.accountId)}.`;
+      const prefix = `${request.key}.conversation.${conversationSegment(context.accountId)}.`;
       return from(
         Preferences.keys().then(({ keys }) =>
           Promise.all(
@@ -138,8 +138,16 @@ function scopeSuffix(context: PreferenceContext): string {
     case 'account':
       return `.account.${encodeURIComponent(context.accountId)}`;
     case 'conversation':
-      return `.conversation.${encodeURIComponent(context.accountId)}.${encodeURIComponent(context.conversationId)}`;
+      return `.conversation.${conversationSegment(context.accountId)}.${conversationSegment(context.conversationId)}`;
     case 'server-authoritative':
       return '';
   }
+}
+
+/**
+ * One dot-free segment of a conversation key, so one account's prefix cannot match another
+ * whose server name merely starts with it (`example.org` and `example.org.uk`).
+ */
+function conversationSegment(value: string): string {
+  return encodeURIComponent(value).replaceAll('.', '%2E');
 }

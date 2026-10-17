@@ -118,6 +118,21 @@ describe('DeleteAccountGroupComponent', () => {
     );
   });
 
+  it('says why Check now could not ask', async () => {
+    const test = await setup(
+      { kind: 'provider', url: 'https://auth.example.org/account/' },
+      { kind: 'kept', reason: 'busy' },
+    );
+    fireEvent.click(screen.getByTestId('delete-account-provider'));
+    await test.fixture.whenStable();
+    fireEvent.click(screen.getByTestId('delete-account-check-now'));
+    await test.fixture.whenStable();
+
+    expect(
+      screen.getByTestId('delete-account-check-result').textContent,
+    ).toContain('Trinity is busy signing out or switching accounts.');
+  });
+
   it('says so when the provider publishes no page', async () => {
     await setup({ kind: 'provider', url: null });
 
