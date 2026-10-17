@@ -240,7 +240,7 @@ export class MemberListComponent {
   /**
    * The flat row order the windowing math sees: each section's header, then its members
    * (`computeWindow` takes one `ids` array). Headers are rows too: leaving them out shifts
-   * the spacers by 24px at every group boundary, compounding down a long list.
+   * the spacers by `HEADER_PX` at every group boundary, compounding down a long list.
    */
   private readonly flatIds = computed<string[]>(() => {
     const ids: string[] = [];
@@ -329,7 +329,8 @@ export class MemberListComponent {
   });
 
   constructor() {
-    // Otherwise the detached roster stays in memory as the CDK's last input target.
+    // Closed after a press or key inside it, the roster would otherwise stay in memory,
+    // detached, as the CDK's last input target until the next one.
     releaseInputTargetOnDestroy();
     // The viewport height is an input to the window, so watch it: the panel shares the
     // right-hand slot and is resized by the split-pane drag as well as the window.

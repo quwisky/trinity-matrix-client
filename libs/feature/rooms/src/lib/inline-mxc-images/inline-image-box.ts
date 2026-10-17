@@ -8,7 +8,8 @@
 /**
  * What a loading inline image shows until its thumbnail arrives: a 1×1 transparent GIF, inline
  * (CSP `img-src` allows `data:`), so nothing is fetched and nothing is pinned. Without a source
- * the browser draws its broken-image icon in the loading box.
+ * the browser draws its broken-image icon in the loading box; the alt text still names the
+ * image for assistive technology.
  */
 export const LOADING_PLACEHOLDER =
   'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';

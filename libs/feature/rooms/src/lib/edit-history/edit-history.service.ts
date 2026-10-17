@@ -6,7 +6,8 @@ import { type MatrixLinkClickTarget } from '../matrix-link/matrix-link.directive
 
 /**
  * Presents {@link EditHistoryComponent} for a message and resolves a permalink the reader
- * followed out of it (or null), which the host then routes. A repeat trigger is a no-op.
+ * followed out of it (or null), which the host then routes, mirroring the in-room search
+ * panel. A repeat trigger is a no-op.
  * The fetching `EditHistoryService` lives in `@trinity/data-access/timeline`.
  */
 @Injectable({ providedIn: 'root' })

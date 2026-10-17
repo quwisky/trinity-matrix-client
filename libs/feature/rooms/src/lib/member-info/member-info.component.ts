@@ -167,7 +167,6 @@ export class MemberInfoComponent {
       (this.commandAccountId() ?? this.identity.activeUserId()),
   );
 
-  /** The member's role in the room, by the standard power-level convention. */
   /** Whether the room is a direct message — a DM has no owner. See {@link memberRole}. */
   readonly direct = input(false);
 
@@ -194,6 +193,7 @@ export class MemberInfoComponent {
     };
   });
 
+  /** The member's role in the room, by the standard power-level convention. */
   readonly role = computed(
     () =>
       MEMBER_ROLE_LABEL[

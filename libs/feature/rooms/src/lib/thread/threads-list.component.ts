@@ -65,7 +65,8 @@ export class ThreadsListComponent {
   readonly maxAvatars = MAX_AVATARS;
 
   constructor() {
-    // Otherwise the detached panel stays in memory as the CDK's last input target.
+    // Closed after a press or key inside it, the panel would otherwise stay in memory,
+    // detached, as the CDK's last input target until the next one.
     releaseInputTargetOnDestroy();
   }
 

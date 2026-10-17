@@ -186,7 +186,8 @@ export class ThreadViewComponent implements OnDestroy {
         !prev ||
         prev.senderId !== m.senderId ||
         m.timestamp - prev.timestamp > GROUP_GAP_MS ||
-        // A reply always shows its own header: the quoted preview breaks the visual flow.
+        // A reply always shows its own header: the quoted preview breaks the visual flow, so
+        // a headerless continuation would look like the reply lost its author.
         !!m.replyTo;
       return { ...m, showHeader };
     });
@@ -217,7 +218,7 @@ export class ThreadViewComponent implements OnDestroy {
 
   constructor() {
     // Otherwise a thread closed by a press or key inside it stays in memory, detached, as
-    // the CDK's last input target.
+    // the CDK's last input target until the next one.
     releaseInputTargetOnDestroy();
   }
 

@@ -212,7 +212,8 @@ export class InlineMxcImagesDirective implements OnDestroy {
       this.images.set(target, declaration);
       reserveBox(target);
       target.classList.add('mx-image--loading');
-      // A source without one draws the browser's broken-image icon in the loading box.
+      // Something decodable until the thumbnail arrives: an image with no source draws the
+      // browser's broken-image icon.
       target.src = LOADING_PLACEHOLDER;
       const start = (): void => {
         this.subscriptions.add(
