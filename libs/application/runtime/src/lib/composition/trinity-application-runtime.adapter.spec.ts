@@ -94,15 +94,7 @@ import {
   throwError,
   toArray,
 } from 'rxjs';
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  type Mock,
-  vi,
-} from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TrinityApplicationRuntimeAdapter } from './trinity-application-runtime.adapter';
 import { APPLICATION_STARTUP_PRODUCER_POLICIES } from '../application-startup.policy';
 import { WhatsNewLauncherAdapter } from './whats-new-launcher.adapter';
@@ -110,86 +102,47 @@ import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-applica
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 
 describe('TrinityApplicationRuntimeAdapter', () => {
-  let events: Subject<RouterEvent>;
-  let initialNavigation: ReturnType<typeof vi.fn>;
-  let navigateByUrl: ReturnType<typeof vi.fn>;
-  let restoreAccounts: Mock<() => Observable<AccountRestoreResult>>;
-  let retryInactiveAccount: Mock<AccountRuntimeService['retryInactiveAccount']>;
-  let hostManifest: Subject<HostCapabilityManifest>;
-  let appearanceHydrate: Mock<() => Observable<AppearanceHydrationOutcome>>;
-  let appearanceRecover: Mock<AppearancePreferences['recoverHydration']>;
-  let badgeSession: Subject<HostOperationOutcome>;
-  let appearanceSession: Subject<never>;
-  let notificationSession: Subject<never>;
-  let focusSession: Subject<void>;
-  let routedSession: Subject<void>;
-  let surfaceSession: Subject<void>;
-  let orderSession: Subject<RoomOrderRuntimeEvent>;
-  let roomLibrarySession: Subject<RoomLibraryLifetimeEvent>;
-  let trustSession: Subject<TrustLifetimeEvent>;
-  let identitySession: Subject<IdentityLifetimeEvent>;
-  let deepLinks: Subject<{ readonly url: string }>;
-  let backIntents: Subject<{ readonly canGoBack: boolean }>;
-  let versionUpdates: Subject<never>;
-  let unrecoverable: Subject<never>;
-  let dialogOpen: ReturnType<typeof signal<boolean>>;
-  let workspaceActive: ReturnType<typeof signal<boolean>>;
-  let setHistoryGesturesEnabled: Mock<
-    NativeNavigationService['setHistoryGesturesEnabled']
-  >;
-  let signOutAccount: Mock<AccountRuntimeService['signOutAccount']>;
-  let resetInstallation: Mock<AccountRuntimeService['resetInstallation']>;
-  let resetPreferences: Mock<AppConfigService['resetToDefaults']>;
-  let retryResetPreferences: Mock<AppConfigService['retryResetToDefaults']>;
-  let activeAccountId: ReturnType<typeof signal<string | null>>;
-  let updateCheck: Mock<HostUpdatesService['check']>;
-  let hydrateOrder: Mock<() => Observable<RoomOrderHydrationOutcome>>;
-  let requestPersistence: Mock<StoragePersistenceService['requestPersistence']>;
-  let acquireLock: Mock<SessionLockService['acquire']>;
-  let applySavedAppearance: Mock<AppearanceEffects['applySaved']>;
-  let lockGranted: Subject<void>;
-  let health: CapabilityHealthService;
-  let adapter: TrinityApplicationRuntimeAdapter;
-
   afterEach(() => vi.useRealTimers());
 
-  beforeEach(() => {
-    events = new Subject<RouterEvent>();
-    initialNavigation = vi.fn();
-    navigateByUrl = vi.fn().mockResolvedValue(true);
-    restoreAccounts = vi.fn<() => Observable<AccountRestoreResult>>(() =>
+  function setup() {
+    const events = new Subject<RouterEvent>();
+    const initialNavigation = vi.fn();
+    const navigateByUrl = vi.fn().mockResolvedValue(true);
+    const restoreAccounts = vi.fn<() => Observable<AccountRestoreResult>>(() =>
       of({
         kind: 'no-accounts' as const,
         accounts: [],
       }),
     );
-    retryInactiveAccount = vi.fn(() => of({ kind: 'unavailable' as const }));
-    hostManifest = new Subject<HostCapabilityManifest>();
-    appearanceHydrate = vi.fn<() => Observable<AppearanceHydrationOutcome>>(
+    const retryInactiveAccount = vi.fn<
+      AccountRuntimeService['retryInactiveAccount']
+    >(() => of({ kind: 'unavailable' as const }));
+    const hostManifest = new Subject<HostCapabilityManifest>();
+    const appearanceHydrate = vi.fn<
+      () => Observable<AppearanceHydrationOutcome>
+    >(() => of({ kind: 'ready', hydrated: 7 }));
+    const appearanceRecover = vi.fn<AppearancePreferences['recoverHydration']>(
       () => of({ kind: 'ready', hydrated: 7 }),
     );
-    appearanceRecover = vi.fn<AppearancePreferences['recoverHydration']>(() =>
-      of({ kind: 'ready', hydrated: 7 }),
-    );
-    badgeSession = new Subject<HostOperationOutcome>();
-    appearanceSession = new Subject<never>();
-    notificationSession = new Subject<never>();
-    focusSession = new Subject<void>();
-    routedSession = new Subject<void>();
-    surfaceSession = new Subject<void>();
-    orderSession = new Subject<RoomOrderRuntimeEvent>();
-    roomLibrarySession = new Subject<RoomLibraryLifetimeEvent>();
-    trustSession = new Subject<TrustLifetimeEvent>();
-    identitySession = new Subject<IdentityLifetimeEvent>();
-    deepLinks = new Subject<{ readonly url: string }>();
-    backIntents = new Subject<{ readonly canGoBack: boolean }>();
-    versionUpdates = new Subject<never>();
-    unrecoverable = new Subject<never>();
-    dialogOpen = signal(false);
-    workspaceActive = signal(false);
-    setHistoryGesturesEnabled =
+    const badgeSession = new Subject<HostOperationOutcome>();
+    const appearanceSession = new Subject<never>();
+    const notificationSession = new Subject<never>();
+    const focusSession = new Subject<void>();
+    const routedSession = new Subject<void>();
+    const surfaceSession = new Subject<void>();
+    const orderSession = new Subject<RoomOrderRuntimeEvent>();
+    const roomLibrarySession = new Subject<RoomLibraryLifetimeEvent>();
+    const trustSession = new Subject<TrustLifetimeEvent>();
+    const identitySession = new Subject<IdentityLifetimeEvent>();
+    const deepLinks = new Subject<{ readonly url: string }>();
+    const backIntents = new Subject<{ readonly canGoBack: boolean }>();
+    const versionUpdates = new Subject<never>();
+    const unrecoverable = new Subject<never>();
+    const dialogOpen = signal(false);
+    const workspaceActive = signal(false);
+    const setHistoryGesturesEnabled =
       vi.fn<NativeNavigationService['setHistoryGesturesEnabled']>();
-    signOutAccount = vi.fn<AccountRuntimeService['signOutAccount']>(() =>
+    const signOutAccount = vi.fn<AccountRuntimeService['signOutAccount']>(() =>
       of({
         kind: 'ready' as const,
         accountId: '@active:example.org',
@@ -197,30 +150,30 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         remainingAccountIds: [],
       }),
     );
-    resetInstallation = vi.fn<AccountRuntimeService['resetInstallation']>(() =>
-      of({ kind: 'ready' as const }),
+    const resetInstallation = vi.fn<AccountRuntimeService['resetInstallation']>(
+      () => of({ kind: 'ready' as const }),
     );
-    resetPreferences = vi.fn<AppConfigService['resetToDefaults']>(() =>
+    const resetPreferences = vi.fn<AppConfigService['resetToDefaults']>(() =>
       of({ kind: 'completed', attempt: 1, entries: [] }),
     );
-    retryResetPreferences = vi.fn<AppConfigService['retryResetToDefaults']>(
-      () => of({ kind: 'completed', attempt: 2, entries: [] }),
-    );
-    activeAccountId = signal<string | null>('@active:example.org');
-    updateCheck = vi.fn<HostUpdatesService['check']>(() =>
+    const retryResetPreferences = vi.fn<
+      AppConfigService['retryResetToDefaults']
+    >(() => of({ kind: 'completed', attempt: 2, entries: [] }));
+    const activeAccountId = signal<string | null>('@active:example.org');
+    const updateCheck = vi.fn<HostUpdatesService['check']>(() =>
       of({ kind: 'completed' as const }),
     );
-    hydrateOrder = vi.fn<() => Observable<RoomOrderHydrationOutcome>>(() =>
-      of({ kind: 'ready', accounts: [] }),
+    const hydrateOrder = vi.fn<() => Observable<RoomOrderHydrationOutcome>>(
+      () => of({ kind: 'ready', accounts: [] }),
     );
-    requestPersistence = vi.fn<StoragePersistenceService['requestPersistence']>(
-      () => of(true),
-    );
-    acquireLock = vi.fn<SessionLockService['acquire']>(() =>
+    const requestPersistence = vi.fn<
+      StoragePersistenceService['requestPersistence']
+    >(() => of(true));
+    const acquireLock = vi.fn<SessionLockService['acquire']>(() =>
       of('held' as const),
     );
-    lockGranted = new Subject<void>();
-    applySavedAppearance = vi.fn<AppearanceEffects['applySaved']>(() =>
+    const lockGranted = new Subject<void>();
+    const applySavedAppearance = vi.fn<AppearanceEffects['applySaved']>(() =>
       of(undefined),
     );
     const promiseInit = () => ({ init: vi.fn().mockResolvedValue(undefined) });
@@ -362,11 +315,65 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         { provide: SESSION_LOCK_REQUIRED, useValue: true },
       ],
     });
-    adapter = TestBed.inject(TrinityApplicationRuntimeAdapter);
-    health = TestBed.inject(CapabilityHealthService);
-  });
+    const adapter = TestBed.inject(TrinityApplicationRuntimeAdapter);
+    const health = TestBed.inject(CapabilityHealthService);
+    const sessionStreams = () => [
+      badgeSession.observed,
+      notificationSession.observed,
+      focusSession.observed,
+      routedSession.observed,
+      surfaceSession.observed,
+      orderSession.observed,
+      deepLinks.observed,
+      backIntents.observed,
+      versionUpdates.observed,
+      unrecoverable.observed,
+    ];
+    return {
+      events,
+      initialNavigation,
+      navigateByUrl,
+      restoreAccounts,
+      retryInactiveAccount,
+      hostManifest,
+      appearanceHydrate,
+      appearanceRecover,
+      badgeSession,
+      appearanceSession,
+      notificationSession,
+      focusSession,
+      routedSession,
+      surfaceSession,
+      orderSession,
+      roomLibrarySession,
+      trustSession,
+      identitySession,
+      deepLinks,
+      backIntents,
+      versionUpdates,
+      unrecoverable,
+      dialogOpen,
+      workspaceActive,
+      setHistoryGesturesEnabled,
+      signOutAccount,
+      resetInstallation,
+      resetPreferences,
+      retryResetPreferences,
+      activeAccountId,
+      updateCheck,
+      hydrateOrder,
+      requestPersistence,
+      acquireLock,
+      applySavedAppearance,
+      lockGranted,
+      health,
+      adapter,
+      sessionStreams,
+    };
+  }
 
   it('keeps preference hydration cold', async () => {
+    const { appearanceHydrate, adapter } = setup();
     const hydration = adapter.hydratePreferences();
     expect(appearanceHydrate).not.toHaveBeenCalled();
 
@@ -376,6 +383,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('deletes the retired push gateway keys while hydrating preferences', async () => {
+    const { adapter } = setup();
     await firstValueFrom(adapter.hydratePreferences());
 
     expect(
@@ -384,6 +392,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('keeps declared preference defaults when one initializer rejects', async () => {
+    const { appearanceHydrate, updateCheck, health, adapter } = setup();
     appearanceHydrate.mockReturnValueOnce(
       new Observable((subscriber) =>
         subscriber.error(new Error('preferences unavailable')),
@@ -415,6 +424,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('publishes scoped health and exact recovery for partial Appearance hydration', async () => {
+    const { appearanceHydrate, appearanceRecover, health, adapter } = setup();
     const failures = [
       {
         preferenceId: 'design-system.theme',
@@ -460,6 +470,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('keeps a rejected badge probe as scoped optional health', async () => {
+    const { hostManifest, health, adapter } = setup();
     const operations = Object.fromEntries(
       HOST_OPERATIONS.map((operation) => [
         operation,
@@ -491,6 +502,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('accepts unsupported optional host operations', async () => {
+    const { hostManifest, adapter } = setup();
     const operations = Object.fromEntries(
       HOST_OPERATIONS.map((operation) => [
         operation,
@@ -504,6 +516,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('blocks when the required host contract cannot be established', async () => {
+    const { hostManifest, adapter } = setup();
     const negotiation = firstValueFrom(adapter.negotiateHost());
     hostManifest.error(new Error('bridge unavailable'));
 
@@ -522,6 +535,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   ] as const)(
     'reports a %s session lock to startup',
     async (acquisition, outcome) => {
+      const { acquireLock, adapter } = setup();
       acquireLock.mockReturnValueOnce(of(acquisition));
 
       await expect(
@@ -531,6 +545,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   );
 
   it('reports a failing session lock as unavailable, never as held', async () => {
+    const { acquireLock, adapter } = setup();
     acquireLock.mockReturnValueOnce(throwError(() => new Error('locks broke')));
 
     await expect(firstValueFrom(adapter.acquireSessionLock())).resolves.toEqual(
@@ -539,6 +554,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('applies the saved appearance once before a browser tab asks for the lock', async () => {
+    const { acquireLock, applySavedAppearance, adapter } = setup();
     const order: string[] = [];
     applySavedAppearance.mockImplementation(() => {
       order.push('appearance');
@@ -558,6 +574,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('leaves the appearance to hydration where no lock is required', async () => {
+    const { acquireLock, applySavedAppearance } = setup();
     const nativeAdapter = createEnvironmentInjector(
       [
         TrinityApplicationRuntimeAdapter,
@@ -574,6 +591,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('still asks for the lock when the saved appearance fails', async () => {
+    const { applySavedAppearance, adapter } = setup();
     applySavedAppearance.mockReturnValueOnce(
       throwError(() => new Error('appearance broke')),
     );
@@ -584,6 +602,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('asks for the lock without waiting forever on the saved appearance', async () => {
+    const { applySavedAppearance, adapter } = setup();
     vi.useFakeTimers({
       toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
     });
@@ -599,6 +618,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('continues startup when the waiting tab is granted the session lock', async () => {
+    const { lockGranted, adapter } = setup();
     const granted = firstValueFrom(adapter.awaitSessionLock());
 
     lockGranted.next();
@@ -607,6 +627,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('settles ordering health and persistence independently', async () => {
+    const { hydrateOrder, requestPersistence, health, adapter } = setup();
     hydrateOrder.mockReturnValueOnce(
       of({
         kind: 'partial',
@@ -657,6 +678,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('bounds unresponsive optional startup siblings with exact identities', async () => {
+    const { hydrateOrder, requestPersistence, adapter } = setup();
     vi.useFakeTimers();
     hydrateOrder.mockReturnValueOnce(NEVER);
     requestPersistence.mockReturnValueOnce(NEVER);
@@ -684,6 +706,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('keeps the initial update check out of pre-readiness capabilities', async () => {
+    const { updateCheck, adapter } = setup();
     updateCheck.mockReturnValueOnce(
       of({
         kind: 'rejected',
@@ -700,6 +723,14 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('maps partial and required Account outcomes without leaking account ids', async () => {
+    const {
+      restoreAccounts,
+      retryInactiveAccount,
+      signOutAccount,
+      activeAccountId,
+      health,
+      adapter,
+    } = setup();
     restoreAccounts.mockReturnValueOnce(
       of({
         kind: 'restored-with-inactive-failures',
@@ -789,6 +820,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('falls back to a safe root before blocking Workspace restoration', async () => {
+    const { events, initialNavigation, navigateByUrl, health, adapter } =
+      setup();
     initialNavigation.mockImplementationOnce(() => {
       events.next(new NavigationError(1, '/rooms', new Error('offline')));
     });
@@ -833,6 +866,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('reports a superseded Workspace restoration as failed even when its navigation lands', async () => {
+    const { events, initialNavigation, navigateByUrl, adapter } = setup();
     initialNavigation.mockImplementationOnce(() => {
       events.next(new NavigationError(1, '/rooms', new Error('offline')));
     });
@@ -856,6 +890,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('bounds an unresponsive saved destination before trying the safe root', async () => {
+    const { navigateByUrl, adapter } = setup();
     vi.useFakeTimers();
     const restoration = firstValueFrom(adapter.restoreWorkspace());
 
@@ -870,6 +905,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('executes typed recovery commands before startup is retried', async () => {
+    const { signOutAccount, resetInstallation, resetPreferences, adapter } =
+      setup();
     await expect(
       firstValueFrom(adapter.recover('reauthenticate')),
     ).resolves.toEqual({ kind: 'ready' });
@@ -887,6 +924,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('does not turn partial or uncertain destructive cleanup into recovery success', async () => {
+    const { signOutAccount, resetInstallation, adapter } = setup();
     signOutAccount.mockReturnValueOnce(
       of({
         kind: 'partial-cleanup',
@@ -926,6 +964,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('retries only the outstanding entries from a partial preference reset', async () => {
+    const { resetPreferences, retryResetPreferences, adapter } = setup();
     resetPreferences.mockReturnValueOnce(
       of({
         kind: 'partial',
@@ -953,6 +992,19 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('owns every concrete session stream across teardown and restart', () => {
+    const {
+      badgeSession,
+      notificationSession,
+      orderSession,
+      roomLibrarySession,
+      trustSession,
+      identitySession,
+      dialogOpen,
+      setHistoryGesturesEnabled,
+      health,
+      adapter,
+      sessionStreams,
+    } = setup();
     const events: unknown[] = [];
     const readiness = new Subject<void>();
     const first = adapter
@@ -963,18 +1015,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(roomLibrarySession.observed).toBe(true);
     expect(trustSession.observed).toBe(true);
     expect(identitySession.observed).toBe(true);
-    expect([
-      badgeSession.observed,
-      notificationSession.observed,
-      focusSession.observed,
-      routedSession.observed,
-      surfaceSession.observed,
-      orderSession.observed,
-      deepLinks.observed,
-      backIntents.observed,
-      versionUpdates.observed,
-      unrecoverable.observed,
-    ]).toEqual(Array(10).fill(false));
+    expect(sessionStreams()).toEqual(Array(10).fill(false));
     roomLibrarySession.next({ kind: 'prepared' });
     trustSession.next({ kind: 'prepared' });
     identitySession.next({ kind: 'prepared' });
@@ -982,18 +1023,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     readiness.next();
     readiness.complete();
     TestBed.tick();
-    expect([
-      badgeSession.observed,
-      notificationSession.observed,
-      focusSession.observed,
-      routedSession.observed,
-      surfaceSession.observed,
-      orderSession.observed,
-      deepLinks.observed,
-      backIntents.observed,
-      versionUpdates.observed,
-      unrecoverable.observed,
-    ]).toEqual(Array(10).fill(true));
+    expect(sessionStreams()).toEqual(Array(10).fill(true));
     expect(setHistoryGesturesEnabled).toHaveBeenCalled();
 
     badgeSession.next({
@@ -1013,18 +1043,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(roomLibrarySession.observed).toBe(false);
     expect(trustSession.observed).toBe(false);
     expect(identitySession.observed).toBe(false);
-    expect([
-      badgeSession.observed,
-      notificationSession.observed,
-      focusSession.observed,
-      routedSession.observed,
-      surfaceSession.observed,
-      orderSession.observed,
-      deepLinks.observed,
-      backIntents.observed,
-      versionUpdates.observed,
-      unrecoverable.observed,
-    ]).toEqual(Array(10).fill(false));
+    expect(sessionStreams()).toEqual(Array(10).fill(false));
     const gestureCalls = setHistoryGesturesEnabled.mock.calls.length;
     dialogOpen.set(true);
     TestBed.tick();
@@ -1050,6 +1069,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   // only after the session stage (initial navigation waits for Workspace restoration),
   // so the check must be listening from the session's start, not from readiness.
   it('records new-device sign-ins from before the session is ready until it ends', () => {
+    const { roomLibrarySession, trustSession, identitySession, adapter } =
+      setup();
     const facts = new Subject<NewDeviceEstablishment>();
     ngMocks.stub(TestBed.inject(AccountRuntimeService), {
       newDevices: facts.asObservable(),
@@ -1079,6 +1100,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('owns Appearance effects in the post-hydration preference lifetime', () => {
+    const { appearanceSession, adapter } = setup();
     const first = adapter.runPreferenceLifetime().subscribe();
     expect(appearanceSession.observed).toBe(true);
 
