@@ -10,7 +10,11 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import {
+  registerUser,
+  apiLogin,
+  type ApiUser,
+} from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 
 // Covers the "Send read receipts" privacy toggle (Settings → Privacy). With it
@@ -19,32 +23,6 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // receipt from them. Two users: the sender posts, the reader (toggle off) reads,
 // and we check what each side's sync reports. Needs Synapse (Docker); self-skips.
 const session = homeserverSession();
-
-interface ApiUser {
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 /** The `m.receipt` ephemeral content for a room from a fresh (initial) sync. */
 async function roomReceipts(

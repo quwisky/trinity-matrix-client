@@ -10,7 +10,7 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 
 // End-to-end for the message list's jump-to-latest pill: once the user scrolls up
 // away from the newest message a pill appears (`data-testid="jump-to-latest"`), and
@@ -24,31 +24,6 @@ const session = homeserverSession();
 // messages — comfortably past a 1280x720 viewport's worth of rows once loaded.
 const MESSAGE_COUNT = 20;
 const LONG_BODY = `lorem ipsum dolor sit amet `.repeat(18);
-
-interface ApiUser {
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const res = await request.post(`${hs}/_matrix/client/v3/login`, {
-    data: {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    },
-  });
-  const json = await res.json();
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 /** A reader who creates a room and posts enough long messages to overflow the view. */
 async function seedBusyRoom(

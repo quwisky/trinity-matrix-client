@@ -11,7 +11,7 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 
 // Covers editing a SPACE's settings, which had no surface at all before #40: a space was
 // configured once at creation and never again. The space overflow menu
@@ -27,24 +27,6 @@ import { expectRowLabelsAlignedWithTitle } from '../../support/room-settings-jou
 import { describeFailure } from '../../../support/http-failure.mts';
 
 const session = homeserverSession();
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<string> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return json.access_token as string;
-}
 
 /**
  * Create a space (a room with `creation_content.type: m.space`, matching
@@ -197,7 +179,7 @@ test.describe('Space settings', () => {
     const newTopic = `Where team ${runId} works`;
 
     await registerUser(request, user, pass);
-    const token = await apiLogin(request, hs, user, pass);
+    const { token } = await apiLogin(request, hs, user, pass);
     const spaceId = await createSpace(request, hs, token, originalName);
     const roomId = await request
       .post(`${hs}/_matrix/client/v3/createRoom`, {
@@ -379,7 +361,7 @@ test.describe('Space settings', () => {
     const topic = `Topic ${runId}`;
 
     await registerUser(request, user, pass);
-    const token = await apiLogin(request, hs, user, pass);
+    const { token } = await apiLogin(request, hs, user, pass);
     const spaceId = await createSpace(request, hs, token, spaceName);
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.room.topic/`,
@@ -432,7 +414,7 @@ test.describe('Space settings', () => {
     const recoveredName = `Recovered ${runId}`;
 
     await registerUser(request, user, pass);
-    const token = await apiLogin(request, hs, user, pass);
+    const { token } = await apiLogin(request, hs, user, pass);
     const spaceId = await createSpace(request, hs, token, spaceName);
     const linkedId = await createRoom(request, hs, token, linkedName);
     const candidateId = await createRoom(request, hs, token, candidateName);
@@ -694,7 +676,7 @@ test.describe('Space settings', () => {
 
     await registerUser(request, owner, ownerPass);
     await registerUser(request, member, memberPass);
-    const ownerToken = await apiLogin(request, hs, owner, ownerPass);
+    const { token: ownerToken } = await apiLogin(request, hs, owner, ownerPass);
     const memberLogin = await request
       .post(`${hs}/_matrix/client/v3/login`, {
         data: {
@@ -795,8 +777,13 @@ test.describe('Space settings', () => {
     const unsavedTopic = `Keep this draft ${runId}`;
     await registerUser(request, owner, ownerPass);
     await registerUser(request, member, memberPass);
-    const ownerToken = await apiLogin(request, hs, owner, ownerPass);
-    const memberToken = await apiLogin(request, hs, member, memberPass);
+    const { token: ownerToken } = await apiLogin(request, hs, owner, ownerPass);
+    const { token: memberToken } = await apiLogin(
+      request,
+      hs,
+      member,
+      memberPass,
+    );
     const spaceId = await createSpace(request, hs, ownerToken, spaceName);
     await joinAsMember(request, hs, ownerToken, spaceId, memberToken, memberId);
 
@@ -868,7 +855,7 @@ test.describe('Space settings', () => {
     const spaceName = `Addressed ${runId}`;
 
     await registerUser(request, user, pass);
-    const token = await apiLogin(request, hs, user, pass);
+    const { token } = await apiLogin(request, hs, user, pass);
     const spaceId = await createSpace(request, hs, token, spaceName);
     const localpart = `space-addr-${runId}`;
     const alias = `#${localpart}:localhost`;
@@ -923,7 +910,7 @@ test.describe('Space settings', () => {
 
     await registerUser(request, owner, ownerPass);
     await registerUser(request, other, otherPass);
-    const ownerToken = await apiLogin(request, hs, owner, ownerPass);
+    const { token: ownerToken } = await apiLogin(request, hs, owner, ownerPass);
     const otherLogin = await request
       .post(`${hs}/_matrix/client/v3/login`, {
         data: {

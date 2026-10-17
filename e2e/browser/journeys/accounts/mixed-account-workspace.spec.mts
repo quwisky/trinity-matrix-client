@@ -10,11 +10,11 @@ import { login } from '../../../support/app.mts';
 import {
   passwordLogin,
   registerUser,
+  apiLogin,
   type AccountSession,
 } from '../../../support/account.mts';
 import {
   addAccountViaUi,
-  apiLogin,
   configureMultiAccountSuite,
   mixInAccount,
   session,

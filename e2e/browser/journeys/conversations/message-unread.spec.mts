@@ -10,34 +10,13 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 
 // End-to-end for the unread "New messages" divider + jump-to-unread pill: a reader
 // whose fully-read marker sits at an old message sees a divider before the first
 // unread one, and — with the divider scrolled off the top — a jump pill that brings it
 // back into view. Needs a Synapse homeserver (Docker).
 const session = homeserverSession();
-
-async function apiToken(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<{ userId: string; headers: { Authorization: string } }> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 async function sendText(
   request: APIRequestContext,
@@ -81,13 +60,13 @@ test.describe('Unread divider + jump-to-unread', () => {
     const memberUser = `unread-member-${runId}`;
     await registerUser(request, readerUser, `${readerUser}-pass`);
     await registerUser(request, memberUser, `${memberUser}-pass`);
-    const reader = await apiToken(
+    const reader = await apiLogin(
       request,
       hs,
       readerUser,
       `${readerUser}-pass`,
     );
-    const member = await apiToken(
+    const member = await apiLogin(
       request,
       hs,
       memberUser,

@@ -11,7 +11,7 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 import {
   closeSettings,
   openSettingsFromRooms,
@@ -26,24 +26,6 @@ import { hasDarkMode } from '../../support/settings-journey.mts';
 // grouped hints, long lists and overflow without making the UI perform setup work.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = homeserverSession();
-
-async function loginApi(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<string> {
-  const response = await request.post(`${hs}/_matrix/client/v3/login`, {
-    data: {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    },
-  });
-  expect(response.ok(), `login ${user}: ${response.status()}`).toBe(true);
-  const json = await response.json();
-  return json.access_token as string;
-}
 
 interface Seeded {
   reader: HomeserverSession;
@@ -79,7 +61,7 @@ async function seedReactedMessage(
   for (const user of otherUsers) {
     await registerUser(request, user, `${user}-pass`);
   }
-  const readerToken = await loginApi(
+  const { token: readerToken } = await apiLogin(
     request,
     hs,
     readerUser,
@@ -90,7 +72,7 @@ async function seedReactedMessage(
     otherUsers.map(async (user) => ({
       user,
       headers: {
-        Authorization: `Bearer ${await loginApi(request, hs, user, `${user}-pass`)}`,
+        Authorization: `Bearer ${(await apiLogin(request, hs, user, `${user}-pass`)).token}`,
       },
     })),
   );

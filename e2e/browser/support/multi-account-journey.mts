@@ -10,7 +10,11 @@ import {
   settleSignIn,
   type DeviceCheckHandling,
 } from '../../support/app.mts';
-import { registerUser } from '../../support/account.mts';
+import {
+  registerUser,
+  apiLogin,
+  type ApiUser,
+} from '../../support/account.mts';
 import { sendWithRetry } from './cs-api.mts';
 import type { MatrixTestResources } from '../../support/test-resources.mts';
 
@@ -28,31 +32,6 @@ export async function expectWorkspaceAccount(
   await expect
     .poll(() => new URL(page.url()).searchParams.get('account'))
     .toContain(`@${localpart}:`);
-}
-
-export interface ApiUser {
-  userId: string;
-  headers: { Authorization: string };
-}
-
-export async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const res = await request.post(`${hs}/_matrix/client/v3/login`, {
-    data: {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    },
-  });
-  const json = await res.json();
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
 }
 
 /**

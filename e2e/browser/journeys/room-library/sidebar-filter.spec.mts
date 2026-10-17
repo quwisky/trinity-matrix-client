@@ -10,7 +10,7 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 
 // Covers the sidebar's in-place filter box (`data-testid="sidebar-filter"`), which
 // ChannelSidebarComponent renders between the header and the scrolling list. It narrows
@@ -28,33 +28,6 @@ import { registerUser } from '../../../support/account.mts';
 // Needs a Synapse homeserver (Docker) and self-skips otherwise, like the other
 // authenticated web e2e specs.
 const session = homeserverSession();
-
-interface ApiUser {
-  token: string;
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const res = await request.post(`${hs}/_matrix/client/v3/login`, {
-    data: {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    },
-  });
-  const json = await res.json();
-  return {
-    token: json.access_token as string,
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 /**
  * A fresh reader with two plain rooms whose names share nothing: "Cafétéria …" and

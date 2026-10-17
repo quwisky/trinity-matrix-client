@@ -13,7 +13,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { isBlobAlive, playToEnd } from '../../support/media-playback.mts';
-import { apiLogin } from '../../support/multi-account-journey.mts';
+import { apiLogin } from '../../../support/account.mts';
 
 // Covers recording + sending a voice message (+ tray → Voice message → record → send →
 // m.audio with the MSC3245 voice marker), rendered in the timeline as a voice player

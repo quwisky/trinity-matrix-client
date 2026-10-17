@@ -1,38 +1,12 @@
-import {
-  testResourceId,
-  test,
-  expect,
-  type APIRequestContext,
-} from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import { homeserverSession } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
-import { describeFailure } from '../../../support/http-failure.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 
 // Pins the pusher-table behaviour PushService is built on against a real Synapse, so a
 // homeserver change cannot drift it out from under the unit tests' stateful mock:
 // append:true lets co-hosted accounts share one device token, and the homeserver keeps the
 // extra `data` keys the Trinity push gateway reads (`trinity_user_id`, `trinity_render`).
 const session = homeserverSession();
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<{ token: string; userId: string }> {
-  const res = await request.post(`${hs}/_matrix/client/v3/login`, {
-    data: {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    },
-  });
-  if (!res.ok()) {
-    throw new Error(await describeFailure(`login ${user}`, res));
-  }
-  const body = (await res.json()) as { access_token: string; user_id: string };
-  return { token: body.access_token, userId: body.user_id };
-}
 
 interface Pusher {
   app_id: string;

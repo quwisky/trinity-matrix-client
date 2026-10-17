@@ -1,7 +1,7 @@
 import { devices, expect, test, testResourceId } from '../../../fixtures.mts';
 import { login, type HomeserverSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
-import { apiLogin } from '../../support/multi-account-journey.mts';
+import { apiLogin } from '../../../support/account.mts';
 import {
   configureRoomSettingsSuite,
   expectRowLabelsAlignedWithTitle,

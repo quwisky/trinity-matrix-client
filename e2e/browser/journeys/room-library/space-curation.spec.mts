@@ -11,7 +11,7 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
 
 // Covers the space-curation half of #40: adding a room you are ALREADY in to a space
@@ -22,24 +22,6 @@ import { describeFailure } from '../../../support/http-failure.mts';
 // the whole feature: a UI that reordered a list locally and wrote nothing looks identical.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = homeserverSession();
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<string> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return json.access_token as string;
-}
 
 async function createRoom(
   request: APIRequestContext,
@@ -108,7 +90,7 @@ test.describe('Space curation', () => {
     const roomName = `Existing ${runId}`;
 
     await registerUser(request, user, pass);
-    const token = await apiLogin(request, hs, user, pass);
+    const { token } = await apiLogin(request, hs, user, pass);
     const spaceId = await createRoom(request, hs, token, {
       name: spaceName,
       preset: 'private_chat',
@@ -155,7 +137,7 @@ test.describe('Space curation', () => {
     const childName = `Child ${runId}`;
 
     await registerUser(request, user, pass);
-    const token = await apiLogin(request, hs, user, pass);
+    const { token } = await apiLogin(request, hs, user, pass);
     const parentId = await createRoom(request, hs, token, {
       name: parentName,
       preset: 'private_chat',
@@ -238,7 +220,7 @@ test.describe('Space curation', () => {
     const spaceName = `Ordered ${runId}`;
 
     await registerUser(request, user, pass);
-    const token = await apiLogin(request, hs, user, pass);
+    const { token } = await apiLogin(request, hs, user, pass);
     const spaceId = await createRoom(request, hs, token, {
       name: spaceName,
       preset: 'private_chat',
@@ -420,8 +402,8 @@ test.describe('Space curation', () => {
 
     await registerUser(request, owner, pass);
     await registerUser(request, other, pass);
-    const ownerToken = await apiLogin(request, hs, owner, pass);
-    const otherToken = await apiLogin(request, hs, other, pass);
+    const { token: ownerToken } = await apiLogin(request, hs, owner, pass);
+    const { token: otherToken } = await apiLogin(request, hs, other, pass);
 
     const spaceId = await createRoom(request, hs, ownerToken, {
       name: spaceName,

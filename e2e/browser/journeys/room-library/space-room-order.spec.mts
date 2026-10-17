@@ -11,7 +11,11 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import {
+  registerUser,
+  apiLogin,
+  type ApiUser,
+} from '../../../support/account.mts';
 import { nextTestResourceId } from '../../../support/namespace.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
@@ -35,33 +39,6 @@ import { describeFailure } from '../../../support/http-failure.mts';
 const session = homeserverSession();
 
 const HS_SERVER_NAME = 'localhost';
-
-interface ApiUser {
-  token: string;
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const res = await request.post(`${hs}/_matrix/client/v3/login`, {
-    data: {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    },
-  });
-  const json = await res.json();
-  return {
-    token: json.access_token as string,
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 /** One of the space's children: its display name and the room id it got. */
 interface SeededChild {

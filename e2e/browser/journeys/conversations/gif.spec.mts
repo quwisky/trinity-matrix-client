@@ -14,7 +14,11 @@ import {
   waitForRooms,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import {
+  registerUser,
+  apiLogin,
+  type ApiUser,
+} from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 
 // GIF picker journeys. The send path round-trips through the REAL disposable
@@ -37,34 +41,6 @@ const PREVIEW_URL = 'https://media.klipy.com/e2e-preview/trinity.gif';
 const FULL_URL = 'https://media.klipy.com/e2e-full/trinity.gif';
 
 const GIF_CONFIG_KEY = 'trinity.gif.config';
-
-interface ApiUser {
-  token: string;
-  userId: string;
-  headers: { Authorization: string };
-}
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-): Promise<ApiUser> {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return {
-    token: json.access_token as string,
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 /** Register a fresh user and give them a plain (non-DM) room to send into. */
 async function seedRoom(
