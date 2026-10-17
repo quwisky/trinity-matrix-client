@@ -11,6 +11,7 @@ import {
   session,
 } from '../../support/settings-journey.mts';
 import { settingsLayoutMetrics } from '../../support/settings-layout.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 test.describe('Settings', () => {
   configureSettingsSuite();
@@ -146,19 +147,8 @@ test.describe('Settings', () => {
       })
       .then((response) => response.json())
       .then((body) => body.access_token as string);
-    const headers = { Authorization: `Bearer ${accessToken}` };
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers,
-      data: { name: roomName, preset: 'private_chat' },
-    });
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers,
-      data: {
-        name: spaceName,
-        preset: 'private_chat',
-        creation_content: { type: 'm.space' },
-      },
-    });
+    await createRoom(request, hs, { accessToken }, roomName);
+    await createRoom(request, hs, { accessToken }, spaceName, { space: true });
 
     const mainFrame = {
       rootTestId: 'settings-dialog',

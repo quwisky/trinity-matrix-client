@@ -7,6 +7,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for polls (MSC3381): create a poll from the composer, vote, see the tally
 // update, and end it. Needs a Synapse homeserver (Docker).
@@ -31,10 +32,7 @@ test.describe('Polls', () => {
       })
       .then((r) => r.json());
     const roomName = `Poll E2E ${runId}`;
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${access_token}` },
-      data: { name: roomName },
-    });
+    await createRoom(request, hs, { accessToken: access_token }, roomName);
 
     await login(page, {
       available: true,

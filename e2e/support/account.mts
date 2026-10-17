@@ -90,9 +90,8 @@ export async function passwordLogin(
 }
 
 /** A logged-in account in the shape journeys pass to CS-API calls: ids, raw token and auth header. */
-export interface ApiUser {
+export interface ApiUser extends AccountSession {
   token: string;
-  userId: string;
   headers: { Authorization: string };
 }
 
@@ -105,8 +104,8 @@ export async function apiLogin(
 ): Promise<ApiUser> {
   const session = await passwordLogin(request, hs, user, pass);
   return {
+    ...session,
     token: session.accessToken,
-    userId: session.userId,
     headers: { Authorization: `Bearer ${session.accessToken}` },
   };
 }

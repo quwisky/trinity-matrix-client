@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the timeline system lines (message-row `data-testid="timeline-event"`): a room
 // state change (here an m.room.name rename) renders as a compact human-readable line
@@ -35,12 +36,12 @@ test.describe('Timeline system events', () => {
       .then((j) => j.access_token as string);
     const auth = { Authorization: `Bearer ${token}` };
 
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: auth,
-        data: { name: `Events ${runId}`, preset: 'private_chat' },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      `Events ${runId}`,
+    );
     const room = encodeURIComponent(room_id);
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${room}/send/m.room.message/${runId}-msg`,

@@ -10,6 +10,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the redesigned room-list row (ChannelSidebarComponent): each `.channel`
 // row now renders a `trn-avatar`, the room name (`.channel__name`), and a
@@ -57,17 +58,9 @@ async function seedPreviewRoom(
   const reader = await apiLogin(request, hs, readerUser, readerPass);
   const sender = await apiLogin(request, hs, senderUser, senderPass);
 
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: {
-        name: roomName,
-        preset: 'private_chat',
-        invite: [sender.userId],
-      },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(request, hs, reader, roomName, {
+    invite: [sender.userId],
+  });
 
   await request.post(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
@@ -117,17 +110,9 @@ async function seedUnreadRoom(
   const reader = await apiLogin(request, hs, readerUser, readerPass);
   const sender = await apiLogin(request, hs, senderUser, senderPass);
 
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: {
-        name: roomName,
-        preset: 'private_chat',
-        invite: [sender.userId],
-      },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(request, hs, reader, roomName, {
+    invite: [sender.userId],
+  });
 
   await request.post(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,

@@ -10,6 +10,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the pinned-messages panel end to end: the room toolbar's pin button
 // (`data-testid="open-pinned"`) opens PinnedPanelService's side panel
@@ -59,12 +60,12 @@ async function seedPinnedRoom(
     .then((r) => r.json());
   const auth = { Authorization: `Bearer ${access_token}` };
 
-  const { room_id } = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: auth,
-      data: { name: roomName, preset: 'private_chat' },
-    })
-    .then((r) => r.json());
+  const room_id = await createRoom(
+    request,
+    hs,
+    { accessToken: access_token },
+    roomName,
+  );
 
   const send = async (body: string): Promise<string> => {
     const res = await request.put(
@@ -183,12 +184,12 @@ test.describe('Pinned messages panel', () => {
       })
       .then((r) => r.json());
     const auth = { Authorization: `Bearer ${access_token}` };
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: auth,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(
+      request,
+      hs,
+      { accessToken: access_token },
+      roomName,
+    );
     const send = async (txn: string, body: string): Promise<string> => {
       const res = await request.put(
         `${hs}/_matrix/client/v3/rooms/${room_id}/send/m.room.message/${txn}`,

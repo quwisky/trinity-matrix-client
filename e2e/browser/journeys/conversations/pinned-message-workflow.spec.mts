@@ -15,6 +15,7 @@ import {
   apiLogin,
   type ApiUser,
 } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the pin-messages feature end to end: a message's hover toolbar's ⋯
 // menu (`data-testid="msg-more"`) offers "Pin message" (`data-testid="msg-pin"`),
@@ -75,13 +76,7 @@ async function seedPinRoom(
   await registerUser(request, readerUser, readerPass);
   const reader = await apiLogin(request, hs, readerUser, readerPass);
 
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: { name: roomName, preset: 'private_chat' },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(request, hs, reader, roomName);
 
   await request.put(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/pin-other-${runId}`,
@@ -126,13 +121,7 @@ async function seedRepeatJumpPinRoom(
   await registerUser(request, readerUser, readerPass);
   const reader = await apiLogin(request, hs, readerUser, readerPass);
 
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: { name: roomName, preset: 'private_chat' },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(request, hs, reader, roomName);
 
   await request.put(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/pin-repeat-lead-${runId}`,

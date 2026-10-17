@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Regression for #282: a failed outbound invite or incoming room join must release
 // request state, show actionable guidance, and allow the same action to be retried
@@ -51,10 +52,7 @@ test.describe('Room HTTP error recovery', () => {
 
     await registerUser(request, owner, pass);
     const ownerSession = await apiLogin(request, hs, owner, pass);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: ownerSession.headers,
-      data: { name: roomName, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, ownerSession, roomName);
     await login(page, {
       available: true,
       hs,
@@ -112,13 +110,8 @@ test.describe('Room HTTP error recovery', () => {
     await registerUser(request, joiner, joinerPass);
     const ownerSession = await apiLogin(request, hs, owner, ownerPass);
     const joinerSession = await apiLogin(request, hs, joiner, joinerPass);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: ownerSession.headers,
-      data: {
-        name: roomName,
-        preset: 'private_chat',
-        invite: [joinerSession.userId],
-      },
+    await createRoom(request, hs, ownerSession, roomName, {
+      invite: [joinerSession.userId],
     });
 
     await login(page, {

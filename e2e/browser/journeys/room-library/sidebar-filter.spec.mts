@@ -11,6 +11,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the sidebar's in-place filter box (`data-testid="sidebar-filter"`), which
 // ChannelSidebarComponent renders between the header and the scrolling list. It narrows
@@ -52,10 +53,7 @@ async function seedTwoRooms(
   const reader = await apiLogin(request, hs, readerUser, readerPass);
 
   for (const name of [cafeName, warehouseName]) {
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: { name, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, reader, name);
   }
 
   return {

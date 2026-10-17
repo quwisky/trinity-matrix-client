@@ -13,6 +13,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { addAccountViaUi } from '../../support/multi-account-journey.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 const session = homeserverSession();
 
@@ -32,27 +33,6 @@ async function tokenFor(
     })
     .then((response) => response.json())
     .then((body) => body.access_token as string);
-}
-
-async function createSpace(
-  request: APIRequestContext,
-  hs: string,
-  token: string,
-  name: string,
-  invite: readonly string[] = [],
-): Promise<string> {
-  return request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: {
-        name,
-        preset: 'private_chat',
-        creation_content: { type: 'm.space' },
-        invite,
-      },
-    })
-    .then((response) => response.json())
-    .then((body) => body.room_id as string);
 }
 
 async function childLink(
@@ -97,7 +77,9 @@ test.describe('Space settings resilience', () => {
     const spaceName = `Partial space ${runId}`;
     await registerUser(request, user, pass);
     const token = await tokenFor(request, hs, user, pass);
-    await createSpace(request, hs, token, spaceName);
+    await createRoom(request, hs, { accessToken: token }, spaceName, {
+      space: true,
+    });
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSpaceSettings(page, spaceName);
@@ -164,14 +146,19 @@ test.describe('Space settings resilience', () => {
     await registerUser(request, invitee, inviteePass);
     const ownerToken = await tokenFor(request, hs, owner, ownerPass);
     const memberToken = await tokenFor(request, hs, member, memberPass);
-    const spaceId = await createSpace(request, hs, ownerToken, spaceName, [
-      memberId,
-    ]);
-    const exactChildId = await createSpace(
+    const spaceId = await createRoom(
       request,
       hs,
-      ownerToken,
+      { accessToken: ownerToken },
+      spaceName,
+      { space: true, invite: [memberId] },
+    );
+    const exactChildId = await createRoom(
+      request,
+      hs,
+      { accessToken: ownerToken },
       exactChildName,
+      { space: true },
     );
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/join`,

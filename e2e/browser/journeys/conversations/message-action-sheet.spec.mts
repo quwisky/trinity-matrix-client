@@ -14,6 +14,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { touchLongPress } from '../../../support/touch-platform.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // The message action sheet (#220), which no other spec can see. Every authenticated spec
 // runs the desktop Chromium project, where a message's actions are a bar revealed by
@@ -69,12 +70,12 @@ async function openRoomWithMessage(
     })
     .then((r) => r.json());
   const headers = { Authorization: `Bearer ${access_token}` };
-  const { room_id } = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers,
-      data: { name: roomName, preset: 'private_chat' },
-    })
-    .then((r) => r.json());
+  const room_id = await createRoom(
+    request,
+    hs,
+    { accessToken: access_token },
+    roomName,
+  );
   for (let i = 0; i < messageCount - 1; i++) {
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/s-${runId}-${i}`,

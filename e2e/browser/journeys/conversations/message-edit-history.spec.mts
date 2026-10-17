@@ -12,6 +12,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 const { defaultBrowserType: _pixelBrowser, ...pixel5 } = devices['Pixel 5'];
 
@@ -56,12 +57,12 @@ async function seedHistory(
     })
     .then((r) => r.json());
   const headers = { Authorization: `Bearer ${access_token}` };
-  const { room_id } = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers,
-      data: { name: roomName, preset: 'private_chat' },
-    })
-    .then((r) => r.json());
+  const room_id = await createRoom(
+    request,
+    hs,
+    { accessToken: access_token },
+    roomName,
+  );
   const room = encodeURIComponent(room_id);
   const send = async (txn: string, content: Record<string, unknown>) => {
     const { event_id } = await request
@@ -147,12 +148,12 @@ test.describe('Edit history', () => {
       .then((r) => r.json());
     const headers = { Authorization: `Bearer ${access_token}` };
 
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(
+      request,
+      hs,
+      { accessToken: access_token },
+      roomName,
+    );
     const room = encodeURIComponent(room_id);
 
     /** Send `content` and return the event id — sibling specs discard it; here it is the

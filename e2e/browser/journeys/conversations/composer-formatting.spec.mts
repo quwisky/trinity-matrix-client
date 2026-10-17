@@ -15,6 +15,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the composer's formatting affordances: the on-demand Format menu, rebindable chords,
 // markdown-aware Shift+Enter, preview, sending, and composer layout.
@@ -51,13 +52,12 @@ async function openComposer(
     })
     .then((r) => r.json())
     .then((j) => j.access_token as string);
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(
+    request,
+    hs,
+    { accessToken: token },
+    roomName,
+  );
   for (let index = 0; index < messageCount; index++) {
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}-${index}`,

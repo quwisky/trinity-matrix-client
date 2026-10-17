@@ -15,6 +15,7 @@ import { registerUser } from '../../../support/account.mts';
 import { isBlobAlive, playToEnd } from '../../support/media-playback.mts';
 import { apiLogin } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers recording + sending a voice message (+ tray → Voice message → record → send →
 // m.audio with the MSC3245 voice marker), rendered in the timeline as a voice player
@@ -55,10 +56,7 @@ test.describe('Voice messages', () => {
       })
       .then((r) => r.json())
       .then((j) => j.access_token as string);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, { accessToken: token }, roomName);
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
@@ -202,12 +200,7 @@ test.describe('Voice messages on a narrow phone', () => {
 
     await registerUser(request, user, pass);
     const me = await apiLogin(request, hs, user, pass);
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: me.headers,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(request, hs, me, roomName);
     await sendVoice(request, hs, me.headers, room_id, `${runId}-short`, 7_000);
     await sendVoice(request, hs, me.headers, room_id, `${runId}-long`, 754_000);
 

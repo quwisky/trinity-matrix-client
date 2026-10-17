@@ -6,6 +6,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers member info: clicking a member row in the member list
 // (data-testid="member-row") opens a room-scoped info card
@@ -55,16 +56,9 @@ test.describe('Member info', () => {
       { headers: memberB.headers, data: { displayname: memberName } },
     );
 
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: admin.headers,
-        data: {
-          name: roomName,
-          preset: 'private_chat',
-          invite: [memberB.userId],
-        },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(request, hs, admin, roomName, {
+      invite: [memberB.userId],
+    });
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
       { headers: memberB.headers },

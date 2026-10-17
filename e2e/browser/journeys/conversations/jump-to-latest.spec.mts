@@ -11,6 +11,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for the message list's jump-to-latest pill: once the user scrolls up
 // away from the newest message a pill appears (`data-testid="jump-to-latest"`), and
@@ -37,13 +38,7 @@ async function seedBusyRoom(
   const reader = await apiLogin(request, hs, readerUser, readerPass);
 
   const roomName = `Jump E2E ${runId}`;
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: { name: roomName },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(request, hs, reader, roomName);
 
   let lastEventId = '';
   for (let i = 0; i < MESSAGE_COUNT; i++) {

@@ -13,6 +13,7 @@ import {
   openRoom,
   session,
 } from '../../support/room-settings-journey.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 test.describe('Room settings', () => {
   configureRoomSettingsSuite();
@@ -265,16 +266,13 @@ test.describe('Room settings', () => {
         },
       })
       .then((response) => response.json());
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: { Authorization: `Bearer ${access_token}` },
-        data: {
-          name: roomName,
-          preset: 'private_chat',
-          invite: [memberId],
-        },
-      })
-      .then((response) => response.json());
+    const room_id = await createRoom(
+      request,
+      hs,
+      { accessToken: access_token },
+      roomName,
+      { invite: [memberId] },
+    );
     const memberAccessToken = await request
       .post(`${hs}/_matrix/client/v3/login`, {
         data: {

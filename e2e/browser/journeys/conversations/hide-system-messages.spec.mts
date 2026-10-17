@@ -7,6 +7,7 @@ import {
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers issue #21: the Settings → Appearance toggles that hide system lines (joins,
 // profile changes, room changes) from the timeline. Two users so a real
@@ -41,16 +42,9 @@ test.describe('Hide system messages', () => {
       `${hs}/_matrix/client/v3/profile/${encodeURIComponent(joiner.userId)}/displayname`,
       { headers: joiner.headers, data: { displayname: joinerName } },
     );
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: host.headers,
-        data: {
-          name: roomName,
-          preset: 'private_chat',
-          invite: [joiner.userId],
-        },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(request, hs, host, roomName, {
+      invite: [joiner.userId],
+    });
     // The join produces the "X joined the room" line this test is about…
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,

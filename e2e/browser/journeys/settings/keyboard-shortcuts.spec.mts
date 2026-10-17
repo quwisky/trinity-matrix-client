@@ -6,6 +6,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the "Keyboard shortcuts" settings section (issue #13): the list is reachable from
 // Settings, a rebound chord takes effect (the new chord switches rooms, the old one no
@@ -37,14 +38,10 @@ test.describe('Keyboard shortcuts settings', () => {
       })
       .then((r) => r.json())
       .then((j) => j.access_token as string);
-    const headers = { Authorization: `Bearer ${token}` };
     const a = `Alpha ${runId}`;
     const b = `Bravo ${runId}`;
     for (const name of [a, b]) {
-      await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers,
-        data: { name, preset: 'private_chat' },
-      });
+      await createRoom(request, hs, { accessToken: token }, name);
     }
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);

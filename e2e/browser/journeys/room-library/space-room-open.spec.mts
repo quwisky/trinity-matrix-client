@@ -1,16 +1,7 @@
-import {
-  testResourceId,
-  test,
-  expect,
-  type APIRequestContext,
-} from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import { login, homeserverSession } from '../../../support/app.mts';
-import {
-  passwordLogin,
-  registerUser,
-  type AccountSession,
-} from '../../../support/account.mts';
-import { describeFailure } from '../../../support/http-failure.mts';
+import { passwordLogin, registerUser } from '../../../support/account.mts';
+import { createRoom, linkChild } from '../../support/space-journey.mts';
 
 // Covers issue #1369: with a space selected in the rail, opening one of its rooms from the
 // sidebar — by click or by the Alt+↑/↓ list walk — keeps the space selected and its list in
@@ -22,54 +13,6 @@ import { describeFailure } from '../../../support/http-failure.mts';
 //
 // Needs a disposable homeserver and self-skips otherwise.
 const session = homeserverSession();
-
-/** Create a room (or, with `space`, a space) as `user`, returning its id. */
-async function createRoom(
-  request: APIRequestContext,
-  hs: string,
-  user: AccountSession,
-  name: string,
-  space = false,
-): Promise<string> {
-  const res = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-    headers: { Authorization: `Bearer ${user.accessToken}` },
-    data: {
-      name,
-      preset: 'private_chat',
-      ...(space ? { creation_content: { type: 'm.space' } } : {}),
-    },
-  });
-  if (!res.ok()) {
-    throw new Error(await describeFailure(`createRoom ${name}`, res));
-  }
-  return (await res.json()).room_id as string;
-}
-
-/** Link `childId` under `spaceId` with an `m.space.child` state event. */
-async function linkChild(
-  request: APIRequestContext,
-  hs: string,
-  user: AccountSession,
-  spaceId: string,
-  childId: string,
-): Promise<void> {
-  const serverName = user.userId.slice(user.userId.indexOf(':') + 1);
-  const res = await request.put(
-    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(
-      spaceId,
-    )}/state/m.space.child/${encodeURIComponent(childId)}`,
-    {
-      headers: { Authorization: `Bearer ${user.accessToken}` },
-      // `via` must be non-empty or the link reads as a removed child.
-      data: { via: [serverName] },
-    },
-  );
-  if (!res.ok()) {
-    throw new Error(
-      await describeFailure(`m.space.child ${spaceId}→${childId}`, res),
-    );
-  }
-}
 
 test.describe('Opening a room inside a space', () => {
   test.skip(!session.available, 'needs a disposable homeserver');
@@ -89,7 +32,9 @@ test.describe('Opening a room inside a space', () => {
     const alpha = `Alpha ${runId}`;
     const bravo = `Bravo ${runId}`;
     const outside = `Outside ${runId}`;
-    const spaceId = await createRoom(request, hs, reader, spaceName, true);
+    const spaceId = await createRoom(request, hs, reader, spaceName, {
+      space: true,
+    });
     for (const name of [alpha, bravo]) {
       const childId = await createRoom(request, hs, reader, name);
       await linkChild(request, hs, reader, spaceId, childId);

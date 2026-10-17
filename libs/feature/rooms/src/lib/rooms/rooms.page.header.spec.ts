@@ -475,7 +475,7 @@ describe('RoomsPage header actions and search field', () => {
 describe('RoomsPage Escape with the topic popover open', () => {
   // Characterization: pins that the page's Escape guard is present (jsdom has no Popover API,
   // so the popover is faked open). The real ordering against the browser's own popover
-  // handling is pinned by shell-layout.spec.mts:836-845.
+  // handling is pinned by shell-layout.spec.mts:826-835.
   it('closes only the popover, leaving the open panel alone', async () => {
     const root = renderHeader(0, {
       room: { ...ROOM, topic: 'Release planning' },

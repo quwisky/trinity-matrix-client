@@ -12,6 +12,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Recent emoji sync through MSC4356 `m.recent_emoji` account data: a pick is saved to the
 // account, and after a reload with this device's own emoji-mart history cleared, the
@@ -42,10 +43,7 @@ async function seedRoom(
     })
     .then((response) => response.json());
   const headers = { Authorization: `Bearer ${access_token}` };
-  await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-    headers,
-    data: { name: roomName },
-  });
+  await createRoom(request, hs, { accessToken: access_token }, roomName);
   return {
     user: { available: true, hs, user: username, pass: password },
     userId: user_id as string,

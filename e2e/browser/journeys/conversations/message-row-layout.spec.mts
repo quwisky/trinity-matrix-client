@@ -12,6 +12,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { apiLogin } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Pins the message row's grid placement: the gutter standing in for the avatar, the header
 // time, and the receipts with their "seen by" list sit where the stylesheet puts them. The
@@ -79,16 +80,9 @@ for (const [name, use] of [
         `${hs}/_matrix/client/v3/profile/${encodeURIComponent(other.userId)}/displayname`,
         { headers: other.headers, data: { displayname: readerName } },
       );
-      const { room_id } = await request
-        .post(`${hs}/_matrix/client/v3/createRoom`, {
-          headers: author.headers,
-          data: {
-            name: roomName,
-            preset: 'private_chat',
-            invite: [other.userId],
-          },
-        })
-        .then((r) => r.json());
+      const room_id = await createRoom(request, hs, author, roomName, {
+        invite: [other.userId],
+      });
       await request.post(
         `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
         { headers: other.headers },

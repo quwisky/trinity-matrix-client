@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // #986 K6: the hover toolbar belongs to the row under the pointer, and only that row.
 const session = homeserverSession();
@@ -35,12 +36,12 @@ test.describe('Message toolbar tracking', () => {
       })
       .then((r) => r.json());
     const headers = { Authorization: `Bearer ${access_token}` };
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(
+      request,
+      hs,
+      { accessToken: access_token },
+      roomName,
+    );
     // 40 messages, sent in order, so the list scrolls.
     for (let i = 1; i <= 40; i++) {
       await request.put(

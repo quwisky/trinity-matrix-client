@@ -7,6 +7,7 @@ import {
   openRoom,
   session,
 } from '../../support/room-settings-journey.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // A real device profile supplies the Android user agent that selects Trinity's mobile OS
 // interaction model; a narrow touch-enabled desktop viewport would not prove this surface.
@@ -36,10 +37,7 @@ test.describe('Room settings on a phone', () => {
         },
       })
       .then((response) => response.json());
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${access_token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, { accessToken: access_token }, roomName);
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);

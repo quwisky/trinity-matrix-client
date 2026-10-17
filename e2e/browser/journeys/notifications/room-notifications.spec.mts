@@ -12,6 +12,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for the per-room notification level: the room's ⋮ menu in the channel list
 // has a Notifications submenu (All / Mentions / Mute); picking one writes push rules, and
@@ -42,12 +43,12 @@ async function seedRoom(
       },
     })
     .then((r) => r.json());
-  const { room_id } = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${access_token}` },
-      data: { name: roomName },
-    })
-    .then((r) => r.json());
+  const room_id = await createRoom(
+    request,
+    hs,
+    { accessToken: access_token },
+    roomName,
+  );
 
   return {
     user: { available: true, hs, user: username, pass: password },

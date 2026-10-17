@@ -18,6 +18,7 @@ import {
   openSettingsSection,
 } from '../../../support/journeys/navigation.mts';
 import { cdpSwipe as swipe } from '../../../support/touch-platform.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Swiping a message row sideways to edit or reply to it (#222), on a real phone profile.
 //
@@ -69,12 +70,13 @@ async function openRoom(
   const token = await tokenFor(user);
   const friendToken = await tokenFor(friend);
   const auth = { Authorization: `Bearer ${token}` };
-  const { room_id } = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: auth,
-      data: { name: roomName, invite: [`@${friend}:localhost`] },
-    })
-    .then((r) => r.json());
+  const room_id = await createRoom(
+    request,
+    hs,
+    { accessToken: token },
+    roomName,
+    { invite: [`@${friend}:localhost`] },
+  );
   await request.post(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
     { headers: { Authorization: `Bearer ${friendToken}` } },

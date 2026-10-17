@@ -11,6 +11,7 @@ import {
   openSettingsSection,
 } from '../../../support/journeys/navigation.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the text-size setting (Settings → Appearance → Text size). The lever is the ROOT
 // font size, applied as a percentage, so everything that inherits from it scales.
@@ -103,13 +104,12 @@ test.describe('Text size', () => {
       .then((r) => r.json())
       .then((j) => j.access_token as string);
     const headers = { Authorization: `Bearer ${token}` };
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      roomName,
+    );
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${roomId}/send/m.room.message/${runId}`,
       { headers, data: { msgtype: 'm.text', body } },
@@ -218,13 +218,12 @@ test.describe('Code size', () => {
       .then((r) => r.json())
       .then((j) => j.access_token as string);
     const headers = { Authorization: `Bearer ${token}` };
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      roomName,
+    );
     // Prose and a fenced block in ONE message, so both are measured in the same inherited
     // context and the ratio between them means something.
     await request.put(
@@ -332,13 +331,12 @@ test.describe('Code line numbers', () => {
       .then((r) => r.json())
       .then((j) => j.access_token as string);
     const headers = { Authorization: `Bearer ${token}` };
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      roomName,
+    );
     const send = (txn: string, source: string) =>
       request.put(
         `${hs}/_matrix/client/v3/rooms/${roomId}/send/m.room.message/${txn}`,
@@ -453,13 +451,12 @@ test.describe('Code line numbers', () => {
       .then((r) => r.json())
       .then((j) => j.access_token as string);
     const headers = { Authorization: `Bearer ${token}` };
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      roomName,
+    );
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${roomId}/send/m.room.message/${runId}a`,
       {

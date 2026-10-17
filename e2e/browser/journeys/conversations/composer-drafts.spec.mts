@@ -12,6 +12,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for per-conversation composer drafts: a half-typed message is kept per
 // room while switching between rooms, and survives a reload (persisted to Capacitor
@@ -42,12 +43,8 @@ async function seedTwoRooms(
     })
     .then((r) => r.json())
     .then((j) => j.access_token as string);
-  const headers = { Authorization: `Bearer ${token}` };
   for (const name of [roomA, roomB]) {
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers,
-      data: { name },
-    });
+    await createRoom(request, hs, { accessToken: token }, name);
   }
 
   return {

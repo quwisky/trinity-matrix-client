@@ -14,6 +14,7 @@ import {
   apiLogin,
   type ApiUser,
 } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for the direct-message avatar. A DM is never given an `m.room.avatar`, so
 // the room row has to fall back to the other person's picture; reading only the state
@@ -101,13 +102,9 @@ async function seedDmAndGroup(
     { headers: reader.headers, data: { [partner.userId]: [dmId] } },
   );
 
-  const groupId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: { name: groupName, invite: [partner.userId] },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const groupId = await createRoom(request, hs, reader, groupName, {
+    invite: [partner.userId],
+  });
   // Two members, exactly like the DM — and deliberately NOT recorded in `m.direct`.
   await request.post(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(groupId)}/join`,

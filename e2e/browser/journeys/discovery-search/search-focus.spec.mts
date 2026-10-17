@@ -6,6 +6,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Both search dialogs must open ready to type: the quick switcher (Ctrl/Cmd+K, from the
 // sidebar's ⌘ button) and in-room message search (the room header's magnifier). Each
@@ -60,10 +61,7 @@ test.describe('Search dialogs', () => {
       })
       .then((r) => r.json())
       .then((j) => j.access_token as string);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, { accessToken: token }, roomName);
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
@@ -107,10 +105,7 @@ test.describe('Search dialogs', () => {
       })
       .then((r) => r.json())
       .then((j) => j.access_token as string);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, { accessToken: token }, roomName);
 
     await page.setViewportSize({ width: 900, height: 700 });
     await login(page, { available: true, hs, user, pass } as HomeserverSession);

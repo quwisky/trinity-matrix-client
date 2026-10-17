@@ -7,6 +7,7 @@ import {
 import { passwordLogin, registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers Settings › Privacy › Invites: choosing "Block all invites" stores the MSC4380
 // invite permission config, after which the invitee's homeserver turns the invite down
@@ -44,12 +45,7 @@ test.describe('Block unwanted invites', () => {
         data: { displayname: bobName },
       },
     );
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: aliceAuth,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(request, hs, alice, roomName);
 
     // Bob turns every invite down.
     await login(page, {

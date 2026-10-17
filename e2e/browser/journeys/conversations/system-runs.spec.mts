@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers #986 L7: the state burst of a new room collapses into one summary that expands in
 // place. Needs a homeserver (Docker); self-skips.
@@ -32,10 +33,7 @@ test.describe('System runs', () => {
         },
       })
       .then((r) => r.json());
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${access_token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, { accessToken: access_token }, roomName);
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await page.getByTestId('rail-rooms').click();

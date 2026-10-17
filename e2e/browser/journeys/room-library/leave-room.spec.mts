@@ -11,6 +11,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers "leave a room": each room row's kebab (`.channel__menu`) opens a Helm
 // dropdown-menu (CDK overlay) with a destructive "Leave room" item
@@ -46,10 +47,7 @@ async function seedTwoRooms(
     .then((r) => r.json());
 
   for (const name of [leaveName, keepName]) {
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${access_token}` },
-      data: { name, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, { accessToken: access_token }, name);
   }
 
   return {

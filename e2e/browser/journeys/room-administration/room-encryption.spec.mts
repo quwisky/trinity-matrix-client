@@ -13,6 +13,7 @@ import {
   session,
   tokenFor,
 } from '../../support/room-settings-journey.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers Room settings › General › Encryption: an admin turns on encryption in an unencrypted
 // room. The status changes once sync delivers m.room.encryption, and the next message the app
@@ -37,13 +38,12 @@ test.describe('Room encryption', () => {
     const headers = { Authorization: `Bearer ${token}` };
     const room = (id: string) =>
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(id)}`;
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      roomName,
+    );
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);

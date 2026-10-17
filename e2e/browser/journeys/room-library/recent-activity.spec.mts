@@ -14,6 +14,7 @@ import {
   apiLogin,
   type ApiUser,
 } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the "Recent activity" view (issue #9): the first rail item
 // (`data-testid="rail-recent"`), active on launch, whose channel list mixes direct
@@ -25,22 +26,6 @@ import {
 const session = homeserverSession();
 
 const HS_SERVER_NAME = 'localhost';
-
-/** Create a room owned by `user`, returning its id. */
-async function createRoom(
-  request: APIRequestContext,
-  hs: string,
-  user: ApiUser,
-  name: string,
-): Promise<string> {
-  return request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: user.headers,
-      data: { name, preset: 'private_chat' },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
-}
 
 /** Tag `roomId` as a direct message in `user`'s `m.direct` account data. */
 async function markDirect(

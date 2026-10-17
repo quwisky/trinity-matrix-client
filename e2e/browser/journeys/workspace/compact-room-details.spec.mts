@@ -16,6 +16,7 @@ import {
   apiLogin,
   type ApiUser,
 } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for the mobile (narrow-viewport) room navigation the desktop specs
 // never exercise, since the shared config runs at Desktop Chrome (1280px):
@@ -72,13 +73,9 @@ async function seedRoom(
   await setDisplayName(request, hs, buddy, buddyName);
 
   const roomName = `Mobile E2E ${runId}`;
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: { name: roomName, invite: [buddy.userId] },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(request, hs, reader, roomName, {
+    invite: [buddy.userId],
+  });
   await request.post(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
     { headers: buddy.headers },
@@ -270,10 +267,7 @@ test.describe('Mobile room navigation', () => {
       reader.pass as string,
     );
     const otherRoomName = `Mobile Other ${runId}`;
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: actor.headers,
-      data: { name: otherRoomName, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, actor, otherRoomName);
 
     await page.setViewportSize({ width: 1280, height: 900 });
     await login(page, reader);

@@ -3,7 +3,6 @@ import {
   expect,
   test,
   testResourceId,
-  type APIRequestContext,
   type Page,
 } from '../../../fixtures.mts';
 import {
@@ -20,27 +19,9 @@ import {
   session,
   tokenFor,
 } from '../../support/room-settings-journey.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 const { defaultBrowserType: _pixelBrowser, ...pixel5 } = devices['Pixel 5'];
-
-async function createSpace(
-  request: APIRequestContext,
-  hs: string,
-  token: string,
-  name: string,
-): Promise<string> {
-  return request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: {
-        name,
-        preset: 'private_chat',
-        creation_content: { type: 'm.space' },
-      },
-    })
-    .then((response) => response.json())
-    .then((body) => body.room_id as string);
-}
 
 async function openSpaceSettings(
   page: Page,
@@ -137,12 +118,13 @@ test.describe('Room settings', () => {
       `${hs}/_matrix/client/v3/profile/${encodeURIComponent(targetId)}/displayname`,
       { headers: targetAuth, data: { displayname: targetName } },
     );
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: adminAuth,
-        data: { name: roomName, preset: 'private_chat', invite: [targetId] },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(
+      request,
+      hs,
+      { accessToken: adminToken },
+      roomName,
+      { invite: [targetId] },
+    );
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
       { headers: targetAuth },
@@ -469,12 +451,12 @@ test.describe('Room settings', () => {
     const server = (login1.user_id as string).split(':')[1];
     const localpart = `addr-${runId}`;
     const alias = `#${localpart}:${server}`;
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: auth,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(
+      request,
+      hs,
+      { accessToken: login1.access_token },
+      roomName,
+    );
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
@@ -615,14 +597,19 @@ test.describe('Space member and address settings on a phone', () => {
       `${hs}/_matrix/client/v3/profile/${encodeURIComponent(inviteeId)}/displayname`,
       { headers: inviteeAuth, data: { displayname: inviteeName } },
     );
-    const spaceId = await createSpace(request, hs, ownerToken, spaceName);
-    const childId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: ownerAuth,
-        data: { name: childName, preset: 'private_chat' },
-      })
-      .then((response) => response.json())
-      .then((body) => body.room_id as string);
+    const spaceId = await createRoom(
+      request,
+      hs,
+      { accessToken: ownerToken },
+      spaceName,
+      { space: true },
+    );
+    const childId = await createRoom(
+      request,
+      hs,
+      { accessToken: ownerToken },
+      childName,
+    );
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(childId)}`,
       { headers: ownerAuth, data: { via: ['localhost'] } },
@@ -747,14 +734,19 @@ test.describe('Space member and address settings on a phone', () => {
 
     await registerUser(request, user, pass);
     const token = await tokenFor(request, hs, user, pass);
-    const spaceId = await createSpace(request, hs, token, spaceName);
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((response) => response.json())
-      .then((body) => body.room_id as string);
+    const spaceId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      spaceName,
+      { space: true },
+    );
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      roomName,
+    );
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(roomId)}`,
       {

@@ -11,6 +11,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for the full emoji reaction picker: hover a message, open the quick
 // reactions, escalate to the full emoji-mart picker via "+", search and pick an
@@ -43,13 +44,12 @@ async function seedRoom(
     })
     .then((r) => r.json());
   const headers = { Authorization: `Bearer ${access_token}` };
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers,
-      data: { name: roomName },
-    })
-    .then((response) => response.json())
-    .then((json) => json.room_id as string);
+  const roomId = await createRoom(
+    request,
+    hs,
+    { accessToken: access_token },
+    roomName,
+  );
 
   return {
     user: { available: true, hs, user: username, pass: password },

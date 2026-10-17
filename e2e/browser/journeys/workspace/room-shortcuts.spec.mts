@@ -1,19 +1,11 @@
-import {
-  testResourceId,
-  test,
-  expect,
-  type APIRequestContext,
-} from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import {
-  registerUser,
-  apiLogin,
-  type ApiUser,
-} from '../../../support/account.mts';
+import { registerUser, apiLogin } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the web-available keyboard room-switching shortcuts (issue #12): Ctrl/Cmd+'
 // hops through the most-recently-VISITED stack (alt-tab, cycling deeper; Shift reverses),
@@ -25,22 +17,6 @@ import {
 // CI is Linux, so the accelerator is Control (the app binds both Control and Meta).
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
 const session = homeserverSession();
-
-async function createRoom(
-  request: APIRequestContext,
-  hs: string,
-  user: ApiUser,
-  name: string,
-  invite: string[] = [],
-): Promise<string> {
-  return request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: user.headers,
-      data: { name, preset: 'private_chat', invite },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
-}
 
 test.describe('Keyboard room switching', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
@@ -72,9 +48,9 @@ test.describe('Keyboard room switching', () => {
       senderUser,
       `${senderUser}-pass`,
     );
-    const unreadId = await createRoom(request, hs, reader, unreadName, [
-      sender.userId,
-    ]);
+    const unreadId = await createRoom(request, hs, reader, unreadName, {
+      invite: [sender.userId],
+    });
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(unreadId)}/join`,
       { headers: sender.headers },

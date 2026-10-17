@@ -9,6 +9,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers quoting a message (msg-more → msg-quote): the message's text is pulled into the
 // composer as a markdown `>` block for the user to write around, and sending it renders a
@@ -50,10 +51,7 @@ test.describe('Quote a message', () => {
       })
       .then((r) => r.json())
       .then((j) => j.access_token as string);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, { accessToken: token }, roomName);
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
@@ -119,13 +117,12 @@ test.describe('Quote a message', () => {
       })
       .then((r) => r.json())
       .then((j) => j.access_token as string);
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      roomName,
+    );
 
     // An image message: its body is the filename, so there is nothing worth quoting.
     // Sent over the API rather than through the picker — this test is about the menu.

@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the sidebar's touch affordances, which no other spec can see: every other
 // authenticated spec runs the desktop Chromium project, where `hover: hover` and
@@ -49,10 +50,7 @@ test.describe('Sidebar on a touch device', () => {
       })
       .then((r) => r.json())
       .then((j) => j.access_token as string);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, { accessToken: token }, roomName);
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
 

@@ -12,6 +12,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // While the window is hidden, the open room's history is trimmed like a room nobody has
 // open, but only while its view follows the newest message (#1366). These journeys page a
@@ -34,6 +35,7 @@ const RELEASE_WAIT_MS = 62_000;
 interface ApiUser {
   readonly session: HomeserverSession;
   readonly userId: string;
+  readonly accessToken: string;
   readonly headers: Record<string, string>;
 }
 
@@ -57,23 +59,9 @@ async function apiUser(
   return {
     session: { available: true, hs, user, pass },
     userId: json.user_id as string,
+    accessToken: json.access_token as string,
     headers: { Authorization: `Bearer ${json.access_token}` },
   };
-}
-
-async function createRoom(
-  request: APIRequestContext,
-  hs: string,
-  owner: ApiUser,
-  name: string,
-): Promise<string> {
-  return request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: owner.headers,
-      data: { name, preset: 'private_chat' },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
 }
 
 /** Send `content` as `sender`; returns the event id. */
