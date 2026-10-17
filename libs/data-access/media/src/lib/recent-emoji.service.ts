@@ -99,13 +99,18 @@ export class RecentEmojiService {
     return this.projection.run();
   }
 
-  /** Records a picked emoji for the Active Account. */
+  /**
+   * Records a picked emoji for the Active Account. Works with nothing keeping the projection
+   * open, as a toolbar's quick reaction does: the save reads the server copy first anyway.
+   */
   record(emoji: string): void {
-    const client = this.projection.client();
+    const client =
+      this.projection.client() ??
+      (this.matrix.isInitialized ? this.matrix.instance : null);
     if (!client || !emoji) return;
     const pending = this.pendingFor(client);
     pending.picks = [...pending.picks, emoji];
-    this.unsaved.set(pending.picks);
+    if (this.projection.client() === client) this.unsaved.set(pending.picks);
     if (pending.timer !== null) clearTimeout(pending.timer);
     pending.timer = setTimeout(() => this.save(client), WRITE_DELAY_MS);
   }

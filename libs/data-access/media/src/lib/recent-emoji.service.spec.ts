@@ -16,7 +16,10 @@ function accountEvent(type: string, content: unknown) {
   return { getType: () => type, getContent: () => content };
 }
 
-function setup(local: Record<string, Content> = {}) {
+function setup(
+  local: Record<string, Content> = {},
+  { connected = true }: { connected?: boolean } = {},
+) {
   const store: Record<string, Content> = structuredClone(local);
   const server: Record<string, Content> = structuredClone(local);
   const listeners = new Map<string, (event: unknown) => void>();
@@ -55,7 +58,7 @@ function setup(local: Record<string, Content> = {}) {
     ],
   });
   const service = TestBed.inject(RecentEmojiService);
-  const lifetime = service.run().subscribe();
+  const lifetime = connected ? service.run().subscribe() : null;
   TestBed.tick();
   /** Another device's write, as sync delivers it. */
   const sync = async (type: string, content: Content) => {
@@ -159,6 +162,21 @@ describe('RecentEmojiService', () => {
     });
 
     expect(service.recent()).toEqual(['👍']);
+  });
+
+  it('saves a pick made while nothing keeps the projection open', async () => {
+    const { service, write } = setup(
+      { [RECENT_EMOJI_EVENT_TYPE]: stable(['👍', 1]) },
+      { connected: false },
+    );
+
+    service.record('🎉');
+    await settle();
+
+    expect(write).toHaveBeenCalledWith(
+      RECENT_EMOJI_EVENT_TYPE,
+      stable(['🎉', 1], ['👍', 1]),
+    );
   });
 
   it('puts a pick first at once, counting it', () => {

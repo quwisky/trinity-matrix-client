@@ -1,7 +1,7 @@
 import { ComponentFixture } from '@angular/core/testing';
-import { RecentEmojiService } from '@trinity/data-access/media';
+import { signal } from '@angular/core';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { render } from '@trinity/testing';
-import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
 import {
   MessageToolbarComponent,
@@ -317,14 +317,41 @@ describe('MessageToolbarComponent save media', () => {
     expect(seen).toEqual([{ type: 'save-media' }]);
   });
 
-  it('records a quick reaction as a recently used emoji', async () => {
-    const record = vi.fn();
-    const { fixture } = await render(MessageToolbarComponent, {
-      providers: [MockProvider(RecentEmojiService, { record })],
-    });
+  it('saves a quick reaction as a recently used emoji with no picker open', async () => {
+    vi.useFakeTimers();
+    try {
+      const setAccountDataRaw = vi.fn(async () => ({}));
+      const client = {
+        getUserId: () => '@alice:hs',
+        getAccountData: () => undefined,
+        setAccountDataRaw,
+        http: {
+          authedRequest: vi.fn(async () => ({ recent_emoji: [] })),
+        },
+        on: vi.fn(),
+        off: vi.fn(),
+      };
+      const { fixture } = await render(MessageToolbarComponent, {
+        providers: [
+          {
+            provide: MatrixClientService,
+            useValue: {
+              isInitialized: true,
+              instance: client,
+              activeUserId: signal('@alice:hs').asReadonly(),
+            },
+          },
+        ],
+      });
 
-    fixture.componentInstance.pick('🎉');
+      fixture.componentInstance.pick('🎉');
+      await vi.advanceTimersByTimeAsync(2_000);
 
-    expect(record).toHaveBeenCalledWith('🎉');
+      expect(setAccountDataRaw).toHaveBeenCalledWith('m.recent_emoji', {
+        recent_emoji: [{ emoji: '🎉', total: 1 }],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
