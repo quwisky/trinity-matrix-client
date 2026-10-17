@@ -9,11 +9,8 @@ import {
   type ConfigValue,
 } from '@trinity/platform-native';
 import { describe, expect, it } from 'vitest';
-import {
-  configCompletionSource,
-  configDiagnostics,
-  configHoverInfo,
-} from './config-intellisense';
+import { configDiagnostics } from './config-diagnostics';
+import { configCompletionSource, configHoverInfo } from './config-intellisense';
 
 /**
  * A registry the shape of the real one — a closed choice, a flag, and a setting whose value is
