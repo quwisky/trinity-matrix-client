@@ -32,13 +32,17 @@ import {
   AccountRuntimeService,
   type AccountSwitchCoordination,
 } from '@trinity/data-access/accounts';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  type SyncState,
+} from '@trinity/data-access/matrix-client';
 import {
   InvitesService,
   RoomLibraryService,
   SelectedRoomLibraryService,
   SpaceContentsService,
   SpacesService,
+  UnreadAggregatorService,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
 import {
@@ -483,6 +487,44 @@ export function invitesProvider(over: Partial<InvitesService> = {}) {
     ...over,
   });
 }
+
+/**
+ * Default MatrixClientService mock: one initialised Account, `@me:hs`, whose clients are
+ * {@link clientStub}s. `syncState` is only provided when a block asks for it.
+ */
+export function matrixClientProvider(
+  options: {
+    readonly activeUserId?: Signal<string | null>;
+    readonly accountIds?: readonly string[];
+    readonly syncState?: SyncState;
+  } = {},
+): Provider {
+  return MockProvider(MatrixClientService, {
+    isInitialized: true,
+    ...(options.syncState
+      ? {
+          syncState: signal<SyncState | null>(options.syncState).asReadonly(),
+        }
+      : {}),
+    instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+    activeUserId:
+      options.activeUserId ?? signal<string | null>('@me:hs').asReadonly(),
+    accountIds: signal<readonly string[]>(
+      options.accountIds ?? ['@me:hs'],
+    ).asReadonly(),
+    clientFor: () => clientStub(),
+  });
+}
+
+/** Default UnreadAggregatorService mock: no unread counts on any Account. */
+export const UNREAD_AGGREGATOR_PROVIDER: Provider = MockProvider(
+  UnreadAggregatorService,
+  {
+    unreadByAccount: signal<ReadonlyMap<string, number>>(
+      new Map(),
+    ).asReadonly(),
+  },
+);
 
 /**
  * Keep single-Account page tests on their directly driven projection signals.

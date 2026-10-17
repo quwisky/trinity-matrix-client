@@ -6,7 +6,8 @@ import { PublicRoomsService } from '@trinity/data-access/discovery';
 import {
   SHARED_MOCKS,
   RoomsTimelineStub,
-  clientStub,
+  UNREAD_AGGREGATOR_PROVIDER,
+  matrixClientProvider,
   flushPanelJump,
   invitesProvider,
   selectedRoomLibraryProvider,
@@ -17,7 +18,6 @@ import {
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   MediaPipeline,
   type StagedMediaReference,
@@ -28,7 +28,6 @@ import {
   RoomReadinessService,
   SpacesService,
   AccountScopeService,
-  UnreadAggregatorService,
   SpaceChildrenService,
   type RoomSummary,
   type SpaceSummary,
@@ -153,18 +152,8 @@ describe('RoomsPage panels, pins and media', () => {
         MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
         MockProvider(TrnAlertService, { confirm$: alertConfirm }),
         MockProvider(MediaPipeline),
-        MockProvider(MatrixClientService, {
-          isInitialized: true,
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
-          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
-          clientFor: () => clientStub(),
-        }),
-        MockProvider(UnreadAggregatorService, {
-          unreadByAccount: signal<ReadonlyMap<string, number>>(
-            new Map(),
-          ).asReadonly(),
-        }),
+        matrixClientProvider(),
+        UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),

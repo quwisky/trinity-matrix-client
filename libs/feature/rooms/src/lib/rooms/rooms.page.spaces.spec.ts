@@ -1,6 +1,7 @@
 import {
   SHARED_MOCKS,
-  clientStub,
+  UNREAD_AGGREGATOR_PROVIDER,
+  matrixClientProvider,
   invitesProvider,
   selectedRoomLibraryProvider,
   setRouteRoom,
@@ -9,11 +10,9 @@ import {
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   RoomLibraryService,
   SpacesService,
-  UnreadAggregatorService,
   SpaceRoomOrderService,
   TRINITY_ROOM_SORTS,
   type RoomSortMode,
@@ -128,18 +127,8 @@ describe('RoomsPage space filtering', () => {
           modes: TRINITY_ROOM_SORTS,
         }),
         MockProvider(TimelineActionsService),
-        MockProvider(MatrixClientService, {
-          isInitialized: true,
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
-          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
-          clientFor: () => clientStub(),
-        }),
-        MockProvider(UnreadAggregatorService, {
-          unreadByAccount: signal<ReadonlyMap<string, number>>(
-            new Map(),
-          ).asReadonly(),
-        }),
+        matrixClientProvider(),
+        UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -761,18 +750,8 @@ describe('RoomsPage space ordering', () => {
           clearForAccountSpace,
         }),
         MockProvider(TimelineActionsService),
-        MockProvider(MatrixClientService, {
-          isInitialized: true,
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
-          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
-          clientFor: () => clientStub(),
-        }),
-        MockProvider(UnreadAggregatorService, {
-          unreadByAccount: signal<ReadonlyMap<string, number>>(
-            new Map(),
-          ).asReadonly(),
-        }),
+        matrixClientProvider(),
+        UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -973,18 +952,8 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
           childRoomIds,
         }),
         MockProvider(TimelineActionsService),
-        MockProvider(MatrixClientService, {
-          isInitialized: true,
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
-          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
-          clientFor: () => clientStub(),
-        }),
-        MockProvider(UnreadAggregatorService, {
-          unreadByAccount: signal<ReadonlyMap<string, number>>(
-            new Map(),
-          ).asReadonly(),
-        }),
+        matrixClientProvider(),
+        UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),

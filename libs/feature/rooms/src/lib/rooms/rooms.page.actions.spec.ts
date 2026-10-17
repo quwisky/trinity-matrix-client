@@ -2,7 +2,8 @@ import { RoomModerationService } from '@trinity/data-access/room-administration'
 import {
   SHARED_MOCKS,
   RoomsTimelineStub,
-  clientStub,
+  UNREAD_AGGREGATOR_PROVIDER,
+  matrixClientProvider,
   invitesProvider,
   selectedRoomLibraryProvider,
   setRouteRoom,
@@ -31,17 +32,13 @@ import {
   InviteBlockedError,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
-import {
-  MatrixClientService,
-  type SyncState,
-} from '@trinity/data-access/matrix-client';
+import { type SyncState } from '@trinity/data-access/matrix-client';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
   RoomLibraryService,
   RoomReadinessService,
   SpaceContentsService,
   SpacesService,
-  UnreadAggregatorService,
   type RoomSummary,
   type SpaceChildRoom,
   type SpaceSummary,
@@ -149,21 +146,12 @@ describe('RoomsPage space actions', () => {
         }),
         MockProvider(SpaceContentsService, { create: createRoomInSpace }),
         MockProvider(TimelineActionsService),
-        MockProvider(MatrixClientService, {
-          isInitialized: true,
-          syncState: signal<SyncState | null>(
-            'SYNCING' as SyncState,
-          ).asReadonly(),
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
+        matrixClientProvider({
           activeUserId: activeAccountId.asReadonly(),
-          accountIds: signal<readonly string[]>(accountIds).asReadonly(),
-          clientFor: () => clientStub(),
+          accountIds,
+          syncState: 'SYNCING' as SyncState,
         }),
-        MockProvider(UnreadAggregatorService, {
-          unreadByAccount: signal<ReadonlyMap<string, number>>(
-            new Map(),
-          ).asReadonly(),
-        }),
+        UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -658,21 +646,8 @@ describe('RoomsPage room / DM / invite actions', () => {
         MockProvider(QuickSwitcherService),
         MockProvider(TimelineActionsService),
         MockProvider(MediaPipeline),
-        MockProvider(MatrixClientService, {
-          isInitialized: true,
-          syncState: signal<SyncState | null>(
-            'SYNCING' as SyncState,
-          ).asReadonly(),
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
-          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
-          clientFor: () => clientStub(),
-        }),
-        MockProvider(UnreadAggregatorService, {
-          unreadByAccount: signal<ReadonlyMap<string, number>>(
-            new Map(),
-          ).asReadonly(),
-        }),
+        matrixClientProvider({ syncState: 'SYNCING' as SyncState }),
+        UNREAD_AGGREGATOR_PROVIDER,
         MockProvider(TrnSurfaceService, {
           open: surfaceOpen,
           openAndWait$: dialogOpen,
@@ -1677,21 +1652,8 @@ describe('RoomsPage space hierarchy actions', () => {
         }),
         MockProvider(SpaceContentsService, { unlink: removeRoomFromSpace }),
         MockProvider(TimelineActionsService),
-        MockProvider(MatrixClientService, {
-          isInitialized: true,
-          syncState: signal<SyncState | null>(
-            'SYNCING' as SyncState,
-          ).asReadonly(),
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
-          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
-          clientFor: () => clientStub(),
-        }),
-        MockProvider(UnreadAggregatorService, {
-          unreadByAccount: signal<ReadonlyMap<string, number>>(
-            new Map(),
-          ).asReadonly(),
-        }),
+        matrixClientProvider({ syncState: 'SYNCING' as SyncState }),
+        UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
