@@ -160,6 +160,20 @@ describe('DeleteAccountGroupComponent', () => {
     await screen.findByTestId('delete-account');
 
     expect(test.launcher.plan).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('status').textContent).toContain(
+      'Delete account options loaded.',
+    );
+  });
+
+  it('says so when asking again fails again', async () => {
+    const test = await setup({ kind: 'unknown' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await test.fixture.whenStable();
+
+    expect(screen.getByRole('status').textContent).toContain(
+      'Still couldn’t load how to delete this account.',
+    );
   });
 
   it('keeps the message and Try again in place while it asks again', async () => {
