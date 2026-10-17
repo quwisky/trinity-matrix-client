@@ -143,4 +143,22 @@ describe('DeleteAccountGroupComponent', () => {
       'example.org doesn’t offer a page for deleting accounts. Ask its administrator to delete it.',
     );
   });
+
+  it('says the server could not be asked, and asks again', async () => {
+    const test = await setup({ kind: 'unknown' });
+
+    expect(screen.queryByTestId('delete-account')).toBeNull();
+    expect(screen.queryByTestId('delete-account-provider')).toBeNull();
+    expect(
+      screen.getByTestId('delete-account-plan-unknown').textContent,
+    ).toContain(
+      'Trinity couldn’t load how to delete this account from example.org.',
+    );
+
+    vi.mocked(test.launcher.plan!).mockReturnValue(of({ kind: 'in-app' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByTestId('delete-account');
+
+    expect(test.launcher.plan).toHaveBeenCalledTimes(2);
+  });
 });

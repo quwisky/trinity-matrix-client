@@ -4,7 +4,26 @@
     partId="delete-account"
     [description]="copy.groupDescription"
   >
-    @if (plan.kind === 'in-app') {
+    @if (plan.kind === 'unknown') {
+      <div
+        class="flex flex-col items-start gap-2 py-3"
+        data-testid="delete-account-plan-unknown"
+      >
+        <p class="m-0 text-sm text-muted-foreground">
+          {{ copy.planUnknown(server()) }}
+        </p>
+        <button
+          trnBtn
+          size="sm"
+          presentation="outline"
+          type="button"
+          (click)="retryPlan()"
+          data-testid="delete-account-plan-retry"
+        >
+          Try again
+        </button>
+      </div>
+    } @else if (plan.kind === 'in-app') {
       <trn-settings-row
         label="Delete account"
         [description]="copy.rowDescription(accountId())"

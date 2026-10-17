@@ -1,7 +1,27 @@
 <trn-settings-group
   description="Manage the credentials and account controls provided by your homeserver."
 >
-  @if (usesProvider()) {
+  @if (serverApi()?.kind === 'unknown') {
+    <div
+      class="flex flex-col items-start gap-2 py-3"
+      data-testid="account-options-unknown"
+    >
+      <p class="m-0 text-sm text-muted-foreground">
+        Trinity couldn’t load the account options from {{ server() }}. Check
+        your connection and try again.
+      </p>
+      <button
+        trnBtn
+        size="sm"
+        presentation="outline"
+        type="button"
+        (click)="retryServerApi()"
+        data-testid="account-options-retry"
+      >
+        Try again
+      </button>
+    </div>
+  } @else if (usesProvider()) {
     <trn-settings-row
       label="Credentials and sessions"
       description="Your password and sessions are managed by your identity provider."
@@ -17,7 +37,7 @@
         </button>
       }
     </trn-settings-row>
-  } @else {
+  } @else if (serverApi()?.kind === 'legacy') {
     <form [formRoot]="form" (submit)="submit()">
       <trn-settings-row label="Current password" for="current-password">
         <div class="flex items-center gap-2">
@@ -131,5 +151,7 @@
 </trn-settings-group>
 
 @if (accountId(); as id) {
-  <trn-delete-account-group [accountId]="id" />
+  @if (serverApi()?.kind !== 'unknown') {
+    <trn-delete-account-group [accountId]="id" />
+  }
 }

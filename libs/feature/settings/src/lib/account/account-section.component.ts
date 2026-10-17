@@ -11,7 +11,7 @@ import {
   toObservable,
   toSignal,
 } from '@angular/core/rxjs-interop';
-import { of, switchMap } from 'rxjs';
+import { of, startWith, switchMap } from 'rxjs';
 import {
   FormField,
   FormRoot,
@@ -29,6 +29,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { DeleteAccountGroupComponent } from './delete-account/delete-account-group.component';
+import { serverNameOf } from './delete-account/delete-account.copy';
 import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
@@ -110,17 +111,29 @@ export class AccountSectionComponent {
   private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly attempt = signal(0);
 
   /** The account this section shows. */
   readonly accountId = inject(MatrixClientService).activeUserId;
 
   /** The server's account API; null until it has answered. */
   readonly serverApi = toSignal(
-    toObservable(this.accountId).pipe(
-      switchMap((id) => (id ? this.auth.accountManagementFor(id) : of(null))),
+    toObservable(
+      computed(() => ({ id: this.accountId(), attempt: this.attempt() })),
+    ).pipe(
+      switchMap(({ id }) =>
+        id
+          ? this.auth.accountManagementFor(id).pipe(startWith(null))
+          : of(null),
+      ),
     ),
     { initialValue: null },
   );
+
+  protected readonly server = computed(() => {
+    const id = this.accountId();
+    return id ? serverNameOf(id) : '';
+  });
 
   readonly usesProvider = computed(() => this.serverApi()?.kind === 'oauth');
 
@@ -129,6 +142,11 @@ export class AccountSectionComponent {
     const api = this.serverApi();
     return api?.kind === 'oauth' ? api.management : null;
   });
+
+  /** Ask the server again after it could not be reached. */
+  retryServerApi(): void {
+    this.attempt.update((n) => n + 1);
+  }
 
   /** Open the provider's account-management page (system browser on every platform). */
   openAccountManagement(): void {

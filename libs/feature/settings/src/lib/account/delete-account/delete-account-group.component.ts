@@ -12,7 +12,7 @@ import {
   toObservable,
   toSignal,
 } from '@angular/core/rxjs-interop';
-import { switchMap, tap } from 'rxjs';
+import { startWith, switchMap, tap } from 'rxjs';
 import { TrnButton } from '@trinity/components/controls';
 import {
   TrnSettingsGroupComponent,
@@ -44,6 +44,7 @@ export class DeleteAccountGroupComponent {
   private readonly launcher = inject(ACCOUNT_DELETION_LAUNCHER);
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly attempt = signal(0);
 
   protected readonly copy = DELETE_ACCOUNT_COPY;
 
@@ -51,12 +52,14 @@ export class DeleteAccountGroupComponent {
 
   /** How deletion works on this account's server; null until the server has answered. */
   readonly plan = toSignal(
-    toObservable(this.accountId).pipe(
+    toObservable(
+      computed(() => ({ id: this.accountId(), attempt: this.attempt() })),
+    ).pipe(
       tap(() => {
         this.providerOpened.set(false);
         this.checkMessage.set(null);
       }),
-      switchMap((id) => this.launcher.plan(id)),
+      switchMap(({ id }) => this.launcher.plan(id).pipe(startWith(null))),
     ),
     { initialValue: null },
   );
@@ -75,6 +78,11 @@ export class DeleteAccountGroupComponent {
       return null;
     }
   });
+
+  /** Ask the server again after it could not be reached. */
+  retryPlan(): void {
+    this.attempt.update((n) => n + 1);
+  }
 
   openDialog(): void {
     this.surfaces.open(DeleteAccountDialogComponent, {

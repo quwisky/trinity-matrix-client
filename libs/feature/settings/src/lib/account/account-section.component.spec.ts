@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
-import { render, screen } from '@trinity/testing';
+import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signal } from '@angular/core';
@@ -112,6 +112,28 @@ describe('AccountSectionComponent', () => {
     expect(externalBrowser.open).toHaveBeenCalledWith(
       'https://op.example/account',
     );
+  });
+
+  it('offers no account controls until the server can be asked, then tries again', async () => {
+    const { auth } = await renderSection({ kind: 'unknown' });
+
+    expect(screen.queryByTestId('change-password')).toBeNull();
+    expect(screen.queryByTestId('manage-account')).toBeNull();
+    expect(
+      screen.queryByRole('heading', { name: 'Delete account' }),
+    ).toBeNull();
+    expect(screen.getByTestId('account-options-unknown').textContent).toContain(
+      'Trinity couldn’t load the account options from example.org.',
+    );
+
+    vi.mocked(auth.accountManagementFor).mockReturnValue(
+      of({ kind: 'legacy' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByTestId('change-password');
+
+    expect(auth.accountManagementFor).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId('account-options-unknown')).toBeNull();
   });
 
   it('reveals each password field independently', async () => {

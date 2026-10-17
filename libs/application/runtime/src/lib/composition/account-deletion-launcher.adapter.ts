@@ -59,6 +59,7 @@ export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
     return this.auth.accountManagementFor(accountId).pipe(
       map((api): AccountDeletionPlan => {
         if (api.kind === 'legacy') return { kind: 'in-app' };
+        if (api.kind === 'unknown') return { kind: 'unknown' };
         return {
           kind: 'provider',
           url: api.management ? deletionLink(api.management) : null,
