@@ -155,6 +155,7 @@ export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
     this.presented.add(accountId);
     this.providerHolds.get(accountId)?.release({ deleted: true });
     this.providerHolds.delete(accountId);
+    // Deliberate even for a late deletion: open surfaces may belong to the deleted account.
     this.surfaces.closeAll();
     const settled =
       cleanup.kind === 'ready' || cleanup.kind === 'partial-cleanup'
