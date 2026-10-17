@@ -84,3 +84,16 @@ export async function expectStorybookThemeRoot(
       themeCarrier: preview.theme.dataTheme,
     });
 }
+
+export async function openStory(
+  page: Page,
+  id: string,
+  theme: ThemeId = DEFAULT_STORYBOOK_THEME_PREVIEW.theme.id,
+  mode: ResolvedThemeMode = DEFAULT_STORYBOOK_THEME_PREVIEW.mode.id,
+  density: 'cosy' | 'compact' | 'spacious' = 'cosy',
+  args?: string,
+): Promise<void> {
+  await page.goto(
+    `/iframe.html?id=${id}&viewMode=story&globals=${storybookThemeGlobals({ theme, mode }, density)}${args ? `&args=${args}` : ''}`,
+  );
+}
