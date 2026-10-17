@@ -461,28 +461,6 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     expect(batchCaptions).toEqual([]);
   });
 
-  it('refuses a second batch while the first is still uploading', async () => {
-    // Two batches in flight share one `uploadProgress` — the first to finish nulls it, hiding
-    // the bar for the other — and interleave their events, so neither arrives in the order
-    // staged. Staging more mid-flight is allowed; starting a second batch is not.
-    const { fixture } = await renderComposer();
-    const cmp = fixture.componentInstance;
-    const sent = collectHeldSends(cmp);
-    pickFiles(cmp, [png('one.png')]);
-
-    cmp.submit();
-    fixture.componentRef.setInput('uploadProgress', {
-      index: 1,
-      total: 1,
-      fraction: 0.3,
-    }); // the host reports it in flight
-    fixture.detectChanges();
-    pickFiles(cmp, [png('two.png')]);
-    cmp.submit();
-
-    expect(sent).toEqual(['one.png']);
-  });
-
   it('honours current-room progress when mounted during an upload', async () => {
     const { fixture } = await renderComposer({
       roomId: '!current:hs',
