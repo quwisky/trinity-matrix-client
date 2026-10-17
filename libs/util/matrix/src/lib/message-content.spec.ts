@@ -7,13 +7,12 @@ import {
   mediaCaptionFields,
   messagePreview,
   parseSlashCommand,
-  renderMarkdown,
   replyMessageContent,
   slashCommandContent,
   textMessageContent,
   type Mention,
-  type RenderedMarkdown,
 } from './message-content';
+import { renderMarkdown, type RenderedMarkdown } from './markdown-render';
 
 describe('locationMessageContent', () => {
   it('builds an m.location with a geo URI and MSC3488 fields', () => {
