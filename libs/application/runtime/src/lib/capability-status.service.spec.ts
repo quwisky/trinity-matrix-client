@@ -20,6 +20,7 @@ import {
 import { CapabilityHealthService } from './capability-health.service';
 import { CapabilityStatusService } from './capability-status.service';
 import { PointerPressService } from './pointer-press.service';
+import { healthFact } from './testing/capability-health.fixture';
 
 describe('CapabilityStatusService', () => {
   let health: CapabilityHealthService;
@@ -211,17 +212,13 @@ describe('CapabilityStatusService', () => {
     report('@b:hs', 'accounts', 'restore');
     report('@a:hs', 'room-library', 'hydrate-order');
     health.report(
-      {
+      healthFact({
         capability: 'accounts',
         operation: 'restore',
         context: firstContext,
         generation: 2,
-        demanded: true,
-        preparation: 'failed',
-        ownership: 'retained',
-        condition: 'degraded',
         code: 'account-restore-transient-network',
-      },
+      }),
       () => of({ kind: 'success' as const }),
     );
     expect(status.actionableCount()).toBe(3);
@@ -422,17 +419,13 @@ describe('CapabilityStatusService', () => {
       expect(status.bannerSlot()).toBe('encryption');
 
       health.report(
-        {
+        healthFact({
           capability: 'host',
           operation: 'contract',
           context: Symbol('host'),
-          generation: 1,
-          demanded: true,
-          preparation: 'failed',
-          ownership: 'retained',
           condition: 'blocked',
           code: 'host-contract-unavailable',
-        },
+        }),
         () => of({ kind: 'success' as const }),
       );
       expect(status.hasBlocking()).toBe(true);
@@ -508,17 +501,13 @@ describe('CapabilityStatusService', () => {
       expect(status.bannerPrompt()).toBeNull();
       trust.set('needs-setup');
       health.report(
-        {
+        healthFact({
           capability: 'host',
           operation: 'contract',
           context: Symbol('host'),
-          generation: 1,
-          demanded: true,
-          preparation: 'failed',
-          ownership: 'retained',
           condition: 'blocked',
           code: 'host-contract-unavailable',
-        },
+        }),
         () => of({ kind: 'success' as const }),
       );
       expect(status.bannerSlot()).toBe('status');
@@ -712,17 +701,13 @@ describe('CapabilityStatusService', () => {
         press();
 
         health.report(
-          {
+          healthFact({
             capability: 'host',
             operation: 'contract',
             context: Symbol('host'),
-            generation: 1,
-            demanded: true,
-            preparation: 'failed',
-            ownership: 'retained',
             condition: 'blocked',
             code: 'host-contract-unavailable',
-          },
+          }),
           () => of({ kind: 'success' as const }),
         );
         // The slot change waits for the release; the prompt it holds is still true.
@@ -763,17 +748,12 @@ describe('CapabilityStatusService', () => {
     const context = Symbol('@a:hs');
     health.presentForAccount(context, '@a:hs');
     health.report(
-      {
+      healthFact({
         capability: 'trust',
         operation: 'projection',
         context,
-        generation: 1,
-        demanded: true,
-        preparation: 'failed',
-        ownership: 'retained',
-        condition: 'degraded',
         code: 'trust-reconciliation-failed',
-      },
+      }),
       () => of({ kind: 'success' as const }),
     );
   }
@@ -787,20 +767,15 @@ describe('CapabilityStatusService', () => {
     const context = Symbol(accountId);
     health.presentForAccount(context, accountId);
     health.report(
-      {
+      healthFact({
         capability,
         operation,
         context,
-        generation: 1,
-        demanded: true,
-        preparation: 'failed',
-        ownership: 'retained',
-        condition: 'degraded',
         code:
           capability === 'accounts'
             ? 'account-restore-transient-network'
             : 'room-order-storage-unavailable',
-      },
+      }),
       recovery,
     );
     return context;
