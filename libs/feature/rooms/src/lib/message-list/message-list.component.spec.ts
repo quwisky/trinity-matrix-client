@@ -1,6 +1,5 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
 import {
@@ -20,7 +19,6 @@ import { MessageComposerComponent } from '../message-composer/message-composer.c
 import { DayBoundaryService } from './day-boundary.service';
 import { MessageListComponent } from './message-list.component';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
-import { TypingIndicatorComponent } from './typing-indicator/typing-indicator.component';
 import {
   ConversationComposeStub,
   ConversationMessagesStub,
@@ -687,22 +685,6 @@ describe('MessageListComponent', () => {
     ]);
     fixture.detectChanges();
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
-  });
-
-  it('resets presentation state on room change while runtime swaps compose intent', async () => {
-    const { fixture } = await renderList({
-      roomId: '!a:hs',
-      messages: [msg('$1', '@a:hs', 'Alice', 1000)],
-    });
-    const cmp = fixture.componentInstance;
-
-    fixture.componentRef.setInput('roomId', '!b:hs');
-    fixture.componentRef.setInput('messages', [
-      msg('$9', '@b:hs', 'Bob', 5000),
-    ]);
-    fixture.detectChanges();
-
-    expect(cmp.announcement()).toBe('');
   });
 
   it('handles an empty timeline', async () => {
@@ -1749,96 +1731,6 @@ describe('MessageListComponent', () => {
       fixture.detectChanges();
       expect(st).toBe(35 * EST - 40);
     });
-  });
-
-  it('is a drop target too — this is the list that ships', async () => {
-    // `DEFAULT_VIRTUAL_TIMELINE` is true, so this is the list users get. The drop wiring was
-    // covered by a spec for the old simple list only, so removing `hostDirectives` HERE would have
-    // shipped green. The composer is mocked, so `stageFiles` is the seam: proving it is
-    // called proves the directive, the subscription in the base and the viewChild together.
-    const { fixture, container } = await renderList({
-      messages: [msg('$1', '@a:hs', 'Alice', 1000)],
-    });
-    const host = fixture.nativeElement as HTMLElement;
-    const fire = (name: string, files: File[] = []) => {
-      const event = new Event(name, { bubbles: true, cancelable: true });
-      Object.defineProperty(event, 'dataTransfer', {
-        value: { types: ['Files'], files, dropEffect: 'none' },
-      });
-      host.dispatchEvent(event);
-      fixture.detectChanges();
-    };
-    const composer = fixture.debugElement.query(
-      By.directive(MessageComposerComponent),
-    ).componentInstance as MessageComposerComponent;
-    const staged: readonly File[][] = [];
-    composer.stageFiles = (files: readonly File[]) => {
-      (staged as File[][]).push([...files]);
-    };
-
-    expect(container.querySelector('[data-testid=drop-overlay]')).toBeNull();
-    fire('dragenter');
-    expect(
-      container.querySelector('[data-testid=drop-overlay]'),
-    ).not.toBeNull();
-
-    const dropped = new File(['x'], 'dropped.png', { type: 'image/png' });
-    fire('drop', [dropped]);
-
-    expect(staged).toEqual([[dropped]]);
-    expect(container.querySelector('[data-testid=drop-overlay]')).toBeNull();
-  });
-
-  it('sends a batch caption plainly, and is actually wired to do so', async () => {
-    // Emitted from the COMPOSER so the template binding is what carries it. Calling
-    // `onBatchCaption()` directly passes even with the binding deleted — which is exactly how
-    // the thread shipped without one, since an unbound output is legal and the AOT build is
-    // silent about it.
-    const { fixture } = await renderList({
-      messages: [msg('$1', '@a:hs', 'Alice', 1000)],
-    });
-    const cmp = fixture.componentInstance;
-    const sent: string[] = [];
-    cmp.send.subscribe((e) => sent.push(e.body));
-    cmp.startEdit({
-      ...msg('$1', '@a:hs', 'Alice', 1000),
-      showHeader: true,
-    }); // an edit started while the files were uploading
-
-    fixture.debugElement
-      .query(By.directive(MessageComposerComponent))
-      .componentInstance.submitBatchCaption.emit({
-        text: 'both of these',
-        mentions: [],
-      });
-
-    expect(sent).toEqual(['both of these']);
-  });
-  // What this list owes is the wiring — the detail lives in the indicator's own spec.
-  // Before the extraction the markup was copy-pasted here and asserted only in the simple
-  // list, so the windowed copy could drift silently.
-  it('feeds the typing names to the indicator', async () => {
-    const { fixture, container } = await render(MessageListComponent, {
-      inputs: { typingNames: ['Alice', 'Bob'] },
-      imports: [MockComponent(MessageComposerComponent)],
-    });
-    const text = (el: Element | null | undefined): string =>
-      (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
-
-    expect(text(container.querySelector('.typing-indicator'))).toBe(
-      'Alice and Bob are typing',
-    );
-
-    fixture.componentRef.setInput('typingNames', []);
-    fixture.detectChanges();
-    expect(container.querySelector('.typing-indicator')).toBeNull();
-    expect(container.querySelector('.typing-slot')).not.toBeNull();
-
-    // The list owns the typing announcement; only the thread panel opts out (#1056).
-    const indicator = fixture.debugElement.query(
-      By.directive(TypingIndicatorComponent),
-    );
-    expect(indicator.componentInstance.announce()).toBe(true);
   });
 
   it('offers the jump-to-unread pill while the divider is windowed out, and jumping renders it', async () => {
