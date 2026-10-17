@@ -178,13 +178,16 @@ describe('AccountSectionComponent', () => {
   it('reveals each password field from a toggle inside that field', async () => {
     const { fixture } = await renderSection();
     const field = (id: string) => screen.getByTestId(id) as HTMLInputElement;
-    const [currentToggle] = screen.getAllByRole('button', {
-      name: 'Show password',
-    });
+    const toggles = screen.getAllByRole('button', { name: 'Show password' });
+    expect(toggles).toHaveLength(3);
+    const [currentToggle] = toggles;
 
     expect(field('current-password').parentElement?.localName).toBe(
       'trn-password-input',
     );
+    expect(
+      field('current-password').parentElement?.contains(currentToggle),
+    ).toBe(true);
     expect(field('current-password').type).toBe('password');
     expect(field('new-password').type).toBe('password');
     expect(field('confirm-password').type).toBe('password');
@@ -195,6 +198,8 @@ describe('AccountSectionComponent', () => {
     expect(field('current-password').type).toBe('text');
     expect(field('new-password').type).toBe('password');
     expect(field('confirm-password').type).toBe('password');
+    expect(currentToggle.getAttribute('aria-label')).toBe('Hide password');
+    expect(currentToggle.getAttribute('aria-pressed')).toBe('true');
   });
 
   it('changes the password, clears the form, and toasts on success', async () => {
