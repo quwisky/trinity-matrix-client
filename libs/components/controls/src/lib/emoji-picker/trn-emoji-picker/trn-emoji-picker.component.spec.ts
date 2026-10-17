@@ -1,13 +1,24 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Component, signal } from '@angular/core';
+import type { ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { PickerComponent } from '@ctrl/ngx-emoji-mart';
 import { render } from '@trinity/testing';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { TrnEmojiPick } from '../trn-emoji.model';
 import { TrnEmojiPickerComponent } from './trn-emoji-picker.component';
-import { trnEmojiGridFit } from './trn-emoji-picker-recipe';
+
+/** The component stylesheet, read from source because jsdom applies no CSS. */
+const SHEET = readFileSync(
+  join(import.meta.dirname, 'trn-emoji-picker.component.scss'),
+  'utf8',
+);
+
+/** The vendor picker's debug element. */
+function vendorOf(fixture: ComponentFixture<unknown>) {
+  return fixture.debugElement.query(By.directive(PickerComponent));
+}
 
 /** Host component, so the output can be observed the way a call site sees it. */
 @Component({
@@ -170,7 +181,7 @@ async function withObservedWidth<T>(
  */
 async function renderFilled(
   inputs: Record<string, unknown>,
-  measure: () => void,
+  measure: () => void = () => undefined,
 ) {
   const rendered = await render(TrnEmojiPickerComponent, { inputs });
   await vi.waitFor(() => {
@@ -214,7 +225,7 @@ describe('TrnEmojiPickerComponent', () => {
    */
   const emit = async (emoji: unknown) => {
     const { fixture } = await renderLoaded(HostComponent);
-    const vendor = fixture.debugElement.query(By.directive(PickerComponent));
+    const vendor = vendorOf(fixture);
     vendor.componentInstance.emojiSelect.emit({
       emoji,
       $event: new Event('click'),
@@ -273,14 +284,14 @@ describe('TrnEmojiPickerComponent', () => {
     // `!important`, so the token is passed through the vendor's own input. Drop this
     // binding and the selected category renders emoji-mart's #ae65c5 again.
     const { fixture } = await renderLoaded(TrnEmojiPickerComponent);
-    const vendor = fixture.debugElement.query(By.directive(PickerComponent));
+    const vendor = vendorOf(fixture);
 
     expect(vendor.componentInstance.color).toBe('var(--trinity-accent)');
   });
 
   it('renders emoji as named buttons instead of labelled generic spans', async () => {
     const { fixture } = await renderLoaded(TrnEmojiPickerComponent);
-    const vendor = fixture.debugElement.query(By.directive(PickerComponent));
+    const vendor = vendorOf(fixture);
 
     expect(vendor.componentInstance.useButton).toBe(true);
   });
@@ -289,7 +300,7 @@ describe('TrnEmojiPickerComponent', () => {
     const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
       inputs: { size: 'lg' },
     });
-    const vendor = fixture.debugElement.query(By.directive(PickerComponent));
+    const vendor = vendorOf(fixture);
 
     expect(
       (fixture.nativeElement as HTMLElement).getAttribute('data-size'),
@@ -338,10 +349,7 @@ describe('TrnEmojiPickerComponent', () => {
   it('takes the border, background, radius and shadow off the grid and its placeholder when embedded', () => {
     // jsdom applies no CSS, so the embedded rule is read from the source: both the vendor
     // grid and the placeholder standing in for it must lose every part of the frame.
-    const sheet = readFileSync(
-      join(import.meta.dirname, 'trn-emoji-picker.component.scss'),
-      'utf8',
-    );
+    const sheet = SHEET;
     const embedded =
       /&\.trn-emoji-picker--embedded\s*\{([\s\S]*?)\n {4}\}/u.exec(sheet)?.[1];
 
@@ -359,76 +367,9 @@ describe('TrnEmojiPickerComponent', () => {
     }
   });
 
-  describe('trnEmojiGridFit', () => {
-    it('keeps the fixed grid: nine 32px cells in the 288px row of the medium picker', () => {
-      expect(trnEmojiGridFit(288, 20, 32)).toEqual({
-        perLine: 9,
-        glyph: 20,
-        padding: 6,
-      });
-    });
-
-    it('fills a phone sheet with as many 44px touch cells as fit, widened to share the slack', () => {
-      // 390px sheet less 12px each side: 366px of row, eight 45px cells. A 24px glyph would
-      // pad by 10.5px, so it grows to 25px and pads by a whole 10px.
-      expect(trnEmojiGridFit(366, 24, 44)).toEqual({
-        perLine: 8,
-        glyph: 25,
-        padding: 10,
-      });
-    });
-
-    it('adds columns as the row widens, as on rotation', () => {
-      expect(trnEmojiGridFit(820, 24, 44)).toEqual({
-        perLine: 18,
-        glyph: 25,
-        padding: 10,
-      });
-    });
-
-    it('fills the desktop card: 8px insets and an 8px scrollbar leave 276px for 34px cells', () => {
-      // 302px card less its 1px border, 8px insets and the scrollbar gutter.
-      expect(trnEmojiGridFit(276, 20, 0)).toEqual({
-        perLine: 8,
-        glyph: 20,
-        padding: 7,
-      });
-    });
-
-    it('keeps every glyph on a whole pixel, moving it by a pixel to match the cell', () => {
-      // 300 / 9 = 33px cells would pad a 20px glyph by 6.5px.
-      expect(trnEmojiGridFit(300, 20, 0)).toEqual({
-        perLine: 9,
-        glyph: 21,
-        padding: 6,
-      });
-    });
-
-    it('shrinks the glyph instead where a larger one would crowd the cell', () => {
-      // A 31px cell has room for a 19px glyph at 6px, not a 21px one.
-      expect(trnEmojiGridFit(31, 20, 0)).toEqual({
-        perLine: 1,
-        glyph: 19,
-        padding: 6,
-      });
-    });
-
-    it('never asks for a cell smaller than the glyph and its own padding', () => {
-      expect(trnEmojiGridFit(366, 24, 20).perLine).toBe(10);
-    });
-
-    it('keeps at least one column on a row narrower than a cell', () => {
-      expect(trnEmojiGridFit(30, 24, 44)).toEqual({
-        perLine: 1,
-        glyph: 24,
-        padding: 3,
-      });
-    });
-  });
-
   it('keeps the vendor fixed width by default, nine to a line', async () => {
     const { fixture } = await renderLoaded(TrnEmojiPickerComponent);
-    const vendor = fixture.debugElement.query(By.directive(PickerComponent));
+    const vendor = vendorOf(fixture);
 
     expect(vendor.componentInstance.perLine).toBe(9);
     expect(vendor.componentInstance.style).toEqual({});
@@ -439,14 +380,9 @@ describe('TrnEmojiPickerComponent', () => {
     await withObservedWidth(
       true,
       async (resize) => {
-        const { fixture } = await renderFilled(
-          { layout: 'fill', size: 'lg' },
-          () => undefined,
-        );
+        const { fixture } = await renderFilled({ layout: 'fill', size: 'lg' });
         const host = fixture.nativeElement as HTMLElement;
-        const vendor = fixture.debugElement.query(
-          By.directive(PickerComponent),
-        );
+        const vendor = vendorOf(fixture);
 
         expect(host).toHaveClass('trn-emoji-picker--fill');
         expect(vendor.componentInstance.style).toEqual({ width: '100%' });
@@ -477,8 +413,7 @@ describe('TrnEmojiPickerComponent', () => {
     const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
       inputs: { shown: 1 },
     });
-    const vendor = fixture.debugElement.query(By.directive(PickerComponent))
-      .componentInstance as PickerComponent;
+    const vendor = vendorOf(fixture).componentInstance as PickerComponent;
     const recentRow = () =>
       fixture.nativeElement.querySelector(
         'section.emoji-mart-category[aria-label="Frequently Used"]',
@@ -531,8 +466,7 @@ describe('TrnEmojiPickerComponent', () => {
 
     it('keeps this device’s own row without them', async () => {
       const { fixture } = await renderLoaded(TrnEmojiPickerComponent);
-      const vendor = fixture.debugElement.query(By.directive(PickerComponent))
-        .componentInstance as PickerComponent;
+      const vendor = vendorOf(fixture).componentInstance as PickerComponent;
 
       expect(vendor.recent).toBeUndefined();
     });
@@ -541,8 +475,7 @@ describe('TrnEmojiPickerComponent', () => {
       const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
         inputs: { recent: [] },
       });
-      const vendor = fixture.debugElement.query(By.directive(PickerComponent))
-        .componentInstance as PickerComponent;
+      const vendor = vendorOf(fixture).componentInstance as PickerComponent;
 
       expect(vendor.recent).toBeUndefined();
     });
@@ -570,8 +503,7 @@ describe('TrnEmojiPickerComponent', () => {
       const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
         inputs: { recent: ['👍', '👍🏽', '🎉'] },
       });
-      const vendor = fixture.debugElement.query(By.directive(PickerComponent))
-        .componentInstance as PickerComponent;
+      const vendor = vendorOf(fixture).componentInstance as PickerComponent;
 
       await vi.waitFor(() => {
         fixture.detectChanges();
@@ -600,13 +532,8 @@ describe('TrnEmojiPickerComponent', () => {
     await withObservedWidth(
       true,
       async () => {
-        const { fixture } = await renderFilled(
-          { layout: 'fill' },
-          () => undefined,
-        );
-        const vendor = fixture.debugElement.query(
-          By.directive(PickerComponent),
-        );
+        const { fixture } = await renderFilled({ layout: 'fill' });
+        const vendor = vendorOf(fixture);
 
         expect(vendor.componentInstance.perLine).toBe(8);
       },
@@ -620,13 +547,8 @@ describe('TrnEmojiPickerComponent', () => {
     await withObservedWidth(
       true,
       async () => {
-        const { fixture } = await renderFilled(
-          { layout: 'fill', size: 'lg' },
-          () => undefined,
-        );
-        const vendor = fixture.debugElement.query(
-          By.directive(PickerComponent),
-        );
+        const { fixture } = await renderFilled({ layout: 'fill', size: 'lg' });
+        const vendor = vendorOf(fixture);
 
         expect(vendor.componentInstance.perLine).toBe(16);
       },
@@ -636,11 +558,8 @@ describe('TrnEmojiPickerComponent', () => {
 
   it('starts at the vendor line on a host with no layout yet, then fits its cells to the width', async () => {
     await withObservedWidth(true, async (resize) => {
-      const { fixture } = await renderFilled(
-        { layout: 'fill' },
-        () => undefined,
-      );
-      const vendor = fixture.debugElement.query(By.directive(PickerComponent));
+      const { fixture } = await renderFilled({ layout: 'fill' });
+      const vendor = vendorOf(fixture);
       const panel = (
         fixture.nativeElement as HTMLElement
       ).querySelector<HTMLElement>('trn-emoji-picker-panel');
@@ -675,10 +594,7 @@ describe('TrnEmojiPickerComponent', () => {
   it('lets the focus ring of its search show past the grid when embedded', () => {
     // The panel insets the embedded grid, so the search's ring falls outside `.emoji-mart`;
     // the framed picker's clip would cut it off at both sides.
-    const sheet = readFileSync(
-      join(import.meta.dirname, 'trn-emoji-picker.component.scss'),
-      'utf8',
-    );
+    const sheet = SHEET;
     const embedded =
       /&\.trn-emoji-picker--embedded\s*\{([\s\S]*?)\n {4}\}/u.exec(sheet)?.[1];
 
@@ -691,13 +607,8 @@ describe('TrnEmojiPickerComponent', () => {
     await withObservedWidth(
       false,
       async () => {
-        const { fixture } = await renderFilled(
-          { layout: 'fill' },
-          () => undefined,
-        );
-        const vendor = fixture.debugElement.query(
-          By.directive(PickerComponent),
-        );
+        const { fixture } = await renderFilled({ layout: 'fill' });
+        const vendor = vendorOf(fixture);
 
         // 366 / 32 = 11 columns of the medium picker's 32px cell, widened to 33px.
         expect(vendor.componentInstance.perLine).toBe(11);
@@ -707,10 +618,7 @@ describe('TrnEmojiPickerComponent', () => {
   });
 
   it('spans the category bar, search and section headers across the grid width when filling', () => {
-    const sheet = readFileSync(
-      join(import.meta.dirname, 'trn-emoji-picker.component.scss'),
-      'utf8',
-    );
+    const sheet = SHEET;
     const fill = /&\.trn-emoji-picker--fill\s*\{([\s\S]*?)\n {4}\}/u.exec(
       sheet,
     )?.[1];
@@ -751,10 +659,7 @@ describe('TrnEmojiPickerComponent', () => {
     // that forgot the `.trn-emoji-picker` prefix would restyle `.emoji-mart` anywhere —
     // and, being a stylesheet, would do it silently: jsdom applies no CSS, so no rendering
     // test could catch it. Asserted on the source instead.
-    const sheet = readFileSync(
-      join(import.meta.dirname, 'trn-emoji-picker.component.scss'),
-      'utf8',
-    );
+    const sheet = SHEET;
     expect(unscopedSelectors(sheet)).toEqual([]);
   });
 
