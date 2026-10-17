@@ -119,6 +119,7 @@ export class MessageToolbarComponent {
   readonly quickEmojis = QUICK_EMOJIS;
   readonly pickerOpen = signal(false);
   readonly pickerBelow = signal(false);
+  /** Unique per instance: the toggle's aria-controls points at it. */
   readonly pickerId = `trn-reaction-picker-${nextPickerId++}`;
 
   constructor() {

@@ -108,6 +108,7 @@ export class QuickSwitcherComponent {
     this.highlight.set(0); // a fresh query re-anchors the highlight to the top
   }
 
+  // preventDefault keeps Up/Down from moving the caret in the field.
   move(delta: number, event: Event): void {
     event.preventDefault();
     const length = this.results().length;

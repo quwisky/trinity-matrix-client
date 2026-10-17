@@ -22,7 +22,7 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
 /**
  * The mobile stand-in for the user panel's "Accounts in view" submenu. Below the `md`
  * breakpoint the user panel is a bar across the bottom of the viewport, so a flyout anchored
- * beside the account menu would land back on top of it.
+ * beside the account menu would land back on top of the menu.
  *
  * Writes through {@link SelectedRoomLibraryService} directly, like the other dialogs in this
  * feature: each tick applies immediately and the dialog stays open, matching the submenu,
