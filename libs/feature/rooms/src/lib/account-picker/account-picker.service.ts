@@ -12,12 +12,10 @@ export interface AccountPickerOptions {
 }
 
 /**
- * Presents {@link AccountPickerComponent} — the narrow-layout stand-in for the user panel's
- * "Accounts in view" submenu, which has nowhere to fly out to below the `md` breakpoint.
- *
- * Presentation only: the dialog applies each tick itself, so there is no result to hand back.
- * Mirrors {@link ReactionsDialogService}, including the re-entrancy guard that makes a repeat
- * trigger a no-op rather than stacking dialogs.
+ * Presents {@link AccountPickerComponent}, the narrow-layout stand-in for the user panel's
+ * "Accounts in view" submenu. Presentation only: the dialog applies each tick itself, so
+ * there is no result. Mirrors {@link ReactionsDialogService}, including the re-entrancy
+ * guard that makes a repeat trigger a no-op.
  */
 @Injectable({ providedIn: 'root' })
 export class AccountPickerService {
@@ -31,12 +29,11 @@ export class AccountPickerService {
       return; // already open — ignore the repeat trigger
     }
     this.showing = true;
-    // Yield a microtask before presenting. The dropdown item that raised this is still inside
+    // Yield a microtask before presenting: the dropdown item that raised this is still inside
     // CdkMenuItem.trigger(), which emits `triggered` and only THEN calls
-    // menuStack.closeAll({ focusParentTrigger: true }). Opening synchronously would have CDK
-    // capture the menu row it is about to destroy as the focus-restore target, so dismissing
-    // the dialog would drop focus to <body>; after the yield it captures the user-panel button
-    // the menu has just restored focus to, and focus returns there.
+    // menuStack.closeAll({ focusParentTrigger: true }). Opened synchronously, CDK would capture
+    // the menu row about to be destroyed as the focus-restore target and dismissing the dialog
+    // would drop focus to <body>; after the yield it captures the user-panel button.
     scheduled([undefined], asapScheduler)
       .pipe(
         switchMap(() =>

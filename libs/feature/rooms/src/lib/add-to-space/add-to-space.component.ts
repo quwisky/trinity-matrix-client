@@ -43,19 +43,11 @@ export interface AddCandidate {
 /**
  * Dialog to add rooms you are already in to a space.
  *
- * Until this existed a room could only join a space by being *created* in it
- * (`SpacesService.createRoomInSpace`), so an existing conversation could never be
- * organised into one — the gap `removeRoomFromSpace` has had a counterpart for since the
- * beginning.
+ * Spaces are offered alongside rooms: nesting a space is the same `m.space.child` write whose
+ * target happens to be a space, and the list labels which is which.
  *
- * Spaces are offered alongside rooms, because nesting an existing space is the same
- * write: an `m.space.child` link whose target happens to be a space. That covers the
- * "nest a subspace" half of the hierarchy work without a second surface, and the list
- * labels which is which so the choice is never accidental.
- *
- * Multi-select rather than add-on-click: organising a space is a batch job, and each
- * link is its own state event, so committing them together lets one failure be reported
- * against the room it belongs to instead of collapsing into "something went wrong".
+ * Multi-select, not add-on-click: each link is its own state event, so committing them
+ * together lets one failure be reported against its room instead of "something went wrong".
  */
 @Component({
   selector: 'trn-add-to-space',
@@ -80,8 +72,8 @@ export class AddToSpaceComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   /**
-   * The search box. `form` treats the model signal as its source of truth rather than
-   * copying it, so `searchModel()` IS the live value — no `valueChanges` to project.
+   * The search box. `form` uses the model signal as its source of truth, so `searchModel()`
+   * is the live value.
    */
   private readonly searchModel = signal({ query: '' });
   private readonly selected = signal<ReadonlySet<string>>(new Set());
@@ -91,25 +83,19 @@ export class AddToSpaceComponent implements OnInit {
 
   /** Account that owns the target Space and must perform every link write. */
   readonly accountId = input.required<string>();
-  /** The space being added to. */
   readonly spaceId = input.required<string>();
   readonly spaceName = input('this space');
   readonly search = form(this.searchModel);
 
-  /** True while the add writes are in flight. */
   readonly adding = signal(false);
   readonly loading = signal(true);
   readonly loadError = signal<string | null>(null);
 
   /**
-   * Everything the user could add: their joined rooms and spaces, minus the target space
-   * itself and anything already linked into it.
-   *
-   * Reading the space's links rather than the hierarchy fetch is deliberate — they come
-   * from synced state, so a room added in this dialog disappears from the list as soon as
-   * the write echoes back, without a round trip. `linksFor` is what makes that a declared
-   * dependency: the plain `childLinks()` read this used to do is a snapshot, and the list
-   * only refreshed because `rooms()` happened to tick in the same turn.
+   * Joined rooms and spaces, minus the target and anything already linked into it. Reads
+   * the space's links (synced state), not the hierarchy fetch, so an added room leaves the
+   * list as soon as the write echoes back; the data-access `linksFor`
+   * read makes that a declared dependency.
    */
   readonly candidates = computed<AddCandidate[]>(() =>
     this.candidateState().map((candidate) => ({

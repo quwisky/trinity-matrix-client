@@ -40,11 +40,10 @@ export interface DirectoryJoin {
 }
 
 /**
- * Dialog to browse and join rooms — or Spaces — from the homeserver's public directory.
- * Loads the first page on open, filters on a search term, toggles between Rooms and
- * Spaces, and paginates with "Load more". Joining closes the dialog resolving the joined
- * id + whether it's a space so the host can open it appropriately; closing otherwise
- * resolves null. Presented via {@link TrnSurfaceService}.
+ * Dialog to browse and join rooms or Spaces from the homeserver's public directory, with a
+ * search term, a Rooms/Spaces toggle and "Load more" pagination. Joining closes it, resolving
+ * the joined id and whether it is a space; closing otherwise resolves null. Presented via
+ * {@link TrnSurfaceService}.
  */
 @Component({
   selector: 'trn-room-directory',
@@ -70,22 +69,16 @@ export class RoomDirectoryComponent implements OnInit {
   /** The in-flight directory request, so a reset can supersede it. */
   private searchSub?: Subscription;
   private readonly searchModel = signal({ query: '' });
-  /** Pagination token for the next page, or null when there are no more. */
   private readonly nextBatch = signal<string | null>(null);
 
   readonly accountId = input.required<string>();
   readonly searchForm = form(this.searchModel);
 
-  /** Browse normal rooms or Spaces. */
   readonly mode = signal<'rooms' | 'spaces'>('rooms');
 
-  /** The rooms found so far (accumulated across pages). */
   readonly rooms = signal<readonly PublicRoomSummary[]>([]);
-  /** True while a search / load-more request is in flight. */
   readonly loading = signal(false);
-  /** Last search failure, or null. */
   readonly error = signal<string | null>(null);
-  /** The room ID currently being joined (disables its Join button), or null. */
   readonly joining = signal<string | null>(null);
 
   readonly hasMore = computed(() => this.nextBatch() !== null);
@@ -97,12 +90,10 @@ export class RoomDirectoryComponent implements OnInit {
     this.runSearch(true);
   }
 
-  /** Run a fresh search from the current query term. */
   search(): void {
     this.runSearch(true);
   }
 
-  /** Switch between browsing rooms and Spaces, re-running the search. */
   setMode(mode: 'rooms' | 'spaces'): void {
     if (this.mode() === mode) {
       return;
@@ -111,7 +102,6 @@ export class RoomDirectoryComponent implements OnInit {
     this.runSearch(true);
   }
 
-  /** Append the next page of results for the current term. */
   loadMore(): void {
     this.runSearch(false);
   }
@@ -197,11 +187,10 @@ export class RoomDirectoryComponent implements OnInit {
               ? 'Could not load the room directory.'
               : failure.message,
           );
-          // On a failed RESET (a new term, or a rooms/spaces mode switch) the previous
-          // query's results and pagination token no longer belong to what the UI now
-          // claims to be showing: stale room hits would render under "Explore spaces",
-          // and "Load more" would page the spaces directory with the rooms token. Drop
-          // both. A failed load-MORE keeps them — the existing page is still valid.
+          // On a failed RESET (new term or rooms/spaces switch) drop the previous results and
+          // token: stale room hits would render under "Explore spaces" and "Load more" would
+          // page the spaces directory with the rooms token. A failed load-MORE keeps them;
+          // the existing page is still valid.
           if (reset) {
             this.rooms.set([]);
             this.nextBatch.set(null);

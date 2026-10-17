@@ -3,9 +3,8 @@
     display: contents;
   }
 
-  // The toolbar surface now comes from the canonical neutral toolbar page-header
-  // recipe. The room-name title is projected into it, so these scoped
-  // title styles stay.
+  // The toolbar surface comes from the neutral toolbar page-header recipe; the projected
+  // room-name title keeps these scoped styles.
   .title-room {
     display: inline-flex;
     align-items: center;

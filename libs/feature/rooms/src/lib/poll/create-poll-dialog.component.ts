@@ -28,9 +28,8 @@ const MIN_OPTIONS = 2;
 const MAX_OPTIONS = 8;
 
 /**
- * Dialog to compose a poll: a question, two-to-eight answers, and how many of them a
- * voter may choose. Closes with the
- * {@link NewPoll} on create, or `null` when cancelled. Presented by
+ * Dialog to compose a poll: a question, two-to-eight answers and how many a voter may
+ * choose. Closes with the {@link NewPoll}, or `null` on cancel. Presented by
  * {@link CreatePollService}; it builds and sends nothing itself.
  */
 @Component({
@@ -57,7 +56,6 @@ export class CreatePollDialogComponent {
   /** The requested max selections, as typed; see {@link effectiveMaxSelections}. */
   readonly maxSelections = signal(1);
 
-  /** Number of non-empty answers. */
   readonly filledOptions = computed(
     () => this.options().filter((o) => o.trim().length > 0).length,
   );
@@ -70,7 +68,6 @@ export class CreatePollDialogComponent {
     Math.min(Math.max(this.maxSelections(), 1), this.selectionLimit()),
   );
 
-  /** A question and at least two non-empty answers are required to create. */
   readonly valid = computed(
     () =>
       this.question().trim().length > 0 && this.filledOptions() >= MIN_OPTIONS,

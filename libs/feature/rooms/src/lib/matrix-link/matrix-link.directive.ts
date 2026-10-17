@@ -8,16 +8,13 @@ import {
 export type MatrixLinkClickTarget = MatrixLinkTarget | { kind: 'invalid' };
 
 /**
- * A `matrix.to` link that was followed, and the element it was followed from.
+ * A followed `matrix.to` link and the element it was followed from. The anchor lets a user
+ * card appear BESIDE the mention instead of centred over the conversation. It is optional
+ * because a permalink followed inside the edit-history dialog comes back after that dialog
+ * has closed, so its anchor is gone.
  *
- * The anchor travels with the target so a user card can be presented BESIDE the mention
- * rather than centred over the conversation it refers to. It is optional because one
- * caller has no element to give: a permalink followed inside the edit-history dialog
- * comes back after that dialog has closed, so its anchor is already gone.
- *
- * Deliberately declared here and not on `MatrixLinkTarget`, which lives in
- * `@trinity/util/matrix` — that library is DI-free and DOM-free, and a parsed permalink
- * has no business carrying an `HTMLElement`.
+ * Declared here, not on `MatrixLinkTarget` in `@trinity/util/matrix`: that library is DI-free
+ * and DOM-free, and a parsed permalink should not carry an `HTMLElement`.
  */
 export interface MatrixLinkClick {
   readonly target: MatrixLinkClickTarget;

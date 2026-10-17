@@ -20,18 +20,14 @@ import { AccountPickLabelComponent } from '../shared/account-pick-label/account-
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
 /**
- * The mobile stand-in for the user panel's "Accounts in view" submenu.
+ * The mobile stand-in for the user panel's "Accounts in view" submenu. Below the `md`
+ * breakpoint the user panel is a bar across the bottom of the viewport, so a flyout anchored
+ * beside the account menu would land back on top of the menu.
  *
- * Below the `md` breakpoint the sidebar is a full-screen page and the user panel is a bar
- * across the bottom of the viewport, so a flyout anchored beside the account menu has nowhere
- * to go — it would land back on top of the menu, which is the bug this exists to avoid.
- *
- * Writes through {@link SelectedRoomLibraryService} directly, as the other dialogs in this feature
- * inject their own data-access service. That keeps multi-select honest: each tick applies
- * immediately and the dialog stays open, matching the submenu, rather than inventing a
- * batch-and-commit contract the rest of the app does not have. The consequence worth knowing
- * is that these writes do not pass through `RoomsPage`, so they are invisible to anyone
- * reading `rooms.page.html`.
+ * Writes through {@link SelectedRoomLibraryService} directly, like the other dialogs in this
+ * feature: each tick applies immediately and the dialog stays open, matching the submenu,
+ * rather than inventing a batch-and-commit contract. These writes do not pass through
+ * `RoomsPage`, so they are invisible to anyone reading `rooms.page.html`.
  */
 @Component({
   selector: 'trn-account-picker',
@@ -52,7 +48,6 @@ export class AccountPickerComponent {
   private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** Every signed-in account (populated from the dialog's `inputs`). */
   readonly accounts = input<AccountSummary[]>([]);
 
   /** The account being acted as — always shown, so its row is locked. */
@@ -63,15 +58,13 @@ export class AccountPickerComponent {
     () => this.accounts().find(({ userId }) => !this.isLocked(userId))?.userId,
   );
 
-  /** Whether `userId` is currently mixed into the view. Live, so a tick re-renders its row. */
   isShown(userId: string): boolean {
     return this.selected.view().accountIds.has(userId);
   }
 
   /**
-   * The active account is always shown, so its row is disabled rather than merely pre-ticked:
-   * the service refuses to drop it, and a tickable row that silently does nothing would drift
-   * out of sync with the state behind it.
+   * The active account is always shown, so its row is disabled rather than pre-ticked: the
+   * service refuses to drop it, and a tickable row that does nothing would drift from state.
    */
   isLocked(userId: string): boolean {
     return userId === this.activeUserId();

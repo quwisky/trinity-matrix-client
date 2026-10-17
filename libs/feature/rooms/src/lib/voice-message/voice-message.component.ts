@@ -35,13 +35,11 @@ const BAR_PX = 2;
 const BAR_GAP_PX = 2;
 
 /**
- * A compact player for an MSC3245 voice message: a play/pause button, the recorded
- * waveform (bars filled up to the playback position), and a running time. The waveform and
- * length come from the event, so nothing is downloaded until the reader first presses play;
- * the clip's bytes are then resolved through {@link MediaPipeline} (the same
- * authenticated/decrypting path as other media) and played via a hidden `<audio>` element.
- * Once the clip has played to its end, or the row goes, it is dropped from the media cache;
- * playing it again fetches it again.
+ * Compact player for an MSC3245 voice message: play/pause, the waveform (filled up to the
+ * playback position) and a running time. Waveform and length come from the event, so nothing
+ * is downloaded until the first press of play; the bytes then resolve through
+ * {@link MediaPipeline} (authenticated/decrypting) into a hidden `<audio>`. The clip is
+ * dropped from the media cache once it ends or the row goes; playing again refetches.
  */
 @Component({
   selector: 'trn-voice-message',
@@ -61,28 +59,26 @@ export class VoiceMessageComponent {
 
   /** Resolved (blob) URL for the audio; null until the reader plays it, and after it ends. */
   readonly src = signal<string | null>(null);
-  /** The clip is being fetched after a press of play. */
   readonly loading = signal(false);
   /** The last attempt to fetch the clip failed; Play tries again. */
   readonly failed = signal(false);
   readonly playing = signal(false);
-  /** Elapsed playback in seconds (drives the timer + waveform fill). */
   private readonly elapsed = signal(0);
 
   /** The sender's waveform amplitudes (`[0, 1024]`); empty when the sender sent none. */
   private readonly samples = computed(() => this.media().waveform ?? []);
 
   /**
-   * The wave's natural width: every sample as a narrowest bar. A wide bubble sizes itself
-   * to this (up to its cap); a narrow one shrinks the wave instead of pushing out the time.
+   * The wave's natural width, every sample as a narrowest bar: a wide bubble sizes to this
+   * (up to its cap); a narrow one shrinks the wave instead of pushing out the time.
    */
   readonly waveNaturalWidth = computed(() =>
     Math.max(0, this.samples().length * (BAR_PX + BAR_GAP_PX) - BAR_GAP_PX),
   );
 
   /**
-   * How many bars fit the measured wave (all of them until it is measured). A number, so a
-   * resize that fits the same count changes nothing downstream.
+   * How many bars fit the measured wave (all until measured). A number, so a resize that
+   * fits the same count changes nothing downstream.
    */
   private readonly barCount = computed(() => {
     const total = this.samples().length;
@@ -92,38 +88,32 @@ export class VoiceMessageComponent {
     return Math.min(total, Math.max(1, fit));
   });
 
-  /** The bars drawn: the waveform, sampled down to as many bars as fit the wave. */
   readonly bars = computed(() =>
     resampleWaveform(this.samples(), this.barCount()),
   );
 
-  /** Total clip length in seconds (from the event's declared duration). */
   private readonly durationSec = computed(() =>
     Math.round((this.media().durationMs ?? 0) / 1000),
   );
 
-  /** Fraction of the clip played so far, in `[0, 1]`. */
   private readonly fraction = computed(() => {
     const total = this.durationSec();
     return total > 0 ? Math.min(1, this.elapsed() / total) : 0;
   });
 
-  /** How many leading bars (of those drawn) to render as "played". */
   readonly playedBars = computed(() =>
     Math.round(this.fraction() * this.bars().length),
   );
 
-  /** The time to show: elapsed while playing, otherwise the total length. */
   readonly timeLabel = computed(() =>
     formatTime(this.playing() ? this.elapsed() : this.durationSec()),
   );
 
   /**
-   * The fetched clip: the message it belongs to (rows are reused), its URL once resolved
-   * (pinned while bound to `<audio>`), and the resolve.
+   * The fetched clip: its message (rows are reused), its URL once resolved (pinned while
+   * bound to `<audio>`), and the resolve.
    */
   private clip: OpenClip | null = null;
-  /** The message reference the row last showed. */
   private shown: PresentedMediaReference | null = null;
 
   constructor() {
@@ -141,8 +131,8 @@ export class VoiceMessageComponent {
       });
     });
     inject(DestroyRef).onDestroy(() => this.dropClip());
-    // The wave flexes with the bubble, which a narrow screen squeezes; measure it so it
-    // draws only the bars that fit and the time beside it is never pushed out.
+    // The wave flexes with the bubble: measure it so only the bars that fit are drawn and
+    // the time beside it is never pushed out.
     effect((onCleanup) => {
       const el = this.wave()?.nativeElement;
       if (!el || typeof ResizeObserver === 'undefined') return;
@@ -268,7 +258,6 @@ function resampleWaveform(
   );
 }
 
-/** Format seconds as `m:ss`. */
 function formatTime(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;

@@ -51,7 +51,6 @@ export class ManualLocationDialogComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly value = signal('');
-  /** The parsed coordinates for the current input, or null when it isn't a location. */
   readonly coords = computed(() => parseLocationInput(this.value()));
   /** Whether the desktop shell can estimate an approximate location (gates the button). */
   readonly canLocate = this.geo.supportsApproximate();
@@ -63,7 +62,6 @@ export class ManualLocationDialogComponent {
     this.value.set((event.target as HTMLInputElement).value);
   }
 
-  /** Estimate the approximate location via the shell and fill the field with it. */
   useApproximate(): void {
     if (this.locating()) {
       return;

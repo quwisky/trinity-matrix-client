@@ -111,16 +111,12 @@
   }
 
   // Touch targets: the shared interaction minimum becomes 44px wherever a finger can reach
-  // these buttons and remains zero on precise pointers.
-
-  // Still keyed on pointer capability after #220 moved phones and tablets to a bottom
-  // sheet, and the two predicates are not in conflict — they answer different questions.
-  // `isMobileOs()` picks the INTERACTION MODEL: a sheet is an iOS/Android convention, and a
-  // Windows laptop with a touchscreen should not be given one. `any-pointer: coarse` asks
-  // whether a finger is driving, which is what decides how big a target has to be.
-
-  // So on a phone this block is inert (the bar is never revealed there) and on a hybrid
-  // laptop it is load-bearing (the bar IS revealed, and can be tapped). Right in both.
+  // these buttons and stays zero on precise pointers.
+  // Keyed on pointer capability, not `isMobileOs()`: that picks the INTERACTION MODEL (a
+  // bottom sheet is an iOS/Android convention a touchscreen Windows laptop should not get),
+  // while `any-pointer: coarse` asks whether a finger is driving, which decides target size.
+  // So on a phone this block is inert (the bar is never revealed) and on a hybrid laptop it
+  // is load-bearing.
   @media (any-pointer: coarse) {
     .toolbar__btn,
     .toolbar__emoji {

@@ -5,15 +5,12 @@ import { Subject, type Observable } from 'rxjs';
 const REVEALED_CLASS = 'is-revealed';
 
 /**
- * Click- (and keyboard-) to-reveal for spoiler content inside a rendered message body.
- * The sanitizer tags spoilers with the `mx-spoiler` class (Angular's `[innerHTML]`
- * sanitizer strips the original `data-mx-spoiler` attribute, so the class is what
- * survives to the DOM). The body is set via `[innerHTML]`, so spoilers have no Angular
- * bindings of their own — this directive listens on the container and reveals the
- * nearest concealed spoiler when it is activated. The revealing activation is
- * swallowed (preventDefault/stop) so a first click that lands on a link *inside* a
- * spoiler only uncovers it rather than also following the link; once revealed, the
- * spoiler behaves like normal content.
+ * Click- (and keyboard-) to-reveal for spoiler content in a rendered message body. The
+ * sanitizer tags spoilers with the `mx-spoiler` class because Angular's `[innerHTML]`
+ * sanitizer strips the original `data-mx-spoiler` attribute. The body has no Angular
+ * bindings, so this directive listens on the container and reveals the nearest concealed
+ * spoiler. The revealing activation is swallowed (preventDefault/stop) so a first click on a
+ * link *inside* a spoiler only uncovers it rather than following the link.
  */
 @Directive({
   selector: '[trnSpoilerReveal]',

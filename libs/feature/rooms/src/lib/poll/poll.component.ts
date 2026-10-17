@@ -37,10 +37,8 @@ export class PollComponent {
 
   /** The full set of answer ids to vote for (empty withdraws the vote). */
   readonly vote = output<readonly string[]>();
-  /** Close the poll. */
   readonly end = output<void>();
 
-  /** Per-answer share of the total, for the bar width. */
   readonly percentages = computed<Record<string, number>>(() => {
     const total = this.poll().totalVotes;
     const out: Record<string, number> = {};

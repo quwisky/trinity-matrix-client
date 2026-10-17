@@ -20,17 +20,14 @@ import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
- * Pinned-messages panel: every `m.room.pinned_events` entry for the active room, in
- * pin order, each row showing the sender, a short preview, and the pin timestamp.
- * Reads the live pinned-message projection from Conversation Runtime, so it reacts
- * to remote pins/unpins for the exact Account-and-Room handle.
+ * Pinned-messages panel: every `m.room.pinned_events` entry for the active room, in pin
+ * order, each row showing the sender, a short preview and the pin timestamp. Reads the live
+ * pinned-message projection from Conversation Runtime, so it reacts to remote pins/unpins.
  *
- * Presentational: it renders into the rooms shell's right-hand panel slot and owns no
- * panel state of its own — mirroring {@link ThreadsListComponent}. Tapping a row emits
- * {@link selected} with the chosen event id for the host to jump the timeline to (the
- * same mechanism in-room search uses), and the header's close button emits
- * {@link dismissed}. Each row also offers an inline Unpin (gated to users who may edit
- * pinned events) that acts in place and announces nothing, so the panel stays open.
+ * Presentational, like {@link ThreadsListComponent}: it owns no panel state. A row tap emits
+ * {@link selected} (the event id, for the host to jump to) and the close button emits
+ * {@link dismissed}. Each row's inline Unpin (gated to users who may edit pinned events)
+ * acts in place and announces nothing, so the panel stays open.
  */
 @Component({
   selector: 'trn-pinned-messages-panel',
@@ -54,9 +51,7 @@ export class PinnedMessagesPanelComponent {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** The active room's pinned messages, in pin order. */
   readonly pinned = this.pins.messages;
-  /** Whether the current user may unpin (room permission). */
   readonly canPin = this.pins.canMutate;
 
   /** The user picked a pinned message: its event id, for the host to jump to. */
@@ -68,11 +63,10 @@ export class PinnedMessagesPanelComponent {
     // Reopening the panel retries pins whose fetch failed.
     this.pins.retryFailed();
     // Closed or replaced after a press or key inside it, the panel would otherwise stay in
-    // memory, detached, as the CDK's last input target until the next one (#1361).
+    // memory, detached, as the CDK's last input target until the next one.
     releaseInputTargetOnDestroy();
   }
 
-  /** Row tap: announce the chosen event id for a timeline jump. */
   jumpTo(eventId: string): void {
     this.selected.emit(eventId);
   }
@@ -99,7 +93,6 @@ export class PinnedMessagesPanelComponent {
     });
   }
 
-  /** Close button: announce the close without a jump. */
   close(): void {
     this.dismissed.emit();
   }

@@ -17,14 +17,12 @@ import { isoDateOf, localDayStartFromIso } from '@trinity/util/matrix';
 
 /**
  * Pick a calendar day to scroll the timeline back to. Closes with the epoch-ms local
- * midnight of the chosen day, or `undefined` when cancelled — resolving the DATE only, so
- * this component knows nothing about `/timestamp_to_event` or pagination
- * ({@link TimelineService.jumpToDate} owns both).
+ * midnight of the chosen day, or `undefined` when cancelled. It resolves the DATE only;
+ * {@link TimelineService.jumpToDate} owns `/timestamp_to_event` and pagination.
  *
- * A native `<input type="date">` rather than a calendar widget: there is no Helm calendar
- * in this workspace, and the native control brings a real date picker on iOS and Android,
- * keyboard entry on the desktop, and localised formatting and screen-reader support that a
- * hand-rolled grid would have to reimplement.
+ * A native `<input type="date">` rather than a calendar widget (there is no Helm calendar):
+ * it brings a real date picker on iOS and Android, keyboard entry on desktop, and localised
+ * formatting and screen-reader support.
  */
 @Component({
   selector: 'trn-jump-to-date',

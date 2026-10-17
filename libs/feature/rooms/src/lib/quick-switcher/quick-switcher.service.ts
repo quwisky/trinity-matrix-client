@@ -5,13 +5,10 @@ import { defer, finalize, of, type Observable } from 'rxjs';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 
 /**
- * Presents the {@link QuickSwitcherComponent} as a {@link TrnSurfaceService} dialog
- * and resolves the chosen {@link SwitcherSelection} (or `null` when cancelled).
- * Wraps the dialog so its caller can hand the fully qualified result to Workspace —
- * mirroring {@link UserPickerService}.
- *
- * A re-entrancy guard means a repeated Ctrl/Cmd+K while the switcher is already open
- * is a no-op rather than stacking dialogs.
+ * Presents the {@link QuickSwitcherComponent} as a {@link TrnSurfaceService} dialog and
+ * resolves the chosen {@link SwitcherSelection}, or `null` when cancelled, mirroring
+ * {@link UserPickerService}. A re-entrancy guard makes a repeated Ctrl/Cmd+K while it is
+ * open a no-op.
  */
 @Injectable({ providedIn: 'root' })
 export class QuickSwitcherService {
@@ -21,10 +18,9 @@ export class QuickSwitcherService {
   /**
    * Open the switcher; resolves the chosen selection, or null if cancelled/already open.
    *
-   * `activeAccountOnly` restricts the list to the account currently in use. Jumping to a
-   * room switches accounts first, so the full mixed corpus is right there — but a caller
-   * that ACTS on the target without switching (forwarding a message) must not be offered a
-   * room the active account isn't in.
+   * `activeAccountOnly` restricts the list to the active account: a caller that ACTS on the
+   * target without switching accounts (forwarding a message) must not be offered a room the
+   * active account isn't in.
    */
   pick$(
     opts: { activeAccountOnly?: boolean } = {},

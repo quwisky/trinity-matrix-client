@@ -42,36 +42,25 @@ interface HighlightPart {
 }
 
 /**
- * In-room message search, presented from the room header (parallel to the threads
- * list) in the rooms shell's right-hand panel slot. Scoped to the active room's
- * `roomId`, a signal input the host binds. Reads the focused Conversation child's exact
- * search and timeline surfaces so matching stays in data access and nothing is
- * threaded through props.
+ * In-room message search for the rooms shell's right-hand panel slot, scoped to the
+ * `roomId` the host binds. Matching stays in data access: it reads the focused Conversation
+ * child's search and timeline surfaces.
  *
  * E2EE-honest by construction:
- *  - The instant results come from the Conversation child's `searchLoaded`, over the
- *    already-loaded, *decrypted* timeline — recomputed reactively by reading
- *    the Conversation timeline's `messages()`, so decryption + scrollback re-run the search.
- *  - For an **encrypted** room that's the only path: a lock banner states it covers the
- *    loaded messages only, with a "Load older messages" affordance to widen it.
- *  - For an **unencrypted** room a "Search all messages" button runs the homeserver
- *    full-text search through the same exact child over the whole
- *    history, paged via `next_batch`.
+ *  - Instant results come from the Conversation child's `searchLoaded`, over the
+ *    already-loaded, *decrypted* timeline. Reading its `messages()` re-runs the search
+ *    on decryption and scrollback.
+ *  - An **encrypted** room has only that path: a lock banner states it covers the loaded
+ *    messages only, with a "Load older messages" affordance to widen it.
+ *  - An **unencrypted** room also gets "Search all messages", the homeserver full-text
+ *    search over the whole history, paged via `next_batch`.
  *
- * Presentational: it owns no panel state. Selecting a result emits {@link selected}
- * with the matched event id and closing emits {@link dismissed}; the host owns the
- * slot and decides what to do (jump the timeline, close the panel).
+ * Presentational: it owns no panel state. It emits {@link selected} with the matched event
+ * id and {@link dismissed} on close; the host owns the slot.
  *
- * The query field is focused when the panel appears, by this component.
- *
- * That used to be CDK's job: search was a dialog, and `TrnSurfaceService` was passed
- * `autoFocus: '[data-autofocus]'`. Rendered inline in the shell's panel slot there is no CDK
- * focus pass, so without the call below opening search would leave focus wherever it was and
- * a keyboard user would have to tab into the field they just asked for. The marker attribute
- * stays as the selector, so there is still one definition of "the field to focus".
- *
- * The original comment here warned that a `focus()` in the component would be overridden by
- * CDK's pass — true then, and the reason the call did not exist. It is exactly inverted now.
+ * It focuses the query field itself when the panel appears: rendered inline in the slot
+ * there is no CDK focus pass, so a keyboard user would otherwise have to tab into the field.
+ * The marker attribute stays the selector, so there is one definition of "the field to focus".
  */
 @Component({
   selector: 'trn-message-search',
@@ -101,13 +90,10 @@ export class MessageSearchComponent {
 
   constructor() {
     // Closed or replaced after a press or key inside it, the panel would otherwise stay in
-    // memory, detached, as the CDK's last input target until the next one (#1361).
+    // memory, detached, as the CDK's last input target until the next one.
     releaseInputTargetOnDestroy();
-    // After the first render, not on construction: the input does not exist yet at
-    // construction time, and `afterNextRender` is the zoneless-safe hook for reaching into
-    // the DOM once.
-    // A changed query, from this field or the host's, invalidates any server results;
-    // fall back to instant local.
+    // After the first render: the input does not exist at construction.
+    // A changed query invalidates any server results; fall back to instant local.
     effect(() => {
       this.query();
       untracked(() => {
@@ -124,34 +110,23 @@ export class MessageSearchComponent {
     });
   }
 
-  /** Moves focus into the query field, e.g. when the search shortcut finds the panel open. */
   focusField(): void {
     this.queryField()?.nativeElement.focus();
   }
 
-  /** Active room the search is scoped to, bound by whoever hosts the panel. */
   readonly roomId = input.required<string>();
 
-  /** The user picked a result: the matched event id, for the host to jump to. */
   readonly selected = output<string>();
-  /** The user closed search without picking a result. */
   readonly dismissed = output<void>();
 
-  /** Current query text. */
   readonly query = model('');
 
-  /** Whether the server (full-history) results are being shown instead of loaded. */
   readonly serverMode = signal(false);
   private readonly serverHits = signal<readonly MessageHit[]>([]);
-  /** Token for the next page of server results, or null when exhausted. */
   readonly serverNextBatch = signal<string | null>(null);
-  /** Total server-reported match count. */
   readonly serverCount = signal(0);
-  /** A server search / load-more is in flight. */
   readonly searching = signal(false);
-  /** A "load older history" scrollback is in flight (encrypted rooms). */
   readonly loadingHistory = signal(false);
-  /** Last server/history failure message (swallowed by runWithBusy). */
   private readonly error = signal<string | null>(null);
 
   /**
@@ -167,12 +142,10 @@ export class MessageSearchComponent {
   readonly encrypted = computed(() => this.loaded().encrypted);
   readonly scanned = computed(() => this.loaded().scanned);
 
-  /** The rows to show: server results when in server mode, else the loaded matches. */
   readonly results = computed<readonly MessageHit[]>(() =>
     this.serverMode() ? this.serverHits() : this.loaded().hits,
   );
 
-  /** Contextual empty-state copy. */
   readonly emptyHint = computed(() => {
     if (!this.query().trim()) {
       return 'Type to search messages in this conversation.';
@@ -187,7 +160,6 @@ export class MessageSearchComponent {
     this.query.set((event.target as HTMLInputElement).value);
   }
 
-  /** Run the homeserver full-text search over the whole (unencrypted) history. */
   searchServer(): void {
     const term = this.query().trim();
     if (!term) {
@@ -206,7 +178,6 @@ export class MessageSearchComponent {
     });
   }
 
-  /** Append the next page of server results. */
   loadMoreServer(): void {
     const term = this.query().trim();
     const next = this.serverNextBatch();
@@ -224,23 +195,18 @@ export class MessageSearchComponent {
     });
   }
 
-  /** Page in older history so the instant (loaded) search can see more of it. */
   loadOlderHistory(): void {
     runWithBusy(this.search.loadOlder(), {
       busy: this.loadingHistory,
       error: this.error,
       destroyRef: this.destroyRef,
-      // The `loaded` computed re-runs when the Conversation timeline updates after
-      // the scrollback, so no manual re-search is needed.
     }).subscribe();
   }
 
-  /** Click on a row: announce the matched event id for the host to jump to. */
   select(hit: MessageHit): void {
     this.selected.emit(hit.eventId);
   }
 
-  /** Cancel / Escape: announce the close without a selection. */
   dismiss(): void {
     this.dismissed.emit();
   }
