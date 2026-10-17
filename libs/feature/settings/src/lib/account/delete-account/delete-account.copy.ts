@@ -67,6 +67,8 @@ export function refusalMessage(
       return `Trinity couldn’t reach ${server}. Nothing was deleted.`;
     case 'still-active':
       return 'Your account was not deleted. Try again.';
+    case 'signed-out':
+      return 'This device was signed out of the account before it could be deleted. Nothing was deleted.';
     case 'busy':
       return 'Trinity is busy signing out or switching accounts. Try again in a moment.';
     case 'cancelled':
