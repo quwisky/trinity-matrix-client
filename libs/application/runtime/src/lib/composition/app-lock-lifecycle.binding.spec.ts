@@ -30,7 +30,7 @@ import {
   type HostOperationOutcome,
   type HostUserPresenceOperation,
 } from '@trinity/runtime/host';
-import { desktopBridgeFixture } from '@trinity/testing';
+import { desktopBridgeFixture, TIMERS_AND_DATE } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {
   NEVER,
@@ -199,17 +199,7 @@ function setup(
 }
 
 describe('AppLockLifecycleBinding', () => {
-  beforeEach(() =>
-    vi.useFakeTimers({
-      toFake: [
-        'setTimeout',
-        'clearTimeout',
-        'setInterval',
-        'clearInterval',
-        'Date',
-      ],
-    }),
-  );
+  beforeEach(() => vi.useFakeTimers(TIMERS_AND_DATE));
   afterEach(() => {
     native.platform = false;
     for (const plugin of Object.values(native.camera)) plugin.mockReset();

@@ -83,6 +83,7 @@ import {
   type HostCapabilityManifest,
   type HostOperationOutcome,
 } from '@trinity/runtime/host';
+import { TIMERS } from '@trinity/testing';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import {
   EMPTY,
@@ -584,9 +585,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('asks for the lock without waiting forever on the saved appearance', async () => {
-    vi.useFakeTimers({
-      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
-    });
+    vi.useFakeTimers(TIMERS);
     applySavedAppearance.mockReturnValueOnce(NEVER);
     let outcome: unknown = null;
     adapter.acquireSessionLock().subscribe((value) => (outcome = value));

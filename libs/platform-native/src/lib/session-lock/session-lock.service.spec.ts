@@ -5,7 +5,7 @@ import {
 } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Capacitor } from '@capacitor/core';
-import { desktopBridgeFixture } from '@trinity/testing';
+import { desktopBridgeFixture, TIMERS } from '@trinity/testing';
 import { firstValueFrom, lastValueFrom, toArray } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SessionLockService } from './session-lock.service';
@@ -293,9 +293,7 @@ describe('SessionLockService', () => {
   });
 
   it('offers "Try again" after 15 seconds without the lock, sends the request again, and stays queued', async () => {
-    vi.useFakeTimers({
-      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
-    });
+    vi.useFakeTimers(TIMERS);
     const { locks, channels, openTab } = setup();
     const owner = openTab();
     const requester = openTab();
@@ -459,9 +457,7 @@ describe('SessionLockService', () => {
   });
 
   it('clears the handover timer on destroy', async () => {
-    vi.useFakeTimers({
-      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
-    });
+    vi.useFakeTimers(TIMERS);
     const { openTab, openDestroyableTab } = setup();
     const owner = openTab();
     const { tab: requester, destroy } = openDestroyableTab();
