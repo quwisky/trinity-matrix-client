@@ -1,0 +1,63 @@
+<p
+  #statusLine
+  class="room-settings__note"
+  tabindex="-1"
+  data-testid="room-settings-encryption"
+>
+  {{ status() }}
+</p>
+@if (offered()) {
+  @let encryption = permission();
+  @if (encryption?.available) {
+    <div class="room-settings-encryption__action">
+      @if (late()) {
+        <p
+          #lateLine
+          class="room-settings__hint room-settings__feedback--danger"
+          tabindex="-1"
+          data-testid="room-settings-encryption-late"
+        >
+          {{ lateWarning }}
+        </p>
+      } @else {
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          presentation="outline"
+          size="sm"
+          [loading]="busy()"
+          [attr.aria-disabled]="busy() ? 'true' : null"
+          [attr.aria-describedby]="error() ? errorId : null"
+          (click)="turnOn()"
+          data-testid="room-settings-encryption-on"
+        >
+          {{ buttonLabel() }}
+        </button>
+      }
+      @if (error(); as message) {
+        <p
+          class="room-settings__hint room-settings__feedback--danger"
+          [id]="errorId"
+          data-testid="room-settings-encryption-error"
+        >
+          {{ message }}
+        </p>
+      }
+    </div>
+  } @else if (encryption?.reason; as reason) {
+    <p
+      class="room-settings__hint room-settings-encryption__reason"
+      data-testid="room-settings-encryption-reason"
+    >
+      {{ reason }}
+    </p>
+  }
+}
+<p
+  class="sr-only"
+  role="status"
+  data-testid="room-settings-encryption-announcer"
+>
+  {{ announcement() }}
+</p>

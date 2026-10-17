@@ -4,9 +4,15 @@ import {
   Visibility,
   type ICreateRoomStateEvent,
 } from 'matrix-js-sdk';
+import type { RoomEncryptionEventContent } from 'matrix-js-sdk/lib/@types/state_events';
 
 /** Megolm group-encryption algorithm enabled on every room we create (E2EE-first). */
 const MEGOLM_ALGORITHM = 'm.megolm.v1.aes-sha2';
+
+/** The `m.room.encryption` content Trinity uses, at creation or when turned on later. */
+export function roomEncryptionContent(): RoomEncryptionEventContent {
+  return { algorithm: MEGOLM_ALGORITHM };
+}
 
 /**
  * The `m.room.encryption` (Megolm) entry for a `createRoom` `initial_state`, so a room is
@@ -16,7 +22,7 @@ export function roomEncryptionInitialState(): ICreateRoomStateEvent {
   return {
     type: EventType.RoomEncryption,
     state_key: '',
-    content: { algorithm: MEGOLM_ALGORITHM },
+    content: roomEncryptionContent(),
   };
 }
 

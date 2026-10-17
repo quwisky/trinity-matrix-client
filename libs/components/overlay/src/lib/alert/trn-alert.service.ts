@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Dialog, type DialogConfig, type DialogRef } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
 import type { TrnVariant } from '@trinity/components/foundations';
-import { defer, map, take, type Observable } from 'rxjs';
+import { Observable, defer, map, take } from 'rxjs';
 import { TrnDialogRef } from '../dialog/trn-dialog-ref';
 import { TrnDialogOpenerService } from '../dialog/trn-dialog-opener.service';
 import { dialogPresentation, prefersSheet } from '../dialog/trn-dialog.service';
@@ -28,6 +28,8 @@ export interface ConfirmOptions {
   variant?: TrnAlertVariant;
   /** Whether navigation closes the alert. Route guards set false so their prompt survives cancellation. */
   closeOnNavigation?: boolean;
+  /** Closes the alert as cancelled when this emits, for a question that stopped applying. */
+  closeWhen?: Observable<unknown>;
 }
 
 /** A confirm with a second way forward, offered beside the confirm button. */
@@ -125,9 +127,9 @@ export class TrnAlertService {
         AlertDialogData,
         TrnAlertDialogComponent
       >(TrnAlertDialogComponent, this.config(data, opts));
-      return ref.closed.pipe(
+      const choice = ref.closed.pipe(
         take(1),
-        map((value) =>
+        map((value): TrnAlertChoice =>
           value === true
             ? 'confirm'
             : value === 'alternative'
@@ -135,6 +137,17 @@ export class TrnAlertService {
               : 'cancel',
         ),
       );
+      return new Observable<TrnAlertChoice>((subscriber) => {
+        // Subscribed before `closeWhen`, so a withdrawal that emits at once is still seen.
+        const result = choice.subscribe(subscriber);
+        const withdrawn = opts.closeWhen
+          ?.pipe(take(1))
+          .subscribe(() => ref.close());
+        return () => {
+          result.unsubscribe();
+          withdrawn?.unsubscribe();
+        };
+      });
     });
   }
 

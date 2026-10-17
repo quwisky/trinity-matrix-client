@@ -1,0 +1,14 @@
+@use '../room-settings-panel' as panel;
+
+@layer components {
+  @include panel.layout;
+
+  .room-settings-encryption__action,
+  .room-settings-encryption__reason {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--trinity-space-2);
+    padding-block-end: var(--trinity-space-4);
+  }
+}

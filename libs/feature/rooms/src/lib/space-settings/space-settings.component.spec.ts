@@ -50,6 +50,7 @@ const ALL_ALLOWED: RoomSettingsPermissions = {
   history: DENIED,
   aliases: ALLOWED,
   upgrade: ALLOWED,
+  encryption: ALLOWED,
 };
 
 function spaceSnapshot(

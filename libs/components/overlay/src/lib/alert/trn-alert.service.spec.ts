@@ -1,7 +1,7 @@
 import { ApplicationRef } from '@angular/core';
 import { Dialog } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom } from 'rxjs';
+import { Subject, firstValueFrom } from 'rxjs';
 import { screen } from '@trinity/testing';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -85,6 +85,26 @@ describe('TrnAlertService', () => {
     render();
     clickButton('Cancel');
     expect(await result).toBe(false);
+  });
+
+  it('closes as cancelled when what it asks about stops applying', async () => {
+    const withdrawn = new Subject<void>();
+    const result = firstValueFrom(
+      TestBed.inject(TrnAlertService).confirm$({
+        header: 'Turn on encryption?',
+        confirmText: 'Turn on encryption',
+        closeWhen: withdrawn,
+      }),
+    );
+    render();
+    expect(document.querySelector('trn-alert-dialog')).not.toBeNull();
+
+    withdrawn.next();
+    render();
+
+    expect(await result).toBe(false);
+    expect(document.querySelector('trn-alert-dialog')).toBeNull();
+    expect(withdrawn.observed).toBe(false);
   });
 
   it('returns focus to the control a tap pressed, which never took focus', async () => {

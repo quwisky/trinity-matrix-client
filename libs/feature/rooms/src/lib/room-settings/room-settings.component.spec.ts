@@ -12,6 +12,7 @@ import {
   JoinRule,
   RoomActionPermissionsService,
   RoomAliasesService,
+  RoomEncryptionService,
   RoomMembersService,
   RoomModerationService,
   RoomSettingsService,
@@ -63,6 +64,7 @@ const ALL_ALLOWED: RoomSettingsPermissions = {
   history: ALLOWED,
   aliases: ALLOWED,
   upgrade: ALLOWED,
+  encryption: ALLOWED,
 };
 
 const ADVANCED: RoomAdvancedInfo = {
@@ -253,6 +255,7 @@ async function build(options: BuildOptions = {}) {
         load: () => of(undefined),
       }),
       MockProvider(RoomUpgradeService, { plan: () => UPGRADE_PLAN }),
+      MockProvider(RoomEncryptionService, { turnOn: () => of(undefined) }),
       MockProvider(WidgetsService, {
         widgetsFor: () => widgets.asReadonly(),
         canManageFor: () => canManageWidgets.asReadonly(),
@@ -340,6 +343,22 @@ describe('RoomSettingsComponent', () => {
       'widgets',
       'advanced',
     ]);
+  });
+
+  it('offers Turn on encryption in General for an unencrypted room', async () => {
+    const { container } = await build({
+      initial: roomSnapshot({ encrypted: false }),
+    });
+
+    expect(
+      container.querySelector('[data-testid="room-settings-encryption"]')
+        ?.textContent,
+    ).toContain('not end-to-end encrypted');
+    expect(
+      container.querySelector('[data-testid="room-settings-encryption-on"]')
+        ?.textContent,
+    ).toContain('Turn on encryption…');
+    expect(container.textContent).not.toContain('Encryption is informational');
   });
 
   it('names the Name field and describes it with its hint', async () => {
