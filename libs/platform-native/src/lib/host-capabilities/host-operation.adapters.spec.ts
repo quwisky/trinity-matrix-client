@@ -1,3 +1,4 @@
+import type { Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { SwUpdate } from '@angular/service-worker';
 import {
@@ -260,8 +261,7 @@ describe('file, lifecycle and update host operation contracts', () => {
     };
   }
 
-  it('keeps file export cold, finite and normalized through the selected host adapter', async () => {
-    const save = vi.fn(() => of('saved' as const));
+  function fileExportAdapter(save: FileSaveService['save']) {
     TestBed.configureTestingModule({
       providers: [
         HostFileExportAdapter,
@@ -271,7 +271,12 @@ describe('file, lifecycle and update host operation contracts', () => {
         MockProvider(FileSaveService, { save }),
       ],
     });
-    const adapter = TestBed.inject(HostFileExportAdapter);
+    return TestBed.inject(HostFileExportAdapter);
+  }
+
+  it('keeps file export cold, finite and normalized through the selected host adapter', async () => {
+    const save = vi.fn(() => of('saved' as const));
+    const adapter = fileExportAdapter(save);
     const request = { bytes: new Blob(['safe']), filename: 'safe.txt' };
     const command = adapter.save(request);
 
@@ -286,17 +291,7 @@ describe('file, lifecycle and update host operation contracts', () => {
   });
 
   it('reports a dismissed native save as cancelled, never completed', async () => {
-    TestBed.configureTestingModule({
-      providers: [
-        HostFileExportAdapter,
-        MockProvider(HostCapabilitiesService, {
-          manifest: () => of(manifest()),
-        }),
-        MockProvider(FileSaveService, {
-          save: () => of('cancelled' as const),
-        }),
-      ],
-    });
+    fileExportAdapter(() => of('cancelled' as const));
 
     await expect(
       firstValueFrom(
@@ -309,17 +304,7 @@ describe('file, lifecycle and update host operation contracts', () => {
   });
 
   it('contains file-host failures behind a secret-safe rejection', async () => {
-    TestBed.configureTestingModule({
-      providers: [
-        HostFileExportAdapter,
-        MockProvider(HostCapabilitiesService, {
-          manifest: () => of(manifest()),
-        }),
-        MockProvider(FileSaveService, {
-          save: () => throwError(() => new Error('secret file payload')),
-        }),
-      ],
-    });
+    fileExportAdapter(() => throwError(() => new Error('secret file payload')));
 
     await expect(
       firstValueFrom(
@@ -459,15 +444,24 @@ describe('file, lifecycle and update host operation contracts', () => {
     ).resolves.toEqual({ kind: 'unavailable', reason: 'not-supported' });
   });
 
-  it('returns explicit update unavailability when this host has no service worker', async () => {
-    const checkForUpdate = vi.fn();
+  function updatesAdapter(
+    isEnabled: boolean,
+    checkForUpdate: SwUpdate['checkForUpdate'],
+    ...extra: Provider[]
+  ) {
     TestBed.configureTestingModule({
       providers: [
+        ...extra,
         ServiceWorkerHostUpdatesAdapter,
-        MockProvider(SwUpdate, { isEnabled: false, checkForUpdate }),
+        MockProvider(SwUpdate, { isEnabled, checkForUpdate }),
       ],
     });
-    const command = TestBed.inject(ServiceWorkerHostUpdatesAdapter).check();
+    return TestBed.inject(ServiceWorkerHostUpdatesAdapter);
+  }
+
+  it('returns explicit update unavailability when this host has no service worker', async () => {
+    const checkForUpdate = vi.fn();
+    const command = updatesAdapter(false, checkForUpdate).check();
 
     expect(checkForUpdate).not.toHaveBeenCalled();
     await expect(firstValueFrom(command)).resolves.toEqual({
@@ -479,13 +473,7 @@ describe('file, lifecycle and update host operation contracts', () => {
 
   it('runs a supported update check lazily through the shared operation', async () => {
     const checkForUpdate = vi.fn().mockResolvedValue(true);
-    TestBed.configureTestingModule({
-      providers: [
-        ServiceWorkerHostUpdatesAdapter,
-        MockProvider(SwUpdate, { isEnabled: true, checkForUpdate }),
-      ],
-    });
-    const command = TestBed.inject(ServiceWorkerHostUpdatesAdapter).check();
+    const command = updatesAdapter(true, checkForUpdate).check();
 
     expect(checkForUpdate).not.toHaveBeenCalled();
     await expect(firstValueFrom(command)).resolves.toEqual({
@@ -497,15 +485,7 @@ describe('file, lifecycle and update host operation contracts', () => {
   it('rejects a supported update check that never settles', async () => {
     vi.useFakeTimers();
     const checkForUpdate = vi.fn(() => new Promise<boolean>(() => undefined));
-    TestBed.configureTestingModule({
-      providers: [
-        ServiceWorkerHostUpdatesAdapter,
-        MockProvider(SwUpdate, { isEnabled: true, checkForUpdate }),
-      ],
-    });
-    const result = firstValueFrom(
-      TestBed.inject(ServiceWorkerHostUpdatesAdapter).check(),
-    );
+    const result = firstValueFrom(updatesAdapter(true, checkForUpdate).check());
 
     await vi.advanceTimersByTimeAsync(5_000);
 
@@ -517,17 +497,15 @@ describe('file, lifecycle and update host operation contracts', () => {
 
   it('keeps Web update discovery aligned with the shared operation', async () => {
     const checkForUpdate = vi.fn().mockResolvedValue(true);
-    TestBed.configureTestingModule({
-      providers: [
-        WebHostCapabilityAdapter,
-        ServiceWorkerHostUpdatesAdapter,
-        MockProvider(SwUpdate, { isEnabled: true, checkForUpdate }),
-      ],
-    });
+    const adapter = updatesAdapter(
+      true,
+      checkForUpdate,
+      WebHostCapabilityAdapter,
+    );
     const manifest = await firstValueFrom(
       TestBed.inject(WebHostCapabilityAdapter).manifest(),
     );
-    const command = TestBed.inject(ServiceWorkerHostUpdatesAdapter).check();
+    const command = adapter.check();
 
     expect(manifest.operations.updates).toEqual({ kind: 'supported' });
     expect(checkForUpdate).not.toHaveBeenCalled();
@@ -585,6 +563,16 @@ describe('Electron app identity', () => {
     });
   }
 
+  function receivedUrls(emitLinks: () => void) {
+    const urls: string[] = [];
+    const subscription = TestBed.inject(
+      HostDeepLinksService,
+    ).received.subscribe(({ url }) => urls.push(url));
+    emitLinks();
+    subscription.unsubscribe();
+    return urls;
+  }
+
   afterEach(() => {
     delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
   });
@@ -638,14 +626,11 @@ describe('Electron app identity', () => {
 
   it('hands Trinity Next links to the renderer on the canonical scheme', () => {
     configure(NEXT);
-    const urls: string[] = [];
-    const subscription = TestBed.inject(
-      HostDeepLinksService,
-    ).received.subscribe(({ url }) => urls.push(url));
-    emit('dev.trinityproject.trinity.next://matrix.to/#/!room:hs.example');
-    emit('dev.trinityproject.trinity.next:/sso-callback?code=abc&state=xyz');
-    emit('https://elsewhere.example/');
-    subscription.unsubscribe();
+    const urls = receivedUrls(() => {
+      emit('dev.trinityproject.trinity.next://matrix.to/#/!room:hs.example');
+      emit('dev.trinityproject.trinity.next:/sso-callback?code=abc&state=xyz');
+      emit('https://elsewhere.example/');
+    });
     expect(urls).toEqual([
       'dev.trinityproject.trinity://matrix.to/#/!room:hs.example',
       'dev.trinityproject.trinity:/sso-callback?code=abc&state=xyz',
@@ -657,14 +642,11 @@ describe('Electron app identity', () => {
     // Main already forwards only this app's scheme (electron/src/deep-link.ts); this is
     // defence in depth so a stable link can never reach Trinity Next's parsers.
     configure(NEXT);
-    const urls: string[] = [];
-    const subscription = TestBed.inject(
-      HostDeepLinksService,
-    ).received.subscribe(({ url }) => urls.push(url));
-    emit('dev.trinityproject.trinity://matrix.to/#/!room:hs.example');
-    emit('dev.trinityproject.trinity:/sso-callback?code=abc&state=xyz');
-    emit('dev.trinityproject.trinity.next://matrix.to/#/!other:hs.example');
-    subscription.unsubscribe();
+    const urls = receivedUrls(() => {
+      emit('dev.trinityproject.trinity://matrix.to/#/!room:hs.example');
+      emit('dev.trinityproject.trinity:/sso-callback?code=abc&state=xyz');
+      emit('dev.trinityproject.trinity.next://matrix.to/#/!other:hs.example');
+    });
     expect(urls).toEqual([
       'dev.trinityproject.trinity://matrix.to/#/!other:hs.example',
     ]);
@@ -676,12 +658,9 @@ describe('Electron app identity', () => {
       deepLinkScheme: 'dev.trinityproject.trinity',
       displayName: 'Trinity',
     });
-    const urls: string[] = [];
-    const subscription = TestBed.inject(
-      HostDeepLinksService,
-    ).received.subscribe(({ url }) => urls.push(url));
-    emit('dev.trinityproject.trinity://matrix.to/#/!room:hs.example');
-    subscription.unsubscribe();
+    const urls = receivedUrls(() =>
+      emit('dev.trinityproject.trinity://matrix.to/#/!room:hs.example'),
+    );
     expect(urls).toEqual([
       'dev.trinityproject.trinity://matrix.to/#/!room:hs.example',
     ]);
