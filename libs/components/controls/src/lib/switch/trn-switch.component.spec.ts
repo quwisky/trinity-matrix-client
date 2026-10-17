@@ -116,6 +116,18 @@ describe('TrnSwitchComponent', () => {
     expect(input?.getAttribute('aria-disabled')).toBe('true');
   });
 
+  it('keeps checked unchanged when pressed while busy', async () => {
+    const { container, fixture } = await render(BusyHostComponent);
+    const input = box(container);
+    input?.focus();
+    input?.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(input?.checked).toBe(false);
+    expect(document.activeElement).toBe(input);
+  });
+
   it('reverts in place, keeping focus, when the parent declines the change', async () => {
     const { container, fixture } = await render(HostComponent);
     const input = box(container);
