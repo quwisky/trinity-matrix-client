@@ -53,7 +53,7 @@ export function startupRecoveryLabel(
   }
 }
 
-export const STARTUP_STATUS_COPY = {
+const STARTUP_STATUS_COPY = {
   'host-contract': {
     heading: 'Device integration could not be prepared',
     consequence: 'Trinity cannot safely use this host yet.',
