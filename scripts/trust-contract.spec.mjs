@@ -5,6 +5,7 @@ import {
   workspaceRoot,
   read as source,
   sourcesWithHarnesses as productionSources,
+  productionSources as harnessFreeSources,
 } from './workspace-sources.mjs';
 
 /** Freeze #319's Trust expand-contract migration. */
@@ -30,7 +31,8 @@ describe('Trust production boundary', () => {
   });
 
   it('depends on a lifecycle-free Matrix crypto port', () => {
-    const trust = productionSources
+    // The Trust spec harness mocks MatrixClientService; only production code is frozen.
+    const trust = harnessFreeSources
       .filter((file) => file.startsWith('libs/data-access/trust/'))
       .map(source)
       .join('\n');
