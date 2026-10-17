@@ -121,7 +121,7 @@ export class AppLockCoverComponent {
    * Whatever closed the dialog while locked (a second Escape, dev tools), it reopens where it
    * was. Android's Back never closes it: the WebView's close request is a `cancel`, prevented
    * above, and the host's Back button sends the locked app to the background instead
-   * (`TrinityApplicationSessionAdapter`).
+   * (`TrinityHostNavigationAdapter`).
    */
   protected onClose(): void {
     const dialog = this.dialog().nativeElement;

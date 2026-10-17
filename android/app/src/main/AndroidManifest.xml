@@ -34,7 +34,7 @@
                    OIDC:       dev.trinityproject.trinity:/sso-callback?code=…
                  The OIDC form follows RFC 8252 §7.1 (private-use scheme, no
                  authority), so it has no host for android:host to match against —
-                 hence a scheme-only filter. TrinityApplicationSessionAdapter.handleDeepLink()
+                 hence a scheme-only filter. TrinityHostNavigationAdapter.handleDeepLink()
                  validates every link before acting on anything that arrives. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
