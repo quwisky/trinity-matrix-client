@@ -214,6 +214,8 @@ type TokenRefreshOwner =
 export interface ServerLogoutHold {
   /** Whether the server revoked the account's token while held. */
   readonly tokenDied: () => boolean;
+  /** False once released, or once the account left this device and took its holds with it. */
+  readonly isHeld: () => boolean;
   /**
    * `deleted: true` hands what follows to the deletion cleanup; `deleted: false` replays a
    * recorded logout through the ordinary hard path.
@@ -730,6 +732,8 @@ export class MatrixClientService {
     }
     return {
       tokenDied: () => held.died !== null,
+      isHeld: () =>
+        held.holds.has(token) && this.logoutHolds.get(userId) === held,
       release: ({ deleted }) => {
         if (!held.holds.delete(token)) {
           return;

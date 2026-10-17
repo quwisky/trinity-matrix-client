@@ -1182,6 +1182,21 @@ describe('MatrixClientService', () => {
       expect(storage.remove).toHaveBeenCalledWith('@me:hs');
     });
 
+    it('stops being held once released or once the account is removed another way', async () => {
+      vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+      const { svc } = setup();
+      await firstValueFrom(svc.init(SESSION));
+      const released = svc.holdServerLogout('@me:hs');
+      const removed = svc.holdServerLogout('@me:hs');
+      expect(removed.isHeld()).toBe(true);
+
+      released.release({ deleted: false });
+      await firstValueFrom(svc.remove('@me:hs'));
+
+      expect(released.isHeld()).toBe(false);
+      expect(removed.isHeld()).toBe(false);
+    });
+
     it('leaves the account to the deletion cleanup when released as deleted', async () => {
       const client = fakeClient();
       vi.mocked(createClient).mockReturnValue(client as never);

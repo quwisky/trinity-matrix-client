@@ -44,6 +44,7 @@ function setup(
     ),
   };
   let tokenDied = false;
+  let generation = 0;
   const release = vi.fn();
   const onTokenDied: (() => void)[] = [];
   const order: string[] = [];
@@ -57,9 +58,13 @@ function setup(
         holdServerLogout: vi.fn(
           (_id: string, hooks?: { onTokenDied?: () => void }) => {
             if (hooks?.onTokenDied) onTokenDied.push(hooks.onTokenDied);
+            const born = generation;
+            let released = false;
             return {
               tokenDied: () => tokenDied,
+              isHeld: () => !released && born === generation,
               release: (outcome: { deleted: boolean }) => {
+                released = true;
                 order.push(`release:${outcome.deleted}`);
                 release(outcome);
               },
@@ -92,6 +97,11 @@ function setup(
     killToken: () => {
       tokenDied = true;
       onTokenDied.forEach((hook) => hook());
+    },
+    /** The account left the device another way, which drops every hold on it. */
+    wipeHolds: () => {
+      generation++;
+      onTokenDied.length = 0;
     },
   };
 }
@@ -487,6 +497,28 @@ describe('AccountDeletionWorkflow', () => {
         cleanup: CLEANED,
       });
       expect(test.matrix.accountStatus).not.toHaveBeenCalled();
+    });
+
+    it('is forgotten once the account leaves the device another way', async () => {
+      const test = unconfirmed();
+      const late: unknown[] = [];
+      test.workflow.lateDeletions.subscribe((result) => late.push(result));
+      await firstValueFrom(test.workflow.delete(request(test.stages)));
+      test.wipeHolds();
+      vi.mocked(test.client.deactivateAccount)
+        .mockRejectedValueOnce(uia(['m.login.password']))
+        .mockRejectedValueOnce(new ConnectionError('reset'));
+      await expect(
+        firstValueFrom(test.workflow.delete(request(test.stages))),
+      ).resolves.toEqual({ kind: 'unconfirmed', accountId: ALICE });
+      expect(test.release).not.toHaveBeenCalled();
+
+      test.killToken();
+
+      expect(test.accounts.removeDeletedAccount).toHaveBeenCalledWith(ALICE);
+      expect(late).toEqual([
+        { kind: 'deleted', accountId: ALICE, cleanup: CLEANED },
+      ]);
     });
 
     it('lets go of the wipe once the server says the account still exists', async () => {

@@ -241,7 +241,7 @@ export class AccountDeletionWorkflow {
   ): Observable<AccountDeletionResult> {
     const pending = this.unconfirmed.get(accountId);
     if (answer.kind === 'unconfirmed') {
-      if (pending) {
+      if (pending?.isHeld()) {
         hold.release({ deleted: false });
       } else {
         this.unconfirmed.set(accountId, hold);
