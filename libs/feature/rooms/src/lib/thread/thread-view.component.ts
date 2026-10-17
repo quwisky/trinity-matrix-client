@@ -408,6 +408,7 @@ export class ThreadViewComponent implements OnDestroy {
     if (
       dispatchSharedRowAction(action, row, {
         roomId: this.roomId(),
+        accountId: this.accountId(),
         destroyRef: this.destroyRef,
         dialog: this.dialog,
         timeline: this.timeline,

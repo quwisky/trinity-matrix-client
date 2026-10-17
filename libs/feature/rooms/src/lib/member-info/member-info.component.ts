@@ -24,6 +24,7 @@ import {
 } from '@trinity/components/overlay';
 import {
   ASSIGNABLE_MEMBER_ROLES,
+  ContentReportingService,
   type AssignableMemberRole,
   MEMBER_ROLE_LABEL,
   RoomActionPermissionsService,
@@ -43,6 +44,12 @@ import {
   TrustVerificationService,
 } from '@trinity/data-access/trust';
 import { AvatarComponent } from '@trinity/components/generic-content';
+import {
+  BLOCK_FAILED_TOAST,
+  BLOCKED_TOAST,
+  ReportService,
+  UNBLOCKED_TOAST,
+} from '../report/report.service';
 
 /**
  * A room-scoped info card for a member (avatar, name, id, live presence, role), shown
@@ -132,6 +139,8 @@ export class MemberInfoComponent {
   private readonly rooms = inject(RoomLibraryService);
   private readonly verification = inject(TrustVerificationService);
   private readonly alert = inject(TrnAlertService);
+  private readonly reporting = inject(ContentReportingService);
+  private readonly reports = inject(ReportService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly userIdHandle =
     viewChild<ElementRef<HTMLElement>>('userIdHandle');
@@ -167,6 +176,11 @@ export class MemberInfoComponent {
   /** The Account the commands run as, when one is known. */
   private readonly commandAccountId = computed(
     () => this.accountId() ?? this.owningAccountId(),
+  );
+
+  /** The account a report goes out as: the one this card was opened for. */
+  private readonly reporterId = computed(
+    () => this.commandAccountId() ?? this.identity.activeUserId(),
   );
 
   /** Live online status for the presence dot. */
@@ -328,19 +342,37 @@ export class MemberInfoComponent {
       : this.ignoredUsers.ignore(userId);
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
-        this.toast.show(
-          wasIgnored
-            ? 'Unblocked. Their earlier messages appear after you reload.'
-            : "Blocked — you won't see their messages.",
-          { duration: 2500 },
-        );
+        this.toast.show(wasIgnored ? UNBLOCKED_TOAST : BLOCKED_TOAST, {
+          duration: 2500,
+        });
       },
       error: () =>
-        this.toast.show('Could not update the block.', {
+        this.toast.show(BLOCK_FAILED_TOAST, {
           duration: 4000,
           variant: 'danger',
         }),
     });
+  }
+
+  /** Hidden once the reporter's server has said it takes no user reports. */
+  readonly canReport = computed(() => {
+    const reporter = this.reporterId();
+    return !!reporter && this.reporting.offers(reporter, 'user');
+  });
+
+  /** Report the member to the reporter's server admins, then offer to block them. */
+  report(): void {
+    const accountId = this.reporterId();
+    if (!accountId) return;
+    const member = this.member();
+    this.reports
+      .reportUser$({
+        accountId,
+        userId: member.userId,
+        name: member.roomDisplayName,
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   /** Remove the member from the room (with an optional reason), on confirmation. */

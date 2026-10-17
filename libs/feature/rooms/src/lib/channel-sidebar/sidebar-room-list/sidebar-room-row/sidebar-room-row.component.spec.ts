@@ -3,6 +3,7 @@ import { provideTrnIcons } from '@trinity/components/foundations';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
 import type { RoomSummary } from '@trinity/data-access/room-library';
+import { ContentReportingService } from '@trinity/data-access/room-administration';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
@@ -34,7 +35,10 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
   };
 }
 
-async function renderRow(inputs: Record<string, unknown> = {}) {
+async function renderRow(
+  inputs: Record<string, unknown> = {},
+  offers: (accountId: string, kind: string) => boolean = () => true,
+) {
   const modeForAccounts = vi.fn(() => 'all' as const);
   const actions: SidebarRoomAction[] = [];
   const result = await render(SidebarRoomRowComponent, {
@@ -43,6 +47,7 @@ async function renderRow(inputs: Record<string, unknown> = {}) {
     providers: [
       provideTrnIcons(),
       MockProvider(RoomNotificationsService, { modeForAccounts }),
+      MockProvider(ContentReportingService, { offers }),
       {
         provide: IdentityPresenceService,
         useValue: { presenceFor: () => signal('online') },
@@ -71,6 +76,34 @@ describe('SidebarRoomRowComponent', () => {
       .click();
 
     expect(actions).toEqual([{ kind: 'favourite', room: room() }]);
+  });
+
+  it('offers Report room beside Leave room', async () => {
+    const { container, fixture, actions } = await renderRow();
+
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+    const report = document.querySelector<HTMLElement>(
+      '[data-testid="room-report"]',
+    )!;
+    expect(report.textContent?.trim()).toBe('Report room');
+    expect(report.nextElementSibling?.getAttribute('data-testid')).toBe(
+      'room-leave',
+    );
+    report.click();
+
+    expect(actions).toEqual([{ kind: 'report', room: room() }]);
+  });
+
+  it("leaves out Report room once the row's account has no room reports", async () => {
+    const offers = vi.fn(() => false);
+    const { container, fixture } = await renderRow({}, offers);
+
+    container.querySelector<HTMLElement>('.channel__menu')!.click();
+    fixture.detectChanges();
+
+    expect(document.querySelector('[data-testid="room-report"]')).toBeNull();
+    expect(offers).toHaveBeenCalledWith('@me:hs', 'room');
   });
 
   it('emits a notify action with the chosen level', async () => {

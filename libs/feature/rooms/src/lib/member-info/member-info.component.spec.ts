@@ -1,5 +1,6 @@
 import {
   type MemberSummary,
+  ContentReportingService,
   RoomActionPermissionsService,
   RoomModerationService,
 } from '@trinity/data-access/room-administration';
@@ -24,6 +25,7 @@ import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MemberInfoComponent } from './member-info.component';
+import { ReportService } from '../report/report.service';
 
 function member(over: Partial<MemberSummary> = {}): MemberSummary {
   return {
@@ -56,6 +58,7 @@ async function build(
     unignore?: Mock;
     createDirectMessage?: Mock;
     startUserVerification?: Mock;
+    reportsOffered?: boolean;
   } = {},
 ) {
   const close = vi.fn();
@@ -70,6 +73,7 @@ async function build(
     opts.isIgnored ? [m.userId] : [],
   );
   const ignoreProjection = new Subject<void>();
+  const reportUser$ = vi.fn(() => of(undefined));
   const ignore =
     opts.ignore ??
     vi.fn((id: string) => {
@@ -142,6 +146,10 @@ async function build(
         prompt$: alertPrompt,
         confirm$: alertConfirm,
       }),
+      MockProvider(ContentReportingService, {
+        offers: () => opts.reportsOffered ?? true,
+      }),
+      MockProvider(ReportService, { reportUser$ }),
     ],
   });
   return {
@@ -159,6 +167,7 @@ async function build(
     unignore,
     ignoredIds,
     ignoreProjection,
+    reportUser$,
     createDirectMessage,
     startUserVerification,
   };
@@ -198,6 +207,8 @@ async function buildPanel(m: MemberSummary = member()) {
         isIgnored: () => false,
         runProjection: () => new Subject<void>(),
       }),
+      MockProvider(ContentReportingService, { offers: () => true }),
+      MockProvider(ReportService),
       MockProvider(TrnAlertService),
     ],
   });
@@ -906,6 +917,30 @@ describe('MemberInfoComponent', () => {
       'Unblocked. Their earlier messages appear after you reload.',
       expect.anything(),
     );
+  });
+
+  it('offers to report the member, named, as the active account', async () => {
+    const { reportUser$ } = await build(member());
+
+    screen.getByRole('button', { name: 'Report Bob' }).click();
+
+    expect(reportUser$).toHaveBeenCalledExactlyOnceWith({
+      accountId: '@me:hs',
+      userId: '@bob:hs',
+      name: 'Bob',
+    });
+  });
+
+  it('hides Report once this server has said it does not take user reports', async () => {
+    await build(member(), { reportsOffered: false });
+
+    expect(screen.queryByRole('button', { name: 'Report Bob' })).toBeNull();
+  });
+
+  it('hides Report on your own row', async () => {
+    await build(member({ userId: '@me:hs' }), { activeUserId: '@me:hs' });
+
+    expect(screen.queryByRole('button', { name: /^Report/ })).toBeNull();
   });
 
   it('hides Block on your own row', async () => {

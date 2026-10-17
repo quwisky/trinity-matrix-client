@@ -28,6 +28,8 @@ import { type UndecryptableFixService } from './undecryptable-fix.service';
 /** What the message list and the thread panel hand the shared row-action dispatcher. */
 export interface SharedRowActionContext {
   readonly roomId: string;
+  /** The account that sees this Conversation; reports go to its server's admins. */
+  readonly accountId: string | null;
   readonly destroyRef: DestroyRef;
   readonly dialog: Pick<TrnSurfaceService, 'open' | 'openAndWait$'>;
   readonly timeline: Pick<ConversationRuntime['timeline'], 'rawEvent'>;
@@ -185,7 +187,12 @@ export function dispatchSharedRowAction(
       return true;
     case 'report':
       ctx.report
-        .report$(ctx.roomId, row.id)
+        .report$(
+          ctx.accountId
+            ? { accountId: ctx.accountId, roomId: ctx.roomId }
+            : ctx.roomId,
+          row.id,
+        )
         .pipe(takeUntilDestroyed(ctx.destroyRef))
         .subscribe();
       return true;

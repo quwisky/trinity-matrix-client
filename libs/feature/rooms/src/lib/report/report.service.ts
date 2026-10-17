@@ -1,10 +1,22 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
-import { RoomModerationService } from '@trinity/data-access/room-administration';
+import {
+  IdentityService,
+  IgnoredUsersService,
+} from '@trinity/data-access/identity';
+import {
+  ContentReportError,
+  ContentReportingService,
+  RoomModerationService,
+  type ReportKind,
+  type RoomActionPermissionsKey,
+} from '@trinity/data-access/room-administration';
+import { RoomLibraryService } from '@trinity/data-access/room-library';
 import {
   EMPTY,
   catchError,
   defer,
+  finalize,
   map,
   of,
   switchMap,
@@ -12,39 +24,74 @@ import {
   type Observable,
 } from 'rxjs';
 
+/** A user to report, as the account that saw them. */
+export interface ReportUserTarget {
+  readonly accountId: string;
+  readonly userId: string;
+  /** What the person reporting calls them: display name, else the user ID. */
+  readonly name: string;
+}
+
+/** What happened after a room report was sent. */
+export type RoomReportOutcome = 'reported' | 'left';
+
+const REASON = {
+  inputLabel: 'Reason (optional)',
+  placeholder: 'Reason (optional)',
+  maxLength: 1000,
+} as const;
+/** Shown once a block lands, from a report or from the member card. */
+export const BLOCKED_TOAST = "Blocked — you won't see their messages.";
+/** Shown once an unblock lands; the server does not resend what it hid meanwhile. */
+/** Shown when a block or unblock write fails. */
+export const BLOCK_FAILED_TOAST = 'Could not update the block.';
+export const UNBLOCKED_TOAST =
+  'Unblocked. Their earlier messages appear after you reload.';
+
+const NEXT_STEPS =
+  "Your server's admins decide what happens next. They may not reply.";
+
 /**
- * Reports a message to the room's server administrators: prompts for a reason, hands
- * the send to {@link RoomModerationService.reportMessage}, and toasts the outcome.
- * Available on any message (it needs no room-admin rights).
+ * Reports to the reporter's own server admins: a message, a room or a user. Each flow prompts
+ * for a reason, sends, then offers the obvious follow-up (leave the room, block the user) as
+ * the confirmation itself. None of it needs room-admin rights.
  */
 @Injectable({ providedIn: 'root' })
 export class ReportService {
   private readonly moderation = inject(RoomModerationService);
+  private readonly reporting = inject(ContentReportingService);
+  private readonly rooms = inject(RoomLibraryService);
+  private readonly ignoredUsers = inject(IgnoredUsersService);
+  private readonly identity = inject(IdentityService);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
 
-  /** Prompt for a reason and report `eventId` in `roomId` to the server admins. */
-  report$(roomId: string, eventId: string): Observable<void> {
+  /** Prompt for a reason and report `eventId` to the server admins. */
+  report$(
+    target: string | RoomActionPermissionsKey,
+    eventId: string,
+  ): Observable<void> {
     return defer(() => {
+      const roomId = typeof target === 'string' ? target : target.roomId;
       if (!roomId || !eventId) {
-        return of(void 0);
+        return EMPTY;
       }
       return this.alert
         .prompt$({
           header: 'Report message',
-          message: 'Report this message to the room’s server administrators?',
+          message: "Report this message to your server's admins?",
+          ...REASON,
           confirmText: 'Report',
           variant: 'danger',
-          placeholder: 'Reason (optional)',
         })
         .pipe(
           switchMap((reason) =>
             reason === null
               ? EMPTY
-              : this.moderation.reportMessage(roomId, eventId, reason),
+              : this.moderation.reportMessage(target, eventId, reason),
           ),
           tap(() =>
-            this.toast.show('Reported to the server admins.', {
+            this.toast.show("Reported to your server's admins.", {
               duration: 3000,
             }),
           ),
@@ -58,5 +105,157 @@ export class ReportService {
           }),
         );
     });
+  }
+
+  /**
+   * Report a room, then offer to leave it. Emits once if the report was sent. `accountLabel`
+   * names the account that would leave when several are shown together.
+   */
+  reportRoom$(
+    target: RoomActionPermissionsKey,
+    options: { readonly accountLabel?: string } = {},
+  ): Observable<RoomReportOutcome> {
+    const as = options.accountLabel ? ` as ${options.accountLabel}` : '';
+    return this.alert
+      .prompt$({
+        header: 'Report room',
+        message:
+          "Your server's admins will see this report and your reason. The room's members won't be told.",
+        ...REASON,
+        confirmText: 'Report',
+        variant: 'danger',
+      })
+      .pipe(
+        switchMap((reason) =>
+          reason === null
+            ? EMPTY
+            : this.reporting.reportRoom(target, reason).pipe(
+                catchError((error: unknown) => this.failed(error, 'room')),
+                switchMap(() =>
+                  this.alert.confirm$({
+                    header: 'Report sent',
+                    message: `${NEXT_STEPS}\n\nIf you leave${as}, you'll need a new invite or a public join to come back.`,
+                    confirmText: 'Leave room',
+                    cancelText: 'Done',
+                    variant: 'danger',
+                  }),
+                ),
+                switchMap((leave) =>
+                  leave
+                    ? this.rooms.leave(target.roomId, target.accountId).pipe(
+                        map((): RoomReportOutcome => 'left'),
+                        catchError(() => {
+                          this.toast.show('Could not leave the room.', {
+                            duration: 4000,
+                            variant: 'danger',
+                          });
+                          return of<RoomReportOutcome>('reported');
+                        }),
+                      )
+                    : of<RoomReportOutcome>('reported'),
+                ),
+              ),
+        ),
+      );
+  }
+
+  /** Report a user, then offer to block them. Completes without emitting if nothing was sent. */
+  reportUser$(target: ReportUserTarget): Observable<void> {
+    return defer(() => {
+      // isIgnored reads the projection, so hold it for the length of the flow.
+      const ignoreList = this.ignoredUsers.runProjection().subscribe();
+      return this.reportUserFlow(target).pipe(
+        finalize(() => ignoreList.unsubscribe()),
+      );
+    });
+  }
+
+  private reportUserFlow(target: ReportUserTarget): Observable<void> {
+    return this.alert
+      .prompt$({
+        header: `Report ${target.name}`,
+        message:
+          "Your server's admins will see this report and your reason. They won't be told.",
+        ...REASON,
+        confirmText: 'Report',
+        variant: 'danger',
+      })
+      .pipe(
+        switchMap((reason) =>
+          reason === null
+            ? EMPTY
+            : this.reporting
+                .reportUser(target.accountId, target.userId, reason)
+                .pipe(
+                  catchError((error: unknown) => this.failed(error, 'user')),
+                  switchMap(() => this.offerBlock(target)),
+                ),
+        ),
+      );
+  }
+
+  /** Blocking runs as the active account, so it is offered only when that is the reporter. */
+  private offerBlock(target: ReportUserTarget): Observable<void> {
+    if (
+      target.accountId !== this.identity.activeUserId() ||
+      this.ignoredUsers.isIgnored(target.userId)
+    ) {
+      this.toast.show(`Report sent. ${NEXT_STEPS}`, { duration: 4000 });
+      return of(undefined);
+    }
+    return this.alert
+      .confirm$({
+        header: 'Report sent',
+        message: NEXT_STEPS,
+        confirmText: `Block ${target.name}`,
+        cancelText: 'Done',
+        variant: 'danger',
+      })
+      .pipe(
+        switchMap((block) =>
+          block
+            ? this.ignoredUsers.ignore(target.userId).pipe(
+                tap(() => this.toast.show(BLOCKED_TOAST, { duration: 2500 })),
+                catchError(() => {
+                  this.toast.show(BLOCK_FAILED_TOAST, {
+                    duration: 4000,
+                    variant: 'danger',
+                  });
+                  return of(undefined);
+                }),
+              )
+            : of(undefined),
+        ),
+      );
+  }
+
+  private failed(error: unknown, kind: ReportKind): Observable<never> {
+    this.toast.show(reportFailureMessage(error, kind), {
+      duration: 5000,
+      variant: 'danger',
+    });
+    return EMPTY;
+  }
+}
+
+function reportFailureMessage(error: unknown, kind: ReportKind): string {
+  const failure =
+    error instanceof ContentReportError ? error.failure : undefined;
+  switch (failure?.kind) {
+    case 'rate-limited': {
+      if (failure.retryAfterMs === null) {
+        return 'Too many reports right now. Try again shortly.';
+      }
+      const seconds = Math.max(1, Math.ceil(failure.retryAfterMs / 1000));
+      return `Too many reports right now. Try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`;
+    }
+    case 'not-found':
+      return `Your server doesn't know this ${kind}, so it can't take the report.`;
+    case 'unsupported':
+      return `Your server doesn't accept ${kind} reports.`;
+    case 'reason-too-long':
+      return 'That reason is too long. Shorten it and try again.';
+    default:
+      return "Couldn't send the report. Try again.";
   }
 }

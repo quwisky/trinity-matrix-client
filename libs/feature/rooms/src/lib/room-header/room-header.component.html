@@ -227,6 +227,16 @@
             <trn-icon name="calendar-search" />
             Jump to date
           </button>
+          @if (canReport()) {
+            <button
+              trnDropdownMenuItem
+              (triggered)="action.emit({ type: 'report' })"
+              data-testid="overflow-report-room"
+            >
+              <trn-icon name="flag" />
+              Report room
+            </button>
+          }
           <button
             class="md:hidden"
             trnDropdownMenuItem

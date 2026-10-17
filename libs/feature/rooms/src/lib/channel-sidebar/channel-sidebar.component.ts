@@ -186,6 +186,7 @@ export class ChannelSidebarComponent {
   readonly removeRoom = output<string>();
   /** Leave a joined room entirely (not just unlink from a space); carries the owning account so a mixed-in row leaves on ITS account. */
   readonly leaveRoom = output<{ roomId: string; accountId: string }>();
+  readonly reportRoom = output<{ roomId: string; accountId: string }>();
   /** Open a joined sub-space (select it in the rail), by room id. */
   readonly openChildSpace = output<ExactSpaceSelection>();
   /** Open the room-link preview for a pending invite (click its name). */

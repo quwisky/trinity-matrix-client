@@ -138,6 +138,16 @@
         Remove from space
       </button>
     }
+    @if (canReport()) {
+      <button
+        trnDropdownMenuItem
+        (triggered)="action.emit({ kind: 'report', room: r })"
+        data-testid="room-report"
+      >
+        <trn-icon name="flag" />
+        Report room
+      </button>
+    }
     <button
       trnDropdownMenuItem
       variant="danger"

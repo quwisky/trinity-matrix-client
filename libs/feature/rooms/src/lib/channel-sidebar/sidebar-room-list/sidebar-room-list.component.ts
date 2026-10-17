@@ -173,6 +173,7 @@ export class SidebarRoomListComponent {
   readonly selectRoom = output<{ roomId: string; accountId: string }>();
   /** Carries the owning account so a mixed-in row leaves on ITS account, not the active one. */
   readonly leaveRoom = output<{ roomId: string; accountId: string }>();
+  readonly reportRoom = output<{ roomId: string; accountId: string }>();
   readonly removeRoom = output<string>();
   /** Carries every owning account, so a merged row's level is written on all of them. */
   readonly setNotifyMode = output<{
@@ -398,6 +399,8 @@ export class SidebarRoomListComponent {
         return this.selectRoom.emit({ roomId, accountId });
       case 'leave':
         return this.leaveRoom.emit({ roomId, accountId });
+      case 'report':
+        return this.reportRoom.emit({ roomId, accountId });
       case 'remove':
         return this.removeRoom.emit(roomId);
       case 'mark-read':

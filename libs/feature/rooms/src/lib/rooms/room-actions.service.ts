@@ -18,6 +18,7 @@ import {
   type MatrixRequestErrorHandling,
 } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
+import { ReportService } from '../report/report.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import type { PickedUser } from '../user-picker/user-picker.component';
 import {
@@ -69,6 +70,7 @@ export class RoomActionsService {
   private readonly userPicker = inject(UserPickerService);
   private readonly alert = inject(TrnAlertService);
   private readonly dialog = inject(TrnSurfaceService);
+  private readonly reports = inject(ReportService);
   private readonly destroyRef = inject(DestroyRef);
 
   /** Sidebar room ⋮ menu "Leave room": confirm, then leave the room entirely — on the
@@ -116,6 +118,35 @@ export class RoomActionsService {
         },
         error: () => void this.status.showError('Could not leave the room.'),
       });
+  }
+
+  /** Room menus "Report room": report as the row's account; leaving from the follow-up closes it. */
+  onReportRoom(target: { roomId: string; accountId: string }): void {
+    const accountLabel =
+      this.selected.view().mode === 'mixed'
+        ? this.routing.accountLabel(target.accountId)
+        : undefined;
+    this.reports
+      .reportRoom$(target, accountLabel ? { accountLabel } : {})
+      .pipe(
+        filter((outcome) => outcome === 'left'),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => {
+        if (
+          this.store.activeAccountId() === target.accountId &&
+          this.store.activeRoomId() === target.roomId
+        ) {
+          this.nav.clearOpenRoom();
+        }
+      });
+  }
+
+  /** Open-room header "Report room". */
+  onReportActiveRoom(): void {
+    const roomId = this.store.activeRoomId();
+    const accountId = this.store.activeAccountId();
+    if (roomId && accountId) this.onReportRoom({ roomId, accountId });
   }
 
   /** Apply a favourite change once per Account represented by the selected row. */

@@ -33,6 +33,7 @@ import {
   RoomNotificationsService,
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
+import { ContentReportingService } from '@trinity/data-access/room-administration';
 import type { RoomSummary } from '@trinity/data-access/room-library';
 import { formatTypingNotice } from '@trinity/util/matrix';
 import { unreadBadgeLabel } from '../../../shared/unread-badge';
@@ -50,6 +51,7 @@ export type SidebarRoomAction =
         | 'mark-read'
         | 'mark-unread'
         | 'remove'
+        | 'report'
         | 'leave';
       room: RoomSummary;
     }
@@ -89,6 +91,12 @@ export type SidebarRoomAction =
 export class SidebarRoomRowComponent {
   private readonly presenceService = inject(IdentityPresenceService);
   private readonly notifications = inject(RoomNotificationsService);
+  private readonly reporting = inject(ContentReportingService);
+
+  /** Hidden once the row's account has learned its server takes no room reports. */
+  protected readonly canReport = computed(() =>
+    this.reporting.offers(this.room().accountId, 'room'),
+  );
 
   readonly room = input.required<RoomSummary>();
   readonly active = input(false);

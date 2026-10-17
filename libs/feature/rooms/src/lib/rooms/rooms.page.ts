@@ -1,3 +1,4 @@
+import { ContentReportingService } from '@trinity/data-access/room-administration';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { AppLockService } from '@trinity/data-access/app-lock';
 import {
@@ -267,6 +268,7 @@ export class RoomsPage {
   readonly systemStatus = inject(WORKSPACE_SYSTEM_STATUS);
   protected readonly titleBar = inject(TitleBarState);
   private readonly presence = inject(IdentityPresenceService);
+  private readonly reporting = inject(ContentReportingService);
   /** The active account's own presence for the user-panel avatar; null while unknown. */
   protected readonly ownPresence = computed(() => {
     const userId = this.vm.activeAccountId();
@@ -322,6 +324,12 @@ export class RoomsPage {
   /** Shared by the header field and the search panel's own field. */
   protected readonly searchQuery = signal('');
 
+  /** The header offers Report room until this account's server says it takes none. */
+  protected readonly canReportActiveRoom = computed(() => {
+    const accountId = this.store.activeAccountId();
+    return !!accountId && this.reporting.offers(accountId, 'room');
+  });
+
   protected readonly surfaceKind = computed(
     () => this.roomSurfaces.renderedSurface()?.kind ?? null,
   );
@@ -344,6 +352,8 @@ export class RoomsPage {
         return this.roomActions.onOpenRoomSettings();
       case 'jump-to-date':
         return this.messageActions.jumpToDate();
+      case 'report':
+        return this.roomActions.onReportActiveRoom();
       case 'system-status':
         return this.systemStatus.show();
     }

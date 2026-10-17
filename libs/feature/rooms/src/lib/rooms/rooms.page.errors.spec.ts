@@ -1,4 +1,8 @@
 import {
+  ReportService,
+  type RoomReportOutcome,
+} from '../report/report.service';
+import {
   RoomSettingsService,
   RoomAliasesService,
   RoomActionPermissionsService,
@@ -56,6 +60,7 @@ describe('RoomsPage action error feedback', () => {
   let toastShow: Mock;
   let setNotifyMode: Mock;
   let leaveRoom: Mock;
+  let reportRoom: Mock;
   let alertConfirm: Mock;
   let alertPrompt: Mock;
   let dialogOpen: Mock;
@@ -81,6 +86,7 @@ describe('RoomsPage action error feedback', () => {
     toastShow = vi.fn();
     setNotifyMode = vi.fn(() => of(undefined));
     leaveRoom = vi.fn(() => of(undefined));
+    reportRoom = vi.fn(() => of<RoomReportOutcome>('reported'));
     alertConfirm = vi.fn(() => of(true));
     alertPrompt = vi.fn(() => of(null));
     dialogOpen = vi.fn(() => of(null));
@@ -194,6 +200,7 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(RoomNotificationsService, {
           setModeForAccounts: setNotifyMode,
         }),
+        MockProvider(ReportService, { reportRoom$: reportRoom }),
       ],
     });
     return shellFrom();
@@ -335,6 +342,33 @@ describe('RoomsPage action error feedback', () => {
     TestBed.tick(); // flush before the negative assertion, or it passes vacuously
     // The open room wasn't the one left, so its projections stay put.
     expect(TestBed.inject(RoomsTimelineStub).close).not.toHaveBeenCalled();
+  });
+
+  it('reports a room as its account and closes it when the reporter leaves', async () => {
+    const shell = build();
+    reportRoom.mockReturnValue(of<RoomReportOutcome>('left'));
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+
+    shell.rooms.onReportRoom({ roomId: '!r:hs', accountId: '@me:hs' });
+
+    // One account shown: no account named in the leave offer.
+    expect(reportRoom).toHaveBeenCalledWith(
+      { roomId: '!r:hs', accountId: '@me:hs' },
+      {},
+    );
+    await vi.waitFor(() => expect(shell.store.activeRoomId()).toBeNull());
+  });
+
+  it('keeps the reported room open when the reporter chooses Done', async () => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+
+    shell.rooms.onReportRoom({ roomId: '!r:hs', accountId: '@me:hs' });
+
+    expect(reportRoom).toHaveBeenCalled();
+    expect(shell.store.activeRoomId()).toBe('!r:hs');
   });
 
   it('does not leave a room when the confirmation is cancelled', async () => {
