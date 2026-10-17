@@ -11,6 +11,7 @@ import {
   RoomLinkPreviewComponent,
   type RoomLinkPreviewResult,
 } from '../room-link-preview/room-link-preview.component';
+import { ReportService } from '../report/report.service';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
 
@@ -26,6 +27,7 @@ export class InviteActionsService {
   private readonly status = inject(ShellStatusService);
   private readonly invites = inject(InvitesService);
   private readonly surfaces = inject(TrnSurfaceService);
+  private readonly reports = inject(ReportService);
   private readonly destroyRef = inject(DestroyRef);
 
   /**
@@ -107,5 +109,18 @@ export class InviteActionsService {
         'Could not decline the invitation. Try again.',
       ),
     ).subscribe();
+  }
+
+  /** Report the invited room to the invited account's server admins, then decline. */
+  onDeclineAndReport(invite: PendingInvite): void {
+    this.reports
+      .declineAndReport$({
+        accountId: invite.accountId,
+        roomId: invite.roomId,
+        inviterId: invite.inviterId,
+        inviterName: invite.inviterName,
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 }

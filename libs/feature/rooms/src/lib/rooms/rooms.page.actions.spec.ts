@@ -596,6 +596,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       initial: 'I',
       avatarMxc: null,
       inviterName: 'Alice',
+      inviterId: '',
       isSpace: false,
       isDirect: false,
       ...over,

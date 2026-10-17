@@ -127,6 +127,7 @@ describe('InvitesService', () => {
     expect(svc.pendingInvites()[1]).toMatchObject({
       name: 'Beta',
       initial: 'B',
+      inviterId: '@al:hs',
       inviterName: 'Al',
     });
   });

@@ -11,7 +11,10 @@ import {
   RoomModerationService,
   type ContentReportFailure,
 } from '@trinity/data-access/room-administration';
-import { RoomLibraryService } from '@trinity/data-access/room-library';
+import {
+  InvitesService,
+  RoomLibraryService,
+} from '@trinity/data-access/room-library';
 import { MockProvider } from 'ng-mocks';
 import { Subject, lastValueFrom, of, throwError, toArray } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
@@ -30,6 +33,7 @@ function setup(
     ignored?: boolean;
     activeUserId?: string;
     projection?: Subject<void>;
+    declineInvite?: Mock;
   } = {},
 ) {
   const prompt$ = over.prompt$ ?? vi.fn(() => of('spam'));
@@ -38,6 +42,7 @@ function setup(
   const reportRoom = over.reportRoom ?? vi.fn(() => of(undefined));
   const reportUser = over.reportUser ?? vi.fn(() => of(undefined));
   const leave = vi.fn(() => of(undefined));
+  const declineInvite = over.declineInvite ?? vi.fn(() => of(undefined));
   const ignore = vi.fn(() => of(undefined));
   const ignoredRun = vi.fn(() => over.projection ?? new Subject<void>());
   const toastShow = vi.fn();
@@ -47,6 +52,7 @@ function setup(
       MockProvider(RoomModerationService, { reportMessage }),
       MockProvider(ContentReportingService, { reportRoom, reportUser }),
       MockProvider(RoomLibraryService, { leave }),
+      MockProvider(InvitesService, { declineInvite }),
       MockProvider(IgnoredUsersService, {
         isIgnored: () => over.ignored ?? false,
         runProjection: ignoredRun,
@@ -69,6 +75,7 @@ function setup(
     reportRoom,
     reportUser,
     leave,
+    declineInvite,
     ignore,
     ignoredRun,
     toastShow,
@@ -328,6 +335,126 @@ describe('ReportService', () => {
         "Your server doesn't accept user reports.",
         expect.objectContaining({ variant: 'danger' }),
       );
+    });
+  });
+
+  describe('declining an invite and reporting the room', () => {
+    const INVITE = {
+      accountId: '@me:hs',
+      roomId: '!spam:hs',
+      inviterId: '@spammer:hs',
+      inviterName: 'Spammer',
+    };
+
+    it('asks for a reason in the room report prompt', async () => {
+      const { svc, prompt$, reportRoom, declineInvite } = setup({
+        prompt$: vi.fn(() => of(null)),
+      });
+
+      const out = await lastValueFrom(
+        svc.declineAndReport$(INVITE).pipe(toArray()),
+      );
+
+      expect(prompt$).toHaveBeenCalledWith({
+        header: 'Report room',
+        message:
+          "Your server's admins will see this report and your reason. The room's members won't be told. The invite is declined.",
+        inputLabel: 'Reason (optional)',
+        placeholder: 'Reason (optional)',
+        maxLength: 1000,
+        confirmText: 'Decline and report',
+        variant: 'danger',
+      });
+      expect(out).toEqual([]);
+      expect(reportRoom).not.toHaveBeenCalled();
+      expect(declineInvite).not.toHaveBeenCalled();
+    });
+
+    it('reports the room, then declines as the invited account', async () => {
+      const calls: string[] = [];
+      const reportRoom = vi.fn(() => {
+        calls.push('report');
+        return of(undefined);
+      });
+      const declineInvite = vi.fn(() => {
+        calls.push('decline');
+        return of(undefined);
+      });
+      const { svc } = setup({ reportRoom, declineInvite });
+
+      const outcome = await lastValueFrom(svc.declineAndReport$(INVITE));
+
+      expect(reportRoom).toHaveBeenCalledWith(
+        { accountId: '@me:hs', roomId: '!spam:hs' },
+        'spam',
+      );
+      expect(declineInvite).toHaveBeenCalledWith('!spam:hs', '@me:hs');
+      expect(calls).toEqual(['report', 'decline']);
+      expect(outcome).toBe('declined');
+    });
+
+    it('then offers to block the inviter', async () => {
+      const { svc, confirm$, ignore } = setup({
+        confirm$: vi.fn(() => of(true)),
+      });
+
+      await lastValueFrom(svc.declineAndReport$(INVITE));
+
+      expect(confirm$).toHaveBeenCalledWith({
+        header: 'Report sent',
+        message:
+          "Your server's admins decide what happens next. They may not reply. The invite was declined.",
+        confirmText: 'Block Spammer',
+        cancelText: 'Done',
+        variant: 'danger',
+      });
+      expect(ignore).toHaveBeenCalledExactlyOnceWith('@spammer:hs');
+    });
+
+    it('asks whether to decline anyway when the report fails', async () => {
+      const { svc, confirm$, declineInvite } = setup({
+        reportRoom: fails('room', { kind: 'failed' }),
+        confirm$: vi.fn(() => of(true)),
+      });
+
+      const outcome = await lastValueFrom(svc.declineAndReport$(INVITE));
+
+      expect(confirm$).toHaveBeenCalledWith({
+        header: 'Report not sent',
+        message:
+          "Couldn't send the report. Try again.\n\nDecline the invite anyway?",
+        confirmText: 'Decline',
+        cancelText: 'Keep invite',
+        variant: 'danger',
+      });
+      expect(declineInvite).toHaveBeenCalledWith('!spam:hs', '@me:hs');
+      expect(outcome).toBe('declined');
+    });
+
+    it('keeps the invite when the person chooses to after a failed report', async () => {
+      const { svc, declineInvite } = setup({
+        reportRoom: fails('room', { kind: 'failed' }),
+        confirm$: vi.fn(() => of(false)),
+      });
+
+      const outcome = await lastValueFrom(svc.declineAndReport$(INVITE));
+
+      expect(declineInvite).not.toHaveBeenCalled();
+      expect(outcome).toBe('kept');
+    });
+
+    it('says so when the decline itself fails after the report was sent', async () => {
+      const { svc, toastShow } = setup({
+        declineInvite: vi.fn(() => throwError(() => new Error('offline'))),
+      });
+
+      const outcome = await lastValueFrom(svc.declineAndReport$(INVITE));
+
+      expect(toastShow).toHaveBeenCalledWith(
+        'Report sent, but the invite could not be declined. Try again.',
+        expect.objectContaining({ variant: 'danger' }),
+      );
+      expect(outcome).toBe('kept');
     });
   });
 });

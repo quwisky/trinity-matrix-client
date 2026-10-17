@@ -27,6 +27,7 @@ import {
   type PendingInvite,
   type RoomSummary,
 } from '@trinity/data-access/room-library';
+import { ContentReportingService } from '@trinity/data-access/room-administration';
 import type { RoomNotifyMode } from '@trinity/data-access/notifications';
 import {
   SidebarRoomRowComponent,
@@ -80,6 +81,14 @@ const ESTIMATED_ROW_PX = 52;
 })
 export class SidebarRoomListComponent {
   private readonly roomListStyle = inject(ROOM_LIST_STYLE);
+  private readonly reporting = inject(ContentReportingService);
+  private readonly inviteOpeners =
+    viewChildren<ElementRef<HTMLElement>>('inviteOpen');
+  /** The invite row just answered, so focus can move on once its row is gone. */
+  private answeredInvite: {
+    readonly roomId: string;
+    readonly index: number;
+  } | null = null;
   private readonly destroyRef = inject(DestroyRef);
 
   // Windowing state. `scrollTop` and `viewportH` come from the scroller; `regionTop` is where the
@@ -192,6 +201,7 @@ export class SidebarRoomListComponent {
   readonly previewInvite = output<PendingInvite>();
   readonly acceptInvite = output<PendingInvite>();
   readonly declineInvite = output<PendingInvite>();
+  readonly declineAndReport = output<PendingInvite>();
   readonly favouriteChange = output<RoomSummary>();
   readonly priorityChange = output<RoomSummary>();
 
@@ -264,7 +274,46 @@ export class SidebarRoomListComponent {
   readonly topPad = computed(() => this.windowResult().topPadPx);
   readonly bottomPad = computed(() => this.windowResult().bottomPadPx);
 
+  /** Hidden once the invited account's server has said it takes no room reports. */
+  canDeclineAndReport(invite: PendingInvite): boolean {
+    return this.reporting.offers(invite.accountId, 'room');
+  }
+
+  answerInvite(
+    invite: PendingInvite,
+    index: number,
+    action: 'decline' | 'decline-and-report',
+  ): void {
+    this.answeredInvite = { roomId: invite.roomId, index };
+    (action === 'decline' ? this.declineInvite : this.declineAndReport).emit(
+      invite,
+    );
+  }
+
   constructor() {
+    // The answered row's buttons vanish with it; land focus on the next invite, else the list.
+    afterRenderEffect({
+      write: () => {
+        const invites = this.invites();
+        const openers = this.inviteOpeners();
+        untracked(() => {
+          const answered = this.answeredInvite;
+          if (!answered || invites.some((i) => i.roomId === answered.roomId))
+            return;
+          this.answeredInvite = null;
+          const active = document.activeElement;
+          if (active && active !== document.body) return;
+          const next =
+            openers[Math.min(answered.index, openers.length - 1)]
+              ?.nativeElement ??
+            (
+              this.itemHosts()[0]?.nativeElement as Element | undefined
+            )?.querySelector<HTMLElement>('.channel');
+          next?.focus();
+        });
+      },
+    });
+
     // Follow the scroller. A plain listener rather than a template binding, so a scroll that keeps the
     // same lines rendered costs one signal write and a cheap recompute, not a change-detection pass per event.
     effect((onCleanup) => {

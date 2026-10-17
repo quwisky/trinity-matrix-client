@@ -971,6 +971,7 @@ function inviteSummary(roomId: string, accountId: string): PendingInvite {
     initial: 'I',
     avatarMxc: null,
     inviterName: 'Inviter',
+    inviterId: '',
     isSpace: false,
     isDirect: false,
   };

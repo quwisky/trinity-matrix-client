@@ -263,6 +263,7 @@ describe('RoomsPage quick switcher', () => {
         initial: 'I',
         avatarMxc: null,
         inviterName: 'Alice',
+        inviterId: '',
         isSpace: false,
         isDirect: false,
       },

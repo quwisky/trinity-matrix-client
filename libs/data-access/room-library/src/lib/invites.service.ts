@@ -25,6 +25,8 @@ export interface PendingInvite {
   avatarMxc: string | null;
   /** Display name of whoever invited us (best-effort), for the subtitle. */
   inviterName: string;
+  /** The inviter's user ID, or '' when the invite event names nobody. */
+  inviterId: string;
   /** Whether the invited room is a Space (`type: m.space`) vs a normal room. */
   isSpace: boolean;
   /** Whether the invite is to a direct message (`is_direct` on our member event). */
@@ -151,6 +153,7 @@ export function buildInvite(
     // would return the inviter for every group-room and space invite.
     avatarMxc: roomAvatarMxc(room, isDirect),
     inviterName: inviter?.name || inviterId || 'Someone',
+    inviterId,
     isSpace: room.isSpaceRoom(),
     isDirect,
   };
