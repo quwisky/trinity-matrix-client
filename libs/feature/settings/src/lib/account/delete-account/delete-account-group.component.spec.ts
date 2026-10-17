@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
@@ -160,5 +160,16 @@ describe('DeleteAccountGroupComponent', () => {
     await screen.findByTestId('delete-account');
 
     expect(test.launcher.plan).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the message and Try again in place while it asks again', async () => {
+    const test = await setup({ kind: 'unknown' });
+    const retry = screen.getByRole('button', { name: 'Try again' });
+
+    vi.mocked(test.launcher.plan!).mockReturnValue(NEVER);
+    fireEvent.click(retry);
+    await test.fixture.whenStable();
+
+    expect(screen.getByRole('button', { name: 'Try again' })).toBe(retry);
   });
 });

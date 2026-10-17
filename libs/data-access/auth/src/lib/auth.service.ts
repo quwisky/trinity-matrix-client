@@ -96,14 +96,20 @@ export function deletionLink(management: AccountManagement): string {
   }
 }
 
-/** The server answered that it has no auth metadata endpoint, which means no OAuth 2.0. */
+/**
+ * The server answered without offering OAuth 2.0 metadata: `M_UNRECOGNIZED`, or a client
+ * error or 501 from it or its proxy. A timeout, rate limiting, a 5xx, no connection or a
+ * body that isn't valid metadata (a captive portal) leave the answer unknown.
+ */
 function lacksAuthMetadata(err: unknown): boolean {
   if (err instanceof MatrixError && err.errcode === 'M_UNRECOGNIZED') {
     return true;
   }
+  if (!(err instanceof HTTPError)) return false;
+  const status = err.httpStatus ?? 0;
   return (
-    err instanceof HTTPError &&
-    (err.httpStatus === 404 || err.httpStatus === 405)
+    status === 501 ||
+    (status >= 400 && status < 500 && status !== 408 && status !== 429)
   );
 }
 

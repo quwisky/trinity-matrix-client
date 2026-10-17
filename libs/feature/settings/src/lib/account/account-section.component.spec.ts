@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -34,12 +34,15 @@ function fill(
 describe('AccountSectionComponent', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  async function renderSection(api: AccountServerApi = { kind: 'legacy' }) {
+  /** `null` leaves the server's answer pending. */
+  async function renderSection(
+    api: AccountServerApi | null = { kind: 'legacy' },
+  ) {
     const result = await render(AccountSectionComponent, {
       providers: [
         // Read on construction, so it must be stubbed before render.
         MockProvider(AuthService, {
-          accountManagementFor: vi.fn(() => of(api)),
+          accountManagementFor: vi.fn(() => (api ? of(api) : NEVER)),
         }),
         MockProvider(MatrixClientService, {
           activeUserId: signal('@alice:example.org').asReadonly(),
@@ -134,6 +137,27 @@ describe('AccountSectionComponent', () => {
 
     expect(auth.accountManagementFor).toHaveBeenCalledTimes(2);
     expect(screen.queryByTestId('account-options-unknown')).toBeNull();
+  });
+
+  it('keeps the message and Try again in place while it asks again', async () => {
+    const { auth, fixture } = await renderSection({ kind: 'unknown' });
+    const retry = screen.getByRole('button', { name: 'Try again' });
+
+    vi.mocked(auth.accountManagementFor).mockReturnValue(NEVER);
+    fireEvent.click(retry);
+    await fixture.whenStable();
+
+    expect(screen.getByRole('button', { name: 'Try again' })).toBe(retry);
+    expect(screen.queryByTestId('change-password')).toBeNull();
+  });
+
+  it('shows no account controls and no Delete account until the server answers', async () => {
+    await renderSection(null);
+
+    expect(screen.queryByTestId('change-password')).toBeNull();
+    expect(
+      screen.queryByRole('heading', { name: 'Delete account' }),
+    ).toBeNull();
   });
 
   it('reveals each password field independently', async () => {

@@ -11,7 +11,7 @@ import {
   toObservable,
   toSignal,
 } from '@angular/core/rxjs-interop';
-import { of, startWith, switchMap } from 'rxjs';
+import { Subject, of, startWith, switchMap } from 'rxjs';
 import {
   FormField,
   FormRoot,
@@ -111,19 +111,24 @@ export class AccountSectionComponent {
   private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly attempt = signal(0);
+  private readonly retries = new Subject<void>();
 
   /** The account this section shows. */
   readonly accountId = inject(MatrixClientService).activeUserId;
 
   /** The server's account API; null until it has answered. */
   readonly serverApi = toSignal(
-    toObservable(
-      computed(() => ({ id: this.accountId(), attempt: this.attempt() })),
-    ).pipe(
-      switchMap(({ id }) =>
+    toObservable(this.accountId).pipe(
+      switchMap((id) =>
         id
-          ? this.auth.accountManagementFor(id).pipe(startWith(null))
+          ? this.retries.pipe(
+              startWith(undefined),
+              // A retry keeps the current answer while it asks, so Try again keeps focus.
+              switchMap((_, retry) => {
+                const api = this.auth.accountManagementFor(id);
+                return retry === 0 ? api.pipe(startWith(null)) : api;
+              }),
+            )
           : of(null),
       ),
     ),
@@ -145,7 +150,7 @@ export class AccountSectionComponent {
 
   /** Ask the server again after it could not be reached. */
   retryServerApi(): void {
-    this.attempt.update((n) => n + 1);
+    this.retries.next();
   }
 
   /** Open the provider's account-management page (system browser on every platform). */

@@ -6,7 +6,7 @@
       class="flex flex-col items-start gap-2 py-3"
       data-testid="account-options-unknown"
     >
-      <p class="m-0 text-sm text-muted-foreground">
+      <p class="m-0 text-sm text-muted-foreground" aria-live="polite">
         Trinity couldn’t load the account options from {{ server() }}. Check
         your connection and try again.
       </p>
@@ -151,7 +151,9 @@
 </trn-settings-group>
 
 @if (accountId(); as id) {
-  @if (serverApi()?.kind !== 'unknown') {
-    <trn-delete-account-group [accountId]="id" />
+  @if (serverApi(); as api) {
+    @if (api.kind !== 'unknown') {
+      <trn-delete-account-group [accountId]="id" />
+    }
   }
 }
