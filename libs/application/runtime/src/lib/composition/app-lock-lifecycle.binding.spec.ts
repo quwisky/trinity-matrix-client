@@ -198,6 +198,15 @@ function setup(
   };
 }
 
+/** Subscribes to the cover's visits; the caller unsubscribes `visits` at the end. */
+function recordVisits(label: (visit: string) => string = (visit) => visit) {
+  const seen: string[] = [];
+  const visits = TestBed.inject(AppLockLifecycleBinding).visits.subscribe(
+    (visit) => seen.push(label(visit)),
+  );
+  return { seen, visits };
+}
+
 describe('AppLockLifecycleBinding', () => {
   beforeEach(() => vi.useFakeTimers(TIMERS_AND_DATE));
   afterEach(() => {
@@ -425,9 +434,8 @@ describe('AppLockLifecycleBinding', () => {
     const { lifecycle, locked, skipClock, lifetime } = setup({
       lockAfter: '1m',
     });
-    const seen: string[] = [];
-    const visits = TestBed.inject(AppLockLifecycleBinding).visits.subscribe(
-      (visit) => seen.push(`${visit}:${locked() ? 'locked' : 'unlocked'}`),
+    const { seen, visits } = recordVisits(
+      (visit) => `${visit}:${locked() ? 'locked' : 'unlocked'}`,
     );
     lifecycle.next({ kind: 'background' });
     // Suspended in the background: no timer fired, so the lock falls due on return.
@@ -441,10 +449,7 @@ describe('AppLockLifecycleBinding', () => {
   it('tells the cover a locked window that reloads hidden is away until it shows', () => {
     // A crash reload in the tray: the host's one-time answer says hidden (#1343).
     const { lifecycle, lifetime } = setup({ desktop: true, locked: true });
-    const seen: string[] = [];
-    const visits = TestBed.inject(AppLockLifecycleBinding).visits.subscribe(
-      (visit) => seen.push(visit),
-    );
+    const { seen, visits } = recordVisits();
     lifecycle.next({ kind: 'background' });
     expect(seen).toEqual(['away']);
     lifecycle.next({ kind: 'active' });
@@ -455,10 +460,7 @@ describe('AppLockLifecycleBinding', () => {
 
   it('counts desktop window focus and blur as visits', () => {
     const { lifetime } = setup({ desktop: true });
-    const seen: string[] = [];
-    const visits = TestBed.inject(AppLockLifecycleBinding).visits.subscribe(
-      (visit) => seen.push(visit),
-    );
+    const { seen, visits } = recordVisits();
     window.dispatchEvent(new Event('blur'));
     window.dispatchEvent(new Event('focus'));
     expect(seen).toEqual(['away', 'front']);
@@ -468,10 +470,7 @@ describe('AppLockLifecycleBinding', () => {
 
   it('does not count Trinity’s own system UI as a visit', () => {
     const { systemUiActive, lifetime } = setup();
-    const seen: string[] = [];
-    const visits = TestBed.inject(AppLockLifecycleBinding).visits.subscribe(
-      (visit) => seen.push(visit),
-    );
+    const { seen, visits } = recordVisits();
     systemUiActive.set(true);
     TestBed.tick();
     systemUiActive.set(false);
