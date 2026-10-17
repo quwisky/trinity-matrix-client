@@ -173,7 +173,6 @@ describe('mediaCaptionFields', () => {
   });
 });
 
-/** Extract `m.mentions.user_ids` from a built content object. */
 /** A room whose `findEventById` returns the replied-to event, or nothing when omitted. */
 function replyRoom(target?: { sender: string; body: string }): Room {
   return {
@@ -187,6 +186,7 @@ function replyRoom(target?: { sender: string; body: string }): Room {
   } as unknown as Room;
 }
 
+/** Extract `m.mentions.user_ids` from a built content object. */
 function mentionIds(content: unknown): string[] {
   const block = (content as Record<string, { user_ids?: string[] }>)[
     'm.mentions'
