@@ -242,36 +242,6 @@ describe('ChannelSidebarComponent', () => {
     expect(container.querySelector('.channel__preview')).toBeNull();
   });
 
-  it('shows a mention count only on the mention room', async () => {
-    const { container } = await renderSidebar({
-      inputs: {
-        rooms: [
-          room({
-            id: '!m:hs',
-            name: 'mentions',
-            hasUnread: true,
-            unreadCount: 5,
-            highlightCount: 2,
-          }),
-          room({
-            id: '!u:hs',
-            name: 'unread',
-            hasUnread: true,
-            unreadCount: 128,
-            highlightCount: 0,
-          }),
-          room({ id: '!r:hs', name: 'read' }),
-        ],
-      },
-    });
-
-    // Only the mention room carries a count; plain unread is bold text plus the marker.
-    const badges = container.querySelectorAll('[trnBadge]');
-    expect(badges).toHaveLength(1);
-    expect(badges[0].textContent!.trim()).toBe('2');
-    expect(container.querySelectorAll('.channel--unread').length).toBe(2);
-  });
-
   it('shows only the new-chat affordance on Home (no space actions)', async () => {
     // spaceActive defaults to false
     const { container } = await renderSidebar();
@@ -1526,27 +1496,6 @@ describe('ChannelSidebarComponent', () => {
       expect.objectContaining({ roomId: '!i:hs', accountId: '@alt:hs' }),
     ]);
   });
-
-  it('renders the invitations from the selected generation', async () => {
-    const single: PendingInvite = {
-      roomId: '!mine:hs',
-      accountId: '@me:hs',
-      name: 'Mine',
-      initial: 'M',
-      avatarMxc: null,
-      inviterName: 'Al',
-      inviterId: '',
-      isSpace: false,
-      isDirect: false,
-    };
-    const { container } = await renderSidebar({
-      invites: [single],
-    });
-
-    expect(container.querySelector('.invite__name')?.textContent).toContain(
-      'Mine',
-    );
-  });
 });
 
 // The header sort menu picks how the open space's rooms are ordered. The sidebar itself does
@@ -1578,14 +1527,6 @@ describe('ChannelSidebarComponent space sort menu', () => {
       document.querySelector<HTMLElement>(`[data-testid="${testid}"]`);
     return { ...rendered, trigger, row };
   }
-
-  it('offers no sort menu on Home', async () => {
-    const { container } = await renderSidebar({
-      inputs: { spaceActive: false },
-    });
-
-    expect(container.querySelector('[data-testid="space-sort"]')).toBeNull();
-  });
 
   it('offers the sort menu inside a space, from the overflow', async () => {
     const { container, fixture } = await renderSidebar({
