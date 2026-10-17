@@ -49,16 +49,23 @@ const HOME = 1;
 const ROOMS = 2;
 const FIRST_SPACE = 3;
 
+type RailInputs = NonNullable<
+  Parameters<typeof render<ServerRailComponent>>[1]
+>['inputs'];
+
+const renderRail = (inputs?: RailInputs) =>
+  render(ServerRailComponent, {
+    inputs,
+    imports: [MockComponent(AvatarComponent)],
+  });
+
 describe('ServerRailComponent', () => {
   it('renders Recent, Home, Rooms plus a pill per space', async () => {
-    const { container } = await render(ServerRailComponent, {
-      inputs: {
-        spaces: [
-          space({ id: '!a:hs', name: 'Alpha' }),
-          space({ id: '!b:hs', name: 'Beta' }),
-        ],
-      },
-      imports: [MockComponent(AvatarComponent)],
+    const { container } = await renderRail({
+      spaces: [
+        space({ id: '!a:hs', name: 'Alpha' }),
+        space({ id: '!b:hs', name: 'Beta' }),
+      ],
     });
 
     expect(container.querySelector('.pill.recent')).toBeTruthy();
@@ -71,9 +78,7 @@ describe('ServerRailComponent', () => {
   });
 
   it('emits showRecent when the Recent pill is clicked', async () => {
-    const { fixture } = await render(ServerRailComponent, {
-      imports: [MockComponent(AvatarComponent)],
-    });
+    const { fixture } = await renderRail();
 
     let shown = false;
     fixture.componentInstance.showRecent.subscribe(() => (shown = true));
@@ -83,9 +88,8 @@ describe('ServerRailComponent', () => {
   });
 
   it('emits selectSpace(null) when Home is clicked', async () => {
-    const { fixture, container } = await render(ServerRailComponent, {
-      inputs: { activeAccountId: '@me:hs' },
-      imports: [MockComponent(AvatarComponent)],
+    const { fixture, container } = await renderRail({
+      activeAccountId: '@me:hs',
     });
 
     let selected: unknown = 'unset';
@@ -96,12 +100,9 @@ describe('ServerRailComponent', () => {
   });
 
   it('emits selectSpace(spaceId) when a space pill is clicked', async () => {
-    const { fixture, container } = await render(ServerRailComponent, {
-      inputs: {
-        activeAccountId: '@me:hs',
-        spaces: [space({ id: '!s:hs', accountId: '@owner:hs' })],
-      },
-      imports: [MockComponent(AvatarComponent)],
+    const { fixture, container } = await renderRail({
+      activeAccountId: '@me:hs',
+      spaces: [space({ id: '!s:hs', accountId: '@owner:hs' })],
     });
 
     let selected: unknown = null;
@@ -116,9 +117,7 @@ describe('ServerRailComponent', () => {
   });
 
   it('emits createSpace when the add ("+") pill is clicked', async () => {
-    const { fixture, container } = await render(ServerRailComponent, {
-      imports: [MockComponent(AvatarComponent)],
-    });
+    const { fixture, container } = await renderRail();
 
     let created = false;
     fixture.componentInstance.createSpace.subscribe(() => (created = true));
@@ -130,10 +129,7 @@ describe('ServerRailComponent', () => {
   });
 
   it('lights Recent while its view is active and dims Home', async () => {
-    const { fixture, container } = await render(ServerRailComponent, {
-      inputs: { recentActive: true },
-      imports: [MockComponent(AvatarComponent)],
-    });
+    const { fixture, container } = await renderRail({ recentActive: true });
 
     const items = container.querySelectorAll('.item');
     expect(items[RECENT].classList.contains('active')).toBe(true);
@@ -147,9 +143,8 @@ describe('ServerRailComponent', () => {
   });
 
   it('marks the active space (Home active when nothing else is)', async () => {
-    const { fixture, container } = await render(ServerRailComponent, {
-      inputs: { spaces: [space({ id: '!s:hs' })] },
-      imports: [MockComponent(AvatarComponent)],
+    const { fixture, container } = await renderRail({
+      spaces: [space({ id: '!s:hs' })],
     });
 
     // No Recent, no Rooms, no space → Home is the active item.
@@ -166,9 +161,7 @@ describe('ServerRailComponent', () => {
   });
 
   it('emits showRooms when the Rooms pill is clicked', async () => {
-    const { fixture } = await render(ServerRailComponent, {
-      imports: [MockComponent(AvatarComponent)],
-    });
+    const { fixture } = await renderRail();
 
     let shown = false;
     fixture.componentInstance.showRooms.subscribe(() => (shown = true));
@@ -178,9 +171,7 @@ describe('ServerRailComponent', () => {
   });
 
   it('marks the Rooms view active and deactivates Home when roomsActive is set', async () => {
-    const { fixture, container } = await render(ServerRailComponent, {
-      imports: [MockComponent(AvatarComponent)],
-    });
+    const { fixture, container } = await renderRail();
     const items = container.querySelectorAll('.item');
 
     // Default (no Rooms view): Home active, Rooms inactive.
@@ -194,17 +185,14 @@ describe('ServerRailComponent', () => {
   });
 
   it('shows a mention badge on the Recent, Home, Rooms and space items', async () => {
-    const { container } = await render(ServerRailComponent, {
-      inputs: {
-        spaces: [space({ id: '!s:hs' })],
-        unread: unread({
-          recent: counts(9, 9),
-          home: counts(3, 3),
-          rooms: counts(7, 7),
-          perSpace: { '!s:hs': counts(12, 12) },
-        }),
-      },
-      imports: [MockComponent(AvatarComponent)],
+    const { container } = await renderRail({
+      spaces: [space({ id: '!s:hs' })],
+      unread: unread({
+        recent: counts(9, 9),
+        home: counts(3, 3),
+        rooms: counts(7, 7),
+        perSpace: { '!s:hs': counts(12, 12) },
+      }),
     });
 
     const items = container.querySelectorAll('.item');
@@ -219,12 +207,9 @@ describe('ServerRailComponent', () => {
   });
 
   it('shows the unread dot and no badge for unread without mentions', async () => {
-    const { container } = await render(ServerRailComponent, {
-      inputs: {
-        spaces: [space({ id: '!s:hs' })],
-        unread: unread({ perSpace: { '!s:hs': counts(3, 0) } }),
-      },
-      imports: [MockComponent(AvatarComponent)],
+    const { container } = await renderRail({
+      spaces: [space({ id: '!s:hs' })],
+      unread: unread({ perSpace: { '!s:hs': counts(3, 0) } }),
     });
 
     const item = container.querySelectorAll('.item')[FIRST_SPACE];
@@ -233,12 +218,9 @@ describe('ServerRailComponent', () => {
   });
 
   it('shows neither dot nor badge with nothing unread, and no dot when mentioned', async () => {
-    const { container } = await render(ServerRailComponent, {
-      inputs: {
-        spaces: [space({ id: '!a:hs' }), space({ id: '!b:hs' })],
-        unread: unread({ perSpace: { '!b:hs': counts(5, 2) } }),
-      },
-      imports: [MockComponent(AvatarComponent)],
+    const { container } = await renderRail({
+      spaces: [space({ id: '!a:hs' }), space({ id: '!b:hs' })],
+      unread: unread({ perSpace: { '!b:hs': counts(5, 2) } }),
     });
 
     expect(container.querySelector('[trnBadge]')?.textContent?.trim()).toBe(
@@ -249,20 +231,17 @@ describe('ServerRailComponent', () => {
   });
 
   it('names rail pills with their unread state', async () => {
-    const { container } = await render(ServerRailComponent, {
-      inputs: {
-        spaces: [
-          space({ id: '!a:hs', name: 'Alpha' }),
-          space({ id: '!b:hs', name: 'Beta' }),
-          space({ id: '!c:hs', name: 'Gamma' }),
-        ],
-        unread: unread({
-          home: counts(4, 0),
-          rooms: counts(5, 2),
-          perSpace: { '!a:hs': counts(3, 0), '!b:hs': counts(5, 2) },
-        }),
-      },
-      imports: [MockComponent(AvatarComponent)],
+    const { container } = await renderRail({
+      spaces: [
+        space({ id: '!a:hs', name: 'Alpha' }),
+        space({ id: '!b:hs', name: 'Beta' }),
+        space({ id: '!c:hs', name: 'Gamma' }),
+      ],
+      unread: unread({
+        home: counts(4, 0),
+        rooms: counts(5, 2),
+        perSpace: { '!a:hs': counts(3, 0), '!b:hs': counts(5, 2) },
+      }),
     });
 
     const labels = [...container.querySelectorAll('.item > .pill')].map((p) =>
@@ -308,9 +287,8 @@ describe('ServerRailComponent', () => {
   });
 
   it('caps a mention badge at 99+', async () => {
-    const { container } = await render(ServerRailComponent, {
-      inputs: { unread: unread({ home: counts(250, 250) }) },
-      imports: [MockComponent(AvatarComponent)],
+    const { container } = await renderRail({
+      unread: unread({ home: counts(250, 250) }),
     });
     expect(container.querySelector('[trnBadge]')?.textContent?.trim()).toBe(
       '99+',
@@ -318,12 +296,9 @@ describe('ServerRailComponent', () => {
   });
 
   it('updates a space badge when its mentions transition to 0', async () => {
-    const { fixture, container } = await render(ServerRailComponent, {
-      inputs: {
-        spaces: [space({ id: '!s:hs' })],
-        unread: unread({ perSpace: { '!s:hs': counts(6, 6) } }),
-      },
-      imports: [MockComponent(AvatarComponent)],
+    const { fixture, container } = await renderRail({
+      spaces: [space({ id: '!s:hs' })],
+      unread: unread({ perSpace: { '!s:hs': counts(6, 6) } }),
     });
     const item = () => container.querySelectorAll('.item')[FIRST_SPACE];
     expect(item().querySelector('[trnBadge]')?.textContent?.trim()).toBe('6');
@@ -337,9 +312,9 @@ describe('ServerRailComponent', () => {
   });
 
   it('marks the selected item indicator', async () => {
-    const { container } = await render(ServerRailComponent, {
-      inputs: { spaces: [space({ id: '!s:hs' })], activeSpaceId: '!s:hs' },
-      imports: [MockComponent(AvatarComponent)],
+    const { container } = await renderRail({
+      spaces: [space({ id: '!s:hs' })],
+      activeSpaceId: '!s:hs',
     });
     const selected = container.querySelectorAll('.indicator--selected');
     expect(selected.length).toBe(1);
@@ -349,10 +324,7 @@ describe('ServerRailComponent', () => {
   });
 
   it('renders the space pill as an icon button', async () => {
-    const { container } = await render(ServerRailComponent, {
-      inputs: { spaces: [space()] },
-      imports: [MockComponent(AvatarComponent)],
-    });
+    const { container } = await renderRail({ spaces: [space()] });
     const pill = container
       .querySelectorAll('.item')
       [FIRST_SPACE].querySelector('button')!;
@@ -360,10 +332,7 @@ describe('ServerRailComponent', () => {
   });
 
   it('keeps the space pill 48px with the place radius inside the icon-button recipe', async () => {
-    const { container } = await render(ServerRailComponent, {
-      inputs: { spaces: [space()] },
-      imports: [MockComponent(AvatarComponent)],
-    });
+    const { container } = await renderRail({ spaces: [space()] });
     const pill = container
       .querySelectorAll('.item')
       [FIRST_SPACE].querySelector('button')!;
@@ -520,12 +489,9 @@ const moreChats = (count: number): RailUnreadChat[] =>
 
 describe('unread chats', () => {
   it('sits between Rooms and the separator', async () => {
-    const { container } = await render(ServerRailComponent, {
-      inputs: {
-        activeAccountId: '@me:hs',
-        unreadChats: railChats([unreadChat()]),
-      },
-      imports: [MockComponent(AvatarComponent)],
+    const { container } = await renderRail({
+      activeAccountId: '@me:hs',
+      unreadChats: railChats([unreadChat()]),
     });
     const fixed = container.querySelector('nav.rail > .rail-fixed')!;
     const scroll = container.querySelector('nav.rail > .rail-scroll')!;
@@ -537,10 +503,7 @@ describe('unread chats', () => {
   });
 
   it('keeps Recent, Home and Rooms pinned outside the scrolling part', async () => {
-    const { container, getByTestId } = await render(ServerRailComponent, {
-      inputs: { spaces: [space()] },
-      imports: [MockComponent(AvatarComponent)],
-    });
+    const { container, getByTestId } = await renderRail({ spaces: [space()] });
     const fixed = container.querySelector('.rail-fixed')!;
     expect(fixed.querySelector('.rail-scroll')).toBeNull();
     expect(
@@ -555,17 +518,14 @@ describe('unread chats', () => {
   });
 
   it('names each chat and opens it on its own account', async () => {
-    const { fixture } = await render(ServerRailComponent, {
-      inputs: {
-        activeAccountId: '@me:hs',
-        unreadChats: railChats([
-          unreadChat({
-            selection: { accountId: '@ben:hs', roomId: '!c:hs' },
-            label: 'Team · 3 unread · Ben',
-          }),
-        ]),
-      },
-      imports: [MockComponent(AvatarComponent)],
+    const { fixture } = await renderRail({
+      activeAccountId: '@me:hs',
+      unreadChats: railChats([
+        unreadChat({
+          selection: { accountId: '@ben:hs', roomId: '!c:hs' },
+          label: 'Team · 3 unread · Ben',
+        }),
+      ]),
     });
     const opened: ExactRoomSelection[] = [];
     fixture.componentInstance.openUnreadChat.subscribe((s) => opened.push(s));
@@ -574,19 +534,16 @@ describe('unread chats', () => {
   });
 
   it('shows the count, or a dot for a chat only marked unread', async () => {
-    const { container } = await render(ServerRailComponent, {
-      inputs: {
-        activeAccountId: '@me:hs',
-        unreadChats: railChats([
-          unreadChat({ countLabel: '99+' }),
-          unreadChat({
-            key: 'k2',
-            countLabel: null,
-            label: 'Team · marked unread',
-          }),
-        ]),
-      },
-      imports: [MockComponent(AvatarComponent)],
+    const { container } = await renderRail({
+      activeAccountId: '@me:hs',
+      unreadChats: railChats([
+        unreadChat({ countLabel: '99+' }),
+        unreadChat({
+          key: 'k2',
+          countLabel: null,
+          label: 'Team · marked unread',
+        }),
+      ]),
     });
     expect(
       container
@@ -599,22 +556,19 @@ describe('unread chats', () => {
   });
 
   it('hands the account badge and avatar shape to the avatar', async () => {
-    const { fixture } = await render(ServerRailComponent, {
-      inputs: {
-        activeAccountId: '@me:hs',
-        unreadChats: railChats([
-          unreadChat({
-            direct: true,
-            accountBadge: {
-              id: '@ben:hs',
-              name: 'Ben',
-              initial: 'B',
-              avatarMxc: null,
-            },
-          }),
-        ]),
-      },
-      imports: [MockComponent(AvatarComponent)],
+    const { fixture } = await renderRail({
+      activeAccountId: '@me:hs',
+      unreadChats: railChats([
+        unreadChat({
+          direct: true,
+          accountBadge: {
+            id: '@ben:hs',
+            name: 'Ben',
+            initial: 'B',
+            avatarMxc: null,
+          },
+        }),
+      ]),
     });
     const avatar = ngMocks.find(
       fixture.debugElement.query(By.css('[data-testid=rail-unread-chats]')),
@@ -662,12 +616,9 @@ describe('unread chats', () => {
   });
 
   it('draws +N as a 48px pill with its own text style', async () => {
-    const { container } = await render(ServerRailComponent, {
-      inputs: {
-        activeAccountId: '@me:hs',
-        unreadChats: railChats([unreadChat()], moreChats(2)),
-      },
-      imports: [MockComponent(AvatarComponent)],
+    const { container } = await renderRail({
+      activeAccountId: '@me:hs',
+      unreadChats: railChats([unreadChat()], moreChats(2)),
     });
     const more = screen.getByTestId('rail-unread-overflow');
     expect(more.classList.contains('size-12')).toBe(true);
@@ -711,9 +662,7 @@ describe('unread chats', () => {
   });
 
   it('renders no section without unread chats', async () => {
-    const { container } = await render(ServerRailComponent, {
-      imports: [MockComponent(AvatarComponent)],
-    });
+    const { container } = await renderRail();
     expect(
       container.querySelector('[data-testid=rail-unread-chats]'),
     ).toBeNull();
