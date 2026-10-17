@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeMatrixHtml, sanitizeOutgoingHtml } from './message-view';
+import { sanitizeMatrixHtml, sanitizeOutgoingHtml } from './message-html';
 
 /** The sanitized body as a tree, for attribute assertions. */
 function parse(html: string): HTMLElement {

@@ -7,12 +7,8 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { Marked, Renderer, type Tokens } from 'marked';
-import {
-  escapeHtml,
-  sanitizeOutgoingHtml,
-  stripReplyFallbackText,
-  taskGlyph,
-} from './message-view';
+import { escapeHtml, sanitizeOutgoingHtml, taskGlyph } from './message-html';
+import { stripReplyFallbackText } from './message-view';
 import { trimTrailing } from './trim-trailing';
 
 /**

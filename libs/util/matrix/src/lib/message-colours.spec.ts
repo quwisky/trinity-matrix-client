@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeMatrixHtml, sanitizeOutgoingHtml } from './message-view';
+import { sanitizeMatrixHtml, sanitizeOutgoingHtml } from './message-html';
 
 function first(html: string, selector: string): Element | null {
   const element = document.createElement('div');
