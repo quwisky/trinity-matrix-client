@@ -23,10 +23,10 @@ const SECTION_KEYS = {
 
 const VERSION = /^(\d+)\.(\d+)\.(\d+)(?:-next\.(\d+))?$/;
 
-/** Strip trailing commit/PR links and the scope prefix, then capitalise. */
+/** Cut the PR/commit/closes links (all after the first ` ([`) and the scope prefix, then capitalise. */
 function cleanEntry(text) {
   const plain = text
-    .replace(/(\s*\(\[[^\]]*\]\([^)]*\)\))+\s*$/, '')
+    .replace(/ \(\[.*$/, '')
     .replace(/^\*\*[^*]+:\*\*\s*/, '')
     .trim();
   return plain.charAt(0).toUpperCase() + plain.slice(1);

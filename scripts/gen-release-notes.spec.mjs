@@ -24,6 +24,14 @@ describe('gen-release-notes', () => {
     });
   });
 
+  it('drops closes links after the commit link', () => {
+    const body =
+      '### Features\n* **ui:** keep disabled primary and danger buttons readable ([#1435](u)) ([e56129a](u)), closes [#1355](u)';
+    expect(parseReleaseBody(body)).toEqual({
+      added: ['Keep disabled primary and danger buttons readable'],
+    });
+  });
+
   it('maps the configured section names too', () => {
     const body =
       '### Added\n* a ([#1](u))\n### Changed\n* b\n### Reverted\n* c';
