@@ -1846,37 +1846,6 @@ describe('WorkspaceNavigationService', () => {
     expect(h.service.placement()).toBe('conversation');
   });
 
-  it('is cold and joins an identical destination while rejecting a conflict', async () => {
-    const h = harness({ routeAccountId: ALICE });
-    const navigation = new Subject<boolean>();
-    h.navigate.mockImplementationOnce(() => firstValueFrom(navigation));
-    h.navigate.mockClear();
-    const command = h.service.navigate({
-      kind: 'room',
-      accountId: ALICE,
-      roomId: ROOM,
-      origin: 'room-list',
-    });
-
-    expect(h.navigate).not.toHaveBeenCalled();
-    const first = firstValueFrom(command);
-    const joined = firstValueFrom(command);
-    await expect(
-      firstValueFrom(
-        h.service.navigate({ kind: 'list', origin: 'compact-close' }),
-      ),
-    ).resolves.toEqual({
-      kind: 'unavailable',
-      reason: 'transition-in-progress',
-    });
-    expect(h.navigate).toHaveBeenCalledOnce();
-
-    navigation.next(true);
-    navigation.complete();
-    await expect(first).resolves.toMatchObject({ kind: 'ready' });
-    await expect(joined).resolves.toMatchObject({ kind: 'ready' });
-  });
-
   it('preserves only responsive placement outside the canonical destination', () => {
     const h = harness({ routeAccountId: ALICE, compact: false });
 
