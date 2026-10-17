@@ -13,10 +13,8 @@ import {
   type RoomState,
 } from 'matrix-js-sdk';
 
-// Re-exported because both appear in this service's public surface ({@link RoomAccess},
-// {@link RoomSettingsService.setJoinRule}). Callers need the enum *values* to build a
-// choice list, and components must never import matrix-js-sdk themselves — so the lib
-// that owns the domain hands them out.
+// Re-exported because they appear in the public surface; components must never import
+// matrix-js-sdk themselves, and need the enum values to build choice lists.
 export {
   HistoryVisibility,
   JoinRule,
@@ -74,8 +72,8 @@ export interface RoomAccess {
   historyVisibility: HistoryVisibility;
   /**
    * The spaces whose members may join, from the `allow` list of a `restricted` join rule
-   * (MSC3083). Empty for every other rule — and an empty list under `restricted` is a room
-   * nobody can join, which is why {@link RoomSettingsService.setJoinRule} refuses to write one.
+   * (MSC3083). Empty for every other rule. An empty list under `restricted` is a room nobody
+   * can join, so {@link RoomSettingsService.setJoinRule} refuses to write one.
    */
   allowedSpaceIds: string[];
 }
@@ -108,7 +106,7 @@ export interface RoomSettingsSnapshot {
 export interface RoomStateEntry {
   readonly type: string;
   readonly stateKey: string;
-  /** The event as stored — state events are not end-to-end encrypted. A shallow copy: treat it as read-only, nested content is shared with the SDK. */
+  /** The event as stored (state events are not end-to-end encrypted). A shallow copy: treat it as read-only, nested content is shared with the SDK. */
   readonly event: Readonly<Record<string, unknown>>;
 }
 
@@ -229,10 +227,9 @@ export class RoomSettingsService {
       this.permissions.assert(context.permissions.joinRule);
       const { client, roomId } = context;
       const restricted = joinRule === JoinRule.Restricted;
-      // A `restricted` rule with no `allow` entries is a room that nobody — not even a
-      // member of the space it was gated on — can ever join, and only an admin could undo
-      // it. Refused here rather than in the caller: this is the one place every join-rule
-      // write passes through, and the failure is unrecoverable from the UI.
+      // A `restricted` rule with no `allow` entries can never be joined, even by members of
+      // the gating space, and only an admin could undo it. Refused here, the one place every
+      // join-rule write passes through.
       if (restricted && allowedSpaceIds.length === 0) {
         return throwError(() =>
           roomAdministrationInvalidInput(
@@ -274,11 +271,8 @@ export class RoomSettingsService {
 
   /**
    * Whether `roomId` can carry a `restricted` join rule at all. MSC3083 landed in room
-   * version 8; sending one to an older room is accepted as an unrecognised string and then
-   * enforced by nobody, so the room silently stays as open as it was.
-   *
-   * False when the version is missing or unparseable — the component must not have to reach
-   * for the SDK to find out, which is the whole point of this service.
+   * version 8; an older room accepts the rule as an unrecognised string and enforces nothing,
+   * so it silently stays as open as it was. False when the version is missing or unparseable.
    */
   supportsRestricted(target: RoomSettingsTargetInput): boolean {
     const room = this.roomFor(target);
@@ -319,14 +313,12 @@ export class RoomSettingsService {
   }
 
   /**
-   * The room's current name, topic and avatar, straight from state — for seeding a settings
-   * dialog. Third of the set beside {@link currentAccess} and {@link editableFields}, and like
-   * them a synchronous read the opener makes just before the dialog is created.
+   * The room's current name, topic and avatar, straight from state, for seeding a settings
+   * dialog.
    *
-   * Reads the raw `m.room.name` event, NOT `Room.name`: the SDK's is a *computed display name*
-   * that invents one from the member list for a nameless room. Seeding a form field with that
-   * fabrication would make "did this field change?" compare the user's input against something
-   * nobody ever typed — and then write the invention back as a real name.
+   * Reads the raw `m.room.name` event, NOT `Room.name`: the SDK's is a computed display name
+   * that invents one from the member list for a nameless room, which would make the dialog's
+   * "did this field change?" compare against something nobody typed and write it back.
    */
   currentIdentity(target: RoomSettingsTargetInput): RoomIdentity {
     const blank: RoomIdentity = { name: '', topic: '', avatarMxc: null };
@@ -362,9 +354,8 @@ export class RoomSettingsService {
       ?.getStateEvents(EventType.RoomHistoryVisibility, '')
       ?.getContent()?.['history_visibility'];
     const rule = (joinRule as JoinRule) ?? DEFAULT_JOIN_RULE;
-    // Only a `restricted` rule has an allow list. A leftover `allow` under any other rule
-    // is inert state some client left behind, and surfacing it would make a dialog see an
-    // access change where there is none — and then write one.
+    // Only a `restricted` rule has an allow list; a leftover `allow` under another rule is
+    // inert and would make a dialog see (and write) an access change that isn't there.
     const allow =
       rule === JoinRule.Restricted
         ? state?.getStateEvents(EventType.RoomJoinRules, '')?.getContent()?.[

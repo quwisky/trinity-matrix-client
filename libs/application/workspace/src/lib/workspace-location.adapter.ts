@@ -41,7 +41,7 @@ interface WorkspaceLocationProjection {
   readonly background?: boolean;
 }
 
-/** History-state key on a Conversation entry pushed straight over its list (#1113). */
+/** History-state key on a Conversation entry pushed straight over its list. */
 const LIST_BELOW = 'trinityListBelow';
 
 /** How long a popped entry may take to settle before Back writes the list in place. */

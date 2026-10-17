@@ -236,7 +236,7 @@ export class RoomUpgradeService {
         );
       }
       this.upgrading.add(key);
-      // Members sync lazily (#1295): the room may know only the senders it has seen, and
+      // Members sync lazily: the room may know only the senders it has seen, and
       // the invitations below must reach everyone. A failed load still upgrades with the
       // members that are known.
       return from(room.loadMembersIfNeeded().catch(() => false)).pipe(

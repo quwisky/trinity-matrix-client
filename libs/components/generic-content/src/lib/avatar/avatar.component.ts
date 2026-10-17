@@ -118,8 +118,7 @@ export class AvatarComponent {
   readonly initialColor = computed(() => AVATAR_FILLS[this.slot()].ink);
 
   constructor() {
-    // Re-resolve when the bound avatar changes (instances are reused across @for
-    // rows); the subscription is torn down on the next run/destroy.
+    // Instances are reused across @for rows, so re-resolve when the bound avatar changes.
     effect((onCleanup) => {
       const mxc = this.mxc();
       const size = this.resolvedSize();

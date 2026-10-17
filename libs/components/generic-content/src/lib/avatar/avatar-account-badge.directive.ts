@@ -15,8 +15,8 @@ import { AVATAR_FILLS, hashSlot } from './avatar-fills';
  * loads or when the account has no avatar set.
  */
 export interface AccountBadge {
-  /** The owning account's user id — the badge's stable identity. Two accounts can share a
-   * display name, so the hashed colour and the resolver both key off this, not the name. */
+  /** The owning account's user id, the badge's stable identity: two accounts can share a
+   * display name, so the hashed colour and the resolver both key off this. */
   readonly id: string;
   readonly initial: string;
   readonly name: string;
@@ -50,8 +50,7 @@ export class AvatarAccountBadgeDirective {
     Math.max(14, Math.round(this.avatarSize() * 0.42)),
   );
 
-  /** Account-hashed avatar slot for the badge. Hashed on the user id so two accounts with
-   * the same display name stay visually distinct. */
+  /** Hashed on the user id so two accounts with the same display name stay distinct. */
   private readonly badgeSlot = computed(() => {
     const badge = this.badge();
     return hashSlot(badge?.id || badge?.name || '');
@@ -60,38 +59,31 @@ export class AvatarAccountBadgeDirective {
   readonly badgeInk = computed(() => AVATAR_FILLS[this.badgeSlot()].ink);
 
   /**
-   * The badge account's avatar mxc, isolated from the badge object's identity. The host
-   * rebuilds its badge map (fresh objects, same contents) on every sync tick, so resolving
-   * off `badge()` directly would re-run the effect several times a second — and, because
-   * the resolver deliberately doesn't cache failures, re-fetch an unresolvable avatar
-   * forever. A computed over the string collapses that to real changes only.
+   * The badge account's avatar mxc, isolated from the badge object's identity. The host rebuilds
+   * its badge map on every sync tick; resolving off `badge()` would re-run the effect several
+   * times a second and, as the resolver doesn't cache failures, re-fetch an unresolvable avatar
+   * forever.
    */
   private readonly badgeMxc = computed(() => this.badge()?.avatarMxc ?? null);
 
-  /** The owning account id, likewise isolated from the badge object's identity so the
-   * resolve effect below stays keyed on primitives only. */
+  /** The owning account id, isolated like `badgeMxc` so the resolve effect keys on primitives. */
   private readonly badgeAccountId = computed(() => this.badge()?.id);
 
-  /** The account badge's avatar, resolved via the resolver (null until resolved / no
-   * resolver / the account has no avatar) — when null the badge falls back to its initial. */
+  /** The resolved badge avatar; null (initial fallback) until resolved or when unavailable. */
   private readonly resolvedBadgeUrl = signal<string | null>(null);
   readonly badgeSrc = this.resolvedBadgeUrl.asReadonly();
 
   constructor() {
-    // Keyed on the mxc rather than the badge object so it only re-resolves when the
-    // account's avatar actually changes. The resolver caches by mxc+size, so the same
-    // account avatar across many rows is one fetch. Resetting first clears a stale avatar
-    // when the badge moves to a different account (it would otherwise show the previous
-    // account's face under the new account's label).
+    // Keyed on the mxc, not the badge object. Resetting first clears a stale avatar when the
+    // badge moves to a different account (it would show the previous account's face).
     effect((onCleanup) => {
       const mxc = this.badgeMxc();
       const size = this.badgeSize();
       const accountId = this.badgeAccountId();
       this.resolvedBadgeUrl.set(null);
       if (mxc && this.resolver) {
-        // Through the OWNING account's client: resolving a mixed-in account's avatar via
-        // the active account would make its homeserver fetch (and log) the other identity's
-        // media.
+        // Through the OWNING account's client: the active account would make its homeserver
+        // fetch (and log) the other identity's media.
         const sub = this.resolver(mxc, size, accountId).subscribe((resolved) =>
           this.resolvedBadgeUrl.set(resolved),
         );
@@ -101,10 +93,8 @@ export class AvatarAccountBadgeDirective {
   }
 
   /**
-   * A resolved badge avatar that fails to decode falls back to the initial. The main image
-   * gets this from `BrnAvatarImage`'s load/error handling; the badge's plain `<img>` has no
-   * such guard, so an undecodable blob would otherwise pin a broken-image glyph in the
-   * corner for the session.
+   * A resolved badge avatar that fails to decode falls back to the initial. The badge's plain
+   * `<img>` lacks `BrnAvatarImage`'s error handling, so it would pin a broken-image glyph.
    */
   onBadgeImageError(): void {
     this.resolvedBadgeUrl.set(null);

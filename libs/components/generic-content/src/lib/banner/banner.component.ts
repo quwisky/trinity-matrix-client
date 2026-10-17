@@ -54,7 +54,7 @@ export class BannerComponent {
   /**
    * The accent tone paints the attention surface, so it declares that context for the
    * projected actions: `trnBtn` reads `data-trn-surface="attention"` and inverts its solid
-   * fill, which would otherwise be the same accent as the banner (#1217).
+   * fill, which would otherwise be the same accent as the banner.
    */
   protected readonly surface = computed(() =>
     this.variant() === 'accent' ? 'attention' : null,

@@ -18,18 +18,12 @@ function sameRoom(
 }
 
 /**
- * The most-recently-**visited** Account-and-Room stack — where the user *was*, distinct from the
- * activity-recency the quick switcher and Recent view use. Session-scoped (in memory);
- * a visit-MRU is inherently a session concept, so it is not persisted across restarts.
+ * The most-recently-**visited** Account-and-Room stack: where the user *was*, distinct from the
+ * activity recency the quick switcher and Recent view use. In memory and session-scoped.
  *
- * Powers the keyboard room-switching shortcuts:
- *
- *  - {@link record} keeps the stack, called for every user-driven room open.
- *  - {@link hop} cycles alt-tab style through a *frozen* snapshot: repeated presses walk
- *    deeper without reordering the stack, so the order stays stable while cycling. The
- *    landed room commits to the top when the user pauses ({@link HOP_IDLE_MS}) or opens a
- *    room another way (which calls {@link record}).
- *  - {@link nth} resolves Ctrl/Cmd+1…9 (the Nth most-recent room, skipping the current).
+ * Powers the keyboard room-switching shortcuts: {@link record} runs for every user-driven room
+ * open; {@link hop} cycles alt-tab style through a frozen snapshot, so the order stays stable
+ * while cycling; {@link nth} resolves Ctrl/Cmd+1…9.
  */
 @Injectable({ providedIn: 'root' })
 export class WorkspaceVisitHistoryService {
@@ -43,8 +37,8 @@ export class WorkspaceVisitHistoryService {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
-   * Record a user-driven visit: move it to the front of the stack (deduped,
-   * capped) and end any hop cycle in progress — the explicit open is the commit.
+   * Record a user-driven visit: move it to the front (deduped, capped) and end any hop cycle
+   * in progress; the explicit open is the commit.
    */
   record(room: WorkspaceRoomIdentity): void {
     this.endHop();
@@ -58,12 +52,10 @@ export class WorkspaceVisitHistoryService {
 
   /**
    * Step through the visit stack alt-tab style and return the room to open, or null when
-   * there is nowhere to hop. `current` is the room open now (forced to the front of the
-   * snapshot so a hop always starts from "here"); `knownRooms` contains rooms that still
-   * exist, so a room since left/forgotten is skipped rather than opened.
-   *
-   * The first hop of a cycle snapshots the stack; subsequent hops walk that frozen order
-   * (clamped at both ends) without reordering it. Each press re-arms the idle commit.
+   * there is nowhere to hop. `current` is forced to the front of the snapshot so a hop starts
+   * from "here"; `knownRooms` are the rooms that still exist, so a left or forgotten room is
+   * skipped. The first hop of a cycle snapshots the stack; later hops walk that frozen order
+   * (clamped at both ends). Each press re-arms the idle commit ({@link HOP_IDLE_MS}).
    */
   hop(
     direction: HopDirection,
@@ -94,9 +86,8 @@ export class WorkspaceVisitHistoryService {
   }
 
   /**
-   * The Nth most-recently-visited room, skipping the one open now — so Ctrl/Cmd+1 is the
-   * previous room. Returns null when the stack is too short. `current` is excluded so
-   * the numbering matches what a user would count ("1 = the last place I was").
+   * The Nth most-recently-visited room, skipping the one open now, so Ctrl/Cmd+1 is the
+   * previous room. Null when the stack is too short.
    */
   nth(
     n: number,

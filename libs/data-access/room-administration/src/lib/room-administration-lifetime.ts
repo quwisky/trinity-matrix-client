@@ -69,7 +69,7 @@ export class RoomAdministrationLifetime {
     RoomAdministrationOperation,
     RoomAdministrationHealth
   >();
-  // Published as fact.generation; recover() filters obsolete generations. Not a latest-wins guard (#927).
+  // Published as fact.generation; recover() filters obsolete generations. Not a latest-wins guard.
   private generation = 0;
   private retry: ((operation: RoomAdministrationOperation) => void) | null =
     null;
