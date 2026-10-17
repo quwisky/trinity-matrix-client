@@ -119,6 +119,10 @@ test.describe('Delete account', () => {
     await expect
       .poll(async () => (await ownDatabases(page, account)).length)
       .toBeGreaterThan(0);
+    // Trust's forecast is an account-scoped device preference the deletion must forget.
+    await expect
+      .poll(async () => (await ownPreferenceKeys(page, account)).length)
+      .toBeGreaterThan(0);
     const bodies: unknown[] = [];
     page.on('request', (r) => {
       if (r.url().endsWith(DEACTIVATE)) bodies.push(r.postDataJSON());
