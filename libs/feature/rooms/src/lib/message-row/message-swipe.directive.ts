@@ -11,8 +11,9 @@ import {
  * How far in from either viewport edge a message swipe refuses to START.
  *
  * The shell's drawer opens in a 24px band inside a 32px native-history strip, and native
- * recognisers are outside CSS, so the only lever is refusing to arm through that region, decided
- * at `pointerdown`. Wider than the drawer's zone and the platform regions (widths Apple and Google
+ * recognisers are outside CSS, so the only lever is refusing to arm through that region, measured
+ * at `pointerdown` because that is the only moment the decision can be made without having already
+ * competed. Wider than the drawer's zone and the platform regions (widths Apple and Google
  * do not publish), chosen with margin. `message-row.swipe.spec.ts` pins that it is never narrower
  * than the drawer's; a device confirms it clears the platform's.
  */

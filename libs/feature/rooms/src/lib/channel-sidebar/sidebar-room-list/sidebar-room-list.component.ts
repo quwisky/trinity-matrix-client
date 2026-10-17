@@ -303,7 +303,10 @@ export class SidebarRoomListComponent {
     this.destroyRef.onDestroy(() => this.itemObserver?.disconnect());
   }
 
-  /** Where the windowed lines start inside the scroller. Read on resize and when the invites change, not per scroll. */
+  /**
+   * Where the windowed lines start inside the scroller. Read on resize and when the invites change,
+   * not per scroll: the offset does not move when the list scrolls.
+   */
   private measureRegionTop(): void {
     const el = this.scroller();
     const spacer = this.topSpacer()?.nativeElement;

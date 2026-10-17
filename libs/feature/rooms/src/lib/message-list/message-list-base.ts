@@ -145,7 +145,8 @@ export abstract class MessageListBase {
    * The strip must vanish synchronously with the prepend (the AND in {@link showLoadingOlder}
    * does that): it is in flow above the rows and `rowsRegionTop()` folds its height into the
    * scroll restore, and `.scroll` sets `overflow-anchor: none`, so a strip held past the prepend
-   * would make the content jump up by its height.
+   * would make the content jump up by its height. This relies on `TimelineService.loadOlder`
+   * prepending the rows and clearing `loadingOlder` in one synchronous block.
    */
   private readonly loadingOlderSettled = delayedBusy(
     this.loadingOlder,
@@ -461,7 +462,8 @@ export abstract class MessageListBase {
 
   /**
    * Declared ABOVE the constructor on purpose: the constructor registers an `onDestroy` on it,
-   * and TS2729 would not catch this drifting below a subclass.
+   * which works wherever the field sits (every initializer runs before the constructor body), but
+   * TS2729 would not catch it drifting below a subclass.
    */
   private readonly listDestroyRef = inject(DestroyRef);
   protected readonly injector = inject(Injector);
@@ -780,7 +782,10 @@ export abstract class MessageListBase {
     return this.rowCapsById().get(row.id) ?? DEFAULT_ROW_CAPS;
   }
 
-  /** The fix Trust offers for an unreadable message; resolved only while some row can use it. */
+  /**
+   * The fix Trust offers for an unreadable message; resolved only while some row can use it, so a
+   * timeline with no fixable message does not depend on Trust.
+   */
   readonly undecryptableFix = computed<UndecryptableFix | null>(() =>
     this.messages().some((message) => message.undecryptable?.deviceFixable)
       ? this.injector.get(UndecryptableFixService).fix()

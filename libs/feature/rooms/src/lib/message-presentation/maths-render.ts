@@ -219,7 +219,8 @@ function oversized(property: string, value: string): boolean {
  * - it painted something in its error colour in the HTML copy (`\html@mathml{\foo}{x}` keeps the
  *   error out of the MathML copy);
  * - a length moves content further than it may (see {@link oversized}), such as a large negative
- *   kern. Smaller moves stay inside the formula's and the message body's clips.
+ *   kern. What smaller moves add up to stays inside the formula's and the message body's clips
+ *   (rendered-markdown.scss).
  */
 function forcesSource(markup: string): boolean {
   for (const [, style] of markup.matchAll(STYLE_ATTRIBUTE)) {

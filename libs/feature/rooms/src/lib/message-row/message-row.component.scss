@@ -236,7 +236,7 @@
   // `.msg--revealed` reveals the bar for one row after a long press (see `revealToolbar`): a
   // touchscreen has no hover, and the long press opens the OVERFLOW menu, which lacks Reply, Add
   // reaction and Reply in thread (the bar's own buttons). Keyboard users get there via
-  // `:focus-within` above.
+  // `:focus-visible` or `:has(:focus)` above.
 
   .msg__avatar {
     flex: 0 0 auto;

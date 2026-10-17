@@ -71,6 +71,7 @@ const OVERSCAN_PX = 800;
  * shortest row it renders (a one-line compact system line at the small text scale). Rows that
  * arrive while a web tab is hidden are rendered but never measured, and counting them at the
  * 64 px estimate could name too few rows to fill the viewport when the window is shown again.
+ * At this height they can only name more.
  */
 const MIN_UNMEASURED_ROW_PX = 16;
 
@@ -728,7 +729,10 @@ export class MessageListComponent extends MessageListBase {
     }
   }
 
-  /** Record measured row heights and keep the read position stable. */
+  /**
+   * Record measured row heights and keep the read position stable. The signal writes below
+   * schedule change detection on their own under zoneless.
+   */
   private onRowsResized(entries: ResizeObserverEntry[]): void {
     const el = this.scrollEl()?.nativeElement;
     if (!el) {
