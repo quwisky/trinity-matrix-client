@@ -42,7 +42,7 @@ export const BELOW_MEMBERS_QUERY = '(max-width: 1099.98px)';
  *
  * The caller passes its own `DestroyRef` (`mediaQuerySignal(BELOW_MD_QUERY, inject(DestroyRef))`)
  * so this library stays `type:util`, where nothing needs Angular DI, and the call may sit in a
- * method or `computed` without throwing NG0203.
+ * method without throwing NG0203.
  *
  * `matchMedia` is feature-detected so non-DOM contexts read `false` rather than throwing, so
  * callers must pick the query whose `false` is the safe fallback. `addEventListener` is

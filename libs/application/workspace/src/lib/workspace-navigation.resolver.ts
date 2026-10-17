@@ -96,7 +96,7 @@ export function resolveWorkspaceNavigation(
           source: intent.origin === 'room-hop' ? 'hop' : 'user',
           history: 'push',
           // Opened from this account's compact list page: Back can pop back to it.
-          // Split view has no list page to return to.
+          // Split view has no list page to return to; there Back leaves the Room.
           ...(history.compact &&
           current.pane === 'list' &&
           current.accountId === intent.accountId

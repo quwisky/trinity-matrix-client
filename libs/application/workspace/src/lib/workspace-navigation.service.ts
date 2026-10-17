@@ -427,8 +427,9 @@ export class WorkspaceNavigationService {
         .clearMarkedUnread(roomId)
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
-          // Best-effort: opening a room must not toast if this cleanup fails; the next open
-          // retries.
+          // Best-effort: opening a room must not toast if this cleanup fails (the flag stays
+          // visible and the next open retries), but the workflow still owns the subscription
+          // and its cancellation.
           error: () => undefined,
         });
     };

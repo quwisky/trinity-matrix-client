@@ -28,8 +28,8 @@
 
   <!-- Content wins over `body`: `ng-content` cannot be asked whether it received anything, so
        the interpolation is the slot's fallback and a projecting call site does not set `body`.
-       `empty:hidden` covers neither being set (the title's `@if` has no such guard); `:empty`
-       still matches with only a comment anchor or empty text node inside (Chromium, WebKit). -->
+       `empty:hidden` covers neither being set: unlike the title, this `<p>` has no `@if`, so a
+       heading-only panel would render an empty line box plus `gap-2`; `:empty` still matches with only a comment anchor or empty text node inside (Chromium, WebKit). -->
   <p [class]="bodyClass()">
     <ng-content>{{ body() }}</ng-content>
   </p>
