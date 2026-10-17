@@ -14,9 +14,16 @@
         "command": "node scripts/gen-build-info.mjs"
       }
     },
+    "release-notes": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node scripts/gen-release-notes.mjs"
+      }
+    },
     "build": {
       "executor": "@angular/build:application",
-      "dependsOn": ["build-info"],
+      "dependsOn": ["build-info", "release-notes"],
       "outputs": ["{workspaceRoot}/www"],
       "options": {
         "outputPath": {
@@ -120,7 +127,7 @@
     },
     "serve": {
       "executor": "@angular/build:dev-server",
-      "dependsOn": ["build-info"],
+      "dependsOn": ["build-info", "release-notes"],
       "configurations": {
         "production": {
           "buildTarget": "trinity:build:production"
