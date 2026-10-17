@@ -1,29 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { type RoomSummary } from '@trinity/data-access/room-library';
 import { stepList, stepUnread } from './room-navigation';
+import { roomSummary } from '../testing/room-summary.fixture';
 
 const IDS = ['!a', '!b', '!c'];
 
 function room(id: string, hasUnread = false): RoomSummary {
-  return {
+  return roomSummary({
     id,
     accountId: '@me:hs',
-    accountIds: ['@me:hs'],
     name: id,
     initial: id[1].toUpperCase(),
-    markedUnread: false,
-    avatarMxc: null,
-    topic: '',
-    memberCount: 0,
-    encrypted: false,
     unreadCount: hasUnread ? 1 : 0,
-    highlightCount: 0,
     hasUnread,
-    lastMessage: '',
-    activityTs: 0,
-    favourite: false,
-    lowPriority: false,
-  };
+  });
 }
 
 describe('stepList', () => {

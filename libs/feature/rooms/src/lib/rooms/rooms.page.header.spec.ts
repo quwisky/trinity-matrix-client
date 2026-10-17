@@ -75,6 +75,7 @@ import { ShellShortcutsService } from './shell-shortcuts.service';
 import { ShellStatusService } from './shell-status.service';
 import { SpaceActionsService } from './space-actions.service';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
+import { roomSummary } from '../testing/room-summary.fixture';
 
 const BOB: MemberSummary = {
   userId: '@bob:hs',
@@ -85,25 +86,12 @@ const BOB: MemberSummary = {
   isCreator: false,
 };
 
-const ROOM: RoomSummary = {
+const ROOM: RoomSummary = roomSummary({
   id: '!r:hs',
   accountId: '@me:hs',
-  accountIds: ['@me:hs'],
   name: 'General',
-  initial: 'G',
-  avatarMxc: null,
-  topic: '',
   memberCount: 2,
-  encrypted: false,
-  unreadCount: 0,
-  highlightCount: 0,
-  hasUnread: false,
-  markedUnread: false,
-  lastMessage: '',
-  activityTs: 0,
-  favourite: false,
-  lowPriority: false,
-};
+});
 
 beforeEach(() => setRouteRoom(null));
 

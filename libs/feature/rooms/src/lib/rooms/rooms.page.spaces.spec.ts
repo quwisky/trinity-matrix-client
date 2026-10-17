@@ -34,6 +34,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
+import {
+  roomSummary as baseRoomSummary,
+  spaceSummary as baseSpaceSummary,
+} from '../testing/room-summary.fixture';
 
 // The route outlives any one TestBed — it is one stream in the harness, shared by every
 // block in this file. Without the reset a test that opens a room hands it to the next one,
@@ -49,36 +53,24 @@ describe('RoomsPage space filtering', () => {
     unread = 0,
     mentions = 0,
   ): RoomSummary {
-    return {
+    return baseRoomSummary({
       id,
       accountId: '@me:hs',
-      accountIds: ['@me:hs'],
       name,
       initial: name[0].toUpperCase(),
-      avatarMxc: null,
-      topic: '',
-      memberCount: 0,
-      encrypted: false,
       unreadCount: unread,
       highlightCount: mentions,
       hasUnread: unread > 0,
-      markedUnread: false,
-      lastMessage: '',
-      activityTs: 0,
-      favourite: false,
-      lowPriority: false,
-    };
+    });
   }
 
   function spaceSummary(id: string, childRoomIds: string[]): SpaceSummary {
-    return {
+    return baseSpaceSummary({
       id,
       accountId: '@me:hs',
       name: id,
-      initial: 'S',
-      avatarMxc: null,
       childRoomIds,
-    };
+    });
   }
 
   function build(
@@ -710,36 +702,23 @@ describe('RoomsPage space ordering', () => {
     activityTs: number,
     favourite = false,
   ): RoomSummary {
-    return {
+    return baseRoomSummary({
       id,
       accountId: '@me:hs',
-      accountIds: ['@me:hs'],
       name,
       initial: name[0].toUpperCase(),
-      avatarMxc: null,
-      topic: '',
-      memberCount: 0,
-      encrypted: false,
-      unreadCount: 0,
-      highlightCount: 0,
-      hasUnread: false,
-      markedUnread: false,
-      lastMessage: '',
       activityTs,
       favourite,
-      lowPriority: false,
-    };
+    });
   }
 
   function orderedSpace(id: string, childRoomIds: string[]): SpaceSummary {
-    return {
+    return baseSpaceSummary({
       id,
       accountId: '@me:hs',
       name: id,
-      initial: 'S',
-      avatarMxc: null,
       childRoomIds,
-    };
+    });
   }
 
   /** `effective` is the open space's resolved ordering, read for its owning account. */
@@ -934,36 +913,24 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
     unread = 0,
     markedUnread = false,
   ): RoomSummary {
-    return {
+    return baseRoomSummary({
       id,
       accountId: '@me:hs',
-      accountIds: ['@me:hs'],
       name,
       initial: name[0].toUpperCase(),
-      avatarMxc: null,
-      topic: '',
-      memberCount: 0,
-      encrypted: false,
       unreadCount: unread,
-      highlightCount: 0,
       hasUnread: unread > 0 || markedUnread,
       markedUnread,
-      lastMessage: '',
-      activityTs: 0,
-      favourite: false,
-      lowPriority: false,
-    };
+    });
   }
 
   function spaceSummary(id: string, childRoomIds: string[]): SpaceSummary {
-    return {
+    return baseSpaceSummary({
       id,
       accountId: '@me:hs',
       name: id,
-      initial: 'S',
-      avatarMxc: null,
       childRoomIds,
-    };
+    });
   }
 
   /** `extra` adds a third space and its rooms, so the default fixture is unchanged. */

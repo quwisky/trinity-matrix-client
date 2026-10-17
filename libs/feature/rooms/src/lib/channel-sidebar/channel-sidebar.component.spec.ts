@@ -27,6 +27,7 @@ import {
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
 import { type PresenceState } from '@trinity/util/matrix';
+import { pendingInvite, roomSummary } from '../testing/room-summary.fixture';
 import { ChannelSidebarComponent } from './channel-sidebar.component';
 
 // Stub presence: @bob is online, everyone else offline.
@@ -34,44 +35,6 @@ const presenceStub = {
   presenceFor: (userId: string) =>
     signal<PresenceState>(userId === '@bob:hs' ? 'online' : 'offline'),
 };
-
-function room(over: Partial<RoomSummary> = {}): RoomSummary {
-  return {
-    id: '!a:hs',
-    accountId: '@me:hs',
-    accountIds: ['@me:hs'],
-    name: 'general',
-    initial: 'G',
-    avatarMxc: null,
-    topic: '',
-    memberCount: 0,
-    encrypted: false,
-    unreadCount: 0,
-    highlightCount: 0,
-    hasUnread: false,
-    markedUnread: false,
-    lastMessage: '',
-    activityTs: 0,
-    favourite: false,
-    lowPriority: false,
-    ...over,
-  };
-}
-
-function invite(over: Partial<PendingInvite> = {}): PendingInvite {
-  return {
-    roomId: '!i:hs',
-    accountId: '@me:hs',
-    name: 'Invited Room',
-    initial: 'I',
-    avatarMxc: null,
-    inviterName: 'Alice',
-    inviterId: '',
-    isSpace: false,
-    isDirect: false,
-    ...over,
-  };
-}
 
 function child(over: Partial<SpaceChildRoom> = {}): SpaceChildRoom {
   return {
@@ -188,8 +151,8 @@ describe('ChannelSidebarComponent', () => {
     const { fixture } = await renderSidebar({
       inputs: {
         rooms: [
-          room({ id: '!dm:hs', name: 'Bob', directUserId: '@bob:hs' }),
-          room({ id: '!room:hs', name: 'general' }),
+          roomSummary({ id: '!dm:hs', name: 'Bob', directUserId: '@bob:hs' }),
+          roomSummary({ id: '!room:hs', name: 'general' }),
         ],
       },
     });
@@ -202,7 +165,7 @@ describe('ChannelSidebarComponent', () => {
 
   it('lists rooms and emits selectRoom when one is clicked', async () => {
     const { fixture, container } = await renderSidebar({
-      inputs: { rooms: [room()] },
+      inputs: { rooms: [roomSummary()] },
     });
 
     const channels = container.querySelectorAll<HTMLElement>('.channel');
@@ -219,7 +182,9 @@ describe('ChannelSidebarComponent', () => {
 
   it('renders a messenger-style row: avatar, name, and last-message preview', async () => {
     const { container } = await renderSidebar({
-      inputs: { rooms: [room({ name: 'general', lastMessage: 'hey there' })] },
+      inputs: {
+        rooms: [roomSummary({ name: 'general', lastMessage: 'hey there' })],
+      },
     });
 
     const channel = container.querySelector('.channel')!;
@@ -236,7 +201,7 @@ describe('ChannelSidebarComponent', () => {
 
   it('omits the preview line when a room has no last message', async () => {
     const { container } = await renderSidebar({
-      inputs: { rooms: [room({ lastMessage: '' })] },
+      inputs: { rooms: [roomSummary({ lastMessage: '' })] },
     });
 
     expect(container.querySelector('.channel__preview')).toBeNull();
@@ -312,7 +277,7 @@ describe('ChannelSidebarComponent', () => {
     const unread = await renderSidebar({
       inputs: {
         spaceActive: true,
-        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+        rooms: [roomSummary({ id: '!a:hs', name: 'general', hasUnread: true })],
         hasAnyUnread: true,
       },
     });
@@ -331,7 +296,7 @@ describe('ChannelSidebarComponent', () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
         spaceActive: true,
-        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+        rooms: [roomSummary({ id: '!a:hs', name: 'general', hasUnread: true })],
         hasAnyUnread: true,
       },
     });
@@ -605,7 +570,11 @@ describe('ChannelSidebarComponent', () => {
   it('renders pending invites and emits accept / decline with the room id', async () => {
     const { fixture, container } = await renderSidebar({
       invites: [
-        invite({ roomId: '!i:hs', name: 'Invited Room', inviterName: 'Alice' }),
+        pendingInvite({
+          roomId: '!i:hs',
+          name: 'Invited Room',
+          inviterName: 'Alice',
+        }),
       ],
     });
 
@@ -634,13 +603,17 @@ describe('ChannelSidebarComponent', () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({ id: '!room:hs', name: 'General' }),
-          room({ id: '!dm:hs', name: 'Alice', directUserId: '@alice:hs' }),
+          roomSummary({ id: '!room:hs', name: 'General' }),
+          roomSummary({
+            id: '!dm:hs',
+            name: 'Alice',
+            directUserId: '@alice:hs',
+          }),
         ],
       },
       invites: [
-        invite({ roomId: '!room-invite:hs', name: 'Project' }),
-        invite({
+        pendingInvite({ roomId: '!room-invite:hs', name: 'Project' }),
+        pendingInvite({
           roomId: '!dm-invite:hs',
           name: 'Bob',
           isDirect: true,
@@ -755,9 +728,9 @@ describe('ChannelSidebarComponent', () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({ id: '!a:hs', name: 'alpha' }),
-          room({ id: '!f:hs', name: 'favourite-room', favourite: true }),
-          room({ id: '!b:hs', name: 'bravo' }),
+          roomSummary({ id: '!a:hs', name: 'alpha' }),
+          roomSummary({ id: '!f:hs', name: 'favourite-room', favourite: true }),
+          roomSummary({ id: '!b:hs', name: 'bravo' }),
         ],
       },
     });
@@ -778,8 +751,8 @@ describe('ChannelSidebarComponent', () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({ id: '!a:hs', name: 'alpha' }),
-          room({ id: '!b:hs', name: 'bravo' }),
+          roomSummary({ id: '!a:hs', name: 'alpha' }),
+          roomSummary({ id: '!b:hs', name: 'bravo' }),
         ],
       },
     });
@@ -793,7 +766,9 @@ describe('ChannelSidebarComponent', () => {
   it('favourites a non-favourite room via the kebab menu', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
-        rooms: [room({ id: '!a:hs', name: 'general', favourite: false })],
+        rooms: [
+          roomSummary({ id: '!a:hs', name: 'general', favourite: false }),
+        ],
       },
     });
     let changed: RoomSummary | undefined;
@@ -818,9 +793,9 @@ describe('ChannelSidebarComponent', () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({ id: '!f:hs', name: 'favourite-room', favourite: true }),
-          room({ id: '!a:hs', name: 'alpha' }),
-          room({ id: '!q:hs', name: 'quiet', lowPriority: true }),
+          roomSummary({ id: '!f:hs', name: 'favourite-room', favourite: true }),
+          roomSummary({ id: '!a:hs', name: 'alpha' }),
+          roomSummary({ id: '!q:hs', name: 'quiet', lowPriority: true }),
         ],
       },
     });
@@ -843,8 +818,8 @@ describe('ChannelSidebarComponent', () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({ id: '!a:hs', name: 'alpha' }),
-          room({
+          roomSummary({ id: '!a:hs', name: 'alpha' }),
+          roomSummary({
             id: '!b:hs',
             name: 'both',
             favourite: true,
@@ -869,7 +844,7 @@ describe('ChannelSidebarComponent', () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({
+          roomSummary({
             id: '!a:hs',
             name: 'general',
             accountIds: ['@me:hs', '@alt:hs'],
@@ -901,7 +876,7 @@ describe('ChannelSidebarComponent', () => {
   it('unfavourites a favourite room via the kebab menu', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
-        rooms: [room({ id: '!a:hs', name: 'general', favourite: true })],
+        rooms: [roomSummary({ id: '!a:hs', name: 'general', favourite: true })],
       },
     });
     let changed: RoomSummary | undefined;
@@ -925,7 +900,7 @@ describe('ChannelSidebarComponent', () => {
   it('emits removeRoom for a joined channel only while a space is active', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
-        rooms: [room({ id: '!a:hs', name: 'general' })],
+        rooms: [roomSummary({ id: '!a:hs', name: 'general' })],
         canCurateSpace: true,
       },
     });
@@ -958,8 +933,12 @@ describe('ChannelSidebarComponent', () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({ id: '!mine:hs', accountId: '@me:hs', directUserId: '@x:hs' }),
-          room({
+          roomSummary({
+            id: '!mine:hs',
+            accountId: '@me:hs',
+            directUserId: '@x:hs',
+          }),
+          roomSummary({
             id: '!theirs:hs',
             accountId: '@alt:hs',
             directUserId: '@y:hs',
@@ -975,7 +954,7 @@ describe('ChannelSidebarComponent', () => {
 
   it('emits leaveRoom from the room kebab menu', async () => {
     const { fixture, container } = await renderSidebar({
-      inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
+      inputs: { rooms: [roomSummary({ id: '!a:hs', name: 'general' })] },
     });
     let left: string | undefined;
     fixture.componentInstance.leaveRoom.subscribe((e) => (left = e.roomId));
@@ -990,7 +969,7 @@ describe('ChannelSidebarComponent', () => {
   it('emits markRead from the kebab menu for an unread room', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
-        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+        rooms: [roomSummary({ id: '!a:hs', name: 'general', hasUnread: true })],
       },
     });
     let marked: string | undefined;
@@ -1008,7 +987,9 @@ describe('ChannelSidebarComponent', () => {
   it('does not offer Mark as read for a read room', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
-        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: false })],
+        rooms: [
+          roomSummary({ id: '!a:hs', name: 'general', hasUnread: false }),
+        ],
       },
     });
     container.querySelector<HTMLElement>('.channel__menu')!.click();
@@ -1019,7 +1000,9 @@ describe('ChannelSidebarComponent', () => {
   it('emits markUnread from the kebab menu for a read room', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
-        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: false })],
+        rooms: [
+          roomSummary({ id: '!a:hs', name: 'general', hasUnread: false }),
+        ],
       },
     });
     let flagged: string | undefined;
@@ -1040,7 +1023,9 @@ describe('ChannelSidebarComponent', () => {
     // but navigating away and back.
     const { fixture, container } = await renderSidebar({
       inputs: {
-        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: false })],
+        rooms: [
+          roomSummary({ id: '!a:hs', name: 'general', hasUnread: false }),
+        ],
         activeRoomId: '!a:hs',
       },
     });
@@ -1055,7 +1040,7 @@ describe('ChannelSidebarComponent', () => {
   it('does not offer Mark as unread for a room that is already unread', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
-        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+        rooms: [roomSummary({ id: '!a:hs', name: 'general', hasUnread: true })],
       },
     });
     container.querySelector<HTMLElement>('.channel__menu')!.click();
@@ -1072,7 +1057,7 @@ describe('ChannelSidebarComponent', () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({
+          roomSummary({
             id: '!a:hs',
             name: 'general',
             hasUnread: true,
@@ -1094,7 +1079,9 @@ describe('ChannelSidebarComponent', () => {
     // a flagged room from a read one at all.
     const { container } = await renderSidebar({
       inputs: {
-        rooms: [room({ id: '!a:hs', hasUnread: true, markedUnread: true })],
+        rooms: [
+          roomSummary({ id: '!a:hs', hasUnread: true, markedUnread: true }),
+        ],
       },
     });
 
@@ -1109,7 +1096,7 @@ describe('ChannelSidebarComponent', () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({
+          roomSummary({
             id: '!a:hs',
             hasUnread: true,
             markedUnread: true,
@@ -1134,7 +1121,7 @@ describe('ChannelSidebarComponent', () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({
+          roomSummary({
             id: '!a:hs',
             hasUnread: false,
             accountIds: ['@me:hs', '@alt:hs'],
@@ -1160,7 +1147,7 @@ describe('ChannelSidebarComponent', () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({
+          roomSummary({
             id: '!a:hs',
             name: 'general',
             hasUnread: true,
@@ -1180,7 +1167,7 @@ describe('ChannelSidebarComponent', () => {
   it('emits markAllRead from the header when any room is unread', async () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
-        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: true })],
+        rooms: [roomSummary({ id: '!a:hs', name: 'general', hasUnread: true })],
         hasAnyUnread: true,
       },
     });
@@ -1197,7 +1184,9 @@ describe('ChannelSidebarComponent', () => {
   it('hides the mark-all-read header action when no room is unread', async () => {
     const { container } = await renderSidebar({
       inputs: {
-        rooms: [room({ id: '!a:hs', name: 'general', hasUnread: false })],
+        rooms: [
+          roomSummary({ id: '!a:hs', name: 'general', hasUnread: false }),
+        ],
       },
     });
 
@@ -1206,7 +1195,7 @@ describe('ChannelSidebarComponent', () => {
 
   it('offers a Notifications entry in the room kebab menu', async () => {
     const { fixture, container } = await renderSidebar({
-      inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
+      inputs: { rooms: [roomSummary({ id: '!a:hs', name: 'general' })] },
     });
 
     container.querySelector<HTMLElement>('.channel__menu')!.click();
@@ -1222,7 +1211,7 @@ describe('ChannelSidebarComponent', () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({
+          roomSummary({
             id: '!a:hs',
             accountId: '@alt:hs',
             accountIds: ['@alt:hs'],
@@ -1244,7 +1233,7 @@ describe('ChannelSidebarComponent', () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({
+          roomSummary({
             id: '!a:hs',
             accountIds: ['@me:hs', '@alt:hs'],
           }),
@@ -1277,7 +1266,7 @@ describe('ChannelSidebarComponent', () => {
 
   it('emits setNotifyMode when a level is chosen from the submenu', async () => {
     const { fixture, container } = await renderSidebar({
-      inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
+      inputs: { rooms: [roomSummary({ id: '!a:hs', name: 'general' })] },
       notifyMode: 'all',
     });
     const picks: { roomId: string; mode: RoomNotifyMode }[] = [];
@@ -1313,7 +1302,7 @@ describe('ChannelSidebarComponent', () => {
     'checks the %s radio matching the room’s current level',
     async (mode) => {
       const { fixture, container } = await renderSidebar({
-        inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
+        inputs: { rooms: [roomSummary({ id: '!a:hs', name: 'general' })] },
         notifyMode: mode,
       });
       container.querySelector<HTMLElement>('.channel__menu')!.click();
@@ -1338,7 +1327,7 @@ describe('ChannelSidebarComponent', () => {
 
   it('emits the mentions level when chosen from the submenu', async () => {
     const { fixture, container } = await renderSidebar({
-      inputs: { rooms: [room({ id: '!a:hs', name: 'general' })] },
+      inputs: { rooms: [roomSummary({ id: '!a:hs', name: 'general' })] },
       notifyMode: 'all',
     });
     const picks: { roomId: string; mode: RoomNotifyMode }[] = [];
@@ -1363,8 +1352,8 @@ describe('ChannelSidebarComponent', () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({ id: '!a:hs', name: 'general' }),
-          room({ id: '!b:hs', name: 'random' }),
+          roomSummary({ id: '!a:hs', name: 'general' }),
+          roomSummary({ id: '!b:hs', name: 'random' }),
         ],
       },
     });
@@ -1420,8 +1409,8 @@ describe('ChannelSidebarComponent', () => {
     const { container, fixture } = await renderSidebar({
       inputs: {
         rooms: [
-          room({ id: '!mine:hs', accountId: '@me:hs' }),
-          room({ id: '!theirs:hs', accountId: '@alt:hs' }),
+          roomSummary({ id: '!mine:hs', accountId: '@me:hs' }),
+          roomSummary({ id: '!theirs:hs', accountId: '@alt:hs' }),
         ],
         accountBadges: badges,
       },
@@ -1676,7 +1665,7 @@ describe('ChannelSidebarComponent room filter', () => {
 
   it('publishes what is typed, so the shell can narrow the list and the walk together', async () => {
     const { fixture } = await renderSidebar({
-      inputs: { rooms: [room({ name: 'design' })] },
+      inputs: { rooms: [roomSummary({ name: 'design' })] },
     });
     const seen: string[] = [];
     fixture.componentInstance.filterQuery.subscribe((q) => seen.push(q));
@@ -1688,10 +1677,10 @@ describe('ChannelSidebarComponent room filter', () => {
 
   it('narrows invites and the space’s child lists itself — the shell does not see those', async () => {
     const { fixture, container } = await renderSidebar({
-      inputs: { rooms: [room({ name: 'design' })], spaceActive: true },
+      inputs: { rooms: [roomSummary({ name: 'design' })], spaceActive: true },
       invites: [
-        invite({ roomId: '!i1:hs', name: 'design crit' }),
-        invite({ roomId: '!i2:hs', name: 'random' }),
+        pendingInvite({ roomId: '!i1:hs', name: 'design crit' }),
+        pendingInvite({ roomId: '!i2:hs', name: 'random' }),
       ],
       joinableRooms: [
         child({ roomId: '!j1:hs', name: 'design docs' }),
@@ -1760,7 +1749,9 @@ describe('ChannelSidebarComponent room filter', () => {
     expect(announcer.textContent!.trim()).toBe('Loading rooms…');
 
     // Re-rendering the list while it loads does not announce it again.
-    fixture.componentRef.setInput('rooms', [room({ id: '!x:hs', name: 'x' })]);
+    fixture.componentRef.setInput('rooms', [
+      roomSummary({ id: '!x:hs', name: 'x' }),
+    ]);
     fixture.detectChanges();
     expect(status()).toBe(announcer);
     expect(announcer.textContent!.trim()).toBe('Loading rooms…');
@@ -1782,7 +1773,7 @@ describe('ChannelSidebarComponent room filter', () => {
 
   it('offers a clear button only while filtering, and clearing publishes the empty query', async () => {
     const { fixture, container } = await renderSidebar({
-      inputs: { rooms: [room({ name: 'design' })] },
+      inputs: { rooms: [roomSummary({ name: 'design' })] },
     });
     const clear = () =>
       container.querySelector<HTMLElement>(
@@ -1806,7 +1797,7 @@ describe('ChannelSidebarComponent room filter', () => {
 
   it('treats an all-whitespace query as no filter at all', async () => {
     const { fixture, container } = await renderSidebar({
-      inputs: { rooms: [room({ name: 'design' })] },
+      inputs: { rooms: [roomSummary({ name: 'design' })] },
     });
 
     type(fixture, '   ');
@@ -1819,7 +1810,7 @@ describe('ChannelSidebarComponent room filter', () => {
 
   it('clears on Escape, and lets Escape through once the box is empty', async () => {
     const { fixture } = await renderSidebar({
-      inputs: { rooms: [room({ name: 'design' })] },
+      inputs: { rooms: [roomSummary({ name: 'design' })] },
     });
 
     type(fixture, 'zzz');
@@ -1849,7 +1840,7 @@ describe('ChannelSidebarComponent room filter', () => {
     // room silenced "No rooms here yet." for a space you had joined no channels in.
     const { container } = await renderSidebar({
       inputs: { rooms: [] },
-      invites: [invite({ roomId: '!i1:hs', name: 'somewhere else' })],
+      invites: [pendingInvite({ roomId: '!i1:hs', name: 'somewhere else' })],
     });
 
     expect(
@@ -1862,7 +1853,7 @@ describe('ChannelSidebarComponent room filter', () => {
     // matched above it would contradict what is on screen.
     const { fixture, container } = await renderSidebar({
       inputs: { rooms: [] },
-      invites: [invite({ roomId: '!i1:hs', name: 'design crit' })],
+      invites: [pendingInvite({ roomId: '!i1:hs', name: 'design crit' })],
     });
 
     type(fixture, 'design');
@@ -1872,7 +1863,7 @@ describe('ChannelSidebarComponent room filter', () => {
 
   it('returns focus to the box when the clear button removes itself', async () => {
     const { fixture, container } = await renderSidebar({
-      inputs: { rooms: [room({ name: 'design' })] },
+      inputs: { rooms: [roomSummary({ name: 'design' })] },
     });
 
     type(fixture, 'design');
@@ -1890,8 +1881,8 @@ describe('ChannelSidebarComponent room filter', () => {
     const { fixture, container } = await renderSidebar({
       inputs: {
         rooms: [
-          room({ id: '!a:hs', name: 'design' }),
-          room({ id: '!b:hs', name: 'design docs' }),
+          roomSummary({ id: '!a:hs', name: 'design' }),
+          roomSummary({ id: '!b:hs', name: 'design docs' }),
         ],
         spaceActive: true,
       },
@@ -1918,7 +1909,7 @@ describe('ChannelSidebarComponent room filter', () => {
     // shell's unfiltered signal rather than on what is rendered.
     const { container } = await renderSidebar({
       inputs: {
-        rooms: [room({ id: '!a:hs', name: 'design' })],
+        rooms: [roomSummary({ id: '!a:hs', name: 'design' })],
         hasAnyUnread: true,
         filterQuery: 'design',
       },
@@ -1934,7 +1925,11 @@ describe('ChannelSidebarComponent room filter', () => {
       const { container } = await renderSidebar({
         inputs: {
           rooms: [
-            room({ id: '!a:hs', name: 'general', lastMessage: 'see you then' }),
+            roomSummary({
+              id: '!a:hs',
+              name: 'general',
+              lastMessage: 'see you then',
+            }),
           ],
         },
         typingByRoom: { '!a:hs': ['Alice'] },
@@ -1951,7 +1946,11 @@ describe('ChannelSidebarComponent room filter', () => {
       const { container } = await renderSidebar({
         inputs: {
           rooms: [
-            room({ id: '!a:hs', name: 'general', lastMessage: 'see you then' }),
+            roomSummary({
+              id: '!a:hs',
+              name: 'general',
+              lastMessage: 'see you then',
+            }),
           ],
         },
         typingByRoom: {},
@@ -1968,8 +1967,8 @@ describe('ChannelSidebarComponent room filter', () => {
       const { container } = await renderSidebar({
         inputs: {
           rooms: [
-            room({ id: '!a:hs', name: 'general', lastMessage: 'one' }),
-            room({ id: '!b:hs', name: 'random', lastMessage: 'two' }),
+            roomSummary({ id: '!a:hs', name: 'general', lastMessage: 'one' }),
+            roomSummary({ id: '!b:hs', name: 'random', lastMessage: 'two' }),
           ],
         },
         typingByRoom: { '!b:hs': ['Bob'] },

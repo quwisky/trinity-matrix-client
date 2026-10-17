@@ -68,6 +68,11 @@ import { UserCardComponent } from '../user-card/user-card.component';
 import { MemberInfoComponent } from '../member-info/member-info.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { RoomLinkPreviewComponent } from '../room-link-preview/room-link-preview.component';
+import {
+  pendingInvite,
+  roomSummary,
+  spaceSummary,
+} from '../testing/room-summary.fixture';
 
 // The open room lives in the URL, and the harness's route is module state that outlives a
 // single TestBed — so a room one test opens is still in the URL when the next one builds.
@@ -131,14 +136,12 @@ describe('RoomsPage space actions', () => {
         MockProvider(SpacesService, {
           openSpace: () => of(void 0),
           spaces: signal<SpaceSummary[]>([
-            {
+            spaceSummary({
               id: '!s:hs',
               accountId: '@me:hs',
               name: 'My Space',
               initial: 'M',
-              avatarMxc: null,
-              childRoomIds: [],
-            },
+            }),
           ]),
           createSpace,
           leaveSpace,
@@ -588,21 +591,6 @@ describe('RoomsPage room / DM / invite actions', () => {
   let resolveRoomId: Mock;
   let pending: WritableSignal<PendingInvite[]>;
 
-  function pendingInvite(over: Partial<PendingInvite> = {}): PendingInvite {
-    return {
-      roomId: '!i:hs',
-      accountId: '@me:hs',
-      name: 'Invited',
-      initial: 'I',
-      avatarMxc: null,
-      inviterName: 'Alice',
-      inviterId: '',
-      isSpace: false,
-      isDirect: false,
-      ...over,
-    };
-  }
-
   function build() {
     alertPrompt = vi.fn(() => of(null));
     toastShow = vi.fn();
@@ -642,14 +630,12 @@ describe('RoomsPage room / DM / invite actions', () => {
         MockProvider(SpacesService, {
           openSpace: () => of(void 0),
           spaces: signal<SpaceSummary[]>([
-            {
+            spaceSummary({
               id: '!s:hs',
               accountId: '@me:hs',
               name: 'My Space',
               initial: 'M',
-              avatarMxc: null,
-              childRoomIds: [],
-            },
+            }),
           ]),
         }),
         invitesProvider({
@@ -1670,39 +1656,23 @@ describe('RoomsPage space hierarchy actions', () => {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
           rooms: signal<RoomSummary[]>([
-            {
+            roomSummary({
               id: '!c:hs',
               accountId: '@me:hs',
-              accountIds: ['@me:hs'],
               name: 'general',
-              initial: 'G',
-              avatarMxc: null,
-              topic: '',
-              memberCount: 0,
-              encrypted: false,
-              unreadCount: 0,
-              highlightCount: 0,
-              hasUnread: false,
-              markedUnread: false,
-              lastMessage: '',
-              activityTs: 0,
-              favourite: false,
-              lowPriority: false,
-            },
+            }),
           ]),
         }),
         MockProvider(SpacesService, {
           openSpace,
           joinRoom,
           spaces: signal<SpaceSummary[]>([
-            {
+            spaceSummary({
               id: '!s:hs',
               accountId: '@me:hs',
               name: 'My Space',
               initial: 'M',
-              avatarMxc: null,
-              childRoomIds: [],
-            },
+            }),
           ]),
         }),
         MockProvider(SpaceContentsService, { unlink: removeRoomFromSpace }),

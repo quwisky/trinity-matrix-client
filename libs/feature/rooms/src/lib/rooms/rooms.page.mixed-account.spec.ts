@@ -37,6 +37,7 @@ import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { desktopBridgeFixture } from '@trinity/testing';
+import { roomSummary, spaceSummary } from '../testing/room-summary.fixture';
 
 // The route outlives any one TestBed — it is one stream in the harness, shared by every
 // block in this file. Without the reset a test that opens a room hands it to the next one,
@@ -66,26 +67,16 @@ describe('RoomsPage mixed-account view', () => {
     accountId: string,
     opts: { directUserId?: string; unread?: number } = {},
   ): RoomSummary {
-    return {
+    return roomSummary({
       id,
       accountId,
       accountIds: [accountId],
       name: id,
       initial: id[1].toUpperCase(),
-      avatarMxc: null,
-      topic: '',
-      memberCount: 0,
-      encrypted: false,
       unreadCount: opts.unread ?? 0,
-      highlightCount: 0,
       hasUnread: (opts.unread ?? 0) > 0,
-      markedUnread: false,
-      lastMessage: '',
-      activityTs: 0,
-      favourite: false,
-      lowPriority: false,
       directUserId: opts.directUserId,
-    };
+    });
   }
 
   function space(
@@ -93,14 +84,12 @@ describe('RoomsPage mixed-account view', () => {
     accountId: string,
     childRoomIds: string[] = [],
   ): SpaceSummary {
-    return {
+    return spaceSummary({
       id,
       accountId,
       name: id,
-      initial: 'S',
-      avatarMxc: null,
       childRoomIds,
-    };
+    });
   }
 
   // Cross-account rooms the aggregator projects while "All accounts" is on: two plain
