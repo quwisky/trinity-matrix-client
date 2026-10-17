@@ -1,10 +1,11 @@
 @if (invites().length) {
   <div class="category">Invites</div>
-  @for (invite of invites(); track invite.roomId) {
+  @for (invite of invites(); track invite.roomId; let index = $index) {
     @let kind = invite.isSpace ? 'Space' : invite.isDirect ? 'DM' : 'Room';
     <div class="invite">
       <button
         type="button"
+        #inviteOpen
         class="invite__open"
         data-testid="invite-open"
         [attr.aria-label]="
@@ -49,12 +50,24 @@
         <button
           trnIconButton
           class="invite__btn decline"
-          (click)="declineInvite.emit(invite)"
+          (click)="answerInvite(invite, index, 'decline')"
           [attr.aria-label]="'Decline invite to ' + invite.name"
           trnTooltip="Decline"
         >
           <trn-icon name="x" motion="rotate" />
         </button>
+        @if (canDeclineAndReport(invite)) {
+          <button
+            trnIconButton
+            class="invite__btn decline"
+            (click)="answerInvite(invite, index, 'decline-and-report')"
+            [attr.aria-label]="'Decline and report ' + invite.name"
+            trnTooltip="Decline and report"
+            data-testid="invite-decline-and-report"
+          >
+            <trn-icon name="flag" motion="pop" />
+          </button>
+        }
       </div>
     </div>
   }

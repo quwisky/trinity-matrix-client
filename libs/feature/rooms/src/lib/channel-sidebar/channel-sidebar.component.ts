@@ -194,6 +194,7 @@ export class ChannelSidebarComponent {
   /** Accept / decline a pending invite. */
   readonly acceptInvite = output<PendingInvite>();
   readonly declineInvite = output<PendingInvite>();
+  readonly declineAndReport = output<PendingInvite>();
   /** Header search icon — open the global quick switcher (Ctrl/Cmd+K). */
   readonly openSwitcher = output<void>();
   /** Set a room's notification level (all / mentions / mute) from its ⋮ menu. */

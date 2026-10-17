@@ -127,6 +127,7 @@ describe('InvitesService', () => {
     expect(svc.pendingInvites()[1]).toMatchObject({
       name: 'Beta',
       initial: 'B',
+      inviterId: '@al:hs',
       inviterName: 'Al',
     });
   });
@@ -373,5 +374,81 @@ describe('InvitesService per-account answers', () => {
       firstValueFrom(svc.acceptInvite('!i:hs', '@gone:hs')),
     ).rejects.toThrow('Not signed in.');
     expect(activeClient.joinRoom).not.toHaveBeenCalled();
+  });
+});
+
+describe('InvitesService answering an invite that may have moved on', () => {
+  function owning(membership: string) {
+    let current = membership;
+    const listeners = new Set<(room: { roomId: string }) => void>();
+    const client = {
+      getRoom: (roomId: string) =>
+        roomId === '!r:hs' ? { roomId, getMyMembership: () => current } : null,
+      leave: vi.fn().mockResolvedValue({}),
+      on: vi.fn((_e: string, fn: (room: { roomId: string }) => void) =>
+        listeners.add(fn),
+      ),
+      off: vi.fn((_e: string, fn: (room: { roomId: string }) => void) =>
+        listeners.delete(fn),
+      ),
+      setMembership(next: string) {
+        current = next;
+        const room = client.getRoom('!r:hs');
+        for (const fn of [...listeners]) if (room) fn(room);
+      },
+      listeners,
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        InvitesService,
+        MockProvider(MatrixClientService, {
+          activeUserId: signal<string | null>('@me:hs').asReadonly(),
+          clientFor: (id: string) =>
+            id === '@me:hs' ? asClient(client) : null,
+        }),
+      ],
+    });
+    return { svc: TestBed.inject(InvitesService), client };
+  }
+
+  it('declines an invite that is still pending', async () => {
+    const { svc, client } = owning('invite');
+
+    await expect(
+      firstValueFrom(svc.declineIfInvited('!r:hs', '@me:hs')),
+    ).resolves.toBe('declined');
+    expect(client.leave).toHaveBeenCalledExactlyOnceWith('!r:hs');
+  });
+
+  it('treats an invite already declined elsewhere as declined, without leaving again', async () => {
+    const { svc, client } = owning('leave');
+
+    await expect(
+      firstValueFrom(svc.declineIfInvited('!r:hs', '@me:hs')),
+    ).resolves.toBe('declined');
+    expect(client.leave).not.toHaveBeenCalled();
+  });
+
+  it('never leaves a room this account joined in the meantime', async () => {
+    const { svc, client } = owning('join');
+
+    await expect(
+      firstValueFrom(svc.declineIfInvited('!r:hs', '@me:hs')),
+    ).resolves.toBe('joined');
+    expect(client.leave).not.toHaveBeenCalled();
+  });
+
+  it('says when the invite stops pending, and lets go of its listener', async () => {
+    const { svc, client } = owning('invite');
+    const settled = vi.fn();
+    const watch = svc.inviteSettled('!r:hs', '@me:hs').subscribe(settled);
+
+    client.setMembership('invite');
+    expect(settled).not.toHaveBeenCalled();
+    client.setMembership('join');
+
+    expect(settled).toHaveBeenCalledOnce();
+    expect(watch.closed).toBe(true);
+    expect(client.listeners.size).toBe(0);
   });
 });

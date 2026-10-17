@@ -5,12 +5,13 @@ import {
   type PendingInvite,
 } from '@trinity/data-access/room-library';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { EMPTY, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomLinkPreviewComponent } from '../room-link-preview/room-link-preview.component';
 import { AccountRoutingService } from './account-routing.service';
 import { InviteActionsService } from './invite-actions.service';
 import { ShellStatusService } from './shell-status.service';
+import { ReportService } from '../report/report.service';
 
 const invite: PendingInvite = {
   roomId: '!inv:hs',
@@ -19,6 +20,7 @@ const invite: PendingInvite = {
   initial: 'B',
   avatarMxc: null,
   inviterName: 'Ann',
+  inviterId: '@ann:hs',
   isSpace: false,
   isDirect: false,
 };
@@ -27,6 +29,7 @@ function setup(result: unknown) {
   const openAndWait$ = vi.fn(() => of(result));
   const onSelectRoomSelection = vi.fn();
   const openConfirmedLinkedRoom = vi.fn();
+  const declineAndReport$ = vi.fn(() => of('declined' as const));
   TestBed.configureTestingModule({
     providers: [
       InviteActionsService,
@@ -37,6 +40,7 @@ function setup(result: unknown) {
       } as never),
       MockProvider(ShellStatusService),
       MockProvider(InvitesService),
+      MockProvider(ReportService, { declineAndReport$ }),
     ],
   });
   return {
@@ -44,6 +48,7 @@ function setup(result: unknown) {
     openAndWait$,
     onSelectRoomSelection,
     openConfirmedLinkedRoom,
+    declineAndReport$,
   };
 }
 
@@ -117,5 +122,35 @@ describe('InviteActionsService.onPreviewInvite', () => {
     const { svc, onSelectRoomSelection } = setup(null);
     svc.onPreviewInvite(invite);
     expect(onSelectRoomSelection).not.toHaveBeenCalled();
+  });
+});
+
+describe('InviteActionsService.onDeclineAndReport', () => {
+  it('reports and declines as the invited account, naming the inviter', () => {
+    const { svc, declineAndReport$ } = setup(null);
+
+    svc.onDeclineAndReport(invite);
+
+    expect(declineAndReport$).toHaveBeenCalledExactlyOnceWith({
+      accountId: '@work:hs',
+      roomId: '!inv:hs',
+      inviterId: '@ann:hs',
+      inviterName: 'Ann',
+    });
+  });
+
+  it('announces when the answer has finished, declined or not', () => {
+    const { svc, declineAndReport$ } = setup(null);
+    const answered: unknown[] = [];
+    svc.answered.subscribe((a) => answered.push(a));
+
+    svc.onDeclineAndReport(invite);
+    declineAndReport$.mockReturnValueOnce(EMPTY as never);
+    svc.onDeclineAndReport(invite);
+
+    expect(answered).toEqual([
+      { roomId: '!inv:hs', declined: true },
+      { roomId: '!inv:hs', declined: false },
+    ]);
   });
 });

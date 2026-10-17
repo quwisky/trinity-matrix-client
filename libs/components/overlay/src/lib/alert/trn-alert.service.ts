@@ -100,10 +100,21 @@ export class TrnAlertService {
         AlertDialogData,
         TrnAlertDialogComponent
       >(TrnAlertDialogComponent, this.config(data, opts));
-      return ref.closed.pipe(
+      const answer = ref.closed.pipe(
         take(1),
         map((value) => value ?? null),
       );
+      return new Observable<string | null>((subscriber) => {
+        // Subscribed before `closeWhen`, so a withdrawal that emits at once is still seen.
+        const result = answer.subscribe(subscriber);
+        const withdrawn = opts.closeWhen
+          ?.pipe(take(1))
+          .subscribe(() => ref.close());
+        return () => {
+          result.unsubscribe();
+          withdrawn?.unsubscribe();
+        };
+      });
     });
   }
 

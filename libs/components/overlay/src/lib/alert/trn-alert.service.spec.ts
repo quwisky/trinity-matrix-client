@@ -107,6 +107,26 @@ describe('TrnAlertService', () => {
     expect(withdrawn.observed).toBe(false);
   });
 
+  it('closes a prompt as cancelled when what it asks about stops applying', async () => {
+    const withdrawn = new Subject<void>();
+    const result = firstValueFrom(
+      TestBed.inject(TrnAlertService).prompt$({
+        header: 'Report room',
+        confirmText: 'Decline and report',
+        closeWhen: withdrawn,
+      }),
+    );
+    render();
+    expect(document.querySelector('trn-alert-dialog')).not.toBeNull();
+
+    withdrawn.next();
+    render();
+
+    expect(await result).toBeNull();
+    expect(document.querySelector('trn-alert-dialog')).toBeNull();
+    expect(withdrawn.observed).toBe(false);
+  });
+
   it('returns focus to the control a tap pressed, which never took focus', async () => {
     // jsdom's click() moves no focus, which is exactly a WebKit tap.
     const svc = TestBed.inject(TrnAlertService);

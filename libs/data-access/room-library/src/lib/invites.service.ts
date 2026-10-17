@@ -1,11 +1,12 @@
 import { Injectable, inject, signal } from '@angular/core';
 import {
   ClientEvent,
+  KnownMembership,
   RoomEvent,
   type MatrixClient,
   type Room,
 } from 'matrix-js-sdk';
-import { Observable, defer, from, map, throwError } from 'rxjs';
+import { Observable, defer, from, map, of, throwError } from 'rxjs';
 import {
   MatrixClientService,
   projectFromClient,
@@ -25,6 +26,8 @@ export interface PendingInvite {
   avatarMxc: string | null;
   /** Display name of whoever invited us (best-effort), for the subtitle. */
   inviterName: string;
+  /** The inviter's user ID, or '' when the invite event names nobody. */
+  inviterId: string;
   /** Whether the invited room is a Space (`type: m.space`) vs a normal room. */
   isSpace: boolean;
   /** Whether the invite is to a direct message (`is_direct` on our member event). */
@@ -90,6 +93,46 @@ export class InvitesService {
     });
   }
 
+  /**
+   * Decline only if the invite is still pending on `accountId`: re-reads its membership just
+   * before leaving, so an invite accepted on another device is never left as a joined room.
+   * Resolves 'joined' then, and 'declined' when the invite is already gone. Cold.
+   */
+  declineIfInvited(
+    roomId: string,
+    accountId: string,
+  ): Observable<'declined' | 'joined'> {
+    return defer(() => {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      const membership = client.getRoom(roomId)?.getMyMembership();
+      if (membership === KnownMembership.Join) return of('joined' as const);
+      if (membership !== KnownMembership.Invite) return of('declined' as const);
+      return from(client.leave(roomId)).pipe(map(() => 'declined' as const));
+    });
+  }
+
+  /** Emits once, then completes, when `accountId`'s invite to `roomId` stops pending. */
+  inviteSettled(roomId: string, accountId: string): Observable<void> {
+    return new Observable<void>((subscriber) => {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) return;
+      const onMembership = (room: Room): void => {
+        if (
+          room.roomId === roomId &&
+          room.getMyMembership() !== KnownMembership.Invite
+        ) {
+          subscriber.next();
+          subscriber.complete();
+        }
+      };
+      client.on(RoomEvent.MyMembership, onMembership);
+      return () => client.off(RoomEvent.MyMembership, onMembership);
+    });
+  }
+
   /** The client owning an invite: the named account's, else the active one. */
   private clientOwning(accountId?: string): MatrixClient | null {
     if (accountId) {
@@ -151,6 +194,7 @@ export function buildInvite(
     // would return the inviter for every group-room and space invite.
     avatarMxc: roomAvatarMxc(room, isDirect),
     inviterName: inviter?.name || inviterId || 'Someone',
+    inviterId,
     isSpace: room.isSpaceRoom(),
     isDirect,
   };
