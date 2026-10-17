@@ -17,7 +17,7 @@ import {
 } from '@trinity/components/overlay';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { InvitePermissionService } from '@trinity/data-access/room-library';
-import { Subject, catchError, concatMap, last, map, of } from 'rxjs';
+import { catchError, last, map, of } from 'rxjs';
 
 type InviteChoice = 'allow' | 'block';
 
@@ -56,8 +56,7 @@ export class InvitePermissionSettingComponent {
    * save must move the bound value back for the control to follow.
    */
   private readonly pending = signal<InviteChoice | null>(null);
-  /** Writes run one after another, so the newest choice is also the last one stored. */
-  private readonly choices = new Subject<InviteChoice>();
+  /** Writes still settling; the service runs them in order and finishes them if this closes. */
   private queued = 0;
 
   protected readonly options = OPTIONS;
@@ -79,22 +78,6 @@ export class InvitePermissionSettingComponent {
       .runProjection()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
-    this.choices
-      .pipe(
-        concatMap((choice) =>
-          this.permission.setBlocked(choice === 'block').pipe(
-            last(undefined, undefined),
-            map(() => true),
-            catchError(() => of(false)),
-          ),
-        ),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe((saved) => {
-        this.queued -= 1;
-        this.error.set(saved ? null : "Couldn't change this. Try again.");
-        if (this.queued === 0) this.pending.set(null);
-      });
   }
 
   protected choose(choice: InviteChoice): void {
@@ -102,6 +85,18 @@ export class InvitePermissionSettingComponent {
     this.error.set(null);
     this.pending.set(choice);
     this.queued += 1;
-    this.choices.next(choice);
+    this.permission
+      .setBlocked(choice === 'block')
+      .pipe(
+        last(undefined, undefined),
+        map(() => true),
+        catchError(() => of(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((saved) => {
+        this.queued -= 1;
+        this.error.set(saved ? null : "Couldn't change this. Try again.");
+        if (this.queued === 0) this.pending.set(null);
+      });
   }
 }

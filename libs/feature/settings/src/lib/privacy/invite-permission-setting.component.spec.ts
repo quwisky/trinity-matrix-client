@@ -112,7 +112,7 @@ describe('InvitePermissionSettingComponent', () => {
     );
   });
 
-  it('queues quick changes, so the newest choice is the last write', async () => {
+  it('hands every choice to the service at once, so closing Settings loses none', async () => {
     const writes: Subject<void>[] = [];
     const setBlocked = vi.fn((): Observable<void> => {
       const write = new Subject<void>();
@@ -125,15 +125,27 @@ describe('InvitePermissionSettingComponent', () => {
     fixture.detectChanges();
     screen.getByRole('radio', { name: /Allow all invites/ }).click();
     fixture.detectChanges();
+    fixture.destroy();
 
-    expect(setBlocked).toHaveBeenCalledTimes(1);
-    expect(setBlocked).toHaveBeenLastCalledWith(true);
-    writes[0].next();
+    expect(setBlocked.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('shows the newest choice until every write has settled', async () => {
+    const writes: Subject<void>[] = [];
+    const setBlocked = vi.fn((): Observable<void> => {
+      const write = new Subject<void>();
+      writes.push(write);
+      return write;
+    });
+    const { fixture } = await setup({ blocked: false, setBlocked });
+
+    screen.getByRole('radio', { name: /Block all invites/ }).click();
+    fixture.detectChanges();
+    screen.getByRole('radio', { name: /Allow all invites/ }).click();
+    fixture.detectChanges();
     writes[0].complete();
     fixture.detectChanges();
 
-    expect(setBlocked).toHaveBeenCalledTimes(2);
-    expect(setBlocked).toHaveBeenLastCalledWith(false);
     expect(
       screen.getByRole('radio', { name: /Allow all invites/ }),
     ).toBeChecked();

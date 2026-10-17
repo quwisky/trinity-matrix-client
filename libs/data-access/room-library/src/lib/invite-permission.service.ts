@@ -9,6 +9,7 @@ import {
   combineLatest,
   defer,
   from,
+  lastValueFrom,
   map,
   of,
   switchMap,
@@ -51,6 +52,7 @@ interface InvitePermissionAccountData {
 @Injectable({ providedIn: 'root' })
 export class InvitePermissionService {
   private readonly matrix = inject(MatrixClientService);
+  private writes: Promise<void> = Promise.resolve();
   private readonly supportByClient = new WeakMap<MatrixClient, PerType>();
   /** Which types the server honours; null while unknown. */
   private readonly support = signal<PerType | null>(null);
@@ -105,43 +107,55 @@ export class InvitePermissionService {
   }
 
   /**
-   * Block or allow every invite to the active account. Cold. Allowing also clears a block in
-   * the unstable slot, which a server advertising both types still honours.
+   * Block or allow every invite to the account active when this is called. Writes run one at a
+   * time, in call order, and a queued write still runs if its caller unsubscribes. Allowing
+   * also clears a block in the unstable slot, which a server advertising both types honours.
    */
   setBlocked(blocked: boolean): Observable<void> {
+    const client = this.matrix.isInitialized ? this.matrix.instance : null;
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
-      const client = this.matrix.instance;
-      return this.probe(client).pipe(
-        switchMap((support) => {
-          if (!support || (!support.stable && !support.unstable)) {
-            return throwError(
-              () => new Error('This server does not support invite blocking.'),
-            );
-          }
-          if (blocked) {
-            return write(
-              client,
-              support.stable
-                ? INVITE_PERMISSION_EVENT
-                : UNSTABLE_INVITE_PERMISSION_EVENT,
-              { default_action: 'block' },
-            );
-          }
-          const slots = readSlots(client);
-          const writes: Observable<void>[] = [];
-          if (support.stable) {
-            writes.push(write(client, INVITE_PERMISSION_EVENT, {}));
-          }
-          if (!support.stable || slots.unstable) {
-            writes.push(write(client, UNSTABLE_INVITE_PERMISSION_EVENT, {}));
-          }
-          return combineLatest(writes).pipe(map(() => void 0));
-        }),
+      const run = this.writes.then(() =>
+        lastValueFrom(this.write(client, blocked), { defaultValue: undefined }),
       );
+      this.writes = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      return from(run);
     });
+  }
+
+  private write(client: MatrixClient, blocked: boolean): Observable<void> {
+    return this.probe(client).pipe(
+      switchMap((support) => {
+        if (!support || (!support.stable && !support.unstable)) {
+          return throwError(
+            () => new Error('This server does not support invite blocking.'),
+          );
+        }
+        if (blocked) {
+          return write(
+            client,
+            support.stable
+              ? INVITE_PERMISSION_EVENT
+              : UNSTABLE_INVITE_PERMISSION_EVENT,
+            { default_action: 'block' },
+          );
+        }
+        const slots = readSlots(client);
+        const writes: Observable<void>[] = [];
+        if (support.stable) {
+          writes.push(write(client, INVITE_PERMISSION_EVENT, {}));
+        }
+        if (!support.stable || slots.unstable) {
+          writes.push(write(client, UNSTABLE_INVITE_PERMISSION_EVENT, {}));
+        }
+        return combineLatest(writes).pipe(map(() => void 0));
+      }),
+    );
   }
 
   private probe(client: MatrixClient): Observable<PerType | null> {

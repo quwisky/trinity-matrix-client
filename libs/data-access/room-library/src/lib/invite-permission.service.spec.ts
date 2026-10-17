@@ -277,4 +277,64 @@ describe('InvitePermissionService', () => {
     await expect(firstValueFrom(svc.setBlocked(true))).rejects.toThrow();
     expect(client.setAccountData).not.toHaveBeenCalled();
   });
+
+  it('queues writes, and a queued write still lands after its caller has gone', async () => {
+    const client = fakeClient('@me:hs', STABLE_SERVER);
+    const echoes: (() => void)[] = [];
+    client.setAccountData.mockImplementation(
+      (type: string, content: object) =>
+        new Promise((resolve) =>
+          echoes.push(() => {
+            client.syncFromElsewhere(type, content);
+            resolve({});
+          }),
+        ),
+    );
+    const { svc } = setup(client);
+
+    const first = firstValueFrom(svc.setBlocked(true));
+    const second = svc.setBlocked(false).subscribe();
+    await flush();
+    expect(client.setAccountData).toHaveBeenCalledTimes(1);
+
+    second.unsubscribe();
+    echoes.shift()?.();
+    await first;
+    await flush();
+
+    expect(client.setAccountData).toHaveBeenCalledTimes(2);
+    expect(client.setAccountData).toHaveBeenLastCalledWith(
+      INVITE_PERMISSION_EVENT,
+      {},
+    );
+  });
+
+  it('writes each choice to the account it was made on, even after a switch', async () => {
+    const mine = fakeClient('@me:hs', STABLE_SERVER);
+    let release = (): void => undefined;
+    mine.setAccountData.mockImplementation(
+      () => new Promise((resolve) => (release = () => resolve({}))),
+    );
+    const other = fakeClient('@other:hs', STABLE_SERVER);
+    const { svc, switchTo } = setup(mine);
+
+    // The choice is made on @me:hs; the switch lands before anything subscribes to it.
+    const choice = svc.setBlocked(true);
+    switchTo(other);
+    const first = firstValueFrom(choice);
+    const second = firstValueFrom(svc.setBlocked(false));
+    await flush();
+    release();
+    await first;
+    await second;
+
+    expect(mine.setAccountData).toHaveBeenCalledExactlyOnceWith(
+      INVITE_PERMISSION_EVENT,
+      { default_action: 'block' },
+    );
+    expect(other.setAccountData).toHaveBeenCalledExactlyOnceWith(
+      INVITE_PERMISSION_EVENT,
+      {},
+    );
+  });
 });
