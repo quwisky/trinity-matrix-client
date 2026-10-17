@@ -14,19 +14,23 @@ final class NotificationService: UNNotificationServiceExtension {
         _ request: UNNotificationRequest,
         withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
     ) {
-        // An unknown or removed account, or another kind of push, keeps the gateway's alert.
-        guard let content = request.content.mutableCopy() as? UNMutableNotificationContent,
-              let render = PushRender(
-                  userInfo: request.content.userInfo,
-                  store: PushHandoffStore.fromMainBundle(),
-                  api: URLSessionMatrixPushAPI()
-              )
-        else {
+        guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else {
             contentHandler(request.content)
             return
         }
+        let store = PushHandoffStore.fromMainBundle()
+        let present: (UNMutableNotificationContent) -> Void =
+            PushRenderRules.presenting(store: store, handler: contentHandler)
+        guard PushRenderRules.rendersMessage(store: store),
+              let render = PushRender(userInfo: request.content.userInfo, store: store, api: URLSessionMatrixPushAPI())
+        else {
+            // Always hide (no fallback naming the room, no fetch), or an unknown account or
+            // another kind of push: the gateway's alert, which carries no message text.
+            present(content)
+            return
+        }
         Self.apply(render.fallback, to: content)
-        let delivery = deliveries.begin(content, handler: contentHandler)
+        let delivery = deliveries.begin(content, handler: present)
         delivery.track(Task {
             let rendered = await render.resolve()
             delivery.update { Self.apply(rendered, to: $0) }
@@ -35,7 +39,7 @@ final class NotificationService: UNNotificationServiceExtension {
     }
 
     /// Delivers whatever each pending request has ready: its rendered text, or its room-name
-    /// fallback.
+    /// fallback; under Always hide, "New message".
     override func serviceExtensionTimeWillExpire() {
         deliveries.finishAll()
     }
@@ -48,3 +52,5 @@ final class NotificationService: UNNotificationServiceExtension {
         content.sound = rendered.sound ? .default : nil
     }
 }
+
+extension UNMutableNotificationContent: @retroactive PushTextContent {}

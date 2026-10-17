@@ -24,12 +24,15 @@ class PushRenderRulesTest {
                 HandoffRoom(it.getString("name"), it.getBoolean("direct"))
             }
             val expected = case.getJSONObject("expected")
+            val mode = case.optString("mode", NotificationTextMode.SHOW)
+            assertTrue("${case.getString("name")}: unknown mode", mode in NotificationTextMode.ALL)
             val actual = PushRenderRules.render(
                 case.optJSONObject("event"),
                 storedRoom,
                 case.opt("stateRoomName") as? String,
                 case.opt("senderName") as? String,
                 case.optBoolean("tokenExpired", false),
+                mode,
             )
             assertEquals(
                 case.getString("name"),
@@ -41,5 +44,16 @@ class PushRenderRulesTest {
                 actual,
             )
         }
+    }
+
+    @Test
+    fun alwaysHideNeverReadsTheEvent() {
+        val event = JSONObject()
+            .put("type", "m.room.message")
+            .put("content", JSONObject().put("msgtype", "m.text").put("body", "Secret plans"))
+        assertEquals(
+            RenderedNotification("", "", "New message"),
+            PushRenderRules.render(event, HandoffRoom("Team", false), "Team", "Alice", false, NotificationTextMode.ALWAYS_HIDE),
+        )
     }
 }

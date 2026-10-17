@@ -13,6 +13,20 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.content.ContextCompat
 
+/** How one push is shown under App lock's Notification text. */
+enum class DevicePresentation { FULL, FULL_WITH_GENERIC_PUBLIC, GENERIC_ONLY }
+
+/** An unknown mode hides everything. */
+fun devicePresentation(mode: String): DevicePresentation = when (mode) {
+    NotificationTextMode.SHOW -> DevicePresentation.FULL
+    NotificationTextMode.HIDE_ON_LOCK_SCREEN -> DevicePresentation.FULL_WITH_GENERIC_PUBLIC
+    else -> DevicePresentation.GENERIC_ONLY
+}
+
+/** The presentation the store's mirror asks for; a store fault hides everything. */
+fun presentationFor(store: HandoffReader): DevicePresentation =
+    devicePresentation(BoundedPushResolver.FaultTolerantReader(store).notificationText())
+
 /**
  * Posts, updates or cancels the notification for one device-rendered push: one
  * MessagingStyle notification per account and room on the `messages` channel, newer
@@ -21,7 +35,8 @@ import androidx.core.content.ContextCompat
  */
 class DevicePushHandler(
     private val context: Context,
-    private val resolver: BoundedPushResolver = BoundedPushResolver(PushHandoffStore(context), HttpMatrixApi()),
+    private val handoff: HandoffReader = PushHandoffStore(context),
+    private val resolver: BoundedPushResolver = BoundedPushResolver(handoff, HttpMatrixApi()),
 ) {
     fun handle(data: Map<String, String>, messageId: String?) {
         val compat = NotificationManagerCompat.from(context)
@@ -46,6 +61,13 @@ class DevicePushHandler(
         ensureChannel()
         val key = roomNotificationKey(outcome.accountId, outcome.roomId ?: outcome.eventId)
         val rendered = outcome.notification
+        // App lock's Notification text, read as late as possible.
+        val presentation = presentationFor(handoff)
+        if (presentation == DevicePresentation.GENERIC_ONLY) {
+            // A plain notification: replacing the room's one drops its conversation history too.
+            compat.notify(key.tag, key.id, genericNotification(outcome, key, messageId).build())
+            return
+        }
         val previous = platformManager()?.activeNotifications
             ?.firstOrNull { it.tag == key.tag && it.id == key.id }
             ?.notification
@@ -70,9 +92,30 @@ class DevicePushHandler(
             .setAutoCancel(true)
             .setSilent(!outcome.sound)
             .setContentIntent(tapIntent(outcome, key, messageId))
+            .apply {
+                if (presentation == DevicePresentation.FULL_WITH_GENERIC_PUBLIC) {
+                    // Shown on a secure lock screen where the lock-screen setting hides sensitive content.
+                    setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                    setPublicVersion(genericNotification(outcome, key, messageId).build())
+                }
+            }
             .build()
         compat.notify(key.tag, key.id, notification)
     }
+
+    /** "New message" and nothing else: no title (the system shows the app's name), sender or history. */
+    private fun genericNotification(
+        outcome: PushOutcome.Post,
+        key: RoomNotificationKey,
+        messageId: String?,
+    ): NotificationCompat.Builder = NotificationCompat.Builder(context, MESSAGES_CHANNEL_ID)
+        .setSmallIcon(R.drawable.trinity_push_small_icon)
+        .setColor(ContextCompat.getColor(context, R.color.trinity_push_color))
+        .setContentText(PushRenderRules.FALLBACK_BODY)
+        .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+        .setAutoCancel(true)
+        .setSilent(!outcome.sound)
+        .setContentIntent(tapIntent(outcome, key, messageId))
 
     /**
      * Opens the host's launcher activity (MainActivity) with the push's extras, as an explicit

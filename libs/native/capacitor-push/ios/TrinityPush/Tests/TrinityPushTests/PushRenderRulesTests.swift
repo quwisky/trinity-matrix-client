@@ -25,7 +25,11 @@ final class PushRenderRulesTests: XCTestCase {
                 storedRoom: storedRoom,
                 stateRoomName: testCase["stateRoomName"] as? String,
                 senderName: testCase["senderName"] as? String,
-                tokenExpired: testCase["tokenExpired"] as? Bool ?? false
+                tokenExpired: testCase["tokenExpired"] as? Bool ?? false,
+                mode: try XCTUnwrap(
+                    NotificationTextMode(rawValue: testCase["mode"] as? String ?? "show"),
+                    "\(name): unknown mode"
+                )
             )
             XCTAssertEqual(
                 actual,
@@ -37,6 +41,108 @@ final class PushRenderRulesTests: XCTestCase {
                 name
             )
         }
+    }
+
+    func testAlwaysHideNeverReadsTheEvent() {
+        let rendered = PushRenderRules.render(
+            event: ["type": "m.room.message", "content": ["msgtype": "m.text", "body": "Secret plans"]],
+            storedRoom: HandoffRoom(name: "Team", direct: false),
+            stateRoomName: "Team",
+            senderName: "Alice",
+            mode: .alwaysHide
+        )
+        XCTAssertEqual(rendered, RenderedNotification(title: "", subtitle: "", body: "New message"))
+    }
+
+    private final class FakeContent: PushTextContent {
+        var title = "Team"
+        var subtitle = "Alice"
+        var body = "Secret plans"
+        var categoryIdentifier = "other"
+    }
+
+    func testAlwaysHideLeavesOnlyNewMessageAndNoCategory() {
+        let content = FakeContent()
+        PushRenderRules.present(.alwaysHide, on: content)
+        XCTAssertEqual(
+            [content.title, content.subtitle, content.body, content.categoryIdentifier],
+            ["", "", "New message", ""]
+        )
+    }
+
+    func testHideOnTheLockScreenKeepsTheTextInThePrivateCategory() {
+        let content = FakeContent()
+        PushRenderRules.present(.hideOnLockScreen, on: content)
+        XCTAssertEqual(
+            [content.title, content.subtitle, content.body, content.categoryIdentifier],
+            ["Team", "Alice", "Secret plans", "trinity.message.private"]
+        )
+    }
+
+    func testShowChangesNothing() {
+        let content = FakeContent()
+        PushRenderRules.present(.show, on: content)
+        XCTAssertEqual(
+            [content.title, content.subtitle, content.body, content.categoryIdentifier],
+            ["Team", "Alice", "Secret plans", "other"]
+        )
+    }
+
+    private struct FixedReader: HandoffReading {
+        let mode: NotificationTextMode
+        func account(_ userId: String) -> HandoffAccount? { nil }
+        func room(_ userId: String, _ roomId: String) -> HandoffRoom? { nil }
+        func notificationText() -> NotificationTextMode { mode }
+    }
+
+    func testNoStoreHidesEverythingAndAStoreSaysWhatItHolds() {
+        XCTAssertEqual(NotificationTextMode.mirrored(by: nil), .alwaysHide)
+        for mode in [NotificationTextMode.show, .hideOnLockScreen, .alwaysHide] {
+            XCTAssertEqual(NotificationTextMode.mirrored(by: FixedReader(mode: mode)), mode)
+        }
+    }
+
+    private final class ChangingReader: HandoffReading {
+        var mode: NotificationTextMode
+        init(_ mode: NotificationTextMode) { self.mode = mode }
+        func account(_ userId: String) -> HandoffAccount? { nil }
+        func room(_ userId: String, _ roomId: String) -> HandoffRoom? { nil }
+        func notificationText() -> NotificationTextMode { mode }
+    }
+
+    func testAChangeMadeWhileAPushResolvesAppliesWhenTimeRunsOut() {
+        let reader = ChangingReader(.show)
+        var delivered: [FakeContent] = []
+        let deliveries = PushDeliveries<FakeContent>()
+        XCTAssertTrue(PushRenderRules.rendersMessage(store: reader))
+        _ = deliveries.begin(FakeContent(), handler: PushRenderRules.presenting(store: reader) { delivered.append($0) })
+        reader.mode = .alwaysHide
+        deliveries.finishAll()
+        XCTAssertEqual(delivered.count, 1)
+        XCTAssertEqual(
+            delivered.map { [$0.title, $0.subtitle, $0.body, $0.categoryIdentifier] },
+            [["", "", "New message", ""]]
+        )
+    }
+
+    func testTheModeAtHandOverWinsOverTheModeAtTheStart() {
+        let reader = ChangingReader(.alwaysHide)
+        XCTAssertFalse(PushRenderRules.rendersMessage(store: reader))
+        var delivered: [FakeContent] = []
+        let present: (FakeContent) -> Void = PushRenderRules.presenting(store: reader) { delivered.append($0) }
+        reader.mode = .hideOnLockScreen
+        present(FakeContent())
+        XCTAssertEqual(delivered.first?.categoryIdentifier, "trinity.message.private")
+        XCTAssertEqual(delivered.first?.body, "Secret plans")
+    }
+
+    func testWithNoStoreNothingIsRenderedAndEverythingIsHidden() {
+        XCTAssertFalse(PushRenderRules.rendersMessage(store: nil))
+        var delivered: [FakeContent] = []
+        let present: (FakeContent) -> Void = PushRenderRules.presenting(store: nil) { delivered.append($0) }
+        present(FakeContent())
+        XCTAssertEqual(delivered.first?.body, "New message")
+        XCTAssertEqual(delivered.first?.title, "")
     }
 
     /// The repository's shared fixture, found by walking up from this file, so moving the
