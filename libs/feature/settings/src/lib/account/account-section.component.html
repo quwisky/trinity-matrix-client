@@ -1,3 +1,7 @@
+<p class="sr-only" role="status" data-testid="account-options-status">
+  {{ announcement() }}
+</p>
+
 <trn-settings-group
   description="Manage the credentials and account controls provided by your homeserver."
 >
@@ -6,7 +10,7 @@
       class="flex flex-col items-start gap-2 py-3"
       data-testid="account-options-unknown"
     >
-      <p class="m-0 text-sm text-muted-foreground" aria-live="polite">
+      <p class="m-0 text-sm text-muted-foreground">
         Trinity couldn’t load the account options from {{ server() }}. Check
         your connection and try again.
       </p>

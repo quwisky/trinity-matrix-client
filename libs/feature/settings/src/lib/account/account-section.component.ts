@@ -11,7 +11,7 @@ import {
   toObservable,
   toSignal,
 } from '@angular/core/rxjs-interop';
-import { Subject, of, startWith, switchMap } from 'rxjs';
+import { Subject, of, startWith, switchMap, tap } from 'rxjs';
 import {
   FormField,
   FormRoot,
@@ -112,6 +112,8 @@ export class AccountSectionComponent {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly retries = new Subject<void>();
+  /** What a screen reader hears about Try again; the visible text alone isn't announced. */
+  protected readonly announcement = signal('');
 
   /** The account this section shows. */
   readonly accountId = inject(MatrixClientService).activeUserId;
@@ -119,6 +121,7 @@ export class AccountSectionComponent {
   /** The server's account API; null until it has answered. */
   readonly serverApi = toSignal(
     toObservable(this.accountId).pipe(
+      tap(() => this.announcement.set('')),
       switchMap((id) =>
         id
           ? this.retries.pipe(
@@ -126,7 +129,17 @@ export class AccountSectionComponent {
               // A retry keeps the current answer while it asks, so Try again keeps focus.
               switchMap((_, retry) => {
                 const api = this.auth.accountManagementFor(id);
-                return retry === 0 ? api.pipe(startWith(null)) : api;
+                return retry === 0
+                  ? api.pipe(startWith(null))
+                  : api.pipe(
+                      tap(({ kind }) =>
+                        this.announcement.set(
+                          kind === 'unknown'
+                            ? 'Still couldn’t load the account options.'
+                            : 'Account options loaded.',
+                        ),
+                      ),
+                    );
               }),
             )
           : of(null),
@@ -150,6 +163,7 @@ export class AccountSectionComponent {
 
   /** Ask the server again after it could not be reached. */
   retryServerApi(): void {
+    this.announcement.set('Trying again…');
     this.retries.next();
   }
 

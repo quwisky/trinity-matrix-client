@@ -45,6 +45,8 @@ export class DeleteAccountGroupComponent {
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly retries = new Subject<void>();
+  /** What a screen reader hears about Try again; the visible text alone isn't announced. */
+  protected readonly announcement = signal('');
 
   protected readonly copy = DELETE_ACCOUNT_COPY;
 
@@ -56,13 +58,24 @@ export class DeleteAccountGroupComponent {
       tap(() => {
         this.providerOpened.set(false);
         this.checkMessage.set(null);
+        this.announcement.set('');
       }),
       switchMap((id) =>
         this.retries.pipe(
           startWith(undefined),
           switchMap((_, retry) => {
             const plan = this.launcher.plan(id);
-            return retry === 0 ? plan.pipe(startWith(null)) : plan;
+            return retry === 0
+              ? plan.pipe(startWith(null))
+              : plan.pipe(
+                  tap(({ kind }) =>
+                    this.announcement.set(
+                      kind === 'unknown'
+                        ? 'Still couldn’t load how to delete this account.'
+                        : 'Delete account options loaded.',
+                    ),
+                  ),
+                );
           }),
         ),
       ),
@@ -87,6 +100,7 @@ export class DeleteAccountGroupComponent {
 
   /** Ask the server again after it could not be reached. */
   retryPlan(): void {
+    this.announcement.set('Trying again…');
     this.retries.next();
   }
 

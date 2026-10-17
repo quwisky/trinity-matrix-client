@@ -171,5 +171,6 @@ describe('DeleteAccountGroupComponent', () => {
     await test.fixture.whenStable();
 
     expect(screen.getByRole('button', { name: 'Try again' })).toBe(retry);
+    expect(screen.getByRole('status').textContent).toContain('Trying again…');
   });
 });

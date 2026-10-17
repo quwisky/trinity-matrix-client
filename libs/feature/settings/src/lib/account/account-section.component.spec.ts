@@ -137,6 +137,9 @@ describe('AccountSectionComponent', () => {
 
     expect(auth.accountManagementFor).toHaveBeenCalledTimes(2);
     expect(screen.queryByTestId('account-options-unknown')).toBeNull();
+    expect(screen.getByTestId('account-options-status').textContent).toContain(
+      'Account options loaded.',
+    );
   });
 
   it('keeps the message and Try again in place while it asks again', async () => {
@@ -149,6 +152,18 @@ describe('AccountSectionComponent', () => {
 
     expect(screen.getByRole('button', { name: 'Try again' })).toBe(retry);
     expect(screen.queryByTestId('change-password')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('Trying again…');
+  });
+
+  it('says so when asking again fails again', async () => {
+    const { fixture } = await renderSection({ kind: 'unknown' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await fixture.whenStable();
+
+    expect(screen.getByRole('status').textContent).toContain(
+      'Still couldn’t load the account options.',
+    );
   });
 
   it('shows no account controls and no Delete account until the server answers', async () => {
