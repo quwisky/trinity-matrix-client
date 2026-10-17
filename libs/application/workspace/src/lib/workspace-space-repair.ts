@@ -26,12 +26,11 @@ import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 /**
  * Package-internal: which committed views need their Space repaired to Recent.
  *
- * A view qualifies once its Space is unavailable: the Account has synced without it
- * (#1401), or it disappeared (#1402: removed, left elsewhere, or its holder unticked in
- * the mixed view). Nothing qualifies while a transition owns the view, while any Router
- * navigation is in flight, while this app's own leave of the Space is in flight (that flow
- * navigates itself), or while the view's Account is not the active one (a switch or
- * sign-out is under way).
+ * A view qualifies once its Space is unavailable: the Account has synced without it,
+ * or it disappeared (removed, left elsewhere, or its holder unticked in the mixed view).
+ * Nothing qualifies while a transition owns the view, while any Router navigation is in
+ * flight, while this app's own leave of the Space is in flight (that flow navigates itself),
+ * or while the view's Account is not the active one (a switch or sign-out is under way).
  */
 @Injectable({ providedIn: 'root' })
 export class WorkspaceSpaceRepair {

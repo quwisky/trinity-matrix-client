@@ -99,7 +99,7 @@ export class WorkspaceNavigationService {
   readonly eventTarget = this.eventTargetState.asReadonly();
   /**
    * The Conversation in view was pushed straight over its list, so Back is a plain history
-   * step: the browser and WebKit's edge swipe may take it without Workspace (#1113).
+   * step: the browser and WebKit's edge swipe may take it without Workspace.
    */
   readonly conversationOverList = computed(
     () => this.view().pane === 'conversation' && this.location.listBelow(),
@@ -427,9 +427,9 @@ export class WorkspaceNavigationService {
         .clearMarkedUnread(roomId)
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
-          // Opening a room should not toast if this best-effort cleanup fails; the flag
-          // remains visible and the next open retries, but the workflow still owns the
-          // command subscription and cancellation.
+          // Best-effort: opening a room must not toast if this cleanup fails (the flag stays
+          // visible and the next open retries), but the workflow still owns the subscription
+          // and its cancellation.
           error: () => undefined,
         });
     };

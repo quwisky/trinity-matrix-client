@@ -36,7 +36,7 @@ function roomScope(
       : RECENT_WORKSPACE_SCOPE;
   }
   if (intent.scope) return intent.scope;
-  // A row picked from the list on screen is in that list, so even a space stays (#1369),
+  // A row picked from the list on screen is in that list, so even a space stays,
   // also for another Account's row in the mixed view: that Account may keep a space any
   // selected Account holds, and Workspace repairs one none of them holds to Recent.
   // Opened from anywhere else, a space may not hold the Room, so Recent lists it instead.
@@ -95,8 +95,8 @@ export function resolveWorkspaceNavigation(
         options: {
           source: intent.origin === 'room-hop' ? 'hop' : 'user',
           history: 'push',
-          // Opened from this account's compact list page: Back can pop back to it (#1113).
-          // Split view has no list page to return to; there Back leaves the Room as before.
+          // Opened from this account's compact list page: Back can pop back to it.
+          // Split view has no list page to return to; there Back leaves the Room.
           ...(history.compact &&
           current.pane === 'list' &&
           current.accountId === intent.accountId
@@ -171,7 +171,7 @@ export function resolveWorkspaceNavigation(
               : 'user',
           // Pop a Conversation opened over its list, so the entry below is the list Back
           // returns to and WebKit's swipe agrees. Otherwise replace it: a pushed list entry
-          // would leave the Conversation one swipe back (#1113).
+          // would leave the Conversation one swipe back.
           history:
             !roomRemoved && history.listBelow && current.pane === 'conversation'
               ? 'back'

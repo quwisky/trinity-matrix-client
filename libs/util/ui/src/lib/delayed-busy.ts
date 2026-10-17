@@ -1,19 +1,11 @@
 import { type Injector, type Signal, effect, signal } from '@angular/core';
 
-/**
- * How long a thing must stay busy before it is worth telling anyone about.
- *
- * Below this, the operation finishes before a person can register that anything appeared,
- * so a spinner is pure flicker — a flash that draws the eye to a thing that is already done.
- */
+/** How long a thing must stay busy before a spinner is worth showing; below it, pure flicker. */
 const DEFAULT_DELAY_MS = 150;
 
 /**
- * How long an indicator stays once it has appeared, even if the work finishes sooner.
- *
- * Without this, the delay above just moves the flicker: an operation taking 160ms shows a
- * spinner for 10ms. Anything that appears has to stay long enough to be read as a state
- * rather than a glitch.
+ * How long an indicator stays once it has appeared. Without it, an operation taking 160ms would
+ * show a spinner for 10ms.
  */
 const DEFAULT_MINIMUM_MS = 400;
 
@@ -26,26 +18,13 @@ export interface DelayedBusyOptions {
 }
 
 /**
- * A busy signal shaped for human eyes rather than for the truth.
+ * A busy signal shaped for human eyes rather than for the truth: wait a moment before showing,
+ * and once shown, stay a moment. Returns a derived signal, so a template binds `showBusy()`.
  *
- * `busy` is a fact about the program: it flips the instant a request starts and the instant
- * it ends. Bound straight to a spinner it produces the two failure modes everyone has seen —
- * a flash on every fast request, and a spinner that vanishes before you can tell what it
- * was. The fix is the same everywhere and was previously written out per site, or more often
- * not written at all: wait a moment before showing, and once shown, stay a moment.
- *
- * Returns a derived signal, so a template binds `showBusy()` and nothing else changes.
- *
- * ## Why it takes an Injector
- *
- * This library's contract is that nothing in it needs an INJECTION CONTEXT — the reason
- * `runWithBusy` and `mediaQuerySignal` take a `DestroyRef` rather than reaching for one. An
- * `Injector` passed as an argument keeps that property exactly: the effect below is created
- * with an explicit injector, so this can be called from a field initializer or a method
- * rather than only from a constructor, and can never throw NG0203. Not from inside a
- * `computed`, though — `effect()` refuses to be created in a reactive context, and no
- * injector argument changes that. It is also what ties the timers to the caller's lifetime —
- * when the injector's scope is destroyed the effect is torn down and the cleanup runs.
+ * It takes an `Injector` so nothing in this library needs an injection context: the effect is
+ * created with an explicit injector, so this may be called from a field initializer or a
+ * method, never throws NG0203, and ties the timers to the caller's lifetime. Not from inside a
+ * `computed`: `effect()` refuses to be created in a reactive context.
  */
 export function delayedBusy(
   busy: Signal<boolean>,
@@ -69,8 +48,7 @@ export function delayedBusy(
   effect(
     (onCleanup) => {
       const isBusy = busy();
-      // Whatever was scheduled was scheduled for the previous state; the state just
-      // changed, so it is answering a question nobody is asking any more.
+      // Whatever was scheduled belongs to the previous state.
       clear();
 
       if (isBusy) {
@@ -83,11 +61,9 @@ export function delayedBusy(
         }
       } else if (visible()) {
         // Already on screen: it owes the reader the rest of its minimum before leaving.
-        //
-        // Clamped to `minimumMs`, because this reads the WALL clock while `setTimeout` runs
-        // on a monotonic one. An NTP correction backwards mid-operation makes the elapsed
-        // time negative, and without the clamp the indicator would sit there for roughly the
-        // size of the jump — half a minute, for a half-minute correction.
+        // Clamped to `minimumMs`: this reads the WALL clock while `setTimeout` runs on a
+        // monotonic one, so an NTP correction backwards would otherwise keep the indicator
+        // up for roughly the size of the jump.
         const remaining = Math.min(
           minimumMs,
           minimumMs - (Date.now() - shownAt),

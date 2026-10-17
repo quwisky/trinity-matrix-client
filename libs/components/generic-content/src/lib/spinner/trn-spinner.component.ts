@@ -14,22 +14,15 @@ import {
 export type { TrnSpinnerSize, TrnSpinnerVariant } from './trn-spinner-recipe';
 
 /**
- * Trinity's busy indicator.
+ * Trinity's busy indicator, an element composed by template (`hostDirectives` allows only
+ * directives, never components).
  *
- * An element, because the thing it replaces is one — 15 call sites write `<trn-spinner />`
- * and two of those add a layout class. Composed by template rather than `hostDirectives`,
- * which Angular allows only for directives, never components.
+ * `icon` is deliberately not exposed: a public input is a promise a replacement library must
+ * keep. `aria-label` IS exposed, so a screen reader doesn't announce every spinner as "Loading".
  *
- * `icon` is deliberately not exposed. The kit takes one, but no call site in this workspace
- * has ever passed it, and a public input is a promise: every one kept here is another thing
- * a replacement library has to satisfy. `aria-label` IS exposed, because a busy indicator
- * that cannot be named is a busy indicator a screen reader announces as "Loading" whatever
- * it is actually loading.
- *
- * The host is `inline-flex` through a layered component style rather than a utility class,
- * for the same reason `<trn-icon>` is: the box model ships with the component instead of
- * depending on a consuming app emitting the class. Storybook verifies that compiled style in
- * a real browser; the unit contract keeps the host class free for consumer layout.
+ * The host is `inline-flex` through a layered component style rather than a utility class, so
+ * the box model ships with the component. Storybook verifies that compiled style in a real
+ * browser; the unit contract keeps the host class free for consumer layout.
  */
 @Component({
   selector: 'trn-spinner',

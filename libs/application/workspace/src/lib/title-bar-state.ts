@@ -36,7 +36,7 @@ export class TitleBarState {
   readonly appName = injectHostAppName();
   /**
    * Only the app name while App lock is locked: the taskbar, the macOS Window menu and
-   * window switchers show the window title (spec §2).
+   * window switchers show the window title.
    */
   readonly title = computed(() => this.roomTitle() ?? this.appName);
   readonly quickSwitcher = computed(

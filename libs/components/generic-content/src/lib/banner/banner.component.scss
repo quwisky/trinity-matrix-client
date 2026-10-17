@@ -33,8 +33,7 @@
     font-size: 1.125rem;
   }
 
-  // The message keeps a readable width; when it and the actions can't share a row at that
-  // width, the actions wrap onto their own line instead of squeezing the message (#1221).
+  // Past this basis the actions wrap onto their own line instead of squeezing the message.
   .banner__text {
     flex: 1 1 12rem;
     min-width: 0;
@@ -49,20 +48,17 @@
     justify-content: flex-end;
   }
 
-  // Banners that replace one another in a single slot (`placement="global"`) keep one
-  // height wherever a two-action banner wraps its actions under the message (#1221): a
-  // replacement then moves nothing below the slot, where a tap in flight would land on the
-  // wrong row. The slot measures its own width, so a layout wide enough for one row
-  // reserves nothing. The reserved height is the wrapped banner's: padding, a line of
-  // text, the row gap and a row of small actions (the `trnBtn` `sm` height, `h-7` on the
-  // spacing scale, or the touch target). Content stays centred in it.
+  // `placement="global"` banners share one slot and keep the wrapped two-action height, so a
+  // replacement never moves what is below it (a tap in flight would land on the wrong row).
+  // The slot measures its own width; a layout wide enough for one row reserves nothing.
+  // Reserved height: padding, a text line, the row gap and a small-action row (the `trnBtn`
+  // `sm` height, `h-7` on the spacing scale, or the touch target).
   :host([data-placement='global']) {
     container-type: inline-size;
   }
 
-  // Up to where the two-action banner fits on one row with a one-line message: below it
-  // either its actions or its message wrap and the one-action banner does not. Measured
-  // near 31rem; the margin covers wider fonts. The banner stories sweep the widths.
+  // Below this width the two-action banner no longer fits one row with a one-line message
+  // (about 31rem; the margin covers wider fonts). The banner stories sweep the widths.
   @container (width < 34rem) {
     .banner[data-placement='global'] {
       --trn-banner-pad: calc(2 * var(--trinity-density-row-padding-block));
@@ -83,9 +79,8 @@
     }
   }
 
-  // An empty slot would still take its basis and a gap: an actions-only banner would wrap
-  // its button below a blank 12rem message, and a banner without actions would wrap an
-  // empty line. The template keeps each slot free of whitespace so `:empty` matches.
+  // An empty slot would still take its basis and a gap (a blank 12rem message above the
+  // button). The template keeps slots whitespace-free so `:empty` matches.
   .banner__icon:empty,
   .banner__text:empty,
   .banner__actions:empty {

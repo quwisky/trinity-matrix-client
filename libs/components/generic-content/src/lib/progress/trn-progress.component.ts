@@ -20,21 +20,15 @@ export type {
 /**
  * Trinity's progress bar.
  *
- * **The composition is collapsed on purpose.** The kit needs two elements — a host and an
- * indicator child that injects the host through DI and fails outside it — so every call site
- * has to know that the child exists and that it goes exactly there. That knowledge is the
- * vendor's, not ours, and it is exactly the kind of shape that does not survive swapping the
- * library. One element, one input:
+ * The kit's two-element composition (a host plus an indicator child that injects the host through
+ * DI) is collapsed into one element, so call sites don't depend on the vendor's shape:
  *
  * ```html
  * <trn-progress [value]="fraction() * 100" aria-label="Uploading attachment" />
  * ```
  *
- * `null` means indeterminate, which is the kit's own convention and the one the single call
- * site relies on while an upload has no measurable total.
- *
- * `max` and `getValueLabel` are not exposed: nothing passes them, and the default of 100
- * matches how the value is computed at the only call site.
+ * `null` means indeterminate, the kit's own convention. `max` and `getValueLabel` are not
+ * exposed; the default max of 100 matches how callers compute the value.
  */
 @Component({
   selector: 'trn-progress',
