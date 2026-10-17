@@ -27,11 +27,11 @@ export interface SsoStateStash {
  * Persists the single-use SSO CSRF state + homeserver across the SSO round-trip via
  * Capacitor Preferences (localStorage on web, native key-value on device). Unlike
  * `sessionStorage`, Preferences survives a native process eviction, so a cold-start
- * deep-link callback — where the relaunched WebView has empty `sessionStorage` —
- * can still validate the returned state.
+ * deep-link callback (empty `sessionStorage` in the relaunched WebView) can still
+ * validate the returned state.
  *
- * These are NOT secret tokens (just a nonce + base URL), so Preferences is
- * acceptable here; the stash is single-use (cleared on read) and time-boxed.
+ * These are NOT secret tokens (just a nonce + base URL), so Preferences is acceptable;
+ * the stash is single-use (cleared on read) and time-boxed.
  */
 @Injectable({ providedIn: 'root' })
 export class SsoStateStore {

@@ -30,10 +30,7 @@ const CLIENT_URI = 'https://trinity.trinityproject.dev';
  * redirect_uri we send strands every id cached under the old shape (the provider then
  * rejects the authorization with a redirect mismatch, which is NOT the `invalid_client`
  * that {@link OidcClientService.forgetClientId} recovers from). Bump on any change to
- * the registered metadata to force a clean re-registration. v3 added the homeserver to
- * the key; ids cached under v2 (issuer only) are ignored and re-registered. v4: the
- * dev.trinityproject identity move changed redirect_uri and client_uri, so ids cached
- * under v3 (registered for the old eu.qwky redirect) are ignored and re-registered.
+ * the registered metadata to force a clean re-registration.
  */
 const CLIENT_ID_KEY_PREFIX = 'oidc.clientId.v4:';
 /** Shown when the callback or the homeserver names a provider other than the one signed in with. */
@@ -56,9 +53,7 @@ export interface OidcAuthorizationParams {
   /**
    * Re-authenticate this existing device instead of minting a new one. Set only by the
    * re-auth flow, whose whole purpose is to recover a soft-logged-out account WITHOUT
-   * the user having to verify a fresh device again. matrix-js-sdk 41 could not express
-   * this — `generateOidcAuthorizationUrl` took no device id and always generated one —
-   * so an OIDC re-auth silently produced a new device; v42's OAuth2 context accepts one.
+   * the user having to verify a fresh device again.
    */
   deviceId?: string;
 }
@@ -67,12 +62,10 @@ export interface OidcAuthorizationParams {
  * The authorization URL to redirect to, plus the PKCE context needed to complete the
  * grant afterwards.
  *
- * The SDK used to keep this itself, in a `mx_oidc_<state>` sessionStorage entry written
- * by oidc-client-ts. matrix-js-sdk 42 dropped that dependency and persists nothing, so
- * the context is handed back here and the caller is now its sole custodian: it must be
- * stashed durably (Preferences) and fed back to {@link OidcClientService.completeGrant},
- * which is what lets a callback complete in a different browsing context (native /
- * Electron) or after a cold-start relaunch.
+ * The SDK persists nothing, so the caller is the sole custodian of the context: it must
+ * be stashed durably (Preferences) and fed back to {@link OidcClientService.completeGrant},
+ * which lets a callback complete in a different browsing context (native / Electron) or
+ * after a cold-start relaunch.
  */
 export interface OidcAuthorizationRequest {
   url: string;
@@ -113,9 +106,9 @@ export interface OidcGrant {
 
 /**
  * Owns the matrix-js-sdk OIDC ("next-gen auth", MSC3861) orchestration: dynamic client
- * registration (cached per homeserver and issuer), building the PKCE authorization URL, and exchanging
- * the returned code for tokens + identity. {@link AuthService} composes this with its
- * Account Runtime establishment command; components never touch it or the SDK directly.
+ * registration, building the PKCE authorization URL, and exchanging the returned code
+ * for tokens + identity. {@link AuthService} composes this with its Account Runtime
+ * establishment command; components never touch it or the SDK directly.
  */
 @Injectable({ providedIn: 'root' })
 export class OidcClientService {
@@ -125,9 +118,9 @@ export class OidcClientService {
 
   /**
    * Build the authorization URL to redirect to. Registers this client with the provider
-   * (dynamic registration, cached per homeserver and issuer) if needed, generates a PKCE authorization
-   * request, and returns the context the callback needs to complete it — the SDK keeps
-   * none of it, so the caller must stash what comes back.
+   * if needed (cached per homeserver and issuer), generates a PKCE authorization request,
+   * and returns the context the callback needs — the SDK keeps none of it, so the caller
+   * must stash what comes back.
    */
   buildAuthorizationRequest(
     params: OidcAuthorizationParams,
@@ -143,10 +136,10 @@ export class OidcClientService {
   /**
    * Exchange the authorization `code` for tokens and resolve the account identity.
    *
-   * `context` is the stash written when the request was built: the SDK no longer keeps
-   * the PKCE verifier anywhere, so rebuilding an {@link OAuth2} around the same context
-   * is what makes the exchange possible at all. `baseUrl` is passed rather than recovered
-   * from the grant because v42 no longer round-trips the homeserver through OAuth state.
+   * `context` is the stash written when the request was built. The SDK keeps no PKCE
+   * verifier, so rebuilding an {@link OAuth2} around the same context is what makes the
+   * exchange possible. `baseUrl` is passed because the homeserver is not round-tripped
+   * through OAuth state.
    *
    * Token responses carry no user/device id, so identity comes from `whoami`.
    */
@@ -188,19 +181,17 @@ export class OidcClientService {
             };
             return result;
           }),
-          // The exchange succeeded, so live tokens exist — and under MSC3861 the OAuth
-          // session IS the Matrix device. The code is spent and the caller has already
-          // cleared the stash, so this grant is unrecoverable; without a revocation the
-          // provider is left holding a ghost device and a long-lived refresh token that
-          // nothing will ever use, one more per retry.
+          // Live tokens exist and, under MSC3861, the OAuth session IS the Matrix device.
+          // The code is spent and the caller has already cleared the stash, so this grant is
+          // unrecoverable; without a revocation the provider is left holding a ghost device
+          // and a long-lived refresh token nothing will use, one more per retry.
           //
-          // DETACHED on purpose. These POSTs go to the provider — a different host from
-          // the homeserver that just failed — through the SDK's fetch helper, which sets
-          // no AbortSignal and no timeout. Gating the error on them would hold the
-          // callback page on its spinner (whose only exit lives in the error branch) for
-          // a full TCP connect timeout, or forever against a host that black-holes the
-          // connection. Nothing consumes the result, so the user gets the real failure now
-          // and the cleanup finishes on its own.
+          // DETACHED on purpose. These POSTs go to the provider, not the homeserver that
+          // just failed, through the SDK's fetch helper, which sets no AbortSignal or
+          // timeout. Gating the error on them would hold the callback page on its spinner
+          // (its only exit is the error branch) for a full TCP connect timeout, or forever
+          // against a host that black-holes the connection. Nothing consumes the result, so
+          // the user gets the real failure now.
           catchError((err: unknown) => {
             void this.revokeGranted(metadata, context, token).catch(
               () => undefined,
@@ -292,9 +283,6 @@ export class OidcClientService {
     const metadata = await createClient({
       baseUrl: homeserverUrl,
     }).getAuthMetadata();
-    // The RFC 7009 POST used to be hand-rolled here because the SDK exposed no revocation
-    // helper. It does now, and `revocation_endpoint` is required on ValidatedAuthMetadata,
-    // so the old "no endpoint, give up quietly" guard is gone with it.
     const auth = new OAuth2(metadata, { clientId: binding.clientId });
     await this.revokeBoth(auth, tokens);
   }
@@ -343,10 +331,8 @@ export class OidcClientService {
     if (cached) {
       return cached;
     }
-    // snake_case in v42 (the registration request is now the wire shape verbatim);
-    // v41 took a camelCase wrapper. The fields a provider pins a later authorization
-    // against — redirect_uris, application_type, client_uri — are otherwise unchanged,
-    // so this change alone needed no version bump (v3 keys the cache by homeserver as well).
+    // The fields a provider pins a later authorization against (redirect_uris,
+    // application_type, client_uri) need a bump of the key prefix when they change.
     const request: OAuthRegistrationRequest = {
       client_name: this.handoff.deviceDisplayName(),
       client_uri: CLIENT_URI,
@@ -367,16 +353,14 @@ export class OidcClientService {
       // Omitted for a normal login, where OAuth2 mints one (`?? secureRandomString(10)`).
       ...(params.deviceId ? { deviceId: params.deviceId } : {}),
     });
-    // The `state` is ours to mint now — v41 let oidc-client-ts generate one and we read
-    // it back out of the URL. It is what the provider echoes on callback and what the
-    // stash is keyed on.
+    // The `state` is ours to mint: the provider echoes it on callback and the stash is
+    // keyed on it.
     const state = crypto.randomUUID();
-    // 'query' is LOAD-BEARING. v42 defaults responseMode to 'fragment'; v41 defaulted to
-    // 'query'. Every callback reader here takes query params only (sso-callback.page.ts
-    // via queryParamMap, app.component.ts via searchParams), so accepting the default
-    // would put the code somewhere nothing looks and hang the login on every platform.
-    // Moving to 'fragment' (it keeps the code out of server logs) means teaching both
-    // readers to parse a fragment first — a separate change.
+    // 'query' is LOAD-BEARING. The SDK defaults responseMode to 'fragment', but every
+    // callback reader here takes query params only (sso-callback.page.ts via queryParamMap,
+    // app.component.ts via searchParams), so the default would put the code somewhere
+    // nothing looks and hang the login on every platform. Moving to 'fragment' (it keeps
+    // the code out of server logs) means teaching both readers to parse a fragment first.
     const url = await auth.generateAuthorizationCodeGrantUrl(
       state,
       params.redirectUri,
@@ -394,8 +378,7 @@ export class OidcClientService {
 
   /**
    * Absolute epoch-ms access-token expiry, measured from `requestedAt` (stamped before
-   * the token POST). v42's BearerTokenResponse carries only the relative `expires_in`;
-   * the old absolute `expires_at` branch went with oidc-client-ts.
+   * the token POST). BearerTokenResponse carries only the relative `expires_in`.
    */
   private expiresAt(
     token: BearerTokenResponse,

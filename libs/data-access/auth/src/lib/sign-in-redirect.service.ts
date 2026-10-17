@@ -88,8 +88,8 @@ export class SignInRedirectService {
         })
         .pipe(
           // Persisted on every platform, and awaited so it survives a native cold start
-          // before the provider can redirect back. matrix-js-sdk 42 keeps no sign-in
-          // state of its own, so this stash is the only copy.
+          // before the provider can redirect back. The SDK keeps no sign-in state of its
+          // own, so this stash is the only copy.
           switchMap((authorization) =>
             this.oidcState
               .save({

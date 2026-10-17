@@ -11,11 +11,7 @@ export type {
 } from './lib/oidc-client.service';
 // Re-export the validated delegated-auth metadata so feature libs can type it without
 // importing matrix-js-sdk directly (components never do).
-//
-// Deliberately aliased to a local name. Upstream has now renamed this type once already
-// — it was `OidcClientConfig` until matrix-js-sdk 42 replaced the whole OIDC module with
-// `oauth` — and each rename would otherwise churn every consumer across a library
-// boundary. `AuthMetadata` is the name this workspace uses; only this line tracks theirs.
+// Aliased to a local name so an upstream rename only touches this line.
 export type { ValidatedAuthMetadata as AuthMetadata } from 'matrix-js-sdk';
 export * from './lib/homeserver-discovery.port';
 export { OidcStateStore } from './lib/oidc-state.store';

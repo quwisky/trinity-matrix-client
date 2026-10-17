@@ -2,11 +2,10 @@
 const TTL_MS = 10 * 60 * 1000; // 10 minutes
 /**
  * How far the stash may appear to have been written in the FUTURE before it is rejected.
- * The lower bound exists so a clock nudged forward cannot mint a stash that never expires
- * — but a zero-tolerance version fails an ordinary login, because the same event class
- * (a clock stepped backwards: NITZ/NTP after airplane mode, a laptop resuming from sleep,
- * w32time) can land mid-round-trip while the user is typing at the provider. A minute
- * survives normal clock discipline and still bins a stash written hours ahead.
+ * The bound stops a clock nudged forward from minting a stash that never expires, but zero
+ * tolerance fails an ordinary login: a clock stepped backwards (NITZ/NTP after airplane
+ * mode, a laptop resuming from sleep, w32time) can land mid-round-trip. A minute survives
+ * normal clock discipline and still bins a stash written hours ahead.
  */
 const CLOCK_SKEW_MS = 60 * 1000;
 

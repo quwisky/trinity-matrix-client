@@ -30,20 +30,17 @@ interface CachedInfo {
  *
  * **Per account, not per active account.** Every signed-in account has its own live client
  * and they all sync concurrently, and the point of the surface is checking *a* server, which
- * may well not be the one currently in view. So this keys on `accountIds()` and reads each
- * answer through that account's own client, like `AccountIdentitiesService` and
- * `UnreadAggregatorService` — not through `projectFromClient`, which follows the active one.
+ * may not be the one in view. So this keys on `accountIds()` and reads each answer through
+ * that account's own client, like `AccountIdentitiesService` and `UnreadAggregatorService`
+ * — not through `projectFromClient`, which follows the active one.
  *
- * **Cached for the session, in memory only.** Nothing here is written to Capacitor
- * Preferences: a server version is a fact about right now, and persisting it would let the
- * app confidently show a value from a previous run. {@link refresh} is the deliberate
- * re-check — the motivating use case is noticing that the value *changed*, which a value
- * fetched once at login cannot do.
+ * **Cached for the session, in memory only.** Nothing is written to Capacitor Preferences:
+ * a server version is a fact about right now, and persisting it would show a value from a
+ * previous run as if current. {@link refresh} is the deliberate re-check.
  *
  * **Nothing here fails.** The probes resolve a null-object instead of throwing (see
  * `probe-homeserver.ts`), so an unreachable server produces a record whose remote fields are
- * null and the UI reads "Unknown". No error reaches a toast, which is a requirement of the
- * feature rather than an accident of the implementation.
+ * null and the UI reads "Unknown". No error reaches a toast; the feature requires that.
  */
 @Injectable({ providedIn: 'root' })
 export class HomeserverInfoService {
@@ -85,11 +82,10 @@ export class HomeserverInfoService {
    * Probes that have been started and not yet finished, keyed by user id.
    *
    * A probe is only written to {@link cache} once its whole `forkJoin` settles, so without
-   * this every caller that arrives during those seconds starts its own — and #171 reaches
-   * exactly that: each block loads on init, and the account menu re-triggers a lookup on
-   * every toggle. Sharing the in-flight observable also removes the ordering hazard a
-   * second concurrent probe would create, since an older, slower response can no longer
-   * land on top of a newer one. Same shape as `MatrixClientService.starting`.
+   * this every caller arriving meanwhile starts its own: each block loads on init, and the
+   * account menu re-triggers a lookup on every toggle. Sharing the in-flight observable also
+   * stops an older, slower response landing on top of a newer one. Same shape as
+   * `MatrixClientService.starting`.
    */
   private readonly inFlight = new Map<string, Observable<void>>();
 
@@ -190,11 +186,10 @@ export class HomeserverInfoService {
    * Drop answers that no longer describe anything: accounts that signed out, and accounts
    * whose user id now maps to a **different client object**.
    *
-   * The second case is the one that is easy to miss — re-adding an already signed-in account
-   * stops and re-creates its client, against a base URL the user may have just changed. The
-   * user id is identical, so a cache keyed on it alone would keep showing the old server's
-   * version. Same identity re-check `AccountIdentitiesService` and `UnreadAggregatorService`
-   * both make.
+   * The second case is easy to miss: re-adding an already signed-in account stops and
+   * re-creates its client, against a base URL the user may have just changed. The user id is
+   * identical, so a cache keyed on it alone would keep showing the old server's version.
+   * Same identity re-check `AccountIdentitiesService` and `UnreadAggregatorService` make.
    */
   private evictStale(): void {
     let changed = false;

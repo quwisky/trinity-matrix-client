@@ -1,10 +1,9 @@
 /**
  * What a homeserver says about itself, projected for the Server settings section.
  *
- * These are Trinity's own types on purpose. The SDK's `IServerVersions` and `Capabilities`
- * would be the obvious things to hand out, but feature libs may not import `matrix-js-sdk`
- * at all (`eslint.config.mjs`), so an SDK type crossing this lib's barrel is a boundary
- * leak. Same reasoning as `export type { SyncState }` in `@trinity/data-access/matrix-client`.
+ * Trinity's own types on purpose: feature libs may not import `matrix-js-sdk`
+ * (`eslint.config.mjs`), so an SDK type (`IServerVersions`, `Capabilities`) crossing this
+ * lib's barrel would be a boundary leak.
  */
 
 /** Which of the two probe attempts answered. */
@@ -60,11 +59,10 @@ export interface HomeserverInfo {
    * Whether {@link baseUrl} is something other than `https://<serverName>` — i.e. the
    * homeserver was discovered rather than being the server name itself.
    *
-   * An observation, not a claim about the mechanism. Trinity does not record whether
-   * `.well-known` delegation was used (nothing in `MatrixSession` carries it, and
-   * `AuthService.discoverHomeserver` returns a bare string), and a hand-typed URL that
-   * happens to differ is indistinguishable from delegation. The UI therefore shows both
-   * values and lets the reader draw the conclusion, rather than asserting `.well-known`.
+   * An observation, not a claim about the mechanism: Trinity does not record whether
+   * `.well-known` delegation was used, and a hand-typed URL that happens to differ is
+   * indistinguishable from delegation. The UI therefore shows both values rather than
+   * asserting `.well-known`.
    */
   readonly discovered: boolean;
   /** The federation endpoint's answer, or null when neither attempt produced one. */
