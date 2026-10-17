@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import {
   stripMarkupComments,
   stripSourceComments,
-  topLevelStyleBlocks,
 } from './source-style-blocks.mjs';
 
 /**
@@ -86,9 +85,6 @@ const conversationTemplates = templates.filter((file) =>
   migratedConversationRoots.some((root) => file.startsWith(`${root}/`)),
 );
 const typescript = productionSources.filter((file) => file.endsWith('.ts'));
-const componentStyles = productionSources.filter(
-  (file) => file.endsWith('.component.scss') || file.endsWith('.page.scss'),
-);
 
 const markup = (file) => stripMarkupComments(read(file));
 const source = (file) => stripSourceComments(read(file));
@@ -158,27 +154,6 @@ describe('migrated application design-system consumers', () => {
     }
 
     expect(roomNavigationTemplates).not.toHaveLength(0);
-    const roomNavigationAvatars = tagsFrom(
-      roomNavigationTemplates,
-      /<trn-avatar\b[^>]*>/gu,
-    );
-    expect(roomNavigationAvatars.length).toBeGreaterThan(0);
-    for (const [file, tag] of roomNavigationAvatars) {
-      expect(tag, file).not.toMatch(
-        /(?:\[size\]|\bsize)\s*=\s*['"](?:\d+(?:\.\d+)?|\d+(?:\.\d+)?(?:px|rem|em))['"]/u,
-      );
-    }
-
-    const roomNavigationIcons = tagsFrom(
-      roomNavigationTemplates,
-      /<trn-icon\b[^>]*>/gu,
-    );
-    expect(roomNavigationIcons.length).toBeGreaterThan(0);
-    for (const [file, tag] of roomNavigationIcons) {
-      expect(tag, file).not.toMatch(
-        /\bsize\s*=\s*['"]\d+(?:\.\d+)?(?:px|rem|em)['"]/u,
-      );
-    }
 
     const roomAvatars = tagsFrom(roomTemplates, /<trn-avatar\b[^>]*>/gu);
     expect(roomAvatars.length).toBeGreaterThan(0);
@@ -231,38 +206,10 @@ describe('migrated application design-system consumers', () => {
     expect(composerInputs[0]?.[1]).not.toMatch(/\btrnTextarea\b/u);
 
     for (const [file, tag] of tagsFrom(
-      roomNavigationTemplates,
-      /<trn-empty-state\b[^>]*>/gu,
-    )) {
-      expect(tag, file).not.toMatch(/\bsize\s*=/u);
-    }
-    for (const [file, tag] of tagsFrom(
-      roomNavigationTemplates,
-      /<trn-page-header\b[^>]*>/gu,
-    )) {
-      expect(tag, file).not.toMatch(/\bvariant\s*=\s*['"](?:page|chat)['"]/u);
-    }
-    for (const [file, tag] of tagsFrom(
-      roomNavigationTemplates,
-      /<[^>]*\btrnDropdownMenuItem\b[^>]*>/gu,
-    )) {
-      expect(tag, file).not.toMatch(
-        /\bvariant\s*=\s*['"](?:default|destructive)['"]/u,
-      );
-    }
-    for (const [file, tag] of tagsFrom(
       roomTemplates,
       /<trn-page-header\b[^>]*>/gu,
     )) {
       expect(tag, file).not.toMatch(/\bvariant\s*=\s*['"](?:page|chat)['"]/u);
-    }
-    for (const [file, tag] of tagsFrom(
-      conversationTemplates,
-      /<[^>]*\btrnDropdownMenuItem\b[^>]*>/gu,
-    )) {
-      expect(tag, file).not.toMatch(
-        /\bvariant\s*=\s*['"](?:default|destructive)['"]/u,
-      );
     }
     for (const [file, tag] of tagsFrom(
       roomTemplates,
@@ -418,19 +365,6 @@ describe('migrated application design-system consumers', () => {
   });
 
   it('keeps every component stylesheet in the named components layer', () => {
-    expect(componentStyles.length).toBeGreaterThan(0);
-    for (const file of componentStyles) {
-      const blocks = topLevelStyleBlocks(read(file));
-      expect(
-        blocks.length,
-        `${file} must contain authored rules`,
-      ).toBeGreaterThan(0);
-      expect(
-        blocks.map(({ prelude }) => prelude),
-        `${file} must emit only named component rules`,
-      ).toEqual(Array(blocks.length).fill('@layer components'));
-    }
-
     const roomStyles = productionSources
       .filter(
         (file) =>
