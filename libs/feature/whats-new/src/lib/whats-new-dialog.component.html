@@ -9,7 +9,7 @@
     @for (release of releases(); track release.version) {
       <section>
         <!-- A bare date parses as local midnight, so pin it to UTC before formatting in UTC. -->
-        <h3 class="text-15 m-0 font-bold">
+        <h3 class="m-0 text-base font-semibold">
           v{{ release.version }} ·
           {{ release.date + 'T00:00:00Z' | date: 'mediumDate' : 'UTC' }}
         </h3>
