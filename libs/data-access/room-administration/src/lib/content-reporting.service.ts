@@ -16,6 +16,7 @@ export type ReportKind = 'room' | 'user';
 export type ContentReportFailure =
   | { readonly kind: 'rate-limited'; readonly retryAfterMs: number | null }
   | { readonly kind: 'not-found' }
+  | { readonly kind: 'reason-too-long' }
   | { readonly kind: 'unsupported' }
   | { readonly kind: 'not-signed-in' }
   | { readonly kind: 'failed' };
@@ -120,6 +121,8 @@ function classify(error: unknown): ContentReportFailure {
     };
   }
   if (errcode === 'M_NOT_FOUND') return { kind: 'not-found' };
+  // Tuwunel caps the reason at 2000 bytes; the only free-form parameter is the reason.
+  if (errcode === 'M_INVALID_PARAM') return { kind: 'reason-too-long' };
   // A server without the endpoint answers M_UNRECOGNIZED, or a bare 404/405 from its router.
   if (errcode === 'M_UNRECOGNIZED' || status === 404 || status === 405) {
     return { kind: 'unsupported' };

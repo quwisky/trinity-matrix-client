@@ -16,6 +16,7 @@ import {
   EMPTY,
   catchError,
   defer,
+  finalize,
   map,
   of,
   switchMap,
@@ -34,7 +35,17 @@ export interface ReportUserTarget {
 /** What happened after a room report was sent. */
 export type RoomReportOutcome = 'reported' | 'left';
 
-const REASON = { inputLabel: 'Reason (optional)', maxLength: 1000 } as const;
+const REASON = {
+  inputLabel: 'Reason (optional)',
+  placeholder: 'Reason (optional)',
+  maxLength: 1000,
+} as const;
+/** Shown once a block lands, from a report or from the member card. */
+export const BLOCKED_TOAST = "Blocked — you won't see their messages.";
+/** Shown once an unblock lands; the server does not resend what it hid meanwhile. */
+export const UNBLOCKED_TOAST =
+  'Unblocked. Their earlier messages appear after you reload.';
+
 const NEXT_STEPS =
   "Your server's admins decide what happens next. They may not reply.";
 
@@ -67,9 +78,9 @@ export class ReportService {
         .prompt$({
           header: 'Report message',
           message: "Report this message to your server's admins?",
+          ...REASON,
           confirmText: 'Report',
           variant: 'danger',
-          placeholder: 'Reason (optional)',
         })
         .pipe(
           switchMap((reason) =>
@@ -94,8 +105,15 @@ export class ReportService {
     });
   }
 
-  /** Report a room, then offer to leave it. Emits once if the report was sent. */
-  reportRoom$(target: RoomActionPermissionsKey): Observable<RoomReportOutcome> {
+  /**
+   * Report a room, then offer to leave it. Emits once if the report was sent. `accountLabel`
+   * names the account that would leave when several are shown together.
+   */
+  reportRoom$(
+    target: RoomActionPermissionsKey,
+    options: { readonly accountLabel?: string } = {},
+  ): Observable<RoomReportOutcome> {
+    const as = options.accountLabel ? ` as ${options.accountLabel}` : '';
     return this.alert
       .prompt$({
         header: 'Report room',
@@ -114,7 +132,7 @@ export class ReportService {
                 switchMap(() =>
                   this.alert.confirm$({
                     header: 'Report sent',
-                    message: `${NEXT_STEPS}\n\nIf you leave, you'll need a new invite or a public join to come back.`,
+                    message: `${NEXT_STEPS}\n\nIf you leave${as}, you'll need a new invite or a public join to come back.`,
                     confirmText: 'Leave room',
                     cancelText: 'Done',
                     variant: 'danger',
@@ -141,6 +159,16 @@ export class ReportService {
 
   /** Report a user, then offer to block them. Completes without emitting if nothing was sent. */
   reportUser$(target: ReportUserTarget): Observable<void> {
+    return defer(() => {
+      // isIgnored reads the projection, so hold it for the length of the flow.
+      const ignoreList = this.ignoredUsers.runProjection().subscribe();
+      return this.reportUserFlow(target).pipe(
+        finalize(() => ignoreList.unsubscribe()),
+      );
+    });
+  }
+
+  private reportUserFlow(target: ReportUserTarget): Observable<void> {
     return this.alert
       .prompt$({
         header: `Report ${target.name}`,
@@ -185,11 +213,7 @@ export class ReportService {
         switchMap((block) =>
           block
             ? this.ignoredUsers.ignore(target.userId).pipe(
-                tap(() =>
-                  this.toast.show("Blocked — you won't see their messages.", {
-                    duration: 2500,
-                  }),
-                ),
+                tap(() => this.toast.show(BLOCKED_TOAST, { duration: 2500 })),
                 catchError(() => {
                   this.toast.show('Could not update the block.', {
                     duration: 4000,
@@ -227,6 +251,8 @@ function reportFailureMessage(error: unknown, kind: ReportKind): string {
       return `Your server doesn't know this ${kind}, so it can't take the report.`;
     case 'unsupported':
       return `Your server doesn't accept ${kind} reports.`;
+    case 'reason-too-long':
+      return 'That reason is too long. Shorten it and try again.';
     default:
       return "Couldn't send the report. Try again.";
   }

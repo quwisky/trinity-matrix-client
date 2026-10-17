@@ -13,7 +13,7 @@ import {
 } from '@trinity/data-access/room-administration';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { MockProvider } from 'ng-mocks';
-import { lastValueFrom, of, throwError, toArray } from 'rxjs';
+import { Subject, lastValueFrom, of, throwError, toArray } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { ReportService } from './report.service';
 
@@ -29,6 +29,7 @@ function setup(
     reportUser?: Mock;
     ignored?: boolean;
     activeUserId?: string;
+    projection?: Subject<void>;
   } = {},
 ) {
   const prompt$ = over.prompt$ ?? vi.fn(() => of('spam'));
@@ -38,6 +39,7 @@ function setup(
   const reportUser = over.reportUser ?? vi.fn(() => of(undefined));
   const leave = vi.fn(() => of(undefined));
   const ignore = vi.fn(() => of(undefined));
+  const ignoredRun = vi.fn(() => over.projection ?? new Subject<void>());
   const toastShow = vi.fn();
   TestBed.configureTestingModule({
     providers: [
@@ -47,6 +49,7 @@ function setup(
       MockProvider(RoomLibraryService, { leave }),
       MockProvider(IgnoredUsersService, {
         isIgnored: () => over.ignored ?? false,
+        runProjection: ignoredRun,
         ignore,
       }),
       MockProvider(IdentityService, {
@@ -67,6 +70,7 @@ function setup(
     reportUser,
     leave,
     ignore,
+    ignoredRun,
     toastShow,
   };
 }
@@ -85,6 +89,9 @@ describe('ReportService', () => {
       expect(prompt$).toHaveBeenCalledWith(
         expect.objectContaining({
           message: "Report this message to your server's admins?",
+          inputLabel: 'Reason (optional)',
+          placeholder: 'Reason (optional)',
+          maxLength: 1000,
         }),
       );
       expect(toastShow).toHaveBeenCalledWith(
@@ -142,6 +149,7 @@ describe('ReportService', () => {
         message:
           "Your server's admins will see this report and your reason. The room's members won't be told.",
         inputLabel: 'Reason (optional)',
+        placeholder: 'Reason (optional)',
         maxLength: 1000,
         confirmText: 'Report',
         variant: 'danger',
@@ -187,6 +195,21 @@ describe('ReportService', () => {
       expect(outcome).toBe('left');
     });
 
+    it('names the account that would leave when accounts are mixed', async () => {
+      const { svc, confirm$ } = setup();
+
+      await lastValueFrom(
+        svc.reportRoom$(ROOM, { accountLabel: 'Work (@me:hs)' }),
+      );
+
+      expect(confirm$).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message:
+            "Your server's admins decide what happens next. They may not reply.\n\nIf you leave as Work (@me:hs), you'll need a new invite or a public join to come back.",
+        }),
+      );
+    });
+
     it('stays in the room on Done', async () => {
       const { svc, leave } = setup();
 
@@ -206,6 +229,10 @@ describe('ReportService', () => {
         "Your server doesn't know this room, so it can't take the report.",
       ],
       [{ kind: 'unsupported' }, "Your server doesn't accept room reports."],
+      [
+        { kind: 'reason-too-long' },
+        'That reason is too long. Shorten it and try again.',
+      ],
       [{ kind: 'failed' }, "Couldn't send the report. Try again."],
     ])('explains a %o failure', async (failure, message) => {
       const { svc, toastShow, confirm$ } = setup({
@@ -258,6 +285,16 @@ describe('ReportService', () => {
         }),
       );
       expect(ignore).toHaveBeenCalledExactlyOnceWith('@bob:hs');
+    });
+
+    it('holds the ignore list while the flow runs, so "already blocked" is current', async () => {
+      const projection = new Subject<void>();
+      const { svc, ignoredRun } = setup({ projection });
+      const flow = svc.reportUser$(BOB).subscribe();
+
+      expect(ignoredRun).toHaveBeenCalled();
+      flow.unsubscribe();
+      expect(projection.observed).toBe(false);
     });
 
     it('confirms with a plain toast when they are already blocked', async () => {

@@ -44,7 +44,11 @@ import {
   TrustVerificationService,
 } from '@trinity/data-access/trust';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import { ReportService } from '../report/report.service';
+import {
+  BLOCKED_TOAST,
+  ReportService,
+  UNBLOCKED_TOAST,
+} from '../report/report.service';
 
 /**
  * A room-scoped info card for a member (avatar, name, id, live presence, role), shown
@@ -171,6 +175,11 @@ export class MemberInfoComponent {
   /** The Account the commands run as, when one is known. */
   private readonly commandAccountId = computed(
     () => this.accountId() ?? this.owningAccountId(),
+  );
+
+  /** The account a report goes out as: the one this card was opened for. */
+  private readonly reporterId = computed(
+    () => this.commandAccountId() ?? this.identity.activeUserId(),
   );
 
   /** Live online status for the presence dot. */
@@ -332,12 +341,9 @@ export class MemberInfoComponent {
       : this.ignoredUsers.ignore(userId);
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
-        this.toast.show(
-          wasIgnored
-            ? 'Unblocked. Their earlier messages appear after you reload.'
-            : "Blocked — you won't see their messages.",
-          { duration: 2500 },
-        );
+        this.toast.show(wasIgnored ? UNBLOCKED_TOAST : BLOCKED_TOAST, {
+          duration: 2500,
+        });
       },
       error: () =>
         this.toast.show('Could not update the block.', {
@@ -346,11 +352,6 @@ export class MemberInfoComponent {
         }),
     });
   }
-
-  /** The account a report goes out as: the one this card was opened for. */
-  private readonly reporterId = computed(
-    () => this.commandAccountId() ?? this.identity.activeUserId(),
-  );
 
   /** Hidden once the reporter's server has said it takes no user reports. */
   readonly canReport = computed(() => {

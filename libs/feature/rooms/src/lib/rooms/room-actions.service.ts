@@ -122,8 +122,12 @@ export class RoomActionsService {
 
   /** Room menus "Report room": report as the row's account; leaving from the follow-up closes it. */
   onReportRoom(target: { roomId: string; accountId: string }): void {
+    const accountLabel =
+      this.selected.view().mode === 'mixed'
+        ? this.routing.accountLabel(target.accountId)
+        : undefined;
     this.reports
-      .reportRoom$(target)
+      .reportRoom$(target, accountLabel ? { accountLabel } : {})
       .pipe(
         filter((outcome) => outcome === 'left'),
         takeUntilDestroyed(this.destroyRef),

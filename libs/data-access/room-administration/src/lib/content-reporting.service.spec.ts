@@ -133,6 +133,21 @@ describe('ContentReportingService', () => {
     expect(svc.offers('@me:hs', 'room')).toBe(false);
   });
 
+  it('types a reason the server finds too long', async () => {
+    const mine = fakeClient();
+    mine.reportRoom.mockRejectedValue(matrixError('M_INVALID_PARAM', 400));
+    const svc = setup({ '@me:hs': mine });
+
+    const error = await firstValueFrom(
+      svc.reportRoom({ accountId: '@me:hs', roomId: '!r:hs' }, 'x'.repeat(900)),
+    ).catch((e: unknown) => e);
+
+    expect((error as ContentReportError).failure).toEqual({
+      kind: 'reason-too-long',
+    });
+    expect(svc.offers('@me:hs', 'room')).toBe(true);
+  });
+
   it('fails typed when the account is not signed in', async () => {
     const svc = setup({});
 

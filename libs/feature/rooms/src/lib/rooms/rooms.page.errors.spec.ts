@@ -352,10 +352,11 @@ describe('RoomsPage action error feedback', () => {
 
     shell.rooms.onReportRoom({ roomId: '!r:hs', accountId: '@me:hs' });
 
-    expect(reportRoom).toHaveBeenCalledWith({
-      roomId: '!r:hs',
-      accountId: '@me:hs',
-    });
+    // One account shown: no account named in the leave offer.
+    expect(reportRoom).toHaveBeenCalledWith(
+      { roomId: '!r:hs', accountId: '@me:hs' },
+      {},
+    );
     await vi.waitFor(() => expect(shell.store.activeRoomId()).toBeNull());
   });
 

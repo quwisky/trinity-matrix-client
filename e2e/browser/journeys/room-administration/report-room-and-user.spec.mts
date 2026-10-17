@@ -118,6 +118,7 @@ test.describe('Report to your server admins', () => {
     await page.getByTestId('overflow-report-room').click();
 
     const prompt = page.getByRole('dialog', { name: 'Report room' });
+    await expect(prompt.getByPlaceholder('Reason (optional)')).toBeVisible();
     await prompt.getByLabel('Reason (optional)').fill('Spam links');
     await prompt.getByRole('button', { name: 'Report', exact: true }).click();
 
