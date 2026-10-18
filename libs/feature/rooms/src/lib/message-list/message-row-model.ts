@@ -19,7 +19,7 @@ import { groupSystemRuns } from './system-runs';
 import { DayBoundaryService } from './day-boundary.service';
 import { type MessageRow } from '../message-row/message-row.component';
 
-/** A memoized row, with the inputs it was derived from (see {@link MessageListBase.rows}). */
+/** A memoized row, with the inputs it was derived from (see {@link MessageRowModel.rows}). */
 interface RowCacheEntry {
   view: MessageView;
   showHeader: boolean;
