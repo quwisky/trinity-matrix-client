@@ -2,6 +2,7 @@ import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   displayContent,
   isPollStart,
+  linkedUserIds,
   pollSignature,
   reactionsFor,
   readReceiptsFor,
@@ -46,8 +47,8 @@ export interface EventRevision {
  * A compact fingerprint of every per-event input Message Presentation reads that can change
  * while the room is open: send status, redaction, decryption, edits (effective content plus
  * replacing-event presence), aggregated reactions, the reply preview (see
- * {@link replyTargetSignature}), the poll tally `roomEncrypted` decides (see `buildPollView`)
- * and the sender's resolved name/avatar. A view is rebuilt
+ * {@link replyTargetSignature}), the poll tally `roomEncrypted` decides (see `buildPollView`),
+ * the mention pills' resolved names and the sender's resolved name/avatar. A view is rebuilt
  * only when this changes, so an unchanged message keeps its object and its OnPush row is
  * never touched.
  */
@@ -85,12 +86,37 @@ export function revisionOf(
       applyEdit && validReplacement(event) ? 'e' : '',
       reactionSignature(client, room, event),
       replyTargetSignature(room, event.replyEventId),
+      mentionSignature(room, event),
       member?.name ?? senderId,
       member?.getMxcAvatarUrl() ?? '',
       receiptSignature(client, room, event),
       isPollStart(event) ? pollSignature(room, event, roomEncrypted) : '',
     ].join('\x1f'),
   };
+}
+
+/** The users each content object's mention pills link to; see {@link contentJson}. */
+const contentMentions = new WeakMap<object, readonly string[]>();
+
+/**
+ * Signature of the mention pills for {@link eventRevision}: each linked user and their resolved
+ * name, so a pill re-renders when a member's profile arrives late or they rename.
+ */
+function mentionSignature(room: Room, event: MatrixEvent): string {
+  const content = shownContent(event);
+  let ids = event.isRedacted() ? [] : contentMentions.get(content);
+  if (ids === undefined) {
+    ids = linkedUserIds(
+      content['format'] === 'org.matrix.custom.html' &&
+        typeof content['formatted_body'] === 'string'
+        ? content['formatted_body']
+        : null,
+    );
+    contentMentions.set(content, ids);
+  }
+  return ids
+    .map((userId) => `${userId}\x03${room.getMember(userId)?.name ?? ''}`)
+    .join(',');
 }
 
 /**

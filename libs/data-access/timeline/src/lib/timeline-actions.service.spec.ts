@@ -6,6 +6,14 @@ import { MediaService } from '@trinity/data-access/media';
 import { ConversationActionContextService } from './conversation-action-context.service';
 import { TimelineActionsService } from './timeline-actions.service';
 import {
+  emoteMessageContent,
+  locationMessageContent,
+  mediaCaptionFields,
+  renderMarkdown,
+  textMessageContent,
+  voiceMessageContent,
+} from '@trinity/util/matrix';
+import {
   fakeEdit,
   fakeEvent,
   privacyProvider,
@@ -200,6 +208,409 @@ describe('TimelineActionsService', () => {
     expect((forwarded?.[1] as Record<string, unknown>)['body']).toBe(
       'forward me',
     );
+  });
+
+  describe('forwarded content', () => {
+    const encryptedFile = {
+      url: 'mxc://hs/enc',
+      key: {
+        kty: 'oct',
+        alg: 'A256CTR',
+        k: 'k',
+        key_ops: ['encrypt', 'decrypt'],
+        ext: true,
+      },
+      iv: 'iv',
+      hashes: { sha256: 'h' },
+      v: 'v2',
+    };
+    const reply = { 'm.in_reply_to': { event_id: '$parent' } };
+    const shapes: [string, Record<string, unknown>][] = [
+      [
+        'a text with a mention',
+        textMessageContent('hi @Alice', renderMarkdown('hi @Alice'), [
+          { userId: '@alice:hs', display: '@Alice' },
+        ]),
+      ],
+      [
+        'a notice',
+        {
+          msgtype: 'm.notice',
+          body: 'built',
+          format: 'org.matrix.custom.html',
+          formatted_body: '<b>built</b>',
+        },
+      ],
+      ['an emote', emoteMessageContent('waves', renderMarkdown('waves'))],
+      [
+        'an encrypted image with a caption',
+        {
+          msgtype: 'm.image',
+          ...mediaCaptionFields('cat.png', '**look**'),
+          info: {
+            mimetype: 'image/png',
+            size: 10,
+            w: 4,
+            h: 3,
+            thumbnail_file: encryptedFile,
+            thumbnail_info: { mimetype: 'image/png', w: 2, h: 1 },
+          },
+          file: encryptedFile,
+        },
+      ],
+      [
+        'a file',
+        {
+          msgtype: 'm.file',
+          body: 'doc.pdf',
+          info: { mimetype: 'application/pdf', size: 99 },
+          url: 'mxc://hs/doc',
+        },
+      ],
+      [
+        'a voice message',
+        voiceMessageContent(
+          { mxc: 'mxc://hs/v', file: null, mimeType: 'audio/webm', size: 5 },
+          1200,
+          [0, 512, 1024],
+        ),
+      ],
+      [
+        'a video',
+        {
+          msgtype: 'm.video',
+          body: 'clip.mp4',
+          info: {
+            mimetype: 'video/mp4',
+            size: 7,
+            duration: 3000,
+            w: 16,
+            h: 9,
+            thumbnail_url: 'mxc://hs/thumb',
+            thumbnail_info: { mimetype: 'image/jpeg', w: 16, h: 9 },
+          },
+          url: 'mxc://hs/clip',
+        },
+      ],
+      ['a location', locationMessageContent(52.51, 13.38, 'Berlin')],
+    ];
+
+    for (const [name, original] of shapes) {
+      it(`forwards ${name} as it was, mentioning nobody`, async () => {
+        const sent: unknown[][] = [];
+        const svc = setupActions(
+          [
+            fakeEvent({
+              id: '$src',
+              sender: '@a:hs',
+              content: { ...original, 'm.relates_to': reply },
+            }),
+          ],
+          sent,
+        );
+
+        await firstValueFrom(svc.forwardMessage('!r:hs', '$src', '!t:hs'));
+
+        expect(sent).toEqual([['message', { ...original, 'm.mentions': {} }]]);
+      });
+    }
+
+    const forwardOf = async (content: Record<string, unknown>) => {
+      const sent: unknown[][] = [];
+      const svc = setupActions(
+        [fakeEvent({ id: '$src', sender: '@a:hs', content })],
+        sent,
+      );
+      await firstValueFrom(svc.forwardMessage('!r:hs', '$src', '!t:hs'));
+      return sent;
+    };
+    const shownSources: [
+      string,
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ][] = [
+      [
+        'only the encrypted file of an attachment that also names a url',
+        { url: 'mxc://hs/other', file: encryptedFile },
+        { file: encryptedFile },
+      ],
+      [
+        'only the url of a plain attachment',
+        { url: 'mxc://hs/doc', file: { url: 'mxc://hs/x' } },
+        { url: 'mxc://hs/doc' },
+      ],
+    ];
+    for (const [name, source, shown] of shownSources) {
+      it(`forwards ${name}`, async () => {
+        const base = { msgtype: 'm.file', body: 'doc.pdf' };
+
+        expect(await forwardOf({ ...base, ...source })).toEqual([
+          ['message', { ...base, ...shown, 'm.mentions': {} }],
+        ]);
+      });
+    }
+
+    const shownThumbnails: [
+      string,
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ][] = [
+      [
+        'the encrypted thumbnail of one that also names a url',
+        { thumbnail_url: 'mxc://hs/other', thumbnail_file: encryptedFile },
+        { thumbnail_file: encryptedFile },
+      ],
+      [
+        'the url thumbnail of a plain one',
+        { thumbnail_url: 'mxc://hs/thumb', thumbnail_file: { iv: 'iv' } },
+        { thumbnail_url: 'mxc://hs/thumb' },
+      ],
+    ];
+    for (const [name, thumbnail, shown] of shownThumbnails) {
+      it(`forwards only ${name}, and only the info it shows`, async () => {
+        const base = {
+          msgtype: 'm.image',
+          body: 'cat.png',
+          url: 'mxc://hs/cat',
+        };
+        const info = { mimetype: 'image/png', size: 10, w: 4, h: 3 };
+        const thumbnailInfo = { mimetype: 'image/png', size: 2, w: 2, h: 1 };
+
+        expect(
+          await forwardOf({
+            ...base,
+            info: {
+              ...info,
+              ...thumbnail,
+              thumbnail_info: { ...thumbnailInfo, 'com.example': 1 },
+              'com.example.extra': 'x',
+            },
+          }),
+        ).toEqual([
+          [
+            'message',
+            {
+              ...base,
+              info: { ...info, ...shown, thumbnail_info: thumbnailInfo },
+              'm.mentions': {},
+            },
+          ],
+        ]);
+      });
+    }
+
+    it('forwards a location as its row shows it, not its disagreeing extras', async () => {
+      expect(
+        await forwardOf({
+          msgtype: 'm.location',
+          body: 'Berlin',
+          geo_uri: 'geo:52.51,13.38',
+          'org.matrix.msc3488.location': {
+            uri: 'geo:48.85,2.35',
+            description: 'Paris',
+          },
+          'org.matrix.msc3488.asset': { type: 'm.pin' },
+          'org.matrix.msc1767.text': 'Paris',
+        }),
+      ).toEqual([
+        [
+          'message',
+          {
+            ...locationMessageContent(52.51, 13.38, 'Berlin'),
+            'm.mentions': {},
+          },
+        ],
+      ]);
+    });
+
+    it('forwards a sticker as a sticker', async () => {
+      const sticker = {
+        body: 'Party parrot',
+        url: 'mxc://hs/parrot',
+        info: { mimetype: 'image/png', w: 64, h: 48, size: 4096 },
+      };
+      const sent: unknown[][] = [];
+      const svc = setupActions(
+        [
+          fakeEvent({
+            id: '$src',
+            sender: '@a:hs',
+            type: 'm.sticker',
+            content: { ...sticker, 'm.relates_to': reply },
+          }),
+        ],
+        sent,
+      );
+
+      await firstValueFrom(svc.forwardMessage('!r:hs', '$src', '!t:hs'));
+
+      expect(sent).toEqual([
+        ['event', 'm.sticker', { ...sticker, 'm.mentions': {} }],
+      ]);
+    });
+
+    it("drops the original's mentions and any key its type does not define", async () => {
+      const sent: unknown[][] = [];
+      const svc = setupActions(
+        [
+          fakeEvent({
+            id: '$src',
+            sender: '@a:hs',
+            content: {
+              msgtype: 'm.text',
+              body: 'hello',
+              'm.mentions': { user_ids: ['@victim:hs'], room: true },
+              'm.new_content': { msgtype: 'm.text', body: 'edited' },
+              'com.example.extra': { ping: true },
+              geo_uri: 'geo:1,2',
+            },
+          }),
+        ],
+        sent,
+      );
+
+      await firstValueFrom(svc.forwardMessage('!r:hs', '$src', '!t:hs'));
+
+      expect(sent).toEqual([
+        ['message', { msgtype: 'm.text', body: 'hello', 'm.mentions': {} }],
+      ]);
+    });
+
+    const fallbacks: [string, string, string][] = [
+      [
+        'the quote of the message it replied to',
+        '> <@bob:hs> the original\n\nmy reply',
+        '<mx-reply><blockquote><a href="https://matrix.to/#/@bob:hs">@bob:hs</a> the original</blockquote></mx-reply>my reply',
+      ],
+      [
+        'a made-up quote the forwarder never saw',
+        '> <@bob:hs> Bob: approved, send it\n\nmy reply',
+        '<mx-reply><blockquote>Bob: approved, send it</blockquote></mx-reply>my reply',
+      ],
+    ];
+    for (const [name, body, html] of fallbacks) {
+      it(`drops a reply's fallback: ${name}`, async () => {
+        const sent: unknown[][] = [];
+        const svc = setupActions(
+          [
+            fakeEvent({
+              id: '$src',
+              sender: '@a:hs',
+              replyTo: '$parent',
+              content: {
+                msgtype: 'm.text',
+                body,
+                format: 'org.matrix.custom.html',
+                formatted_body: html,
+                'm.relates_to': reply,
+              },
+            }),
+          ],
+          sent,
+        );
+
+        await firstValueFrom(svc.forwardMessage('!r:hs', '$src', '!t:hs'));
+
+        expect(sent).toEqual([
+          [
+            'message',
+            {
+              msgtype: 'm.text',
+              body: 'my reply',
+              format: 'org.matrix.custom.html',
+              formatted_body: 'my reply',
+              'm.mentions': {},
+            },
+          ],
+        ]);
+      });
+    }
+
+    it('keeps a leading quote in a message that is not a reply', async () => {
+      const content = { msgtype: 'm.text', body: '> quoted\n\nmine' };
+      const sent: unknown[][] = [];
+      const svc = setupActions(
+        [fakeEvent({ id: '$src', sender: '@a:hs', content })],
+        sent,
+      );
+
+      await firstValueFrom(svc.forwardMessage('!r:hs', '$src', '!t:hs'));
+
+      expect(sent).toEqual([['message', { ...content, 'm.mentions': {} }]]);
+    });
+
+    it("forwards a reply's valid edit as its own text only, and ignores a plaintext edit of an encrypted reply", async () => {
+      const fallback = (text: string) => ({
+        msgtype: 'm.text',
+        body: `> <@bob:hs> quoted\n\n${text}`,
+        format: 'org.matrix.custom.html',
+        formatted_body: `<mx-reply><blockquote>quoted</blockquote></mx-reply>${text}`,
+        'm.mentions': { user_ids: ['@victim:hs'], room: true },
+        'com.example.extra': { ping: true },
+      });
+      const edit = (encrypted: boolean) => ({
+        ...fakeEdit('$src', encrypted),
+        getOriginalContent: () => ({ 'm.new_content': fallback('as edited') }),
+      });
+      const sent: unknown[][] = [];
+      const svc = setupActions(
+        [
+          fakeEvent({
+            id: '$src',
+            sender: '@a:hs',
+            replyTo: '$parent',
+            content: { ...fallback('as sent'), 'm.relates_to': reply },
+            replacement: edit(false),
+          }),
+          fakeEvent({
+            id: '$enc',
+            sender: '@a:hs',
+            replyTo: '$parent',
+            encrypted: true,
+            content: { ...fallback('as sent'), 'm.relates_to': reply },
+            replacement: {
+              ...edit(false),
+              getRelation: () => ({ rel_type: 'm.replace', event_id: '$enc' }),
+            },
+          }),
+        ],
+        sent,
+      );
+      const own = (text: string) => ({
+        msgtype: 'm.text',
+        body: text,
+        format: 'org.matrix.custom.html',
+        formatted_body: text,
+        'm.mentions': {},
+      });
+
+      await firstValueFrom(svc.forwardMessage('!r:hs', '$src', '!t:hs'));
+      await firstValueFrom(svc.forwardMessage('!r:hs', '$enc', '!t:hs'));
+
+      expect(sent).toEqual([
+        ['message', own('as edited')],
+        ['message', own('as sent')],
+      ]);
+    });
+
+    it('refuses a message type it cannot forward faithfully', async () => {
+      const sent: unknown[][] = [];
+      const svc = setupActions(
+        [
+          fakeEvent({
+            id: '$src',
+            sender: '@a:hs',
+            content: { msgtype: 'constructor', body: 'odd' },
+          }),
+        ],
+        sent,
+      );
+
+      await expect(
+        firstValueFrom(svc.forwardMessage('!r:hs', '$src', '!t:hs')),
+      ).rejects.toThrow();
+      expect(sent).toEqual([]);
+    });
   });
 
   it('errors when forwarding an event that cannot be found', async () => {

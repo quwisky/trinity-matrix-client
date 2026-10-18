@@ -5,6 +5,7 @@ import {
   type ConversationRuntime,
   type MessageView,
   isEditableMessage,
+  isForwardableMessage,
   isQuotableMessage,
   savableMediaKind,
 } from '@trinity/data-access/timeline';
@@ -75,11 +76,12 @@ export function buildRowCaps(
     canThread: policy.canThread && !unsent,
     canQuote: isQuotableMessage(message),
     saveMedia: savableMediaKind(message),
+    canForward: isForwardableMessage(message),
     readOnly: false,
   };
 }
 
-/** Whether two caps carry the same capabilities — all eight fields are flat primitives. */
+/** Whether two caps carry the same capabilities — every field is a flat primitive. */
 export function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
   return (
     a.editable === b.editable &&
@@ -89,6 +91,7 @@ export function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
     a.canThread === b.canThread &&
     a.canQuote === b.canQuote &&
     a.saveMedia === b.saveMedia &&
+    a.canForward === b.canForward &&
     a.readOnly === b.readOnly
   );
 }

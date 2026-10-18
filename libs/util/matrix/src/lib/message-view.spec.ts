@@ -12,11 +12,12 @@ import {
 } from './message-view';
 import { UNENCRYPTED_PREVIEW } from './room-encryption';
 
-/** A reaction (`m.annotation`) event stub: only sender + redaction are read. */
-function reaction(sender: string, redacted = false): MatrixEvent {
+/** A reaction (`m.annotation`) event stub: only sender, redaction and timestamp are read. */
+function reaction(sender: string, redacted = false, ts = 0): MatrixEvent {
   return {
     getSender: () => sender,
     isRedacted: () => redacted,
+    getTs: () => ts,
   } as unknown as MatrixEvent;
 }
 
@@ -99,6 +100,47 @@ describe('reactionsFor', () => {
     expect(pills[0].reacted).toBe(false);
     expect(pills[0].reactors).toEqual(['Alice']);
   });
+
+  it('counts each sender once per key, and orders keys by those counts', () => {
+    const room = reactedRoom(
+      {
+        '✅ Verified': [
+          reaction('@mallory:hs'),
+          reaction('@mallory:hs'),
+          reaction('@mallory:hs'),
+        ],
+        '👍': [reaction('@alice:hs'), reaction('@bob:hs')],
+      },
+      {
+        '@mallory:hs': { name: 'Mallory' },
+        '@alice:hs': { name: 'Alice' },
+        '@bob:hs': { name: 'Bob' },
+      },
+    );
+
+    const pills = reactionsFor(ME, room, REACTED_MESSAGE);
+
+    expect(pills.map((p) => [p.key, p.count])).toEqual([
+      ['👍', 2],
+      ['✅ Verified', 1],
+    ]);
+    expect(pills[1].reactors).toEqual(['Mallory']);
+  });
+});
+
+describe('reaction key order', () => {
+  it('breaks a tie by the key seen first, not by how many events it has', () => {
+    // The SDK sorts by raw event count, so one sender's repeats put their key first.
+    const room = reactedRoom({
+      '🚩': Array.from({ length: 50 }, () => reaction('@mallory:hs', false, 5)),
+      '👍': [reaction('@alice:hs', false, 1)],
+    });
+
+    expect(reactionsFor(ME, room, REACTED_MESSAGE).map((p) => p.key)).toEqual([
+      '👍',
+      '🚩',
+    ]);
+  });
 });
 
 describe('reactionDetailsFor', () => {
@@ -135,6 +177,19 @@ describe('reactionDetailsFor', () => {
     expect(details[1].reacted).toBe(false);
   });
 
+  it('lists a sender who reacted twice with the same key once', () => {
+    const room = reactedRoom(
+      { '👍': [reaction('@alice:hs'), reaction('@alice:hs')] },
+      { '@alice:hs': { name: 'Alice' } },
+    );
+
+    expect(
+      reactionDetailsFor(ME, room, REACTED_MESSAGE)[0].reactors.map(
+        (r) => r.userId,
+      ),
+    ).toEqual(['@alice:hs']);
+  });
+
   it('skips redacted reactions', () => {
     const room = reactedRoom(
       { '👍': [reaction('@alice:hs'), reaction('@bob:hs', true)] },
@@ -163,6 +218,9 @@ describe('collectMessageSenders', () => {
       getId: () => '$m',
       getSender: () => '@author:hs',
       getType: () => 'm.room.message',
+      isRedacted: () => false,
+      replacingEvent: () => null,
+      getOriginalContent: () => ({}),
     } as unknown as MatrixEvent;
     const senders = new Set<string>();
 
@@ -188,6 +246,9 @@ describe('collectMessageSenders', () => {
       getId: () => '$m',
       getSender: () => '@author:hs',
       getType: () => 'm.room.message',
+      isRedacted: () => false,
+      replacingEvent: () => null,
+      getOriginalContent: () => ({}),
     } as unknown as MatrixEvent;
     const senders = new Set<string>();
 
@@ -195,6 +256,25 @@ describe('collectMessageSenders', () => {
 
     // Not ourselves: our own receipt is never rendered, so nothing depends on it.
     expect([...senders]).toEqual(['@author:hs', '@reader:hs']);
+  });
+
+  it('registers the users a mention pill names', () => {
+    const message = {
+      getId: () => '$m',
+      getSender: () => '@author:hs',
+      getType: () => 'm.room.message',
+      isRedacted: () => false,
+      replacingEvent: () => null,
+      getOriginalContent: () => ({
+        format: 'org.matrix.custom.html',
+        formatted_body: '<a href="https://matrix.to/#/@named:hs">@Someone</a>',
+      }),
+    } as unknown as MatrixEvent;
+    const senders = new Set<string>();
+
+    collectMessageSenders(ME, reactedRoom({}), message, senders);
+
+    expect([...senders]).toEqual(['@author:hs', '@named:hs']);
   });
 });
 

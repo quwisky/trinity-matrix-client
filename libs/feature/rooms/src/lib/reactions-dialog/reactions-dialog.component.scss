@@ -40,6 +40,14 @@
     cursor: pointer;
   }
 
+  // Same cap as the timeline pill; the full key is the tab's accessible name and the heading.
+  .key__emoji {
+    overflow: hidden;
+    max-width: 10ch;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .key__count {
     color: var(--trinity-text-muted);
     font-size: var(--trinity-type-metadata-size);
@@ -86,8 +94,10 @@
     touch-action: pan-y;
   }
 
+  // A key is free text; let a long one wrap rather than scroll the panel sideways.
   .reactions-dialog__detail h3 {
     margin: 0;
+    overflow-wrap: anywhere;
     padding: var(--trinity-space-3) 0 var(--trinity-space-2);
     color: var(--trinity-text-bright);
     font-size: var(--trinity-type-control-size);

@@ -452,13 +452,16 @@ export function annotationContent(messageId: string, key: string) {
   };
 }
 
-/** The id of the current user's own reaction event for a key on a message, if any. */
-export function myReactionId(
+/**
+ * The ids of the current user's own live reaction events for a key on a message. Usually one,
+ * but two devices can each send one, and un-reacting must remove them all.
+ */
+export function myReactionIds(
   client: MatrixClient,
   room: Room,
   messageId: string,
   key: string,
-): string | null {
+): string[] {
   const annotations = room.relations
     .getChildEventsForEvent(
       messageId,
@@ -468,13 +471,13 @@ export function myReactionId(
     ?.getSortedAnnotationsByKey();
   const match = annotations?.find(([k]) => k === key);
   if (!match) {
-    return null;
+    return [];
   }
   const myId = client.getUserId();
-  const mine = [...match[1]].find(
-    (e) => !e.isRedacted() && e.getSender() === myId,
-  );
-  return mine?.getId() ?? null;
+  return [...match[1]].flatMap((e) => {
+    const id = e.getId();
+    return id && !e.isRedacted() && e.getSender() === myId ? [id] : [];
+  });
 }
 
 /**

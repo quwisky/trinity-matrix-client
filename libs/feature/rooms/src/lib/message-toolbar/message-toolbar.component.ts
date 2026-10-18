@@ -32,6 +32,8 @@ export interface MessageToolbarCaps {
   canQuote: boolean;
   /** Offer "Save image" / "Save video"; null for a message with no savable media. */
   saveMedia: 'image' | 'video' | null;
+  /** Offer "Forward"; false for a message a forward cannot carry (a poll, say). */
+  canForward: boolean;
 }
 
 /** A single action a user triggers from the message toolbar. */
@@ -102,6 +104,7 @@ export class MessageToolbarComponent {
     canThread: true,
     canQuote: false,
     saveMedia: null,
+    canForward: true,
   });
   readonly action = output<MessageAction>();
   /**

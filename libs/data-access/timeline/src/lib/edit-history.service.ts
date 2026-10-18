@@ -115,14 +115,17 @@ export class EditHistoryService {
       sources.set(event.getId() ?? '', event);
     }
     return {
-      revisions: buildEditRevisions(original, edits, client.getUserId()).map(
-        (revision) => {
-          const source = sources.get(revision.id);
-          // Each version is judged by its own encryption, not the message's latest edit.
-          const shield = source ? unencryptedShield(source, source) : null;
-          return { ...revision, shield };
-        },
-      ),
+      revisions: buildEditRevisions(
+        original,
+        edits,
+        client.getUserId(),
+        (userId) => room?.getMember(userId)?.name,
+      ).map((revision) => {
+        const source = sources.get(revision.id);
+        // Each version is judged by its own encryption, not the message's latest edit.
+        const shield = source ? unencryptedShield(source, source) : null;
+        return { ...revision, shield };
+      }),
       truncated: !!from,
     };
   }

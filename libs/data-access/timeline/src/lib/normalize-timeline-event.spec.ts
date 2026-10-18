@@ -218,6 +218,28 @@ describe('normalizeTimelineEvent', () => {
     });
   });
 
+  it('resolves the names of the users a message links to', () => {
+    const normalized = normalizeTimelineEvent(
+      client,
+      room,
+      event({
+        getContent: () => ({
+          msgtype: 'm.text',
+          body: 'hi',
+          format: 'org.matrix.custom.html',
+          formatted_body:
+            '<a href="https://matrix.to/#/@alice:example.org">@Boss</a>',
+        }),
+      }),
+      null,
+      false,
+    );
+
+    expect(normalized).toMatchObject({
+      mentionNames: { '@alice:example.org': 'Alice' },
+    });
+  });
+
   it('retains safe plaintext from an unsupported message type', () => {
     const normalized = normalizeTimelineEvent(
       client,

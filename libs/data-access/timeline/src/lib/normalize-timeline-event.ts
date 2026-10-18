@@ -11,6 +11,7 @@ import {
   initialOf,
   isPollStart,
   mapStatus,
+  mentionNamesIn,
   normalizeMediaPayload,
   parseGeoUri,
   reactionsFor,
@@ -90,6 +91,17 @@ function mentionsViewer(
   );
 }
 
+function mentionNames(
+  room: Room,
+  formattedBody: string | null,
+): Readonly<Record<string, string>> {
+  return Object.freeze(
+    mentionNamesIn(formattedBody, (userId) =>
+      string(read<unknown>(() => room.getMember(userId)?.name, null)),
+    ),
+  );
+}
+
 function validMxc(value: string | null): value is string {
   return value !== null && /^mxc:\/\/[^/\s]+\/[^\s]+$/.test(value);
 }
@@ -99,6 +111,7 @@ function normalizeMedia(
   content: Readonly<Record<string, unknown>>,
   msgtype: string,
   event: MatrixEvent,
+  room: Room,
   viewerId: string,
 ): NormalizedMediaEvent | null {
   const source = normalizeMediaPayload(
@@ -111,6 +124,12 @@ function normalizeMedia(
     typeof content['filename'] === 'string' &&
     body !== '' &&
     body !== source.filename;
+  const formattedCaption =
+    captioned &&
+    content['format'] === 'org.matrix.custom.html' &&
+    typeof content['formatted_body'] === 'string'
+      ? content['formatted_body']
+      : null;
   return Object.freeze({
     ...common,
     type: 'media',
@@ -118,14 +137,10 @@ function normalizeMedia(
     media: Object.freeze(source),
     body: source.filename,
     caption: captioned ? body : null,
-    formattedCaption:
-      captioned &&
-      content['format'] === 'org.matrix.custom.html' &&
-      typeof content['formatted_body'] === 'string'
-        ? content['formatted_body']
-        : null,
+    formattedCaption,
     replyFallback: read(() => Boolean(event.replyEventId), false),
     addressesViewer: mentionsViewer(content, viewerId),
+    mentionNames: mentionNames(room, formattedCaption),
   });
 }
 
@@ -156,6 +171,7 @@ function normalizeSticker(
     formattedCaption: null,
     replyFallback: false,
     addressesViewer: false,
+    mentionNames: Object.freeze({}),
   });
 }
 
@@ -538,7 +554,7 @@ export function normalizeTimelineEvent(
       msgtype === MsgType.Video
     ) {
       return (
-        normalizeMedia(common, content, msgtype, event, viewerId) ??
+        normalizeMedia(common, content, msgtype, event, room, viewerId) ??
         unsupported(
           client,
           room,
@@ -575,6 +591,11 @@ export function normalizeTimelineEvent(
         false,
       );
     }
+    const formattedBody =
+      content['format'] === 'org.matrix.custom.html' &&
+      typeof content['formatted_body'] === 'string'
+        ? content['formatted_body']
+        : null;
     return Object.freeze({
       ...common,
       type: 'text',
@@ -585,13 +606,10 @@ export function normalizeTimelineEvent(
             ? 'notice'
             : 'text',
       body: content['body'],
-      formattedBody:
-        content['format'] === 'org.matrix.custom.html' &&
-        typeof content['formatted_body'] === 'string'
-          ? content['formatted_body']
-          : null,
+      formattedBody,
       replyFallback: read(() => Boolean(event.replyEventId), false),
       addressesViewer: mentionsViewer(content, viewerId),
+      mentionNames: mentionNames(room, formattedBody),
       roomEncrypted: read(() => room.hasEncryptionStateEvent?.() ?? true, true),
       roomId: room.roomId,
     });

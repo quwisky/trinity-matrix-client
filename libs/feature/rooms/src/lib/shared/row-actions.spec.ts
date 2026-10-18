@@ -251,8 +251,34 @@ describe('row caps', () => {
     ).toBe(true);
   });
 
+  it('offers Forward only for a message a forward can carry', () => {
+    const forwardable = (over: Partial<MessageRow>) =>
+      buildRowCaps(text('$a', over), policy).canForward;
+
+    for (const kind of [
+      'text',
+      'emote',
+      'notice',
+      'image',
+      'file',
+      'video',
+      'audio',
+      'sticker',
+      'location',
+    ] as const) {
+      expect(forwardable({ kind })).toBe(true);
+    }
+    for (const kind of ['poll', 'unsupported', 'redacted', 'event'] as const) {
+      expect(forwardable({ kind })).toBe(false);
+    }
+    expect(forwardable({ decryptionFailed: true })).toBe(false);
+  });
+
   it('compares every capability', () => {
     const caps = buildRowCaps(text('$a'), policy);
+    expect(sameRowCaps(caps, { ...caps, canForward: !caps.canForward })).toBe(
+      false,
+    );
 
     expect(sameRowCaps(caps, { ...caps })).toBe(true);
     expect(sameRowCaps(caps, { ...caps, pinned: true })).toBe(false);

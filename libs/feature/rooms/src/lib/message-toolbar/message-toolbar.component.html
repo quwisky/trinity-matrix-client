@@ -133,14 +133,16 @@
         Save {{ kind }}
       </button>
     }
-    <button
-      trnDropdownMenuItem
-      (triggered)="action.emit({ type: 'forward' })"
-      data-testid="msg-forward"
-    >
-      <trn-icon name="forward" />
-      Forward
-    </button>
+    @if (caps().canForward) {
+      <button
+        trnDropdownMenuItem
+        (triggered)="action.emit({ type: 'forward' })"
+        data-testid="msg-forward"
+      >
+        <trn-icon name="forward" />
+        Forward
+      </button>
+    }
     <button
       trnDropdownMenuItem
       (triggered)="action.emit({ type: 'view-source' })"

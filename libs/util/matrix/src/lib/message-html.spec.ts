@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   firstUrl,
+  linkedUserIds,
   linkifyText,
+  mentionNamesIn,
   sanitizeMatrixHtml,
   sanitizeOutgoingHtml,
 } from './message-html';
@@ -655,5 +657,89 @@ describe('sanitizeMatrixHtml mention pills', () => {
 
     expect(sanitizeMatrixHtml(source, true)).toContain('mention--self');
     expect(sanitizeMatrixHtml(source, false)).not.toContain('mention--self');
+  });
+});
+
+describe('mention pill text', () => {
+  const link = (href: string, label: string) =>
+    `<a href="${href}">${label}</a>`;
+
+  it('names the linked user, never the text the sender wrote', () => {
+    const html = sanitizeMatrixHtml(
+      link('https://matrix.to/#/@mallory:evil.example', '@Alice (admin)'),
+      false,
+      { '@mallory:evil.example': 'Mallory' },
+    );
+
+    expect(html).toContain('>@Mallory</a>');
+    expect(html).toContain('title="@mallory:evil.example"');
+    expect(html).not.toContain('Alice');
+  });
+
+  it('shows the Matrix ID when the linked user has no known name', () => {
+    const html = sanitizeMatrixHtml(
+      link('https://matrix.to/#/@mallory:evil.example', '<b>@Alice</b>'),
+    );
+
+    expect(html).toContain('>@mallory:evil.example</a>');
+    expect(html).not.toContain('Alice');
+  });
+
+  it('does not serve one name to another render of the same body', () => {
+    const source = link('https://matrix.to/#/@a:hs', '@A');
+
+    expect(sanitizeMatrixHtml(source, false, { '@a:hs': 'Ann' })).toContain(
+      '>@Ann</a>',
+    );
+    expect(sanitizeMatrixHtml(source, false, { '@a:hs': 'Anna' })).toContain(
+      '>@Anna</a>',
+    );
+  });
+
+  const notUserIds = [
+    ['no server name', 'https://matrix.to/#/%40Alice'],
+    [
+      'a trailing zero-width space',
+      'https://matrix.to/#/%40alice%3Aexample.org%E2%80%8B',
+    ],
+    [
+      'spaces and brackets',
+      'https://matrix.to/#/%40Alice%20(admin)%3Aexample.org',
+    ],
+    ['a bidi override', 'https://matrix.to/#/%40%E2%80%AEnimda%3Aexample.org'],
+    ['a malformed server name', 'https://matrix.to/#/%40alice%3Aexample..org'],
+    ['no server in a matrix: URI', 'matrix:u/Alice'],
+  ];
+  for (const [shape, href] of notUserIds) {
+    it(`leaves a link to an ID with ${shape} as a plain link`, () => {
+      const html = sanitizeMatrixHtml(link(href, 'the text'));
+
+      expect(html).not.toContain('mention');
+      expect(html).not.toContain('title=');
+      expect(html).toContain('>the text</a>');
+      expect(linkedUserIds(link(href, 'x'))).toEqual([]);
+    });
+  }
+
+  it('pills a link to a well-formed Matrix ID, port included', () => {
+    const html = sanitizeMatrixHtml(
+      link('https://matrix.to/#/%40alice.b_c%3Dd%3Aexample.org%3A8448', 'x'),
+    );
+
+    expect(html).toContain('class="mention"');
+    expect(html).toContain('>@alice.b_c=d:example.org:8448</a>');
+  });
+
+  it('collects the names of linked users, from matrix.to and matrix: links', () => {
+    const names = mentionNamesIn(
+      link('https://matrix.to/#/@a:hs', 'x') +
+        link('matrix:u/b:hs', 'y') +
+        link('https://matrix.to/#/@ghost:hs', 'z') +
+        link('https://matrix.to/#/!room:hs', 'room'),
+      (userId) =>
+        ({ '@a:hs': 'Ann', '@b:hs': 'Bob', '!room:hs': 'Room' })[userId],
+    );
+
+    expect(names).toEqual({ '@a:hs': 'Ann', '@b:hs': 'Bob' });
   });
 });

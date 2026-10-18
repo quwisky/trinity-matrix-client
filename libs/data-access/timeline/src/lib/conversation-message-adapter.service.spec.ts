@@ -26,6 +26,8 @@ function setup(
   options: {
     readonly eventStatus?: EventStatus | null;
     readonly existingReaction?: boolean;
+    /** A second own reaction with the same key, as another device can race one in. */
+    readonly duplicateReaction?: boolean;
     readonly privateReceipt?: boolean;
     readonly policy?: ConversationMessagePolicy;
     readonly rejectWith?: unknown;
@@ -39,7 +41,15 @@ function setup(
   const reactions: Record<string, ReturnType<typeof fakeRelations>> = {};
   if (options.existingReaction) {
     reactions['$message'] = fakeRelations([
-      ['👍', new Set([fakeReaction(KEY.accountId, '$mine')])],
+      [
+        '👍',
+        new Set([
+          fakeReaction(KEY.accountId, '$mine'),
+          ...(options.duplicateReaction
+            ? [fakeReaction(KEY.accountId, '$mine2')]
+            : []),
+        ]),
+      ],
     ]);
   }
   const room = {
@@ -138,6 +148,26 @@ describe('MatrixConversationMessageAdapter', () => {
 
     expect(client.redactEvent).toHaveBeenCalledWith(KEY.roomId, '$mine');
     expect(client.sendEvent).not.toHaveBeenCalled();
+  });
+
+  it('removes every own reaction with the key, not just the first', async () => {
+    const { adapter, client } = setup({
+      existingReaction: true,
+      duplicateReaction: true,
+    });
+
+    await firstValueFrom(
+      adapter.toggleReaction({
+        key: KEY,
+        messageId: '$message',
+        reaction: '👍',
+      }),
+    );
+
+    expect(client.redactEvent.mock.calls).toEqual([
+      [KEY.roomId, '$mine'],
+      [KEY.roomId, '$mine2'],
+    ]);
   });
 
   it('delegates redaction governance before calling the SDK', async () => {

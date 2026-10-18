@@ -342,6 +342,117 @@ describe('TimelineService', () => {
     expect(after?.replyTo?.senderAvatarMxc).toBe('mxc://hs/av');
   });
 
+  it('renames a mention pill when the member loads late and when they rename', async () => {
+    const events = [
+      fakeEvent({
+        id: '$m',
+        sender: '@me:hs',
+        body: 'hi',
+        format: 'org.matrix.custom.html',
+        formattedBody: 'hi <a href="https://matrix.to/#/@a:hs">@Boss</a>',
+      }),
+    ];
+    let aliceName: string | null = null;
+    let memberHandler: ((...a: unknown[]) => void) | undefined;
+    const room = {
+      roomId: '!r:hs',
+      loadMembersIfNeeded: () => Promise.resolve(true),
+      getLiveTimeline: () => ({
+        getEvents: () => events,
+        getPaginationToken: () => null,
+        getState: () => undefined,
+      }),
+      findEventById: (id: string) => events.find((e) => e.getId() === id),
+      getMember: (id: string) =>
+        id === '@me:hs'
+          ? { name: 'Me', getMxcAvatarUrl: () => null }
+          : aliceName
+            ? { name: aliceName, getMxcAvatarUrl: () => null }
+            : null,
+      relations: { getChildEventsForEvent: () => undefined },
+      hasEncryptionStateEvent: () => false,
+      on: (ev: string, cb: (...a: unknown[]) => void) => {
+        if (ev === RoomStateEvent.Members) {
+          memberHandler = cb;
+        }
+      },
+      off: () => {},
+    };
+    const client = {
+      baseUrl: 'https://hs',
+      getRoom: () => room,
+      getUserId: () => '@me:hs',
+      on: () => {},
+      off: () => {},
+      sendReadReceipt: () => Promise.resolve({}),
+      scrollback: () => Promise.resolve(room),
+    };
+    TestBed.configureTestingModule({
+      providers: [TimelineService, matrixProvider(client)],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+    const pill = () => svc.messages().find((m) => m.id === '$m')?.html;
+
+    expect(pill()).toContain('>@a:hs</a>');
+
+    aliceName = 'Alice';
+    memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@a:hs' });
+    await Promise.resolve();
+    expect(pill()).toContain('>@Alice</a>');
+
+    aliceName = 'Alicia';
+    memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@a:hs' });
+    await Promise.resolve();
+    expect(pill()).toContain('>@Alicia</a>');
+  });
+
+  it('keys mention pills to the shown content, not an edit by someone else', () => {
+    const link = (id: string) =>
+      `hi <a href="https://matrix.to/#/${id}">@x</a>`;
+    const forgedContent = () => ({
+      'm.new_content': {
+        body: 'hi',
+        msgtype: 'm.text',
+        format: 'org.matrix.custom.html',
+        formatted_body: link('@b:hs'),
+      },
+    });
+    const forged = {
+      ...fakeEdit('$m'),
+      getSender: () => '@mallory:hs',
+      getContent: forgedContent,
+      getOriginalContent: forgedContent,
+    };
+    const event = fakeEvent({
+      id: '$m',
+      sender: '@me:hs',
+      body: 'hi',
+      format: 'org.matrix.custom.html',
+      formattedBody: link('@a:hs'),
+      replacement: forged as never,
+    });
+    const names: Record<string, string> = { '@a:hs': 'Alice', '@b:hs': 'Bob' };
+    const room = {
+      ...fakeRoom([event]),
+      getMember: (id: string) =>
+        names[id] ? { name: names[id], getMxcAvatarUrl: () => null } : null,
+    };
+    const revision = () =>
+      eventRevision(
+        fakeClient(fakeRoom([event]), []) as unknown as MatrixClient,
+        room as unknown as Room,
+        event as unknown as MatrixEvent,
+        false,
+      );
+
+    const before = revision();
+    names['@b:hs'] = 'Bobby';
+    expect(revision()).toBe(before);
+    names['@a:hs'] = 'Alicia';
+    expect(revision()).not.toBe(before);
+  });
+
   it('refreshes a membership system line when the target member loads late', async () => {
     const events = [
       fakeEvent({

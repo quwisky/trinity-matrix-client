@@ -2,6 +2,7 @@ import DOMPurify from 'dompurify';
 import { trimTrailing } from './trim-trailing';
 import {
   isMatrixLinkHref,
+  isWellFormedUserId,
   matrixToPermalink,
   parseMatrixLink,
   parseMatrixToLink,
@@ -281,11 +282,13 @@ export function sanitizeMatrixHtml(
   html: string,
   /** Set only when the event's `m.mentions` names the viewer; see {@link markMentionPills}. */
   addressesViewer = false,
+  /** Display names by user ID for mention pills, from {@link mentionNamesIn}. */
+  mentionNames: Readonly<Record<string, string>> = {},
 ): string {
-  // Whether the event addresses the viewer is part of the OUTPUT, so it is part of the key:
-  // otherwise one event's marking leaks to another with the same body, and survives an account
-  // switch.
-  const cacheKey = `${addressesViewer ? '1' : '0'}\u0000${html}`;
+  // Whether the event addresses the viewer, and the names its pills show, are part of the
+  // OUTPUT, so they are part of the key: otherwise one event's rendering leaks to another with
+  // the same body, and survives an account switch or a rename.
+  const cacheKey = `${addressesViewer ? '1' : '0'}\u0000${JSON.stringify(mentionNames)}\u0000${html}`;
   const memoized = sanitizedHtmlCache.get(cacheKey);
   if (memoized !== undefined) {
     return memoized;
@@ -309,7 +312,7 @@ export function sanitizeMatrixHtml(
   normaliseTaskItems(body);
   markWideLists(body);
   renderCodeBlocks(body);
-  markMentionPills(body, addressesViewer);
+  markMentionPills(body, addressesViewer, mentionNames);
   const clean = body.innerHTML;
   if (sanitizedHtmlCache.size >= SANITIZED_HTML_CACHE_MAX) {
     const oldest = sanitizedHtmlCache.keys().next().value;
@@ -492,9 +495,48 @@ function normaliseMaths(root: ParentNode): void {
   }
 }
 
+/** The users a `formatted_body` links to, which {@link sanitizeMatrixHtml} renders as pills. */
+export function linkedUserIds(html: string | null): string[] {
+  if (!html || !/matrix/i.test(html)) {
+    return [];
+  }
+  // A DOMParser document is inert: it runs no scripts and loads no images.
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const ids = new Set<string>();
+  for (const anchor of doc.querySelectorAll('a[href]')) {
+    const target = parseMatrixLink(anchor.getAttribute('href') ?? '');
+    if (target?.kind === 'user' && isWellFormedUserId(target.userId)) {
+      ids.add(target.userId);
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * The known display names of the users `html` links to, for {@link sanitizeMatrixHtml}.
+ * `nameOf` should return nothing for a user without a name, so their pill shows the Matrix ID.
+ */
+export function mentionNamesIn(
+  html: string | null,
+  nameOf: (userId: string) => string | null | undefined,
+): Readonly<Record<string, string>> {
+  const names: Record<string, string> = {};
+  for (const userId of linkedUserIds(html)) {
+    const name = nameOf(userId);
+    if (name && name !== userId) {
+      names[userId] = name;
+    }
+  }
+  return names;
+}
+
 /**
  * Tag `matrix.to` user links as mentions, and mark them as addressed to the viewer when the
  * event says so.
+ *
+ * The pill's text is the linked user's name from `names` (else their Matrix ID), never the
+ * sender's link text, which could name one person while linking to another. The title carries
+ * the Matrix ID either way.
  *
  * `.mention` is keyed off the href, so mentions written in other clients render like ours.
  * `.mention--self` is NOT: `formatted_body` is sender-written, so anyone could put
@@ -506,12 +548,19 @@ function normaliseMaths(root: ParentNode): void {
  * re-filtered and would ride out onto the wire. Running after DOMPurify also means any `class`
  * the sender wrote is already gone ({@link ALLOWED_CLASS}).
  */
-function markMentionPills(body: HTMLElement, addressesViewer: boolean): void {
+function markMentionPills(
+  body: HTMLElement,
+  addressesViewer: boolean,
+  names: Readonly<Record<string, string>>,
+): void {
   for (const anchor of body.querySelectorAll('a[href]')) {
     const target = parseMatrixToLink(anchor.getAttribute('href') ?? '');
-    if (target?.kind !== 'user') {
+    if (target?.kind !== 'user' || !isWellFormedUserId(target.userId)) {
       continue;
     }
+    const name = names[target.userId];
+    anchor.textContent = name ? `@${name}` : target.userId;
+    anchor.setAttribute('title', target.userId);
     anchor.classList.add('mention');
     if (addressesViewer) {
       anchor.classList.add('mention--self');

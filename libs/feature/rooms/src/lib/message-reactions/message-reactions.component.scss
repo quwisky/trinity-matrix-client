@@ -59,6 +59,15 @@
     background: var(--trinity-state-selected-surface);
   }
 
+  // Keys are free text, so a long one could pass for a label under someone else's message.
+  // The tooltip and accessible name repeat the key, up to 64 characters.
+  .reaction__key {
+    overflow: hidden;
+    max-width: 10ch;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .reaction__count {
     color: var(--trinity-text-muted);
     font-size: var(--trinity-type-metadata-size);

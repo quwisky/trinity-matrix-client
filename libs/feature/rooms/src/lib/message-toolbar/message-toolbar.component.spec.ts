@@ -18,6 +18,7 @@ const caps = (over: Partial<MessageToolbarCaps> = {}): MessageToolbarCaps => ({
   canThread: true,
   canQuote: false,
   saveMedia: null,
+  canForward: true,
   ...over,
 });
 
@@ -83,6 +84,18 @@ describe('MessageToolbarComponent', () => {
     document.querySelector<HTMLElement>('[data-testid="msg-forward"]')?.click();
 
     expect(action).toEqual({ type: 'forward' });
+    fixture.destroy();
+  });
+
+  it('hides Forward for a message a forward cannot carry', async () => {
+    const { fixture, container } = await render(MessageToolbarComponent, {
+      inputs: { caps: caps({ canForward: false }) },
+    });
+
+    openMenu(container, fixture);
+
+    expect(document.querySelector('[data-testid="msg-copy"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="msg-forward"]')).toBeNull();
     fixture.destroy();
   });
 

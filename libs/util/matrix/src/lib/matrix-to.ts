@@ -112,6 +112,19 @@ export function isValidServerName(value: string): boolean {
   }
 }
 
+/** `@localpart:server`, the localpart in the spec's historical range: printable ASCII but `:`. */
+const USER_ID = /^@[\x21-\x39\x3b-\x7e]+:(.+)$/;
+
+/**
+ * Whether `userId` is a well-formed Matrix user ID (spec: at most 255 bytes, a historical
+ * localpart and a valid server name). A pill writes the ID out as its text, so anything looser
+ * would let a link show arbitrary text, invisible characters or bidi overrides as a "Matrix ID".
+ */
+export function isWellFormedUserId(userId: string): boolean {
+  const server = USER_ID.exec(userId)?.[1];
+  return userId.length <= 255 && !!server && isValidServerName(server);
+}
+
 /** Keep the SDK's maximum of three distinct, valid routing servers. */
 export function normalizeViaServers(
   values: Iterable<string>,

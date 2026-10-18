@@ -32,6 +32,21 @@ describe('MessageReactionsComponent', () => {
     expect(toggled).toBe('👍');
   });
 
+  it('cuts a long key short in the accessible name, keeping it 64 characters', async () => {
+    const key = '✅'.repeat(10) + ' Verified by the room admin team'.repeat(3);
+    const { container } = await render(MessageReactionsComponent, {
+      inputs: { reactions: [reaction({ key })] },
+    });
+
+    const label = container
+      .querySelector('.reaction:not(.reaction--who)')
+      ?.getAttribute('aria-label');
+
+    const shown = `${[...key].slice(0, 63).join('')}…`;
+    expect([...shown]).toHaveLength(64);
+    expect(label).toBe(`${shown} 1, reacted by Alice`);
+  });
+
   it('names the reactors on each pill, summarising the rest by count', async () => {
     const { container } = await render(MessageReactionsComponent, {
       inputs: {

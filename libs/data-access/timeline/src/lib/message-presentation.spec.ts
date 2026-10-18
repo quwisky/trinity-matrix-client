@@ -121,6 +121,7 @@ describe('Message Presentation', () => {
       formattedBody: null,
       replyFallback: false,
       addressesViewer: false,
+      mentionNames: {},
       roomEncrypted: true,
       roomId: '!room:example.org',
     };
@@ -151,6 +152,7 @@ describe('Message Presentation', () => {
         '<script>alert(1)</script><pre><code class="language-typescript">const</code></pre><a href="javascript:alert(2)">bad</a>',
       replyFallback: false,
       addressesViewer: false,
+      mentionNames: {},
       roomEncrypted: false,
       roomId: '!room:example.org',
     });
@@ -171,6 +173,7 @@ describe('Message Presentation', () => {
         formattedBody: null,
         replyFallback: false,
         addressesViewer: false,
+        mentionNames: {},
         roomEncrypted: true,
         roomId: '!room:example.org',
       });
@@ -276,11 +279,29 @@ describe('Message Presentation', () => {
       formattedBody: '<a href="https://matrix.to/#/@me:example.org">Me</a>',
       replyFallback: false,
       addressesViewer: true,
+      mentionNames: {},
       roomEncrypted: false,
       roomId: '!room:example.org',
     });
 
     expect(presentation?.html).toContain('mention--self');
+  });
+
+  it('names mention pills from the normalized member names', () => {
+    const presentation = presentNormalizedTimelineEvent({
+      ...BASE,
+      type: 'text',
+      messageKind: 'text',
+      body: '@Boss',
+      formattedBody: '<a href="https://matrix.to/#/@a:example.org">@Boss</a>',
+      replyFallback: false,
+      addressesViewer: false,
+      mentionNames: { '@a:example.org': 'Ann' },
+      roomEncrypted: false,
+      roomId: '!room:example.org',
+    });
+
+    expect(presentation?.html).toContain('>@Ann</a>');
   });
 });
 
@@ -293,6 +314,7 @@ function view(over: Partial<MessageView> = {}): MessageView {
     formattedBody: null,
     replyFallback: false,
     addressesViewer: false,
+    mentionNames: {},
     roomEncrypted: false,
     roomId: '!room:example.org',
   });

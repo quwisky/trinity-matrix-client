@@ -326,4 +326,19 @@ describe('buildEditRevisions', () => {
       expect(revision.html).toBeNull();
     }
   });
+
+  it('names mention pills from the room, as the timeline does', () => {
+    const revisions = buildEditRevisions(
+      original(),
+      [
+        edit({
+          formattedBody: '<a href="https://matrix.to/#/@b:hs">@Boss</a>',
+        }),
+      ],
+      SENDER,
+      (userId) => (userId === '@b:hs' ? 'Bob' : null),
+    );
+
+    expect(revisions[1].html).toContain('>@Bob</a>');
+  });
 });

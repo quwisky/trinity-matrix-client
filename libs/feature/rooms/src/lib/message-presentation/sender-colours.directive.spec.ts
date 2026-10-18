@@ -173,12 +173,12 @@ describe('SenderColoursDirective', () => {
       '<code><span data-mx-color="#e03030">c</span></code>' +
         '<a href="https://matrix.to/#/@a:hs"><span data-mx-color="#e03030">A</span></a>',
     );
-    const spans = host.querySelectorAll<HTMLElement>('.mx-fg-e03030');
 
-    expect(spans).toHaveLength(2);
-    for (const span of spans) {
-      expect(span.style.color).toBe('');
-    }
+    expect(
+      host.querySelector<HTMLElement>('code .mx-fg-e03030')!.style.color,
+    ).toBe('');
+    // A pill's text is the member's name, so no sender markup is left inside it to colour.
+    expect(host.querySelector('a.mention')!.children).toHaveLength(0);
   });
 
   it('never paints a sender colour on maths or inside it', () => {

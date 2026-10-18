@@ -23,6 +23,17 @@ function listPhrase(items: readonly string[]): string {
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
+/** The most of a key the hint repeats; the pill itself is capped by CSS. */
+const HINT_KEY_MAX = 64;
+
+/** `key` cut to {@link HINT_KEY_MAX} code points with an ellipsis, so no emoji is split. */
+function hintKey(key: string): string {
+  const chars = [...key];
+  return chars.length > HINT_KEY_MAX
+    ? `${chars.slice(0, HINT_KEY_MAX - 1).join('')}…`
+    : key;
+}
+
 /**
  * "👍 7, reacted by You, Alice and 4 others" — the projection names only the first few
  * reactors ({@link ReactionView.reactors}), so everyone past that is summarised by count.
@@ -35,7 +46,7 @@ function reactorsHint(reaction: ReactionView): string {
   if (others > 0) {
     names.push(`${others} other${others === 1 ? '' : 's'}`);
   }
-  return `${reaction.key} ${reaction.count}, reacted by ${listPhrase(names)}`;
+  return `${hintKey(reaction.key)} ${reaction.count}, reacted by ${listPhrase(names)}`;
 }
 
 /**

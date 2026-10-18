@@ -24,6 +24,8 @@ export interface MessageRevisionView {
   isOwn: boolean;
 }
 
+type MemberName = (userId: string) => string | null | undefined;
+
 function undecryptable(
   event: MatrixEvent,
   isOwn: boolean,
@@ -42,10 +44,11 @@ function revision(
   event: MatrixEvent,
   content: Record<string, unknown>,
   isOwn: boolean,
+  nameOf: MemberName,
 ): MessageRevisionView {
   // `isReply: false`: an edit carries no reply fallback; the reply relation lives on the
   // original event, whose body was already stripped when rendered.
-  const { text, textHtml } = renderTextBody(content, false);
+  const { text, textHtml } = renderTextBody(content, false, '', nameOf);
   return {
     id: event.getId() ?? '',
     timestamp: event.getTs(),
@@ -88,6 +91,8 @@ export function buildEditRevisions(
   original: MatrixEvent,
   edits: readonly MatrixEvent[],
   currentUserId: string | null,
+  /** A member's display name, for mention pills. */
+  nameOf: MemberName = () => null,
 ): MessageRevisionView[] {
   if (original.isRedacted()) {
     return [];
@@ -97,7 +102,7 @@ export function buildEditRevisions(
   const isOwn = !!currentUserId && original.getSender() === currentUserId;
   const base = original.isDecryptionFailure()
     ? undecryptable(original, isOwn)
-    : revision(original, original.getOriginalContent(), isOwn);
+    : revision(original, original.getOriginalContent(), isOwn, nameOf);
 
   const seen = new Set<string>([base.id]);
   const applied: MessageRevisionView[] = [];
@@ -113,7 +118,7 @@ export function buildEditRevisions(
     }
     const content = newContentOf(edit);
     if (content) {
-      applied.push(revision(edit, content, isOwn));
+      applied.push(revision(edit, content, isOwn, nameOf));
     }
   }
 

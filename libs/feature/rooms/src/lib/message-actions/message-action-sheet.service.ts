@@ -163,12 +163,16 @@ export class MessageActionSheetService {
             },
           ]
         : []),
-      {
-        text: 'Forward',
-        icon: 'forward',
-        testId: 'sheet-forward',
-        handler: act('forward'),
-      },
+      ...(caps.canForward
+        ? [
+            {
+              text: 'Forward',
+              icon: 'forward' as const,
+              testId: 'sheet-forward',
+              handler: act('forward'),
+            },
+          ]
+        : []),
       {
         text: 'View source',
         icon: 'code',

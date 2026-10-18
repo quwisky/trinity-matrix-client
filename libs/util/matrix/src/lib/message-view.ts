@@ -16,7 +16,12 @@ import {
   shieldSubject,
 } from './room-encryption';
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
-import { linkifyMessageText, sanitizeMatrixHtml } from './message-html';
+import {
+  linkedUserIds,
+  linkifyMessageText,
+  mentionNamesIn,
+  sanitizeMatrixHtml,
+} from './message-html';
 import { displayContent } from './replacement';
 
 /** An aggregated reaction (`m.annotation`) on a message. */
@@ -200,6 +205,17 @@ export function collectMessageSenders(
       into.add(targetSender);
     }
   }
+  // Mention pills show the linked member's name.
+  const content = displayContent(event);
+  if (content['format'] === 'org.matrix.custom.html') {
+    for (const userId of linkedUserIds(
+      typeof content['formatted_body'] === 'string'
+        ? content['formatted_body']
+        : null,
+    )) {
+      into.add(userId);
+    }
+  }
   // Only the named reactors: nobody beyond the cap renders, so nobody beyond it needs re-mapping.
   for (const [, reactions] of reactionEventsFor(room, event)) {
     for (const reaction of reactions.slice(0, MAX_NAMED_REACTORS)) {
@@ -225,8 +241,14 @@ export function collectMessageSenders(
 }
 
 /**
- * An event's live reactions grouped by key in the SDK's order (count, then first seen), with
- * redacted ones and empty keys dropped. Shared by the pills and the "who reacted" list.
+ * An event's live reactions grouped by key, one per sender, ordered by that count with the key
+ * seen first (its earliest reaction) breaking ties. Redacted ones and empty keys are dropped.
+ * Shared by the pills and the "who reacted" list.
+ *
+ * The SDK dedupes annotations by event id only, and only the sender's homeserver refuses a
+ * repeat, so a federated sender can send one key many times; counting senders keeps that from
+ * inflating a count or, through the SDK's count-ordered list, a key's position. Keys are grouped
+ * exactly as sent: lookalikes (a variation selector, a zero-width character) stay separate.
  */
 function reactionEventsFor(
   room: Room,
@@ -244,12 +266,22 @@ function reactionEventsFor(
   }
   const groups: [string, MatrixEvent[]][] = [];
   for (const [key, set] of annotations) {
-    const events = [...set].filter((e) => !e.isRedacted());
-    if (events.length > 0) {
-      groups.push([key, events]);
+    const bySender = new Map<string, MatrixEvent>();
+    for (const e of set) {
+      const sender = e.getSender();
+      if (sender && !e.isRedacted() && !bySender.has(sender)) {
+        bySender.set(sender, e);
+      }
+    }
+    if (bySender.size > 0) {
+      groups.push([key, [...bySender.values()]]);
     }
   }
-  return groups;
+  const firstSeen = ([, events]: [string, MatrixEvent[]]) =>
+    events.reduce((min, e) => Math.min(min, e.getTs()), Infinity);
+  return groups.sort(
+    (a, b) => b[1].length - a[1].length || firstSeen(a) - firstSeen(b),
+  );
 }
 
 /** A member's resolved display name, falling back to the raw mxid. */
@@ -384,6 +416,8 @@ export function renderTextBody(
   isReply: boolean,
   /** The viewer, so a mention OF them can be marked. Omitted where it is unknown. */
   selfUserId = '',
+  /** A member's display name, for mention pills; see {@link mentionNamesIn}. */
+  nameOf: (userId: string) => string | null | undefined = () => null,
 ): RenderedText {
   const rawHtml =
     content['format'] === 'org.matrix.custom.html' &&
@@ -397,6 +431,7 @@ export function renderTextBody(
     rawHtml,
     isReply,
     mentionsViewer(content, selfUserId),
+    mentionNamesIn(rawHtml, nameOf),
   );
 }
 
@@ -406,6 +441,7 @@ export function renderNormalizedTextBody(
   formattedBody: string | null,
   isReply: boolean,
   addressesViewer: boolean,
+  mentionNames: Readonly<Record<string, string>> = {},
 ): RenderedText {
   const text = isReply ? stripReplyFallbackText(body) : body;
   const strippedHtml =
@@ -415,7 +451,7 @@ export function renderNormalizedTextBody(
   const html =
     strippedHtml === null
       ? null
-      : sanitizeMatrixHtml(strippedHtml, addressesViewer);
+      : sanitizeMatrixHtml(strippedHtml, addressesViewer, mentionNames);
 
   // Plain text (no formatted_body) still gets bare URLs linkified so they're clickable.
   return { text, html, textHtml: html ?? linkifyMessageText(text) };
@@ -532,7 +568,7 @@ export function normalizeMediaPayload(
 }
 
 /** Narrow an untyped `content.file`/`thumbnail_file` to {@link EncryptedFileInfo}. */
-function asEncryptedFile(value: unknown): EncryptedFileInfo | null {
+export function asEncryptedFile(value: unknown): EncryptedFileInfo | null {
   if (!value || typeof value !== 'object') {
     return null;
   }
@@ -563,7 +599,7 @@ export function stripReplyFallbackText(body: string): string {
 }
 
 /** Strip the `<mx-reply>…</mx-reply>` fallback block from formatted (HTML) replies. */
-function stripReplyFallbackHtml(html: string): string {
+export function stripReplyFallbackHtml(html: string): string {
   return html.replace(/<mx-reply>[\s\S]*?<\/mx-reply>/i, '');
 }
 

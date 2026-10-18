@@ -48,4 +48,15 @@ describe('composerPreview', () => {
     expect(external.getAttribute('rel')).toBe('noopener noreferrer');
     expect(permalink.hasAttribute('target')).toBe(false);
   });
+
+  it('shows a chosen mention as the name the composer inserted', () => {
+    const { html } = composerPreview(
+      'hi @Alice',
+      [{ userId: '@alice:hs', display: '@Alice' }],
+      true,
+    );
+
+    expect(html).toContain('>@Alice</a>');
+    expect(html).toContain('title="@alice:hs"');
+  });
 });

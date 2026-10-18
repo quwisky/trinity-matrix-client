@@ -298,17 +298,13 @@
 
     // Maths is drawn in the body's text colour, never a sender's: the sender-colour directive
     // paints nothing inside it, and this stops it inheriting a colour painted around it. In a
-    // link it keeps the link's colour, in a mention the pill's.
+    // link it keeps the link's colour.
     .mx-maths {
       color: var(--trinity-text);
     }
 
     a .mx-maths {
       color: var(--trinity-link);
-    }
-
-    a.mention .mx-maths {
-      color: inherit;
     }
 
     // Maths never draws outside its own formula. A display formula clips to its box: the
@@ -363,15 +359,14 @@
 
     // High Contrast would draw `\phantom`'s transparent content, and the backplate behind
     // each run of text covers the limits under a `\sum`. Maths keeps its own colours there,
-    // set to the system's text and link colours (a mention is a link, too).
+    // set to the system's text and link colours.
     @media (forced-colors: active) {
       .mx-maths {
         forced-color-adjust: none;
         color: CanvasText;
       }
 
-      a .mx-maths,
-      a.mention .mx-maths {
+      a .mx-maths {
         color: LinkText;
       }
     }

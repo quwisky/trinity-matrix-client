@@ -96,6 +96,8 @@ export interface MessageRowCaps {
   canQuote: boolean;
   /** Which kind of media this message can be saved as; null when it has none. */
   saveMedia: 'image' | 'video' | null;
+  /** Whether a forward can carry this message; see `isForwardableMessage`. */
+  canForward: boolean;
   /** Hide the hover toolbar + retry affordance (view-only thread panel). */
   readOnly: boolean;
 }
@@ -564,6 +566,7 @@ export class MessageRowComponent {
     canThread: true,
     canQuote: false,
     saveMedia: null,
+    canForward: false,
     readOnly: false,
   });
 
@@ -681,6 +684,7 @@ export class MessageRowComponent {
       canThread: c.canThread,
       canQuote: c.canQuote,
       saveMedia: c.saveMedia,
+      canForward: c.canForward,
     };
   });
 

@@ -141,7 +141,7 @@ describe('Conversation Runtime production boundary', () => {
     expect(entrypoint).not.toContain('CONVERSATION_MESSAGE_ADAPTER');
     expect(entrypoint).not.toContain('ConversationMessageAdapter');
     expect(adapter).toContain('this.matrix.clientFor(request.key.accountId)');
-    expect(adapter).toContain('myReactionId(');
+    expect(adapter).toContain('myReactionIds(');
     expect(adapter).toContain('this.policy.authorizeRedaction(request)');
     expect(adapter).not.toMatch(/\b(?:signal|Subject|BehaviorSubject)\s*[<(]/);
     expect(timeline).not.toContain('.sendReadReceipt(');

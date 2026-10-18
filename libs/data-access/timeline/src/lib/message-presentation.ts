@@ -201,6 +201,26 @@ export function isQuotableMessage(message: MessageView): boolean {
   );
 }
 
+const FORWARDABLE_KINDS: ReadonlySet<MessageKind> = new Set([
+  'text',
+  'emote',
+  'notice',
+  'image',
+  'file',
+  'video',
+  'audio',
+  'sticker',
+  'location',
+]);
+
+/**
+ * Whether a forward can carry this message: the kinds whose content forwarding rebuilds from
+ * its type's fields. Polls, undecryptable and unsupported messages cannot be.
+ */
+export function isForwardableMessage(message: MessageView): boolean {
+  return !message.decryptionFailed && FORWARDABLE_KINDS.has(message.kind);
+}
+
 /** The kind of media a message can be saved as, or null when there is nothing to save
  * (no payload, or still unsent). */
 export function savableMediaKind(
@@ -236,6 +256,8 @@ export interface NormalizedTextEvent extends NormalizedCommon {
   readonly formattedBody: string | null;
   readonly replyFallback: boolean;
   readonly addressesViewer: boolean;
+  /** Display names of the users the formatted body links to, for its mention pills. */
+  readonly mentionNames: Readonly<Record<string, string>>;
   readonly roomEncrypted: boolean;
   readonly roomId: string;
 }
@@ -313,6 +335,8 @@ export interface NormalizedMediaEvent extends NormalizedCommon {
   readonly formattedCaption: string | null;
   readonly replyFallback: boolean;
   readonly addressesViewer: boolean;
+  /** Display names of the users the formatted body links to, for its mention pills. */
+  readonly mentionNames: Readonly<Record<string, string>>;
 }
 
 export interface NormalizedLocationEvent extends NormalizedCommon {
@@ -574,6 +598,7 @@ export function presentNormalizedTimelineEvent(
       event.formattedBody,
       event.replyFallback,
       event.addressesViewer,
+      event.mentionNames,
     );
     return Object.freeze({
       ...neutral(common),
@@ -615,6 +640,7 @@ export function presentNormalizedTimelineEvent(
           event.formattedCaption,
           event.replyFallback,
           event.addressesViewer,
+          event.mentionNames,
         )
       : null;
     return Object.freeze({

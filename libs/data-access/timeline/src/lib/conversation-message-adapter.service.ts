@@ -14,7 +14,7 @@ import { PrivacySettingsService } from '@trinity/platform-native';
 import {
   annotationContent,
   isTransientMatrixError,
-  myReactionId,
+  myReactionIds,
 } from '@trinity/util/matrix';
 import type {
   ConversationMessageActionRequest,
@@ -59,11 +59,15 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       if (!this.event(room, request.messageId, request.threadRootId)) {
         return of(this.rejected('reaction', 'message-unavailable'));
       }
-      const mine = myReactionId(client, room, request.messageId, reaction);
-      const action = mine
-        ? request.threadRootId
-          ? client.redactEvent(room.roomId, request.threadRootId, mine)
-          : client.redactEvent(room.roomId, mine)
+      const mine = myReactionIds(client, room, request.messageId, reaction);
+      const action = mine.length
+        ? Promise.all(
+            mine.map((id) =>
+              request.threadRootId
+                ? client.redactEvent(room.roomId, request.threadRootId, id)
+                : client.redactEvent(room.roomId, id),
+            ),
+          )
         : request.threadRootId
           ? client.sendEvent(
               room.roomId,
