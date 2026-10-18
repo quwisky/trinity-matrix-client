@@ -88,7 +88,7 @@ export async function waitUntilStill(
           cancelAnimationFrame(frameId);
           reject(
             new Error(
-              `The long-press target kept moving for ${limit}ms (last box ${last})`,
+              `The target kept moving for ${limit}ms (last box ${last})`,
             ),
           );
         }, limit);

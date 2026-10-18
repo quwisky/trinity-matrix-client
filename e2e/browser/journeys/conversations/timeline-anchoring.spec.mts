@@ -250,10 +250,9 @@ async function anchorCase(
     await page.locator('.load-older').count(),
     'the loading strip outlived the settled page',
   ).toBe(0);
-  // A chained page starts from the scroll events of the restore, so it has been asked for once
-  // the reader holds still.
+  // A chained page starts from the scroll events of the restore or a late resize, so it has
+  // been asked for once the reader holds still; the count is checked after the last hold.
   await waitUntilStill(scroll.locator(`.msg[data-mid="${anchor.id}"]`));
-  expect(chainedPages, 'pagination chained after the measured page').toBe(0);
 
   const after = await offsetOf(anchor.id);
   if (after === null) {
@@ -264,6 +263,7 @@ async function anchorCase(
     await offsetOf(anchor.id),
     'the anchored message was still moving after pagination settled',
   ).toBe(after);
+  expect(chainedPages, 'pagination chained after the measured page').toBe(0);
 
   const drift = Math.abs(after - anchor.top);
   const moved = `anchored message moved from ${anchor.top} to ${after} (${drift}px)`;
