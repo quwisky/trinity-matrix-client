@@ -19,22 +19,21 @@
         >
           {{ lateWarning }}
         </p>
-      } @else {
-        <button
-          trnBtn
-          type="button"
-          variant="secondary"
-          presentation="outline"
-          size="sm"
-          [loading]="busy()"
-          [attr.aria-disabled]="busy() ? 'true' : null"
-          [attr.aria-describedby]="error() ? errorId : null"
-          (click)="turnOn()"
-          data-testid="room-settings-encryption-on"
-        >
-          {{ buttonLabel() }}
-        </button>
       }
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="outline"
+        size="sm"
+        [loading]="busy()"
+        [attr.aria-disabled]="busy() ? 'true' : null"
+        [attr.aria-describedby]="error() ? errorId : null"
+        (click)="turnOn()"
+        data-testid="room-settings-encryption-on"
+      >
+        {{ buttonLabel() }}
+      </button>
       @if (error(); as message) {
         <p
           class="room-settings__hint room-settings__feedback--danger"

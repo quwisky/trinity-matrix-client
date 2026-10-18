@@ -12,29 +12,48 @@ import { applyRoomEncryption } from '@trinity/util/matrix';
  * reports rooms: when the crypto store has the room as encrypted but its synced state lacks
  * `m.room.encryption` (Tuwunel's `state_after` race), fetch the server's event and apply it to
  * the crypto backend. Without it the SDK refuses every send there after a reload ("unconfigured
- * room"). A failed repair is logged; sends stay refused.
+ * room"). A failed repair is logged and retried after {@link FIRST_RETRY_SYNCS} syncs, doubling
+ * per failure up to {@link MAX_RETRY_SYNCS}; sends stay refused meanwhile.
  */
 export function roomEncryptionRepair(
   client: MatrixClient,
 ): (state: SyncState) => void {
-  const checked = new Set<string>();
+  /** Rooms repaired, found unencrypted, or with a repair in flight. */
+  const settled = new Set<string>();
+  const retries = new Map<
+    string,
+    { readonly at: number; readonly wait: number }
+  >();
+  let syncs = 0;
   return (state) => {
     if (state !== SyncState.Prepared && state !== SyncState.Syncing) return;
+    syncs++;
     for (const room of client.getRooms()) {
+      const { roomId } = room;
       if (
-        checked.has(room.roomId) ||
+        settled.has(roomId) ||
+        (retries.get(roomId)?.at ?? 0) > syncs ||
         room.getMyMembership() !== KnownMembership.Join ||
         room.hasEncryptionStateEvent()
       ) {
         continue;
       }
-      checked.add(room.roomId);
-      repairRoom(client, room).catch((error: unknown) =>
-        console.warn("Couldn't restore a room's encryption settings.", error),
-      );
+      settled.add(roomId);
+      repairRoom(client, room).catch((error: unknown) => {
+        settled.delete(roomId);
+        const wait = Math.min(
+          (retries.get(roomId)?.wait ?? FIRST_RETRY_SYNCS / 2) * 2,
+          MAX_RETRY_SYNCS,
+        );
+        retries.set(roomId, { at: syncs + wait, wait });
+        console.warn("Couldn't restore a room's encryption settings.", error);
+      });
     }
   };
 }
+
+const FIRST_RETRY_SYNCS = 2;
+const MAX_RETRY_SYNCS = 64;
 
 async function repairRoom(client: MatrixClient, room: Room): Promise<void> {
   const crypto = client.getCrypto();

@@ -171,24 +171,44 @@ describe('RoomEncryptionService', () => {
     expect(sendStateEvent).not.toHaveBeenCalled();
   });
 
-  it('asks the server first, so a missed sync never sends a second event', async () => {
-    const { service, getStateEvent, sendStateEvent } = setup({
-      serverState: () => Promise.resolve({ algorithm: 'm.megolm.v1.aes-sha2' }),
-    });
+  it("applies the server's settings here instead of sending a second event when only this device lacks them", async () => {
+    const onServer = {
+      algorithm: 'm.megolm.v1.aes-sha2',
+      rotation_period_ms: 604_800_000,
+    };
+    const { service, getStateEvent, sendStateEvent, onCryptoEvent, room } =
+      setup({ serverState: () => Promise.resolve(onServer) });
 
-    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
-      (cause: unknown) => cause,
-    );
+    await firstValueFrom(service.turnOn(TARGET), { defaultValue: undefined });
 
     expect(getStateEvent).toHaveBeenCalledWith(
       TARGET.roomId,
       EventType.RoomEncryption,
       '',
     );
-    expect((error as RoomAdministrationError).outcome.failure).toBe(
-      'invalid-input',
+    expect(sendStateEvent).not.toHaveBeenCalled();
+    expect(onCryptoEvent).toHaveBeenCalledTimes(1);
+    const [appliedRoom, event] = onCryptoEvent.mock.calls[0] as [
+      unknown,
+      MatrixEvent,
+    ];
+    expect(appliedRoom).toBe(room);
+    expect(event.getContent()).toEqual(onServer);
+  });
+
+  it('reports a partial update when the server has the event but this device cannot apply it', async () => {
+    const { service, sendStateEvent } = setup({
+      serverState: () => Promise.resolve({ algorithm: 'm.megolm.v1.aes-sha2' }),
+      applied: () => Promise.resolve(false),
+    });
+
+    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
+      (cause: unknown) => cause,
     );
-    expect((error as Error).message).toBe('This room is already encrypted.');
+
+    expect((error as RoomAdministrationError).outcome.failure).toBe(
+      'partial-update',
+    );
     expect(sendStateEvent).not.toHaveBeenCalled();
   });
 
@@ -308,10 +328,6 @@ describe('RoomEncryptionService', () => {
     for (const options of [
       { encrypted: true },
       { store: () => Promise.resolve(true) },
-      {
-        serverState: () =>
-          Promise.resolve({ algorithm: 'm.megolm.v1.aes-sha2' }),
-      },
     ]) {
       TestBed.resetTestingModule();
       const { service, onCryptoEvent } = setup(options);

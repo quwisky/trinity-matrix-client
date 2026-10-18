@@ -17,7 +17,7 @@ import {
   RoomAdministrationError,
   RoomEncryptionService,
 } from '@trinity/data-access/room-administration';
-import { filter, switchMap, tap } from 'rxjs';
+import { filter, of, switchMap, tap } from 'rxjs';
 import { RoomSettingsDraftService } from '../room-settings-draft.service';
 import { settingsActionFailure } from '../settings-action-failure';
 
@@ -25,13 +25,16 @@ const WARNING =
   "This can't be undone. New messages will be end-to-end encrypted; earlier messages stay as they are. Bridges, bots and some older apps may stop working here.";
 const PUBLIC_WARNING =
   'Anyone can join this room, so encryption adds little privacy and can make joining slower.';
+const LATE_STATUS =
+  'Encryption is on for this room, but not yet on this device.';
 const LATE =
-  "Encryption is on, but this device couldn't apply it. Messages you send from here may not be encrypted.";
+  "This device couldn't apply it, so messages you send from here may not be encrypted.";
 const BUSY = 'Turning on encryption…';
 
 /**
- * `done`: the server took the event and this device encrypts there. `late`: the server took
- * it but this device could not apply it, so the SDK may still send unencrypted from here.
+ * `done`: the server took the event and this device encrypts there. `late`: the server has
+ * it but this device could not apply it, so the SDK may still send unencrypted from here;
+ * Turn on then retries applying it here, without asking again.
  */
 type Phase = 'idle' | 'sending' | 'done' | 'late';
 
@@ -64,6 +67,7 @@ export class RoomSettingsEncryptionComponent {
     () => this.draft.snapshot()?.permissions.encryption ?? null,
   );
   readonly status = computed(() => {
+    if (this.late()) return LATE_STATUS;
     const encrypted = this.encrypted();
     if (encrypted === null) return 'Encryption status is unavailable.';
     return encrypted
@@ -79,7 +83,11 @@ export class RoomSettingsEncryptionComponent {
   readonly busy = computed(() => this.view() === 'sending');
   readonly late = computed(() => this.view() === 'late');
   readonly buttonLabel = computed(() =>
-    this.busy() ? BUSY : 'Turn on encryption…',
+    this.busy()
+      ? BUSY
+      : this.late()
+        ? 'Try again on this device'
+        : 'Turn on encryption…',
   );
   readonly lateWarning = LATE;
   /** Text for the one persistent live region, so each change is announced. */
@@ -88,7 +96,7 @@ export class RoomSettingsEncryptionComponent {
       case 'sending':
         return BUSY;
       case 'late':
-        return LATE;
+        return `${LATE_STATUS} ${LATE}`;
       case 'done':
         return 'Encryption is on.';
       default:
@@ -100,7 +108,7 @@ export class RoomSettingsEncryptionComponent {
   );
 
   constructor() {
-    // The button that held focus is replaced by the outcome; focus follows it there.
+    // When the outcome replaces the button that held focus, focus follows it there.
     afterRenderEffect(() => {
       const view = this.view();
       if (view !== 'done' && view !== 'late') return;
@@ -114,23 +122,28 @@ export class RoomSettingsEncryptionComponent {
 
   turnOn(): void {
     const snapshot = this.draft.snapshot();
-    if (!snapshot || this.phase() !== 'idle') return;
+    const from = this.phase();
+    if (!snapshot || (from !== 'idle' && from !== 'late')) return;
     const { accountId, roomId } = snapshot.target;
     const message =
       snapshot.access.joinRule === JoinRule.Public
         ? `${WARNING}\n\n${PUBLIC_WARNING}`
         : WARNING;
-    this.alert
-      .confirm$({
-        header: 'Turn on encryption?',
-        message,
-        confirmText: 'Turn on encryption',
-        variant: 'danger',
-        closeWhen: this.withdrawn$,
-      })
+    // The room is already encrypted on the server, so a retry has nothing left to confirm.
+    const confirmed$ =
+      from === 'late'
+        ? of(true)
+        : this.alert.confirm$({
+            header: 'Turn on encryption?',
+            message,
+            confirmText: 'Turn on encryption',
+            variant: 'danger',
+            closeWhen: this.withdrawn$,
+          });
+    confirmed$
       .pipe(
         filter(Boolean),
-        filter(() => this.phase() === 'idle'),
+        filter(() => this.phase() === from),
         tap(() => {
           this.errorState.set(null);
           this.phase.set('sending');
@@ -144,14 +157,11 @@ export class RoomSettingsEncryptionComponent {
       )
       .subscribe({
         error: (error: unknown) => {
-          if (
+          const partial =
             error instanceof RoomAdministrationError &&
-            error.outcome.failure === 'partial-update'
-          ) {
-            this.phase.set('late');
-            return;
-          }
-          this.phase.set('idle');
+            error.outcome.failure === 'partial-update';
+          this.phase.set(partial ? 'late' : from);
+          if (partial) return;
           this.errorState.set(
             settingsActionFailure(
               error,

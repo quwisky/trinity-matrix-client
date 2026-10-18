@@ -18,6 +18,7 @@ function setup(
     stateEvent?: boolean;
     stored?: boolean;
     serverState?: () => Promise<unknown>;
+    storeRead?: () => Promise<boolean>;
   } = {},
 ) {
   const room = {
@@ -38,7 +39,9 @@ function setup(
     getCrypto: () => ({
       onCryptoEvent,
       isEncryptionEnabledInRoom: () =>
-        Promise.resolve(applied || (options.stored ?? true)),
+        applied
+          ? Promise.resolve(true)
+          : (options.storeRead?.() ?? Promise.resolve(options.stored ?? true)),
     }),
   };
   const sync = roomEncryptionRepair(client as unknown as MatrixClient);
@@ -103,6 +106,49 @@ describe('roomEncryptionRepair', () => {
 
     expect(getStateEvent).not.toHaveBeenCalled();
     expect(onCryptoEvent).not.toHaveBeenCalled();
+  });
+
+  it('retries a failed repair on a later sync, not on every one', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    let calls = 0;
+    const { sync, onCryptoEvent, getStateEvent } = setup({
+      serverState: () =>
+        ++calls === 1
+          ? Promise.reject(new Error('offline'))
+          : Promise.resolve(SERVER_CONTENT),
+    });
+
+    sync(SyncState.Prepared);
+    await vi.waitFor(() => expect(console.warn).toHaveBeenCalledTimes(1));
+    sync(SyncState.Syncing);
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(getStateEvent).toHaveBeenCalledTimes(1);
+
+    sync(SyncState.Syncing);
+
+    await vi.waitFor(() => expect(onCryptoEvent).toHaveBeenCalledTimes(1));
+    expect(getStateEvent).toHaveBeenCalledTimes(2);
+    expect(onCryptoEvent.mock.calls[0]?.[1].getContent()).toEqual(
+      SERVER_CONTENT,
+    );
+  });
+
+  it('retries after a crypto store read that throws', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    let reads = 0;
+    const { sync, onCryptoEvent } = setup({
+      storeRead: () =>
+        ++reads === 1
+          ? Promise.reject(new Error('store busy'))
+          : Promise.resolve(true),
+    });
+
+    sync(SyncState.Prepared);
+    await vi.waitFor(() => expect(console.warn).toHaveBeenCalledTimes(1));
+    sync(SyncState.Syncing);
+    sync(SyncState.Syncing);
+
+    await vi.waitFor(() => expect(onCryptoEvent).toHaveBeenCalledTimes(1));
   });
 
   it('logs a failed fetch and carries on', async () => {
