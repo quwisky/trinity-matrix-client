@@ -1,9 +1,9 @@
 import { type APIRequestContext, type Page } from '../../fixtures.mts';
 import { type ApiUser } from '../../support/account.mts';
 
-/** Have the sender post one live message via the CS API; returns its body so
- * callers can assert on it. */
-export async function postMessage(
+/** Have the sender post one live message via the CS API; returns its event id.
+ * Unlike `postMessage` in multi-account-journey.mts, which returns void. */
+export async function postMessageForId(
   request: APIRequestContext,
   hs: string,
   sender: ApiUser,
@@ -34,8 +34,14 @@ export async function postMessage(
  * `{ title, options }`. Registered via `page.addInitScript` so it's in place
  * before the app's first script runs, on every navigation in the page
  * (including the /login → /rooms redirect `login()` drives).
+ *
+ * Unlike `installNotificationRecorder` in multi-account-journey.mts, it also
+ * keeps each `Notification` instance (so tests can read `onclick`), installs on
+ * the live page as well, and is safe to call twice.
  */
-export async function installNotificationRecorder(page: Page): Promise<void> {
+export async function installLiveNotificationRecorder(
+  page: Page,
+): Promise<void> {
   function install(): void {
     const w = window as typeof window & {
       __notifications: Array<{
