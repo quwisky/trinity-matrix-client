@@ -5,8 +5,7 @@
       Scan this code with your other device
     </h2>
     <p class="qr-sign-in__hint text-muted-foreground">
-      On a device where you're signed in to Trinity, open Settings › Devices and
-      choose Link a new device.
+      Use Trinity on a device where you're already signed in.
     </p>
     @if (qrUrl(); as url) {
       <img
@@ -25,7 +24,7 @@
   }
   @case ('signing-in') {
     <h2 #stepHeading tabindex="-1" class="qr-sign-in__heading">Signing in</h2>
-    <div class="qr-sign-in__busy" role="status" aria-live="polite">
+    <div class="qr-sign-in__busy">
       <trn-spinner />
       <p class="text-muted-foreground">Signing in…</p>
     </div>
@@ -57,7 +56,7 @@
     <h2 #stepHeading tabindex="-1" class="qr-sign-in__heading">
       Sign in with QR code
     </h2>
-    <div class="qr-sign-in__busy" role="status" aria-live="polite">
+    <div class="qr-sign-in__busy">
       <trn-spinner />
       <p class="text-muted-foreground">Creating a code…</p>
     </div>
@@ -67,12 +66,16 @@
     <h2 #stepHeading tabindex="-1" class="qr-sign-in__heading">
       Check the code on your other device
     </h2>
-    <div role="status" aria-live="polite">
+    <div>
       <p class="qr-sign-in__hint text-muted-foreground">
         Make sure your other device shows the same number:
       </p>
-      <p class="qr-sign-in__check-code" data-testid="qr-sign-in-check-code">
-        {{ checkCode() }}
+      <!-- Read digit by digit: "4 2", not "forty-two". -->
+      <p class="qr-sign-in__check-code">
+        <span aria-hidden="true" data-testid="qr-sign-in-check-code">{{
+          checkCode()
+        }}</span>
+        <span class="sr-only">{{ spokenCheckCode() }}</span>
       </p>
       @if (current.kind === 'waiting-for-approval') {
         <p
@@ -87,6 +90,17 @@
     </div>
   }
 }
+
+<!-- One polite region, present and empty from the first render, so each step's
+     announcement is a change that screen readers read. -->
+<p
+  class="sr-only"
+  role="status"
+  aria-live="polite"
+  data-testid="qr-sign-in-announcement"
+>
+  {{ announcement() }}
+</p>
 
 <button
   trnBtn

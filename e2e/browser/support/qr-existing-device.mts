@@ -110,19 +110,31 @@ export class ExistingDevice {
       userId,
       deviceId,
     });
-    await client.initRustCrypto({ useIndexedDB: false });
-    const prepared = new Promise<void>((resolve) => {
-      client.on(ClientEvent.Sync, (state) => {
-        if (state === SyncState.Prepared) resolve();
+    try {
+      await client.initRustCrypto({ useIndexedDB: false });
+      const prepared = new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error('the first sync did not finish in 30 s')),
+          30_000,
+        );
+        client.on(ClientEvent.Sync, (state) => {
+          if (state === SyncState.Prepared) {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
       });
-    });
-    await client.startClient({ initialSyncLimit: 1 });
-    await prepared;
-    // A fresh account's first identity needs no user-interactive auth.
-    await client.getCrypto()!.bootstrapCrossSigning({
-      setupNewCrossSigning: true,
-      authUploadDeviceSigningKeys: (makeRequest) => makeRequest(null),
-    });
+      await client.startClient({ initialSyncLimit: 1 });
+      await prepared;
+      // A fresh account's first identity needs no user-interactive auth.
+      await client.getCrypto()!.bootstrapCrossSigning({
+        setupNewCrossSigning: true,
+        authUploadDeviceSigningKeys: (makeRequest) => makeRequest(null),
+      });
+    } catch (error) {
+      client.stopClient();
+      throw error;
+    }
     return new ExistingDevice(client, userId);
   }
 

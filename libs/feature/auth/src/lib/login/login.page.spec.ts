@@ -1675,6 +1675,25 @@ describe('LoginPage', () => {
       ).not.toBeNull();
     });
 
+    it('returns focus to "Sign in with QR code" when the panel is left', async () => {
+      const { cmp, fixture } = await renderLogin(oidcServer, {
+        qrSupported: true,
+      });
+      const root = fixture.nativeElement as HTMLElement;
+      cmp.discover();
+      fixture.detectChanges();
+      fireEvent.click(qrButton(root)!);
+      fixture.detectChanges();
+
+      fireEvent.keyDown(root.querySelector('trn-qr-sign-in-panel')!, {
+        key: 'Escape',
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(document.activeElement).toBe(qrButton(root));
+    });
+
     it.each([true, false])(
       'opens the rooms after a QR sign-in like any other (verified: %s)',
       async (verified) => {

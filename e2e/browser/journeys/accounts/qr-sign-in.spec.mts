@@ -40,8 +40,10 @@ test.describe('QR sign-in on a new device', () => {
     const tlsPolicy = process.env['NODE_TLS_REJECT_UNAUTHORIZED'];
     process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
     let existing: ExistingDevice | undefined;
-    const approver = await authPlatform.openIsolatedPage();
+    let approver:
+      Awaited<ReturnType<typeof authPlatform.openIsolatedPage>> | undefined;
     try {
+      approver = await authPlatform.openIsolatedPage();
       const device = await ExistingDevice.signIn(account);
       existing = device;
       await webNavigate(page, '/login');
@@ -89,7 +91,7 @@ test.describe('QR sign-in on a new device', () => {
         .poll(() => device.trusts(signedIn!.device_id), { timeout: 30_000 })
         .toBe(true);
     } finally {
-      await approver.close();
+      await approver?.close();
       existing?.stop();
       if (tlsPolicy === undefined)
         delete process.env['NODE_TLS_REJECT_UNAUTHORIZED'];

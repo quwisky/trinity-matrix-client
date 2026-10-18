@@ -77,6 +77,11 @@ export class QrSignInPanelComponent implements OnInit {
       ? 'check'
       : kind;
   });
+  readonly spokenCheckCode = computed(() =>
+    (this.checkCode() ?? '').split('').join(' '),
+  );
+  /** What the live region says; written after each render, never on insertion. */
+  readonly announcement = signal('');
   readonly failureMessages = FAILURE_MESSAGES;
   readonly finalFailures = FINAL_FAILURES;
 
@@ -84,6 +89,12 @@ export class QrSignInPanelComponent implements OnInit {
     effect(() => {
       this.step();
       afterNextRender(() => this.stepHeading()?.nativeElement.focus(), {
+        injector: this.injector,
+      });
+    });
+    effect(() => {
+      const text = this.announcementFor(this.state());
+      afterNextRender(() => this.announcement.set(text), {
         injector: this.injector,
       });
     });
@@ -97,6 +108,7 @@ export class QrSignInPanelComponent implements OnInit {
   start(): void {
     this.flow?.unsubscribe();
     this.attempt++;
+    this.state.set({ kind: 'creating' });
     this.qrUrl.set(null);
     this.checkCode.set(null);
     this.flow = this.qrSignIn
@@ -112,6 +124,26 @@ export class QrSignInPanelComponent implements OnInit {
   leave(): void {
     this.flow?.unsubscribe();
     this.back.emit();
+  }
+
+  private announcementFor(state: NewDeviceState): string {
+    switch (state.kind) {
+      case 'creating':
+        return 'Creating a code…';
+      case 'showing-code':
+        return 'Your sign-in code is ready to scan.';
+      case 'confirm-check-code':
+        return `Check code: ${this.spokenCheckCode()}`;
+      case 'waiting-for-approval':
+        return `Check code: ${this.spokenCheckCode()}. Then approve the sign-in on your other device.`;
+      case 'signing-in':
+        return 'Signing in…';
+      case 'done':
+        return 'Signed in.';
+      case 'failed':
+        // The failure's own alert speaks for it.
+        return '';
+    }
   }
 
   private apply(state: NewDeviceState): void {

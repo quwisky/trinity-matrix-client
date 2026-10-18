@@ -80,14 +80,25 @@ describe('QrSignInPanelComponent', () => {
     );
   });
 
-  it('announces the check code politely in large digits', async () => {
+  it('announces the check code digit by digit in a live region that already exists', async () => {
     const { emit } = await renderPanel();
+    const region = screen.getByTestId('qr-sign-in-announcement');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+    await waitFor(() =>
+      expect(region.textContent?.trim()).toBe('Creating a code…'),
+    );
 
     await emit({ kind: 'confirm-check-code', code: '07' });
 
-    const code = screen.getByTestId('qr-sign-in-check-code');
-    expect(code.textContent?.trim()).toBe('07');
-    expect(code.closest('[aria-live="polite"]')).not.toBeNull();
+    // The same node, so the change is announced rather than a new region's content.
+    expect(screen.getByTestId('qr-sign-in-announcement')).toBe(region);
+    await waitFor(() =>
+      expect(region.textContent?.trim()).toBe('Check code: 0 7'),
+    );
+    const digits = screen.getByTestId('qr-sign-in-check-code');
+    expect(digits.textContent?.trim()).toBe('07');
+    expect(digits.getAttribute('aria-hidden')).toBe('true');
+    expect(digits.parentElement?.textContent).toContain('0 7');
   });
 
   it('keeps the check code beside the user code while it waits for approval', async () => {
@@ -110,8 +121,13 @@ describe('QrSignInPanelComponent', () => {
     await emit({ kind: 'signing-in' });
 
     expect(
-      screen.getByText('Signing in…').closest('[aria-live="polite"]'),
-    ).not.toBeNull();
+      screen.getByText('Signing in…', { selector: '.qr-sign-in__busy p' }),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('qr-sign-in-announcement').textContent?.trim(),
+      ).toBe('Signing in…'),
+    );
   });
 
   it('moves focus to each step', async () => {
@@ -179,11 +195,17 @@ describe('QrSignInPanelComponent', () => {
   });
 
   it('shows a new code by starting a new flow', async () => {
-    const { emit, flows, service } = await renderPanel();
+    const { emit, flows, service, fixture } = await renderPanel();
 
     await emit({ kind: 'failed', reason: 'expired' });
     fireEvent.click(screen.getByRole('button', { name: 'Show a new code' }));
+    fixture.detectChanges();
 
+    // The failure does not linger while the new code is created.
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(
+      screen.getByText('Creating a code…', { selector: '.qr-sign-in__busy p' }),
+    ).toBeTruthy();
     expect(service.signInByShowingCode).toHaveBeenCalledTimes(2);
     expect(flows[0]!.closed).toBe(true);
     expect(flows[1]!.closed).toBe(false);

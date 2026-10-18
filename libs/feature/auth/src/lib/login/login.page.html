@@ -86,7 +86,7 @@
     <trn-qr-sign-in-panel
       [homeserverUrl]="baseUrl()!"
       (signedIn)="qrSignedIn()"
-      (back)="showingQr.set(false)"
+      (back)="closeQr()"
     />
   } @else {
     @if (passwordSupported()) {
@@ -251,6 +251,7 @@
         class="login-card__sso w-full"
         [disabled]="busy()"
         (click)="showingQr.set(true)"
+        #qrSignInButton
         data-testid="qr-sign-in"
       >
         Sign in with QR code

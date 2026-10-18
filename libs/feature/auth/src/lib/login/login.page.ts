@@ -153,6 +153,8 @@ export class LoginPage {
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly bugReport = inject(BUG_REPORT_LAUNCHER, { optional: true });
+  private readonly qrSignInButton =
+    viewChild<ElementRef<HTMLButtonElement>>('qrSignInButton');
   private readonly usernameInput =
     viewChild<ElementRef<HTMLInputElement>>('usernameInput');
   private readonly deletedNoticeHeading =
@@ -457,6 +459,14 @@ export class LoginPage {
         return;
       }
       void this.router.navigateByUrl('/rooms', { replaceUrl: true });
+    });
+  }
+
+  /** Leave the QR panel; focus returns to the button that opened it. */
+  closeQr(): void {
+    this.showingQr.set(false);
+    afterNextRender(() => this.qrSignInButton()?.nativeElement.focus(), {
+      injector: this.injector,
     });
   }
 
