@@ -237,16 +237,29 @@ const onRooms = (url: URL): boolean =>
 /**
  * Wait until a sign-in lands on Rooms or on the new-device check, then handle the check.
  * The route guard holds navigation for up to ten seconds while the device's status
- * loads, so the landing waits on the URL, never on a fixed delay.
+ * loads, so the landing waits on the URL, never on a fixed delay. A desktop without a usable
+ * keyring (headless Linux CI) first asks to store the account unprotected; the helper agrees.
  */
 export async function settleSignIn(
   page: Page,
   handling: DeviceCheckHandling = 'skip-if-shown',
   timeout = 30_000,
 ): Promise<'rooms' | 'check'> {
-  await page.waitForURL((url) => onRooms(url) || onDeviceCheck(url), {
-    timeout,
+  const keyringConsent = page.locator('trn-alert-dialog', {
+    hasText: 'Store this account without a keyring?',
   });
+  await expect(async () => {
+    if (await keyringConsent.isVisible()) {
+      await keyringConsent
+        .getByTestId('alert-confirm')
+        .click({ timeout: 2_000 });
+    }
+    const url = new URL(page.url());
+    expect(
+      onRooms(url) || onDeviceCheck(url),
+      'sign-in reached neither Rooms nor the device check',
+    ).toBe(true);
+  }).toPass({ timeout });
   const landed = onDeviceCheck(new URL(page.url())) ? 'check' : 'rooms';
   if (landed === 'rooms') {
     if (handling === 'expect') {

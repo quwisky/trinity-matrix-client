@@ -10,6 +10,7 @@ import {
   OidcStateStore,
   RegistrationService,
   SignInRedirectService,
+  UnprotectedStorageDeclinedError,
 } from '@trinity/data-access/auth';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
@@ -831,6 +832,22 @@ describe('LoginPage', () => {
 
     expect(cmp.credentialsError()).toBe(
       'Sign-in cancelled. @me:hs stays on this device with its keys.',
+    );
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
+  });
+
+  it('explains a sign-in declined at the keyring question', async () => {
+    const { cmp, router } = await renderLogin({
+      loginWithPassword: vi.fn(() =>
+        throwError(() => new UnprotectedStorageDeclinedError()),
+      ),
+    } as unknown as Partial<AuthService>);
+    cmp.baseUrl.set('https://hs.example');
+
+    cmp.loginPassword();
+
+    expect(cmp.credentialsError()).toBe(
+      'Sign-in cancelled. Nothing was stored on this device.',
     );
     expect(router.navigateByUrl).not.toHaveBeenCalled();
   });
