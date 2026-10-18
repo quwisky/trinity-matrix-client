@@ -119,7 +119,7 @@ export class SidebarRoomListComponent {
   /**
    * The element that scrolls this list. With one, a long list renders only the lines in and near its
    * viewport, plus spacers, so the DOM stays bounded however many rooms the account has. Without one
-   * (or with {@link SMALL_LIST_ITEMS} lines or fewer) every line renders.
+   * (or with no more lines than {@link SidebarListWindow}'s small-list threshold) every line renders.
    */
   readonly scroller = input<HTMLElement | null>(null);
 
