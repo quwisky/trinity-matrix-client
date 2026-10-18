@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import {
   Direction,
+  EventType,
   MatrixEvent,
   MatrixEventEvent,
   RoomEvent,
@@ -251,6 +252,15 @@ export class ThreadsService {
       this.refreshThread();
     }
   };
+  // Who may end a poll follows the room's power levels.
+  private readonly onThreadPowerLevels = (event: MatrixEvent): void => {
+    if (
+      event.getRoomId() === this.threadRoomId &&
+      event.getType() === EventType.RoomPowerLevels
+    ) {
+      this.refreshThread();
+    }
+  };
   // A thread can be created by our own first in-thread reply: bind to it lazily so
   // the optimistic echo (and later replies) flow into the view.
   private readonly onThreadCreated = (thread: Thread): void => {
@@ -383,6 +393,7 @@ export class ThreadsService {
     room.on(ThreadEvent.New, this.onThreadCreated);
     room.on(RoomEvent.LocalEchoUpdated, this.onThreadChanged);
     room.on(RoomStateEvent.Members, this.onThreadMember);
+    room.on(RoomStateEvent.Events, this.onThreadPowerLevels);
     // A reply's "seen by" avatars follow the read markers, and a receipt is none of the
     // thread-level events above; the summaries and main timeline bind it too. Without it a
     // receipt surfaces only when an unrelated event re-refreshes.
@@ -408,6 +419,7 @@ export class ThreadsService {
       room.off(ThreadEvent.New, this.onThreadCreated);
       room.off(RoomEvent.LocalEchoUpdated, this.onThreadChanged);
       room.off(RoomStateEvent.Members, this.onThreadMember);
+      room.off(RoomStateEvent.Events, this.onThreadPowerLevels);
       room.off(RoomEvent.Receipt, this.onThreadChanged);
     }
     // Detach from the exact Account client attachThreadRoot() inherited.

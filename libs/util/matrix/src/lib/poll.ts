@@ -11,6 +11,7 @@ import {
 } from 'matrix-js-sdk';
 import { displayContent } from './replacement';
 import { arrivedInClear } from './room-encryption';
+import { liveRoomState } from './room-state';
 
 /**
  * Cap on poll options we project/render. MSC3381 limits a poll to 20 answers; a malicious
@@ -110,6 +111,50 @@ function referenceRelations(
   return out;
 }
 
+/** Counted end events whose sender may end the poll. */
+function validEnds(
+  room: Room,
+  startEvent: MatrixEvent,
+  roomEncrypted: boolean,
+): MatrixEvent[] {
+  return countedRelations(
+    room,
+    startEvent.getId() ?? '',
+    END_TYPES,
+    roomEncrypted,
+  ).filter((end) => {
+    const sender = end.getSender();
+    return (
+      !!sender &&
+      (sender === startEvent.getSender() ||
+        liveRoomState(room)?.maySendRedactionForEvent(startEvent, sender))
+    );
+  });
+}
+
+/**
+ * When the poll was closed: the earliest valid end event, else infinity. Whether a sender
+ * may end the poll is judged on the room's current state, as matrix-js-sdk's own poll end
+ * validation does, so a power-level or membership change can reopen or close a poll.
+ */
+function pollEndTs(
+  room: Room,
+  startEvent: MatrixEvent,
+  roomEncrypted: boolean,
+): number {
+  return validEnds(room, startEvent, roomEncrypted).reduce(
+    (min, end) => Math.min(min, end.getTs()),
+    Number.POSITIVE_INFINITY,
+  );
+}
+
+/** Everyone who sent a live end event, valid or not: their standing decides the poll's state. */
+export function pollEndSenders(room: Room, startEvent: MatrixEvent): string[] {
+  return referenceRelations(room, startEvent.getId() ?? '', END_TYPES)
+    .filter((end) => !end.isRedacted())
+    .flatMap((end) => end.getSender() ?? []);
+}
+
 /**
  * Content for a disclosed poll start (results visible) letting each voter choose up to
  * `maxSelections` answers, plus a plain-text fallback for clients that can't render
@@ -197,10 +242,7 @@ export function buildPollView(
     answers.length,
   );
 
-  const endTs = countedRelations(room, pollId, END_TYPES, roomEncrypted).reduce(
-    (min, e) => Math.min(min, e.getTs()),
-    Number.POSITIVE_INFINITY,
-  );
+  const endTs = pollEndTs(room, startEvent, roomEncrypted);
   const ended = endTs !== Number.POSITIVE_INFINITY;
 
   // Each voter's latest response, ignoring post-close votes.
@@ -293,9 +335,9 @@ export function pollSignature(
   )
     .map((e) => `${e.getSender()}:${responseAnswers(e).join(',')}:${e.getTs()}`)
     .sort();
-  // Every counted end, not just the earliest: which one closes the poll changes when an end
-  // is redacted, arrives out of order, or stops counting.
-  const ends = countedRelations(room, pollId, END_TYPES, roomEncrypted)
+  // Every valid end, not just the earliest: which one closes the poll changes when an end
+  // is redacted, arrives out of order, stops counting, or its sender loses the power to end it.
+  const ends = validEnds(room, startEvent, roomEncrypted)
     .map((e) => `end:${e.getId()}:${e.getTs()}`)
     .sort();
   return [...responses, ...ends].join('|');

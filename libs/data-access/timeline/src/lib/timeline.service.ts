@@ -410,6 +410,16 @@ export class TimelineService {
       this.scheduleRefresh();
     }
   };
+  // Who may end a poll follows the room's power levels, which no event on a poll row changes.
+  private readonly onStateEvent = (event: MatrixEvent): void => {
+    if (
+      event.getRoomId() === this.roomId &&
+      event.getType() === EventType.RoomPowerLevels
+    ) {
+      this.rows.notePollPermissions();
+      this.scheduleRefresh();
+    }
+  };
   // A display name/avatar can arrive (lazy loading) or change after the events referencing
   // it, as a header sender or a reply preview's quoted sender (which would stay on the raw
   // mxid). The room re-emits Members for membership and profile changes; gate on
@@ -487,6 +497,7 @@ export class TimelineService {
     room.on(RoomEvent.Receipt, this.onReceipt);
     room.on(RoomEvent.Redaction, this.onRedaction);
     room.on(RoomStateEvent.Members, this.onMember);
+    room.on(RoomStateEvent.Events, this.onStateEvent);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
     client.on(MatrixEventEvent.Replaced, this.onReplaced);
     client.on(RoomMemberEvent.Typing, this.onTyping);
@@ -589,6 +600,7 @@ export class TimelineService {
     this.room?.off(RoomEvent.Receipt, this.onReceipt);
     this.room?.off(RoomEvent.Redaction, this.onRedaction);
     this.room?.off(RoomStateEvent.Members, this.onMember);
+    this.room?.off(RoomStateEvent.Events, this.onStateEvent);
     // Detach from the client open() attached to, NOT `matrix.instance` (the active account),
     // or the old client's listeners stay attached after an account switch.
     const client = this.connectedClient;

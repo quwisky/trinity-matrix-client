@@ -9,7 +9,7 @@ import {
 } from 'matrix-js-sdk';
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
 import { displaySafeMime, mimeEssence } from './display-mime';
-import { isPollStart } from './poll';
+import { isPollStart, pollEndSenders } from './poll';
 import {
   UNENCRYPTED_PREVIEW,
   arrivedInClear,
@@ -207,6 +207,12 @@ export function collectMessageSenders(
       if (reactor) {
         into.add(reactor);
       }
+    }
+  }
+  // A poll's state follows who ended it, so their power and membership changes re-map it.
+  if (isPollStart(event)) {
+    for (const ender of pollEndSenders(room, event)) {
+      into.add(ender);
     }
   }
   // Readers render as avatars like the sender. One who never posted in the loaded window is

@@ -23,6 +23,7 @@ function startEvent(
 ): MatrixEvent {
   return {
     getId: () => POLL_ID,
+    getSender: () => '@me:hs',
     getType: () => 'm.poll.start',
     getTs: () => 0,
     isRedacted: () => false,
@@ -54,10 +55,14 @@ function response(
   } as unknown as MatrixEvent;
 }
 
-function endEvent(ts: number, redacted = false): MatrixEvent {
+function endEvent(
+  ts: number,
+  redacted = false,
+  sender = '@me:hs',
+): MatrixEvent {
   return {
-    getId: () => `$end-${ts}`,
-    getSender: () => '@me:hs',
+    getId: () => `$end-${sender}-${ts}`,
+    getSender: () => sender,
     getTs: () => ts,
     isRedacted: () => redacted,
     getContent: () => ({ 'm.poll.end': {} }),
@@ -65,8 +70,22 @@ function endEvent(ts: number, redacted = false): MatrixEvent {
 }
 
 /** A room whose reference relations serve the given responses / end events by type. */
-function room(responses: MatrixEvent[], ends: MatrixEvent[] = []): Room {
+function room(
+  responses: MatrixEvent[],
+  ends: MatrixEvent[] = [],
+  moderators: string[] = [],
+  { unstableEnds = [] as MatrixEvent[], hasState = true } = {},
+): Room {
   return {
+    getLiveTimeline: () => ({
+      getState: () =>
+        hasState
+          ? {
+              maySendRedactionForEvent: (_event: MatrixEvent, user: string) =>
+                moderators.includes(user),
+            }
+          : undefined,
+    }),
     relations: {
       getChildEventsForEvent: (
         _id: string,
@@ -81,7 +100,9 @@ function room(responses: MatrixEvent[], ends: MatrixEvent[] = []): Room {
             ? responses
             : evType === 'm.poll.end'
               ? ends
-              : [];
+              : evType === 'org.matrix.msc3381.poll.end'
+                ? unstableEnds
+                : [];
         return list.length ? { getRelations: () => list } : undefined;
       },
     },
@@ -157,6 +178,87 @@ describe('buildPollView', () => {
     );
     expect(view.totalVotes).toBe(1);
     expect(view.options[1].votes).toBe(1);
+  });
+
+  describe('who may end a poll', () => {
+    const votes = [response('@a:hs', 'a0', 10)];
+    const view = (r: Room) =>
+      buildPollView(client, r, startEvent('Q', ['A', 'B']), false);
+
+    it('ignores an end with no sender', () => {
+      const anonymous = {
+        ...endEvent(5),
+        getSender: () => undefined,
+      } as unknown as MatrixEvent;
+      expect(view(room(votes, [anonymous])).ended).toBe(false);
+    });
+
+    it('with no live room state, counts only the poll sender', () => {
+      const noState = { hasState: false };
+      expect(
+        view(room(votes, [endEvent(5, false, '@mod:hs')], ['@mod:hs'], noState))
+          .ended,
+      ).toBe(false);
+      expect(view(room(votes, [endEvent(5)], [], noState)).ended).toBe(true);
+    });
+
+    it('judges ends of both namespaces together', () => {
+      const bogusStable = endEvent(5, false, '@x:hs');
+      const validUnstable = endEvent(20);
+      const mixed = view(
+        room(votes, [bogusStable], [], { unstableEnds: [validUnstable] }),
+      );
+      expect(mixed.ended).toBe(true);
+      expect(mixed.totalVotes).toBe(1);
+    });
+
+    it('closes at the earliest valid end when they arrive out of order', () => {
+      const out = view(room(votes, [endEvent(30), endEvent(5)]));
+      expect(out.totalVotes).toBe(0);
+    });
+
+    it('ignores an end from another member without redaction power', () => {
+      const view = buildPollView(
+        client,
+        room(votes, [endEvent(5, false, '@x:hs')]),
+        startEvent('Q', ['A', 'B']),
+        false,
+      );
+      expect(view.ended).toBe(false);
+      expect(view.totalVotes).toBe(1);
+    });
+
+    it('accepts an end from the poll sender', () => {
+      const view = buildPollView(
+        client,
+        room(votes, [endEvent(5)]),
+        startEvent('Q', ['A', 'B']),
+        false,
+      );
+      expect(view.ended).toBe(true);
+      expect(view.totalVotes).toBe(0);
+    });
+
+    it('accepts an end from a member who may redact the poll', () => {
+      const view = buildPollView(
+        client,
+        room(votes, [endEvent(5, false, '@mod:hs')], ['@mod:hs']),
+        startEvent('Q', ['A', 'B']),
+        false,
+      );
+      expect(view.ended).toBe(true);
+    });
+
+    it('closes at the valid end when an unauthorised one came first', () => {
+      const view = buildPollView(
+        client,
+        room(votes, [endEvent(5, false, '@x:hs'), endEvent(20)]),
+        startEvent('Q', ['A', 'B']),
+        false,
+      );
+      expect(view.ended).toBe(true);
+      expect(view.totalVotes).toBe(1);
+    });
   });
 
   it('marks the poll ended and ignores votes cast after it closed', () => {
@@ -381,6 +483,27 @@ describe('poll content builders', () => {
       );
     });
 
+    it('ignores an unauthorised end but moves for a valid one', () => {
+      const responses = [response('@a:hs', 'a0', 10)];
+      const open = room(responses);
+      const withBogus = room(responses, [endEvent(5, false, '@x:hs')]);
+      const withValid = room(responses, [endEvent(5)]);
+
+      expect(pollSignature(withBogus, start, false)).toBe(
+        pollSignature(open, start, false),
+      );
+      expect(pollSignature(withValid, start, false)).not.toBe(
+        pollSignature(open, start, false),
+      );
+    });
+
+    it('moves when the moderator who ended the poll loses redaction power', () => {
+      const ends = [endEvent(5, false, '@mod:hs')];
+      expect(pollSignature(room([], ends, ['@mod:hs']), start, false)).not.toBe(
+        pollSignature(room([], ends), start, false),
+      );
+    });
+
     it('changes when a voter changes a non-first selection', () => {
       const before = room([response('@a:hs', ['a0', 'a1'], 10)]);
       const after = room([response('@a:hs', ['a0'], 10)]);
@@ -461,6 +584,18 @@ describe('buildPollView in an encrypted room', () => {
       buildPollView(client, room([vote], [clearEnd, realEnd]), start, true)
         .ended,
     ).toBe(true);
+  });
+
+  it('ends the poll only on an end that is both encrypted and from someone who may end it', () => {
+    const start = startEvent('Q', ['A', 'B']);
+    const ended = (end: MatrixEvent): boolean =>
+      buildPollView(client, room([], [end], ['@mod:hs']), start, true).ended;
+
+    expect(ended(sent(endEvent(1, false, '@x:hs'), true))).toBe(false);
+    expect(ended(sent(endEvent(1, false, '@mod:hs'), false))).toBe(false);
+    expect(ended(sent(endEvent(1), false))).toBe(false);
+    expect(ended(sent(endEvent(1, false, '@mod:hs'), true))).toBe(true);
+    expect(ended(sent(endEvent(1), true))).toBe(true);
   });
 
   it('counts unencrypted votes and end events in a room that is not encrypted', () => {

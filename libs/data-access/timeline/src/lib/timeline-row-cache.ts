@@ -44,6 +44,7 @@ export class TimelineRowCache {
 
   private everything = true;
   private receiptsMoved = false;
+  private pollsMoved = false;
   private events = new Set<string>();
   private members = new Set<string>();
 
@@ -51,11 +52,13 @@ export class TimelineRowCache {
   private stale: {
     readonly everything: boolean;
     readonly receiptsMoved: boolean;
+    readonly pollsMoved: boolean;
     readonly events: ReadonlySet<string>;
     readonly members: ReadonlySet<string>;
   } = {
     everything: true,
     receiptsMoved: false,
+    pollsMoved: true,
     events: new Set(),
     members: new Set(),
   };
@@ -107,6 +110,11 @@ export class TimelineRowCache {
     }
   }
 
+  /** Who may end a poll changed (power levels): re-check the poll rows. */
+  notePollPermissions(): void {
+    this.pollsMoved = true;
+  }
+
   /** A member's name or avatar changed: re-check the rows that render them. */
   noteMember(userId: string): void {
     this.members.add(userId);
@@ -124,11 +132,13 @@ export class TimelineRowCache {
     this.stale = {
       everything: everything || this.everything,
       receiptsMoved: this.receiptsMoved,
+      pollsMoved: this.pollsMoved,
       events: this.events,
       members: this.members,
     };
     this.everything = false;
     this.receiptsMoved = false;
+    this.pollsMoved = false;
     if (this.events.size > 0) this.events = new Set();
     if (this.members.size > 0) this.members = new Set();
   }
@@ -202,6 +212,7 @@ export class TimelineRowCache {
     this.events = new Set();
     this.members = new Set();
     this.receiptsMoved = false;
+    this.pollsMoved = false;
     this.everything = true;
   }
 
@@ -232,6 +243,7 @@ export class TimelineRowCache {
     if (replyTo && (stale.events.has(replyTo) || this.changed.has(replyTo))) {
       return true;
     }
+    if (stale.pollsMoved && row.view?.poll) return true;
     if (stale.receiptsMoved && (row.view?.readReceipts.length ?? 0) > 0) {
       return true;
     }

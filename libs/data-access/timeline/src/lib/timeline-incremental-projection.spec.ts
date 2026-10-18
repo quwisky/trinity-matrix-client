@@ -527,6 +527,85 @@ describe('TimelineService incremental projection', () => {
       expect(row(id(5))?.poll?.ended).toBe(true);
     });
 
+    describe('who may end a poll changes', () => {
+      const pollRoom = () =>
+        openConversation(20, 20, {
+          1: {
+            type: 'm.room.create',
+            state_key: '',
+            content: { room_version: '10' },
+          },
+          2: {
+            type: 'm.room.member',
+            state_key: '@mod:hs',
+            sender: '@mod:hs',
+            content: { membership: 'join' },
+          },
+          3: {
+            type: 'm.room.member',
+            state_key: '@c:hs',
+            sender: '@c:hs',
+            content: { membership: 'join' },
+          },
+          5: {
+            type: 'org.matrix.msc3381.poll.start',
+            content: pollStartContent('Lunch?', ['Soup', 'Salad']),
+          },
+        });
+      const end = (sender: string) =>
+        live(`$end-${sender}`, {
+          type: 'org.matrix.msc3381.poll.end',
+          sender,
+          content: pollEndContent(id(5)),
+        });
+      let revision = 0;
+      const levels = (users: Record<string, number>) =>
+        live(`$levels-${revision++}`, {
+          type: 'm.room.power_levels',
+          state_key: '',
+          content: { users },
+        });
+
+      it('ends the poll once the sender of an ignored end may redact it', async () => {
+        const { row, receive } = await pollRoom();
+        await receive(end('@c:hs'));
+        expect(row(id(5))?.poll?.ended).toBe(false);
+
+        await receive(levels({ '@mod:hs': 100, '@c:hs': 100 }));
+
+        expect(row(id(5))?.poll?.ended).toBe(true);
+      });
+
+      it('reopens the poll when the moderator who ended it is demoted', async () => {
+        const { row, receive } = await pollRoom();
+        await receive(levels({ '@mod:hs': 100 }));
+        await receive(end('@mod:hs'));
+        expect(row(id(5))?.poll?.ended).toBe(true);
+
+        await receive(levels({}));
+
+        expect(row(id(5))?.poll?.ended).toBe(false);
+      });
+
+      it('reopens the poll when the moderator who ended it leaves', async () => {
+        const { row, receive } = await pollRoom();
+        await receive(levels({ '@mod:hs': 100 }));
+        await receive(end('@mod:hs'));
+        expect(row(id(5))?.poll?.ended).toBe(true);
+
+        await receive(
+          live('$left', {
+            type: 'm.room.member',
+            state_key: '@mod:hs',
+            sender: '@mod:hs',
+            content: { membership: 'leave' },
+          }),
+        );
+
+        expect(row(id(5))?.poll?.ended).toBe(false);
+      });
+    });
+
     it("drops a vote when a ban takes the voter's messages with it", async () => {
       const { row, receive } = await openConversation(20, 20, {
         1: {

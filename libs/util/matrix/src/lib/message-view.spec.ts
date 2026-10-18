@@ -162,6 +162,7 @@ describe('collectMessageSenders', () => {
     const message = {
       getId: () => '$m',
       getSender: () => '@author:hs',
+      getType: () => 'm.room.message',
     } as unknown as MatrixEvent;
     const senders = new Set<string>();
 
@@ -186,6 +187,7 @@ describe('collectMessageSenders', () => {
     const message = {
       getId: () => '$m',
       getSender: () => '@author:hs',
+      getType: () => 'm.room.message',
     } as unknown as MatrixEvent;
     const senders = new Set<string>();
 
@@ -206,6 +208,7 @@ describe('readReceiptsFor', () => {
     const message = {
       getId: () => '$m',
       getSender: () => '@author:hs',
+      getType: () => 'm.room.message',
     } as unknown as MatrixEvent;
 
     expect(readReceiptsFor(ME, room, message).map((r) => r.userId)).toEqual([
