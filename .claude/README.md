@@ -18,12 +18,14 @@ file, not a symlink.
 
 | Event                                  | Script                                                  | Effect                                                                                                                                                                                                                                                                                  |
 | -------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PreToolUse` `Bash`                    | [agent-guard.mjs](../scripts/agent-guard.mjs)         | Blocks staging `docs/superpowers` or `.superpowers`, `pgrep -f` wait loops, a `git push` whose `node scripts/nx.mjs affected -t typecheck --base=origin/main` fails (branch deletions skip the typecheck), `gh pr create` without `--draft`, and `gh pr ready` when `gh pr checks` does not pass. |
+| `SessionStart`                         | [agent-session-status.mjs](../scripts/agent-session-status.mjs) | Fetches `origin/main` and prints, only when it applies: how far local `main` is behind, a missing `user.email`, and a homeserver lock left by a journey run that has ended. Never blocks. |
+| `PreToolUse` `Bash`                    | [agent-guard.mjs](../scripts/agent-guard.mjs)         | Blocks staging `docs/superpowers` or `.superpowers`, `pgrep -f` wait loops, a `git push` whose `node scripts/nx.mjs affected -t typecheck --base=origin/main` fails (branch deletions skip the typecheck), `gh pr create` without `--draft`, and `gh pr ready` when `gh pr checks` does not pass. Also blocks `gh pr merge`, `gh pr review --approve` and ruleset writes (the maintainer runs those, with `! <command>` if they ask an agent); a commit with no configured email, or with a `Release-As` footer or tool attribution; a push to a pull request marked ready; and working-tree git commands (`checkout`, `switch`, `reset --hard`, `stash`, `rebase`, `merge`, `pull`, and similar) while a live journey run or `validate-change --run` holds the checkout's lock. |
+| `PreToolUse` `Edit\|Write\|MultiEdit` | [agent-guard.mjs](../scripts/agent-guard.mjs)         | Blocks hand edits to the root `CHANGELOG.md` and to the `version` of `package.json` or `electron/package.json`, which release-please owns. |
 | `PostToolUse` `Edit\|Write\|MultiEdit` | [agent-format.mjs](../scripts/agent-format.mjs)       | Runs the repository Prettier on the edited file; skips unsupported and `.prettierignore` paths and never blocks.                                                                                                                                                                       |
 
 To turn a hook off for yourself, set `"disableAllHooks": true` in your untracked
 `.claude/settings.local.json`, or remove its entry from `hooks` in `settings.json` for
-everyone. `scripts/agent-guard.spec.mjs` covers the guard.
+everyone. `scripts/agent-guard.spec.mjs` covers the guard and `scripts/agent-session-status.spec.mjs` the status.
 
 ## Subagents
 
