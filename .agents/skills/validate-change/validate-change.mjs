@@ -9,7 +9,7 @@
  * Changed files = `git diff --name-only <base>...HEAD` plus staged, unstaged and untracked files.
  */
 import { spawnSync } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const args = process.argv.slice(2);
@@ -95,6 +95,12 @@ if (capabilities.length) {
 if (notes.length) console.log(`\nNotes:\n${notes.map((n) => `  - ${n}`).join('\n')}`);
 
 if (!args.includes('--run')) process.exit(0);
+
+// The agent guard holds back working-tree changes while this run builds from the checkout.
+const lock = join(root, 'dist/.validate-change.lock');
+mkdirSync(join(root, 'dist'), { recursive: true });
+writeFileSync(lock, JSON.stringify({ pid: process.pid }));
+process.on('exit', () => rmSync(lock, { force: true }));
 
 const results = checks.map(([name, cmd]) => {
   console.log(`\n=== ${name}: ${cmd}`);

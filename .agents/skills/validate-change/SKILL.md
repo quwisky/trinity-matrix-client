@@ -16,7 +16,9 @@ untracked files.
    node .agents/skills/validate-change/validate-change.mjs
    ```
 
-2. Run it (sequential; every check runs even after a failure; exits non-zero if any failed):
+2. Run it (sequential; every check runs even after a failure; exits non-zero if any failed).
+   It holds `dist/.validate-change.lock` for the run, so the agent guard blocks git commands
+   that would change the checkout under it:
 
    ```bash
    node .agents/skills/validate-change/validate-change.mjs --run
