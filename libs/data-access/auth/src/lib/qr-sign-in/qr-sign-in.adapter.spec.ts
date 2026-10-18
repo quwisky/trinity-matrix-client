@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { OAuthGrantType, createClient } from 'matrix-js-sdk';
+import {
+  HTTPError,
+  MatrixError,
+  OAuthGrantType,
+  createClient,
+} from 'matrix-js-sdk';
 import { QrSignInAdapter } from './qr-sign-in.adapter';
 
 vi.mock('matrix-js-sdk', async (importOriginal) => ({
@@ -43,6 +48,28 @@ describe('QrSignInAdapter.isAvailable', () => {
     fakeClient(async () => deviceGrant, false);
     expect(await new QrSignInAdapter().isAvailable('https://hs')).toBe(false);
   });
+
+  it.each([
+    ['a 404', () => new HTTPError('Not found', 404)],
+    [
+      'M_UNRECOGNIZED',
+      () => new MatrixError({ errcode: 'M_UNRECOGNIZED' }, 404),
+    ],
+    [
+      'invalid metadata',
+      () =>
+        new Error('Configured OAuth2 OP does not support required functions'),
+    ],
+  ])(
+    'is false when the server has no auth metadata (%s)',
+    async (_name, error) => {
+      const client = fakeClient(async () => {
+        throw error();
+      });
+      expect(await new QrSignInAdapter().isAvailable('https://hs')).toBe(false);
+      expect(client.stopClient).toHaveBeenCalled();
+    },
+  );
 
   it('rejects when the auth metadata cannot be fetched, and still stops the client', async () => {
     const client = fakeClient(async () => {

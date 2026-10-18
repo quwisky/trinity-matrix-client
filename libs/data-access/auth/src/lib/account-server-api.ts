@@ -47,7 +47,7 @@ export function deletionLink(management: AccountManagement): string {
  * error or 501 from it or its proxy. A timeout, rate limiting, a 5xx, no connection or a
  * body that isn't valid metadata (a captive portal) leave the answer unknown.
  */
-function lacksAuthMetadata(err: unknown): boolean {
+export function lacksAuthMetadata(err: unknown): boolean {
   if (err instanceof MatrixError && err.errcode === 'M_UNRECOGNIZED') {
     return true;
   }
