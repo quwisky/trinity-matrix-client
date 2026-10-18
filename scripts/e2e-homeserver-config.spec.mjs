@@ -32,6 +32,7 @@ const read = (path) => readFileSync(join(ROOT, path), 'utf8');
 const TOMLS = [
   `${HERE}/tuwunel/tuwunel.toml`,
   `${HERE}/tuwunel/tuwunel-remote.toml`,
+  `${HERE}/tuwunel-oauth/tuwunel.toml`,
 ];
 /** `key = value` lines, comments stripped, so a commented-out setting never counts. */
 const settings = (toml) =>
@@ -42,7 +43,7 @@ const settings = (toml) =>
 
 describe('E2E homeserver selection', () => {
   it('defaults to tuwunel and accepts only the known kinds', () => {
-    expect(HOMESERVER_KINDS).toEqual(['tuwunel', 'synapse']);
+    expect(HOMESERVER_KINDS).toEqual(['tuwunel', 'synapse', 'tuwunel-oauth']);
     expect(resolveHomeserverKind({})).toBe('tuwunel');
     expect(resolveHomeserverKind({ TRINITY_E2E_HOMESERVER: '' })).toBe(
       'tuwunel',
@@ -111,17 +112,26 @@ describe('Tuwunel E2E configuration', () => {
     expect(hits.sort()).toEqual([...TOMLS].sort());
   });
 
-  it('pins the Tuwunel image by version and digest', () => {
-    const compose = parse(read(`${HERE}/tuwunel/docker-compose.yml`));
-    const images = Object.values(compose.services)
-      .map((service) => service.image)
-      .filter(Boolean);
+  it('pins the Tuwunel image by version and digest, the same in both adapters', () => {
+    const images = ['tuwunel', 'tuwunel-oauth'].flatMap((dir) =>
+      Object.values(parse(read(`${HERE}/${dir}/docker-compose.yml`)).services)
+        .map((service) => service.image)
+        .filter(Boolean),
+    );
     expect(images.length).toBeGreaterThan(0);
-    for (const image of images) {
-      expect(image).toMatch(
-        /^ghcr\.io\/matrix-construct\/tuwunel:v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/,
-      );
-    }
+    expect(new Set(images).size).toBe(1);
+    expect(images[0]).toMatch(
+      /^ghcr\.io\/matrix-construct\/tuwunel:v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/,
+    );
+  });
+
+  it('serves QR sign-in through the built-in OAuth server, without SSO, on tuwunel-oauth', () => {
+    const lines = settings(read(TOMLS[2]));
+    expect(lines).toContain('oidc_native_auth = true');
+    expect(lines).toContain('rendezvous_enabled = true');
+    expect(lines).toContain('[global.well_known]');
+    expect(lines).toContain('client = "https://localhost:8448"');
+    expect(lines).not.toContain('[[global.identity_provider]]');
   });
 
   it('lets Dex redirect to both servers’ SSO callbacks', () => {
@@ -464,6 +474,13 @@ describe('Opt-in MAS stack', () => {
     expect(yaml.password_config).toEqual({ enabled: false });
     expect(yaml.trusted_key_servers).toEqual([]);
     expect(yaml.public_baseurl).toBe(`${MAS_HS_TLS}/`);
+    expect(yaml.experimental_features).toEqual({ msc4108_enabled: true });
+    // A config patched by an earlier version is rewritten, not kept.
+    const stale = once.replace(
+      'msc4108_enabled: true',
+      'msc4108_enabled: false',
+    );
+    expect(delegateToMas(stale)).toBe(once);
   });
 
   it("leaves MAS's config readable to its non-root container under a umask of 077", async () => {

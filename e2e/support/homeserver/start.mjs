@@ -1,7 +1,7 @@
 // Brings up the disposable e2e homeserver stack and registers the e2e test user.
 //
-// TRINITY_E2E_HOMESERVER picks the homeserver (`tuwunel`, the default, or `synapse`);
-// anything else fails before Docker runs. The selected adapter (tuwunel/ or synapse/)
+// TRINITY_E2E_HOMESERVER picks the homeserver (`tuwunel`, the default, `synapse` or
+// `tuwunel-oauth`); anything else fails before Docker runs. The selected adapter (its directory)
 // owns its compose services and config; this driver owns everything they share:
 //   1. Let the adapter write its config (Synapse generates and patches homeserver.yaml;
 //      Tuwunel's TOML is committed) and prepare its state directories.
@@ -73,11 +73,12 @@ import { formatFailure } from '../http-failure.mts';
 import { masMountedConfig, prepareMas } from './mas/adapter.mjs';
 import { synapse } from './synapse/adapter.mjs';
 import { tuwunel } from './tuwunel/adapter.mjs';
+import { tuwunelOauth } from './tuwunel-oauth/adapter.mjs';
 
 export * from './constants.mjs';
 
 const exec = promisify(execFile);
-const ADAPTERS = { synapse, tuwunel };
+const ADAPTERS = { synapse, tuwunel, 'tuwunel-oauth': tuwunelOauth };
 
 /**
  * The config files the stack bind-mounts, by the service that reads one at startup.
@@ -307,7 +308,7 @@ async function serverVersion() {
     signal: operationSignal,
   });
   const { server } = await res.json();
-  if (server?.name?.toLowerCase() !== kind) {
+  if (server?.name?.toLowerCase() !== (ADAPTERS[kind].software ?? kind)) {
     throw new Error(
       `TRINITY_E2E_HOMESERVER is ${kind}, but ${HOMESERVER_HTTP} runs ${server?.name ?? 'an unknown server'}`,
     );
@@ -566,8 +567,11 @@ export async function start({ signal } = {}) {
     },
   );
 
-  await waitFor('dex discovery', 'dex', dexDiscoveryReady);
-  await waitFor('homeserver sso login flow', 'homeserver', ssoLoginFlowReady);
+  const sso = adapter.sso !== false;
+  if (sso) {
+    await waitFor('dex discovery', 'dex', dexDiscoveryReady);
+    await waitFor('homeserver sso login flow', 'homeserver', ssoLoginFlowReady);
+  }
 
   await registerUser();
 
@@ -609,13 +613,13 @@ export async function start({ signal } = {}) {
     kind,
     version,
     runtime,
-    unavailable: [],
+    unavailable: sso ? [] : ['sso'],
     secondary: {
       hs: SECONDARY_HTTP,
       serverName: secondaryServerName(),
       registrationSecret: REGISTRATION_SHARED_SECRET,
     },
-    ...ssoAccounts(),
+    ...(sso ? ssoAccounts() : {}),
     ...(masEnabled
       ? {
           mas: {

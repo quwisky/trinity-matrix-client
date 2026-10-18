@@ -1,5 +1,12 @@
-/** The homeservers the E2E stack can run; the first is the default. */
-export const HOMESERVER_KINDS = ['tuwunel', 'synapse'] as const;
+/**
+ * The homeservers the E2E stack can run; the first is the default. `tuwunel-oauth` is
+ * Tuwunel with its built-in OAuth server and QR sign-in, and no SSO.
+ */
+export const HOMESERVER_KINDS = [
+  'tuwunel',
+  'synapse',
+  'tuwunel-oauth',
+] as const;
 export type HomeserverKind = (typeof HOMESERVER_KINDS)[number];
 
 /**
