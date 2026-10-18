@@ -20,7 +20,7 @@ import {
   HostSystemUiService,
   type HostUserPresenceSupport,
 } from '@trinity/runtime/host';
-import { fireEvent, render, screen } from '@trinity/testing';
+import { fireEvent, render, screen, TIMERS_AND_DATE } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, type Observable } from 'rxjs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -995,15 +995,7 @@ describe('AppLockCoverComponent', () => {
 
   describe('waits', () => {
     it('shows no countdown for a delay that is already over, and does not retry', async () => {
-      vi.useFakeTimers({
-        toFake: [
-          'setTimeout',
-          'clearTimeout',
-          'setInterval',
-          'clearInterval',
-          'Date',
-        ],
-      });
+      vi.useFakeTimers(TIMERS_AND_DATE);
       const now = Date.now();
       const { unlockWithPin } = await setup({
         support: PIN_ONLY,
@@ -1034,15 +1026,7 @@ describe('AppLockCoverComponent', () => {
     });
 
     it('counts down, then lets the person try again without trying for them', async () => {
-      vi.useFakeTimers({
-        toFake: [
-          'setTimeout',
-          'clearTimeout',
-          'setInterval',
-          'clearInterval',
-          'Date',
-        ],
-      });
+      vi.useFakeTimers(TIMERS_AND_DATE);
       const { unlockWithPin, settle } = await setup({
         support: {
           ...PIN_ONLY,
@@ -1078,15 +1062,7 @@ describe('AppLockCoverComponent', () => {
     });
 
     it('announces the end of the system prompt’s delay', async () => {
-      vi.useFakeTimers({
-        toFake: [
-          'setTimeout',
-          'clearTimeout',
-          'setInterval',
-          'clearInterval',
-          'Date',
-        ],
-      });
+      vi.useFakeTimers(TIMERS_AND_DATE);
       const { systemWaitUntil, settle } = await setup({
         systemWaitUntil: Date.now() + 30_000,
       });

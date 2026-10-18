@@ -30,7 +30,7 @@ import {
   HostLockIntegrationService,
   NO_USER_PRESENCE,
 } from '@trinity/runtime/host';
-import { render, screen } from '@trinity/testing';
+import { render, screen, TIMERS } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { EMPTY, NEVER, Observable, firstValueFrom, of } from 'rxjs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -654,9 +654,7 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('never renders the routes while another tab runs Trinity', async () => {
-    vi.useFakeTimers({
-      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
-    });
+    vi.useFakeTimers(TIMERS);
     const { fixture, queryByTestId } = await setup({
       phase: 'waiting-for-session',
       attempt: 1,
@@ -671,9 +669,7 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('keeps the startup spinner for 500 ms, then shows the waiting notice instead of the workspace', async () => {
-    vi.useFakeTimers({
-      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
-    });
+    vi.useFakeTimers(TIMERS);
     const { fixture, requestHandover, queryByTestId } = await setup(
       { phase: 'waiting-for-session', attempt: 1, settlements: [] },
       [],
@@ -703,9 +699,7 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('follows the lock from "Use here" to "Try again"', async () => {
-    vi.useFakeTimers({
-      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
-    });
+    vi.useFakeTimers(TIMERS);
     const { fixture, lockState } = await setup(
       { phase: 'waiting-for-session', attempt: 1, settlements: [] },
       [],
