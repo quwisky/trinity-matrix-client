@@ -8,8 +8,8 @@
   <trn-dialog-shell [title]="title()" size="sm" [closable]="false">
     <div class="flex flex-col gap-4">
       @if (mode() === 'set') {
-        <!-- The warning decision 11 requires: always shown, never behind a toggle. The
-             opener points the dialog's aria-describedby at it. -->
+        <!-- The forgotten-PIN warning is always shown, never behind a toggle. The opener
+             points the dialog's aria-describedby at it. -->
         <p
           id="app-lock-pin-warning"
           class="m-0 text-sm text-muted-foreground"

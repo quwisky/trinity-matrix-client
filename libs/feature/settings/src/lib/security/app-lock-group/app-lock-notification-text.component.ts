@@ -65,7 +65,6 @@ export class AppLockNotificationTextComponent {
       },
     ],
   );
-  /** Whether the host can open its notification settings (iOS and Android). */
   protected readonly canOpenSettings = this.appSettings.available;
   /**
    * iOS shows previews on the lock screen (Show Previews: Always), where nothing can hide

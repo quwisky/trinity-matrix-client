@@ -41,7 +41,6 @@ function previewSettingOf(answer: unknown): NotificationPreviewSetting | null {
  */
 @Injectable({ providedIn: 'root' })
 export class AppSettingsService {
-  /** Whether this host can open its settings page. */
   readonly available =
     Capacitor.isNativePlatform() && Capacitor.isPluginAvailable(PLUGIN_NAME);
 

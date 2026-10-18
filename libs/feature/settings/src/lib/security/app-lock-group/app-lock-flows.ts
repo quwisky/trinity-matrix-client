@@ -39,11 +39,7 @@ type Guard = (
   command: () => Observable<AppLockFlowEnd>,
 ) => Observable<AppLockFlowEnd>;
 
-/**
- * The App lock group's verification flows: setup (decision 23) and guarded changes
- * (decision 7). Each is cold and ends with exactly one {@link AppLockFlowEnd}. Provided by
- * the group, so it lives as long as Settings shows it.
- */
+/** App lock setup and guarded changes; each flow ends with exactly one {@link AppLockFlowEnd}. */
 @Injectable()
 export class AppLockFlows {
   private readonly appLock = inject(AppLockService);
@@ -55,7 +51,6 @@ export class AppLockFlows {
     return system.kind === 'available' ? methodWarningName(system) : null;
   });
 
-  /** The system prompt where available, then a new PIN, then on. */
   turnOn(): Observable<AppLockFlowEnd> {
     return this.confirmForSetup(true).pipe(
       switchMap((ended) =>
@@ -99,7 +94,7 @@ export class AppLockFlows {
     });
   }
 
-  /** Readably off over a PIN record that can't be read: clear it (ruling T16-1). */
+  /** Readably off over a PIN record that can't be read: clear it. */
   clearUnreadablePin(): Observable<AppLockFlowEnd> {
     return this.appLock.clearUnreadablePin();
   }
@@ -177,11 +172,11 @@ export class AppLockFlows {
     switch (outcome.kind) {
       case 'verified':
         return null;
-      // The system said why; Trinity says nothing more (spec §1).
+      // The system said why; Trinity says nothing more.
       case 'cancelled':
       case 'failed':
         return STOPPED;
-      // The prompt can't run here now, so the PIN alone protects the lock (decision 23).
+      // The prompt can't run here now, so the PIN alone protects the lock.
       case 'unavailable':
         return null;
       case 'locked-out':
@@ -216,7 +211,6 @@ export class AppLockFlows {
     );
   }
 
-  /** The new PIN, typed twice; null when the dialog was cancelled. */
   private askNewPin(): Observable<string | null> {
     return this.askPin('set').pipe(
       map((result) => (result?.kind === 'pin' ? result.pin : null)),

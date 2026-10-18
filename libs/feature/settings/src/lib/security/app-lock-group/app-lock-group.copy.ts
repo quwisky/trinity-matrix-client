@@ -7,9 +7,8 @@ import type {
   HostSystemPresence,
 } from '@trinity/runtime/host';
 
-// Settings › Security › App lock's words (spec §1). Copy that names the app takes the running
-// app's name. The method names repeat the lock screen's (features cannot import Application
-// Runtime, which owns that copy).
+// Copy that names the app takes the running app's name. The method names repeat the lock
+// screen's, because features cannot import Application Runtime, which owns that copy.
 
 /** What a guarded change was trying to do; it names what stayed as it was. */
 export type AppLockChange =
@@ -154,8 +153,7 @@ export function keyringNote(appName: string): string {
 /**
  * A PIN store that exists but can't be read (a damaged record, a locked keyring) while App
  * lock is off. The host refuses a new PIN over it; Try again comes first (a keyring may
- * unlock), then "Clear the stored PIN" (ruling T16-1) where the service allows it: App lock
- * readably off. Where the setting itself was never read, only the full reset clears it.
+ * unlock), then "Clear the stored PIN" where App lock is readably off, else the full reset.
  */
 export function storedPinUnreadableNote(
   appName: string,
@@ -177,7 +175,7 @@ export function pinUnreadableNote(
 }
 
 /**
- * What the host's app-switcher cover does while App lock is on (spec §4). A cover that also
+ * What the host's app-switcher cover does while App lock is on. A cover that also
  * blocks capture (Android's FLAG_SECURE) says so, as people would otherwise take it for a fault;
  * one that doesn't (the iOS blur) covers the snapshot, and may also cover Trinity's pane on iPad
  * while another app beside it has focus (unverified on device).

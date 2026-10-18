@@ -60,7 +60,6 @@ export class NotificationSessionService {
   private readonly appLock = inject(AppLockService);
   private readonly injector = inject(Injector);
   private readonly navigationContext = Symbol();
-  /** Tapped notifications' destinations, opened by {@link openTaps}. */
   private readonly taps = new Subject<WorkspaceNavigationIntent>();
 
   run(): Observable<never> {
@@ -71,7 +70,6 @@ export class NotificationSessionService {
         .run()
         .pipe(concatMap((event) => this.handleNotification(event))),
       this.push.run().pipe(concatMap((event) => this.handlePush(event))),
-      // Keeps the closed-app push renderers' store current; inert off native mobile.
       this.handoff.run(),
       this.refreshTokensOnBackground(),
       this.clearOpenedRooms(),
@@ -87,7 +85,6 @@ export class NotificationSessionService {
    */
   private mirrorNotificationText(): Observable<never> {
     return new Observable<never>(() => {
-      /** The last mode notifications followed, which the privacy rank compares against. */
       let seen: NotificationTextMode | null = null;
       /** The last mode the store accepted (or is writing); null after a refusal. */
       let written: NotificationTextMode | null = null;
@@ -134,10 +131,8 @@ export class NotificationSessionService {
   }
 
   /**
-   * Each time the app goes to the background, refresh OAuth access tokens, so the copy the
-   * closed-app renderers read lives a full lifetime from then. A refresh still running when
-   * the app leaves again is not doubled; the handoff bounds each run, so a hung one never
-   * holds off the next. Best effort: a failure never ends the session.
+   * A refresh still running when the app leaves again is not doubled; the handoff bounds
+   * each run, so a hung one never holds off the next. A failure never ends the session.
    */
   private refreshTokensOnBackground(): Observable<never> {
     return this.lifecycle.events.pipe(
@@ -149,12 +144,7 @@ export class NotificationSessionService {
     );
   }
 
-  /**
-   * Each time a room becomes the focused Conversation (Workspace focuses only a room it has
-   * found ready), or is still focused when App lock unlocks, clear that account's delivered
-   * notifications for it. Best effort: the handoff swallows native failures, so Workspace
-   * never sees one.
-   */
+  /** Clear a room's delivered notifications when it is focused, or still focused at unlock. */
   private clearOpenedRooms(): Observable<never> {
     return new Observable<never>(() => {
       let opened: string | null = null;
@@ -258,8 +248,7 @@ export class NotificationSessionService {
 
   /**
    * A tap brings the app forward at once, to the lock screen if App lock covers it; the
-   * destination opens once the person unlocks (spec §2). It never holds up the other
-   * notification and push events behind it.
+   * destination opens once the person unlocks. It never holds up the events behind it.
    */
   private openIntent(intent: WorkspaceNavigationIntent): Observable<never> {
     return defer(() => {

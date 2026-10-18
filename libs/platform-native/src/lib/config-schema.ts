@@ -35,15 +35,9 @@ export type ConfigKeyRecord =
 /**
  * Every `trinity.*` key the workspace stores, and what the export does with it.
  *
- * The single classification table, and the one thing that has to stay in step as settings
- * are added — which is why it is guarded mechanically rather than by discipline:
- * `scripts/config-schema-drift.spec.mjs` fails when a `trinity.*` literal exists in shipped
- * source and is not listed here, and when a key listed here no longer exists. The issue's
- * own key table had drifted from 13 keys to 24 in the weeks before this was written; that is
- * the evidence the guard exists for.
- *
- * Other stores are excluded wholesale rather than key by key — see
- * {@link CONFIG_EXCLUSION_NOTES}.
+ * `scripts/config-schema-drift.spec.mjs` fails when a `trinity.*` literal in shipped source
+ * is missing here, or a key listed here no longer exists. Other stores are excluded
+ * wholesale; see {@link CONFIG_EXCLUSION_NOTES}.
  */
 export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
   // — application/appearance —
@@ -403,10 +397,7 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
   },
 ];
 
-/**
- * The stores the export never touches at all, and why — the copy the Advanced section
- * shows so the omissions are stated rather than discovered.
- */
+/** The stores the export never touches, and why; shown in the Advanced section. */
 export const CONFIG_EXCLUSION_NOTES: readonly {
   readonly what: string;
   readonly reason: string;
@@ -447,11 +438,8 @@ export const CONFIG_EXCLUSION_NOTES: readonly {
 ];
 
 /**
- * The keys one library is expected to contribute entries for.
- *
- * Exported from the barrel because its consumers are the *other* libs' registry specs —
- * `gif-config-entries.spec.ts` and the other libs' config-entries specs assert their entries
- * match this list — and the Nx boundaries route those through `@trinity/platform-native`.
+ * The keys one library is expected to contribute entries for. Exported for the other
+ * libs' config-entries specs, which Nx boundaries route through `@trinity/platform-native`.
  */
 export function exportedKeysFor(owner: ConfigOwner): readonly string[] {
   const keys: string[] = [];

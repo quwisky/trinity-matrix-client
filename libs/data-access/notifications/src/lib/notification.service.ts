@@ -94,43 +94,20 @@ function copyRetiredAccountData(client: MatrixClient): void {
 }
 
 /**
- * Surfaces incoming messages as native OS notifications, driven by the live sync
- * stream of **every signed-in account** at once (not just the active one). This is
- * the host notification-presentation capability; Web, Capacitor and Electron adapters
- * implement the same typed intent and activation contract.
+ * Surfaces incoming messages as OS notifications for every signed-in account at once,
+ * so listeners, push scoring and dedupe are keyed by account. That is also why this is
+ * not a `projectFromClient` projection, which models one active client.
  *
- * The capability layer selects one of two delivery backends at composition time:
- *  - **Desktop (hand-rolled Electron):** the preload `trinityDesktop` bridge is
- *    present, so notifications are routed through the MAIN process
- *    (`showNotification`). Renderer Web `Notification`s from Electron are
- *    unreliably surfaced/attributed by the OS (notably macOS), so the main
- *    process owns them; clicks come back over `onNotificationClick`.
- *  - **Capacitor:** Local Notifications, with explicit plugin/permission availability.
- *  - **Web / PWA:** the renderer Web `Notification` API (with permission prompt).
+ * On desktop the main process presents them: Electron renderer `Notification`s are
+ * unreliably surfaced and attributed by the OS, notably on macOS.
  *
- * Either way it only fires after the Account's first successful sync and for **live**
- * events (not backfill), from someone other than us, when the user isn't looking at
- * that room (the window is unfocused, a
- * different room is open, or the event is on a background account), and only when
- * ordinary messages pass that account's push rules (`getPushActionsForEvent().notify`
- * respects mutes / mentions-only). Opted-in reactions use client-side target ownership
- * checks instead, while retaining master-disable and room-mute rules. Activation emits an exact semantic destination;
- * the application Workspace owns account switching, repair, focus, and navigation.
+ * Only live events after the account's first sync notify, from someone else, when the
+ * user isn't viewing that room, and when push rules say `notify`. Opted-in reactions use
+ * client-side ownership checks instead, but keep the master rule and room mutes.
  *
- * Because several accounts sync concurrently, listeners are attached per account and
- * reconciled against the live account set; push scoring, own-message suppression, and
- * the per-event dedupe are all keyed by account. The collapse `tag` folds in the
- * user id so the same room on two accounts stays two distinct toasts.
- *
- * For E2EE rooms the `RoomEvent.Timeline` emit carries ciphertext (the preview
- * would be generic and push rules would run against the encrypted payload, so
- * mentions are missed). Those live events are deferred and re-evaluated on
- * `MatrixEventEvent.Decrypted` with `getPushActionsForEvent(event, true)`; a
- * dedupe set guarantees each event notifies at most once per account.
- *
- * That multi-account shape is also why this is not a `projectFromClient` projection: the
- * primitive models one active client, whereas this binds per account. The account-set
- * effect in the constructor is this service's equivalent.
+ * In E2EE rooms the timeline emit carries ciphertext, so the preview would be generic and
+ * push rules would miss mentions. Those events wait for `MatrixEventEvent.Decrypted` and
+ * are rescored with `getPushActionsForEvent(event, true)`.
  */
 @Injectable({ providedIn: 'root' })
 export class NotificationService {
@@ -149,19 +126,13 @@ export class NotificationService {
   private readonly presenter = inject(NotificationPresenterService);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** Whether a current {@link run} subscription owns listener reconciliation. */
   private enabled = false;
   private presentationReady = false;
   private presentationPreparing = false;
 
-  /** Per-account listeners, keyed by user id, so switches/sign-outs re-bind cleanly. */
   private readonly notifiers = new Map<string, AccountNotifier>();
 
-  /**
-   * Per-account retired-name account-data copies, keyed by user id. Bound for every
-   * signed-in account with a client, whatever the notification permission or host
-   * support, so this service is the one owner of the copy.
-   */
+  /** Bound for every account whatever the notification permission or host support. */
   private readonly legacyCopies = new Map<string, LegacyAccountDataCopy>();
 
   private connection: Subscription | null = null;
@@ -169,48 +140,27 @@ export class NotificationService {
   private runtimeSubscriber: Subscriber<NotificationRuntimeEvent> | null = null;
   private readonly health = new NotificationPresentationHealthTracker();
 
-  /**
-   * Live, still-encrypted events seen on the timeline that we deferred until
-   * `MatrixEventEvent.Decrypted`, keyed `userId\0eventId`. Backfill never lands
-   * here, so the Decrypted handler won't notify for scrollback that happens to
-   * decrypt.
-   */
+  /** Live events only, so scrollback that later decrypts never notifies. */
   private readonly pendingDecryption = new Set<string>();
 
-  /** Keys (`userId\0eventId`) already notified, so an event notifies at most once. */
   private readonly notified = new Set<string>();
 
-  /** Bound on {@link notified} so it can't grow without limit on a long session. */
   private static readonly NOTIFIED_CAP = 500;
 
-  /** Bound on {@link pendingDecryption}: permanent UTDs (a megolm session that
-   * never arrives) are kept pending on purpose for a later retry, so evict the
-   * oldest past this cap rather than letting the set grow for the whole session. */
+  /** Permanent UTDs stay pending for a later retry, so the set needs a cap. */
   private static readonly PENDING_DECRYPTION_CAP = 500;
 
   constructor() {
-    // Re-bind listeners to the live account set: attaches to accounts added after
-    // run() (e.g. a background account finishing its warm start) and drops ones
-    // signed out. No-ops until a session subscription enables us.
     effect(() => {
       const accountIds = this.matrix.accountIds();
-      // Reconciliation can synchronously emit a warning to Application Runtime. Its
-      // subscriber reads and writes runtime state; allowing those reads to become
-      // dependencies of this effect turns a rejected permission into a self-sustaining
-      // warning loop. Account membership is the only trigger this effect owns.
+      // Reconciliation can emit a warning whose subscriber reads runtime state; tracking
+      // those reads turns a rejected permission into a self-sustaining warning loop.
       untracked(() => this.reconcile(accountIds));
     });
     this.destroyRef.onDestroy(() => this.stop());
   }
 
-  /**
-   * Own notification delivery for one Application Runtime session.
-   *
-   * Cold and long-lived: subscribing negotiates presentation and attaches every live
-   * Account; teardown releases host activation and SDK listeners. Emissions are typed
-   * activations or warning diagnostics; the application Workspace alone decides how to
-   * open or repair a destination.
-   */
+  /** Own notification delivery for one Application Runtime session; teardown releases it. */
   run(): Observable<NotificationRuntimeEvent> {
     return new Observable((subscriber) => {
       if (this.enabled || (this.connection && !this.connection.closed)) {
@@ -247,7 +197,6 @@ export class NotificationService {
     this.notified.clear();
   }
 
-  /** Attach to accounts that appeared and detach from ones that are gone. */
   private reconcile(ids: readonly string[]): void {
     if (!this.enabled) {
       return;
@@ -255,9 +204,7 @@ export class NotificationService {
     // Before the presentation gate: the copy must not wait on notification permission.
     this.reconcileLegacyCopies(ids);
     if (ids.length === 0) {
-      // Stay dormant under the Application Runtime session. This avoids asking for Web
-      // permission on the signed-out screen while still allowing a later login to attach
-      // without relying on a page component to restart a root capability.
+      // Stay dormant so the signed-out screen never asks for Web permission.
       for (const notifier of this.notifiers.values()) this.detach(notifier);
       this.notifiers.clear();
       this.pendingDecryption.clear();
@@ -287,9 +234,8 @@ export class NotificationService {
       const client = this.matrix.clientFor(userId);
       const held = this.notifiers.get(userId);
       if (held) {
-        // Same user id can get a NEW client object (re-adding an already signed-in account
-        // stops and re-creates it). Holding the old one strands the listener on a stopped
-        // client and that account silently stops updating.
+        // Re-adding a signed-in account re-creates its client; keeping the old one strands
+        // the listener on a stopped client.
         if (held.client === client) {
           continue;
         }
@@ -305,7 +251,6 @@ export class NotificationService {
     }
   }
 
-  /** Bind the retired-name copy to each live account's current client; unbind the rest. */
   private reconcileLegacyCopies(ids: readonly string[]): void {
     const live = new Set(ids);
     for (const [userId, copy] of this.legacyCopies) {
@@ -445,9 +390,8 @@ export class NotificationService {
         this.reactionAllowed(userId, client, room, senderId),
       present: (event) => this.presentReaction(userId, client, event),
     });
-    // A room counts as encrypted by its state OR by the crypto store. The store's answer
-    // is async, so ask it once per room up front; a room first seen after the last sync
-    // is covered from the next sync on.
+    // The crypto store's encryption answer is async, so ask it once per room up front; a
+    // room first seen after the last sync is covered from the next sync on.
     const encryption = new RoomEncryptionFlags();
     const warmEncryption = (): void => {
       const crypto = client.getCrypto();
@@ -472,7 +416,7 @@ export class NotificationService {
         // This runs inside the SDK's sync emit loop — a throw must never disrupt it.
         try {
           if (data?.liveEvent !== true) {
-            return; // backfill / scrollback — not a fresh event
+            return;
           }
           if (!firstSyncCompleted) {
             // matrix-js-sdk labels the first /sync batch as live while it is still
@@ -484,8 +428,6 @@ export class NotificationService {
             return;
           }
           if (this.isAwaitingDecryption(event)) {
-            // E2EE: this emit is ciphertext. Defer to MatrixEventEvent.Decrypted so
-            // the preview and push rules run against the cleartext.
             const id = event.getId();
             if (id) {
               this.pendingDecryption.add(this.key(userId, id));
@@ -510,10 +452,10 @@ export class NotificationService {
           }
           const key = this.key(userId, id);
           if (!this.pendingDecryption.has(key)) {
-            return; // not a live event we deferred (e.g. backfill decryption)
+            return;
           }
           if (event.isDecryptionFailure()) {
-            return; // keep it pending for a possible later retry
+            return; // keep it pending for a later retry
           }
           this.pendingDecryption.delete(key);
           const room = client.getRoom(event.getRoomId() ?? '') ?? undefined;
@@ -549,7 +491,6 @@ export class NotificationService {
     notifier.client.off(MatrixEventEvent.Decrypted, notifier.onDecrypted);
   }
 
-  /** Drop a signed-out account's dedupe entries so a re-add starts clean. */
   private forgetAccount(userId: string): void {
     const prefix = `${userId} `;
     for (const key of this.pendingDecryption) {
@@ -564,8 +505,6 @@ export class NotificationService {
     }
   }
 
-  /** A live encrypted event whose cleartext isn't available yet — wait for the
-   * `Decrypted` emit rather than previewing/scoring the ciphertext. */
   private isAwaitingDecryption(event: MatrixEvent): boolean {
     return event.isEncrypted?.() === true && event.getClearContent?.() == null;
   }
@@ -581,9 +520,7 @@ export class NotificationService {
     if (!room) {
       return;
     }
-    // Respect the account's push rules (mute / mentions-only / etc.).
-    // `forceRecalculate` is set on the decrypted path so the rules score the
-    // cleartext (mentions) rather than a cached ciphertext result.
+    // `forceRecalculate` makes the rules score the cleartext, not a cached ciphertext result.
     const normalized = normalizeNotificationEvent(
       userId,
       event,
@@ -724,12 +661,10 @@ export class NotificationService {
     );
   }
 
-  /** Namespace a dedupe key by account so two accounts don't share event ids. */
   private key(userId: string, eventId: string): string {
     return `${userId} ${eventId}`;
   }
 
-  /** Drop the oldest entry once a bounded set exceeds its cap (FIFO). */
   private evictOldest(set: Set<string>, cap: number): void {
     if (set.size <= cap) {
       return;
