@@ -100,9 +100,13 @@ describe('Room Administration production boundary', () => {
     const moderation = source(
       'libs/data-access/room-administration/src/lib/room-moderation.service.ts',
     );
-    const roomLibrary = source(
+    const roomLibrary = [
       'libs/data-access/room-library/src/lib/room-library.service.ts',
-    );
+      'libs/data-access/room-library/src/lib/room-typing.ts',
+      'libs/data-access/room-library/src/lib/direct-rooms.ts',
+    ]
+      .map(source)
+      .join('\n');
     const bannedMembers = source(
       'libs/feature/rooms/src/lib/banned-members/banned-members.component.ts',
     );
