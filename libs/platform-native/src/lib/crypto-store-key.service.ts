@@ -44,12 +44,16 @@ export class CryptoStoreKeyService {
 
   /**
    * Create and persist a fresh key for the store `cryptoPrefix`. Refuses a store that has
-   * a key, or may have one: replacing it would lock its account out of its own store.
+   * a key, or may have one in a keychain: replacing it would lock its account out of its
+   * own store.
    */
   async create(cryptoPrefix: string): Promise<Uint8Array> {
+    const existing = await this.secure.read(STORE_KEY_PREFIX + cryptoPrefix);
+    // Plain storage stands in for a missing keychain and reports an absent key as
+    // unavailable; it never writes to the keychain, so it cannot replace a key held there.
     if (
-      (await this.secure.read(STORE_KEY_PREFIX + cryptoPrefix)).kind !==
-      'absent'
+      existing.kind === 'present' ||
+      (existing.kind === 'unavailable' && (await this.secure.isSecure()))
     ) {
       throw new Error(`The crypto store ${cryptoPrefix} already has a key.`);
     }

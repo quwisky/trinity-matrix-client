@@ -168,6 +168,26 @@ describe('CryptoStoreKeyService', () => {
       });
     });
 
+    it('creates a key on a desktop without a keychain, whose plain store reports none as unavailable', async () => {
+      const { keys, store, secure } = setup(false);
+      vi.mocked(secure.read).mockImplementation(async (key) => {
+        const value = store.get(key);
+        return value === undefined
+          ? { kind: 'unavailable' }
+          : { kind: 'present', value };
+      });
+
+      const key = await keys.create('trinity-crypto:@alice:hs:DEV1');
+
+      expect(await keys.read('trinity-crypto:@alice:hs:DEV1')).toEqual({
+        kind: 'present',
+        key,
+      });
+      await expect(
+        keys.create('trinity-crypto:@alice:hs:DEV1'),
+      ).rejects.toThrow(/already has a key/);
+    });
+
     it('refuses to replace a store key that already exists', async () => {
       const { keys } = setup(false);
       const first = await keys.create('trinity-crypto:@alice:hs:DEV1');
