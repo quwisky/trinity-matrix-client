@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { QrCodeData, QrCodeIntent } from '@matrix-org/matrix-sdk-crypto-wasm';
 import {
+  OAuth2Error,
   OAuthGrantType,
   createClient,
   type MatrixClient,
@@ -16,7 +17,13 @@ import {
   type RendezvousFailureListener,
 } from 'matrix-js-sdk/lib/rendezvous';
 import { preloadCryptoWasm } from '@trinity/util/matrix';
-import { Observable, firstValueFrom, type Subscriber } from 'rxjs';
+import {
+  Observable,
+  Subscription,
+  firstValueFrom,
+  take,
+  type Subscriber,
+} from 'rxjs';
 import { lacksAuthMetadata } from '../account-server-api';
 import { QR_SIGN_IN_COMPLETION } from './qr-sign-in-completion.port';
 import {
@@ -116,10 +123,8 @@ export class QrSignInAdapter {
           run.onFailure,
         );
         run.attach(flow);
-        let clientId = await run.step(
-          firstValueFrom(
-            this.completion.deviceGrantClientId(metadata, homeserverUrl),
-          ),
+        let clientId = await run.read(
+          this.completion.deviceGrantClientId(metadata, homeserverUrl),
         );
         await run.step(flow.generateCode());
         run.emit({
@@ -141,18 +146,11 @@ export class QrSignInAdapter {
         // the other device, so the grant can be retried once on the same flow.
         const { userCode } = await grant().catch(async (error: unknown) => {
           if (!isClientRejection(error)) throw error;
-          await run.step(
-            firstValueFrom(
-              this.completion.forgetDeviceGrantClientId(
-                metadata,
-                homeserverUrl,
-              ),
-            ),
+          await run.read(
+            this.completion.forgetDeviceGrantClientId(metadata, homeserverUrl),
           );
-          clientId = await run.step(
-            firstValueFrom(
-              this.completion.deviceGrantClientId(metadata, homeserverUrl),
-            ),
+          clientId = await run.read(
+            this.completion.deviceGrantClientId(metadata, homeserverUrl),
           );
           return grant().catch((retryError: unknown) => {
             throw isClientRejection(retryError)
@@ -170,23 +168,17 @@ export class QrSignInAdapter {
         run.emit({ kind: 'signing-in' });
         // The device must exist before shareSecrets: the existing device sends the secrets
         // only once it sees the new device on the server, and gives up after 10 s.
-        const client = await run.step(
-          firstValueFrom(
-            this.completion.completeDeviceGrant(
-              tokens,
-              clientId,
-              metadata,
-              homeserverUrl,
-            ),
+        const client = await run.read(
+          this.completion.completeDeviceGrant(
+            tokens,
+            clientId,
+            metadata,
+            homeserverUrl,
           ),
         );
         const { secrets } = await run.step(flow.shareSecrets());
         const verified = secrets
-          ? await run.step(
-              firstValueFrom(
-                this.completion.importLinkedSecrets(client, secrets),
-              ),
-            )
+          ? await run.read(this.completion.importLinkedSecrets(client, secrets))
           : false;
         run.finish({ kind: 'done', verified });
       });
@@ -307,6 +299,7 @@ class FlowRun<S extends { kind: string }> {
   private finished = false;
   private channelEnded = false;
   private released = false;
+  private readonly reads = new Subscription();
   private respond?: (match: boolean) => void;
 
   /** Send a decline before cancelling, so the other device learns the user stopped. */
@@ -339,6 +332,22 @@ class FlowRun<S extends { kind: string }> {
     const value = await work;
     if (this.ended) throw STOPPED;
     return value;
+  }
+
+  /** {@link step} for an observable, which teardown unsubscribes. */
+  read<T>(source: Observable<T>): Promise<T> {
+    return this.step(
+      new Promise<T>((resolve, reject) => {
+        this.reads.add(
+          source.pipe(take(1)).subscribe({
+            next: resolve,
+            error: reject,
+            complete: () =>
+              reject(new Error('The sign-in step returned nothing.')),
+          }),
+        );
+      }),
+    );
   }
 
   /** Resolves with the first answer given after this call; earlier answers are ignored. */
@@ -380,6 +389,7 @@ class FlowRun<S extends { kind: string }> {
 
   teardown(): void {
     this.ended = true;
+    this.reads.unsubscribe();
     this.respond = undefined;
     void this.release();
   }
@@ -400,12 +410,11 @@ class FlowRun<S extends { kind: string }> {
   }
 }
 
-/** Whether a failed device-authorization request may be the provider refusing the client. */
+/** The SDK's error for an OAuth error answer from the device-authorization endpoint. */
 function isClientRejection(error: unknown): boolean {
   return (
-    error !== STOPPED &&
-    !(error instanceof TypeError) &&
-    !(error instanceof RendezvousError)
+    error instanceof Error &&
+    error.message === OAuth2Error.InvalidDeviceAuthorizationResponse
   );
 }
 

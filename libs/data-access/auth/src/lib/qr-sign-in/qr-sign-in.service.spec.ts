@@ -5,7 +5,7 @@ import {
   MSC4108FailureReason,
   RendezvousError,
 } from 'matrix-js-sdk/lib/rendezvous';
-import { of, type Subscription } from 'rxjs';
+import { Observable, of, type Subscription } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   QrRendezvousFactory,
@@ -273,6 +273,21 @@ describe('QrSignInService.signInByShowingCode', () => {
       expect(completion.forgetDeviceGrantClientId).toHaveBeenCalledTimes(1);
     });
 
+    it('does not register again, nor report unsupported, when the channel closes', async () => {
+      const { service, flows, completion } = setup((flow) =>
+        flow.failures.set(
+          'deviceAuthorizationGrant',
+          new Error('Channel closed'),
+        ),
+      );
+      const run = record(service.signInByShowingCode('https://hs'));
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
+      expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalledTimes(1);
+      expect(completion.forgetDeviceGrantClientId).not.toHaveBeenCalled();
+    });
+
     it('does not register again when the network fails', async () => {
       const { service, flows, completion } = setup((flow) =>
         flow.failures.set(
@@ -287,6 +302,47 @@ describe('QrSignInService.signInByShowingCode', () => {
       expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalledTimes(1);
       expect(completion.forgetDeviceGrantClientId).not.toHaveBeenCalled();
       expect(completion.deviceGrantClientId).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('leaving while signing in', () => {
+    /** A seam call that never answers and records when it is unsubscribed. */
+    function pending() {
+      const left = vi.fn();
+      return {
+        left,
+        source: new Observable<never>(() => left),
+      };
+    }
+
+    it('stops completing the device grant', async () => {
+      const call = pending();
+      const { service, completion } = setup();
+      completion.completeDeviceGrant.mockReturnValue(call.source as never);
+      const run = record(service.signInByShowingCode('https://hs'));
+      await settle();
+      expect(run.kinds().at(-1)).toBe('signing-in');
+
+      run.subscription.unsubscribe();
+      await settle();
+
+      expect(call.left).toHaveBeenCalled();
+      expect(run.kinds()).not.toContain('done');
+    });
+
+    it('stops importing the secrets', async () => {
+      const call = pending();
+      const { service, completion } = setup();
+      completion.importLinkedSecrets.mockReturnValue(call.source as never);
+      const run = record(service.signInByShowingCode('https://hs'));
+      await settle();
+      expect(completion.importLinkedSecrets).toHaveBeenCalled();
+
+      run.subscription.unsubscribe();
+      await settle();
+
+      expect(call.left).toHaveBeenCalled();
+      expect(run.kinds()).not.toContain('done');
     });
   });
 
