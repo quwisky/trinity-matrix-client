@@ -228,7 +228,7 @@ describe('TimelineService', () => {
     );
     // The sender's target never survives; only the render pass marks safe http(s) links.
     expect(neutralised.hasAttribute('target')).toBe(false);
-    expect(safe.getAttribute('href')).toBe('https://ok.test');
+    expect(safe.getAttribute('href')).toBe('https://ok.test/');
     expect(safe.getAttribute('target')).toBe('_blank');
     expect(safe.getAttribute('rel')).toBe('noopener noreferrer');
   });

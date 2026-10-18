@@ -1,9 +1,11 @@
+// @vitest-environment-options {"url": "http://localhost:3000/"}
 import { describe, expect, it } from 'vitest';
 import {
   linkifyMessageText,
   sanitizeMatrixHtml,
   sanitizeOutgoingHtml,
 } from './message-html';
+import { parseMatrixLink } from './matrix-to';
 import { renderNormalizedTextBody } from './message-view';
 
 /** The sanitized body as a tree, for attribute assertions. */
@@ -17,6 +19,77 @@ const firstLink = (html: string): HTMLAnchorElement =>
   parse(html).querySelector('a') as HTMLAnchorElement;
 
 describe('message links that leave Trinity', () => {
+  it.each([
+    [String.raw`https:\\example.org`, 'https://example.org/'],
+    [String.raw`https:/\example.org`, 'https://example.org/'],
+    ['http:example.org', 'http://localhost:3000/example.org'],
+    ['https:example.org', 'https://example.org/'],
+    [String.raw`HTTPS:\\example.org`, 'https://example.org/'],
+    [String.raw`  https:\\example.org`, 'https://example.org/'],
+    [String.raw`${'\u0001'}https:\\example.org`, 'https://example.org/'],
+    ['ht\ttps:example.org', 'https://example.org/'],
+  ])('opens %j externally as %s', (href, resolved) => {
+    const link = firstLink(sanitizeMatrixHtml(`<a href="${href}">x</a>`));
+
+    expect(link.getAttribute('href')).toBe(resolved);
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it.each([
+    '//evil.example',
+    String.raw`\\evil.example`,
+    String.raw`/\evil.example`,
+    '/inside',
+  ])('drops the scheme-less href %j', (href) => {
+    const link = firstLink(sanitizeMatrixHtml(`<a href="${href}">x</a>`));
+
+    expect(link.hasAttribute('href')).toBe(false);
+  });
+
+  it('drops the href of an http(s) link the URL parser rejects', () => {
+    const link = firstLink(sanitizeMatrixHtml('<a href="http://[bad">x</a>'));
+
+    expect(link.hasAttribute('href')).toBe(false);
+    expect(link.hasAttribute('target')).toBe(false);
+  });
+
+  it('normalises a backslash matrix.to link into a permalink that still routes', () => {
+    const link = firstLink(
+      sanitizeMatrixHtml(
+        String.raw`<a href="https:\\matrix.to\#/!room:hs">x</a>`,
+      ),
+    );
+
+    expect(link.getAttribute('href')).toBe('https://matrix.to/#/!room:hs');
+    expect(parseMatrixLink(link.getAttribute('href')!)).toEqual({
+      kind: 'room',
+      roomIdOrAlias: '!room:hs',
+    });
+    expect(link.hasAttribute('target')).toBe(false);
+  });
+
+  it('keeps a non-ASCII alias permalink routable after normalising', () => {
+    const link = firstLink(
+      sanitizeMatrixHtml('<a href="https://matrix.to/#/#café:hs">x</a>'),
+    );
+
+    expect(parseMatrixLink(link.getAttribute('href')!)).toEqual({
+      kind: 'room',
+      roomIdOrAlias: '#café:hs',
+    });
+    expect(link.hasAttribute('target')).toBe(false);
+  });
+
+  it.each(['javascript:alert(1)', 'data:text/html,x'])(
+    'still strips %s',
+    (href) => {
+      const link = firstLink(sanitizeMatrixHtml(`<a href="${href}">x</a>`));
+
+      expect(link.hasAttribute('href')).toBe(false);
+    },
+  );
+
   it.each([
     'https://example.org/a',
     'http://example.org/b',

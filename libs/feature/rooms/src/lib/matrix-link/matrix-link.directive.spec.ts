@@ -1,3 +1,4 @@
+// @vitest-environment-options {"url": "http://localhost:3000/"}
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -91,6 +92,79 @@ describe('MatrixLinkDirective', () => {
       'noopener,noreferrer',
     );
     open.mockRestore();
+  });
+
+  it.each([
+    [String.raw`https:\\example.org`, 'https://example.org/'],
+    [String.raw`https:/\example.org`, 'https://example.org/'],
+    ['https:example.org', 'https://example.org/'],
+    ['HTTPS://example.org', 'https://example.org/'],
+    ['  https://example.org', 'https://example.org/'],
+    ['\u0001https://example.org', 'https://example.org/'],
+    ['ht\ttps://example.org', 'https://example.org/'],
+    ['//evil.example', 'http://evil.example/'],
+    [String.raw`\\evil.example`, 'http://evil.example/'],
+    [String.raw`/\evil.example`, 'http://evil.example/'],
+  ])('opens %j externally and never navigates the app tab', (href, opened) => {
+    const { directive, emitted } = setup();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', href);
+    const event = clickOn(anchor);
+
+    directive.onClick(event);
+
+    expect(emitted).toHaveLength(0);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(open).toHaveBeenCalledWith(opened, '_blank', 'noopener,noreferrer');
+    open.mockRestore();
+  });
+
+  it.each([
+    '#frag',
+    '/path',
+    'http://localhost:3000/inside',
+    'http:example.org',
+    'relative/path',
+    'tel:+123',
+    'mailto:a@example.org',
+  ])('leaves %j to the browser', (href) => {
+    const { directive, emitted } = setup();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const event = clickOn(nodeIn(`<a href="${href}">x</a>`, 'a'));
+
+    directive.onClick(event);
+
+    expect(emitted).toHaveLength(0);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    open.mockRestore();
+  });
+
+  it.each(['javascript:alert(1)', 'data:text/html,x'])(
+    'does not open %j',
+    (href) => {
+      const { directive, emitted } = setup();
+      const open = vi.spyOn(window, 'open').mockReturnValue(null);
+      const event = clickOn(nodeIn(`<a href="${href}">x</a>`, 'a'));
+
+      directive.onClick(event);
+
+      expect(emitted).toHaveLength(0);
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(open).not.toHaveBeenCalled();
+      open.mockRestore();
+    },
+  );
+
+  it('ignores an anchor with no href', () => {
+    const { directive, emitted } = setup();
+    const event = clickOn(nodeIn('<a>x</a>', 'a'));
+
+    directive.onClick(event);
+
+    expect(emitted).toHaveLength(0);
+    expect(event.preventDefault).not.toHaveBeenCalled();
   });
 
   it('leaves a link inside a concealed spoiler to the spoiler directive', () => {

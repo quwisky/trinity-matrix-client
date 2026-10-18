@@ -342,7 +342,7 @@ function normaliseMatrixUris(body: HTMLElement): void {
 }
 
 /** A link that leaves Trinity: only `http(s)`. `mailto:`, `ftp:` and `magnet:` keep their behaviour. */
-const EXTERNAL_LINK = /^https?:\/\//i;
+const EXTERNAL_LINK = /^https?:/i;
 
 /** The spec asks for `noopener`; `noreferrer` also keeps the room's URL out of the destination's logs. */
 const EXTERNAL_LINK_REL = 'noopener noreferrer';
@@ -372,11 +372,18 @@ function markExternalLinks(root: ParentNode): void {
       .replace(URL_LEADING_CONTROLS, '')
       .replace(URL_TAB_OR_NEWLINE, '');
     if (!EXTERNAL_LINK.test(href)) continue;
-    // Write back the href the browser would open so Angular's URL check sees it too: a permalink
-    // left with a leading control character is marked `unsafe:` and MatrixLinkDirective can't
-    // route it.
-    anchor.setAttribute('href', href);
-    if (isMatrixLinkHref(href)) continue;
+    // Write back the URL the browser would open, so `https:\\host` or `http:host` reads as the
+    // external address it is, and Angular's URL check sees it too: a permalink left with a leading
+    // control character is marked `unsafe:` and MatrixLinkDirective can't route it.
+    let resolved: string;
+    try {
+      resolved = new URL(href, document.baseURI).href;
+    } catch {
+      anchor.removeAttribute('href');
+      continue;
+    }
+    anchor.setAttribute('href', resolved);
+    if (isMatrixLinkHref(resolved)) continue;
     anchor.setAttribute('target', '_blank');
     anchor.setAttribute('rel', EXTERNAL_LINK_REL);
   }

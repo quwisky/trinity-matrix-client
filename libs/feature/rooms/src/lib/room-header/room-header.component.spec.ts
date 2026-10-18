@@ -146,7 +146,7 @@ describe('RoomHeaderComponent title', () => {
       ).click();
 
       expect(open).toHaveBeenCalledWith(
-        'https://example.org',
+        'https://example.org/',
         '_blank',
         'noopener,noreferrer',
       );

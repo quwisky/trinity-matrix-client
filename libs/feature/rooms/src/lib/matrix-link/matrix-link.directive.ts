@@ -61,10 +61,19 @@ export class MatrixLinkDirective {
       this.matrixLink.emit({ target: { kind: 'invalid' }, anchor });
       return;
     }
-    if (/^https?:\/\//i.test(href)) {
-      // Open external links out-of-app so a navigation can't discard the session.
+    // An http(s) link to another origin leaves the app, however the href is spelled (`//host`,
+    // `https:\\host`, `http:host`); same-origin and `#` links keep the browser's default.
+    const http = /^https?:$/.test(anchor.protocol);
+    const scheme = href.replace(/^[\u0000-\u0020]+|[\t\n\r]/g, '');
+    // `javascript:` and `data:` never survive the sanitizer; refuse them here too, and an
+    // http(s) href the URL parser rejects.
+    if (
+      http
+        ? anchor.origin !== location.origin
+        : /^(?:https?|javascript|data):/i.test(scheme)
+    ) {
       event.preventDefault();
-      window.open(href, '_blank', 'noopener,noreferrer');
+      if (http) window.open(anchor.href, '_blank', 'noopener,noreferrer');
     }
   }
 }
