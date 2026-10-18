@@ -22,7 +22,7 @@ const KEY = {
 const flush = () => new Promise((resolve) => setTimeout(resolve));
 
 function setup({ roomEncrypted = false } = {}) {
-  let pinned = ['$one'];
+  let pinned: unknown = ['$one'];
   const events = new Map([
     [
       '$one',
@@ -130,7 +130,7 @@ function setup({ roomEncrypted = false } = {}) {
   });
   const controller = TestBed.inject(ConversationPinsController);
   controller.attach(KEY, client as never);
-  const setPinned = (next: string[]) => {
+  const setPinned = (next: unknown) => {
     pinned = next;
   };
   return {
@@ -234,6 +234,218 @@ describe('ConversationPinsController', () => {
       retryable: false,
     });
     expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it.each([{}, 7, 'abc', null, { length: 0 }])(
+    'opens with no pins when the pinned list is %j',
+    (malformed) => {
+      const { controller, setPinned, room, client } = setup();
+      setPinned(malformed);
+
+      expect(() => controller.attach(KEY, client as never)).not.toThrow();
+
+      expect(controller.eventIds()).toEqual([]);
+      expect(controller.messages()).toEqual([]);
+      expect(room.listenerCount(RoomStateEvent.Events)).toBe(1);
+    },
+  );
+
+  it('keeps only string ids from a mixed pinned list', () => {
+    const { controller, setPinned, client } = setup();
+    setPinned(['$one', 4, null, { a: 1 }, '$two']);
+    controller.attach(KEY, client as never);
+
+    expect(controller.eventIds()).toEqual(['$one', '$two']);
+  });
+
+  it('releases its listeners when reading the room state fails', () => {
+    const { controller, room, client } = setup();
+    vi.spyOn(
+      controller as unknown as { readRoomState: () => void },
+      'readRoomState',
+    ).mockImplementation(() => {
+      throw new Error('unreadable');
+    });
+
+    expect(() => controller.attach(KEY, client as never)).toThrow('unreadable');
+
+    expect(room.listenerCount(RoomStateEvent.Events)).toBe(0);
+    expect(room.listenerCount(RoomEvent.Timeline)).toBe(0);
+    expect(client.listenerCount(MatrixEventEvent.Decrypted)).toBe(0);
+  });
+
+  it('caps the pin list and fetches a few pins at a time', async () => {
+    const { controller, setPinned, client, fetchRoomEvent } = setup();
+    let inFlight = 0;
+    let peak = 0;
+    fetchRoomEvent.mockImplementation(async () => {
+      peak = Math.max(peak, ++inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      inFlight--;
+      throw Object.assign(new Error('Not found'), { httpStatus: 404 });
+    });
+    setPinned(Array.from({ length: 250 }, (_, i) => `$p${i}`));
+    controller.attach(KEY, client as never);
+
+    expect(controller.eventIds()).toHaveLength(100);
+    await vi.waitFor(() => expect(fetchRoomEvent).toHaveBeenCalledTimes(100));
+    expect(peak).toBe(4);
+  });
+
+  describe('writes keep what the display list drops', () => {
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `$p${i}`);
+    const sent = (sendStateEvent: { mock: { calls: unknown[][] } }) =>
+      sendStateEvent.mock.calls[0]?.[2];
+
+    it('unpins from a 130-pin room without dropping the other 129', async () => {
+      const { controller, setPinned, client, sendStateEvent } = setup();
+      setPinned(ids(130));
+      controller.attach(KEY, client as never);
+
+      await firstValueFrom(controller.unpin('$p120'));
+
+      expect(sent(sendStateEvent)).toEqual({
+        pinned: ids(130).filter((id) => id !== '$p120'),
+      });
+    });
+
+    it('keeps non-string entries when unpinning', async () => {
+      const { controller, setPinned, client, sendStateEvent } = setup();
+      setPinned(['$a', 5, '$b', null]);
+      controller.attach(KEY, client as never);
+
+      await firstValueFrom(controller.unpin('$a'));
+
+      expect(sent(sendStateEvent)).toEqual({ pinned: [5, '$b', null] });
+    });
+
+    it('appends a pin to a 100-pin room and then shows it', async () => {
+      const { controller, setPinned, client, room, sendStateEvent } = setup();
+      setPinned(ids(100));
+      controller.attach(KEY, client as never);
+
+      await firstValueFrom(controller.pin('$new'));
+
+      expect(sent(sendStateEvent)).toEqual({ pinned: [...ids(100), '$new'] });
+      setPinned([...ids(100), '$new']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      expect(controller.eventIds().at(-1)).toBe('$new');
+      expect(controller.eventIds()).toHaveLength(100);
+    });
+
+    it('shows the newest 100 pins and still knows the older ones', () => {
+      const { controller, setPinned, client } = setup();
+      setPinned(ids(130));
+      controller.attach(KEY, client as never);
+
+      expect(controller.eventIds()).toEqual(ids(130).slice(30));
+      expect(controller.isPinned('$p0')).toBe(true);
+      expect(controller.isPinned('$nope')).toBe(false);
+    });
+  });
+
+  describe('bounded pin fetches', () => {
+    const ids = (prefix: string, n: number) =>
+      Array.from({ length: n }, (_, i) => `${prefix}${i}`);
+    function hung() {
+      const fixture = setup();
+      const settle: Array<() => void> = [];
+      fixture.fetchRoomEvent.mockImplementation(
+        (_roomId: string, eventId: string) =>
+          new Promise((resolve) =>
+            settle.push(() =>
+              resolve({
+                event_id: eventId,
+                room_id: KEY.roomId,
+                sender: '@bob:example.org',
+                type: 'm.room.message',
+                origin_server_ts: 5,
+                content: { body: `Body ${eventId}` },
+              }),
+            ),
+          ),
+      );
+      const changeTo = (next: string[]) => {
+        fixture.setPinned(next);
+        fixture.room.emit(RoomStateEvent.Events, {
+          getType: () => EventType.RoomPinnedEvents,
+        });
+      };
+      const flush = () => new Promise((resolve) => setTimeout(resolve));
+      return { ...fixture, settle, changeTo, flush };
+    }
+
+    it('drops queued pins when the list changes, and still resolves the new list', async () => {
+      const f = hung();
+      f.changeTo(ids('$q', 6));
+      expect(f.fetchRoomEvent).toHaveBeenCalledTimes(4);
+
+      f.changeTo(['$r0']);
+      f.settle.splice(0).forEach((fn) => fn());
+      await f.flush();
+
+      expect(f.fetchRoomEvent.mock.calls.map((c) => c[1])).toEqual([
+        '$q0',
+        '$q1',
+        '$q2',
+        '$q3',
+        '$r0',
+      ]);
+      f.settle.splice(0).forEach((fn) => fn());
+      await f.flush();
+      expect(f.controller.messages()).toMatchObject([
+        { id: '$r0', status: 'loaded', body: 'Body $r0' },
+      ]);
+    });
+
+    it('resolves queued pins of the current list as slots free up', async () => {
+      const f = hung();
+      f.changeTo(ids('$q', 6));
+      f.settle.splice(0).forEach((fn) => fn());
+      await f.flush();
+      f.settle.splice(0).forEach((fn) => fn());
+      await f.flush();
+
+      expect(f.fetchRoomEvent).toHaveBeenCalledTimes(6);
+      expect(f.controller.messages().map((m) => m.status)).toEqual(
+        Array(6).fill('loaded'),
+      );
+    });
+
+    it('starts no queued fetch after release and ignores late results', async () => {
+      const f = hung();
+      f.changeTo(ids('$q', 6));
+
+      f.controller.release();
+      f.settle.splice(0).forEach((fn) => fn());
+      await f.flush();
+
+      expect(f.fetchRoomEvent).toHaveBeenCalledTimes(4);
+      expect(f.controller.messages()).toEqual([]);
+    });
+
+    it('treats a second release as a no-op', () => {
+      const { controller } = setup();
+      controller.release();
+
+      expect(() => controller.release()).not.toThrow();
+      expect(controller.resources().listenerCount).toBe(0);
+    });
+
+    it('survives a malformed list arriving after attach', () => {
+      const { controller, setPinned, room } = setup();
+      setPinned({});
+
+      expect(() =>
+        room.emit(RoomStateEvent.Events, {
+          getType: () => EventType.RoomPinnedEvents,
+        }),
+      ).not.toThrow();
+      expect(controller.eventIds()).toEqual([]);
+      expect(controller.messages()).toEqual([]);
+    });
   });
 
   it('detaches every listener and rejects commands after release', async () => {

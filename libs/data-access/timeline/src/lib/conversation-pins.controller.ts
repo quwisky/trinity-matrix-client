@@ -35,6 +35,10 @@ type PinFetch =
 /** Minimum gap before a Timeline or Decrypted event retries a failed pin again. */
 const AUTO_RETRY_MS = 30_000;
 
+/** Pins read from room state; earlier ids are ignored so one event cannot fan out unbounded fetches. */
+const MAX_PINS = 100;
+const MAX_CONCURRENT_PIN_FETCHES = 4;
+
 const unavailablePolicy: ConversationPinPolicy = {
   canMutate: () => false,
   authorize: () => ({
@@ -54,11 +58,17 @@ export const CONVERSATION_PIN_POLICY =
 export class ConversationPinsController implements ConversationPins {
   private readonly policy = inject(CONVERSATION_PIN_POLICY);
   private readonly pinnedEventIds = signal<readonly string[]>([]);
+  /** The room's `pinned` array exactly as read, so writes keep entries the display list drops. */
+  private rawPinned: readonly unknown[] = [];
   private readonly pinnedMessages = signal<readonly PinnedMessageView[]>([]);
   private readonly mayMutate = signal(false);
   /** Pins fetched because the loaded timeline lacks them. */
   private fetched = new Map<string, PinFetch>();
   private loading = new Set<string>();
+  /** Pins waiting for a free fetch slot; `loading` already holds them. */
+  private queued: string[] = [];
+  /** A slot frees when its request settles, even after a release or room switch. */
+  private activeFetches = 0;
   /** Invalidated when the pin list or room changes, so in-flight fetches drop their results. */
   private readonly fetches = latestGuard();
   private fetchToken = this.fetches.next();
@@ -107,7 +117,12 @@ export class ConversationPinsController implements ConversationPins {
     room.on(RoomStateEvent.Events, this.onStateEvent);
     room.on(RoomEvent.Timeline, this.onTimeline);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
-    this.readRoomState();
+    try {
+      this.readRoomState();
+    } catch (error) {
+      this.release();
+      throw error;
+    }
   }
 
   resources(): { listenerCount: number; retainedBytes: number } {
@@ -126,9 +141,11 @@ export class ConversationPinsController implements ConversationPins {
     this.fetchToken = this.fetches.next();
     this.fetched = new Map();
     this.loading = new Set();
+    this.queued = [];
     this.key = null;
     this.room = null;
     this.client = null;
+    this.rawPinned = [];
     this.pinnedEventIds.set([]);
     this.pinnedMessages.set([]);
     this.mayMutate.set(false);
@@ -157,7 +174,7 @@ export class ConversationPinsController implements ConversationPins {
   }
 
   isPinned(eventId: string): boolean {
-    return this.pinnedEventIds().includes(eventId);
+    return this.rawPinned.includes(eventId);
   }
 
   pin(eventId: string): Observable<ConversationPinOutcome> {
@@ -166,7 +183,7 @@ export class ConversationPinsController implements ConversationPins {
         return of(this.rejected('pin', 'conversation-unavailable', false));
       }
       if (this.isPinned(eventId)) return of(this.applied('pin'));
-      return this.write('pin', eventId, [...this.pinnedEventIds(), eventId]);
+      return this.write('pin', eventId, [...this.rawPinned, eventId]);
     });
   }
 
@@ -179,7 +196,7 @@ export class ConversationPinsController implements ConversationPins {
       return this.write(
         'unpin',
         eventId,
-        this.pinnedEventIds().filter((id) => id !== eventId),
+        this.rawPinned.filter((id) => id !== eventId),
       );
     });
   }
@@ -187,7 +204,7 @@ export class ConversationPinsController implements ConversationPins {
   private write(
     operation: ConversationPinOperation,
     eventId: string,
-    pinned: readonly string[],
+    pinned: readonly unknown[],
   ): Observable<ConversationPinOutcome> {
     const key = this.key;
     const client = this.client;
@@ -203,7 +220,9 @@ export class ConversationPinsController implements ConversationPins {
       client.sendStateEvent(
         room.roomId,
         EventType.RoomPinnedEvents,
-        { pinned: [...pinned] },
+        // Every entry of the room's list, non-strings included, is written back as read on
+        // purpose; the cast only satisfies the SDK's `string[]` type.
+        { pinned: [...pinned] as string[] },
         '',
       ),
     ).pipe(
@@ -228,10 +247,14 @@ export class ConversationPinsController implements ConversationPins {
     const room = this.room;
     if (!key || !room) return;
     const state = liveRoomState(room);
-    const pinned =
-      state
-        ?.getStateEvents(EventType.RoomPinnedEvents, '')
-        ?.getContent<{ pinned?: string[] }>().pinned ?? [];
+    const raw = state
+      ?.getStateEvents(EventType.RoomPinnedEvents, '')
+      ?.getContent<{ pinned?: unknown }>().pinned;
+    this.rawPinned = Array.isArray(raw) ? [...raw] : [];
+    // Clients append, so the newest pins are the last ones.
+    const pinned = this.rawPinned
+      .filter((id): id is string => typeof id === 'string')
+      .slice(-MAX_PINS);
     const current = this.pinnedEventIds();
     if (
       pinned.length !== current.length ||
@@ -240,6 +263,7 @@ export class ConversationPinsController implements ConversationPins {
       this.fetchToken = this.fetches.next();
       this.fetched = new Map();
       this.loading = new Set();
+      this.queued = [];
     } else {
       this.retryFailedPins(0);
     }
@@ -317,8 +341,17 @@ export class ConversationPinsController implements ConversationPins {
     const client = this.client;
     const roomId = this.key?.roomId;
     if (!client || !roomId) return;
-    const token = this.fetchToken;
     this.loading.add(id);
+    if (this.activeFetches >= MAX_CONCURRENT_PIN_FETCHES) {
+      this.queued.push(id);
+      return;
+    }
+    this.runFetch(client, roomId, id);
+  }
+
+  private runFetch(client: MatrixClient, roomId: string, id: string): void {
+    const token = this.fetchToken;
+    this.activeFetches++;
     void (async () => {
       let result: PinFetch;
       try {
@@ -341,6 +374,12 @@ export class ConversationPinsController implements ConversationPins {
           status === 404 || status === 403
             ? { kind: 'missing' }
             : { kind: 'failed', at: Date.now() };
+      }
+      this.activeFetches--;
+      const next = this.queued.shift();
+      const { client: current, key } = this;
+      if (next !== undefined && current && key) {
+        this.runFetch(current, key.roomId, next);
       }
       if (!this.fetches.isCurrent(token)) return;
       this.loading.delete(id);
