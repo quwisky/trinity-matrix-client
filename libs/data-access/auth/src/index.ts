@@ -30,3 +30,10 @@ export { SignInRedirectService } from './lib/sign-in-redirect.service';
 export * from './lib/new-device-sign-in.port';
 export { isPartOfServer } from './lib/part-of-server';
 export { matchesPinnedProvider } from './lib/pinned-provider';
+export type {
+  ExistingDeviceState,
+  NewDeviceState,
+  QrSignInFailure,
+} from './lib/qr-sign-in/qr-sign-in.model';
+export { qrSignInFailureOf } from './lib/qr-sign-in/qr-sign-in.model';
+export { QrSignInAvailability } from './lib/qr-sign-in/qr-sign-in-availability.service';
