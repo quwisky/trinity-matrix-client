@@ -1,4 +1,9 @@
 export * from './lib/auth.service';
+export {
+  deletionLink,
+  type AccountManagement,
+  type AccountServerApi,
+} from './lib/account-server-api';
 export * from './lib/registration.service';
 export {
   ReauthAccountMismatchError,

@@ -25,7 +25,8 @@ import {
 } from '@trinity/data-access/accounts';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import { AUTH_METADATA } from './auth-metadata.fixture';
-import { AuthService, deletionLink } from './auth.service';
+import { AuthService } from './auth.service';
+import { deletionLink } from './account-server-api';
 import {
   ReauthAccountMismatchError,
   UnacceptableAccountError,
