@@ -40,6 +40,7 @@ import {
   type OidcAuthorizationParams,
   type OidcGrantContext,
 } from './oidc-client.service';
+import { qrSignInFailureOf } from './qr-sign-in/qr-sign-in.model';
 
 const createClientMock = vi.mocked(createClient);
 
@@ -1266,6 +1267,99 @@ describe('OidcClientService', () => {
       await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('deviceGrantClientId', () => {
+    const DEVICE_KEY = 'oidc.deviceGrantClientId.v1:https://op.example';
+    const DEVICE_ENDPOINT = AUTH_METADATA.device_authorization_endpoint;
+    const GRANTED = () =>
+      jsonResponse({
+        device_code: 'probe-device-code',
+        user_code: 'ABCD',
+        verification_uri: 'https://op.example/link',
+        expires_in: 600,
+      });
+    const REJECTED = () => jsonResponse({ error: 'unauthorized_client' }, 400);
+    const probes = (fetchMock: ReturnType<typeof stubFetch>) =>
+      fetchMock.mock.calls
+        .filter(([url]) => url === DEVICE_ENDPOINT)
+        .map(([, init]) => formBody(init).get('client_id'));
+    const registrations = (fetchMock: ReturnType<typeof stubFetch>) =>
+      fetchMock.mock.calls.filter(
+        ([url]) => url === AUTH_METADATA.registration_endpoint,
+      );
+
+    it('registers a client of its own with the device-code grant and an https redirect', async () => {
+      prefs.set(CLIENT_ID_KEY, 'pkce-client');
+      const fetchMock = stubFetch(
+        { registration: () => jsonResponse({ client_id: 'qr-client' }) },
+        { [DEVICE_ENDPOINT]: GRANTED },
+      );
+
+      expect(await firstValueFrom(svc.deviceGrantClientId(AUTH_METADATA))).toBe(
+        'qr-client',
+      );
+      expect(jsonBody(registrations(fetchMock)[0][1])).toMatchObject({
+        application_type: 'web',
+        client_uri: 'https://trinity.trinityproject.dev',
+        redirect_uris: ['https://trinity.trinityproject.dev/sso-callback'],
+        grant_types: [
+          'authorization_code',
+          'refresh_token',
+          'urn:ietf:params:oauth:grant-type:device_code',
+        ],
+      });
+      expect(prefs.get(DEVICE_KEY)).toBe('qr-client');
+      // The PKCE sign-in keeps its own registration.
+      expect(prefs.get(CLIENT_ID_KEY)).toBe('pkce-client');
+    });
+
+    it('reuses a cached client id that the device endpoint accepts', async () => {
+      prefs.set(DEVICE_KEY, 'cached-client');
+      const fetchMock = stubFetch({}, { [DEVICE_ENDPOINT]: GRANTED });
+
+      expect(await firstValueFrom(svc.deviceGrantClientId(AUTH_METADATA))).toBe(
+        'cached-client',
+      );
+      expect(registrations(fetchMock)).toHaveLength(0);
+      expect(probes(fetchMock)).toEqual(['cached-client']);
+    });
+
+    it('re-registers exactly once when the provider answers unauthorized_client for a cached id', async () => {
+      prefs.set(DEVICE_KEY, 'stale-client');
+      const fetchMock = stubFetch(
+        { registration: () => jsonResponse({ client_id: 'fresh-client' }) },
+        {
+          [DEVICE_ENDPOINT]: (init) =>
+            formBody(init).get('client_id') === 'stale-client'
+              ? REJECTED()
+              : GRANTED(),
+        },
+      );
+
+      expect(await firstValueFrom(svc.deviceGrantClientId(AUTH_METADATA))).toBe(
+        'fresh-client',
+      );
+      expect(registrations(fetchMock)).toHaveLength(1);
+      expect(probes(fetchMock)).toEqual(['stale-client', 'fresh-client']);
+      expect(prefs.get(DEVICE_KEY)).toBe('fresh-client');
+    });
+
+    it('fails as unsupported when the new registration is rejected too, and caches nothing', async () => {
+      prefs.set(DEVICE_KEY, 'stale-client');
+      const fetchMock = stubFetch(
+        { registration: () => jsonResponse({ client_id: 'fresh-client' }) },
+        { [DEVICE_ENDPOINT]: REJECTED },
+      );
+
+      const error = await firstValueFrom(
+        svc.deviceGrantClientId(AUTH_METADATA),
+      ).catch((e: unknown) => e);
+
+      expect(qrSignInFailureOf(error)).toBe('unsupported');
+      expect(registrations(fetchMock)).toHaveLength(1);
+      expect(prefs.has(DEVICE_KEY)).toBe(false);
     });
   });
 });

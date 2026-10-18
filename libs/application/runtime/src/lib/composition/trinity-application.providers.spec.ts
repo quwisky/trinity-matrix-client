@@ -48,6 +48,11 @@ import { NEVER, firstValueFrom, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ACCOUNT_LIFECYCLE_PORT } from '@trinity/data-access/accounts';
 import { DEVICE_CONFIRMATION_POLICY } from '@trinity/data-access/trust';
+import {
+  AuthService,
+  QR_SIGN_IN_COMPLETION,
+  QrSignInAvailability,
+} from '@trinity/data-access/auth';
 import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
 import { AccountSwitchLauncherAdapter } from './account-switch-launcher.adapter';
 import { applicationCapabilityProviders } from './application-capability.providers';
@@ -397,6 +402,37 @@ describe('Trinity application provider composition', () => {
       expect(TestBed.inject(ACCOUNT_SWITCH_LAUNCHER)).toBe(
         TestBed.inject(AccountSwitchLauncherAdapter),
       );
+    } finally {
+      TestBed.resetTestingModule();
+      configureMatrixSdkLogging('debug');
+    }
+  });
+
+  it('finishes a QR sign-in through the shared sign-in path', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideTrinityApplication({
+          routes: [],
+          pushConfig: null,
+          matrixSdkLogLevel: 'warn',
+          issueRepositoryUrl: null,
+          buildInfo: {} as BuildInfo,
+          releaseNotes: [],
+          dialogLoaders: {
+            settings: () => NEVER,
+            encryption: { unlock: () => NEVER, verify: () => NEVER },
+            reportBug: () => NEVER,
+            whatsNew: () => NEVER,
+          },
+        }),
+      ],
+    });
+
+    try {
+      expect(TestBed.inject(QR_SIGN_IN_COMPLETION)).toBe(
+        TestBed.inject(AuthService),
+      );
+      expect(TestBed.inject(QrSignInAvailability)).toBeTruthy();
     } finally {
       TestBed.resetTestingModule();
       configureMatrixSdkLogging('debug');

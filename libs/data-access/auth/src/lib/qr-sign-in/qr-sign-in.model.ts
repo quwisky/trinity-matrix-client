@@ -41,8 +41,16 @@ const FAILURE_BY_REASON: ReadonlyMap<string, QrSignInFailure> = new Map([
   ['other_device_already_signed_in', 'already-signed-in'],
 ]);
 
+/** The provider will not let a newly registered client use the device grant. */
+export class DeviceGrantRejectedError extends Error {
+  constructor() {
+    super('The provider refuses the device grant for this client.');
+  }
+}
+
 export function qrSignInFailureOf(reason: unknown): QrSignInFailure {
   if (reason instanceof TypeError) return 'network';
+  if (reason instanceof DeviceGrantRejectedError) return 'unsupported';
   return (
     (typeof reason === 'string' && FAILURE_BY_REASON.get(reason)) || 'unknown'
   );

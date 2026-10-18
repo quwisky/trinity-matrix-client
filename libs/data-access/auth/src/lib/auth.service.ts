@@ -2,6 +2,8 @@ import { Injectable, inject } from '@angular/core';
 import {
   createClient,
   type AuthDict,
+  type DeviceAccessTokenResponse,
+  type MatrixClient,
   type ValidatedAuthMetadata,
 } from 'matrix-js-sdk';
 import {
@@ -32,6 +34,7 @@ import {
 import {
   UiaCancelledError,
   runPasswordUia,
+  type OidcSessionBinding,
   type PasswordPrompt,
 } from '@trinity/util/matrix';
 import {
@@ -59,6 +62,10 @@ import {
   type AccountManagement,
   type AccountServerApi,
 } from './account-server-api';
+import type {
+  LinkedSecrets,
+  QrSignInCompletion,
+} from './qr-sign-in/qr-sign-in-completion.port';
 
 export type { LoginMode } from './account-establishment';
 export type { AccountEstablishmentOutcome } from '@trinity/data-access/accounts';
@@ -76,7 +83,7 @@ interface NewDeviceCheck {
 }
 
 @Injectable({ providedIn: 'root' })
-export class AuthService {
+export class AuthService implements QrSignInCompletion {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
   private readonly oidc = inject(OidcClientService);
@@ -231,6 +238,102 @@ export class AuthService {
         ),
       ),
     );
+  }
+
+  /** The OAuth client id QR sign-in uses for the device grant. */
+  deviceGrantClientId(metadata: ValidatedAuthMetadata): Observable<string> {
+    return this.oidc.deviceGrantClientId(metadata);
+  }
+
+  /**
+   * Sign in a QR-linked new device with its device-grant tokens, keeping other signed-in
+   * accounts. Emits the started client only after `whoami` has succeeded with the new
+   * token, so the device exists on the server before the existing device shares secrets.
+   */
+  completeDeviceGrant(
+    tokens: DeviceAccessTokenResponse,
+    clientId: string,
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<MatrixClient> {
+    const issuedBy = Date.now();
+    // The tokens came from this token endpoint, so the session pins it.
+    const oidc: OidcSessionBinding = {
+      issuer: metadata.issuer,
+      clientId,
+      tokenEndpoint: metadata.token_endpoint,
+      revocationEndpoint: metadata.revocation_endpoint,
+    };
+    return defer(() =>
+      from(
+        createClient({
+          baseUrl: homeserverUrl,
+          accessToken: tokens.access_token,
+        }).whoami(),
+      ),
+    ).pipe(
+      map((who) => {
+        if (!who.device_id) {
+          throw new Error('The provider returned no device for this session.');
+        }
+        return { ...who, device_id: who.device_id };
+      }),
+      catchError((error: unknown) => {
+        this.oidc
+          .revokeTokens(homeserverUrl, oidc, {
+            accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token,
+          })
+          .subscribe({ error: () => undefined });
+        return throwError(() => error);
+      }),
+      switchMap((who) =>
+        this.establish(
+          homeserverUrl,
+          {
+            user_id: who.user_id,
+            device_id: who.device_id,
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token,
+            ...(tokens.expires_in !== undefined
+              ? { accessTokenExpiresAt: issuedBy + tokens.expires_in * 1000 }
+              : {}),
+            oidc,
+          },
+          'add',
+        ),
+      ),
+      map((outcome) => {
+        const client =
+          outcome.kind === 'ready'
+            ? this.matrix.clientFor(outcome.accountId)
+            : null;
+        if (!client) {
+          throw new Error(`The QR sign-in did not start (${outcome.kind}).`);
+        }
+        return client;
+      }),
+    );
+  }
+
+  /**
+   * Import the secrets a QR link shared, cross-sign this device and enable key backup.
+   * Emits `false` on any failure, which leaves the device unverified for the usual check.
+   * Errors are dropped unlogged: they can quote the secrets.
+   */
+  importLinkedSecrets(
+    client: MatrixClient,
+    secrets: LinkedSecrets,
+  ): Observable<boolean> {
+    return defer(async () => {
+      const crypto = client.getCrypto();
+      const deviceId = client.getDeviceId();
+      if (!crypto?.importSecretsBundle || !deviceId) return false;
+      await crypto.importSecretsBundle(secrets);
+      await crypto.crossSignDevice(deviceId);
+      await crypto.checkKeyBackupAndEnable();
+      return true;
+    }).pipe(catchError(() => of(false)));
   }
 
   /**
