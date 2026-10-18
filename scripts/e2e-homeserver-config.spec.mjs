@@ -14,6 +14,7 @@ import { parse } from 'yaml';
 import {
   HOMESERVER_KINDS,
   HOMESERVER_RUNTIMES,
+  isTuwunel,
   resolveHomeserverKind,
   resolveHomeserverRuntime,
   resolveMasEnabled,
@@ -56,6 +57,15 @@ describe('E2E homeserver selection', () => {
         resolveHomeserverKind({ TRINITY_E2E_HOMESERVER: value }),
       ).toThrow(/expected one of: tuwunel, synapse/);
     }
+  });
+});
+
+describe('Tuwunel workarounds', () => {
+  it('apply to both Tuwunel kinds and not to Synapse', () => {
+    expect(isTuwunel('tuwunel')).toBe(true);
+    expect(isTuwunel('tuwunel-oauth')).toBe(true);
+    expect(isTuwunel('synapse')).toBe(false);
+    expect(isTuwunel(undefined)).toBe(false);
   });
 });
 

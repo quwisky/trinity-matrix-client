@@ -9,6 +9,11 @@ export const HOMESERVER_KINDS = [
 ] as const;
 export type HomeserverKind = (typeof HOMESERVER_KINDS)[number];
 
+/** Whether the kind runs Tuwunel, whose server quirks the specs work around. */
+export function isTuwunel(kind: HomeserverKind | undefined): boolean {
+  return kind === 'tuwunel' || kind === 'tuwunel-oauth';
+}
+
 /**
  * The homeserver selected by `TRINITY_E2E_HOMESERVER`, defaulting to Tuwunel.
  *

@@ -6,9 +6,10 @@ import {
   openSection,
   session,
 } from '../../support/settings-journey.mts';
+import { isTuwunel } from '../../../support/homeserver/kind.mts';
 
 /** The software row for the homeserver this run selected (`TRINITY_E2E_HOMESERVER`). */
-const SOFTWARE = session.kind === 'tuwunel' ? 'Tuwunel' : 'Synapse';
+const SOFTWARE = isTuwunel(session.kind) ? 'Tuwunel' : 'Synapse';
 
 test.describe('Settings', () => {
   configureSettingsSuite();
