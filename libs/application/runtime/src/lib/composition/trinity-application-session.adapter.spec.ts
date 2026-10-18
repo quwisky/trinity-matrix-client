@@ -70,6 +70,7 @@ import {
   EMPTY,
   Observable,
   Subject,
+  type Subscription,
   lastValueFrom,
   of,
   throwError,
@@ -324,10 +325,13 @@ function roomAdministrationHealth(context: symbol): RoomAdministrationHealth {
   });
 }
 
+let lifetime: Subscription | undefined;
+
 describe('TrinityApplicationSessionAdapter', () => {
   let locationStub: ReturnType<typeof stubLocation> | null = null;
 
   afterEach(() => {
+    lifetime?.unsubscribe();
     vi.useRealTimers();
     locationStub?.restore();
     locationStub = null;
@@ -339,7 +343,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const readiness = new Subject<void>();
     const test = setup({ roomLibrary: preparation });
     const events: unknown[] = [];
-    const lifetime = test.adapter
+    lifetime = test.adapter
       .run(readiness)
       .subscribe((event) => events.push(event));
 
@@ -431,7 +435,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const test = setup({ roomLibrary });
     const events: unknown[] = [];
     const completed = vi.fn();
-    const lifetime = test.adapter.run(readiness).subscribe({
+    lifetime = test.adapter.run(readiness).subscribe({
       next: (event) => events.push(event),
       complete: completed,
     });
@@ -504,7 +508,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const readiness = new Subject<void>();
     const test = setup({ trust, identity, notifications, roomAdministration });
     const events: unknown[] = [];
-    const lifetime = test.adapter
+    lifetime = test.adapter
       .run(readiness)
       .subscribe((event) => events.push(event));
 
@@ -535,7 +539,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     );
     const readiness = new Subject<void>();
 
-    const lifetime = test.adapter.run(readiness).subscribe();
+    lifetime = test.adapter.run(readiness).subscribe();
     expect(accountTrust.observed).toBe(true);
 
     readiness.next();
@@ -554,7 +558,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     ).mockReturnValue(check);
     const readiness = new Subject<void>();
 
-    const lifetime = test.adapter.run(readiness).subscribe();
+    lifetime = test.adapter.run(readiness).subscribe();
     // Before readiness: the sign-in page is shown before the session is live.
     expect(check.observed).toBe(true);
 
@@ -570,7 +574,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const optional = new Subject<TrustLifetimeEvent>();
     const test = setup({ trust: optional });
     const events: unknown[] = [];
-    const lifetime = test.adapter
+    lifetime = test.adapter
       .run(readiness)
       .subscribe((event) => events.push(event));
 
@@ -600,7 +604,7 @@ describe('TrinityApplicationSessionAdapter', () => {
       ),
     });
     const events: unknown[] = [];
-    const lifetime = test.adapter
+    lifetime = test.adapter
       .run(readiness)
       .subscribe((event) => events.push(event));
 
@@ -631,7 +635,6 @@ describe('TrinityApplicationSessionAdapter', () => {
       3,
     );
     expect(lifetime.closed).toBe(false);
-    lifetime.unsubscribe();
   });
 
   it('restarts Notification and Room Administration lifetimes without retaining listeners', () => {
@@ -676,7 +679,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const readiness = new Subject<void>();
     const test = setup({ trust });
     const events: unknown[] = [];
-    const lifetime = test.adapter
+    lifetime = test.adapter
       .run(readiness)
       .subscribe((event) => events.push(event));
 
@@ -690,7 +693,6 @@ describe('TrinityApplicationSessionAdapter', () => {
     const problem = test.health.problems()[0];
     await lastValueFrom(test.health.recover(problem));
     expect(test.recoverTrust).toHaveBeenCalledWith(context, 1);
-    lifetime.unsubscribe();
   });
 
   it('reports a late Trust degradation without preparing or restarting live work again', () => {
@@ -699,7 +701,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const readiness = new Subject<void>();
     const test = setup({ trust, identity });
     const events: unknown[] = [];
-    const lifetime = test.adapter
+    lifetime = test.adapter
       .run(readiness)
       .subscribe((event) => events.push(event));
 
@@ -715,7 +717,6 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
     expect(test.deepLinks.observed).toBe(true);
     expect(lifetime.closed).toBe(false);
-    lifetime.unsubscribe();
   });
 
   it('keeps broken lifetime adapters on the Observable error channel', () => {
@@ -730,7 +731,7 @@ describe('TrinityApplicationSessionAdapter', () => {
 
   it('forwards valid SSO and OIDC callbacks and ignores unrelated links', async () => {
     const test = setup();
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
       url: 'dev.trinityproject.trinity://sso-callback?loginToken=TOK&sso_state=NONCE',
@@ -750,14 +751,13 @@ describe('TrinityApplicationSessionAdapter', () => {
       queryParams: { code: 'CODE', state: 'STATE' },
     });
     expect(test.closeAuthentication).toHaveBeenCalledTimes(2);
-    lifetime.unsubscribe();
   });
 
   it('keeps the provider iss on an OIDC callback', async () => {
     // The callback page checks that the sign-in response comes from the provider it
     // started with (RFC 9207), so the deep link must not drop `iss` on the way there.
     const test = setup();
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
       url: 'dev.trinityproject.trinity:/sso-callback?code=CODE&state=STATE&iss=https%3A%2F%2Fop.example%2F',
@@ -767,13 +767,12 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.navigate).toHaveBeenCalledWith(['/sso-callback'], {
       queryParams: { code: 'CODE', state: 'STATE', iss: 'https://op.example/' },
     });
-    lifetime.unsubscribe();
   });
 
   it('hands a valid room link to the Rooms shell and leaves SSO untouched', async () => {
     const test = setup();
     const inbound = TestBed.inject(InboundRoomLinkService);
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
       url: 'dev.trinityproject.trinity://matrix.to/#/%21room%3Aexample.org?via=example.org',
@@ -786,13 +785,12 @@ describe('TrinityApplicationSessionAdapter', () => {
     });
     expect(test.navigate).not.toHaveBeenCalled();
     expect(test.closeAuthentication).not.toHaveBeenCalled();
-    lifetime.unsubscribe();
   });
 
   it('keeps only the newest unopened room link', () => {
     const test = setup();
     const inbound = TestBed.inject(InboundRoomLinkService);
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
       url: 'dev.trinityproject.trinity://matrix.to/#/!a:example.org',
@@ -802,7 +800,6 @@ describe('TrinityApplicationSessionAdapter', () => {
     });
 
     expect(inbound.pending()?.roomIdOrAlias).toBe('!b:example.org');
-    lifetime.unsubscribe();
   });
 
   it.each([
@@ -816,14 +813,13 @@ describe('TrinityApplicationSessionAdapter', () => {
   ])('ignores hostile or unsupported link %s', (url) => {
     const test = setup();
     const inbound = TestBed.inject(InboundRoomLinkService);
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({ url });
 
     expect(inbound.pending()).toBeNull();
     expect(test.navigate).not.toHaveBeenCalled();
     expect(test.closeAuthentication).not.toHaveBeenCalled();
-    lifetime.unsubscribe();
   });
 
   it('keeps a failed authentication close contextual while completing the deep link', async () => {
@@ -835,7 +831,7 @@ describe('TrinityApplicationSessionAdapter', () => {
         diagnostic: { code: 'private-host-response' },
       }),
     );
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
       url: 'dev.trinityproject.trinity://sso-callback?loginToken=TOKEN',
@@ -851,7 +847,6 @@ describe('TrinityApplicationSessionAdapter', () => {
     );
     expect(JSON.stringify(test.health.incidents())).not.toContain('private');
     expect(lifetime.closed).toBe(false);
-    lifetime.unsubscribe();
   });
 
   it('reports released deep-link and Back ownership and reattaches both streams', async () => {
@@ -876,7 +871,7 @@ describe('TrinityApplicationSessionAdapter', () => {
       }),
     );
 
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
     expect(test.health.incidents()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -907,7 +902,7 @@ describe('TrinityApplicationSessionAdapter', () => {
       of({ kind: 'unavailable', reason: 'not-supported' }),
     );
 
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
     await vi.advanceTimersByTimeAsync(5_000);
 
     expect(test.deepLinks.observed).toBe(false);
@@ -946,7 +941,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     );
     ngMocks.stubMember(TestBed.inject(HostBackService), 'support', backSupport);
 
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
     expect(deepLinkSupport).toHaveBeenCalledOnce();
     expect(backSupport).toHaveBeenCalledOnce();
     expect(test.deepLinks.observed).toBe(false);
@@ -977,7 +972,7 @@ describe('TrinityApplicationSessionAdapter', () => {
   it('submits typed notification activation to semantic Workspace navigation', async () => {
     const test = setup();
     const focus = vi.spyOn(window, 'focus').mockImplementation(() => undefined);
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.notificationEvents.next({
       kind: 'activated',
@@ -998,7 +993,6 @@ describe('TrinityApplicationSessionAdapter', () => {
     );
     expect(test.navigate).not.toHaveBeenCalled();
     expect(focus).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
   });
 
   it('owns native push from synchronous startup activation through teardown and restart', async () => {
@@ -1047,7 +1041,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     test.workspaceNavigate.mockReturnValueOnce(
       of({ kind: 'unavailable', reason: 'navigation-rejected' }),
     );
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.notificationEvents.next({
       kind: 'activated',
@@ -1072,7 +1066,6 @@ describe('TrinityApplicationSessionAdapter', () => {
       { duration: 4000, variant: 'danger' },
     );
     expect(lifetime.closed).toBe(false);
-    lifetime.unsubscribe();
   });
 
   it('reports broken notification navigation without ending the session', async () => {
@@ -1080,7 +1073,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     test.workspaceNavigate.mockReturnValueOnce(
       new Observable((subscriber) => subscriber.error(new Error('broken'))),
     );
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.notificationEvents.next({
       kind: 'activated',
@@ -1097,12 +1090,11 @@ describe('TrinityApplicationSessionAdapter', () => {
       ),
     );
     expect(lifetime.closed).toBe(false);
-    lifetime.unsubscribe();
   });
 
   it('reports presentation failures without navigating or ending the session', () => {
     const test = setup();
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.notificationEvents.next({
       kind: 'incident',
@@ -1127,13 +1119,12 @@ describe('TrinityApplicationSessionAdapter', () => {
     );
     expect(test.workspaceNavigate).not.toHaveBeenCalled();
     expect(lifetime.closed).toBe(false);
-    lifetime.unsubscribe();
   });
 
   it('registers exact notification-presentation health recovery', async () => {
     const context = Symbol();
     const test = setup();
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.notificationEvents.next({
       kind: 'health',
@@ -1152,12 +1143,11 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     expect(test.recoverPresentation).toHaveBeenCalledWith(context, 3);
     expect(lifetime.closed).toBe(false);
-    lifetime.unsubscribe();
   });
 
   it('keeps Back priority at dialog, Workspace surface, history, then background', () => {
     const test = setup();
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.dialogOpen.set(true);
     test.backIntents.next({ canGoBack: true });
@@ -1176,7 +1166,6 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     test.backIntents.next({ canGoBack: false });
     expect(test.background).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
   });
 
   it.each<AppLockStatus>(['locked', 'unknown'])(
@@ -1184,7 +1173,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     (status) => {
       const test = setup();
       test.appLockStatus.set(status);
-      const lifetime = test.adapter.run(of(void 0)).subscribe();
+      lifetime = test.adapter.run(of(void 0)).subscribe();
 
       // A dialog, a Workspace surface and history are all behind the lock screen.
       test.dialogOpen.set(true);
@@ -1195,7 +1184,6 @@ describe('TrinityApplicationSessionAdapter', () => {
       expect(test.workspaceBack).not.toHaveBeenCalled();
       expect(test.locationBack).not.toHaveBeenCalled();
       expect(test.background).toHaveBeenCalledOnce();
-      lifetime.unsubscribe();
     },
   );
 
@@ -1205,7 +1193,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     test.background.mockReturnValueOnce(
       of({ kind: 'unavailable', reason: 'not-supported' }),
     );
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.dialogOpen.set(true);
     test.backIntents.next({ canGoBack: true });
@@ -1214,13 +1202,12 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.locationBack).not.toHaveBeenCalled();
     expect(test.health.incidents()).toEqual([]);
     expect(lifetime.closed).toBe(false);
-    lifetime.unsubscribe();
   });
 
   it('handles Back as before once App lock is unlocked', () => {
     const test = setup();
     test.appLockStatus.set('unlocked');
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.dialogOpen.set(true);
     test.backIntents.next({ canGoBack: true });
@@ -1231,7 +1218,6 @@ describe('TrinityApplicationSessionAdapter', () => {
     test.backIntents.next({ canGoBack: true });
     expect(test.locationBack).toHaveBeenCalledOnce();
     expect(test.background).not.toHaveBeenCalled();
-    lifetime.unsubscribe();
   });
 
   it('reports a rejected host background action as an incident without ending Back ownership', () => {
@@ -1243,7 +1229,7 @@ describe('TrinityApplicationSessionAdapter', () => {
         diagnostic: { code: 'private-background' },
       }),
     );
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.backIntents.next({ canGoBack: false });
 
@@ -1255,7 +1241,6 @@ describe('TrinityApplicationSessionAdapter', () => {
       }),
     );
     expect(lifetime.closed).toBe(false);
-    lifetime.unsubscribe();
   });
 
   it('offers an overlay owned by Workspace before the generic dialog stack', () => {
@@ -1263,19 +1248,18 @@ describe('TrinityApplicationSessionAdapter', () => {
     test.dialogOpen.set(true);
     test.workspaceActive.set(true);
     test.workspaceOwnsOverlay.mockReturnValue(true);
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.backIntents.next({ canGoBack: true });
 
     expect(test.workspaceBack).toHaveBeenCalledOnce();
     expect(test.closeTopmost).not.toHaveBeenCalled();
     expect(test.locationBack).not.toHaveBeenCalled();
-    lifetime.unsubscribe();
   });
 
   it('owns native gesture policy only for the active session', () => {
     const test = setup();
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
     TestBed.tick();
     expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
 
@@ -1300,7 +1284,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     };
     test.routedSurface.set(routedSettings);
     test.workspaceSurface.set(routedSettings);
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
     TestBed.tick();
     expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
 
@@ -1317,7 +1301,6 @@ describe('TrinityApplicationSessionAdapter', () => {
     test.workspaceSurface.set(routedSettings);
     TestBed.tick();
     expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
-    lifetime.unsubscribe();
   });
 
   it.each(['setup', 'unlock', 'verify'] as const)(
@@ -1330,11 +1313,10 @@ describe('TrinityApplicationSessionAdapter', () => {
       };
       test.routedSurface.set(routedTrust);
       test.workspaceSurface.set(routedTrust);
-      const lifetime = test.adapter.run(of(void 0)).subscribe();
+      lifetime = test.adapter.run(of(void 0)).subscribe();
       TestBed.tick();
 
       expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
-      lifetime.unsubscribe();
     },
   );
 
@@ -1345,7 +1327,7 @@ describe('TrinityApplicationSessionAdapter', () => {
       surface: { kind: 'conversation', accountId: 'a1', roomId: '!r:hs' },
     });
     test.conversationOverList.set(true);
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
     TestBed.tick();
     expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
 
@@ -1353,7 +1335,6 @@ describe('TrinityApplicationSessionAdapter', () => {
     test.workspaceSurface.set({ layer: 'room', surface: { kind: 'threads' } });
     TestBed.tick();
     expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(false);
-    lifetime.unsubscribe();
   });
 
   it('keeps the native Back gesture off over a phone Conversation, which Workspace dismisses to the list', () => {
@@ -1362,17 +1343,16 @@ describe('TrinityApplicationSessionAdapter', () => {
       layer: 'conversation',
       surface: { kind: 'conversation', accountId: 'a1', roomId: '!r:hs' },
     });
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
     TestBed.tick();
 
     expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(false);
-    lifetime.unsubscribe();
   });
 
   it('offers, activates and reloads a ready service-worker version', async () => {
     locationStub = stubLocation();
     const test = setup();
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
     test.versionUpdates.next({
       type: 'VERSION_READY',
       currentVersion: { hash: 'old' },
@@ -1389,13 +1369,12 @@ describe('TrinityApplicationSessionAdapter', () => {
     options?.action?.onClick();
     await vi.waitFor(() => expect(test.activateUpdate).toHaveBeenCalledOnce());
     await vi.waitFor(() => expect(locationStub?.calls).toContain('reload'));
-    lifetime.unsubscribe();
   });
 
   it('checks on foreground and stops update reactions after teardown', () => {
     locationStub = stubLocation();
     const test = setup();
-    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    lifetime = test.adapter.run(of(void 0)).subscribe();
 
     expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
     test.lifecycleEvents.next({ kind: 'active' });
@@ -1427,7 +1406,7 @@ describe('TrinityApplicationSessionAdapter', () => {
       }),
     );
     const events: unknown[] = [];
-    const lifetime = test.adapter
+    lifetime = test.adapter
       .run(of(void 0))
       .subscribe((event) => events.push(event));
 
@@ -1439,7 +1418,6 @@ describe('TrinityApplicationSessionAdapter', () => {
         code: 'update-check-failed',
       }),
     ]);
-    lifetime.unsubscribe();
   });
 });
 

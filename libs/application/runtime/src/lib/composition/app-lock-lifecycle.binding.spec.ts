@@ -35,6 +35,7 @@ import { MockProvider } from 'ng-mocks';
 import {
   NEVER,
   Subject,
+  type Subscription,
   firstValueFrom,
   of,
   throwError,
@@ -95,6 +96,8 @@ function openFileChooser(): HTMLInputElement {
 }
 
 type LifecycleEvent = { readonly kind: 'active' | 'background' };
+
+let lifetime: Subscription | undefined;
 
 function setup(
   options: {
@@ -169,7 +172,7 @@ function setup(
       ...(options.providers ?? []),
     ],
   });
-  const lifetime = TestBed.inject(AppLockLifecycleBinding).run().subscribe();
+  lifetime = TestBed.inject(AppLockLifecycleBinding).run().subscribe();
   TestBed.tick();
   return {
     lifecycle,
@@ -185,7 +188,6 @@ function setup(
     incident,
     coverPainted,
     setLocked,
-    lifetime,
     /** Time passes and timers fire. */
     advance: (ms: number) => {
       now += ms;
@@ -210,6 +212,7 @@ function recordVisits(label: (visit: string) => string = (visit) => visit) {
 describe('AppLockLifecycleBinding', () => {
   beforeEach(() => vi.useFakeTimers(TIMERS_AND_DATE));
   afterEach(() => {
+    lifetime?.unsubscribe();
     native.platform = false;
     for (const plugin of Object.values(native.camera)) plugin.mockReset();
     vi.useRealTimers();
@@ -219,45 +222,41 @@ describe('AppLockLifecycleBinding', () => {
   });
 
   it('locks after the chosen time in the background', () => {
-    const { lifecycle, lockNow, advance, lifetime } = setup();
+    const { lifecycle, lockNow, advance } = setup();
     lifecycle.next({ kind: 'background' });
     advance(59_999);
     expect(lockNow).not.toHaveBeenCalled();
     advance(1);
     expect(lockNow).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
   });
 
   it('stays unlocked when the app comes back in time', () => {
-    const { lifecycle, lockNow, advance, lifetime } = setup();
+    const { lifecycle, lockNow, advance } = setup();
     lifecycle.next({ kind: 'background' });
     advance(30_000);
     lifecycle.next({ kind: 'active' });
     advance(60_000);
     expect(lockNow).not.toHaveBeenCalled();
-    lifetime.unsubscribe();
   });
 
   it('locks on return when the delay passed while timers were frozen', () => {
-    const { lifecycle, lockNow, skipClock, lifetime } = setup();
+    const { lifecycle, lockNow, skipClock } = setup();
     lifecycle.next({ kind: 'background' });
     skipClock(61_000);
     lifecycle.next({ kind: 'active' });
     expect(lockNow).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
   });
 
   it('locks at once on mobile for Immediately', () => {
-    const { lifecycle, lockNow, lifetime } = setup({
+    const { lifecycle, lockNow } = setup({
       lockAfter: 'immediately',
     });
     lifecycle.next({ kind: 'background' });
     expect(lockNow).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
   });
 
   it('gives a desktop window ten seconds after it loses focus', () => {
-    const { lockNow, advance, lifetime } = setup({
+    const { lockNow, advance } = setup({
       desktop: true,
       lockAfter: 'immediately',
     });
@@ -270,21 +269,19 @@ describe('AppLockLifecycleBinding', () => {
     window.dispatchEvent(new Event('blur'));
     advance(10_000);
     expect(lockNow).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
   });
 
   it('counts from the first moment away when a blurred window is then minimised', () => {
-    const { lifecycle, lockNow, advance, lifetime } = setup({ desktop: true });
+    const { lifecycle, lockNow, advance } = setup({ desktop: true });
     window.dispatchEvent(new Event('blur'));
     advance(30_000);
     lifecycle.next({ kind: 'background' });
     advance(30_000);
     expect(lockNow).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
   });
 
   it('does not start the away timer while Trinity’s own system UI is open', () => {
-    const { lifecycle, systemUiActive, lockNow, advance, lifetime } = setup({
+    const { lifecycle, systemUiActive, lockNow, advance } = setup({
       lockAfter: 'immediately',
     });
     systemUiActive.set(true);
@@ -292,11 +289,10 @@ describe('AppLockLifecycleBinding', () => {
     advance(120_000);
     lifecycle.next({ kind: 'active' });
     expect(lockNow).not.toHaveBeenCalled();
-    lifetime.unsubscribe();
   });
 
   it('stops a running away timer when Trinity’s own system UI opens', () => {
-    const { systemUiActive, lockNow, advance, lifetime } = setup({
+    const { systemUiActive, lockNow, advance } = setup({
       desktop: true,
     });
     window.dispatchEvent(new Event('blur'));
@@ -305,11 +301,10 @@ describe('AppLockLifecycleBinding', () => {
     TestBed.tick();
     advance(120_000);
     expect(lockNow).not.toHaveBeenCalled();
-    lifetime.unsubscribe();
   });
 
   it('counts time away from when Trinity’s own system UI closes, if the app is still away', () => {
-    const { systemUiActive, lockNow, advance, lifetime } = setup({
+    const { systemUiActive, lockNow, advance } = setup({
       desktop: true,
     });
     systemUiActive.set(true);
@@ -322,12 +317,11 @@ describe('AppLockLifecycleBinding', () => {
     expect(lockNow).not.toHaveBeenCalled();
     advance(1);
     expect(lockNow).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
   });
 
   it('does not lock behind a system prompt that returns before the app reports it is back', () => {
     // Android's device-credential screen: the prompt answers, then the activity resumes.
-    const { lifecycle, systemUiActive, lockNow, advance, lifetime } = setup({
+    const { lifecycle, systemUiActive, lockNow, advance } = setup({
       lockAfter: 'immediately',
     });
     systemUiActive.set(true);
@@ -340,11 +334,10 @@ describe('AppLockLifecycleBinding', () => {
     lifecycle.next({ kind: 'active' });
     advance(60_000);
     expect(lockNow).not.toHaveBeenCalled();
-    lifetime.unsubscribe();
   });
 
   it('still locks a mobile app left in the background after its own system UI closed', () => {
-    const { lifecycle, systemUiActive, lockNow, skipClock, lifetime } = setup({
+    const { lifecycle, systemUiActive, lockNow, skipClock } = setup({
       lockAfter: 'immediately',
     });
     systemUiActive.set(true);
@@ -355,18 +348,16 @@ describe('AppLockLifecycleBinding', () => {
     skipClock(10_000);
     lifecycle.next({ kind: 'active' });
     expect(lockNow).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
   });
 
   it('locks when the shell asks', () => {
-    const { requests, lockNow, lifetime } = setup({ desktop: true });
+    const { requests, lockNow } = setup({ desktop: true });
     requests.next('system-locked');
     expect(lockNow).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
   });
 
   it('tells the shell the state and reveals a held window when nothing is locked', () => {
-    const { lifecycle, setState, coverPainted, lifetime } = setup({
+    const { lifecycle, setState, coverPainted } = setup({
       desktop: true,
     });
     expect(setState).toHaveBeenLastCalledWith({
@@ -380,11 +371,10 @@ describe('AppLockLifecycleBinding', () => {
     // The same return also brings focus back: the shell has already been told.
     window.dispatchEvent(new Event('focus'));
     expect(coverPainted).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
   });
 
   it('gives the desktop menu the Lock Trinity chord once one is bound, and none after Reset', () => {
-    const { setState, lifetime } = setup({
+    const { setState } = setup({
       desktop: true,
       providers: [KeyboardShortcutsService],
     });
@@ -411,13 +401,12 @@ describe('AppLockLifecycleBinding', () => {
       expect.objectContaining({ accelerator: null }),
     );
     shortcuts.resetAll();
-    lifetime.unsubscribe();
   });
 
   it('tells the shell again when the window reports it is shown after an earlier focus', () => {
     // A restore whose DOM focus arrives before main has started the reveal: main ignores that
     // first signal, so the shown report must send it again rather than wait for the timeout.
-    const { lifecycle, coverPainted, lifetime } = setup({ desktop: true });
+    const { lifecycle, coverPainted } = setup({ desktop: true });
     lifecycle.next({ kind: 'background' });
     window.dispatchEvent(new Event('focus'));
     expect(coverPainted).toHaveBeenCalledOnce();
@@ -427,11 +416,10 @@ describe('AppLockLifecycleBinding', () => {
     window.dispatchEvent(new Event('blur'));
     window.dispatchEvent(new Event('focus'));
     expect(coverPainted).toHaveBeenCalledTimes(2);
-    lifetime.unsubscribe();
   });
 
   it('tells the cover the app came back only after locking what fell due on return', () => {
-    const { lifecycle, locked, skipClock, lifetime } = setup({
+    const { lifecycle, locked, skipClock } = setup({
       lockAfter: '1m',
     });
     const { seen, visits } = recordVisits(
@@ -443,33 +431,30 @@ describe('AppLockLifecycleBinding', () => {
     lifecycle.next({ kind: 'active' });
     expect(seen).toEqual(['away:unlocked', 'front:locked']);
     visits.unsubscribe();
-    lifetime.unsubscribe();
   });
 
   it('tells the cover a locked window that reloads hidden is away until it shows', () => {
     // A crash reload in the tray: the host's one-time answer says hidden (#1343).
-    const { lifecycle, lifetime } = setup({ desktop: true, locked: true });
+    const { lifecycle } = setup({ desktop: true, locked: true });
     const { seen, visits } = recordVisits();
     lifecycle.next({ kind: 'background' });
     expect(seen).toEqual(['away']);
     lifecycle.next({ kind: 'active' });
     expect(seen).toEqual(['away', 'front']);
     visits.unsubscribe();
-    lifetime.unsubscribe();
   });
 
   it('counts desktop window focus and blur as visits', () => {
-    const { lifetime } = setup({ desktop: true });
+    setup({ desktop: true });
     const { seen, visits } = recordVisits();
     window.dispatchEvent(new Event('blur'));
     window.dispatchEvent(new Event('focus'));
     expect(seen).toEqual(['away', 'front']);
     visits.unsubscribe();
-    lifetime.unsubscribe();
   });
 
   it('does not count Trinity’s own system UI as a visit', () => {
-    const { systemUiActive, lifetime } = setup();
+    const { systemUiActive } = setup();
     const { seen, visits } = recordVisits();
     systemUiActive.set(true);
     TestBed.tick();
@@ -477,21 +462,19 @@ describe('AppLockLifecycleBinding', () => {
     TestBed.tick();
     expect(seen).toEqual([]);
     visits.unsubscribe();
-    lifetime.unsubscribe();
   });
 
   it('tells the shell nothing when a window that never left the screen gets focus back', () => {
     // The shell holds a window only while it is hidden or minimised; a focus change alone
     // has nothing for it to reveal.
-    const { coverPainted, lifetime } = setup({ desktop: true });
+    const { coverPainted } = setup({ desktop: true });
     window.dispatchEvent(new Event('blur'));
     window.dispatchEvent(new Event('focus'));
     expect(coverPainted).not.toHaveBeenCalled();
-    lifetime.unsubscribe();
   });
 
   it('tells the shell nothing while App lock is off', () => {
-    const { lifecycle, coverPainted, lifetime } = setup({
+    const { lifecycle, coverPainted } = setup({
       desktop: true,
       enabled: false,
     });
@@ -500,7 +483,6 @@ describe('AppLockLifecycleBinding', () => {
     window.dispatchEvent(new Event('blur'));
     window.dispatchEvent(new Event('focus'));
     expect(coverPainted).not.toHaveBeenCalled();
-    lifetime.unsubscribe();
   });
 
   it('tells the shell again once the cover has painted when a locked window comes back', () => {
@@ -514,7 +496,7 @@ describe('AppLockLifecycleBinding', () => {
       frames = [];
       for (const frame of due) frame(time);
     };
-    const { lifecycle, coverPainted, lifetime } = setup({
+    const { lifecycle, coverPainted } = setup({
       desktop: true,
       locked: true,
     });
@@ -531,34 +513,30 @@ describe('AppLockLifecycleBinding', () => {
     paintFrame(32);
     paintFrame(48);
     expect(coverPainted).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
   });
 
   it('treats a window that gets focus back as back on screen', () => {
     // A Windows restore of a maximised window may emit neither show nor restore.
-    const { lifecycle, lockNow, advance, lifetime } = setup({ desktop: true });
+    const { lifecycle, lockNow, advance } = setup({ desktop: true });
     lifecycle.next({ kind: 'background' });
     window.dispatchEvent(new Event('blur'));
     advance(30_000);
     window.dispatchEvent(new Event('focus'));
     advance(120_000);
     expect(lockNow).not.toHaveBeenCalled();
-    lifetime.unsubscribe();
   });
 
   it('keeps the window title neutral only while locked', () => {
-    const { setLocked, locked, lifetime } = setup();
+    const { setLocked, locked } = setup();
     expect(setLocked).toHaveBeenLastCalledWith(false);
     locked.set(true);
     TestBed.tick();
     expect(setLocked).toHaveBeenLastCalledWith(true);
-    lifetime.unsubscribe();
   });
 
   describe('the app-switcher cover', () => {
     it('covers the app switcher whenever App lock is on, and takes down native UI on lock', () => {
-      const { enabled, locked, privacySet, dismissPresented, lifetime } =
-        setup();
+      const { enabled, locked, privacySet, dismissPresented } = setup();
       expect(privacySet).toHaveBeenLastCalledWith(true);
       locked.set(true);
       TestBed.tick();
@@ -566,17 +544,15 @@ describe('AppLockLifecycleBinding', () => {
       enabled.set(false);
       TestBed.tick();
       expect(privacySet).toHaveBeenLastCalledWith(false);
-      lifetime.unsubscribe();
     });
 
     it('leaves the cover off while App lock is off', () => {
-      const { privacySet, lifetime } = setup({ enabled: false });
+      const { privacySet } = setup({ enabled: false });
       expect(privacySet).toHaveBeenCalledExactlyOnceWith(false);
-      lifetime.unsubscribe();
     });
 
     it('takes down native UI each time the app locks, and never on unlock', () => {
-      const { locked, dismissPresented, lifetime } = setup();
+      const { locked, dismissPresented } = setup();
       expect(dismissPresented).not.toHaveBeenCalled();
       locked.set(true);
       TestBed.tick();
@@ -586,26 +562,23 @@ describe('AppLockLifecycleBinding', () => {
       locked.set(true);
       TestBed.tick();
       expect(dismissPresented).toHaveBeenCalledTimes(2);
-      lifetime.unsubscribe();
     });
 
     it('turns the cover off even while turning it on has not answered', () => {
-      const { enabled, privacySet, lifetime } = setup({
+      const { enabled, privacySet } = setup({
         privacySet: () => NEVER,
       });
       enabled.set(false);
       TestBed.tick();
       expect(privacySet.mock.calls).toEqual([[true], [false]]);
-      lifetime.unsubscribe();
     });
 
     it('asks once at a cold start that begins locked, while that call has not answered', () => {
-      const { privacySet, lifetime } = setup({
+      const { privacySet } = setup({
         locked: true,
         privacySet: () => NEVER,
       });
       expect(privacySet.mock.calls).toEqual([[true]]);
-      lifetime.unsubscribe();
     });
 
     it('locks, unlocks and keeps covering when the cover fails', () => {
@@ -621,7 +594,6 @@ describe('AppLockLifecycleBinding', () => {
         privacySet,
         dismissPresented,
         incident,
-        lifetime,
       } = setup({
         lockAfter: 'immediately',
         privacySet: failed,
@@ -651,7 +623,6 @@ describe('AppLockLifecycleBinding', () => {
         ['host', 'screen-privacy', 'dismiss-failed'],
         ['host', 'screen-privacy', 'screen-privacy-failed'],
       ]);
-      lifetime.unsubscribe();
     });
 
     describe('when turning the cover on failed', () => {
@@ -669,7 +640,7 @@ describe('AppLockLifecycleBinding', () => {
       };
 
       it('tries again at the next lock, and stops once the cover is on', () => {
-        const { locked, privacySet, lifetime } = setup({
+        const { locked, privacySet } = setup({
           privacySet: refusing(1),
         });
         expect(privacySet.mock.calls).toEqual([[true]]);
@@ -681,11 +652,10 @@ describe('AppLockLifecycleBinding', () => {
         locked.set(true);
         TestBed.tick();
         expect(privacySet).toHaveBeenCalledTimes(2);
-        lifetime.unsubscribe();
       });
 
       it('tries again when the app comes back to the front', () => {
-        const { lifecycle, privacySet, lifetime } = setup({
+        const { lifecycle, privacySet } = setup({
           privacySet: refusing(2),
         });
         lifecycle.next({ kind: 'active' });
@@ -694,11 +664,10 @@ describe('AppLockLifecycleBinding', () => {
         expect(privacySet).toHaveBeenCalledTimes(3);
         lifecycle.next({ kind: 'active' });
         expect(privacySet).toHaveBeenCalledTimes(3);
-        lifetime.unsubscribe();
       });
 
       it('tries again after a refusal at a cold start that begins locked', () => {
-        const { lifecycle, locked, privacySet, lifetime } = setup({
+        const { lifecycle, locked, privacySet } = setup({
           locked: true,
           privacySet: refusing(2),
         });
@@ -711,12 +680,11 @@ describe('AppLockLifecycleBinding', () => {
         locked.set(true);
         TestBed.tick();
         expect(privacySet.mock.calls).toEqual([[true], [true], [true]]);
-        lifetime.unsubscribe();
       });
 
       it('ends with the cover off when App lock is turned off during a retry', () => {
         const answers: Subject<HostOperationOutcome>[] = [];
-        const { enabled, lifecycle, locked, privacySet, lifetime } = setup({
+        const { enabled, lifecycle, locked, privacySet } = setup({
           privacySet: () => {
             const answer = new Subject<HostOperationOutcome>();
             answers.push(answer);
@@ -740,11 +708,10 @@ describe('AppLockLifecycleBinding', () => {
         TestBed.tick();
         expect(privacySet).toHaveBeenLastCalledWith(false);
         expect(privacySet).toHaveBeenCalledTimes(3);
-        lifetime.unsubscribe();
       });
 
       it('does not try again on a host without a cover', () => {
-        const { lifecycle, locked, privacySet, lifetime } = setup({
+        const { lifecycle, locked, privacySet } = setup({
           privacySet: () =>
             of<HostOperationOutcome>({
               kind: 'unavailable',
@@ -755,22 +722,20 @@ describe('AppLockLifecycleBinding', () => {
         locked.set(true);
         TestBed.tick();
         expect(privacySet).toHaveBeenCalledOnce();
-        lifetime.unsubscribe();
       });
 
       it('does not turn the cover on while App lock is off', () => {
-        const { lifecycle, privacySet, lifetime } = setup({
+        const { lifecycle, privacySet } = setup({
           enabled: false,
           privacySet: refusing(1),
         });
         lifecycle.next({ kind: 'active' });
         expect(privacySet.mock.calls).toEqual([[false]]);
-        lifetime.unsubscribe();
       });
     });
 
     it('reports a refused cover or dismissal, but not a host without one', () => {
-      const { locked, incident, lifetime } = setup({
+      const { locked, incident } = setup({
         privacySet: () =>
           of<HostOperationOutcome>({
             kind: 'unavailable',
@@ -790,7 +755,6 @@ describe('AppLockLifecycleBinding', () => {
         'screen-privacy',
         'dismiss-timeout',
       );
-      lifetime.unsubscribe();
     });
   });
 
@@ -800,7 +764,7 @@ describe('AppLockLifecycleBinding', () => {
       const presence = {
         verify: () => answer.asObservable(),
       } as Partial<HostUserPresenceOperation> as HostUserPresenceOperation;
-      const { lifecycle, lockNow, advance, lifetime } = setup({
+      const { lifecycle, lockNow, advance } = setup({
         lockAfter: 'immediately',
         systemUi: 'real',
         providers: [
@@ -815,14 +779,13 @@ describe('AppLockLifecycleBinding', () => {
       lifecycle.next({ kind: 'active' });
       expect(lockNow).not.toHaveBeenCalled();
       prompt.unsubscribe();
-      lifetime.unsubscribe();
     });
 
     it('holds the away timer while a file export’s save or share sheet is open', () => {
       const exporter = {
         save: () => NEVER,
       } as Partial<HostFileExportOperation> as HostFileExportOperation;
-      const { lifecycle, lockNow, advance, lifetime } = setup({
+      const { lifecycle, lockNow, advance } = setup({
         lockAfter: 'immediately',
         systemUi: 'real',
         providers: [
@@ -837,11 +800,10 @@ describe('AppLockLifecycleBinding', () => {
       lifecycle.next({ kind: 'active' });
       expect(lockNow).not.toHaveBeenCalled();
       sheet.unsubscribe();
-      lifetime.unsubscribe();
     });
 
     it('holds the away timer while a file chooser is open', () => {
-      const { lockNow, advance, lifetime } = setup({
+      const { lockNow, advance } = setup({
         desktop: true,
         lockAfter: 'immediately',
         systemUi: 'real',
@@ -858,11 +820,10 @@ describe('AppLockLifecycleBinding', () => {
       expect(lockNow).not.toHaveBeenCalled();
       advance(1);
       expect(lockNow).toHaveBeenCalledOnce();
-      lifetime.unsubscribe();
     });
 
     it('runs the away timer again once the window has focus back after a file chooser whose end was missed', () => {
-      const { lockNow, advance, lifetime } = setup({
+      const { lockNow, advance } = setup({
         desktop: true,
         lockAfter: 'immediately',
         systemUi: 'real',
@@ -877,12 +838,11 @@ describe('AppLockLifecycleBinding', () => {
       window.dispatchEvent(new Event('blur'));
       advance(10_000);
       expect(lockNow).toHaveBeenCalledOnce();
-      lifetime.unsubscribe();
     });
 
     it('runs the away timer again once the app is back from a file chooser whose end was missed', () => {
       // Android's document picker sends Trinity to the background.
-      const { lifecycle, lockNow, advance, lifetime } = setup({
+      const { lifecycle, lockNow, advance } = setup({
         lockAfter: 'immediately',
         systemUi: 'real',
       });
@@ -894,7 +854,6 @@ describe('AppLockLifecycleBinding', () => {
       expect(lockNow).not.toHaveBeenCalled();
       lifecycle.next({ kind: 'background' });
       expect(lockNow).toHaveBeenCalledOnce();
-      lifetime.unsubscribe();
     });
 
     it('holds the away timer while the sign-in sheet is open', () => {
@@ -903,7 +862,7 @@ describe('AppLockLifecycleBinding', () => {
         open: () => of({ kind: 'completed' as const }),
         sheetClosed: sheetClosed.asObservable(),
       } as Partial<HostAuthenticationHandoffOperation> as HostAuthenticationHandoffOperation;
-      const { lifecycle, lockNow, advance, lifetime } = setup({
+      const { lifecycle, lockNow, advance } = setup({
         lockAfter: 'immediately',
         systemUi: 'real',
         providers: [
@@ -923,7 +882,6 @@ describe('AppLockLifecycleBinding', () => {
       lifecycle.next({ kind: 'active' });
       lifecycle.next({ kind: 'background' });
       expect(lockNow).toHaveBeenCalledOnce();
-      lifetime.unsubscribe();
     });
 
     it('runs the away timer again once the app is back from a sign-in sheet whose end was missed', () => {
@@ -931,7 +889,7 @@ describe('AppLockLifecycleBinding', () => {
         open: () => of({ kind: 'completed' as const }),
         sheetClosed: NEVER,
       } as Partial<HostAuthenticationHandoffOperation> as HostAuthenticationHandoffOperation;
-      const { lifecycle, lockNow, advance, lifetime } = setup({
+      const { lifecycle, lockNow, advance } = setup({
         lockAfter: 'immediately',
         systemUi: 'real',
         providers: [
@@ -950,12 +908,11 @@ describe('AppLockLifecycleBinding', () => {
       expect(lockNow).not.toHaveBeenCalled();
       lifecycle.next({ kind: 'background' });
       expect(lockNow).toHaveBeenCalledOnce();
-      lifetime.unsubscribe();
     });
 
     it('holds the away timer while an account page is open in the in-app browser', async () => {
       native.platform = true;
-      const { lifecycle, lockNow, advance, lifetime } = setup({
+      const { lifecycle, lockNow, advance } = setup({
         lockAfter: 'immediately',
         systemUi: 'real',
       });
@@ -974,7 +931,6 @@ describe('AppLockLifecycleBinding', () => {
       expect(lockNow).not.toHaveBeenCalled();
       lifecycle.next({ kind: 'background' });
       expect(lockNow).toHaveBeenCalledOnce();
-      lifetime.unsubscribe();
     });
 
     it('holds the away timer while the camera is open', async () => {
@@ -987,7 +943,7 @@ describe('AppLockLifecycleBinding', () => {
       native.camera.takePhoto.mockReturnValue(
         new Promise((_, reject) => (cancel = reject)),
       );
-      const { lifecycle, lockNow, advance, lifetime } = setup({
+      const { lifecycle, lockNow, advance } = setup({
         lockAfter: 'immediately',
         systemUi: 'real',
       });
@@ -1008,7 +964,6 @@ describe('AppLockLifecycleBinding', () => {
       TestBed.tick();
       lifecycle.next({ kind: 'background' });
       expect(lockNow).toHaveBeenCalledOnce();
-      lifetime.unsubscribe();
     });
 
     it('holds the away timer while the photo picker is open', async () => {
@@ -1021,7 +976,7 @@ describe('AppLockLifecycleBinding', () => {
       native.camera.chooseFromGallery.mockReturnValue(
         new Promise((resolve) => (choose = resolve)),
       );
-      const { lifecycle, lockNow, advance, lifetime } = setup({
+      const { lifecycle, lockNow, advance } = setup({
         lockAfter: 'immediately',
         systemUi: 'real',
       });
@@ -1037,7 +992,6 @@ describe('AppLockLifecycleBinding', () => {
       TestBed.tick();
       lifecycle.next({ kind: 'background' });
       expect(lockNow).toHaveBeenCalledOnce();
-      lifetime.unsubscribe();
     });
   });
 });
