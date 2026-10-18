@@ -1294,6 +1294,41 @@ describe('MessageListComponent', () => {
       }),
     );
 
+    // Detached fixture (not renderList/render()) of `messages` with canLoadOlder on and the
+    // scroller's geometry stubbed. Container top 0; first .vpad tracks -scrollTop so
+    // rowsRegionTop resolves to 0; $0-$4 sit above the viewport top. Each test stubs $5.
+    function detachedAnchoringList(
+      messages: ReturnType<typeof many>,
+      scrollTop: { get: () => number; set: (value: number) => void },
+    ) {
+      TestBed.overrideComponent(MessageListComponent, {
+        remove: { imports: [MessageComposerComponent] },
+        add: { imports: [MockComponent(MessageComposerComponent)] },
+      });
+      const fixture = TestBed.createComponent(MessageListComponent);
+      fixture.componentRef.setInput('canLoadOlder', true);
+      fixture.componentRef.setInput('messages', messages);
+      fixture.detectChanges();
+      const cmp = fixture.componentInstance;
+      const scroll = (fixture.nativeElement as HTMLElement).querySelector(
+        '.scroll',
+      ) as HTMLElement;
+      setScrollGeometry(scroll, {
+        scrollTop,
+        clientHeight: 600,
+        scrollHeight: messages.length * EST,
+      });
+      scroll.getBoundingClientRect = () => rect(0);
+      (scroll.querySelector('.vpad') as HTMLElement).getBoundingClientRect =
+        () => rect(-scrollTop.get());
+      for (const id of ['$0', '$1', '$2', '$3', '$4']) {
+        (
+          scroll.querySelector(`[data-mid="${id}"]`) as HTMLElement
+        ).getBoundingClientRect = () => rect(-100, -50);
+      }
+      return { fixture, cmp, scroll };
+    }
+
     it('backfills an empty projection that still has history behind it', () => {
       const fixture = TestBed.createComponent(MessageListComponent);
       let emits = 0;
@@ -1365,37 +1400,12 @@ describe('MessageListComponent', () => {
       // anchor restore re-enters the zoneless scheduler ("cannot synchronously
       // execute watches while scheduling"). A detached fixture only ticks on our
       // explicit fixture.detectChanges().
-      TestBed.overrideComponent(MessageListComponent, {
-        remove: { imports: [MessageComposerComponent] },
-        add: { imports: [MockComponent(MessageComposerComponent)] },
-      });
-      const fixture = TestBed.createComponent(MessageListComponent);
-      fixture.componentRef.setInput('canLoadOlder', true);
-      fixture.componentRef.setInput('messages', many(30)); // short → all rendered
-      fixture.detectChanges();
-      const container = fixture.nativeElement as HTMLElement;
-      const cmp = fixture.componentInstance;
-
-      const scroll = container.querySelector('.scroll') as HTMLElement;
+      // 30 rows is short → all rendered
       let st = 100; // < AUTO_LOAD_THRESHOLD_PX (150) → triggers load-older
-      setScrollGeometry(scroll, {
-        scrollTop: {
-          get: () => st,
-          set: (v: number) => (st = v),
-        },
-        clientHeight: 600,
-        scrollHeight: 30 * EST,
+      const { fixture, cmp, scroll } = detachedAnchoringList(many(30), {
+        get: () => st,
+        set: (v: number) => (st = v),
       });
-      // getBoundingClientRect drives anchor capture + region offset. Container top 0;
-      // first .vpad tracks -scrollTop so rowsRegionTop resolves to 0.
-      scroll.getBoundingClientRect = () => rect(0);
-      (scroll.querySelector('.vpad') as HTMLElement).getBoundingClientRect =
-        () => rect(-st);
-      for (const id of ['$0', '$1', '$2', '$3', '$4']) {
-        (
-          scroll.querySelector(`[data-mid="${id}"]`) as HTMLElement
-        ).getBoundingClientRect = () => rect(-100, -50); // above the viewport top
-      }
       let prependedHeight = 0;
       (
         scroll.querySelector('[data-mid="$5"]') as HTMLElement
@@ -1482,32 +1492,11 @@ describe('MessageListComponent', () => {
       (userScrollTop) => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
         try {
-          TestBed.overrideComponent(MessageListComponent, {
-            remove: { imports: [MessageComposerComponent] },
-            add: { imports: [MockComponent(MessageComposerComponent)] },
-          });
-          const fixture = TestBed.createComponent(MessageListComponent);
-          fixture.componentRef.setInput('canLoadOlder', true);
-          fixture.componentRef.setInput('messages', many(30));
-          fixture.detectChanges();
-          const container = fixture.nativeElement as HTMLElement;
-          const cmp = fixture.componentInstance;
-          const scroll = container.querySelector('.scroll') as HTMLElement;
-
           let st = 100;
-          Object.defineProperties(scroll, {
-            scrollTop: { get: () => st, set: (value: number) => (st = value) },
-            clientHeight: { value: 600 },
-            scrollHeight: { value: 30 * EST },
+          const { fixture, cmp, scroll } = detachedAnchoringList(many(30), {
+            get: () => st,
+            set: (v: number) => (st = v),
           });
-          scroll.getBoundingClientRect = () => rect(0);
-          (scroll.querySelector('.vpad') as HTMLElement).getBoundingClientRect =
-            () => rect(-st);
-          for (const id of ['$0', '$1', '$2', '$3', '$4']) {
-            (
-              scroll.querySelector(`[data-mid="${id}"]`) as HTMLElement
-            ).getBoundingClientRect = () => rect(-100, -50);
-          }
           const anchor = scroll.querySelector('[data-mid="$5"]') as HTMLElement;
           anchor.getBoundingClientRect = () =>
             rect(
@@ -1547,32 +1536,11 @@ describe('MessageListComponent', () => {
     ])(
       'keeps a scroll made while %s was loading when it lands',
       (_label, prepended) => {
-        TestBed.overrideComponent(MessageListComponent, {
-          remove: { imports: [MessageComposerComponent] },
-          add: { imports: [MockComponent(MessageComposerComponent)] },
-        });
-        const fixture = TestBed.createComponent(MessageListComponent);
-        fixture.componentRef.setInput('canLoadOlder', true);
-        fixture.componentRef.setInput('messages', many(30));
-        fixture.detectChanges();
-        const container = fixture.nativeElement as HTMLElement;
-        const cmp = fixture.componentInstance;
-        const scroll = container.querySelector('.scroll') as HTMLElement;
-
         let st = 100;
-        Object.defineProperties(scroll, {
-          scrollTop: { get: () => st, set: (value: number) => (st = value) },
-          clientHeight: { value: 600 },
-          scrollHeight: { value: 30 * EST },
+        const { fixture, cmp, scroll } = detachedAnchoringList(many(30), {
+          get: () => st,
+          set: (v: number) => (st = v),
         });
-        scroll.getBoundingClientRect = () => rect(0);
-        (scroll.querySelector('.vpad') as HTMLElement).getBoundingClientRect =
-          () => rect(-st);
-        for (const id of ['$0', '$1', '$2', '$3', '$4']) {
-          (
-            scroll.querySelector(`[data-mid="${id}"]`) as HTMLElement
-          ).getBoundingClientRect = () => rect(-100, -50);
-        }
         // $5 sits 40px below the top at scrollTop 100; each rendered 22px prepended row
         // pushes it down.
         const anchor = scroll.querySelector('[data-mid="$5"]') as HTMLElement;
