@@ -418,16 +418,7 @@ describe('CapabilityStatusService', () => {
       trust.set('needs-setup');
       expect(status.bannerSlot()).toBe('encryption');
 
-      health.report(
-        healthFact({
-          capability: 'host',
-          operation: 'contract',
-          context: Symbol('host'),
-          condition: 'blocked',
-          code: 'host-contract-unavailable',
-        }),
-        () => of({ kind: 'success' as const }),
-      );
+      reportHostBlocked();
       expect(status.hasBlocking()).toBe(true);
       expect(status.bannerSlot()).toBe('status');
     });
@@ -500,16 +491,7 @@ describe('CapabilityStatusService', () => {
     it('holds no prompt while the slot holds the status notice or nothing', () => {
       expect(status.bannerPrompt()).toBeNull();
       trust.set('needs-setup');
-      health.report(
-        healthFact({
-          capability: 'host',
-          operation: 'contract',
-          context: Symbol('host'),
-          condition: 'blocked',
-          code: 'host-contract-unavailable',
-        }),
-        () => of({ kind: 'success' as const }),
-      );
+      reportHostBlocked();
       expect(status.bannerSlot()).toBe('status');
       expect(status.bannerPrompt()).toBeNull();
     });
@@ -700,16 +682,7 @@ describe('CapabilityStatusService', () => {
         trust.set('needs-setup');
         press();
 
-        health.report(
-          healthFact({
-            capability: 'host',
-            operation: 'contract',
-            context: Symbol('host'),
-            condition: 'blocked',
-            code: 'host-contract-unavailable',
-          }),
-          () => of({ kind: 'success' as const }),
-        );
+        reportHostBlocked();
         // The slot change waits for the release; the prompt it holds is still true.
         expect(status.bannerSlot()).toBe('encryption');
         expect(status.bannerPrompt()).toEqual({
@@ -753,6 +726,20 @@ describe('CapabilityStatusService', () => {
         operation: 'projection',
         context,
         code: 'trust-reconciliation-failed',
+      }),
+      () => of({ kind: 'success' as const }),
+    );
+  }
+
+  /** The host contract is unavailable, which blocks rather than limits. */
+  function reportHostBlocked(): void {
+    health.report(
+      healthFact({
+        capability: 'host',
+        operation: 'contract',
+        context: Symbol('host'),
+        condition: 'blocked',
+        code: 'host-contract-unavailable',
       }),
       () => of({ kind: 'success' as const }),
     );
