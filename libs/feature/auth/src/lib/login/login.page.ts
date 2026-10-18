@@ -41,6 +41,7 @@ import {
   AUTHENTICATION_HOMESERVER_DISCOVERY,
   NewDeviceSignInCancelledError,
   OidcStateStore,
+  QrSignInAvailability,
   UnprotectedStorageDeclinedError,
   RegistrationService,
   SignInRedirectService,
@@ -74,6 +75,7 @@ import {
 } from './clear-all-data';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { accountEstablishmentError } from '../account-establishment-outcome';
+import { QrSignInPanelComponent } from './qr-sign-in-panel/qr-sign-in-panel.component';
 
 const ACCOUNT_NOT_STORED = 'That account is no longer stored.';
 const DISCOVERY_FALLBACK =
@@ -126,6 +128,7 @@ function hostOf(url: string): string {
   imports: [
     AuthCardComponent,
     FormField,
+    QrSignInPanelComponent,
     TrnButton,
     TrnCardImports,
     TrnFieldImports,
@@ -142,6 +145,7 @@ export class LoginPage {
   private readonly route = inject(ActivatedRoute);
   private readonly signInRedirect = inject(SignInRedirectService);
   private readonly oidcState = inject(OidcStateStore);
+  private readonly qrAvailability = inject(QrSignInAvailability);
   private readonly storage = inject(SessionStorageService);
   private readonly alert = inject(TrnAlertService);
   private readonly accounts = inject(AccountRuntimeService);
@@ -297,6 +301,11 @@ export class LoginPage {
     readonly homeserver: string;
   } | null>(null);
 
+  /** The server can take a QR sign-in; never offered in re-auth, which keeps its device. */
+  readonly qrSignInSupported = signal(false);
+  /** The QR panel replaces the sign-in choices while it is open. */
+  readonly showingQr = signal(false);
+
   readonly busy = signal(false);
   /** Page-level failures with no field to attach to (erase, re-auth loading). */
   readonly error = signal<string | null>(null);
@@ -347,6 +356,10 @@ export class LoginPage {
       this.enteredServerName = domain;
       this.baseUrl.set(baseUrl);
       this.applyFlows(flows, oidc, registration);
+      this.qrAvailability
+        .supports(baseUrl)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe((supported) => this.qrSignInSupported.set(supported));
     });
   }
 
@@ -445,6 +458,11 @@ export class LoginPage {
       }
       void this.router.navigateByUrl('/rooms', { replaceUrl: true });
     });
+  }
+
+  /** A QR sign-in finished; an unverified device gets the app's usual verify prompt. */
+  qrSignedIn(): void {
+    void this.router.navigateByUrl('/rooms', { replaceUrl: true });
   }
 
   /** Abandon adding an account and return to the app. */
