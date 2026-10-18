@@ -202,11 +202,16 @@ export class AppLockCoverState {
       ? `${opening}.`
       : `${opening}, so it can’t unlock. The only way back in is to erase all data on this device.`;
   });
-  readonly eraseText = computed(() =>
-    this.panel() === 'forgot'
-      ? `If you’ve forgotten your PIN, the only way back into ${this.appName} is to erase all data on this device. That signs out every account. Encrypted messages are lost unless you have your recovery key or another signed-in device.`
-      : 'Erasing all data on this device signs out every account. Encrypted messages are lost unless you have your recovery key or another signed-in device.',
-  );
+  readonly eraseText = computed(() => {
+    const text =
+      this.panel() === 'forgot'
+        ? `If you’ve forgotten your PIN, the only way back into ${this.appName} is to erase all data on this device. That signs out every account. Encrypted messages are lost unless you have your recovery key or another signed-in device.`
+        : 'Erasing all data on this device signs out every account. Encrypted messages are lost unless you have your recovery key or another signed-in device.';
+    // The remembered method: one that has gone since it was offered still loses its unlock.
+    return this.knownBiometry() === 'windows-hello'
+      ? `${text} Windows Hello unlock is turned off too. You can turn it on again in Settings › Security › App lock.`
+      : text;
+  });
   readonly pinForm = form(this.model, (path) => {
     required(path.pin, { message: `Enter your ${this.appName} PIN.` });
     pattern(path.pin, PIN_PATTERN, { message: 'Enter 4 to 16 digits.' });

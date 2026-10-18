@@ -179,7 +179,9 @@ Windows Hello reports too many tries, the lock screen asks for your Trinity PIN.
 or your phone's passcode), unlock with it and set a new PIN with **Change PIN** in Settings ›
 Security. Otherwise the only way back in is **Erase all data on this device**. That signs out
 every account on this device, and encrypted messages are lost unless you have your recovery key
-or another signed-in device. Keep your recovery key safe before you turn App lock on.
+or another signed-in device. It also turns App lock off, so a system prompt such as Windows
+Hello no longer unlocks Trinity until you turn on **Lock Trinity** in Settings › Security again.
+Keep your recovery key safe before you turn App lock on.
 
 **"Trinity can't read your PIN right now".** Trinity keeps the PIN in your system's secure
 storage. If that storage can't be read, for example while a Linux keyring is locked, the lock
