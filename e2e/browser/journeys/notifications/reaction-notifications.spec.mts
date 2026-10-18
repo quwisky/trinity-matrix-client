@@ -22,8 +22,8 @@ import {
 import { sendWithRetry } from '../../support/cs-api.mts';
 import { createRoom } from '../../support/space-journey.mts';
 import {
-  installNotificationRecorder,
-  postMessage,
+  installLiveNotificationRecorder,
+  postMessageForId,
 } from '../../support/notification-journey.mts';
 
 const session = homeserverSession();
@@ -246,7 +246,7 @@ test.describe('Reaction notifications', () => {
       ),
     ).toBeUndefined();
 
-    await installNotificationRecorder(page);
+    await installLiveNotificationRecorder(page);
     await login(page, fixture.reader);
     await page.getByTestId('rail-rooms').click();
     await expect(
@@ -254,7 +254,7 @@ test.describe('Reaction notifications', () => {
     ).toBeVisible({ timeout: 20_000 });
 
     const ownBody = `reader-owned reaction target ${runId}`;
-    const ownEventId = await postMessage(
+    const ownEventId = await postMessageForId(
       request,
       hs,
       fixture.readerApi,
@@ -423,7 +423,7 @@ test.describe('Reaction notifications', () => {
     );
     await suppressionCollector.waitFor(ownReactionId);
     const otherBody = `sender-owned reaction target ${runId}`;
-    const otherEventId = await postMessage(
+    const otherEventId = await postMessageForId(
       request,
       hs,
       fixture.reactors[0],

@@ -16,8 +16,8 @@ import {
 } from '../../../support/account.mts';
 import { createRoom } from '../../support/space-journey.mts';
 import {
-  installNotificationRecorder,
-  postMessage,
+  installLiveNotificationRecorder,
+  postMessageForId,
 } from '../../support/notification-journey.mts';
 
 // Covers NotificationService's core rule end to end: a live message fires an OS
@@ -39,7 +39,7 @@ const session = homeserverSession();
  * (non-DM) room and invite the sender, and have the sender join it — but send
  * NO message yet. Notifications only fire for *live* timeline events (backfill
  * from before the reader's initial sync never notifies), so the message must be
- * posted only after the reader's client is up and live — see `postMessage`.
+ * posted only after the reader's client is up and live — see `postMessageForId`.
  *
  * The sender's display name is set explicitly so the notification title
  * (`${sender} · ${room}`) is deterministic to assert on.
@@ -110,7 +110,7 @@ test.describe('Message notifications', () => {
     const { reader, readerUserId, sender, roomId, roomName, senderName } =
       await seedNotifyRoom(request, hs, runId);
 
-    await installNotificationRecorder(page);
+    await installLiveNotificationRecorder(page);
     await login(page, reader); // lands on /rooms (Home) — the seeded room isn't open
 
     // Home shows direct messages only (RoomsPage.visibleRooms()); our seeded room
@@ -128,7 +128,14 @@ test.describe('Message notifications', () => {
     await page.getByRole('button', { name: 'Direct messages' }).click();
 
     const body = `hello from notify e2e ${runId}`;
-    await postMessage(request, hs, sender, roomId, `notify-${runId}`, body);
+    await postMessageForId(
+      request,
+      hs,
+      sender,
+      roomId,
+      `notify-${runId}`,
+      body,
+    );
 
     // Wait on the app's own recorded state, not a fixed sleep.
     await page.waitForFunction(
@@ -178,7 +185,7 @@ test.describe('Message notifications', () => {
       runId,
     );
 
-    await installNotificationRecorder(page);
+    await installLiveNotificationRecorder(page);
     await login(page, reader);
 
     // Open the seeded room so it becomes TimelineService.openRoomId — Playwright
@@ -198,7 +205,14 @@ test.describe('Message notifications', () => {
     );
 
     const body = `hello focused e2e ${runId}`;
-    await postMessage(request, hs, sender, roomId, `focused-${runId}`, body);
+    await postMessageForId(
+      request,
+      hs,
+      sender,
+      roomId,
+      `focused-${runId}`,
+      body,
+    );
 
     // Tie the "no notification" assertion to real app state: wait for the live
     // message to actually render in the open timeline (proof the event was
