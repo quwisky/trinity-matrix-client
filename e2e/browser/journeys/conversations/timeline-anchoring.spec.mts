@@ -14,6 +14,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { waitUntilStill } from '../../../support/touch-platform.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
 /**
@@ -235,20 +236,23 @@ async function anchorCase(
     Math.abs(loadingOffset - anchor.top),
     'showing the history loading indicator moved the anchored message',
   ).toBeLessThan(8);
+  // Count history requests, not rows: a windowed list adds rows above the reader as the new
+  // page's estimated heights become measured ones, with no pagination at all.
+  let chainedPages = 0;
+  page.on('request', (request) => {
+    if (/\/messages\?/.test(request.url())) chainedPages++;
+  });
   releaseHistory();
 
   // Wait for the backfill to land.
   await expect.poll(progress, { timeout: 30_000 }).toBeGreaterThan(before);
-  const settledCount = await progress();
-
-  await page.waitForTimeout(1500);
-  expect(await progress(), 'pagination chained after the measured page').toBe(
-    settledCount,
-  );
-  await expect(
-    page.locator('.load-older'),
+  expect(
+    await page.locator('.load-older').count(),
     'the loading strip outlived the settled page',
-  ).toHaveCount(0);
+  ).toBe(0);
+  // A chained page starts from the scroll events of the restore or a late resize, so it has
+  // been asked for once the reader holds still; the count is checked after the last hold.
+  await waitUntilStill(scroll.locator(`.msg[data-mid="${anchor.id}"]`));
 
   const after = await offsetOf(anchor.id);
   if (after === null) {
@@ -259,6 +263,7 @@ async function anchorCase(
     await offsetOf(anchor.id),
     'the anchored message was still moving after pagination settled',
   ).toBe(after);
+  expect(chainedPages, 'pagination chained after the measured page').toBe(0);
 
   const drift = Math.abs(after - anchor.top);
   const moved = `anchored message moved from ${anchor.top} to ${after} (${drift}px)`;
