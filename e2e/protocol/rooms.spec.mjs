@@ -24,7 +24,7 @@
 //
 // `pnpm e2e:rooms` builds dev, starts the harness, runs this, and tears down.
 import { applicationOrigin } from '../support/session.mts';
-import { protocolResponseFailure } from './diagnostics.mts';
+import { apiLogin, csPost, poll } from './cs-api.mjs';
 import { test, expect } from './fixtures.mts';
 
 const APP = applicationOrigin();
@@ -50,22 +50,6 @@ const log = (m) => console.log(`[rooms] ${m}`);
 // CS-API helpers
 // ---------------------------------------------------------------------------
 
-async function apiLogin(user, pass) {
-  const res = await fetch(`${HS}/_matrix/client/v3/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user },
-      password: pass,
-    }),
-  });
-  if (!res.ok) {
-    throw protocolResponseFailure(`login ${user}`, res);
-  }
-  return res.json(); // { access_token, user_id, … }
-}
-
 async function csGet(token, path) {
   const res = await fetch(`${HS}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -75,32 +59,6 @@ async function csGet(token, path) {
     status: res.status,
     body: res.ok ? await res.json() : null,
   };
-}
-
-async function csPost(token, path, body) {
-  const res = await fetch(`${HS}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    throw protocolResponseFailure(`POST ${path}`, res);
-  }
-  const ct = res.headers.get('content-type') ?? '';
-  return ct.includes('application/json') ? res.json() : {};
-}
-
-/** Retry `fn` until it returns a truthy value or the attempt limit is reached. */
-async function poll(fn, { tries = 30, delayMs = 1000 } = {}) {
-  for (let i = 0; i < tries; i++) {
-    const v = await fn().catch(() => null);
-    if (v) return v;
-    await new Promise((r) => setTimeout(r, delayMs));
-  }
-  throw new Error('poll timed out');
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +137,7 @@ async function fillUserPickerAndConfirm(page, mxid, confirmLabelText) {
 async function main(protocolBrowser) {
   // ── CS-API pre-setup: seed invite rooms with the fixture-owned account ────
   const { access_token: bobToken, user_id: bobId } = await apiLogin(
+    HS,
     BOB_USER,
     BOB_PASS,
   );
@@ -186,6 +145,7 @@ async function main(protocolBrowser) {
   log('BOB api login ok');
 
   const { access_token: aliceToken, user_id: aliceId } = await apiLogin(
+    HS,
     USER,
     PASS,
   );
@@ -193,6 +153,7 @@ async function main(protocolBrowser) {
 
   // BOB creates rooms that will carry incoming invites for alice (scenarios 4+5).
   const { room_id: acceptRoomId } = await csPost(
+    HS,
     bobToken,
     '/_matrix/client/v3/createRoom',
     {
@@ -203,6 +164,7 @@ async function main(protocolBrowser) {
   log(`BOB created AcceptRoom: ${acceptRoomId} ("${ACCEPT_ROOM_NAME}")`);
 
   const { room_id: declineRoomId } = await csPost(
+    HS,
     bobToken,
     '/_matrix/client/v3/createRoom',
     {
@@ -214,12 +176,14 @@ async function main(protocolBrowser) {
 
   // BOB invites alice to both rooms so they appear in her Invites section.
   await csPost(
+    HS,
     bobToken,
     `/_matrix/client/v3/rooms/${encodeURIComponent(acceptRoomId)}/invite`,
     { user_id: aliceId },
   );
   log(`BOB invited alice to AcceptRoom`);
   await csPost(
+    HS,
     bobToken,
     `/_matrix/client/v3/rooms/${encodeURIComponent(declineRoomId)}/invite`,
     { user_id: aliceId },
