@@ -62,9 +62,13 @@ describe('Identity production boundary', () => {
     const identity = source(
       'libs/data-access/identity/src/lib/identity.service.ts',
     );
-    const roomLibrary = source(
+    const roomLibrary = [
       'libs/data-access/room-library/src/lib/room-library.service.ts',
-    );
+      'libs/data-access/room-library/src/lib/room-typing.ts',
+      'libs/data-access/room-library/src/lib/direct-rooms.ts',
+    ]
+      .map(source)
+      .join('\n');
     const roomMembers = source(
       'libs/data-access/room-administration/src/lib/room-members.service.ts',
     );

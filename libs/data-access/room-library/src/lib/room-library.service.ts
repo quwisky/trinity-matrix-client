@@ -28,7 +28,6 @@ import {
   throwError,
 } from 'rxjs';
 import {
-  coalesce,
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
@@ -36,7 +35,6 @@ import { PrivacySettingsService } from '@trinity/platform-native';
 import {
   isValidUserId,
   roomEncryptionInitialState,
-  visibilityOptions,
 } from '@trinity/util/matrix';
 import {
   buildRoomSummary,
@@ -49,6 +47,12 @@ import {
   assertRoomLibraryGovernance,
   type RoomLibraryGovernanceKey,
 } from './room-library-governance-policy';
+import {
+  addToDirectMap,
+  createEncryptedRoom,
+  existingDirectRoom,
+} from './direct-rooms';
+import { RoomTyping } from './room-typing';
 
 /** Fields a {@link RoomLibraryService.createRoom} call accepts. */
 export interface CreateRoomOptions {
@@ -56,21 +60,6 @@ export interface CreateRoomOptions {
   topic?: string;
   /** Public (discoverable + publicly joinable) vs the default invite-only room. */
   isPublic?: boolean;
-}
-
-/** Shared active/exact Account implementation for encrypted Room creation. */
-function createEncryptedRoom(
-  client: MatrixClient,
-  options: CreateRoomOptions,
-): Observable<string> {
-  return from(
-    client.createRoom({
-      name: options.name.trim(),
-      ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
-      ...visibilityOptions(options.isPublic),
-      initial_state: [roomEncryptionInitialState()],
-    }),
-  ).pipe(map((response) => response.room_id));
 }
 
 /** Room Library's authoritative answer for one Account-and-Room selection. */
@@ -128,8 +117,6 @@ export interface RoomSummary {
   directUserId?: string;
 }
 
-const EMPTY_TYPING: readonly string[] = Object.freeze([]);
-
 /**
  * `next`, or `previous` when it describes the room identically.
  *
@@ -168,11 +155,6 @@ function sameRooms(
   b: readonly RoomSummary[],
 ): boolean {
   return a.length === b.length && a.every((room, i) => room === b[i]);
-}
-
-/** Whether two typing-name lists say the same thing, in order. */
-function sameNames(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && a.every((name, i) => name === b[i]);
 }
 
 /** The invitee blocks invites (MSC4380), so the invite was refused. Carries no user copy. */
@@ -221,26 +203,7 @@ export class RoomLibraryService {
    */
   private readonly pendingUnread = new Map<string, boolean>();
 
-  /**
-   * Our OWN membership changed. The rebuild is already covered by `RoomEvent.MyMembership` in
-   * the projection's event list; this clears transient typing state for a Room we left. Room
-   * Administration owns rosters.
-   */
-  private readonly onMyMembership = (room?: { roomId?: string }): void => {
-    // A room we have left stops syncing, so its members never emit "stopped typing" and its key
-    // would sit in the map for the session, reappearing frozen on rejoin because an unchanged
-    // set writes nothing.
-    const roomId = room?.roomId;
-    if (roomId) {
-      this.dirtyTypingRooms.delete(roomId);
-      const current = this._typingByRoom();
-      if (roomId in current) {
-        const next = { ...current };
-        delete next[roomId];
-        this._typingByRoom.set(next);
-      }
-    }
-  };
+  private readonly typing = new RoomTyping(() => this.projection.client());
 
   /** Someone in a room joined, left, or changed their profile. */
   private readonly onMemberChanged = (
@@ -258,84 +221,8 @@ export class RoomLibraryService {
     }
   };
 
-  private readonly _typingByRoom = signal<Record<string, readonly string[]>>(
-    {},
-  );
-  /**
-   * Who is typing, per room, excluding the local user: the sidebar's source. Client-level, so
-   * it sees every room; `TimelineService` tracks only the open one.
-   */
-  readonly typingByRoom = this._typingByRoom.asReadonly();
-
-  private readonly dirtyTypingRooms = new Map<string, string[]>();
-
-  /**
-   * Coalesced, and separate from the Room-list projection: adding `RoomMemberEvent.Typing` to
-   * its `events` would run a full rebuild and re-sort on every typing EDU from every room, where
-   * this writes one key.
-   */
-  private readonly typingFlusher = coalesce(() => {
-    const rooms = [...this.dirtyTypingRooms];
-    this.dirtyTypingRooms.clear();
-    const client = this.projection.client();
-    if (!client) {
-      return;
-    }
-    // EVERY signed-in account, not just the active one. A room both accounts are joined to
-    // renders as ONE row (see `RoomSummary.accountIds`), so filtering only the active mxid let
-    // the user's other account announce itself on their own room.
-    const selves = new Set(this.matrix.accountIds());
-    let next = this._typingByRoom();
-    let changed = false;
-
-    for (const [roomId, typingIds] of rooms) {
-      const room = client.getRoom(roomId);
-      // The ids come off the EDU the handler already received, so this is O(typists).
-      // `getMembers()` — what TimelineService does — is O(members), which is fine for the
-      // one open room and not for every joined room on every typing change.
-      const names = typingIds
-        .filter((userId) => !selves.has(userId))
-        .map((userId) => room?.getMember(userId)?.name ?? userId);
-      const current = next[roomId] ?? EMPTY_TYPING;
-      // Idempotent: an unchanged set writes nothing. Without this every EDU replaces the
-      // record and re-runs the sidebar template, which reads this during change detection.
-      if (sameNames(current, names)) {
-        continue;
-      }
-      if (!changed) {
-        next = { ...next };
-        changed = true;
-      }
-      if (names.length) {
-        next[roomId] = names;
-      } else {
-        delete next[roomId];
-      }
-    }
-
-    if (changed) {
-      this._typingByRoom.set(next);
-    }
-  });
-
-  /**
-   * A member started or stopped typing. The event names the member, not the set, so the
-   * room's whole typing set is re-read on flush.
-   */
-  private readonly onTypingChanged = (
-    event: MatrixEvent,
-    member: RoomMember,
-  ): void => {
-    // `m.typing` carries the room's WHOLE typing set, so the last event per room wins and
-    // there is no delta to merge. Taking it here rather than re-reading members on flush
-    // keeps the cost O(typists) instead of O(members-in-every-joined-room).
-    const userIds = event.getContent()?.['user_ids'];
-    this.dirtyTypingRooms.set(
-      member.roomId,
-      Array.isArray(userIds) ? (userIds as string[]) : [],
-    );
-    this.typingFlusher.schedule();
-  };
+  /** Who is typing, per room; see {@link RoomTyping.typingByRoom}. */
+  readonly typingByRoom = this.typing.typingByRoom;
 
   private readonly _rooms = signal<RoomSummary[]>([], { equal: sameRooms });
   readonly rooms = this._rooms.asReadonly();
@@ -389,24 +276,19 @@ export class RoomLibraryService {
     // Administration owns the member-roster projection itself.
     bind: (client) => {
       client.on(RoomStateEvent.Members, this.onMemberChanged);
-      client.on(RoomEvent.MyMembership, this.onMyMembership);
-      client.on(RoomMemberEvent.Typing, this.onTypingChanged);
+      client.on(RoomEvent.MyMembership, this.typing.onMyMembership);
+      client.on(RoomMemberEvent.Typing, this.typing.onTypingChanged);
     },
     unbind: (client) => {
       client.off(RoomStateEvent.Members, this.onMemberChanged);
-      client.off(RoomEvent.MyMembership, this.onMyMembership);
-      client.off(RoomMemberEvent.Typing, this.onTypingChanged);
+      client.off(RoomEvent.MyMembership, this.typing.onMyMembership);
+      client.off(RoomMemberEvent.Typing, this.typing.onTypingChanged);
     },
     reset: () => {
       this._rooms.set([]);
       this._directRoomIds.set(new Set());
       this.dmPeers = new Set();
-      // The typing flusher reads `projection.client()` and returns when there is none, so a
-      // late flush cannot repopulate from the outgoing client. Cancelling also skips that
-      // microtask, and reset owns every scheduled task this service creates.
-      this.typingFlusher.cancel();
-      this.dirtyTypingRooms.clear();
-      this._typingByRoom.set({});
+      this.typing.reset();
     },
   });
 
@@ -713,7 +595,7 @@ export class RoomLibraryService {
         return throwError(() => new Error(`Invalid user id: ${userId}`));
       }
       const client = this.matrix.instance;
-      const existing = this.existingDirectRoom(client, userId);
+      const existing = existingDirectRoom(client, userId);
       if (existing) {
         return of(existing);
       }
@@ -726,7 +608,7 @@ export class RoomLibraryService {
         }),
       ).pipe(
         switchMap((res) =>
-          this.addToDirectMap(client, userId, res.room_id).pipe(
+          addToDirectMap(client, userId, res.room_id).pipe(
             map(() => res.room_id),
           ),
         ),
@@ -770,66 +652,6 @@ export class RoomLibraryService {
         ),
       );
     });
-  }
-
-  /**
-   * The id of an existing, not-left DM room with `userId` from the `m.direct` map, or null. A
-   * joined room is preferred; an outstanding invite we sent (membership `invite`) is also
-   * reused so a second DM isn't created while the first is pending.
-   */
-  private existingDirectRoom(
-    client: MatrixClient,
-    userId: string,
-  ): string | null {
-    const candidates = this.directMap(client)[userId] ?? [];
-    let firstUsable: string | null = null;
-    for (const roomId of candidates) {
-      const room = client.getRoom(roomId);
-      const membership = room?.getMyMembership();
-      if (membership === 'join') {
-        return roomId; // a live DM — prefer it
-      }
-      if (!firstUsable && membership === 'invite') {
-        firstUsable = roomId; // pending invite we sent — usable fallback
-      }
-    }
-    return firstUsable;
-  }
-
-  /** Merge `roomId` into `m.direct[userId]` and persist the updated map. */
-  private addToDirectMap(
-    client: MatrixClient,
-    userId: string,
-    roomId: string,
-  ): Observable<void> {
-    // `setAccountData` does a *full replace* of m.direct, so merge against the freshest map,
-    // re-read at write time (inside the defer, on subscribe), not a snapshot from before
-    // `createRoom`; otherwise an m.direct update that arrived during the create round-trip
-    // (another device, a concurrent DM) would be clobbered by our PUT.
-    return defer(() => {
-      const current = this.directMap(client);
-      const forUser = current[userId] ?? [];
-      if (forUser.includes(roomId)) {
-        return of(void 0); // already recorded — nothing to write
-      }
-      const next = { ...current, [userId]: [...forUser, roomId] };
-      return from(client.setAccountData(EventType.Direct, next)).pipe(
-        map(() => void 0),
-      );
-    });
-  }
-
-  /**
-   * Current `m.direct` map (`{ userId: roomId[] }`), or empty when unset. `getAccountData` is
-   * called optionally so a stub client without account data yields an empty map rather than
-   * throwing.
-   */
-  private directMap(client: MatrixClient): Record<string, string[]> {
-    return (
-      client
-        .getAccountData?.(EventType.Direct)
-        ?.getContent<Record<string, string[]>>() ?? {}
-    );
   }
 
   private refresh(): void {
