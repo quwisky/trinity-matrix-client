@@ -31,9 +31,8 @@ export async function postMessageForId(
  *    (taken instead when a SW *does* control the page).
  *
  * Every call, from either path, is appended to `window.__notifications` as
- * `{ title, options }`. Registered via `page.addInitScript` so it's in place
- * before the app's first script runs, on every navigation in the page
- * (including the /login → /rooms redirect `login()` drives).
+ * `{ title, options }`. Installed with `page.addInitScript` (later navigations,
+ * including the /login → /rooms redirect) and `page.evaluate` (the current page).
  *
  * Unlike `installNotificationRecorder` in multi-account-journey.mts, it also
  * keeps each `Notification` instance (so tests can read `onclick`), installs on
