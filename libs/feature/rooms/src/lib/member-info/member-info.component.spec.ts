@@ -904,19 +904,63 @@ describe('MemberInfoComponent', () => {
   });
 
   it('offers Unblock for an ignored member and unblocks them on click', async () => {
-    const { cmp, unignore, toastShow } = await build(member(), {
+    const { cmp, fixture, unignore, toastShow } = await build(member(), {
       isIgnored: true,
     });
     expect(cmp.ignored()).toBe(true);
 
     cmp.toggleIgnore();
+    fixture.detectChanges();
 
     expect(unignore).toHaveBeenCalledWith('@bob:hs');
     expect(cmp.ignored()).toBe(false);
-    expect(toastShow).toHaveBeenCalledWith(
+    expect(screen.getByRole('status').textContent?.trim()).toBe(
       'Unblocked. Their earlier messages appear after you reload.',
-      expect.anything(),
     );
+    expect(toastShow).not.toHaveBeenCalled();
+  });
+
+  it('confirms a block in the card, where no toast covers the button', async () => {
+    const { cmp, fixture, toastShow } = await build(member());
+
+    cmp.toggleIgnore();
+    fixture.detectChanges();
+
+    expect(screen.getByRole('status').textContent?.trim()).toBe(
+      "Blocked — you won't see their messages.",
+    );
+    expect(toastShow).not.toHaveBeenCalled();
+  });
+
+  it('says in the card when a block fails', async () => {
+    const { cmp, fixture, toastShow } = await build(member(), {
+      ignore: vi.fn(() => throwError(() => new Error('offline'))),
+    });
+
+    cmp.toggleIgnore();
+    fixture.detectChanges();
+
+    expect(screen.getByRole('alert').textContent?.trim()).toBe(
+      'Could not update the block.',
+    );
+    expect(toastShow).not.toHaveBeenCalled();
+  });
+
+  it('keeps its status region in place, empty, until there is something to say', async () => {
+    await build(member());
+
+    expect(screen.getByRole('status').matches(':empty')).toBe(true);
+  });
+
+  it('drops the confirmation once the list changes elsewhere', async () => {
+    const { cmp, fixture, ignoredIds } = await build(member());
+    cmp.toggleIgnore();
+    fixture.detectChanges();
+
+    ignoredIds.set([]);
+    fixture.detectChanges();
+
+    expect(screen.getByRole('status').matches(':empty')).toBe(true);
   });
 
   it('offers to report the member, named, as the active account', async () => {

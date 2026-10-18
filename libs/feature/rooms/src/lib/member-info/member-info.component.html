@@ -92,18 +92,41 @@
         >
           Verify
         </button>
-        <button
-          trnBtn
-          variant="secondary"
-          presentation="ghost"
-          class="w-full"
-          (click)="toggleIgnore()"
-          [trnActionAllowed]="blockUnavailableReason() === null"
-          [trnActionDisabledReason]="blockUnavailableReason()"
-          data-testid="member-info-ignore"
-        >
-          {{ ignored() ? 'Unblock' : 'Block' }}
-        </button>
+        <div class="flex flex-col">
+          <button
+            trnBtn
+            variant="secondary"
+            presentation="ghost"
+            class="w-full"
+            (click)="toggleIgnore()"
+            [trnActionAllowed]="blockUnavailableReason() === null"
+            [trnActionDisabledReason]="blockUnavailableReason()"
+            data-testid="member-info-ignore"
+          >
+            {{ ignored() ? 'Unblock' : 'Block' }}
+          </button>
+          <!-- Always present, so screen readers hear a confirmation as it arrives. -->
+          <p
+            class="m-0 text-13 text-muted-foreground not-empty:mt-2"
+            role="status"
+            data-testid="member-info-block-notice"
+          >
+            @if (blockNotice(); as notice) {
+              @if (!notice.failed) {
+                {{ notice.text }}
+              }
+            }
+          </p>
+          @if (blockNotice()?.failed) {
+            <p
+              class="m-0 mt-2 text-13 text-danger"
+              role="alert"
+              data-testid="member-info-block-failure"
+            >
+              {{ blockNotice()?.text }}
+            </p>
+          }
+        </div>
         @if (canReport()) {
           <button
             trnBtn

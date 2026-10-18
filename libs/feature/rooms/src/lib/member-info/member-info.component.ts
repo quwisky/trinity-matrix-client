@@ -7,6 +7,7 @@ import {
   inject,
   input,
   output,
+  signal,
   viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
@@ -156,6 +157,20 @@ export class MemberInfoComponent {
   readonly ignored = computed(() =>
     this.ignoredUsers.isIgnored(this.member().userId),
   );
+
+  private readonly blockAnswer = signal<{
+    readonly text: string;
+    readonly failed: boolean;
+    readonly ignored: boolean;
+  } | null>(null);
+  /**
+   * The last block or unblock answer, said under the button because a toast would cover it
+   * on desktop. Gone once the list no longer matches it, as after a change on another device.
+   */
+  readonly blockNotice = computed(() => {
+    const answer = this.blockAnswer();
+    return answer?.ignored === this.ignored() ? answer : null;
+  });
 
   /** The owning Account is no longer the active one (the host is about to close this). */
   private readonly ownerInactive = computed(() => {
@@ -340,16 +355,19 @@ export class MemberInfoComponent {
     const action = wasIgnored
       ? this.ignoredUsers.unignore(userId)
       : this.ignoredUsers.ignore(userId);
+    this.blockAnswer.set(null);
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: () => {
-        this.toast.show(wasIgnored ? UNBLOCKED_TOAST : BLOCKED_TOAST, {
-          duration: 2500,
-        });
-      },
+      next: () =>
+        this.blockAnswer.set({
+          text: wasIgnored ? UNBLOCKED_TOAST : BLOCKED_TOAST,
+          failed: false,
+          ignored: !wasIgnored,
+        }),
       error: () =>
-        this.toast.show(BLOCK_FAILED_TOAST, {
-          duration: 4000,
-          variant: 'danger',
+        this.blockAnswer.set({
+          text: BLOCK_FAILED_TOAST,
+          failed: true,
+          ignored: wasIgnored,
         }),
     });
   }

@@ -115,6 +115,9 @@ test.describe('Blocked users in Settings', () => {
     await expect(cardAction).toHaveText('Block');
     await cardAction.click();
     await expect(cardAction).toHaveText('Unblock', { timeout: 30_000 });
+    await expect(page.getByTestId('member-info-block-notice')).toHaveText(
+      "Blocked — you won't see their messages.",
+    );
     await page.getByTestId('member-info-close').click();
     await expect(page.getByTestId('member-info')).toBeHidden();
 
