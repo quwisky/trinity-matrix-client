@@ -332,6 +332,14 @@ async function settle(): Promise<void> {
   }
 }
 
+/** Run one navigation intent to its outcome. */
+function go(
+  h: ReturnType<typeof harness>,
+  intent: Parameters<WorkspaceNavigationService['navigate']>[0],
+) {
+  return firstValueFrom(h.service.navigate(intent));
+}
+
 /** The client of `accountId` no longer holds `roomId`, as after a sync dropping it. */
 function drop(
   h: ReturnType<typeof harness>,
@@ -477,28 +485,24 @@ describe('WorkspaceNavigationService', () => {
     });
     h.navigate.mockClear();
 
-    await firstValueFrom(
-      h.service.navigate({
-        kind: 'restoration',
-        accountId: ALICE,
-        scope: { kind: 'recent' },
-        roomId: ROOM,
-        pane: 'conversation',
-        canonical: false,
-      }),
-    );
+    await go(h, {
+      kind: 'restoration',
+      accountId: ALICE,
+      scope: { kind: 'recent' },
+      roomId: ROOM,
+      pane: 'conversation',
+      canonical: false,
+    });
     h.activeAccountId.set(BOB);
     h.navigate.mockClear();
-    await firstValueFrom(
-      h.service.navigate({
-        kind: 'restoration',
-        accountId: BOB,
-        scope: { kind: 'recent' },
-        roomId: ROOM,
-        pane: 'conversation',
-        canonical: false,
-      }),
-    );
+    await go(h, {
+      kind: 'restoration',
+      accountId: BOB,
+      scope: { kind: 'recent' },
+      roomId: ROOM,
+      pane: 'conversation',
+      canonical: false,
+    });
     expect(h.service.view()).toMatchObject({ roomId: null, pane: 'list' });
     expect(h.navigate).toHaveBeenLastCalledWith(['/rooms'], {
       queryParams: { account: BOB },
@@ -591,15 +595,13 @@ describe('WorkspaceNavigationService', () => {
     const h = harness({ routeAccountId: ALICE });
     const navigation = new Subject<boolean>();
     h.navigate.mockImplementationOnce(() => firstValueFrom(navigation));
-    const result = firstValueFrom(
-      h.service.navigate({
-        kind: 'room',
-        accountId: ALICE,
-        roomId: ROOM,
-        scope: { kind: 'rooms' },
-        origin: 'room-list',
-      }),
-    );
+    const result = go(h, {
+      kind: 'room',
+      accountId: ALICE,
+      roomId: ROOM,
+      scope: { kind: 'rooms' },
+      origin: 'room-list',
+    });
 
     expect(h.service.view()).toEqual({
       accountId: ALICE,
@@ -713,9 +715,7 @@ describe('WorkspaceNavigationService', () => {
       expect(h.conversations.blur).not.toHaveBeenCalled();
       expect(h.media.releaseAll).not.toHaveBeenCalled();
 
-      await firstValueFrom(
-        h.service.navigate({ kind: 'list', origin: 'compact-close' }),
-      );
+      await go(h, { kind: 'list', origin: 'compact-close' });
       h.navigate.mockClear();
       h.conversations.focus.mockClear();
 
@@ -772,9 +772,7 @@ describe('WorkspaceNavigationService', () => {
       h.navigate.mockImplementationOnce(() => firstValueFrom(navigation));
       h.navigate.mockClear();
 
-      const close = firstValueFrom(
-        h.service.navigate({ kind: 'list', origin: 'compact-close' }),
-      );
+      const close = go(h, { kind: 'list', origin: 'compact-close' });
       await expect(
         firstValueFrom(
           h.service.navigate({ kind: 'list', origin: 'workspace-back' }),
@@ -861,13 +859,11 @@ describe('WorkspaceNavigationService', () => {
 
       it('keeps a space another selected Account holds when opening its room as BOB (#1369)', async () => {
         const h = harness({ routeAccountId: ALICE, rooms, mixed });
-        await firstValueFrom(
-          h.service.navigate({
-            kind: 'scope',
-            accountId: ALICE,
-            scope: { kind: 'space', spaceId: SPACE },
-          }),
-        );
+        await go(h, {
+          kind: 'scope',
+          accountId: ALICE,
+          scope: { kind: 'space', spaceId: SPACE },
+        });
 
         await expect(
           firstValueFrom(
@@ -993,9 +989,7 @@ describe('WorkspaceNavigationService', () => {
           }),
       );
       const open = (scope: WorkspaceNavigationScope) =>
-        firstValueFrom(
-          h.service.navigate({ kind: 'scope', accountId: ALICE, scope }),
-        );
+        go(h, { kind: 'scope', accountId: ALICE, scope });
 
       await open({ kind: 'space', spaceId: SPACE });
       expect(lifetimes).toEqual([{ spaceId: SPACE, ended: false }]);
@@ -1101,15 +1095,13 @@ describe('WorkspaceNavigationService', () => {
       const rooms = { [ALICE]: [ROOM, OTHER, SPACE], [BOB]: [ROOM] };
 
       async function openInSpace(h: ReturnType<typeof harness>) {
-        await firstValueFrom(
-          h.service.navigate({
-            kind: 'room',
-            accountId: ALICE,
-            roomId: ROOM,
-            scope: { kind: 'space', spaceId: SPACE },
-            origin: 'room-action',
-          }),
-        );
+        await go(h, {
+          kind: 'room',
+          accountId: ALICE,
+          roomId: ROOM,
+          scope: { kind: 'space', spaceId: SPACE },
+          origin: 'room-action',
+        });
         await settle();
         h.navigate.mockClear();
       }
@@ -1181,14 +1173,12 @@ describe('WorkspaceNavigationService', () => {
           void project(commands, extras);
           return new Promise<boolean>((resolve) => (finish = resolve));
         });
-        const opened = firstValueFrom(
-          h.service.navigate({
-            kind: 'room',
-            accountId: ALICE,
-            roomId: OTHER,
-            origin: 'room-list',
-          }),
-        );
+        const opened = go(h, {
+          kind: 'room',
+          accountId: ALICE,
+          roomId: OTHER,
+          origin: 'room-list',
+        });
         return { opened, finish: (navigated: boolean) => finish(navigated) };
       }
 
@@ -1274,13 +1264,11 @@ describe('WorkspaceNavigationService', () => {
         expect(h.navigate).not.toHaveBeenCalled();
 
         // What the leave flow does once its request settles: navigate, then clear the mark.
-        const home = firstValueFrom(
-          h.service.navigate({
-            kind: 'scope',
-            accountId: ALICE,
-            scope: { kind: 'home' },
-          }),
-        );
+        const home = go(h, {
+          kind: 'scope',
+          accountId: ALICE,
+          scope: { kind: 'home' },
+        });
         h.leaving.set(new Set());
         await home;
         await settle();
@@ -1386,13 +1374,11 @@ describe('WorkspaceNavigationService', () => {
         origin: 'room-invitation',
       });
 
-      await firstValueFrom(
-        h.service.navigate({
-          kind: 'scope',
-          accountId: ALICE,
-          scope: { kind: 'rooms' },
-        }),
-      );
+      await go(h, {
+        kind: 'scope',
+        accountId: ALICE,
+        scope: { kind: 'rooms' },
+      });
       await firstValueFrom(invitation);
 
       expect(h.service.view()).toMatchObject({
@@ -1408,9 +1394,7 @@ describe('WorkspaceNavigationService', () => {
 
       // No list below this Conversation (a reload): the list replaces it, so it is not one
       // history step behind the list (#1113).
-      await firstValueFrom(
-        h.service.navigate({ kind: 'list', origin: 'compact-close' }),
-      );
+      await go(h, { kind: 'list', origin: 'compact-close' });
       expect(h.service.view()).toMatchObject({
         roomId: ROOM,
         pane: 'list',
@@ -1423,17 +1407,13 @@ describe('WorkspaceNavigationService', () => {
         },
       );
 
-      await firstValueFrom(
-        h.service.navigate({
-          kind: 'room',
-          accountId: ALICE,
-          roomId: ROOM,
-          origin: 'room-list',
-        }),
-      );
-      await firstValueFrom(
-        h.service.navigate({ kind: 'list', origin: 'workspace-back' }),
-      );
+      await go(h, {
+        kind: 'room',
+        accountId: ALICE,
+        roomId: ROOM,
+        origin: 'room-list',
+      });
+      await go(h, { kind: 'list', origin: 'workspace-back' });
       expect(h.navigate).toHaveBeenLastCalledWith(
         ['/rooms', encodeRoomSegment(ROOM)],
         {
@@ -1442,9 +1422,7 @@ describe('WorkspaceNavigationService', () => {
         },
       );
 
-      await firstValueFrom(
-        h.service.navigate({ kind: 'list', origin: 'room-removed' }),
-      );
+      await go(h, { kind: 'list', origin: 'room-removed' });
       expect(h.service.view()).toMatchObject({ roomId: null, pane: 'list' });
       expect(h.navigate).toHaveBeenLastCalledWith(['/rooms'], {
         queryParams: { account: ALICE },
@@ -1455,25 +1433,21 @@ describe('WorkspaceNavigationService', () => {
     it('pushes a Room opened from its list over that list, and only then', async () => {
       const h = harness({ routeAccountId: ALICE, compact: true });
 
-      await firstValueFrom(
-        h.service.navigate({
-          kind: 'room',
-          accountId: ALICE,
-          roomId: ROOM,
-          origin: 'room-list',
-        }),
-      );
+      await go(h, {
+        kind: 'room',
+        accountId: ALICE,
+        roomId: ROOM,
+        origin: 'room-list',
+      });
       expect(h.projections.at(-1)).toEqual({ history: 'push', overList: true });
 
       // From a Conversation, the entry below is not the list.
-      await firstValueFrom(
-        h.service.navigate({
-          kind: 'room',
-          accountId: ALICE,
-          roomId: '!other:example.org',
-          origin: 'room-list',
-        }),
-      );
+      await go(h, {
+        kind: 'room',
+        accountId: ALICE,
+        roomId: '!other:example.org',
+        origin: 'room-list',
+      });
       expect(h.projections.at(-1)).toEqual({
         history: 'push',
         overList: false,
@@ -1483,14 +1457,12 @@ describe('WorkspaceNavigationService', () => {
     it('opens a Room in split view without marking it over the list', async () => {
       const h = harness({ routeAccountId: ALICE });
 
-      await firstValueFrom(
-        h.service.navigate({
-          kind: 'room',
-          accountId: ALICE,
-          roomId: ROOM,
-          origin: 'room-list',
-        }),
-      );
+      await go(h, {
+        kind: 'room',
+        accountId: ALICE,
+        roomId: ROOM,
+        origin: 'room-list',
+      });
 
       expect(h.projections.at(-1)).toEqual({
         history: 'push',
@@ -1505,7 +1477,7 @@ describe('WorkspaceNavigationService', () => {
         h.listBelow.set(true);
         h.navigate.mockClear();
 
-        await firstValueFrom(h.service.navigate({ kind: 'list', origin }));
+        await go(h, { kind: 'list', origin });
 
         expect(h.projections.at(-1)?.history).toBe('back');
         expect(h.popHistory).toHaveBeenCalledOnce();
@@ -1520,9 +1492,7 @@ describe('WorkspaceNavigationService', () => {
       h.listBelow.set(true);
       expect(h.service.conversationOverList()).toBe(true);
 
-      await firstValueFrom(
-        h.service.navigate({ kind: 'list', origin: 'compact-close' }),
-      );
+      await go(h, { kind: 'list', origin: 'compact-close' });
       expect(h.service.conversationOverList()).toBe(false);
     });
 
@@ -1534,24 +1504,20 @@ describe('WorkspaceNavigationService', () => {
       });
       const mru = TestBed.inject(WorkspaceVisitHistoryService);
 
-      await firstValueFrom(
-        h.service.navigate({
-          kind: 'room',
-          accountId: ALICE,
-          roomId: ROOM,
-          origin: 'room-hop',
-        }),
-      );
+      await go(h, {
+        kind: 'room',
+        accountId: ALICE,
+        roomId: ROOM,
+        origin: 'room-hop',
+      });
       expect(mru.visited()).toEqual([]);
 
-      await firstValueFrom(
-        h.service.navigate({
-          kind: 'room',
-          accountId: ALICE,
-          roomId: secondRoom,
-          origin: 'shortcut',
-        }),
-      );
+      await go(h, {
+        kind: 'room',
+        accountId: ALICE,
+        roomId: secondRoom,
+        origin: 'shortcut',
+      });
       expect(mru.visited()).toEqual([{ accountId: ALICE, roomId: secondRoom }]);
     });
 
@@ -1562,22 +1528,18 @@ describe('WorkspaceNavigationService', () => {
         rooms: { [ALICE]: [ROOM, secondRoom] },
       });
 
-      await firstValueFrom(
-        h.service.navigate({
-          kind: 'room',
-          accountId: ALICE,
-          roomId: ROOM,
-          origin: 'shortcut',
-        }),
-      );
-      await firstValueFrom(
-        h.service.navigate({
-          kind: 'room',
-          accountId: ALICE,
-          roomId: secondRoom,
-          origin: 'shortcut',
-        }),
-      );
+      await go(h, {
+        kind: 'room',
+        accountId: ALICE,
+        roomId: ROOM,
+        origin: 'shortcut',
+      });
+      await go(h, {
+        kind: 'room',
+        accountId: ALICE,
+        roomId: secondRoom,
+        origin: 'shortcut',
+      });
 
       await expect(
         firstValueFrom(
@@ -1619,13 +1581,11 @@ describe('WorkspaceNavigationService', () => {
         roomId: ROOM,
       });
 
-      await firstValueFrom(
-        h.service.navigate({
-          kind: 'space',
-          accountId: BOB,
-          spaceId,
-        }),
-      );
+      await go(h, {
+        kind: 'space',
+        accountId: BOB,
+        spaceId,
+      });
       expect(h.service.view()).toMatchObject({
         accountId: BOB,
         scope: { kind: 'space', spaceId },
@@ -1681,14 +1641,12 @@ describe('WorkspaceNavigationService', () => {
         rooms: { [ALICE]: [ROOM], [BOB]: [ROOM, invitedSpace] },
       });
 
-      await firstValueFrom(
-        h.service.navigate({
-          kind: 'invitation',
-          accountId: BOB,
-          roomId: invitedSpace,
-          target: 'space',
-        }),
-      );
+      await go(h, {
+        kind: 'invitation',
+        accountId: BOB,
+        roomId: invitedSpace,
+        target: 'space',
+      });
 
       expect(h.acceptInvite).toHaveBeenCalledWith(invitedSpace, BOB);
       expect(h.waitForRoom).toHaveBeenCalledWith(BOB, invitedSpace);
@@ -1703,14 +1661,12 @@ describe('WorkspaceNavigationService', () => {
       h.navigate.mockClear();
       h.conversations.focus.mockClear();
 
-      await firstValueFrom(
-        h.service.navigate({
-          kind: 'notification',
-          accountId: ALICE,
-          roomId: ROOM,
-          eventId: '$event',
-        }),
-      );
+      await go(h, {
+        kind: 'notification',
+        accountId: ALICE,
+        roomId: ROOM,
+        eventId: '$event',
+      });
       const firstTarget = h.service.eventTarget();
       expect(firstTarget).toEqual({ eventId: '$event' });
       expect(h.navigate).toHaveBeenCalledWith(
@@ -1722,14 +1678,12 @@ describe('WorkspaceNavigationService', () => {
       );
 
       h.navigate.mockClear();
-      await firstValueFrom(
-        h.service.navigate({
-          kind: 'notification',
-          accountId: ALICE,
-          roomId: ROOM,
-          eventId: '$event',
-        }),
-      );
+      await go(h, {
+        kind: 'notification',
+        accountId: ALICE,
+        roomId: ROOM,
+        eventId: '$event',
+      });
       expect(h.service.eventTarget()).toEqual({ eventId: '$event' });
       expect(h.service.eventTarget()).not.toBe(firstTarget);
       expect(h.navigate).not.toHaveBeenCalled();
@@ -1910,13 +1864,11 @@ describe('WorkspaceNavigationService', () => {
   it('captures rollback state when a cold command is subscribed, not created', async () => {
     const h = harness({ routeAccountId: ALICE });
     const delayed = h.service.navigate({ kind: 'account', accountId: BOB });
-    await firstValueFrom(
-      h.service.navigate({
-        kind: 'scope',
-        accountId: ALICE,
-        scope: { kind: 'rooms' },
-      }),
-    );
+    await go(h, {
+      kind: 'scope',
+      accountId: ALICE,
+      scope: { kind: 'rooms' },
+    });
     h.navigate.mockClear();
     const failed = {
       kind: 'failed',
