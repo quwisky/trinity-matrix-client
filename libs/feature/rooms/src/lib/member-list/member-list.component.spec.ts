@@ -47,6 +47,16 @@ function member(
 }
 const opts = { imports: [MockComponent(AvatarComponent)], providers };
 
+function renderMembers(
+  members: MemberSummary[],
+  inputs: Record<string, unknown> = {},
+) {
+  return render(MemberListComponent, {
+    inputs: { members, ...inputs },
+    ...opts,
+  });
+}
+
 /** Visible section headers, in render order (e.g. ['Admins — 1', 'Members — 2']). */
 function sectionLabels(container: HTMLElement): (string | undefined)[] {
   return [...container.querySelectorAll('.members__section-label')].map((n) =>
@@ -77,10 +87,7 @@ const MEMBERS = [
 
 describe('MemberListComponent', () => {
   it('titles the panel and emits dismissed from its close button', async () => {
-    const { fixture, container } = await render(MemberListComponent, {
-      inputs: { members: MEMBERS },
-      ...opts,
-    });
+    const { fixture, container } = await renderMembers(MEMBERS);
     const dismissed = vi.fn();
     fixture.componentInstance.dismissed.subscribe(dismissed);
 
@@ -95,10 +102,7 @@ describe('MemberListComponent', () => {
   // Closing the panel or replacing it with another destroys it; the CDK's input-modality
   // detector kept the pressed row, and through it the whole detached roster (#1361).
   it('lets go of the last pressed element inside it when it goes', async () => {
-    const { fixture, container } = await render(MemberListComponent, {
-      inputs: { members: MEMBERS },
-      ...opts,
-    });
+    const { fixture, container } = await renderMembers(MEMBERS);
     const row = container.querySelector<HTMLElement>(
       '[data-testid="member-row"]',
     )!;
@@ -114,19 +118,13 @@ describe('MemberListComponent', () => {
   });
 
   it('omits the header in the settings reuse', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: MEMBERS, showHeader: false },
-      ...opts,
-    });
+    const { container } = await renderMembers(MEMBERS, { showHeader: false });
 
     expect(container.querySelector('h2')).toBeNull();
   });
 
   it('marks its labelled filter as the panel focus target', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: MEMBERS },
-      ...opts,
-    });
+    const { container } = await renderMembers(MEMBERS);
 
     const targets = container.querySelectorAll('[data-right-panel-focus]');
     expect(targets).toHaveLength(1);
@@ -138,10 +136,10 @@ describe('MemberListComponent', () => {
 
   it('emits selectMember with the clicked member', async () => {
     const clicked = member({ userId: '@z:hs' });
-    const { fixture, container } = await render(MemberListComponent, {
-      inputs: { members: [clicked, member({ userId: '@a:hs' })] },
-      ...opts,
-    });
+    const { fixture, container } = await renderMembers([
+      clicked,
+      member({ userId: '@a:hs' }),
+    ]);
     let selected: { userId: string } | undefined;
     fixture.componentInstance.selectMember.subscribe((m) => (selected = m));
 
@@ -153,10 +151,7 @@ describe('MemberListComponent', () => {
   });
 
   it('orders online members above offline ones, keeping names within a group', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: MEMBERS },
-      ...opts,
-    });
+    const { container } = await renderMembers(MEMBERS);
 
     const names = [...container.querySelectorAll('.member__name')].map((n) =>
       n.textContent?.trim(),
@@ -166,10 +161,7 @@ describe('MemberListComponent', () => {
   });
 
   it('dims offline members', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: MEMBERS },
-      ...opts,
-    });
+    const { container } = await renderMembers(MEMBERS);
 
     const rows = container.querySelectorAll('.member');
     expect(rows.length).toBe(2);
@@ -187,10 +179,7 @@ describe('MemberListComponent', () => {
       member({ userId: '@bo:hs', roomDisplayName: 'Bo', powerLevel: 50 }),
       member({ userId: '@cy:hs', roomDisplayName: 'Cy', powerLevel: 0 }),
     ];
-    const { container } = await render(MemberListComponent, {
-      inputs: { members },
-      ...opts,
-    });
+    const { container } = await renderMembers(members);
 
     // Sections appear highest-role first, and each header holds exactly its members —
     // proving the partition regroups rather than relying on input order.
@@ -223,10 +212,7 @@ describe('MemberListComponent', () => {
       }),
       member({ userId: '@reg:hs', roomDisplayName: 'Reg', powerLevel: 0 }),
     ];
-    const { container } = await render(MemberListComponent, {
-      inputs: { members },
-      ...opts,
-    });
+    const { container } = await renderMembers(members);
 
     expect(sectionLabels(container)).toEqual([
       'Owners — 1',
@@ -253,10 +239,7 @@ describe('MemberListComponent', () => {
       }),
       member({ userId: '@them:hs', roomDisplayName: 'Them', powerLevel: 100 }),
     ];
-    const { container } = await render(MemberListComponent, {
-      inputs: { members, direct: true },
-      ...opts,
-    });
+    const { container } = await renderMembers(members, { direct: true });
 
     expect(sectionLabels(container)).toEqual(['Admins — 2']);
     expect(sectionMap(container)['Admins — 2']).toEqual(['Me', 'Them']);
@@ -268,10 +251,7 @@ describe('MemberListComponent', () => {
     const members = [
       member({ userId: '@a:hs', roomDisplayName: 'Ada', powerLevel: 100 }),
     ];
-    const { container } = await render(MemberListComponent, {
-      inputs: { members },
-      ...opts,
-    });
+    const { container } = await renderMembers(members);
 
     expect(sectionLabels(container)).toEqual(['Admins — 1']);
   });
@@ -292,10 +272,7 @@ describe('MemberListComponent', () => {
         isCreator: true,
       }),
     ];
-    const { container } = await render(MemberListComponent, {
-      inputs: { members },
-      ...opts,
-    });
+    const { container } = await renderMembers(members);
 
     expect(sectionLabels(container)).toEqual(['Admins — 1', 'Members — 1']);
     expect(sectionMap(container)['Members — 1']).toEqual(['Founder']);
@@ -307,10 +284,7 @@ describe('MemberListComponent', () => {
       member({ userId: '@a:hs', roomDisplayName: 'Anna', powerLevel: 50 }),
       member({ userId: '@z:hs', roomDisplayName: 'Zoe', powerLevel: 50 }),
     ];
-    const { container } = await render(MemberListComponent, {
-      inputs: { members },
-      ...opts,
-    });
+    const { container } = await renderMembers(members);
 
     expect(sectionMap(container)).toEqual({
       'Moderators — 2': ['Zoe', 'Anna'],
@@ -318,12 +292,9 @@ describe('MemberListComponent', () => {
   });
 
   it('omits role sections that have no members', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: {
-        members: [member({ userId: '@cy:hs', roomDisplayName: 'Cy' })],
-      },
-      ...opts,
-    });
+    const { container } = await renderMembers([
+      member({ userId: '@cy:hs', roomDisplayName: 'Cy' }),
+    ]);
 
     expect(sectionLabels(container)).toEqual(['Members — 1']);
   });
@@ -337,14 +308,9 @@ describe('MemberListComponent', () => {
   ])(
     'classifies power level %i at the role threshold',
     async (powerLevel, label) => {
-      const { container } = await render(MemberListComponent, {
-        inputs: {
-          members: [
-            member({ userId: '@a:hs', roomDisplayName: 'Anna', powerLevel }),
-          ],
-        },
-        ...opts,
-      });
+      const { container } = await renderMembers([
+        member({ userId: '@a:hs', roomDisplayName: 'Anna', powerLevel }),
+      ]);
 
       expect(sectionLabels(container)).toEqual([label]);
     },
@@ -354,10 +320,7 @@ describe('MemberListComponent', () => {
     const at = (powerLevel: number) => [
       member({ userId: '@a:hs', roomDisplayName: 'Anna', powerLevel }),
     ];
-    const { container, fixture } = await render(MemberListComponent, {
-      inputs: { members: at(0) },
-      ...opts,
-    });
+    const { container, fixture } = await renderMembers(at(0));
     expect(sectionLabels(container)).toEqual(['Members — 1']);
 
     fixture.componentRef.setInput('members', at(100)); // promote to admin
@@ -375,10 +338,7 @@ describe('MemberListComponent', () => {
       member({ userId: '@cy:hs', roomDisplayName: 'Cy', powerLevel: 0 }),
       member({ userId: '@di:hs', roomDisplayName: 'Di', powerLevel: 0 }),
     ];
-    const { container } = await render(MemberListComponent, {
-      inputs: { members },
-      ...opts,
-    });
+    const { container } = await renderMembers(members);
 
     const groups = [...container.querySelectorAll('[role="group"]')].map((g) =>
       g.getAttribute('aria-label'),
@@ -398,10 +358,7 @@ describe('MemberListComponent', () => {
       member({ userId: '@bo:hs', roomDisplayName: 'Bo', powerLevel: 50 }),
       member({ userId: '@cy:hs', roomDisplayName: 'Cy', powerLevel: 0 }),
     ];
-    const { container, fixture } = await render(MemberListComponent, {
-      inputs: { members },
-      ...opts,
-    });
+    const { container, fixture } = await renderMembers(members);
 
     // Each of the three section headers renders exactly one icon that resolves to
     // a real SVG (i.e. the icon name is registered, not just the host element).
@@ -424,10 +381,9 @@ describe('MemberListComponent', () => {
 
 describe('MemberListComponent — restyle', () => {
   it('marks group labels for uppercase styling and keeps their text', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: [member({ userId: '@a:hs', powerLevel: 100 })] },
-      ...opts,
-    });
+    const { container } = await renderMembers([
+      member({ userId: '@a:hs', powerLevel: 100 }),
+    ]);
 
     const label = container.querySelector('.member-group__label');
     expect(label?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Admins — 1');
@@ -435,16 +391,11 @@ describe('MemberListComponent — restyle', () => {
   });
 
   it('tints admin and moderator names only', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: {
-        members: [
-          member({ userId: '@a:hs', roomDisplayName: 'Ada', powerLevel: 100 }),
-          member({ userId: '@m:hs', roomDisplayName: 'Mo', powerLevel: 50 }),
-          member({ userId: '@p:hs', roomDisplayName: 'Pat' }),
-        ],
-      },
-      ...opts,
-    });
+    const { container } = await renderMembers([
+      member({ userId: '@a:hs', roomDisplayName: 'Ada', powerLevel: 100 }),
+      member({ userId: '@m:hs', roomDisplayName: 'Mo', powerLevel: 50 }),
+      member({ userId: '@p:hs', roomDisplayName: 'Pat' }),
+    ]);
 
     const nameOf = (text: string) =>
       [...container.querySelectorAll('.member__name')].find(
@@ -456,19 +407,14 @@ describe('MemberListComponent — restyle', () => {
   });
 
   it('tints the owner like an admin', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: {
-        members: [
-          member({
-            userId: '@o:hs',
-            roomDisplayName: 'Olive',
-            powerLevel: 100,
-            isCreator: true,
-          }),
-        ],
-      },
-      ...opts,
-    });
+    const { container } = await renderMembers([
+      member({
+        userId: '@o:hs',
+        roomDisplayName: 'Olive',
+        powerLevel: 100,
+        isCreator: true,
+      }),
+    ]);
 
     const name = [...container.querySelectorAll('.member__name')].find(
       (n) => n.textContent?.trim() === 'Olive',
@@ -477,10 +423,7 @@ describe('MemberListComponent — restyle', () => {
   });
 
   it('renders rows with the shared button recipe', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: MEMBERS },
-      ...opts,
-    });
+    const { container } = await renderMembers(MEMBERS);
 
     const row = container.querySelector('[data-testid=member-row]')!;
     expect(row.getAttribute('data-slot')).toBe('button');
@@ -526,10 +469,7 @@ describe('MemberListComponent — filtering', () => {
   }
 
   it('narrows the list to a name match', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: people },
-      ...opts,
-    });
+    const { container } = await renderMembers(people);
 
     await filterBy(container, 'car');
 
@@ -540,15 +480,10 @@ describe('MemberListComponent — filtering', () => {
     // The two questions a filter answers are different: a reader scanning for someone
     // they can see types the display name, one disambiguating types the id. A
     // name-only filter would return both Bos and answer neither.
-    const { fixture, container } = await render(MemberListComponent, {
-      inputs: {
-        members: [
-          member({ userId: '@bo:hs', roomDisplayName: 'Bo' }),
-          member({ userId: '@robert:hs', roomDisplayName: 'Bo' }),
-        ],
-      },
-      ...opts,
-    });
+    const { fixture, container } = await renderMembers([
+      member({ userId: '@bo:hs', roomDisplayName: 'Bo' }),
+      member({ userId: '@robert:hs', roomDisplayName: 'Bo' }),
+    ]);
 
     await filterBy(container, 'robert');
 
@@ -564,12 +499,9 @@ describe('MemberListComponent — filtering', () => {
   });
 
   it('is case-insensitive on both sides', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: {
-        members: [member({ userId: '@a:hs', roomDisplayName: 'AMELIA' })],
-      },
-      ...opts,
-    });
+    const { container } = await renderMembers([
+      member({ userId: '@a:hs', roomDisplayName: 'AMELIA' }),
+    ]);
 
     await filterBy(container, 'amelia');
 
@@ -577,10 +509,7 @@ describe('MemberListComponent — filtering', () => {
   });
 
   it('says so when nothing matches, rather than showing an empty panel', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: people },
-      ...opts,
-    });
+    const { container } = await renderMembers(people);
 
     await filterBy(container, 'nobody here');
 
@@ -595,10 +524,7 @@ describe('MemberListComponent — filtering', () => {
     // count what survived a filter by walking the list. The region is rendered from the
     // start and only its text changes — one created at the moment it has something to say
     // is one the screen reader was not yet watching.
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: people },
-      ...opts,
-    });
+    const { container } = await renderMembers(people);
     const status = container.querySelector(
       '[data-testid=member-filter-status]',
     )!;
@@ -616,10 +542,7 @@ describe('MemberListComponent — filtering', () => {
   it('shows no empty-state message when the room itself is empty', async () => {
     // An unfiltered empty list is the room's business, not the filter's — claiming
     // "no members match that" when nothing was typed would be a lie.
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: [] },
-      ...opts,
-    });
+    const { container } = await renderMembers([]);
 
     expect(
       container.querySelector('[data-testid=member-filter-empty]'),
@@ -691,10 +614,7 @@ describe('MemberListComponent — windowing', () => {
   });
 
   it('renders a short list whole, without paying for windowing', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: crowd(20) },
-      ...opts,
-    });
+    const { container } = await renderMembers(crowd(20));
     setViewport(container, 400);
 
     expect(rowCount(container)).toBe(20);
@@ -708,10 +628,7 @@ describe('MemberListComponent — windowing', () => {
     // instead of the list. The timeline's windowed scroller carries the same guard.
     // Structural, not visual: jsdom performs no flex layout, so this pins that the class
     // is applied, and the rule behind it lives in the stylesheet.
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: crowd(600) },
-      ...opts,
-    });
+    const { container } = await renderMembers(crowd(600));
     setViewport(container, 400);
 
     const pads = container.querySelectorAll('aside > div[aria-hidden=true]');
@@ -724,10 +641,7 @@ describe('MemberListComponent — windowing', () => {
   it('renders a slice of a crowded room, not all of it', async () => {
     // The failure this exists for: 5,000 members painted 5,000 buttons, each with an
     // avatar. 400px of viewport plus 320px of overscan either side is ~24 rows.
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: crowd(600) },
-      ...opts,
-    });
+    const { container } = await renderMembers(crowd(600));
     setViewport(container, 400);
 
     const rendered = rowCount(container);
@@ -745,10 +659,7 @@ describe('MemberListComponent — windowing', () => {
     // to HEADER_PX — the bottom spacer is derived from the same total, so the header's
     // height cancels out whatever it is. That number is only checkable against a real
     // cascade, and `member-info.spec.mts` measures it in Chromium.
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: crowd(600) },
-      ...opts,
-    });
+    const { container } = await renderMembers(crowd(600));
     setViewport(container, 400);
 
     const [top, bottom] = spacers(container);
@@ -766,10 +677,7 @@ describe('MemberListComponent — windowing', () => {
   });
 
   it('moves the window down as the panel is scrolled', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: crowd(600) },
-      ...opts,
-    });
+    const { container } = await renderMembers(crowd(600));
     setViewport(container, 400);
     const firstAtTop = container
       .querySelector('.member__name')
@@ -812,10 +720,7 @@ describe('MemberListComponent — windowing', () => {
       ),
       ...crowd(200),
     ];
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: mixed },
-      ...opts,
-    });
+    const { container } = await renderMembers(mixed);
     setViewport(container, 400);
 
     // The window starts at the top, so all three headers are inside it.
@@ -860,10 +765,7 @@ describe('MemberListComponent — windowing', () => {
       ),
       ...crowd(200),
     ];
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: mixed },
-      ...opts,
-    });
+    const { container } = await renderMembers(mixed);
     setViewport(container, 1);
 
     expect(sectionLabels(container)).toContain('Members — 200');
@@ -879,10 +781,7 @@ describe('MemberListComponent — windowing', () => {
   it('keeps a section reachable when its header has scrolled away', async () => {
     // A group whose header is outside the window still renders its rows, and still
     // carries the accessible name — the header is visual, the group's name is not.
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: crowd(600) },
-      ...opts,
-    });
+    const { container } = await renderMembers(crowd(600));
     setViewport(container, 400);
 
     const host = container.querySelector('aside')!;
@@ -896,10 +795,7 @@ describe('MemberListComponent — windowing', () => {
   });
 
   it('windows the filtered list, not the full one', async () => {
-    const { container } = await render(MemberListComponent, {
-      inputs: { members: crowd(600) },
-      ...opts,
-    });
+    const { container } = await renderMembers(crowd(600));
     setViewport(container, 400);
 
     const input = container.querySelector<HTMLInputElement>(
