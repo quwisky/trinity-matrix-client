@@ -64,8 +64,11 @@ function fakeAppLock(initial: AppLockStatus, text: NotificationText = 'show') {
   };
 }
 
+let lifetime: Subscription | undefined;
+
 describe('NotificationSessionService', () => {
   afterEach(() => {
+    lifetime?.unsubscribe();
     TestBed.resetTestingModule();
     vi.restoreAllMocks();
   });
@@ -139,9 +142,7 @@ describe('NotificationSessionService', () => {
       focused.set({ key: { accountId, roomId } });
       TestBed.tick();
     };
-    const lifetime = TestBed.inject(NotificationSessionService)
-      .run()
-      .subscribe();
+    lifetime = TestBed.inject(NotificationSessionService).run().subscribe();
     TestBed.tick();
     const tap = (roomId: string): void =>
       notifications.next({
@@ -169,8 +170,9 @@ describe('NotificationSessionService', () => {
 
   describe('the notification text mirror', () => {
     it('mirrors the notification text and clears notifications only when it gets more private', () => {
-      const { appLock, writeNotificationText, clearDelivered, lifetime } =
-        setup({ text: 'show' });
+      const { appLock, writeNotificationText, clearDelivered } = setup({
+        text: 'show',
+      });
       expect(writeNotificationText).toHaveBeenCalledOnce();
       expect(writeNotificationText).toHaveBeenLastCalledWith('show');
       expect(clearDelivered).not.toHaveBeenCalled();
@@ -194,11 +196,10 @@ describe('NotificationSessionService', () => {
       TestBed.tick();
       expect(writeNotificationText).toHaveBeenLastCalledWith('show');
       expect(clearDelivered).toHaveBeenCalledTimes(2);
-      lifetime.unsubscribe();
     });
 
     it('writes nothing until App lock has loaded, then the loaded mode', () => {
-      const { appLock, writeNotificationText, lifetime } = setup({
+      const { appLock, writeNotificationText } = setup({
         status: 'unknown',
         text: 'always-hide',
       });
@@ -211,7 +212,6 @@ describe('NotificationSessionService', () => {
       expect(writeNotificationText).toHaveBeenLastCalledWith(
         'hide-on-lock-screen',
       );
-      lifetime.unsubscribe();
     });
 
     it('writes nothing again for the same mode, and nothing after the session ends', () => {
@@ -230,7 +230,7 @@ describe('NotificationSessionService', () => {
 
     it('writes a refused mode again when App lock reports in again', async () => {
       let refuse = true;
-      const { appLock, writeNotificationText, lifetime } = setup({
+      const { appLock, writeNotificationText } = setup({
         writeNotificationText: () =>
           refuse ? throwError(() => new Error('refused')) : of(void 0),
       });
@@ -246,12 +246,11 @@ describe('NotificationSessionService', () => {
       appLock.set('unlocked');
       TestBed.tick();
       expect(writeNotificationText).toHaveBeenCalledTimes(2);
-      lifetime.unsubscribe();
     });
 
     it('writes the mode again after the store lost it', () => {
       const lost = new Subject<void>();
-      const { appLock, writeNotificationText, lifetime } = setup({
+      const { appLock, writeNotificationText } = setup({
         notificationTextLost: lost,
       });
       expect(writeNotificationText).toHaveBeenCalledOnce();
@@ -261,16 +260,14 @@ describe('NotificationSessionService', () => {
       TestBed.tick();
       expect(writeNotificationText).toHaveBeenCalledTimes(2);
       expect(writeNotificationText).toHaveBeenLastCalledWith('show');
-      lifetime.unsubscribe();
     });
 
     it('still clears on a more private change after an earlier write was refused', async () => {
       let refuse = true;
-      const { appLock, writeNotificationText, clearDelivered, lifetime } =
-        setup({
-          writeNotificationText: () =>
-            refuse ? throwError(() => new Error('refused')) : of(void 0),
-        });
+      const { appLock, writeNotificationText, clearDelivered } = setup({
+        writeNotificationText: () =>
+          refuse ? throwError(() => new Error('refused')) : of(void 0),
+      });
       refuse = false;
       await Promise.resolve();
 
@@ -278,16 +275,14 @@ describe('NotificationSessionService', () => {
       TestBed.tick();
       expect(writeNotificationText).toHaveBeenLastCalledWith('always-hide');
       expect(clearDelivered).toHaveBeenCalledOnce();
-      lifetime.unsubscribe();
     });
 
     it('still clears delivered notifications, and keeps mirroring, after a write fails', () => {
       let fail = false;
-      const { appLock, writeNotificationText, clearDelivered, lifetime } =
-        setup({
-          writeNotificationText: () =>
-            fail ? throwError(() => new Error('refused')) : of(void 0),
-        });
+      const { appLock, writeNotificationText, clearDelivered } = setup({
+        writeNotificationText: () =>
+          fail ? throwError(() => new Error('refused')) : of(void 0),
+      });
       fail = true;
       appLock.mode.set('always-hide');
       TestBed.tick();
@@ -299,7 +294,6 @@ describe('NotificationSessionService', () => {
       TestBed.tick();
       expect(writeNotificationText).toHaveBeenLastCalledWith('show');
       expect(writeNotificationText).toHaveBeenCalledTimes(3);
-      lifetime.unsubscribe();
     });
   });
 
@@ -397,7 +391,7 @@ describe('NotificationSessionService', () => {
   });
   describe('while App lock covers the app', () => {
     it('opens a tapped notification only once App lock is unlocked', () => {
-      const { appLock, navigate, bringForward, lifetime, tap } = setup({
+      const { appLock, navigate, bringForward, tap } = setup({
         status: 'locked',
       });
 
@@ -412,11 +406,10 @@ describe('NotificationSessionService', () => {
         roomId: '!r:hs',
         eventId: '$e',
       });
-      lifetime.unsubscribe();
     });
 
     it('opens a tapped push notification only once App lock is unlocked', () => {
-      const { appLock, pushes, navigate, lifetime } = setup({
+      const { appLock, pushes, navigate } = setup({
         status: 'locked',
       });
 
@@ -433,22 +426,20 @@ describe('NotificationSessionService', () => {
         roomId: '!r:hs',
         eventId: '$e',
       });
-      lifetime.unsubscribe();
     });
 
     it('waits until the lock state is known before opening a tap', () => {
-      const { appLock, navigate, lifetime, tap } = setup({ status: 'unknown' });
+      const { appLock, navigate, tap } = setup({ status: 'unknown' });
 
       tap('!r:hs');
       expect(navigate).not.toHaveBeenCalled();
 
       appLock.set('off');
       expect(navigate).toHaveBeenCalledOnce();
-      lifetime.unsubscribe();
     });
 
     it('opens only the latest notification tapped while locked', () => {
-      const { appLock, navigate, lifetime, tap } = setup({ status: 'locked' });
+      const { appLock, navigate, tap } = setup({ status: 'locked' });
 
       tap('!a:hs');
       tap('!b:hs');
@@ -457,11 +448,10 @@ describe('NotificationSessionService', () => {
       expect(navigate).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ roomId: '!b:hs' }),
       );
-      lifetime.unsubscribe();
     });
 
     it('keeps reporting notification health while a tap waits', () => {
-      const { notifications, report, lifetime, tap } = setup({
+      const { notifications, report, tap } = setup({
         status: 'locked',
       });
       const fact = { context: Symbol('presentation'), generation: 1 };
@@ -470,11 +460,10 @@ describe('NotificationSessionService', () => {
       notifications.next({ kind: 'health', fact } as never);
 
       expect(report).toHaveBeenCalledOnce();
-      lifetime.unsubscribe();
     });
 
     it('keeps the open room’s notifications on a return to the lock screen, and clears them after unlock', () => {
-      const { appLock, lifecycle, focused, clearRoom, lifetime } = setup({
+      const { appLock, lifecycle, focused, clearRoom } = setup({
         status: 'unlocked',
       });
       focused.set({ key: { accountId: '@me:hs', roomId: '!r:hs' } });
@@ -491,7 +480,6 @@ describe('NotificationSessionService', () => {
       TestBed.tick();
       expect(clearRoom).toHaveBeenCalledTimes(2);
       expect(clearRoom).toHaveBeenLastCalledWith('@me:hs', '!r:hs');
-      lifetime.unsubscribe();
     });
 
     // The away timer locks on the same `active` event; which of the two hears it first is
@@ -507,7 +495,7 @@ describe('NotificationSessionService', () => {
             if (event.kind === 'active') appLock.set('locked');
           });
         let away: Subscription | undefined;
-        const { appLock, lifecycle, focused, clearRoom, lifetime } = setup({
+        const { appLock, lifecycle, focused, clearRoom } = setup({
           status: 'unlocked',
           beforeRun:
             order === 'before'
@@ -528,12 +516,11 @@ describe('NotificationSessionService', () => {
         TestBed.tick();
         expect(clearRoom).toHaveBeenCalledTimes(2);
         away?.unsubscribe();
-        lifetime.unsubscribe();
       },
     );
 
     it('clears the open room on a return that does not lock, once the event is over', async () => {
-      const { lifecycle, focused, clearRoom, lifetime } = setup({
+      const { lifecycle, focused, clearRoom } = setup({
         status: 'unlocked',
       });
       focused.set({ key: { accountId: '@me:hs', roomId: '!r:hs' } });
@@ -544,11 +531,10 @@ describe('NotificationSessionService', () => {
       await vi.waitFor(() =>
         expect(clearRoom).toHaveBeenCalledExactlyOnceWith('@me:hs', '!r:hs'),
       );
-      lifetime.unsubscribe();
     });
 
     it('does not clear a room selected while locked until unlock', () => {
-      const { appLock, focused, clearRoom, lifetime } = setup({
+      const { appLock, focused, clearRoom } = setup({
         status: 'locked',
       });
       focused.set({ key: { accountId: '@me:hs', roomId: '!b:hs' } });
@@ -558,7 +544,6 @@ describe('NotificationSessionService', () => {
       appLock.set('unlocked');
       TestBed.tick();
       expect(clearRoom).toHaveBeenCalledExactlyOnceWith('@me:hs', '!b:hs');
-      lifetime.unsubscribe();
     });
   });
 });
