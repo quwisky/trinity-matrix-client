@@ -530,6 +530,18 @@ test.describe('Matrix room links', () => {
       })
       .then((r) => r.json())
       .then((j) => j.room_id as string);
+    // Pills show a room member's name and anyone else's Matrix ID, so Bob joins the room.
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/invite`,
+      { headers, data: { user_id: bobId } },
+    );
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
+      {
+        headers: { Authorization: `Bearer ${bobLogin.access_token}` },
+        data: {},
+      },
+    );
 
     // A message mentioning Bob (a matrix.to user permalink, as a pill does).
     await request.put(
