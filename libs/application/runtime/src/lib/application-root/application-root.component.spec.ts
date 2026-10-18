@@ -41,6 +41,7 @@ import type {
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import { SystemStatusVisibilityService } from '../system-status-visibility.service';
 import { CapabilityHealthService } from '../capability-health.service';
+import { healthFact } from '../testing/capability-health.fixture';
 import { ApplicationRootComponent } from './application-root.component';
 import { TrinityApplicationSessionAdapter } from '../composition/trinity-application-session.adapter';
 import { AppLockLifecycleBinding } from '../composition/app-lock-lifecycle.binding';
@@ -443,17 +444,12 @@ describe('ApplicationRootComponent', () => {
     const context = Symbol('private-account-id');
     health.presentForAccount(context, '@private:example.org');
     health.report(
-      {
+      healthFact({
         capability: 'accounts',
         operation: 'restore',
         context,
-        generation: 1,
-        demanded: true,
-        preparation: 'failed',
-        ownership: 'retained',
-        condition: 'degraded',
         code: 'account-restore-transient-network',
-      },
+      }),
       () => of({ kind: 'success' as const }),
     );
     fixture.detectChanges();
@@ -476,17 +472,12 @@ describe('ApplicationRootComponent', () => {
     const { fixture, health, trust, getByTestId, queryByTestId } =
       await setup(READY);
     health.report(
-      {
+      healthFact({
         capability: 'accounts',
         operation: 'restore',
         context: Symbol('account'),
-        generation: 1,
-        demanded: true,
-        preparation: 'failed',
-        ownership: 'retained',
-        condition: 'degraded',
         code: 'account-restore-transient-network',
-      },
+      }),
       () => of({ kind: 'success' as const }),
     );
     fixture.detectChanges();
@@ -558,17 +549,12 @@ describe('ApplicationRootComponent', () => {
 
   it('keeps the selected capability through refresh and returns to Overview when it resolves', async () => {
     const { fixture, health, getByRole } = await setup(READY);
-    const fact = {
+    const fact = healthFact({
       capability: 'accounts',
       operation: 'restore',
       context: Symbol('account'),
-      generation: 1,
-      demanded: true,
-      preparation: 'failed' as const,
-      ownership: 'retained' as const,
-      condition: 'degraded' as const,
       code: 'account-restore-transient-network',
-    };
+    });
     health.report(fact, () => of({ kind: 'success' as const }));
     fixture.detectChanges();
     getByRole('button', { name: 'System status' }).click();
@@ -648,17 +634,13 @@ describe('ApplicationRootComponent', () => {
   it('uses the safe generic catalogue entry for an unknown fault', async () => {
     const { fixture, health } = await setup(READY);
     health.report(
-      {
+      healthFact({
         capability: 'future',
         operation: 'unrecognized',
         context: Symbol(),
-        generation: 1,
-        demanded: true,
-        preparation: 'failed',
         ownership: 'released',
-        condition: 'degraded',
         code: 'safe-unknown-code',
-      },
+      }),
       () => of({ kind: 'unavailable' as const }),
     );
     fixture.detectChanges();

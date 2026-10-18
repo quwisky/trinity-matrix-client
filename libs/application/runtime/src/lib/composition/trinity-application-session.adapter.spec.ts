@@ -82,6 +82,7 @@ import { BackgroundMemoryRelease } from './background-memory-release.service';
 import { WhatsNewLauncherAdapter } from './whats-new-launcher.adapter';
 import { DeviceConfirmationCoordinator } from './device-confirmation.coordinator';
 import { CapabilityHealthService } from '../capability-health.service';
+import { healthFact } from '../testing/capability-health.fixture';
 
 function setup({
   push,
@@ -295,46 +296,32 @@ function trustHealth(
   context: symbol,
   over: Partial<TrustCapabilityHealth> = {},
 ): TrustCapabilityHealth {
-  return {
+  return healthFact({
     capability: 'trust',
     operation: 'projection',
     context,
-    generation: 1,
-    demanded: true,
-    preparation: 'failed',
-    ownership: 'retained',
-    condition: 'degraded',
     code: 'trust-reconciliation-failed',
     ...over,
-  };
+  });
 }
 
 function notificationRuleHealth(context: symbol): NotificationRuleHealth {
-  return {
+  return healthFact({
     capability: 'notifications',
     operation: 'room-rules',
     context,
-    generation: 1,
-    demanded: true,
-    preparation: 'failed',
-    ownership: 'retained',
-    condition: 'degraded',
     code: 'room-rules-reconciliation-failed',
-  };
+  });
 }
 
 function roomAdministrationHealth(context: symbol): RoomAdministrationHealth {
-  return {
+  return healthFact({
     capability: 'room-administration',
     operation: 'members',
     context,
     generation: 3,
-    demanded: true,
-    preparation: 'failed',
-    ownership: 'retained',
-    condition: 'degraded',
     code: 'room-administration-reconciliation-failed',
-  };
+  });
 }
 
 describe('TrinityApplicationSessionAdapter', () => {
@@ -1150,17 +1137,14 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     test.notificationEvents.next({
       kind: 'health',
-      fact: {
+      fact: healthFact({
         capability: 'notifications',
         operation: 'presentation',
         context,
         generation: 3,
-        demanded: true,
-        preparation: 'failed',
         ownership: 'released',
-        condition: 'degraded',
         code: 'notification-activation-ownership-released',
-      },
+      }),
     });
 
     const problem = test.health.problems()[0];
