@@ -1,4 +1,4 @@
-import type { Route } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 import { expect, test, testResourceId } from '../../../fixtures.mts';
 import {
   login,
@@ -15,6 +15,46 @@ import {
   tokenFor,
 } from '../../support/room-settings-journey.mts';
 import { createRoom } from '../../support/space-journey.mts';
+
+/** The dev build's Angular debug API, reaching the active account's Matrix client. */
+interface MatrixClientWindow extends Window {
+  ng: {
+    getComponent(element: Element): {
+      runtime: {
+        adapter: {
+          session: {
+            roomAdministration: {
+              matrix: {
+                instance: {
+                  getCrypto(): {
+                    isEncryptionEnabledInRoom(roomId: string): Promise<boolean>;
+                    /** RustCrypto's private per-room encryptors. */
+                    roomEncryptors?: Record<string, unknown>;
+                  };
+                };
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+}
+
+/** Whether the crypto store has the room as encrypted and its encryptor is configured. */
+function encryptsOnThisDevice(page: Page, roomId: string): Promise<boolean> {
+  return page.evaluate(async (id) => {
+    const root = document.querySelector('trn-root');
+    if (!root) return false;
+    const crypto = (window as unknown as MatrixClientWindow).ng
+      .getComponent(root)
+      .runtime.adapter.session.roomAdministration.matrix.instance.getCrypto();
+    return (
+      (await crypto.isEncryptionEnabledInRoom(id)) &&
+      !!crypto.roomEncryptors?.[id]
+    );
+  }, roomId);
+}
 
 // Covers Room settings › General › Encryption: an admin turns on encryption in an unencrypted
 // room. The status changes once sync delivers m.room.encryption, and the next message the app
@@ -226,6 +266,10 @@ test.describe('Room encryption', () => {
     // The sync filter stays on: the reloaded client again sees no m.room.encryption.
     await page.reload();
     await openRoom(page, roomName);
+    // The repair runs in the background after sync; send once this device encrypts there.
+    await expect
+      .poll(() => encryptsOnThisDevice(page, roomId), { timeout: 20_000 })
+      .toBe(true);
     await send(`Secret ${runId} 2`);
     expect(await ownMessageTypes()).toEqual([
       'm.room.encrypted',
