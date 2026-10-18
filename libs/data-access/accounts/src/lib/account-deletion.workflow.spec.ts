@@ -47,6 +47,7 @@ function setup(
   let generation = 0;
   const release = vi.fn();
   const onTokenDied: (() => void)[] = [];
+  const onSignedInAgain: (() => void)[] = [];
   const order: string[] = [];
   TestBed.configureTestingModule({
     providers: [
@@ -56,8 +57,14 @@ function setup(
           options.client === false ? null : (client as never),
         ),
         holdServerLogout: vi.fn(
-          (_id: string, hooks?: { onTokenDied?: () => void }) => {
+          (
+            _id: string,
+            hooks?: { onTokenDied?: () => void; onSignedInAgain?: () => void },
+          ) => {
             if (hooks?.onTokenDied) onTokenDied.push(hooks.onTokenDied);
+            if (hooks?.onSignedInAgain) {
+              onSignedInAgain.push(hooks.onSignedInAgain);
+            }
             const born = generation;
             let released = false;
             return {
@@ -98,10 +105,12 @@ function setup(
       tokenDied = true;
       onTokenDied.forEach((hook) => hook());
     },
+    signInAgain: () => onSignedInAgain.forEach((hook) => hook()),
     /** The account left the device another way, which drops every hold on it. */
     wipeHolds: () => {
       generation++;
       onTokenDied.length = 0;
+      onSignedInAgain.length = 0;
     },
   };
 }
@@ -598,6 +607,20 @@ describe('AccountDeletionWorkflow', () => {
       ).resolves.toMatchObject({ kind: 'deleted' });
 
       expect(test.accounts.removeDeletedAccount).toHaveBeenCalledOnce();
+      expect(late).toEqual([]);
+    });
+
+    it('lets go of the wipe once the account signs in again', async () => {
+      const test = unconfirmed();
+      const late: unknown[] = [];
+      test.workflow.lateDeletions.subscribe((result) => late.push(result));
+      await firstValueFrom(test.workflow.delete(request(test.stages)));
+
+      test.signInAgain();
+      test.killToken();
+
+      expect(test.release).toHaveBeenCalledExactlyOnceWith({ deleted: false });
+      expect(test.accounts.removeDeletedAccount).not.toHaveBeenCalled();
       expect(late).toEqual([]);
     });
 

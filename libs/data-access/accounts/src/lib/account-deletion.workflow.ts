@@ -167,7 +167,15 @@ export class AccountDeletionWorkflow {
   private holdFor(accountId: string): ServerLogoutHold {
     return this.matrix.holdServerLogout(accountId, {
       onTokenDied: () => this.finishUnconfirmed(accountId),
+      onSignedInAgain: () => this.keepUnconfirmed(accountId),
     });
+  }
+
+  /** The account left unconfirmed signed in again, so it was not deleted. */
+  private keepUnconfirmed(accountId: string): void {
+    const hold = this.unconfirmed.get(accountId);
+    this.unconfirmed.delete(accountId);
+    hold?.release({ deleted: false });
   }
 
   /** The token of an account left unconfirmed died: it was deleted after all. */
