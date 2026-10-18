@@ -20,7 +20,8 @@ export type ExistingDeviceState =
   | { kind: 'connecting' }
   | { kind: 'not-sign-in-code' }
   | { kind: 'confirm-check-code'; code: string }
-  | { kind: 'approve-in-browser'; verificationUri: string; userCode: string }
+  // No user code: the existing device only receives the verification URI.
+  | { kind: 'approve-in-browser'; verificationUri: string }
   | { kind: 'sharing-secrets' }
   | { kind: 'done' }
   | { kind: 'failed'; reason: QrSignInFailure };
