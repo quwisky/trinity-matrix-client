@@ -64,10 +64,9 @@ const DIGITS = 'Enter 4 to 16 digits.';
 const EMPTY: PinModel = { pin: '', confirmPin: '' };
 
 /**
- * Sets a new PIN (asked twice, with the warning decision 11 requires), or confirms the
- * current one for a guarded change. The PIN leaves this dialog only through `close()` (set)
- * or `verifyPinForChange` (verify); the fields are cleared as it leaves, and nothing logs or
- * shows it.
+ * Sets a new PIN or confirms the current one for a guarded change. The PIN leaves this
+ * dialog only through `close()` (set) or `verifyPinForChange` (verify); the fields are
+ * cleared as it leaves, and nothing logs or shows it.
  */
 @Component({
   selector: 'trn-app-lock-pin-dialog',

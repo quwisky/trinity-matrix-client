@@ -109,7 +109,7 @@
   @case ('pin-unreadable') {
     <!-- A PIN store that exists but can't be read (a damaged record, a locked keyring) while
          App lock is off. The host refuses a new PIN over it, so there is no switch: Try again
-         first, then clearing it where the setting was read (ruling T16-1), else the reset. -->
+         first, then clearing it where the setting was read, else the reset. -->
     <trn-settings-group title="App lock" data-testid="app-lock-group">
       <ng-container
         *ngTemplateOutlet="

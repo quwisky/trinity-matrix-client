@@ -83,18 +83,14 @@ interface HandoffBinding {
 
 /**
  * Keeps the native push handoff store current for every signed-in account, so the
- * closed-app renderers (Android `TrinityMessagingService`, iOS `NotificationService`
- * extension) can fetch and title a notification without the app running.
+ * closed-app renderers can fetch and title a notification without the app running.
+ * Writes each account's homeserver URL, access token and sound choice, plus room names
+ * (DM names included) and DM flags for rooms that changed. Active only where
+ * {@link PushHandoffBridge.available}: native iOS and Android.
  *
- * Writes each account's homeserver URL, access token and sound choice when it signs in,
- * when the SDK refreshes its access token and when the sound setting changes. An OAuth
- * token's expiry goes with it, so the renderers can skip a read that is bound to fail and
- * say why instead. Writes room names (as the SDK computes them, DM names included) and DM
- * flags in one batch per sync or rename, only for rooms that changed. Every bridge call
- * runs after the previous one settles, so a removal can never be overtaken by a write that
- * started before it.
- *
- * Active only where {@link PushHandoffBridge.available}: native iOS and Android.
+ * An OAuth token's expiry is written with it, so the renderers can skip a read bound to
+ * fail and say why. Every bridge call runs after the previous one settles, so a removal
+ * can never be overtaken by a write that started before it.
  */
 @Injectable({ providedIn: 'root' })
 export class PushHandoffService {
@@ -104,13 +100,11 @@ export class PushHandoffService {
   private readonly injector = inject(Injector);
   private readonly bindings = new Map<string, HandoffBinding>();
   /**
-   * Accounts whose sign-out began, with every client that was live for them then (the bound
-   * one and, mid-swap, the one not yet bound): nothing writes those clients again. A new
-   * client for the same user is a new sign-in and is written afresh, even when no session
-   * saw the account leave in between.
+   * Accounts whose sign-out began, with every client live for them then (mid-swap, the
+   * unbound one too): nothing writes those clients again. A new client is a new sign-in.
    */
   private readonly retired = new Map<string, Set<MatrixClient>>();
-  /** When each bound account's token last rotated (epoch ms), for the background refresh. */
+  /** Epoch ms. */
   private readonly rotatedAt = new Map<string, number>();
   private tail: Promise<void> = Promise.resolve();
   /**
@@ -209,24 +203,16 @@ export class PushHandoffService {
   }
 
   /**
-   * Refresh the token of every bound account whose token expires on a schedule (OAuth) and
-   * that holds a refresh token, so the copy the closed-app renderers read lives a full
-   * lifetime from now. Run as the app
-   * goes to the background. Skips an account whose token rotated within
-   * {@link BACKGROUND_REFRESH_MIN_AGE_MS}. Each new token reaches the store as an ordinary
-   * rotation. While any account is due, holds background run time (iOS) until the refreshes
-   * have finished or given up after {@link BACKGROUND_REFRESH_TIMEOUT_MS} and the store
-   * writes they queued have landed, and always releases it; the whole run ends by
-   * {@link BACKGROUND_RUN_DEADLINE_MS}.
+   * As the app goes to the background, refresh each due OAuth token so the copy the
+   * closed-app renderers read lives a full lifetime from now. Holds iOS background time
+   * until the refreshes and their store writes land, and always releases it.
    *
-   * Refreshes nothing when the host reports protected data unavailable or the device
-   * locking: the SDK could not save the rotated pair. Otherwise starts every refresh at once
-   * as soon as background time is granted, each grant bound by
-   * {@link BACKGROUND_REFRESH_GRANT_TIMEOUT_MS}, so a lock that follows finds none left to
-   * start and each grant answers before the lock takes the keychain away.
+   * Refreshes nothing when protected data is unavailable or the device is locking: the SDK
+   * could not save the rotated pair. Otherwise starts every refresh at once, each grant
+   * bound by {@link BACKGROUND_REFRESH_GRANT_TIMEOUT_MS}, so a lock that follows finds none
+   * left to start and each grant answers before the lock takes the keychain away.
    *
-   * Cold; emits once and completes; never errors and never signs anything out. Inert off
-   * native mobile.
+   * Cold; emits once; never errors and never signs anything out.
    */
   refreshBeforeBackground(): Observable<void> {
     return defer(() => {
@@ -276,11 +262,7 @@ export class PushHandoffService {
     });
   }
 
-  /**
-   * Remove one account's delivered notifications for a room it just opened. Cold, finite
-   * and best effort: a native failure completes quietly, so it can never surface in
-   * Workspace.
-   */
+  /** Best effort: a native failure completes quietly, so it never surfaces in Workspace. */
   clearRoom(userId: string, roomId: string): Observable<void> {
     return defer(() =>
       this.bridge.available
@@ -301,8 +283,7 @@ export class PushHandoffService {
       const client = this.matrix.clientFor(userId);
       const bound = this.bindings.get(userId);
       if (!client || bound?.client === client) continue;
-      // The same user signed in again under a new client without leaving the list in
-      // between (a re-authentication).
+      // A re-authentication: same user, new client, never left the list.
       if (bound) this.unbind(userId);
       this.bind(userId, client);
     }
@@ -399,15 +380,12 @@ export class PushHandoffService {
   }
 
   /**
-   * Run `work` while the OS keeps the app running in the background: begin, run what `work`
-   * returns for the grant, then end, and complete once the end has landed. The whole run,
-   * the begin included, is cut off at {@link BACKGROUND_RUN_DEADLINE_MS}. `work` gets
-   * `undefined`, and runs without background time, when the host could not grant it.
+   * Run `work` while the OS keeps the app running in the background; `work` gets
+   * `undefined` when the host could not grant it.
    *
-   * A grant that answers only after the run was cut off or unsubscribed is still ended, by a
-   * continuation `finalize` leaves behind. That is a deliberate exception to ADR 0006, under
-   * which a command starts no detached work: it does nothing but release iOS background
-   * time, which would otherwise stay held until iOS expires it.
+   * A grant that answers after the run was cut off or unsubscribed is still ended by a
+   * continuation `finalize` leaves behind: a deliberate exception to ADR 0006's no detached
+   * work, since it only releases iOS background time that would otherwise stay held.
    */
   private holdingBackgroundTime(
     work: (granted: BackgroundWork | undefined) => Observable<void>,
@@ -463,10 +441,6 @@ export class PushHandoffService {
   }
 }
 
-/**
- * Whether a token refresh begun now can save its tokens: protected data is available and the
- * device is not locking.
- */
 function canSaveTokens(granted: BackgroundWork): boolean {
   return granted.protectedDataAvailable && !granted.locking;
 }

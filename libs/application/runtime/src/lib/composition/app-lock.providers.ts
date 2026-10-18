@@ -29,23 +29,17 @@ import {
   timeout,
 } from 'rxjs';
 
-/**
- * How long a locked start waits for the saved Appearance (local reads) before the first
- * render, as the session-lock stage does: a stuck read must not hold the cover back.
- */
+/** A locked start's wait for the saved Appearance: a stuck read must not hold the cover back. */
 const SAVED_APPEARANCE_BUDGET_MS = 500;
 
 type Visibility = ReturnType<NotificationVisibilityPort['snapshot']>;
 
-/**
- * Whether App lock covers the app, so nobody can be looking at it: locked, or not yet
- * known (before hydration), which fails closed like `AppLockService.whenUnlocked`.
- */
+/** Not yet known (before hydration) counts as covered: fails closed like `whenUnlocked`. */
 export function appLockCovers(status: AppLockStatus): boolean {
   return status !== 'off' && status !== 'unlocked';
 }
 
-/** While locked nobody is looking: the open room notifies like any other (spec §2). */
+/** While locked nobody is looking: the open room notifies like any other. */
 export function visibilityWhileLocked(
   visibility: Visibility,
   locked: boolean,
@@ -57,12 +51,8 @@ export function visibilityWhileLocked(
 
 /**
  * App lock's application wiring. The initializer holds the first render until the lock
- * state is known, so a locked app never paints a room, a dialog or the startup status first
- * (Review Focus 3). Hydration never errors and waits for the host at most
- * SUPPORT_TIMEOUT_MS. A locked start then puts the saved Appearance on the document, so the
- * cover paints in the person's theme instead of flashing light. It also tells Conversations
- * whether anyone can be looking ({@link CONVERSATION_ATTENTION}), and Notifications what
- * notifications may say ({@link NOTIFICATION_TEXT}).
+ * state is known, so a locked app never paints a room, a dialog or the startup status
+ * first. A locked start applies the saved Appearance so the cover doesn't flash light.
  */
 export function appLockProviders(): EnvironmentProviders {
   return makeEnvironmentProviders([
@@ -84,7 +74,7 @@ export function appLockProviders(): EnvironmentProviders {
       );
     }),
     {
-      // Conversations hold read receipts while nobody is looking (spec §2).
+      // Conversations hold read receipts while nobody is looking.
       provide: CONVERSATION_ATTENTION,
       useFactory: (): ConversationAttention => {
         const appLock = inject(AppLockService);

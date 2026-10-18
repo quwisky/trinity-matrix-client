@@ -91,7 +91,7 @@ export class AppLockGroupComponent {
       .pipe(catchError(() => of(null))),
     { initialValue: null },
   );
-  /** Whether this host has App lock at all; the web has not (decision 3). */
+  /** The web has no App lock. */
   private readonly hostHasAppLock = computed(
     () => this.manifest()?.operations['user-presence'].kind === 'supported',
   );
@@ -99,13 +99,13 @@ export class AppLockGroupComponent {
   protected readonly appName = this.appLock.appName;
   protected readonly groupDescription = `Hide ${this.appName} behind a lock screen on this device. Sync and notifications keep working while it’s locked.`;
   protected readonly keyringNote = keyringNote(this.appName);
-  /** Clearing an unreadable PIN is allowed only over a readable "off" (ruling T16-1). */
+  /** Clearing an unreadable PIN is allowed only over a readable "off". */
   protected readonly canClearPin = this.appLock.canClearUnreadablePin;
   protected readonly storedPinUnreadableNote = computed(() =>
     storedPinUnreadableNote(this.appName, this.canClearPin()),
   );
   protected readonly noPinNote = noPinNote(this.appName);
-  /** What the app-switcher cover does, where the host has one (decision 13). */
+  /** What the app-switcher cover does, where the host has one. */
   protected readonly screenPrivacyNote = computed(() => {
     const cover = this.screenPrivacy();
     return this.manifest()?.operations['screen-privacy'].kind === 'supported' &&
@@ -199,7 +199,7 @@ export class AppLockGroupComponent {
 
   constructor() {
     this.refresh();
-    // Spec §1: one verification covers changes "while Settings stays open".
+    // One verification covers changes only while Settings stays open.
     this.destroyRef.onDestroy(() => this.appLock.endGuardWindow());
   }
 
@@ -238,7 +238,7 @@ export class AppLockGroupComponent {
     this.run('change-pin', this.flows.changePin());
   }
 
-  /** App lock is readably off over a PIN record that can't be read: clear it (T16-1). */
+  /** App lock is readably off over a PIN record that can't be read: clear it. */
   protected clearStoredPin(): void {
     if (this.busy()) return;
     this.run('clear-pin', this.flows.clearUnreadablePin());
