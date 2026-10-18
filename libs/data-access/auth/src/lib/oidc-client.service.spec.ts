@@ -40,7 +40,6 @@ import {
   type OidcAuthorizationParams,
   type OidcGrantContext,
 } from './oidc-client.service';
-import { qrSignInFailureOf } from './qr-sign-in/qr-sign-in.model';
 
 const createClientMock = vi.mocked(createClient);
 
@@ -1271,20 +1270,8 @@ describe('OidcClientService', () => {
   });
 
   describe('deviceGrantClientId', () => {
-    const DEVICE_KEY = 'oidc.deviceGrantClientId.v1:https://op.example';
-    const DEVICE_ENDPOINT = AUTH_METADATA.device_authorization_endpoint;
-    const GRANTED = () =>
-      jsonResponse({
-        device_code: 'probe-device-code',
-        user_code: 'ABCD',
-        verification_uri: 'https://op.example/link',
-        expires_in: 600,
-      });
-    const REJECTED = () => jsonResponse({ error: 'unauthorized_client' }, 400);
-    const probes = (fetchMock: ReturnType<typeof stubFetch>) =>
-      fetchMock.mock.calls
-        .filter(([url]) => url === DEVICE_ENDPOINT)
-        .map(([, init]) => formBody(init).get('client_id'));
+    const DEVICE_KEY =
+      'oidc.deviceGrantClientId.v2:https://hs.example https://op.example';
     const registrations = (fetchMock: ReturnType<typeof stubFetch>) =>
       fetchMock.mock.calls.filter(
         ([url]) => url === AUTH_METADATA.registration_endpoint,
@@ -1292,14 +1279,17 @@ describe('OidcClientService', () => {
 
     it('registers a client of its own with the device-code grant and an https redirect', async () => {
       prefs.set(CLIENT_ID_KEY, 'pkce-client');
-      const fetchMock = stubFetch(
-        { registration: () => jsonResponse({ client_id: 'qr-client' }) },
-        { [DEVICE_ENDPOINT]: GRANTED },
-      );
+      // Unrouted URLs throw, so this also pins that no device-authorization request is made.
+      const fetchMock = stubFetch({
+        registration: () => jsonResponse({ client_id: 'qr-client' }),
+      });
 
-      expect(await firstValueFrom(svc.deviceGrantClientId(AUTH_METADATA))).toBe(
-        'qr-client',
-      );
+      expect(
+        await firstValueFrom(
+          svc.deviceGrantClientId(AUTH_METADATA, HOMESERVER),
+        ),
+      ).toBe('qr-client');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(jsonBody(registrations(fetchMock)[0][1])).toMatchObject({
         application_type: 'web',
         client_uri: 'https://trinity.trinityproject.dev',
@@ -1315,51 +1305,81 @@ describe('OidcClientService', () => {
       expect(prefs.get(CLIENT_ID_KEY)).toBe('pkce-client');
     });
 
-    it('reuses a cached client id that the device endpoint accepts', async () => {
+    it('reuses a cached client id without any request', async () => {
       prefs.set(DEVICE_KEY, 'cached-client');
-      const fetchMock = stubFetch({}, { [DEVICE_ENDPOINT]: GRANTED });
+      const fetchMock = stubFetch({});
 
-      expect(await firstValueFrom(svc.deviceGrantClientId(AUTH_METADATA))).toBe(
-        'cached-client',
-      );
-      expect(registrations(fetchMock)).toHaveLength(0);
-      expect(probes(fetchMock)).toEqual(['cached-client']);
+      expect(
+        await firstValueFrom(
+          svc.deviceGrantClientId(AUTH_METADATA, HOMESERVER),
+        ),
+      ).toBe('cached-client');
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('re-registers exactly once when the provider answers unauthorized_client for a cached id', async () => {
+    it('keeps a separate client id for each homeserver naming the same issuer', async () => {
+      prefs.set(DEVICE_KEY, 'planted-client');
+      stubFetch({
+        registration: () => jsonResponse({ client_id: 'other-client' }),
+      });
+
+      expect(
+        await firstValueFrom(
+          svc.deviceGrantClientId(AUTH_METADATA, 'https://other.example'),
+        ),
+      ).toBe('other-client');
+      expect(
+        prefs.get(
+          'oidc.deviceGrantClientId.v2:https://other.example https://op.example',
+        ),
+      ).toBe('other-client');
+      expect(prefs.get(DEVICE_KEY)).toBe('planted-client');
+    });
+
+    it('forgets only that homeserver and issuer', async () => {
       prefs.set(DEVICE_KEY, 'stale-client');
-      const fetchMock = stubFetch(
-        { registration: () => jsonResponse({ client_id: 'fresh-client' }) },
+      prefs.set(CLIENT_ID_KEY, 'pkce-client');
+
+      await firstValueFrom(
+        svc.forgetDeviceGrantClientId(AUTH_METADATA, HOMESERVER),
+      );
+
+      expect(prefs.has(DEVICE_KEY)).toBe(false);
+      expect(prefs.get(CLIENT_ID_KEY)).toBe('pkce-client');
+    });
+  });
+
+  describe('deviceGrantBinding', () => {
+    it('pins the metadata endpoints when the issuer serves no document of its own', async () => {
+      stubFetch({});
+
+      expect(
+        await firstValueFrom(
+          svc.deviceGrantBinding(AUTH_METADATA, 'qr-client'),
+        ),
+      ).toEqual({
+        issuer: AUTH_METADATA.issuer,
+        clientId: 'qr-client',
+        tokenEndpoint: AUTH_METADATA.token_endpoint,
+        revocationEndpoint: AUTH_METADATA.revocation_endpoint,
+      });
+    });
+
+    it("refuses endpoints the issuer's own document contradicts", async () => {
+      stubFetch(
+        {},
         {
-          [DEVICE_ENDPOINT]: (init) =>
-            formBody(init).get('client_id') === 'stale-client'
-              ? REJECTED()
-              : GRANTED(),
+          [RFC8414_DISCOVERY]: () =>
+            jsonResponse({
+              ...AUTH_METADATA,
+              token_endpoint: 'https://op.example/other-token',
+            }),
         },
       );
 
-      expect(await firstValueFrom(svc.deviceGrantClientId(AUTH_METADATA))).toBe(
-        'fresh-client',
-      );
-      expect(registrations(fetchMock)).toHaveLength(1);
-      expect(probes(fetchMock)).toEqual(['stale-client', 'fresh-client']);
-      expect(prefs.get(DEVICE_KEY)).toBe('fresh-client');
-    });
-
-    it('fails as unsupported when the new registration is rejected too, and caches nothing', async () => {
-      prefs.set(DEVICE_KEY, 'stale-client');
-      const fetchMock = stubFetch(
-        { registration: () => jsonResponse({ client_id: 'fresh-client' }) },
-        { [DEVICE_ENDPOINT]: REJECTED },
-      );
-
-      const error = await firstValueFrom(
-        svc.deviceGrantClientId(AUTH_METADATA),
-      ).catch((e: unknown) => e);
-
-      expect(qrSignInFailureOf(error)).toBe('unsupported');
-      expect(registrations(fetchMock)).toHaveLength(1);
-      expect(prefs.has(DEVICE_KEY)).toBe(false);
+      await expect(
+        firstValueFrom(svc.deviceGrantBinding(AUTH_METADATA, 'qr-client')),
+      ).rejects.toThrow();
     });
   });
 });

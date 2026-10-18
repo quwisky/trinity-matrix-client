@@ -28,6 +28,7 @@ import {
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import { AUTH_METADATA } from './auth-metadata.fixture';
 import { AuthService } from './auth.service';
+import { qrSignInFailureOf } from './qr-sign-in/qr-sign-in.model';
 import { deletionLink } from './account-server-api';
 import {
   ReauthAccountMismatchError,
@@ -962,6 +963,12 @@ describe('AuthService', () => {
     };
     const whoami = vi.fn();
     const signedIn = { getUserId: () => '@me:hs' };
+    const pinned = {
+      issuer: AUTH_METADATA.issuer,
+      clientId: 'qr-client',
+      tokenEndpoint: 'https://op.example/verified-token',
+      revocationEndpoint: 'https://op.example/verified-revoke',
+    };
     beforeEach(() => {
       whoami.mockReset().mockResolvedValue({
         user_id: '@me:hs',
@@ -974,6 +981,9 @@ describe('AuthService', () => {
       vi.mocked(TestBed.inject(OidcClientService).revokeTokens).mockReturnValue(
         of(undefined),
       );
+      vi.mocked(
+        TestBed.inject(OidcClientService).deviceGrantBinding,
+      ).mockReturnValue(of(pinned));
     });
     const complete = () =>
       firstValueFrom(
@@ -1006,13 +1016,11 @@ describe('AuthService', () => {
         deviceId: 'QRDEV',
         accessToken: 'qr-atok',
         refreshToken: 'qr-rtok',
-        oidc: {
-          issuer: AUTH_METADATA.issuer,
-          clientId: 'qr-client',
-          tokenEndpoint: AUTH_METADATA.token_endpoint,
-          revocationEndpoint: AUTH_METADATA.revocation_endpoint,
-        },
+        oidc: pinned,
       });
+      expect(
+        TestBed.inject(OidcClientService).deviceGrantBinding,
+      ).toHaveBeenCalledWith(AUTH_METADATA, 'qr-client');
       expect(session.oidc).not.toHaveProperty('redirectUri');
       expect(session.accessTokenExpiresAt).toBeGreaterThan(Date.now());
       // Other signed-in accounts on this device stay signed in.
@@ -1051,6 +1059,53 @@ describe('AuthService', () => {
         TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
       ).not.toHaveBeenCalled();
       expect(TestBed.inject(OidcClientService).revokeTokens).toHaveBeenCalled();
+    });
+
+    it('revokes the tokens when the sign-in is left while whoami is pending', async () => {
+      whoami.mockReturnValue(new Promise(() => undefined));
+      const oidc = TestBed.inject(OidcClientService);
+
+      const attempt = auth
+        .completeDeviceGrant(tokens, 'qr-client', AUTH_METADATA, 'https://hs')
+        .subscribe({ error: () => undefined });
+      await vi.waitFor(() => expect(whoami).toHaveBeenCalled());
+      attempt.unsubscribe();
+
+      expect(oidc.revokeTokens).toHaveBeenCalledWith(
+        'https://hs',
+        { issuer: AUTH_METADATA.issuer, clientId: 'qr-client' },
+        { accessToken: 'qr-atok', refreshToken: 'qr-rtok' },
+      );
+    });
+
+    it('leaves an account this device already stores as it was, and revokes the new tokens', async () => {
+      const storage = TestBed.inject(SessionStorageService);
+      vi.mocked(storage.record).mockReturnValue(
+        of({ baseUrl: 'https://hs', userId: '@me:hs', deviceId: 'OLD' }),
+      );
+
+      const error = await complete().catch((e: unknown) => e);
+
+      expect(qrSignInFailureOf(error)).toBe('already-signed-in');
+      expect(
+        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
+      ).not.toHaveBeenCalled();
+      expect(storage.save).not.toHaveBeenCalled();
+      expect(
+        TestBed.inject(OidcClientService).revokeTokens,
+      ).toHaveBeenCalledWith(
+        'https://hs',
+        expect.objectContaining({ clientId: 'qr-client' }),
+        { accessToken: 'qr-atok', refreshToken: 'qr-rtok' },
+      );
+    });
+
+    it('does not revoke the tokens once the sign-in succeeded', async () => {
+      await complete();
+
+      expect(
+        TestBed.inject(OidcClientService).revokeTokens,
+      ).not.toHaveBeenCalled();
     });
 
     it('fails when the account runtime does not start the account', async () => {
@@ -1126,6 +1181,12 @@ describe('AuthService', () => {
       expect(JSON.stringify(logged.map((spy) => spy.mock.calls))).not.toMatch(
         /SECRET/,
       );
+    });
+
+    it('reports a verified device when only enabling backup fails', async () => {
+      crypto.checkKeyBackupAndEnable.mockRejectedValue(new Error('no backup'));
+
+      expect(await importSecrets()).toBe(true);
     });
 
     it('reports an unverified device when cross-signing fails', async () => {

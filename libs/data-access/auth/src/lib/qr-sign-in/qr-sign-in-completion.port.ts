@@ -14,8 +14,16 @@ export type LinkedSecrets = Parameters<
 
 /** The new device's sign-in steps that the QR flow hands to the auth workflow. */
 export interface QrSignInCompletion {
-  /** The OAuth client ID registered with the device-code grant for this issuer. */
-  deviceGrantClientId(metadata: ValidatedAuthMetadata): Observable<string>;
+  /** The OAuth client ID registered with the device-code grant for this homeserver and issuer. */
+  deviceGrantClientId(
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<string>;
+  /** Forgets that client ID, so the next {@link deviceGrantClientId} registers again. */
+  forgetDeviceGrantClientId(
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<void>;
   /**
    * Signs in with the device-grant tokens and emits the signed-in client. The device must
    * exist on the server when this emits: the existing device shares secrets only then.

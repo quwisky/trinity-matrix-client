@@ -126,6 +126,7 @@ function setup(configure: (flow: FakeFlow) => void = () => undefined) {
   };
   const completion = {
     deviceGrantClientId: vi.fn(() => of('client-id')),
+    forgetDeviceGrantClientId: vi.fn(() => of(undefined)),
     completeDeviceGrant: vi.fn(() => {
       order.push('completeDeviceGrant');
       return of(signedIn);
@@ -200,7 +201,13 @@ describe('QrSignInService.signInByShowingCode', () => {
     expect(flow.completeLoginOnNewDevice).toHaveBeenCalledWith({
       clientId: 'client-id',
     });
-    expect(completion.deviceGrantClientId).toHaveBeenCalledWith(metadata);
+    expect(completion.deviceGrantClientId).toHaveBeenCalledWith(
+      metadata,
+      'https://hs',
+    );
+    // A normal sign-in asks the device-authorization endpoint once and keeps its client.
+    expect(flow.deviceAuthorizationGrant).toHaveBeenCalledTimes(1);
+    expect(completion.forgetDeviceGrantClientId).not.toHaveBeenCalled();
     expect(completion.completeDeviceGrant).toHaveBeenCalledWith(
       tokens,
       'client-id',
@@ -219,6 +226,68 @@ describe('QrSignInService.signInByShowingCode', () => {
     expect(flow.cancel).not.toHaveBeenCalled();
     expect(flow.close).toHaveBeenCalled();
     vi.restoreAllMocks();
+  });
+
+  describe('a client id the provider rejects', () => {
+    // What the SDK throws when the device endpoint answers with an OAuth error.
+    const rejected = () => new Error('Invalid device authorization response');
+
+    it('forgets the cached id, registers once more and retries the grant on the same flow', async () => {
+      const { service, flows, completion } = setup((flow) =>
+        flow.deviceAuthorizationGrant.mockRejectedValueOnce(rejected()),
+      );
+      completion.deviceGrantClientId
+        .mockReturnValueOnce(of('stale-id'))
+        .mockReturnValueOnce(of('fresh-id'));
+      const run = record(service.signInByShowingCode('https://hs'));
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({ kind: 'done', verified: true });
+      expect(completion.forgetDeviceGrantClientId).toHaveBeenCalledWith(
+        metadata,
+        'https://hs',
+      );
+      const grants = flows[0].deviceAuthorizationGrant.mock
+        .calls as unknown[][];
+      expect(
+        grants.map((call) => (call[0] as { clientId: string }).clientId),
+      ).toEqual(['stale-id', 'fresh-id']);
+      expect(flows[0].completeLoginOnNewDevice).toHaveBeenCalledWith({
+        clientId: 'fresh-id',
+      });
+      expect(flows).toHaveLength(1);
+    });
+
+    it('ends unsupported when the new id is rejected too', async () => {
+      const { service, flows, completion } = setup((flow) =>
+        flow.failures.set('deviceAuthorizationGrant', rejected()),
+      );
+      const run = record(service.signInByShowingCode('https://hs'));
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({
+        kind: 'failed',
+        reason: 'unsupported',
+      });
+      expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalledTimes(2);
+      expect(completion.forgetDeviceGrantClientId).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not register again when the network fails', async () => {
+      const { service, flows, completion } = setup((flow) =>
+        flow.failures.set(
+          'deviceAuthorizationGrant',
+          new TypeError('Failed to fetch'),
+        ),
+      );
+      const run = record(service.signInByShowingCode('https://hs'));
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'network' });
+      expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalledTimes(1);
+      expect(completion.forgetDeviceGrantClientId).not.toHaveBeenCalled();
+      expect(completion.deviceGrantClientId).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('ends unverified when no secrets arrive', async () => {

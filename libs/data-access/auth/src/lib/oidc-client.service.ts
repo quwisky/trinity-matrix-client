@@ -3,7 +3,6 @@ import {
   OAuth2,
   OAuthGrantType,
   createClient,
-  generateScope,
   type BearerTokenResponse,
   type OAuthRegistrationRequest,
   type ValidatedAuthMetadata,
@@ -26,7 +25,6 @@ import {
   type OidcSessionBinding,
 } from '@trinity/util/matrix';
 import { checkIssuer, checkSavedEndpoints } from './oidc-issuer-check';
-import { DeviceGrantRejectedError } from './qr-sign-in/qr-sign-in.model';
 
 /** Stable https identifier for the app (dynamic-registration `client_uri`). */
 const CLIENT_URI = 'https://trinity.trinityproject.dev';
@@ -41,15 +39,10 @@ const CLIENT_URI = 'https://trinity.trinityproject.dev';
  */
 const CLIENT_ID_KEY_PREFIX = 'oidc.clientId.v4:';
 /**
- * Preferences key prefix for the QR sign-in client id, cached per issuer apart from the
- * PKCE client. Versioned like {@link CLIENT_ID_KEY_PREFIX}.
+ * Preferences key prefix for the QR sign-in client id, cached per homeserver and issuer
+ * apart from the PKCE client. Versioned like {@link CLIENT_ID_KEY_PREFIX}.
  */
-const DEVICE_GRANT_CLIENT_ID_KEY_PREFIX = 'oidc.deviceGrantClientId.v1:';
-/** Device-authorization errors that mean the client itself may not use the grant. */
-const REJECTED_CLIENT_ERRORS = new Set([
-  'unauthorized_client',
-  'invalid_client',
-]);
+const DEVICE_GRANT_CLIENT_ID_KEY_PREFIX = 'oidc.deviceGrantClientId.v2:';
 
 /** What platform this build registers as (drives redirect-uri + registration policy). */
 export type OidcApplicationType = 'web' | 'native';
@@ -246,13 +239,11 @@ export class OidcClientService {
     // code or the verifier is sent anywhere.
     checkIssuer(metadata, context);
     checkSavedEndpoints(metadata, context);
-    const verified = await checkIssuerDiscovery(metadata);
+    const verified = await verifiedEndpoints(metadata);
     const endpoints = {
       tokenEndpoint: context.tokenEndpoint,
       revocationEndpoint:
-        context.revocationEndpoint ??
-        verified?.revocationEndpoint ??
-        metadata.revocation_endpoint,
+        context.revocationEndpoint ?? verified.revocationEndpoint,
     };
     const auth = new OAuth2(
       { ...metadata, token_endpoint: endpoints.tokenEndpoint },
@@ -317,19 +308,55 @@ export class OidcClientService {
 
   /**
    * The client id QR sign-in uses for the device grant, registered apart from the PKCE
-   * client. A cached id the provider no longer accepts is replaced once; a new one it
-   * refuses too fails with {@link DeviceGrantRejectedError}.
+   * client and cached per homeserver and issuer.
    */
-  deviceGrantClientId(metadata: ValidatedAuthMetadata): Observable<string> {
-    return defer(() => from(this.resolveDeviceGrantClientId(metadata)));
+  deviceGrantClientId(
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<string> {
+    return defer(() =>
+      from(this.resolveDeviceGrantClientId(metadata, homeserverUrl)),
+    );
+  }
+
+  /** Forget the device-grant client id, so the next sign-in registers a new one. */
+  forgetDeviceGrantClientId(
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<void> {
+    return this.storage.remove(
+      clientIdKey(
+        homeserverUrl,
+        metadata.issuer,
+        DEVICE_GRANT_CLIENT_ID_KEY_PREFIX,
+      ),
+    );
+  }
+
+  /**
+   * The binding for a device-grant session, pinned to the endpoints the issuer's own
+   * document confirms, as for a PKCE sign-in.
+   */
+  deviceGrantBinding(
+    metadata: ValidatedAuthMetadata,
+    clientId: string,
+  ): Observable<OidcSessionBinding> {
+    return defer(() => from(verifiedEndpoints(metadata))).pipe(
+      map((endpoints) => ({ issuer: metadata.issuer, clientId, ...endpoints })),
+    );
   }
 
   private async resolveDeviceGrantClientId(
     metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
   ): Promise<string> {
-    const key = `${DEVICE_GRANT_CLIENT_ID_KEY_PREFIX}${metadata.issuer}`;
+    const key = clientIdKey(
+      homeserverUrl,
+      metadata.issuer,
+      DEVICE_GRANT_CLIENT_ID_KEY_PREFIX,
+    );
     const cached = await firstValueFrom(this.storage.get(key));
-    if (cached && (await acceptsDeviceGrant(metadata, cached))) {
+    if (cached) {
       return cached;
     }
     const clientId = await OAuth2.registerClient(metadata, {
@@ -346,10 +373,6 @@ export class OidcClientService {
         OAuthGrantType.DeviceAuthorization,
       ],
     });
-    if (!(await acceptsDeviceGrant(metadata, clientId))) {
-      await firstValueFrom(this.storage.remove(key));
-      throw new DeviceGrantRejectedError();
-    }
     await firstValueFrom(this.storage.set(key, clientId));
     return clientId;
   }
@@ -498,30 +521,18 @@ export class OidcClientService {
 }
 
 /**
- * Whether the device-authorization endpoint accepts `clientId`. The SDK's flow drops the
- * error code, so this asks first; the grant it starts is never completed and expires.
+ * The token and revocation endpoints from the issuer's own document when it serves one,
+ * otherwise from the homeserver's metadata. Throws when the two disagree.
  */
-async function acceptsDeviceGrant(
+async function verifiedEndpoints(
   metadata: ValidatedAuthMetadata,
-  clientId: string,
-): Promise<boolean> {
-  const endpoint = metadata.device_authorization_endpoint;
-  if (!endpoint) throw new DeviceGrantRejectedError();
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
-    },
-    body: new URLSearchParams({ client_id: clientId, scope: generateScope() }),
-  });
-  if (response.ok) return true;
-  const body: unknown = await response.json().catch(() => null);
-  const error =
-    typeof body === 'object' && body !== null && 'error' in body
-      ? body.error
-      : undefined;
-  return !(typeof error === 'string' && REJECTED_CLIENT_ERRORS.has(error));
+): Promise<{ tokenEndpoint: string; revocationEndpoint: string }> {
+  return (
+    (await checkIssuerDiscovery(metadata)) ?? {
+      tokenEndpoint: metadata.token_endpoint,
+      revocationEndpoint: metadata.revocation_endpoint,
+    }
+  );
 }
 
 /**
@@ -530,6 +541,10 @@ async function acceptsDeviceGrant(
  * client id that another homeserver's sign-in to the same issuer reuses. A URL has no
  * space, so the first space separates the two.
  */
-function clientIdKey(baseUrl: string, issuer: string): string {
-  return `${CLIENT_ID_KEY_PREFIX}${baseUrl} ${issuer}`;
+function clientIdKey(
+  baseUrl: string,
+  issuer: string,
+  prefix = CLIENT_ID_KEY_PREFIX,
+): string {
+  return `${prefix}${baseUrl} ${issuer}`;
 }

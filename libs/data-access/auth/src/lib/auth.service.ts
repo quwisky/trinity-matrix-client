@@ -66,6 +66,7 @@ import type {
   LinkedSecrets,
   QrSignInCompletion,
 } from './qr-sign-in/qr-sign-in-completion.port';
+import { QrAccountAlreadyStoredError } from './qr-sign-in/qr-sign-in.model';
 
 export type { LoginMode } from './account-establishment';
 export type { AccountEstablishmentOutcome } from '@trinity/data-access/accounts';
@@ -241,14 +242,27 @@ export class AuthService implements QrSignInCompletion {
   }
 
   /** The OAuth client id QR sign-in uses for the device grant. */
-  deviceGrantClientId(metadata: ValidatedAuthMetadata): Observable<string> {
-    return this.oidc.deviceGrantClientId(metadata);
+  deviceGrantClientId(
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<string> {
+    return this.oidc.deviceGrantClientId(metadata, homeserverUrl);
+  }
+
+  /** Forget the device-grant client id after the provider rejected it. */
+  forgetDeviceGrantClientId(
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<void> {
+    return this.oidc.forgetDeviceGrantClientId(metadata, homeserverUrl);
   }
 
   /**
    * Sign in a QR-linked new device with its device-grant tokens, keeping other signed-in
    * accounts. Emits the started client only after `whoami` has succeeded with the new
    * token, so the device exists on the server before the existing device shares secrets.
+   * An account this device already stores is refused and left as it was. Until `establish`
+   * takes the tokens over, any failure or unsubscribe revokes them.
    */
   completeDeviceGrant(
     tokens: DeviceAccessTokenResponse,
@@ -256,69 +270,78 @@ export class AuthService implements QrSignInCompletion {
     metadata: ValidatedAuthMetadata,
     homeserverUrl: string,
   ): Observable<MatrixClient> {
-    const issuedBy = Date.now();
-    // The tokens came from this token endpoint, so the session pins it.
-    const oidc: OidcSessionBinding = {
-      issuer: metadata.issuer,
-      clientId,
-      tokenEndpoint: metadata.token_endpoint,
-      revocationEndpoint: metadata.revocation_endpoint,
-    };
-    return defer(() =>
-      from(
+    return defer(() => {
+      const issuedBy = Date.now();
+      let binding: OidcSessionBinding = { issuer: metadata.issuer, clientId };
+      let owned = false;
+      return from(
         createClient({
           baseUrl: homeserverUrl,
           accessToken: tokens.access_token,
         }).whoami(),
-      ),
-    ).pipe(
-      map((who) => {
-        if (!who.device_id) {
-          throw new Error('The provider returned no device for this session.');
-        }
-        return { ...who, device_id: who.device_id };
-      }),
-      catchError((error: unknown) => {
-        this.oidc
-          .revokeTokens(homeserverUrl, oidc, {
-            accessToken: tokens.access_token,
-            refreshToken: tokens.refresh_token,
-          })
-          .subscribe({ error: () => undefined });
-        return throwError(() => error);
-      }),
-      switchMap((who) =>
-        this.establish(
-          homeserverUrl,
-          {
-            user_id: who.user_id,
-            device_id: who.device_id,
-            access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token,
-            ...(tokens.expires_in !== undefined
-              ? { accessTokenExpiresAt: issuedBy + tokens.expires_in * 1000 }
-              : {}),
-            oidc,
-          },
-          'add',
-        ),
-      ),
-      map((outcome) => {
-        const client =
-          outcome.kind === 'ready'
-            ? this.matrix.clientFor(outcome.accountId)
-            : null;
-        if (!client) {
-          throw new Error(`The QR sign-in did not start (${outcome.kind}).`);
-        }
-        return client;
-      }),
-    );
+      ).pipe(
+        switchMap((who) => {
+          const deviceId = who.device_id;
+          if (!deviceId) {
+            throw new Error(
+              'The provider returned no device for this session.',
+            );
+          }
+          return this.storage.record(who.user_id).pipe(
+            take(1),
+            switchMap((stored) => {
+              if (stored) throw new QrAccountAlreadyStoredError();
+              return this.oidc.deviceGrantBinding(metadata, clientId);
+            }),
+            map((pinned) => {
+              binding = pinned;
+              return { userId: who.user_id, deviceId };
+            }),
+          );
+        }),
+        switchMap(({ userId, deviceId }) => {
+          owned = true;
+          return this.establish(
+            homeserverUrl,
+            {
+              user_id: userId,
+              device_id: deviceId,
+              access_token: tokens.access_token,
+              refresh_token: tokens.refresh_token,
+              ...(tokens.expires_in !== undefined
+                ? { accessTokenExpiresAt: issuedBy + tokens.expires_in * 1000 }
+                : {}),
+              oidc: binding,
+            },
+            'add',
+          );
+        }),
+        map((outcome) => {
+          const client =
+            outcome.kind === 'ready'
+              ? this.matrix.clientFor(outcome.accountId)
+              : null;
+          if (!client) {
+            throw new Error(`The QR sign-in did not start (${outcome.kind}).`);
+          }
+          return client;
+        }),
+        finalize(() => {
+          if (owned) return;
+          this.oidc
+            .revokeTokens(homeserverUrl, binding, {
+              accessToken: tokens.access_token,
+              refreshToken: tokens.refresh_token,
+            })
+            .subscribe({ error: () => undefined });
+        }),
+      );
+    });
   }
 
   /**
    * Import the secrets a QR link shared, cross-sign this device and enable key backup.
-   * Emits `false` on any failure, which leaves the device unverified for the usual check.
+   * Emits whether the device ended cross-signed; `false` leaves it to the usual check.
    * Errors are dropped unlogged: they can quote the secrets.
    */
   importLinkedSecrets(
@@ -331,7 +354,8 @@ export class AuthService implements QrSignInCompletion {
       if (!crypto?.importSecretsBundle || !deviceId) return false;
       await crypto.importSecretsBundle(secrets);
       await crypto.crossSignDevice(deviceId);
-      await crypto.checkKeyBackupAndEnable();
+      // Best effort: backup does not decide whether the device is verified.
+      await crypto.checkKeyBackupAndEnable().catch(() => undefined);
       return true;
     }).pipe(catchError(() => of(false)));
   }

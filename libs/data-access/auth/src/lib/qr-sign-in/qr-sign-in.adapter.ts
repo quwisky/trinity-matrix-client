@@ -20,6 +20,7 @@ import { Observable, firstValueFrom, type Subscriber } from 'rxjs';
 import { lacksAuthMetadata } from '../account-server-api';
 import { QR_SIGN_IN_COMPLETION } from './qr-sign-in-completion.port';
 import {
+  DeviceGrantRejectedError,
   qrSignInFailureOf,
   type ExistingDeviceState,
   type NewDeviceState,
@@ -115,8 +116,10 @@ export class QrSignInAdapter {
           run.onFailure,
         );
         run.attach(flow);
-        const clientId = await run.step(
-          firstValueFrom(this.completion.deviceGrantClientId(metadata)),
+        let clientId = await run.step(
+          firstValueFrom(
+            this.completion.deviceGrantClientId(metadata, homeserverUrl),
+          ),
         );
         await run.step(flow.generateCode());
         run.emit({
@@ -129,13 +132,34 @@ export class QrSignInAdapter {
           kind: 'confirm-check-code',
           code: required(flow.checkCode),
         });
-        const { userCode } = await run.step(
-          flow.deviceAuthorizationGrant({
-            metadata,
-            clientId,
-            deviceId: newDeviceId(),
-          }),
-        );
+        const deviceId = newDeviceId();
+        const grant = () =>
+          run.step(
+            flow.deviceAuthorizationGrant({ metadata, clientId, deviceId }),
+          );
+        // A cached client the provider no longer accepts fails before anything is sent to
+        // the other device, so the grant can be retried once on the same flow.
+        const { userCode } = await grant().catch(async (error: unknown) => {
+          if (!isClientRejection(error)) throw error;
+          await run.step(
+            firstValueFrom(
+              this.completion.forgetDeviceGrantClientId(
+                metadata,
+                homeserverUrl,
+              ),
+            ),
+          );
+          clientId = await run.step(
+            firstValueFrom(
+              this.completion.deviceGrantClientId(metadata, homeserverUrl),
+            ),
+          );
+          return grant().catch((retryError: unknown) => {
+            throw isClientRejection(retryError)
+              ? new DeviceGrantRejectedError()
+              : retryError;
+          });
+        });
         run.emit({
           kind: 'waiting-for-approval',
           userCode: required(userCode),
@@ -374,6 +398,15 @@ class FlowRun<S extends { kind: string }> {
     }
     await flow.close().catch(() => undefined);
   }
+}
+
+/** Whether a failed device-authorization request may be the provider refusing the client. */
+function isClientRejection(error: unknown): boolean {
+  return (
+    error !== STOPPED &&
+    !(error instanceof TypeError) &&
+    !(error instanceof RendezvousError)
+  );
 }
 
 function required<T>(value: T | undefined): T {

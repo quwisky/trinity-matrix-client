@@ -48,9 +48,17 @@ export class DeviceGrantRejectedError extends Error {
   }
 }
 
+/** The QR sign-in returned an account this device already stores; it stays as it was. */
+export class QrAccountAlreadyStoredError extends Error {
+  constructor() {
+    super('This device is already signed in to that account.');
+  }
+}
+
 export function qrSignInFailureOf(reason: unknown): QrSignInFailure {
   if (reason instanceof TypeError) return 'network';
   if (reason instanceof DeviceGrantRejectedError) return 'unsupported';
+  if (reason instanceof QrAccountAlreadyStoredError) return 'already-signed-in';
   return (
     (typeof reason === 'string' && FAILURE_BY_REASON.get(reason)) || 'unknown'
   );
