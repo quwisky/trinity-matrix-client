@@ -25,6 +25,24 @@ const publicComponentRoots = [
   'overlay',
 ];
 
+function catalogErrors({ nodes, catalog, paths = {}, read = () => '' }) {
+  const errors = [];
+  validateDesignSystemCatalog(
+    { nodes },
+    {
+      categories,
+      migrationExceptions: [],
+      nonConsumable: [],
+      proofScreens: [],
+      ...catalog,
+    },
+    paths,
+    read,
+    errors,
+  );
+  return errors;
+}
+
 function authoredSources(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
@@ -51,25 +69,13 @@ describe('design-system contract', () => {
   });
 
   it('rejects an unclassified public project', () => {
-    const errors = [];
-    validateDesignSystemCatalog(
-      {
-        nodes: {
-          orphan: {
-            data: { root: 'libs/components/orphan', tags: ['ui:public'] },
-          },
+    const errors = catalogErrors({
+      nodes: {
+        orphan: {
+          data: { root: 'libs/components/orphan', tags: ['ui:public'] },
         },
       },
-      {
-        categories,
-        migrationExceptions: [],
-        nonConsumable: [],
-        proofScreens: [],
-      },
-      {},
-      () => '',
-      errors,
-    );
+    });
 
     expect(errors).toEqual(
       expect.arrayContaining([
@@ -81,17 +87,11 @@ describe('design-system contract', () => {
   });
 
   it('rejects vendor imports in a proof screen', () => {
-    const errors = [];
-    validateDesignSystemCatalog(
-      {
-        nodes: {
-          proof: { data: { root: 'libs/feature/proof', tags: [] } },
-        },
+    const errors = catalogErrors({
+      nodes: {
+        proof: { data: { root: 'libs/feature/proof', tags: [] } },
       },
-      {
-        categories,
-        migrationExceptions: [],
-        nonConsumable: [],
+      catalog: {
         proofScreens: [
           {
             project: 'proof',
@@ -102,13 +102,11 @@ describe('design-system contract', () => {
           },
         ],
       },
-      {},
-      (path) =>
+      read: (path) =>
         path === 'proof.ts'
           ? "import { HlmButton } from '@trinity/helm/button';"
           : '',
-      errors,
-    );
+    });
 
     expect(errors).toEqual(
       expect.arrayContaining([
@@ -118,19 +116,7 @@ describe('design-system contract', () => {
   });
 
   it('rejects a vacuous proof-screen sweep', () => {
-    const errors = [];
-    validateDesignSystemCatalog(
-      { nodes: {} },
-      {
-        categories,
-        migrationExceptions: [],
-        nonConsumable: [],
-        proofScreens: [],
-      },
-      {},
-      () => '',
-      errors,
-    );
+    const errors = catalogErrors({ nodes: {} });
 
     expect(errors).toEqual(
       expect.arrayContaining([
@@ -140,19 +126,16 @@ describe('design-system contract', () => {
   });
 
   it('rejects broad exports from a public entrypoint', () => {
-    const errors = [];
-    validateDesignSystemCatalog(
-      {
-        nodes: {
-          controls: {
-            data: {
-              root: 'libs/components/controls',
-              tags: ['ui:public'],
-            },
+    const errors = catalogErrors({
+      nodes: {
+        controls: {
+          data: {
+            root: 'libs/components/controls',
+            tags: ['ui:public'],
           },
         },
       },
-      {
+      catalog: {
         categories: {
           ...categories,
           controls: [
@@ -162,18 +145,14 @@ describe('design-system contract', () => {
             },
           ],
         },
-        migrationExceptions: [],
-        nonConsumable: [],
-        proofScreens: [],
       },
-      {
+      paths: {
         '@trinity/components/controls': [
           './libs/components/controls/src/index.ts',
         ],
       },
-      () => "export * from './lib/button';",
-      errors,
-    );
+      read: () => "export * from './lib/button';",
+    });
 
     expect(errors).toEqual(
       expect.arrayContaining([
@@ -183,19 +162,16 @@ describe('design-system contract', () => {
   });
 
   it('rejects broad type-only exports from a public entrypoint', () => {
-    const errors = [];
-    validateDesignSystemCatalog(
-      {
-        nodes: {
-          foundations: {
-            data: {
-              root: 'libs/components/foundations',
-              tags: ['ui:public'],
-            },
+    const errors = catalogErrors({
+      nodes: {
+        foundations: {
+          data: {
+            root: 'libs/components/foundations',
+            tags: ['ui:public'],
           },
         },
       },
-      {
+      catalog: {
         categories: {
           ...categories,
           foundations: [
@@ -205,18 +181,14 @@ describe('design-system contract', () => {
             },
           ],
         },
-        migrationExceptions: [],
-        nonConsumable: [],
-        proofScreens: [],
       },
-      {
+      paths: {
         '@trinity/components/foundations': [
           './libs/components/foundations/src/index.ts',
         ],
       },
-      () => "export type * from './lib/icon';",
-      errors,
-    );
+      read: () => "export type * from './lib/icon';",
+    });
 
     expect(errors).toEqual(
       expect.arrayContaining([
@@ -266,13 +238,9 @@ describe('design-system contract', () => {
   });
 
   it('ignores imports in comments and rejects selectors found only in comments', () => {
-    const errors = [];
-    validateDesignSystemCatalog(
-      { nodes: { proof: { data: { root: 'libs/feature/proof', tags: [] } } } },
-      {
-        categories,
-        migrationExceptions: [],
-        nonConsumable: [],
+    const errors = catalogErrors({
+      nodes: { proof: { data: { root: 'libs/feature/proof', tags: [] } } },
+      catalog: {
         proofScreens: [
           {
             project: 'proof',
@@ -283,17 +251,16 @@ describe('design-system contract', () => {
           },
         ],
       },
-      {
+      paths: {
         '@trinity/components/controls': [
           './libs/components/controls/src/index.ts',
         ],
       },
-      (path) =>
+      read: (path) =>
         path === 'proof.ts'
           ? "// import { HlmButton } from '@trinity/helm/button';\nimport { TrnButton } from '@trinity/components/controls';"
           : '<!-- <trn-field> -->',
-      errors,
-    );
+    });
 
     expect(errors).not.toEqual(
       expect.arrayContaining([
