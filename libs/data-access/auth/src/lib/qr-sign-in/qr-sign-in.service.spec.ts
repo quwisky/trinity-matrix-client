@@ -70,15 +70,29 @@ class FakeFlow {
   close = vi.fn(async () => {
     this.calls.push('close');
   });
+  declineLoginOnExistingDevice = vi.fn(async () => {
+    this.calls.push('decline');
+  });
+
+  private readonly held = new Map<Step, () => void>();
 
   /** Fails the session from outside a step, as the SDK's expiry timer does. */
   failSession(reason: string): void {
     this.onFailure(reason);
   }
 
+  /** Lets a hung step resolve. */
+  release(name: Step): void {
+    this.held.get(name)?.();
+  }
+
   private step<T>(name: Step, value: T): Promise<T> {
     this.calls.push(name);
-    if (this.hang.has(name)) return new Promise<T>(() => undefined);
+    if (this.hang.has(name)) {
+      return new Promise<T>((resolve) =>
+        this.held.set(name, () => resolve(value)),
+      );
+    }
     if (this.failures.has(name)) {
       return Promise.reject(this.failures.get(name));
     }
@@ -305,6 +319,46 @@ describe('QrSignInService.signInByShowingCode', () => {
     expect(second.states.at(-1)?.kind).toBe('showing-code');
   });
 
+  it('ends declined when the existing device declines', async () => {
+    // The SDK throws this when it receives the existing device's m.login.failure.
+    const { service } = setup((flow) =>
+      flow.failures.set(
+        'completeLoginOnNewDevice',
+        new RendezvousError('Failed', MSC4108FailureReason.UserCancelled),
+      ),
+    );
+    const run = record(service.signInByShowingCode('https://hs'));
+    await settle();
+    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'declined' });
+  });
+
+  it('reports a server without a rendezvous endpoint as unsupported', async () => {
+    const { service, factory } = setup();
+    factory.newDevice.mockRejectedValue(new Error('Invalid rendezvous URI'));
+    const run = record(service.signInByShowingCode('https://hs'));
+    await settle();
+    expect(run.states.at(-1)).toEqual({
+      kind: 'failed',
+      reason: 'unsupported',
+    });
+  });
+
+  it('fails when the session reports a 404 while opening', async () => {
+    // The SDK's send resolves on a 404 and reports it only through onFailure.
+    const { service, factory, flows } = setup();
+    const created = factory.newDevice.getMockImplementation()!;
+    factory.newDevice.mockImplementation(async (url, onFailure) => {
+      const result = await created(url, onFailure);
+      onFailure(ClientRendezvousFailureReason.Unknown);
+      return result;
+    });
+    const run = record(service.signInByShowingCode('https://hs'));
+    await settle();
+    expect(run.kinds()).toEqual(['creating', 'failed']);
+    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
+    expect(flows[0].calls).toEqual(['close']);
+  });
+
   it('reports the first failure only', async () => {
     const { service, flows } = setup((flow) =>
       flow.hang.add('negotiateProtocols'),
@@ -374,8 +428,10 @@ describe('QrSignInService.linkByScanning', () => {
     await settle();
     expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'insecure' });
     expect(run.completed()).toBe(true);
+    // The decline goes first, so the new device learns why the link ended.
     expect(flows[0].calls).toEqual([
       'negotiateProtocols',
+      'decline',
       'cancel:insecure_channel_detected',
       'close',
     ]);
@@ -404,11 +460,16 @@ describe('QrSignInService.linkByScanning', () => {
     expect(flows).toHaveLength(0);
   });
 
-  it.each<[ExistingDeviceState['kind'], Step | null]>([
-    ['connecting', 'negotiateProtocols'],
-    ['confirm-check-code', null],
-    ['sharing-secrets', 'shareSecrets'],
-  ])('unsubscribing at %s cancels and closes', async (kind, hung) => {
+  it.each<[ExistingDeviceState['kind'], Step | null, string[]]>([
+    // Not connected yet, so there is no channel to send a decline over.
+    ['connecting', 'negotiateProtocols', ['cancel:user_cancelled', 'close']],
+    ['confirm-check-code', null, ['decline', 'cancel:user_cancelled', 'close']],
+    [
+      'sharing-secrets',
+      'shareSecrets',
+      ['decline', 'cancel:user_cancelled', 'close'],
+    ],
+  ])('unsubscribing at %s tells the other device', async (kind, hung, tail) => {
     const { service, flows } = setup((flow) => hung && flow.hang.add(hung));
     const link = service.linkByScanning(existingClient, qrBytes);
     const run = record(link.state$);
@@ -419,10 +480,73 @@ describe('QrSignInService.linkByScanning', () => {
 
     run.subscription.unsubscribe();
     await settle();
-    expect(flows[0].calls.slice(-2)).toEqual([
-      'cancel:user_cancelled',
-      'close',
-    ]);
+    expect(flows[0].calls.slice(-tail.length)).toEqual(tail);
+    expect(flows[0].declineLoginOnExistingDevice).toHaveBeenCalledTimes(
+      tail.includes('decline') ? 1 : 0,
+    );
+  });
+
+  it('cancels a flow that is still being created when unsubscribed', async () => {
+    const { service, factory, flows } = setup();
+    let release!: () => void;
+    const created = factory.existingDevice.getMockImplementation()!;
+    factory.existingDevice.mockImplementation(async (...args) => {
+      await new Promise<void>((resolve) => (release = resolve));
+      return created(...args);
+    });
+    const run = record(service.linkByScanning(existingClient, qrBytes).state$);
+    await settle();
+    run.subscription.unsubscribe();
+    release();
+    await settle();
+    expect(flows[0].calls).toEqual(['cancel:user_cancelled', 'close']);
+  });
+
+  it.each([
+    [true, false, 'done'],
+    [false, true, 'failed'],
+  ])(
+    'counts only the first answer (%s, then %s)',
+    async (first, second, end) => {
+      const { service } = setup();
+      const link = service.linkByScanning(existingClient, qrBytes);
+      const run = record(link.state$);
+      await settle();
+      link.confirmCheckCode(first);
+      link.confirmCheckCode(second);
+      await settle();
+      expect(run.states.at(-1)?.kind).toBe(end);
+    },
+  );
+
+  it('ignores a confirmation sent while connecting', async () => {
+    const { service, flows } = setup((flow) =>
+      flow.hang.add('negotiateProtocols'),
+    );
+    const link = service.linkByScanning(existingClient, qrBytes);
+    const run = record(link.state$);
+    await settle();
+    link.confirmCheckCode(true);
+    flows[0].release('negotiateProtocols');
+    await settle();
+    expect(run.states.at(-1)?.kind).toBe('confirm-check-code');
+    expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
+    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
+  });
+
+  it('gives a confirmation only to the current subscription', async () => {
+    const { service, flows } = setup();
+    const link = service.linkByScanning(existingClient, qrBytes);
+    const stale = record(link.state$);
+    await settle();
+    stale.subscription.unsubscribe();
+    const current = record(link.state$);
+    await settle();
+
+    link.confirmCheckCode(true);
+    await settle();
+    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
+    expect(current.states.at(-1)?.kind).toBe('done');
   });
 
   it.each(sdkReasons)('maps an SDK rejection with %s', async (reason) => {

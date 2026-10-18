@@ -30,6 +30,8 @@ import {
 const INVALID_AUTH_METADATA =
   'Configured OAuth2 OP does not support required functions';
 
+// Thrown by the SDK's rendezvous session when the homeserver has no MSC4108 endpoint.
+const INVALID_RENDEZVOUS_URI = 'Invalid rendezvous URI';
 // Synapse keeps a rendezvous session for 60 s; the SDK does not expose the server's expiry.
 const CODE_LIFETIME_MS = 60_000;
 const DEVICE_ID_CHARS =
@@ -173,9 +175,10 @@ export class QrSignInAdapter {
     client: MatrixClient,
     qrBytes: Uint8Array,
   ): ExistingDeviceLink {
-    let answer: ((match: boolean) => void) | undefined;
+    let current: FlowRun<ExistingDeviceState> | undefined;
     const state$ = new Observable<ExistingDeviceState>((subscriber) => {
       const run = new FlowRun(subscriber);
+      current = run;
       run.start(async () => {
         run.emit({ kind: 'connecting' });
         const flow = await this.factory.existingDevice(
@@ -189,6 +192,9 @@ export class QrSignInAdapter {
         }
         run.attach(flow);
         await run.step(flow.negotiateProtocols());
+        // Only the existing device can send a decline, and only over a connected channel.
+        // The new device receives it as user_cancelled, which it reports as declined.
+        run.declineOnCancel = true;
         run.emit({
           kind: 'confirm-check-code',
           code: required(flow.checkCode),
@@ -196,10 +202,9 @@ export class QrSignInAdapter {
         // Security: nothing beyond the protocol offer leaves this device until the user
         // confirms that both devices show the same check code. A mismatch may mean a
         // man-in-the-middle holds the channel, so it ends the link before any secret is sent.
-        const match = await run.step(
-          new Promise<boolean>((resolve) => (answer = resolve)),
-        );
+        const match = await run.step(run.awaitAnswer());
         if (!match) {
+          await flow.declineLoginOnExistingDevice().catch(() => undefined);
           await flow
             .cancel(ClientRendezvousFailureReason.InsecureChannelDetected)
             .catch(() => undefined);
@@ -217,15 +222,14 @@ export class QrSignInAdapter {
         await run.step(flow.shareSecrets());
         run.finish({ kind: 'done' });
       });
-      return () => run.teardown();
+      return () => {
+        if (current === run) current = undefined;
+        run.teardown();
+      };
     });
     return {
       state$,
-      confirmCheckCode: (match) => {
-        const respond = answer;
-        answer = undefined;
-        respond?.(match);
-      },
+      confirmCheckCode: (match) => current?.answer(match),
     };
   }
 
@@ -276,6 +280,10 @@ class FlowRun<S extends { kind: string }> {
   private finished = false;
   private channelEnded = false;
   private released = false;
+  private respond?: (match: boolean) => void;
+
+  /** Send a decline before cancelling, so the other device learns the user stopped. */
+  declineOnCancel = false;
 
   constructor(
     private readonly subscriber: Subscriber<
@@ -306,6 +314,17 @@ class FlowRun<S extends { kind: string }> {
     return value;
   }
 
+  /** Resolves with the first answer given after this call; earlier answers are ignored. */
+  awaitAnswer(): Promise<boolean> {
+    return new Promise((resolve) => (this.respond = resolve));
+  }
+
+  answer(match: boolean): void {
+    const respond = this.respond;
+    this.respond = undefined;
+    respond?.(match);
+  }
+
   emit(state: S): void {
     if (!this.ended) this.subscriber.next(state);
   }
@@ -319,7 +338,12 @@ class FlowRun<S extends { kind: string }> {
   fail(error: unknown, channelEnded = false): void {
     if (this.ended) return;
     this.channelEnded = channelEnded || error instanceof RendezvousError;
-    const reason = error instanceof RendezvousError ? error.code : error;
+    const reason =
+      error instanceof RendezvousError
+        ? error.code
+        : error instanceof Error && error.message === INVALID_RENDEZVOUS_URI
+          ? ClientRendezvousFailureReason.HomeserverLacksSupport
+          : error;
     this.subscriber.next({
       kind: 'failed',
       reason: qrSignInFailureOf(reason),
@@ -329,6 +353,7 @@ class FlowRun<S extends { kind: string }> {
 
   teardown(): void {
     this.ended = true;
+    this.respond = undefined;
     void this.release();
   }
 
@@ -337,6 +362,9 @@ class FlowRun<S extends { kind: string }> {
     if (!flow || this.released) return;
     this.released = true;
     if (!this.finished && !this.channelEnded) {
+      if (this.declineOnCancel) {
+        await flow.declineLoginOnExistingDevice().catch(() => undefined);
+      }
       await flow
         .cancel(MSC4108FailureReason.UserCancelled)
         .catch(() => undefined);
