@@ -9,6 +9,7 @@ import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import { MediaService, type ImagePackImage } from '@trinity/data-access/media';
 import { type VoiceRecording } from '@trinity/platform-native';
 import {
+  isRoomEncrypted,
   locationMessageContent,
   pollEndContent,
   pollResponseContent,
@@ -99,13 +100,20 @@ export class TimelineActionsService {
         return of(void 0);
       }
       const { client, room } = ctx;
-      const encrypt = room.hasEncryptionStateEvent();
+      const crypto = client.getCrypto?.();
       const file = new File(
         [recording.blob],
         `voice-message.${voiceExtension(recording.mimeType)}`,
         { type: recording.mimeType },
       );
-      return this.mediaSvc.uploadMedia(file, encrypt).pipe(
+      return from(isRoomEncrypted(room, crypto)).pipe(
+        switchMap((encrypt) => {
+          // Without a crypto store the SDK would send the event, and the clip's key, in the clear.
+          if (encrypt && !crypto) {
+            throw new Error('Encryption is unavailable.');
+          }
+          return this.mediaSvc.uploadMedia(file, encrypt);
+        }),
         switchMap((media) =>
           from(
             client.sendMessage(

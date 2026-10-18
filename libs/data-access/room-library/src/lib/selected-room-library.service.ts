@@ -252,7 +252,9 @@ export class SelectedRoomLibraryService {
       accountIds,
       mode,
       rooms: domains.has('rooms')
-        ? projectSelectedRooms(sources, activeAccountId)
+        ? projectSelectedRooms(sources, activeAccountId, (accountId, roomId) =>
+            this.sources.learnEncryption(accountId, roomId),
+          )
         : previous.rooms,
       spaces: spaces.spaces,
       spaceChildRoomIdsByAccount: spaces.childRoomIdsByAccount,

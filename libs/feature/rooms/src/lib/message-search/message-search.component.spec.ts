@@ -320,6 +320,27 @@ describe('MessageSearchComponent', () => {
     ).toBeTruthy();
   });
 
+  it('shows the encrypted-room note, not an empty result, when the server search is refused for encryption', async () => {
+    searchServerMessages.mockReturnValue(
+      of<ServerMessageSearch>({
+        hits: [],
+        count: 0,
+        nextBatch: null,
+        encrypted: true,
+      }),
+    );
+    const { fixture, container, c } = await build(loaded({ encrypted: false }));
+    setQuery('hello', c);
+    fixture.detectChanges();
+
+    c.searchServer();
+    fixture.detectChanges();
+
+    expect(c.serverMode()).toBe(false);
+    expect(container.querySelector('[data-testid="e2ee-note"]')).toBeTruthy();
+    expect(container.querySelector('[data-testid="search-server"]')).toBeNull();
+  });
+
   it('appends the next page of server results on load-more', async () => {
     const { c } = await build(loaded({ encrypted: false }));
     setQuery('hello', c);

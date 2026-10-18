@@ -35,6 +35,8 @@ export class LinkPreviewComponent {
   readonly url = input.required<string>();
   /** Whether the message is from an encrypted room (needs the encrypted-rooms opt-in). */
   readonly encrypted = input(false);
+  /** The message's room; without the opt-in it must be confirmed unencrypted first. */
+  readonly roomId = input<string | null>(null);
 
   private readonly previews = inject(UrlPreviewService);
   private readonly privacy = inject(PrivacySettingsService);
@@ -54,12 +56,14 @@ export class LinkPreviewComponent {
   constructor() {
     // Fetch when the URL (or a preference) changes; clear + skip when previews are off.
     // In an encrypted room the fetch also needs the explicit encrypted-rooms opt-in,
-    // since it would send the message's URL to the homeserver.
+    // since it would send the message's URL to the homeserver. Without it the room is
+    // checked against the crypto store too, as its state can lack the encryption event.
     effect((onCleanup) => {
       const url = this.url();
+      const allowEncrypted = this.privacy.linkPreviewsInEncrypted();
+      const roomId = this.roomId();
       const enabled =
-        this.privacy.linkPreviews() &&
-        (!this.encrypted() || this.privacy.linkPreviewsInEncrypted());
+        this.privacy.linkPreviews() && (!this.encrypted() || allowEncrypted);
       this.preview.set(null);
       this.imageUrl.set(null);
       if (!enabled) {
@@ -67,7 +71,10 @@ export class LinkPreviewComponent {
       }
       const subs = new Subscription();
       subs.add(
-        this.previews.preview(url).subscribe((preview) => {
+        (allowEncrypted
+          ? this.previews.preview(url)
+          : this.previews.previewIfUnencrypted(url, roomId)
+        ).subscribe((preview) => {
           this.preview.set(preview);
           if (preview?.imageMxc && this.resolver) {
             subs.add(

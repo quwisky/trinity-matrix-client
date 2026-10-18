@@ -593,6 +593,7 @@ export function normalizeTimelineEvent(
       replyFallback: read(() => Boolean(event.replyEventId), false),
       addressesViewer: mentionsViewer(content, viewerId),
       roomEncrypted: read(() => room.hasEncryptionStateEvent?.() ?? true, true),
+      roomId: room.roomId,
     });
   } catch {
     return unsupported(

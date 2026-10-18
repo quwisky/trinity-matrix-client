@@ -26,6 +26,7 @@ function localRoom(options: {
   alias?: string | null;
   altAliases?: string[];
   joinRule?: string;
+  stateEncrypted?: boolean;
 }) {
   return {
     roomId: options.id ?? '!local:hs',
@@ -35,7 +36,7 @@ function localRoom(options: {
     getAltAliases: () => options.altAliases ?? [],
     getMxcAvatarUrl: () => 'mxc://hs/local',
     getJoinedMemberCount: () => 7,
-    hasEncryptionStateEvent: () => true,
+    hasEncryptionStateEvent: () => options.stateEncrypted ?? true,
     isSpaceRoom: () => false,
     getLiveTimeline: () => ({
       getState: () => state(options.joinRule),
@@ -48,6 +49,8 @@ function setup(options: {
   summary?: Record<string, unknown>;
   stableError?: unknown;
   alias?: { room_id: string; servers: string[] };
+  storeEncrypted?: boolean;
+  storeFails?: boolean;
 }) {
   const rooms = options.rooms ?? [];
   const summary =
@@ -84,6 +87,12 @@ function setup(options: {
     getRoomIdForAlias,
     getRoomSummary,
     http: { authedRequest },
+    getCrypto: () => ({
+      isEncryptionEnabledInRoom: () =>
+        options.storeFails
+          ? Promise.reject(new Error('store unavailable'))
+          : Promise.resolve(options.storeEncrypted ?? false),
+    }),
     joinRoom,
     knockRoom,
   };
@@ -178,6 +187,39 @@ describe('RoomLinkService', () => {
     });
     expect(getRoomSummary).not.toHaveBeenCalled();
     expect(authedRequest).not.toHaveBeenCalled();
+  });
+
+  it('says a joined room is encrypted when only its crypto store knows it', async () => {
+    const room = localRoom({ membership: 'join', stateEncrypted: false });
+    const { service } = setup({ rooms: [room], storeEncrypted: true });
+
+    const preview = await firstValueFrom(
+      service.preview({ kind: 'room', roomIdOrAlias: room.roomId }),
+    );
+
+    expect(preview.encrypted).toBe(true);
+  });
+
+  it('says a joined room is encrypted when its crypto store fails to answer', async () => {
+    const room = localRoom({ membership: 'join', stateEncrypted: false });
+    const { service } = setup({ rooms: [room], storeFails: true });
+
+    const preview = await firstValueFrom(
+      service.preview({ kind: 'room', roomIdOrAlias: room.roomId }),
+    );
+
+    expect(preview.encrypted).toBe(true);
+  });
+
+  it('says a joined room is not encrypted when its state and crypto store agree', async () => {
+    const room = localRoom({ membership: 'join', stateEncrypted: false });
+    const { service } = setup({ rooms: [room] });
+
+    const preview = await firstValueFrom(
+      service.preview({ kind: 'room', roomIdOrAlias: room.roomId }),
+    );
+
+    expect(preview.encrypted).toBe(false);
   });
 
   it('previews with the named account rather than the active one', async () => {

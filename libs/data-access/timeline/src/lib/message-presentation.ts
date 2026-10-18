@@ -170,6 +170,8 @@ export interface MessageView {
   readonly shield?: MessageShield | null;
   readonly previewUrl?: string | null;
   readonly previewEncrypted?: boolean;
+  /** The room a link preview must be confirmed unencrypted in before it is fetched. */
+  readonly previewRoomId?: string;
   readonly summary?: string | null;
   readonly systemCategory?: SystemLineCategory | null;
   /** Why it could not be decrypted, and whether this device can fix it; null otherwise. */
@@ -235,6 +237,7 @@ export interface NormalizedTextEvent extends NormalizedCommon {
   readonly replyFallback: boolean;
   readonly addressesViewer: boolean;
   readonly roomEncrypted: boolean;
+  readonly roomId: string;
 }
 
 export type NormalizedSystemChange =
@@ -580,6 +583,7 @@ export function presentNormalizedTimelineEvent(
       kind: event.messageKind,
       previewUrl: event.messageKind === 'text' ? firstUrl(rendered.text) : null,
       previewEncrypted: event.roomEncrypted,
+      previewRoomId: event.roomId,
       summary: null,
       systemCategory: null,
     });

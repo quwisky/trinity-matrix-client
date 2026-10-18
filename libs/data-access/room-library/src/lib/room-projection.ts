@@ -5,9 +5,11 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import {
+  arrivedInClear,
   liveRoomState,
   messagePreview,
   roomAvatarMxc,
+  type RoomEncryptionFlags,
 } from '@trinity/util/matrix';
 import { compareOrder } from './space-child-order';
 import { type RoomSummary } from './room-library.service';
@@ -61,12 +63,15 @@ export function initialOf(name: string): string {
 /**
  * Single-line preview of the room's most recent `m.room.message`, or `''`. Walked back-to-front
  * to skip state events. `getLiveTimeline` is optional: not every Room stub exposes it.
+ * `encrypted` is `undefined` while the crypto store has yet to answer for the room.
  */
-function lastMessageOf(room: Room, encrypted: boolean): string {
+function lastMessageOf(room: Room, encrypted: boolean | undefined): string {
   const events = room.getLiveTimeline?.()?.getEvents() ?? [];
   for (let i = events.length - 1; i >= 0; i--) {
     if (events[i].getType() === EventType.RoomMessage) {
-      return messagePreview(events[i], encrypted);
+      // Until the store answers, the room may be encrypted without its state saying so.
+      if (encrypted === undefined && arrivedInClear(events[i])) return '';
+      return messagePreview(events[i], encrypted ?? true);
     }
   }
   return '';
@@ -126,12 +131,15 @@ export function directMapOf(client: MatrixClient): {
 /**
  * Project one {@link Room} into a {@link RoomSummary} tagged with its account. Pure read, shared
  * by {@link RoomLibraryService} (active account) and the selected-Account projector so both
- * build identical rows.
+ * build identical rows. Without a crypto store (`hasCryptoStore` false) nothing will answer
+ * for the room, so its preview counts it as encrypted.
  */
 export function buildRoomSummary(
   room: Room,
   accountId: string,
   directUserId?: string,
+  encryption?: RoomEncryptionFlags,
+  hasCryptoStore = true,
 ): RoomSummary {
   const name = room.name || room.roomId;
   const topicEvent = liveRoomState(room)?.getStateEvents('m.room.topic', '');
@@ -142,7 +150,13 @@ export function buildRoomSummary(
     NotificationCountType.Highlight,
   );
   const markedUnread = isMarkedUnread(room);
-  const encrypted = room.hasEncryptionStateEvent();
+  const encrypted =
+    encryption?.isEncrypted(room) ?? room.hasEncryptionStateEvent();
+  const previewEncrypted = !hasCryptoStore
+    ? true
+    : room.hasEncryptionStateEvent() || encryption?.answered(room.roomId)
+      ? encrypted
+      : undefined;
   return {
     id: room.roomId,
     accountId,
@@ -162,7 +176,7 @@ export function buildRoomSummary(
     // A flagged room reads as unread even with nothing new in it, so the badge and the
     // sidebar's unread filter both follow.
     hasUnread: unreadCount > 0 || markedUnread,
-    lastMessage: lastMessageOf(room, encrypted),
+    lastMessage: lastMessageOf(room, previewEncrypted),
     activityTs: roomActivityTs(room),
     favourite: room.tags?.['m.favourite'] !== undefined,
     lowPriority: room.tags?.['m.lowpriority'] !== undefined,

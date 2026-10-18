@@ -58,6 +58,7 @@ function room(options: {
   events?: ReturnType<typeof message>[];
 }) {
   return {
+    roomId: '!r:hs',
     hasEncryptionStateEvent: () => options.encrypted ?? false,
     getLiveTimeline: () => ({
       getEvents: () => options.events ?? [],
@@ -71,13 +72,18 @@ describe('ConversationSearchController', () => {
   let service: ConversationSearchController;
   const getRoom = vi.fn();
   const search = vi.fn();
+  const isEncryptionEnabledInRoom = vi.fn();
+  const getCrypto = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
+    isEncryptionEnabledInRoom.mockResolvedValue(false);
+    getCrypto.mockReturnValue({ isEncryptionEnabledInRoom });
     service = new ConversationSearchController();
     service.attach({ accountId: '@me:hs', roomId: '!r:hs' }, {
       getRoom,
       search,
+      getCrypto,
     } as unknown as MatrixClient);
   });
 
@@ -187,7 +193,53 @@ describe('ConversationSearchController', () => {
 
     await expect(
       firstValueFrom(service.searchServer('hello')),
-    ).resolves.toEqual({ hits: [], count: 0, nextBatch: null });
+    ).resolves.toEqual({
+      hits: [],
+      count: 0,
+      nextBatch: null,
+      encrypted: true,
+    });
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it('never asks the server to search a conversation the crypto store has as encrypted when its state lacks the event', async () => {
+    getRoom.mockReturnValue(room({}));
+    isEncryptionEnabledInRoom.mockResolvedValue(true);
+
+    await expect(
+      firstValueFrom(service.searchServer('hello')),
+    ).resolves.toEqual({
+      hits: [],
+      count: 0,
+      nextBatch: null,
+      encrypted: true,
+    });
+    expect(isEncryptionEnabledInRoom).toHaveBeenCalledWith('!r:hs');
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it('never asks the server to search when the crypto store is unavailable', async () => {
+    getRoom.mockReturnValue(room({}));
+    getCrypto.mockReturnValue(undefined);
+
+    await expect(
+      firstValueFrom(service.searchServer('hello')),
+    ).resolves.toEqual({
+      hits: [],
+      count: 0,
+      nextBatch: null,
+      encrypted: true,
+    });
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it('never asks the server to search when the crypto store fails to answer', async () => {
+    getRoom.mockReturnValue(room({}));
+    isEncryptionEnabledInRoom.mockRejectedValue(new Error('store unavailable'));
+
+    await expect(
+      firstValueFrom(service.searchServer('hello')),
+    ).resolves.toMatchObject({ hits: [], encrypted: true });
     expect(search).not.toHaveBeenCalled();
   });
 

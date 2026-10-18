@@ -7,9 +7,11 @@ import {
   map,
   of,
   shareReplay,
+  switchMap,
   tap,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { isRoomEncrypted } from '@trinity/util/matrix';
 
 /** Open-Graph link preview for a URL, projected for the preview card. */
 export interface UrlPreview {
@@ -22,10 +24,10 @@ export interface UrlPreview {
 
 /**
  * Fetches homeserver-proxied link previews (`getUrlPreview`) for URLs in messages, one
- * result cached (and shared) per URL. Callers gate on the room being unencrypted and on
- * the user's link-preview preference before asking, so a preview is only ever fetched for
- * a link the homeserver could already see. A failed / preview-disabled request resolves to
- * null so the card simply doesn't render.
+ * result cached (and shared) per URL. Callers gate on the user's link-preview preference,
+ * and without the encrypted-rooms opt-in ask through {@link previewIfUnencrypted}, so a
+ * preview is only ever fetched for a link the homeserver could already see. A failed /
+ * preview-disabled request resolves to null so the card simply doesn't render.
  */
 /** Cap on cached previews; distinct URLs across a session are otherwise unbounded. */
 const CACHE_LIMIT = 256;
@@ -83,6 +85,26 @@ export class UrlPreviewService {
     );
     this.cache.set(url, request);
     return request;
+  }
+
+  /**
+   * {@link preview}, once `roomId` is confirmed unencrypted: null without a request for a
+   * room that is encrypted, missing, or whose crypto store cannot answer, since asking
+   * would show the homeserver a URL from an encrypted message.
+   */
+  previewIfUnencrypted(
+    url: string,
+    roomId: string | null,
+  ): Observable<UrlPreview | null> {
+    return defer(() => {
+      const client = this.matrix.isInitialized ? this.matrix.instance : null;
+      const room = roomId ? client?.getRoom(roomId) : null;
+      return client && room
+        ? from(isRoomEncrypted(room, client.getCrypto?.()))
+        : of(true);
+    }).pipe(
+      switchMap((encrypted) => (encrypted ? of(null) : this.preview(url))),
+    );
   }
 
   /** Drop the oldest entries (FIFO) so the per-session cache stays bounded. */

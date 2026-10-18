@@ -81,3 +81,22 @@ export function arrivedInClear(
     !e.status && !e.isState() && !e.isRedacted();
   return settled(event) && settled(subject) && !subject.isEncrypted();
 }
+
+/**
+ * Whether a room counts as encrypted before its content leaves the device (an upload, a link
+ * preview, a server search): `flags` say so, or else the crypto store does when asked now.
+ * Fails closed: with no crypto store, or one that fails to answer, the room counts as
+ * encrypted, since sending in the clear is the step that cannot be undone.
+ */
+export async function isRoomEncrypted(
+  room: Pick<Room, 'roomId' | 'hasEncryptionStateEvent'>,
+  crypto: RoomEncryptionProbe | null | undefined,
+  flags = new RoomEncryptionFlags(),
+): Promise<boolean> {
+  if (flags.isEncrypted(room) || !crypto) return true;
+  try {
+    return await crypto.isEncryptionEnabledInRoom(room.roomId);
+  } catch {
+    return true;
+  }
+}

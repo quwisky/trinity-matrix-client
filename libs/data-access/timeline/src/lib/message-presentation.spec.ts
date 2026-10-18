@@ -122,6 +122,7 @@ describe('Message Presentation', () => {
       replyFallback: false,
       addressesViewer: false,
       roomEncrypted: true,
+      roomId: '!room:example.org',
     };
 
     const presentation = presentNormalizedTimelineEvent(event);
@@ -131,6 +132,7 @@ describe('Message Presentation', () => {
       body: event.body,
       previewUrl: 'https://example.org/docs',
       previewEncrypted: true,
+      previewRoomId: '!room:example.org',
     });
     expect(presentation?.html).toContain(
       '<a href="https://example.org/docs" target="_blank" rel="noopener noreferrer">https://example.org/docs</a>',
@@ -150,6 +152,7 @@ describe('Message Presentation', () => {
       replyFallback: false,
       addressesViewer: false,
       roomEncrypted: false,
+      roomId: '!room:example.org',
     });
 
     expect(presentation?.kind).toBe('notice');
@@ -169,6 +172,7 @@ describe('Message Presentation', () => {
         replyFallback: false,
         addressesViewer: false,
         roomEncrypted: true,
+        roomId: '!room:example.org',
       });
 
       expect(presentation?.previewUrl).toBeNull();
@@ -273,6 +277,7 @@ describe('Message Presentation', () => {
       replyFallback: false,
       addressesViewer: true,
       roomEncrypted: false,
+      roomId: '!room:example.org',
     });
 
     expect(presentation?.html).toContain('mention--self');
@@ -289,6 +294,7 @@ function view(over: Partial<MessageView> = {}): MessageView {
     replyFallback: false,
     addressesViewer: false,
     roomEncrypted: false,
+    roomId: '!room:example.org',
   });
   if (!presentation) throw new Error('Text presentation unexpectedly absent');
   return { ...presentation, isOwn: true, ...over };

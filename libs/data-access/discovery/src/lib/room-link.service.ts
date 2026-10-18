@@ -3,6 +3,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   describeMatrixRequestFailure,
   initialOf,
+  isRoomEncrypted,
   liveRoomState,
   normalizeViaServers,
   type MatrixLinkTarget,
@@ -174,7 +175,15 @@ export class RoomLinkService {
           localMembership === 'knock' ||
           localMembership === 'ban')
       ) {
-        return of(this.fromLocal(client, local, target, localMembership));
+        const encrypted =
+          localMembership === 'join'
+            ? from(isRoomEncrypted(local, client.getCrypto?.()))
+            : of(local.hasEncryptionStateEvent());
+        return encrypted.pipe(
+          map((isEncrypted) =>
+            this.fromLocal(client, local, target, localMembership, isEncrypted),
+          ),
+        );
       }
 
       return from(this.resolveRemote(client, target)).pipe(
@@ -294,6 +303,7 @@ export class RoomLinkService {
     room: Room,
     target: Extract<MatrixLinkTarget, { kind: 'room' }>,
     membership: RoomLinkMembership,
+    encrypted: boolean,
   ): RoomLinkPreview {
     const state = liveRoomState(room);
     const topic = state
@@ -313,7 +323,7 @@ export class RoomLinkService {
       topic: typeof topic === 'string' && topic ? topic : null,
       avatarMxc: room.getMxcAvatarUrl(),
       memberCount: room.getJoinedMemberCount(),
-      encrypted: room.hasEncryptionStateEvent(),
+      encrypted,
       joinRule,
       membership,
       isSpace: room.isSpaceRoom(),

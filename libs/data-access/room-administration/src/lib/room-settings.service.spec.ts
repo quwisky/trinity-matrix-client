@@ -27,6 +27,9 @@ function setup(
     avatarUrl?: string;
     tombstone?: string;
     events?: Map<string, Map<string, MatrixEvent>>;
+    stateEncrypted?: boolean;
+    storeEncrypted?: boolean;
+    store?: () => Promise<boolean>;
   } = {},
 ) {
   const setRoomName = vi.fn().mockResolvedValue({});
@@ -74,9 +77,10 @@ function setup(
   const room = opts.noRoom
     ? null
     : {
+        roomId: '!r:hs',
         getVersion: () => opts.version ?? '10',
         getMyMembership: () => KnownMembership.Join,
-        hasEncryptionStateEvent: () => true,
+        hasEncryptionStateEvent: () => opts.stateEncrypted ?? true,
         // The service reads room state via the live timeline (liveRoomState()),
         // which is what the SDK's deprecated `currentState` aliased.
         getLiveTimeline: () => ({
@@ -95,6 +99,10 @@ function setup(
     sendStateEvent,
     getRoom: () => room,
     getUserId: () => '@me:hs',
+    getCrypto: () => ({
+      isEncryptionEnabledInRoom:
+        opts.store ?? (() => Promise.resolve(opts.storeEncrypted ?? false)),
+    }),
     on: vi.fn(
       (
         event: string,
@@ -660,6 +668,69 @@ describe('RoomSettingsService', () => {
     emitState();
 
     expect(snapshots.at(-1)).toBe('After');
+    subscription.unsubscribe();
+  });
+
+  it('shows encryption on for a room the crypto store has as encrypted when its state lacks the event', async () => {
+    const { svc } = setup({ stateEncrypted: false, storeEncrypted: true });
+    const snapshots: { encrypted: boolean | null; advanced: boolean }[] = [];
+    const subscription = svc
+      .observe({ accountId: '@me:hs', roomId: '!r:hs' })
+      .subscribe((snapshot) =>
+        snapshots.push({
+          encrypted: snapshot.encrypted,
+          advanced: snapshot.advanced.encrypted,
+        }),
+      );
+
+    await vi.waitFor(() =>
+      expect(snapshots.at(-1)).toEqual({ encrypted: true, advanced: true }),
+    );
+    subscription.unsubscribe();
+  });
+
+  it('keeps encryption off when the room state and the crypto store both say so', async () => {
+    const { svc } = setup({ stateEncrypted: false });
+    const snapshots: (boolean | null)[] = [];
+    const subscription = svc
+      .observe({ accountId: '@me:hs', roomId: '!r:hs' })
+      .subscribe((snapshot) => snapshots.push(snapshot.encrypted));
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(snapshots.at(-1)).toBe(false);
+    subscription.unsubscribe();
+  });
+
+  it('reports encryption as unknown, so nothing offers to turn it on, until the crypto store answers', async () => {
+    let answer!: (encrypted: boolean) => void;
+    const { svc } = setup({
+      stateEncrypted: false,
+      store: () => new Promise((done) => (answer = done)),
+    });
+    const target = { accountId: '@me:hs', roomId: '!r:hs' };
+    const snapshots: (boolean | null)[] = [];
+    const subscription = svc
+      .observe(target)
+      .subscribe((snapshot) => snapshots.push(snapshot.encrypted));
+
+    expect(snapshots).toEqual([null]);
+    expect(svc.snapshot(target).encrypted).toBeNull();
+    answer(false);
+    await vi.waitFor(() => expect(snapshots.at(-1)).toBe(false));
+    subscription.unsubscribe();
+  });
+
+  it('shows encryption on when the crypto store fails to answer', async () => {
+    const { svc } = setup({
+      stateEncrypted: false,
+      store: () => Promise.reject(new Error('store unavailable')),
+    });
+    const snapshots: (boolean | null)[] = [];
+    const subscription = svc
+      .observe({ accountId: '@me:hs', roomId: '!r:hs' })
+      .subscribe((snapshot) => snapshots.push(snapshot.encrypted));
+
+    await vi.waitFor(() => expect(snapshots.at(-1)).toBe(true));
     subscription.unsubscribe();
   });
 

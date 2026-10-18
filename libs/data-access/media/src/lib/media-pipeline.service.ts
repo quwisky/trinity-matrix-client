@@ -1,5 +1,14 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, Subscription, defer, of, throwError } from 'rxjs';
+import {
+  EMPTY,
+  Observable,
+  Subscription,
+  defer,
+  from,
+  of,
+  switchMap,
+  throwError,
+} from 'rxjs';
 import {
   EventStatus,
   type MatrixClient,
@@ -7,6 +16,7 @@ import {
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
+  isRoomEncrypted,
   mediaCaptionFields,
   type EncryptedFileInfo,
   type MediaPayload,
@@ -299,18 +309,28 @@ export class MediaPipeline {
         if (cached) {
           send(cached);
         } else {
-          const encrypted = room.hasEncryptionStateEvent();
-          progress(encrypted ? 'encrypting' : 'uploading', 0);
-          if (subscriber.closed) return cleanup;
-          uploadSubscription = this.bytes
-            .uploadMedia(
-              entry.file,
-              encrypted,
-              (fraction) => progress('uploading', fraction),
-              abortController,
-              client,
-              request.media.hints,
-              imageMetadata,
+          const crypto = client.getCrypto?.();
+          uploadSubscription = from(isRoomEncrypted(room, crypto))
+            .pipe(
+              switchMap((encrypted) => {
+                // Without a crypto store the SDK sends the event, and the file key in it,
+                // in the clear to a room whose state lacks the encryption event.
+                if (encrypted && !crypto) {
+                  reject('send-rejected', true);
+                  return EMPTY;
+                }
+                progress(encrypted ? 'encrypting' : 'uploading', 0);
+                if (subscriber.closed) return EMPTY;
+                return this.bytes.uploadMedia(
+                  entry.file,
+                  encrypted,
+                  (fraction) => progress('uploading', fraction),
+                  abortController,
+                  client,
+                  request.media.hints,
+                  imageMetadata,
+                );
+              }),
             )
             .subscribe({
               next: (media) => {

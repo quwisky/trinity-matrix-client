@@ -317,9 +317,11 @@ export class TimelineService {
     return this.roomId;
   }
 
-  /** Whether the visible room declares the standard encrypted-room state event. */
+  /** Whether the visible room counts as encrypted: its state, or else its crypto store. */
   get roomEncrypted(): boolean {
-    return this.visible && this.room?.hasEncryptionStateEvent() === true;
+    return (
+      this.visible && !!this.room && this.encryption.isEncrypted(this.room)
+    );
   }
   private room: Room | null = null;
 

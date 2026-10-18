@@ -6,6 +6,7 @@ import {
   type MatrixClient,
 } from 'matrix-js-sdk';
 import { type MatrixClientService } from '@trinity/data-access/matrix-client';
+import { RoomEncryptionFlags } from '@trinity/util/matrix';
 import { buildInvite, type PendingInvite } from './invites.service';
 import {
   buildRoomSummary,
@@ -26,6 +27,8 @@ export const ALL_SELECTED_PROJECTION_DOMAINS: ReadonlySet<SelectedProjectionDoma
 interface AccountSource {
   readonly accountId: string;
   readonly client: MatrixClient;
+  /** Room lock marks for this client: the room state, or else its crypto store. */
+  readonly encryption?: RoomEncryptionFlags;
 }
 
 type Listener = () => void;
@@ -36,6 +39,7 @@ interface RegisteredListener {
 }
 
 interface HeldAccountSource extends AccountSource {
+  readonly encryption: RoomEncryptionFlags;
   readonly listeners: readonly RegisteredListener[];
 }
 
@@ -112,7 +116,29 @@ export class SelectedAccountSourceRegistry {
   current(): readonly AccountSource[] {
     return [...this.sources.values()]
       .sort((a, b) => a.accountId.localeCompare(b.accountId))
-      .map(({ accountId, client }) => ({ accountId, client }));
+      .map(({ accountId, client, encryption }) => ({
+        accountId,
+        client,
+        encryption,
+      }));
+  }
+
+  /**
+   * Ask an Account's crypto store about one joined room whose state lacks the encryption
+   * event, once per room; its answer, whichever it is, invalidates the room rows.
+   */
+  learnEncryption(accountId: string, roomId: string): void {
+    const source = this.sources.get(accountId);
+    if (!source || source.encryption.answered(roomId)) return;
+    const { client, encryption } = source;
+    void encryption.refresh(client.getCrypto?.(), roomId).then(() => {
+      if (
+        encryption.answered(roomId) &&
+        this.sources.get(accountId)?.encryption === encryption
+      ) {
+        this.invalidate(ROOM_DOMAINS);
+      }
+    });
   }
 
   release(): void {
@@ -127,7 +153,12 @@ export class SelectedAccountSourceRegistry {
       eventSource.on(event, handler);
       return { event, handler };
     });
-    return { accountId, client, listeners };
+    return {
+      accountId,
+      client,
+      encryption: new RoomEncryptionFlags(),
+      listeners,
+    };
   }
 
   private detach(source: HeldAccountSource): void {
@@ -142,18 +173,24 @@ export class SelectedAccountSourceRegistry {
 export function projectSelectedRooms(
   sources: readonly AccountSource[],
   activeAccountId: string | null,
+  learnEncryption?: (accountId: string, roomId: string) => void,
 ): readonly RoomSummary[] {
   const byRoomId = new Map<string, RoomSummary>();
 
-  for (const { accountId, client } of sources) {
+  for (const { accountId, client, encryption } of sources) {
     const { userByRoom } = directMapOf(client);
     for (const room of client.getRooms()) {
       if (room.isSpaceRoom() || room.getMyMembership() !== 'join') continue;
+      if (!room.hasEncryptionStateEvent()) {
+        learnEncryption?.(accountId, room.roomId);
+      }
 
       const summary = buildRoomSummary(
         room,
         accountId,
         userByRoom.get(room.roomId),
+        encryption,
+        !!client.getCrypto?.(),
       );
       const existing = byRoomId.get(room.roomId);
       if (!existing) {
@@ -175,6 +212,7 @@ export function projectSelectedRooms(
         ),
         hasUnread: existing.hasUnread || summary.hasUnread,
         markedUnread: existing.markedUnread || summary.markedUnread,
+        encrypted: existing.encrypted || summary.encrypted,
         lowPriority: existing.lowPriority || summary.lowPriority,
       });
     }

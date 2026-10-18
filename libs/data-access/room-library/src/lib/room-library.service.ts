@@ -33,6 +33,7 @@ import {
 } from '@trinity/data-access/matrix-client';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import {
+  RoomEncryptionFlags,
   isValidUserId,
   roomEncryptionInitialState,
 } from '@trinity/util/matrix';
@@ -202,6 +203,8 @@ export class RoomLibraryService {
    * server.
    */
   private readonly pendingUnread = new Map<string, boolean>();
+  /** Room lock marks: the room state, or else the active Account's crypto store. */
+  private encryption = new RoomEncryptionFlags();
 
   private readonly typing = new RoomTyping(() => this.projection.client());
 
@@ -285,6 +288,7 @@ export class RoomLibraryService {
       client.off(RoomMemberEvent.Typing, this.typing.onTypingChanged);
     },
     reset: () => {
+      this.encryption = new RoomEncryptionFlags();
       this._rooms.set([]);
       this._directRoomIds.set(new Set());
       this.dmPeers = new Set();
@@ -665,21 +669,44 @@ export class RoomLibraryService {
     const previous = new Map(
       untracked(this._rooms).map((room) => [room.id, room] as const),
     );
+    const encryption = this.encryption;
+    const crypto = client.getCrypto?.();
+    // Spaces are rendered in the server rail, not as channels in the room list.
+    const joined = client
+      .getRooms()
+      .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join');
     this._rooms.set(
-      client
-        .getRooms()
-        // Spaces are rendered in the server rail, not as channels in the room list.
-        .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join')
+      joined
         .map((r) =>
           reuseUnchanged(
             previous.get(r.roomId),
             this.applyPendingUnread(
-              buildRoomSummary(r, accountId, userByRoom.get(r.roomId)),
+              buildRoomSummary(
+                r,
+                accountId,
+                userByRoom.get(r.roomId),
+                encryption,
+                !!crypto,
+              ),
             ),
           ),
         )
         .sort(compareRoomSummaries),
     );
+    for (const room of joined) {
+      if (room.hasEncryptionStateEvent() || encryption.answered(room.roomId)) {
+        continue;
+      }
+      // Any answer can change the row: the lock, or a preview held back until now.
+      void encryption.refresh(crypto, room.roomId).then(() => {
+        if (
+          encryption.answered(room.roomId) &&
+          this.encryption === encryption
+        ) {
+          this.projection.schedule();
+        }
+      });
+    }
     this._directRoomIds.set(direct);
     this.dmPeers = new Set(userByRoom.values());
   }

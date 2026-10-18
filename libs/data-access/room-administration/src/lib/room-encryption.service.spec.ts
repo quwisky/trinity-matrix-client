@@ -22,6 +22,7 @@ function setup(
     signedIn?: boolean;
     send?: () => Promise<unknown>;
     serverState?: () => Promise<unknown>;
+    store?: () => Promise<boolean>;
   } = {},
 ) {
   const getStateEvent = vi.fn(
@@ -44,6 +45,10 @@ function setup(
   const client = {
     getStateEvent,
     sendStateEvent,
+    getCrypto: () => ({
+      isEncryptionEnabledInRoom:
+        options.store ?? (() => Promise.resolve(false)),
+    }),
     getRoom: (roomId: string) => (roomId === TARGET.roomId ? room : null),
   };
   const settingsFor = vi.fn(() => ({
@@ -110,6 +115,32 @@ describe('RoomEncryptionService', () => {
     expect((error as RoomAdministrationError).outcome.failure).toBe(
       'invalid-input',
     );
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it('sends no second m.room.encryption when only the crypto store knows the room is encrypted', async () => {
+    const { service, sendStateEvent } = setup({
+      store: () => Promise.resolve(true),
+    });
+
+    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
+      (cause: unknown) => cause,
+    );
+
+    expect((error as Error).message).toBe('This room is already encrypted.');
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing when the crypto store fails to answer', async () => {
+    const { service, sendStateEvent } = setup({
+      store: () => Promise.reject(new Error('store unavailable')),
+    });
+
+    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
+      (cause: unknown) => cause,
+    );
+
+    expect((error as Error).message).toBe('This room is already encrypted.');
     expect(sendStateEvent).not.toHaveBeenCalled();
   });
 
@@ -193,6 +224,7 @@ describe('RoomEncryptionService', () => {
     const second = await firstValueFrom(service.turnOn(TARGET)).catch(
       (cause: unknown) => cause,
     );
+    await vi.waitFor(() => expect(sendStateEvent).toHaveBeenCalled());
     resolve({ event_id: '$e' });
     await first;
 

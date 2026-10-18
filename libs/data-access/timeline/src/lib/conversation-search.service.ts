@@ -11,6 +11,7 @@ import {
   RoomEncryptionFlags,
   displayContent,
   isDisplayableMessage,
+  isRoomEncrypted,
 } from '@trinity/util/matrix';
 import type { MessageShield } from './message-presentation';
 import { unencryptedShieldFor } from './shields';
@@ -44,6 +45,8 @@ export interface ServerMessageSearch {
   readonly hits: readonly MessageHit[];
   readonly count: number;
   readonly nextBatch: string | null;
+  /** True when nothing was searched because the room counts as encrypted. */
+  readonly encrypted?: boolean;
 }
 
 /**
@@ -127,15 +130,18 @@ export class ConversationSearchController {
   ): Observable<ServerMessageSearch> {
     const empty: ServerMessageSearch = { hits: [], count: 0, nextBatch: null };
     const trimmed = term.trim();
-    return defer(() => {
+    return defer(async () => {
       const context = this.context();
       if (!context || !trimmed) {
-        return of(empty);
+        return empty;
       }
       const { key, client } = context;
       const room = client.getRoom(key.roomId);
-      if (!room || room.hasEncryptionStateEvent()) {
-        return of(empty);
+      if (!room) {
+        return empty;
+      }
+      if (await isRoomEncrypted(room, client.getCrypto?.(), this.encryption)) {
+        return { ...empty, encrypted: true };
       }
       const body: ISearchRequestBody = {
         search_categories: {
@@ -152,11 +158,10 @@ export class ConversationSearchController {
           },
         },
       };
-      return from(
-        client.search(nextBatch ? { body, next_batch: nextBatch } : { body }),
-      ).pipe(
-        map((response) => mapServerResponse(key.roomId, trimmed, response)),
+      const response = await client.search(
+        nextBatch ? { body, next_batch: nextBatch } : { body },
       );
+      return mapServerResponse(key.roomId, trimmed, response);
     }).pipe(catchError(() => of(empty)));
   }
 

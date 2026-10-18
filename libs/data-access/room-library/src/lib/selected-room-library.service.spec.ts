@@ -9,6 +9,7 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { UNENCRYPTED_PREVIEW } from '@trinity/util/matrix';
 import { AccountScopeService } from './account-scope.service';
 import { InvitesService, type PendingInvite } from './invites.service';
 import { RoomLibraryService, type RoomSummary } from './room-library.service';
@@ -28,6 +29,8 @@ interface FakeRoomOptions {
   readonly markedUnread?: boolean;
   readonly favourite?: boolean;
   readonly lowPriority?: boolean;
+  /** The body of a last message that arrived in clear. */
+  readonly message?: string;
 }
 
 function fakeRoom(id: string, options: FakeRoomOptions = {}) {
@@ -52,7 +55,22 @@ function fakeRoom(id: string, options: FakeRoomOptions = {}) {
         : (options.unread ?? 0),
     getLastActiveTimestamp: () => 0,
     getLiveTimeline: () => ({
-      getEvents: () => [],
+      getEvents: () =>
+        options.message === undefined
+          ? []
+          : [
+              {
+                getType: () => 'm.room.message',
+                getContent: () => ({ body: options.message }),
+                getOriginalContent: () => ({ body: options.message }),
+                isRedacted: () => false,
+                isDecryptionFailure: () => false,
+                isEncrypted: () => false,
+                isState: () => false,
+                replacingEvent: () => null,
+                status: null,
+              },
+            ],
       getState: () => ({
         getStateEvents: (type: string, stateKey?: string) =>
           type === 'm.space.child'
@@ -344,6 +362,63 @@ describe('SelectedRoomLibraryService', () => {
     // Shared SDK events have one listener, rather than one per domain projector.
     expect(a.listenerCount('Room')).toBe(1);
     expect(a.listenerCount()).toBe(9);
+  });
+
+  it('locks a mixed-list room the crypto store of its Account has as encrypted when its state lacks the event', async () => {
+    const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
+    const b = Object.assign(fakeClient('@b:hs', [fakeRoom('!b:hs')]), {
+      getCrypto: () => ({
+        isEncryptionEnabledInRoom: (roomId: string) =>
+          Promise.resolve(roomId === '!b:hs'),
+      }),
+    });
+    const harness = setup({
+      selected: new Set(['@a:hs', '@b:hs']),
+      live: ['@a:hs', '@b:hs'],
+      clients: new Map([
+        ['@a:hs', a],
+        ['@b:hs', b],
+      ]),
+    });
+    const lock = (id: string) =>
+      harness.service.view().rooms.find((room) => room.id === id)?.encrypted;
+
+    await vi.waitFor(() => expect(lock('!b:hs')).toBe(true));
+    expect(lock('!a:hs')).toBe(false);
+  });
+
+  it("previews each Account's rooms by its own crypto store's answer", async () => {
+    const store = (encrypted: readonly string[]) => ({
+      getCrypto: () => ({
+        isEncryptionEnabledInRoom: async (roomId: string) =>
+          encrypted.includes(roomId),
+      }),
+    });
+    const a = Object.assign(
+      fakeClient('@a:hs', [fakeRoom('!stored:hs', { message: 'hello' })]),
+      store(['!stored:hs']),
+    );
+    const b = Object.assign(
+      fakeClient('@b:hs', [fakeRoom('!plain:hs', { message: 'hello' })]),
+      store([]),
+    );
+    const harness = setup({
+      selected: new Set(['@a:hs', '@b:hs']),
+      live: ['@a:hs', '@b:hs'],
+      clients: new Map([
+        ['@a:hs', a],
+        ['@b:hs', b],
+      ]),
+    });
+    const room = (id: string) =>
+      harness.service.view().rooms.find((r) => r.id === id);
+
+    await vi.waitFor(() => {
+      expect(room('!plain:hs')?.lastMessage).toBe('hello');
+      expect(room('!stored:hs')?.lastMessage).toBe(UNENCRYPTED_PREVIEW);
+    });
+    expect(room('!plain:hs')?.encrypted).toBe(false);
+    expect(room('!stored:hs')?.encrypted).toBe(true);
   });
 
   it('takes favourite from the winning Account copy', () => {

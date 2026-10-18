@@ -189,6 +189,7 @@ describe('RoomLibraryService', () => {
     const client = {
       baseUrl: 'https://hs.example',
       getRooms: () => rooms,
+      getCrypto: () => ({ isEncryptionEnabledInRoom: async () => false }),
       on: () => {},
     };
     const { svc } = provideRooms(client);
@@ -1000,7 +1001,7 @@ describe('RoomLibraryService', () => {
     expect(svc.rooms()[0].initial).toBe('G');
   });
 
-  it('previews the most recent message and skips non-message events', () => {
+  it('previews the most recent message and skips non-message events', async () => {
     const svc = setup([
       fakeRoom({
         roomId: '!a:hs',
@@ -1013,7 +1014,10 @@ describe('RoomLibraryService', () => {
         ],
       }),
     ]);
-    expect(svc.rooms()[0].lastMessage).toBe('newest message');
+    // Shown once the crypto store says the room is not encrypted.
+    await vi.waitFor(() =>
+      expect(svc.rooms()[0].lastMessage).toBe('newest message'),
+    );
   });
 
   it('previews a message that arrived unencrypted in an encrypted room as the unencrypted placeholder', () => {
@@ -1022,7 +1026,7 @@ describe('RoomLibraryService', () => {
         roomId: '!e:hs',
         name: 'secret',
         encrypted: true,
-        events: [timelineEvent({ body: 'sign in here' })],
+        events: [timelineEvent({ body: 'hello' })],
       }),
       fakeRoom({
         roomId: '!s:hs',
@@ -1038,7 +1042,7 @@ describe('RoomLibraryService', () => {
     expect(byId['!s:hs']).toBe('see you');
   });
 
-  it("previews what the sender wrote, not someone else's edit of it", () => {
+  it("previews what the sender wrote, not someone else's edit of it", async () => {
     const svc = setup([
       fakeRoom({
         roomId: '!a:hs',
@@ -1048,7 +1052,81 @@ describe('RoomLibraryService', () => {
         ],
       }),
     ]);
-    expect(svc.rooms()[0].lastMessage).toBe('what I said');
+    await vi.waitFor(() =>
+      expect(svc.rooms()[0].lastMessage).toBe('what I said'),
+    );
+  });
+
+  it("previews a room by the crypto store's answer once it has one", async () => {
+    let answer: (encrypted: boolean) => void = () => undefined;
+    const isEncryptionEnabledInRoom = vi.fn(
+      (roomId: string) =>
+        new Promise<boolean>((resolve) => {
+          if (roomId === '!c:hs') answer = resolve;
+          else resolve(false);
+        }),
+    );
+    const { svc } = provideRooms({
+      baseUrl: 'https://hs.example',
+      getRooms: () => [
+        fakeRoom({
+          roomId: '!c:hs',
+          name: 'stored',
+          activity: 3,
+          events: [timelineEvent({ body: 'hello' })],
+        }),
+        fakeRoom({
+          roomId: '!p:hs',
+          name: 'public',
+          activity: 2,
+          events: [timelineEvent({ body: 'hello all' })],
+        }),
+        fakeRoom({
+          roomId: '!e:hs',
+          name: 'state',
+          activity: 1,
+          encrypted: true,
+        }),
+      ],
+      getCrypto: () => ({ isEncryptionEnabledInRoom }),
+      on: () => {},
+    });
+    svc.runProjection().subscribe();
+    const room = (id: string) => svc.rooms().find((r) => r.id === id);
+
+    expect(room('!c:hs')?.lastMessage).toBe('');
+    await vi.waitFor(() =>
+      expect(room('!p:hs')?.lastMessage).toBe('hello all'),
+    );
+    expect(room('!p:hs')?.encrypted).toBe(false);
+    // Unanswered still: no preview yet.
+    expect(room('!c:hs')?.lastMessage).toBe('');
+
+    answer(true);
+    await vi.waitFor(() => expect(room('!c:hs')?.encrypted).toBe(true));
+    expect(room('!c:hs')?.lastMessage).toBe(UNENCRYPTED_PREVIEW);
+    // A room whose state says it is encrypted needs no store read.
+    expect(
+      isEncryptionEnabledInRoom.mock.calls.map(([id]) => id).sort(),
+    ).toEqual(['!c:hs', '!p:hs']);
+  });
+
+  it('marks a message that arrived in clear as unencrypted when there is no crypto store', () => {
+    const { svc } = provideRooms({
+      baseUrl: 'https://hs.example',
+      getRooms: () => [
+        fakeRoom({
+          roomId: '!p:hs',
+          name: 'plain',
+          events: [timelineEvent({ body: 'hello' })],
+        }),
+      ],
+      on: () => {},
+    });
+    svc.runProjection().subscribe();
+
+    expect(svc.rooms()[0]?.lastMessage).toBe(UNENCRYPTED_PREVIEW);
+    expect(svc.rooms()[0]?.encrypted).toBe(false);
   });
 
   it('falls back to an empty preview when a room has no messages', () => {
@@ -1066,6 +1144,93 @@ describe('RoomLibraryService', () => {
     );
     expect(byId['!e:hs']).toBe(true);
     expect(byId['!p:hs']).toBe(false);
+  });
+
+  it('flags a room the crypto store has as encrypted when its state lacks the event', async () => {
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => [
+        fakeRoom({ roomId: '!e:hs', name: 'secret' }),
+        fakeRoom({ roomId: '!p:hs', name: 'public' }),
+      ],
+      getCrypto: () => ({
+        isEncryptionEnabledInRoom: (roomId: string) =>
+          Promise.resolve(roomId === '!e:hs'),
+      }),
+      on: () => {},
+    };
+    const { svc } = provideRooms(client);
+    svc.runProjection().subscribe();
+
+    await vi.waitFor(() =>
+      expect(svc.rooms().find((r) => r.id === '!e:hs')?.encrypted).toBe(true),
+    );
+    expect(svc.rooms().find((r) => r.id === '!p:hs')?.encrypted).toBe(false);
+  });
+
+  it('keeps the lock the room state gives when the crypto store fails to answer', async () => {
+    const isEncryptionEnabledInRoom = vi.fn(() =>
+      Promise.reject(new Error('store unavailable')),
+    );
+    const getRooms = vi.fn(() => [
+      fakeRoom({
+        roomId: '!p:hs',
+        name: 'plain',
+        events: [timelineEvent({ body: 'hello' })],
+      }),
+    ]);
+    const { svc } = provideRooms({
+      baseUrl: 'https://hs.example',
+      getRooms,
+      getCrypto: () => ({ isEncryptionEnabledInRoom }),
+      on: () => {},
+    });
+    svc.runProjection().subscribe();
+    const builds = getRooms.mock.calls.length;
+
+    await vi.waitFor(() =>
+      expect(isEncryptionEnabledInRoom).toHaveBeenCalledWith('!p:hs'),
+    );
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(svc.rooms()[0]?.encrypted).toBe(false);
+    // Unanswered: the message that arrived in clear shows no preview.
+    expect(svc.rooms()[0]?.lastMessage).toBe('');
+    expect(getRooms.mock.calls.length).toBe(builds);
+  });
+
+  it('rebuilds the list once for the crypto store answers, and not at all for rooms whose state already shows the lock', async () => {
+    const run = async (stateEncrypted: boolean, stored: boolean) => {
+      TestBed.resetTestingModule();
+      const rooms = Array.from({ length: 20 }, (_, i) =>
+        fakeRoom({
+          roomId: `!r${i}:hs`,
+          name: `r${i}`,
+          encrypted: stateEncrypted,
+        }),
+      );
+      const getRooms = vi.fn(() => rooms);
+      const { svc } = provideRooms({
+        baseUrl: 'https://hs.example',
+        getRooms,
+        getCrypto: () => ({
+          isEncryptionEnabledInRoom: () => Promise.resolve(stored),
+        }),
+        on: () => {},
+      });
+      svc.runProjection().subscribe();
+      const initial = getRooms.mock.calls.length;
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve));
+      expect(
+        svc.rooms().every((r) => r.encrypted === (stateEncrypted || stored)),
+      ).toBe(true);
+      return getRooms.mock.calls.length - initial;
+    };
+
+    expect(await run(true, true)).toBe(0);
+    expect(await run(false, true)).toBe(1);
+    // An unencrypted answer settles the preview, so it rebuilds too.
+    expect(await run(false, false)).toBe(1);
   });
 
   it('flags a room carrying the m.favourite tag as favourite', () => {

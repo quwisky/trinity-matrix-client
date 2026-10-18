@@ -344,6 +344,17 @@ describe('per-message authenticity shields', () => {
       );
     });
 
+    it('counts the open room as encrypted for sends when only the crypto store knows it', async () => {
+      const { svc } = openWithEvents(
+        vi.fn(),
+        [fakeEvent({ id: '$plain', sender: '@a:hs', body: 'hi' })],
+        false,
+        true,
+      );
+
+      await vi.waitFor(() => expect(svc.roomEncrypted).toBe(true));
+    });
+
     it('marks nothing when neither the state nor the store says the room is encrypted', async () => {
       const { svc } = openWithEvents(
         vi.fn(),

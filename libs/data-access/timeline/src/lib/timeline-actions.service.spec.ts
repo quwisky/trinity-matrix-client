@@ -1,6 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { firstValueFrom, of } from 'rxjs';
+import type { MatrixClient, Room } from 'matrix-js-sdk';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MediaService } from '@trinity/data-access/media';
+import { ConversationActionContextService } from './conversation-action-context.service';
+import { TimelineActionsService } from './timeline-actions.service';
 import {
   fakeEdit,
   fakeEvent,
@@ -258,5 +262,72 @@ describe('TimelineActionsService', () => {
     expect(sent.find((c) => c[0] === 'event')?.[1]).toBe(
       'org.matrix.msc3381.poll.end',
     );
+  });
+});
+
+describe('TimelineActionsService voice clips', () => {
+  const recording = {
+    blob: new Blob([new Uint8Array([1])], { type: 'audio/webm' }),
+    durationMs: 1000,
+    waveform: [1],
+    mimeType: 'audio/webm',
+  };
+
+  function setupVoice(
+    crypto: {
+      isEncryptionEnabledInRoom: () => Promise<boolean>;
+    } | null,
+  ) {
+    const uploadMedia = vi.fn((_file: File, _encrypt: boolean) =>
+      of({
+        msgtype: 'm.audio',
+        body: 'voice-message.webm',
+        mxc: 'mxc://hs/voice',
+        info: { mimetype: 'audio/webm', size: 1 },
+      }),
+    );
+    const client = {
+      getCrypto: () => crypto ?? undefined,
+      sendMessage: vi.fn(() => Promise.resolve({ event_id: '$voice' })),
+    };
+    const room = { roomId: '!r:hs', hasEncryptionStateEvent: () => false };
+    TestBed.configureTestingModule({
+      providers: [{ provide: MediaService, useValue: { uploadMedia } }],
+    });
+    TestBed.inject(ConversationActionContextService).bind(() => ({
+      client: client as unknown as MatrixClient,
+      room: room as unknown as Room,
+    }));
+    return { svc: TestBed.inject(TimelineActionsService), uploadMedia, client };
+  }
+
+  it('encrypts a clip for a room the crypto store has as encrypted when its state lacks the event', async () => {
+    const { svc, uploadMedia } = setupVoice({
+      isEncryptionEnabledInRoom: () => Promise.resolve(true),
+    });
+
+    await firstValueFrom(svc.sendVoiceMessage(recording));
+
+    expect(uploadMedia).toHaveBeenCalledWith(expect.any(File), true);
+  });
+
+  it('encrypts a clip when the crypto store fails to answer', async () => {
+    const { svc, uploadMedia } = setupVoice({
+      isEncryptionEnabledInRoom: () => Promise.reject(new Error('store')),
+    });
+
+    await firstValueFrom(svc.sendVoiceMessage(recording));
+
+    expect(uploadMedia).toHaveBeenCalledWith(expect.any(File), true);
+  });
+
+  it('refuses to upload a clip when the crypto store is unavailable', async () => {
+    const { svc, uploadMedia, client } = setupVoice(null);
+
+    await expect(
+      firstValueFrom(svc.sendVoiceMessage(recording)),
+    ).rejects.toThrow();
+    expect(uploadMedia).not.toHaveBeenCalled();
+    expect(client.sendMessage).not.toHaveBeenCalled();
   });
 });

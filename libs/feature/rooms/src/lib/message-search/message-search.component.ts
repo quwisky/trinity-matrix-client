@@ -141,7 +141,12 @@ export class MessageSearchComponent {
     return this.search.searchLoaded(this.query());
   });
 
-  readonly encrypted = computed(() => this.loaded().encrypted);
+  /** The room the server search found encrypted where the loaded view did not. */
+  private readonly serverRefusedRoom = signal<string | null>(null);
+
+  readonly encrypted = computed(
+    () => this.loaded().encrypted || this.serverRefusedRoom() === this.roomId(),
+  );
   readonly scanned = computed(() => this.loaded().scanned);
 
   readonly results = computed<readonly MessageHit[]>(() =>
@@ -174,6 +179,11 @@ export class MessageSearchComponent {
       error: this.error,
       destroyRef: this.destroyRef,
     }).subscribe((page) => {
+      if (page.encrypted) {
+        this.serverRefusedRoom.set(this.roomId());
+        this.serverMode.set(false);
+        return;
+      }
       this.serverHits.set(page.hits);
       this.serverCount.set(page.count);
       this.serverNextBatch.set(page.nextBatch);

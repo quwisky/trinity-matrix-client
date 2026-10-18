@@ -5,8 +5,28 @@ import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { UrlPreviewService } from './url-preview.service';
 
-function setup(getUrlPreview = vi.fn()) {
-  const instance = { getUrlPreview };
+function setup(
+  getUrlPreview = vi.fn(),
+  rooms: {
+    stateEncrypted?: boolean;
+    crypto?: { isEncryptionEnabledInRoom: () => Promise<boolean> } | null;
+  } = {},
+) {
+  const crypto =
+    rooms.crypto === undefined
+      ? { isEncryptionEnabledInRoom: () => Promise.resolve(false) }
+      : rooms.crypto;
+  const instance = {
+    getUrlPreview,
+    getRoom: (roomId: string) =>
+      roomId === '!r:hs'
+        ? {
+            roomId,
+            hasEncryptionStateEvent: () => rooms.stateEncrypted ?? false,
+          }
+        : null,
+    getCrypto: () => crypto ?? undefined,
+  };
   TestBed.configureTestingModule({
     providers: [
       UrlPreviewService,
@@ -125,6 +145,70 @@ describe('UrlPreviewService', () => {
       const { svc } = setup(vi.fn().mockRejectedValue(new Error('temporary')));
       await firstValueFrom(svc.preview('https://x.test'));
       expect(svc.supported()).toBeNull();
+    });
+  });
+
+  describe('previewIfUnencrypted', () => {
+    const ok = () => vi.fn().mockResolvedValue({ 'og:title': 'Example' });
+
+    it('fetches once the room state and the crypto store both say unencrypted', async () => {
+      const { svc, getUrlPreview } = setup(ok());
+
+      expect(
+        await firstValueFrom(
+          svc.previewIfUnencrypted('https://example.com', '!r:hs'),
+        ),
+      ).toMatchObject({ title: 'Example' });
+      expect(getUrlPreview).toHaveBeenCalled();
+    });
+
+    it('does not ask the homeserver for a room the crypto store has as encrypted when its state lacks the event', async () => {
+      const { svc, getUrlPreview } = setup(ok(), {
+        crypto: { isEncryptionEnabledInRoom: () => Promise.resolve(true) },
+      });
+
+      expect(
+        await firstValueFrom(
+          svc.previewIfUnencrypted('https://example.com', '!r:hs'),
+        ),
+      ).toBeNull();
+      expect(getUrlPreview).not.toHaveBeenCalled();
+    });
+
+    it('does not ask the homeserver when the crypto store is unavailable', async () => {
+      const { svc, getUrlPreview } = setup(ok(), { crypto: null });
+
+      expect(
+        await firstValueFrom(
+          svc.previewIfUnencrypted('https://example.com', '!r:hs'),
+        ),
+      ).toBeNull();
+      expect(getUrlPreview).not.toHaveBeenCalled();
+    });
+
+    it('does not ask the homeserver for a room it cannot find', async () => {
+      const { svc, getUrlPreview } = setup(ok());
+
+      for (const roomId of ['!gone:hs', null]) {
+        expect(
+          await firstValueFrom(
+            svc.previewIfUnencrypted('https://example.com', roomId),
+          ),
+        ).toBeNull();
+      }
+      expect(getUrlPreview).not.toHaveBeenCalled();
+    });
+
+    it('does not serve a cached preview to a room that turned out encrypted', async () => {
+      const { svc, getUrlPreview } = setup(ok(), { stateEncrypted: true });
+      await firstValueFrom(svc.preview('https://example.com'));
+
+      expect(
+        await firstValueFrom(
+          svc.previewIfUnencrypted('https://example.com', '!r:hs'),
+        ),
+      ).toBeNull();
+      expect(getUrlPreview).toHaveBeenCalledTimes(1);
     });
   });
 });

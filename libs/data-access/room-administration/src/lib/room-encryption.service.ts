@@ -10,7 +10,7 @@ import {
   throwError,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { roomEncryptionContent } from '@trinity/util/matrix';
+import { isRoomEncrypted, roomEncryptionContent } from '@trinity/util/matrix';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 import {
   RoomAdministrationError,
@@ -35,8 +35,9 @@ export class RoomEncryptionService {
 
   /**
    * Send `m.room.encryption` with the same Megolm content new rooms get. Cold: runs on
-   * subscribe. Errors without sending when the room is already encrypted (by synced state or
-   * the server's), a request is in flight, the account is gone or the role does not allow it.
+   * subscribe. Errors without sending when the room is already encrypted (by synced state, the
+   * crypto store or the server's), a request is in flight, the account is gone or the role
+   * does not allow it.
    */
   turnOn(target: RoomSettingsTarget): Observable<void> {
     return defer(() => {
@@ -64,8 +65,14 @@ export class RoomEncryptionService {
         );
       }
       this.sending.add(key);
-      // Sync can miss the event (Tuwunel's state_after race), so the server decides too.
-      return from(serverHasEncryption(client, target.roomId)).pipe(
+      // Sync can miss the event (Tuwunel's state_after race), so the crypto store and the
+      // server decide too; a store that cannot answer counts as encrypted.
+      return from(isRoomEncrypted(room, client.getCrypto?.())).pipe(
+        switchMap((storeEncrypted) =>
+          storeEncrypted
+            ? Promise.resolve(true)
+            : serverHasEncryption(client, target.roomId),
+        ),
         switchMap((encrypted) => {
           if (encrypted) return throwError(() => alreadyEncrypted());
           return from(

@@ -33,7 +33,7 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { withoutImageMetadata } from '@trinity/data-access/media';
 import type { RoomJoinRulesEventContent } from 'matrix-js-sdk/lib/@types/state_events';
-import { liveRoomState } from '@trinity/util/matrix';
+import { isRoomEncrypted, liveRoomState } from '@trinity/util/matrix';
 import {
   RoomActionPermissionsService,
   type RoomSettingsPermissions,
@@ -128,6 +128,11 @@ export class RoomSettingsService {
   private readonly matrix = inject(MatrixClientService);
   private readonly permissions = inject(RoomActionPermissionsService);
   private readonly injector = inject(Injector);
+  /** Per client and room: the shared room-encrypted check's latest answer. */
+  private readonly encryptionAnswers = new WeakMap<
+    MatrixClient,
+    Map<string, boolean>
+  >();
 
   /** Rename the room (`m.room.name`). Cold — runs on subscribe. */
   setName(target: RoomSettingsTargetInput, name: string): Observable<void> {
@@ -387,6 +392,13 @@ export class RoomSettingsService {
     const client = this.matrix.clientFor(target.accountId);
     const room = client?.getRoom(target.roomId) ?? null;
     const joined = room?.getMyMembership() === KnownMembership.Join;
+    // Unknown (null) until the crypto store has answered, so Turn on is never offered for a
+    // room it may know is encrypted.
+    const encrypted =
+      client && room
+        ? room.hasEncryptionStateEvent() ||
+          (this.encryptionAnswersFor(client).get(room.roomId) ?? null)
+        : null;
     const availability: RoomSettingsAvailability = !client
       ? 'account-unavailable'
       : !room || !joined
@@ -405,13 +417,25 @@ export class RoomSettingsService {
       identity: this.currentIdentity(target),
       access: this.currentAccess(target),
       permissions: this.permissions.settingsFor(target),
-      encrypted: room ? room.hasEncryptionStateEvent() : null,
+      encrypted,
       supportsRestricted: this.supportsRestricted(target),
-      advanced: roomAdvancedInfo(
-        target.roomId,
-        room ? liveRoomState(room) : undefined,
-      ),
+      advanced: {
+        ...roomAdvancedInfo(
+          target.roomId,
+          room ? liveRoomState(room) : undefined,
+        ),
+        encrypted: encrypted === true,
+      },
     };
+  }
+
+  private encryptionAnswersFor(client: MatrixClient): Map<string, boolean> {
+    let answers = this.encryptionAnswers.get(client);
+    if (!answers) {
+      answers = new Map();
+      this.encryptionAnswers.set(client, answers);
+    }
+    return answers;
   }
 
   /**
@@ -465,6 +489,13 @@ export class RoomSettingsService {
       client.on(RoomStateEvent.Events, onState);
       client.on(ClientEvent.Sync, publish);
       publish();
+      const room = client.getRoom(target.roomId);
+      if (room) {
+        void isRoomEncrypted(room, client.getCrypto?.()).then((encrypted) => {
+          this.encryptionAnswersFor(client).set(target.roomId, encrypted);
+          if (!subscriber.closed) publish();
+        });
+      }
       return () => {
         client.off(RoomStateEvent.Events, onState);
         client.off(ClientEvent.Sync, publish);

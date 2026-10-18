@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RoomEncryptionFlags } from './room-encryption';
+import { RoomEncryptionFlags, isRoomEncrypted } from './room-encryption';
 
 const room = (stateSaysEncrypted: boolean, roomId = '!r:hs') => ({
   roomId,
@@ -70,6 +70,19 @@ describe('RoomEncryptionFlags', () => {
     expect(flags.isEncrypted(room(false, '!b:hs'))).toBe(false);
   });
 
+  it('reports nothing and keeps the room state when the store rejects', async () => {
+    const flags = new RoomEncryptionFlags();
+    const crypto = {
+      isEncryptionEnabledInRoom: vi
+        .fn()
+        .mockRejectedValue(new Error('store unavailable')),
+    };
+
+    await expect(flags.refresh(crypto, '!r:hs')).resolves.toBe(false);
+    expect(flags.isEncrypted(room(false))).toBe(false);
+    expect(flags.isEncrypted(room(true))).toBe(true);
+  });
+
   it('asks again after a failed or unavailable store, rather than caching the gap', async () => {
     const flags = new RoomEncryptionFlags();
     const crypto = {
@@ -84,5 +97,52 @@ describe('RoomEncryptionFlags', () => {
     await expect(flags.refresh(crypto, '!r:hs')).resolves.toBe(true);
 
     expect(flags.isEncrypted(room(false))).toBe(true);
+  });
+});
+
+describe('isRoomEncrypted', () => {
+  const answers = (encrypted: boolean) => ({
+    isEncryptionEnabledInRoom: vi.fn().mockResolvedValue(encrypted),
+  });
+
+  it('takes the room state without asking the crypto store', async () => {
+    const crypto = answers(false);
+
+    await expect(isRoomEncrypted(room(true), crypto)).resolves.toBe(true);
+    expect(crypto.isEncryptionEnabledInRoom).not.toHaveBeenCalled();
+  });
+
+  it('counts a room the crypto store reports as encrypted when its state lacks the event', async () => {
+    const crypto = answers(true);
+
+    await expect(isRoomEncrypted(room(false), crypto)).resolves.toBe(true);
+    expect(crypto.isEncryptionEnabledInRoom).toHaveBeenCalledWith('!r:hs');
+  });
+
+  it('counts a room the flags already hold as encrypted', async () => {
+    const flags = new RoomEncryptionFlags();
+    await flags.refresh(answers(true), '!r:hs');
+
+    await expect(
+      isRoomEncrypted(room(false), answers(false), flags),
+    ).resolves.toBe(true);
+  });
+
+  it('is unencrypted only when the state and the crypto store both say so', async () => {
+    await expect(isRoomEncrypted(room(false), answers(false))).resolves.toBe(
+      false,
+    );
+  });
+
+  it('counts the room as encrypted when there is no crypto store or it fails to answer', async () => {
+    const failing = {
+      isEncryptionEnabledInRoom: vi
+        .fn()
+        .mockRejectedValue(new Error('store unavailable')),
+    };
+
+    await expect(isRoomEncrypted(room(false), null)).resolves.toBe(true);
+    await expect(isRoomEncrypted(room(false), undefined)).resolves.toBe(true);
+    await expect(isRoomEncrypted(room(false), failing)).resolves.toBe(true);
   });
 });

@@ -44,8 +44,14 @@ function setup() {
       return undefined;
     }),
   };
+  const crypto = {
+    isEncryptionEnabledInRoom: vi.fn((_roomId: string) =>
+      Promise.resolve(false),
+    ),
+  };
   const client = {
     getUserId: (): string => KEY.accountId,
+    getCrypto: vi.fn((): typeof crypto | undefined => crypto),
     getRoom: vi.fn(() => room),
     makeTxnId: vi.fn(() => 'txn-1'),
     sendMessage: vi.fn((_roomId: string, _content: unknown, _txnId: string) =>
@@ -94,6 +100,7 @@ function setup() {
     client,
     matrix,
     room,
+    crypto,
     pendingEcho,
   };
 }
@@ -140,6 +147,84 @@ describe('MediaPipeline', () => {
       expect.objectContaining({ file: expect.any(Object) }),
       'txn-1',
     );
+  });
+
+  it('encrypts the upload when the crypto store has the room as encrypted but its state lacks the event', async () => {
+    const { pipeline, bytes, room, crypto } = setup();
+    room.hasEncryptionStateEvent.mockReturnValue(false);
+    crypto.isEncryptionEnabledInRoom.mockResolvedValue(true);
+    const staged = pipeline.stage(new File([new Uint8Array([1])], 'a.png'));
+    if (staged.kind !== 'staged') return;
+
+    await firstValueFrom(
+      pipeline
+        .transfer({ key: KEY, media: staged.media, caption: '' })
+        .pipe(toArray()),
+    );
+
+    expect(crypto.isEncryptionEnabledInRoom).toHaveBeenCalledWith(KEY.roomId);
+    expect(bytes.uploadMedia).toHaveBeenCalledWith(
+      expect.any(File),
+      true,
+      expect.any(Function),
+      expect.any(AbortController),
+      expect.anything(),
+      undefined,
+      'strip',
+    );
+  });
+
+  it('uploads in the clear only when the room state and the crypto store both say unencrypted', async () => {
+    const { pipeline, bytes, room } = setup();
+    room.hasEncryptionStateEvent.mockReturnValue(false);
+    const staged = pipeline.stage(new File([new Uint8Array([1])], 'a.png'));
+    if (staged.kind !== 'staged') return;
+
+    await firstValueFrom(
+      pipeline
+        .transfer({ key: KEY, media: staged.media, caption: '' })
+        .pipe(toArray()),
+    );
+
+    expect(bytes.uploadMedia.mock.calls[0]?.[1]).toBe(false);
+  });
+
+  it('encrypts the upload when the crypto store fails to answer', async () => {
+    const { pipeline, bytes, room, crypto } = setup();
+    room.hasEncryptionStateEvent.mockReturnValue(false);
+    crypto.isEncryptionEnabledInRoom.mockRejectedValue(new Error('store'));
+    const staged = pipeline.stage(new File([new Uint8Array([1])], 'a.png'));
+    if (staged.kind !== 'staged') return;
+
+    await firstValueFrom(
+      pipeline
+        .transfer({ key: KEY, media: staged.media, caption: '' })
+        .pipe(toArray()),
+    );
+
+    expect(bytes.uploadMedia.mock.calls[0]?.[1]).toBe(true);
+  });
+
+  it('refuses to upload when the crypto store is unavailable', async () => {
+    const { pipeline, bytes, client, room } = setup();
+    room.hasEncryptionStateEvent.mockReturnValue(false);
+    client.getCrypto.mockReturnValue(undefined);
+    const staged = pipeline.stage(new File([new Uint8Array([1])], 'a.png'));
+    if (staged.kind !== 'staged') return;
+
+    const events = await firstValueFrom(
+      pipeline
+        .transfer({ key: KEY, media: staged.media, caption: '' })
+        .pipe(toArray()),
+    );
+
+    expect(events.at(-1)).toEqual({
+      kind: 'rejected',
+      failure: 'send-rejected',
+      retryable: true,
+    });
+    expect(bytes.uploadMedia).not.toHaveBeenCalled();
+    expect(client.sendMessage).not.toHaveBeenCalled();
   });
 
   it('sends staged media to the exact thread root through the SDK thread overload', async () => {
@@ -533,7 +618,7 @@ describe('MediaPipeline', () => {
     expect(client.sendMessage).not.toHaveBeenCalled();
   });
 
-  it('aborts an in-flight upload on unsubscribe and keeps the staged reference retryable', () => {
+  it('aborts an in-flight upload on unsubscribe and keeps the staged reference retryable', async () => {
     const { pipeline, bytes } = setup();
     let controller: AbortController | undefined;
     bytes.uploadMedia.mockImplementation(
@@ -548,6 +633,7 @@ describe('MediaPipeline', () => {
     const subscription = pipeline
       .transfer({ key: KEY, media: staged.media, caption: '' })
       .subscribe();
+    await vi.waitFor(() => expect(bytes.uploadMedia).toHaveBeenCalled());
     subscription.unsubscribe();
 
     expect(controller?.signal.aborted).toBe(true);
@@ -572,6 +658,7 @@ describe('MediaPipeline', () => {
     const subscription = pipeline
       .transfer({ key: KEY, media: staged.media, caption: '' })
       .subscribe();
+    await vi.waitFor(() => expect(client.sendMessage).toHaveBeenCalled());
     subscription.unsubscribe();
     const retry = await firstValueFrom(
       pipeline

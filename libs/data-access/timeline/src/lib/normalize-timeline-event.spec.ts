@@ -9,6 +9,7 @@ const client = {
 } as unknown as MatrixClient;
 
 const room = {
+  roomId: '!room:example.org',
   getMember: (userId: string) =>
     userId === '@alice:example.org'
       ? {
@@ -134,6 +135,7 @@ describe('normalizeTimelineEvent', () => {
       messageKind: 'text',
       body: 'hello',
       roomEncrypted: true,
+      roomId: '!room:example.org',
     });
     expect(Object.isFrozen(normalized)).toBe(true);
     if (normalized) {

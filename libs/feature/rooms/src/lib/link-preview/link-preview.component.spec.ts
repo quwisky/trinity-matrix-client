@@ -26,6 +26,7 @@ async function build(
     url?: string;
     enabled?: boolean;
     encrypted?: boolean;
+    roomId?: string | null;
     encryptedEnabled?: boolean;
     result?: UrlPreview | null;
     resolveImage?: string | null;
@@ -34,14 +35,19 @@ async function build(
   const result: UrlPreview | null =
     'result' in opts ? (opts.result ?? null) : preview();
   const previewFn = vi.fn(() => of(result));
+  const unencryptedFn = vi.fn(() => of(result));
   const resolver = vi.fn(() => of(opts.resolveImage ?? null));
   const { fixture, container } = await render(LinkPreviewComponent, {
     inputs: {
       url: opts.url ?? 'https://example.com',
       encrypted: opts.encrypted ?? false,
+      roomId: 'roomId' in opts ? (opts.roomId ?? null) : '!r:hs',
     },
     providers: [
-      MockProvider(UrlPreviewService, { preview: previewFn }),
+      MockProvider(UrlPreviewService, {
+        preview: previewFn,
+        previewIfUnencrypted: unencryptedFn,
+      }),
       MockProvider(PrivacySettingsService, {
         linkPreviews: signal(opts.enabled ?? true).asReadonly(),
         linkPreviewsInEncrypted: signal(
@@ -51,7 +57,13 @@ async function build(
       { provide: AVATAR_RESOLVER, useValue: resolver },
     ],
   });
-  return { cmp: fixture.componentInstance, container, previewFn, resolver };
+  return {
+    cmp: fixture.componentInstance,
+    container,
+    previewFn,
+    unencryptedFn,
+    resolver,
+  };
 }
 
 describe('LinkPreviewComponent', () => {
@@ -66,8 +78,20 @@ describe('LinkPreviewComponent', () => {
   });
 
   it('renders nothing when link previews are turned off (no fetch)', async () => {
-    const { container, previewFn } = await build({ enabled: false });
+    const { container, previewFn, unencryptedFn } = await build({
+      enabled: false,
+    });
     expect(container.querySelector('[data-testid=link-preview]')).toBeNull();
+    expect(previewFn).not.toHaveBeenCalled();
+    expect(unencryptedFn).not.toHaveBeenCalled();
+  });
+
+  it('asks only once its room is confirmed unencrypted without the encrypted-rooms opt-in', async () => {
+    const { previewFn, unencryptedFn } = await build({ roomId: '!plain:hs' });
+    expect(unencryptedFn).toHaveBeenCalledWith(
+      'https://example.com',
+      '!plain:hs',
+    );
     expect(previewFn).not.toHaveBeenCalled();
   });
 
@@ -77,11 +101,12 @@ describe('LinkPreviewComponent', () => {
   });
 
   it('does not fetch for an encrypted message without the encrypted-rooms opt-in', async () => {
-    const { container, previewFn } = await build({
+    const { container, previewFn, unencryptedFn } = await build({
       encrypted: true,
       encryptedEnabled: false,
     });
     expect(previewFn).not.toHaveBeenCalled();
+    expect(unencryptedFn).not.toHaveBeenCalled();
     expect(container.querySelector('[data-testid=link-preview]')).toBeNull();
   });
 
