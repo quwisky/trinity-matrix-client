@@ -98,10 +98,7 @@ describe('BlockedUsersComponent', () => {
     screen.getByRole('button', { name: 'Unblock Bob' }).click();
 
     expect(unignore).toHaveBeenCalledExactlyOnceWith('@bob:hs');
-    expect(show).toHaveBeenCalledWith(
-      'Unblocked Bob. Their earlier messages appear after you reload.',
-      expect.anything(),
-    );
+    expect(show).toHaveBeenCalledWith('Unblocked Bob.', expect.anything());
   });
 
   it('explains a failed unblock', async () => {

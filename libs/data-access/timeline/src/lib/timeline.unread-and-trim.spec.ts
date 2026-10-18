@@ -229,3 +229,53 @@ describe('trimming the open room (#1366)', () => {
     expect(svc.liveTrimGuard()).toBeNull();
   });
 });
+
+describe('paging a rewound room back in', () => {
+  /** A room with `history` messages whose live timeline was rewound to empty after opening. */
+  function rewound(history: number) {
+    const all = Array.from({ length: history }, (_, i) =>
+      fakeEvent({ id: `$${i + 1}`, sender: '@alice:hs', body: `${i + 1}` }),
+    );
+    const events = all.slice(-5);
+    const room = fakeRoom(events);
+    const client = fakeClient(room, []);
+    const scrollback = vi.fn(async () => {
+      const end = history - events.length;
+      events.unshift(...all.slice(Math.max(0, end - 30), end));
+      return room;
+    });
+    client.scrollback = scrollback;
+    TestBed.configureTestingModule({
+      providers: [TimelineService, matrixProvider(client), mediaProvider()],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+    events.length = 0;
+    return { svc, scrollback };
+  }
+
+  it('shows the open room rewound at once, then pages it back to about its depth', async () => {
+    const { svc, scrollback } = rewound(100);
+
+    const refilled = firstValueFrom(svc.refill(50));
+    expect(svc.messages()).toEqual([]);
+    expect(svc.loadingOlder()).toBe(true);
+    await refilled;
+
+    expect(scrollback).toHaveBeenCalledTimes(2);
+    expect(svc.messages().map((message) => message.id)).toEqual(
+      Array.from({ length: 60 }, (_, i) => `$${i + 41}`),
+    );
+    expect(svc.loadingOlder()).toBe(false);
+  });
+
+  it('pages one page back in while the Conversation is retained', async () => {
+    const { svc, scrollback } = rewound(100);
+    svc.setVisible(false);
+
+    await firstValueFrom(svc.refill(50));
+
+    expect(scrollback).toHaveBeenCalledOnce();
+    expect(svc.messages()).toHaveLength(30);
+  });
+});

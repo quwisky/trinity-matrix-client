@@ -23,6 +23,7 @@ import {
 //   confirmation offers "Leave room";
 // - a user, from their member card (ContentReportingService.reportUser), whose
 //   confirmation offers "Block {name}".
+//   Unblocking them from the card shows what they sent while blocked, with no reload.
 const session = homeserverSession();
 
 const auth = (account: AccountSession) => ({
@@ -136,11 +137,8 @@ test.describe('Report to your server admins', () => {
     page,
     request,
   }) => {
-    const { hs, user, pass, roomName, otherName } = await setUp(
-      request,
-      'u',
-      true,
-    );
+    const { hs, runId, user, pass, other, roomName, otherName, room_id } =
+      await setUp(request, 'u', true);
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
@@ -164,6 +162,24 @@ test.describe('Report to your server admins', () => {
     await expect(card.getByTestId('member-info-ignore')).toHaveText('Unblock', {
       timeout: 30_000,
     });
+
+    // A message sent while blocked shows once they are unblocked from the card, with no reload.
+    const whileBlocked = `while blocked ${runId}`;
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/${runId}wb`,
+      {
+        headers: auth(other!),
+        data: { msgtype: 'm.text', body: whileBlocked },
+      },
+    );
+    await card.getByTestId('member-info-ignore').click();
+    await expect(page.getByTestId('member-info-block-notice')).toHaveText(
+      'Unblocked.',
+      { timeout: 30_000 },
+    );
+    await expect(
+      page.locator('.scroll .msg[data-mid]', { hasText: whileBlocked }).first(),
+    ).toBeVisible({ timeout: 30_000 });
   });
 
   test("says when the server doesn't take room reports, and stops offering them", async ({

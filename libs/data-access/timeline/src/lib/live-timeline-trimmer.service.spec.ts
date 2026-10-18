@@ -10,6 +10,7 @@ import {
   createClient,
   type MatrixClient,
 } from 'matrix-js-sdk';
+import { EMPTY } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ConversationRuntime } from './conversation-runtime.service';
@@ -17,6 +18,7 @@ import { TRIM_HIGH_WATER, TRIM_KEEP } from './live-timeline-trim';
 import { LiveTimelineTrimmer } from './live-timeline-trimmer.service';
 
 const ALICE = '@alice:hs';
+const MALLORY = '@mallory:hs';
 
 function message(roomId: string, n: number): MatrixEvent {
   return new MatrixEvent({
@@ -47,6 +49,7 @@ function setup() {
   const held = new Set(['!open:hs']);
   const errors = { handleError: vi.fn() };
   const trimHeld = vi.fn();
+  const refillHeld = vi.fn(() => EMPTY);
   const windowHidden = signal(false);
   const focused = signal<{ key: { accountId: string; roomId: string } } | null>(
     { key: { accountId: ALICE, roomId: '!open:hs' } },
@@ -66,6 +69,7 @@ function setup() {
           holds: (accountId: string, roomId: string) =>
             accountId === ALICE && held.has(roomId),
           trimHeld,
+          refillHeld,
           windowHidden: windowHidden.asReadonly(),
           focused: focused.asReadonly(),
         },
@@ -99,6 +103,7 @@ function setup() {
     held,
     errors,
     trimHeld,
+    refillHeld,
     windowHidden,
     sync,
     loaded,
@@ -283,5 +288,93 @@ describe('LiveTimelineTrimmer', () => {
     expect(errors.handleError).toHaveBeenCalledOnce();
     expect(errors.handleError).toHaveBeenCalledWith(failure);
     running.unsubscribe();
+  });
+
+  describe('after an unblock', () => {
+    const ignoring = (...userIds: string[]) =>
+      new MatrixEvent({
+        type: EventType.IgnoredUserList,
+        content: {
+          ignored_users: Object.fromEntries(userIds.map((id) => [id, {}])),
+        },
+      });
+
+    function started() {
+      const context = setup();
+      const { client, trimmer, accountIds } = context;
+      const busy = client.getRoom('!busy:hs')!;
+      busy.currentState.setStateEvents([
+        new MatrixEvent({
+          type: EventType.RoomMember,
+          event_id: '$mallory-join',
+          room_id: busy.roomId,
+          sender: MALLORY,
+          state_key: MALLORY,
+          content: { membership: 'join' },
+        }),
+      ]);
+      const page = vi
+        .spyOn(client, 'createMessagesRequest')
+        .mockResolvedValue({ chunk: [], start: 's' });
+      const running = trimmer.run().subscribe();
+      accountIds.set([ALICE]);
+      TestBed.tick();
+      const timelines = () =>
+        new Map(
+          client
+            .getRooms()
+            .map((room) => [room.roomId, room.getLiveTimeline()]),
+        );
+      return { ...context, page, running, timelines };
+    }
+
+    it('rewinds the rooms the person may have written in, once, at the next sync', async () => {
+      const { client, refillHeld, page, running, sync, loaded, timelines } =
+        started();
+      await sync();
+      client.emit(ClientEvent.AccountData, ignoring(), ignoring(MALLORY));
+      const before = timelines();
+      expect(loaded('!busy:hs')).toBe(10);
+
+      await sync();
+
+      const after = timelines();
+      expect(after.get('!quiet:hs')).toBe(before.get('!quiet:hs'));
+      expect(loaded('!busy:hs')).toBe(0);
+      expect(loaded('!open:hs')).toBe(0);
+      expect(
+        after.get('!open:hs')!.getPaginationToken(Direction.Backward),
+      ).toBe('s20');
+      expect(page).toHaveBeenCalledExactlyOnceWith(
+        '!busy:hs',
+        's20',
+        30,
+        Direction.Backward,
+      );
+      expect(refillHeld).toHaveBeenCalledExactlyOnceWith(ALICE, '!open:hs', 20);
+
+      await sync();
+      expect(page).toHaveBeenCalledOnce();
+      expect(refillHeld).toHaveBeenCalledOnce();
+      running.unsubscribe();
+    });
+
+    it('rewinds nothing for a block, the list as first loaded, or an unblock the server never echoed', async () => {
+      const { client, refillHeld, page, running, sync, timelines } = started();
+      client.emit(ClientEvent.AccountData, ignoring(MALLORY), undefined);
+      client.emit(
+        ClientEvent.AccountData,
+        ignoring(MALLORY, '@eve:hs'),
+        ignoring(MALLORY),
+      );
+      const before = timelines();
+
+      await sync();
+
+      expect(timelines()).toEqual(before);
+      expect(page).not.toHaveBeenCalled();
+      expect(refillHeld).not.toHaveBeenCalled();
+      running.unsubscribe();
+    });
   });
 });

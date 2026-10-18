@@ -676,6 +676,36 @@ export class TimelineService {
   }
 
   /**
+   * Page the room back in after its live timeline was rewound to empty: to about `depth`
+   * events while the Conversation is shown, at least one page; one page while it is
+   * retained. The view shows the rewound timeline at once, so it ends at the newest
+   * message. Cold.
+   */
+  refill(depth: number): Observable<void> {
+    return defer(() => {
+      const room = this.room;
+      const client = this.connectedClient;
+      if (!room || !client) return of(void 0);
+      const target = this.visible ? depth : 1;
+      this.refresh();
+      this._loadingOlder.set(true);
+      return from(
+        this.pageBackLoop(
+          client,
+          room,
+          () => room.getLiveTimeline().getEvents().length >= target,
+        ),
+      ).pipe(
+        finalize(() => {
+          this._loadingOlder.set(false);
+          this.refresh();
+        }),
+        map(() => void 0),
+      );
+    });
+  }
+
+  /**
    * Page history back until `eventId` is in the live timeline, so a jump to a pinned or
    * searched message that was never loaded has an element to scroll to. Emits whether it
    * is now loaded; bounded by {@link MAX_JUMP_PAGES}, like a date jump. Cold.

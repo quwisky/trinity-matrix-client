@@ -148,12 +148,7 @@ export class BlockedUsersComponent {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        // The server does not resend what it hid, so their earlier messages need a reload.
-        next: () =>
-          this.toast.show(
-            `Unblocked ${name}. Their earlier messages appear after you reload.`,
-            { duration: 5000 },
-          ),
+        next: () => this.toast.show(`Unblocked ${name}.`, { duration: 5000 }),
         error: () =>
           this.toast.show(`Couldn't unblock ${name}. Try again.`, {
             duration: 4000,

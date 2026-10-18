@@ -56,11 +56,10 @@ const REASON = {
 } as const;
 /** Shown once a block lands, from a report or from the member card. */
 export const BLOCKED_TOAST = "Blocked — you won't see their messages.";
-/** Shown once an unblock lands; the server does not resend what it hid meanwhile. */
 /** Shown when a block or unblock write fails. */
 export const BLOCK_FAILED_TOAST = 'Could not update the block.';
-export const UNBLOCKED_TOAST =
-  'Unblocked. Their earlier messages appear after you reload.';
+/** Shown once an unblock lands. */
+export const UNBLOCKED_TOAST = 'Unblocked.';
 
 const NEXT_STEPS =
   "Your server's admins decide what happens next. They may not reply.";

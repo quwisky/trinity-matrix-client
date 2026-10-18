@@ -17,6 +17,7 @@ import {
   TRIM_CEILING,
   TRIM_KEEP,
   noteSyncPosition,
+  rewindLiveTimeline,
   trimLiveTimeline,
 } from './live-timeline-trim';
 
@@ -517,5 +518,45 @@ describe('trimLiveTimeline', () => {
     ).toBeUndefined();
     expect(room.getThread(id(10))).toBe(thread);
     expect(summary()).toEqual(before);
+  });
+});
+
+describe('rewindLiveTimeline', () => {
+  it('empties the live timeline but for local echoes, to page it back in from a sync position', async () => {
+    const { client, room } = setup(330);
+    // The server left out $325 while its sender was blocked.
+    await startedAt(room, 311, 324);
+    await receive(room, 326, 330);
+    const echo = new MatrixEvent({ ...raw(0), event_id: '~local', sender: ME });
+    echo.setStatus(EventStatus.SENDING);
+    room.addPendingEvent(echo, 'txn');
+    room.setUnreadNotificationCount(NotificationCountType.Total, 7);
+    room.addReceipt(
+      new MatrixEvent({
+        type: EventType.Receipt,
+        room_id: ROOM,
+        content: { [id(320)]: { 'm.read': { [ME]: { ts: 1 } } } },
+      }),
+    );
+    const snapshot = () => ({
+      total: room.getUnreadNotificationCount(NotificationCountType.Total),
+      receipt: room.getReadReceiptForUserId(ME)?.eventId,
+    });
+    const unchanged = snapshot();
+
+    rewindLiveTimeline(room, before(331));
+
+    expect(room.getLiveTimeline().getEvents()).toEqual([echo]);
+    expect(room.getLiveTimeline().getPaginationToken(Direction.Backward)).toBe(
+      before(331),
+    );
+    expect(snapshot()).toEqual(unchanged);
+    expect(room.oldState).toBe(
+      room.getLiveTimeline().getState(Direction.Backward),
+    );
+
+    await scrollbackLive(client, room, PAGE);
+
+    expect(ids(room)).toEqual([...range(301, 330), '~local']);
   });
 });
