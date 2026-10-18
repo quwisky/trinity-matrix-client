@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   LocalDataWipeService,
+  SecureStorageService,
   SessionStorageService,
   type AccountRecord,
 } from '@trinity/platform-native';
@@ -16,6 +17,7 @@ import {
 } from './account-lifecycle.port';
 import type { AccountEstablishmentIntent } from './account-runtime.models';
 import { MatrixAccountRuntimeAdapter } from './matrix-account-runtime.adapter';
+import { UNPROTECTED_STORAGE_CONSENT } from './unprotected-storage-consent.port';
 
 export const session = {
   baseUrl: 'https://hs',
@@ -77,8 +79,17 @@ export function setup(activeAccountId: string | null = '@old:hs') {
         rollbackAccountStart: vi.fn(() => of(void 0)),
       }),
       MockProvider(SessionStorageService),
+      MockProvider(SecureStorageService, {
+        withoutKeychain: vi.fn(() => Promise.resolve(false)),
+        unprotectedStorageAcknowledged: vi.fn(() => Promise.resolve(null)),
+        acknowledgeUnprotectedStorage: vi.fn(() => Promise.resolve()),
+      }),
       MockProvider(LocalDataWipeService, wipeAdapter),
       { provide: ACCOUNT_LIFECYCLE_PORT, useValue: lifecycle },
+      {
+        provide: UNPROTECTED_STORAGE_CONSENT,
+        useValue: { confirm: vi.fn(() => of(false)) },
+      },
     ],
   });
   return {
@@ -86,6 +97,8 @@ export function setup(activeAccountId: string | null = '@old:hs') {
     matrix: TestBed.inject(MatrixClientService),
     storage: TestBed.inject(SessionStorageService),
     wipe: TestBed.inject(LocalDataWipeService),
+    secure: TestBed.inject(SecureStorageService),
+    consent: TestBed.inject(UNPROTECTED_STORAGE_CONSENT),
     lifecycle,
     active,
   };
@@ -103,6 +116,11 @@ export function prepareSuccessfulReset(
   vi.mocked(test.matrix.signOutAll).mockReturnValue(of(void 0));
   vi.mocked(test.matrix.stop).mockReturnValue(of(void 0));
   vi.mocked(test.storage.clearAll).mockReturnValue(of([]));
+}
+
+/** Let the establishment's asynchronous keychain check run before the test goes on. */
+export function settled(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve));
 }
 
 export function deferred<T>(): {

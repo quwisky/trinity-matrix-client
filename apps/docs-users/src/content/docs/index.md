@@ -56,6 +56,10 @@ chmod +x Trinity-0.4.0.AppImage
 ./Trinity-0.4.0.AppImage
 ```
 
+Trinity keeps your sign-in and encryption keys in your desktop's keyring (GNOME Keyring or
+KWallet). Without one, it asks before signing in, because it would have to store them
+unprotected on disk, and Security settings warns about it for as long as that lasts.
+
 ## Try Trinity Next {#trinity-next}
 
 Trinity Next is the prerelease of the desktop app, for trying what comes next. It installs

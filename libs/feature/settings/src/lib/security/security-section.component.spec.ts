@@ -19,6 +19,7 @@ import {
   HostSystemUiService,
 } from '@trinity/runtime/host';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SecureStorageService } from '@trinity/platform-native';
 import { SecuritySectionComponent } from './security-section.component';
 
 async function build(
@@ -29,6 +30,7 @@ async function build(
     availability?: TrustHealth['availability'];
     cryptoStoreEncrypted?: boolean | null;
     identityElsewhere?: boolean;
+    unprotected?: boolean;
   } = {},
   over: {
     exportRoomKeys?: Mock;
@@ -83,6 +85,11 @@ async function build(
       MockProvider(TrnAlertService, { prompt$: prompt }),
       MockProvider(TrnToastService, { show: toastShow }),
       MockProvider(HostFileExportService, { save: fileSave }),
+      MockProvider(SecureStorageService, {
+        storesUnprotectedSecrets: vi.fn(() =>
+          Promise.resolve(opts.unprotected ?? false),
+        ),
+      }),
       MockProvider(MatrixClientService, {
         cryptoStoreEncrypted: signal(
           opts.cryptoStoreEncrypted ?? true,
@@ -426,6 +433,24 @@ describe('SecuritySectionComponent', () => {
       expect(
         container.querySelector('[data-testid=security-stored-keys]'),
       ).toBeNull();
+    },
+  );
+
+  it.each([true, false])(
+    'warns for as long as secrets are stored without a keyring (%s)',
+    async (unprotected) => {
+      const { fixture, container } = await build({ unprotected });
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const warning = container.querySelector(
+        '[data-testid=security-no-keyring]',
+      );
+      if (unprotected) {
+        expect(warning?.textContent).toContain('stored unprotected on disk');
+      } else {
+        expect(warning).toBeNull();
+      }
     },
   );
 

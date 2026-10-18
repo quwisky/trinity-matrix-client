@@ -178,7 +178,10 @@ export const SYSTEM_STATUS_PROVIDER: Provider = {
   useFactory: () => ({
     hasProblems: signal(false),
     show: vi.fn(),
-    bannerSlot: signal<'status' | 'encryption' | null>('encryption'),
+    bannerSlot: signal<'status' | 'encryption' | 'sign-in-again' | null>(
+      'encryption',
+    ),
+    dismissSignInAgain: vi.fn(),
     bannerSlotReserved: signal(false),
     bannerPrompt: signal(null),
   }),

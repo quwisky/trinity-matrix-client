@@ -341,7 +341,7 @@ describe('atomicWriteFile', () => {
  * which "encrypts" with a hardcoded key — obfuscation, not encryption — while
  * isEncryptionAvailable() still returns true. Storing a Matrix access token (and the
  * cross-signing keys) under that is a false promise, so refuse it and let the caller
- * take its documented plaintext fallback, which at least surfaces the anomaly.
+ * fall back to unprotected storage, which it asks consent for and warns about.
  */
 describe('secureStoreRead', () => {
   /** A store holding one encrypted `token` entry. */

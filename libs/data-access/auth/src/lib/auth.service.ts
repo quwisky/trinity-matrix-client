@@ -16,12 +16,14 @@ import {
   map,
   of,
   switchMap,
+  take,
   tap,
   throwError,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   AccountRuntimeService,
+  UnprotectedStorageGate,
   type AccountEstablishmentOutcome,
 } from '@trinity/data-access/accounts';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
@@ -52,6 +54,7 @@ import { AUTHENTICATION_HOMESERVER_DISCOVERY } from './homeserver-discovery.port
 import {
   NEW_DEVICE_SIGN_IN,
   NewDeviceSignInCancelledError,
+  UnprotectedStorageDeclinedError,
 } from './new-device-sign-in.port';
 
 export type { LoginMode } from './account-establishment';
@@ -134,6 +137,7 @@ export class AuthService {
   private readonly oidc = inject(OidcClientService);
   private readonly accounts = inject(AccountRuntimeService);
   private readonly newDeviceSignIn = inject(NEW_DEVICE_SIGN_IN);
+  private readonly unprotectedStorage = inject(UnprotectedStorageGate);
   private readonly handoff = inject(HostAuthenticationHandoffService);
   private readonly discovery = inject(AUTHENTICATION_HOMESERVER_DISCOVERY);
 
@@ -507,7 +511,8 @@ export class AuthService {
           (outcome.kind === 'transition-in-progress' ||
             (outcome.kind === 'failed' &&
               (outcome.failure === 'homeserver-mismatch' ||
-                outcome.failure === 'account-already-stored')))
+                outcome.failure === 'account-already-stored' ||
+                outcome.failure === 'unprotected-storage-declined')))
         ) {
           this.signOutNewDevice(baseUrl, response);
         }
@@ -537,6 +542,7 @@ export class AuthService {
    * A sign-in without the stored device id gets a new device, and persisting it deletes
    * the stored device's crypto store (`SessionStorageService` upsert). Unless key backup
    * holds every room key, ask first, while the stored account's client can still answer.
+   * Then, on a host whose keychain cannot be used, ask whether to store it unprotected.
    * Whenever the sign-in does not go ahead (cancel, a failed check, or a subscriber that
    * leaves mid-dialog), sign the new device out again and leave the stored account as it was.
    * Only a session in `device.isNew` is signed out: never one on a requested or stored
@@ -573,12 +579,21 @@ export class AuthService {
             ),
       ),
       defaultIfEmpty(false),
-      switchMap((proceed) => {
-        proceeded = proceed;
-        return proceed
-          ? of(void 0)
-          : throwError(() => new NewDeviceSignInCancelledError(userId));
-      }),
+      switchMap((proceed) =>
+        proceed
+          ? // Asked here too, not only by Account Runtime, so this session is handed back
+            // whenever the question ends without a yes: declined, unanswered or unreadable.
+            this.unprotectedStorage.allowed().pipe(
+              take(1),
+              switchMap((allowed) => {
+                proceeded = allowed;
+                return allowed
+                  ? of(void 0)
+                  : throwError(() => new UnprotectedStorageDeclinedError());
+              }),
+            )
+          : throwError(() => new NewDeviceSignInCancelledError(userId)),
+      ),
       finalize(() => {
         if (!proceeded && device.isNew) {
           this.signOutNewDevice(baseUrl, response);

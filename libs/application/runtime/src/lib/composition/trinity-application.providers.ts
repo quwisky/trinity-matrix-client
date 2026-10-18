@@ -163,6 +163,7 @@ export function provideTrinityApplication(
               })
             | null
           >,
+          dismissSignInAgain: () => status.dismissSignInAgain(),
           show: () => visibility.show(),
         };
       },

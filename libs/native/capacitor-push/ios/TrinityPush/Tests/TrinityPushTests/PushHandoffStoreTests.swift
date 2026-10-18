@@ -82,6 +82,12 @@ final class PushHandoffStoreTests: XCTestCase {
         XCTAssertEqual(store.notificationText(), .show)
     }
 
+    func testTheHandoffDirectoryIsLeftOutOfBackups() throws {
+        try store.mergeRooms(["!a:hs": HandoffRoom(name: "A", direct: false)], for: "@u:hs")
+        let directory = roomsFile.deletingLastPathComponent()
+        XCTAssertEqual(try directory.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+    }
+
     func testMergesRoomsPerAccountAndKeepsTheOnesNotListed() throws {
         try store.mergeRooms(["!a:hs": HandoffRoom(name: "A", direct: false), "!b:hs": HandoffRoom(name: "B", direct: true)], for: "@u:hs")
         try store.mergeRooms(["!a:hs": HandoffRoom(name: "A2", direct: false)], for: "@u:hs")

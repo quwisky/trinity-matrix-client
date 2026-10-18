@@ -8,19 +8,31 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
 import { TrustService } from '@trinity/data-access/trust';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { HostFileExportService } from '@trinity/runtime/host';
-import { filter, finalize, from, map, switchMap, tap } from 'rxjs';
+import {
+  catchError,
+  filter,
+  finalize,
+  from,
+  map,
+  of,
+  switchMap,
+  tap,
+} from 'rxjs';
 import {
   TrnAlertService,
   TrnSettingsGroupComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { TrackFileChooserDirective } from '@trinity/platform-native';
+import {
+  SecureStorageService,
+  TrackFileChooserDirective,
+} from '@trinity/platform-native';
 import { AppLockGroupComponent } from './app-lock-group/app-lock-group.component';
 
 /**
@@ -50,6 +62,7 @@ export class SecuritySectionComponent {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly files = inject(HostFileExportService);
+  private readonly secure = inject(SecureStorageService);
   private destroyed = false;
 
   /** True when this section is mounted inside the web/Electron settings modal. */
@@ -69,6 +82,13 @@ export class SecuritySectionComponent {
   readonly sessionVerified = this.crypto.thisDeviceVerified;
   /** False when this device's keys sit in a store created before stores were encrypted. */
   readonly cryptoStoreEncrypted = this.matrix.cryptoStoreEncrypted;
+  /** Secrets sit unprotected on disk because this host's keychain could not be used. */
+  readonly withoutKeychain = toSignal(
+    from(this.secure.storesUnprotectedSecrets()).pipe(
+      catchError(() => of(false)),
+    ),
+    { initialValue: false },
+  );
 
   /** True while an export/import is in flight (disables the buttons). */
   readonly busy = signal(false);

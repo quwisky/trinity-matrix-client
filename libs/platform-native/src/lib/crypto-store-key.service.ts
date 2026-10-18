@@ -5,6 +5,13 @@ import {
   saveWrappingKey,
 } from './crypto-store-wrapping-keys';
 import { SecureStorageService } from './secure-storage.service';
+import {
+  IV_BYTES,
+  STORE_KEY_PREFIX,
+  fromBase64,
+  toBase64,
+  unwrap,
+} from './crypto-store-key-format';
 
 /** What reading a store key found; see {@link CryptoStoreKeyService.read}. */
 export type StoreKeyRead =
@@ -15,11 +22,8 @@ export type StoreKeyRead =
 const MISSING: StoreKeyRead = { kind: 'missing' };
 const UNAVAILABLE: StoreKeyRead = { kind: 'unavailable' };
 
-/** Per-store key in secure storage: `${STORE_KEY_PREFIX}${cryptoPrefix}`. */
-const STORE_KEY_PREFIX = 'matrix.cryptoStoreKey:';
 /** matrix-js-sdk takes exactly 32 bytes as `initRustCrypto({ storageKey })`. */
 const STORE_KEY_BYTES = 32;
-const IV_BYTES = 12;
 
 /**
  * The key that encrypts an account's Rust crypto store at rest (its device identity, room
@@ -132,25 +136,4 @@ async function seal(
     key,
   );
   return toBase64(new Uint8Array([...iv, ...new Uint8Array(sealed)]));
-}
-
-async function unwrap(
-  wrappingKey: CryptoKey,
-  stored: string,
-): Promise<Uint8Array> {
-  const bytes = fromBase64(stored);
-  const key = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: bytes.subarray(0, IV_BYTES) },
-    wrappingKey,
-    bytes.subarray(IV_BYTES),
-  );
-  return new Uint8Array(key);
-}
-
-function toBase64(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes));
-}
-
-function fromBase64(base64: string): Uint8Array<ArrayBuffer> {
-  return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
 }

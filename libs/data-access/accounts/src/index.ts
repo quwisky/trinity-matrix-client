@@ -7,4 +7,6 @@ export * from './lib/account-cleanup-confirmation';
 export * from './lib/account-deletion-confirmation';
 export * from './lib/account-deletion.workflow';
 export * from './lib/account-runtime.models';
+export * from './lib/unprotected-storage-consent.port';
+export * from './lib/unprotected-storage.gate';
 export * from './lib/account-runtime.service';

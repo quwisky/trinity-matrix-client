@@ -1,0 +1,25 @@
+<!-- Always-mounted live region: a role="status" node inserted at the same moment
+     its text appears is not reliably announced. -->
+<span class="sr-only" role="status" aria-live="polite">
+  {{ visible() ? 'Sign in again to encrypt the keys on this device.' : '' }}
+</span>
+@if (visible()) {
+  <trn-banner variant="accent" [placement]="placement()">
+    <trn-icon trnBannerIcon name="lock" />
+    Sign in again to encrypt the keys on this device.
+    <span trnBannerActions>
+      <button trnBtn size="sm" type="button" (click)="signInAgain()">
+        Sign in again
+      </button>
+      <button
+        trnBtn
+        presentation="outline"
+        size="sm"
+        type="button"
+        (click)="dismiss()"
+      >
+        Dismiss
+      </button>
+    </span>
+  </trn-banner>
+}

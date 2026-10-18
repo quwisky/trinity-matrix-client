@@ -32,6 +32,8 @@ export function accountEstablishmentError(
       return 'Encrypted account storage could not be opened. Please try again.';
     case 'secure-storage-unavailable':
       return SECURE_STORAGE_UNAVAILABLE;
+    case 'unprotected-storage-declined':
+      return 'Sign-in cancelled. Nothing was stored on this device.';
     case 'crypto-store-key-lost':
       return 'This device can no longer unlock this account’s stored keys. Sign in again to set it up as a new session.';
   }

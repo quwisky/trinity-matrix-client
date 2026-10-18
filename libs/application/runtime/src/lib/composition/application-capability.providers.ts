@@ -14,6 +14,7 @@ import { BADGE_SINK, type BadgeSink } from '@trinity/application/badge';
 import { AVATAR_RESOLVER } from '@trinity/components/generic-content';
 import {
   ACCOUNT_LIFECYCLE_PORT,
+  UNPROTECTED_STORAGE_CONSENT,
   type AccountLifecyclePort,
 } from '@trinity/data-access/accounts';
 import { AppLockService } from '@trinity/data-access/app-lock';
@@ -83,6 +84,7 @@ import { PreferenceStoreService } from '@trinity/runtime/preferences';
 import { map, of } from 'rxjs';
 import { appLockCovers, visibilityWhileLocked } from './app-lock.providers';
 import { NewDeviceSignInPresenter } from './new-device-sign-in.presenter';
+import { UnprotectedStorageConsentPresenter } from './unprotected-storage.presenter';
 
 interface ApplicationCapabilityProviderOptions {
   readonly buildInfo: BuildInfo;
@@ -236,6 +238,10 @@ export function applicationCapabilityProviders(
       },
     },
     { provide: NEW_DEVICE_SIGN_IN, useExisting: NewDeviceSignInPresenter },
+    {
+      provide: UNPROTECTED_STORAGE_CONSENT,
+      useExisting: UnprotectedStorageConsentPresenter,
+    },
     {
       provide: TRUST_PROVIDER_RECOVERY,
       useFactory: (): TrustProviderRecoveryPort => {

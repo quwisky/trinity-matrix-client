@@ -8,11 +8,18 @@ import {
   vi,
   type Mock,
 } from 'vitest';
+import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+import { Filesystem } from '@capacitor/filesystem';
 import { DraftStoreService } from './draft-store.service';
 
 vi.mock('@capacitor/preferences', () => ({
   Preferences: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
+}));
+vi.mock('@capacitor/filesystem', () => ({
+  Directory: { LibraryNoCloud: 'LIBRARY_NO_CLOUD' },
+  Encoding: { UTF8: 'utf8' },
+  Filesystem: { readFile: vi.fn(), writeFile: vi.fn(), deleteFile: vi.fn() },
 }));
 
 const get = Preferences.get as unknown as Mock;
@@ -33,6 +40,109 @@ describe('DraftStoreService', () => {
     TestBed.configureTestingModule({ providers: [DraftStoreService] });
     return TestBed.inject(DraftStoreService);
   }
+
+  describe('on iOS', () => {
+    const readFile = Filesystem.readFile as unknown as Mock;
+    const writeFile = Filesystem.writeFile as unknown as Mock;
+    const deleteFile = Filesystem.deleteFile as unknown as Mock;
+    const FILE = {
+      path: 'composer-drafts.json',
+      directory: 'LIBRARY_NO_CLOUD',
+      encoding: 'utf8',
+    };
+
+    beforeEach(() => {
+      vi.spyOn(Capacitor, 'getPlatform').mockReturnValue('ios');
+      readFile.mockReset().mockRejectedValue(new Error('File does not exist'));
+      writeFile.mockReset().mockResolvedValue({ uri: 'file://drafts' });
+      deleteFile.mockReset().mockResolvedValue(undefined);
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    it('keeps drafts in a file left out of backups, not in Preferences', async () => {
+      const svc = service();
+      await svc.init();
+      svc.set('!a:hs', 'secret plans');
+      await vi.advanceTimersByTimeAsync(400);
+
+      expect(writeFile).toHaveBeenCalledWith({
+        ...FILE,
+        recursive: true,
+        data: JSON.stringify({ '!a:hs': 'secret plans' }),
+      });
+      expect(set).not.toHaveBeenCalled();
+    });
+
+    it('reads the drafts back from that file', async () => {
+      readFile.mockResolvedValue({ data: JSON.stringify({ '!a:hs': 'kept' }) });
+      const svc = service();
+      await svc.init();
+
+      expect(readFile).toHaveBeenCalledWith(FILE);
+      expect(svc.get('!a:hs')).toBe('kept');
+    });
+
+    it('moves drafts saved in Preferences into the file once, then removes them there', async () => {
+      get.mockResolvedValue({
+        value: JSON.stringify({ '!a:hs': 'old', '!b:hs': 'only here' }),
+      });
+      readFile.mockResolvedValue({
+        data: JSON.stringify({ '!a:hs': 'newer' }),
+      });
+      const svc = service();
+      await svc.init();
+
+      expect(svc.get('!a:hs')).toBe('newer');
+      expect(svc.get('!b:hs')).toBe('only here');
+      expect(writeFile).toHaveBeenCalledWith({
+        ...FILE,
+        recursive: true,
+        data: JSON.stringify({ '!a:hs': 'newer', '!b:hs': 'only here' }),
+      });
+      expect(remove).toHaveBeenCalledWith({ key: KEY });
+    });
+
+    it('keeps the Preferences drafts when the file cannot be written', async () => {
+      get.mockResolvedValue({ value: JSON.stringify({ '!a:hs': 'old' }) });
+      writeFile.mockRejectedValue(new Error('disk full'));
+      const svc = service();
+      await svc.init();
+
+      expect(svc.get('!a:hs')).toBe('old');
+      expect(remove).not.toHaveBeenCalled();
+    });
+
+    it('drops the Preferences copy at the first later write, so a sent draft stays gone', async () => {
+      get.mockResolvedValue({ value: JSON.stringify({ '!a:hs': 'old' }) });
+      writeFile.mockRejectedValueOnce(new Error('disk full'));
+      const svc = service();
+      await svc.init();
+      expect(remove).not.toHaveBeenCalled();
+
+      svc.clear('!a:hs'); // sent
+      await vi.advanceTimersByTimeAsync(400);
+
+      expect(writeFile).toHaveBeenLastCalledWith({
+        ...FILE,
+        recursive: true,
+        data: '{}',
+      });
+      expect(remove).toHaveBeenCalledWith({ key: KEY });
+    });
+
+    it('deletes the file, and any drafts left in Preferences, on sign-out', async () => {
+      const svc = service();
+      await svc.init();
+      svc.clearAll();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(deleteFile).toHaveBeenCalledWith({
+        path: FILE.path,
+        directory: FILE.directory,
+      });
+      expect(remove).toHaveBeenCalledWith({ key: KEY });
+    });
+  });
 
   it('returns an empty draft for an unknown conversation', () => {
     expect(service().get('!a:hs')).toBe('');

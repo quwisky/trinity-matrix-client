@@ -45,6 +45,7 @@ import type {
   InstallationResetOutcome,
   NewDeviceEstablishment,
 } from './account-runtime.models';
+import { UnprotectedStorageGate } from './unprotected-storage.gate';
 
 /** What the saved record says about a sign-in's device; `unknown` is never reported as new. */
 type DeviceNovelty = 'new' | 'existing' | 'unknown';
@@ -55,6 +56,7 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   private readonly storage = inject(SessionStorageService);
   private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
   private readonly lifecycleAdapter = inject(AccountLifecycleAdapter);
+  private readonly unprotectedStorage = inject(UnprotectedStorageGate);
   private readonly pendingNewAccounts = new Map<
     string,
     {
@@ -114,7 +116,28 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
     );
   }
 
+  /**
+   * Before anything is stored or any live Account is touched, a host without a usable
+   * keychain asks whether this account's secrets may be stored unprotected on disk.
+   * Declining leaves everything as it was.
+   */
   establishAccount(
+    grant: AuthenticatedAccountGrant,
+    intent: AccountEstablishmentIntent,
+  ): Observable<AdapterAccountEstablishmentOutcome> {
+    return this.unprotectedStorage.allowed().pipe(
+      switchMap((allowed) =>
+        allowed
+          ? this.establishConsented(grant, intent)
+          : of({
+              kind: 'failed' as const,
+              failure: 'unprotected-storage-declined' as const,
+            }),
+      ),
+    );
+  }
+
+  private establishConsented(
     grant: AuthenticatedAccountGrant,
     intent: AccountEstablishmentIntent,
   ): Observable<AdapterAccountEstablishmentOutcome> {

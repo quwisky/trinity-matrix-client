@@ -437,6 +437,39 @@ describe('RegistrationService', () => {
     expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
   });
 
+  it('signs the new session out when storing it without a keychain is declined', async () => {
+    const logout = vi.fn().mockResolvedValue({});
+    const registerRequest = vi.fn().mockResolvedValue(registered);
+    createClientMock.mockReturnValue(
+      client({ registerRequest, logout }) as never,
+    );
+    vi.mocked(accounts.establishAuthenticatedAccount).mockReturnValue(
+      of({
+        kind: 'failed',
+        failure: 'unprotected-storage-declined',
+        accountId: '@new:hs',
+        placement: 'active',
+      }),
+    );
+
+    await lastValueFrom(service.begin('https://hs', 'new', 'password', 'hs'), {
+      defaultValue: undefined,
+    });
+
+    expect(createClientMock).toHaveBeenLastCalledWith({
+      baseUrl: 'https://hs',
+      accessToken: 'access',
+    });
+    expect(logout).toHaveBeenCalledWith(true);
+    // The session is gone, so retrying local setup with it cannot work.
+    expect(service.stage()).toEqual({
+      kind: 'session-error',
+      userId: '@new:hs',
+      retryable: false,
+    });
+    expect(service.error()).toMatch(/nothing was stored on this device/i);
+  });
+
   it('refuses to overwrite an account already stored under the returned MXID', async () => {
     const registerRequest = vi.fn().mockResolvedValue(registered);
     createClientMock.mockReturnValue(client({ registerRequest }) as never);

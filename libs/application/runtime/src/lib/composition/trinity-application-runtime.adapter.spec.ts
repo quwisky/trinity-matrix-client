@@ -107,6 +107,7 @@ import {
 import { TrinityApplicationRuntimeAdapter } from './trinity-application-runtime.adapter';
 import { APPLICATION_STARTUP_PRODUCER_POLICIES } from '../application-startup.policy';
 import { WhatsNewLauncherAdapter } from './whats-new-launcher.adapter';
+import { UnprotectedStorageNotice } from './unprotected-storage.presenter';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 
@@ -240,6 +241,9 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         },
         MockProvider(Location, { path: () => '/rooms', back: vi.fn() }),
         MockProvider(WhatsNewLauncherAdapter, { runPending: () => EMPTY }),
+        MockProvider(UnprotectedStorageNotice, {
+          runPendingNotice: () => EMPTY,
+        }),
         MockProvider(HostCapabilitiesService, { manifest: () => hostManifest }),
         MockProvider(AccountRuntimeService, {
           restoreSavedAccounts: restoreAccounts,

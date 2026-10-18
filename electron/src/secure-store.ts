@@ -20,8 +20,9 @@ import type { SafeStorage } from 'electron';
  * does not distinguish it, so a token would be stored under a false promise while
  * `isSecure()` reported true.
  *
- * Refusing it makes the renderer take its documented plaintext fallback and surface the
- * anomaly, rather than silently pretending the secret is protected.
+ * Refusing it makes the renderer fall back to unprotected web storage, which it asks the
+ * person to accept before a sign-in stores anything and then warns about in Security
+ * settings, rather than silently pretending the secret is protected.
  */
 export function secureStorageUsable(safeStorage: SafeStorage): boolean {
   if (!safeStorage.isEncryptionAvailable()) {

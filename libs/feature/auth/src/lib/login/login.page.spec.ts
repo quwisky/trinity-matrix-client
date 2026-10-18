@@ -40,6 +40,8 @@ async function renderLogin(
   opts: {
     add?: boolean;
     reauth?: string;
+    /** `device=new` on a re-auth: sign in as a new device whatever the store holds. */
+    newDevice?: boolean;
     record?: unknown;
     /** The device re-auth may reuse; defaults to the record's own. */
     reusableDevice?: string | null;
@@ -71,7 +73,12 @@ async function renderLogin(
 }> {
   const queryParamMap = {
     has: (key: string) => key === 'add' && !!opts.add,
-    get: (key: string) => (key === 'reauth' ? (opts.reauth ?? null) : null),
+    get: (key: string) =>
+      key === 'reauth'
+        ? (opts.reauth ?? null)
+        : key === 'device' && opts.newDevice
+          ? 'new'
+          : null,
   };
   const discoverHomeserver = auth.discoverHomeserver;
   const { fixture } = await render(LoginPage, {
@@ -541,6 +548,40 @@ describe('LoginPage', () => {
 
     // No device id: the server makes a new device, which gets a new store and key. The
     // sign-in is still bound to the account being reconnected.
+    expect(loginWithPassword).toHaveBeenCalledWith(
+      'https://hs.example',
+      '@bob:hs',
+      'hunter2',
+      'add',
+      undefined,
+      '@bob:hs',
+      undefined,
+    );
+  });
+
+  it('re-auth asked to replace the store signs in as a new device', async () => {
+    const loginWithPassword = vi.fn(() => of(READY_OUTCOME));
+    const { cmp } = await renderLogin(
+      {
+        loginWithPassword,
+        getSupportedFlows: vi.fn(() => of(['m.login.password'])),
+        getDelegatedAuthConfig: vi.fn(() => of(null)),
+      } as unknown as Partial<AuthService>,
+      {
+        reauth: '@bob:hs',
+        newDevice: true,
+        record: {
+          baseUrl: 'https://hs.example',
+          userId: '@bob:hs',
+          deviceId: 'OLDDEV',
+        },
+      },
+    );
+
+    cmp.credentialsForm.password().value.set('hunter2');
+    cmp.loginPassword();
+
+    // A store without a key stays unencrypted on its own device; only a new one gets a key.
     expect(loginWithPassword).toHaveBeenCalledWith(
       'https://hs.example',
       '@bob:hs',

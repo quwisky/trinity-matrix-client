@@ -41,6 +41,7 @@ import {
   AUTHENTICATION_HOMESERVER_DISCOVERY,
   NewDeviceSignInCancelledError,
   OidcStateStore,
+  UnprotectedStorageDeclinedError,
   RegistrationService,
   SignInRedirectService,
   type LoginMode,
@@ -85,6 +86,7 @@ function describeSignInError(error: unknown, fallback: string): string {
     error instanceof ReauthAccountMismatchError ||
     error instanceof UnacceptableAccountError ||
     error instanceof NewDeviceSignInCancelledError ||
+    error instanceof UnprotectedStorageDeclinedError ||
     (error instanceof Error && error.message === ACCOUNT_NOT_STORED)
   ) {
     return error.message;
@@ -159,6 +161,13 @@ export class LoginPage {
   private reauthDeviceId: string | null = null;
   /** The server discovery resolved from what the person entered. */
   private enteredServerName: string | null = null;
+  /**
+   * `&device=new` on a re-auth: sign in as a new device even when the stored one could be
+   * reused. A store created without a key stays unencrypted on its own device; a new device
+   * gets an encrypted store, and saving it removes the old one.
+   */
+  private readonly reauthAsNewDevice =
+    this.route.snapshot.queryParamMap.get('device') === 'new';
 
   /**
    * Accounts stored on this device, for the erase confirmation to name: `/login?add` is
@@ -196,7 +205,10 @@ export class LoginPage {
             this.baseUrl.set(record.baseUrl);
             // Reuse the device unless its stored keys can no longer be unlocked here:
             // then only a new device, with a new store and key, can sign back in.
-            return this.storage.reusableDeviceId(record).pipe(
+            const reusable = this.reauthAsNewDevice
+              ? of(null)
+              : this.storage.reusableDeviceId(record);
+            return reusable.pipe(
               switchMap((deviceId) => {
                 this.reauthDeviceId = deviceId;
                 return this.discoverCapabilities(record.baseUrl);

@@ -481,6 +481,21 @@ export class RegistrationService {
   private handleEstablishmentOutcome(
     outcome: Exclude<AccountEstablishmentOutcome, { kind: 'ready' }>,
   ): void {
+    if (
+      outcome.kind === 'failed' &&
+      outcome.failure === 'unprotected-storage-declined'
+    ) {
+      this.handBackDeclinedSession();
+      this.stageState.set({
+        kind: 'session-error',
+        userId: outcome.accountId,
+        retryable: false,
+      });
+      this.errorState.set(
+        'Your account was created, but nothing was stored on this device. Sign in when you’re ready.',
+      );
+      return;
+    }
     const retryable =
       outcome.kind !== 'failed' || outcome.failure !== 'account-already-stored';
     this.stageState.set({
@@ -495,6 +510,22 @@ export class RegistrationService {
         : 'Trinity refused to replace an account already stored on this device. ' +
             'No local account data was changed.',
     );
+  }
+
+  /**
+   * Sign out the session this registration created, as a declined sign-in does: nothing
+   * will use it. Detached and best-effort.
+   */
+  private handBackDeclinedSession(): void {
+    const accessToken = this.createdResponse?.access_token;
+    this.createdResponse = undefined;
+    if (!accessToken) return;
+    const baseUrl = this.activeBaseUrl;
+    defer(() =>
+      from(createClient({ baseUrl, accessToken }).logout(true)),
+    ).subscribe({
+      error: () => undefined,
+    });
   }
 
   private async withBusy<T>(

@@ -106,7 +106,9 @@ export type AccountEstablishmentFailure =
   | 'transient-network'
   | 'crypto-failure'
   | 'crypto-store-key-lost'
-  | 'secure-storage-unavailable';
+  | 'secure-storage-unavailable'
+  /** No usable keychain, and the person chose not to store the secrets unprotected. */
+  | 'unprotected-storage-declined';
 
 /** A failure, plus the server the Account is saved under when a sign-in used another one. */
 export type AccountEstablishmentFailureDetail =

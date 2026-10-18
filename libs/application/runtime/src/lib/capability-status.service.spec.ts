@@ -7,6 +7,7 @@ import {
   type SlotForecast,
   type TrustStatus,
 } from '@trinity/data-access/trust';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { BUILD_INFO } from '@trinity/platform-native';
 import type { CapabilityRecovery } from '@trinity/runtime/projection';
 import { firstValueFrom, of, toArray } from 'rxjs';
@@ -30,6 +31,9 @@ describe('CapabilityStatusService', () => {
   let setupElsewhere: WritableSignal<boolean>;
   let pressed: WritableSignal<boolean>;
   let forecast: WritableSignal<SlotForecast | null>;
+  let keyBackupActive: WritableSignal<boolean | null>;
+  let storeEncrypted: WritableSignal<boolean | null>;
+  let activeUserId: WritableSignal<string | null>;
 
   beforeEach(() => {
     runtimeState = signal({ phase: 'ready', attempt: 7, settlements: [] });
@@ -37,13 +41,27 @@ describe('CapabilityStatusService', () => {
     setupElsewhere = signal(false);
     pressed = signal(false);
     forecast = signal<SlotForecast | null>(null);
+    keyBackupActive = signal<boolean | null>(true);
+    storeEncrypted = signal<boolean | null>(true);
+    activeUserId = signal<string | null>('@a:hs');
     TestBed.configureTestingModule({
       providers: [
         CapabilityHealthService,
         CapabilityStatusService,
         {
           provide: TrustService,
-          useValue: { status: trust, recoverySetupElsewhere: setupElsewhere },
+          useValue: {
+            status: trust,
+            recoverySetupElsewhere: setupElsewhere,
+            keyBackupActive,
+          },
+        },
+        {
+          provide: MatrixClientService,
+          useValue: {
+            activeUserId,
+            cryptoStoreEncrypted: storeEncrypted,
+          },
         },
         { provide: PointerPressService, useValue: { pressed } },
         { provide: TrustSlotForecastService, useValue: { forecast } },
@@ -421,6 +439,43 @@ describe('CapabilityStatusService', () => {
       reportHostBlocked();
       expect(status.hasBlocking()).toBe(true);
       expect(status.bannerSlot()).toBe('status');
+    });
+
+    describe('sign-in prompt for keys stored unencrypted', () => {
+      it('asks only once key backup is on, so signing in again loses no history', () => {
+        storeEncrypted.set(false);
+        keyBackupActive.set(false);
+        expect(status.bannerSlot()).toBeNull();
+        keyBackupActive.set(null);
+        expect(status.bannerSlot()).toBeNull();
+
+        keyBackupActive.set(true);
+        expect(status.bannerSlot()).toBe('sign-in-again');
+
+        storeEncrypted.set(true);
+        expect(status.bannerSlot()).toBeNull();
+      });
+
+      it('gives way to the encryption prompt but outranks a limited problem', () => {
+        storeEncrypted.set(false);
+        report('@a:hs', 'accounts', 'restore');
+        expect(status.bannerSlot()).toBe('sign-in-again');
+
+        trust.set('needs-recovery');
+        expect(status.bannerSlot()).toBe('encryption');
+      });
+
+      it('stays dismissed for this account in this session only', () => {
+        storeEncrypted.set(false);
+        status.dismissSignInAgain();
+        expect(status.bannerSlot()).toBeNull();
+
+        activeUserId.set('@b:hs');
+        expect(status.bannerSlot()).toBe('sign-in-again');
+
+        activeUserId.set('@a:hs');
+        expect(status.bannerSlot()).toBeNull();
+      });
     });
 
     it('reserves the slot height for a prompt only once the notice has held the slot', () => {

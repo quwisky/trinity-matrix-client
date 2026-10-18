@@ -20,6 +20,7 @@ import {
 } from 'matrix-js-sdk';
 import {
   AccountRuntimeService,
+  UnprotectedStorageGate,
   type AccountEstablishmentOutcome,
 } from '@trinity/data-access/accounts';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
@@ -33,6 +34,7 @@ import { AUTHENTICATION_HOMESERVER_DISCOVERY } from './homeserver-discovery.port
 import {
   NEW_DEVICE_SIGN_IN,
   NewDeviceSignInCancelledError,
+  UnprotectedStorageDeclinedError,
 } from './new-device-sign-in.port';
 import {
   OidcClientService,
@@ -76,6 +78,9 @@ describe('AuthService', () => {
             lookUp: vi.fn(() => throwError(() => new Error('no well-known'))),
           },
         },
+        MockProvider(UnprotectedStorageGate, {
+          allowed: vi.fn(() => of(true)),
+        }),
         // The app composes the real warning; here every sign-in goes ahead unless a test says no.
         {
           provide: NEW_DEVICE_SIGN_IN,
@@ -1060,6 +1065,83 @@ describe('AuthService', () => {
       ).rejects.toThrow('Not signed in.');
     });
   });
+  describe('storing a sign-in without a keychain', () => {
+    const logout = vi.fn().mockResolvedValue({});
+    beforeEach(() => {
+      logout.mockClear();
+      createClientMock.mockReturnValue({
+        loginRequest: vi.fn().mockResolvedValue({
+          user_id: '@me:hs',
+          device_id: 'NEW',
+          access_token: 'new-tok',
+        }),
+        logout,
+      } as never);
+    });
+    const gate = (answer: ReturnType<UnprotectedStorageGate['allowed']>) =>
+      vi
+        .mocked(TestBed.inject(UnprotectedStorageGate).allowed)
+        .mockReturnValue(answer);
+
+    it('signs the new session out and stores nothing when the person declines', async () => {
+      gate(of(false));
+
+      await expect(
+        firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
+      ).rejects.toBeInstanceOf(UnprotectedStorageDeclinedError);
+      expect(
+        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
+      ).not.toHaveBeenCalled();
+      expect(logout).toHaveBeenCalledWith(true);
+    });
+
+    it('signs the new session out when the question goes away unanswered', async () => {
+      gate(NEVER);
+
+      const attempt = auth
+        .loginWithPassword('https://hs', '@me:hs', 'pw')
+        .subscribe({ error: () => undefined });
+      await vi.waitFor(() =>
+        expect(
+          TestBed.inject(UnprotectedStorageGate).allowed,
+        ).toHaveBeenCalled(),
+      );
+      attempt.unsubscribe();
+
+      expect(logout).toHaveBeenCalledWith(true);
+    });
+
+    it('signs the new session out when the stored answer cannot be read', async () => {
+      gate(throwError(() => new Error('preferences unavailable')));
+
+      await expect(
+        firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
+      ).rejects.toThrow('preferences unavailable');
+      expect(logout).toHaveBeenCalledWith(true);
+    });
+
+    it('keeps the stored device signed in when a re-auth on it is declined', async () => {
+      gate(of(false));
+      vi.mocked(TestBed.inject(SessionStorageService).record).mockReturnValue(
+        of({ baseUrl: 'https://hs', userId: '@me:hs', deviceId: 'NEW' }),
+      );
+
+      await expect(
+        firstValueFrom(
+          auth.loginWithPassword(
+            'https://hs',
+            '@me:hs',
+            'pw',
+            'add',
+            'NEW',
+            '@me:hs',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(UnprotectedStorageDeclinedError);
+      expect(logout).not.toHaveBeenCalled();
+    });
+  });
+
   describe('a sign-in that the account runtime refuses', () => {
     const logout = vi.fn().mockResolvedValue({});
     const refuse = (
@@ -1070,6 +1152,7 @@ describe('AuthService', () => {
             storedBaseUrl: string;
           }
         | { kind: 'failed'; failure: 'account-already-stored' }
+        | { kind: 'failed'; failure: 'unprotected-storage-declined' }
         | { kind: 'failed'; failure: 'transient-network' }
         | { kind: 'transition-in-progress' },
     ) =>
@@ -1110,6 +1193,10 @@ describe('AuthService', () => {
         { kind: 'failed', failure: 'account-already-stored' } as const,
       ],
       ['a transition in progress', { kind: 'transition-in-progress' } as const],
+      [
+        'a refusal to store it without a keychain',
+        { kind: 'failed', failure: 'unprotected-storage-declined' } as const,
+      ],
     ])('signs the new session out after %s', async (_case, outcome) => {
       refuse(outcome);
 

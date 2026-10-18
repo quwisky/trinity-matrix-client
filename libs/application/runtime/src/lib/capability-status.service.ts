@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import type { BannerPrompt } from '@trinity/application/workspace';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   TrustService,
   TrustSlotForecastService,
@@ -65,7 +66,7 @@ interface SlotTrust {
 
 /** What the slot shows: which banner, and the trust state its prompt is drawn from. */
 interface SlotState {
-  readonly slot: 'status' | 'encryption' | null;
+  readonly slot: 'status' | 'encryption' | 'sign-in-again' | null;
   readonly trust: SlotTrust;
 }
 
@@ -104,6 +105,25 @@ export class CapabilityStatusService {
   private readonly slotHeldStatus = signal(false);
   private readonly press = inject(PointerPressService);
   private readonly slotForecast = inject(TrustSlotForecastService);
+  private readonly matrix = inject(MatrixClientService);
+  /** Accounts whose sign-in prompt was dismissed; in memory, so it returns next session. */
+  private readonly signInAgainDismissed = signal<ReadonlySet<string>>(
+    new Set(),
+  );
+  /**
+   * The active Account's crypto store predates store keys, and only a sign-in as a new
+   * device replaces it with an encrypted one. Asked only once key backup is on: the new
+   * device starts without the old store's room keys.
+   */
+  private readonly signInAgain = computed(() => {
+    const userId = this.matrix.activeUserId();
+    return (
+      !!userId &&
+      this.matrix.cryptoStoreEncrypted() === false &&
+      this.trust.keyBackupActive() === true &&
+      !this.signInAgainDismissed().has(userId)
+    );
+  });
   /** Trust has reported that it cannot read this Account's status (dismissed or not). */
   private readonly trustFailed = computed(() =>
     this.health
@@ -133,13 +153,16 @@ export class CapabilityStatusService {
   /**
    * The single global banner slot, by priority: a blocking capability error, then the
    * encryption prompt (the user's one pending setup step), then a limited capability
-   * (non-blocking, reachable from System Status). Guidance to set up recovery on another
+   * (non-blocking, reachable from System Status). The prompt to sign in again over keys
+   * stored unencrypted sits between the encryption prompt and a limited capability. Guidance to set up recovery on another
    * device is no step on this one, so it takes the slot only when nothing is limited.
    * Per-room banners sit outside this slot. Until the live trust status arrives, the
    * Account's forecast decides it the same way, so the banner that will appear holds its
    * space from the first frame.
    */
-  private readonly liveSlot = computed<'status' | 'encryption' | null>(() => {
+  private readonly liveSlot = computed<
+    'status' | 'encryption' | 'sign-in-again' | null
+  >(() => {
     if (this.hasBlocking()) return 'status';
     const { status: trust, elsewhere } = this.slotTrust();
     const limited = this.visibleEntries().length > 0;
@@ -151,6 +174,7 @@ export class CapabilityStatusService {
       trust === 'needs-verification'
     )
       return 'encryption';
+    if (this.signInAgain()) return 'sign-in-again';
     return limited ? 'status' : null;
   });
 
@@ -320,6 +344,15 @@ export class CapabilityStatusService {
       );
       return next;
     });
+  }
+
+  /** Hide the sign-in prompt for the active Account until the app starts again. */
+  dismissSignInAgain(): void {
+    const userId = this.matrix.activeUserId();
+    if (!userId) return;
+    this.signInAgainDismissed.update((dismissed) =>
+      new Set(dismissed).add(userId),
+    );
   }
 
   retry(entry: CapabilityStatusEntry): void {

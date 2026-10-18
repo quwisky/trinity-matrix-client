@@ -13,6 +13,7 @@ import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import {
   activeIntent,
   session,
+  settled,
   setup,
   type AdapterTest,
 } from './matrix-account-runtime.spec-harness';
@@ -119,6 +120,95 @@ it('persists, starts in the background, then commits Active placement', async ()
   );
   expect(matrix.restorePersisted).toHaveBeenCalledWith(session, 'background');
   expect(matrix.activateAccount).toHaveBeenCalledWith('@new:hs', 'replace');
+});
+
+describe('without a usable keychain', () => {
+  function withoutKeychain(test: AdapterTest): void {
+    vi.mocked(test.secure.withoutKeychain).mockResolvedValue(true);
+    vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+      of(session),
+    );
+    vi.mocked(test.matrix.restorePersisted).mockReturnValue(
+      of({ kind: 'ready' as const }),
+    );
+    vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
+      of(void 0),
+    );
+  }
+
+  function establish(test: AdapterTest) {
+    return firstValueFrom(
+      test.adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    );
+  }
+
+  it('stores nothing and touches no live account when the person declines', async () => {
+    const test = setup();
+    withoutKeychain(test);
+
+    await expect(establish(test)).resolves.toEqual({
+      kind: 'failed',
+      failure: 'unprotected-storage-declined',
+    });
+    expect(test.consent.confirm).toHaveBeenCalledOnce();
+    expect(test.storage.persistForEstablishment).not.toHaveBeenCalled();
+    expect(test.lifecycle.unregisterNotifications).not.toHaveBeenCalled();
+    expect(test.secure.acknowledgeUnprotectedStorage).not.toHaveBeenCalled();
+  });
+
+  it('records the consent and signs in when the person agrees', async () => {
+    const test = setup();
+    withoutKeychain(test);
+    vi.mocked(test.consent.confirm).mockReturnValue(of(true));
+
+    await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+    expect(test.secure.acknowledgeUnprotectedStorage).toHaveBeenCalledWith(
+      'consented',
+    );
+    expect(test.storage.persistForEstablishment).toHaveBeenCalled();
+  });
+
+  it('does not ask again once this device has agreed', async () => {
+    const test = setup();
+    withoutKeychain(test);
+    vi.mocked(test.secure.unprotectedStorageAcknowledged).mockResolvedValue(
+      'consented',
+    );
+
+    await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+    expect(test.consent.confirm).not.toHaveBeenCalled();
+  });
+
+  it('still asks when the person was only told about earlier unprotected storage', async () => {
+    const test = setup();
+    withoutKeychain(test);
+    vi.mocked(test.secure.unprotectedStorageAcknowledged).mockResolvedValue(
+      'notified',
+    );
+
+    await establish(test);
+    expect(test.consent.confirm).toHaveBeenCalledOnce();
+  });
+});
+
+it('never asks for consent where the keychain works', async () => {
+  const test = setup();
+  vi.mocked(test.storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(test.matrix.restorePersisted).mockReturnValue(
+    of({ kind: 'ready' as const }),
+  );
+  vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+
+  await firstValueFrom(
+    test.adapter.establishAccount(
+      AuthenticatedAccountGrant.issue(session),
+      activeIntent,
+    ),
+  );
+  expect(test.consent.confirm).not.toHaveBeenCalled();
 });
 
 it('empties the push handoff before replacing the live Accounts', async () => {
@@ -392,7 +482,9 @@ describe('replacing a stored device', () => {
     );
     const facts = published(test);
 
-    test.adapter.establishAccount(grant, newRecord).subscribe().unsubscribe();
+    const first = test.adapter.establishAccount(grant, newRecord).subscribe();
+    await settled();
+    first.unsubscribe();
     expect(facts).toEqual([NEW_DEVICE]);
 
     await expect(
@@ -411,10 +503,11 @@ describe('replacing a stored device', () => {
     vi.mocked(test.matrix.restorePersisted).mockReturnValue(NEVER);
     const facts = published(test);
 
-    test.adapter
+    const attempt = test.adapter
       .establishAccount(AuthenticatedAccountGrant.issue(session), activeIntent)
-      .subscribe()
-      .unsubscribe();
+      .subscribe();
+    await settled();
+    attempt.unsubscribe();
 
     expect(facts).toEqual([NEW_DEVICE]);
   });

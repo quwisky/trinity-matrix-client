@@ -22,7 +22,7 @@ export interface BannerPrompt {
 export interface WorkspaceSystemStatus {
   readonly hasProblems: Signal<boolean>;
   /** Which prompt owns the one global banner slot; `null` means no global banner. */
-  readonly bannerSlot: Signal<'status' | 'encryption' | null>;
+  readonly bannerSlot: Signal<'status' | 'encryption' | 'sign-in-again' | null>;
   /**
    * Whether the slot has held the status notice in this session, so a prompt that may
    * replace it keeps the notice's height instead of moving the page below the slot.
@@ -33,6 +33,8 @@ export interface WorkspaceSystemStatus {
    * `null` unless {@link bannerSlot} is `'encryption'`.
    */
   readonly bannerPrompt: Signal<BannerPrompt | null>;
+  /** Hide the prompt to sign in again for the active Account until the next app start. */
+  dismissSignInAgain(): void;
   /** Open System status; closing it returns focus to whatever had it. */
   show(): void;
 }

@@ -31,3 +31,11 @@ export class NewDeviceSignInCancelledError extends Error {
     this.name = 'NewDeviceSignInCancelledError';
   }
 }
+
+/** A sign-in stopped because its secrets would be stored without a keychain. */
+export class UnprotectedStorageDeclinedError extends Error {
+  constructor() {
+    super('Sign-in cancelled. Nothing was stored on this device.');
+    this.name = 'UnprotectedStorageDeclinedError';
+  }
+}

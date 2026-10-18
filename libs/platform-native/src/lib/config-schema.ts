@@ -275,6 +275,15 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'pastes into a support thread, and Reset must never destroy it.',
   },
   {
+    disposition: 'excluded',
+    key: 'trinity.secure-storage.unprotected',
+    owner: 'platform-native',
+    reason:
+      'Whether this device’s person agreed to, or was told about, secrets stored without ' +
+      'a keyring. It describes this device only; importing it elsewhere would skip that ' +
+      'question there.',
+  },
+  {
     disposition: 'internal',
     key: 'trinity.message.private',
     owner: 'platform-native',

@@ -2,6 +2,7 @@ import UIKit
 import Capacitor
 import FirebaseCore
 import FirebaseMessaging
+import Security
 import UserNotifications
 
 @main
@@ -17,6 +18,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     private var firebaseConfigured = false
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        keepStoredDataOnThisDevice()
         if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
             FirebaseApp.configure()
             firebaseConfigured = true
@@ -64,6 +66,45 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
+    }
+
+    /// Keeps what Trinity stores out of iCloud and computer backups, on every launch.
+    /// `Library/WebKit` holds the web view's IndexedDB and localStorage (the Matrix crypto and
+    /// sync stores); `Library/NoCloud` holds the composer drafts (Filesystem's
+    /// `LibraryNoCloud`); the App Group's `push-handoff/` holds room and contact names, which
+    /// its own writes also exclude. The attribute on a directory covers everything later
+    /// created in it. Best-effort: a failure leaves that directory as it was until the next
+    /// launch.
+    private func keepStoredDataOnThisDevice() {
+        let fileManager = FileManager.default
+        var directories: [URL] = []
+        if let library = fileManager.urls(for: .libraryDirectory, in: .userDomainMask).first {
+            directories += ["WebKit", "NoCloud"].map { library.appendingPathComponent($0, isDirectory: true) }
+        }
+        if let appGroup = Bundle.main.object(forInfoDictionaryKey: "TrinityAppGroup") as? String,
+           let container = fileManager.containerURL(forSecurityApplicationGroupIdentifier: appGroup) {
+            directories.append(container.appendingPathComponent("push-handoff", isDirectory: true))
+        }
+        for var directory in directories {
+            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? directory.setResourceValues(values)
+        }
+        // Secure storage writes its Keychain items as when-unlocked-this-device-only; items
+        // written before it asked for that kept the plain when-unlocked class, which a backup
+        // restores onto another phone. SecItemUpdate changes the class in place and never
+        // deletes, so no secret is lost. It matches no push handoff item, whose class is
+        // after-first-unlock, and fails harmlessly while the phone is locked, to run again
+        // at the next launch.
+        let legacy: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
+        ]
+        let thisDeviceOnly: [String: Any] = [
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ]
+        SecItemUpdate(legacy as CFDictionary, thisDeviceOnly as CFDictionary)
     }
 
 }

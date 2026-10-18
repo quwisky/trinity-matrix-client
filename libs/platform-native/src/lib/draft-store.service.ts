@@ -1,18 +1,77 @@
 import { Injectable, type OnDestroy } from '@angular/core';
+import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Preferences } from '@capacitor/preferences';
+import { isNativeIos } from './mobile-os';
 
 const DRAFTS_KEY = 'trinity.composer.drafts';
+const DRAFTS_FILE = {
+  path: 'composer-drafts.json',
+  directory: Directory.LibraryNoCloud,
+} as const;
 /** Coalesce a burst of keystrokes into one persist (ms). */
 const PERSIST_DEBOUNCE_MS = 400;
 /** Bound the stored set so stale drafts can't grow without limit. */
 const MAX_DRAFTS = 200;
 
+/** Where the drafts map is persisted, as one JSON string. */
+interface DraftPersistence {
+  read(): Promise<string | null>;
+  write(value: string): Promise<void>;
+  remove(): Promise<void>;
+}
+
+const preferencesPersistence: DraftPersistence = {
+  read: async () => (await Preferences.get({ key: DRAFTS_KEY })).value ?? null,
+  write: (value) => Preferences.set({ key: DRAFTS_KEY, value }),
+  remove: () => Preferences.remove({ key: DRAFTS_KEY }),
+};
+
+/**
+ * iOS backs Preferences (UserDefaults) up to iCloud and computers, and a draft is the
+ * plaintext of a message to an encrypted room, so there drafts live in `Library/NoCloud`,
+ * which is excluded from backup.
+ */
+const backupExcludedFile: DraftPersistence = {
+  async read() {
+    try {
+      const { data } = await Filesystem.readFile({
+        ...DRAFTS_FILE,
+        encoding: Encoding.UTF8,
+      });
+      return typeof data === 'string' ? data : null;
+    } catch {
+      return null; // no file yet
+    }
+  },
+  async write(data) {
+    await Filesystem.writeFile({
+      ...DRAFTS_FILE,
+      encoding: Encoding.UTF8,
+      recursive: true,
+      data,
+    });
+  },
+  remove: () => Filesystem.deleteFile(DRAFTS_FILE),
+};
+
+/** The string-valued entries of a stored drafts map; nothing for absent or corrupt data. */
+function parseDrafts(value: string | null): [string, string][] {
+  if (!value) return [];
+  try {
+    return Object.entries(JSON.parse(value) as Record<string, unknown>).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    );
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Per-conversation composer drafts, persisted across launches under an opaque conversation
  * key (an Account-and-Room key for the main composer, the root event id for the legacy
  * thread composer). Like the theme and feature flags these are non-secret UI state, so
- * they live in Capacitor `Preferences` (localStorage on web, native KV on device), never
- * secure storage.
+ * they live in Capacitor `Preferences` (localStorage on web, native KV on Android), never
+ * secure storage; on iOS in a file excluded from backup.
  *
  * Read synchronously from memory; {@link init} must load the saved map before any
  * composer mounts. Writes are debounced.
@@ -22,6 +81,11 @@ export class DraftStoreService implements OnDestroy {
   private drafts = new Map<string, string>();
   private pending: ReturnType<typeof setTimeout> | null = null;
   private initialised = false;
+  private readonly persistence = isNativeIos()
+    ? backupExcludedFile
+    : preferencesPersistence;
+  /** Drafts still in Preferences that the iOS file has not taken over yet. */
+  private legacyCopy = false;
 
   /**
    * Drop a pending write when the injector goes away: under test a late write lands after
@@ -37,20 +101,18 @@ export class DraftStoreService implements OnDestroy {
 
   /** Load persisted drafts. Call once at app startup, before the composer renders. */
   async init(): Promise<void> {
-    try {
-      const { value } = await Preferences.get({ key: DRAFTS_KEY });
-      if (value) {
-        const parsed = JSON.parse(value) as Record<string, unknown>;
-        this.drafts = new Map(
-          Object.entries(parsed).filter(
-            (entry): entry is [string, string] => typeof entry[1] === 'string',
-          ),
-        );
-      }
-    } catch {
-      // Absent or corrupt: start empty.
-    }
+    // Absent or corrupt: start empty.
+    const stored = await this.persistence.read().catch(() => null);
+    const legacy =
+      this.persistence === preferencesPersistence
+        ? null
+        : await preferencesPersistence.read().catch(() => null);
+    this.drafts = new Map([...parseDrafts(legacy), ...parseDrafts(stored)]);
     this.initialised = true;
+    if (legacy !== null) {
+      this.legacyCopy = true;
+      await this.persist();
+    }
   }
 
   /** Whether {@link init} has loaded the stored drafts; before that the map is empty. */
@@ -95,10 +157,11 @@ export class DraftStoreService implements OnDestroy {
   clearAll(): void {
     this.cancelPending();
     this.drafts = new Map();
-    // Wrapped as in persist(): a `.catch` on a non-promise throws synchronously.
-    void Promise.resolve(Preferences.remove({ key: DRAFTS_KEY })).catch(
-      () => undefined,
-    );
+    // Wrapped as in persist(): a `.catch` on a non-promise throws synchronously. The
+    // Preferences copy goes too, in case a move to the iOS file never finished.
+    for (const store of new Set([this.persistence, preferencesPersistence])) {
+      void Promise.resolve(store.remove()).catch(() => undefined);
+    }
   }
 
   /**
@@ -109,7 +172,7 @@ export class DraftStoreService implements OnDestroy {
   flush(): Promise<void> {
     if (!this.initialised) return Promise.resolve();
     this.cancelPending();
-    return this.persist();
+    return this.persist().then(() => undefined);
   }
 
   private schedulePersist(): void {
@@ -129,18 +192,27 @@ export class DraftStoreService implements OnDestroy {
     }
   }
 
-  private persist(): Promise<void> {
+  /** Resolves whether the write succeeded; never rejects. */
+  private persist(): Promise<boolean> {
     const record: Record<string, string> = {};
     for (const [key, text] of [...this.drafts.entries()].slice(-MAX_DRAFTS)) {
       record[key] = text;
     }
     // Promise.resolve wraps the SDK call: a `.catch` straight onto a non-promise throws
     // synchronously out of a timer callback, where nothing can catch it.
-    return Promise.resolve(
-      Preferences.set({ key: DRAFTS_KEY, value: JSON.stringify(record) }),
-    ).then(
-      () => undefined,
-      () => undefined,
+    return Promise.resolve(this.persistence.write(JSON.stringify(record))).then(
+      () => {
+        // The Preferences copy goes only once the file holds the drafts, and then at the
+        // first write that succeeds, or a draft cleared since would come back next launch.
+        if (this.legacyCopy) {
+          this.legacyCopy = false;
+          void Promise.resolve(preferencesPersistence.remove()).catch(() => {
+            this.legacyCopy = true;
+          });
+        }
+        return true;
+      },
+      () => false,
     );
   }
 }

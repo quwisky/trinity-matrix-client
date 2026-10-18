@@ -81,6 +81,7 @@ import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapte
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
 import { BackgroundMemoryRelease } from './background-memory-release.service';
 import { WhatsNewLauncherAdapter } from './whats-new-launcher.adapter';
+import { UnprotectedStorageNotice } from './unprotected-storage.presenter';
 import { DeviceConfirmationCoordinator } from './device-confirmation.coordinator';
 import { CapabilityHealthService } from '../capability-health.service';
 import { healthFact } from '../testing/capability-health.fixture';
@@ -214,6 +215,9 @@ function setup({
       MockProvider(HostLifecycleService, { events: lifecycleEvents }),
       MockProvider(BackgroundMemoryRelease, { run: () => memoryRelease }),
       MockProvider(WhatsNewLauncherAdapter, { runPending: () => EMPTY }),
+      MockProvider(UnprotectedStorageNotice, {
+        runPendingNotice: () => EMPTY,
+      }),
       MockProvider(LiveTimelineTrimmer, { run: () => timelineTrim }),
       MockProvider(HostUpdatesService, { check: hostUpdateCheck }),
       MockProvider(TrnSurfaceService, {

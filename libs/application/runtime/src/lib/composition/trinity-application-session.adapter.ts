@@ -51,6 +51,7 @@ import { BackgroundMemoryRelease } from './background-memory-release.service';
 import { DeviceConfirmationCoordinator } from './device-confirmation.coordinator';
 import { TrinityHostNavigationAdapter } from './trinity-host-navigation.adapter';
 import { WhatsNewLauncherAdapter } from './whats-new-launcher.adapter';
+import { UnprotectedStorageNotice } from './unprotected-storage.presenter';
 
 /** Owns every live host and Workspace subscription for one Application Runtime session. */
 @Injectable({ providedIn: 'root' })
@@ -81,6 +82,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly notificationSession = inject(NotificationSessionService);
   private readonly hostNavigation = inject(TrinityHostNavigationAdapter);
   private readonly whatsNewLauncher = inject(WhatsNewLauncherAdapter);
+  private readonly unprotectedStorage = inject(UnprotectedStorageNotice);
 
   run(readiness: Observable<void>): Observable<ApplicationSessionEvent> {
     return new Observable<ApplicationSessionEvent>((subscriber) => {
@@ -238,6 +240,7 @@ export class TrinityApplicationSessionAdapter {
       this.runInteractions(),
       this.runUpdates().pipe(ignoreElements()),
       this.whatsNewLauncher.runPending(),
+      this.unprotectedStorage.runPendingNotice(),
       this.memoryRelease.run(),
       this.timelineTrimmer.run(),
     );

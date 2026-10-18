@@ -72,7 +72,8 @@ public enum PushHandoffStoreError: Error {
 /// the tokens along (the policy the app's own secrets follow). `SecItemUpdate` sets the class
 /// too, so an item written with an older class moves over at the next write; the app writes
 /// every account when it starts. Room names live in the app-group file `push-handoff/rooms.json`,
-/// and App lock's Notification text in `push-handoff/settings.json` beside it.
+/// and App lock's Notification text in `push-handoff/settings.json` beside it; every write
+/// keeps that directory out of backups.
 /// Reads never throw: a keychain or file error reads as "no account" or "no room", and an
 /// unreadable Notification text as `alwaysHide`.
 /// Never logs what it stores.
@@ -206,10 +207,12 @@ public final class PushHandoffStore: HandoffReading {
     }
 
     private func write(_ data: Data, to url: URL) throws {
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
+        var directory = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // Room and contact names stay on this device: no iCloud or computer backup.
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try directory.setResourceValues(values)
         var options: Data.WritingOptions = [.atomic]
         #if os(iOS)
         options.insert(.completeFileProtectionUntilFirstUserAuthentication)

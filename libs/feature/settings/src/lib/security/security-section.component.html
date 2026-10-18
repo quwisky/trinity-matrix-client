@@ -183,6 +183,19 @@
     </p>
   </trn-settings-group>
 
+  @if (withoutKeychain()) {
+    <trn-settings-group
+      title="No keyring on this device"
+      data-testid="security-no-keyring"
+    >
+      <p class="m-0 py-3 text-sm text-muted-foreground">
+        Trinity can’t use a keyring on this device, so your sign-in and
+        encryption keys are stored unprotected on disk. Anyone who can read your
+        files could use them to read your messages.
+      </p>
+    </trn-settings-group>
+  }
+
   <!-- A store created before stores were encrypted stays as it is; a new sign-in
      creates an encrypted one. -->
   @if (cryptoStoreEncrypted() === false) {

@@ -1127,6 +1127,20 @@ describe('SessionStorageService', () => {
       );
     });
 
+    it('gives a store without a key an encrypted successor when the device changes', async () => {
+      stubIndexedDb();
+      const { svc, secure, keys } = setup();
+      await migrateLegacyAlice(svc, secure);
+
+      await firstValueFrom(svc.save({ ...ALICE, deviceId: 'DEV1b' }));
+
+      const [record] = await firstValueFrom(svc.list());
+      expect(record.cryptoStoreKeyed).toBe(true);
+      expect(keys.create).toHaveBeenCalledWith(
+        'trinity-crypto:@alice:hs:DEV1b',
+      );
+    });
+
     it('leaves the store untouched on a same-device re-save (token rotation)', async () => {
       const deleteDatabase = stubIndexedDb();
       const { svc } = setup();

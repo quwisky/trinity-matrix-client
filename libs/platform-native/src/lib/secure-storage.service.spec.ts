@@ -6,10 +6,18 @@ import { desktopBridgeFixture } from '@trinity/testing';
 
 // In-memory @capacitor/preferences + the native keychain plugin (hoisted so the
 // vi.mock factories can see them).
-const { prefs, nativeStore, nativeSet } = vi.hoisted(() => ({
+const { prefs, nativeStore, nativeSet, wrappingKeys } = vi.hoisted(() => ({
   prefs: new Map<string, string>(),
   nativeStore: new Map<string, string>(),
   nativeSet: { calls: [] as unknown[][] },
+  wrappingKeys: new Map<string, CryptoKey>(),
+}));
+// jsdom ships no IndexedDB; the web store keys' wrapping keys are held here.
+vi.mock('./crypto-store-wrapping-keys', () => ({
+  loadWrappingKey: async (id: string) => wrappingKeys.get(id),
+  deleteWrappingKey: async (id: string) => {
+    wrappingKeys.delete(id);
+  },
 }));
 vi.mock('@capacitor/preferences', () => ({
   Preferences: {
@@ -22,6 +30,7 @@ vi.mock('@capacitor/preferences', () => ({
     remove: async ({ key }: { key: string }) => {
       prefs.delete(key);
     },
+    keys: async () => ({ keys: [...prefs.keys()] }),
   },
 }));
 vi.mock('@aparajita/capacitor-secure-storage', () => ({
@@ -46,6 +55,7 @@ describe('SecureStorageService', () => {
   beforeEach(() => {
     prefs.clear();
     nativeStore.clear();
+    wrappingKeys.clear();
     nativeSet.calls = [];
   });
   afterEach(() => vi.restoreAllMocks());
@@ -202,6 +212,152 @@ describe('SecureStorageService', () => {
         });
 
       expect(await service().read('k')).toEqual({ kind: 'unavailable' });
+    });
+  });
+
+  describe('storing without a keychain', () => {
+    function desktop(
+      available: boolean,
+      set: (key: string, value: string) => Promise<boolean> = async () => true,
+      held: Record<string, string> = {},
+    ) {
+      const secureStore = {
+        isAvailable: vi.fn().mockResolvedValue(available),
+        set: vi.fn(set),
+        read: vi.fn(async (key: string) =>
+          key in held
+            ? { kind: 'present', value: held[key] }
+            : { kind: 'absent' },
+        ),
+      };
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture({
+          capabilities: { secureStore: secureStore as never },
+        });
+      return secureStore;
+    }
+    afterEach(() => {
+      delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+    });
+
+    it('is reported only where a host keychain could not be used', async () => {
+      expect(await service().withoutKeychain()).toBe(false);
+      TestBed.resetTestingModule();
+
+      desktop(true);
+      expect(await service().withoutKeychain()).toBe(false);
+      TestBed.resetTestingModule();
+
+      desktop(false);
+      const s = service();
+      expect(await s.isSecure()).toBe(false);
+      expect(await s.withoutKeychain()).toBe(true);
+    });
+
+    it('warns only about secrets that are actually stored unprotected', async () => {
+      // Saved with a keyring, then a launch without one: nothing was written in plaintext.
+      desktop(false);
+      const s = service();
+      expect(await s.withoutKeychain()).toBe(true);
+      expect(await s.storesUnprotectedSecrets()).toBe(false);
+
+      await s.set('matrix.accessToken:@me:hs', 'tok');
+      expect(await s.storesUnprotectedSecrets()).toBe(true);
+    });
+
+    it('never reports the web store, where no keychain exists', async () => {
+      const s = service();
+      await s.set('matrix.accessToken:@me:hs', 'tok');
+      expect(await s.storesUnprotectedSecrets()).toBe(false);
+    });
+
+    it('moves secrets left unprotected into the keychain once it is back', async () => {
+      prefs.set('secure.matrix.accessToken:@me:hs', 'tok');
+      const store = desktop(true);
+      const s = service();
+
+      expect(await s.storesUnprotectedSecrets()).toBe(false);
+      expect(store.set).toHaveBeenCalledWith(
+        'matrix.accessToken:@me:hs',
+        'tok',
+      );
+      expect(prefs.has('secure.matrix.accessToken:@me:hs')).toBe(false);
+    });
+
+    it('stores a moved crypto store key unwrapped, as the keychain expects it', async () => {
+      const raw = crypto.getRandomValues(new Uint8Array(32));
+      const wrappingKey = await crypto.subtle.generateKey(
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt'],
+      );
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const sealed = new Uint8Array(
+        await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrappingKey, raw),
+      );
+      wrappingKeys.set('trinity-crypto:@me:hs:DEV', wrappingKey);
+      prefs.set(
+        'secure.matrix.cryptoStoreKey:trinity-crypto:@me:hs:DEV',
+        btoa(String.fromCharCode(...iv, ...sealed)),
+      );
+      const store = desktop(true);
+
+      await service().isSecure();
+
+      expect(store.set).toHaveBeenCalledWith(
+        'matrix.cryptoStoreKey:trinity-crypto:@me:hs:DEV',
+        btoa(String.fromCharCode(...raw)),
+      );
+      expect(prefs.size).toBe(0);
+      expect(wrappingKeys.size).toBe(0);
+    });
+
+    it('keeps the keychain’s own value and drops the leftover beside it', async () => {
+      prefs.set('secure.matrix.accessToken:@me:hs', 'stale');
+      const store = desktop(true, async () => true, {
+        'matrix.accessToken:@me:hs': 'newer',
+      });
+
+      expect(await service().storesUnprotectedSecrets()).toBe(false);
+
+      expect(store.set).not.toHaveBeenCalled();
+      expect(prefs.size).toBe(0);
+    });
+
+    it('drops a wrapped store key whose wrapping key is gone, so no warning stays', async () => {
+      prefs.set(
+        'secure.matrix.cryptoStoreKey:trinity-crypto:@me:hs:DEV',
+        btoa('not unwrappable'),
+      );
+      const store = desktop(true);
+
+      expect(await service().storesUnprotectedSecrets()).toBe(false);
+
+      expect(store.set).not.toHaveBeenCalled();
+      expect(prefs.size).toBe(0);
+    });
+
+    it('keeps an unprotected secret the keychain would not take', async () => {
+      prefs.set('secure.matrix.accessToken:@me:hs', 'tok');
+      desktop(true, async () => false);
+
+      await service().isSecure();
+
+      expect(prefs.get('secure.matrix.accessToken:@me:hs')).toBe('tok');
+    });
+
+    it('remembers on this device that the person was told, or agreed', async () => {
+      const s = service();
+      expect(await s.unprotectedStorageAcknowledged()).toBeNull();
+
+      await s.acknowledgeUnprotectedStorage('notified');
+      expect(await s.unprotectedStorageAcknowledged()).toBe('notified');
+
+      await s.acknowledgeUnprotectedStorage('consented');
+      expect(await s.unprotectedStorageAcknowledged()).toBe('consented');
+
+      prefs.set('trinity.secure-storage.unprotected', 'something else');
+      expect(await s.unprotectedStorageAcknowledged()).toBeNull();
     });
   });
 
