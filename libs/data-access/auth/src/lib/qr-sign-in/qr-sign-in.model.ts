@@ -27,20 +27,22 @@ export type ExistingDeviceState =
 
 // Keyed by the string values of the SDK's MSC4108FailureReason and
 // ClientRendezvousFailureReason enums, so this model needs no SDK import.
-const FAILURE_BY_REASON: Readonly<Record<string, QrSignInFailure>> = {
-  authorization_expired: 'expired',
-  expired: 'expired',
-  user_cancelled: 'declined',
-  user_declined: 'declined',
-  unsupported_protocol: 'unsupported',
-  homeserver_lacks_support: 'unsupported',
-  etag_missing: 'unsupported',
-  insecure_channel_detected: 'insecure',
-  device_already_exists: 'already-signed-in',
-  other_device_already_signed_in: 'already-signed-in',
-};
+const FAILURE_BY_REASON: ReadonlyMap<string, QrSignInFailure> = new Map([
+  ['authorization_expired', 'expired'],
+  ['expired', 'expired'],
+  ['user_cancelled', 'declined'],
+  ['user_declined', 'declined'],
+  ['unsupported_protocol', 'unsupported'],
+  ['homeserver_lacks_support', 'unsupported'],
+  ['etag_missing', 'unsupported'],
+  ['insecure_channel_detected', 'insecure'],
+  ['device_already_exists', 'already-signed-in'],
+  ['other_device_already_signed_in', 'already-signed-in'],
+]);
 
 export function qrSignInFailureOf(reason: unknown): QrSignInFailure {
   if (reason instanceof TypeError) return 'network';
-  return (typeof reason === 'string' && FAILURE_BY_REASON[reason]) || 'unknown';
+  return (
+    (typeof reason === 'string' && FAILURE_BY_REASON.get(reason)) || 'unknown'
+  );
 }

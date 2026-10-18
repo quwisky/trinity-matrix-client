@@ -34,6 +34,16 @@ describe('QrSignInAvailability', () => {
     expect(adapter.isAvailable).toHaveBeenCalledTimes(2);
   });
 
+  it('shares one probe between concurrent subscribers', async () => {
+    const { adapter, service } = setup(async () => true);
+    const answers = await Promise.all([
+      firstValueFrom(service.supports('https://a')),
+      firstValueFrom(service.supports('https://a')),
+    ]);
+    expect(answers).toEqual([true, true]);
+    expect(adapter.isAvailable).toHaveBeenCalledTimes(1);
+  });
+
   it('answers false on error and retries next time', async () => {
     let fail = true;
     const { adapter, service } = setup(async () => {

@@ -15,6 +15,11 @@ describe('qrSignInFailureOf', () => {
     ['other_device_already_signed_in', 'already-signed-in'],
     [new TypeError('Failed to fetch'), 'network'],
     ['invalid_code', 'unknown'],
+    ['device_not_found', 'unknown'],
+    ['unexpected_message_received', 'unknown'],
+    ['other_device_not_signed_in', 'unknown'],
+    ['constructor', 'unknown'],
+    ['toString', 'unknown'],
     [undefined, 'unknown'],
     [{}, 'unknown'],
   ])('maps %s to %s', (reason, expected) => {
