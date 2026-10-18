@@ -14,33 +14,18 @@ import {
 import { MessageListComponent } from './message-list.component';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
+import { messageView } from '../testing/message-view.fixture';
 
 /** The fixed estimate an unmeasured row is counted at with the flag off. */
 const EST = 64;
 
 function msg(id: string, ts: number): MessageView {
-  return {
+  return messageView({
     id,
-    senderId: '@a:hs',
     senderName: 'A',
-    senderInitial: 'A',
-    senderAvatarMxc: null,
     body: `body ${id}`,
-    html: null,
     timestamp: ts,
-    isOwn: false,
-    decryptionFailed: false,
-    edited: false,
-    reactions: [],
-    replyTo: null,
-    status: null,
-    kind: 'text',
-    media: null,
-    caption: null,
-    captionHtml: null,
-    readReceipts: [],
-    poll: null,
-  };
+  });
 }
 
 const many = (n: number, prefix = '$') =>

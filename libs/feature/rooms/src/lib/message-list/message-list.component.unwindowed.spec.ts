@@ -23,6 +23,7 @@ import {
   ConversationMessagesStub,
 } from '../testing/conversation-timeline.stub';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
+import { messageView } from '../testing/message-view.fixture';
 
 type ListOptions = NonNullable<
   Parameters<typeof render<MessageListComponent>>[1]
@@ -42,28 +43,14 @@ function msg(
   senderName: string,
   ts: number,
 ): MessageView {
-  return {
+  return messageView({
     id,
     senderId,
     senderName,
     senderInitial: senderName[0],
-    senderAvatarMxc: null,
     body: `body ${id}`,
-    html: null,
     timestamp: ts,
-    isOwn: false,
-    decryptionFailed: false,
-    edited: false,
-    reactions: [],
-    replyTo: null,
-    status: null,
-    kind: 'text',
-    media: null,
-    caption: null,
-    captionHtml: null,
-    readReceipts: [],
-    poll: null,
-  };
+  });
 }
 
 /** The composer this list renders, for asserting what a quote put into it. */

@@ -27,6 +27,7 @@ import {
 } from './message-row.component';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
 import { type UndecryptableFix } from '../shared/undecryptable-fix.service';
+import { messageRow as row } from '../testing/message-view.fixture';
 
 /** Build a row caps object, overriding only the flags a test cares about. */
 const caps = (over: Partial<MessageRowCaps> = {}): MessageRowCaps => ({
@@ -40,33 +41,6 @@ const caps = (over: Partial<MessageRowCaps> = {}): MessageRowCaps => ({
   readOnly: false,
   ...over,
 });
-
-function row(overrides: Partial<MessageRow> = {}): MessageRow {
-  return {
-    id: '$1',
-    senderId: '@a:hs',
-    senderName: 'Alice',
-    senderInitial: 'A',
-    senderAvatarMxc: null,
-    body: 'hello',
-    html: null,
-    timestamp: 1000,
-    isOwn: false,
-    decryptionFailed: false,
-    edited: false,
-    reactions: [],
-    replyTo: null,
-    status: null,
-    kind: 'text',
-    media: null,
-    caption: null,
-    captionHtml: null,
-    readReceipts: [],
-    poll: null,
-    showHeader: true,
-    ...overrides,
-  };
-}
 
 /** A download-only file attachment — `kind:'file'` skips the async thumbnail
  * resolve, so the row renders synchronously in jsdom. */

@@ -7,6 +7,7 @@ import { MediaService } from '@trinity/data-access/media';
 import { UrlPreviewService } from '@trinity/data-access/timeline';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { DRAWER_OUTER_EDGE_PX } from '../rooms/drawer-swipe.directive';
+import { messageRow as row } from '../testing/message-view.fixture';
 import { HostFileExportService } from '@trinity/runtime/host';
 import {
   MessageRowComponent,
@@ -41,33 +42,6 @@ const caps = (over: Partial<MessageRowCaps> = {}): MessageRowCaps => ({
   readOnly: false,
   ...over,
 });
-
-function row(over: Partial<MessageRow> = {}): MessageRow {
-  return {
-    id: '$1',
-    senderId: '@a:hs',
-    senderName: 'Alice',
-    senderInitial: 'A',
-    senderAvatarMxc: null,
-    body: 'hello',
-    html: null,
-    timestamp: 1000,
-    isOwn: false,
-    decryptionFailed: false,
-    edited: false,
-    reactions: [],
-    replyTo: null,
-    status: null,
-    kind: 'text',
-    media: null,
-    caption: null,
-    captionHtml: null,
-    readReceipts: [],
-    poll: null,
-    showHeader: true,
-    ...over,
-  };
-}
 
 async function renderRow(
   swipeDirection: SwipeDirection,
