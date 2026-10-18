@@ -11,7 +11,8 @@ import { PublicRoomsService } from '@trinity/data-access/discovery';
 import {
   SHARED_MOCKS,
   RoomsTimelineStub,
-  clientStub,
+  UNREAD_AGGREGATOR_PROVIDER,
+  matrixClientProvider,
   invitesProvider,
   selectedRoomLibraryProvider,
   setRouteRoom,
@@ -20,7 +21,6 @@ import {
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
   RoomNotificationUpdateError,
@@ -30,7 +30,6 @@ import {
   RoomLibraryService,
   SpacesService,
   AccountScopeService,
-  UnreadAggregatorService,
   SpaceChildrenService,
   type RoomSummary,
   type SpaceSummary,
@@ -180,18 +179,8 @@ describe('RoomsPage action error feedback', () => {
           prompt$: alertPrompt,
         }),
         MockProvider(MediaPipeline),
-        MockProvider(MatrixClientService, {
-          isInitialized: true,
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
-          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
-          clientFor: () => clientStub(),
-        }),
-        MockProvider(UnreadAggregatorService, {
-          unreadByAccount: signal<ReadonlyMap<string, number>>(
-            new Map(),
-          ).asReadonly(),
-        }),
+        matrixClientProvider(),
+        UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),

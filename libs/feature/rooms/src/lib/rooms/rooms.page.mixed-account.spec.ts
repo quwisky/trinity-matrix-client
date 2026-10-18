@@ -1,5 +1,6 @@
 import {
   SHARED_MOCKS,
+  UNREAD_AGGREGATOR_PROVIDER,
   clientStub,
   invitesProvider,
   setRouteRoom,
@@ -20,7 +21,6 @@ import {
   SpaceRoomOrderService,
   SpacesService,
   AccountScopeService,
-  UnreadAggregatorService,
   type RoomSummary,
   type SpaceSummary,
 } from '@trinity/data-access/room-library';
@@ -204,11 +204,7 @@ describe('RoomsPage mixed-account view', () => {
               getUser: () => ({ avatarUrl: avatars[id] ?? null }),
             }),
         }),
-        MockProvider(UnreadAggregatorService, {
-          unreadByAccount: signal<ReadonlyMap<string, number>>(
-            new Map(),
-          ).asReadonly(),
-        }),
+        UNREAD_AGGREGATOR_PROVIDER,
         // Profiles come from the projection now, not from reading each client here.
         MockProvider(AccountIdentitiesService, {
           identities: signal(

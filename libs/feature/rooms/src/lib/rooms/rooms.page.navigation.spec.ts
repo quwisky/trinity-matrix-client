@@ -1,7 +1,8 @@
 import {
   SHARED_MOCKS,
   RoomsTimelineStub,
-  clientStub,
+  UNREAD_AGGREGATOR_PROVIDER,
+  matrixClientProvider,
   flushPanelJump,
   invitesProvider,
   selectedRoomLibraryProvider,
@@ -153,18 +154,8 @@ describe('RoomsPage quick switcher', () => {
         },
         MockProvider(TimelineActionsService),
         MockProvider(MediaPipeline),
-        MockProvider(MatrixClientService, {
-          isInitialized: true,
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
-          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
-          clientFor: () => clientStub(),
-        }),
-        MockProvider(UnreadAggregatorService, {
-          unreadByAccount: signal<ReadonlyMap<string, number>>(
-            new Map(),
-          ).asReadonly(),
-        }),
+        matrixClientProvider(),
+        UNREAD_AGGREGATOR_PROVIDER,
         MockProvider(TrnSurfaceService, { hasOpen: dialogHasOpen }),
         MockProvider(TrnAlertService),
         MockProvider(TrnToastService),
@@ -435,18 +426,8 @@ describe('RoomsPage mobile navigation', () => {
         },
         MockProvider(TimelineActionsService),
         MockProvider(MediaPipeline, { releaseAll }),
-        MockProvider(MatrixClientService, {
-          isInitialized: true,
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
-          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
-          clientFor: () => clientStub(),
-        }),
-        MockProvider(UnreadAggregatorService, {
-          unreadByAccount: signal<ReadonlyMap<string, number>>(
-            new Map(),
-          ).asReadonly(),
-        }),
+        matrixClientProvider(),
+        UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -1171,18 +1152,8 @@ describe('RoomsPage keyboard room switching', () => {
         }),
         MockProvider(TimelineActionsService),
         MockProvider(MediaPipeline, { releaseAll }),
-        MockProvider(MatrixClientService, {
-          isInitialized: true,
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
-          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
-          clientFor: () => clientStub(),
-        }),
-        MockProvider(UnreadAggregatorService, {
-          unreadByAccount: signal<ReadonlyMap<string, number>>(
-            new Map(),
-          ).asReadonly(),
-        }),
+        matrixClientProvider(),
+        UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -1537,18 +1508,8 @@ describe('RoomsPage room-in-URL deep link', () => {
         }),
         MockProvider(TimelineActionsService),
         MockProvider(MediaPipeline),
-        MockProvider(MatrixClientService, {
-          isInitialized: true,
-          instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
-          activeUserId: signal<string | null>('@me:hs').asReadonly(),
-          accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
-          clientFor: () => clientStub(),
-        }),
-        MockProvider(UnreadAggregatorService, {
-          unreadByAccount: signal<ReadonlyMap<string, number>>(
-            new Map(),
-          ).asReadonly(),
-        }),
+        matrixClientProvider(),
+        UNREAD_AGGREGATOR_PROVIDER,
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
