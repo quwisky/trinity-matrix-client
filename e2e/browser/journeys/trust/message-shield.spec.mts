@@ -501,9 +501,9 @@ test.describe('Message authenticity shields', () => {
     await expect(page.locator('.msg', { hasText: keyed })).toHaveCount(0);
   });
 
-  // The SDK shows an edit's text without checking that the edit was encrypted, so the edit
-  // is judged, not the message it replaces.
-  test('an unencrypted edit of an encrypted message is marked', async ({
+  // The SDK applies an edit without checking that it was encrypted. The spec asks that an
+  // encrypted message's replacement be encrypted too, so an unencrypted edit is ignored.
+  test('an unencrypted edit of an encrypted message is ignored', async ({
     page,
     request,
   }) => {
@@ -511,6 +511,7 @@ test.describe('Message authenticity shields', () => {
     const room = await setUpSharedRoom(request, hs, 'ed');
     const sealed = `sent with encryption ${room.runId}`;
     const edited = `edited without encryption ${room.runId}`;
+    const later = `sent after the edit ${room.runId}`;
 
     await room.enableEncryption();
     await login(page, room.readerSession);
@@ -542,12 +543,17 @@ test.describe('Message authenticity shields', () => {
     );
     expect(edit.ok()).toBe(true);
 
-    const editedRow = page.locator(`.msg[data-mid="${eventId}"]`);
-    await expect(editedRow.locator('.msg__text')).toContainText(edited, {
-      timeout: 30_000,
-    });
+    // Another account's message sent after the edit can only arrive through sync, which
+    // delivers in stream order, so once its row shows the edit has been processed too.
+    await room.sendText('after-edit', later);
+    await expect(rowOf(page, later)).toBeVisible({ timeout: 30_000 });
+
+    const sealedRow = page.locator(`.msg[data-mid="${eventId}"]`);
+    await expect(sealedRow.locator('.msg__text')).toContainText(sealed);
+    await expect(page.getByText(edited)).toHaveCount(0);
+    await expect(sealedRow.getByTestId('msg-edited')).toHaveCount(0);
     await expect(
-      editedRow.locator('[data-testid="msg-shield-unencrypted"]'),
-    ).toBeVisible({ timeout: 30_000 });
+      sealedRow.locator('[data-testid^="msg-shield-unencrypted"]'),
+    ).toHaveCount(0);
   });
 });
