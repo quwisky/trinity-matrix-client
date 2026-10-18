@@ -447,6 +447,7 @@ describe('normalizeTimelineEvent', () => {
           getContent: () => ({ body: 'parrot', ...content }),
         }),
         null,
+        false,
       );
 
     expect(sticker({ url: 'mxc://example.org/parrot' })).toMatchObject({
