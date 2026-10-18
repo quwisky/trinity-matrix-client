@@ -362,7 +362,11 @@ async function main(protocolBrowser) {
     const declineRow = page.locator('.invite').filter({
       has: page.locator('.invite__name', { hasText: DECLINE_ROOM_NAME }),
     });
-    const declineBtn = declineRow.locator('button.invite__btn.decline');
+    // Exact name: the row also has a "Decline and report" button with the same class.
+    const declineBtn = declineRow.getByRole('button', {
+      name: `Decline invite to ${DECLINE_ROOM_NAME}`,
+      exact: true,
+    });
     await declineBtn.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     await declineBtn.click();
 
