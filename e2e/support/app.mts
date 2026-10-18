@@ -250,14 +250,16 @@ export async function settleSignIn(
   });
   await expect(async () => {
     if (await keyringConsent.isVisible()) {
-      await keyringConsent.getByTestId('alert-confirm').click();
+      await keyringConsent
+        .getByTestId('alert-confirm')
+        .click({ timeout: 2_000 });
     }
     const url = new URL(page.url());
-    expect(onRooms(url) || onDeviceCheck(url)).toBe(true);
+    expect(
+      onRooms(url) || onDeviceCheck(url),
+      'sign-in reached neither Rooms nor the device check',
+    ).toBe(true);
   }).toPass({ timeout });
-  await page.waitForURL((url) => onRooms(url) || onDeviceCheck(url), {
-    timeout,
-  });
   const landed = onDeviceCheck(new URL(page.url())) ? 'check' : 'rooms';
   if (landed === 'rooms') {
     if (handling === 'expect') {
