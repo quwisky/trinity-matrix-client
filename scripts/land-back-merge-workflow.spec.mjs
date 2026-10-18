@@ -1,15 +1,6 @@
 /** The land workflow pushes to main as a ruleset bypass actor, so its trigger and scope are pinned. */
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { parse } from 'yaml';
+import { workflow as read } from './workspace-sources.mjs';
 
-const read = (name) =>
-  parse(
-    readFileSync(
-      resolve(import.meta.dirname, '../.github/workflows', name),
-      'utf8',
-    ),
-  );
 const workflow = read('land-back-merge.yml');
 const job = workflow.jobs.land;
 const at = (predicate) => job.steps.findIndex(predicate);

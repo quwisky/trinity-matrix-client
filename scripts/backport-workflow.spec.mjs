@@ -1,13 +1,8 @@
 /** The backport workflow runs with secrets on PR events, so it must never touch PR-head code. */
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { parse } from 'yaml';
+import { read, workflow as loadWorkflow } from './workspace-sources.mjs';
 
-const source = readFileSync(
-  resolve(import.meta.dirname, '../.github/workflows/backport.yml'),
-  'utf8',
-);
-const workflow = parse(source);
+const source = read('.github/workflows/backport.yml');
+const workflow = loadWorkflow('backport.yml');
 const job = workflow.jobs.backport;
 const at = (predicate) => job.steps.findIndex(predicate);
 

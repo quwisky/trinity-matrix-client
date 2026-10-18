@@ -2,15 +2,11 @@
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { parse } from 'yaml';
+import { join } from 'node:path';
+import { read, workflow as loadWorkflow } from './workspace-sources.mjs';
 
-const root = resolve(import.meta.dirname, '..');
-const source = readFileSync(
-  resolve(root, '.github/workflows/homebrew.yml'),
-  'utf8',
-);
-const workflow = parse(source);
+const source = read('.github/workflows/homebrew.yml');
+const workflow = loadWorkflow('homebrew.yml');
 const job = workflow.jobs.tap;
 const stepIndex = (name) => job.steps.findIndex((step) => step.name === name);
 

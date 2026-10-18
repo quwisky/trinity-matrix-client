@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parse } from 'yaml';
+import { workflow as loadWorkflow } from './workspace-sources.mjs';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 
@@ -155,7 +155,7 @@ describe('legacy documentation replacement', () => {
 
 describe('GitHub Pages documentation publication', () => {
   const workflowPath = join(workspaceRoot, '.github/workflows/docs-pages.yml');
-  const workflow = () => parse(readFileSync(workflowPath, 'utf8'));
+  const workflow = () => loadWorkflow('docs-pages.yml');
 
   it('defines a dedicated main, release and manual Pages workflow', () => {
     expect(existsSync(workflowPath)).toBe(true);

@@ -12,13 +12,14 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
+import { workflow } from './workspace-sources.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const yaml = (path) => parse(read(path));
 const json = (path) => JSON.parse(read(path));
-const ci = yaml('.github/workflows/ci.yml');
-const renderer = yaml('.github/workflows/_renderer.yml');
+const ci = workflow('ci.yml');
+const renderer = workflow('_renderer.yml');
 const restore = yaml('.github/actions/restore-verified-renderer/action.yml');
 const usesRestore = (step) =>
   step.uses === './.github/actions/restore-verified-renderer';

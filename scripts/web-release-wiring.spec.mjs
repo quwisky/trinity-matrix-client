@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parse } from 'yaml';
+import { workflow } from './workspace-sources.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const read = (path) => readFileSync(join(root, path), 'utf8');
@@ -94,7 +94,7 @@ describe('web release docs', () => {
 });
 
 describe('container registry token', () => {
-  const { jobs } = parse(read('.github/workflows/container.yml'));
+  const { jobs } = workflow('container.yml');
   const runs = (job) => job.steps.flatMap((step) => step.run ?? []).join('\n');
   const usesOf = (job) => job.steps.flatMap((step) => step.uses ?? []);
 

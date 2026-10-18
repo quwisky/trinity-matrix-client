@@ -5,7 +5,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -13,11 +12,14 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
+import {
+  read,
+  workflow as loadWorkflow,
+  workflows as listWorkflows,
+} from './workspace-sources.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const workflow = parse(
-  readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8'),
-);
+const workflow = loadWorkflow('release.yml');
 const readJson = (name) =>
   JSON.parse(readFileSync(resolve(root, name), 'utf8'));
 const SECRETS = [
@@ -72,17 +74,13 @@ describe('release macOS signing', () => {
 });
 
 describe('macOS signing isolation', () => {
-  const workflows = readdirSync(resolve(root, '.github/workflows')).filter(
-    (name) => /\.ya?ml$/.test(name),
-  );
+  const workflows = listWorkflows();
   const runs = (job) => job.steps.flatMap((step) => step.run ?? []);
 
   it('reads the signing secrets only in the macOS signing job', () => {
     expect(workflows.length).toBeGreaterThan(0);
     for (const name of workflows) {
-      const { jobs } = parse(
-        readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
-      );
+      const { jobs } = loadWorkflow(name);
       for (const [id, job] of Object.entries(jobs)) {
         if (name === 'release.yml' && id === 'sign-mac') continue;
         const text = JSON.stringify(job);
@@ -107,9 +105,7 @@ describe('macOS signing isolation', () => {
   it('keeps the release environment, and its reviewers, on the signing job alone', () => {
     expect(signJob().environment).toBe('release');
     for (const name of workflows) {
-      const { jobs } = parse(
-        readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
-      );
+      const { jobs } = loadWorkflow(name);
       for (const [id, job] of Object.entries(jobs)) {
         if (name === 'release.yml' && id === 'sign-mac') continue;
         // An environment is a name or { name, url }.
@@ -121,10 +117,7 @@ describe('macOS signing isolation', () => {
 
   it('never hands a job every secret at once', () => {
     for (const name of workflows) {
-      const text = readFileSync(
-        resolve(root, '.github/workflows', name),
-        'utf8',
-      )
+      const text = read(`.github/workflows/${name}`)
         .replace(/\s+/g, ' ')
         .toLowerCase();
       // Expression function names are case-insensitive, so toJson(secrets) counts too.
@@ -402,7 +395,7 @@ describe('release branches', () => {
 
     it('runs no unlocked package in any workflow', () => {
       const dir = resolve(root, '.github/workflows');
-      for (const name of readdirSync(dir)) {
+      for (const name of listWorkflows()) {
         expect(readFileSync(resolve(dir, name), 'utf8'), name).not.toMatch(
           /\bnpx\b|\bpnpm dlx\b/,
         );
@@ -521,9 +514,7 @@ describe('release branches', () => {
       'backport.yml',
       'land-back-merge.yml',
     ]) {
-      const { jobs } = parse(
-        readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
-      );
+      const { jobs } = loadWorkflow(name);
       const minting = Object.entries(jobs).filter(([, job]) =>
         job.steps?.some((s) =>
           s.uses?.startsWith('actions/create-github-app-token@'),
@@ -550,9 +541,7 @@ describe('release branches', () => {
       'land-back-merge.yml land': ['contents'],
     };
     for (const name of Object.keys(scopes).map((key) => key.split(' ')[0])) {
-      const { jobs } = parse(
-        readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
-      );
+      const { jobs } = loadWorkflow(name);
       for (const [id, job] of Object.entries(jobs)) {
         const mint = job.steps?.find((s) =>
           s.uses?.startsWith('actions/create-github-app-token@'),
@@ -603,9 +592,8 @@ describe('release-please token', () => {
 
   it('creates and moves no tag from any workflow script', () => {
     // Tags come only from release-please's createRelease, with the release App token.
-    const dir = resolve(root, '.github/workflows');
-    for (const name of readdirSync(dir)) {
-      const { jobs } = parse(readFileSync(resolve(dir, name), 'utf8'));
+    for (const name of listWorkflows()) {
+      const { jobs } = loadWorkflow(name);
       for (const [id, job] of Object.entries(jobs)) {
         for (const script of (job.steps ?? []).flatMap((s) => s.run ?? [])) {
           // One logical command per line: join backslash continuations.

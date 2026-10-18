@@ -1,11 +1,11 @@
 /** A red scheduled E2E run is only noticed if it opens an issue, so every such workflow must. */
-import { readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { parse } from 'yaml';
+import {
+  read as readSource,
+  workflow as yaml,
+  workflows,
+} from './workspace-sources.mjs';
 
-const dir = resolve(import.meta.dirname, '../.github/workflows');
-const read = (file) => readFileSync(resolve(dir, file), 'utf8');
-const yaml = (file) => parse(read(file));
+const read = (file) => readSource(`.github/workflows/${file}`);
 
 /** Each scheduled E2E workflow and the E2E jobs its `notify` job waits for. */
 const NIGHTLY = {
@@ -38,7 +38,7 @@ describe('Nightly E2E failure issue', () => {
   );
 
   it('covers every workflow that runs E2E on a schedule', () => {
-    const scheduled = readdirSync(dir)
+    const scheduled = workflows()
       .filter((file) => /\.ya?ml$/.test(file))
       .filter((file) => yaml(file).on?.schedule && /e2e/i.test(read(file)));
     for (const file of scheduled) {
