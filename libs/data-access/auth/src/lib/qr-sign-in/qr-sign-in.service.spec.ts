@@ -464,12 +464,9 @@ describe('QrSignInService.linkByScanning', () => {
     // Not connected yet, so there is no channel to send a decline over.
     ['connecting', 'negotiateProtocols', ['cancel:user_cancelled', 'close']],
     ['confirm-check-code', null, ['decline', 'cancel:user_cancelled', 'close']],
-    [
-      'sharing-secrets',
-      'shareSecrets',
-      ['decline', 'cancel:user_cancelled', 'close'],
-    ],
-  ])('unsubscribing at %s tells the other device', async (kind, hung, tail) => {
+    // Secrets may be in flight, so the cancel goes first and alone.
+    ['sharing-secrets', 'shareSecrets', ['cancel:user_cancelled', 'close']],
+  ])('unsubscribing at %s cancels', async (kind, hung, tail) => {
     const { service, flows } = setup((flow) => hung && flow.hang.add(hung));
     const link = service.linkByScanning(existingClient, qrBytes);
     const run = record(link.state$);
@@ -479,11 +476,33 @@ describe('QrSignInService.linkByScanning', () => {
     expect(run.states.at(-1)?.kind).toBe(kind);
 
     run.subscription.unsubscribe();
+    if (kind === 'sharing-secrets') {
+      expect(flows[0].cancel).toHaveBeenCalledWith('user_cancelled');
+    }
     await settle();
     expect(flows[0].calls.slice(-tail.length)).toEqual(tail);
     expect(flows[0].declineLoginOnExistingDevice).toHaveBeenCalledTimes(
       tail.includes('decline') ? 1 : 0,
     );
+  });
+
+  it('cancels at once while secrets are being shared, even if a decline would hang', async () => {
+    const { service, flows } = setup((flow) => {
+      flow.hang.add('shareSecrets');
+      flow.declineLoginOnExistingDevice.mockReturnValue(
+        new Promise<void>(() => undefined),
+      );
+    });
+    const link = service.linkByScanning(existingClient, qrBytes);
+    const run = record(link.state$);
+    await settle();
+    link.confirmCheckCode(true);
+    await settle();
+    expect(flows[0].shareSecrets).toHaveBeenCalled();
+
+    run.subscription.unsubscribe();
+    expect(flows[0].cancel).toHaveBeenCalledWith('user_cancelled');
+    expect(flows[0].declineLoginOnExistingDevice).not.toHaveBeenCalled();
   });
 
   it('cancels a flow that is still being created when unsubscribed', async () => {

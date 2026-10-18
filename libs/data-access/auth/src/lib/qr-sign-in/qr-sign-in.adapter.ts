@@ -211,6 +211,9 @@ export class QrSignInAdapter {
           run.fail(ClientRendezvousFailureReason.InsecureChannelDetected, true);
           return;
         }
+        // From here a cancel must reach the session at once: shareSecrets sends the secrets
+        // unless the session is already cancelled, and a decline PUT first could let them out.
+        run.declineOnCancel = false;
         const { verificationUri } = await run.step(
           flow.deviceAuthorizationGrant(),
         );
