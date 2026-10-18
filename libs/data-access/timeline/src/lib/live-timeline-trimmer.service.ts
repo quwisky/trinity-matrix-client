@@ -3,6 +3,7 @@ import { toObservable } from '@angular/core/rxjs-interop';
 import {
   ClientEvent,
   EventType,
+  KnownMembership,
   SyncState,
   type EventTimeline,
   type MatrixClient,
@@ -14,7 +15,9 @@ import {
   EMPTY,
   Observable,
   Subscription,
+  concatWith,
   defer,
+  finalize,
   ignoreElements,
   merge,
   switchMap,
@@ -28,6 +31,11 @@ import {
   trimLiveTimeline,
 } from './live-timeline-trim';
 import { scrollbackLive } from './live-scrollback';
+import {
+  decrypted,
+  heldEventIds,
+  holdUnreadCounts,
+} from './rewind-unread-hold';
 
 /** The page a rewound room nobody has open gets back, so its room-list preview is not blank. */
 const REFILL_PAGE = 30;
@@ -74,6 +82,7 @@ export class LiveTimelineTrimmer {
    * Rewind every room a Conversation handle holds or one of `userIds` is known to be in,
    * and page it back in, so it shows their messages. Thread replies stay as they were
    * until the thread is opened again. A member the room has not lazily loaded is missed.
+   * Unread counts stay as they were, plus the hidden messages that are unread.
    */
   private rewind(
     client: MatrixClient,
@@ -83,18 +92,24 @@ export class LiveTimelineTrimmer {
     refills: Subscription,
   ): void {
     for (const room of client.getRooms()) {
+      // Only a joined room can be paged: the server refuses an invite or a room left.
+      if (room.getMyMembership() !== KnownMembership.Join) continue;
       const held = this.conversations.holds(accountId, room.roomId);
       if (!held && !userIds.some((userId) => room.getMember(userId))) continue;
       try {
         const depth = room.getLiveTimeline().getEvents().length;
+        const counted = heldEventIds(room);
         rewindLiveTimeline(room, syncToken);
+        const release = holdUnreadCounts(client, room, counted);
         const refill = held
           ? this.conversations.refillHeld(accountId, room.roomId, depth)
           : defer(() => scrollbackLive(client, room, REFILL_PAGE));
         refills.add(
-          refill.subscribe({
-            error: (error: unknown) => this.errors.handleError(error),
-          }),
+          refill
+            .pipe(concatWith(defer(() => decrypted(room))), finalize(release))
+            .subscribe({
+              error: (error: unknown) => this.errors.handleError(error),
+            }),
         );
       } catch (error: unknown) {
         this.errors.handleError(error);

@@ -9,8 +9,10 @@ import {
   RoomMemberEvent,
   RoomStateEvent,
   MatrixError,
+  type EventTimeline,
   type MatrixClient,
   type MatrixEvent,
+  type Room,
   type RoomMember,
   type RoomState,
 } from 'matrix-js-sdk';
@@ -224,6 +226,28 @@ export class RoomLibraryService {
     }
   };
 
+  /**
+   * The live timeline each row was built from, or null when it was empty. The list does not
+   * rebuild on every timeline event, so a row is re-read when history pages into a room
+   * whose timeline was empty or has been replaced since (a rewind after an unblock), or its
+   * preview and order would stay as they were until the next sync.
+   */
+  private builtFrom = new Map<string, EventTimeline | null>();
+  private readonly onPagedIn = (
+    _event: MatrixEvent | undefined,
+    room: Room | undefined,
+    toStartOfTimeline: boolean | undefined,
+  ): void => {
+    if (
+      toStartOfTimeline &&
+      room &&
+      this.builtFrom.has(room.roomId) &&
+      this.builtFrom.get(room.roomId) !== room.getLiveTimeline()
+    ) {
+      this.projection.schedule();
+    }
+  };
+
   /** Who is typing, per room; see {@link RoomTyping.typingByRoom}. */
   readonly typingByRoom = this.typing.typingByRoom;
 
@@ -278,11 +302,13 @@ export class RoomLibraryService {
     // rebuild the Room list when a DM peer's profile affects its summary. Room
     // Administration owns the member-roster projection itself.
     bind: (client) => {
+      client.on(RoomEvent.Timeline, this.onPagedIn);
       client.on(RoomStateEvent.Members, this.onMemberChanged);
       client.on(RoomEvent.MyMembership, this.typing.onMyMembership);
       client.on(RoomMemberEvent.Typing, this.typing.onTypingChanged);
     },
     unbind: (client) => {
+      client.off(RoomEvent.Timeline, this.onPagedIn);
       client.off(RoomStateEvent.Members, this.onMemberChanged);
       client.off(RoomEvent.MyMembership, this.typing.onMyMembership);
       client.off(RoomMemberEvent.Typing, this.typing.onTypingChanged);
@@ -290,6 +316,7 @@ export class RoomLibraryService {
     reset: () => {
       this.encryption = new RoomEncryptionFlags();
       this._rooms.set([]);
+      this.builtFrom = new Map();
       this._directRoomIds.set(new Set());
       this.dmPeers = new Set();
       this.typing.reset();
@@ -707,6 +734,12 @@ export class RoomLibraryService {
         }
       });
     }
+    this.builtFrom = new Map(
+      joined.map((room) => {
+        const timeline = room.getLiveTimeline();
+        return [room.roomId, timeline.getEvents().length ? timeline : null];
+      }),
+    );
     this._directRoomIds.set(direct);
     this.dmPeers = new Set(userByRoom.values());
   }

@@ -278,4 +278,43 @@ describe('paging a rewound room back in', () => {
     expect(scrollback).toHaveBeenCalledOnce();
     expect(svc.messages()).toHaveLength(30);
   });
+
+  it('allows paging again when a page fails', async () => {
+    const { svc, scrollback } = rewound(100);
+    scrollback.mockRejectedValueOnce(new Error('network'));
+
+    await expect(firstValueFrom(svc.refill(50))).rejects.toThrow('network');
+
+    expect(svc.loadingOlder()).toBe(false);
+  });
+
+  it('starts once older history being paged in has landed', async () => {
+    const { svc, scrollback } = rewound(100);
+    let land!: () => void;
+    scrollback.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => (land = () => resolve(undefined as never))),
+    );
+    const older = firstValueFrom(svc.loadOlder());
+
+    const refilled = firstValueFrom(svc.refill(50), {
+      defaultValue: undefined,
+    });
+    expect(scrollback).toHaveBeenCalledOnce();
+
+    land();
+    await older;
+    await refilled;
+    expect(scrollback).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops paging after the page in flight once unsubscribed', async () => {
+    const { svc, scrollback } = rewound(100);
+
+    svc.refill(90).subscribe().unsubscribe();
+    await vi.waitFor(() => expect(svc.loadingOlder()).toBe(false));
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(scrollback).toHaveBeenCalledOnce();
+  });
 });

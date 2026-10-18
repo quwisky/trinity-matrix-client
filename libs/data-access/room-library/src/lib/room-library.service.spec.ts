@@ -368,6 +368,52 @@ describe('RoomLibraryService', () => {
     });
   });
 
+  it('re-reads a room once history pages into a live timeline replaced since its row was built', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => void>();
+    const room = fakeRoom({ roomId: '!r:hs', name: 'R' });
+    const { getState } = room.getLiveTimeline();
+    let timeline = {
+      getEvents: () => [timelineEvent({ body: 'before' })],
+      getState,
+    };
+    room.getLiveTimeline = () => timeline;
+    let reads = 0;
+    const client = {
+      baseUrl: 'https://hs.example',
+      getRooms: () => {
+        reads++;
+        return [room];
+      },
+      on: (event: string, handler: (...args: unknown[]) => void) => {
+        handlers.set(event, handler);
+      },
+    };
+    const { svc } = provideRooms(client);
+    svc.runProjection().subscribe();
+    const preview = () => svc.rooms()[0].lastMessage;
+    const pageIn = async () => {
+      handlers.get(RoomEvent.Timeline)?.({}, room, true);
+      await Promise.resolve(); // the rebuild is coalesced into a microtask
+    };
+    expect(preview()).not.toBe('');
+
+    // Rewound: the list rebuilds on the sync while the new timeline is still empty.
+    const paged: ReturnType<typeof timelineEvent>[] = [];
+    timeline = { getEvents: () => paged, getState };
+    handlers.get(ClientEvent.Sync)?.();
+    await Promise.resolve();
+    expect(preview()).toBe('');
+
+    paged.push(timelineEvent({ body: 'after' }));
+    await pageIn();
+    expect(preview()).not.toBe('');
+
+    // Older history paged into a timeline the row was built from changes nothing it shows.
+    const before = reads;
+    await pageIn();
+    expect(reads).toBe(before);
+  });
+
   describe('marked unread', () => {
     it('reads the flag as unread even with nothing new in the room', () => {
       // The whole point: the read receipt does not move, so the server's counts stay at

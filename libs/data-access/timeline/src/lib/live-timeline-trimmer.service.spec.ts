@@ -4,7 +4,10 @@ import {
   ClientEvent,
   Direction,
   EventType,
+  KnownMembership,
   MatrixEvent,
+  MatrixEventEvent,
+  NotificationCountType,
   Room,
   SyncState,
   createClient,
@@ -40,6 +43,7 @@ function setup() {
   });
   const rooms = ['!quiet:hs', '!busy:hs', '!open:hs'].map((roomId) => {
     const room = new Room(roomId, client, ALICE);
+    room.updateMyMembership(KnownMembership.Join);
     room.getLiveTimeline().setPaginationToken('start', Direction.Backward);
     client.store.storeRoom(room);
     return room;
@@ -367,6 +371,14 @@ describe('LiveTimelineTrimmer', () => {
         ignoring(MALLORY, '@eve:hs'),
         ignoring(MALLORY),
       );
+      client.emit(
+        ClientEvent.AccountData,
+        new MatrixEvent({ type: EventType.Direct, content: {} }),
+        new MatrixEvent({
+          type: EventType.Direct,
+          content: { [MALLORY]: ['!busy:hs'] },
+        }),
+      );
       const before = timelines();
 
       await sync();
@@ -374,6 +386,93 @@ describe('LiveTimelineTrimmer', () => {
       expect(timelines()).toEqual(before);
       expect(page).not.toHaveBeenCalled();
       expect(refillHeld).not.toHaveBeenCalled();
+      running.unsubscribe();
+    });
+
+    it('leaves a room the account has not joined', async () => {
+      const { client, page, running, sync } = started();
+      client.getRoom('!busy:hs')!.updateMyMembership(KnownMembership.Leave);
+      client.emit(ClientEvent.AccountData, ignoring(), ignoring(MALLORY));
+
+      await sync();
+
+      expect(page).not.toHaveBeenCalled();
+      running.unsubscribe();
+    });
+
+    it('counts an unread message paged in again once, and a hidden one that is unread', async () => {
+      const { client, page, running, sync, loaded } = started();
+      const busy = client.getRoom('!busy:hs')!;
+      await sync();
+      busy.addReceipt(
+        new MatrixEvent({
+          type: EventType.Receipt,
+          room_id: busy.roomId,
+          content: {
+            [message(busy.roomId, 5).getId()!]: {
+              'm.read': { [ALICE]: { ts: 5 } },
+            },
+          },
+        }),
+      );
+      // What the SDK's own decryption listener reads to count each unread event.
+      vi.spyOn(client, 'getPushActionsForEvent').mockReturnValue({
+        notify: true,
+        tweaks: { highlight: true },
+      });
+      const hidden = new MatrixEvent({
+        event_id: '$hidden',
+        room_id: busy.roomId,
+        type: 'm.room.message',
+        sender: MALLORY,
+        origin_server_ts: 11,
+        content: { msgtype: 'm.text', body: 'hidden' },
+      });
+      page.mockResolvedValue({
+        start: 's20',
+        chunk: [
+          hidden.event,
+          ...Array.from(
+            { length: 10 },
+            (_, i) => message(busy.roomId, 10 - i).event,
+          ),
+        ],
+      } as Awaited<ReturnType<MatrixClient['createMessagesRequest']>>);
+      let decryptionDone!: () => void;
+      const decrypting = new Promise<void>((resolve) => {
+        decryptionDone = resolve;
+      });
+      vi.spyOn(MatrixEvent.prototype, 'getDecryptionPromise').mockReturnValue(
+        decrypting,
+      );
+      client.emit(ClientEvent.AccountData, ignoring(), ignoring(MALLORY));
+      busy.setUnreadNotificationCount(NotificationCountType.Total, 15);
+      busy.setUnreadNotificationCount(NotificationCountType.Highlight, 15);
+
+      // The rewind follows this sync, whose events were counted like the earlier ones.
+      await sync();
+      await vi.waitFor(() => expect(loaded('!busy:hs')).toBe(11));
+      const counts = () => [
+        busy.getUnreadNotificationCount(NotificationCountType.Total),
+        busy.getUnreadNotificationCount(NotificationCountType.Highlight),
+      ];
+      const decrypt = (event: MatrixEvent) =>
+        client.emit(MatrixEventEvent.Decrypted, event);
+      const pagedIn = busy.getLiveTimeline().getEvents();
+      const again = pagedIn.filter((event) => event.getId() !== '$hidden');
+
+      for (const event of again) decrypt(event);
+      expect(counts()).toEqual([15, 15]);
+
+      decrypt(pagedIn.find((event) => event.getId() === '$hidden')!);
+      expect(counts()).toEqual([16, 16]);
+
+      // Once the page has decrypted, the room counts as usual again.
+      decryptionDone();
+      await vi.waitFor(() => {
+        decrypt(again.at(-1)!);
+        expect(counts()[0]).toBeGreaterThan(16);
+      });
       running.unsubscribe();
     });
   });

@@ -23,6 +23,7 @@ import {
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
   Observable,
+  Subject,
   catchError,
   defer,
   finalize,
@@ -30,6 +31,7 @@ import {
   map,
   of,
   switchMap,
+  take,
   tap,
   type Subscription,
 } from 'rxjs';
@@ -200,6 +202,8 @@ export class TimelineService {
 
   private readonly _loadingOlder = signal(false);
   readonly loadingOlder = this._loadingOlder.asReadonly();
+  /** Emits each time paging ends; see {@link refill}. */
+  private readonly pagingIdle = new Subject<void>();
 
   private readonly _canLoadOlder = signal(false);
   readonly canLoadOlder = this._canLoadOlder.asReadonly();
@@ -635,7 +639,7 @@ export class TimelineService {
     // An in-flight backfill (loadOlder, or a date jump's loop) belongs to the room being torn
     // down; leaving this true strands the NEXT room's viewport-fill loop, which bails while
     // it is set.
-    this._loadingOlder.set(false);
+    this.pagingDone();
     this._tombstone.set(null);
   }
 
@@ -669,7 +673,7 @@ export class TimelineService {
       return from(scrollbackLive(client, room, SCROLLBACK)).pipe(
         tap(() => this.refresh()),
         // Reset on success *or* error, or a failed scrollback leaves pagination disabled.
-        finalize(() => this._loadingOlder.set(false)),
+        finalize(() => this.pagingDone()),
         map(() => void 0),
       );
     });
@@ -679,30 +683,45 @@ export class TimelineService {
    * Page the room back in after its live timeline was rewound to empty: to about `depth`
    * events while the Conversation is shown, at least one page; one page while it is
    * retained. The view shows the rewound timeline at once, so it ends at the newest
-   * message. Cold.
+   * message. Starts once any paging already running ends; unsubscribing stops it after the
+   * page in flight. Cold.
    */
   refill(depth: number): Observable<void> {
     return defer(() => {
       const room = this.room;
       const client = this.connectedClient;
       if (!room || !client) return of(void 0);
-      const target = this.visible ? depth : 1;
       this.refresh();
+      if (this._loadingOlder()) {
+        return this.pagingIdle.pipe(
+          take(1),
+          switchMap(() => this.refill(depth)),
+        );
+      }
+      const target = this.visible ? depth : 1;
+      let stopped = false;
       this._loadingOlder.set(true);
       return from(
         this.pageBackLoop(
           client,
           room,
-          () => room.getLiveTimeline().getEvents().length >= target,
+          () => stopped || room.getLiveTimeline().getEvents().length >= target,
         ),
       ).pipe(
         finalize(() => {
-          this._loadingOlder.set(false);
+          stopped = true;
+          this.pagingDone();
           this.refresh();
         }),
         map(() => void 0),
       );
     });
+  }
+
+  /** Paging has ended: older history may be requested again. */
+  private pagingDone(): void {
+    this._loadingOlder.set(false);
+    this.pagingIdle.next();
   }
 
   /**
@@ -720,7 +739,7 @@ export class TimelineService {
       this._loadingOlder.set(true);
       return from(this.pageBackLoop(client, room, loaded)).pipe(
         tap(() => this.refresh()),
-        finalize(() => this._loadingOlder.set(false)),
+        finalize(() => this.pagingDone()),
       );
     });
   }
@@ -799,7 +818,7 @@ export class TimelineService {
     }).pipe(
       tap(() => this.refresh()),
       // Reset on success *or* error, as loadOlder does; a stuck flag disables pagination.
-      finalize(() => this._loadingOlder.set(false)),
+      finalize(() => this.pagingDone()),
       map((reached): JumpToDateResult =>
         reached ? this.renderableFrom(dayStartMs) : { kind: 'too-far' },
       ),
