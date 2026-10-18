@@ -160,6 +160,7 @@ export type AccountServerStatus = 'active' | 'gone' | 'unreachable';
 interface LogoutHoldState {
   readonly holds: Set<object>;
   readonly listeners: Set<() => void>;
+  readonly signedInAgain: Set<() => void>;
   died: MatrixError | null;
   deleted: boolean;
 }
@@ -642,13 +643,18 @@ export class MatrixClientService {
    */
   holdServerLogout(
     userId: string,
-    options: { readonly onTokenDied?: () => void } = {},
+    options: {
+      readonly onTokenDied?: () => void;
+      /** A sign-in after a soft logout succeeded, which a deleted account cannot do. */
+      readonly onSignedInAgain?: () => void;
+    } = {},
   ): ServerLogoutHold {
     let state = this.logoutHolds.get(userId);
     if (!state) {
       state = {
         holds: new Set(),
         listeners: new Set(),
+        signedInAgain: new Set(),
         died: null,
         deleted: false,
       };
@@ -657,9 +663,13 @@ export class MatrixClientService {
     const held = state;
     const token = {};
     const listener = options.onTokenDied;
+    const onSignedInAgain = options.onSignedInAgain;
     held.holds.add(token);
     if (listener) {
       held.listeners.add(listener);
+    }
+    if (onSignedInAgain) {
+      held.signedInAgain.add(onSignedInAgain);
     }
     return {
       tokenDied: () => held.died !== null,
@@ -671,6 +681,9 @@ export class MatrixClientService {
         }
         if (listener) {
           held.listeners.delete(listener);
+        }
+        if (onSignedInAgain) {
+          held.signedInAgain.delete(onSignedInAgain);
         }
         held.deleted ||= deleted;
         if (held.holds.size > 0 || this.logoutHolds.get(userId) !== held) {
@@ -969,7 +982,14 @@ export class MatrixClientService {
           this._accountIds.set([...this.clients.keys()]);
           this.publishCorsOrigins();
           // A successful (re-)start means re-auth restored the account.
+          const signedInAgain = this._softLoggedOut().includes(session.userId);
           this.clearSoftLoggedOut(session.userId);
+          if (signedInAgain) {
+            const held = this.logoutHolds.get(session.userId);
+            for (const notify of [...(held?.signedInAgain ?? [])]) {
+              notify();
+            }
+          }
           return started;
         }),
         switchMap((started) =>

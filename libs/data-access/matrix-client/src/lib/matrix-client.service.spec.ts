@@ -1123,6 +1123,25 @@ describe('MatrixClientService', () => {
       expect(hold.tokenDied()).toBe(false);
     });
 
+    it('reports a sign-in after a soft logout, but not a plain start', async () => {
+      const a = fakeClient();
+      const b = fakeClient();
+      const { svc, storage } = setup(a, b, fakeClient());
+      vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
+      vi.mocked(storage.setActive).mockReturnValue(of(undefined));
+      await firstValueFrom(svc.init(SESSION));
+      const onSignedInAgain = vi.fn();
+      svc.holdServerLogout('@me:hs', { onSignedInAgain });
+
+      await firstValueFrom(svc.add(SESSION));
+      expect(onSignedInAgain).not.toHaveBeenCalled();
+
+      loggedOutHandler(b)({ data: { soft_logout: true } });
+      await firstValueFrom(svc.add(SESSION));
+
+      expect(onSignedInAgain).toHaveBeenCalledOnce();
+    });
+
     it('holds only the named account', async () => {
       const a = fakeClient();
       const b = fakeClient();
