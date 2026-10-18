@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MemberListComponent } from './member-list.component';
 import { provideTrnIcons } from '@trinity/components/foundations';
+import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 
 // Stub presence per user id (defaults to offline).
 const presenceMap: Record<string, PresenceState> = {
@@ -775,7 +776,7 @@ describe('MemberListComponent — windowing', () => {
       ?.textContent?.trim();
 
     const host = container.querySelector('aside')!;
-    Object.defineProperty(host, 'scrollTop', { value: 8_000, writable: true });
+    setScrollGeometry(host, { scrollTop: 8_000 });
     host.dispatchEvent(new Event('scroll'));
     TestBed.tick();
 
@@ -885,7 +886,7 @@ describe('MemberListComponent — windowing', () => {
     setViewport(container, 400);
 
     const host = container.querySelector('aside')!;
-    Object.defineProperty(host, 'scrollTop', { value: 8_000, writable: true });
+    setScrollGeometry(host, { scrollTop: 8_000 });
     host.dispatchEvent(new Event('scroll'));
     TestBed.tick();
 

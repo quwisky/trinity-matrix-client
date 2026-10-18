@@ -21,6 +21,7 @@ import {
 } from '../../rooms/invite-actions.service';
 import { Subject } from 'rxjs';
 import { roomSummary } from '../../testing/room-summary.fixture';
+import { setScrollGeometry } from '../../testing/scroll-geometry.stub';
 
 async function renderRows(
   rooms: RoomSummary[],
@@ -429,15 +430,13 @@ describe('SidebarRoomListComponent windowing (#1312)', () => {
   /** A scroll element with a real-looking viewport; jsdom has no layout. */
   function scroller(height = 600): HTMLElement {
     const el = document.createElement('div');
-    Object.defineProperty(el, 'clientHeight', {
-      value: height,
-      configurable: true,
-    });
     let top = 0;
-    Object.defineProperty(el, 'scrollTop', {
-      get: () => top,
-      set: (v: number) => (top = v),
-      configurable: true,
+    setScrollGeometry(el, {
+      clientHeight: height,
+      scrollTop: {
+        get: () => top,
+        set: (v: number) => (top = v),
+      },
     });
     document.body.append(el);
     return el;

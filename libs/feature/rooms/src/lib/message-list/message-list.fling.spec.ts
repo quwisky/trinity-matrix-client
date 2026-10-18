@@ -13,6 +13,7 @@ import {
 } from '../testing/conversation-timeline.stub';
 import { MessageListComponent } from './message-list.component';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
+import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 
 /** The fixed estimate an unmeasured row is counted at with the flag off. */
 const EST = 64;
@@ -108,18 +109,13 @@ describe('MessageListComponent: blank rows while scrolling fast', () => {
       imports: [MockComponent(MessageComposerComponent)],
     });
     const scroll = rendered.container.querySelector('.scroll') as HTMLElement;
-    Object.defineProperty(scroll, 'scrollTop', {
-      get: () => st,
-      set: (value: number) => (st = Math.max(0, value)),
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'clientHeight', {
-      value: 600,
-      configurable: true,
-    });
-    Object.defineProperty(scroll, 'scrollHeight', {
-      get: () => 200 * EST,
-      configurable: true,
+    setScrollGeometry(scroll, {
+      scrollTop: {
+        get: () => st,
+        set: (value: number) => (st = Math.max(0, value)),
+      },
+      clientHeight: 600,
+      scrollHeight: () => 200 * EST,
     });
     return { ...rendered, scroll };
   }
@@ -465,15 +461,13 @@ describe('MessageListComponent: blank rows while scrolling fast', () => {
           }
           return px(top) + rows + px(bottom);
         };
-        Object.defineProperty(scroll, 'scrollHeight', {
-          get: scrollHeight,
-          configurable: true,
-        });
-        Object.defineProperty(scroll, 'scrollTop', {
-          get: () => st,
-          set: (value: number) =>
-            (st = Math.max(0, Math.min(value, scrollHeight() - 600))),
-          configurable: true,
+        setScrollGeometry(scroll, {
+          scrollTop: {
+            get: () => st,
+            set: (value: number) =>
+              (st = Math.max(0, Math.min(value, scrollHeight() - 600))),
+          },
+          scrollHeight,
         });
         // 300 px above the bottom: rows $173–$199 in the window.
         scrollTo(fixture, scroll, 200 * EST - 600 - 300, 0);
