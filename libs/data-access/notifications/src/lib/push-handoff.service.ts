@@ -84,6 +84,9 @@ interface HandoffBinding {
 /**
  * Keeps the native push handoff store current for every signed-in account, so the
  * closed-app renderers can fetch and title a notification without the app running.
+ * Writes each account's homeserver URL, access token and sound choice, plus room names
+ * (DM names included) and DM flags for rooms that changed. Active only where
+ * {@link PushHandoffBridge.available}: native iOS and Android.
  *
  * An OAuth token's expiry is written with it, so the renderers can skip a read bound to
  * fail and say why. Every bridge call runs after the previous one settles, so a removal

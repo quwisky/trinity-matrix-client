@@ -160,7 +160,11 @@ export class NotificationService {
     this.destroyRef.onDestroy(() => this.stop());
   }
 
-  /** Own notification delivery for one Application Runtime session; teardown releases it. */
+  /**
+   * Own notification delivery for one Application Runtime session; teardown releases it.
+   * Cold and long-lived; only the application Workspace decides how to open or repair a
+   * destination.
+   */
   run(): Observable<NotificationRuntimeEvent> {
     return new Observable((subscriber) => {
       if (this.enabled || (this.connection && !this.connection.closed)) {
@@ -204,7 +208,8 @@ export class NotificationService {
     // Before the presentation gate: the copy must not wait on notification permission.
     this.reconcileLegacyCopies(ids);
     if (ids.length === 0) {
-      // Stay dormant so the signed-out screen never asks for Web permission.
+      // Stay dormant rather than complete: the signed-out screen never asks for Web
+      // permission, and a later login attaches without a page restarting a root capability.
       for (const notifier of this.notifiers.values()) this.detach(notifier);
       this.notifiers.clear();
       this.pendingDecryption.clear();
@@ -390,8 +395,8 @@ export class NotificationService {
         this.reactionAllowed(userId, client, room, senderId),
       present: (event) => this.presentReaction(userId, client, event),
     });
-    // The crypto store's encryption answer is async, so ask it once per room up front; a
-    // room first seen after the last sync is covered from the next sync on.
+    // A room counts as encrypted by its state OR by the crypto store. The store's answer is
+    // async, so ask it once per room up front; a room first seen later is covered next sync.
     const encryption = new RoomEncryptionFlags();
     const warmEncryption = (): void => {
       const crypto = client.getCrypto();
