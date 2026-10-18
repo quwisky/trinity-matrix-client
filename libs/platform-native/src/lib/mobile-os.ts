@@ -58,6 +58,11 @@ function detectMobileOs(): boolean {
   );
 }
 
+/** Whether this is the native Android shell, not a mobile browser. */
+export function isNativeAndroid(): boolean {
+  return Capacitor.getPlatform() === 'android';
+}
+
 /** Whether this is the native iOS shell, not Safari/PWA or an iPad-like desktop UA. */
 export function isNativeIos(): boolean {
   return Capacitor.getPlatform() === 'ios';

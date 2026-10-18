@@ -29,6 +29,9 @@
       "@trinity/capacitor-app-lock": [
         "./libs/native/capacitor-app-lock/src/index.ts"
       ],
+      "@trinity/capacitor-auth-session": [
+        "./libs/native/capacitor-auth-session/src/index.ts"
+      ],
       "@trinity/runtime/preferences": [
         "./libs/runtime/preferences/src/index.ts"
       ],

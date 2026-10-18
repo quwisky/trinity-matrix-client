@@ -23,8 +23,14 @@ import { TrnAlertService } from '@trinity/components/overlay';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, Subject, map, of, throwError, type Observable } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoginPage } from './login.page';
+
+const platform = vi.hoisted(() => ({ android: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isNativeAndroid: () => platform.android,
+}));
 import { ConnectionError, MatrixError } from '@trinity/util/matrix';
 
 const READY_OUTCOME = {
@@ -101,6 +107,7 @@ async function renderLogin(
       MockProvider(SignInRedirectService, {
         startSso: vi.fn(() => of(undefined)),
         startOidc: vi.fn(() => of(undefined)),
+        ssoAvailable: vi.fn(() => true),
         ...opts.redirect,
       }),
       MockProvider(OidcStateStore, {
@@ -317,6 +324,102 @@ describe('LoginPage', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/register'], {
       queryParams: { homeserver: 'example.org', add: '' },
     });
+  });
+
+  describe("where this app cannot offer the homeserver's SSO (Android)", () => {
+    const ANDROID_SSO_NOTICE =
+      "This server's single sign-on isn't supported in the Android app yet. Sign in on the web or desktop app.";
+    const OTHER_SSO_NOTICE =
+      "This server's single sign-on isn't available in this app. Sign in on the web or desktop app.";
+
+    beforeEach(() => (platform.android = true));
+    afterEach(() => (platform.android = false));
+
+    async function discoverWith(flows: string[]) {
+      const rendered = await renderLogin(
+        {
+          discoverHomeserver: vi.fn(() => of('https://hs.example')),
+          getSupportedFlows: vi.fn(() => of(flows)),
+          getDelegatedAuthConfig: vi.fn(() => of(null)),
+        } as unknown as Partial<AuthService>,
+        { redirect: { ssoAvailable: vi.fn(() => false) } },
+      );
+      rendered.cmp.discover();
+      rendered.fixture.detectChanges();
+      return rendered;
+    }
+
+    it('hides Continue with SSO and says why, instead of the generic error', async () => {
+      const { cmp, fixture } = await discoverWith(['m.login.sso']);
+      const root = fixture.nativeElement as HTMLElement;
+
+      expect(cmp.ssoSupported()).toBe(false);
+      expect(root.textContent).not.toContain('Continue with SSO');
+      expect(
+        root
+          .querySelector('[data-testid="sso-unavailable"]')
+          ?.textContent?.trim(),
+      ).toBe(ANDROID_SSO_NOTICE);
+      expect(cmp.error()).toBeNull();
+    });
+
+    it('names no platform it is not running on', async () => {
+      platform.android = false;
+      const { fixture } = await discoverWith(['m.login.sso']);
+
+      expect(
+        (fixture.nativeElement as HTMLElement)
+          .querySelector('[data-testid="sso-unavailable"]')
+          ?.textContent?.trim(),
+      ).toBe(OTHER_SSO_NOTICE);
+    });
+
+    it('keeps password sign-in beside the notice', async () => {
+      const { cmp, fixture } = await discoverWith([
+        'm.login.password',
+        'm.login.sso',
+      ]);
+      const root = fixture.nativeElement as HTMLElement;
+
+      expect(cmp.passwordSupported()).toBe(true);
+      expect(root.querySelector('#password')).not.toBeNull();
+      expect(
+        root.querySelector('[data-testid="sso-unavailable"]'),
+      ).not.toBeNull();
+    });
+
+    it('never starts SSO', async () => {
+      const { cmp, redirect } = await discoverWith(['m.login.sso']);
+
+      cmp.startSso();
+
+      expect(redirect.startSso).not.toHaveBeenCalled();
+    });
+
+    it('says nothing on a homeserver without SSO', async () => {
+      const { fixture } = await discoverWith(['m.login.password']);
+
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="sso-unavailable"]',
+        ),
+      ).toBeNull();
+    });
+  });
+
+  it('shows Continue with SSO where this app can offer it (web, desktop, iOS)', async () => {
+    const { cmp, fixture } = await renderLogin({
+      discoverHomeserver: vi.fn(() => of('https://hs.example')),
+      getSupportedFlows: vi.fn(() => of(['m.login.sso'])),
+      getDelegatedAuthConfig: vi.fn(() => of(null)),
+    } as unknown as Partial<AuthService>);
+
+    cmp.discover();
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.textContent).toContain('Continue with SSO');
+    expect(root.querySelector('[data-testid="sso-unavailable"]')).toBeNull();
   });
 
   it('hides password/SSO when the homeserver does not offer them', async () => {

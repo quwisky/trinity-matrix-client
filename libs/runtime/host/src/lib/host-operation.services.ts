@@ -138,7 +138,14 @@ export class HostAuthenticationHandoffService implements HostAuthenticationHando
     );
   }
 
-  open(request: { readonly url: string }): Observable<HostOperationOutcome> {
+  privateCallbackSupported(): boolean {
+    return this.adapter?.privateCallbackSupported() ?? false;
+  }
+
+  open(request: {
+    readonly url: string;
+    readonly privateCallback?: boolean;
+  }): Observable<HostOperationOutcome> {
     const adapter = this.adapter;
     if (!adapter) return defer(() => of(unavailableOutcome()));
     const closed = adapter.sheetClosed;

@@ -5,6 +5,10 @@ import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import {
+  authSessionAvailable,
+  startAuthSession,
+} from '@trinity/capacitor-auth-session';
+import {
   HOST_AUTHENTICATION_HANDOFF_OPERATION,
   HOST_BACK_OPERATION,
   HOST_DEEP_LINKS_OPERATION,
@@ -32,6 +36,7 @@ import {
   fromEvent,
   map,
   of,
+  Subject,
   switchMap,
   take,
   timeout,
@@ -89,10 +94,27 @@ function canonicalAppUrl(url: string): string | null {
   return url.startsWith(`${CANONICAL_APP_SCHEME}:`) ? null : url;
 }
 
+/**
+ * A legacy SSO login token comes back on mobile only from the iOS authentication session; one
+ * on the app scheme was sent by whichever app opened it, so the link is dropped unread.
+ */
+function carriesLoginToken(url: string): boolean {
+  try {
+    return new URL(url).searchParams.has('loginToken');
+  } catch {
+    return false;
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 class WebHostOperationAdapter implements HostOperationsAdapter {
   callback(request: { readonly webUrl: string; readonly appUrl: string }) {
     return { url: request.webUrl, applicationType: 'web' as const };
+  }
+
+  /** The callback is a page of this origin. */
+  privateCallbackSupported(): boolean {
+    return true;
   }
 
   open(request: { readonly url: string }): Observable<HostOperationOutcome> {
@@ -124,11 +146,40 @@ class WebHostOperationAdapter implements HostOperationsAdapter {
 
 @Injectable({ providedIn: 'root' })
 export class CapacitorHostOperationAdapter implements HostOperationsAdapter {
+  /** Callbacks an iOS authentication session returned, which never pass through `appUrlOpen`. */
+  private readonly sessionCallbacks = new Subject<{ readonly url: string }>();
+
   callback(request: { readonly webUrl: string; readonly appUrl: string }) {
     return { url: request.appUrl, applicationType: 'native' as const };
   }
 
-  open(request: { readonly url: string }): Observable<HostOperationOutcome> {
+  /** iOS only: Android has no session API that returns the callback to the app that asked. */
+  privateCallbackSupported(): boolean {
+    return authSessionAvailable();
+  }
+
+  open(request: {
+    readonly url: string;
+    readonly privateCallback?: boolean;
+  }): Observable<HostOperationOutcome> {
+    if (request.privateCallback) {
+      return startAuthSession({
+        url: request.url,
+        callbackScheme: CANONICAL_APP_SCHEME,
+      }).pipe(
+        map((outcome) => {
+          if (outcome.kind === 'completed') {
+            this.sessionCallbacks.next({ url: outcome.url });
+            return completed();
+          }
+          return rejected(
+            outcome.kind === 'cancelled'
+              ? 'authentication-cancelled'
+              : 'authentication-session-unavailable',
+          );
+        }),
+      );
+    }
     return defer(() => from(Browser.open({ url: request.url }))).pipe(
       map(() => completed()),
       catchError(() => of(rejected('authentication-handoff-failed'))),
@@ -147,11 +198,14 @@ export class CapacitorHostOperationAdapter implements HostOperationsAdapter {
   readonly received = new Observable<{ readonly url: string }>((subscriber) => {
     let handle: PluginListenerHandle | undefined;
     let cancelled = false;
+    const fromSession = this.sessionCallbacks.subscribe((link) =>
+      subscriber.next(link),
+    );
     void App.addListener('appUrlOpen', (event) => {
       // Capacitor flushes a retained launch `appUrlOpen` synchronously on the first
       // addListener, which is issued before getLaunchUrl, so skip getLaunchUrl once one landed.
       this.launchUrlTaken = true;
-      subscriber.next({ url: event.url });
+      if (!carriesLoginToken(event.url)) subscriber.next({ url: event.url });
     })
       .then((value) => {
         handle = value;
@@ -164,13 +218,15 @@ export class CapacitorHostOperationAdapter implements HostOperationsAdapter {
       .then((launch) => {
         if (cancelled || !launch?.url || this.launchUrlTaken) return;
         this.launchUrlTaken = true;
-        subscriber.next({ url: launch.url });
+        if (!carriesLoginToken(launch.url))
+          subscriber.next({ url: launch.url });
       })
       .catch((error: unknown) => {
         if (!cancelled) subscriber.error(error);
       });
     return () => {
       cancelled = true;
+      fromSession.unsubscribe();
       if (handle) void handle.remove().catch(() => undefined);
     };
   });
@@ -232,6 +288,10 @@ class ElectronHostOperationAdapter implements HostOperationsAdapter {
       url: desktopAppUrl(request.appUrl),
       applicationType: 'native' as const,
     };
+  }
+  /** Only software already running as the user could claim the desktop scheme. */
+  privateCallbackSupported(): boolean {
+    return true;
   }
   deviceDisplayName(): string {
     return desktopAppIdentity(getTrinityDesktopBridge()).displayName;

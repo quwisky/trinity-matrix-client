@@ -40,6 +40,10 @@ Push on a device needs a git-ignored `android/app/google-services.json`. The bui
 
 Debug builds (including the E2E-only secondary package) contain the module's shell-only probe receiver that the installed-app suite uses to drive the renderer without FCM: it posts a notification with the app terminated, then taps it and checks that the room opens. On CI that suite shows the fallback "New message" body, because the native code does not trust the end-to-end proxy's certificate authority. A second test stores an already expired token and checks for "Open Trinity to read this message", which needs no network. A real FCM token and closed-app delivery through the gateway need a physical device.
 
+## Sign-in {#sign-in}
+
+The Android app does not offer legacy SSO: on a homeserver that has it, the sign-in page hides **Continue with SSO** and says the server's single sign-on isn't supported in the Android app yet, keeping password sign-in when the server offers it. OAuth 2.0 sign-in opens the provider in Custom Tabs. See [sign-in callbacks](../../architecture/host-capabilities/#sign-in-callbacks).
+
 ## Test native behavior natively {#native-behavior}
 
 Use an installed-host journey for permissions, system Back, app lifecycle, native secure storage, push, badges, keyboards, touch gestures, and WebView TLS. A mobile browser profile remains useful for layout but cannot prove these paths.

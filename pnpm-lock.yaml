@@ -311,6 +311,9 @@ importers:
       '@trinity/capacitor-app-lock':
         specifier: workspace:*
         version: link:libs/native/capacitor-app-lock
+      '@trinity/capacitor-auth-session':
+        specifier: workspace:*
+        version: link:libs/native/capacitor-auth-session
       '@trinity/capacitor-push':
         specifier: workspace:*
         version: link:libs/native/capacitor-push
@@ -551,6 +554,8 @@ importers:
         version: 2.9.1
 
   libs/native/capacitor-app-lock: {}
+
+  libs/native/capacitor-auth-session: {}
 
   libs/native/capacitor-push: {}
 

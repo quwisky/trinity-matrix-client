@@ -154,6 +154,12 @@
       </button>
     }
 
+    @if (ssoUnavailable()) {
+      <p class="text-sm text-muted-foreground" data-testid="sso-unavailable">
+        {{ ssoUnavailableNotice }}
+      </p>
+    }
+
     <!-- Legacy Matrix registration. The side-effect-free availability probe must
          positively report open before this action appears; unknown fails closed. -->
     @if (registrationAvailability() === 'open' && !reauthUserId()) {

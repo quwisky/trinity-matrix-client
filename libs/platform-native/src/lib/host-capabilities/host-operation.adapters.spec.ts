@@ -42,6 +42,15 @@ const browser = vi.hoisted(() => ({
 
 const cap = vi.hoisted(() => ({ native: true, platform: 'android' }));
 
+const authSession = vi.hoisted(() => ({
+  available: false,
+  start: vi.fn(),
+}));
+
+vi.mock('@trinity/capacitor-auth-session', () => ({
+  authSessionAvailable: () => authSession.available,
+  startAuthSession: authSession.start,
+}));
 vi.mock('@capacitor/app', () => ({ App: app }));
 vi.mock('@capacitor/browser', () => ({ Browser: browser }));
 vi.mock('@capacitor/core', () => ({
@@ -683,6 +692,165 @@ describe('device display name off the desktop shell', () => {
     expect(
       TestBed.inject(HostAuthenticationHandoffService).deviceDisplayName(),
     ).toBe('Trinity');
+  });
+});
+
+describe('sign-in with a private callback', () => {
+  const sso = 'https://hs.example/_matrix/client/v3/login/sso/redirect';
+  const callback =
+    'dev.trinityproject.trinity://sso-callback?loginToken=t&sso_state=s';
+
+  beforeEach(() => {
+    browser.open.mockReset().mockResolvedValue(undefined);
+    authSession.start.mockReset();
+    app.addListener.mockReset().mockReturnValue(new Promise(() => undefined));
+    app.getLaunchUrl.mockReset().mockResolvedValue(null);
+    cap.native = true;
+  });
+
+  afterEach(() => {
+    authSession.available = false;
+    cap.native = true;
+    cap.platform = 'android';
+    delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+    TestBed.resetTestingModule();
+  });
+
+  it('on iOS, opens an authentication session and hands its callback to received', async () => {
+    cap.platform = 'ios';
+    authSession.available = true;
+    authSession.start.mockReturnValue(of({ kind: 'completed', url: callback }));
+    const adapter = new CapacitorHostOperationAdapter();
+    const urls: string[] = [];
+    adapter.received.subscribe(({ url }) => urls.push(url));
+
+    expect(adapter.privateCallbackSupported()).toBe(true);
+    await expect(
+      firstValueFrom(adapter.open({ url: sso, privateCallback: true })),
+    ).resolves.toEqual({ kind: 'completed' });
+
+    expect(authSession.start).toHaveBeenCalledWith({
+      url: sso,
+      callbackScheme: 'dev.trinityproject.trinity',
+    });
+    expect(browser.open).not.toHaveBeenCalled();
+    expect(urls).toEqual([callback]);
+  });
+
+  it('on iOS, reports a closed session without a callback', async () => {
+    cap.platform = 'ios';
+    authSession.available = true;
+    authSession.start.mockReturnValue(of({ kind: 'cancelled' }));
+    const adapter = new CapacitorHostOperationAdapter();
+    const urls: string[] = [];
+    adapter.received.subscribe(({ url }) => urls.push(url));
+
+    await expect(
+      firstValueFrom(adapter.open({ url: sso, privateCallback: true })),
+    ).resolves.toMatchObject({ kind: 'rejected' });
+    expect(urls).toEqual([]);
+  });
+
+  it('on Android, refuses it without opening a browser', async () => {
+    authSession.start.mockReturnValue(of({ kind: 'unavailable' }));
+    const adapter = new CapacitorHostOperationAdapter();
+
+    expect(adapter.privateCallbackSupported()).toBe(false);
+    await expect(
+      firstValueFrom(adapter.open({ url: sso, privateCallback: true })),
+    ).resolves.toMatchObject({ kind: 'rejected' });
+    expect(browser.open).not.toHaveBeenCalled();
+  });
+
+  it('keeps every other sign-in in the in-app browser', async () => {
+    cap.platform = 'ios';
+    authSession.available = true;
+    const adapter = new CapacitorHostOperationAdapter();
+
+    await expect(
+      firstValueFrom(adapter.open({ url: 'https://op/authorize' })),
+    ).resolves.toEqual({ kind: 'completed' });
+    expect(browser.open).toHaveBeenCalledWith({ url: 'https://op/authorize' });
+    expect(authSession.start).not.toHaveBeenCalled();
+  });
+
+  it('is answered by every host adapter: web, desktop, iOS, and not Android', () => {
+    const answer = () =>
+      TestBed.inject(
+        HOST_AUTHENTICATION_HANDOFF_OPERATION,
+      ).privateCallbackSupported();
+    const host = (setup: () => void, extra: unknown[] = []) => {
+      TestBed.resetTestingModule();
+      setup();
+      TestBed.configureTestingModule({
+        providers: [hostOperationProviders(), ...(extra as never[])],
+      });
+      return answer();
+    };
+
+    expect(host(() => (cap.native = false))).toBe(true);
+    expect(
+      host(
+        () =>
+          ((globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+            desktopBridgeFixture()),
+        [
+          MockProvider(HostCapabilitiesService, {
+            manifest: () => of(unavailableHostManifest('not-implemented')),
+          }),
+        ],
+      ),
+    ).toBe(true);
+    delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+    expect(
+      host(() => {
+        cap.native = true;
+        cap.platform = 'ios';
+        authSession.available = true;
+      }),
+    ).toBe(true);
+    expect(
+      host(() => {
+        cap.platform = 'android';
+        authSession.available = false;
+      }),
+    ).toBe(false);
+  });
+
+  describe('links that arrive through the app scheme', () => {
+    const scheme = (url: string) => {
+      let open!: (event: { url: string }) => void;
+      app.addListener.mockImplementation(
+        (_event: string, listener: (event: { url: string }) => void) => {
+          open = listener;
+          return Promise.resolve({ remove: vi.fn(() => Promise.resolve()) });
+        },
+      );
+      app.getLaunchUrl.mockResolvedValue({ url });
+      const urls: string[] = [];
+      new CapacitorHostOperationAdapter().received.subscribe(({ url }) =>
+        urls.push(url),
+      );
+      return { urls, open: (link: string) => open({ url: link }) };
+    };
+
+    it('drops a legacy SSO login token, at launch and later', async () => {
+      const { urls, open } = scheme(callback);
+      await new Promise((resolve) => setTimeout(resolve));
+      open('dev.trinityproject.trinity://sso-callback?loginToken=other');
+
+      expect(urls).toEqual([]);
+    });
+
+    it('still delivers OAuth 2.0 callbacks and room links', async () => {
+      const oidc = 'dev.trinityproject.trinity:/sso-callback?code=c&state=s';
+      const room = 'dev.trinityproject.trinity://matrix.to/#/!a:b.c';
+      const { urls, open } = scheme(oidc);
+      await new Promise((resolve) => setTimeout(resolve));
+      open(room);
+
+      expect(urls).toEqual([oidc, room]);
+    });
   });
 });
 

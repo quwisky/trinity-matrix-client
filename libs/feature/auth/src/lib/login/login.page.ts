@@ -54,6 +54,7 @@ import {
   AppRestartService,
   BUG_REPORT_LAUNCHER,
   SessionStorageService,
+  isNativeAndroid,
 } from '@trinity/platform-native';
 import { TrnAlertService } from '@trinity/components/overlay';
 import {
@@ -253,6 +254,11 @@ export class LoginPage {
 
   readonly baseUrl = signal<string | null>(null);
   readonly ssoSupported = signal(false);
+  /** The homeserver offers legacy SSO, but this app can't (Android). */
+  readonly ssoUnavailable = signal(false);
+  readonly ssoUnavailableNotice = isNativeAndroid()
+    ? "This server's single sign-on isn't supported in the Android app yet. Sign in on the web or desktop app."
+    : "This server's single sign-on isn't available in this app. Sign in on the web or desktop app.";
   readonly passwordSupported = signal(false);
   readonly registrationAvailability =
     signal<RegistrationAvailability>('unknown');
@@ -359,8 +365,16 @@ export class LoginPage {
     this.oidcMetadata.set(oidc);
     this.registrationAvailability.set(registration);
     this.passwordSupported.set(!oidc && flows.includes('m.login.password'));
-    this.ssoSupported.set(!oidc && flows.includes('m.login.sso'));
-    if (!oidc && !this.passwordSupported() && !this.ssoSupported()) {
+    const sso = !oidc && flows.includes('m.login.sso');
+    const ssoAvailable = this.signInRedirect.ssoAvailable();
+    this.ssoSupported.set(sso && ssoAvailable);
+    this.ssoUnavailable.set(sso && !ssoAvailable);
+    if (
+      !oidc &&
+      !this.passwordSupported() &&
+      !this.ssoSupported() &&
+      !this.ssoUnavailable()
+    ) {
       this.error.set(
         "This homeserver doesn't offer a sign-in method Trinity supports.",
       );
@@ -414,7 +428,7 @@ export class LoginPage {
   /** Step 2b: SSO — hand off to the homeserver's SSO page. */
   startSso(): void {
     const baseUrl = this.baseUrl();
-    if (!baseUrl) return;
+    if (!baseUrl || !this.signInRedirect.ssoAvailable()) return;
     this.withBusy(
       this.signInRedirect.startSso(
         baseUrl,

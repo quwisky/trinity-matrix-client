@@ -84,6 +84,7 @@ const iosPluginMarkers = [
   'CapacitorStatusBar',
   'CapawesomeCapacitorBadge',
   'TrinityCapacitorAppLock',
+  'TrinityCapacitorAuthSession',
   'TrinityCapacitorPush',
 ];
 
@@ -409,6 +410,26 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
   ) {
     errors.push('iOS TrinityAppLock plugin must be discoverable by cap sync');
   }
+  // @trinity/capacitor-auth-session too (iOS only). A plugin cap sync misses hides legacy SSO
+  // on iOS as it is hidden on Android.
+  const iosAuthSessionPlugin = withoutComments(
+    input.iosAuthSessionPlugin,
+    true,
+  );
+  if (
+    input.iosAuthSessionPlugin.match(/@objc\(([A-Za-z0-9_-]+)\)/u)?.[1] !==
+      'AuthSessionPlugin' ||
+    !/@objc\(AuthSessionPlugin\)\s+public\s+class\s+AuthSessionPlugin\s*:\s*CAPPlugin\s*,\s*CAPBridgedPlugin\b/u.test(
+      iosAuthSessionPlugin,
+    ) ||
+    !/public\s+let\s+jsName\s*=\s*"TrinityAuthSession"/u.test(
+      iosAuthSessionPlugin,
+    )
+  ) {
+    errors.push(
+      'iOS TrinityAuthSession plugin must be discoverable by cap sync',
+    );
+  }
   // The library cannot reference the app's resources; the host overrides its aliases with
   // the icon and accent its FCM meta-data names.
   const pushAppearance = withoutXmlComments(input.androidPushAppearance);
@@ -530,6 +551,9 @@ export function validateCurrentNativeHosts(selectedHosts) {
       ),
       iosAppLockPlugin: read(
         'libs/native/capacitor-app-lock/ios/Sources/AppLockPlugin/AppLockPlugin.swift',
+      ),
+      iosAuthSessionPlugin: read(
+        'libs/native/capacitor-auth-session/ios/Sources/AuthSessionPlugin/AuthSessionPlugin.swift',
       ),
       androidPushLibraryManifest: read(
         'libs/native/capacitor-push/android/src/main/AndroidManifest.xml',

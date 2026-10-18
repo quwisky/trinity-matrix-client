@@ -55,7 +55,16 @@ export interface HostAuthenticationHandoffOperation {
     readonly url: string;
     readonly applicationType: 'web' | 'native';
   };
-  open(request: { readonly url: string }): Observable<HostOperationOutcome>;
+  /**
+   * `privateCallback`: the page's redirect back to the app scheme must reach Trinity alone,
+   * since another app can register the same scheme. A host that cannot do that rejects it.
+   */
+  open(request: {
+    readonly url: string;
+    readonly privateCallback?: boolean;
+  }): Observable<HostOperationOutcome>;
+  /** Whether `open` can honour `privateCallback`; every host answers, and a false hides legacy SSO. */
+  privateCallbackSupported(): boolean;
   /**
    * The name of a Matrix device this host signs in or registers, also sent as the OIDC
    * client name. Optional: a host without one of its own is "Trinity".

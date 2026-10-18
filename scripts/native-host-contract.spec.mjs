@@ -156,6 +156,7 @@ function validInput() {
       'CapacitorStatusBar',
       'CapawesomeCapacitorBadge',
       'TrinityCapacitorAppLock',
+      'TrinityCapacitorAuthSession',
       'TrinityCapacitorPush',
     ].join('\n'),
     androidManifest: appManifest(),
@@ -188,6 +189,11 @@ function validInput() {
       '@objc(AppLockPlugin)',
       'public class AppLockPlugin: CAPPlugin, CAPBridgedPlugin {',
       '    public let jsName = "TrinityAppLock"',
+    ].join('\n'),
+    iosAuthSessionPlugin: [
+      '@objc(AuthSessionPlugin)',
+      'public class AuthSessionPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationPresentationContextProviding {',
+      '    public let jsName = "TrinityAuthSession"',
     ].join('\n'),
     androidPushLibraryManifest: pushLibraryManifest(),
     androidPushAppearance: [
@@ -544,6 +550,26 @@ describe('native host contract', () => {
         );
       },
       'iOS host is missing plugin wiring: TrinityCapacitorAppLock',
+    ],
+    [
+      'an auth session instance plugin, which automatic registration skips',
+      (input) => {
+        input.iosAuthSessionPlugin = input.iosAuthSessionPlugin.replace(
+          'CAPPlugin, CAPBridgedPlugin',
+          'CAPInstancePlugin, CAPBridgedPlugin',
+        );
+      },
+      'iOS TrinityAuthSession plugin must be discoverable by cap sync',
+    ],
+    [
+      'an auth session plugin missing from the iOS host',
+      (input) => {
+        input.iosPlugins = input.iosPlugins.replace(
+          'TrinityCapacitorAuthSession',
+          '',
+        );
+      },
+      'iOS host is missing plugin wiring: TrinityCapacitorAuthSession',
     ],
     [
       'an iOS plugin named only inside a longer package name',

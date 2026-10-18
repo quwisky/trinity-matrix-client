@@ -33,6 +33,14 @@ export class SignInRedirectService {
   private readonly ssoState = inject(SsoStateStore);
   private readonly oidcState = inject(OidcStateStore);
 
+  /**
+   * Whether this app can offer legacy SSO: its login token is a bearer credential, so its
+   * callback must come back to Trinity alone (not on Android, whose scheme any app can claim).
+   */
+  ssoAvailable(): boolean {
+    return this.handoff.privateCallbackSupported();
+  }
+
   /** Legacy SSO: stash a single-use state, then open the homeserver's SSO page. */
   startSso(
     baseUrl: string,
@@ -57,7 +65,7 @@ export class SignInRedirectService {
           const redirect = `${callback.url}?sso_state=${encodeURIComponent(state)}`;
           return this.auth.getSsoUrl(baseUrl, redirect);
         });
-    }).pipe(switchMap((url) => this.redirect(url)));
+    }).pipe(switchMap((url) => this.redirect({ url, privateCallback: true })));
   }
 
   /**
@@ -106,11 +114,14 @@ export class SignInRedirectService {
               .then(() => authorization.url),
           ),
         );
-    }).pipe(switchMap((url) => this.redirect(url)));
+    }).pipe(switchMap((url) => this.redirect({ url })));
   }
 
-  private redirect(url: string): Observable<void> {
-    return this.handoff.open({ url }).pipe(
+  private redirect(request: {
+    readonly url: string;
+    readonly privateCallback?: boolean;
+  }): Observable<void> {
+    return this.handoff.open(request).pipe(
       take(1),
       map(() => undefined),
     );

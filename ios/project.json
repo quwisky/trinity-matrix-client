@@ -7,7 +7,8 @@
   "implicitDependencies": [
     "trinity",
     "native-capacitor-push-ios",
-    "native-capacitor-app-lock-ios"
+    "native-capacitor-app-lock-ios",
+    "native-capacitor-auth-session-ios"
   ],
   "targets": {
     "sync": {

@@ -107,6 +107,14 @@ describe('HostAuthenticationHandoffService device display name', () => {
     open: () => of({ kind: 'completed' as const }),
   };
 
+  it('offers no private callback when no host adapter is wired', () => {
+    expect(
+      TestBed.inject(
+        HostAuthenticationHandoffService,
+      ).privateCallbackSupported(),
+    ).toBe(false);
+  });
+
   it('names devices "Trinity" when no host adapter is wired', () => {
     expect(
       TestBed.inject(HostAuthenticationHandoffService).deviceDisplayName(),

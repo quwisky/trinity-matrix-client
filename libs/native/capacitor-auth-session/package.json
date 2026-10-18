@@ -1,0 +1,13 @@
+{
+  "name": "@trinity/capacitor-auth-session",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Trinity's local Capacitor plugin: a sign-in page in an iOS authentication session, whose callback comes back to Trinity alone.",
+  "license": "MIT",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

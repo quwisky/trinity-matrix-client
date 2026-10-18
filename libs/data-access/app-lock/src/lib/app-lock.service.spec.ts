@@ -152,6 +152,7 @@ function setup(options: Setup = {}) {
             applicationType: 'web',
           }),
           open: () => of({ kind: 'completed' }),
+          privateCallbackSupported: () => true,
           deviceDisplayName: () => {
             if (options.appName === 'throws') {
               throw new Error(

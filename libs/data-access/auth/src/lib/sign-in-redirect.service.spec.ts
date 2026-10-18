@@ -25,6 +25,7 @@ function setup(
     saveSso?: () => Promise<void>;
     saveOidc?: (stash: unknown) => Promise<void>;
     build?: Mock<(params: unknown) => Observable<typeof OIDC_REQUEST>>;
+    privateCallback?: boolean;
   } = {},
 ) {
   const events: string[] = [];
@@ -55,6 +56,7 @@ function setup(
       MockProvider(HostAuthenticationHandoffService, {
         callback: ({ webUrl }) => ({ url: webUrl, applicationType: 'web' }),
         open,
+        privateCallbackSupported: () => overrides.privateCallback ?? true,
       }),
       MockProvider(SsoStateStore, { save: saveSso }),
       MockProvider(OidcStateStore, { save: saveOidc }),
@@ -107,6 +109,26 @@ describe('SignInRedirectService', () => {
       expect(redirect).toContain('/sso-callback?sso_state=');
       expect(redirect).toContain(state);
       expect(events.map((e) => e.split(' ')[0])).toEqual(['save', 'open']);
+    });
+
+    it('asks the host to bring the callback back to Trinity alone', async () => {
+      const { service, open } = setup();
+
+      service.startSso('https://hs.example', 'replace').subscribe();
+      await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+
+      expect(open).toHaveBeenCalledWith({
+        url: expect.stringContaining('https://hs.example/sso'),
+        privateCallback: true,
+      });
+    });
+
+    it('is available only where the host can do that', () => {
+      expect(setup().service.ssoAvailable()).toBe(true);
+      TestBed.resetTestingModule();
+      expect(setup({ privateCallback: false }).service.ssoAvailable()).toBe(
+        false,
+      );
     });
 
     it('redirects only after the stash write has settled', async () => {
@@ -208,6 +230,15 @@ describe('SignInRedirectService', () => {
         expectedUserId: null,
       });
       expect(events).toEqual(['save oidc', `open ${OIDC_REQUEST.url}`]);
+    });
+
+    it('opens the provider as before, with no private callback', async () => {
+      const { service, open } = setup();
+
+      service.startOidc(request).subscribe();
+      await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+
+      expect(open).toHaveBeenCalledWith({ url: OIDC_REQUEST.url });
     });
 
     it('re-auth reuses the stored device and expects the same account back', async () => {

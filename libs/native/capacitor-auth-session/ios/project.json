@@ -1,0 +1,7 @@
+{
+  "name": "native-capacitor-auth-session-ios",
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "//": "The plugin's Swift sources, split from the TypeScript project as native-capacitor-push-ios is, so a native-only edit marks the iOS host rather than every TypeScript dependent.",
+  "projectType": "library",
+  "tags": ["type:platform", "scope:shared", "role:adapter", "capability:host"]
+}

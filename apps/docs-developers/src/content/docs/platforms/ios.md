@@ -60,7 +60,7 @@ Give reviewers a disposable password account on a legacy-API homeserver in the r
 
 ## Respect native ownership {#native-ownership}
 
-Keep plugin access in `libs/platform-native` adapters and local plugin packages such as `@trinity/capacitor-push`, and consume shared host operations from application code. Test safe areas, keyboard resizing, system browser authentication, deep links, lifecycle, secure storage, notification activation, and Back behavior in the environment whose behavior changed.
+Keep plugin access in `libs/platform-native` adapters and local plugin packages such as `@trinity/capacitor-push`, and consume shared host operations from application code. Legacy SSO signs in through `ASWebAuthenticationSession`, from the local plugin `@trinity/capacitor-auth-session` (the Swift package `TrinityCapacitorAuthSession` in `CapApp-SPM`); OAuth 2.0 and other provider pages open in the Safari View Controller (see [sign-in callbacks](../../architecture/host-capabilities/#sign-in-callbacks)). Test safe areas, keyboard resizing, system browser authentication, deep links, lifecycle, secure storage, notification activation, and Back behavior in the environment whose behavior changed.
 
 Record iOS checks as unavailable when the required Apple environment is missing. Read [host capabilities](../../architecture/host-capabilities/) and [desktop and native tests](../../testing/desktop-and-native-tests/).
 
