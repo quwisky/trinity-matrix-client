@@ -1092,6 +1092,34 @@ describe('AppLockCoverComponent', () => {
       expect(restart).toHaveBeenCalledOnce();
     });
 
+    it('says erasing turns off Windows Hello unlock when the device had it', async () => {
+      const { support } = await setup({
+        support: {
+          system: { kind: 'available', biometry: 'windows-hello' },
+          pin: { kind: 'available', set: true, nextAttemptAt: null },
+        },
+      });
+      support.set({
+        system: { kind: 'unavailable', reason: 'not-configured' },
+        pin: { kind: 'available', set: true, nextAttemptAt: null },
+      });
+      await vi.waitFor(() => expect(pinField()).toBeTruthy());
+      await click(screen.getByTestId('app-lock-forgot'));
+
+      expect(
+        screen.getByText(
+          /Windows Hello unlock is turned off too\. You can turn it on again in Settings › Security › App lock\./,
+        ),
+      ).toBeTruthy();
+    });
+
+    it('doesn’t mention Windows Hello where the device never offered it', async () => {
+      await setup({ support: PIN_ONLY });
+      await click(screen.getByTestId('app-lock-forgot'));
+
+      expect(screen.queryByText(/Windows Hello/)).toBeNull();
+    });
+
     it('points to the system prompt when one can unlock', async () => {
       await setup();
       await click(screen.getByRole('button', { name: 'Use PIN instead' }));
