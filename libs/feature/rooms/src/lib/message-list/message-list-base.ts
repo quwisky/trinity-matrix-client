@@ -634,7 +634,7 @@ export abstract class MessageListBase {
     return this.prevRowCaps;
   });
 
-  /** Last computed caps, for identity reuse (mirrors {@link rowCache}). */
+  /** Last computed caps, for identity reuse (mirrors the row cache in {@link MessageRowModel}). */
   private prevRowCaps = new Map<string, MessageRowCaps>();
 
   /** Per-row capabilities/state for {@link MessageRowComponent} in the main timeline. */
