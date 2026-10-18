@@ -13,6 +13,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { DESIGN_VIEWPORTS } from '../../support/design-viewports.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // One rule decides how every modal surface opens: a bottom sheet with a handle on a phone
 // or tablet and below md, a centred dialog otherwise; an action list opens as a menu beside
@@ -43,10 +44,7 @@ async function signIn(
         },
       })
       .then((r) => r.json());
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${access_token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, { accessToken: access_token }, roomName);
   }
   await login(page, { available: true, hs, user, pass } as HomeserverSession);
 }

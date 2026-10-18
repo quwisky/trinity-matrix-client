@@ -16,6 +16,7 @@ import {
   signInAndOpen,
 } from '../../support/formatted-message-journey.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for spoiler reveal: a message carrying a `data-mx-spoiler` span renders
 // concealed, and clicking it uncovers it. The spoiler is injected through the Matrix
@@ -45,13 +46,12 @@ async function seedRoomWithSpoiler(
     .then((r) => r.json());
   const headers = { Authorization: `Bearer ${access_token}` };
 
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers,
-      data: { name: roomName },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(
+    request,
+    hs,
+    { accessToken: access_token },
+    roomName,
+  );
 
   await request.put(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/spoiler-${runId}`,

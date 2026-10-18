@@ -12,6 +12,7 @@ import {
   session,
   tokenFor,
 } from '../../support/room-settings-journey.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 test.describe('Room settings', () => {
   configureRoomSettingsSuite();
@@ -36,12 +37,12 @@ test.describe('Room settings', () => {
         },
       })
       .then((r) => r.json());
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: { Authorization: `Bearer ${access_token}` },
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(
+      request,
+      hs,
+      { accessToken: access_token },
+      roomName,
+    );
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
@@ -333,12 +334,12 @@ test.describe('Room settings', () => {
     const ownerToken = await tokenFor(request, hs, owner, ownerPass);
     const memberToken = await tokenFor(request, hs, member, memberPass);
     const memberId = `@${member}:localhost`;
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: { Authorization: `Bearer ${ownerToken}` },
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((response) => response.json());
+    const room_id = await createRoom(
+      request,
+      hs,
+      { accessToken: ownerToken },
+      roomName,
+    );
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/state/m.room.history_visibility/`,
       {

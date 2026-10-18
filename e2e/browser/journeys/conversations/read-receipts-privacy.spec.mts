@@ -16,6 +16,7 @@ import {
 } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the "Send read receipts" privacy toggle (Settings → Privacy). With it
 // OFF, reading a message must still clear the reader's own unread state — but
@@ -73,16 +74,9 @@ test.describe('Read-receipt privacy', () => {
     const sender = await apiLogin(request, hs, senderUser, senderPass);
 
     // Sender creates the room, invites the reader, who joins; sender then posts.
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: sender.headers,
-        data: {
-          name: roomName,
-          preset: 'private_chat',
-          invite: [reader.userId],
-        },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(request, hs, sender, roomName, {
+      invite: [reader.userId],
+    });
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
       { headers: reader.headers },

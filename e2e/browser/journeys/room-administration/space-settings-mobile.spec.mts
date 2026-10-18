@@ -18,6 +18,7 @@ import {
   expectRowLabelsAlignedWithTitle,
   expectSettingsSheet,
 } from '../../support/room-settings-journey.mts';
+import { createRoom as createMatrixRoom } from '../../support/space-journey.mts';
 
 const session = homeserverSession();
 
@@ -37,25 +38,6 @@ async function tokenFor(
     })
     .then((response) => response.json())
     .then((body) => body.access_token as string);
-}
-
-async function createSpace(
-  request: APIRequestContext,
-  hs: string,
-  token: string,
-  name: string,
-): Promise<string> {
-  return request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: {
-        name,
-        preset: 'private_chat',
-        creation_content: { type: 'm.space' },
-      },
-    })
-    .then((response) => response.json())
-    .then((body) => body.room_id as string);
 }
 
 async function childLink(
@@ -120,21 +102,25 @@ test.describe('Space settings on a phone', () => {
     const candidateName = `Mobile candidate ${runId}`;
     await registerUser(request, user, pass);
     const token = await tokenFor(request, hs, user, pass);
-    const spaceId = await createSpace(request, hs, token, spaceName);
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((response) => response.json())
-      .then((body) => body.room_id as string);
-    const candidateId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: { name: candidateName, preset: 'private_chat' },
-      })
-      .then((response) => response.json())
-      .then((body) => body.room_id as string);
+    const spaceId = await createMatrixRoom(
+      request,
+      hs,
+      { accessToken: token },
+      spaceName,
+      { space: true },
+    );
+    const roomId = await createMatrixRoom(
+      request,
+      hs,
+      { accessToken: token },
+      roomName,
+    );
+    const candidateId = await createMatrixRoom(
+      request,
+      hs,
+      { accessToken: token },
+      candidateName,
+    );
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(roomId)}`,
       {
@@ -445,7 +431,9 @@ test.describe('Space settings on a phone', () => {
     const spaceName = `Members shortcut ${runId}`;
     await registerUser(request, user, pass);
     const token = await tokenFor(request, hs, user, pass);
-    await createSpace(request, hs, token, spaceName);
+    await createMatrixRoom(request, hs, { accessToken: token }, spaceName, {
+      space: true,
+    });
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: spaceName, exact: true });
@@ -489,7 +477,13 @@ test.describe('Space settings on a phone', () => {
     await registerUser(request, member, memberPass);
     const ownerToken = await tokenFor(request, hs, owner, ownerPass);
     const memberToken = await tokenFor(request, hs, member, memberPass);
-    const spaceId = await createSpace(request, hs, ownerToken, spaceName);
+    const spaceId = await createMatrixRoom(
+      request,
+      hs,
+      { accessToken: ownerToken },
+      spaceName,
+      { space: true },
+    );
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/invite`,
       {
@@ -548,7 +542,9 @@ test.describe('Space settings on a phone', () => {
     const spaceName = `Contents error ${runId}`;
     await registerUser(request, user, pass);
     const token = await tokenFor(request, hs, user, pass);
-    await createSpace(request, hs, token, spaceName);
+    await createMatrixRoom(request, hs, { accessToken: token }, spaceName, {
+      space: true,
+    });
 
     await page.emulateMedia({ colorScheme: 'dark' });
     // 400 is not retried as transient, so the error state appears at once.

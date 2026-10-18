@@ -6,6 +6,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for "seen by" read receipts: when another member reads a message, their
 // avatar appears on it in the reader's timeline. Needs Synapse (Docker).
@@ -45,13 +46,9 @@ test.describe('Read receipts (seen by)', () => {
     );
 
     const roomName = `Receipts E2E ${runId}`;
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: reader.headers,
-        data: { name: roomName, invite: [author.userId, seer.userId] },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(request, hs, reader, roomName, {
+      invite: [author.userId, seer.userId],
+    });
     for (const who of [author, seer]) {
       await request.post(
         `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,

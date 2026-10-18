@@ -6,6 +6,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the room-upgrade / tombstone banner (data-testid="tombstone-banner"): a room
 // with an m.room.tombstone shows a banner whose "Go to the new room" (tombstone-go) joins
@@ -39,17 +40,18 @@ test.describe('Room tombstone', () => {
       .then((r) => r.json())
       .then((j) => j.access_token as string);
     const auth = { Authorization: `Bearer ${token}` };
-    const createRoom = (name: string) =>
-      request
-        .post(`${hs}/_matrix/client/v3/createRoom`, {
-          headers: auth,
-          data: { name, preset: 'private_chat' },
-        })
-        .then((r) => r.json())
-        .then((j) => j.room_id as string);
-
-    const oldRoom = await createRoom(oldName);
-    const newRoom = await createRoom(newName);
+    const oldRoom = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      oldName,
+    );
+    const newRoom = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      newName,
+    );
     // Tombstone the old room, pointing at the (distinctly-named) successor.
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(oldRoom)}/state/m.room.tombstone/`,

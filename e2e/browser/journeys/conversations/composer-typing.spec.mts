@@ -12,6 +12,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for typing indicators: when another member of the open room starts
 // typing, the app shows an "X is typing" row under the timeline, and clears it once
@@ -51,13 +52,9 @@ async function seedRoomWithMember(
     { headers: member.headers, data: { displayname: memberName } },
   );
 
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: { name: roomName, invite: [member.userId] },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(request, hs, reader, roomName, {
+    invite: [member.userId],
+  });
   await request.post(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
     { headers: member.headers },

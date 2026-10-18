@@ -6,7 +6,7 @@ import { describeFailure } from '../../support/http-failure.mts';
 export async function createRoom(
   request: APIRequestContext,
   hs: string,
-  user: AccountSession,
+  user: Pick<AccountSession, 'accessToken'>,
   name: string,
   options: {
     readonly space?: boolean;
@@ -57,7 +57,7 @@ export async function linkChild(
 export async function membership(
   request: APIRequestContext,
   hs: string,
-  user: AccountSession,
+  user: Pick<AccountSession, 'accessToken'>,
   roomId: string,
   action: 'join' | 'leave' | 'kick',
   data: Record<string, unknown> = {},

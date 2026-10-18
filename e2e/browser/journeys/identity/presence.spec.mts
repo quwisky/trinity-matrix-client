@@ -13,6 +13,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for member online-status (presence): the room member list renders a
 // presence indicators from the SDK's User.presence through IdentityPresenceService.
@@ -42,13 +43,9 @@ async function seedRoomWithMember(
   const reader = await apiLogin(request, hs, readerUser, readerPass);
   const member = await apiLogin(request, hs, memberUser, memberPass);
 
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: { name: roomName, invite: [member.userId] },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(request, hs, reader, roomName, {
+    invite: [member.userId],
+  });
   await request.post(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
     { headers: member.headers },

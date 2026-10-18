@@ -7,6 +7,7 @@ import {
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers kick and ban projection recovery. Member info opens as a dialog over the roster,
 // so the removed row assertion waits for member info to close first: asserting only that
@@ -73,16 +74,9 @@ test.describe('Remove a member', () => {
         `${hs}/_matrix/client/v3/profile/${encodeURIComponent(memberB.userId)}/displayname`,
         { headers: memberB.headers, data: { displayname: memberName } },
       );
-      const { room_id } = await request
-        .post(`${hs}/_matrix/client/v3/createRoom`, {
-          headers: admin.headers,
-          data: {
-            name: roomName,
-            preset: 'private_chat',
-            invite: [memberB.userId],
-          },
-        })
-        .then((r) => r.json());
+      const room_id = await createRoom(request, hs, admin, roomName, {
+        invite: [memberB.userId],
+      });
       await request.post(
         `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
         { headers: memberB.headers },

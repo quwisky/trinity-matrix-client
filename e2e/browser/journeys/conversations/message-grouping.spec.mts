@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the Discord-style grouping of consecutive messages from one sender: the
 // follow-on rows drop the avatar for a hover-only timestamp gutter, which must measure
@@ -40,12 +41,7 @@ test.describe('Message grouping', () => {
     await registerUser(request, me, mePass);
     const author = await apiLogin(request, hs, me, mePass);
 
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: author.headers,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(request, hs, author, roomName);
 
     // Same sender, back to back: rows 2 and 3 group under row 1's header.
     for (const [i, body] of bodies.entries()) {

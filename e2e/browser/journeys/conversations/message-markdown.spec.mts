@@ -27,6 +27,7 @@ import {
 } from '../../support/formatted-message-journey.mts';
 import { sendWithRetry } from '../../support/cs-api.mts';
 import { nextTestResourceId } from '../../../support/namespace.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the markdown render path end to end, through the REAL composer so the wire
 // format is exercised, not just the rendering:
@@ -80,13 +81,12 @@ test.describe('Message markdown', () => {
       })
       .then((r) => r.json())
       .then((j) => j.access_token as string);
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      roomName,
+    );
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openNamedRoom(page, roomName);
@@ -155,10 +155,7 @@ test.describe('Message markdown', () => {
       })
       .then((r) => r.json())
       .then((j) => j.access_token as string);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, { accessToken: token }, roomName);
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openNamedRoom(page, roomName);
@@ -198,10 +195,7 @@ test.describe('Message markdown', () => {
       })
       .then((r) => r.json())
       .then((j) => j.access_token as string);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, { accessToken: token }, roomName);
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openNamedRoom(page, roomName);

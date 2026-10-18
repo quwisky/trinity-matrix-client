@@ -19,6 +19,7 @@ import {
   closeSettings,
   openSettingsSection,
 } from '../../../support/journeys/navigation.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // A photo (#1140) or video (#1179) sent from the composer reaches the homeserver without
 // its location, unless the person chose Settings → Privacy → Keep photo and video metadata
@@ -121,13 +122,7 @@ async function seedRoom(
   const roomName = `Photo metadata E2E ${runId}`;
   await registerUser(request, user, pass);
   const api = await apiLogin(request, hs, user, pass);
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: api.headers,
-      data: { name: roomName, preset: 'private_chat' },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(request, hs, api, roomName);
   return { reader: { available: true, hs, user, pass }, roomName, roomId, api };
 }
 

@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers "Mark all as read" (data-testid="mark-all-read"): with an unread room the header
 // action appears; clicking it acks every room (RoomsService.markAllRead) so it disappears.
@@ -31,16 +32,9 @@ test.describe('Mark as read', () => {
     const author = await apiLogin(request, hs, me, mePass);
     const other = await apiLogin(request, hs, sender, senderPass);
 
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: author.headers,
-        data: {
-          name: roomName,
-          preset: 'private_chat',
-          invite: [other.userId],
-        },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(request, hs, author, roomName, {
+      invite: [other.userId],
+    });
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
       { headers: other.headers },

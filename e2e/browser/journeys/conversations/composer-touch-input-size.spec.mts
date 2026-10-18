@@ -10,6 +10,7 @@ import {
   closeSettings,
   openSettingsSection,
 } from '../../../support/journeys/navigation.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // iOS WebKit zooms the page when a focused text field computes below 16px (#974), so on
 // touch devices (`pointer: coarse`) every text-entry control resolves to at least 16px,
@@ -47,10 +48,7 @@ async function signInAndOpenRoom(
   await registerUser(request, user, pass);
   const account = await passwordLogin(request, hs, user, pass);
   const roomName = `Entry size ${user}`;
-  await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-    headers: { Authorization: `Bearer ${account.accessToken}` },
-    data: { name: roomName },
-  });
+  await createRoom(request, hs, { accessToken: account.accessToken }, roomName);
 
   await page.goto('/login');
   const coarse = await page.evaluate(

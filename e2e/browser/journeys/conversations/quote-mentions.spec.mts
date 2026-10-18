@@ -6,6 +6,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the notification half of quoting: carrying someone else's words must not notify
 // the people those words happen to name.
@@ -59,13 +60,13 @@ test.describe('Quoting does not notify the people it quotes', () => {
       { headers: rHeaders, data: { displayname: READER_DISPLAY_NAME } },
     );
 
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: wHeaders,
-        data: { name: roomName, preset: 'private_chat', invite: [r.userId] },
-      })
-      .then((res) => res.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: w.token },
+      roomName,
+      { invite: [r.userId] },
+    );
     await request.post(`${hs}/_matrix/client/v3/rooms/${roomId}/join`, {
       headers: rHeaders,
     });

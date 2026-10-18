@@ -6,6 +6,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers moderator redaction: a room admin (power 100, the creator) can delete
 // ANOTHER user's message. TimelineService.canRedactOthers compares the user's
@@ -51,16 +52,9 @@ test.describe('Moderator redaction', () => {
     const member = await apiLogin(request, hs, memberUser, memberPass);
 
     // Admin creates an unencrypted room and invites the member.
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: admin.headers,
-        data: {
-          name: roomName,
-          preset: 'private_chat',
-          invite: [member.userId],
-        },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(request, hs, admin, roomName, {
+      invite: [member.userId],
+    });
 
     // Member joins and posts a message over the API.
     await request.post(

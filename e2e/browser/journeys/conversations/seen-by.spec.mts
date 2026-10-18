@@ -6,6 +6,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the "seen by" reader list: clicking a message's read-receipt cluster
 // (data-testid="read-receipts") expands the names of who read it (seen-by-list).
@@ -39,16 +40,9 @@ test.describe('Seen by', () => {
       `${hs}/_matrix/client/v3/profile/${encodeURIComponent(other.userId)}/displayname`,
       { headers: other.headers, data: { displayname: readerName } },
     );
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: author.headers,
-        data: {
-          name: roomName,
-          preset: 'private_chat',
-          invite: [other.userId],
-        },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(request, hs, author, roomName, {
+      invite: [other.userId],
+    });
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
       { headers: other.headers },

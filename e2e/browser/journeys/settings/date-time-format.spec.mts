@@ -3,6 +3,7 @@ import { login, homeserverSession } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers issue #22: the Settings → Appearance dropdowns that choose how times and dates are
 // written. The unit tests cover the formatting itself; what only a real browser can prove is
@@ -50,12 +51,7 @@ test.describe('Date and time format', () => {
 
     await registerUser(request, user, pass);
     const me = await apiLogin(request, hs, user, pass);
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: me.headers,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(request, hs, me, roomName);
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/${runId}`,
       { headers: me.headers, data: { msgtype: 'm.text', body } },

@@ -7,6 +7,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers "Jump to date" (room ⋯ → overflow-jump-to-date): a date picker resolves a day to
 // an event via /timestamp_to_event (MSC3030), and the timeline pages history back until
@@ -57,13 +58,12 @@ test.describe('Jump to date', () => {
         .then((r) => r.json())
         .then((j) => j.access_token as string);
       const headers = { Authorization: `Bearer ${token}` };
-      const roomId = await request
-        .post(`${hs}/_matrix/client/v3/createRoom`, {
-          headers,
-          data: { name: roomName, preset: 'private_chat' },
-        })
-        .then((r) => r.json())
-        .then((j) => j.room_id as string);
+      const roomId = await createRoom(
+        request,
+        hs,
+        { accessToken: token },
+        roomName,
+      );
 
       // The marker goes FIRST, then enough traffic to push it well outside the initial
       // window, so reaching it requires the backfill loop rather than luck.
@@ -163,10 +163,7 @@ test.describe('Jump to date', () => {
       })
       .then((r) => r.json())
       .then((j) => j.access_token as string);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, { accessToken: token }, roomName);
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);

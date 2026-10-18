@@ -13,6 +13,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the space-curation half of #40: adding a room you are ALREADY in to a space
 // (until now a room could only join a space by being created in it), flagging a child as
@@ -23,15 +24,15 @@ import { describeFailure } from '../../../support/http-failure.mts';
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = homeserverSession();
 
-async function createRoom(
+async function createPublicRoom(
   request: APIRequestContext,
   hs: string,
   token: string,
-  data: Record<string, unknown>,
+  name: string,
 ): Promise<string> {
   const res = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
     headers: { Authorization: `Bearer ${token}` },
-    data,
+    data: { name, preset: 'public_chat' },
   });
   if (!res.ok()) {
     throw new Error(await describeFailure('createRoom', res));
@@ -91,16 +92,20 @@ test.describe('Space curation', () => {
 
     await registerUser(request, user, pass);
     const { token } = await apiLogin(request, hs, user, pass);
-    const spaceId = await createRoom(request, hs, token, {
-      name: spaceName,
-      preset: 'private_chat',
-      creation_content: { type: 'm.space' },
-    });
+    const spaceId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      spaceName,
+      { space: true },
+    );
     // Created OUTSIDE the space — the case that had no path into one before.
-    const roomId = await createRoom(request, hs, token, {
-      name: roomName,
-      preset: 'private_chat',
-    });
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      roomName,
+    );
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: spaceName, exact: true });
@@ -138,11 +143,13 @@ test.describe('Space curation', () => {
 
     await registerUser(request, user, pass);
     const { token } = await apiLogin(request, hs, user, pass);
-    const parentId = await createRoom(request, hs, token, {
-      name: parentName,
-      preset: 'private_chat',
-      creation_content: { type: 'm.space' },
-    });
+    const parentId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      parentName,
+      { space: true },
+    );
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: parentName, exact: true });
@@ -221,19 +228,25 @@ test.describe('Space curation', () => {
 
     await registerUser(request, user, pass);
     const { token } = await apiLogin(request, hs, user, pass);
-    const spaceId = await createRoom(request, hs, token, {
-      name: spaceName,
-      preset: 'private_chat',
-      creation_content: { type: 'm.space' },
-    });
-    const first = await createRoom(request, hs, token, {
-      name: `Aaa ${runId}`,
-      preset: 'private_chat',
-    });
-    const second = await createRoom(request, hs, token, {
-      name: `Bbb ${runId}`,
-      preset: 'private_chat',
-    });
+    const spaceId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      spaceName,
+      { space: true },
+    );
+    const first = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      `Aaa ${runId}`,
+    );
+    const second = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      `Bbb ${runId}`,
+    );
     for (const [index, childId] of [first, second].entries()) {
       await request.put(
         `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(childId)}`,
@@ -365,10 +378,12 @@ test.describe('Space curation', () => {
     // wrapping the link read in `untracked` leaves this test green. The declared
     // dependency is pinned in space-children.service.spec.ts, where no name lookup exists
     // to carry it. This assertion guards the user-visible behaviour end to end.
-    const third = await createRoom(request, hs, token, {
-      name: `Ccc ${runId}`,
-      preset: 'private_chat',
-    });
+    const third = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      `Ccc ${runId}`,
+    );
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(third)}`,
       {
@@ -405,16 +420,15 @@ test.describe('Space curation', () => {
     const { token: ownerToken } = await apiLogin(request, hs, owner, pass);
     const { token: otherToken } = await apiLogin(request, hs, other, pass);
 
-    const spaceId = await createRoom(request, hs, ownerToken, {
-      name: spaceName,
-      preset: 'private_chat',
-      creation_content: { type: 'm.space' },
-    });
+    const spaceId = await createRoom(
+      request,
+      hs,
+      { accessToken: ownerToken },
+      spaceName,
+      { space: true },
+    );
     // Public, so the viewer can actually join it from the sidebar.
-    const childId = await createRoom(request, hs, otherToken, {
-      name: childName,
-      preset: 'public_chat',
-    });
+    const childId = await createPublicRoom(request, hs, otherToken, childName);
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(childId)}`,
       {

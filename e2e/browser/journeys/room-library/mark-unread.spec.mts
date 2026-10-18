@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for "Mark as unread" (MSC2867). Flagging a room writes `m.marked_unread`
 // into that room's account data — so it follows the user to their other devices — and the
@@ -47,13 +48,12 @@ test.describe('Mark as unread', () => {
       })
       .then((r) => r.json());
     const auth = { Authorization: `Bearer ${json.access_token}` };
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: auth,
-        data: { name: roomName },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: json.access_token },
+      roomName,
+    );
 
     /** The room's marked-unread account data as the server holds it. */
     const flag = async (): Promise<boolean | undefined> => {
@@ -128,13 +128,12 @@ test.describe('Mark as unread', () => {
       })
       .then((r) => r.json());
     const auth = { Authorization: `Bearer ${json.access_token}` };
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: auth,
-        data: { name: roomName },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: json.access_token },
+      roomName,
+    );
 
     const flagUrl = `${hs}/_matrix/client/v3/user/${encodeURIComponent(json.user_id)}/rooms/${encodeURIComponent(roomId)}/account_data/m.marked_unread`;
     const flag = async (): Promise<boolean | undefined> => {

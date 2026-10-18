@@ -6,6 +6,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers keyword notification rules (Settings → Notifications → Keywords). Adding a word
 // writes a `content` push rule keyed by the word itself, and a message containing it must
@@ -41,13 +42,9 @@ test.describe('Keyword notifications', () => {
     const reader = await apiLogin(request, hs, readerUser, readerPass);
     const sender = await apiLogin(request, hs, senderUser, senderPass);
 
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: reader.headers,
-        data: { name: roomName, invite: [sender.userId] },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(request, hs, reader, roomName, {
+      invite: [sender.userId],
+    });
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
       { headers: sender.headers },
@@ -171,13 +168,9 @@ test.describe('Keyword notifications', () => {
     const reader = await apiLogin(request, hs, readerUser, readerPass);
     const sender = await apiLogin(request, hs, senderUser, senderPass);
 
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: reader.headers,
-        data: { name: roomName, invite: [sender.userId] },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(request, hs, reader, roomName, {
+      invite: [sender.userId],
+    });
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
       { headers: sender.headers },

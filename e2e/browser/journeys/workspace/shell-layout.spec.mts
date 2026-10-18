@@ -12,8 +12,13 @@ import {
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
-import { passwordLogin, registerUser } from '../../../support/account.mts';
+import {
+  passwordLogin,
+  registerUser,
+  type AccountSession,
+} from '../../../support/account.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
+import { membership } from '../../support/space-journey.mts';
 
 /**
  * Rendered Phase 2 shell contract.
@@ -26,8 +31,7 @@ import { describeFailure } from '../../../support/http-failure.mts';
 const session = homeserverSession();
 const DENSITY_KEY = 'trinity.appearance.density';
 
-interface ApiAccount {
-  readonly userId: string;
+interface ApiAccount extends AccountSession {
   readonly headers: { Authorization: string };
 }
 
@@ -40,7 +44,7 @@ async function account(
   await registerUser(request, username, password);
   const signedIn = await passwordLogin(request, hs, username, password);
   return {
-    userId: signedIn.userId,
+    ...signedIn,
     headers: { Authorization: `Bearer ${signedIn.accessToken}` },
   };
 }
@@ -74,21 +78,6 @@ async function createRoom(
     throw new Error(await describeFailure('create room', response));
   }
   return ((await response.json()) as { room_id: string }).room_id;
-}
-
-async function joinRoom(
-  request: APIRequestContext,
-  hs: string,
-  actor: ApiAccount,
-  roomId: string,
-): Promise<void> {
-  const response = await request.post(
-    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
-    { headers: actor.headers },
-  );
-  if (!response.ok()) {
-    throw new Error(await describeFailure('join room', response));
-  }
 }
 
 async function sendMessages(
@@ -567,7 +556,7 @@ test.describe('Modern room shell layout', () => {
         ...data,
         invite: [reader.userId],
       });
-      await joinRoom(request, hs, reader, roomId);
+      await membership(request, hs, reader, roomId, 'join');
       return roomId;
     };
 
@@ -619,9 +608,10 @@ test.describe('Modern room shell layout', () => {
             .map((member) => member.userId),
         ],
       });
-      await joinRoom(request, hs, reader, roomId);
+      await membership(request, hs, reader, roomId, 'join');
       for (const member of members) {
-        if (member !== owner) await joinRoom(request, hs, member, roomId);
+        if (member !== owner)
+          await membership(request, hs, member, roomId, 'join');
       }
       await sendMessages(
         request,

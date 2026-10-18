@@ -7,6 +7,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers saving an image from the timeline: the message ⋯ menu ("Save image") and the
 // lightbox download button, both ending in a browser download that keeps the original
@@ -42,12 +43,12 @@ test.describe('Save timeline media', () => {
       })
     ).json()) as { access_token: string };
     const headers = { Authorization: `Bearer ${token}` };
-    const { room_id: roomId } = (await (
-      await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-    ).json()) as { room_id: string };
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      roomName,
+    );
     const { content_uri: mxc } = (await (
       await request.post(
         `${hs}/_matrix/media/v3/upload?filename=${encodeURIComponent(FILENAME)}`,

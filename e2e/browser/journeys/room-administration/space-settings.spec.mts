@@ -25,68 +25,9 @@ import { registerUser, apiLogin } from '../../../support/account.mts';
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 import { expectRowLabelsAlignedWithTitle } from '../../support/room-settings-journey.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
+import { createRoom, linkChild } from '../../support/space-journey.mts';
 
 const session = homeserverSession();
-
-/**
- * Create a space (a room with `creation_content.type: m.space`, matching
- * `SpacesService.createSpace`) as the signed-in user, who is therefore its admin.
- */
-async function createSpace(
-  request: APIRequestContext,
-  hs: string,
-  token: string,
-  name: string,
-): Promise<string> {
-  const res = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-    headers: { Authorization: `Bearer ${token}` },
-    data: {
-      name,
-      preset: 'private_chat',
-      creation_content: { type: 'm.space' },
-    },
-  });
-  if (!res.ok()) {
-    throw new Error(await describeFailure('createRoom(space)', res));
-  }
-  return (await res.json()).room_id as string;
-}
-
-/** Create a joined Room owned by the token holder. */
-async function createRoom(
-  request: APIRequestContext,
-  hs: string,
-  token: string,
-  name: string,
-): Promise<string> {
-  const response = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-    headers: { Authorization: `Bearer ${token}` },
-    data: { name, preset: 'private_chat' },
-  });
-  if (!response.ok()) {
-    throw new Error(await describeFailure('createRoom', response));
-  }
-  return (await response.json()).room_id as string;
-}
-
-async function putChildLink(
-  request: APIRequestContext,
-  hs: string,
-  token: string,
-  spaceId: string,
-  childId: string,
-): Promise<void> {
-  const response = await request.put(
-    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(childId)}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { via: ['localhost'] },
-    },
-  );
-  if (!response.ok()) {
-    throw new Error(await describeFailure('m.space.child', response));
-  }
-}
 
 async function childLink(
   request: APIRequestContext,
@@ -180,7 +121,13 @@ test.describe('Space settings', () => {
 
     await registerUser(request, user, pass);
     const { token } = await apiLogin(request, hs, user, pass);
-    const spaceId = await createSpace(request, hs, token, originalName);
+    const spaceId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      originalName,
+      { space: true },
+    );
     const roomId = await request
       .post(`${hs}/_matrix/client/v3/createRoom`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -362,7 +309,13 @@ test.describe('Space settings', () => {
 
     await registerUser(request, user, pass);
     const { token } = await apiLogin(request, hs, user, pass);
-    const spaceId = await createSpace(request, hs, token, spaceName);
+    const spaceId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      spaceName,
+      { space: true },
+    );
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.room.topic/`,
       { headers: { Authorization: `Bearer ${token}` }, data: { topic } },
@@ -414,17 +367,35 @@ test.describe('Space settings', () => {
     const recoveredName = `Recovered ${runId}`;
 
     await registerUser(request, user, pass);
-    const { token } = await apiLogin(request, hs, user, pass);
-    const spaceId = await createSpace(request, hs, token, spaceName);
-    const linkedId = await createRoom(request, hs, token, linkedName);
-    const candidateId = await createRoom(request, hs, token, candidateName);
-    const candidateSpaceId = await createSpace(
+    const account = await apiLogin(request, hs, user, pass);
+    const { token } = account;
+    const spaceId = await createRoom(
       request,
       hs,
-      token,
-      candidateSpaceName,
+      { accessToken: token },
+      spaceName,
+      { space: true },
     );
-    await putChildLink(request, hs, token, spaceId, linkedId);
+    const linkedId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      linkedName,
+    );
+    const candidateId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      candidateName,
+    );
+    const candidateSpaceId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      candidateSpaceName,
+      { space: true },
+    );
+    await linkChild(request, hs, account, spaceId, linkedId);
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
@@ -676,7 +647,8 @@ test.describe('Space settings', () => {
 
     await registerUser(request, owner, ownerPass);
     await registerUser(request, member, memberPass);
-    const { token: ownerToken } = await apiLogin(request, hs, owner, ownerPass);
+    const ownerAccount = await apiLogin(request, hs, owner, ownerPass);
+    const { token: ownerToken } = ownerAccount;
     const memberLogin = await request
       .post(`${hs}/_matrix/client/v3/login`, {
         data: {
@@ -686,9 +658,20 @@ test.describe('Space settings', () => {
         },
       })
       .then((r) => r.json());
-    const spaceId = await createSpace(request, hs, ownerToken, spaceName);
-    const childId = await createRoom(request, hs, ownerToken, childName);
-    await putChildLink(request, hs, ownerToken, spaceId, childId);
+    const spaceId = await createRoom(
+      request,
+      hs,
+      { accessToken: ownerToken },
+      spaceName,
+      { space: true },
+    );
+    const childId = await createRoom(
+      request,
+      hs,
+      { accessToken: ownerToken },
+      childName,
+    );
+    await linkChild(request, hs, ownerAccount, spaceId, childId);
     await joinAsMember(
       request,
       hs,
@@ -784,7 +767,13 @@ test.describe('Space settings', () => {
       member,
       memberPass,
     );
-    const spaceId = await createSpace(request, hs, ownerToken, spaceName);
+    const spaceId = await createRoom(
+      request,
+      hs,
+      { accessToken: ownerToken },
+      spaceName,
+      { space: true },
+    );
     await joinAsMember(request, hs, ownerToken, spaceId, memberToken, memberId);
 
     const powerLevels = (await request
@@ -856,7 +845,13 @@ test.describe('Space settings', () => {
 
     await registerUser(request, user, pass);
     const { token } = await apiLogin(request, hs, user, pass);
-    const spaceId = await createSpace(request, hs, token, spaceName);
+    const spaceId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      spaceName,
+      { space: true },
+    );
     const localpart = `space-addr-${runId}`;
     const alias = `#${localpart}:localhost`;
 
@@ -921,7 +916,13 @@ test.describe('Space settings', () => {
       })
       .then((r) => r.json());
     const otherId = otherLogin.user_id as string;
-    const spaceId = await createSpace(request, hs, ownerToken, spaceName);
+    const spaceId = await createRoom(
+      request,
+      hs,
+      { accessToken: ownerToken },
+      spaceName,
+      { space: true },
+    );
     await joinAsMember(
       request,
       hs,

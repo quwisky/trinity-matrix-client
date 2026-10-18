@@ -22,6 +22,7 @@ import {
   openRoom,
   session,
 } from '../../support/room-settings-journey.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 interface SharedRoom {
   readonly accountA: ApiUser & { user: string; pass: string };
@@ -44,17 +45,9 @@ async function seedSharedRoom(
   await registerUser(request, userB, passB);
   const a = await apiLogin(request, hs, userA, passA);
   const b = await apiLogin(request, hs, userB, passB);
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: a.headers,
-      data: {
-        name: roomName,
-        preset: 'private_chat',
-        invite: [b.userId],
-      },
-    })
-    .then((response) => response.json())
-    .then((body) => body.room_id as string);
+  const roomId = await createRoom(request, hs, a, roomName, {
+    invite: [b.userId],
+  });
   await request.post(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
     { headers: b.headers },

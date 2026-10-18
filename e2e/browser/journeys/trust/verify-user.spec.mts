@@ -14,6 +14,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers starting cross-user verification from a member's info panel: "Verify"
 // (data-testid="member-info-verify") ensures a DM with them and requests emoji-SAS
@@ -87,16 +88,9 @@ async function verifyUserFromMemberPanel({
     `${hs}/_matrix/client/v3/profile/${encodeURIComponent(otherUser.userId)}/displayname`,
     { headers: otherUser.headers, data: { displayname: otherName } },
   );
-  const { room_id } = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: admin.headers,
-      data: {
-        name: roomName,
-        preset: 'private_chat',
-        invite: [otherUser.userId],
-      },
-    })
-    .then((r) => r.json());
+  const room_id = await createRoom(request, hs, admin, roomName, {
+    invite: [otherUser.userId],
+  });
   await request.post(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
     { headers: otherUser.headers },

@@ -11,6 +11,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the "Rooms view excludes space-owned rooms" behavior: the flat Rooms
 // view (revealed by the `rail-rooms` pill) lists only non-DM joined rooms that
@@ -60,33 +61,16 @@ async function seedSpaceAndRooms(
   const reader = await apiLogin(request, hs, readerUser, readerPass);
 
   // A spaceless plain (non-DM) room — should stay in the flat Rooms view.
-  await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-    headers: reader.headers,
-    data: { name: freestandingName, preset: 'private_chat' },
-  });
+  await createRoom(request, hs, reader, freestandingName);
 
   // A space (a room with creation_content.type: m.space), matching
   // SpacesService.createSpace.
-  const spaceId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: {
-        name: spaceName,
-        preset: 'private_chat',
-        creation_content: { type: 'm.space' },
-      },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const spaceId = await createRoom(request, hs, reader, spaceName, {
+    space: true,
+  });
 
   // Its child room — a plain room the reader joins by virtue of creating it.
-  const childId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: { name: childName, preset: 'private_chat' },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const childId = await createRoom(request, hs, reader, childName);
 
   // Link the child into the space: `m.space.child` on the space, state-keyed
   // by the child's room id, carrying a non-empty `via` — the shape

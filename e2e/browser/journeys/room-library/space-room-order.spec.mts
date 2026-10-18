@@ -19,6 +19,7 @@ import {
 import { nextTestResourceId } from '../../../support/namespace.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers issue #34: how rooms are ordered inside a space.
 //
@@ -72,27 +73,13 @@ async function seedOrderedSpace(
   await registerUser(request, readerUser, readerPass);
   const reader = await apiLogin(request, hs, readerUser, readerPass);
 
-  const spaceId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: {
-        name: spaceName,
-        preset: 'private_chat',
-        creation_content: { type: 'm.space' },
-      },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const spaceId = await createRoom(request, hs, reader, spaceName, {
+    space: true,
+  });
 
   /** Create a child room and link it into the space at the given curated position. */
   async function addChild(name: string, order: string): Promise<SeededChild> {
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: reader.headers,
-        data: { name, preset: 'private_chat' },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(request, hs, reader, name);
 
     const link = await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(
@@ -341,14 +328,7 @@ test.describe('Room order inside a space', () => {
 
     await registerUser(request, user, pass);
     const api = await apiLogin(request, hs, user, pass);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: api.headers,
-      data: {
-        name: spaceName,
-        preset: 'private_chat',
-        creation_content: { type: 'm.space' },
-      },
-    });
+    await createRoom(request, hs, api, spaceName, { space: true });
 
     await login(page, { available: true, hs, user, pass });
     await openSpace(page, spaceName);

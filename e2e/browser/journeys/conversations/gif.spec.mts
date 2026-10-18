@@ -20,6 +20,7 @@ import {
   type ApiUser,
 } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // GIF picker journeys. The send path round-trips through the REAL disposable
 // Synapse (upload → m.image → sync), like every app-journey spec; only the
@@ -59,13 +60,7 @@ async function seedRoom(
   const roomName = `GIF E2E ${runId}`;
   await registerUser(request, user, pass);
   const api = await apiLogin(request, hs, user, pass);
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: api.headers,
-      data: { name: roomName, preset: 'private_chat' },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(request, hs, api, roomName);
   return { reader: { available: true, hs, user, pass }, roomName, roomId, api };
 }
 

@@ -11,6 +11,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for @-mention autocomplete: typing `@` opens a member menu, picking one
 // inserts a pill, and the sent message carries a matrix.to mention link (so it pings
@@ -48,13 +49,9 @@ async function seedRoomWithMember(
     { headers: member.headers, data: { displayname: memberName } },
   );
 
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: { name: roomName, invite: [member.userId] },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(request, hs, reader, roomName, {
+    invite: [member.userId],
+  });
   // Before the member: others who join first become the room's heroes, whose membership a
   // server sends even when members load lazily, so the member is not one of them.
   for (let i = 0; laterMessages > 0 && i < 6; i++) {

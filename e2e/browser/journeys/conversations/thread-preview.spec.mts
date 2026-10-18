@@ -18,6 +18,7 @@ import {
   apiLogin,
   type ApiUser,
 } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the rendered thread summary on a real timeline: keyboard activation on desktop,
 // touch activation on a Pixel 5, and the long-preview layout in the browser engine.
@@ -104,13 +105,9 @@ async function seedThread(
     { headers: author.headers, data: { displayname: authorName } },
   );
 
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: { name: roomName, invite: [author.userId], preset: 'private_chat' },
-    })
-    .then((response) => response.json())
-    .then((json) => json.room_id as string);
+  const roomId = await createRoom(request, hs, reader, roomName, {
+    invite: [author.userId],
+  });
   await request.post(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
     { headers: author.headers },

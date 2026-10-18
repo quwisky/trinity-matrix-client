@@ -8,6 +8,7 @@ import {
   session,
   tokenFor,
 } from '../../support/room-settings-journey.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers Room settings › Advanced › Upgrade room: an admin upgrades a private room that a space
 // links. They land in the new room; the member has an invite to it; the space's child now points
@@ -38,13 +39,13 @@ test.describe('Room upgrade', () => {
     const room = (id: string) =>
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(id)}`;
 
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: asAdmin,
-        data: { name: roomName, preset: 'private_chat', invite: [memberId] },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: adminToken },
+      roomName,
+      { invite: [memberId] },
+    );
     const joined = await request.post(`${room(roomId)}/join`, {
       headers: { Authorization: `Bearer ${memberToken}` },
       data: {},

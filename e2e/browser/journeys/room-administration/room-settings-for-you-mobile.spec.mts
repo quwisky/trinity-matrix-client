@@ -8,6 +8,7 @@ import {
   openRoom,
   session,
 } from '../../support/room-settings-journey.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // The Android user agent selects Trinity's mobile settings interaction model.
 test.use({ ...devices['Pixel 5'] });
@@ -31,17 +32,9 @@ test.describe('Room settings · For you on a phone', () => {
     await registerUser(request, member, memberPass);
     const ownerApi = await apiLogin(request, hs, owner, ownerPass);
     const memberApi = await apiLogin(request, hs, member, memberPass);
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: ownerApi.headers,
-        data: {
-          name: roomName,
-          preset: 'private_chat',
-          invite: [memberApi.userId],
-        },
-      })
-      .then((response) => response.json())
-      .then((body) => body.room_id as string);
+    const roomId = await createRoom(request, hs, ownerApi, roomName, {
+      invite: [memberApi.userId],
+    });
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
       { headers: memberApi.headers },

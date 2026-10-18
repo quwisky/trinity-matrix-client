@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers link previews (message-row `data-testid="link-preview"`): a URL in an
 // unencrypted message shows an Open-Graph card fetched via the homeserver
@@ -54,12 +55,12 @@ test.describe('Link previews', () => {
     const auth = { Authorization: `Bearer ${token}` };
 
     // A plaintext (unencrypted) room so previews are allowed.
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: auth,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      roomName,
+    );
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/${runId}-msg`,
       { headers: auth, data: { msgtype: 'm.text', body: `look: ${OG_URL}` } },

@@ -13,6 +13,7 @@ import {
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
 import { focusWithKeyboard } from '../../support/keyboard-focus.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers per-message authenticity shields (message-row `data-testid="msg-shield-*"`):
 // that a plaintext room raises none, that a genuinely shielded message explains itself,
@@ -107,16 +108,13 @@ async function setUpSharedRoom(
   const ownerAuth = { Authorization: `Bearer ${ownerToken}` };
   const readerAuth = { Authorization: `Bearer ${readerLogin.accessToken}` };
 
-  const { room_id } = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: ownerAuth,
-      data: {
-        name: roomName,
-        preset: 'private_chat',
-        invite: [readerLogin.userId],
-      },
-    })
-    .then((r) => r.json());
+  const room_id = await createRoom(
+    request,
+    hs,
+    { accessToken: ownerToken },
+    roomName,
+    { invite: [readerLogin.userId] },
+  );
   const roomUrl = `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}`;
   await request.post(`${roomUrl}/join`, { headers: readerAuth });
 
@@ -184,16 +182,9 @@ test.describe('Message authenticity shields', () => {
     };
 
     // A plaintext room (no encryption initial_state) — its messages get no shield.
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: ownerAuth,
-        data: {
-          name: roomName,
-          preset: 'private_chat',
-          invite: [readerSession.userId],
-        },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(request, hs, ownerSession, roomName, {
+      invite: [readerSession.userId],
+    });
     // The reader must actually join, else the room lands as an invite (not a joined
     // `.channel`) in their rail and the timeline never opens.
     await request.post(

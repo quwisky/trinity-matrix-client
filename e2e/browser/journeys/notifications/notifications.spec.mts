@@ -20,6 +20,7 @@ import {
   openSettingsSection,
 } from '../../../support/journeys/navigation.mts';
 import { sendWithRetry } from '../../support/cs-api.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers NotificationService's core rule end to end: a live message fires an OS
 // notification unless the user is actually looking at that room — i.e. the window
@@ -78,17 +79,9 @@ async function seedNotifyRoom(
     { headers: sender.headers, data: { displayname: senderName } },
   );
 
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: {
-        name: roomName,
-        preset: 'private_chat',
-        invite: [sender.userId],
-      },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
+  const roomId = await createRoom(request, hs, reader, roomName, {
+    invite: [sender.userId],
+  });
 
   await request.post(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
@@ -302,24 +295,13 @@ async function seedReactionRoom(
     );
   }
 
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: readerApi.headers,
-      data: {
-        name: roomName,
-        preset: 'private_chat',
-        invite: reactors.map((r) => r.userId),
-      },
-    })
-    .then((response) => response.json())
-    .then((json) => json.room_id as string);
+  const roomId = await createRoom(request, hs, readerApi, roomName, {
+    invite: reactors.map((r) => r.userId),
+  });
   for (const reactor of reactors) {
     await joinReactionRoom(request, hs, roomId, reactor);
   }
-  await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-    headers: readerApi.headers,
-    data: { name: parkingRoomName, preset: 'private_chat' },
-  });
+  await createRoom(request, hs, readerApi, parkingRoomName);
 
   return {
     reader: { available: true, hs, user: readerUser, pass: readerPass },

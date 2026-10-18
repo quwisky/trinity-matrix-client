@@ -179,10 +179,7 @@ test.describe('Multiple accounts', () => {
       [a, roomA],
       [b, roomB],
     ] as const) {
-      await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: who.headers,
-        data: { name, preset: 'private_chat' },
-      });
+      await createRoom(request, hs, who, name);
     }
 
     // Sign in A, then add B (B becomes the active account) — both now signed in.
@@ -239,14 +236,7 @@ test.describe('Multiple accounts', () => {
       [a, spaceA],
       [b, spaceB],
     ] as const) {
-      await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: who.headers,
-        data: {
-          name,
-          preset: 'private_chat',
-          creation_content: { type: 'm.space' },
-        },
-      });
+      await createRoom(request, hs, who, name, { space: true });
     }
 
     await login(page, { available: true, hs, user: userA, pass: passA });
@@ -363,10 +353,7 @@ test.describe('Multiple accounts', () => {
       [a, roomA],
       [b, roomB],
     ] as const) {
-      await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: who.headers,
-        data: { name, preset: 'private_chat' },
-      });
+      await createRoom(request, hs, who, name);
     }
 
     await login(page, { available: true, hs, user: userA, pass: passA });
@@ -562,10 +549,7 @@ test.describe('Multiple accounts', () => {
       await registerUser(request, userA, passA);
       await registerUser(request, userB, passB);
       const a = await apiLogin(request, hs, userA, passA);
-      await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: a.headers,
-        data: { name: roomA, preset: 'private_chat' },
-      });
+      await createRoom(request, hs, a, roomA);
 
       await login(page, { available: true, hs, user: userA, pass: passA });
       await addAccountViaUi(page, hs, userB, passB);
@@ -708,10 +692,7 @@ test.describe('Multiple accounts', () => {
     await registerUser(request, userA, passA);
     await registerUser(request, userB, passB);
     const a = await apiLogin(request, hs, userA, passA);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: a.headers,
-      data: { name: roomA, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, a, roomA);
 
     await login(page, { available: true, hs, user: userA, pass: passA });
     await addAccountViaUi(page, hs, userB, passB);
@@ -787,18 +768,12 @@ test.describe('Multiple accounts', () => {
 
     // A owns a room (so the mixed list has something of A's), and a third party invites A
     // to another room — the invite therefore belongs to an account that will NOT be active.
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: a.headers,
-      data: { name: roomA, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, a, roomA);
     // B needs a room of its own for its profile to reach the client at all: the SDK
     // hydrates `getUser()` from presence, and an account in no rooms receives none — so
     // without this the panel would show B's mxid however well the projection works, and
     // the assertion below would be testing the SDK rather than this code.
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: b.headers,
-      data: { name: `Room B ${runId}`, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, b, `Room B ${runId}`);
     const created = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
       headers: h.headers,
       data: { name: invited, preset: 'private_chat' },

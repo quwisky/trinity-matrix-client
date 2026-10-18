@@ -11,6 +11,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers the two room-tag features, which share one fixture and one menu:
 // SidebarRoomListComponent renders a hover-revealed kebab (`.channel__menu`) on
@@ -59,10 +60,7 @@ async function seedTwoRooms(
   const reader = await apiLogin(request, hs, readerUser, readerPass);
 
   for (const name of [alphaName, bravoName]) {
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: reader.headers,
-      data: { name, preset: 'private_chat' },
-    });
+    await createRoom(request, hs, reader, name);
   }
 
   return {

@@ -5,6 +5,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // Covers "Decline and report" on an invite row: the invited account reports the room to its
 // own server's admins without joining (POST /rooms/{roomId}/report), the invite is declined,
@@ -33,12 +34,9 @@ test.describe('Decline and report an invite', () => {
       `${hs}/_matrix/client/v3/profile/${encodeURIComponent(alice.userId)}/displayname`,
       { headers: aliceAuth, data: { displayname: aliceName } },
     );
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: aliceAuth,
-        data: { name: roomName, preset: 'private_chat', invite: [bob.userId] },
-      })
-      .then((r) => r.json());
+    const room_id = await createRoom(request, hs, alice, roomName, {
+      invite: [bob.userId],
+    });
 
     // Every membership-changing request Bob's app makes, in order.
     const membershipRequests: string[] = [];

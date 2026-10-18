@@ -8,6 +8,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for message forwarding: pick another room from the switcher and the
 // message lands there. Needs a Synapse homeserver (Docker).
@@ -31,15 +32,11 @@ test.describe('Message forwarding', () => {
         },
       })
       .then((r) => r.json());
-    const headers = { Authorization: `Bearer ${access_token}` };
 
     const sourceName = `Forward Source ${runId}`;
     const targetName = `Forward Target ${runId}`;
     for (const name of [sourceName, targetName]) {
-      await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers,
-        data: { name },
-      });
+      await createRoom(request, hs, { accessToken: access_token }, name);
     }
 
     await login(page, {
