@@ -519,7 +519,9 @@ test.describe('Modern room shell layout', () => {
     const activate = (target: Locator): Promise<void> => target.click();
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}sh`;
-    const readerName = `shell-${runId}`;
+    // The handle must overflow the account row too. Without the suffix it was within a few
+    // pixels of the widest (spacious) row, so the digest's glyph widths decided the check.
+    const readerName = `shell-${runId}-with-a-handle-that-must-truncate`;
     const readerPass = `${readerName}-pass`;
     const longAccountName = `Alexandria Very Long Account Name ${runId} That Must Truncate`;
     const reader = await account(request, hs, readerName, readerPass);
