@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import { DecryptionFailureCode } from 'matrix-js-sdk/lib/crypto-api';
+import { UNENCRYPTED_PREVIEW } from '@trinity/util/matrix';
 import { normalizeTimelineEvent } from './normalize-timeline-event';
 
 const client = {
@@ -33,6 +34,8 @@ function event(over: Record<string, unknown> = {}): MatrixEvent {
     isState: () => false,
     isRedacted: () => false,
     isDecryptionFailure: () => false,
+    isEncrypted: () => false,
+    status: null,
     replacingEvent: () => null,
     getAssociatedStatus: () => null,
     isRelation: () => false,
@@ -52,6 +55,7 @@ describe('normalizeTimelineEvent', () => {
           DecryptionFailureCode.MEGOLM_KEY_WITHHELD_FOR_UNVERIFIED_DEVICE,
       }),
       null,
+      false,
     );
 
     expect(normalized).toMatchObject({
@@ -71,6 +75,7 @@ describe('normalizeTimelineEvent', () => {
         decryptionFailureReason: null,
       }),
       null,
+      false,
     );
 
     expect(normalized).toMatchObject({ undecryptableReason: 'missing-key' });
@@ -89,6 +94,7 @@ describe('normalizeTimelineEvent', () => {
           DecryptionFailureCode.HISTORICAL_MESSAGE_BACKUP_UNCONFIGURED,
       }),
       null,
+      false,
     );
 
     expect(normalized).toMatchObject({
@@ -99,7 +105,13 @@ describe('normalizeTimelineEvent', () => {
     });
   });
   it('turns an SDK text event into a frozen plain record', () => {
-    const normalized = normalizeTimelineEvent(client, room, event(), null);
+    const normalized = normalizeTimelineEvent(
+      client,
+      room,
+      event(),
+      null,
+      false,
+    );
 
     expect(normalized).toMatchObject({
       type: 'text',
@@ -125,7 +137,13 @@ describe('normalizeTimelineEvent', () => {
       },
     });
 
-    const normalized = normalizeTimelineEvent(client, room, hostile, null);
+    const normalized = normalizeTimelineEvent(
+      client,
+      room,
+      hostile,
+      null,
+      false,
+    );
 
     expect(normalized).toMatchObject({
       type: 'unsupported',
@@ -150,6 +168,7 @@ describe('normalizeTimelineEvent', () => {
       malformedRoom,
       event(),
       null,
+      false,
     );
 
     expect(normalized).toMatchObject({
@@ -172,6 +191,7 @@ describe('normalizeTimelineEvent', () => {
         },
       }),
       null,
+      false,
     );
 
     expect(normalized).toMatchObject({
@@ -196,6 +216,7 @@ describe('normalizeTimelineEvent', () => {
         }),
       }),
       null,
+      false,
     );
 
     expect(normalized).toMatchObject({
@@ -223,6 +244,7 @@ describe('normalizeTimelineEvent', () => {
         }),
       }),
       null,
+      false,
     );
 
     expect(normalized).toMatchObject({
@@ -258,6 +280,7 @@ describe('normalizeTimelineEvent', () => {
           }),
         }),
         null,
+        false,
       );
 
       expect(normalized?.replyTo).toMatchObject({
@@ -267,6 +290,21 @@ describe('normalizeTimelineEvent', () => {
       });
     },
   );
+
+  it('quotes an unencrypted message in an encrypted room as the unencrypted placeholder', () => {
+    const normalized = normalizeTimelineEvent(
+      client,
+      room,
+      event({ replyEventId: '$parent', isEncrypted: () => true }),
+      null,
+      true,
+    );
+
+    expect(normalized?.replyTo).toMatchObject({
+      id: '$parent',
+      body: UNENCRYPTED_PREVIEW,
+    });
+  });
 
   it('marks unsupported replies so presentation can remove their fallback', () => {
     const normalized = normalizeTimelineEvent(
@@ -280,6 +318,7 @@ describe('normalizeTimelineEvent', () => {
         }),
       }),
       null,
+      false,
     );
 
     expect(normalized).toMatchObject({
@@ -296,6 +335,7 @@ describe('normalizeTimelineEvent', () => {
         getContent: () => ({ msgtype: 'm.text', body: { hostile: true } }),
       }),
       null,
+      false,
     );
 
     expect(normalized).toMatchObject({
@@ -317,6 +357,7 @@ describe('normalizeTimelineEvent', () => {
         getPrevContent: () => ({ membership: 'invite' }),
       }),
       null,
+      false,
     );
 
     expect(normalized).toMatchObject({
@@ -351,6 +392,7 @@ describe('normalizeTimelineEvent', () => {
         getPrevContent: () => ({ membership: 'invite' }),
       }),
       null,
+      false,
     );
 
     expect(normalized).toMatchObject({
@@ -375,6 +417,7 @@ describe('normalizeTimelineEvent', () => {
         }),
       }),
       null,
+      false,
     );
 
     expect(normalized).toMatchObject({

@@ -115,7 +115,9 @@ describe('PushHandoffBridge', () => {
     isNative.mockReturnValue(true);
     isAvailable.mockReturnValue(true);
     const handoff = bridge();
-    const rooms = [{ roomId: '!a:hs', name: 'Team', direct: false }] as const;
+    const rooms = [
+      { roomId: '!a:hs', name: 'Team', direct: false, encrypted: false },
+    ] as const;
 
     await firstValueFrom(
       handoff.setAccount({
@@ -139,7 +141,9 @@ describe('PushHandoffBridge', () => {
     });
     expect(plugin.setRooms).toHaveBeenCalledWith({
       userId: '@me:hs',
-      rooms: [{ roomId: '!a:hs', name: 'Team', direct: false }],
+      rooms: [
+        { roomId: '!a:hs', name: 'Team', direct: false, encrypted: false },
+      ],
     });
     expect(plugin.removeAccount).toHaveBeenCalledWith({ userId: '@me:hs' });
     expect(plugin.clear).toHaveBeenCalledOnce();

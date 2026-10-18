@@ -17,7 +17,11 @@ final class PushRenderRulesTests: XCTestCase {
         for testCase in cases {
             let name = try XCTUnwrap(testCase["name"] as? String)
             let storedRoom = (testCase["storedRoom"] as? [String: Any]).map {
-                HandoffRoom(name: $0["name"] as? String ?? "", direct: $0["direct"] as? Bool ?? false)
+                HandoffRoom(
+                    name: $0["name"] as? String ?? "",
+                    direct: $0["direct"] as? Bool ?? false,
+                    encrypted: $0["encrypted"] as? Bool ?? true
+                )
             }
             let expected = try XCTUnwrap(testCase["expected"] as? [String: String])
             let actual = PushRenderRules.render(

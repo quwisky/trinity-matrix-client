@@ -13,14 +13,24 @@ public struct RenderedNotification: Equatable {
     }
 }
 
-/// A room as the app stored it in the push handoff.
+/// A room as the app stored it in the push handoff. `encrypted` is false only when the app
+/// wrote that the room is not encrypted: an entry stored without the flag counts as encrypted.
 public struct HandoffRoom: Codable, Equatable {
     public let name: String
     public let direct: Bool
+    public let encrypted: Bool
 
-    public init(name: String, direct: Bool) {
+    public init(name: String, direct: Bool, encrypted: Bool = true) {
         self.name = name
         self.direct = direct
+        self.encrypted = encrypted
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        direct = try container.decode(Bool.self, forKey: .direct)
+        encrypted = try container.decodeIfPresent(Bool.self, forKey: .encrypted) ?? true
     }
 }
 
@@ -65,7 +75,12 @@ public enum PushRenderRules {
         return RenderedNotification(
             title: title,
             subtitle: subtitle,
-            body: body(event: event, sender: sender ?? "", tokenExpired: tokenExpired)
+            body: body(
+                event: event,
+                sender: sender ?? "",
+                tokenExpired: tokenExpired,
+                unencryptedRoom: storedRoom?.encrypted == false
+            )
         )
     }
 
@@ -76,11 +91,20 @@ public enum PushRenderRules {
         return value
     }
 
-    private static func body(event: [String: Any]?, sender: String, tokenExpired: Bool) -> String {
+    private static func body(
+        event: [String: Any]?,
+        sender: String,
+        tokenExpired: Bool,
+        unencryptedRoom: Bool
+    ) -> String {
         guard let event else { return tokenExpired ? expiredTokenBody : fallbackBody }
         if (event["unsigned"] as? [String: Any])?["redacted_because"] != nil { return fallbackBody }
-        switch event["type"] as? String {
-        case "m.room.encrypted": return encryptedBody
+        let type = event["type"] as? String
+        if type == "m.room.encrypted" { return encryptedBody }
+        // Anyone whose server takes part in the room can send it unencrypted text under a
+        // member's name. Unless the app stored the room as unencrypted, show none of it.
+        guard unencryptedRoom else { return fallbackBody }
+        switch type {
         case "m.sticker": return "sent a sticker"
         case "m.room.message": return messageBody(content: event["content"] as? [String: Any], sender: sender)
         default: return fallbackBody

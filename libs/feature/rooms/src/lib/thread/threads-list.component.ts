@@ -18,6 +18,7 @@ import {
   ConversationRuntime,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
+import { UnencryptedMarkComponent } from '../shared/unencrypted-mark/unencrypted-mark.component';
 
 /** Most participant avatars shown per row before the "+N" overflow chip. */
 const MAX_AVATARS = 4;
@@ -35,6 +36,7 @@ const MAX_AVATARS = 4;
   selector: 'trn-threads-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    UnencryptedMarkComponent,
     SidePanelHeaderComponent,
     EmptyStateComponent,
     AvatarComponent,

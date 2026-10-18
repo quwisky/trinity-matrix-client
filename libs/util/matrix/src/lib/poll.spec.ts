@@ -48,6 +48,7 @@ function response(
 
 function endEvent(ts: number, redacted = false): MatrixEvent {
   return {
+    getId: () => `$end-${ts}`,
     getSender: () => '@me:hs',
     getTs: () => ts,
     isRedacted: () => redacted,
@@ -96,6 +97,7 @@ describe('buildPollView', () => {
       client,
       room([]),
       startEvent('Best fruit?', ['Apple', 'Pear']),
+      false,
     );
     expect(view.question).toBe('Best fruit?');
     expect(view.options.map((o) => o.text)).toEqual(['Apple', 'Pear']);
@@ -112,6 +114,7 @@ describe('buildPollView', () => {
         response('@me:hs', 'a1', 12),
       ]),
       startEvent('Q', ['Apple', 'Pear']),
+      false,
     );
 
     expect(view.options[0].votes).toBe(2);
@@ -126,6 +129,7 @@ describe('buildPollView', () => {
       client,
       room([response('@a:hs', 'a0', 10), response('@a:hs', 'a1', 20)]),
       startEvent('Q', ['Apple', 'Pear']),
+      false,
     );
     expect(view.options[0].votes).toBe(0);
     expect(view.options[1].votes).toBe(1);
@@ -141,6 +145,7 @@ describe('buildPollView', () => {
         response('@c:hs', 'a1', 12), // valid
       ]),
       startEvent('Q', ['Apple', 'Pear']),
+      false,
     );
     expect(view.totalVotes).toBe(1);
     expect(view.options[1].votes).toBe(1);
@@ -154,6 +159,7 @@ describe('buildPollView', () => {
         [endEvent(20)],
       ),
       startEvent('Q', ['Apple', 'Pear']),
+      false,
     );
     expect(view.ended).toBe(true);
     expect(view.totalVotes).toBe(1);
@@ -173,7 +179,7 @@ describe('buildPollView', () => {
       }),
     } as unknown as MatrixEvent;
 
-    const view = buildPollView(client, room([]), hostile);
+    const view = buildPollView(client, room([]), hostile, false);
     expect(view.options).toEqual([]);
     expect(view.question).toBe('Q');
   });
@@ -186,6 +192,7 @@ describe('buildPollView', () => {
         response('@b:hs', ['a0'], 11),
       ]),
       startEvent('Q', ['A', 'B', 'C'], 2),
+      false,
     );
     expect(view.maxSelections).toBe(2);
     expect(view.options.map((o) => o.votes)).toEqual([2, 0, 1]);
@@ -198,6 +205,7 @@ describe('buildPollView', () => {
       client,
       room([response('@a:hs', ['a0', 'a0', 'a1', 'a2'], 10)]),
       startEvent('Q', ['A', 'B', 'C'], 2),
+      false,
     );
     expect(view.options.map((o) => o.votes)).toEqual([1, 1, 0]);
   });
@@ -207,6 +215,7 @@ describe('buildPollView', () => {
       client,
       room([response('@a:hs', ['a0', 'nope'], 10)]),
       startEvent('Q', ['A', 'B'], 2),
+      false,
     );
     expect(view.totalVotes).toBe(0);
     expect(view.options.map((o) => o.votes)).toEqual([0, 0]);
@@ -217,6 +226,7 @@ describe('buildPollView', () => {
       client,
       room([response('@a:hs', ['a0'], 10), response('@a:hs', [], 20)]),
       startEvent('Q', ['A', 'B'], 2),
+      false,
     );
     expect(view.totalVotes).toBe(0);
     expect(view.options[0].votes).toBe(0);
@@ -234,13 +244,14 @@ describe('buildPollView', () => {
       client,
       room([]),
       startEvent('Q', ['A', 'B', 'C'], raw),
+      false,
     );
     expect(view.maxSelections).toBe(expected);
   });
 
   it('caps the projected options at the MSC3381 limit (20)', () => {
     const many = Array.from({ length: 100 }, (_, i) => `opt${i}`);
-    const view = buildPollView(client, room([]), startEvent('Q', many));
+    const view = buildPollView(client, room([]), startEvent('Q', many), false);
     expect(view.options).toHaveLength(20);
   });
 });
@@ -296,7 +307,7 @@ describe('poll content builders', () => {
     } as unknown as Room;
 
     expect(isPollStart(start)).toBe(true);
-    const view = buildPollView(client, unstableRoom, start);
+    const view = buildPollView(client, unstableRoom, start, false);
     expect(view.question).toBe('Lunch?');
     expect(view.maxSelections).toBe(1);
     expect(view.options).toEqual([
@@ -335,12 +346,12 @@ describe('poll content builders', () => {
       const reopened = room(responses, [endEvent(5, true)]); // moderator redacted it
 
       // buildPollView already disagrees across these two rooms…
-      expect(buildPollView(client, closed, start).ended).toBe(true);
-      expect(buildPollView(client, reopened, start).ended).toBe(false);
+      expect(buildPollView(client, closed, start, false).ended).toBe(true);
+      expect(buildPollView(client, reopened, start, false).ended).toBe(false);
 
       // …so the cache key must too, or the row never re-projects.
-      expect(pollSignature(reopened, start)).not.toBe(
-        pollSignature(closed, start),
+      expect(pollSignature(reopened, start, false)).not.toBe(
+        pollSignature(closed, start, false),
       );
     });
 
@@ -349,18 +360,108 @@ describe('poll content builders', () => {
       const late = room(responses, [endEvent(20)]); // vote at 10 counts
       const early = room(responses, [endEvent(5)]); // vote at 10 is post-close
 
-      expect(buildPollView(client, late, start).totalVotes).not.toBe(
-        buildPollView(client, early, start).totalVotes,
+      expect(buildPollView(client, late, start, false).totalVotes).not.toBe(
+        buildPollView(client, early, start, false).totalVotes,
       );
-      expect(pollSignature(early, start)).not.toBe(pollSignature(late, start));
+      expect(pollSignature(early, start, false)).not.toBe(
+        pollSignature(late, start, false),
+      );
     });
 
     it('changes when a voter changes a non-first selection', () => {
       const before = room([response('@a:hs', ['a0', 'a1'], 10)]);
       const after = room([response('@a:hs', ['a0'], 10)]);
-      expect(pollSignature(after, start)).not.toBe(
-        pollSignature(before, start),
+      expect(pollSignature(after, start, false)).not.toBe(
+        pollSignature(before, start, false),
       );
     });
+  });
+});
+
+describe('buildPollView in an encrypted room', () => {
+  /** `event` as it reads once sent: encrypted or not, `status` null unless still sending. */
+  const sent = (
+    event: MatrixEvent,
+    encrypted: boolean,
+    status: string | null = null,
+  ): MatrixEvent =>
+    Object.assign(event, {
+      isEncrypted: () => encrypted,
+      isState: () => false,
+      replacingEvent: () => null,
+      status,
+    });
+
+  it('counts no vote that arrived unencrypted, and still counts the own vote being sent', () => {
+    const view = buildPollView(
+      client,
+      room([
+        sent(response('@a:hs', 'a0', 1), true),
+        sent(response('@b:hs', 'a1', 2), false),
+        sent(response('@c:hs', 'a1', 3), false),
+        sent(response('@me:hs', 'a0', 4), false, 'sending'),
+      ]),
+      startEvent('Q', ['A', 'B']),
+      true,
+    );
+
+    expect(view.totalVotes).toBe(2);
+    expect(view.options.map((o) => o.votes)).toEqual([2, 0]);
+  });
+
+  it('keeps the poll open after an end event that arrived unencrypted', () => {
+    const view = buildPollView(
+      client,
+      room(
+        [sent(response('@a:hs', 'a0', 5), true)],
+        [sent(endEvent(1), false)],
+      ),
+      startEvent('Q', ['A', 'B']),
+      true,
+    );
+
+    expect(view.ended).toBe(false);
+    expect(view.totalVotes).toBe(1);
+  });
+
+  it('moves the signature on an encrypted end after an unencrypted one, and not on the unencrypted one', () => {
+    const start = startEvent('Q', ['A', 'B']);
+    const vote = sent(response('@a:hs', 'a0', 5), true);
+    const clearEnd = Object.assign(sent(endEvent(1), false), {
+      getId: () => '$clear',
+    });
+    const realEnd = Object.assign(sent(endEvent(9), true), {
+      getId: () => '$real',
+    });
+
+    const open = pollSignature(room([vote]), start, true);
+    const clear = pollSignature(room([vote], [clearEnd]), start, true);
+    const closed = pollSignature(
+      room([vote], [clearEnd, realEnd]),
+      start,
+      true,
+    );
+
+    expect(clear).toBe(open);
+    expect(closed).not.toBe(clear);
+    expect(
+      buildPollView(client, room([vote], [clearEnd, realEnd]), start, true)
+        .ended,
+    ).toBe(true);
+  });
+
+  it('counts unencrypted votes and end events in a room that is not encrypted', () => {
+    const view = buildPollView(
+      client,
+      room(
+        [sent(response('@b:hs', 'a1', 0), false)],
+        [sent(endEvent(1), false)],
+      ),
+      startEvent('Q', ['A', 'B']),
+      false,
+    );
+
+    expect(view.ended).toBe(true);
+    expect(view.totalVotes).toBe(1);
   });
 });

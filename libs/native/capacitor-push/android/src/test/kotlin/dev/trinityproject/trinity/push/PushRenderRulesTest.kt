@@ -21,7 +21,7 @@ class PushRenderRulesTest {
         for (index in 0 until cases.length()) {
             val case = cases.getJSONObject(index)
             val storedRoom = case.optJSONObject("storedRoom")?.let {
-                HandoffRoom(it.getString("name"), it.getBoolean("direct"))
+                HandoffRoom(it.getString("name"), it.getBoolean("direct"), it.optBoolean("encrypted", true))
             }
             val expected = case.getJSONObject("expected")
             val mode = case.optString("mode", NotificationTextMode.SHOW)

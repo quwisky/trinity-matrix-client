@@ -128,7 +128,7 @@ class PushResolverTest {
     fun tokenBeforeItsExpiryIsStillUsed() {
         val store = FakeStore(
             mapOf("@alice:hs" to alice.copy(accessTokenExpiresAt = 2_001L)),
-            mapOf(("@alice:hs" to "!r:hs") to HandoffRoom("Team", false)),
+            mapOf(("@alice:hs" to "!r:hs") to HandoffRoom("Team", false, encrypted = false)),
         )
         val api = FakeApi(event = message(), memberName = "Carol")
 
@@ -163,7 +163,7 @@ class PushResolverTest {
 
     @Test
     fun storedRoomNeedsNoRoomStateRead() {
-        val store = FakeStore(mapOf("@alice:hs" to alice), mapOf(("@alice:hs" to "!r:hs") to HandoffRoom("Team", false)))
+        val store = FakeStore(mapOf("@alice:hs" to alice), mapOf(("@alice:hs" to "!r:hs") to HandoffRoom("Team", false, encrypted = false)))
         val api = FakeApi(event = message(), memberName = "Carol")
 
         val outcome = post(PushResolver(store, api).resolve(push()))
@@ -174,7 +174,7 @@ class PushResolverTest {
 
     @Test
     fun directMessageHasNoSubtitle() {
-        val store = FakeStore(mapOf("@alice:hs" to alice), mapOf(("@alice:hs" to "!r:hs") to HandoffRoom("Bob", true)))
+        val store = FakeStore(mapOf("@alice:hs" to alice), mapOf(("@alice:hs" to "!r:hs") to HandoffRoom("Bob", true, encrypted = false)))
         val outcome = post(PushResolver(store, FakeApi(event = message(sender = "@bob:hs", body = "hi"), memberName = "Bob")).resolve(push()))
 
         assertEquals(RenderedNotification("Bob", "", "hi"), outcome.notification)

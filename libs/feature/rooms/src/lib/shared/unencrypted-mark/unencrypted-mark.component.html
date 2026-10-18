@@ -1,0 +1,8 @@
+<trn-icon
+  [class.text-danger]="red()"
+  [class.text-muted-foreground]="!red()"
+  [name]="icon()"
+  [label]="shield().reason"
+  [attr.title]="shield().explanation"
+  [attr.data-testid]="'unencrypted-mark-' + shield().level"
+/>

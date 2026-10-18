@@ -231,6 +231,8 @@ describe('MessageListBase thread connectors', () => {
       latestReplyPreview: 'reply',
       latestReplySenderName: 'Bob',
       participants: [],
+      rootShield: null,
+      latestReplyShield: null,
       unreadCount: 0,
       highlight: false,
     };

@@ -21,7 +21,7 @@ const KEY = {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve));
 
-function setup() {
+function setup({ roomEncrypted = false } = {}) {
   let pinned = ['$one'];
   const events = new Map([
     [
@@ -33,6 +33,10 @@ function setup() {
         getTs: () => 10,
         isDecryptionFailure: () => false,
         isRedacted: () => false,
+        isEncrypted: () => false,
+        isState: () => false,
+        replacingEvent: () => null,
+        status: null,
       },
     ],
     [
@@ -56,6 +60,7 @@ function setup() {
   const roomEmitter = fakeEmitter();
   const room = {
     roomId: KEY.roomId,
+    hasEncryptionStateEvent: () => roomEncrypted,
     getLiveTimeline: () => ({ getState: () => state }),
     findEventById: (eventId: string) => events.get(eventId),
     getMember: (userId: string) => ({
@@ -160,9 +165,19 @@ describe('ConversationPinsController', () => {
         body: 'First pinned message',
         ts: 10,
         status: 'loaded',
+        shield: null,
       },
     ]);
     expect(controller.canMutate()).toBe(true);
+  });
+
+  it('marks a pinned message that arrived unencrypted in an encrypted room', () => {
+    const { controller } = setup({ roomEncrypted: true });
+
+    expect(controller.messages()[0]).toMatchObject({
+      body: 'First pinned message',
+      shield: { level: 'unencrypted', reason: 'Not encrypted' },
+    });
   });
 
   it('reconciles remote state and late timeline resolution from the SDK', async () => {

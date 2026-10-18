@@ -15,6 +15,7 @@ import { firstValueFrom } from 'rxjs';
 import { InviteBlockedError, RoomLibraryService } from './room-library.service';
 import { ROOM_LIBRARY_GOVERNANCE_POLICY } from './room-library-governance-policy';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { UNENCRYPTED_PREVIEW } from '@trinity/util/matrix';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -24,12 +25,17 @@ function timelineEvent(over: {
   body?: string;
   redacted?: boolean;
   decryptionFailure?: boolean;
+  encrypted?: boolean;
 }) {
   return {
     getType: () => over.type ?? 'm.room.message',
     getContent: () => ({ body: over.body ?? '' }),
     isRedacted: () => over.redacted ?? false,
     isDecryptionFailure: () => over.decryptionFailure ?? false,
+    isEncrypted: () => over.encrypted ?? false,
+    isState: () => false,
+    replacingEvent: () => null,
+    status: null,
   };
 }
 
@@ -995,6 +1001,28 @@ describe('RoomLibraryService', () => {
       }),
     ]);
     expect(svc.rooms()[0].lastMessage).toBe('newest message');
+  });
+
+  it('previews a message that arrived unencrypted in an encrypted room as the unencrypted placeholder', () => {
+    const svc = setup([
+      fakeRoom({
+        roomId: '!e:hs',
+        name: 'secret',
+        encrypted: true,
+        events: [timelineEvent({ body: 'sign in here' })],
+      }),
+      fakeRoom({
+        roomId: '!s:hs',
+        name: 'sealed',
+        encrypted: true,
+        events: [timelineEvent({ body: 'see you', encrypted: true })],
+      }),
+    ]);
+    const byId = Object.fromEntries(
+      svc.rooms().map((r) => [r.id, r.lastMessage]),
+    );
+    expect(byId['!e:hs']).toBe(UNENCRYPTED_PREVIEW);
+    expect(byId['!s:hs']).toBe('see you');
   });
 
   it('falls back to an empty preview when a room has no messages', () => {

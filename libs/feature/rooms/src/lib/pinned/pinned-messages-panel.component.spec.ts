@@ -18,6 +18,7 @@ function pin(over: Partial<PinnedMessageView> = {}): PinnedMessageView {
     senderName: 'Alice',
     body: 'hello world',
     ts: 0,
+    shield: null,
     ...over,
   };
 }
@@ -136,6 +137,29 @@ describe('PinnedMessagesPanelComponent', () => {
     expect(container.textContent).toContain('second');
     expect(rows[0].textContent).toContain('Alice');
     expect(rows[1].textContent).toContain('Bob');
+  });
+
+  it('marks a pinned message that arrived unencrypted, in the view and its name', async () => {
+    const { container } = await renderPanel({
+      pinned: [
+        pin({
+          shield: {
+            level: 'unencrypted' as const,
+            reason: 'Not encrypted',
+            explanation: 'This message was sent without end-to-end encryption.',
+          },
+        }),
+      ],
+    });
+
+    expect(
+      container.querySelector('[data-testid="unencrypted-mark-unencrypted"]'),
+    ).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-testid="pinned-item"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Jump to pinned message from Alice, not encrypted');
   });
 
   it('renders a loading row that cannot be jumped to', async () => {

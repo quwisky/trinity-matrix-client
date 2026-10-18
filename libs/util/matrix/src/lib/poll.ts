@@ -9,6 +9,7 @@ import {
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
+import { arrivedInClear } from './room-encryption';
 
 /**
  * Cap on poll options we project/render. MSC3381 limits a poll to 20 answers; a malicious
@@ -170,6 +171,7 @@ export function buildPollView(
   client: MatrixClient,
   room: Room,
   startEvent: MatrixEvent,
+  roomEncrypted: boolean,
 ): PollView {
   const pollId = startEvent.getId() ?? '';
   const subtype = startSubtype(startEvent.getContent());
@@ -193,15 +195,21 @@ export function buildPollView(
     answers.length,
   );
 
-  const endTs = referenceRelations(room, pollId, END_TYPES)
-    .filter((e) => !e.isRedacted())
-    .reduce((min, e) => Math.min(min, e.getTs()), Number.POSITIVE_INFINITY);
+  const endTs = countedRelations(room, pollId, END_TYPES, roomEncrypted).reduce(
+    (min, e) => Math.min(min, e.getTs()),
+    Number.POSITIVE_INFINITY,
+  );
   const ended = endTs !== Number.POSITIVE_INFINITY;
 
   // Each voter's latest response, ignoring post-close votes.
   const latest = new Map<string, { ts: number; answers: string[] }>();
-  for (const event of referenceRelations(room, pollId, RESPONSE_TYPES)) {
-    if (event.isRedacted() || (ended && event.getTs() > endTs)) {
+  for (const event of countedRelations(
+    room,
+    pollId,
+    RESPONSE_TYPES,
+    roomEncrypted,
+  )) {
+    if (ended && event.getTs() > endTs) {
       continue;
     }
     const sender = event.getSender() ?? '';
@@ -251,22 +259,42 @@ export function buildPollView(
   };
 }
 
-/** Fingerprint of a poll's responses + end state, for the timeline's re-projection cache. */
-export function pollSignature(room: Room, startEvent: MatrixEvent): string {
+/**
+ * The responses or end events a poll counts: unredacted ones, and in an encrypted room only
+ * those that arrived encrypted, since any server taking part could send an unencrypted vote
+ * or end in a member's name. {@link buildPollView} and {@link pollSignature} both read this,
+ * so the re-projection key moves whenever the tally would.
+ */
+function countedRelations(
+  room: Room,
+  pollId: string,
+  types: readonly string[],
+  roomEncrypted: boolean,
+): MatrixEvent[] {
+  return referenceRelations(room, pollId, types).filter(
+    (e) => !e.isRedacted() && !(roomEncrypted && arrivedInClear(e)),
+  );
+}
+
+/** Fingerprint of a poll's counted responses and end events, for the timeline's re-projection cache. */
+export function pollSignature(
+  room: Room,
+  startEvent: MatrixEvent,
+  roomEncrypted: boolean,
+): string {
   const pollId = startEvent.getId() ?? '';
-  const responses = referenceRelations(room, pollId, RESPONSE_TYPES)
-    .filter((e) => !e.isRedacted())
+  const responses = countedRelations(
+    room,
+    pollId,
+    RESPONSE_TYPES,
+    roomEncrypted,
+  )
     .map((e) => `${e.getSender()}:${responseAnswers(e).join(',')}:${e.getTs()}`)
     .sort();
-  // Mirror buildPollView's end handling EXACTLY (ignore redacted ends, earliest survivor
-  // wins): a signature that only asked "does any end event exist" would not move when a
-  // bogus end is redacted or an earlier end arrives out of order, leaving stale counts.
-  const endTs = referenceRelations(room, pollId, END_TYPES)
-    .filter((event) => !event.isRedacted())
-    .reduce(
-      (min, event) => Math.min(min, event.getTs()),
-      Number.POSITIVE_INFINITY,
-    );
-  const ended = endTs === Number.POSITIVE_INFINITY ? '' : `ended:${endTs}`;
-  return [...responses, ended].join('|');
+  // Every counted end, not just the earliest: which one closes the poll changes when an end
+  // is redacted, arrives out of order, or stops counting.
+  const ends = countedRelations(room, pollId, END_TYPES, roomEncrypted)
+    .map((e) => `end:${e.getId()}:${e.getTs()}`)
+    .sort();
+  return [...responses, ...ends].join('|');
 }

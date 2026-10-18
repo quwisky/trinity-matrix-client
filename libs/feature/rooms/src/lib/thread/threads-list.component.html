@@ -38,9 +38,12 @@
 
         <div class="thread-item__body">
           <div class="thread-item__head">
-            <span class="thread-item__root">{{
-              t.rootPreview || 'Thread'
-            }}</span>
+            <span class="thread-item__root">
+              @if (t.rootShield; as shield) {
+                <trn-unencrypted-mark [shield]="shield" />
+              }
+              {{ t.rootPreview || 'Thread' }}</span
+            >
             <span class="thread-item__time">{{
               fmt.dateTime(t.latestActivityTs)
             }}</span>
@@ -57,6 +60,9 @@
                   <span class="thread-item__last-author"
                     >{{ t.latestReplySenderName }}:
                   </span>
+                }
+                @if (t.latestReplyShield; as shield) {
+                  <trn-unencrypted-mark [shield]="shield" />
                 }
                 {{ t.latestReplyPreview }}
               </span>

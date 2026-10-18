@@ -14,9 +14,12 @@ function original(
     redacted?: boolean;
     replacing?: MatrixEvent | null;
     makeReplaced?: (event?: MatrixEvent) => void;
+    encrypted?: boolean;
   } = {},
 ): MatrixEvent {
   return {
+    isEncrypted: () => over.encrypted ?? false,
+    isState: () => false,
     getId: () => '$orig',
     getTs: () => 1000,
     getSender: () => SENDER,
@@ -32,8 +35,16 @@ function original(
   } as unknown as MatrixEvent;
 }
 
-function edit(id: string, body: string, sender = SENDER): MatrixEvent {
+function edit(
+  id: string,
+  body: string,
+  sender = SENDER,
+  encrypted = false,
+): MatrixEvent {
   return {
+    isEncrypted: () => encrypted,
+    isState: () => false,
+    replacingEvent: () => null,
     getId: () => id,
     getTs: () => 2000 + id.length,
     getSender: () => sender,
@@ -66,6 +77,7 @@ function setup(
     isInitialized?: boolean;
     /** The room's own copy of the message — what repairAggregation re-points. */
     timelineCopy?: MatrixEvent | null;
+    roomEncrypted?: boolean;
   } = {},
 ) {
   let call = 0;
@@ -86,8 +98,12 @@ function setup(
     redactEvent,
     getUserId: () => SENDER,
     getRoom: () => ({
+      roomId: '!r:hs',
       findEventById: () => opts.timelineCopy ?? opts.roomEvent ?? null,
+      hasEncryptionStateEvent: () => opts.roomEncrypted ?? false,
+      getLiveTimeline: () => ({ getState: () => undefined }),
     }),
+    getCrypto: () => null,
   };
   TestBed.configureTestingModule({
     providers: [
@@ -116,6 +132,27 @@ describe('EditHistoryService', () => {
 
     expect(revisions.map((r) => r.body)).toEqual(['v1', 'v2', 'v3']);
     expect(truncated).toBe(false);
+  });
+
+  it('marks each version that arrived unencrypted in an encrypted room', async () => {
+    const { svc } = setup(
+      [
+        {
+          originalEvent: original({ encrypted: true }),
+          events: [edit('$a', 'v2'), edit('$bb', 'v3', SENDER, true)],
+          nextBatch: null,
+        },
+      ],
+      { roomEncrypted: true },
+    );
+
+    const { revisions } = await firstValueFrom(svc.revisions('!r:hs', '$orig'));
+
+    expect(revisions.map((r) => [r.body, r.shield?.level ?? null])).toEqual([
+      ['v1', null],
+      ['v2', 'unencrypted'],
+      ['v3', null],
+    ]);
   });
 
   // Pass a null event type and the SDK skips decryption, so an encrypted room's history

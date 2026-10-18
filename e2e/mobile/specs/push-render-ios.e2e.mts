@@ -28,7 +28,12 @@ interface RenderedPush {
 
 /** `push-handoff/rooms.json`: each account's rooms by id. */
 type StoredRooms = Partial<
-  Record<string, Partial<Record<string, { name: string; direct: boolean }>>>
+  Record<
+    string,
+    Partial<
+      Record<string, { name: string; direct: boolean; encrypted?: boolean }>
+    >
+  >
 >;
 
 /** The app group's stored rooms; empty until the app writes them. */
@@ -105,8 +110,9 @@ describe('device-rendered push on iOS', () => {
     await setDirectRooms(room.token, room.userId, { [room.senderId]: [dmId] });
 
     await login(room.user, room.pass);
-    // PushHandoffService writes room names after the first sync; wait for the shared file
-    // the extension reads.
+    // PushHandoffService writes room names after the first sync, and marks each room
+    // unencrypted once the crypto store has answered; until then the extension shows no
+    // text. Wait for the shared file the extension reads.
     const rooms = join(
       await iosAppGroupContainer(APP_GROUP),
       'push-handoff',
@@ -117,7 +123,9 @@ describe('device-rendered push on iOS', () => {
         const stored = (await storedRooms(rooms))[room.userId];
         return (
           stored?.[room.roomId]?.direct === false &&
-          stored[dmId]?.direct === true
+          stored[room.roomId]?.encrypted === false &&
+          stored[dmId]?.direct === true &&
+          stored[dmId]?.encrypted === false
         );
       },
       {

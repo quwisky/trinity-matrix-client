@@ -348,6 +348,61 @@ describe('ThreadsService', () => {
     });
   });
 
+  it('marks a thread summary’s root and latest reply that arrived unencrypted in an encrypted room', () => {
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
+    const reply = fakeEvent({
+      id: '$r1',
+      sender: '@b:hs',
+      body: 'a reply',
+      ts: 1000,
+      encrypted: true,
+    });
+    const { svc } = setup(
+      [
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root, reply],
+          replyToEvent: reply,
+          length: 1,
+        }),
+      ],
+      [],
+      {},
+      [],
+      true,
+      undefined,
+      true,
+    );
+
+    expect(svc.summaries()['$root']).toMatchObject({
+      rootPreview: 'root msg',
+      rootShield: { level: 'unencrypted' },
+      latestReplyPreview: 'a reply',
+      latestReplyShield: null,
+    });
+  });
+
+  it('marks thread summaries once the crypto store says the room is encrypted', async () => {
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
+    const { svc } = setup(
+      [fakeThread({ id: '$root', rootEvent: root, events: [root] })],
+      [],
+      {},
+      [],
+      true,
+      undefined,
+      false,
+      true,
+    );
+
+    await vi.waitFor(() =>
+      expect(svc.summaries()['$root']?.rootShield).toMatchObject({
+        level: 'unencrypted',
+      }),
+    );
+  });
+
   it('refreshes a thread summary when a participant’s profile loads late', () => {
     const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
     const reply = fakeEvent({

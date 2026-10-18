@@ -141,6 +141,8 @@ export class ThreadsService {
   private summariesClient: MatrixClient | null = null;
   private summariesRoom: Room | null = null;
   private summariesRoomId: string | null = null;
+  /** Whether the summaries' room counts as encrypted: its state, or else its crypto store. */
+  private summariesEncryption = new RoomEncryptionFlags();
 
   // Per-thread summary cache by thread-root id: the summary plus a `rev` fingerprint of
   // everything {@link summaryFor} reads (see {@link threadSummaryRevision}). A summary is
@@ -299,6 +301,12 @@ export class ThreadsService {
     this.summariesRoomId = key.roomId;
     this.summariesRoom = room;
     this.summariesClient = client;
+    this.summariesEncryption = new RoomEncryptionFlags();
+    void this.summariesEncryption
+      .refresh(client.getCrypto?.(), room.roomId)
+      .then((encrypted) => {
+        if (encrypted && this.summariesRoom === room) this.refreshSummaries();
+      });
     // The room re-emits its threads' Update/NewReply + Timeline, so listening at
     // the room level covers new threads, new replies, and reply-count changes.
     room.on(ThreadEvent.New, this.onSummariesChanged);
@@ -635,18 +643,20 @@ export class ThreadsService {
     if (!client) return;
     const summaries: Record<string, ThreadSummary> = {};
     const seen = new Set<string>();
+    const encrypted = this.summariesEncryption.isEncrypted(room);
+    const unencryptedShield = unencryptedShieldFor(room, encrypted);
     for (const thread of room.getThreads()) {
       const id = thread.id;
       seen.add(id);
       // Reuse the cached summary (preserving its identity) unless this thread's
       // fingerprint changed; only the affected thread is rebuilt + merged in.
-      const rev = threadSummaryRevision(room, thread);
+      const rev = `${threadSummaryRevision(room, thread)}\x1f${encrypted}`;
       const cached = this.summaryCache.get(id);
       if (cached && cached.rev === rev) {
         summaries[id] = cached.summary;
         continue;
       }
-      const summary = this.summaryFor(client, room, thread);
+      const summary = this.summaryFor(client, room, thread, unencryptedShield);
       this.summaryCache.set(id, { rev, summary });
       summaries[id] = summary;
     }
@@ -686,10 +696,8 @@ export class ThreadsService {
       }
     }
 
-    const unencryptedShield = unencryptedShieldFor(
-      room,
-      this.threadEncryption.isEncrypted(room),
-    );
+    const roomEncrypted = this.threadEncryption.isEncrypted(room);
+    const unencryptedShield = unencryptedShieldFor(room, roomEncrypted);
     this._threadMessages.set(
       ordered.map((e) => {
         const id = e.getId() ?? '';
@@ -697,7 +705,8 @@ export class ThreadsService {
           unencryptedShield(e) ??
           this.threadShields.get(shieldSubject(e).getId() ?? '') ??
           null;
-        const rev = eventRevision(client, room, e) + '\x1f' + shieldKey(shield);
+        // The room flag is in the key: it changes how a quoted reply and a poll read.
+        const rev = `${eventRevision(client, room, e, roomEncrypted)}\x1f${shieldKey(shield)}\x1f${roomEncrypted}`;
         const cached = this.threadViewCache.get(id);
         if (cached && cached.rev === rev) {
           return cached.view; // unchanged — keep the object so its OnPush row is untouched
@@ -707,6 +716,7 @@ export class ThreadsService {
           room,
           e,
           shield,
+          roomEncrypted,
           this.mediaPipeline,
         );
         if (!view) {
@@ -851,13 +861,17 @@ export class ThreadsService {
     client: MatrixClient,
     room: Room,
     thread: Thread,
+    unencryptedShield: (event: MatrixEvent) => MessageShield | null,
   ): ThreadSummary {
     const root = thread.rootEvent ?? null;
     const rootTs = root?.getTs() ?? 0;
     let rootPreview: string | null = null;
     let rootSenderName: string | null = null;
+    let rootShield: MessageShield | null = null;
     if (root) {
-      rootPreview = messagePreview(root);
+      // Each preview's shield marks unencrypted text, so the text itself stays readable.
+      rootPreview = messagePreview(root, false);
+      rootShield = unencryptedShield(root);
       const sender = root.getSender() ?? '';
       rootSenderName = room.getMember(sender)?.name ?? sender;
     }
@@ -866,11 +880,13 @@ export class ThreadsService {
     let latestReplyTs: number | null = null;
     let latestReplyPreview: string | null = null;
     let latestReplySenderName: string | null = null;
+    let latestReplyShield: MessageShield | null = null;
     // Only treat it as a "latest reply" when it isn't the root itself (the SDK
     // falls back to the root when every reply is redacted).
     if (latest && latest.getId() !== thread.id) {
       latestReplyTs = latest.getTs();
-      latestReplyPreview = messagePreview(latest);
+      latestReplyPreview = messagePreview(latest, false);
+      latestReplyShield = unencryptedShield(latest);
       const sender = latest.getSender() ?? '';
       latestReplySenderName = room.getMember(sender)?.name ?? sender;
     }
@@ -880,11 +896,13 @@ export class ThreadsService {
       rootEventId: thread.id,
       rootPreview,
       rootSenderName,
+      rootShield,
       replyCount: thread.length,
       latestReplyTs,
       latestActivityTs: latestReplyTs ?? rootTs,
       latestReplyPreview,
       latestReplySenderName,
+      latestReplyShield,
       participants: participantsOf(room, thread),
       unreadCount: unread.count,
       highlight: unread.highlight,

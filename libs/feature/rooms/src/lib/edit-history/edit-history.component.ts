@@ -20,11 +20,11 @@ import {
   EmptyStateComponent,
   TrnSpinnerComponent,
 } from '@trinity/components/generic-content';
-import { EditHistoryService } from '@trinity/data-access/timeline';
 import {
-  annotateRevision,
-  type MessageRevisionView,
-} from '@trinity/util/matrix';
+  EditHistoryService,
+  type EditRevisionView,
+} from '@trinity/data-access/timeline';
+import { annotateRevision } from '@trinity/util/matrix';
 import { filter, switchMap, timer } from 'rxjs';
 import { runWithBusy } from '@trinity/util/ui';
 import { MatrixHtmlDirective } from '../message-presentation/matrix-html.directive';
@@ -32,9 +32,10 @@ import {
   type MatrixLinkClick,
   type MatrixLinkClickTarget,
 } from '../matrix-link/matrix-link.directive';
+import { UnencryptedMarkComponent } from '../shared/unencrypted-mark/unencrypted-mark.component';
 
 /** A revision plus the label that orients the reader, and what changed to reach it. */
-interface RevisionEntry extends MessageRevisionView {
+interface RevisionEntry extends EditRevisionView {
   label: string;
   /** This version's HTML with the edit's changes marked, or null when there is none. */
   diffHtml: string | null;
@@ -56,6 +57,7 @@ const REFRESH_DELAY_MS = 600;
   templateUrl: './edit-history.component.html',
   styleUrl: './edit-history.component.scss',
   imports: [
+    UnencryptedMarkComponent,
     EmptyStateComponent,
     MatrixHtmlDirective,
     TrnButton,
@@ -81,7 +83,7 @@ export class EditHistoryComponent {
   /** The message already fetched, so a re-run of the effect can't refetch it. */
   private fetched: string | null = null;
 
-  private readonly revisions = signal<MessageRevisionView[]>([]);
+  private readonly revisions = signal<EditRevisionView[]>([]);
   /** True when the message has more versions than we could fetch. */
   readonly truncated = signal(false);
   readonly busy = signal(false);

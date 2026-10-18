@@ -18,11 +18,16 @@ function message(over: {
   ts?: number;
   replace?: boolean;
   decryptionFailure?: boolean;
+  encrypted?: boolean;
 }) {
   return {
     getId: () => over.id,
     getType: () => EventType.RoomMessage,
     isState: () => false,
+    isEncrypted: () => over.encrypted ?? false,
+    isRedacted: () => false,
+    replacingEvent: () => null,
+    status: null,
     getSender: () => '@alice:hs',
     getTs: () => over.ts ?? 0,
     getContent: () => ({ body: over.body }),
@@ -38,7 +43,10 @@ function room(options: {
 }) {
   return {
     hasEncryptionStateEvent: () => options.encrypted ?? false,
-    getLiveTimeline: () => ({ getEvents: () => options.events ?? [] }),
+    getLiveTimeline: () => ({
+      getEvents: () => options.events ?? [],
+      getState: () => undefined,
+    }),
     getMember: () => ({ name: 'Alice', getMxcAvatarUrl: () => null }),
   };
 }
@@ -73,6 +81,30 @@ describe('ConversationSearchController', () => {
 
     expect(result.hits.map((hit) => hit.eventId)).toEqual(['$new', '$old']);
     expect(result.scanned).toBe(2);
+  });
+
+  it('marks a hit that arrived unencrypted in an encrypted room', () => {
+    getRoom.mockReturnValue(
+      room({
+        encrypted: true,
+        events: [
+          message({ id: '$plain', body: 'hello plain', ts: 1 }),
+          message({
+            id: '$sealed',
+            body: 'hello sealed',
+            ts: 2,
+            encrypted: true,
+          }),
+        ],
+      }),
+    );
+
+    const { hits } = service.searchLoaded('hello');
+
+    expect(hits.find((hit) => hit.eventId === '$plain')?.shield).toMatchObject({
+      level: 'unencrypted',
+    });
+    expect(hits.find((hit) => hit.eventId === '$sealed')?.shield).toBeNull();
   });
 
   it('never asks the server to search an encrypted conversation', async () => {

@@ -61,7 +61,10 @@ class PushHandoffStore internal constructor(
         val stored = read(roomsKey(userId)) ?: JSONObject()
         return try {
             for ((roomId, room) in rooms) {
-                stored.put(roomId, JSONObject().put("name", room.name).put("direct", room.direct))
+                stored.put(
+                    roomId,
+                    JSONObject().put("name", room.name).put("direct", room.direct).put("encrypted", room.encrypted),
+                )
             }
             write(roomsKey(userId), stored)
         } catch (error: JSONException) {
@@ -106,7 +109,7 @@ class PushHandoffStore internal constructor(
     override fun room(userId: String, roomId: String): HandoffRoom? {
         val room = read(roomsKey(userId))?.optJSONObject(roomId) ?: return null
         val name = PushRenderRules.stringOrNull(room, "name") ?: return null
-        return HandoffRoom(name, room.optBoolean("direct", false))
+        return HandoffRoom(name, room.optBoolean("direct", false), room.optBoolean("encrypted", true))
     }
 
     private fun write(key: String, value: JSONObject): Boolean = try {

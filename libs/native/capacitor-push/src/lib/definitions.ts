@@ -17,11 +17,16 @@ export interface PushHandoffAccount {
   readonly accessTokenExpiresAt?: number;
 }
 
-/** A joined room's display name as the SDK computes it, and whether it is a DM. */
+/**
+ * A joined room's display name as the SDK computes it, whether it is a DM, and whether it
+ * counts as encrypted. The renderers show unencrypted text only for a room stored with
+ * `encrypted: false`.
+ */
 export interface PushHandoffRoom {
   readonly roomId: string;
   readonly name: string;
   readonly direct: boolean;
+  readonly encrypted: boolean;
 }
 
 /** Background run time the OS granted, and whether a token refresh begun now can be saved. */

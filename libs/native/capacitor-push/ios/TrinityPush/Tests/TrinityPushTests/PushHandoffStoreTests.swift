@@ -53,6 +53,14 @@ final class PushHandoffStoreTests: XCTestCase {
         XCTAssertEqual(store.room("@u:hs", "!a:hs"), HandoffRoom(name: "A", direct: false))
     }
 
+    func testTheEncryptedFlagIsStoredAndAnEntryWithoutItCountsAsEncrypted() throws {
+        try store.mergeRooms(["!a:hs": HandoffRoom(name: "A", direct: false, encrypted: false)], for: "@u:hs")
+        XCTAssertEqual(store.room("@u:hs", "!a:hs")?.encrypted, false)
+
+        try Data(#"{"@u:hs":{"!b:hs":{"name":"B","direct":true}}}"#.utf8).write(to: roomsFile)
+        XCTAssertEqual(store.room("@u:hs", "!b:hs"), HandoffRoom(name: "B", direct: true, encrypted: true))
+    }
+
     func testClearRemovesTheNotificationText() throws {
         try store.setNotificationText(.alwaysHide)
         try? store.clear()

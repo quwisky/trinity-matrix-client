@@ -11,6 +11,7 @@ import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnBadge } from '@trinity/components/generic-content';
 import { type ThreadSummary } from '@trinity/data-access/timeline';
 import { relativeTimeLabel } from '../shared/relative-time';
+import { UnencryptedMarkComponent } from '../shared/unencrypted-mark/unencrypted-mark.component';
 
 // All mounted previews share a minute tick; the last unmount releases the timer.
 const clock = timer(60_000, 60_000).pipe(
@@ -21,7 +22,7 @@ const clock = timer(60_000, 60_000).pipe(
 @Component({
   selector: 'trn-message-thread-summary',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent, TrnBadge],
+  imports: [UnencryptedMarkComponent, TrnIconComponent, TrnBadge],
   templateUrl: './message-thread-summary.component.html',
   styleUrl: './message-thread-summary.component.scss',
 })
@@ -45,8 +46,11 @@ export class MessageThreadSummaryComponent {
       summary.unreadCount > 0
         ? `, ${summary.unreadCount} unread${summary.highlight ? ', including mentions' : ''}`
         : '';
+    const mark = summary.latestReplyShield
+      ? ` (${summary.latestReplyShield.reason.toLowerCase()})`
+      : '';
     const preview = summary.latestReplyPreview
-      ? `, ${summary.latestReplySenderName ? `${summary.latestReplySenderName}: ` : ''}${summary.latestReplyPreview}`
+      ? `, ${summary.latestReplySenderName ? `${summary.latestReplySenderName}: ` : ''}${summary.latestReplyPreview}${mark}`
       : '';
     const time = this.relativeReplyTime();
     return `${base}${unread}${preview}${time ? `, ${time}` : ''}`;

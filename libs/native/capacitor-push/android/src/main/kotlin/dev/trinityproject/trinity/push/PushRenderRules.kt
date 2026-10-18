@@ -5,8 +5,11 @@ import org.json.JSONObject
 /** What one notification shows. An empty subtitle shows nothing. */
 data class RenderedNotification(val title: String, val subtitle: String, val body: String)
 
-/** A room as the app stored it in the push handoff. */
-data class HandoffRoom(val name: String, val direct: Boolean)
+/**
+ * A room as the app stored it in the push handoff. [encrypted] is false only when the app wrote
+ * that the room is not encrypted: an entry stored without the flag counts as encrypted.
+ */
+data class HandoffRoom(val name: String, val direct: Boolean, val encrypted: Boolean = true)
 
 /**
  * Trinity's notification text rules, mirrored in Swift by `PushRenderRules` in the
@@ -51,16 +54,24 @@ object PushRenderRules {
         val sender = senderName?.takeIf(::hasText)
             ?: event?.let { stringOrNull(it, "sender") }
         val subtitle = if (storedRoom?.direct == true || sender == null) "" else sender
-        return RenderedNotification(title, subtitle, body(event, sender.orEmpty(), tokenExpired))
+        return RenderedNotification(
+            title,
+            subtitle,
+            body(event, sender.orEmpty(), tokenExpired, unencryptedRoom = storedRoom?.encrypted == false),
+        )
     }
 
     fun stringOrNull(json: JSONObject, key: String): String? = json.opt(key) as? String
 
-    private fun body(event: JSONObject?, sender: String, tokenExpired: Boolean): String {
+    private fun body(event: JSONObject?, sender: String, tokenExpired: Boolean, unencryptedRoom: Boolean): String {
         if (event == null) return if (tokenExpired) EXPIRED_TOKEN_BODY else FALLBACK_BODY
         if (event.optJSONObject("unsigned")?.has("redacted_because") == true) return FALLBACK_BODY
-        return when (stringOrNull(event, "type")) {
-            "m.room.encrypted" -> ENCRYPTED_BODY
+        val type = stringOrNull(event, "type")
+        if (type == "m.room.encrypted") return ENCRYPTED_BODY
+        // Anyone whose server takes part in the room can send it unencrypted text under a
+        // member's name. Unless the app stored the room as unencrypted, show none of it.
+        if (!unencryptedRoom) return FALLBACK_BODY
+        return when (type) {
             "m.sticker" -> "sent a sticker"
             "m.room.message" -> messageBody(event.optJSONObject("content"), sender)
             else -> FALLBACK_BODY

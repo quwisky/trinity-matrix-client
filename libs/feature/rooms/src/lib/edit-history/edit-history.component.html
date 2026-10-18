@@ -52,6 +52,9 @@
               <time class="revision__time">{{
                 fmt.longDateTime(entry.timestamp)
               }}</time>
+              @if (entry.shield; as shield) {
+                <trn-unencrypted-mark [shield]="shield" />
+              }
               @if (entry.removable) {
                 <button
                   trnBtn

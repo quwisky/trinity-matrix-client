@@ -66,7 +66,11 @@ public class PushHandoffPlugin extends Plugin {
         try {
             for (int index = 0; index < rooms.length(); index++) {
                 JSONObject room = rooms.getJSONObject(index);
-                parsed.put(room.getString("roomId"), new HandoffRoom(room.getString("name"), room.getBoolean("direct")));
+                // A room the app sent without the flag counts as encrypted.
+                parsed.put(
+                    room.getString("roomId"),
+                    new HandoffRoom(room.getString("name"), room.getBoolean("direct"), room.optBoolean("encrypted", true))
+                );
             }
         } catch (JSONException error) {
             call.reject("Rooms must carry roomId, name and direct");

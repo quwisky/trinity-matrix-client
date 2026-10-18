@@ -1052,7 +1052,8 @@ export class TimelineService {
     shield: MessageShield | null,
     subjectId: string,
   ): MessageView | null {
-    const { content, rest } = revisionOf(client, room, e);
+    const roomEncrypted = this.encryption.isEncrypted(room);
+    const { content, rest } = revisionOf(client, room, e, roomEncrypted);
     const revision = rest + '\x1f' + shieldKey(shield);
     const members = new Set<string>();
     collectMessageSenders(client, room, e, members);
@@ -1061,7 +1062,14 @@ export class TimelineService {
       previous?.content === content && previous.rest === revision;
     const view = unchanged
       ? previous.view
-      : projectMessage(client, room, e, shield, this.mediaPipeline);
+      : projectMessage(
+          client,
+          room,
+          e,
+          shield,
+          roomEncrypted,
+          this.mediaPipeline,
+        );
     this.rows.store(
       id,
       {
@@ -1092,7 +1100,14 @@ export class TimelineService {
     if (reused) {
       return reused.view;
     }
-    const projected = projectMessage(client, room, e, null, this.mediaPipeline);
+    const projected = projectMessage(
+      client,
+      room,
+      e,
+      null,
+      this.encryption.isEncrypted(room),
+      this.mediaPipeline,
+    );
     const presented =
       projected?.kind === 'event' && projected.systemCategory
         ? projected

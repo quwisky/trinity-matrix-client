@@ -39,6 +39,9 @@
           >{{ thread.latestReplySenderName }}:</span
         >
       }
+      @if (thread.latestReplyShield; as shield) {
+        <trn-unencrypted-mark [shield]="shield" />
+      }
       <span class="msg__thread-text" dir="auto">{{
         thread.latestReplyPreview
       }}</span>

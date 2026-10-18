@@ -62,11 +62,11 @@ export function initialOf(name: string): string {
  * Single-line preview of the room's most recent `m.room.message`, or `''`. Walked back-to-front
  * to skip state events. `getLiveTimeline` is optional: not every Room stub exposes it.
  */
-function lastMessageOf(room: Room): string {
+function lastMessageOf(room: Room, encrypted: boolean): string {
   const events = room.getLiveTimeline?.()?.getEvents() ?? [];
   for (let i = events.length - 1; i >= 0; i--) {
     if (events[i].getType() === EventType.RoomMessage) {
-      return messagePreview(events[i]);
+      return messagePreview(events[i], encrypted);
     }
   }
   return '';
@@ -142,6 +142,7 @@ export function buildRoomSummary(
     NotificationCountType.Highlight,
   );
   const markedUnread = isMarkedUnread(room);
+  const encrypted = room.hasEncryptionStateEvent();
   return {
     id: room.roomId,
     accountId,
@@ -154,14 +155,14 @@ export function buildRoomSummary(
     avatarMxc: roomAvatarMxc(room, directUserId !== undefined),
     topic: (topicEvent?.getContent()?.['topic'] as string) ?? '',
     memberCount: room.getJoinedMemberCount(),
-    encrypted: room.hasEncryptionStateEvent(),
+    encrypted,
     unreadCount,
     highlightCount,
     markedUnread,
     // A flagged room reads as unread even with nothing new in it, so the badge and the
     // sidebar's unread filter both follow.
     hasUnread: unreadCount > 0 || markedUnread,
-    lastMessage: lastMessageOf(room),
+    lastMessage: lastMessageOf(room, encrypted),
     activityTs: roomActivityTs(room),
     favourite: room.tags?.['m.favourite'] !== undefined,
     lowPriority: room.tags?.['m.lowpriority'] !== undefined,

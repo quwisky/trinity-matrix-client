@@ -18,6 +18,7 @@ import {
 } from '@trinity/components/overlay';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { UnencryptedMarkComponent } from '../shared/unencrypted-mark/unencrypted-mark.component';
 
 /**
  * Pinned-messages panel: every `m.room.pinned_events` entry for the active room, in pin
@@ -33,6 +34,7 @@ import { TrnIconComponent } from '@trinity/components/foundations';
   selector: 'trn-pinned-messages-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    UnencryptedMarkComponent,
     SidePanelHeaderComponent,
     EmptyStateComponent,
     TrnIconComponent,

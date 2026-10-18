@@ -220,8 +220,9 @@ OAuth 2.0 and its server gave the token a lifetime (MAS defaults to five minutes
 `MatrixClientService.accessTokenExpiry` hands it over only with the token it belongs to) and
 the notification-sound choice, plus App lock's effective Notification text (`setNotificationText`;
 iOS app-group `push-handoff/settings.json`, Android `settings:notification-text`; missing reads as
-Show and unreadable as Always hide), room display names and DM flags written in one batch per
-sync or rename. It never holds refresh tokens, crypto keys or message history. An account's
+Show and unreadable as Always hide), room display names, DM flags and whether each room counts
+as encrypted (`RoomEncryptionFlags`; unknown until the crypto store answers, which counts as
+encrypted) written in one batch per sync or rename. It never holds refresh tokens, crypto keys or message history. An account's
 entry is removed as the first step of its sign-out, together with that account's delivered
 pushes, and the store is emptied, with
 every delivered push, by clear-all-data and before a replace sign-in. A handoff failure
@@ -338,7 +339,9 @@ XCTest both run. A push for an account the store does not know keeps the gateway
 "Trinity" / "New message". The renderers never refresh a token. Once the stored expiry has
 passed they read nothing and show the room name (or "Trinity") with "Open Trinity to read this
 message", because only the running app can renew the token; any other failed read shows
-"New message". Password and SSO tokens carry no expiry and are always read. The renderers
+"New message". A message that arrived unencrypted shows "New message" unless the store holds
+its room as not encrypted: a room missing from the store, or stored without the flag, counts as
+encrypted. Password and SSO tokens carry no expiry and are always read. The renderers
 never log tokens, expiries, IDs, room names or message text. Android posts
 one `MessagingStyle` notification per room on `messages` and cancels it when a push without
 `event_id` arrives for that room. What shows depends on App lock's Notification text, which

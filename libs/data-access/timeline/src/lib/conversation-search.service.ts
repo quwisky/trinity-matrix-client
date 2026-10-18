@@ -7,7 +7,12 @@ import {
   type MatrixEvent,
 } from 'matrix-js-sdk';
 import { Observable, catchError, defer, from, map, of } from 'rxjs';
-import { isDisplayableMessage } from '@trinity/util/matrix';
+import {
+  RoomEncryptionFlags,
+  isDisplayableMessage,
+} from '@trinity/util/matrix';
+import type { MessageShield } from './message-presentation';
+import { unencryptedShieldFor } from './shields';
 import type { ConversationKey } from './conversation-messages';
 import { scrollbackLive } from './live-scrollback';
 
@@ -21,6 +26,8 @@ export interface MessageHit {
   readonly body: string;
   readonly ts: number;
   readonly snippet: string;
+  /** The unencrypted mark for the message's text, as its timeline row carries it. */
+  readonly shield: MessageShield | null;
 }
 
 /** Search result over the active conversation's loaded, decrypted timeline. */
@@ -46,11 +53,14 @@ export interface ServerMessageSearch {
 export class ConversationSearchController {
   private key: ConversationKey | null = null;
   private client: MatrixClient | null = null;
+  private encryption = new RoomEncryptionFlags();
 
   /** Bind this controller to one immutable Conversation child. */
   attach(key: ConversationKey, client: MatrixClient): void {
     this.key = Object.freeze({ ...key });
     this.client = client;
+    this.encryption = new RoomEncryptionFlags();
+    void this.encryption.refresh(client.getCrypto?.(), key.roomId);
   }
 
   /** Retired handles fail closed rather than following the Active Account. */
@@ -78,6 +88,10 @@ export class ConversationSearchController {
     const encrypted = room.hasEncryptionStateEvent();
     const qLower = query.trim().toLowerCase();
     const hits: MessageHit[] = [];
+    const unencryptedShield = unencryptedShieldFor(
+      room,
+      this.encryption.isEncrypted(room),
+    );
     let scanned = 0;
     for (const event of room.getLiveTimeline().getEvents()) {
       if (!isDisplayableMessage(event) || event.isDecryptionFailure()) {
@@ -99,6 +113,7 @@ export class ConversationSearchController {
         body,
         ts: event.getTs(),
         snippet: buildSnippet(body, qLower),
+        shield: unencryptedShield(event),
       });
     }
     hits.sort((a, b) => b.ts - a.ts);
@@ -198,6 +213,8 @@ function mapServerResponse(
       body,
       ts: event.origin_server_ts,
       snippet: buildSnippet(body, qLower),
+      // Server search runs only for a room that is not encrypted.
+      shield: null,
     };
   });
   return {

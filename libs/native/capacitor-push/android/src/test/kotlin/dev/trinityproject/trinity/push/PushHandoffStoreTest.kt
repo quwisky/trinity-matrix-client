@@ -147,6 +147,19 @@ class PushHandoffStoreTest {
     }
 
     @Test
+    fun theEncryptedFlagIsStoredAndAnEntryWithoutItCountsAsEncrypted() {
+        val preferences = MemoryPreferences()
+        val crypto = FakeCrypto()
+        val store = PushHandoffStore(preferences, crypto)
+
+        assertTrue(store.mergeRooms("@a:hs", mapOf("!r:hs" to HandoffRoom("Team", false, encrypted = false))))
+        assertEquals(false, store.room("@a:hs", "!r:hs")?.encrypted)
+
+        preferences.values["rooms:@a:hs"] = crypto.encrypt("""{"!b:hs":{"name":"B","direct":true}}""")
+        assertEquals(HandoffRoom("B", true, encrypted = true), store.room("@a:hs", "!b:hs"))
+    }
+
+    @Test
     fun theTokenExpiryRoundTrips() {
         val store = PushHandoffStore(MemoryPreferences(), FakeCrypto())
         val expiring = HandoffAccount("https://hs.example", "token", sound = true, accessTokenExpiresAt = 1_760_000_000_000L)

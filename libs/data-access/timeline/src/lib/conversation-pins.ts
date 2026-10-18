@@ -1,5 +1,6 @@
 import type { Signal } from '@angular/core';
 import type { Observable } from 'rxjs';
+import type { MessageShield } from './message-presentation';
 
 export interface PinnedMessageView {
   readonly id: string;
@@ -13,6 +14,8 @@ export interface PinnedMessageView {
   readonly senderName: string;
   readonly body: string;
   readonly ts: number;
+  /** The unencrypted mark for the message's text, as its timeline row carries it. */
+  readonly shield: MessageShield | null;
 }
 
 export type ConversationPinOperation = 'pin' | 'unpin';

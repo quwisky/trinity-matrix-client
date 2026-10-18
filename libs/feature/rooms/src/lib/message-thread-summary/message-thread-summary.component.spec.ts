@@ -20,6 +20,8 @@ describe('MessageThreadSummaryComponent', () => {
     latestReplyPreview: 'latest reply',
     latestReplySenderName: 'Bob',
     participants: [],
+    rootShield: null,
+    latestReplyShield: null,
     unreadCount: 2,
     highlight: true,
   };
@@ -46,6 +48,29 @@ describe('MessageThreadSummaryComponent', () => {
     expect(badge?.className).not.toMatch(/msg__thread-badge/);
     expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
       'View thread, 3 replies, 2 unread, including mentions, Bob: latest reply, 2 min. ago',
+    );
+  });
+
+  it('marks a latest reply that arrived unencrypted, in the view and its name', async () => {
+    const { container } = await render(MessageThreadSummaryComponent, {
+      inputs: {
+        summary: {
+          ...summary,
+          latestReplyShield: {
+            level: 'unencrypted',
+            reason: 'Not encrypted',
+            explanation: 'This message was sent without end-to-end encryption.',
+          },
+        },
+        latestReplyLabel: '12:30',
+      },
+    });
+
+    expect(
+      container.querySelector('[data-testid="unencrypted-mark-unencrypted"]'),
+    ).not.toBeNull();
+    expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
+      'View thread, 3 replies, 2 unread, including mentions, Bob: latest reply (not encrypted), 2 min. ago',
     );
   });
 

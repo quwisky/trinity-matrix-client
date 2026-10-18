@@ -10,6 +10,7 @@ import {
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
 import { displaySafeMime, mimeEssence } from './display-mime';
 import { isPollStart } from './poll';
+import { UNENCRYPTED_PREVIEW, arrivedInClear } from './room-encryption';
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
 import { linkifyMessageText, sanitizeMatrixHtml } from './message-html';
 
@@ -127,8 +128,16 @@ export function isDisplayableMessage(event: MatrixEvent): boolean {
   );
 }
 
-/** Build a short preview of a replied-to message, or null if it isn't loaded. */
-export function replyPreview(room: Room, eventId: string): ReplyPreview | null {
+/**
+ * Build a short preview of a replied-to message, or null if it isn't loaded. In an encrypted
+ * room, a quoted message whose text arrived unencrypted shows as {@link UNENCRYPTED_PREVIEW}:
+ * the quote sits inside the replying message and would read as vouched for by its shield.
+ */
+export function replyPreview(
+  room: Room,
+  eventId: string,
+  roomEncrypted: boolean,
+): ReplyPreview | null {
   const target = room.findEventById(eventId);
   if (!target) {
     return null;
@@ -139,7 +148,9 @@ export function replyPreview(room: Room, eventId: string): ReplyPreview | null {
   const senderName = member?.name || sender;
   const raw = target.isRedacted()
     ? '(message deleted)'
-    : stripReplyFallbackText((target.getContent()['body'] as string) ?? '');
+    : roomEncrypted && arrivedInClear(target)
+      ? UNENCRYPTED_PREVIEW
+      : stripReplyFallbackText((target.getContent()['body'] as string) ?? '');
   return {
     id: eventId,
     senderName,

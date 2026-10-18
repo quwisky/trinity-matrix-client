@@ -4,7 +4,11 @@ import {
   EventShieldReason,
   type EventEncryptionInfo,
 } from 'matrix-js-sdk/lib/crypto-api';
-import { liveRoomState } from '@trinity/util/matrix';
+import {
+  arrivedInClear,
+  liveRoomState,
+  shieldSubject,
+} from '@trinity/util/matrix';
 import { type MessageShield } from './message-presentation';
 
 /**
@@ -103,14 +107,7 @@ export function shieldExplanationText(
   }
 }
 
-/**
- * The event a row's shield must judge: its latest edit when it has one, else itself. An
- * edit supplies the text the row shows, and the SDK applies it without checking that it
- * was encrypted, so the edit's own encryption is what vouches for that text.
- */
-export function shieldSubject(event: MatrixEvent): MatrixEvent {
-  return event.replacingEvent() ?? event;
-}
+export { shieldSubject };
 
 /**
  * A lookup that marks each message whose text arrived in the clear in an encrypted room,
@@ -123,11 +120,14 @@ export function shieldSubject(event: MatrixEvent): MatrixEvent {
  * {@link UNENCRYPTED_SHIELD}, an earlier one the quieter {@link UNENCRYPTED_HISTORY_SHIELD}.
  * A room with no such event (only the crypto store says it is encrypted) has nothing to
  * compare against, so every message gets the first.
+ *
+ * The lookup judges the text of the event's latest edit unless given the `subject` whose
+ * text is shown, such as one version in an edit history.
  */
 export function unencryptedShieldFor(
   room: Room,
   roomEncrypted: boolean,
-): (event: MatrixEvent) => MessageShield | null {
+): (event: MatrixEvent, subject?: MatrixEvent) => MessageShield | null {
   if (!roomEncrypted) {
     return () => null;
   }
@@ -135,11 +135,8 @@ export function unencryptedShieldFor(
     liveRoomState(room)
       ?.getStateEvents(EventType.RoomEncryption, '')
       ?.getTs() ?? null;
-  const settled = (e: MatrixEvent): boolean =>
-    !e.status && !e.isState() && !e.isRedacted();
-  return (event) => {
-    const subject = shieldSubject(event);
-    if (!settled(event) || !settled(subject) || subject.isEncrypted()) {
+  return (event, subject = shieldSubject(event)) => {
+    if (!arrivedInClear(event, subject)) {
       return null;
     }
     const ts = subject.getTs();

@@ -10,14 +10,12 @@ import {
 import {
   EditHistoryService,
   type EditHistoryResult,
+  type EditRevisionView,
 } from '@trinity/data-access/timeline';
 import { MediaService } from '@trinity/data-access/media';
-import { type MessageRevisionView } from '@trinity/util/matrix';
 import { EditHistoryComponent } from './edit-history.component';
 
-function revision(
-  over: Partial<MessageRevisionView> = {},
-): MessageRevisionView {
+function revision(over: Partial<EditRevisionView> = {}): EditRevisionView {
   return {
     id: '$1',
     timestamp: 1700000000000,
@@ -25,6 +23,7 @@ function revision(
     html: null,
     kind: 'text',
     isOwn: false,
+    shield: null,
     ...over,
   };
 }
@@ -108,6 +107,31 @@ describe('EditHistoryComponent', () => {
     ]);
     expect(container.textContent).toContain('first');
     expect(container.textContent).toContain('latest');
+  });
+
+  it('marks a version that arrived unencrypted', async () => {
+    const { container } = await build(
+      of({
+        revisions: [
+          revision({ id: '$a', body: 'first' }),
+          revision({
+            id: '$b',
+            body: 'latest',
+            shield: {
+              level: 'unencrypted' as const,
+              reason: 'Not encrypted',
+              explanation:
+                'This message was sent without end-to-end encryption.',
+            },
+          }),
+        ],
+        truncated: false,
+      }),
+    );
+
+    const marks = container.querySelectorAll('.revision trn-unencrypted-mark');
+    expect(marks).toHaveLength(1);
+    expect(marks[0].closest('.revision')?.textContent).toContain('latest');
   });
 
   // One entry means nothing replaced it, so calling it the "current version" would

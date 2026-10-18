@@ -193,7 +193,11 @@ function normalizeReceipts(
   );
 }
 
-function normalizeReply(room: Room, event: MatrixEvent): ReplyPreview | null {
+function normalizeReply(
+  room: Room,
+  event: MatrixEvent,
+  roomEncrypted: boolean,
+): ReplyPreview | null {
   const relation = record(read(() => event.getContent()['m.relates_to'], null));
   // Thread fallbacks support clients without threads; they are not explicit replies.
   if (
@@ -204,7 +208,7 @@ function normalizeReply(room: Room, event: MatrixEvent): ReplyPreview | null {
   }
   const eventId = read(() => event.replyEventId, undefined);
   if (!eventId) return null;
-  const preview = read(() => replyPreview(room, eventId), null);
+  const preview = read(() => replyPreview(room, eventId, roomEncrypted), null);
   return preview ? Object.freeze({ ...preview }) : null;
 }
 
@@ -213,6 +217,7 @@ function normalizeCommon(
   room: Room,
   event: MatrixEvent,
   shield: MessageShield | null,
+  roomEncrypted: boolean,
 ) {
   const senderId = string(read<unknown>(() => event.getSender(), null)) ?? '';
   const member = read(() => room.getMember(senderId), null);
@@ -233,7 +238,7 @@ function normalizeCommon(
     isOwn: read(() => senderId === client.getUserId(), false),
     edited: read(() => event.replacingEvent() !== null, false),
     reactions: normalizeReactions(client, room, event),
-    replyTo: normalizeReply(room, event),
+    replyTo: normalizeReply(room, event, roomEncrypted),
     status: read(() => mapStatus(event.status), null),
     readReceipts: normalizeReceipts(client, room, event),
     shield: shield ? Object.freeze({ ...shield }) : null,
@@ -245,6 +250,7 @@ function unsupported(
   room: Room,
   event: MatrixEvent,
   shield: MessageShield | null,
+  roomEncrypted: boolean,
   fallback:
     'unsupported-message' | 'undecryptable-message' | 'redacted-message',
   decryptionFailed: boolean,
@@ -252,7 +258,7 @@ function unsupported(
   undecryptableReason: UndecryptableReason | null = null,
 ): NormalizedTimelineEvent {
   return Object.freeze({
-    ...normalizeCommon(client, room, event, shield),
+    ...normalizeCommon(client, room, event, shield, roomEncrypted),
     type: 'unsupported',
     fallback,
     decryptionFailed,
@@ -368,19 +374,29 @@ function normalizeSystemChange(
 
 /**
  * Matrix-facing adapter for Message Presentation. Every displayable message kind is
- * normalized into frozen SDK-free data before it reaches feature code.
+ * normalized into frozen SDK-free data before it reaches feature code. `roomEncrypted`
+ * (see `RoomEncryptionFlags`) keeps unencrypted text out of reply quotes and poll tallies.
  */
 export function normalizeTimelineEvent(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,
   shield: MessageShield | null,
+  roomEncrypted: boolean,
 ): NormalizedTimelineEvent | null {
   const type = read(() => event.getType(), '');
   // Redaction first: the SDK keeps the failure reason on an event it redacts after a
   // failed decryption, and a removed message has nothing left to read or fix.
   if (read(() => event.isRedacted(), false)) {
-    return unsupported(client, room, event, shield, 'redacted-message', false);
+    return unsupported(
+      client,
+      room,
+      event,
+      shield,
+      roomEncrypted,
+      'redacted-message',
+      false,
+    );
   }
   if (read(() => event.isDecryptionFailure(), false)) {
     return unsupported(
@@ -388,6 +404,7 @@ export function normalizeTimelineEvent(
       room,
       event,
       shield,
+      roomEncrypted,
       'undecryptable-message',
       true,
       '',
@@ -396,10 +413,13 @@ export function normalizeTimelineEvent(
   }
 
   if (read(() => isPollStart(event), false)) {
-    const poll = read(() => buildPollView(client, room, event), null);
+    const poll = read(
+      () => buildPollView(client, room, event, roomEncrypted),
+      null,
+    );
     return poll
       ? Object.freeze({
-          ...normalizeCommon(client, room, event, shield),
+          ...normalizeCommon(client, room, event, shield, roomEncrypted),
           type: 'poll',
           poll: Object.freeze({
             ...poll,
@@ -408,7 +428,15 @@ export function normalizeTimelineEvent(
             ),
           }),
         })
-      : unsupported(client, room, event, shield, 'unsupported-message', false);
+      : unsupported(
+          client,
+          room,
+          event,
+          shield,
+          roomEncrypted,
+          'unsupported-message',
+          false,
+        );
   }
 
   if (SYSTEM_EVENT_TYPES.has(type)) {
@@ -425,7 +453,7 @@ export function normalizeTimelineEvent(
       );
       return change
         ? Object.freeze({
-            ...normalizeCommon(client, room, event, shield),
+            ...normalizeCommon(client, room, event, shield, roomEncrypted),
             type: 'system',
             change: Object.freeze(change),
           })
@@ -436,6 +464,7 @@ export function normalizeTimelineEvent(
         room,
         event,
         shield,
+        roomEncrypted,
         'unsupported-message',
         false,
       );
@@ -445,7 +474,7 @@ export function normalizeTimelineEvent(
   if (type !== EventType.RoomMessage && type !== EventType.Sticker) return null;
   try {
     const content = record(event.getContent());
-    const common = normalizeCommon(client, room, event, shield);
+    const common = normalizeCommon(client, room, event, shield, roomEncrypted);
     if (type === EventType.Sticker) {
       return (
         normalizeSticker(common, content) ??
@@ -454,6 +483,7 @@ export function normalizeTimelineEvent(
           room,
           event,
           shield,
+          roomEncrypted,
           'unsupported-message',
           false,
           string(content['body']) ?? '[sticker]',
@@ -471,6 +501,7 @@ export function normalizeTimelineEvent(
           room,
           event,
           shield,
+          roomEncrypted,
           'unsupported-message',
           false,
           string(content['body']) ?? '[location]',
@@ -497,6 +528,7 @@ export function normalizeTimelineEvent(
           room,
           event,
           shield,
+          roomEncrypted,
           'unsupported-message',
           false,
           string(content['body']) ?? `[${String(msgtype).replace(/^m\./, '')}]`,
@@ -513,6 +545,7 @@ export function normalizeTimelineEvent(
         room,
         event,
         shield,
+        roomEncrypted,
         'unsupported-message',
         false,
         typeof content['body'] === 'string' ? content['body'] : '',
@@ -524,6 +557,7 @@ export function normalizeTimelineEvent(
         room,
         event,
         shield,
+        roomEncrypted,
         'unsupported-message',
         false,
       );
@@ -553,6 +587,7 @@ export function normalizeTimelineEvent(
       room,
       event,
       shield,
+      roomEncrypted,
       'unsupported-message',
       false,
     );

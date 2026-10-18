@@ -67,6 +67,8 @@ function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
     latestReplyPreview: 'a reply',
     latestReplySenderName: 'Bob',
     participants: [],
+    rootShield: null,
+    latestReplyShield: null,
     unreadCount: 0,
     highlight: false,
     ...overrides,

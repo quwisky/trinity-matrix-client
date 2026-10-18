@@ -22,6 +22,8 @@ function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
     latestReplyPreview: 'a reply',
     latestReplySenderName: 'Bob',
     participants: [],
+    rootShield: null,
+    latestReplyShield: null,
     unreadCount: 0,
     highlight: false,
     ...overrides,
@@ -63,6 +65,23 @@ describe('ThreadsListComponent', () => {
     fixture.destroy();
 
     expect(last()).toBeNull();
+  });
+
+  it('marks a root and a latest reply that arrived unencrypted', async () => {
+    const shield = {
+      level: 'unencrypted' as const,
+      reason: 'Not encrypted',
+      explanation: 'This message was sent without end-to-end encryption.',
+    };
+    const { container } = await build([
+      summary({ rootShield: shield, latestReplyShield: shield }),
+    ]);
+
+    const marks = container.querySelectorAll(
+      '[data-testid="unencrypted-mark-unencrypted"]',
+    );
+    expect(marks).toHaveLength(2);
+    expect(marks[0].getAttribute('aria-label')).toBe('Not encrypted');
   });
 
   it('renders a row per thread with root preview, reply count, and last reply', async () => {

@@ -16,9 +16,16 @@ export function projectMessage(
   room: Room,
   event: MatrixEvent,
   shield: MessageShield | null,
+  roomEncrypted: boolean,
   presentMedia: Pick<MediaPipeline, 'present'>,
 ): MessageView | null {
-  const normalized = normalizeTimelineEvent(client, room, event, shield);
+  const normalized = normalizeTimelineEvent(
+    client,
+    room,
+    event,
+    shield,
+    roomEncrypted,
+  );
   return normalized
     ? presentNormalizedTimelineEvent(normalized, (media) =>
         presentMedia.present(media, client),

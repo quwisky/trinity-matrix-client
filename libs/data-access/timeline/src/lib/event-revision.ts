@@ -41,7 +41,8 @@ export interface EventRevision {
  * A compact fingerprint of every per-event input Message Presentation reads that can change
  * while the room is open: send status, redaction, decryption, edits (effective content plus
  * replacing-event presence), aggregated reactions, the reply preview (see
- * {@link replyTargetSignature}) and the sender's resolved name/avatar. A view is rebuilt
+ * {@link replyTargetSignature}), the poll tally `roomEncrypted` decides (see `buildPollView`)
+ * and the sender's resolved name/avatar. A view is rebuilt
  * only when this changes, so an unchanged message keeps its object and its OnPush row is
  * never touched.
  */
@@ -49,8 +50,9 @@ export function eventRevision(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,
+  roomEncrypted: boolean,
 ): string {
-  const { content, rest } = revisionOf(client, room, event);
+  const { content, rest } = revisionOf(client, room, event, roomEncrypted);
   return content + '\x1f' + rest;
 }
 
@@ -59,6 +61,7 @@ export function revisionOf(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,
+  roomEncrypted: boolean,
 ): EventRevision {
   const senderId = event.getSender() ?? '';
   const member = room.getMember(senderId);
@@ -78,7 +81,7 @@ export function revisionOf(
       member?.name ?? senderId,
       member?.getMxcAvatarUrl() ?? '',
       receiptSignature(client, room, event),
-      isPollStart(event) ? pollSignature(room, event) : '',
+      isPollStart(event) ? pollSignature(room, event, roomEncrypted) : '',
     ].join('\x1f'),
   };
 }

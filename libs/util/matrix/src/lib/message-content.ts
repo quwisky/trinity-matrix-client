@@ -9,6 +9,7 @@ import {
 import { renderMarkdown, type RenderedMarkdown } from './markdown-render';
 import { escapeHtml } from './message-html';
 import { stripReplyFallbackText } from './message-view';
+import { UNENCRYPTED_PREVIEW, arrivedInClear } from './room-encryption';
 
 /**
  * Send-side content builders shared by the main timeline and the in-thread composer, so both
@@ -476,13 +477,22 @@ export function myReactionId(
  * Short, single-line preview of a message event's text, for the thread indicator and the room
  * list's muted last-message line. Handles undecryptable and redacted events, strips any
  * reply-fallback quote, and returns '…' when nothing renders.
+ *
+ * With `roomEncrypted`, text that arrived unencrypted shows as {@link UNENCRYPTED_PREVIEW}.
+ * Pass false only where the preview carries its own unencrypted mark.
  */
-export function messagePreview(event: MatrixEvent): string {
+export function messagePreview(
+  event: MatrixEvent,
+  roomEncrypted: boolean,
+): string {
   if (event.isDecryptionFailure()) {
     return '⚠️ Unable to decrypt';
   }
   if (event.isRedacted()) {
     return '(message deleted)';
+  }
+  if (roomEncrypted && arrivedInClear(event)) {
+    return UNENCRYPTED_PREVIEW;
   }
   const content = event.getContent();
   const body = stripReplyFallbackText((content['body'] as string) ?? '');

@@ -76,13 +76,22 @@
               class="pin-item__main"
               data-testid="pinned-item"
               (click)="jumpTo(p.id)"
-              [attr.aria-label]="'Jump to pinned message from ' + p.senderName"
+              [attr.aria-label]="
+                'Jump to pinned message from ' +
+                p.senderName +
+                (p.shield ? ', ' + p.shield.reason.toLowerCase() : '')
+              "
             >
               <div class="pin-item__head">
                 <span class="pin-item__author">{{ p.senderName }}</span>
                 <span class="pin-item__time">{{ fmt.dateTime(p.ts) }}</span>
               </div>
-              <div class="pin-item__body">{{ p.body }}</div>
+              <div class="pin-item__body">
+                @if (p.shield; as shield) {
+                  <trn-unencrypted-mark [shield]="shield" />
+                }
+                {{ p.body }}
+              </div>
             </button>
 
             @if (canPin()) {

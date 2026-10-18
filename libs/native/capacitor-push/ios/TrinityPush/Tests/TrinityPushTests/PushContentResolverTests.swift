@@ -121,7 +121,7 @@ final class PushContentResolverTests: XCTestCase {
             sound: true,
             accessTokenExpiresAt: Date(timeIntervalSince1970: 1_001)
         )
-        let store = FakeStore(accounts: ["@alice:hs": fresh], rooms: ["@alice:hs": ["!r:hs": HandoffRoom(name: "Team", direct: false)]])
+        let store = FakeStore(accounts: ["@alice:hs": fresh], rooms: ["@alice:hs": ["!r:hs": HandoffRoom(name: "Team", direct: false, encrypted: false)]])
         let api = FakeAPI(event: message(), memberName: "Carol")
 
         let resolution = await PushContentResolver(store: store, api: api, now: { Date(timeIntervalSince1970: 1_000) }).resolve(payload())
@@ -157,12 +157,12 @@ final class PushContentResolverTests: XCTestCase {
         let named = await PushContentResolver(store: store, api: FakeAPI(event: message(), roomName: "Lobby")).resolve(payload())
         let unnamed = await PushContentResolver(store: store, api: FakeAPI(event: message())).resolve(payload())
 
-        XCTAssertEqual(named, .rendered(RenderedNotification(title: "Lobby", subtitle: "@carol:hs", body: "hello"), sound: true))
-        XCTAssertEqual(unnamed, .rendered(RenderedNotification(title: "Trinity", subtitle: "@carol:hs", body: "hello"), sound: true))
+        XCTAssertEqual(named, .rendered(RenderedNotification(title: "Lobby", subtitle: "@carol:hs", body: "New message"), sound: true))
+        XCTAssertEqual(unnamed, .rendered(RenderedNotification(title: "Trinity", subtitle: "@carol:hs", body: "New message"), sound: true))
     }
 
     func testDirectMessageHasNoSubtitle() async {
-        let store = FakeStore(accounts: ["@alice:hs": alice], rooms: ["@alice:hs": ["!r:hs": HandoffRoom(name: "Bob", direct: true)]])
+        let store = FakeStore(accounts: ["@alice:hs": alice], rooms: ["@alice:hs": ["!r:hs": HandoffRoom(name: "Bob", direct: true, encrypted: false)]])
         let api = FakeAPI(event: message(sender: "@bob:hs", body: "hi"), memberName: "Bob")
 
         let resolution = await PushContentResolver(store: store, api: api).resolve(payload())
@@ -184,8 +184,8 @@ final class PushContentResolverTests: XCTestCase {
         let store = FakeStore(
             accounts: ["@alice:hs": alice, "@bob:hs": bob],
             rooms: [
-                "@alice:hs": ["!r:hs": HandoffRoom(name: "Alice's room", direct: false)],
-                "@bob:hs": ["!r:hs": HandoffRoom(name: "Bob's room", direct: false)],
+                "@alice:hs": ["!r:hs": HandoffRoom(name: "Alice's room", direct: false, encrypted: false)],
+                "@bob:hs": ["!r:hs": HandoffRoom(name: "Bob's room", direct: false, encrypted: false)],
             ]
         )
 
@@ -215,7 +215,7 @@ final class PushRenderTests: XCTestCase {
     }
 
     func testStartsFromTheRoomFallbackAndResolvesToTheMessage() async throws {
-        let store = FakeStore(accounts: ["@bob:hs": bob], rooms: ["@bob:hs": ["!r:hs": HandoffRoom(name: "Team", direct: false)]])
+        let store = FakeStore(accounts: ["@bob:hs": bob], rooms: ["@bob:hs": ["!r:hs": HandoffRoom(name: "Team", direct: false, encrypted: false)]])
         let api = FakeAPI(event: ["type": "m.room.message", "sender": "@carol:hs", "content": ["msgtype": "m.text", "body": "hello"]], memberName: "Carol")
 
         let render = try XCTUnwrap(PushRender(userInfo: userInfo(), store: store, api: api))

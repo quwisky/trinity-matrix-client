@@ -52,7 +52,7 @@ const room = {
  */
 function text(event: MatrixEvent, r: Room | undefined = room): string | null {
   if (!r) return null;
-  const normalized = normalizeTimelineEvent(client, r, event, null);
+  const normalized = normalizeTimelineEvent(client, r, event, null, false);
   return normalized
     ? (presentNormalizedTimelineEvent(normalized)?.body ?? null)
     : null;
@@ -342,7 +342,7 @@ describe('system event presentation model', () => {
       id: '$name',
       ts: 4242,
     });
-    const normalized = normalizeTimelineEvent(client, room, event, null);
+    const normalized = normalizeTimelineEvent(client, room, event, null, false);
     const view = normalized ? presentNormalizedTimelineEvent(normalized) : null;
 
     expect(view?.kind).toBe('event');
@@ -362,7 +362,7 @@ describe('system event presentation model', () => {
 // the previous content. Getting that wrong would hide the wrong half of the churn.
 describe('describeTimelineEvent — categories', () => {
   const categoryOf = (event: MatrixEvent): SystemLineCategory | null => {
-    const normalized = normalizeTimelineEvent(client, room, event, null);
+    const normalized = normalizeTimelineEvent(client, room, event, null, false);
     return normalized
       ? (presentNormalizedTimelineEvent(normalized)?.systemCategory ?? null)
       : null;

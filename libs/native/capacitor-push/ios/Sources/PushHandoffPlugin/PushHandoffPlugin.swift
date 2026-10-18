@@ -125,7 +125,8 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("Rooms must carry roomId, name and direct")
                 return
             }
-            parsed[roomId] = HandoffRoom(name: name, direct: direct)
+            // A room the app sent without the flag counts as encrypted.
+            parsed[roomId] = HandoffRoom(name: name, direct: direct, encrypted: room["encrypted"] as? Bool ?? true)
         }
         do {
             try store.mergeRooms(parsed, for: userId)

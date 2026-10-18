@@ -25,6 +25,7 @@ function hit(over: Partial<MessageHit> = {}): MessageHit {
     body: 'hello world',
     ts: 1000,
     snippet: 'hello world',
+    shield: null,
     ...over,
   };
 }
@@ -188,6 +189,30 @@ describe('MessageSearchComponent', () => {
     );
 
     expect(container.querySelectorAll('[data-testid="result"]').length).toBe(2);
+  });
+
+  it('marks a result that arrived unencrypted', async () => {
+    const { container } = await build(
+      loaded({
+        hits: [
+          hit({
+            shield: {
+              level: 'unencrypted' as const,
+              reason: 'Not encrypted',
+              explanation:
+                'This message was sent without end-to-end encryption.',
+            },
+          }),
+          hit({ eventId: '$2' }),
+        ],
+      }),
+    );
+
+    expect(
+      container.querySelectorAll(
+        '[data-testid="unencrypted-mark-unencrypted"]',
+      ),
+    ).toHaveLength(1);
   });
 
   it('shows the E2EE note (with the scanned count) and no server toggle for an encrypted room', async () => {

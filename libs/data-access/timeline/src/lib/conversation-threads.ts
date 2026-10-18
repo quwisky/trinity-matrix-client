@@ -6,7 +6,7 @@ import type {
 } from '@trinity/data-access/media';
 import type { Mention } from '@trinity/util/matrix';
 import type { ConversationKey } from './conversation-messages';
-import type { MessageView } from './message-presentation';
+import type { MessageShield, MessageView } from './message-presentation';
 
 export interface ThreadParticipant {
   readonly id: string;
@@ -19,11 +19,14 @@ export interface ThreadSummary {
   readonly rootEventId: string;
   readonly rootPreview: string | null;
   readonly rootSenderName: string | null;
+  /** The unencrypted mark for the root's text, as its timeline row carries it. */
+  readonly rootShield: MessageShield | null;
   readonly replyCount: number;
   readonly latestReplyTs: number | null;
   readonly latestActivityTs: number;
   readonly latestReplyPreview: string | null;
   readonly latestReplySenderName: string | null;
+  readonly latestReplyShield: MessageShield | null;
   readonly participants: readonly ThreadParticipant[];
   readonly unreadCount: number;
   readonly highlight: boolean;

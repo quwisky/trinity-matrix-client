@@ -10,7 +10,7 @@ import org.junit.Test
 class BoundedPushResolverTest {
     private val store = object : HandoffReader {
         override fun account(userId: String) = HandoffAccount("https://hs.example", "token", sound = false)
-        override fun room(userId: String, roomId: String) = HandoffRoom("Team", direct = false)
+        override fun room(userId: String, roomId: String) = HandoffRoom("Team", direct = false, encrypted = false)
 
         override fun notificationText() = NotificationTextMode.SHOW
     }

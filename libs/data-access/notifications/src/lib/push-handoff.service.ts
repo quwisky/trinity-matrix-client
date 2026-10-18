@@ -8,6 +8,7 @@ import {
   type MatrixEvent,
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { RoomEncryptionFlags } from '@trinity/util/matrix';
 import {
   PushHandoffBridge,
   type BackgroundWork,
@@ -76,8 +77,12 @@ export const BACKGROUND_RUN_DEADLINE_MS = 25_000;
 /** One live account's listeners and what was last written for its rooms. */
 interface HandoffBinding {
   readonly client: MatrixClient;
-  /** `direct\0name` last written per room, so a sync that changes nothing writes nothing. */
+  /**
+   * `encrypted\0direct\0name` last written per room, so a sync that changes nothing writes
+   * nothing.
+   */
   readonly written: Map<string, string>;
+  readonly encryption: RoomEncryptionFlags;
   readonly detach: () => void;
 }
 
@@ -85,7 +90,7 @@ interface HandoffBinding {
  * Keeps the native push handoff store current for every signed-in account, so the
  * closed-app renderers can fetch and title a notification without the app running.
  * Writes each account's homeserver URL, access token and sound choice, plus room names
- * (DM names included) and DM flags for rooms that changed. Active only where
+ * (DM names included), DM flags and encryption flags for rooms that changed. Active only where
  * {@link PushHandoffBridge.available}: native iOS and Android.
  *
  * An OAuth token's expiry is written with it, so the renderers can skip a read bound to
@@ -314,6 +319,7 @@ export class PushHandoffService {
     this.bindings.set(userId, {
       client,
       written: new Map(),
+      encryption: new RoomEncryptionFlags(),
       detach: () => {
         client.off(ClientEvent.Sync, onSync);
         client.off(RoomEvent.Name, onName);
@@ -353,15 +359,27 @@ export class PushHandoffService {
     const binding = this.bindings.get(userId);
     if (!binding || this.isRetired(userId, binding.client)) return;
     const direct = directRoomIds(binding.client);
+    const { encryption } = binding;
     const changed: PushHandoffRoom[] = [];
     for (const room of binding.client.getRooms()) {
       if (room.getMyMembership() !== 'join') continue;
+      const answered = encryption.answered(room.roomId);
+      if (!answered) {
+        void encryption
+          .refresh(binding.client.getCrypto(), room.roomId)
+          .then(() => {
+            if (encryption.answered(room.roomId)) this.writeRooms(userId);
+          });
+      }
       const entry = {
         roomId: room.roomId,
         name: room.name,
         direct: direct.has(room.roomId),
+        // Until the crypto store answers, the room may be encrypted without saying so in its
+        // state; the renderers would show unencrypted text from it as a member's message.
+        encrypted: !answered || encryption.isEncrypted(room),
       };
-      const key = `${entry.direct ? 1 : 0}\u0000${entry.name}`;
+      const key = `${entry.encrypted ? 1 : 0}\u0000${entry.direct ? 1 : 0}\u0000${entry.name}`;
       if (binding.written.get(entry.roomId) === key) continue;
       binding.written.set(entry.roomId, key);
       changed.push(entry);

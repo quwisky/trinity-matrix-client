@@ -15,7 +15,9 @@ import {
   isTransientMatrixError,
   liveRoomState,
   messagePreview,
+  RoomEncryptionFlags,
 } from '@trinity/util/matrix';
+import { unencryptedShieldFor } from './shields';
 import type { ConversationKey } from './conversation-messages';
 import type {
   ConversationPinOperation,
@@ -63,6 +65,7 @@ export class ConversationPinsController implements ConversationPins {
   private key: ConversationKey | null = null;
   private room: Room | null = null;
   private client: MatrixClient | null = null;
+  private encryption = new RoomEncryptionFlags();
 
   readonly eventIds = this.pinnedEventIds.asReadonly();
   readonly messages = this.pinnedMessages.asReadonly();
@@ -95,6 +98,12 @@ export class ConversationPinsController implements ConversationPins {
     this.key = Object.freeze({ ...key });
     this.room = room;
     this.client = client;
+    this.encryption = new RoomEncryptionFlags();
+    void this.encryption
+      .refresh(client.getCrypto?.(), room.roomId)
+      .then((encrypted) => {
+        if (encrypted && this.room === room) this.scheduleResolve.schedule();
+      });
     room.on(RoomStateEvent.Events, this.onStateEvent);
     room.on(RoomEvent.Timeline, this.onTimeline);
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
@@ -246,6 +255,10 @@ export class ConversationPinsController implements ConversationPins {
       return;
     }
     const views: PinnedMessageView[] = [];
+    const unencryptedShield = unencryptedShieldFor(
+      room,
+      this.encryption.isEncrypted(room),
+    );
     for (const id of this.pinnedEventIds()) {
       let event = room.findEventById(id);
       if (!event && !this.fetched.has(id)) {
@@ -274,8 +287,10 @@ export class ConversationPinsController implements ConversationPins {
           status: 'loaded' as const,
           sender,
           senderName: room.getMember(sender)?.name ?? sender,
-          body: messagePreview(event),
+          // The pin's shield marks unencrypted text, so the text itself stays readable.
+          body: messagePreview(event, false),
           ts: event.getTs(),
+          shield: unencryptedShield(event),
         }),
       );
     }
@@ -293,6 +308,7 @@ export class ConversationPinsController implements ConversationPins {
       senderName: '',
       body: '',
       ts: 0,
+      shield: null,
     });
   }
 

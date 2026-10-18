@@ -534,6 +534,7 @@ describe('TimelineService', () => {
         client as unknown as MatrixClient,
         room as unknown as Room,
         failed as unknown as MatrixEvent,
+        false,
       );
 
     const before = revision();

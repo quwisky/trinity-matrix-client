@@ -13,7 +13,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -35,7 +36,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Build bot",
@@ -57,7 +59,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -79,7 +82,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": null,
@@ -103,7 +107,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -126,7 +131,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -148,7 +154,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -170,7 +177,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -191,7 +199,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -214,7 +223,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -236,7 +246,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -258,7 +269,8 @@
       },
       "storedRoom": {
         "name": "Secret",
-        "direct": false
+        "direct": false,
+        "encrypted": true
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -266,6 +278,74 @@
         "title": "Secret",
         "subtitle": "Alice",
         "body": "Encrypted message"
+      }
+    },
+    {
+      "name": "text sent in the clear into an encrypted room shows only the generic body",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "Your account is locked, sign in here"
+        }
+      },
+      "storedRoom": {
+        "name": "Bob",
+        "direct": true,
+        "encrypted": true
+      },
+      "stateRoomName": null,
+      "senderName": "Bob",
+      "expected": {
+        "title": "Bob",
+        "subtitle": "",
+        "body": "New message"
+      }
+    },
+    {
+      "name": "sticker sent in the clear into an encrypted room shows only the generic body",
+      "event": {
+        "type": "m.sticker",
+        "sender": "@alice:hs",
+        "content": {
+          "body": "cat",
+          "url": "mxc://hs/cat"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false,
+        "encrypted": true
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "New message"
+      }
+    },
+    {
+      "name": "a stored room without the encrypted flag counts as encrypted",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "hello"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "New message"
       }
     },
     {
@@ -282,7 +362,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -304,7 +385,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -326,7 +408,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -348,7 +431,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -370,7 +454,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -385,7 +470,8 @@
       "event": null,
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": null,
@@ -401,7 +487,8 @@
       "event": null,
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": null,
@@ -417,7 +504,8 @@
       "event": null,
       "storedRoom": {
         "name": "Bob",
-        "direct": true
+        "direct": true,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": null,
@@ -453,7 +541,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -475,7 +564,8 @@
       },
       "storedRoom": {
         "name": "Bob",
-        "direct": true
+        "direct": true,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Bob",
@@ -501,7 +591,7 @@
       "expected": {
         "title": "Lobby",
         "subtitle": "Alice",
-        "body": "welcome"
+        "body": "New message"
       }
     },
     {
@@ -520,7 +610,7 @@
       "expected": {
         "title": "Trinity",
         "subtitle": "Alice",
-        "body": "welcome"
+        "body": "New message"
       }
     },
     {
@@ -535,7 +625,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -557,7 +648,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -579,7 +671,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -601,7 +694,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -623,7 +717,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -645,7 +740,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -667,7 +763,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -689,7 +786,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -712,7 +810,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -735,7 +834,8 @@
       },
       "storedRoom": {
         "name": "Bob",
-        "direct": true
+        "direct": true,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Bob",
@@ -751,7 +851,8 @@
       "event": null,
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": null,
@@ -795,7 +896,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",
@@ -818,7 +920,8 @@
       },
       "storedRoom": {
         "name": "Team",
-        "direct": false
+        "direct": false,
+        "encrypted": false
       },
       "stateRoomName": null,
       "senderName": "Alice",

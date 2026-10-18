@@ -49,6 +49,8 @@ interface FakeRoom {
   roomId: string;
   name: string;
   membership: string;
+  /** Whether the room's state holds `m.room.encryption`. */
+  encryptionState?: boolean;
 }
 
 /** The parts of one account's MatrixClient the handoff reads, with a real event emitter. */
@@ -58,6 +60,8 @@ function fakeClient(userId: string, rooms: FakeRoom[]) {
     token: `token-${userId}`,
     rooms,
     direct: {} as Record<string, string[]>,
+    /** What the crypto store answers per room; unlisted rooms are not encrypted. */
+    storeEncrypted: {} as Record<string, boolean>,
   };
   return {
     userId,
@@ -75,7 +79,12 @@ function fakeClient(userId: string, rooms: FakeRoom[]) {
         roomId: room.roomId,
         name: room.name,
         getMyMembership: () => room.membership,
+        hasEncryptionStateEvent: () => room.encryptionState === true,
       })),
+    getCrypto: () => ({
+      isEncryptionEnabledInRoom: (roomId: string) =>
+        Promise.resolve(state.storeEncrypted[roomId] === true),
+    }),
     getAccountData: (type: string) =>
       type === EventType.Direct
         ? { getContent: () => state.direct }
@@ -355,10 +364,57 @@ describe('PushHandoffService', () => {
     h.clients.get('@me:hs')!.state.direct = { '@bob:hs': ['!dm:hs'] };
     await start(h);
 
+    // Once before the crypto store answered (both encrypted), once after.
+    expect(h.bridge.setRooms).toHaveBeenCalledTimes(2);
+    expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
+      { roomId: '!a:hs', name: 'Team', direct: false, encrypted: false },
+      { roomId: '!dm:hs', name: 'Bob', direct: true, encrypted: false },
+    ]);
+  });
+
+  it('writes a room as encrypted until the crypto store has answered for it', async () => {
+    const h = setup({
+      clients: [
+        fakeClient('@me:hs', [
+          { roomId: '!plain:hs', name: 'Plain', membership: 'join' },
+          { roomId: '!stored:hs', name: 'Stored', membership: 'join' },
+          {
+            roomId: '!state:hs',
+            name: 'State',
+            membership: 'join',
+            encryptionState: true,
+          },
+        ]),
+      ],
+    });
+    me(h).state.storeEncrypted = { '!stored:hs': true };
+    await start(h);
+
+    expect(h.bridge.setRooms).toHaveBeenNthCalledWith(1, '@me:hs', [
+      { roomId: '!plain:hs', name: 'Plain', direct: false, encrypted: true },
+      { roomId: '!stored:hs', name: 'Stored', direct: false, encrypted: true },
+      { roomId: '!state:hs', name: 'State', direct: false, encrypted: true },
+    ]);
+    expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
+      { roomId: '!plain:hs', name: 'Plain', direct: false, encrypted: false },
+    ]);
+  });
+
+  it('rewrites a room stored as unencrypted once its state turns encryption on', async () => {
+    const h = setup();
+    await start(h);
+    expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
+      { roomId: '!a:hs', name: 'Team', direct: false, encrypted: false },
+    ]);
+    h.bridge.setRooms.mockClear();
+
+    me(h).state.rooms[0].encryptionState = true;
+    me(h).emit(ClientEvent.Sync, SyncState.Syncing);
+    await flush();
+
     expect(h.bridge.setRooms).toHaveBeenCalledOnce();
-    expect(h.bridge.setRooms).toHaveBeenCalledWith('@me:hs', [
-      { roomId: '!a:hs', name: 'Team', direct: false },
-      { roomId: '!dm:hs', name: 'Bob', direct: true },
+    expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
+      { roomId: '!a:hs', name: 'Team', direct: false, encrypted: true },
     ]);
   });
 
@@ -375,7 +431,7 @@ describe('PushHandoffService', () => {
     me(h).emit(RoomEvent.Name);
     await flush();
     expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
-      { roomId: '!a:hs', name: 'Renamed', direct: false },
+      { roomId: '!a:hs', name: 'Renamed', direct: false, encrypted: false },
     ]);
 
     me(h).state.rooms.push({
@@ -386,23 +442,27 @@ describe('PushHandoffService', () => {
     me(h).emit(ClientEvent.Sync, SyncState.Syncing);
     await flush();
     expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
-      { roomId: '!b:hs', name: 'New', direct: false },
+      { roomId: '!b:hs', name: 'New', direct: false, encrypted: false },
     ]);
   });
 
   it('retries rooms whose write failed at the next sync', async () => {
     const h = setup();
+    await start(h);
     h.bridge.setRooms.mockReturnValueOnce(
       throwError(() => new Error('keychain locked')),
     );
-    await start(h);
+    me(h).state.rooms[0].name = 'Renamed';
+    me(h).emit(RoomEvent.Name);
+    await flush();
+    h.bridge.setRooms.mockClear();
 
     me(h).emit(ClientEvent.Sync, SyncState.Syncing);
     await flush();
 
-    expect(h.bridge.setRooms).toHaveBeenCalledTimes(2);
+    expect(h.bridge.setRooms).toHaveBeenCalledOnce();
     expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
-      { roomId: '!a:hs', name: 'Team', direct: false },
+      { roomId: '!a:hs', name: 'Renamed', direct: false, encrypted: false },
     ]);
   });
 
@@ -447,7 +507,9 @@ describe('PushHandoffService', () => {
     TestBed.tick();
     await flush();
     expect(h.bridge.setAccount).toHaveBeenCalledOnce();
-    expect(h.bridge.setRooms).toHaveBeenCalledOnce();
+    expect(h.bridge.setRooms).toHaveBeenLastCalledWith('@me:hs', [
+      { roomId: '!a:hs', name: 'Late rename', direct: false, encrypted: false },
+    ]);
   });
 
   it('writes a signed-in-again account afresh when only its client changed', async () => {

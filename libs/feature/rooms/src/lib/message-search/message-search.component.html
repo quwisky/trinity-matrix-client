@@ -96,6 +96,9 @@
                 hit.senderName
               }}</span>
               <span class="ms-time shrink-0">{{ fmt.dateTime(hit.ts) }}</span>
+              @if (hit.shield; as shield) {
+                <trn-unencrypted-mark [shield]="shield" />
+              }
             </span>
             <p class="ms-snippet text-sm">
               @for (part of highlight(hit.snippet); track $index) {

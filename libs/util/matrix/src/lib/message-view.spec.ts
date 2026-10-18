@@ -8,7 +8,9 @@ import {
   reactionDetailsFor,
   reactionsFor,
   readReceiptsFor,
+  replyPreview,
 } from './message-view';
+import { UNENCRYPTED_PREVIEW } from './room-encryption';
 
 /** A reaction (`m.annotation`) event stub: only sender + redaction are read. */
 function reaction(sender: string, redacted = false): MatrixEvent {
@@ -387,4 +389,34 @@ describe('isDisplayableMessage', () => {
       expect(isDisplayableMessage(event({ type, state: true }))).toBe(false);
     },
   );
+});
+
+describe('replyPreview', () => {
+  const roomWith = (encrypted: boolean) =>
+    ({
+      findEventById: () =>
+        ({
+          getSender: () => '@a:hs',
+          getContent: () => ({ body: 'sign in here' }),
+          isRedacted: () => false,
+          isEncrypted: () => encrypted,
+          isState: () => false,
+          replacingEvent: () => null,
+          status: null,
+        }) as unknown as MatrixEvent,
+      getMember: () => null,
+    }) as unknown as Room;
+
+  it('quotes an unencrypted message in an encrypted room as the unencrypted placeholder', () => {
+    expect(replyPreview(roomWith(false), '$t', true)?.body).toBe(
+      UNENCRYPTED_PREVIEW,
+    );
+  });
+
+  it('quotes the text of an encrypted message, and of any message in a room that is not encrypted', () => {
+    expect(replyPreview(roomWith(true), '$t', true)?.body).toBe('sign in here');
+    expect(replyPreview(roomWith(false), '$t', false)?.body).toBe(
+      'sign in here',
+    );
+  });
 });

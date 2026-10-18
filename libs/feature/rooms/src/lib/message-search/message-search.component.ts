@@ -34,6 +34,7 @@ import { TrnInput } from '@trinity/components/controls';
 import { releaseInputTargetOnDestroy } from '@trinity/components/overlay';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { UnencryptedMarkComponent } from '../shared/unencrypted-mark/unencrypted-mark.component';
 
 /** One run of highlighting: a snippet slice and whether it is the matched term. */
 interface HighlightPart {
@@ -66,6 +67,7 @@ interface HighlightPart {
   selector: 'trn-message-search',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    UnencryptedMarkComponent,
     SidePanelHeaderComponent,
     BannerComponent,
     EmptyStateComponent,

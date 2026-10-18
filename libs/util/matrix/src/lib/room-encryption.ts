@@ -1,4 +1,4 @@
-import type { Room } from 'matrix-js-sdk';
+import type { MatrixEvent, Room } from 'matrix-js-sdk';
 
 /** The crypto-store half of the SDK's own "encrypt this send?" test. */
 interface RoomEncryptionProbe {
@@ -25,6 +25,11 @@ export class RoomEncryptionFlags {
     );
   }
 
+  /** Whether the crypto store has answered for this room (see {@link refresh}). */
+  answered(roomId: string): boolean {
+    return this.stored.has(roomId);
+  }
+
   /**
    * Ask the crypto store about a room, once. Resolves true when that answer is "encrypted",
    * so only the call that fetched it reports it. A missing store or a failed read caches
@@ -48,4 +53,30 @@ export class RoomEncryptionFlags {
       this.pending.delete(roomId);
     }
   }
+}
+
+/** What a preview shows instead of text that arrived unencrypted in an encrypted room. */
+export const UNENCRYPTED_PREVIEW = '⚠️ Unencrypted message';
+
+/**
+ * The event whose encryption vouches for the text `event` shows: its latest edit when it has
+ * one, else itself. An edit supplies that text, and the SDK applies it without checking that
+ * it was encrypted.
+ */
+export function shieldSubject(event: MatrixEvent): MatrixEvent {
+  return event.replacingEvent() ?? event;
+}
+
+/**
+ * Whether the text `event` shows (that of `subject`) arrived unencrypted. In an encrypted
+ * room that text may come from any server taking part in the room, not from the member it
+ * names. Local echoes, state events and redactions never count.
+ */
+export function arrivedInClear(
+  event: MatrixEvent,
+  subject: MatrixEvent = shieldSubject(event),
+): boolean {
+  const settled = (e: MatrixEvent): boolean =>
+    !e.status && !e.isState() && !e.isRedacted();
+  return settled(event) && settled(subject) && !subject.isEncrypted();
 }

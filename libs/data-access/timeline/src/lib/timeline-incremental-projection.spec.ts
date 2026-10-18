@@ -18,7 +18,11 @@ import {
   EventShieldReason,
 } from 'matrix-js-sdk/lib/crypto-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { pollResponseContent, pollStartContent } from '@trinity/util/matrix';
+import {
+  pollEndContent,
+  pollResponseContent,
+  pollStartContent,
+} from '@trinity/util/matrix';
 import { TimelineService } from './timeline.service';
 import { revisionOf } from './event-revision';
 import { trimLiveTimeline } from './live-timeline-trim';
@@ -410,7 +414,7 @@ describe('TimelineService incremental projection', () => {
       // The SDK empties the content object in place; a memo keyed by that object must not
       // keep serving (and the row cache keep storing) the text that was deleted.
       expect(row(id(2))?.kind).toBe('redacted');
-      expect(revisionOf(client, room, event(2)).content).not.toContain(
+      expect(revisionOf(client, room, event(2), false).content).not.toContain(
         'words to forget',
       );
     });
@@ -465,6 +469,51 @@ describe('TimelineService incremental projection', () => {
 
       expect(row(id(5))?.poll?.totalVotes).toBe(1);
       expect(row(id(5))?.poll?.options[1].votes).toBe(1);
+    });
+
+    it('closes a poll in an encrypted room on its encrypted end after an unencrypted one', async () => {
+      const { row, event, receive } = await openConversation(20, 20, {
+        1: {
+          type: 'm.room.encryption',
+          state_key: '',
+          content: { algorithm: 'm.megolm.v1.aes-sha2' },
+        },
+        5: {
+          type: 'org.matrix.msc3381.poll.start',
+          content: pollStartContent('Lunch?', ['Soup', 'Salad']),
+        },
+      });
+      await receive(
+        live('$clear-end', {
+          type: 'org.matrix.msc3381.poll.end',
+          origin_server_ts: T0 + 6000,
+          content: pollEndContent(id(5)),
+        }),
+      );
+      expect(row(id(5))?.poll?.ended).toBe(false);
+
+      await receive(
+        live('$end', {
+          ...ENCRYPTED,
+          content: {
+            ...ENCRYPTED.content,
+            'm.relates_to': { rel_type: 'm.reference', event_id: id(5) },
+          },
+        }),
+      );
+      await event('$end').attemptDecryption(
+        decryptor(() =>
+          Promise.resolve({
+            clearEvent: {
+              type: 'org.matrix.msc3381.poll.end',
+              content: pollEndContent(id(5)),
+            },
+          }),
+        ),
+      );
+      await settle();
+
+      expect(row(id(5))?.poll?.ended).toBe(true);
     });
 
     it("drops a vote when a ban takes the voter's messages with it", async () => {

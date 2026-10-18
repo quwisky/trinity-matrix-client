@@ -9,14 +9,22 @@ import {
 import { Observable, defer, from, map } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
+  RoomEncryptionFlags,
   buildEditRevisions,
   type MessageRevisionView,
 } from '@trinity/util/matrix';
+import type { MessageShield } from './message-presentation';
+import { unencryptedShieldFor } from './shields';
+
+/** One version of a message, with the unencrypted mark for its own text. */
+export interface EditRevisionView extends MessageRevisionView {
+  shield: MessageShield | null;
+}
 
 /** Every version of a message we could fetch, and whether that was all of them. */
 export interface EditHistoryResult {
   /** Oldest first: the original, then each edit. */
-  revisions: MessageRevisionView[];
+  revisions: EditRevisionView[];
   /** True when the message has more revisions than we fetched — say so, don't imply
    *  the list is complete. */
   truncated: boolean;
@@ -95,8 +103,25 @@ export class EditHistoryService {
 
     this.repairAggregation(client, roomId, eventId, edits);
 
+    const room = client.getRoom(roomId);
+    const encryption = new RoomEncryptionFlags();
+    await encryption.refresh(client.getCrypto?.(), roomId);
+    const unencryptedShield = room
+      ? unencryptedShieldFor(room, encryption.isEncrypted(room))
+      : () => null;
+    const sources = new Map<string, MatrixEvent>();
+    for (const event of [original, ...edits]) {
+      sources.set(event.getId() ?? '', event);
+    }
     return {
-      revisions: buildEditRevisions(original, edits, client.getUserId()),
+      revisions: buildEditRevisions(original, edits, client.getUserId()).map(
+        (revision) => {
+          const source = sources.get(revision.id);
+          // Each version is judged by its own encryption, not the message's latest edit.
+          const shield = source ? unencryptedShield(source, source) : null;
+          return { ...revision, shield };
+        },
+      ),
       truncated: !!from,
     };
   }
