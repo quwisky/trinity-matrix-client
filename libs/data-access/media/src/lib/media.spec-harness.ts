@@ -30,7 +30,7 @@ export function okResponse(): Response {
 /** Build a fake MatrixClient with the surface MediaService touches. */
 export function fakeClient(overrides: Record<string, unknown> = {}) {
   return {
-    isVersionSupported: vi.fn().mockResolvedValue(true),
+    getVersions: vi.fn().mockResolvedValue({ versions: ['v1.11'] }),
     getAccessToken: vi.fn(() => 'tok'),
     uploadContent: vi.fn().mockResolvedValue({ content_uri: 'mxc://hs/up' }),
     // Echo enough of the mxc back so distinct sources yield distinct URLs.

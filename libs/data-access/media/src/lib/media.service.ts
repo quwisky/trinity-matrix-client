@@ -20,7 +20,11 @@ import {
   displaySafeMime,
   encryptAttachment,
 } from '@trinity/util/matrix';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  serverAdvertises,
+  type ServerSupportQuery,
+} from '@trinity/data-access/matrix-client';
 import { fetchMediaBytes } from '@trinity/util/matrix';
 import type { EncryptedFileInfo, MediaPayload } from '@trinity/util/matrix';
 import type { ImageMetadataPolicy, MediaHints } from './media-pipeline.models';
@@ -122,6 +126,12 @@ type MediaSource =
       /** Server-thumbnail dimensions, or null to download the resource as-is. */
       readonly resize: { w: number; h: number } | null;
     };
+
+/** Authenticated media arrived in spec v1.11; servers advertised MSC3916's stable flag before that. */
+const AUTHENTICATED_MEDIA = {
+  version: 'v1.11',
+  unstableFeature: 'org.matrix.msc3916.stable',
+} as const satisfies ServerSupportQuery;
 
 /**
  * Resolves Matrix media (`mxc://` plaintext or encrypted `content.file`) into `blob:` object
@@ -646,14 +656,26 @@ export class MediaService {
     );
   }
 
-  /** Probe (once per exact client/account) whether its homeserver supports authenticated media. */
+  /** Whether this client's homeserver supports authenticated media, cached unless unknown. */
   private supportsAuthedMedia(client: MatrixClient): Observable<boolean> {
     let probe = this.authedMedia.get(client);
     if (!probe) {
-      probe = from(client.isVersionSupported('v1.11')).pipe(
-        catchError(() => of(false)),
+      const answer: Observable<boolean> = serverAdvertises(
+        client,
+        AUTHENTICATED_MEDIA,
+      ).pipe(
+        map((supported) => {
+          if (supported !== null) return supported;
+          // Unknown: ask again next time, and try authenticated media, which falls back to
+          // legacy; legacy does not fall back, and servers may have turned it off.
+          if (this.authedMedia.get(client) === answer) {
+            this.authedMedia.delete(client);
+          }
+          return true;
+        }),
         shareReplay(1),
       );
+      probe = answer;
       this.authedMedia.set(client, probe);
     }
     return probe;
