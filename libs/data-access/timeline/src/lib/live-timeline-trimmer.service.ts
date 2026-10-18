@@ -15,6 +15,7 @@ import {
   EMPTY,
   Observable,
   Subscription,
+  catchError,
   concatWith,
   defer,
   finalize,
@@ -106,10 +107,16 @@ export class LiveTimelineTrimmer {
           : defer(() => scrollbackLive(client, room, REFILL_PAGE));
         refills.add(
           refill
-            .pipe(concatWith(defer(() => decrypted(room))), finalize(release))
-            .subscribe({
-              error: (error: unknown) => this.errors.handleError(error),
-            }),
+            .pipe(
+              // A failed page still waits for the pages before it to decrypt.
+              catchError((error: unknown) => {
+                this.errors.handleError(error);
+                return EMPTY;
+              }),
+              concatWith(defer(() => decrypted(room))),
+              finalize(release),
+            )
+            .subscribe(),
         );
       } catch (error: unknown) {
         this.errors.handleError(error);

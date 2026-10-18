@@ -13,12 +13,13 @@ import {
   createClient,
   type MatrixClient,
 } from 'matrix-js-sdk';
-import { EMPTY } from 'rxjs';
+import { EMPTY, Observable, concatWith, defer, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ConversationRuntime } from './conversation-runtime.service';
 import { TRIM_HIGH_WATER, TRIM_KEEP } from './live-timeline-trim';
 import { LiveTimelineTrimmer } from './live-timeline-trimmer.service';
+import { scrollbackLive } from './live-scrollback';
 
 const ALICE = '@alice:hs';
 const MALLORY = '@mallory:hs';
@@ -53,7 +54,7 @@ function setup() {
   const held = new Set(['!open:hs']);
   const errors = { handleError: vi.fn() };
   const trimHeld = vi.fn();
-  const refillHeld = vi.fn(() => EMPTY);
+  const refillHeld = vi.fn((): Observable<void> => EMPTY);
   const windowHidden = signal(false);
   const focused = signal<{ key: { accountId: string; roomId: string } } | null>(
     { key: { accountId: ALICE, roomId: '!open:hs' } },
@@ -473,6 +474,53 @@ describe('LiveTimelineTrimmer', () => {
         decrypt(again.at(-1)!);
         expect(counts()[0]).toBeGreaterThan(16);
       });
+      running.unsubscribe();
+    });
+
+    it('holds the counts until a page that landed has decrypted, when a later page fails', async () => {
+      const { client, errors, page, refillHeld, running, sync } = started();
+      const open = client.getRoom('!open:hs')!;
+      await sync();
+      vi.spyOn(client, 'getPushActionsForEvent').mockReturnValue({
+        notify: true,
+        tweaks: { highlight: true },
+      });
+      page.mockResolvedValue({
+        start: 's20',
+        chunk: Array.from(
+          { length: 10 },
+          (_, i) => message(open.roomId, 10 - i).event,
+        ),
+      } as Awaited<ReturnType<MatrixClient['createMessagesRequest']>>);
+      const failure = new Error('page failed');
+      refillHeld.mockImplementation(() =>
+        defer(() => scrollbackLive(client, open, 30)).pipe(
+          concatWith(throwError(() => failure)),
+        ),
+      );
+      let decryptionDone!: () => void;
+      const decrypting = new Promise<void>((resolve) => {
+        decryptionDone = resolve;
+      });
+      vi.spyOn(MatrixEvent.prototype, 'getDecryptionPromise').mockReturnValue(
+        decrypting,
+      );
+      client.emit(ClientEvent.AccountData, ignoring(), ignoring(MALLORY));
+      open.setUnreadNotificationCount(NotificationCountType.Total, 20);
+
+      await sync();
+      await vi.waitFor(() =>
+        expect(errors.handleError).toHaveBeenCalledWith(failure),
+      );
+      for (const event of open.getLiveTimeline().getEvents()) {
+        client.emit(MatrixEventEvent.Decrypted, event);
+      }
+
+      expect(open.getLiveTimeline().getEvents()).toHaveLength(10);
+      expect(open.getUnreadNotificationCount(NotificationCountType.Total)).toBe(
+        20,
+      );
+      decryptionDone();
       running.unsubscribe();
     });
   });
