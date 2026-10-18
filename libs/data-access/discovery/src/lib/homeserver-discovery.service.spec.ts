@@ -87,4 +87,21 @@ describe('HomeserverDiscoveryService', () => {
     expect(allowOrigin).toHaveBeenCalledWith('https://example.org');
     expect(allowOrigin).toHaveBeenCalledWith('https://matrix.example');
   });
+  it('declares no origins for a lookup that only checks a server', async () => {
+    findClientConfig.mockResolvedValue(
+      homeserver(AutoDiscovery.SUCCESS, 'https://matrix.example/'),
+    );
+
+    await expect(
+      firstValueFrom(
+        TestBed.inject(HomeserverDiscoveryService).discover('example.org', {
+          allowOrigins: false,
+        }),
+      ),
+    ).resolves.toEqual({
+      domain: 'example.org',
+      baseUrl: 'https://matrix.example',
+    });
+    expect(allowOrigin).not.toHaveBeenCalled();
+  });
 });

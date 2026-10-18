@@ -330,6 +330,15 @@ export class SessionStorageService {
     const newPrefix =
       incoming.cryptoPrefix ??
       `${CRYPTO_PREFIX}${incoming.userId}:${incoming.deviceId}`;
+    if (
+      registry.accounts.some(
+        (a) => a.userId !== incoming.userId && a.cryptoPrefix === newPrefix,
+      )
+    ) {
+      throw new Error(
+        `The crypto store for ${incoming.userId} already belongs to another account.`,
+      );
+    }
     const record: AccountRecord =
       existing && !deviceChanged
         ? // Same-device re-login: reuse the exact crypto store (including a migrated
@@ -363,26 +372,35 @@ export class SessionStorageService {
     if (activation === 'activate') {
       registry.activeUserId = incoming.userId;
     }
-    if (!existing || deviceChanged) {
+    const createsKey = !existing || deviceChanged;
+    if (createsKey) {
       // A new store's key is written BEFORE the tokens and the registry: a keyed record
       // without its key could never open its store, and a failure here must leave the
-      // stored device's tokens as they were. A key left behind by a later failure is
-      // harmless. A same-device re-login keeps whatever its existing store has, including
-      // no key at all.
+      // stored device's tokens as they were. A same-device re-login keeps whatever its
+      // existing store has, including no key at all.
       await this.storeKeys.create(newPrefix);
     }
-    await this.secure.set(this.tokenKey(incoming.userId), accessToken);
-    // Remove any stale refresh token when re-logging in without one, so no dead
-    // credential lingers.
-    if (refreshToken !== undefined) {
-      await this.secure.set(
-        this.refreshTokenKey(incoming.userId),
-        refreshToken,
-      );
-    } else {
-      await this.secure.remove(this.refreshTokenKey(incoming.userId));
+    try {
+      await this.secure.set(this.tokenKey(incoming.userId), accessToken);
+      // Remove any stale refresh token when re-logging in without one, so no dead
+      // credential lingers.
+      if (refreshToken !== undefined) {
+        await this.secure.set(
+          this.refreshTokenKey(incoming.userId),
+          refreshToken,
+        );
+      } else {
+        await this.secure.remove(this.refreshTokenKey(incoming.userId));
+      }
+      await this.writeRegistry(registry);
+    } catch (error) {
+      // No record names the new store yet. Its key would make a retry of this same
+      // sign-in refuse, since a store key is never replaced.
+      if (createsKey) {
+        await this.storeKeys.remove(newPrefix).catch(() => undefined);
+      }
+      throw error;
     }
-    await this.writeRegistry(registry);
     if (existing && deviceChanged) {
       // No sign-out wiped the old device's store, so reclaim it here or it leaks on disk.
       this.reclaimCryptoStore(existing.cryptoPrefix);

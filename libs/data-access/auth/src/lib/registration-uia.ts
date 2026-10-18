@@ -5,6 +5,7 @@ import {
   type RegisterResponse,
   type UIAFlow,
 } from 'matrix-js-sdk';
+import { isValidDeviceId, userIdServerName } from './account-establishment';
 
 export const EMAIL_STAGE = AuthType.Email;
 export const NATIVE_REGISTRATION_STAGES = new Set<string>([
@@ -174,6 +175,7 @@ export function authenticatedRegistrationResponse(
     !nonEmptyString(response.user_id) ||
     !nonEmptyString(response.access_token) ||
     !nonEmptyString(response.device_id) ||
+    !isValidDeviceId(response.device_id) ||
     (response.refresh_token !== undefined &&
       !nonEmptyString(response.refresh_token)) ||
     (response.expires_in_ms !== undefined &&
@@ -187,6 +189,7 @@ export function authenticatedRegistrationResponse(
   const mxid = /^@([^:]+):(.+)$/.exec(response.user_id);
   if (
     !mxid ||
+    userIdServerName(response.user_id) === null ||
     mxid[1].toLocaleLowerCase() !== expected.localpart.toLocaleLowerCase() ||
     mxid[2].toLocaleLowerCase() !== expected.serverName.toLocaleLowerCase()
   ) {

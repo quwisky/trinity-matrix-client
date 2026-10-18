@@ -15,7 +15,9 @@ vi.mock('./crypto-store-wrapping-keys', () => ({
     if (wrappingKeyDb.failing) throw new Error('IndexedDB unavailable');
     return wrappingKeys.get(id);
   },
+  // Like the IndexedDB `add` it stands in for: an existing entry is never replaced.
   saveWrappingKey: async (id: string, key: CryptoKey) => {
+    if (wrappingKeys.has(id)) throw new Error('ConstraintError');
     wrappingKeys.set(id, key);
   },
   deleteWrappingKey: async (id: string) => {
@@ -73,6 +75,29 @@ describe('CryptoStoreKeyService', () => {
       });
       // The keychain protects it, so nothing is wrapped.
       expect(wrappingKeys.size).toBe(0);
+    });
+
+    it('refuses to replace a store key that already exists', async () => {
+      const { keys } = setup(true);
+      const first = await keys.create('trinity-crypto:@alice:hs:DEV1');
+
+      await expect(
+        keys.create('trinity-crypto:@alice:hs:DEV1'),
+      ).rejects.toThrow(/already has a key/);
+      expect(await keys.read('trinity-crypto:@alice:hs:DEV1')).toEqual({
+        kind: 'present',
+        key: first,
+      });
+    });
+
+    it('refuses to create a key while the keychain cannot say whether one exists', async () => {
+      const { keys, secure } = setup(true);
+      vi.mocked(secure.read).mockResolvedValue({ kind: 'unavailable' });
+
+      await expect(
+        keys.create('trinity-crypto:@alice:hs:DEV1'),
+      ).rejects.toThrow();
+      expect(secure.set).not.toHaveBeenCalled();
     });
 
     it('says unavailable, not missing, while the keychain cannot be read', async () => {
@@ -141,6 +166,68 @@ describe('CryptoStoreKeyService', () => {
         kind: 'present',
         key: key,
       });
+    });
+
+    it('refuses to replace a store key that already exists', async () => {
+      const { keys } = setup(false);
+      const first = await keys.create('trinity-crypto:@alice:hs:DEV1');
+      const wrappingKey = wrappingKeys.get('trinity-crypto:@alice:hs:DEV1');
+
+      await expect(
+        keys.create('trinity-crypto:@alice:hs:DEV1'),
+      ).rejects.toThrow();
+      expect(wrappingKeys.get('trinity-crypto:@alice:hs:DEV1')).toBe(
+        wrappingKey,
+      );
+      expect(await keys.read('trinity-crypto:@alice:hs:DEV1')).toEqual({
+        kind: 'present',
+        key: first,
+      });
+    });
+
+    it('removes its wrapping key when the wrapped key cannot be saved, so a retry works', async () => {
+      const { keys, secure } = setup(false);
+      vi.mocked(secure.set).mockRejectedValueOnce(new Error('write failed'));
+
+      await expect(
+        keys.create('trinity-crypto:@alice:hs:DEV1'),
+      ).rejects.toThrow('write failed');
+      expect(wrappingKeys.has('trinity-crypto:@alice:hs:DEV1')).toBe(false);
+
+      const key = await keys.create('trinity-crypto:@alice:hs:DEV1');
+      expect(await keys.read('trinity-crypto:@alice:hs:DEV1')).toEqual({
+        kind: 'present',
+        key,
+      });
+    });
+
+    it('removes its wrapping key when wrapping fails after saving it, so a retry works', async () => {
+      const { keys } = setup(false);
+      vi.spyOn(crypto.subtle, 'encrypt').mockRejectedValueOnce(
+        new Error('encrypt failed'),
+      );
+
+      await expect(
+        keys.create('trinity-crypto:@alice:hs:DEV1'),
+      ).rejects.toThrow('encrypt failed');
+      expect(wrappingKeys.has('trinity-crypto:@alice:hs:DEV1')).toBe(false);
+
+      const key = await keys.create('trinity-crypto:@alice:hs:DEV1');
+      expect(await keys.read('trinity-crypto:@alice:hs:DEV1')).toEqual({
+        kind: 'present',
+        key,
+      });
+    });
+
+    it('keeps a wrapping key it did not save when saving its own is refused', async () => {
+      const { keys } = setup(false);
+      const theirs = {} as CryptoKey;
+      wrappingKeys.set('trinity-crypto:@alice:hs:DEV1', theirs);
+
+      await expect(
+        keys.create('trinity-crypto:@alice:hs:DEV1'),
+      ).rejects.toThrow();
+      expect(wrappingKeys.get('trinity-crypto:@alice:hs:DEV1')).toBe(theirs);
     });
 
     it('wraps with a non-extractable AES-GCM key', async () => {

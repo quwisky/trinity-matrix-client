@@ -36,6 +36,7 @@ import { TrnCardImports } from '@trinity/components/navigation-layout';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
   ReauthAccountMismatchError,
+  UnacceptableAccountError,
   AuthService,
   AUTHENTICATION_HOMESERVER_DISCOVERY,
   NewDeviceSignInCancelledError,
@@ -82,6 +83,7 @@ const SIGN_IN_FALLBACK = "We couldn't sign you in. Try again.";
 function describeSignInError(error: unknown, fallback: string): string {
   if (
     error instanceof ReauthAccountMismatchError ||
+    error instanceof UnacceptableAccountError ||
     error instanceof NewDeviceSignInCancelledError ||
     (error instanceof Error && error.message === ACCOUNT_NOT_STORED)
   ) {
@@ -155,6 +157,8 @@ export class LoginPage {
   );
   /** The stored device id to re-authenticate, in re-auth mode. */
   private reauthDeviceId: string | null = null;
+  /** The server discovery resolved from what the person entered. */
+  private enteredServerName: string | null = null;
 
   /**
    * Accounts stored on this device, for the erase confirmation to name: `/login?add` is
@@ -286,15 +290,16 @@ export class LoginPage {
       this.discovery
         .discover(this.homeserverModel().homeserver)
         .pipe(
-          switchMap(({ baseUrl }) =>
+          switchMap(({ domain, baseUrl }) =>
             this.discoverCapabilities(baseUrl).pipe(
-              map((res) => ({ baseUrl, ...res })),
+              map((res) => ({ domain, baseUrl, ...res })),
             ),
           ),
         ),
       this.homeserverError,
       DISCOVERY_FALLBACK,
-    ).subscribe(({ baseUrl, flows, oidc, registration }) => {
+    ).subscribe(({ domain, baseUrl, flows, oidc, registration }) => {
+      this.enteredServerName = domain;
       this.baseUrl.set(baseUrl);
       this.applyFlows(flows, oidc, registration);
     });
@@ -375,6 +380,7 @@ export class LoginPage {
         this.loginMode(),
         this.reauthDeviceId ?? undefined,
         this.reauthUserId() ?? undefined,
+        this.enteredServerName ?? undefined,
       ),
       this.credentialsError,
       SIGN_IN_FALLBACK,

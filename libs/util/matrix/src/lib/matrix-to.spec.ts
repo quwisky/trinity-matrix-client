@@ -1,12 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import {
   isMatrixLinkHref,
+  isValidServerName,
   matrixToPermalink,
   messagePermalink,
   normalizeViaServers,
   parseMatrixLink,
   parseMatrixToLink,
 } from './matrix-to';
+
+describe('isValidServerName', () => {
+  it.each([
+    'hs',
+    'example.org:1',
+    'example.org:65535',
+    '[::1]:8448',
+    '1.2.3.4:80',
+  ])('accepts %s', (name) => expect(isValidServerName(name)).toBe(true));
+
+  it.each([
+    'example.org:',
+    'example.org:0',
+    'example.org:08448',
+    'example.org:65536',
+    'example.org:123456',
+    '[::1]:',
+    '[::1]:0443',
+  ])('refuses the port in %s', (name) =>
+    expect(isValidServerName(name)).toBe(false),
+  );
+});
 
 describe('normalizeViaServers', () => {
   it('validates, deduplicates, and caps untrusted server hints', () => {

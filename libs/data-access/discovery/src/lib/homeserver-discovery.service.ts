@@ -64,10 +64,17 @@ export class HomeserverDiscoveryService {
     AutoDiscovery.setFetchFn(fetchWithRetry);
   }
 
-  discover(input: string): Observable<HomeserverDiscoveryResult> {
+  /**
+   * `allowOrigins: false` only reads: it declares neither the server nor its homeserver to
+   * the desktop network policy, for a lookup of a name the user did not choose.
+   */
+  discover(
+    input: string,
+    { allowOrigins = true }: { readonly allowOrigins?: boolean } = {},
+  ): Observable<HomeserverDiscoveryResult> {
     const domain = extractDomain(input);
     return defer(() => {
-      this.hostNetworkPolicy.allowOrigin(`https://${domain}`);
+      if (allowOrigins) this.hostNetworkPolicy.allowOrigin(`https://${domain}`);
       return from(AutoDiscovery.findClientConfig(domain));
     }).pipe(
       map((config) => {
@@ -86,7 +93,7 @@ export class HomeserverDiscoveryService {
           /\/$/,
           '',
         );
-        this.hostNetworkPolicy.allowOrigin(baseUrl);
+        if (allowOrigins) this.hostNetworkPolicy.allowOrigin(baseUrl);
         return { domain, baseUrl };
       }),
     );

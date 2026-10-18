@@ -61,11 +61,12 @@ export function loadWrappingKey(id: string): Promise<CryptoKey | undefined> {
   );
 }
 
+/** Rejects when `id` already has a wrapping key: `add` never replaces one. */
 export async function saveWrappingKey(
   id: string,
   key: CryptoKey,
 ): Promise<void> {
-  await run(true, 'readwrite', (store) => store.put(key, id));
+  await run(true, 'readwrite', (store) => store.add(key, id));
 }
 
 export async function deleteWrappingKey(id: string): Promise<void> {

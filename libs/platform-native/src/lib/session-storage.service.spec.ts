@@ -98,6 +98,8 @@ function setup() {
   const secure = TestBed.inject(SecureStorageService);
   const keys = TestBed.inject(CryptoStoreKeyService);
   vi.mocked(keys.create).mockImplementation(async (userId) => {
+    // Like the real service: an existing key is never replaced.
+    if (storeKeys.has(userId)) throw new Error('already has a key');
     const key = crypto.getRandomValues(new Uint8Array(32));
     storeKeys.set(userId, key);
     return key;
@@ -1193,6 +1195,68 @@ describe('SessionStorageService', () => {
       expect(stored.cryptoStoreKeyed).toBe(true);
       const [record] = await firstValueFrom(svc.list());
       expect(record.cryptoStoreKeyed).toBe(true);
+    });
+
+    it("refuses a sign-in whose store would be another account's, and changes nothing", async () => {
+      const deleteDatabase = vi.fn();
+      vi.stubGlobal('indexedDB', { deleteDatabase });
+      const { svc, keys, secure } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      const aliceKey = keys.store.get(ALICE_PREFIX);
+
+      await expect(
+        firstValueFrom(
+          svc.save({
+            baseUrl: 'https://hs',
+            userId: '@alice',
+            deviceId: 'hs:DEV1',
+            accessToken: 'other-token',
+          }),
+        ),
+      ).rejects.toThrow(/already belongs to another account/);
+
+      expect(keys.create).toHaveBeenCalledOnce();
+      expect(keys.store.get(ALICE_PREFIX)).toBe(aliceKey);
+      expect(registeredIds()).toEqual(['@alice:hs']);
+      expect(secure.store.has('matrix.accessToken:@alice')).toBe(false);
+      expect(deleteDatabase).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['its token', 'token'],
+      ['the registry', 'registry'],
+    ] as const)(
+      'removes the key it created when saving %s fails, so the same sign-in can retry',
+      async (_case, failing) => {
+        const { svc, keys } = setup();
+        const secure = TestBed.inject(SecureStorageService);
+        const once = new Error('write failed');
+        if (failing === 'token') {
+          vi.mocked(secure.set).mockRejectedValueOnce(once);
+        } else {
+          const { Preferences } = await import('@capacitor/preferences');
+          vi.spyOn(Preferences, 'set').mockRejectedValueOnce(once);
+        }
+
+        await expect(firstValueFrom(svc.save(ALICE))).rejects.toBe(once);
+        expect(keys.store.has(ALICE_PREFIX)).toBe(false);
+
+        await expect(firstValueFrom(svc.save(ALICE))).resolves.toEqual(
+          ALICE_STORED,
+        );
+        expect(keys.store.has(ALICE_PREFIX)).toBe(true);
+      },
+    );
+
+    it('keeps an existing key when a store key cannot be created', async () => {
+      const { svc, keys } = setup();
+      keys.store.set(ALICE_PREFIX, new Uint8Array(32));
+      const existing = keys.store.get(ALICE_PREFIX);
+
+      await expect(firstValueFrom(svc.save(ALICE))).rejects.toThrow();
+
+      expect(keys.remove).not.toHaveBeenCalled();
+      expect(keys.store.get(ALICE_PREFIX)).toBe(existing);
     });
 
     it('reuses the key on a same-device re-login instead of making a new one', async () => {

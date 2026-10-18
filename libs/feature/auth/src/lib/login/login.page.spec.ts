@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   ReauthAccountMismatchError,
+  UnacceptableAccountError,
   AuthService,
   AUTHENTICATION_HOMESERVER_DISCOVERY,
   NewDeviceSignInCancelledError,
@@ -417,10 +418,37 @@ describe('LoginPage', () => {
       'replace',
       undefined, // no device id → a fresh (not re-auth) login
       undefined, // and no expected user
+      undefined, // nor a discovered server: the base URL was set directly
     );
     expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
       replaceUrl: true,
     });
+  });
+
+  it('passes the server the person entered on to a password sign-in', async () => {
+    const loginWithPassword = vi.fn(() => of(READY_OUTCOME));
+    const { cmp } = await renderLogin({
+      discoverHomeserver: vi.fn(() => of('https://chat.provider.net')),
+      getSupportedFlows: vi.fn(() => of(['m.login.password'])),
+      getDelegatedAuthConfig: vi.fn(() => of(null)),
+      loginWithPassword,
+    } as unknown as Partial<AuthService>);
+    cmp.homeserverForm.homeserver().value.set('example.com');
+    cmp.discover();
+    cmp.credentialsForm.username().value.set('x');
+    cmp.credentialsForm.password().value.set('hunter2');
+
+    cmp.loginPassword();
+
+    expect(loginWithPassword).toHaveBeenCalledWith(
+      'https://chat.provider.net',
+      'x',
+      'hunter2',
+      'replace',
+      undefined,
+      undefined,
+      'example.com',
+    );
   });
 
   it('logs in in add mode when /login?add is set', async () => {
@@ -441,6 +469,7 @@ describe('LoginPage', () => {
       'bob',
       'hunter2',
       'add',
+      undefined,
       undefined,
       undefined,
     );
@@ -482,6 +511,7 @@ describe('LoginPage', () => {
       'add',
       'OLDDEV',
       '@bob:hs', // the callback must return as this account
+      undefined,
     );
   });
 
@@ -518,6 +548,7 @@ describe('LoginPage', () => {
       'add',
       undefined,
       '@bob:hs',
+      undefined,
     );
   });
 
@@ -733,6 +764,23 @@ describe('LoginPage', () => {
     expect(cmp.credentialsError()).not.toBe(
       "We couldn't sign you in. Try again.",
     );
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
+  });
+
+  it('explains a sign-in refused for the account the server returned', async () => {
+    const error = new UnacceptableAccountError(
+      'other-server',
+      '@bob:other.example',
+    );
+    const { cmp, router } = await renderLogin({
+      loginWithPassword: vi.fn(() => throwError(() => error)),
+    } as unknown as Partial<AuthService>);
+    cmp.baseUrl.set('https://hs.example');
+
+    cmp.loginPassword();
+
+    expect(cmp.credentialsError()).toBe(error.message);
+    expect(cmp.credentialsError()).toContain('@bob:other.example');
     expect(router.navigateByUrl).not.toHaveBeenCalled();
   });
 

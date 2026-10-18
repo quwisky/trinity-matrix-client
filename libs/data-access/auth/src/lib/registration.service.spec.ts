@@ -418,6 +418,25 @@ describe('RegistrationService', () => {
     expect(registerRequest).toHaveBeenCalledOnce();
   });
 
+  it('rejects a registration response whose device id is not usable', async () => {
+    const registerRequest = vi.fn().mockResolvedValue({
+      ...registered,
+      device_id: 'hs:DEVICE',
+    });
+    createClientMock.mockReturnValue(client({ registerRequest }) as never);
+
+    await lastValueFrom(service.begin('https://hs', 'new', 'password', 'hs'), {
+      defaultValue: undefined,
+    });
+
+    expect(service.stage()).toEqual({
+      kind: 'session-error',
+      userId: '@new:hs',
+      retryable: false,
+    });
+    expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
+  });
+
   it('refuses to overwrite an account already stored under the returned MXID', async () => {
     const registerRequest = vi.fn().mockResolvedValue(registered);
     createClientMock.mockReturnValue(client({ registerRequest }) as never);

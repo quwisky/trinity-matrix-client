@@ -12,6 +12,8 @@ export interface AuthenticationHomeserver {
  */
 export interface AuthenticationHomeserverDiscovery {
   discover(input: string): Observable<AuthenticationHomeserver>;
+  /** Like {@link discover}, but declares no origins to the desktop network policy. */
+  lookUp(input: string): Observable<AuthenticationHomeserver>;
 }
 
 export const AUTHENTICATION_HOMESERVER_DISCOVERY =

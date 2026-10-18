@@ -25,7 +25,11 @@ import {
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import { AUTH_METADATA } from './auth-metadata.fixture';
 import { AuthService, deletionLink } from './auth.service';
-import { ReauthAccountMismatchError } from './account-establishment';
+import {
+  ReauthAccountMismatchError,
+  UnacceptableAccountError,
+} from './account-establishment';
+import { AUTHENTICATION_HOMESERVER_DISCOVERY } from './homeserver-discovery.port';
 import {
   NEW_DEVICE_SIGN_IN,
   NewDeviceSignInCancelledError,
@@ -65,6 +69,13 @@ describe('AuthService', () => {
         MockProvider(MatrixClientService),
         MockProvider(SessionStorageService),
         MockProvider(OidcClientService),
+        {
+          provide: AUTHENTICATION_HOMESERVER_DISCOVERY,
+          useValue: {
+            discover: vi.fn(() => throwError(() => new Error('no well-known'))),
+            lookUp: vi.fn(() => throwError(() => new Error('no well-known'))),
+          },
+        },
         // The app composes the real warning; here every sign-in goes ahead unless a test says no.
         {
           provide: NEW_DEVICE_SIGN_IN,
@@ -93,6 +104,13 @@ describe('AuthService', () => {
         MockProvider(MatrixClientService),
         MockProvider(SessionStorageService),
         MockProvider(OidcClientService),
+        {
+          provide: AUTHENTICATION_HOMESERVER_DISCOVERY,
+          useValue: {
+            discover: vi.fn(() => throwError(() => new Error('no well-known'))),
+            lookUp: vi.fn(() => throwError(() => new Error('no well-known'))),
+          },
+        },
       ],
     });
 
@@ -543,6 +561,266 @@ describe('AuthService', () => {
       );
 
       expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('binding the account to its server', () => {
+    const logout = vi.fn().mockResolvedValue({});
+    const answer = (user_id: string) =>
+      createClientMock.mockReturnValue({
+        loginRequest: vi.fn().mockResolvedValue({
+          user_id,
+          device_id: 'DEV',
+          access_token: 'tok',
+        }),
+        logout,
+      } as never);
+    const discovery = () => TestBed.inject(AUTHENTICATION_HOMESERVER_DISCOVERY);
+
+    it.each([
+      ['https://localhost:8450', '@x:localhost'],
+      ['https://matrix-client.matrix.org', '@alice:matrix.org'],
+      ['https://Matrix.Example.org./', '@alice:example.org:8448'],
+      ['https://[::1]:8008', '@a:[::1]'],
+    ])('accepts %s signing in %s without a lookup', async (baseUrl, userId) => {
+      answer(userId);
+
+      const outcome = await firstValueFrom(
+        auth.loginWithPassword(baseUrl, userId, 'pw'),
+      );
+
+      expect(outcome.kind).toBe('ready');
+      expect(discovery().lookUp).not.toHaveBeenCalled();
+    });
+
+    it('accepts a delegated server whose well-known names the homeserver signed in to', async () => {
+      answer('@alice:example.com');
+      vi.mocked(discovery().lookUp).mockReturnValue(
+        of({ domain: 'example.com', baseUrl: 'https://synapse.host.net/' }),
+      );
+
+      const outcome = await firstValueFrom(
+        auth.loginWithPassword('https://synapse.host.net', '@alice', 'pw'),
+      );
+
+      expect(outcome.kind).toBe('ready');
+      expect(discovery().lookUp).toHaveBeenCalledWith('@alice:example.com');
+      // The check only reads: it declares no origins to the desktop network policy.
+      expect(discovery().discover).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['another server', '@alice:matrix.org', 'https://hs.example'],
+      ['a parent of an IP address', '@a:2.3.4', 'https://1.2.3.4'],
+      ['a lookalike suffix', '@a:example.org', 'https://evilexample.org'],
+    ])(
+      'refuses an account on %s, signs the new device out and stores nothing',
+      async (_case, userId, baseUrl) => {
+        answer(userId);
+        const accounts = TestBed.inject(AccountRuntimeService);
+
+        const attempt = firstValueFrom(
+          auth.loginWithPassword(baseUrl, userId, 'pw'),
+        );
+
+        await expect(attempt).rejects.toBeInstanceOf(UnacceptableAccountError);
+        await expect(attempt).rejects.toThrow(userId);
+        expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
+        expect(logout).toHaveBeenCalledWith(true);
+      },
+    );
+
+    it('says it could not confirm the server when the lookup finds nothing', async () => {
+      answer('@x:example.com');
+
+      const attempt = firstValueFrom(
+        auth.loginWithPassword('https://chat.provider.net', 'x', 'pw'),
+      );
+
+      await expect(attempt).rejects.toMatchObject({ reason: 'unconfirmed' });
+      await expect(attempt).rejects.toThrow(
+        /couldn't confirm that @x:example\.com belongs to this server/,
+      );
+      await expect(attempt).rejects.not.toThrow(/different server/);
+    });
+
+    it('accepts the server the person entered without a lookup', async () => {
+      answer('@x:example.com');
+
+      const outcome = await firstValueFrom(
+        auth.loginWithPassword(
+          'https://chat.provider.net',
+          'x',
+          'pw',
+          'replace',
+          undefined,
+          undefined,
+          'Example.com',
+        ),
+      );
+
+      expect(outcome.kind).toBe('ready');
+      expect(discovery().lookUp).not.toHaveBeenCalled();
+    });
+
+    it('still looks up a server other than the one the person entered', async () => {
+      answer('@x:matrix.org');
+
+      await expect(
+        firstValueFrom(
+          auth.loginWithPassword(
+            'https://chat.provider.net',
+            'x',
+            'pw',
+            'replace',
+            undefined,
+            undefined,
+            'example.com',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(UnacceptableAccountError);
+      expect(discovery().lookUp).toHaveBeenCalledWith('@x:matrix.org');
+    });
+
+    describe('re-authenticating a stored account', () => {
+      const stored = (baseUrl: string) =>
+        vi
+          .mocked(TestBed.inject(SessionStorageService).record)
+          .mockReturnValue(
+            of({ userId: '@x:example.com', baseUrl, deviceId: 'DEV' }),
+          );
+      const reauth = (expectedUserId?: string) =>
+        firstValueFrom(
+          auth.loginWithPassword(
+            'https://chat.provider.net',
+            '@x:example.com',
+            'pw',
+            'add',
+            'DEV',
+            expectedUserId,
+          ),
+        );
+
+      it('skips the lookup for the account saved through this homeserver', async () => {
+        answer('@x:example.com');
+        stored('https://chat.provider.net/');
+
+        expect((await reauth('@x:example.com')).kind).toBe('ready');
+        expect(discovery().lookUp).not.toHaveBeenCalled();
+      });
+
+      it('looks the server up when the account was saved through another homeserver', async () => {
+        answer('@x:example.com');
+        stored('https://old.provider.net');
+
+        await expect(reauth('@x:example.com')).rejects.toBeInstanceOf(
+          UnacceptableAccountError,
+        );
+        expect(discovery().lookUp).toHaveBeenCalled();
+      });
+
+      it('looks the server up for a sign-in that is not a re-auth', async () => {
+        answer('@x:example.com');
+        stored('https://chat.provider.net');
+
+        await expect(reauth()).rejects.toBeInstanceOf(UnacceptableAccountError);
+        expect(discovery().lookUp).toHaveBeenCalled();
+      });
+    });
+
+    it('refuses a server whose well-known names a different homeserver', async () => {
+      answer('@alice:matrix.org');
+      vi.mocked(discovery().lookUp).mockReturnValue(
+        of({
+          domain: 'matrix.org',
+          baseUrl: 'https://matrix-client.matrix.org',
+        }),
+      );
+
+      await expect(
+        firstValueFrom(
+          auth.loginWithPassword('https://hs.example', '@alice', 'pw'),
+        ),
+      ).rejects.toMatchObject({ reason: 'other-server' });
+      expect(
+        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('refuses a malformed sign-in response and signs the new device out', async () => {
+      createClientMock.mockReturnValue({
+        loginRequest: vi.fn().mockResolvedValue({
+          user_id: '@alice',
+          device_id: 'example.org:ABCDEFGHIJ',
+          access_token: 'tok',
+        }),
+        logout,
+      } as never);
+
+      await expect(
+        firstValueFrom(
+          auth.loginWithPassword('https://example.org', 'alice', 'pw'),
+        ),
+      ).rejects.toBeInstanceOf(UnacceptableAccountError);
+      expect(
+        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
+      ).not.toHaveBeenCalled();
+      expect(logout).toHaveBeenCalledWith(true);
+    });
+
+    it('keeps a re-authenticated device signed in when its account is refused', async () => {
+      answer('@alice:matrix.org');
+
+      await expect(
+        firstValueFrom(
+          auth.loginWithPassword(
+            'https://hs.example',
+            '@alice:matrix.org',
+            'pw',
+            'add',
+            'DEV',
+            '@alice:matrix.org',
+          ),
+        ),
+      ).rejects.toBeInstanceOf(UnacceptableAccountError);
+      expect(logout).not.toHaveBeenCalled();
+    });
+
+    it('refuses an OAuth grant for an account on another server and revokes it', async () => {
+      const oidc = TestBed.inject(OidcClientService);
+      vi.mocked(oidc.completeGrant).mockReturnValue(
+        of({
+          homeserverUrl: 'https://hs.example',
+          userId: '@alice:matrix.org',
+          deviceId: 'DEV',
+          accessToken: 'atok',
+          refreshToken: 'rtok',
+          accessTokenExpiresAt: 1234,
+          oidc: {
+            issuer: 'https://op',
+            clientId: 'c1',
+            redirectUri: 'https://app/cb',
+          },
+        }),
+      );
+      vi.mocked(oidc.revokeTokens).mockReturnValue(of(undefined));
+
+      await expect(
+        firstValueFrom(
+          auth.completeOidcLogin('code', {
+            baseUrl: 'https://hs.example',
+            redirectUri: 'https://app/cb',
+            clientId: 'c1',
+            deviceId: 'DEV',
+            codeVerifier: 'verifier',
+            issuer: 'https://op',
+          }),
+        ),
+      ).rejects.toBeInstanceOf(UnacceptableAccountError);
+      expect(
+        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
+      ).not.toHaveBeenCalled();
+      expect(oidc.revokeTokens).toHaveBeenCalled();
     });
   });
 
@@ -1082,7 +1360,7 @@ describe('AuthService', () => {
       });
 
       await firstValueFrom(
-        auth.loginWithPassword('https://other.example', '@me:hs', 'pw'),
+        auth.loginWithPassword('https://matrix.hs', '@me:hs', 'pw'),
       );
 
       // Saving refuses this sign-in and keeps the stored device, so there is nothing to

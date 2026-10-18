@@ -1,6 +1,9 @@
 export * from './lib/auth.service';
 export * from './lib/registration.service';
-export { ReauthAccountMismatchError } from './lib/account-establishment';
+export {
+  ReauthAccountMismatchError,
+  UnacceptableAccountError,
+} from './lib/account-establishment';
 export type { LoginMode } from './lib/account-establishment';
 export { OidcClientService } from './lib/oidc-client.service';
 export type {

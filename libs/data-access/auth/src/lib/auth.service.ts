@@ -44,9 +44,11 @@ import {
 import {
   ReauthAccountMismatchError,
   accountEstablishment,
+  verifyAccountServer,
   type AuthenticatedSessionResponse,
   type LoginMode,
 } from './account-establishment';
+import { AUTHENTICATION_HOMESERVER_DISCOVERY } from './homeserver-discovery.port';
 import {
   NEW_DEVICE_SIGN_IN,
   NewDeviceSignInCancelledError,
@@ -133,6 +135,7 @@ export class AuthService {
   private readonly accounts = inject(AccountRuntimeService);
   private readonly newDeviceSignIn = inject(NEW_DEVICE_SIGN_IN);
   private readonly handoff = inject(HostAuthenticationHandoffService);
+  private readonly discovery = inject(AUTHENTICATION_HOMESERVER_DISCOVERY);
 
   /** Which login flows the homeserver supports (e.g. 'm.login.password', 'm.login.sso'). */
   getSupportedFlows(baseUrl: string): Observable<string[]> {
@@ -160,7 +163,8 @@ export class AuthService {
    * keeps the other signed-in accounts. `deviceId` re-authenticates that EXISTING device
    * (soft-logged-out account) so its crypto store is reused and no re-verification is
    * needed. Re-auth also passes `expectedUserId`: a login that returns anyone else is
-   * refused before anything is persisted.
+   * refused before anything is persisted. `serverName` is the server the person entered,
+   * which the returned account may belong to without a well-known lookup.
    */
   loginWithPassword(
     baseUrl: string,
@@ -169,6 +173,7 @@ export class AuthService {
     mode: LoginMode = 'replace',
     deviceId?: string,
     expectedUserId?: string,
+    serverName?: string,
   ): Observable<AccountEstablishmentOutcome> {
     return defer(() =>
       from(
@@ -182,7 +187,14 @@ export class AuthService {
       ),
     ).pipe(
       switchMap((res) =>
-        this.establish(baseUrl, res, mode, expectedUserId, deviceId),
+        this.establish(
+          baseUrl,
+          res,
+          mode,
+          expectedUserId,
+          deviceId,
+          serverName,
+        ),
       ),
     );
   }
@@ -428,6 +440,7 @@ export class AuthService {
     mode: LoginMode,
     expectedUserId?: string | null,
     requestedDeviceId?: string,
+    enteredServerName?: string,
   ): Observable<AccountEstablishmentOutcome> {
     // Every login method converges here, so this one check covers password, legacy SSO
     // and OIDC re-auth alike.
@@ -439,23 +452,52 @@ export class AuthService {
         () => new ReauthAccountMismatchError(response.user_id, expectedUserId),
       );
     }
-    const command = accountEstablishment(baseUrl, response, mode, 'upsert');
     // Without a requested device id, a password or legacy SSO login always gets a new
     // device from the server. OAuth names its device id itself, the stored one on
     // re-auth, so only the stored record can tell (see `confirmNewDevice`).
     const device: NewDeviceCheck = {
       isNew: !requestedDeviceId && !response.oidc,
     };
-    return this.confirmNewDevice(
-      baseUrl,
-      response,
-      requestedDeviceId,
-      device,
-    ).pipe(
-      switchMap(() =>
-        this.accounts.establishAuthenticatedAccount(
-          command.grant,
-          command.intent,
+    return defer(() => {
+      const command = accountEstablishment(baseUrl, response, mode, 'upsert');
+      return this.reauthOfStoredAccount(
+        baseUrl,
+        response.user_id,
+        expectedUserId,
+      ).pipe(
+        switchMap((stored) =>
+          stored
+            ? of(undefined)
+            : verifyAccountServer(
+                baseUrl,
+                response.user_id,
+                this.discovery,
+                enteredServerName,
+              ),
+        ),
+        map(() => command),
+      );
+    }).pipe(
+      catchError((error: unknown) => {
+        // Only a sign-in that is not a re-auth is known to hold a new device.
+        if (!requestedDeviceId && !expectedUserId) {
+          this.signOutNewDevice(baseUrl, response);
+        }
+        return throwError(() => error);
+      }),
+      switchMap((command) =>
+        this.confirmNewDevice(
+          baseUrl,
+          response,
+          requestedDeviceId,
+          device,
+        ).pipe(
+          switchMap(() =>
+            this.accounts.establishAuthenticatedAccount(
+              command.grant,
+              command.intent,
+            ),
+          ),
         ),
       ),
       tap((outcome) => {
@@ -470,6 +512,24 @@ export class AuthService {
           this.signOutNewDevice(baseUrl, response);
         }
       }),
+    );
+  }
+
+  /**
+   * Whether this re-auth is for an account saved through this same homeserver. That
+   * record's server was accepted when it was saved, and saving refuses another server.
+   */
+  private reauthOfStoredAccount(
+    baseUrl: string,
+    userId: string,
+    expectedUserId: string | null | undefined,
+  ): Observable<boolean> {
+    if (!expectedUserId) {
+      return of(false);
+    }
+    return this.storage.record(userId).pipe(
+      map((record) => !!record && sameHomeserver(record.baseUrl, baseUrl)),
+      catchError(() => of(false)),
     );
   }
 

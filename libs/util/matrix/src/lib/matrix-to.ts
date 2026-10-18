@@ -73,8 +73,14 @@ function defaultVia(roomIdOrAlias: string): string[] {
 }
 
 /** RFC-style Matrix server name: DNS name / IP literal, with an optional valid port. */
-function isValidViaServer(value: string): boolean {
+export function isValidServerName(value: string): boolean {
   if (!value || value.length > 255 || value.trim() !== value) {
+    return false;
+  }
+  // The spec's port is 1*5DIGIT. Stricter on purpose: 1 to 65535 without leading zeros,
+  // so each port has one spelling. The URL parser would accept an empty port and zeros.
+  const port = /:([^:\]]*)$/.exec(value)?.[1];
+  if (port !== undefined && !(/^[1-9]\d{0,4}$/.test(port) && +port <= 65535)) {
     return false;
   }
   try {
@@ -112,7 +118,7 @@ export function normalizeViaServers(
 ): readonly string[] {
   const via: string[] = [];
   for (const server of values) {
-    if (isValidViaServer(server) && !via.includes(server)) {
+    if (isValidServerName(server) && !via.includes(server)) {
       via.push(server);
       if (via.length === MAX_VIA_SERVERS) break;
     }
@@ -186,7 +192,7 @@ function parseMatrixUri(href: string): MatrixLinkTarget | null {
   // one, then parse the resource path which follows it.
   if (path.startsWith('//')) {
     const slash = path.indexOf('/', 2);
-    if (slash === -1 || !isValidViaServer(path.slice(2, slash))) return null;
+    if (slash === -1 || !isValidServerName(path.slice(2, slash))) return null;
     path = path.slice(slash + 1);
   }
 

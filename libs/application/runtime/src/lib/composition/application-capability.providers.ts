@@ -118,7 +118,10 @@ export function applicationCapabilityProviders(
       provide: AUTHENTICATION_HOMESERVER_DISCOVERY,
       useFactory: (): AuthenticationHomeserverDiscovery => {
         const discovery = inject(HomeserverDiscoveryService);
-        return { discover: (input) => discovery.discover(input) };
+        return {
+          discover: (input) => discovery.discover(input),
+          lookUp: (input) => discovery.discover(input, { allowOrigins: false }),
+        };
       },
     },
     {

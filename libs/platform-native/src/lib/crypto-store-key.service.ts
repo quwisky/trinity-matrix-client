@@ -38,13 +38,42 @@ const IV_BYTES = 12;
 export class CryptoStoreKeyService {
   private readonly secure = inject(SecureStorageService);
 
-  /** Create and persist a fresh key for the store `cryptoPrefix`, replacing any earlier one. */
+  /**
+   * Create and persist a fresh key for the store `cryptoPrefix`. Refuses a store that has
+   * a key, or may have one: replacing it would lock its account out of its own store.
+   */
   async create(cryptoPrefix: string): Promise<Uint8Array> {
+    if (
+      (await this.secure.read(STORE_KEY_PREFIX + cryptoPrefix)).kind !==
+      'absent'
+    ) {
+      throw new Error(`The crypto store ${cryptoPrefix} already has a key.`);
+    }
     const key = crypto.getRandomValues(new Uint8Array(STORE_KEY_BYTES));
-    const stored = (await this.secure.isSecure())
-      ? toBase64(key)
-      : await wrap(cryptoPrefix, key);
-    await this.secure.set(STORE_KEY_PREFIX + cryptoPrefix, stored);
+    let savedWrappingKey = false;
+    try {
+      let stored: string;
+      if (await this.secure.isSecure()) {
+        stored = toBase64(key);
+      } else {
+        const wrappingKey = await crypto.subtle.generateKey(
+          { name: 'AES-GCM', length: 256 },
+          false,
+          ['encrypt', 'decrypt'],
+        );
+        await saveWrappingKey(cryptoPrefix, wrappingKey);
+        savedWrappingKey = true;
+        stored = await seal(wrappingKey, key);
+      }
+      await this.secure.set(STORE_KEY_PREFIX + cryptoPrefix, stored);
+    } catch (error) {
+      // A wrapping key left behind would make every retry of this store refuse. Only
+      // this call's own: a refused save means the one there belongs to someone else.
+      if (savedWrappingKey) {
+        await deleteWrappingKey(cryptoPrefix).catch(() => undefined);
+      }
+      throw error;
+    }
     return key;
   }
 
@@ -92,13 +121,10 @@ export class CryptoStoreKeyService {
   }
 }
 
-async function wrap(id: string, key: Uint8Array<ArrayBuffer>): Promise<string> {
-  const wrappingKey = await crypto.subtle.generateKey(
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt'],
-  );
-  await saveWrappingKey(id, wrappingKey);
+async function seal(
+  wrappingKey: CryptoKey,
+  key: Uint8Array<ArrayBuffer>,
+): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
   const sealed = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
