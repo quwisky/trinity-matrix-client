@@ -42,8 +42,23 @@ export class TrustDevicesService {
   private readonly _devices = signal<DeviceInfo[]>([]);
   readonly devices = this._devices.asReadonly();
 
+  private readonly _canShareSecrets = signal(false);
+  /**
+   * This device caches all three private cross-signing keys, so it can hand them to a
+   * device it links. Read with the device list and again whenever trust changes.
+   */
+  readonly canShareSecrets = this._canShareSecrets.asReadonly();
+
   /** Increments per load (and per mutation) so a stale reload can't clobber. */
   private loadGen = 0;
+  /** Increments per key-cache read, so a slow read cannot overwrite a newer one. */
+  private shareGen = 0;
+
+  private readonly onTrustChanged = (): void => {
+    if (this.cryptoPort.isAvailable()) {
+      void this.readCanShareSecrets(this.cryptoPort.active().client);
+    }
+  };
 
   /** Refresh only when OUR session list could have changed — the event also fires
    * for other users we share encrypted rooms with (and on the initial fetch). */
@@ -70,14 +85,22 @@ export class TrustDevicesService {
    */
   private readonly projection = this.cryptoPort.project({
     id: 'crypto.devices',
-    bind: (client) =>
-      client.on(CryptoEvent.DevicesUpdated, this.onDevicesUpdated),
-    unbind: (client) =>
-      client.off(CryptoEvent.DevicesUpdated, this.onDevicesUpdated),
+    bind: (client) => {
+      client.on(CryptoEvent.KeysChanged, this.onTrustChanged);
+      client.on(CryptoEvent.UserTrustStatusChanged, this.onTrustChanged);
+      client.on(CryptoEvent.DevicesUpdated, this.onDevicesUpdated);
+    },
+    unbind: (client) => {
+      client.off(CryptoEvent.KeysChanged, this.onTrustChanged);
+      client.off(CryptoEvent.UserTrustStatusChanged, this.onTrustChanged);
+      client.off(CryptoEvent.DevicesUpdated, this.onDevicesUpdated);
+    },
     rebuild: (client) => void this.loadDevices(client).catch(() => undefined),
     reset: () => {
       this.loadGen++;
+      this.shareGen++;
       this._devices.set([]);
+      this._canShareSecrets.set(false);
     },
   });
 
@@ -105,6 +128,7 @@ export class TrustDevicesService {
     const userId = client.getUserId() ?? '';
     const currentId = client.getDeviceId();
     const crypto = client.getCrypto();
+    void this.readCanShareSecrets(client);
     const { devices } = await client.getDevices();
 
     const result = await Promise.all(
@@ -138,6 +162,23 @@ export class TrustDevicesService {
       this._devices.set(result);
     }
     return result;
+  }
+
+  private async readCanShareSecrets(client: TrustMatrixClient): Promise<void> {
+    const gen = ++this.shareGen;
+    let canShare = false;
+    try {
+      const status = await client.getCrypto()?.getCrossSigningStatus();
+      const cached = status?.privateKeysCachedLocally;
+      canShare = Boolean(
+        cached?.masterKey && cached.selfSigningKey && cached.userSigningKey,
+      );
+    } catch {
+      // An unreadable key cache offers nothing to share.
+    }
+    if (gen === this.shareGen) {
+      this._canShareSecrets.set(canShare);
+    }
   }
 
   /** Rename a device's public display name. */

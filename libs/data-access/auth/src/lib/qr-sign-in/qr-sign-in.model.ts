@@ -7,6 +7,19 @@ export type QrSignInFailure =
   | 'network'
   | 'unknown';
 
+/** The plain sentence each failure shows, on the new device and the existing one alike. */
+export const QR_SIGN_IN_FAILURE_MESSAGES: Readonly<
+  Record<QrSignInFailure, string>
+> = {
+  expired: 'The code expired.',
+  declined: 'Sign-in was cancelled on the other device.',
+  insecure: "The codes didn't match, so nothing was shared.",
+  unsupported: "Your server doesn't support QR sign-in.",
+  'already-signed-in': 'That device is already signed in.',
+  network: 'Lost connection. Check your network and try again.',
+  unknown: 'Something went wrong. Try again or sign in another way.',
+};
+
 export type NewDeviceState =
   | { kind: 'creating' }
   | { kind: 'showing-code'; qr: Uint8Array; expiresAt: number }

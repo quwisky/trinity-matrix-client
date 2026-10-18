@@ -1,10 +1,17 @@
 import { signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import {
   WorkspaceApplicationSurfaceService,
   type WorkspaceApplicationSurfaceRequest,
 } from '@trinity/application/workspace';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { render } from '@trinity/testing';
+import { QrSignInService } from '@trinity/data-access/auth';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  ExternalBrowserService,
+  QrCodeService,
+} from '@trinity/platform-native';
+import { fireEvent, render, screen, waitFor } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
@@ -13,6 +20,7 @@ import {
   type DeviceInfo,
 } from '@trinity/data-access/trust';
 import { DevicesSectionComponent } from './devices-section.component';
+import { LinkDeviceComponent } from './link-device/link-device.component';
 
 const CURRENT: DeviceInfo = {
   id: 'A',
@@ -37,6 +45,7 @@ describe('DevicesSectionComponent', () => {
   const connect = vi.fn();
   const disconnect = vi.fn();
   let devices: ReturnType<typeof signal<DeviceInfo[]>>;
+  let canShareSecrets: ReturnType<typeof signal<boolean>>;
   let alertConfirm: Mock;
   let alertPrompt: Mock;
   let open: Mock;
@@ -47,6 +56,7 @@ describe('DevicesSectionComponent', () => {
     connect.mockClear();
     disconnect.mockClear();
     devices = signal<DeviceInfo[]>([CURRENT, OTHER]);
+    canShareSecrets = signal(true);
     alertConfirm = vi.fn(() => of(true));
     alertPrompt = vi.fn(() => of('Tablet'));
     open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
@@ -59,6 +69,7 @@ describe('DevicesSectionComponent', () => {
       providers: [
         MockProvider(TrustDevicesService, {
           devices,
+          canShareSecrets,
           list: () => of(devices()),
           rename,
           delete: del,
@@ -70,6 +81,12 @@ describe('DevicesSectionComponent', () => {
           prompt$: alertPrompt,
         }),
         MockProvider(WorkspaceApplicationSurfaceService, { open }),
+        MockProvider(QrSignInService),
+        MockProvider(MatrixClientService),
+        MockProvider(ExternalBrowserService),
+        MockProvider(QrCodeService, {
+          openCamera: vi.fn().mockRejectedValue(new Error('no camera')),
+        }),
       ],
     });
   }
@@ -179,5 +196,40 @@ describe('DevicesSectionComponent', () => {
     const { container } = await renderSection();
 
     expect(container.querySelector('[data-testid=verify-devices]')).toBeNull();
+  });
+  it('offers to link a new device only when this device can share its keys', async () => {
+    canShareSecrets.set(false);
+    const { fixture } = await renderSection();
+    expect(
+      screen.queryByRole('button', { name: 'Link a new device' }),
+    ).toBeNull();
+
+    canShareSecrets.set(true);
+    fixture.detectChanges();
+
+    expect(
+      screen.getByRole('button', { name: 'Link a new device' }),
+    ).toBeTruthy();
+  });
+
+  it('opens the link flow, then returns focus to its button on close', async () => {
+    const { fixture } = await renderSection();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Link a new device' }));
+    fixture.detectChanges();
+    const link = fixture.debugElement.query(By.directive(LinkDeviceComponent));
+    expect(link).not.toBeNull();
+
+    (link.componentInstance as LinkDeviceComponent).closed.emit();
+    fixture.detectChanges();
+
+    expect(
+      fixture.debugElement.query(By.directive(LinkDeviceComponent)),
+    ).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement?.textContent?.trim()).toBe(
+        'Link a new device',
+      ),
+    );
   });
 });

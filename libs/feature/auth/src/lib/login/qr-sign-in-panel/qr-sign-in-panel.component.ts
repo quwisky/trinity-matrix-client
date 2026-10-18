@@ -18,6 +18,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { Subscription } from 'rxjs';
 import {
+  QR_SIGN_IN_FAILURE_MESSAGES,
   QrSignInService,
   type NewDeviceState,
   type QrSignInFailure,
@@ -25,16 +26,6 @@ import {
 import { QrCodeService } from '@trinity/platform-native';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
-
-const FAILURE_MESSAGES: Record<QrSignInFailure, string> = {
-  expired: 'The code expired.',
-  declined: 'Sign-in was cancelled on the other device.',
-  insecure: "The codes didn't match, so nothing was shared.",
-  unsupported: "Your server doesn't support QR sign-in.",
-  'already-signed-in': 'That device is already signed in.',
-  network: 'Lost connection. Check your network and try again.',
-  unknown: 'Something went wrong. Try again or sign in another way.',
-};
 
 /** Failures a new code cannot fix; "Sign in another way" is their next action. */
 const FINAL_FAILURES: ReadonlySet<QrSignInFailure> = new Set([
@@ -82,7 +73,7 @@ export class QrSignInPanelComponent implements OnInit {
   );
   /** What the live region says; written after each render, never on insertion. */
   readonly announcement = signal('');
-  readonly failureMessages = FAILURE_MESSAGES;
+  readonly failureMessages = QR_SIGN_IN_FAILURE_MESSAGES;
   readonly finalFailures = FINAL_FAILURES;
 
   constructor() {

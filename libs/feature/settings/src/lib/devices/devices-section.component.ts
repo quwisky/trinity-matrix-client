@@ -2,10 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
+  Injector,
+  afterNextRender,
   computed,
   inject,
   input,
   signal,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
@@ -24,6 +28,7 @@ import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
+import { LinkDeviceComponent } from './link-device/link-device.component';
 
 /**
  * Device-management section of the Settings page: lists the user's sessions with
@@ -42,6 +47,7 @@ import {
     TrnBadge,
     TrnButton,
     TrnTooltip,
+    LinkDeviceComponent,
   ],
 })
 export class DevicesSectionComponent {
@@ -51,12 +57,18 @@ export class DevicesSectionComponent {
     WorkspaceApplicationSurfaceService,
   );
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
+  private readonly linkButton =
+    viewChild<ElementRef<HTMLButtonElement>>('linkButton');
   private destroyed = false;
 
   /** True when this section is mounted inside the web/Electron settings modal. */
   readonly inSettingsDialog = input(false);
 
   readonly devices = this.devicesSvc.devices;
+  /** Only a device holding all three cross-signing keys can link another one. */
+  readonly canLinkDevice = this.devicesSvc.canShareSecrets;
+  readonly linking = signal(false);
   readonly loading = signal(false);
   readonly busy = signal(false); // a rename/remove in flight
   readonly error = signal<string | null>(null);
@@ -78,6 +90,14 @@ export class DevicesSectionComponent {
     // signs a device out), and detach on destroy.
     this.devicesSvc.connect();
     this.destroyRef.onDestroy(() => this.devicesSvc.disconnect());
+  }
+
+  /** Close the link flow and return focus to the button that opened it. */
+  closeLink(): void {
+    this.linking.set(false);
+    afterNextRender(() => this.linkButton()?.nativeElement.focus(), {
+      injector: this.injector,
+    });
   }
 
   /** Prompt for a new display name, then rename. */

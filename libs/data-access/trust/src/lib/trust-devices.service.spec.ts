@@ -313,4 +313,60 @@ describe('TrustDevicesService', () => {
     expect(client.off).toHaveBeenCalled(); // detached from A
     expect(clientB.on).toHaveBeenCalled(); // attached to B
   });
+  describe('canShareSecrets', () => {
+    function withCachedKeys(cached: Record<string, boolean>) {
+      return {
+        getCrypto: vi.fn(() => ({
+          getDeviceVerificationStatus: vi.fn(async () => ({
+            isVerified: () => true,
+          })),
+          getCrossSigningStatus: vi.fn(async () => ({
+            publicKeysOnDevice: true,
+            privateKeysInSecretStorage: false,
+            privateKeysCachedLocally: cached,
+          })),
+        })),
+      };
+    }
+    const ALL = { masterKey: true, selfSigningKey: true, userSigningKey: true };
+
+    it('is true once all three private cross-signing keys are cached here', async () => {
+      const { svc } = setup(withCachedKeys(ALL));
+      expect(svc.canShareSecrets()).toBe(false);
+
+      await firstValueFrom(svc.list());
+
+      await vi.waitFor(() => expect(svc.canShareSecrets()).toBe(true));
+    });
+
+    it('stays false while any one of the three is missing', async () => {
+      const { svc } = setup(withCachedKeys({ ...ALL, userSigningKey: false }));
+
+      await firstValueFrom(svc.list());
+      await new Promise((resolve) => setTimeout(resolve));
+
+      expect(svc.canShareSecrets()).toBe(false);
+    });
+
+    it('refreshes when this account’s trust changes', async () => {
+      const cached = { ...ALL, masterKey: false };
+      const { svc, client } = setup(withCachedKeys(cached));
+      await firstValueFrom(svc.list());
+      svc.connect();
+
+      cached.masterKey = true;
+      for (const event of [
+        CryptoEvent.KeysChanged,
+        CryptoEvent.UserTrustStatusChanged,
+      ]) {
+        expect(client.on).toHaveBeenCalledWith(event, expect.any(Function));
+      }
+      const onKeysChanged = client.on.mock.calls.find(
+        ([event]) => event === CryptoEvent.KeysChanged,
+      )?.[1] as () => void;
+      onKeysChanged();
+
+      await vi.waitFor(() => expect(svc.canShareSecrets()).toBe(true));
+    });
+  });
 });

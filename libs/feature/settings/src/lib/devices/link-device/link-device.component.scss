@@ -1,0 +1,29 @@
+@layer components {
+  :host {
+    display: block;
+    padding-block: var(--trinity-space-3);
+  }
+
+  .link-device__heading {
+    margin: 0 0 var(--trinity-space-2);
+    color: var(--trinity-text-bright);
+    font-size: var(--trinity-type-title-size);
+    font-weight: var(--trinity-type-title-weight);
+    line-height: var(--trinity-type-title-line-height);
+  }
+
+  .link-device__check-code {
+    margin: var(--trinity-space-4) 0;
+    color: var(--trinity-text-bright);
+    font-size: calc(var(--trinity-type-title-size) * 2.5);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--trinity-type-title-weight);
+    line-height: 1;
+    letter-spacing: 0.1em;
+    text-align: center;
+  }
+
+  .link-device__uri {
+    overflow-wrap: anywhere;
+  }
+}

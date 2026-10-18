@@ -35,7 +35,10 @@ export type {
   NewDeviceState,
   QrSignInFailure,
 } from './lib/qr-sign-in/qr-sign-in.model';
-export { qrSignInFailureOf } from './lib/qr-sign-in/qr-sign-in.model';
+export {
+  QR_SIGN_IN_FAILURE_MESSAGES,
+  qrSignInFailureOf,
+} from './lib/qr-sign-in/qr-sign-in.model';
 export { QrSignInAvailability } from './lib/qr-sign-in/qr-sign-in-availability.service';
 export { QrSignInService } from './lib/qr-sign-in/qr-sign-in.service';
 export type { ExistingDeviceLink } from './lib/qr-sign-in/qr-sign-in.adapter';

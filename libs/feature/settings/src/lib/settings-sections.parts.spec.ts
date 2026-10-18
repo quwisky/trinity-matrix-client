@@ -116,6 +116,7 @@ const SETUPS: Record<string, () => Setup> = {
     providers: [
       MockProvider(TrustDevicesService, {
         devices: signal([]),
+        canShareSecrets: signal(false),
         list: () => of([]),
       }),
       MockProvider(TrnAlertService),
