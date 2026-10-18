@@ -1,3 +1,4 @@
+import type { Route } from '@playwright/test';
 import { expect, test, testResourceId } from '../../../fixtures.mts';
 import {
   login,
@@ -115,5 +116,128 @@ test.describe('Room encryption', () => {
     );
     expect(latest?.type).toBe('m.room.encrypted');
     expect(JSON.stringify(latest?.content)).not.toContain(body);
+  });
+
+  // A homeserver can leave m.room.encryption out of sync (Tuwunel's state_after race), so the
+  // SDK never configures the room. The app applies its own write at once, and after a reload
+  // restores the room's encryption from the server, so no message leaves in the clear.
+  test('messages stay encrypted when sync never delivers the encryption event', async ({
+    page,
+    request,
+  }) => {
+    test.slow();
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}ens`;
+    const user = `encrypt-${runId}`;
+    const pass = `${user}-pass`;
+    const userId = `@${user}:${HS_SERVER_NAME}`;
+    const roomName = `Encrypt unsynced ${runId}`;
+
+    await registerUser(request, user, pass);
+    const token = await tokenFor(request, hs, user, pass);
+    const headers = { Authorization: `Bearer ${token}` };
+    const roomId = await createRoom(
+      request,
+      hs,
+      { accessToken: token },
+      roomName,
+    );
+
+    let stripped = 0;
+    const sync = '**/_matrix/client/v3/sync*';
+    const withoutEncryption = async (route: Route): Promise<void> => {
+      try {
+        const response = await route.fetch({ timeout: 0 });
+        const json = await response.json();
+        const joined = json.rooms?.join?.[roomId];
+        for (const key of [
+          'org.matrix.msc4222.state_after',
+          'state',
+          'timeline',
+        ]) {
+          const events = joined?.[key]?.events as
+            { type?: string }[] | undefined;
+          if (!events) continue;
+          joined[key].events = events.filter(
+            ({ type }) => type !== 'm.room.encryption',
+          );
+          stripped += events.length - joined[key].events.length;
+        }
+        await route.fulfill({ response, json });
+      } catch {
+        // The page reloaded or closed while this sync was waiting; else the SDK retries.
+        await route.abort().catch(() => undefined);
+      }
+    };
+    // Before sign-in, so no sync the page starts escapes the filter.
+    await page.route(sync, withoutEncryption);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
+    await openRoom(page, roomName);
+
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
+    const settings = page.getByTestId('room-settings');
+    await expect(settings).toBeVisible({ timeout: 10_000 });
+    await settings.getByRole('button', { name: 'Turn on encryption…' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Turn on encryption?' });
+    const turnedOn = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        response.url().includes('/state/m.room.encryption'),
+    );
+    await confirm.getByTestId('alert-confirm').click();
+    expect((await turnedOn).ok()).toBe(true);
+    await expect(settings.getByTestId('room-settings-encryption')).toHaveText(
+      "Messages in this room are end-to-end encrypted. This can't be turned off.",
+    );
+    await expect(
+      settings.getByTestId('room-settings-encryption-late'),
+    ).toHaveCount(0);
+    await page.getByTestId('room-settings-cancel').click();
+    await expect(settings).toBeHidden();
+
+    const ownMessageTypes = async (): Promise<string[]> => {
+      const messages = await request
+        .get(
+          `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages?dir=b&limit=50`,
+          { headers },
+        )
+        .then((r) => r.json());
+      return (messages.chunk as { type: string; sender: string }[])
+        .filter(
+          ({ type, sender }) =>
+            sender === userId &&
+            (type === 'm.room.message' || type === 'm.room.encrypted'),
+        )
+        .map(({ type }) => type);
+    };
+    const send = async (body: string): Promise<void> => {
+      await page.getByTestId('composer-input').fill(body);
+      await page.getByTestId('composer-input').press('Enter');
+      await waitForSent(
+        page.locator('.scroll .msg[data-mid]', { hasText: body }).first(),
+      );
+    };
+
+    await send(`Secret ${runId} 1`);
+    expect(stripped).toBeGreaterThan(0);
+    expect(await ownMessageTypes()).toEqual(['m.room.encrypted']);
+
+    // The sync filter stays on: the reloaded client again sees no m.room.encryption.
+    await page.reload();
+    await openRoom(page, roomName);
+    await send(`Secret ${runId} 2`);
+    expect(await ownMessageTypes()).toEqual([
+      'm.room.encrypted',
+      'm.room.encrypted',
+    ]);
+
+    await page.unroute(sync, withoutEncryption);
+    await send(`Secret ${runId} 3`);
+    expect(await ownMessageTypes()).toEqual([
+      'm.room.encrypted',
+      'm.room.encrypted',
+      'm.room.encrypted',
+    ]);
   });
 });

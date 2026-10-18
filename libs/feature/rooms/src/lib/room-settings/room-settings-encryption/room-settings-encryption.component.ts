@@ -14,17 +14,10 @@ import { TrnButton } from '@trinity/components/controls';
 import { TrnAlertService } from '@trinity/components/overlay';
 import {
   JoinRule,
+  RoomAdministrationError,
   RoomEncryptionService,
 } from '@trinity/data-access/room-administration';
-import {
-  concat,
-  defer,
-  filter,
-  ignoreElements,
-  switchMap,
-  tap,
-  timer,
-} from 'rxjs';
+import { filter, switchMap, tap } from 'rxjs';
 import { RoomSettingsDraftService } from '../room-settings-draft.service';
 import { settingsActionFailure } from '../settings-action-failure';
 
@@ -33,16 +26,14 @@ const WARNING =
 const PUBLIC_WARNING =
   'Anyone can join this room, so encryption adds little privacy and can make joining slower.';
 const LATE =
-  "Encryption is on, but this device hasn't caught up yet. Messages you send from here may not be encrypted.";
+  "Encryption is on, but this device couldn't apply it. Messages you send from here may not be encrypted.";
 const BUSY = 'Turning on encryption…';
-/** How long sync may take to deliver the accepted event before the user is warned. */
-const SYNC_WAIT_MS = 15_000;
 
 /**
- * `waiting`: the server took the event and sync has not delivered it. `late`: it has not
- * arrived within {@link SYNC_WAIT_MS}, so the SDK may still send unencrypted from here.
+ * `done`: the server took the event and this device encrypts there. `late`: the server took
+ * it but this device could not apply it, so the SDK may still send unencrypted from here.
  */
-type Phase = 'idle' | 'sending' | 'waiting' | 'late';
+type Phase = 'idle' | 'sending' | 'done' | 'late';
 
 /** Room settings › General › Encryption: the room's status and the one-way Turn on. */
 @Component({
@@ -65,7 +56,10 @@ export class RoomSettingsEncryptionComponent {
 
   readonly errorId = 'room-settings-encryption-error';
   readonly error = this.errorState.asReadonly();
-  readonly encrypted = computed(() => this.draft.snapshot()?.encrypted ?? null);
+  /** Sync may never deliver the event this device sent, so its own confirmed apply counts. */
+  readonly encrypted = computed(() =>
+    this.phase() === 'done' ? true : (this.draft.snapshot()?.encrypted ?? null),
+  );
   readonly permission = computed(
     () => this.draft.snapshot()?.permissions.encryption ?? null,
   );
@@ -78,13 +72,11 @@ export class RoomSettingsEncryptionComponent {
   });
   readonly offered = computed(() => this.encrypted() === false);
   /** The phase as the user sees it: sync delivering the event ends any request. */
-  readonly view = computed<Phase | 'done'>(() => {
+  readonly view = computed<Phase>(() => {
     const phase = this.phase();
     return phase !== 'idle' && this.encrypted() === true ? 'done' : phase;
   });
-  readonly busy = computed(
-    () => this.view() === 'sending' || this.view() === 'waiting',
-  );
+  readonly busy = computed(() => this.view() === 'sending');
   readonly late = computed(() => this.view() === 'late');
   readonly buttonLabel = computed(() =>
     this.busy() ? BUSY : 'Turn on encryption…',
@@ -94,7 +86,6 @@ export class RoomSettingsEncryptionComponent {
   readonly announcement = computed(() => {
     switch (this.view()) {
       case 'sending':
-      case 'waiting':
         return BUSY;
       case 'late':
         return LATE;
@@ -145,32 +136,29 @@ export class RoomSettingsEncryptionComponent {
           this.phase.set('sending');
         }),
         switchMap(() =>
-          concat(
-            this.encryption
-              .turnOn({ accountId, roomId })
-              .pipe(
-                ignoreElements(),
-                tap({ error: () => this.phase.set('idle') }),
-              ),
-            defer(() => {
-              this.phase.set('waiting');
-              return timer(SYNC_WAIT_MS);
-            }),
-          ),
+          this.encryption
+            .turnOn({ accountId, roomId })
+            .pipe(tap({ complete: () => this.phase.set('done') })),
         ),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: () => {
-          if (this.view() === 'waiting') this.phase.set('late');
-        },
-        error: (error: unknown) =>
+        error: (error: unknown) => {
+          if (
+            error instanceof RoomAdministrationError &&
+            error.outcome.failure === 'partial-update'
+          ) {
+            this.phase.set('late');
+            return;
+          }
+          this.phase.set('idle');
           this.errorState.set(
             settingsActionFailure(
               error,
               "Couldn't turn on encryption. Try again.",
             ),
-          ),
+          );
+        },
       });
   }
 }

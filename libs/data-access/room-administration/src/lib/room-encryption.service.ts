@@ -1,16 +1,18 @@
 import { Injectable, inject } from '@angular/core';
-import { EventType, MatrixError, type MatrixClient } from 'matrix-js-sdk';
 import {
-  Observable,
-  defer,
-  finalize,
-  from,
-  map,
-  switchMap,
-  throwError,
-} from 'rxjs';
+  EventType,
+  MatrixError,
+  type MatrixClient,
+  type Room,
+} from 'matrix-js-sdk';
+import type { RoomEncryptionEventContent } from 'matrix-js-sdk/lib/@types/state_events';
+import { Observable, defer, finalize, from, switchMap, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { isRoomEncrypted, roomEncryptionContent } from '@trinity/util/matrix';
+import {
+  applyRoomEncryption,
+  isRoomEncrypted,
+  roomEncryptionContent,
+} from '@trinity/util/matrix';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 import {
   RoomAdministrationError,
@@ -23,8 +25,8 @@ import type { RoomSettingsTarget } from './room-settings.service';
 const OPERATION = 'turn-on-encryption';
 
 /**
- * Turns on end-to-end encryption in an existing room. Matrix has no way to turn it off, and
- * the new state arrives through sync like any other room state.
+ * Turns on end-to-end encryption in an existing room. Matrix has no way to turn it off. This
+ * device applies the new state at once; other devices get it through sync.
  */
 @Injectable({ providedIn: 'root' })
 export class RoomEncryptionService {
@@ -34,10 +36,11 @@ export class RoomEncryptionService {
   private readonly sending = new Set<string>();
 
   /**
-   * Send `m.room.encryption` with the same Megolm content new rooms get. Cold: runs on
-   * subscribe. Errors without sending when the room is already encrypted (by synced state, the
-   * crypto store or the server's), a request is in flight, the account is gone or the role
-   * does not allow it.
+   * Send `m.room.encryption` with the same Megolm content new rooms get, then apply it to
+   * this device's crypto backend. Cold: runs on subscribe. Errors with `partial-update` when
+   * the server took the event but this device could not apply it. Errors without sending when
+   * the room is already encrypted (by synced state, the crypto store or the server's), a
+   * request is in flight, the account is gone or the role does not allow it.
    */
   turnOn(target: RoomSettingsTarget): Observable<void> {
     return defer(() => {
@@ -75,14 +78,15 @@ export class RoomEncryptionService {
         ),
         switchMap((encrypted) => {
           if (encrypted) return throwError(() => alreadyEncrypted());
+          const content = roomEncryptionContent();
           return from(
             client.sendStateEvent(
               target.roomId,
               EventType.RoomEncryption,
-              roomEncryptionContent(),
+              content,
               '',
             ),
-          ).pipe(map(() => void 0));
+          ).pipe(switchMap(() => applyOnThisDevice(client, room, content)));
         }),
         recoverRoomAdministrationRequest(OPERATION),
         finalize(() => this.sending.delete(key)),
@@ -95,6 +99,33 @@ function alreadyEncrypted(): RoomAdministrationError {
   return roomAdministrationInvalidInput(
     OPERATION,
     'This room is already encrypted.',
+  );
+}
+
+/**
+ * Sync may never deliver the event this device just sent, and until something configures the
+ * crypto backend the SDK sends here in the clear, so it is applied now and read back.
+ */
+async function applyOnThisDevice(
+  client: MatrixClient,
+  room: Room,
+  content: RoomEncryptionEventContent,
+): Promise<void> {
+  let cause: unknown;
+  try {
+    if (await applyRoomEncryption(client.getCrypto?.(), room, content)) return;
+  } catch (error) {
+    cause = error;
+  }
+  throw new RoomAdministrationError(
+    {
+      kind: 'rejected',
+      failure: 'partial-update',
+      recovery: 'review-room-state',
+      operation: OPERATION,
+    },
+    "Encryption is on, but this device couldn't apply it.",
+    cause,
   );
 }
 
