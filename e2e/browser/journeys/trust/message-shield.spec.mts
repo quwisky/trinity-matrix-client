@@ -543,16 +543,14 @@ test.describe('Message authenticity shields', () => {
     );
     expect(edit.ok()).toBe(true);
 
-    // A message sent after the edit: once its server echo shows, the edit has synced too.
-    await page.keyboard.type(later);
-    await page.keyboard.press('Enter');
-    await expect(rowOf(page, later)).toHaveAttribute('data-mid', /^\$/, {
-      timeout: 30_000,
-    });
+    // Another account's message sent after the edit can only arrive through sync, which
+    // delivers in stream order, so once its row shows the edit has been processed too.
+    await room.sendText('after-edit', later);
+    await expect(rowOf(page, later)).toBeVisible({ timeout: 30_000 });
 
     const sealedRow = page.locator(`.msg[data-mid="${eventId}"]`);
     await expect(sealedRow.locator('.msg__text')).toContainText(sealed);
-    await expect(page.locator('.msg', { hasText: edited })).toHaveCount(0);
+    await expect(page.getByText(edited)).toHaveCount(0);
     await expect(sealedRow.getByTestId('msg-edited')).toHaveCount(0);
     await expect(
       sealedRow.locator('[data-testid^="msg-shield-unencrypted"]'),
