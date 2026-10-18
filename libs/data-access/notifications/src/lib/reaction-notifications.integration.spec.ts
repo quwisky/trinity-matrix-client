@@ -102,6 +102,7 @@ describe('reaction notifications integration', () => {
 
   const room = {
     roomId: ROOM,
+    hasEncryptionStateEvent: () => false,
     name: 'General',
     findEventById: (id: string) => client.findEventById(id),
     getMember: (id: string) => ({ name: id === '@alice:hs' ? 'Alice' : id }),

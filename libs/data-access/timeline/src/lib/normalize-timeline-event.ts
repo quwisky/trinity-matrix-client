@@ -7,6 +7,7 @@ import {
 } from 'matrix-js-sdk';
 import {
   buildPollView,
+  displayContent,
   initialOf,
   isPollStart,
   mapStatus,
@@ -15,6 +16,7 @@ import {
   reactionsFor,
   readReceiptsFor,
   replyPreview,
+  validReplacement,
 } from '@trinity/util/matrix';
 import type {
   MessageShield,
@@ -26,6 +28,7 @@ import type {
   ReplyPreview,
   UndecryptableReason,
 } from './message-presentation';
+import { shownContent, shownSubject, showsEdit } from './shields';
 import { undecryptableReasonOf } from './undecryptable-reason';
 
 const SYSTEM_EVENT_TYPES = new Set<string>([
@@ -198,7 +201,9 @@ function normalizeReply(
   event: MatrixEvent,
   roomEncrypted: boolean,
 ): ReplyPreview | null {
-  const relation = record(read(() => event.getContent()['m.relates_to'], null));
+  // The event's own relation: an edit cannot change it, and in an encrypted room it sits
+  // outside the ciphertext.
+  const relation = record(read(() => event.getRelation(), null));
   // Thread fallbacks support clients without threads; they are not explicit replies.
   if (
     relation['rel_type'] === 'm.thread' &&
@@ -208,16 +213,26 @@ function normalizeReply(
   }
   const eventId = read(() => event.replyEventId, undefined);
   if (!eventId) return null;
-  const preview = read(() => replyPreview(room, eventId, roomEncrypted), null);
+  const preview = read(
+    () =>
+      replyPreview(room, eventId, roomEncrypted, shownContent, shownSubject),
+    null,
+  );
   return preview ? Object.freeze({ ...preview }) : null;
+}
+
+/** How a row is projected: its shield, and whether its valid edit is shown yet. */
+interface Projection {
+  readonly shield: MessageShield | null;
+  readonly roomEncrypted: boolean;
+  readonly applyEdit: boolean;
 }
 
 function normalizeCommon(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,
-  shield: MessageShield | null,
-  roomEncrypted: boolean,
+  { shield, roomEncrypted, applyEdit }: Projection,
 ) {
   const senderId = string(read<unknown>(() => event.getSender(), null)) ?? '';
   const member = read(() => room.getMember(senderId), null);
@@ -236,7 +251,10 @@ function normalizeCommon(
     senderAvatarMxc: avatarMxc,
     timestamp: finiteNumber(read<unknown>(() => event.getTs(), 0)),
     isOwn: read(() => senderId === client.getUserId(), false),
-    edited: read(() => event.replacingEvent() !== null, false),
+    edited: read(
+      () => applyEdit && validReplacement(event) !== undefined,
+      false,
+    ),
     reactions: normalizeReactions(client, room, event),
     replyTo: normalizeReply(room, event, roomEncrypted),
     status: read(() => mapStatus(event.status), null),
@@ -249,8 +267,7 @@ function unsupported(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,
-  shield: MessageShield | null,
-  roomEncrypted: boolean,
+  projection: Projection,
   fallback:
     'unsupported-message' | 'undecryptable-message' | 'redacted-message',
   decryptionFailed: boolean,
@@ -258,7 +275,7 @@ function unsupported(
   undecryptableReason: UndecryptableReason | null = null,
 ): NormalizedTimelineEvent {
   return Object.freeze({
-    ...normalizeCommon(client, room, event, shield, roomEncrypted),
+    ...normalizeCommon(client, room, event, projection),
     type: 'unsupported',
     fallback,
     decryptionFailed,
@@ -384,6 +401,11 @@ export function normalizeTimelineEvent(
   shield: MessageShield | null,
   roomEncrypted: boolean,
 ): NormalizedTimelineEvent | null {
+  // An encrypted edit shows only once its own shield has resolved (see showsEdit).
+  const applyEdit = read(() => showsEdit(event), false);
+  const projection: Projection = { shield, roomEncrypted, applyEdit };
+  const shownContent = (): Record<string, unknown> =>
+    applyEdit ? displayContent(event) : event.getOriginalContent();
   const type = read(() => event.getType(), '');
   // Redaction first: the SDK keeps the failure reason on an event it redacts after a
   // failed decryption, and a removed message has nothing left to read or fix.
@@ -392,8 +414,7 @@ export function normalizeTimelineEvent(
       client,
       room,
       event,
-      shield,
-      roomEncrypted,
+      projection,
       'redacted-message',
       false,
     );
@@ -403,8 +424,7 @@ export function normalizeTimelineEvent(
       client,
       room,
       event,
-      shield,
-      roomEncrypted,
+      projection,
       'undecryptable-message',
       true,
       '',
@@ -414,12 +434,12 @@ export function normalizeTimelineEvent(
 
   if (read(() => isPollStart(event), false)) {
     const poll = read(
-      () => buildPollView(client, room, event, roomEncrypted),
+      () => buildPollView(client, room, event, roomEncrypted, shownContent()),
       null,
     );
     return poll
       ? Object.freeze({
-          ...normalizeCommon(client, room, event, shield, roomEncrypted),
+          ...normalizeCommon(client, room, event, projection),
           type: 'poll',
           poll: Object.freeze({
             ...poll,
@@ -432,8 +452,7 @@ export function normalizeTimelineEvent(
           client,
           room,
           event,
-          shield,
-          roomEncrypted,
+          projection,
           'unsupported-message',
           false,
         );
@@ -453,7 +472,7 @@ export function normalizeTimelineEvent(
       );
       return change
         ? Object.freeze({
-            ...normalizeCommon(client, room, event, shield, roomEncrypted),
+            ...normalizeCommon(client, room, event, projection),
             type: 'system',
             change: Object.freeze(change),
           })
@@ -463,8 +482,7 @@ export function normalizeTimelineEvent(
         client,
         room,
         event,
-        shield,
-        roomEncrypted,
+        projection,
         'unsupported-message',
         false,
       );
@@ -473,8 +491,8 @@ export function normalizeTimelineEvent(
 
   if (type !== EventType.RoomMessage && type !== EventType.Sticker) return null;
   try {
-    const content = record(event.getContent());
-    const common = normalizeCommon(client, room, event, shield, roomEncrypted);
+    const content = record(shownContent());
+    const common = normalizeCommon(client, room, event, projection);
     if (type === EventType.Sticker) {
       return (
         normalizeSticker(common, content) ??
@@ -482,8 +500,7 @@ export function normalizeTimelineEvent(
           client,
           room,
           event,
-          shield,
-          roomEncrypted,
+          projection,
           'unsupported-message',
           false,
           string(content['body']) ?? '[sticker]',
@@ -500,8 +517,7 @@ export function normalizeTimelineEvent(
           client,
           room,
           event,
-          shield,
-          roomEncrypted,
+          projection,
           'unsupported-message',
           false,
           string(content['body']) ?? '[location]',
@@ -527,8 +543,7 @@ export function normalizeTimelineEvent(
           client,
           room,
           event,
-          shield,
-          roomEncrypted,
+          projection,
           'unsupported-message',
           false,
           string(content['body']) ?? `[${String(msgtype).replace(/^m\./, '')}]`,
@@ -544,8 +559,7 @@ export function normalizeTimelineEvent(
         client,
         room,
         event,
-        shield,
-        roomEncrypted,
+        projection,
         'unsupported-message',
         false,
         typeof content['body'] === 'string' ? content['body'] : '',
@@ -556,8 +570,7 @@ export function normalizeTimelineEvent(
         client,
         room,
         event,
-        shield,
-        roomEncrypted,
+        projection,
         'unsupported-message',
         false,
       );
@@ -586,8 +599,7 @@ export function normalizeTimelineEvent(
       client,
       room,
       event,
-      shield,
-      roomEncrypted,
+      projection,
       'unsupported-message',
       false,
     );

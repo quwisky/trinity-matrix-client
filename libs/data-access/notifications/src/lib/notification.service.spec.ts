@@ -266,16 +266,39 @@ function event(
     decrypted?: boolean;
     /** Encrypted and decryption permanently failed. */
     failure?: boolean;
+    /** An edit attached to the message: its sender and the text it would show. */
+    editedBy?: { sender: string; body: string; encrypted?: boolean };
   } = {},
 ) {
   const isEncrypted = !!(opts.encrypted || opts.decrypted || opts.failure);
   const hasClear = !!opts.decrypted;
+  const own = { body: opts.body ?? 'hello there' };
+  const edit = opts.editedBy && {
+    getSender: () => opts.editedBy?.sender,
+    getType: () => 'm.room.message',
+    getRelation: () => ({
+      rel_type: 'm.replace',
+      event_id: opts.id ?? '$event',
+    }),
+    getContent: () => ({ 'm.new_content': { body: opts.editedBy?.body } }),
+    getOriginalContent: () => ({
+      'm.new_content': { body: opts.editedBy?.body },
+    }),
+    isEncrypted: () => opts.editedBy?.encrypted ?? false,
+    getClearContent: () => (opts.editedBy?.encrypted ? {} : null),
+  };
   return {
     getId: () => opts.id ?? '$event',
     getRoomId: () => '!r:hs',
     getSender: () => opts.sender ?? '@alice:hs',
     sender: { name: 'Alice' },
-    getContent: () => ({ body: opts.body ?? 'hello there' }),
+    getType: () => 'm.room.message',
+    // As the SDK does: an attached edit's m.new_content, checked or not.
+    getContent: () => (edit ? edit.getContent()['m.new_content'] : own),
+    getOriginalContent: () => own,
+    isRedacted: () => false,
+    replacingEvent: () => edit ?? null,
+    isRelation: () => false,
     isEncrypted: () => isEncrypted,
     getClearContent: () =>
       hasClear ? { body: opts.body ?? 'hello there' } : null,
@@ -390,6 +413,23 @@ describe('NotificationService', () => {
     expect(MockNotification.instances[0].options).toMatchObject({
       body: 'hello there',
       tag: '@me:hs !r:hs',
+    });
+  });
+
+  it("previews what a message's sender wrote, not someone else's edit of it", () => {
+    const { svc, client } = setup();
+    svc.connect();
+
+    timelineHandler(client)(
+      event({ editedBy: { sender: '@m:hs', body: 'forged' } }),
+      room,
+      false,
+      false,
+      live,
+    );
+
+    expect(MockNotification.instances[0].options).toMatchObject({
+      body: 'hello there',
     });
   });
 
@@ -994,6 +1034,64 @@ describe('NotificationService', () => {
       expect(MockNotification.instances).toHaveLength(1);
       expect(MockNotification.instances[0].options).toMatchObject({
         body: 'sealed hello',
+      });
+    });
+
+    it('previews the original, not a plaintext edit, of a decrypted message in an encrypted room', () => {
+      const { svc, client } = setup();
+      svc.connect();
+      const encryptedRoom = { ...room, hasEncryptionStateEvent: () => true };
+      client.getRoom.mockReturnValue(encryptedRoom);
+
+      timelineHandler(client)(
+        event({ id: '$e6', encrypted: true }),
+        encryptedRoom,
+        false,
+        false,
+        live,
+      );
+      decryptedHandler(client)(
+        event({
+          id: '$e6',
+          decrypted: true,
+          body: 'sealed hello',
+          editedBy: { sender: '@alice:hs', body: 'sent in the clear' },
+        }),
+      );
+
+      expect(MockNotification.instances[0].options).toMatchObject({
+        body: 'sealed hello',
+      });
+    });
+
+    it('previews an encrypted edit of a decrypted message in an encrypted room', () => {
+      const { svc, client } = setup();
+      svc.connect();
+      const encryptedRoom = { ...room, hasEncryptionStateEvent: () => true };
+      client.getRoom.mockReturnValue(encryptedRoom);
+
+      timelineHandler(client)(
+        event({ id: '$e7', encrypted: true }),
+        encryptedRoom,
+        false,
+        false,
+        live,
+      );
+      decryptedHandler(client)(
+        event({
+          id: '$e7',
+          decrypted: true,
+          body: 'sealed hello',
+          editedBy: {
+            sender: '@alice:hs',
+            body: 'sealed edit',
+            encrypted: true,
+          },
+        }),
+      );
+
+      expect(MockNotification.instances[0].options).toMatchObject({
+        body: 'sealed edit',
       });
     });
 

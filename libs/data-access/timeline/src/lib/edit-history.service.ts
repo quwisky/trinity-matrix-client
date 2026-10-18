@@ -11,6 +11,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   RoomEncryptionFlags,
   buildEditRevisions,
+  validReplacement,
   type MessageRevisionView,
 } from '@trinity/util/matrix';
 import type { MessageShield } from './message-presentation';
@@ -153,9 +154,8 @@ export class EditHistoryService {
       .filter(
         (edit) =>
           !edit.isRedacted() &&
-          edit.getType() === EventType.RoomMessage &&
-          edit.getSender() === target.getSender() &&
-          edit.status === null,
+          edit.status === null &&
+          validReplacement(target, edit) !== undefined,
       )
       .reduce<MatrixEvent | null>(
         (latest, edit) =>

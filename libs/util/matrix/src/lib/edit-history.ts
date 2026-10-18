@@ -1,5 +1,6 @@
-import { EventType, type MatrixEvent } from 'matrix-js-sdk';
+import type { MatrixEvent } from 'matrix-js-sdk';
 import { UNDECRYPTABLE_BODY, renderTextBody } from './message-view';
+import { isEditOf, newContentOf, validReplacement } from './replacement';
 
 /**
  * The versions of an edited message, for the edit-history view. Kept out of
@@ -21,14 +22,6 @@ export interface MessageRevisionView {
   kind: 'text' | 'undecryptable';
   /** Whether the current user sent this version — only they may remove it. */
   isOwn: boolean;
-}
-
-/** The `m.new_content` block of an edit: the replacement message, unwrapped. */
-function newContentOf(edit: MatrixEvent): Record<string, unknown> | null {
-  const content = edit.getContent()['m.new_content'];
-  return content && typeof content === 'object'
-    ? (content as Record<string, unknown>)
-    : null;
 }
 
 function undecryptable(
@@ -64,20 +57,18 @@ function revision(
 }
 
 /**
- * Whether an `m.replace` may be shown as a version of `original`.
- *
- * The sender check is the security-relevant one: an edit only counts when it comes from the
- * account that sent the message, or anyone in the room could put words in someone else's
- * mouth. matrix-js-sdk's `relations()` applies the same rule only when it resolved the
- * original event itself, so this is not redundant.
+ * Whether an `m.replace` may be shown as a version of `original`: a valid replacement
+ * ({@link validReplacement}), or one from the same sender that cannot be decrypted, which is
+ * listed with a notice and never its content.
  *
  * Redacted edits are dropped, not shown as a placeholder: in an encrypted room the SDK never
  * decrypts them, and the rule should not depend on whether the room is encrypted.
  */
 function isShowableEdit(edit: MatrixEvent, original: MatrixEvent): boolean {
   return (
-    edit.getSender() === original.getSender() &&
-    edit.getType() === EventType.RoomMessage &&
+    (edit.isDecryptionFailure()
+      ? isEditOf(original, edit)
+      : validReplacement(original, edit) !== undefined) &&
     !edit.isRedacted() &&
     // Local echo: an edit that hasn't been accepted yet (or failed) isn't history.
     edit.status === null &&

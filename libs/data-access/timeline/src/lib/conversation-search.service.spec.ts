@@ -1,5 +1,6 @@
 import {
   EventType,
+  MatrixEvent,
   RelationType,
   SearchOrderBy,
   type MatrixClient,
@@ -19,18 +20,33 @@ function message(over: {
   replace?: boolean;
   decryptionFailure?: boolean;
   encrypted?: boolean;
+  /** An edit attached to the message: its sender and the text it would show. */
+  editedBy?: { sender: string; body: string };
 }) {
+  const edit = over.editedBy && {
+    getSender: () => over.editedBy?.sender,
+    getType: () => EventType.RoomMessage,
+    getRelation: () => ({ rel_type: RelationType.Replace, event_id: over.id }),
+    getOriginalContent: () => ({
+      'm.new_content': { body: over.editedBy?.body },
+    }),
+    isEncrypted: () => false,
+    getClearContent: () => null,
+  };
   return {
     getId: () => over.id,
     getType: () => EventType.RoomMessage,
     isState: () => false,
     isEncrypted: () => over.encrypted ?? false,
-    isRedacted: () => false,
-    replacingEvent: () => null,
     status: null,
     getSender: () => '@alice:hs',
     getTs: () => over.ts ?? 0,
-    getContent: () => ({ body: over.body }),
+    // As the SDK does: an attached edit's m.new_content, checked or not.
+    getContent: () =>
+      edit ? edit.getOriginalContent()['m.new_content'] : { body: over.body },
+    getOriginalContent: () => ({ body: over.body }),
+    isRedacted: () => false,
+    replacingEvent: () => edit ?? null,
     isDecryptionFailure: () => over.decryptionFailure ?? false,
     isRelation: (relation: string) =>
       over.replace === true && relation === RelationType.Replace,
@@ -105,6 +121,65 @@ describe('ConversationSearchController', () => {
       level: 'unencrypted',
     });
     expect(hits.find((hit) => hit.eventId === '$sealed')?.shield).toBeNull();
+  });
+
+  it("matches what a message's sender wrote, not someone else's edit of it", () => {
+    getRoom.mockReturnValue(
+      room({
+        events: [
+          message({
+            id: '$forged',
+            body: 'plain words',
+            editedBy: { sender: '@m:hs', body: 'hello forged' },
+          }),
+          message({
+            id: '$edited',
+            body: 'plain words',
+            editedBy: { sender: '@alice:hs', body: 'hello now' },
+          }),
+        ],
+      }),
+    );
+
+    expect(
+      service.searchLoaded('hello').hits.map((hit) => hit.eventId),
+    ).toEqual(['$edited']);
+  });
+
+  it("matches an edit's own text, never an edit attached to the edit", () => {
+    const sdkEvent = (id: string, sender: string, content: object) =>
+      new MatrixEvent({
+        event_id: id,
+        room_id: '!r:hs',
+        sender,
+        type: EventType.RoomMessage,
+        origin_server_ts: 1,
+        content,
+      });
+    const message = sdkEvent('$m', '@alice:hs', {
+      msgtype: 'm.text',
+      body: 'plain',
+    });
+    const edit = sdkEvent('$e1', '@alice:hs', {
+      msgtype: 'm.text',
+      body: '* changed',
+      'm.new_content': { msgtype: 'm.text', body: 'changed' },
+      'm.relates_to': { rel_type: RelationType.Replace, event_id: '$m' },
+    });
+    edit.makeReplaced(
+      sdkEvent('$e2', '@m:hs', {
+        'm.new_content': {
+          'm.new_content': { msgtype: 'm.text', body: 'FORGED' },
+        },
+      }),
+    );
+    message.makeReplaced(edit);
+    getRoom.mockReturnValue(room({ events: [message as never] }));
+
+    expect(service.searchLoaded('FORGED').hits).toEqual([]);
+    expect(
+      service.searchLoaded('changed').hits.map((hit) => hit.eventId),
+    ).toEqual(['$m']);
   });
 
   it('never asks the server to search an encrypted conversation', async () => {

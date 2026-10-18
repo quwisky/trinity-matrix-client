@@ -1,10 +1,13 @@
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
+  displayContent,
   isPollStart,
   pollSignature,
   reactionsFor,
   readReceiptsFor,
+  validReplacement,
 } from '@trinity/util/matrix';
+import { shownContent, showsEdit } from './shields';
 
 /**
  * Each content object's JSON, kept while the object lives, so a row re-checked for another
@@ -15,8 +18,10 @@ import {
  */
 const contentJson = new WeakMap<object, string>();
 
-function contentSignature(event: MatrixEvent): string {
-  const content = event.getContent();
+function contentSignature(event: MatrixEvent, applyEdit: boolean): string {
+  const content = applyEdit
+    ? displayContent(event)
+    : event.getOriginalContent();
   if (event.isRedacted()) {
     contentJson.delete(content);
     return JSON.stringify(content);
@@ -63,19 +68,21 @@ export function revisionOf(
   event: MatrixEvent,
   roomEncrypted: boolean,
 ): EventRevision {
+  // As the row shows it: an encrypted edit counts only once its own shield has resolved.
+  const applyEdit = showsEdit(event);
   const senderId = event.getSender() ?? '';
   const member = room.getMember(senderId);
   return {
     // Effective content captures edits (m.replace) and decrypted bodies; it is far
     // cheaper than the DOMPurify pass that a rebuild would otherwise repeat.
-    content: contentSignature(event),
+    content: contentSignature(event, applyEdit),
     rest: [
       event.status ?? '',
       event.isRedacted() ? 'r' : '',
       event.isDecryptionFailure() ? 'd' : '',
       // A new failure reason (after a reload or a key-backup change) changes the row's text.
       event.decryptionFailureReason ?? '',
-      event.replacingEvent() ? 'e' : '',
+      applyEdit && validReplacement(event) ? 'e' : '',
       reactionSignature(client, room, event),
       replyTargetSignature(room, event.replyEventId),
       member?.name ?? senderId,
@@ -123,7 +130,7 @@ function replyTargetSignature(room: Room, replyId: string | undefined): string {
   return [
     'y',
     target.isRedacted() ? 'r' : '',
-    String(target.getContent()['body'] ?? ''),
+    String(shownContent(target)['body'] ?? ''),
     member?.name || sender,
     member?.getMxcAvatarUrl() ?? '',
   ].join('\x02');

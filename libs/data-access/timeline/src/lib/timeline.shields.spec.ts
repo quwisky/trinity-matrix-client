@@ -293,7 +293,7 @@ describe('per-message authenticity shields', () => {
       expect(svc.messages().map((m) => m.id)).toContain('$after');
     });
 
-    it('probes the crypto API with the edit, which supplies the text, not the original', async () => {
+    it('probes the crypto API with the edit, which supplies the text, and the original', async () => {
       const getInfo = vi.fn().mockResolvedValue({
         shieldColour: EventShieldColour.GREY,
         shieldReason: EventShieldReason.UNSIGNED_DEVICE,
@@ -319,7 +319,9 @@ describe('per-message authenticity shields', () => {
           svc.messages().find((m) => m.id === '$sealed')?.shield,
         ).toMatchObject({ level: 'grey' }),
       );
+      // The original is checked too: the row shows its shield while the edit's is pending.
       expect(getInfo.mock.calls.map(([event]) => event.getId())).toEqual([
+        '$sealed',
         '$sealed~edit',
       ]);
     });

@@ -16,10 +16,15 @@ import {
 } from './shields';
 
 /** An encrypted event; only getId/isDecryptionFailure are read by the resolver. */
-function event(id: string, decryptionFailure = false): MatrixEvent {
+function event(
+  id: string,
+  decryptionFailure = false,
+  decrypted = false,
+): MatrixEvent {
   return {
     getId: () => id,
     isDecryptionFailure: () => decryptionFailure,
+    getClearContent: () => (decrypted ? {} : null),
   } as unknown as MatrixEvent;
 }
 
@@ -149,7 +154,7 @@ describe('toShield', () => {
 
 describe('resolveShieldsInto', () => {
   it('stores the resolved shield and reports a change', async () => {
-    const shields = new Map<string, MessageShield | null>();
+    const shields = new Map<MatrixEvent, MessageShield | null>();
     const crypto = {
       getEncryptionInfoForEvent: vi.fn().mockResolvedValue({
         shieldColour: EventShieldColour.RED,
@@ -157,15 +162,16 @@ describe('resolveShieldsInto', () => {
       }),
     };
 
+    const a = event('$a');
     const changed = await resolveShieldsInto(
       crypto as never,
-      [event('$a')],
+      [a],
       shields,
       NOT_STALE,
     );
 
     expect(changed).toBe(true);
-    expect(shields.get('$a')).toMatchObject({ level: 'red' });
+    expect(shields.get(a)).toMatchObject({ level: 'red' });
   });
 
   // The one that matters: `events` is already filtered to ENCRYPTED events, and a null
@@ -173,27 +179,28 @@ describe('resolveShieldsInto', () => {
   // A transient crypto/store error must not silently make an unverified message look
   // trustworthy.
   it('fails closed when the crypto probe throws, rather than showing no shield', async () => {
-    const shields = new Map<string, MessageShield | null>();
+    const shields = new Map<MatrixEvent, MessageShield | null>();
     const crypto = {
       getEncryptionInfoForEvent: vi
         .fn()
         .mockRejectedValue(new Error('store unavailable')),
     };
 
+    const a = event('$a');
     const changed = await resolveShieldsInto(
       crypto as never,
-      [event('$a')],
+      [a],
       shields,
       NOT_STALE,
     );
 
     expect(changed).toBe(true);
-    expect(shields.get('$a')).not.toBeNull(); // NOT "looks authenticated"
-    expect(shields.get('$a')).toMatchObject({ level: 'grey' });
+    expect(shields.get(a)).not.toBeNull(); // NOT "looks authenticated"
+    expect(shields.get(a)).toMatchObject({ level: 'grey' });
   });
 
   it('does not let a probe failure break the rest of the batch', async () => {
-    const shields = new Map<string, MessageShield | null>();
+    const shields = new Map<MatrixEvent, MessageShield | null>();
     const crypto = {
       getEncryptionInfoForEvent: vi
         .fn()
@@ -204,21 +211,64 @@ describe('resolveShieldsInto', () => {
         }),
     };
 
+    const bad = event('$bad');
+    const good = event('$good');
+    await resolveShieldsInto(crypto as never, [bad, good], shields, NOT_STALE);
+
+    expect(shields.get(bad)).toMatchObject({ level: 'grey' });
+    // Not decrypted yet: a "no shield" answer is not kept, so it is asked again.
+    expect(shields.has(good)).toBe(false);
+  });
+
+  it('keeps a "no shield" answer for a decrypted event, and reports it once', async () => {
+    const shields = new Map<MatrixEvent, MessageShield | null>();
+    const crypto = {
+      getEncryptionInfoForEvent: vi.fn().mockResolvedValue({
+        shieldColour: EventShieldColour.NONE,
+        shieldReason: null,
+      }),
+    };
+    const a = event('$a', false, true);
+    const resolve = () =>
+      resolveShieldsInto(crypto as never, [a], shields, NOT_STALE);
+
+    expect(await resolve()).toBe(true);
+    expect(shields.has(a)).toBe(true);
+    expect(shields.get(a)).toBeNull();
+    expect(await resolve()).toBe(false);
+  });
+
+  it('checks an event on its own even when another with the same id was checked', async () => {
+    const shields = new Map<MatrixEvent, MessageShield | null>();
+    const crypto = {
+      getEncryptionInfoForEvent: vi.fn((e: MatrixEvent) =>
+        Promise.resolve(
+          e === forged
+            ? {
+                shieldColour: EventShieldColour.RED,
+                shieldReason: EventShieldReason.UNKNOWN_DEVICE,
+              }
+            : null,
+        ),
+      ),
+    };
+    const trusted = event('$t', false, true);
+    const forged = event('$t', false, true);
+
     await resolveShieldsInto(
       crypto as never,
-      [event('$bad'), event('$good')],
+      [trusted, forged],
       shields,
       NOT_STALE,
     );
 
-    expect(shields.get('$bad')).toMatchObject({ level: 'grey' });
-    // A genuine "no shield" is never stored: the resolver only writes when the key
-    // CHANGES, and absent already fingerprints as none. Absence is the encoding.
-    expect(shields.has('$good')).toBe(false);
+    expect(crypto.getEncryptionInfoForEvent).toHaveBeenCalledTimes(2);
+    expect(shields.get(trusted)).toBeNull();
+    expect(shields.get(forged)).toMatchObject({ level: 'red' });
   });
 
   it('bails without touching state when the caller navigated away mid-resolve', async () => {
-    const shields = new Map<string, MessageShield | null>();
+    const shields = new Map<MatrixEvent, MessageShield | null>();
     const crypto = {
       getEncryptionInfoForEvent: vi.fn().mockResolvedValue({
         shieldColour: EventShieldColour.RED,
@@ -253,13 +303,26 @@ function sent(
     replacement?: MatrixEvent;
   } = {},
 ): MatrixEvent {
+  // A valid edit of this message, filled in on the test's own object.
+  const replacement =
+    o.replacement &&
+    Object.assign(o.replacement, {
+      getRelation: () => ({ rel_type: 'm.replace', event_id: id }),
+      getOriginalContent: () => ({
+        'm.new_content': { msgtype: 'm.text', body: '' },
+      }),
+      getClearContent: () => ({}),
+    });
   return {
     getId: () => id,
+    getSender: () => '@a:hs',
+    getType: () => 'm.room.message',
+    isRelation: () => false,
     getTs: () => o.ts ?? 0,
     isState: () => o.state ?? false,
     isRedacted: () => o.redacted ?? false,
     isEncrypted: () => o.encrypted ?? false,
-    replacingEvent: () => o.replacement ?? null,
+    replacingEvent: () => replacement ?? null,
     status: o.status ?? null,
   } as unknown as MatrixEvent;
 }
@@ -369,14 +432,14 @@ describe('unencryptedShieldFor', () => {
   // The text a row shows comes from its latest edit, and the SDK applies an edit without
   // checking that it was encrypted, so the edit, and its date, are what get judged.
   describe('for an edited message', () => {
-    it('marks an encrypted message whose later plaintext edit is dated after encryption in red', () => {
+    it('leaves an encrypted message unmarked over its ignored plaintext edit', () => {
       const original = sent('$orig', {
         encrypted: true,
         ts: 500,
         replacement: sent('$edit', { ts: 2_000 }),
       });
 
-      expect(at(1_000)(original)).toEqual(RED);
+      expect(at(1_000)(original)).toBeNull();
     });
 
     it('judges the date of the edit, not of the message it replaces', () => {
@@ -426,5 +489,12 @@ describe('shieldSubject', () => {
 
     expect(shieldSubject(edited)).toBe(edit);
     expect(shieldSubject(plain)).toBe(plain);
+  });
+
+  it('is the event itself when its edit came from someone else', () => {
+    const edit = { ...sent('$edit'), getSender: () => '@m:hs' } as MatrixEvent;
+    const edited = sent('$orig', { replacement: edit });
+
+    expect(shieldSubject(edited)).toBe(edited);
   });
 });

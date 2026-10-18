@@ -29,7 +29,7 @@ function setup({ roomEncrypted = false } = {}) {
       {
         getId: () => '$one',
         getSender: () => '@bob:example.org',
-        getContent: () => ({ body: 'First pinned message' }),
+        getOriginalContent: () => ({ body: 'First pinned message' }),
         getTs: () => 10,
         isDecryptionFailure: () => false,
         isRedacted: () => false,
@@ -44,7 +44,8 @@ function setup({ roomEncrypted = false } = {}) {
       {
         getId: () => '$two',
         getSender: () => '@carol:example.org',
-        getContent: () => ({ body: 'Second pinned message' }),
+        getOriginalContent: () => ({ body: 'Second pinned message' }),
+        replacingEvent: () => null,
         getTs: () => 20,
         isDecryptionFailure: () => false,
         isRedacted: () => false,
@@ -92,6 +93,8 @@ function setup({ roomEncrypted = false } = {}) {
       getId: () => raw['event_id'],
       getSender: () => raw['sender'],
       getContent: () => clear ?? {},
+      getOriginalContent: () => clear ?? {},
+      replacingEvent: () => null,
       getClearContent: () => clear,
       getTs: () => raw['origin_server_ts'],
       isEncrypted: () => encrypted,

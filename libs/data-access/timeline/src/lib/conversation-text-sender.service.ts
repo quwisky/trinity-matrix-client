@@ -25,6 +25,7 @@ import {
   type ConversationTextSendRequest,
   type ConversationTextSender,
 } from './conversation-compose';
+import { shownContent } from './shields';
 
 class MissingLocalEchoError extends Error {
   constructor() {
@@ -150,6 +151,7 @@ class MatrixConversationTextSender implements ConversationTextSender {
           renderMarkdown(request.body),
           mentions,
           target,
+          shownContent,
         );
       case 'edit':
         return editMessageContent(

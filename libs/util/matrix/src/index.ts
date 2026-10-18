@@ -5,6 +5,7 @@ export * from './lib/trim-trailing';
 export * from './lib/day-separator';
 export * from './lib/date-format';
 export * from './lib/edit-history';
+export { displayContent, validReplacement } from './lib/replacement';
 export * from './lib/edit-history-diff';
 export * from './lib/media.model';
 export * from './lib/display-mime';

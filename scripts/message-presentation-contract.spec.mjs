@@ -63,6 +63,10 @@ describe('Message Presentation production boundary', () => {
       /normalizeTimelineEvent\(\s*client,\s*room,\s*event,\s*shield,\s*roomEncrypted,?\s*\)/,
     );
     expect(projection).toContain('presentNormalizedTimelineEvent(normalized');
+    // Whether a row shows its edit is decided in one place, never passed in or fixed.
+    expect(source(`${timelineRoot}/normalize-timeline-event.ts`)).toContain(
+      'showsEdit(event)',
+    );
     expect(projection).toContain('presentMedia.present(media, client)');
   });
 

@@ -6,6 +6,7 @@ import {
 } from 'matrix-js-sdk/lib/crypto-api';
 import {
   arrivedInClear,
+  displayContent,
   liveRoomState,
   shieldSubject,
 } from '@trinity/util/matrix';
@@ -109,6 +110,62 @@ export function shieldExplanationText(
 
 export { shieldSubject };
 
+/** Resolved shields, each kept against the exact event object it was computed for. */
+export type ShieldStore = Pick<
+  WeakMap<MatrixEvent, MessageShield | null>,
+  'get' | 'has' | 'set'
+>;
+
+/**
+ * The resolved shields of every event this client has checked. Keyed by object, not id: an
+ * id is whatever the server put on the event, so another event reusing it must never borrow
+ * its result. The timeline and threads force a fresh check when they open, so a trust change
+ * made while they were closed is picked up.
+ */
+export const resolvedShields: ShieldStore = new WeakMap();
+
+/**
+ * The event whose text, edited mark and shield a row shows: its {@link shieldSubject}, except
+ * that an encrypted edit waits until its own shield has resolved. Until then the row shows
+ * the message as it was, so an edit's text never appears before its own check.
+ */
+export function shownSubject(
+  event: MatrixEvent,
+  shields: ShieldStore = resolvedShields,
+): MatrixEvent {
+  const subject = shieldSubject(event);
+  return subject === event || !subject.isEncrypted() || shields.has(subject)
+    ? subject
+    : event;
+}
+
+/**
+ * The encrypted events whose shields a row needs: its {@link shieldSubject}, and its own
+ * event too when that is an edit, since the row shows the message's shield while the edit's
+ * own check is pending.
+ */
+export function shieldsToCheck(event: MatrixEvent): MatrixEvent[] {
+  const subject = shieldSubject(event);
+  return (subject === event ? [event] : [event, subject]).filter((e) =>
+    e.isEncrypted(),
+  );
+}
+
+/** Whether a row shows `event`'s edit yet (see {@link shownSubject}). */
+export function showsEdit(event: MatrixEvent): boolean {
+  return shownSubject(event) !== event;
+}
+
+/** The content a row shows for `event`: its edit's once {@link showsEdit}, else its own. */
+export function shownContent(event: MatrixEvent): Record<string, unknown> {
+  return showsEdit(event) ? displayContent(event) : event.getOriginalContent();
+}
+
+/** The resolved shield of the event a row shows, or null while it is pending. */
+export function shownShield(shown: MatrixEvent): MessageShield | null {
+  return resolvedShields.get(shown) ?? null;
+}
+
 /**
  * A lookup that marks each message whose text arrived in the clear in an encrypted room,
  * and returns null for everything else (encrypted messages keep their crypto-derived
@@ -159,7 +216,7 @@ export interface ShieldCrypto {
 
 /**
  * Resolve authenticity shields for `events` (already filtered to encrypted, displayable
- * events) into the `shields` map, returning true when any entry changed. A benign
+ * events) into `shields`, returning true when any entry changed. A benign
  * refresh skips an already-resolved, decrypted event — only a new event, a still-
  * undecryptable one (whose info arrives on decrypt), or `force` (a trust change)
  * re-probes the async crypto API. `isStale` is checked after each await so a caller
@@ -168,13 +225,12 @@ export interface ShieldCrypto {
 export async function resolveShieldsInto(
   crypto: ShieldCrypto,
   events: readonly MatrixEvent[],
-  shields: Map<string, MessageShield | null>,
+  shields: ShieldStore,
   opts: { force: boolean; isStale: () => boolean },
 ): Promise<boolean> {
   let changed = false;
   for (const event of events) {
-    const id = event.getId() ?? '';
-    if (!opts.force && shields.has(id) && !event.isDecryptionFailure()) {
+    if (!opts.force && shields.has(event) && !event.isDecryptionFailure()) {
       continue;
     }
     let shield: MessageShield | null = null;
@@ -194,8 +250,14 @@ export async function resolveShieldsInto(
     if (opts.isStale()) {
       return changed; // switched rooms/threads mid-resolve
     }
-    if (shieldKey(shields.get(id) ?? null) !== shieldKey(shield)) {
-      shields.set(id, shield);
+    // A trusted (null) result is kept once the event is decrypted, so a pending edit can be
+    // told from a checked one (see shownSubject). Before decryption it stays absent and is
+    // asked again.
+    const record = shields.has(event)
+      ? shieldKey(shields.get(event) ?? null) !== shieldKey(shield)
+      : shield !== null || event.getClearContent() !== null;
+    if (record) {
+      shields.set(event, shield);
       changed = true;
     }
   }

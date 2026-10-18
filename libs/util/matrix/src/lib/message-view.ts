@@ -10,9 +10,14 @@ import {
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
 import { displaySafeMime, mimeEssence } from './display-mime';
 import { isPollStart } from './poll';
-import { UNENCRYPTED_PREVIEW, arrivedInClear } from './room-encryption';
+import {
+  UNENCRYPTED_PREVIEW,
+  arrivedInClear,
+  shieldSubject,
+} from './room-encryption';
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
 import { linkifyMessageText, sanitizeMatrixHtml } from './message-html';
+import { displayContent } from './replacement';
 
 /** An aggregated reaction (`m.annotation`) on a message. */
 export interface ReactionView {
@@ -132,11 +137,15 @@ export function isDisplayableMessage(event: MatrixEvent): boolean {
  * Build a short preview of a replied-to message, or null if it isn't loaded. In an encrypted
  * room, a quoted message whose text arrived unencrypted shows as {@link UNENCRYPTED_PREVIEW}:
  * the quote sits inside the replying message and would read as vouched for by its shield.
+ * `contentOf` picks what of it to show and `subjectOf` the event that text came from, which
+ * the warning judges; a timeline passes what the quoted message's own row shows.
  */
 export function replyPreview(
   room: Room,
   eventId: string,
   roomEncrypted: boolean,
+  contentOf: (event: MatrixEvent) => Record<string, unknown> = displayContent,
+  subjectOf: (event: MatrixEvent) => MatrixEvent = shieldSubject,
 ): ReplyPreview | null {
   const target = room.findEventById(eventId);
   if (!target) {
@@ -148,9 +157,9 @@ export function replyPreview(
   const senderName = member?.name || sender;
   const raw = target.isRedacted()
     ? '(message deleted)'
-    : roomEncrypted && arrivedInClear(target)
+    : roomEncrypted && arrivedInClear(target, subjectOf(target))
       ? UNENCRYPTED_PREVIEW
-      : stripReplyFallbackText((target.getContent()['body'] as string) ?? '');
+      : stripReplyFallbackText((contentOf(target)['body'] as string) ?? '');
   return {
     id: eventId,
     senderName,

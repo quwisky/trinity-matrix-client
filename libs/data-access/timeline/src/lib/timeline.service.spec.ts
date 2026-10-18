@@ -15,6 +15,8 @@ import { eventRevision } from './event-revision';
 import {
   clientFor,
   fakeClient,
+  EDITED_MARK,
+  fakeEdit,
   fakeEvent,
   fakeReaction,
   fakeRelations,
@@ -26,6 +28,7 @@ import {
   setup,
   switchableMatrixProvider,
 } from './timeline.spec-harness';
+import { resolvedShields } from './shields';
 
 // The fake clients here model one page of history as `client.scrollback`. The real paging
 // (and its race with gappy syncs) is covered against the SDK in live-scrollback.spec.
@@ -1050,24 +1053,87 @@ describe('TimelineService', () => {
     }
 
     it('re-projects the message when it resolves to a different edit', async () => {
-      const opts = {
+      const editSaying = (editId: string, body: string) => ({
+        ...fakeEdit('$a'),
+        getId: () => editId,
+        getOriginalContent: () => ({
+          'm.new_content': { msgtype: 'm.text', body },
+        }),
+      });
+      const opts: Parameters<typeof fakeEvent>[0] = {
         id: '$a',
         sender: '@a:hs',
-        body: 'newest wording',
-        edited: true,
+        body: 'first wording',
+        replacement: editSaying('$newer', 'newest wording'),
       };
       const { svc, client, event } = openWithEvent(opts);
       expect(svc.messages()[0].body).toBe('newest wording');
-      expect(svc.messages()[0].edited).toBe(true);
 
-      // What the SDK does after the newest edit is redacted: the same event now reads as
-      // an earlier version, and it emits Replaced rather than a timeline change.
-      opts.body = 'earlier wording';
-      opts.edited = false;
+      // What the SDK does after the newest edit is redacted: the same event now resolves to
+      // the earlier edit, and it emits Replaced rather than a timeline change.
+      opts.replacement = editSaying('$older', 'earlier wording');
       client.handlers.get('Event.replaced')?.(event);
 
       await vi.waitFor(() =>
         expect(svc.messages()[0].body).toBe('earlier wording'),
+      );
+      expect(svc.messages()[0].edited).toBe(true);
+    });
+
+    it('moves to another encrypted edit only once that edit is checked', async () => {
+      const editSaying = (editId: string, body: string) => ({
+        ...fakeEdit('$a', true),
+        getId: () => editId,
+        getOriginalContent: () => ({
+          'm.new_content': { msgtype: 'm.text', body },
+        }),
+      });
+      const newer = editSaying('$newer', 'newest wording');
+      const older = editSaying('$older', 'earlier wording');
+      resolvedShields.set(newer as never, null);
+      const opts: Parameters<typeof fakeEvent>[0] = {
+        id: '$a',
+        sender: '@a:hs',
+        body: 'first wording',
+        encrypted: true,
+        replacement: newer,
+      };
+      const { svc, client, event } = openWithEvent(opts);
+      expect(svc.messages()[0].body).toBe('newest wording');
+
+      opts.replacement = older;
+      client.handlers.get('Event.replaced')?.(event);
+      await vi.waitFor(() =>
+        expect(svc.messages()[0].body).toBe('first wording'),
+      );
+      expect(svc.messages()[0].edited).toBe(false);
+
+      resolvedShields.set(older as never, null);
+      client.handlers.get('Event.replaced')?.(event);
+      await vi.waitFor(() =>
+        expect(svc.messages()[0].body).toBe('earlier wording'),
+      );
+      expect(svc.messages()[0].edited).toBe(true);
+    });
+
+    it("shows the message's first wording again once its only edit is removed", async () => {
+      const opts = {
+        id: '$a',
+        sender: '@a:hs',
+        body: 'first wording',
+        edited: true,
+      };
+      const { svc, client, event } = openWithEvent(opts);
+      expect(svc.messages()[0].body).toBe(`first wording${EDITED_MARK}`);
+      expect(svc.messages()[0].edited).toBe(true);
+
+      // What the SDK does after the only edit is redacted: the same event now reads as
+      // its first wording, and it emits Replaced rather than a timeline change.
+      opts.edited = false;
+      client.handlers.get('Event.replaced')?.(event);
+
+      await vi.waitFor(() =>
+        expect(svc.messages()[0].body).toBe('first wording'),
       );
       // The marker follows too — it is the only way into the edit history.
       expect(svc.messages()[0].edited).toBe(false);

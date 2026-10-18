@@ -26,15 +26,28 @@ function timelineEvent(over: {
   redacted?: boolean;
   decryptionFailure?: boolean;
   encrypted?: boolean;
+  /** An edit attached to the message by someone else: the text it would show. */
+  editedByOther?: string;
 }) {
+  const own = { body: over.body ?? '' };
+  const edit = over.editedByOther !== undefined && {
+    getSender: () => '@m:hs',
+    getType: () => 'm.room.message',
+    getRelation: () => ({ rel_type: 'm.replace', event_id: '$e' }),
+    getContent: () => ({ 'm.new_content': { body: over.editedByOther } }),
+  };
   return {
+    getId: () => '$e',
+    getSender: () => '@a:hs',
     getType: () => over.type ?? 'm.room.message',
-    getContent: () => ({ body: over.body ?? '' }),
+    // As the SDK does: an attached edit's m.new_content, checked or not.
+    getContent: () => (edit ? edit.getContent()['m.new_content'] : own),
+    getOriginalContent: () => own,
+    replacingEvent: () => edit || null,
     isRedacted: () => over.redacted ?? false,
     isDecryptionFailure: () => over.decryptionFailure ?? false,
     isEncrypted: () => over.encrypted ?? false,
     isState: () => false,
-    replacingEvent: () => null,
     status: null,
   };
 }
@@ -1023,6 +1036,19 @@ describe('RoomLibraryService', () => {
     );
     expect(byId['!e:hs']).toBe(UNENCRYPTED_PREVIEW);
     expect(byId['!s:hs']).toBe('see you');
+  });
+
+  it("previews what the sender wrote, not someone else's edit of it", () => {
+    const svc = setup([
+      fakeRoom({
+        roomId: '!a:hs',
+        name: 'general',
+        events: [
+          timelineEvent({ body: 'what I said', editedByOther: 'forged' }),
+        ],
+      }),
+    ]);
+    expect(svc.rooms()[0].lastMessage).toBe('what I said');
   });
 
   it('falls back to an empty preview when a room has no messages', () => {

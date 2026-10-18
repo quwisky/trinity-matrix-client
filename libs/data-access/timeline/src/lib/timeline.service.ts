@@ -54,8 +54,11 @@ import {
 } from './conversation-timeline-readiness';
 import {
   resolveShieldsInto,
+  resolvedShields,
   shieldKey,
-  shieldSubject,
+  shieldsToCheck,
+  shownShield,
+  shownSubject,
   unencryptedShieldFor,
 } from './shields';
 import { projectMessage } from './project-message';
@@ -79,7 +82,6 @@ import { revisionOf } from './event-revision';
 
 const SCROLLBACK = 30;
 const RETAINED_EVENT_BYTES = 64;
-const RETAINED_SHIELD_BYTES = 16;
 const RETAINED_SENDER_BYTES = 16;
 const RETAINED_EVENT_LIMIT = 100;
 const RETAINED_SENDER_LIMIT = 200;
@@ -442,10 +444,10 @@ export class TimelineService {
   private stopFocusListener: (() => void) | null = null;
 
   /**
-   * Resolved authenticity shields per shield-subject id (a row's latest edit, else the
-   * event itself; async, patched back via {@link refresh}).
+   * Whether this opening has checked its shields afresh. Shields are kept per event (see
+   * `resolvedShields`), so the first check after opening re-asks for every row.
    */
-  private readonly shields = new Map<string, MessageShield | null>();
+  private shieldsChecked = false;
 
   /** Whether the open room counts as encrypted: its state, or else its crypto store. */
   private encryption = new RoomEncryptionFlags();
@@ -565,7 +567,6 @@ export class TimelineService {
       listenerCount: 11 + (typeof window === 'undefined' ? 0 : 1),
       retainedBytes:
         this.rows.size * RETAINED_EVENT_BYTES +
-        this.shields.size * RETAINED_SHIELD_BYTES +
         this.relevantSenders.size * RETAINED_SENDER_BYTES,
     };
   }
@@ -611,7 +612,7 @@ export class TimelineService {
     this.rows.clear();
     this.projectedTimeline = null;
     this.projectedEncryption = '';
-    this.shields.clear();
+    this.shieldsChecked = false;
     this.encryption = new RoomEncryptionFlags();
     this._messages.set([]);
     this._typingNames.set([]);
@@ -946,7 +947,6 @@ export class TimelineService {
     let firstUnread: string | null = null;
     // Rows this pass fingerprinted, whose shields may need resolving.
     const checked: MatrixEvent[] = [];
-    let subjectsMoved = false;
     const views: MessageView[] = [];
     for (let i = 0; i < events.length; i++) {
       const e = events[i];
@@ -988,19 +988,15 @@ export class TimelineService {
       // Reuse the view (keeping object identity for OnPush) unless something this event
       // renders from changed. The async shield is part of the fingerprint so a trust change
       // re-projects; it belongs to the event supplying the row's text, its latest edit.
-      const subjectId = shieldSubject(e).getId() ?? '';
-      const shield =
-        unencryptedShield(e) ?? this.shields.get(subjectId) ?? null;
-      const reused = this.rows.reusable(id, e.replyEventId, shield);
+      const shown = shownSubject(e);
+      const subjectId = shown.getId() ?? '';
+      const shield = unencryptedShield(e, shown) ?? shownShield(shown);
+      const reused = this.rows.reusable(id, e.replyEventId, shield, subjectId);
       if (reused) {
         if (reused.view) views.push(reused.view);
         continue;
       }
       checked.push(e);
-      // A newer edit supplies the row's text: the old one's shield is no longer shown.
-      const previousSubject = this.rows.previous(id)?.subjectId;
-      subjectsMoved ||=
-        previousSubject !== undefined && previousSubject !== subjectId;
       const view = this.messageRow(client, room, e, id, shield, subjectId);
       if (view) views.push(view);
     }
@@ -1014,17 +1010,6 @@ export class TimelineService {
     this._oldestEventId.set(events[0]?.getId() ?? null);
     // Null when there is no marker, the marker isn't loaded, or nothing followed it.
     this._firstUnreadId.set(markerIdx >= 0 ? firstUnread : null);
-    // Drop shields of events no longer shown (redacted-away, replaced by their remote id,
-    // scrolled out under a window cap, or superseded by a newer edit), so the map can't
-    // grow unbounded across a session.
-    if ((pruned || subjectsMoved) && this.shields.size > 0) {
-      const subjects = this.rows.shieldSubjects();
-      for (const id of [...this.shields.keys()]) {
-        if (!subjects.has(id)) {
-          this.shields.delete(id);
-        }
-      }
-    }
     this._messages.set(views);
     // Resolve encrypted-message authenticity shields off the async crypto API; when any
     // resolve to a new value they're folded into the cache rev and re-projected.
@@ -1168,7 +1153,7 @@ export class TimelineService {
 
   /**
    * Resolve authenticity shields for the room's encrypted messages off the async crypto
-   * API, storing them per event id. When a shield changes it triggers one more
+   * API, storing them per event (see `resolvedShields`). When a shield changes it triggers one more
    * {@link refresh} (changed rows only), which re-enters here, finds nothing new and stops.
    * Best-effort: a room switch mid-resolve or a missing crypto API bails without touching
    * state.
@@ -1190,12 +1175,18 @@ export class TimelineService {
     });
     const encrypted = events
       .filter((e) => isDisplayableMessage(e) && !isThreadReply(e))
-      .map(shieldSubject)
-      .filter((subject) => subject.isEncrypted());
-    const changed = await resolveShieldsInto(crypto, encrypted, this.shields, {
-      force,
-      isStale: () => this.roomId !== room.roomId,
-    });
+      .flatMap(shieldsToCheck);
+    const fresh = !this.shieldsChecked;
+    this.shieldsChecked = true;
+    const changed = await resolveShieldsInto(
+      crypto,
+      encrypted,
+      resolvedShields,
+      {
+        force: force || fresh,
+        isStale: () => this.roomId !== room.roomId,
+      },
+    );
     if (changed && this.roomId === room.roomId) {
       this.refresh();
     }

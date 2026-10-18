@@ -397,7 +397,7 @@ describe('replyPreview', () => {
       findEventById: () =>
         ({
           getSender: () => '@a:hs',
-          getContent: () => ({ body: 'sign in here' }),
+          getOriginalContent: () => ({ body: 'sign in here' }),
           isRedacted: () => false,
           isEncrypted: () => encrypted,
           isState: () => false,

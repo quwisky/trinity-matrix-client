@@ -14,7 +14,7 @@ export interface ProjectedRow {
   readonly view: MessageView | null;
   /** The shield the row was projected with. Shields are interned, so identity is enough. */
   readonly shield: MessageShield | null;
-  /** The event whose shield the row shows: its latest edit, else itself. */
+  /** The event whose text and shield the row shows: its latest checked edit, else itself. */
   readonly subjectId: string;
   /** Members the row renders: sender, quoted sender, named reactors, readers, a line's target. */
   readonly members: readonly string[];
@@ -141,9 +141,14 @@ export class TimelineRowCache {
     eventId: string,
     replyTo: string | undefined,
     shield: MessageShield | null,
+    subjectId: string = eventId,
   ): ProjectedRow | undefined {
     const row = this.rows.get(eventId);
-    if (!row || this.mustRecheck(eventId, replyTo, shield, row)) {
+    if (
+      !row ||
+      row.subjectId !== subjectId ||
+      this.mustRecheck(eventId, replyTo, shield, row)
+    ) {
       return undefined;
     }
     this.visit(row);
@@ -188,13 +193,6 @@ export class TimelineRowCache {
       for (const member of row.members) members.add(member);
     }
     return members;
-  }
-
-  /** Every event whose shield some cached row shows. */
-  shieldSubjects(): Set<string> {
-    const subjects = new Set<string>();
-    for (const row of this.rows.values()) subjects.add(row.subjectId);
-    return subjects;
   }
 
   /** Forget every row, and re-check everything on the next pass. */

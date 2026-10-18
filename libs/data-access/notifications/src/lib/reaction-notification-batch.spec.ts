@@ -42,7 +42,7 @@ function reaction(
   });
 }
 
-function setup() {
+function setup({ roomEncrypted = false } = {}) {
   const targets = new Map([['$target', message()]]);
   const room = {
     roomId: ROOM,
@@ -69,6 +69,7 @@ function setup() {
     client: client as unknown as MatrixClient,
     allowed,
     present,
+    roomEncrypted: () => roomEncrypted,
   });
   return { targets, room, client, allowed, present, batch };
 }
@@ -210,6 +211,34 @@ describe('ReactionNotificationBatch', () => {
     );
   });
 
+  it("previews what the message's sender wrote, not someone else's edit of it", async () => {
+    const { batch, room, present, targets } = setup();
+    const target = message();
+    target.makeReplaced(
+      new MatrixEvent({
+        event_id: '$forged',
+        room_id: ROOM,
+        sender: '@mallory:hs',
+        type: EventType.RoomMessage,
+        content: {
+          msgtype: 'm.text',
+          body: '* forged',
+          'm.new_content': { msgtype: 'm.text', body: 'forged' },
+          'm.relates_to': {
+            rel_type: RelationType.Replace,
+            event_id: '$target',
+          },
+        },
+      }),
+    );
+    targets.set('$target', target);
+    batch.add(reaction('$one'), room);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(present).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ body: 'Please review the release notes' }),
+    );
+  });
+
   it('decrypts an encrypted target before using its preview', async () => {
     const { batch, room, present, targets, client } = setup();
     const encrypted = new MatrixEvent({
@@ -228,12 +257,53 @@ describe('ReactionNotificationBatch', () => {
       vi.spyOn(event, 'getClearContent').mockReturnValue({
         body: 'Decrypted preview',
       });
+      vi.spyOn(event, 'getOriginalContent').mockReturnValue({
+        body: 'Decrypted preview',
+      });
     });
     batch.add(reaction('$one'), room);
     await vi.advanceTimersByTimeAsync(2000);
     expect(client.decryptEventIfNeeded).toHaveBeenCalledWith(encrypted);
     expect(present).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ body: 'Decrypted preview' }),
+    );
+  });
+
+  it('does not preview text sent in the clear into an encrypted room', async () => {
+    const { batch, room, present } = setup({ roomEncrypted: true });
+    batch.add(reaction('$one'), room);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(present).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ body: null }),
+    );
+  });
+
+  it('previews the original, not a plaintext edit, of an encrypted message in an encrypted room', async () => {
+    const { batch, room, present, targets } = setup({ roomEncrypted: true });
+    const target = message();
+    vi.spyOn(target, 'isEncrypted').mockReturnValue(true);
+    target.makeReplaced(
+      new MatrixEvent({
+        event_id: '$edit',
+        room_id: ROOM,
+        sender: ACCOUNT,
+        type: EventType.RoomMessage,
+        content: {
+          msgtype: 'm.text',
+          body: '* in the clear',
+          'm.new_content': { msgtype: 'm.text', body: 'in the clear' },
+          'm.relates_to': {
+            rel_type: RelationType.Replace,
+            event_id: '$target',
+          },
+        },
+      }),
+    );
+    targets.set('$target', target);
+    batch.add(reaction('$one'), room);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(present).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ body: 'Please review the release notes' }),
     );
   });
 

@@ -39,8 +39,12 @@ import {
 } from '@trinity/util/matrix';
 import {
   resolveShieldsInto,
+  resolvedShields,
   shieldKey,
-  shieldSubject,
+  shieldsToCheck,
+  shownContent,
+  shownShield,
+  shownSubject,
   unencryptedShieldFor,
 } from './shields';
 import { eventRevision } from './event-revision';
@@ -202,7 +206,8 @@ export class ThreadsService {
    * Resolved authenticity shields for the opened thread's events, by shield-subject id (a
    * reply's latest edit, else the event itself).
    */
-  private readonly threadShields = new Map<string, MessageShield | null>();
+  /** Whether this opened thread has checked its shields afresh (see `resolvedShields`). */
+  private threadShieldsChecked = false;
   /** Whether the opened thread's room counts as encrypted: its state, or else its crypto store. */
   private threadEncryption = new RoomEncryptionFlags();
   /**
@@ -424,7 +429,7 @@ export class ThreadsService {
     this.stopThreadFocusListener = null;
     this.lastReadEventId = null;
     this.threadRelevantSenders.clear();
-    this.threadShields.clear();
+    this.threadShieldsChecked = false;
     this.threadEncryption = new RoomEncryptionFlags();
     this.threadViewCache.clear();
     this._openThreadRootId.set(null);
@@ -608,6 +613,8 @@ export class ThreadsService {
         text,
         renderMarkdown(text),
         mentions,
+        undefined,
+        shownContent,
       );
       return from(client.sendMessage(roomId, threadId, content as never));
     }).pipe(map(() => void 0));
@@ -682,29 +689,19 @@ export class ThreadsService {
 
     const relevant = new Set<string>();
     const seenIds = new Set<string>();
-    const shieldIds = new Set<string>();
     for (const e of ordered) {
       collectMessageSenders(client, room, e, relevant);
       seenIds.add(e.getId() ?? '');
-      shieldIds.add(shieldSubject(e).getId() ?? '');
     }
     this.threadRelevantSenders = relevant;
-    // Drop shields for events no longer in the thread so the map can't grow unbounded.
-    for (const id of [...this.threadShields.keys()]) {
-      if (!shieldIds.has(id)) {
-        this.threadShields.delete(id);
-      }
-    }
 
     const roomEncrypted = this.threadEncryption.isEncrypted(room);
     const unencryptedShield = unencryptedShieldFor(room, roomEncrypted);
     this._threadMessages.set(
       ordered.map((e) => {
         const id = e.getId() ?? '';
-        const shield =
-          unencryptedShield(e) ??
-          this.threadShields.get(shieldSubject(e).getId() ?? '') ??
-          null;
+        const shown = shownSubject(e);
+        const shield = unencryptedShield(e, shown) ?? shownShield(shown);
         // The room flag is in the key: it changes how a quoted reply and a poll read.
         const rev = `${eventRevision(client, room, e, roomEncrypted)}\x1f${shieldKey(shield)}\x1f${roomEncrypted}`;
         const cached = this.threadViewCache.get(id);
@@ -804,14 +801,17 @@ export class ThreadsService {
         }
       });
     const ordered = events ?? this.orderedThreadEvents(room, rootEventId);
-    const encrypted = ordered
-      .map(shieldSubject)
-      .filter((subject) => subject.isEncrypted());
+    const encrypted = ordered.flatMap(shieldsToCheck);
+    const fresh = !this.threadShieldsChecked;
+    this.threadShieldsChecked = true;
     const changed = await resolveShieldsInto(
       crypto,
       encrypted,
-      this.threadShields,
-      { force, isStale: () => this.threadRoomId !== room.roomId },
+      resolvedShields,
+      {
+        force: force || fresh,
+        isStale: () => this.threadRoomId !== room.roomId,
+      },
     );
     if (changed && this.threadRoomId === room.roomId) {
       this.refreshThread();
@@ -861,7 +861,10 @@ export class ThreadsService {
     client: MatrixClient,
     room: Room,
     thread: Thread,
-    unencryptedShield: (event: MatrixEvent) => MessageShield | null,
+    unencryptedShield: (
+      event: MatrixEvent,
+      subject?: MatrixEvent,
+    ) => MessageShield | null,
   ): ThreadSummary {
     const root = thread.rootEvent ?? null;
     const rootTs = root?.getTs() ?? 0;
@@ -870,8 +873,8 @@ export class ThreadsService {
     let rootShield: MessageShield | null = null;
     if (root) {
       // Each preview's shield marks unencrypted text, so the text itself stays readable.
-      rootPreview = messagePreview(root, false);
-      rootShield = unencryptedShield(root);
+      rootPreview = messagePreview(root, false, shownContent(root));
+      rootShield = unencryptedShield(root, shownSubject(root));
       const sender = root.getSender() ?? '';
       rootSenderName = room.getMember(sender)?.name ?? sender;
     }
@@ -885,8 +888,8 @@ export class ThreadsService {
     // falls back to the root when every reply is redacted).
     if (latest && latest.getId() !== thread.id) {
       latestReplyTs = latest.getTs();
-      latestReplyPreview = messagePreview(latest, false);
-      latestReplyShield = unencryptedShield(latest);
+      latestReplyPreview = messagePreview(latest, false, shownContent(latest));
+      latestReplyShield = unencryptedShield(latest, shownSubject(latest));
       const sender = latest.getSender() ?? '';
       latestReplySenderName = room.getMember(sender)?.name ?? sender;
     }

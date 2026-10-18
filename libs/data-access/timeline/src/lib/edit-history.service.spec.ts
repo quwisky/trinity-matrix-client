@@ -2,8 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { Direction, EventType, RelationType } from 'matrix-js-sdk';
-import type { MatrixClient, MatrixEvent } from 'matrix-js-sdk';
+import { Direction, EventType, MatrixEvent, RelationType } from 'matrix-js-sdk';
+import type { MatrixClient } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { EditHistoryService } from './edit-history.service';
 
@@ -28,6 +28,7 @@ function original(
     isDecryptionFailure: () => false,
     getContent: () => ({ msgtype: 'm.text', body: 'latest' }),
     getOriginalContent: () => ({ msgtype: 'm.text', body: 'v1' }),
+    isRelation: () => false,
     status: null,
     // The room's copy is what repairAggregation re-points at the surviving edit.
     replacingEvent: () => over.replacing ?? null,
@@ -41,6 +42,12 @@ function edit(
   sender = SENDER,
   encrypted = false,
 ): MatrixEvent {
+  const content = {
+    msgtype: 'm.text',
+    body: `* ${body}`,
+    'm.new_content': { msgtype: 'm.text', body },
+    'm.relates_to': { rel_type: 'm.replace', event_id: '$orig' },
+  };
   return {
     isEncrypted: () => encrypted,
     isState: () => false,
@@ -51,13 +58,11 @@ function edit(
     getType: () => 'm.room.message',
     isRedacted: () => false,
     isDecryptionFailure: () => false,
-    getContent: () => ({
-      msgtype: 'm.text',
-      body: `* ${body}`,
-      'm.new_content': { msgtype: 'm.text', body },
-      'm.relates_to': { rel_type: 'm.replace', event_id: '$orig' },
-    }),
-    getOriginalContent: () => ({}),
+    // Settled: an encrypted edit has been decrypted.
+    getClearContent: () => (encrypted ? content : null),
+    getContent: () => content,
+    getOriginalContent: () => content,
+    getRelation: () => ({ rel_type: 'm.replace', event_id: '$orig' }),
     status: null,
   } as unknown as MatrixEvent;
 }
@@ -138,7 +143,7 @@ describe('EditHistoryService', () => {
     const { svc } = setup(
       [
         {
-          originalEvent: original({ encrypted: true }),
+          originalEvent: original(),
           events: [edit('$a', 'v2'), edit('$bb', 'v3', SENDER, true)],
           nextBatch: null,
         },
@@ -149,10 +154,27 @@ describe('EditHistoryService', () => {
     const { revisions } = await firstValueFrom(svc.revisions('!r:hs', '$orig'));
 
     expect(revisions.map((r) => [r.body, r.shield?.level ?? null])).toEqual([
-      ['v1', null],
+      ['v1', 'unencrypted'],
       ['v2', 'unencrypted'],
       ['v3', null],
     ]);
+  });
+
+  it('leaves an unencrypted edit of an encrypted message out of its history', async () => {
+    const { svc } = setup(
+      [
+        {
+          originalEvent: original({ encrypted: true }),
+          events: [edit('$a', 'v2'), edit('$bb', 'v3', SENDER, true)],
+          nextBatch: null,
+        },
+      ],
+      { roomEncrypted: true },
+    );
+
+    const { revisions } = await firstValueFrom(svc.revisions('!r:hs', '$orig'));
+
+    expect(revisions.map((r) => r.body)).toEqual(['v1', 'v3']);
   });
 
   // Pass a null event type and the SDK skips decryption, so an encrypted room's history
@@ -342,6 +364,76 @@ describe('EditHistoryService', () => {
           {
             originalEvent: original(),
             events: [good, foreign],
+            nextBatch: null,
+          },
+        ],
+        { timelineCopy: copy },
+      );
+
+      await firstValueFrom(svc.revisions('!r:hs', '$orig'));
+
+      expect(makeReplaced).toHaveBeenCalledWith(good);
+    });
+
+    it('ignores a later edit of another message, or one with nothing to show, when choosing', async () => {
+      const good = edit('$a', 'v2');
+      const elsewhere = {
+        ...edit('$elsewhere-long', 'v3'),
+        getRelation: () => ({ rel_type: 'm.replace', event_id: '$other' }),
+      } as unknown as MatrixEvent;
+      const empty = {
+        ...edit('$empty-longer', 'v4'),
+        getOriginalContent: () => ({ msgtype: 'm.text', body: '* v4' }),
+      } as unknown as MatrixEvent;
+      const { copy, makeReplaced } = timelineCopy();
+      const { svc } = setup(
+        [
+          {
+            originalEvent: original(),
+            events: [good, elsewhere, empty],
+            nextBatch: null,
+          },
+        ],
+        { timelineCopy: copy },
+      );
+
+      await firstValueFrom(svc.revisions('!r:hs', '$orig'));
+
+      expect(makeReplaced).toHaveBeenCalledWith(good);
+    });
+
+    it('ignores a later edit whose only new content comes from an edit attached to it', async () => {
+      const good = edit('$a', 'v2');
+      const borrowed = new MatrixEvent({
+        event_id: '$borrowed-long',
+        room_id: '!r:hs',
+        sender: SENDER,
+        type: 'm.room.message',
+        origin_server_ts: 9000,
+        content: {
+          msgtype: 'm.text',
+          body: '* v3',
+          'm.relates_to': { rel_type: 'm.replace', event_id: '$orig' },
+        },
+      });
+      borrowed.makeReplaced(
+        new MatrixEvent({
+          event_id: '$nested',
+          sender: '@mallory:hs',
+          type: 'm.room.message',
+          content: {
+            'm.new_content': {
+              'm.new_content': { msgtype: 'm.text', body: 'FORGED' },
+            },
+          },
+        }),
+      );
+      const { copy, makeReplaced } = timelineCopy();
+      const { svc } = setup(
+        [
+          {
+            originalEvent: original(),
+            events: [good, borrowed],
             nextBatch: null,
           },
         ],

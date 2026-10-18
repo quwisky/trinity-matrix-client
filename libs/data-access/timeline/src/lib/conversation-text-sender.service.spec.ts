@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MatrixEvent, type IEvent } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
-import { fakeEvent, fakeRoom } from './timeline.spec-harness';
+import { resolvedShields } from './shields';
+import { fakeEdit, fakeEvent, fakeRoom } from './timeline.spec-harness';
 
 const KEY = {
   accountId: '@alice:example.org',
@@ -18,6 +19,7 @@ function setup({
   pending = false,
   cancelable = false,
   fetched = 'found',
+  originalEdit,
 }: {
   localEcho?: boolean;
   rejected?: boolean;
@@ -26,11 +28,20 @@ function setup({
   cancelable?: boolean;
   /** What the server returns for an event the room no longer holds. */
   fetched?: 'found' | 'failed';
+  /** An encrypted edit of the original, saying `edited text`. */
+  originalEdit?: ReturnType<typeof fakeEdit>;
 } = {}) {
   const original = fakeEvent({
     id: '$original',
     sender: '@alice:example.org',
     body: 'original text',
+    encrypted: originalEdit !== undefined,
+    replacement: originalEdit && {
+      ...originalEdit,
+      getOriginalContent: () => ({
+        'm.new_content': { msgtype: 'm.text', body: 'edited text' },
+      }),
+    },
   });
   const event = fakeEvent({
     id: '$event',
@@ -93,6 +104,7 @@ function setup({
     sender: TestBed.inject(CONVERSATION_TEXT_SENDER),
     client,
     room,
+    original,
   };
 }
 
@@ -217,6 +229,30 @@ describe('MatrixConversationTextSender', () => {
       event_id: '$original',
     });
     expect(edit['m.new_content']).toMatchObject({ body: 'edited **text**' });
+  });
+
+  it("quotes a reply's target as its row shows it, holding an unchecked edit back", async () => {
+    const { sender, client, original } = setup({
+      originalEdit: fakeEdit('$original', true),
+    });
+    const quote = async () => {
+      await firstValueFrom(
+        sender.send({
+          key: KEY,
+          body: 'reply text',
+          mentions: [],
+          intent: { kind: 'reply', eventId: '$original' },
+        }).outcome,
+      );
+      return (client.sendMessage.mock.lastCall?.[1] as Record<string, unknown>)[
+        'body'
+      ];
+    };
+
+    expect(await quote()).toContain('> <@alice:example.org> original text');
+
+    resolvedShields.set(original.replacingEvent() as never, null);
+    expect(await quote()).toContain('> <@alice:example.org> edited text');
   });
 
   it('fetches a reply target the room no longer holds before quoting it', async () => {

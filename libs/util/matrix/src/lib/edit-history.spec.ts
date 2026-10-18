@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EventStatus, type MatrixEvent } from 'matrix-js-sdk';
+import { EventStatus, MatrixEvent } from 'matrix-js-sdk';
 import { buildEditRevisions } from './edit-history';
 import { UNDECRYPTABLE_BODY } from './message-view';
 
@@ -35,6 +35,8 @@ function original(
     // so a test can tell the two apart.
     getContent: () => ({ msgtype: 'm.text', body: 'latest' }),
     getOriginalContent: () => content,
+    isRelation: () => false,
+    isEncrypted: () => false,
     status: null,
   } as unknown as MatrixEvent;
 }
@@ -52,10 +54,13 @@ function edit(
     redacted?: boolean;
     undecryptable?: boolean;
     status?: EventStatus | null;
+    /** The event the edit replaces. */
+    target?: string;
   } = {},
 ): MatrixEvent {
   const {
     id = '$edit',
+    target = '$orig',
     ts = 2000,
     sender = SENDER,
     body = 'v2',
@@ -78,6 +83,12 @@ function edit(
             : {}),
         }
       : over.newContent;
+  const content = {
+    msgtype: 'm.text',
+    body: `* ${body}`,
+    ...(newContent ? { 'm.new_content': newContent } : {}),
+    'm.relates_to': { rel_type: 'm.replace', event_id: target },
+  };
   return {
     getId: () => id,
     getTs: () => ts,
@@ -85,13 +96,12 @@ function edit(
     getType: () => type,
     isRedacted: () => redacted,
     isDecryptionFailure: () => undecryptable,
-    getContent: () => ({
-      msgtype: 'm.text',
-      body: `* ${body}`,
-      ...(newContent ? { 'm.new_content': newContent } : {}),
-      'm.relates_to': { rel_type: 'm.replace', event_id: '$orig' },
-    }),
-    getOriginalContent: () => ({}),
+    // A failed decryption leaves the SDK's placeholder, which carries no new content.
+    getContent: () => (undecryptable ? {} : content),
+    getOriginalContent: () => (undecryptable ? {} : content),
+    getRelation: () => ({ rel_type: 'm.replace', event_id: target }),
+    isEncrypted: () => false,
+    getClearContent: () => null,
     status,
   } as unknown as MatrixEvent;
 }
@@ -180,6 +190,52 @@ describe('buildEditRevisions', () => {
 
   // An in-flight or failed edit is not history yet: the timeline shows it optimistically,
   // but the history must not claim it as a version that happened.
+  it('drops an edit aimed at another message, readable or not', () => {
+    const revisions = buildEditRevisions(
+      original(),
+      [
+        edit({ id: '$elsewhere', target: '$other' }),
+        edit({ id: '$sealed', target: '$other', undecryptable: true }),
+      ],
+      SENDER,
+    );
+
+    expect(revisions.map((r) => r.id)).toEqual(['$orig']);
+  });
+
+  it("shows each edit's own new content, never one attached to the edit", () => {
+    const first = new MatrixEvent({
+      event_id: '$e1',
+      room_id: '!r:hs',
+      sender: SENDER,
+      type: 'm.room.message',
+      origin_server_ts: 2000,
+      content: {
+        msgtype: 'm.text',
+        body: '* v2',
+        'm.new_content': { msgtype: 'm.text', body: 'v2' },
+        'm.relates_to': { rel_type: 'm.replace', event_id: '$orig' },
+      },
+    });
+    first.makeReplaced(
+      new MatrixEvent({
+        event_id: '$e2',
+        room_id: '!r:hs',
+        sender: '@mallory:hs',
+        type: 'm.room.message',
+        content: {
+          'm.new_content': {
+            'm.new_content': { msgtype: 'm.text', body: 'FORGED' },
+          },
+        },
+      }),
+    );
+
+    const revisions = buildEditRevisions(original(), [first], SENDER);
+
+    expect(revisions.map((r) => r.body)).toEqual(['v1', 'v2']);
+  });
+
   it('drops a local echo that has not been accepted', () => {
     const revisions = buildEditRevisions(
       original(),

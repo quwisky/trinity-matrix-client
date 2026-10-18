@@ -1,4 +1,9 @@
-import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
+import {
+  MatrixEvent as SdkEvent,
+  type MatrixClient,
+  type MatrixEvent,
+  type Room,
+} from 'matrix-js-sdk';
 import { describe, expect, it } from 'vitest';
 import {
   buildPollView,
@@ -20,7 +25,9 @@ function startEvent(
     getId: () => POLL_ID,
     getType: () => 'm.poll.start',
     getTs: () => 0,
-    getContent: () => ({
+    isRedacted: () => false,
+    replacingEvent: () => null,
+    getOriginalContent: () => ({
       'm.poll.start': {
         question: { 'm.text': question },
         kind: 'm.poll.disclosed',
@@ -42,7 +49,8 @@ function response(
     getSender: () => sender,
     getTs: () => ts,
     isRedacted: () => redacted,
-    getContent: () => ({ 'm.poll.response': { answers } }),
+    replacingEvent: () => null,
+    getOriginalContent: () => ({ 'm.poll.response': { answers } }),
   } as unknown as MatrixEvent;
 }
 
@@ -174,7 +182,9 @@ describe('buildPollView', () => {
       getId: () => POLL_ID,
       getType: () => 'm.poll.start',
       getTs: () => 0,
-      getContent: () => ({
+      isRedacted: () => false,
+      replacingEvent: () => null,
+      getOriginalContent: () => ({
         'm.poll.start': { question: { 'm.text': 'Q' }, answers: 5 },
       }),
     } as unknown as MatrixEvent;
@@ -289,13 +299,16 @@ describe('poll content builders', () => {
     const start = {
       getId: () => POLL_ID,
       getType: () => 'org.matrix.msc3381.poll.start',
-      getContent: () => pollStartContent('Lunch?', ['Pizza', 'Sushi']),
+      isRedacted: () => false,
+      replacingEvent: () => null,
+      getOriginalContent: () => pollStartContent('Lunch?', ['Pizza', 'Sushi']),
     } as unknown as MatrixEvent;
     const vote = {
       getSender: () => '@me:hs',
       getTs: () => 1,
       isRedacted: () => false,
-      getContent: () => pollResponseContent(POLL_ID, ['a1']),
+      replacingEvent: () => null,
+      getOriginalContent: () => pollResponseContent(POLL_ID, ['a1']),
     } as unknown as MatrixEvent;
     const unstableRoom = {
       relations: {
@@ -463,5 +476,105 @@ describe('buildPollView in an encrypted room', () => {
 
     expect(view.ended).toBe(true);
     expect(view.totalVotes).toBe(1);
+  });
+});
+
+describe('an edited poll', () => {
+  const START = 'org.matrix.msc3381.poll.start';
+  const RESPONSE = 'org.matrix.msc3381.poll.response';
+  const pollContent = (question: string, answers: string[]) => ({
+    [START]: {
+      question: { 'org.matrix.msc1767.text': question },
+      kind: 'org.matrix.msc3381.poll.disclosed',
+      max_selections: 1,
+      answers: answers.map((text, i) => ({
+        id: `a${i}`,
+        'org.matrix.msc1767.text': text,
+      })),
+    },
+  });
+  const sdkEvent = (
+    id: string,
+    sender: string,
+    type: string,
+    content: Record<string, unknown>,
+    ts = 1,
+  ) =>
+    new SdkEvent({
+      event_id: id,
+      room_id: '!r:hs',
+      sender,
+      type,
+      origin_server_ts: ts,
+      content,
+    });
+  const editOf = (
+    target: string,
+    sender: string,
+    type: string,
+    newContent: Record<string, unknown>,
+  ) =>
+    sdkEvent(`${target}~${sender}`, sender, type, {
+      'm.new_content': newContent,
+      'm.relates_to': { rel_type: 'm.replace', event_id: target },
+    });
+  const start = () =>
+    sdkEvent(POLL_ID, '@alice:hs', START, pollContent('Lunch?', ['Yes', 'No']));
+  const roomWith = (responses: MatrixEvent[]) =>
+    ({
+      relations: {
+        getChildEventsForEvent: (_id: string, relType: string, type: string) =>
+          relType === 'm.reference' && type === RESPONSE && responses.length
+            ? { getRelations: () => responses }
+            : undefined,
+      },
+    }) as unknown as Room;
+
+  it("shows the poll as its sender wrote it over someone else's edit", () => {
+    const poll = start();
+    poll.makeReplaced(
+      editOf(POLL_ID, '@mallory:hs', START, pollContent('Forged?', ['Maybe'])),
+    );
+
+    const view = buildPollView(client, roomWith([]), poll, false);
+
+    expect(view.question).toBe('Lunch?');
+    expect(view.options.map((o) => o.text)).toEqual(['Yes', 'No']);
+  });
+
+  it("applies its sender's own edit", () => {
+    const poll = start();
+    poll.makeReplaced(
+      editOf(POLL_ID, '@alice:hs', START, pollContent('Dinner?', ['Sure'])),
+    );
+
+    const view = buildPollView(client, roomWith([]), poll, false);
+
+    expect(view.question).toBe('Dinner?');
+    expect(view.options.map((o) => o.text)).toEqual(['Sure']);
+  });
+
+  it("counts a vote as its voter cast it, not as someone else's edit says", () => {
+    const vote = sdkEvent(
+      '$vote',
+      '@bob:hs',
+      RESPONSE,
+      {
+        [RESPONSE]: { answers: ['a0'] },
+        'm.relates_to': { rel_type: 'm.reference', event_id: POLL_ID },
+      },
+      5,
+    );
+    vote.makeReplaced(
+      editOf('$vote', '@mallory:hs', RESPONSE, {
+        [RESPONSE]: { answers: ['a1'] },
+      }),
+    );
+    const responses = roomWith([vote]);
+
+    const view = buildPollView(client, responses, start(), false);
+
+    expect(view.options.map((o) => o.votes)).toEqual([1, 0]);
+    expect(pollSignature(responses, start(), false)).toContain(':a0:');
   });
 });

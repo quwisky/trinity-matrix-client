@@ -18,6 +18,7 @@ import {
   switchMap,
   timeout,
 } from 'rxjs';
+import { displayContent, validReplacement } from '@trinity/util/matrix';
 import type { ReactionNotificationEvent } from './notification-intent';
 
 export interface ReactionNotificationBatchOptions {
@@ -25,6 +26,8 @@ export interface ReactionNotificationBatchOptions {
   readonly client: MatrixClient;
   readonly allowed: (room: Room, senderId: string) => boolean;
   readonly present: (event: ReactionNotificationEvent) => void;
+  /** Whether the room counts as encrypted (see `RoomEncryptionFlags`). */
+  readonly roomEncrypted: (room: Room) => boolean;
 }
 
 interface PendingReactions {
@@ -212,7 +215,12 @@ export class ReactionNotificationBatch {
     }
     const first = senders.entries().next().value;
     if (!first) return;
-    const body: unknown = target.getContent()['body'];
+    const body: unknown = displayContent(target)['body'];
+    // As for messages: text that arrived in the clear in an encrypted room is not previewed.
+    const previewable =
+      typeof body === 'string' &&
+      ((validReplacement(target) ?? target).isEncrypted() ||
+        !this.options.roomEncrypted(batch.room));
     this.options.present(
       Object.freeze({
         kind: 'reaction',
@@ -224,7 +232,7 @@ export class ReactionNotificationBatch {
         senderCount: senders.size,
         reactionKeys: Object.freeze([...keys]),
         roomName: batch.room.name || null,
-        body: typeof body === 'string' ? body : null,
+        body: previewable ? body : null,
       }),
     );
   }

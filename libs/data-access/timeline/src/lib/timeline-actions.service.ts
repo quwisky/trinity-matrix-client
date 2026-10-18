@@ -16,6 +16,7 @@ import {
   voiceMessageContent,
 } from '@trinity/util/matrix';
 import { ConversationActionContextService } from './conversation-action-context.service';
+import { shownContent } from './shields';
 
 /** File extension for a recorded voice clip's MIME type (best-effort, default webm). */
 function voiceExtension(mimeType: string): string {
@@ -147,7 +148,8 @@ export class TimelineActionsService {
       if (!event) {
         return throwError(() => new Error('Message not found.'));
       }
-      const content = { ...event.getContent() };
+      // What the row shows: an encrypted edit only once its own shield is checked.
+      const content = { ...shownContent(event) };
       delete content['m.relates_to'];
       delete content['m.new_content'];
       return from(client.sendMessage(targetRoomId, content as never));

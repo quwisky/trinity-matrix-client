@@ -9,6 +9,7 @@ import {
 import { renderMarkdown, type RenderedMarkdown } from './markdown-render';
 import { escapeHtml } from './message-html';
 import { stripReplyFallbackText } from './message-view';
+import { displayContent } from './replacement';
 import { UNENCRYPTED_PREVIEW, arrivedInClear } from './room-encryption';
 
 /**
@@ -376,7 +377,8 @@ export function editMessageContent(
  *
  * `target` defaults to the room's copy of `messageId`; pass one fetched from the server when
  * the room no longer holds it. With no target the reply keeps its relation but carries no
- * quote: the fallback is optional, and an empty `> <>` one is worse.
+ * quote: the fallback is optional, and an empty `> <>` one is worse. `contentOf` picks what
+ * of the target to quote; a timeline passes what the target's own row shows.
  */
 export function replyMessageContent(
   room: Room,
@@ -385,6 +387,7 @@ export function replyMessageContent(
   md: RenderedMarkdown,
   mentions: Mention[] = [],
   target: MatrixEvent | undefined = room.findEventById(messageId),
+  contentOf: (event: MatrixEvent) => Record<string, unknown> = displayContent,
 ) {
   const replyHtml = applyMentionPills(
     md.formatted ? md.html : escapeInlineText(text),
@@ -395,7 +398,7 @@ export function replyMessageContent(
   // the SDK's "Unable to decrypt" placeholder, which is not worth quoting.
   const quote =
     target && sender && !target.isDecryptionFailure()
-      ? replyFallback(room, messageId, sender, target)
+      ? replyFallback(room, messageId, sender, target, contentOf)
       : null;
   return {
     msgtype: MsgType.Text,
@@ -418,9 +421,10 @@ function replyFallback(
   messageId: string,
   sender: string,
   target: MatrixEvent,
+  contentOf: (event: MatrixEvent) => Record<string, unknown>,
 ): { body: string; html: string } {
   const origBody = stripReplyFallbackText(
-    (target.getContent()['body'] as string) ?? '',
+    (contentOf(target)['body'] as string) ?? '',
   );
   const firstLine = origBody.split('\n')[0] ?? '';
   // Escape the ids interpolated into href attributes: a hostile sender/room id must not break
@@ -476,7 +480,8 @@ export function myReactionId(
 /**
  * Short, single-line preview of a message event's text, for the thread indicator and the room
  * list's muted last-message line. Handles undecryptable and redacted events, strips any
- * reply-fallback quote, and returns '…' when nothing renders.
+ * reply-fallback quote, and returns '…' when nothing renders. `content` is what to preview,
+ * by default the message's checked current content.
  *
  * With `roomEncrypted`, text that arrived unencrypted shows as {@link UNENCRYPTED_PREVIEW}.
  * Pass false only where the preview carries its own unencrypted mark.
@@ -484,6 +489,7 @@ export function myReactionId(
 export function messagePreview(
   event: MatrixEvent,
   roomEncrypted: boolean,
+  content: Record<string, unknown> = displayContent(event),
 ): string {
   if (event.isDecryptionFailure()) {
     return '⚠️ Unable to decrypt';
@@ -494,7 +500,6 @@ export function messagePreview(
   if (roomEncrypted && arrivedInClear(event)) {
     return UNENCRYPTED_PREVIEW;
   }
-  const content = event.getContent();
   const body = stripReplyFallbackText((content['body'] as string) ?? '');
   return body.replace(/\s+/g, ' ').trim() || '…';
 }

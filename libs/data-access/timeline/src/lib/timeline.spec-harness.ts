@@ -117,6 +117,9 @@ export function switchableMatrixProvider(active: {
   };
 }
 
+/** Appended to the body of an edit {@link fakeEvent} fills in. */
+export const EDITED_MARK = ' (as edited)';
+
 /**
  * The edit a fake event reports as its replacement: settled, and in the clear unless told
  * otherwise. Pass it as `replacement` to give a test an edit of the opposite kind.
@@ -125,6 +128,8 @@ export function fakeEdit(id: string, encrypted = false) {
   return {
     getId: () => `${id}~edit`,
     isEncrypted: () => encrypted,
+    // Settled: an encrypted edit has been decrypted.
+    getClearContent: () => (encrypted ? {} : null),
     isDecryptionFailure: () => false,
     isRedacted: () => false,
     isState: () => false,
@@ -147,7 +152,7 @@ export function fakeEvent(o: {
   status?: string;
   edited?: boolean;
   /** The event `replacingEvent()` returns; `edited` alone gives a {@link fakeEdit}. */
-  replacement?: ReturnType<typeof fakeEdit>;
+  replacement?: ReturnType<typeof fakeEdit> & Record<string, unknown>;
   editRelation?: boolean;
   replyTo?: string;
   url?: string;
@@ -163,49 +168,87 @@ export function fakeEvent(o: {
   content?: Record<string, unknown>;
   prevContent?: Record<string, unknown>;
 }) {
+  const type = o.type ?? 'm.room.message';
+  // Read on every call: a test may change `o` after building the event.
+  const content = (): Record<string, unknown> =>
+    o.content ?? {
+      body: o.body ?? '',
+      msgtype: o.msgtype ?? 'm.text',
+      format: o.format,
+      formatted_body: o.formattedBody,
+      // Media fields are only included when supplied, so non-media events keep
+      // their previous content shape exactly.
+      ...(o.url !== undefined ? { url: o.url } : {}),
+      ...(o.filename !== undefined ? { filename: o.filename } : {}),
+      ...(o.file !== undefined ? { file: o.file } : {}),
+      ...(o.info !== undefined ? { info: o.info } : {}),
+      ...(o.relatesTo !== undefined ? { 'm.relates_to': o.relatesTo } : {}),
+      ...(o.voice ? { 'org.matrix.msc3245.voice': {} } : {}),
+      ...(o.voice || o.waveform || o.durationMs !== undefined
+        ? {
+            'org.matrix.msc1767.audio': {
+              ...(o.durationMs !== undefined ? { duration: o.durationMs } : {}),
+              ...(o.waveform !== undefined ? { waveform: o.waveform } : {}),
+            },
+          }
+        : {}),
+    };
+  // What a filled-in edit says: the event's content under a marked body, so a test can
+  // tell the edit's text from the event's own.
+  const editedContent = () => ({
+    ...content(),
+    body: `${String(content()['body'] ?? '')}${EDITED_MARK}`,
+  });
+  let autoEdit: ReturnType<typeof fakeEdit> | undefined;
+  // A valid edit of this event in whatever parts the test left out. Filled in place so
+  // `replacingEvent()` keeps returning the test's own object.
+  const replacement = () => {
+    const given =
+      o.replacement ??
+      (o.edited ? (autoEdit ??= fakeEdit(o.id, o.encrypted)) : null);
+    return (
+      given &&
+      Object.assign(given, {
+        getSender: () => o.sender,
+        getType: () => type,
+        getRelation: () => ({ rel_type: 'm.replace', event_id: o.id }),
+        getContent: () => ({ 'm.new_content': editedContent() }),
+        getOriginalContent: () => ({ 'm.new_content': editedContent() }),
+        ...given,
+      })
+    );
+  };
   return {
     getId: () => o.id,
     getSender: () => o.sender,
     replyEventId: o.replyTo,
     getRoomId: () => '!r:hs',
-    getType: () => o.type ?? 'm.room.message',
+    getType: () => type,
     getTs: () => o.ts ?? 0,
     isState: () => o.state ?? o.stateKey !== undefined,
     getStateKey: () => o.stateKey,
     getPrevContent: () => o.prevContent ?? {},
-    getContent: () =>
-      o.content ?? {
-        body: o.body ?? '',
-        msgtype: o.msgtype ?? 'm.text',
-        format: o.format,
-        formatted_body: o.formattedBody,
-        // Media fields are only included when supplied, so non-media events keep
-        // their previous content shape exactly.
-        ...(o.url !== undefined ? { url: o.url } : {}),
-        ...(o.filename !== undefined ? { filename: o.filename } : {}),
-        ...(o.file !== undefined ? { file: o.file } : {}),
-        ...(o.info !== undefined ? { info: o.info } : {}),
-        ...(o.relatesTo !== undefined ? { 'm.relates_to': o.relatesTo } : {}),
-        ...(o.voice ? { 'org.matrix.msc3245.voice': {} } : {}),
-        ...(o.voice || o.waveform || o.durationMs !== undefined
-          ? {
-              'org.matrix.msc1767.audio': {
-                ...(o.durationMs !== undefined
-                  ? { duration: o.durationMs }
-                  : {}),
-                ...(o.waveform !== undefined ? { waveform: o.waveform } : {}),
-              },
-            }
-          : {}),
-      },
+    // As the SDK does: an attached edit's m.new_content, checked or not.
+    getContent: () => {
+      const edit = replacement();
+      return edit ? (edit.getContent()['m.new_content'] ?? {}) : content();
+    },
+    getOriginalContent: content,
+    // As the SDK reads it: the event's own relation, when it has a type and a target.
+    getRelation: () => {
+      const r = content()['m.relates_to'] as
+        Record<string, unknown> | undefined;
+      return r?.['rel_type'] && r['event_id'] ? r : null;
+    },
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
     isEncrypted: () => o.encrypted ?? false,
+    // Settled: an encrypted event has been decrypted.
+    getClearContent: () => (o.encrypted ? content() : null),
     isRelation: (relType?: string) =>
       o.editRelation === true &&
       (relType === undefined || relType === 'm.replace'),
-    replacingEvent: () =>
-      o.replacement ?? (o.edited ? fakeEdit(o.id, o.encrypted) : null),
+    replacingEvent: replacement,
     status: o.status ?? null,
   };
 }

@@ -25,6 +25,7 @@ import {
 } from '@trinity/util/matrix';
 import { TimelineService } from './timeline.service';
 import { revisionOf } from './event-revision';
+import { shieldSubject } from './shields';
 import { trimLiveTimeline } from './live-timeline-trim';
 import type { MessageView } from './message-presentation';
 import {
@@ -118,6 +119,12 @@ interface ShieldProbe {
   getEncryptionInfoForEvent(event: MatrixEvent): Promise<unknown>;
   isEncryptionEnabledInRoom(roomId: string): Promise<boolean>;
 }
+
+/** A crypto API that vouches for every event: an encrypted edit shows once it is checked. */
+const TRUSTING: ShieldProbe = {
+  getEncryptionInfoForEvent: () => Promise.resolve(null),
+  isEncryptionEnabledInRoom: () => Promise.resolve(true),
+};
 
 const ENCRYPTED: Raw = {
   type: 'm.room.encrypted',
@@ -340,7 +347,12 @@ describe('TimelineService incremental projection', () => {
     });
 
     it('shows an encrypted edit once it is decrypted', async () => {
-      const { row, event, receive } = await openConversation(10, 10);
+      const { row, event, receive } = await openConversation(
+        10,
+        10,
+        {},
+        { crypto: TRUSTING },
+      );
       await receive(
         live('$secret-edit', {
           type: 'm.room.encrypted',
@@ -371,9 +383,8 @@ describe('TimelineService incremental projection', () => {
           }),
         ),
       );
-      await settle();
 
-      expect(row(id(2))?.body).toBe('changed');
+      await vi.waitFor(() => expect(row(id(2))?.body).toBe('changed'));
     });
 
     it('removes a deleted message, and the quote of it in a reply', async () => {
@@ -802,6 +813,425 @@ describe('TimelineService incremental projection', () => {
       client.emit(CryptoEvent.UserTrustStatusChanged, '@a:hs', {} as never);
 
       await vi.waitFor(() => expect(row(id(3))?.shield ?? null).toBeNull());
+    });
+  });
+
+  // A server bundles a message's latest edit in `unsigned`, and the SDK attaches it
+  // without checking who sent it or what it replaces.
+  describe('an edit the server bundles with a message', () => {
+    const editOf = (target: string, over: Raw = {}): Raw => ({
+      event_id: '$bundled',
+      room_id: ROOM,
+      type: 'm.room.message',
+      sender: '@a:hs',
+      origin_server_ts: T0 * 2,
+      content: {
+        msgtype: 'm.text',
+        body: '* changed',
+        'm.new_content': { msgtype: 'm.text', body: 'changed' },
+        'm.relates_to': { rel_type: 'm.replace', event_id: target },
+      },
+      ...over,
+    });
+    const bundling = (edit: Raw, over: Raw = {}): Raw => ({
+      ...over,
+      unsigned: { 'm.relations': { 'm.replace': edit } } as never,
+    });
+    const sealedEditOf = (target: string, sender = '@a:hs'): Raw => ({
+      ...ENCRYPTED,
+      event_id: '$bundled',
+      room_id: ROOM,
+      sender,
+      origin_server_ts: T0 * 2,
+      content: {
+        ...ENCRYPTED.content,
+        'm.relates_to': { rel_type: 'm.replace', event_id: target },
+      },
+    });
+    const editedText = (target: string) =>
+      decryptor(() =>
+        Promise.resolve({
+          clearEvent: {
+            type: 'm.room.message',
+            content: {
+              msgtype: 'm.text',
+              body: '* changed',
+              'm.new_content': { msgtype: 'm.text', body: 'changed' },
+              'm.relates_to': { rel_type: 'm.replace', event_id: target },
+            },
+          },
+        }),
+      );
+
+    it('applies an edit its sender made, and marks it edited', async () => {
+      const { row } = await openConversation(10, 10, {
+        2: bundling(editOf(id(2))),
+      });
+
+      expect(row(id(2))?.body).toBe('changed');
+      expect(row(id(2))?.edited).toBe(true);
+    });
+
+    it('ignores an edit from someone else, and does not mark it edited', async () => {
+      const { row } = await openConversation(10, 10, {
+        2: bundling(editOf(id(2), { sender: '@m:hs' })),
+      });
+
+      expect(row(id(2))?.body).toBe('message 2');
+      expect(row(id(2))?.edited).toBe(false);
+    });
+
+    it('ignores an edit of another message', async () => {
+      const { row } = await openConversation(10, 10, {
+        2: bundling(editOf(id(5))),
+      });
+
+      expect(row(id(2))?.body).toBe('message 2');
+      expect(row(id(2))?.edited).toBe(false);
+    });
+
+    it('keeps the text when the edit carries no m.new_content', async () => {
+      const { row } = await openConversation(10, 10, {
+        2: bundling(
+          editOf(id(2), {
+            content: {
+              msgtype: 'm.text',
+              body: '* changed',
+              'm.relates_to': { rel_type: 'm.replace', event_id: id(2) },
+            },
+          }),
+        ),
+      });
+
+      expect(row(id(2))?.body).toBe('message 2');
+      expect(row(id(2))?.edited).toBe(false);
+    });
+
+    it("ignores another member's encrypted edit of an encrypted message", async () => {
+      const { row, event } = await openConversation(10, 10, {
+        3: bundling(sealedEditOf(id(3), '@m:hs'), ENCRYPTED),
+      });
+      await event(3).attemptDecryption(
+        decryptor(() =>
+          Promise.resolve({
+            clearEvent: {
+              type: 'm.room.message',
+              content: { msgtype: 'm.text', body: 'original' },
+            },
+          }),
+        ),
+      );
+      await event(3)
+        .replacingEvent()!
+        .attemptDecryption(editedText(id(3)));
+      await settle();
+
+      expect(row(id(3))?.body).toBe('original');
+      expect(row(id(3))?.edited).toBe(false);
+    });
+
+    it("shows only the edit's own text, nothing from an edit bundled with the edit", async () => {
+      const forged: Raw = {
+        event_id: '$nested',
+        room_id: ROOM,
+        type: 'm.room.message',
+        sender: '@m:hs',
+        origin_server_ts: T0 * 3,
+        content: {
+          'm.new_content': {
+            'm.new_content': { msgtype: 'm.text', body: 'FORGED' },
+          },
+        },
+      };
+      const { row, event } = await openConversation(10, 10, {
+        2: bundling(bundling(forged, editOf(id(2)))),
+        3: bundling(
+          bundling(
+            forged,
+            editOf(id(3), {
+              event_id: '$empty',
+              content: {
+                msgtype: 'm.text',
+                body: '* changed',
+                'm.relates_to': { rel_type: 'm.replace', event_id: id(3) },
+              },
+            }),
+          ),
+        ),
+      });
+
+      expect(event(2).replacingEvent()?.replacingEvent()?.getId()).toBe(
+        '$nested',
+      );
+      expect(row(id(2))?.body).toBe('changed');
+      expect(row(id(2))?.edited).toBe(true);
+      expect(shieldSubject(event(2)).getId()).toBe('$bundled');
+      expect(row(id(3))?.body).toBe('message 3');
+      expect(row(id(3))?.edited).toBe(false);
+      expect(shieldSubject(event(3))).toBe(event(3));
+    });
+
+    it('shows the edit once it decrypts, and the original until then', async () => {
+      const { row, event } = await openConversation(
+        10,
+        10,
+        { 2: bundling(sealedEditOf(id(2))) },
+        { crypto: TRUSTING },
+      );
+      expect(row(id(2))?.body).toBe('message 2');
+      expect(row(id(2))?.edited).toBe(false);
+
+      await event(2)
+        .replacingEvent()!
+        .attemptDecryption(editedText(id(2)));
+
+      await vi.waitFor(() => expect(row(id(2))?.body).toBe('changed'));
+      expect(row(id(2))?.edited).toBe(true);
+    });
+
+    /** A message decrypted with `originalInfo`, whose bundled edit decrypts later. */
+    async function lateEdit(originalInfo: unknown) {
+      let resolveEdit: (info: unknown) => void = () => undefined;
+      const editInfo = new Promise((resolve) => (resolveEdit = resolve));
+      const probe = vi.fn((e: MatrixEvent) =>
+        e.getId() === '$bundled' ? editInfo : Promise.resolve(originalInfo),
+      );
+      const crypto: ShieldProbe = {
+        getEncryptionInfoForEvent: probe,
+        isEncryptionEnabledInRoom: () => Promise.resolve(true),
+      };
+      const conversation = await openConversation(
+        10,
+        10,
+        { 3: bundling(sealedEditOf(id(3)), ENCRYPTED) },
+        { crypto },
+      );
+      const { event } = conversation;
+      await event(3).attemptDecryption(
+        decryptor(() =>
+          Promise.resolve({
+            clearEvent: {
+              type: 'm.room.message',
+              content: { msgtype: 'm.text', body: 'original' },
+            },
+          }),
+        ),
+      );
+      await vi.waitFor(() =>
+        expect(probe.mock.calls.map(([e]) => e.getId())).toContain(id(3)),
+      );
+      await event(3)
+        .replacingEvent()!
+        .attemptDecryption(editedText(id(3)));
+      await vi.waitFor(() =>
+        expect(probe.mock.calls.map(([e]) => e.getId())).toContain('$bundled'),
+      );
+      await settle();
+      return { ...conversation, resolveEdit };
+    }
+
+    it("shows a late edit over a trusted message only once the edit's own shield resolves", async () => {
+      const { row, resolveEdit } = await lateEdit(null);
+
+      expect(row(id(3))?.body).toBe('original');
+      expect(row(id(3))?.edited).toBe(false);
+      expect(row(id(3))?.shield).toBeNull();
+
+      resolveEdit(null);
+      await vi.waitFor(() => expect(row(id(3))?.body).toBe('changed'));
+      expect(row(id(3))?.edited).toBe(true);
+      expect(row(id(3))?.shield).toBeNull();
+    });
+
+    it("shows a late edit's text with its own shield once that resolves as unverified", async () => {
+      const grey = {
+        shieldColour: EventShieldColour.GREY,
+        shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+      };
+      const { row, resolveEdit } = await lateEdit(grey);
+
+      expect(row(id(3))?.body).toBe('original');
+      expect(row(id(3))?.shield?.level).toBe('grey');
+
+      resolveEdit({ ...grey, shieldColour: EventShieldColour.RED });
+      await vi.waitFor(() => expect(row(id(3))?.body).toBe('changed'));
+      expect(row(id(3))?.edited).toBe(true);
+      expect(row(id(3))?.shield?.level).toBe('red');
+    });
+
+    it("shows the message's own shield while an edit that arrived with it is pending", async () => {
+      const probe = vi.fn((e: MatrixEvent) =>
+        e.getId() === '$bundled'
+          ? new Promise(() => undefined)
+          : Promise.resolve({
+              shieldColour: EventShieldColour.GREY,
+              shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+            }),
+      );
+      const { row, event, receive } = await openConversation(
+        10,
+        10,
+        { 3: bundling(sealedEditOf(id(3)), ENCRYPTED) },
+        {
+          crypto: {
+            getEncryptionInfoForEvent: probe,
+            isEncryptionEnabledInRoom: () => Promise.resolve(true),
+          },
+        },
+      );
+      // The edit decrypts first, so it is already the row's subject when the message does.
+      await event(3)
+        .replacingEvent()!
+        .attemptDecryption(editedText(id(3)));
+      await event(3).attemptDecryption(
+        decryptor(() =>
+          Promise.resolve({
+            clearEvent: {
+              type: 'm.room.message',
+              content: { msgtype: 'm.text', body: 'original' },
+            },
+          }),
+        ),
+      );
+
+      await vi.waitFor(() =>
+        expect(probe.mock.calls.map(([e]) => e.getId())).toContain('$bundled'),
+      );
+      // Any later refresh shows what has resolved so far.
+      await receive(live('$later'));
+
+      expect(row(id(3))?.shield?.level).toBe('grey');
+      expect(row(id(3))?.body).toBe('original');
+    });
+
+    it("quotes a message in a reply as the message's row shows it", async () => {
+      let resolveEdit: (info: unknown) => void = () => undefined;
+      const editInfo = new Promise((resolve) => (resolveEdit = resolve));
+      const probe = vi.fn((e: MatrixEvent) =>
+        e.getId() === '$bundled' ? editInfo : Promise.resolve(null),
+      );
+      const { row, event } = await openConversation(
+        10,
+        10,
+        { 3: bundling(sealedEditOf(id(3)), ENCRYPTED), 7: reply(7, 3) },
+        {
+          crypto: {
+            getEncryptionInfoForEvent: probe,
+            isEncryptionEnabledInRoom: () => Promise.resolve(true),
+          },
+        },
+      );
+      await event(3).attemptDecryption(
+        decryptor(() =>
+          Promise.resolve({
+            clearEvent: {
+              type: 'm.room.message',
+              content: { msgtype: 'm.text', body: 'original' },
+            },
+          }),
+        ),
+      );
+      await event(3)
+        .replacingEvent()!
+        .attemptDecryption(editedText(id(3)));
+      await vi.waitFor(() =>
+        expect(probe.mock.calls.map(([e]) => e.getId())).toContain('$bundled'),
+      );
+      await settle();
+
+      expect(row(id(7))?.replyTo?.body).toBe('original');
+
+      resolveEdit(null);
+      await vi.waitFor(() => expect(row(id(3))?.body).toBe('changed'));
+      expect(row(id(7))?.replyTo?.body).toBe('changed');
+    });
+
+    it("checks an edit on its own, even when it reuses a trusted message's id", async () => {
+      let resolveEdit: (info: unknown) => void = () => undefined;
+      const editInfo = new Promise((resolve) => (resolveEdit = resolve));
+      const probe = vi.fn((e: MatrixEvent) =>
+        e.getId() === id(2) && e.getSender() === '@a:hs' && e.isRelation()
+          ? editInfo
+          : Promise.resolve(null),
+      );
+      const { row, event } = await openConversation(
+        10,
+        10,
+        {
+          2: { ...ENCRYPTED, sender: '@b:hs' },
+          3: bundling({ ...sealedEditOf(id(3)), event_id: id(2) }, ENCRYPTED),
+        },
+        {
+          crypto: {
+            getEncryptionInfoForEvent: probe,
+            isEncryptionEnabledInRoom: () => Promise.resolve(true),
+          },
+        },
+      );
+      const plain = (body: string) =>
+        decryptor(() =>
+          Promise.resolve({
+            clearEvent: {
+              type: 'm.room.message',
+              content: { msgtype: 'm.text', body },
+            },
+          }),
+        );
+      await event(2).attemptDecryption(plain('see you'));
+      await event(3).attemptDecryption(plain('original'));
+      const edit = event(3).replacingEvent()!;
+      await edit.attemptDecryption(editedText(id(3)));
+      await vi.waitFor(() =>
+        expect(probe.mock.calls.map(([e]) => e)).toContain(edit),
+      );
+      await settle();
+
+      expect(row(id(2))?.body).toBe('see you');
+      expect(row(id(3))?.body).toBe('original');
+      expect(row(id(3))?.edited).toBe(false);
+
+      resolveEdit({
+        shieldColour: EventShieldColour.RED,
+        shieldReason: EventShieldReason.UNKNOWN_DEVICE,
+      });
+      await vi.waitFor(() => expect(row(id(3))?.body).toBe('changed'));
+      expect(row(id(3))?.shield?.level).toBe('red');
+    });
+
+    it("judges the shield by the message, not by someone else's edit", async () => {
+      const crypto: ShieldProbe = {
+        getEncryptionInfoForEvent: (e) =>
+          Promise.resolve(
+            e.getId() === '$bundled'
+              ? null
+              : {
+                  shieldColour: EventShieldColour.GREY,
+                  shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+                },
+          ),
+        isEncryptionEnabledInRoom: () => Promise.resolve(true),
+      };
+      const { row, event } = await openConversation(
+        10,
+        10,
+        { 3: bundling(sealedEditOf(id(3), '@m:hs'), ENCRYPTED) },
+        { crypto },
+      );
+      await event(3).attemptDecryption(
+        decryptor(() =>
+          Promise.resolve({
+            clearEvent: {
+              type: 'm.room.message',
+              content: { msgtype: 'm.text', body: 'original' },
+            },
+          }),
+        ),
+      );
+      await event(3)
+        .replacingEvent()!
+        .attemptDecryption(editedText(id(3)));
+
+      await vi.waitFor(() => expect(row(id(3))?.shield?.level).toBe('grey'));
     });
   });
 

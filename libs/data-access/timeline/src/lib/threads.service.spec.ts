@@ -24,6 +24,7 @@ import {
   vi,
 } from 'vitest';
 import { ThreadsService } from './threads.service';
+import { resolvedShields } from './shields';
 import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
@@ -43,6 +44,8 @@ function fakeEdit(id: string, encrypted = false) {
   return {
     getId: () => `${id}~edit`,
     isEncrypted: () => encrypted,
+    // Settled: an encrypted edit has been decrypted.
+    getClearContent: () => (encrypted ? {} : null),
     isDecryptionFailure: () => false,
     isRedacted: () => false,
     isState: () => false,
@@ -64,23 +67,45 @@ function fakeEvent(o: {
   editRelation?: boolean;
   stateKey?: string;
   /** The event `replacingEvent()` returns: the latest edit of this one. */
-  replacement?: ReturnType<typeof fakeEdit>;
+  replacement?: ReturnType<typeof fakeEdit> & Record<string, unknown>;
 }) {
+  const type = o.type ?? 'm.room.message';
+  const content = { body: o.body ?? '', msgtype: 'm.text' };
+  // A valid edit of this event in whatever parts the test left out, filled in place so
+  // `replacingEvent()` keeps returning the test's own object.
+  // Read on every call, so a test can attach an edit later.
+  const replacement = () =>
+    o.replacement &&
+    Object.assign(o.replacement, {
+      getSender: () => o.sender,
+      getType: () => type,
+      getRelation: () => ({ rel_type: 'm.replace', event_id: o.id }),
+      getContent: () => ({ 'm.new_content': content }),
+      getOriginalContent: () => ({ 'm.new_content': content }),
+      ...o.replacement,
+    });
   return {
     getId: () => o.id,
     getSender: () => o.sender,
     getTs: () => o.ts ?? 0,
-    getType: () => o.type ?? 'm.room.message',
+    getType: () => type,
     isState: () => o.stateKey !== undefined,
     getRoomId: () => '!r:hs',
-    getContent: () => ({ body: o.body ?? '', msgtype: 'm.text' }),
+    // As the SDK does: an attached edit's m.new_content, checked or not.
+    getContent: () => {
+      const edit = replacement();
+      return edit ? (edit.getContent()['m.new_content'] ?? {}) : content;
+    },
+    getOriginalContent: () => content,
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
     isEncrypted: () => o.encrypted ?? false,
+    // Settled: an encrypted event has been decrypted.
+    getClearContent: () => (o.encrypted ? content : null),
     isRelation: (relType?: string) =>
       o.editRelation === true &&
       (relType === undefined || relType === 'm.replace'),
-    replacingEvent: () => o.replacement ?? (o.editRelation ? {} : null),
+    replacingEvent: () => replacement() ?? null,
     replyEventId: o.replyTo,
     status: o.status ?? null,
   };
@@ -383,6 +408,52 @@ describe('ThreadsService', () => {
     });
   });
 
+  it("marks an unencrypted root and latest reply while their encrypted edits' shields are pending", () => {
+    const sealedEdit = (id: string) => ({
+      ...fakeEdit(id, true),
+      getOriginalContent: () => ({
+        'm.new_content': { msgtype: 'm.text', body: 'as edited' },
+      }),
+    });
+    const root = fakeEvent({
+      id: '$root',
+      sender: '@a:hs',
+      body: 'root msg',
+      replacement: sealedEdit('$root'),
+    });
+    const reply = fakeEvent({
+      id: '$r1',
+      sender: '@b:hs',
+      body: 'a reply',
+      ts: 1000,
+      replacement: sealedEdit('$r1'),
+    });
+    const { svc } = setup(
+      [
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root, reply],
+          replyToEvent: reply,
+          length: 1,
+        }),
+      ],
+      [],
+      {},
+      [],
+      true,
+      undefined,
+      true,
+    );
+
+    expect(svc.summaries()['$root']).toMatchObject({
+      rootPreview: 'root msg',
+      rootShield: { level: 'unencrypted' },
+      latestReplyPreview: 'a reply',
+      latestReplyShield: { level: 'unencrypted' },
+    });
+  });
+
   it('marks thread summaries once the crypto store says the room is encrypted', async () => {
     const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
     const { svc } = setup(
@@ -401,6 +472,75 @@ describe('ThreadsService', () => {
         level: 'unencrypted',
       }),
     );
+  });
+
+  it("summarises a thread by what its messages' senders wrote, not someone else's edit", () => {
+    const forged = () => ({
+      ...fakeEdit('$x'),
+      getSender: () => '@m:hs',
+      getContent: () => ({
+        'm.new_content': { msgtype: 'm.text', body: 'forged' },
+      }),
+    });
+    const root = fakeEvent({
+      id: '$root',
+      sender: '@a:hs',
+      body: 'root msg',
+      replacement: forged(),
+    });
+    const reply = fakeEvent({
+      id: '$r1',
+      sender: '@b:hs',
+      body: 'a reply',
+      replacement: forged(),
+    });
+    const { svc } = setup([
+      fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, reply],
+        replyToEvent: reply,
+        length: 1,
+      }),
+    ]);
+
+    expect(svc.summaries()['$root']).toMatchObject({
+      rootPreview: 'root msg',
+      latestReplyPreview: 'a reply',
+    });
+  });
+
+  it("summarises a thread by an encrypted edit only once the edit's shield is checked", async () => {
+    const edit = {
+      ...fakeEdit('$root', true),
+      getOriginalContent: () => ({
+        'm.new_content': { msgtype: 'm.text', body: 'root, as edited' },
+      }),
+    };
+    const root = fakeEvent({
+      id: '$root',
+      sender: '@a:hs',
+      body: 'root msg',
+      encrypted: true,
+      replacement: edit,
+    });
+    const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'a reply' });
+    const { svc, room } = setup([
+      fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, reply],
+        replyToEvent: reply,
+        length: 1,
+      }),
+    ]);
+    expect(svc.summaries()['$root'].rootPreview).toBe('root msg');
+
+    resolvedShields.set(edit as never, null);
+    room.emit(RoomEvent.Timeline, reply, room);
+    await Promise.resolve();
+
+    expect(svc.summaries()['$root'].rootPreview).toBe('root, as edited');
   });
 
   it('refreshes a thread summary when a participant’s profile loads late', () => {
@@ -865,7 +1005,7 @@ describe('ThreadsService', () => {
       expect(shieldOf(svc, '$new')).toMatchObject({ level: 'unencrypted' });
     });
 
-    it('probes the crypto API with the edit, which supplies the text', async () => {
+    it('probes the crypto API with the edit, which supplies the text, and the reply', async () => {
       const getInfo = vi.fn().mockResolvedValue({
         shieldColour: EventShieldColour.GREY,
         shieldReason: EventShieldReason.UNSIGNED_DEVICE,
@@ -887,8 +1027,165 @@ describe('ThreadsService', () => {
         expect(shieldOf(svc, '$sealed')).toMatchObject({ level: 'grey' }),
       );
       const probed = getInfo.mock.calls.map(([event]) => event.getId());
+      // The reply's own shield is checked too: the row shows it while the edit's is pending.
       expect(probed).toContain('$sealed~edit');
-      expect(probed).not.toContain('$sealed');
+      expect(probed).toContain('$sealed');
+    });
+
+    it("shows a reply as its sender wrote it, judged by itself, when someone else's edit is attached", async () => {
+      const getInfo = vi.fn().mockResolvedValue({
+        shieldColour: EventShieldColour.GREY,
+        shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+      });
+      const { svc } = openEncryptedThread(
+        [
+          fakeEvent({
+            id: '$sealed',
+            sender: '@a:hs',
+            body: 'what I said',
+            encrypted: true,
+            replacement: {
+              ...fakeEdit('$sealed', true),
+              getSender: () => '@m:hs',
+              getContent: () => ({
+                'm.new_content': { msgtype: 'm.text', body: 'forged' },
+              }),
+            },
+          }),
+        ],
+        getInfo,
+      );
+
+      await vi.waitFor(() =>
+        expect(shieldOf(svc, '$sealed')).toMatchObject({ level: 'grey' }),
+      );
+      const row = svc.threadMessages().find((m) => m.id === '$sealed');
+      expect(row?.body).toBe('what I said');
+      expect(row?.edited).toBe(false);
+      const probed = getInfo.mock.calls.map(([event]) => event.getId());
+      expect(probed).toContain('$sealed');
+      expect(probed).not.toContain('$sealed~edit');
+    });
+
+    it("shows a late edit of a trusted reply only once the edit's own shield resolves", async () => {
+      let resolveEdit: (info: unknown) => void = () => undefined;
+      const editInfo = new Promise((resolve) => (resolveEdit = resolve));
+      const getInfo = vi.fn((event: { getId: () => string }) =>
+        event.getId() === '$sealed~edit' ? editInfo : Promise.resolve(null),
+      );
+      const reply: Parameters<typeof fakeEvent>[0] = {
+        id: '$sealed',
+        sender: '@a:hs',
+        body: 'what I said',
+        encrypted: true,
+      };
+      const { svc, room } = openEncryptedThread([fakeEvent(reply)], getInfo);
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalled());
+      const view = () => svc.threadMessages().find((m) => m.id === '$sealed');
+
+      reply.replacement = {
+        ...fakeEdit('$sealed', true),
+        getOriginalContent: () => ({
+          'm.new_content': { msgtype: 'm.text', body: 'what I meant' },
+        }),
+      };
+      room.emit(RoomEvent.Receipt);
+      await vi.waitFor(() =>
+        expect(getInfo.mock.calls.map(([e]) => e.getId())).toContain(
+          '$sealed~edit',
+        ),
+      );
+
+      expect(view()?.body).toBe('what I said');
+      expect(view()?.edited).toBe(false);
+      expect(view()?.shield).toBeNull();
+
+      resolveEdit(null);
+      await vi.waitFor(() => expect(view()?.body).toBe('what I meant'));
+      expect(view()?.edited).toBe(true);
+    });
+
+    it("shows the reply's own shield while its edit's is pending", async () => {
+      const getInfo = vi.fn((event: { getId: () => string }) =>
+        event.getId() === '$sealed~edit'
+          ? new Promise(() => undefined)
+          : Promise.resolve({
+              shieldColour: EventShieldColour.GREY,
+              shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+            }),
+      );
+      const { svc, room } = openEncryptedThread(
+        [
+          fakeEvent({
+            id: '$sealed',
+            sender: '@a:hs',
+            body: 'what I said',
+            encrypted: true,
+            replacement: {
+              ...fakeEdit('$sealed', true),
+              getOriginalContent: () => ({
+                'm.new_content': { msgtype: 'm.text', body: 'what I meant' },
+              }),
+            },
+          }),
+        ],
+        getInfo,
+      );
+
+      await vi.waitFor(() =>
+        expect(getInfo.mock.calls.map(([e]) => e.getId())).toContain(
+          '$sealed~edit',
+        ),
+      );
+      // Any later refresh shows what has resolved so far.
+      room.emit(RoomEvent.Receipt);
+      await Promise.resolve();
+
+      expect(shieldOf(svc, '$sealed')).toMatchObject({ level: 'grey' });
+      expect(svc.threadMessages().find((m) => m.id === '$sealed')?.body).toBe(
+        'what I said',
+      );
+    });
+
+    it("shows the edit's own shield, not the reply's, once the edit is checked", async () => {
+      let resolveEdit: (info: unknown) => void = () => undefined;
+      const editInfo = new Promise((resolve) => (resolveEdit = resolve));
+      const getInfo = vi.fn((event: { getId: () => string }) =>
+        event.getId() === '$sealed~edit' ? editInfo : Promise.resolve(null),
+      );
+      const { svc } = openEncryptedThread(
+        [
+          fakeEvent({
+            id: '$sealed',
+            sender: '@a:hs',
+            body: 'what I said',
+            encrypted: true,
+            replacement: {
+              ...fakeEdit('$sealed', true),
+              getOriginalContent: () => ({
+                'm.new_content': { msgtype: 'm.text', body: 'what I meant' },
+              }),
+            },
+          }),
+        ],
+        getInfo,
+      );
+      const view = () => svc.threadMessages().find((m) => m.id === '$sealed');
+      await vi.waitFor(() =>
+        expect(getInfo.mock.calls.map(([e]) => e.getId())).toContain(
+          '$sealed~edit',
+        ),
+      );
+
+      expect(view()?.body).toBe('what I said');
+      expect(view()?.shield).toBeNull();
+
+      resolveEdit({
+        shieldColour: EventShieldColour.RED,
+        shieldReason: EventShieldReason.UNKNOWN_DEVICE,
+      });
+      await vi.waitFor(() => expect(view()?.body).toBe('what I meant'));
+      expect(view()?.shield?.level).toBe('red');
     });
 
     it('does not show a state event of a message type as a reply', () => {

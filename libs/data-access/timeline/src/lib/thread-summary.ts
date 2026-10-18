@@ -5,6 +5,7 @@ import {
   type Thread,
 } from 'matrix-js-sdk';
 import { initialOf } from '@trinity/util/matrix';
+import { shownContent } from './shields';
 import type { ThreadParticipant } from './conversation-threads';
 
 /** Most participant avatars shown in a summary cluster before "+N". */
@@ -45,7 +46,7 @@ function threadEventSignature(room: Room, event: MatrixEvent | null): string {
     String(event.getTs()),
     event.isRedacted() ? 'r' : '',
     event.isDecryptionFailure() ? 'd' : '',
-    String(event.getContent()['body'] ?? ''),
+    String(shownContent(event)['body'] ?? ''),
     sender,
     room.getMember(sender)?.name ?? sender,
   ].join('\x02');

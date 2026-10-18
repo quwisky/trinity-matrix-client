@@ -1,4 +1,5 @@
 import type { MatrixEvent, Room } from 'matrix-js-sdk';
+import { validReplacement } from './replacement';
 
 /** The crypto-store half of the SDK's own "encrypt this send?" test. */
 interface RoomEncryptionProbe {
@@ -59,12 +60,12 @@ export class RoomEncryptionFlags {
 export const UNENCRYPTED_PREVIEW = '⚠️ Unencrypted message';
 
 /**
- * The event whose encryption vouches for the text `event` shows: its latest edit when it has
- * one, else itself. An edit supplies that text, and the SDK applies it without checking that
- * it was encrypted.
+ * The event whose encryption vouches for the text `event` shows: its valid latest edit when
+ * it has one, else itself. An edit supplies that text, and the SDK applies it without
+ * checking that it was encrypted.
  */
 export function shieldSubject(event: MatrixEvent): MatrixEvent {
-  return event.replacingEvent() ?? event;
+  return validReplacement(event) ?? event;
 }
 
 /**

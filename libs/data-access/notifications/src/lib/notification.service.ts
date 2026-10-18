@@ -388,16 +388,17 @@ export class NotificationService {
     let firstSyncCompleted =
       currentSyncState === SyncState.Prepared ||
       currentSyncState === SyncState.Syncing;
+    // A room counts as encrypted by its state OR by the crypto store. The store's answer is
+    // async, so ask it once per room up front; a room first seen later is covered next sync.
+    const encryption = new RoomEncryptionFlags();
     const reactions = new ReactionNotificationBatch({
       accountId: userId,
       client,
       allowed: (room, senderId) =>
         this.reactionAllowed(userId, client, room, senderId),
       present: (event) => this.presentReaction(userId, client, event),
+      roomEncrypted: (room) => encryption.isEncrypted(room),
     });
-    // A room counts as encrypted by its state OR by the crypto store. The store's answer is
-    // async, so ask it once per room up front; a room first seen later is covered next sync.
-    const encryption = new RoomEncryptionFlags();
     const warmEncryption = (): void => {
       const crypto = client.getCrypto();
       for (const room of client.getRooms()) {

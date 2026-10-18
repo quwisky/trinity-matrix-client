@@ -2,10 +2,12 @@ import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  fakeEdit,
   fakeEvent,
   privacyProvider,
   setupActions,
 } from './timeline.spec-harness';
+import { resolvedShields } from './shields';
 
 describe('TimelineActionsService', () => {
   beforeEach(() => {
@@ -111,6 +113,89 @@ describe('TimelineActionsService', () => {
     const content = message?.[1] as Record<string, unknown>;
     expect(content['body']).toBe('forward me');
     expect(content['m.relates_to']).toBeUndefined(); // standalone, not a thread reply
+  });
+
+  it("forwards what a message's sender wrote, not someone else's edit of it", async () => {
+    const sent: unknown[][] = [];
+    const svc = setupActions(
+      [
+        fakeEvent({
+          id: '$src',
+          sender: '@a:hs',
+          body: 'forward me',
+          replacement: {
+            ...fakeEdit('$src'),
+            getSender: () => '@m:hs',
+            getContent: () => ({
+              'm.new_content': { msgtype: 'm.text', body: 'forged' },
+            }),
+          },
+        }),
+      ],
+      sent,
+    );
+
+    await firstValueFrom(svc.forwardMessage('!r:hs', '$src', '!target:hs'));
+
+    const message = sent.find((c) => c[0] === 'message');
+    expect((message?.[1] as Record<string, unknown>)['body']).toBe(
+      'forward me',
+    );
+  });
+
+  it('forwards a message as its row shows it, holding an unchecked edit back', async () => {
+    const sent: unknown[][] = [];
+    const message = fakeEvent({
+      id: '$src',
+      sender: '@a:hs',
+      body: 'forward me',
+      encrypted: true,
+      replacement: {
+        ...fakeEdit('$src', true),
+        getOriginalContent: () => ({
+          'm.new_content': { msgtype: 'm.text', body: 'as edited' },
+        }),
+      },
+    });
+    const svc = setupActions([message], sent);
+    const forwarded = async () => {
+      await firstValueFrom(svc.forwardMessage('!r:hs', '$src', '!target:hs'));
+      return (
+        sent.filter((c) => c[0] === 'message').at(-1)?.[1] as Record<
+          string,
+          unknown
+        >
+      )['body'];
+    };
+
+    expect(await forwarded()).toBe('forward me');
+
+    resolvedShields.set(message.replacingEvent() as never, null);
+    expect(await forwarded()).toBe('as edited');
+  });
+
+  it('forwards an encrypted message as sent, not its unencrypted edit', async () => {
+    const sent: unknown[][] = [];
+    const message = fakeEvent({
+      id: '$src',
+      sender: '@a:hs',
+      body: 'forward me',
+      encrypted: true,
+      replacement: {
+        ...fakeEdit('$src'),
+        getOriginalContent: () => ({
+          'm.new_content': { msgtype: 'm.text', body: 'as edited' },
+        }),
+      },
+    });
+    const svc = setupActions([message], sent);
+
+    await firstValueFrom(svc.forwardMessage('!r:hs', '$src', '!target:hs'));
+
+    const forwarded = sent.find((c) => c[0] === 'message');
+    expect((forwarded?.[1] as Record<string, unknown>)['body']).toBe(
+      'forward me',
+    );
   });
 
   it('errors when forwarding an event that cannot be found', async () => {

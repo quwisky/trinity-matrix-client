@@ -9,6 +9,7 @@ import {
 import { Observable, catchError, defer, from, map, of } from 'rxjs';
 import {
   RoomEncryptionFlags,
+  displayContent,
   isDisplayableMessage,
 } from '@trinity/util/matrix';
 import type { MessageShield } from './message-presentation';
@@ -187,7 +188,7 @@ export class ConversationSearchController {
 }
 
 function readBody(event: MatrixEvent): string {
-  const body = event.getContent()['body'];
+  const body = displayContent(event)['body'];
   return typeof body === 'string' ? body : '';
 }
 

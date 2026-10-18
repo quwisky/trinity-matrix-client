@@ -182,7 +182,9 @@ function replyRoom(target?: { sender: string; body: string }): Room {
       target && {
         getSender: () => target.sender,
         isDecryptionFailure: () => false,
-        getContent: () => ({ body: target.body }),
+        isRedacted: () => false,
+        replacingEvent: () => null,
+        getOriginalContent: () => ({ body: target.body }),
       },
   } as unknown as Room;
 }
@@ -310,7 +312,9 @@ describe('mentions in content builders', () => {
     const target = {
       getSender: () => '@bob:hs',
       isDecryptionFailure: () => false,
-      getContent: () => ({ body: 'from the server' }),
+      isRedacted: () => false,
+      replacingEvent: () => null,
+      getOriginalContent: () => ({ body: 'from the server' }),
     } as unknown as MatrixEvent;
 
     const content = replyMessageContent(
@@ -330,7 +334,9 @@ describe('mentions in content builders', () => {
     const room = replyRoom();
     const target = {
       getSender: () => '@bob:hs',
-      getContent: () => ({ body: '** Unable to decrypt: no key **' }),
+      isRedacted: () => false,
+      replacingEvent: () => null,
+      getOriginalContent: () => ({ body: '** Unable to decrypt: no key **' }),
       isDecryptionFailure: () => true,
     } as unknown as MatrixEvent;
 
@@ -464,7 +470,7 @@ function fakeEvent(o: {
   edit?: MatrixEvent;
 }): MatrixEvent {
   return {
-    getContent: () => ({ body: o.body ?? '' }),
+    getOriginalContent: () => ({ body: o.body ?? '' }),
     isRedacted: () => o.redacted ?? false,
     isDecryptionFailure: () => o.decryptFail ?? false,
     isEncrypted: () => o.encrypted ?? false,
@@ -509,10 +515,27 @@ describe('messagePreview', () => {
     expect(messagePreview(event, false)).toBe('sign in here');
   });
 
-  it('shows the unencrypted placeholder for an encrypted message whose edit arrived in the clear', () => {
-    const edit = fakeEvent({ body: 'edited' });
-    const event = fakeEvent({ body: 'edited', encrypted: true, edit });
-    expect(messagePreview(event, true)).toBe(UNENCRYPTED_PREVIEW);
+  it('previews an encrypted message as sent, not its edit that arrived in the clear', () => {
+    const edit = {
+      getSender: () => '@a:hs',
+      getType: () => 'm.room.message',
+      getRelation: () => ({ rel_type: 'm.replace', event_id: '$e' }),
+      getOriginalContent: () => ({ 'm.new_content': { body: 'edited' } }),
+      isEncrypted: () => false,
+      isRedacted: () => false,
+      isState: () => false,
+      status: null,
+    } as unknown as MatrixEvent;
+    const event = Object.assign(
+      fakeEvent({ body: 'original', encrypted: true, edit }),
+      {
+        getId: () => '$e',
+        getSender: () => '@a:hs',
+        getType: () => 'm.room.message',
+        isRelation: () => false,
+      },
+    );
+    expect(messagePreview(event, true)).toBe('original');
   });
 
   it('previews encrypted text and the own message still being sent in an encrypted room', () => {

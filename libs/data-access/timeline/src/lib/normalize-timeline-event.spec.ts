@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
+import { describe, expect, it, vi } from 'vitest';
+import { MatrixEvent, type MatrixClient, type Room } from 'matrix-js-sdk';
 import { DecryptionFailureCode } from 'matrix-js-sdk/lib/crypto-api';
 import { UNENCRYPTED_PREVIEW } from '@trinity/util/matrix';
 import { normalizeTimelineEvent } from './normalize-timeline-event';
@@ -23,7 +23,7 @@ const room = {
 } as unknown as Room;
 
 function event(over: Record<string, unknown> = {}): MatrixEvent {
-  return {
+  const fake: Record<string, unknown> = {
     getId: () => '$event',
     getSender: () => '@alice:example.org',
     getTs: () => 123,
@@ -41,7 +41,19 @@ function event(over: Record<string, unknown> = {}): MatrixEvent {
     isRelation: () => false,
     replyEventId: undefined,
     ...over,
-  } as unknown as MatrixEvent;
+  };
+  const content = fake['getContent'] as () => Record<string, unknown>;
+  // As the SDK reads it: the event's own relation, when it has a type and a target.
+  const relation = () => {
+    const r = content()['m.relates_to'] as Record<string, unknown> | undefined;
+    return r?.['rel_type'] && r['event_id'] ? r : null;
+  };
+  // Unedited unless a test attaches an edit, so its own content is what it shows.
+  return {
+    getOriginalContent: content,
+    getRelation: relation,
+    ...fake,
+  } as MatrixEvent;
 }
 
 describe('normalizeTimelineEvent', () => {
@@ -254,6 +266,76 @@ describe('normalizeTimelineEvent', () => {
     });
   });
 
+  describe('the automatic thread fallback quote', () => {
+    const fallback = {
+      rel_type: 'm.thread',
+      event_id: '$thread',
+      is_falling_back: true,
+      'm.in_reply_to': { event_id: '$parent' },
+    };
+    const threadMessage = () =>
+      new MatrixEvent({
+        event_id: '$event',
+        room_id: '!r:example.org',
+        sender: '@alice:example.org',
+        type: 'm.room.message',
+        content: {
+          msgtype: 'm.text',
+          body: 'Normal thread message',
+          'm.relates_to': fallback,
+        },
+      });
+
+    it("stays omitted when an edit's new content claims otherwise", () => {
+      const message = threadMessage();
+      message.makeReplaced(
+        new MatrixEvent({
+          event_id: '$edit',
+          room_id: '!r:example.org',
+          sender: '@alice:example.org',
+          type: 'm.room.message',
+          content: {
+            msgtype: 'm.text',
+            body: '* changed',
+            'm.new_content': {
+              msgtype: 'm.text',
+              body: 'changed',
+              'm.relates_to': { ...fallback, is_falling_back: false },
+            },
+            'm.relates_to': { rel_type: 'm.replace', event_id: '$event' },
+          },
+        }),
+      );
+
+      expect(
+        normalizeTimelineEvent(client, room, message, null, false),
+      ).toMatchObject({ body: 'changed', replyTo: null });
+    });
+
+    it('is omitted from an encrypted thread message, whose relation is not encrypted', () => {
+      const message = threadMessage();
+      message.makeEncrypted(
+        'm.room.encrypted',
+        {
+          algorithm: 'm.megolm.v1.aes-sha2',
+          ciphertext: 'sealed',
+          'm.relates_to': fallback,
+        },
+        'curve',
+        'ed',
+      );
+      // Decrypted content never carries `m.relates_to`.
+      vi.spyOn(message, 'getOriginalContent').mockReturnValue({
+        msgtype: 'm.text',
+        body: 'Normal thread message',
+      });
+
+      expect(
+        normalizeTimelineEvent(client, room, message, null, false),
+      ).toMatchObject({ body: 'Normal thread message', replyTo: null });
+    });
+  });
+
   it.each([
     {
       name: 'explicit in-thread reply',
@@ -295,6 +377,40 @@ describe('normalizeTimelineEvent', () => {
     const normalized = normalizeTimelineEvent(
       client,
       room,
+      event({ replyEventId: '$parent', isEncrypted: () => true }),
+      null,
+      true,
+    );
+
+    expect(normalized?.replyTo).toMatchObject({
+      id: '$parent',
+      body: UNENCRYPTED_PREVIEW,
+    });
+  });
+
+  it("quotes an unencrypted message as the unencrypted placeholder while its encrypted edit's shield is pending", () => {
+    const edit = event({
+      getId: () => '$parent~edit',
+      isEncrypted: () => true,
+      getClearContent: () => ({}),
+      getContent: () => ({
+        'm.new_content': { msgtype: 'm.text', body: 'as edited' },
+        'm.relates_to': { rel_type: 'm.replace', event_id: '$parent' },
+      }),
+    });
+    const parent = event({
+      getId: () => '$parent',
+      replacingEvent: () => edit,
+    });
+    const editedRoom = {
+      ...room,
+      findEventById: (eventId: string) =>
+        eventId === '$parent' ? parent : null,
+    } as unknown as Room;
+
+    const normalized = normalizeTimelineEvent(
+      client,
+      editedRoom,
       event({ replyEventId: '$parent', isEncrypted: () => true }),
       null,
       true,
@@ -447,6 +563,7 @@ describe('normalizeTimelineEvent', () => {
           getContent: () => ({ body: 'parrot', ...content }),
         }),
         null,
+        false,
       );
 
     expect(sticker({ url: 'mxc://example.org/parrot' })).toMatchObject({

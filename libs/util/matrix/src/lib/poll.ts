@@ -9,6 +9,7 @@ import {
   type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
+import { displayContent } from './replacement';
 import { arrivedInClear } from './room-encryption';
 
 /**
@@ -72,7 +73,7 @@ function startSubtype(
 
 /** The raw answer ids of a poll response event (empty for a blank or malformed vote). */
 function responseAnswers(event: MatrixEvent): string[] {
-  const content = event.getContent();
+  const content = displayContent(event);
   const sub = (content[M_POLL_RESPONSE.name] ??
     content[M_POLL_RESPONSE.altName]) as { answers?: unknown } | undefined;
   const answers = sub?.answers;
@@ -172,9 +173,10 @@ export function buildPollView(
   room: Room,
   startEvent: MatrixEvent,
   roomEncrypted: boolean,
+  startContent: Record<string, unknown> = displayContent(startEvent),
 ): PollView {
   const pollId = startEvent.getId() ?? '';
-  const subtype = startSubtype(startEvent.getContent());
+  const subtype = startSubtype(startContent);
   const question = extensibleText(
     subtype?.['question'] as Record<string, unknown> | undefined,
   );
