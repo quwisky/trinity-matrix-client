@@ -176,7 +176,41 @@
       </button>
     }
 
-    @if (oidcSupported()) {
+    @if (otherSiteSignIn(); as held) {
+      <p
+        #otherSiteNotice
+        id="login-other-site"
+        tabindex="-1"
+        class="m-0 rounded-md border border-border p-3 text-sm"
+        data-testid="oidc-other-site"
+      >
+        You’ll sign in with {{ held.provider }}, which isn’t part of
+        {{ held.homeserver }}. Continue only if you expect
+        {{ held.homeserver }} to use this provider.
+      </p>
+      <button
+        trnBtn
+        size="lg"
+        class="login-card__submit w-full"
+        aria-describedby="login-other-site"
+        [disabled]="busy()"
+        (click)="confirmOtherSite()"
+        data-testid="oidc-other-site-continue"
+      >
+        Continue
+      </button>
+      <button
+        trnBtn
+        presentation="outline"
+        size="lg"
+        class="w-full"
+        [disabled]="busy()"
+        (click)="cancelOtherSite()"
+        data-testid="oidc-other-site-cancel"
+      >
+        Cancel
+      </button>
+    } @else if (oidcSupported()) {
       <button
         trnBtn
         size="lg"

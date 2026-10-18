@@ -19,8 +19,11 @@ import {
 } from 'rxjs';
 import { DevicePreferenceStorageService } from '@trinity/platform-native';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
-import type { OidcSessionBinding } from '@trinity/util/matrix';
-import { checkIssuer, checkIssuerDiscovery } from './oidc-issuer-check';
+import {
+  checkIssuerDiscovery,
+  type OidcSessionBinding,
+} from '@trinity/util/matrix';
+import { checkIssuer, checkSavedEndpoints } from './oidc-issuer-check';
 
 /** Stable https identifier for the app (dynamic-registration `client_uri`). */
 const CLIENT_URI = 'https://trinity.trinityproject.dev';
@@ -85,6 +88,13 @@ export interface OidcGrantContext {
   codeVerifier: string;
   /** The issuer the sign-in started with. The callback and the metadata must name it. */
   issuer: string;
+  /**
+   * The endpoints checked before the redirect. The code is redeemed at `tokenEndpoint`,
+   * and the homeserver's metadata must still name all of them.
+   */
+  authorizationEndpoint: string;
+  tokenEndpoint: string;
+  revocationEndpoint?: string;
   /** The callback's RFC 9207 `iss` parameter, when the provider sent one. */
   iss?: string;
 }
@@ -144,7 +154,7 @@ export class OidcClientService {
     context: OidcGrantContext,
   ): Observable<OidcGrant> {
     return defer(() => from(this.exchange(code, context))).pipe(
-      switchMap(({ token, metadata, requestedAt }) =>
+      switchMap(({ token, metadata, endpoints, requestedAt }) =>
         from(
           createClient({
             baseUrl: context.baseUrl,
@@ -173,6 +183,7 @@ export class OidcClientService {
                 issuer: metadata.issuer,
                 clientId: context.clientId,
                 redirectUri: context.redirectUri,
+                ...endpoints,
               },
             };
             return result;
@@ -189,9 +200,14 @@ export class OidcClientService {
           // against a host that black-holes the connection. Nothing consumes the result, so
           // the user gets the real failure now.
           catchError((err: unknown) => {
-            void this.revokeGranted(metadata, context, token).catch(
-              () => undefined,
-            );
+            void this.revokeGranted(
+              {
+                ...metadata,
+                revocation_endpoint: endpoints.revocationEndpoint,
+              },
+              context,
+              token,
+            ).catch(() => undefined);
             return throwError(() => err);
           }),
         ),
@@ -205,6 +221,9 @@ export class OidcClientService {
   ): Promise<{
     token: BearerTokenResponse;
     metadata: ValidatedAuthMetadata;
+    endpoints: Required<
+      Pick<OidcSessionBinding, 'tokenEndpoint' | 'revocationEndpoint'>
+    >;
     requestedAt: number;
   }> {
     const metadata = await createClient({
@@ -213,12 +232,23 @@ export class OidcClientService {
     // Check that the sign-in response comes from the provider it started with before the
     // code or the verifier is sent anywhere.
     checkIssuer(metadata, context);
-    await checkIssuerDiscovery(metadata);
-    const auth = new OAuth2(metadata, {
-      clientId: context.clientId,
-      codeVerifier: context.codeVerifier,
-      deviceId: context.deviceId,
-    });
+    checkSavedEndpoints(metadata, context);
+    const verified = await checkIssuerDiscovery(metadata);
+    const endpoints = {
+      tokenEndpoint: context.tokenEndpoint,
+      revocationEndpoint:
+        context.revocationEndpoint ??
+        verified?.revocationEndpoint ??
+        metadata.revocation_endpoint,
+    };
+    const auth = new OAuth2(
+      { ...metadata, token_endpoint: endpoints.tokenEndpoint },
+      {
+        clientId: context.clientId,
+        codeVerifier: context.codeVerifier,
+        deviceId: context.deviceId,
+      },
+    );
     // Stamped BEFORE the POST: `expires_in` is relative to when the provider issued the
     // token, so measuring from after a slow round-trip would over-state the lifetime.
     const requestedAt = Date.now();
@@ -226,7 +256,7 @@ export class OidcClientService {
       code,
       context.redirectUri,
     );
-    return { token, metadata, requestedAt };
+    return { token, metadata, endpoints, requestedAt };
   }
 
   /** Hand back tokens from a grant that succeeded but could not be turned into a session. */
@@ -248,9 +278,10 @@ export class OidcClientService {
    * discovery or a revocation POST failing must never block logout, so errors resolve to
    * void. Complements the CSAPI logout the caller also performs.
    *
-   * `homeserverUrl` is the account's own `baseUrl`: discovery goes through the
-   * homeserver's auth metadata, which is the provider config the session was actually
-   * established against.
+   * Revokes at the endpoint pinned at sign-in. A binding saved before endpoints were
+   * pinned falls back to the auth metadata of `homeserverUrl` (the account's own
+   * `baseUrl`), only while it still names the binding's issuer and agrees with the
+   * issuer's own document.
    */
   revokeTokens(
     homeserverUrl: string,
@@ -276,11 +307,39 @@ export class OidcClientService {
     binding: OidcSessionBinding,
     tokens: { accessToken?: string; refreshToken?: string },
   ): Promise<void> {
-    const metadata = await createClient({
-      baseUrl: homeserverUrl,
-    }).getAuthMetadata();
+    const metadata = binding.revocationEndpoint
+      ? // OAuth2.revokeToken reads only the revocation endpoint.
+        ({
+          issuer: binding.issuer,
+          revocation_endpoint: binding.revocationEndpoint,
+        } as ValidatedAuthMetadata)
+      : await this.unpinnedRevocationMetadata(homeserverUrl, binding);
     const auth = new OAuth2(metadata, { clientId: binding.clientId });
     await this.revokeBoth(auth, tokens);
+  }
+
+  /**
+   * The homeserver's metadata for a binding saved before endpoints were pinned, with the
+   * revocation endpoint checked against the issuer's own document. Throws when the
+   * homeserver names another issuer or the issuer's document disagrees.
+   */
+  private async unpinnedRevocationMetadata(
+    homeserverUrl: string,
+    binding: OidcSessionBinding,
+  ): Promise<ValidatedAuthMetadata> {
+    const live = await createClient({
+      baseUrl: homeserverUrl,
+    }).getAuthMetadata();
+    if (live.issuer !== binding.issuer) {
+      console.warn(
+        `Not revoking tokens: the homeserver now names issuer ${live.issuer}, not ${binding.issuer}`,
+      );
+      throw new Error('The homeserver names another issuer.');
+    }
+    const verified = await checkIssuerDiscovery(live);
+    return verified
+      ? { ...live, revocation_endpoint: verified.revocationEndpoint }
+      : live;
   }
 
   /** POST a revocation for each token present. Concurrent: neither gates the other. */

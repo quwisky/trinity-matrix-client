@@ -1187,16 +1187,180 @@ describe('LoginPage', () => {
   });
 
   describe('OIDC (next-gen auth)', () => {
+    /** Provider metadata with every endpoint on `origin`. */
+    function providerAt(origin: string) {
+      return {
+        issuer: `${origin}/`,
+        authorization_endpoint: `${origin}/authorize`,
+        token_endpoint: `${origin}/token`,
+        revocation_endpoint: `${origin}/revoke`,
+        prompt_values_supported: ['create'],
+      };
+    }
+
     /** An OIDC-native login page: discovered homeserver + provider metadata. */
-    async function renderOidcReady(redirect?: Partial<SignInRedirectService>) {
+    async function renderOidcReady(
+      redirect?: Partial<SignInRedirectService>,
+      metadata: object = providerAt('https://account.hs.example'),
+    ) {
       const rendered = await renderLogin(
         {} as unknown as Partial<AuthService>,
         redirect ? { redirect } : {},
       );
       rendered.cmp.baseUrl.set('https://hs.example');
-      rendered.cmp.oidcMetadata.set({ issuer: 'https://op' } as never);
+      rendered.cmp.oidcMetadata.set(metadata as never);
+      rendered.fixture.detectChanges();
       return rendered;
     }
+
+    function byTestId(
+      fixture: { nativeElement: unknown },
+      id: string,
+    ): HTMLElement | null {
+      return (fixture.nativeElement as HTMLElement).querySelector(
+        `[data-testid="${id}"]`,
+      );
+    }
+
+    describe('with a provider on another site', () => {
+      const OTHER_SITE = providerAt('https://auth.provider.test');
+      const NOTICE =
+        'You’ll sign in with auth.provider.test, which isn’t part of hs.example. ' +
+        'Continue only if you expect hs.example to use this provider.';
+
+      it('asks before redirecting', async () => {
+        const { fixture, redirect } = await renderOidcReady(
+          undefined,
+          OTHER_SITE,
+        );
+
+        fireEvent.click(byTestId(fixture, 'oidc-continue')!);
+        fixture.detectChanges();
+
+        expect(redirect.startOidc).not.toHaveBeenCalled();
+        const notice = byTestId(fixture, 'oidc-other-site');
+        expect(notice?.textContent?.replace(/\s+/g, ' ').trim()).toBe(NOTICE);
+        expect(byTestId(fixture, 'oidc-continue')).toBeNull();
+      });
+
+      it('redirects with the chosen action once the user continues', async () => {
+        const { fixture, redirect } = await renderOidcReady(
+          undefined,
+          OTHER_SITE,
+        );
+
+        fireEvent.click(byTestId(fixture, 'oidc-register')!);
+        fixture.detectChanges();
+        fireEvent.click(byTestId(fixture, 'oidc-other-site-continue')!);
+        fixture.detectChanges();
+
+        expect(redirect.startOidc).toHaveBeenCalledTimes(1);
+        expect(redirect.startOidc).toHaveBeenCalledWith(
+          expect.objectContaining({ prompt: 'create' }),
+        );
+        expect(byTestId(fixture, 'oidc-other-site')).toBeNull();
+      });
+
+      it('stays on the page when the user cancels', async () => {
+        const { fixture, redirect } = await renderOidcReady(
+          undefined,
+          OTHER_SITE,
+        );
+
+        fireEvent.click(byTestId(fixture, 'oidc-continue')!);
+        fixture.detectChanges();
+        fireEvent.click(byTestId(fixture, 'oidc-other-site-cancel')!);
+        fixture.detectChanges();
+
+        expect(redirect.startOidc).not.toHaveBeenCalled();
+        expect(byTestId(fixture, 'oidc-other-site')).toBeNull();
+        expect(byTestId(fixture, 'oidc-continue')).not.toBeNull();
+      });
+    });
+
+    it.each([
+      [
+        'the sign-in page',
+        {
+          authorization_endpoint: 'https://login.provider.test/authorize',
+        },
+        'login.provider.test',
+      ],
+      [
+        'the token endpoint',
+        { token_endpoint: 'https://tokens.provider.test/token' },
+        'tokens.provider.test',
+      ],
+      [
+        'the revocation endpoint',
+        { revocation_endpoint: 'https://revoke.provider.test/revoke' },
+        'revoke.provider.test',
+      ],
+    ])(
+      'asks when the issuer is part of the server but %s is not',
+      async (_, endpoints, named) => {
+        const { fixture, redirect } = await renderOidcReady(undefined, {
+          ...providerAt('https://account.hs.example'),
+          ...endpoints,
+        });
+
+        fireEvent.click(byTestId(fixture, 'oidc-continue')!);
+        fixture.detectChanges();
+
+        expect(redirect.startOidc).not.toHaveBeenCalled();
+        expect(byTestId(fixture, 'oidc-other-site')?.textContent).toContain(
+          `You’ll sign in with ${named}, which isn’t part of hs.example.`,
+        );
+      },
+    );
+
+    it('treats a provider under the server name entered as part of the server', async () => {
+      const { cmp, fixture, redirect } = await renderLogin({
+        discoverHomeserver: vi.fn(() => of('https://matrix-client.matrix.org')),
+        getSupportedFlows: vi.fn(() => of([])),
+        getDelegatedAuthConfig: vi.fn(() =>
+          of(providerAt('https://account.matrix.org')),
+        ),
+      } as unknown as Partial<AuthService>);
+      cmp.homeserverForm.homeserver().value.set('matrix.org');
+      cmp.discover();
+      fixture.detectChanges();
+
+      fireEvent.click(byTestId(fixture, 'oidc-continue')!);
+      fixture.detectChanges();
+
+      expect(redirect.startOidc).toHaveBeenCalledTimes(1);
+      expect(byTestId(fixture, 'oidc-other-site')).toBeNull();
+    });
+
+    it('asks for a provider on a sibling host of the server entered', async () => {
+      const { cmp, fixture, redirect } = await renderLogin({
+        discoverHomeserver: vi.fn(() => of('https://evil.ems.host')),
+        getSupportedFlows: vi.fn(() => of([])),
+        getDelegatedAuthConfig: vi.fn(() =>
+          of(providerAt('https://auth.ems.host')),
+        ),
+      } as unknown as Partial<AuthService>);
+      cmp.homeserverForm.homeserver().value.set('evil.ems.host');
+      cmp.discover();
+      fixture.detectChanges();
+
+      fireEvent.click(byTestId(fixture, 'oidc-continue')!);
+      fixture.detectChanges();
+
+      expect(redirect.startOidc).not.toHaveBeenCalled();
+      expect(byTestId(fixture, 'oidc-other-site')).not.toBeNull();
+    });
+
+    it('redirects at once to a provider on the homeserver’s own site', async () => {
+      const { fixture, redirect } = await renderOidcReady();
+
+      fireEvent.click(byTestId(fixture, 'oidc-continue')!);
+      fixture.detectChanges();
+
+      expect(redirect.startOidc).toHaveBeenCalledTimes(1);
+      expect(byTestId(fixture, 'oidc-other-site')).toBeNull();
+    });
 
     it('sweeps an abandoned stash on landing', async () => {
       const peek = vi.fn().mockResolvedValue({});
@@ -1252,7 +1416,7 @@ describe('LoginPage', () => {
 
       expect(redirect.startOidc).toHaveBeenCalledWith({
         baseUrl: 'https://hs.example',
-        metadata: { issuer: 'https://op' },
+        metadata: providerAt('https://account.hs.example'),
         mode: 'replace',
         prompt: 'create',
         expectedUserId: null,
@@ -1263,11 +1427,78 @@ describe('LoginPage', () => {
       expect(cmp.busy()).toBe(false);
     });
 
+    describe('re-auth of an account on a server that delegates to another host', () => {
+      const PINNED = {
+        issuer: 'https://account.matrix.org/',
+        clientId: 'c1',
+        redirectUri: 'https://app/sso-callback',
+        tokenEndpoint: 'https://account.matrix.org/token',
+        revocationEndpoint: 'https://account.matrix.org/revoke',
+      };
+
+      async function reauth(oidc: object, metadata: object) {
+        const rendered = await renderLogin(
+          {
+            getDelegatedAuthConfig: vi.fn(() => of(metadata as never)),
+            getSupportedFlows: vi.fn(() => of([])),
+          } as unknown as Partial<AuthService>,
+          {
+            reauth: '@bob:matrix.org',
+            record: {
+              baseUrl: 'https://matrix-client.matrix.org',
+              userId: '@bob:matrix.org',
+              deviceId: 'OLDDEV',
+              oidc,
+            },
+          },
+        );
+        rendered.fixture.detectChanges();
+        fireEvent.click(byTestId(rendered.fixture, 'oidc-continue')!);
+        rendered.fixture.detectChanges();
+        return rendered;
+      }
+
+      it('redirects at once to the provider the account signed in with', async () => {
+        const { fixture, redirect } = await reauth(
+          PINNED,
+          providerAt('https://account.matrix.org'),
+        );
+
+        expect(redirect.startOidc).toHaveBeenCalledTimes(1);
+        expect(byTestId(fixture, 'oidc-other-site')).toBeNull();
+      });
+
+      it.each([
+        [
+          'the provider changed',
+          PINNED,
+          {
+            ...providerAt('https://account.matrix.org'),
+            token_endpoint: 'https://tokens.example/token',
+          },
+        ],
+        [
+          'the account has no endpoints saved',
+          {
+            issuer: PINNED.issuer,
+            clientId: 'c1',
+            redirectUri: PINNED.redirectUri,
+          },
+          providerAt('https://account.matrix.org'),
+        ],
+      ])('asks when %s', async (_, oidc, metadata) => {
+        const { fixture, redirect } = await reauth(oidc, metadata);
+
+        expect(redirect.startOidc).not.toHaveBeenCalled();
+        expect(byTestId(fixture, 'oidc-other-site')).not.toBeNull();
+      });
+    });
+
     it('re-auth reuses the stored device and expects the same account back', async () => {
       const { cmp, redirect } = await renderLogin(
         {
           getDelegatedAuthConfig: vi.fn(() =>
-            of({ issuer: 'https://op' } as never),
+            of(providerAt('https://account.hs.example') as never),
           ),
           getSupportedFlows: vi.fn(() => of([])),
         } as unknown as Partial<AuthService>,

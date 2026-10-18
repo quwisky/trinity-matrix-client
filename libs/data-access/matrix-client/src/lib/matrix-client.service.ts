@@ -10,6 +10,7 @@ import {
   createClient,
   IndexedDBStore,
   MatrixClient,
+  isValidAuthMetadata,
   ClientEvent,
   HttpApiEvent,
   SyncState,
@@ -45,7 +46,9 @@ import {
   type ProjectionLease,
 } from '@trinity/runtime/projection';
 import {
+  checkIssuerDiscovery,
   MatrixSession,
+  type OidcSessionBinding,
   preloadCryptoWasm,
   rustCryptoStoreDbNames,
   syncStoreDbName,
@@ -62,6 +65,7 @@ import {
   MatrixClientStartupError,
   classifyCryptoStartupFailure,
   expectedClientStartFailure,
+  isRecord,
   type PersistedAccountStartOutcome,
 } from './account-start-failure';
 
@@ -74,6 +78,18 @@ export type { PersistedAccountStartOutcome } from './account-start-failure';
  * spec pins the two together.
  */
 export const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
+
+/** Where matrix-js-sdk discovers an OAuth account's provider (`MatrixClient.getAuthMetadata`). */
+const AUTH_METADATA_PATH = '/_matrix/client/v1/auth_metadata';
+
+/** Whether an endpoint names the same URL once parsed; anything unparseable does not. */
+function sameEndpoint(a: unknown, b: string): boolean {
+  try {
+    return typeof a === 'string' && new URL(a).href === new URL(b).href;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Whether a sync state reports a sync completed with the homeserver. The SDK also emits
@@ -1042,13 +1058,14 @@ export class MatrixClientService {
     owner: TokenRefreshOwner,
   ): Pick<
     ICreateClientOpts,
-    'refreshToken' | 'oauthClientId' | 'onTokenRefresh'
+    'refreshToken' | 'oauthClientId' | 'onTokenRefresh' | 'fetchFn'
   > {
     return {
       ...(session.refreshToken ? { refreshToken: session.refreshToken } : {}),
       ...(session.oidc
         ? {
             oauthClientId: session.oidc.clientId,
+            fetchFn: this.pinnedProviderFetch(session, session.oidc),
             onTokenRefresh: (tokens: AccessTokens): Promise<void> =>
               firstValueFrom(
                 this.storage.updateTokens(
@@ -1081,6 +1098,79 @@ export class MatrixClientService {
               }),
           }
         : {}),
+    };
+  }
+
+  /**
+   * The client's fetch, refusing auth metadata that names another provider than the one
+   * the account signed in with, so the SDK never refreshes or revokes at a moved endpoint.
+   * A refused answer fails as a network error would, and the SDK retries later.
+   *
+   * A binding saved before endpoints were pinned accepts metadata naming its issuer that
+   * the issuer's own document does not contradict, and pins it only once that document
+   * was fetched and agreed.
+   */
+  private pinnedProviderFetch(
+    session: MatrixSession,
+    signedIn: OidcSessionBinding,
+  ): typeof globalThis.fetch {
+    let binding = signedIn;
+    return async (input, init) => {
+      const response = await globalThis.fetch(input, init);
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (
+        !response.ok ||
+        url.origin !== new URL(session.baseUrl).origin ||
+        !url.pathname.replace(/\/{2,}/g, '/').endsWith(AUTH_METADATA_PATH)
+      ) {
+        return response;
+      }
+      const body: unknown = await response
+        .clone()
+        .json()
+        .catch(() => null);
+      const live = isRecord(body) ? body : {};
+      const issuer = live['issuer'];
+      const tokenEndpoint = live['token_endpoint'];
+      const revocationEndpoint = live['revocation_endpoint'];
+      if (issuer !== binding.issuer) {
+        throw new TypeError('The homeserver names another sign-in provider.');
+      }
+      if (!binding.tokenEndpoint) {
+        // Invalid metadata passes through: the SDK refuses it itself.
+        if (isValidAuthMetadata(body)) {
+          const verified = await checkIssuerDiscovery(body).catch(
+            () => undefined,
+          );
+          if (verified === undefined) {
+            throw new TypeError(
+              "The homeserver's sign-in provider does not match the issuer's own metadata.",
+            );
+          }
+          // Without the issuer's own document nothing confirms the endpoints: use them
+          // for this refresh only, and try pinning again on the next client.
+          if (verified) {
+            binding = { ...binding, ...verified };
+            await firstValueFrom(
+              this.storage.updateOidcBinding(
+                session.userId,
+                session.lineage,
+                binding,
+              ),
+            ).catch(() => undefined);
+          }
+        }
+        return response;
+      }
+      if (
+        !sameEndpoint(tokenEndpoint, binding.tokenEndpoint) ||
+        (binding.revocationEndpoint !== undefined &&
+          revocationEndpoint !== undefined &&
+          !sameEndpoint(revocationEndpoint, binding.revocationEndpoint))
+      ) {
+        throw new TypeError('The homeserver names another sign-in provider.');
+      }
+      return response;
     };
   }
 

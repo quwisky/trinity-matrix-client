@@ -787,6 +787,7 @@ describe('MatrixClientService', () => {
     expect(opts.refreshToken).toBeUndefined();
     expect(opts.oauthClientId).toBeUndefined();
     expect(opts.onTokenRefresh).toBeUndefined();
+    expect(opts.fetchFn).toBeUndefined();
   });
 
   it('does not publish the client until startClient resolves', async () => {

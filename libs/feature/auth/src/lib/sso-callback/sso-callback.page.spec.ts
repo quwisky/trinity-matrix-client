@@ -27,6 +27,9 @@ const EMPTY_OIDC: OidcStateStash = {
   mode: 'replace',
   redirectUri: null,
   issuer: null,
+  authorizationEndpoint: null,
+  tokenEndpoint: null,
+  revocationEndpoint: null,
   clientId: null,
   deviceId: null,
   codeVerifier: null,
@@ -333,6 +336,9 @@ describe('SsoCallbackPage', () => {
       mode: 'replace',
       redirectUri: 'https://app/sso-callback',
       issuer: 'https://op.example',
+      authorizationEndpoint: 'https://op.example/authorize',
+      tokenEndpoint: 'https://op.example/token',
+      revocationEndpoint: 'https://op.example/revoke',
       clientId: 'CLIENT1',
       deviceId: 'DEVICE1',
       codeVerifier: 'VERIFIER1',
@@ -346,6 +352,9 @@ describe('SsoCallbackPage', () => {
       deviceId: 'DEVICE1',
       codeVerifier: 'VERIFIER1',
       issuer: 'https://op.example',
+      authorizationEndpoint: 'https://op.example/authorize',
+      tokenEndpoint: 'https://op.example/token',
+      revocationEndpoint: 'https://op.example/revoke',
     };
 
     it('completes the grant with the stashed PKCE context, then clears the stash + URL', async () => {
@@ -563,6 +572,21 @@ describe('SsoCallbackPage', () => {
       expect(completeOidcLogin).not.toHaveBeenCalled();
       expect(cmp.error()).toMatch(/missing/i);
     });
+
+    it.each(['authorizationEndpoint', 'tokenEndpoint'] as const)(
+      'errors when the checked %s is missing from the stash',
+      async (field) => {
+        const completeOidcLogin = vi.fn();
+        const { cmp } = await renderPage({
+          auth: { completeOidcLogin } as unknown as Partial<AuthService>,
+          params: { code: 'CODE', state: 'STATE1' },
+          oidcStash: { ...OIDC_STASH, [field]: null },
+        });
+
+        expect(completeOidcLogin).not.toHaveBeenCalled();
+        expect(cmp.error()).toMatch(/missing/i);
+      },
+    );
 
     it('errors when the redirect is missing from the stash', async () => {
       const completeOidcLogin = vi.fn();

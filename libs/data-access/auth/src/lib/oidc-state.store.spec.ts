@@ -24,6 +24,9 @@ const SAVE = {
   mode: 'add' as const,
   redirectUri: 'https://app/sso-callback',
   issuer: 'https://op.example',
+  authorizationEndpoint: 'https://op.example/authorize',
+  tokenEndpoint: 'https://op.example/token',
+  revocationEndpoint: 'https://op.example/revoke',
   clientId: 'CLIENT1',
   deviceId: 'DEVICE1',
   codeVerifier: 'VERIFIER1',
@@ -48,6 +51,9 @@ describe('OidcStateStore', () => {
       mode: 'add',
       redirectUri: 'https://app/sso-callback',
       issuer: 'https://op.example',
+      authorizationEndpoint: 'https://op.example/authorize',
+      tokenEndpoint: 'https://op.example/token',
+      revocationEndpoint: 'https://op.example/revoke',
       clientId: 'CLIENT1',
       deviceId: 'DEVICE1',
       codeVerifier: 'VERIFIER1',
@@ -108,6 +114,7 @@ describe('OidcStateStore', () => {
     expect(await store.peek()).toMatchObject({
       state: null,
       baseUrl: null,
+      tokenEndpoint: null,
       codeVerifier: null,
     });
   });

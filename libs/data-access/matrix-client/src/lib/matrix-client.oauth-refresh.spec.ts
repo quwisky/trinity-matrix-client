@@ -103,6 +103,8 @@ describe('OAuth tokens through a real MatrixClient', () => {
       loseGrantResponse: false,
       /** How long auth metadata discovery takes to answer. */
       discoveryDelayMs: 0,
+      /** The issuer's own RFC 8414 document; null answers 404 and `down` drops the connection. */
+      issuerDocument: null as unknown,
     };
     // Like MAS, a grant revokes the access token issued with the refresh token it spends.
     const issuedWith = new Map<string, string>();
@@ -118,7 +120,11 @@ describe('OAuth tokens through a real MatrixClient', () => {
         );
         const form = new URLSearchParams(String(init.body ?? ''));
         calls.push(`${init.method ?? 'GET'} ${url.host}${url.pathname}`);
-        if (url.pathname === '/_matrix/client/v1/auth_metadata') {
+        // The homeserver also answers under a base path or a doubled slash.
+        const path = url.pathname
+          .replace(/\/{2,}/g, '/')
+          .replace(/^\/mx(?=\/)/, '');
+        if (path === '/_matrix/client/v1/auth_metadata') {
           if (state.discoveryDelayMs > 0) {
             await new Promise((resolve) =>
               setTimeout(resolve, state.discoveryDelayMs),
@@ -130,6 +136,14 @@ describe('OAuth tokens through a real MatrixClient', () => {
             return json(state.discovery.body, state.discovery.status);
           }
           return json(METADATA);
+        }
+        if (url.href === `${OP}/.well-known/oauth-authorization-server`) {
+          if (state.issuerDocument === 'down') {
+            throw new TypeError('Failed to fetch');
+          }
+          return state.issuerDocument === null
+            ? json({}, 404)
+            : json(state.issuerDocument);
         }
         if (url.href === METADATA.token_endpoint) {
           // Like fetch, an already aborted signal sends nothing.
@@ -176,7 +190,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
           revocations.push(form.get('token_type_hint') ?? '');
           return new Response('', { status: 200 });
         }
-        if (url.pathname === '/_matrix/client/v3/account/whoami') {
+        if (path === '/_matrix/client/v3/account/whoami') {
           if (whoamiGate) {
             whoamiHeld += 1;
             await whoamiGate;
@@ -195,7 +209,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
                 401,
               );
         }
-        if (url.pathname.endsWith('/logout')) return json({});
+        if (path.endsWith('/logout')) return json({});
         throw new Error(`unexpected ${init.method ?? 'GET'} ${url.href}`);
       }),
     );
@@ -239,6 +253,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
     await useRealClients();
     const ctx = setup();
     vi.mocked(ctx.storage.updateTokens).mockReturnValue(of(undefined));
+    vi.mocked(ctx.storage.updateOidcBinding).mockReturnValue(of(undefined));
     // If a refresh ever ends in a logout, let the logout path run to completion so the
     // assertions see its effect rather than a mock error.
     vi.mocked(ctx.storage.remove).mockReturnValue(of(undefined));
@@ -297,6 +312,193 @@ describe('OAuth tokens through a real MatrixClient', () => {
     expect(net.grants[1].get('refresh_token')).toBe('rt-2');
     expect(client.getAccessToken()).toBe('at-3');
     expectStillSignedIn(svc, client);
+  });
+
+  describe('the provider pinned at sign-in', () => {
+    const PINNED_SESSION: MatrixSession = {
+      ...OIDC_SESSION,
+      lineage: 'L1',
+      oidc: {
+        ...OIDC_SESSION.oidc,
+        tokenEndpoint: METADATA.token_endpoint,
+        revocationEndpoint: METADATA.revocation_endpoint,
+      },
+    };
+
+    it('refreshes while the homeserver names the pinned endpoints', async () => {
+      const net = fakeNetwork('rotate');
+      const { svc, storage, client } = await startReal(PINNED_SESSION);
+
+      await expect(client.whoami()).resolves.toMatchObject({
+        user_id: '@me:hs',
+      });
+
+      expect(net.grants).toHaveLength(1);
+      expect(storage.updateOidcBinding).not.toHaveBeenCalled();
+      expectStillSignedIn(svc, client);
+    });
+
+    it.each([
+      ['token endpoint', { token_endpoint: 'https://hs.example/token' }],
+      ['revocation endpoint', { revocation_endpoint: 'https://hs.example/r' }],
+      ['issuer', { issuer: 'https://hs.example/' }],
+    ])(
+      'does not refresh when the homeserver names another %s',
+      async (_, change) => {
+        const net = fakeNetwork('rotate');
+        net.state.discovery = {
+          status: 200,
+          body: { ...METADATA, ...change },
+        };
+        const { svc, client } = await startReal(PINNED_SESSION);
+
+        await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+        expect(net.grants).toHaveLength(0);
+        expect(
+          net.calls.filter((call) => call.includes('hs.example/token')),
+        ).toEqual([]);
+        expectStillSignedIn(svc, client);
+      },
+    );
+
+    it.each(['https://hs.example/mx', 'https://hs.example///'])(
+      'refreshes a homeserver at %s while it names the pinned endpoints',
+      async (baseUrl) => {
+        const net = fakeNetwork('rotate');
+        const { client } = await startReal({ ...PINNED_SESSION, baseUrl });
+
+        await expect(client.whoami()).resolves.toBeDefined();
+
+        expect(net.grants).toHaveLength(1);
+      },
+    );
+
+    it.each(['https://hs.example/mx', 'https://hs.example///'])(
+      'does not refresh a homeserver at %s that names another token endpoint',
+      async (baseUrl) => {
+        const net = fakeNetwork('rotate');
+        net.state.discovery = {
+          status: 200,
+          body: { ...METADATA, token_endpoint: 'https://hs.example/token' },
+        };
+        const { client } = await startReal({ ...PINNED_SESSION, baseUrl });
+
+        await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+        expect(net.calls).not.toContain('POST hs.example/token');
+      },
+    );
+
+    it('pins the endpoints of an account saved before pinning on its first refresh', async () => {
+      const net = fakeNetwork('rotate');
+      net.state.issuerDocument = METADATA;
+      const { storage, client } = await startReal({
+        ...OIDC_SESSION,
+        lineage: 'L1',
+      });
+
+      await expect(client.whoami()).resolves.toBeDefined();
+
+      expect(net.grants).toHaveLength(1);
+      expect(storage.updateOidcBinding).toHaveBeenCalledWith('@me:hs', 'L1', {
+        ...OIDC_SESSION.oidc,
+        tokenEndpoint: METADATA.token_endpoint,
+        revocationEndpoint: METADATA.revocation_endpoint,
+      });
+    });
+
+    it("pins nothing while the issuer's own document cannot be fetched, then pins once it can", async () => {
+      const net = fakeNetwork('rotate');
+      net.state.issuerDocument = 'down';
+      const session = { ...OIDC_SESSION, lineage: 'L1' };
+      const { svc, storage, client } = await startReal(session);
+
+      await expect(client.whoami()).resolves.toBeDefined();
+
+      expect(net.grants).toHaveLength(1);
+      expect(storage.updateOidcBinding).not.toHaveBeenCalled();
+
+      net.state.issuerDocument = METADATA;
+      net.expireAll();
+      const later = svc.detachedClient(session);
+      await expect(later.whoami()).resolves.toBeDefined();
+
+      expect(storage.updateOidcBinding).toHaveBeenCalledWith('@me:hs', 'L1', {
+        ...OIDC_SESSION.oidc,
+        tokenEndpoint: METADATA.token_endpoint,
+        revocationEndpoint: METADATA.revocation_endpoint,
+      });
+    });
+
+    it('never pins an account whose issuer publishes no document, and keeps refreshing', async () => {
+      const net = fakeNetwork('rotate');
+      const { svc, storage, client } = await startReal({
+        ...OIDC_SESSION,
+        lineage: 'L1',
+      });
+
+      await expect(client.whoami()).resolves.toBeDefined();
+      net.expireAll();
+      await expect(client.whoami()).resolves.toBeDefined();
+
+      expect(net.grants).toHaveLength(2);
+      expect(storage.updateOidcBinding).not.toHaveBeenCalled();
+      expectStillSignedIn(svc, client);
+    });
+
+    it("does not pin or refresh an account saved before pinning when the issuer's own document disagrees", async () => {
+      const net = fakeNetwork('rotate');
+      net.state.issuerDocument = {
+        ...METADATA,
+        token_endpoint: `${OP}/real-token`,
+      };
+      const { svc, storage, client } = await startReal({
+        ...OIDC_SESSION,
+        lineage: 'L1',
+      });
+
+      await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+      expect(net.grants).toHaveLength(0);
+      expect(storage.updateOidcBinding).not.toHaveBeenCalled();
+      expectStillSignedIn(svc, client);
+    });
+
+    it("pins the issuer's own endpoints for an account saved before pinning", async () => {
+      const net = fakeNetwork('rotate');
+      net.state.issuerDocument = {
+        ...METADATA,
+        token_endpoint: 'https://OP.example:443/token',
+      };
+      const { storage, client } = await startReal({
+        ...OIDC_SESSION,
+        lineage: 'L1',
+      });
+
+      await expect(client.whoami()).resolves.toBeDefined();
+
+      expect(storage.updateOidcBinding).toHaveBeenCalledWith('@me:hs', 'L1', {
+        ...OIDC_SESSION.oidc,
+        tokenEndpoint: 'https://OP.example:443/token',
+        revocationEndpoint: METADATA.revocation_endpoint,
+      });
+    });
+
+    it('does not pin or refresh an account saved before pinning when the issuer changed', async () => {
+      const net = fakeNetwork('rotate');
+      net.state.discovery = {
+        status: 200,
+        body: { ...METADATA, issuer: 'https://hs.example/' },
+      };
+      const { svc, storage, client } = await startReal();
+
+      await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+      expect(net.grants).toHaveLength(0);
+      expect(storage.updateOidcBinding).not.toHaveBeenCalled();
+      expectStillSignedIn(svc, client);
+    });
   });
 
   it('persists no expiry when the provider returns none', async () => {

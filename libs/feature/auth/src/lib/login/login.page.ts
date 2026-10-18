@@ -44,6 +44,8 @@ import {
   UnprotectedStorageDeclinedError,
   RegistrationService,
   SignInRedirectService,
+  isPartOfServer,
+  matchesPinnedProvider,
   type LoginMode,
   type AuthMetadata,
   type RegistrationAvailability,
@@ -61,6 +63,7 @@ import {
   HTTPError,
   MatrixError,
   describeMatrixRequestFailure,
+  type OidcSessionBinding,
 } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import {
@@ -106,6 +109,15 @@ function describeSignInError(error: unknown, fallback: string): string {
   return describeMatrixRequestFailure(error, fallback).message;
 }
 
+/** A URL's host as shown to the user, or the value itself when it is not a URL. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 @Component({
   selector: 'trn-login',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -141,6 +153,8 @@ export class LoginPage {
     viewChild<ElementRef<HTMLInputElement>>('usernameInput');
   private readonly deletedNoticeHeading =
     viewChild<ElementRef<HTMLElement>>('deletedNotice');
+  private readonly otherSiteNotice =
+    viewChild<ElementRef<HTMLElement>>('otherSiteNotice');
   private readonly deletion = inject(ACCOUNT_DELETION_LAUNCHER, {
     optional: true,
   });
@@ -158,6 +172,8 @@ export class LoginPage {
   readonly reauthUserId = signal<string | null>(
     this.route.snapshot.queryParamMap.get('reauth'),
   );
+  /** In re-auth, the provider binding the account signed in with. */
+  private reauthBinding: OidcSessionBinding | null = null;
   /** The stored device id to re-authenticate, in re-auth mode. */
   private reauthDeviceId: string | null = null;
   /** The server discovery resolved from what the person entered. */
@@ -204,6 +220,7 @@ export class LoginPage {
               return throwError(() => new Error(ACCOUNT_NOT_STORED));
             }
             this.baseUrl.set(record.baseUrl);
+            this.reauthBinding = record.oidc ?? null;
             // Reuse the device unless its stored keys can no longer be unlocked here:
             // then only a new device, with a new store and key, can sign back in.
             const reusable = this.reauthAsNewDevice
@@ -269,6 +286,16 @@ export class LoginPage {
     () =>
       this.oidcMetadata()?.prompt_values_supported?.includes('create') ?? false,
   );
+
+  /**
+   * A sign-in held until the user confirms a provider on another site than the
+   * homeserver, with the hosts the confirmation names. Null when none is waiting.
+   */
+  readonly otherSiteSignIn = signal<{
+    readonly prompt?: string;
+    readonly provider: string;
+    readonly homeserver: string;
+  } | null>(null);
 
   readonly busy = signal(false);
   /** Page-level failures with no field to attach to (erase, re-auth loading). */
@@ -441,13 +468,69 @@ export class LoginPage {
     ).subscribe();
   }
 
-  /** Step 2c: OIDC — hand off to the provider; `prompt: 'create'` opens its registration. */
+  /**
+   * Step 2c: OIDC — hand off to the provider; `prompt: 'create'` opens its registration.
+   * A sign-in page, token or revocation endpoint, or issuer outside the server waits for
+   * {@link confirmOtherSite}, unless re-auth finds the provider the account signed in with.
+   */
   startOidc(prompt?: string): void {
     const baseUrl = this.baseUrl();
     const metadata = this.oidcMetadata();
     if (!baseUrl || !metadata?.issuer) {
       return;
     }
+    if (
+      this.reauthBinding &&
+      matchesPinnedProvider(metadata, this.reauthBinding)
+    ) {
+      this.redirectToProvider(baseUrl, metadata, prompt);
+      return;
+    }
+    // Re-auth has no server name entered, so the homeserver's own host stands in.
+    const server = this.enteredServerName ?? new URL(baseUrl).host;
+    const outside = [
+      metadata.authorization_endpoint,
+      metadata.token_endpoint,
+      metadata.revocation_endpoint,
+      metadata.issuer,
+    ]
+      .filter((url) => url !== undefined)
+      .find((url) => !isPartOfServer(url, server));
+    if (outside !== undefined) {
+      this.otherSiteSignIn.set({
+        ...(prompt ? { prompt } : {}),
+        provider: hostOf(outside),
+        homeserver: hostOf(`https://${server.replace(/^\/+/, '')}`),
+      });
+      afterNextRender(() => this.otherSiteNotice()?.nativeElement.focus(), {
+        injector: this.injector,
+      });
+      return;
+    }
+    this.redirectToProvider(baseUrl, metadata, prompt);
+  }
+
+  /** Continue the held sign-in with the provider on another site. */
+  confirmOtherSite(): void {
+    const held = this.otherSiteSignIn();
+    const baseUrl = this.baseUrl();
+    const metadata = this.oidcMetadata();
+    this.otherSiteSignIn.set(null);
+    if (held && baseUrl && metadata) {
+      this.redirectToProvider(baseUrl, metadata, held.prompt);
+    }
+  }
+
+  /** Drop the held sign-in and return to the sign-in choices. */
+  cancelOtherSite(): void {
+    this.otherSiteSignIn.set(null);
+  }
+
+  private redirectToProvider(
+    baseUrl: string,
+    metadata: AuthMetadata,
+    prompt?: string,
+  ): void {
     this.withBusy(
       this.signInRedirect.startOidc({
         baseUrl,

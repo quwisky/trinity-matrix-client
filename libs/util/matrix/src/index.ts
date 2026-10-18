@@ -31,3 +31,4 @@ export * from './lib/room-state';
 export * from './lib/crypto-wasm-loader';
 export * from './lib/room-url';
 export * from './lib/room-encryption';
+export * from './lib/oidc-issuer-discovery';

@@ -572,6 +572,86 @@ describe('SessionStorageService', () => {
       );
     });
 
+    it('updateOidcBinding records the provider endpoints for the same sign-in', async () => {
+      const { svc } = setup();
+      const { lineage } = await firstValueFrom(svc.save(CAROL));
+      const pinned = {
+        ...OIDC_BINDING,
+        tokenEndpoint: 'https://op.example/token',
+        revocationEndpoint: 'https://op.example/revoke',
+      };
+
+      await firstValueFrom(svc.updateOidcBinding('@carol:hs', lineage, pinned));
+
+      const loaded = await firstValueFrom(svc.load('@carol:hs'));
+      expect(loaded?.oidc).toEqual(pinned);
+      expect(loaded?.lineage).toBe(lineage);
+    });
+
+    it('updateOidcBinding never replaces endpoints already pinned', async () => {
+      const { svc } = setup();
+      const pinned = {
+        ...OIDC_BINDING,
+        tokenEndpoint: 'https://op.example/token',
+        revocationEndpoint: 'https://op.example/revoke',
+      };
+      const { lineage } = await firstValueFrom(
+        svc.save({ ...CAROL, oidc: pinned }),
+      );
+
+      await firstValueFrom(
+        svc.updateOidcBinding('@carol:hs', lineage, {
+          ...OIDC_BINDING,
+          tokenEndpoint: 'https://hs.example/token',
+          revocationEndpoint: 'https://hs.example/revoke',
+        }),
+      );
+
+      expect((await firstValueFrom(svc.load('@carol:hs')))?.oidc).toEqual(
+        pinned,
+      );
+    });
+
+    it('updateOidcBinding writes nothing for another provider or client', async () => {
+      const { svc } = setup();
+      const { lineage } = await firstValueFrom(svc.save(CAROL));
+
+      for (const other of [
+        { issuer: 'https://other.example/' },
+        { clientId: 'another-client' },
+      ]) {
+        await firstValueFrom(
+          svc.updateOidcBinding('@carol:hs', lineage, {
+            ...OIDC_BINDING,
+            ...other,
+            tokenEndpoint: 'https://hs.example/token',
+            revocationEndpoint: 'https://hs.example/revoke',
+          }),
+        );
+      }
+
+      expect((await firstValueFrom(svc.load('@carol:hs')))?.oidc).toEqual(
+        OIDC_BINDING,
+      );
+    });
+
+    it("updateOidcBinding writes nothing over a newer sign-in's binding", async () => {
+      const { svc } = setup();
+      const { lineage } = await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(svc.save(CAROL));
+
+      await firstValueFrom(
+        svc.updateOidcBinding('@carol:hs', lineage, {
+          ...OIDC_BINDING,
+          tokenEndpoint: 'https://op.example/token',
+        }),
+      );
+
+      expect((await firstValueFrom(svc.load('@carol:hs')))?.oidc).toEqual(
+        OIDC_BINDING,
+      );
+    });
+
     it('updateTokens is a no-op for an account no longer registered (signed out mid-refresh)', async () => {
       const { svc, secure } = setup();
 

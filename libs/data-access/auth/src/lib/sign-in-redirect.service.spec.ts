@@ -17,7 +17,12 @@ const OIDC_REQUEST = {
   deviceId: 'DEVICE1',
   codeVerifier: 'VERIFIER1',
 };
-const METADATA = { issuer: 'https://op' } as never;
+const METADATA = {
+  issuer: 'https://op',
+  authorization_endpoint: 'https://op/authorize',
+  token_endpoint: 'https://op/token',
+  revocation_endpoint: 'https://op/revoke',
+} as never;
 
 /** Records the order in which the durable save and the redirect happen. */
 function setup(
@@ -224,6 +229,9 @@ describe('SignInRedirectService', () => {
         baseUrl: 'https://hs.example',
         mode: 'replace',
         issuer: 'https://op',
+        authorizationEndpoint: 'https://op/authorize',
+        tokenEndpoint: 'https://op/token',
+        revocationEndpoint: 'https://op/revoke',
         clientId: 'CLIENT1',
         deviceId: 'DEVICE1',
         codeVerifier: 'VERIFIER1',

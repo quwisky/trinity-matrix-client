@@ -10,6 +10,9 @@ const STARTED_KEY = 'oidc.startedAt';
 const MODE_KEY = 'oidc.mode';
 const REDIRECT_URI_KEY = 'oidc.redirectUri';
 const ISSUER_KEY = 'oidc.issuer';
+const AUTHORIZATION_ENDPOINT_KEY = 'oidc.authorizationEndpoint';
+const TOKEN_ENDPOINT_KEY = 'oidc.tokenEndpoint';
+const REVOCATION_ENDPOINT_KEY = 'oidc.revocationEndpoint';
 const CLIENT_ID_KEY = 'oidc.clientId';
 const DEVICE_ID_KEY = 'oidc.deviceId';
 const CODE_VERIFIER_KEY = 'oidc.codeVerifier';
@@ -32,6 +35,13 @@ export interface OidcStateSave {
   redirectUri: string;
   /** The OIDC issuer; lets the callback forget a stale client registration on failure. */
   issuer: string;
+  /**
+   * The provider endpoints checked before the redirect. The exchange redeems the code at
+   * this token endpoint and refuses homeserver metadata that no longer names them.
+   */
+  authorizationEndpoint: string;
+  tokenEndpoint: string;
+  revocationEndpoint: string;
   /** The registered client id this request was built with. */
   clientId: string;
   /** The device id the SDK minted for this request. */
@@ -55,6 +65,9 @@ export interface OidcStateStash {
   mode: LoginMode;
   redirectUri: string | null;
   issuer: string | null;
+  authorizationEndpoint: string | null;
+  tokenEndpoint: string | null;
+  revocationEndpoint: string | null;
   clientId: string | null;
   deviceId: string | null;
   codeVerifier: string | null;
@@ -67,6 +80,9 @@ const EMPTY_STASH: OidcStateStash = {
   mode: 'replace',
   redirectUri: null,
   issuer: null,
+  authorizationEndpoint: null,
+  tokenEndpoint: null,
+  revocationEndpoint: null,
   clientId: null,
   deviceId: null,
   codeVerifier: null,
@@ -106,6 +122,12 @@ export class OidcStateStore {
         { key: MODE_KEY, value: params.mode },
         { key: REDIRECT_URI_KEY, value: params.redirectUri },
         { key: ISSUER_KEY, value: params.issuer },
+        {
+          key: AUTHORIZATION_ENDPOINT_KEY,
+          value: params.authorizationEndpoint,
+        },
+        { key: TOKEN_ENDPOINT_KEY, value: params.tokenEndpoint },
+        { key: REVOCATION_ENDPOINT_KEY, value: params.revocationEndpoint },
         { key: CLIENT_ID_KEY, value: params.clientId },
         { key: DEVICE_ID_KEY, value: params.deviceId },
         { key: CODE_VERIFIER_KEY, value: params.codeVerifier },
@@ -139,6 +161,9 @@ export class OidcStateStore {
       deviceId,
       codeVerifier,
       expectedUserId,
+      authorizationEndpoint,
+      tokenEndpoint,
+      revocationEndpoint,
     ] = await firstValueFrom(
       this.storage.getMany([
         STATE_KEY,
@@ -151,6 +176,9 @@ export class OidcStateStore {
         DEVICE_ID_KEY,
         CODE_VERIFIER_KEY,
         EXPECTED_USER_ID_KEY,
+        AUTHORIZATION_ENDPOINT_KEY,
+        TOKEN_ENDPOINT_KEY,
+        REVOCATION_ENDPOINT_KEY,
       ]),
     );
 
@@ -174,6 +202,9 @@ export class OidcStateStore {
       mode: mode === 'add' ? 'add' : 'replace',
       redirectUri,
       issuer,
+      authorizationEndpoint,
+      tokenEndpoint,
+      revocationEndpoint,
       clientId,
       deviceId,
       codeVerifier,
@@ -195,6 +226,9 @@ export class OidcStateStore {
         DEVICE_ID_KEY,
         CODE_VERIFIER_KEY,
         EXPECTED_USER_ID_KEY,
+        AUTHORIZATION_ENDPOINT_KEY,
+        TOKEN_ENDPOINT_KEY,
+        REVOCATION_ENDPOINT_KEY,
         ...LEGACY_KEYS,
       ]),
     );

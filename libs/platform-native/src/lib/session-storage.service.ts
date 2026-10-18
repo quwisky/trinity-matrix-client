@@ -3,6 +3,7 @@ import { Preferences } from '@capacitor/preferences';
 import { Observable, defer, from, map } from 'rxjs';
 import {
   MatrixSession,
+  type OidcSessionBinding,
   isRustCryptoStoreDbName,
   isSyncStoreDbName,
   rustCryptoStoreDbNames,
@@ -263,6 +264,39 @@ export class SessionStorageService {
             accessTokenExpiresAt,
           ),
         ),
+      ),
+    );
+  }
+
+  /**
+   * Record provider endpoints for a stored OAuth account whose binding has none yet.
+   * A compare-and-swap on the sign-in like {@link updateTokens}, and on the binding: a
+   * no-op once the account was signed out or signed in again, when its endpoints are
+   * already pinned, or when its issuer or client differs. Never changes the lineage.
+   */
+  updateOidcBinding(
+    userId: string,
+    lineage: string | undefined,
+    oidc: OidcSessionBinding,
+  ): Observable<void> {
+    return defer(() =>
+      from(
+        this.serialize(async () => {
+          const registry = await this.readRegistry();
+          const record = registry.accounts.find((a) => a.userId === userId);
+          if (
+            !record?.oidc ||
+            (record.lineage !== undefined && record.lineage !== lineage) ||
+            record.oidc.tokenEndpoint !== undefined ||
+            record.oidc.revocationEndpoint !== undefined ||
+            record.oidc.issuer !== oidc.issuer ||
+            record.oidc.clientId !== oidc.clientId
+          ) {
+            return;
+          }
+          record.oidc = oidc;
+          await this.writeRegistry(registry);
+        }),
       ),
     );
   }

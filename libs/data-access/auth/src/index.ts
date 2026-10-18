@@ -23,3 +23,5 @@ export { SsoStateStore } from './lib/sso-state.store';
 export type { SsoStateStash } from './lib/sso-state.store';
 export { SignInRedirectService } from './lib/sign-in-redirect.service';
 export * from './lib/new-device-sign-in.port';
+export { isPartOfServer } from './lib/part-of-server';
+export { matchesPinnedProvider } from './lib/pinned-provider';

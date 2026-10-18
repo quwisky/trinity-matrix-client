@@ -793,6 +793,13 @@ describe('AuthService', () => {
 
     it('refuses an OAuth grant for an account on another server and revokes it', async () => {
       const oidc = TestBed.inject(OidcClientService);
+      const binding = {
+        issuer: 'https://op',
+        clientId: 'c1',
+        redirectUri: 'https://app/cb',
+        tokenEndpoint: 'https://op/token',
+        revocationEndpoint: 'https://op/revoke',
+      };
       vi.mocked(oidc.completeGrant).mockReturnValue(
         of({
           homeserverUrl: 'https://hs.example',
@@ -801,11 +808,7 @@ describe('AuthService', () => {
           accessToken: 'atok',
           refreshToken: 'rtok',
           accessTokenExpiresAt: 1234,
-          oidc: {
-            issuer: 'https://op',
-            clientId: 'c1',
-            redirectUri: 'https://app/cb',
-          },
+          oidc: binding,
         }),
       );
       vi.mocked(oidc.revokeTokens).mockReturnValue(of(undefined));
@@ -819,13 +822,21 @@ describe('AuthService', () => {
             deviceId: 'DEV',
             codeVerifier: 'verifier',
             issuer: 'https://op',
+            authorizationEndpoint: 'https://op/authorize',
+            tokenEndpoint: 'https://op/token',
+            revocationEndpoint: 'https://op/revoke',
           }),
         ),
       ).rejects.toBeInstanceOf(UnacceptableAccountError);
       expect(
         TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
       ).not.toHaveBeenCalled();
-      expect(oidc.revokeTokens).toHaveBeenCalled();
+      // The refused grant is revoked at the endpoint pinned at sign-in.
+      expect(oidc.revokeTokens).toHaveBeenCalledWith(
+        'https://hs.example',
+        binding,
+        { accessToken: 'atok', refreshToken: 'rtok' },
+      );
     });
   });
 
@@ -840,6 +851,8 @@ describe('AuthService', () => {
       deviceId: 'DEV',
       codeVerifier: 'verifier',
       issuer: 'https://op',
+      authorizationEndpoint: 'https://op/authorize',
+      tokenEndpoint: 'https://op/token',
     };
     const grant = {
       homeserverUrl: 'https://hs',
@@ -1259,6 +1272,8 @@ describe('AuthService', () => {
             deviceId: 'KEPT',
             codeVerifier: 'v',
             issuer: 'https://op',
+            authorizationEndpoint: 'https://op/authorize',
+            tokenEndpoint: 'https://op/token',
           },
           'add',
           '@me:hs',
@@ -1346,6 +1361,8 @@ describe('AuthService', () => {
           deviceId: 'NEW',
           codeVerifier: 'v',
           issuer: 'https://op',
+          authorizationEndpoint: 'https://op/authorize',
+          tokenEndpoint: 'https://op/token',
         }),
       );
 
@@ -1525,6 +1542,8 @@ describe('AuthService', () => {
             deviceId: 'NEW',
             codeVerifier: 'v',
             issuer: 'https://op',
+            authorizationEndpoint: 'https://op/authorize',
+            tokenEndpoint: 'https://op/token',
           }),
         ),
       ).rejects.toBeInstanceOf(NewDeviceSignInCancelledError);

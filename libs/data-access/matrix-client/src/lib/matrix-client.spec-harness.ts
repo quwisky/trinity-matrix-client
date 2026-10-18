@@ -28,11 +28,11 @@ export const OIDC_SESSION = {
   refreshToken: 'refresh-tok',
   accessTokenExpiresAt: 1234,
   oidc: {
-    issuer: 'https://op',
+    issuer: 'https://op.example/',
     clientId: 'client-1',
     redirectUri: 'https://app/sso-callback',
     idTokenClaims: {
-      iss: 'https://op',
+      iss: 'https://op.example/',
       sub: 'u',
       aud: 'client-1',
       exp: 1,

@@ -178,7 +178,9 @@ export class SsoCallbackPage implements OnInit {
       !stash.clientId ||
       !stash.deviceId ||
       !stash.codeVerifier ||
-      !stash.issuer
+      !stash.issuer ||
+      !stash.authorizationEndpoint ||
+      !stash.tokenEndpoint
     ) {
       this.error.set('Missing sign-in details. Please sign in again.');
       return;
@@ -194,6 +196,11 @@ export class SsoCallbackPage implements OnInit {
       deviceId: stash.deviceId,
       codeVerifier: stash.codeVerifier,
       issuer: stash.issuer,
+      authorizationEndpoint: stash.authorizationEndpoint,
+      tokenEndpoint: stash.tokenEndpoint,
+      ...(stash.revocationEndpoint
+        ? { revocationEndpoint: stash.revocationEndpoint }
+        : {}),
       ...(iss !== null ? { iss } : {}),
     };
     this.auth
