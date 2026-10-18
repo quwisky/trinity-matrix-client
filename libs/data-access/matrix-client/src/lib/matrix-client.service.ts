@@ -979,6 +979,12 @@ export class MatrixClientService {
           };
           account = started;
           this.clients.set(session.userId, started);
+          // A logout recorded for a replaced client must not end this one; a token that is
+          // still dead reports itself again.
+          const held = this.logoutHolds.get(session.userId);
+          if (held) {
+            held.died = null;
+          }
           this._accountIds.set([...this.clients.keys()]);
           this.publishCorsOrigins();
           // A successful (re-)start means re-auth restored the account.
