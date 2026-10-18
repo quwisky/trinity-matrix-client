@@ -287,6 +287,219 @@ describe('MediaService', () => {
     expect(decryptMock).toHaveBeenCalledTimes(1);
   });
 
+  describe('cache keys follow the integrity data that produced the bytes', () => {
+    function encryptedAt(url: string, k: string, sha256: string): MediaPayload {
+      return {
+        ...encryptedMedia(),
+        file: {
+          url,
+          key: { k } as JsonWebKey,
+          iv: `iv-${k}`,
+          hashes: { sha256 },
+          v: 'v2',
+        },
+      };
+    }
+
+    it('decrypts a second event with the same file.url but other key material on its own', async () => {
+      const { svc } = setup();
+      const first = encryptedAt('mxc://hs/shared', 'k1', 'h1');
+      const second = encryptedAt('mxc://hs/shared', 'k2', 'h2');
+
+      const a = await firstValueFrom(svc.resolveMedia(first, 'full'));
+      const b = await firstValueFrom(svc.resolveMedia(second, 'full'));
+
+      expect(b).not.toBe(a);
+      expect(decryptMock).toHaveBeenCalledTimes(2);
+      expect(decryptMock.mock.calls[1][1]).toBe(second.file);
+    });
+
+    it('does not share an in-flight decrypt with an event carrying other key material', async () => {
+      const { svc } = setup();
+      const first = encryptedAt('mxc://hs/shared', 'k1', 'h1');
+      const second = encryptedAt('mxc://hs/shared', 'k2', 'h2');
+
+      const [a, b] = await Promise.all([
+        firstValueFrom(svc.resolveMedia(first, 'full')),
+        firstValueFrom(svc.resolveMedia(second, 'full')),
+      ]);
+
+      expect(b).not.toBe(a);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(decryptMock.mock.calls.map(([, info]) => info)).toEqual([
+        first.file,
+        second.file,
+      ]);
+    });
+
+    it('fetches an event with both url and file from file.url and never caches it under url', async () => {
+      const { svc } = setup();
+      const mixed: MediaPayload = {
+        ...encryptedAt('mxc://hs/y', 'k1', 'h1'),
+        mxc: 'mxc://hs/x',
+      };
+
+      const mixedUrl = await firstValueFrom(svc.resolveMedia(mixed, 'full'));
+      const plainX = await firstValueFrom(
+        svc.resolveMedia(plainMedia('mxc://hs/x'), 'full'),
+      );
+      const encryptedY = await firstValueFrom(
+        svc.resolveMedia(encryptedAt('mxc://hs/y', 'k1', 'h1'), 'full'),
+      );
+
+      expect(fetchMock.mock.calls[0][0]).toContain('hs/y');
+      expect(plainX).not.toBe(mixedUrl);
+      expect(encryptedY).toBe(mixedUrl);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps a plaintext url apart from an encrypted file.url naming the same media', async () => {
+      const { svc } = setup();
+
+      const encrypted = await firstValueFrom(
+        svc.resolveMedia(encryptedAt('mxc://hs/x', 'k1', 'h1'), 'full'),
+      );
+      const plain = await firstValueFrom(
+        svc.resolveMedia(plainMedia('mxc://hs/x'), 'full'),
+      );
+
+      expect(plain).not.toBe(encrypted);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(decryptMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('still serves the same event from the cache', async () => {
+      const { svc } = setup();
+      const media = encryptedAt('mxc://hs/same', 'k1', 'h1');
+
+      const a = await firstValueFrom(svc.resolveMedia(media, 'full'));
+      const b = await firstValueFrom(
+        svc.resolveMedia(encryptedAt('mxc://hs/same', 'k1', 'h1'), 'full'),
+      );
+
+      expect(b).toBe(a);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(decryptMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('keys an encrypted thumbnail by its own key material', async () => {
+      const { svc } = setup();
+      const withThumb = (k: string, sha256: string): MediaPayload => ({
+        ...encryptedAt('mxc://hs/full', 'k1', 'h1'),
+        kind: 'image',
+        thumbnailMxc: 'mxc://hs/thumb-plain',
+        thumbnailFile: {
+          url: 'mxc://hs/thumb',
+          key: { k } as JsonWebKey,
+          iv: `tiv-${k}`,
+          hashes: { sha256 },
+          v: 'v2',
+        },
+      });
+      const first = withThumb('t1', 'th1');
+      const second = withThumb('t2', 'th2');
+
+      const a = await firstValueFrom(svc.resolveMedia(first, 'thumbnail'));
+      const again = await firstValueFrom(svc.resolveMedia(first, 'thumbnail'));
+      const b = await firstValueFrom(svc.resolveMedia(second, 'thumbnail'));
+      const plainThumb = await firstValueFrom(
+        svc.resolveMedia(plainMedia('mxc://hs/thumb'), 'full'),
+      );
+
+      expect(again).toBe(a);
+      expect(b).not.toBe(a);
+      expect(plainThumb).not.toBe(a);
+      expect(fetchMock.mock.calls[0][0]).toContain('hs/thumb');
+      expect(fetchMock.mock.calls[0][0]).not.toContain('thumb-plain');
+      expect(decryptMock.mock.calls.map(([, info]) => info)).toEqual([
+        first.thumbnailFile,
+        second.thumbnailFile,
+      ]);
+    });
+
+    it('caches nothing for a failed decrypt', async () => {
+      const { svc } = setup();
+      const media = encryptedAt('mxc://hs/bad', 'k1', 'h1');
+      decryptMock.mockRejectedValueOnce(new Error('Mismatched SHA-256 digest'));
+
+      await expect(
+        firstValueFrom(svc.resolveMedia(media, 'full')),
+      ).rejects.toThrow(/digest/i);
+      await firstValueFrom(svc.resolveMedia(media, 'full'));
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(decryptMock).toHaveBeenCalledTimes(2);
+    });
+
+    const baseFile = {
+      url: 'mxc://hs/shared',
+      key: { k: 'k1' } as JsonWebKey,
+      iv: 'iv1',
+      hashes: { sha256: 'h1' },
+      v: 'v2',
+    };
+    const withFile = (
+      overrides: Partial<typeof baseFile>,
+      mimeType = 'application/octet-stream',
+    ): MediaPayload => ({
+      ...encryptedMedia(),
+      mimeType,
+      file: { ...baseFile, ...overrides },
+    });
+
+    it.each([
+      ['key', { key: { k: 'k2' } as JsonWebKey }],
+      ['iv', { iv: 'iv2' }],
+      ['hash', { hashes: { sha256: 'h2' } }],
+      ['version', { v: 'v1' }],
+    ])(
+      'decrypts an event differing only in its %s on its own',
+      async (_, change) => {
+        const { svc } = setup();
+        const second = withFile(change);
+
+        const a = await firstValueFrom(svc.resolveMedia(withFile({}), 'full'));
+        const b = await firstValueFrom(svc.resolveMedia(second, 'full'));
+
+        expect(b).not.toBe(a);
+        expect(decryptMock).toHaveBeenCalledTimes(2);
+        expect(decryptMock.mock.calls[1][1]).toBe(second.file);
+      },
+    );
+
+    it('fails an event with an unknown version instead of serving the cached bytes', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.resolveMedia(withFile({}), 'full'));
+      decryptMock.mockRejectedValueOnce(
+        new Error('Unsupported attachment encryption version: v9'),
+      );
+
+      await expect(
+        firstValueFrom(svc.resolveMedia(withFile({ v: 'v9' }), 'full')),
+      ).rejects.toThrow(/version/);
+      expect(decryptMock).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      ['encrypted', (mime: string) => withFile({}, mime)],
+      ['plaintext', (mime: string) => plainMedia('mxc://hs/typed', mime)],
+    ])('keeps %s media declared with another type apart', async (_, media) => {
+      const { svc } = setup();
+
+      const png = await firstValueFrom(
+        svc.resolveMedia(media('image/png'), 'full'),
+      );
+      const jpeg = await firstValueFrom(
+        svc.resolveMedia(media('image/jpeg'), 'full'),
+      );
+
+      expect(jpeg).not.toBe(png);
+      expect(
+        createObjectURL.mock.calls.map(([blob]) => (blob as Blob).type),
+      ).toEqual(['image/png', 'image/jpeg']);
+    });
+  });
+
   describe('encrypted image without a bundled thumbnail', () => {
     /** Decrypted bytes are 3 long; the stubbed downscaled output is smaller. */
     const DOWNSCALED_BYTES = 2;
@@ -831,6 +1044,32 @@ describe('MediaService', () => {
       expect(canvasSizes).toEqual([
         { width: 640, height: 427 },
         { width: 320, height: 213 },
+      ]);
+    });
+
+    it('decrypts and downscales a thumbnail with other key material on its own', async () => {
+      stubBrowserImage(3000, 2000);
+      const { svc } = setup();
+      const media = encryptedImage('image/jpeg');
+      const other: MediaPayload = {
+        ...media,
+        file: {
+          url: 'mxc://hs/ciphertext',
+          key: { k: 'other' } as JsonWebKey,
+          iv: 'iv',
+          hashes: { sha256: 'abc' },
+          v: 'v2',
+        },
+      };
+
+      const first = await firstValueFrom(svc.resolveMedia(media, 'thumbnail'));
+      const second = await firstValueFrom(svc.resolveMedia(other, 'thumbnail'));
+
+      expect(second).not.toBe(first);
+      expect(decryptMock.mock.calls[1][1]).toBe(other.file);
+      expect(canvasSizes).toEqual([
+        { width: 640, height: 427 },
+        { width: 640, height: 427 },
       ]);
     });
   });

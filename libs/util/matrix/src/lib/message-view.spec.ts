@@ -309,6 +309,49 @@ describe('normalizeMediaPayload — display types', () => {
   });
 });
 
+describe('normalizeMediaPayload — encrypted sources', () => {
+  const encrypted = (url: string) => ({
+    url,
+    key: { k: 'key' },
+    iv: 'iv',
+    hashes: { sha256: 'hash' },
+    v: 'v2',
+  });
+
+  it('ignores url when file is present', () => {
+    const payload = normalizeMediaPayload(
+      {
+        msgtype: 'm.image',
+        body: 'pic',
+        url: 'mxc://hs/other',
+        file: encrypted('mxc://hs/cipher'),
+      },
+      'm.image',
+    );
+
+    expect(payload?.mxc).toBeNull();
+    expect(payload?.file?.url).toBe('mxc://hs/cipher');
+  });
+
+  it('ignores thumbnail_url when thumbnail_file is present', () => {
+    const payload = normalizeMediaPayload(
+      {
+        msgtype: 'm.image',
+        body: 'pic',
+        file: encrypted('mxc://hs/cipher'),
+        info: {
+          thumbnail_url: 'mxc://hs/other-thumb',
+          thumbnail_file: encrypted('mxc://hs/thumb-cipher'),
+        },
+      },
+      'm.image',
+    );
+
+    expect(payload?.thumbnailMxc).toBeNull();
+    expect(payload?.thumbnailFile?.url).toBe('mxc://hs/thumb-cipher');
+  });
+});
+
 describe('isDisplayableMessage', () => {
   /** Only the reads isDisplayableMessage makes. */
   const event = (o: {

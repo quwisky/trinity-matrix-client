@@ -106,15 +106,22 @@ interface InFlight {
   readonly cancel: Subject<void>;
 }
 
-interface MediaSource {
-  mxc: string | null;
-  file: EncryptedFileInfo | null;
-  mimeType: string;
-  /** Server-thumbnail dimensions, or null to download the resource as-is. */
-  resize: { w: number; h: number } | null;
-  /** Decrypted image to shrink to this long edge (px) before it is cached, or undefined. */
-  downscaleTo?: number;
-}
+/** The bytes to resolve: exactly one of an encrypted file or a plaintext `mxc://`. */
+type MediaSource =
+  | {
+      readonly kind: 'encrypted';
+      readonly file: EncryptedFileInfo;
+      readonly mimeType: string;
+      /** Decrypted image to shrink to this long edge (px) before it is cached, or undefined. */
+      readonly downscaleTo?: number;
+    }
+  | {
+      readonly kind: 'plain';
+      readonly mxc: string | null;
+      readonly mimeType: string;
+      /** Server-thumbnail dimensions, or null to download the resource as-is. */
+      readonly resize: { w: number; h: number } | null;
+    };
 
 /**
  * Resolves Matrix media (`mxc://` plaintext or encrypted `content.file`) into `blob:` object
@@ -502,11 +509,15 @@ export class MediaService {
 
   private sourceFor(media: MediaPayload, variant: MediaVariant): MediaSource {
     if (variant === 'thumbnail') {
-      if (media.thumbnailMxc || media.thumbnailFile) {
+      const mimeType = media.thumbnailMimeType ?? media.mimeType;
+      if (media.thumbnailFile) {
+        return { kind: 'encrypted', file: media.thumbnailFile, mimeType };
+      }
+      if (media.thumbnailMxc) {
         return {
+          kind: 'plain',
           mxc: media.thumbnailMxc,
-          file: media.thumbnailFile,
-          mimeType: media.thumbnailMimeType ?? media.mimeType,
+          mimeType,
           resize: null,
         };
       }
@@ -515,22 +526,29 @@ export class MediaService {
       // Sizes follow the current screen; resolved thumbnails are not refetched when it changes,
       // and the edge is part of the cache key so buckets never mix.
       const edge = displayThumbnailEdge(this.devicePixelRatio());
+      if (media.file) {
+        return {
+          kind: 'encrypted',
+          file: media.file,
+          mimeType: media.mimeType,
+          ...(needsDownscale(media, edge) ? { downscaleTo: edge } : {}),
+        };
+      }
       return {
+        kind: 'plain',
         mxc: media.mxc,
-        file: media.file,
         mimeType: media.mimeType,
-        resize: media.file ? null : { w: edge, h: edge },
-        ...(media.file && needsDownscale(media, edge)
-          ? { downscaleTo: edge }
-          : {}),
+        resize: { w: edge, h: edge },
       };
     }
-    return {
-      mxc: media.mxc,
-      file: media.file,
-      mimeType: media.mimeType,
-      resize: null,
-    };
+    return media.file
+      ? { kind: 'encrypted', file: media.file, mimeType: media.mimeType }
+      : {
+          kind: 'plain',
+          mxc: media.mxc,
+          mimeType: media.mimeType,
+          resize: null,
+        };
   }
 
   /**
@@ -538,20 +556,41 @@ export class MediaService {
    * no bundled thumbnail resolves the same ciphertext for `thumbnail` and `full`, so they share
    * one cache entry (and one decrypt). Server-scaled and downscaled thumbnails differ from the
    * original and carry their size bucket, so a 1x and a 2x thumbnail are separate entries.
+   *
+   * Encrypted bytes are keyed by everything their decryption and hash check used, not the
+   * URL alone: two events can name one `file.url` with different keys and hashes, and each
+   * must get its own decrypt and hash check (or its failure), never the other's cached bytes.
+   * Plaintext and encrypted entries never share a key, and the display type is part of both,
+   * since it becomes the Blob's type. The parts are JSON-encoded so no field's content can
+   * shift into its neighbour.
    */
   private cacheKey(client: MatrixClient, source: MediaSource): string {
-    const id = source.mxc ?? source.file?.url ?? '';
     let clientId = this.clientIds.get(client);
     if (clientId === undefined) {
       clientId = ++this.nextClientId;
       this.clientIds.set(client, clientId);
     }
-    if (source.downscaleTo) {
-      return `${clientId}|${id}|thumb${source.downscaleTo}`;
+    if (source.kind === 'encrypted') {
+      const { file } = source;
+      return JSON.stringify([
+        'e',
+        clientId,
+        file.url,
+        file.hashes?.['sha256'] ?? '',
+        file.key?.k ?? '',
+        file.iv,
+        file.v ?? '',
+        displaySafeMime(source.mimeType),
+        source.downscaleTo ? `thumb${source.downscaleTo}` : 'orig',
+      ]);
     }
-    return source.resize
-      ? `${clientId}|${id}|${source.resize.w}x${source.resize.h}`
-      : `${clientId}|${id}|orig`;
+    return JSON.stringify([
+      'p',
+      clientId,
+      source.mxc ?? '',
+      displaySafeMime(source.mimeType),
+      source.resize ? `${source.resize.w}x${source.resize.h}` : 'orig',
+    ]);
   }
 
   /**
@@ -563,7 +602,7 @@ export class MediaService {
     client: MatrixClient,
     source: MediaSource,
   ): Observable<Blob> {
-    if (source.file) {
+    if (source.kind === 'encrypted') {
       // Encrypted: download the full ciphertext (an encrypted original has no server-side
       // thumbnail) and decrypt it with the event's per-file AES-CTR key. decryptAttachment
       // verifies the SHA-256 hash and rejects on a mismatch, so tampered bytes never reach the DOM.

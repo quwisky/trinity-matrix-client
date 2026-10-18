@@ -393,4 +393,34 @@ describe('normalizeTimelineEvent', () => {
     expect(normalized).not.toHaveProperty('room');
     expect(normalized).not.toHaveProperty('client');
   });
+
+  it('drops a sticker that names an encrypted file next to its url', () => {
+    const sticker = (content: Record<string, unknown>) =>
+      normalizeTimelineEvent(
+        client,
+        room,
+        event({
+          getType: () => 'm.sticker',
+          getContent: () => ({ body: 'parrot', ...content }),
+        }),
+        null,
+      );
+
+    expect(sticker({ url: 'mxc://example.org/parrot' })).toMatchObject({
+      type: 'media',
+      messageKind: 'sticker',
+    });
+    expect(
+      sticker({
+        url: 'mxc://example.org/parrot',
+        file: {
+          url: 'mxc://example.org/cipher',
+          key: { k: 'k' },
+          iv: 'iv',
+          hashes: { sha256: 'h' },
+          v: 'v2',
+        },
+      }),
+    ).not.toMatchObject({ type: 'media' });
+  });
 });

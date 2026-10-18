@@ -418,9 +418,13 @@ export function normalizeMediaPayload(
   content: Record<string, unknown>,
   msgtype: string,
 ): MediaPayload | null {
-  const mxc =
-    typeof content['url'] === 'string' ? (content['url'] as string) : null;
   const file = asEncryptedFile(content['file']);
+  // An encrypted source wins over a plaintext one: the bytes are decrypted from `file`, so a
+  // `url` beside it must never name or key them.
+  const mxc =
+    !file && typeof content['url'] === 'string'
+      ? (content['url'] as string)
+      : null;
   if (!mxc && !file) {
     return null;
   }
@@ -457,6 +461,7 @@ export function normalizeMediaPayload(
     'attachment';
 
   const thumbInfo = (info['thumbnail_info'] ?? {}) as Record<string, unknown>;
+  const thumbnailFile = asEncryptedFile(info['thumbnail_file']);
   // MSC3245: an audio message marked as a voice message, with an MSC1767 waveform.
   const isVoice = kind === 'audio' && content[MSC3245_VOICE] !== undefined;
   const audioExt = (
@@ -488,10 +493,10 @@ export function normalizeMediaPayload(
           ? (audioExt['duration'] as number)
           : undefined,
     thumbnailMxc:
-      typeof info['thumbnail_url'] === 'string'
+      !thumbnailFile && typeof info['thumbnail_url'] === 'string'
         ? (info['thumbnail_url'] as string)
         : null,
-    thumbnailFile: asEncryptedFile(info['thumbnail_file']),
+    thumbnailFile,
     thumbnailMimeType:
       typeof thumbInfo['mimetype'] === 'string'
         ? displaySafeMime(thumbInfo['mimetype'])

@@ -6,7 +6,11 @@ import {
   type MatrixEvent,
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { mediaCaptionFields, type MediaPayload } from '@trinity/util/matrix';
+import {
+  mediaCaptionFields,
+  type EncryptedFileInfo,
+  type MediaPayload,
+} from '@trinity/util/matrix';
 import { MediaService, type UploadedMedia } from './media.service';
 import type {
   ImageMetadataPolicy,
@@ -462,14 +466,25 @@ export class MediaPipeline {
   }
 }
 
-/** What a rendition is fetched from: the media, its bundled thumbnail and their kind. */
+/**
+ * What a rendition is fetched from: the media, its bundled thumbnail and their types. An
+ * encrypted file counts with its key, iv, hash and version, since another event can name
+ * the same `file.url` with different ones.
+ */
 function mediaIdentity(media: MediaPayload): string {
   return JSON.stringify([
     media.kind,
     media.mimeType,
     media.mxc,
-    media.file?.url ?? null,
+    fileIdentity(media.file),
     media.thumbnailMxc,
-    media.thumbnailFile?.url ?? null,
+    fileIdentity(media.thumbnailFile),
+    media.thumbnailMimeType ?? null,
   ]);
+}
+
+function fileIdentity(file: EncryptedFileInfo | null): unknown[] | null {
+  return (
+    file && [file.url, file.hashes?.['sha256'], file.key?.k, file.iv, file.v]
+  );
 }

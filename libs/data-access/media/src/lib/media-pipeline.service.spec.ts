@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from './media.service';
 import { MediaPipeline } from './media-pipeline.service';
+import type { MediaPayload } from '@trinity/util/matrix';
 
 const KEY = {
   accountId: '@alice:example.org',
@@ -394,6 +395,91 @@ describe('MediaPipeline', () => {
           first,
           pipeline.present(
             { ...encrypted, file: { url: 'mxc://example.org/other' } as never },
+            client as never,
+          ),
+        ),
+      ).toBe(false);
+    });
+
+    it('tells encrypted media at one file.url apart by its key material', () => {
+      const { pipeline, client } = setup();
+      const file = (k: string) => ({
+        url: 'mxc://example.org/cipher',
+        key: { k } as JsonWebKey,
+        iv: `iv-${k}`,
+        hashes: { sha256: `hash-${k}` },
+        v: 'v2',
+      });
+      const encrypted = { ...photo, mxc: null, file: file('a') };
+      const first = pipeline.present(encrypted, client as never);
+
+      expect(
+        pipeline.sameMedia(
+          first,
+          pipeline.present({ ...encrypted, file: file('b') }, client as never),
+        ),
+      ).toBe(false);
+      expect(
+        pipeline.sameMedia(
+          pipeline.present(
+            { ...encrypted, thumbnailFile: file('a') },
+            client as never,
+          ),
+          pipeline.present(
+            { ...encrypted, thumbnailFile: file('b') },
+            client as never,
+          ),
+        ),
+      ).toBe(false);
+    });
+
+    const cipher = {
+      url: 'mxc://example.org/cipher',
+      key: { k: 'k1' } as JsonWebKey,
+      iv: 'iv1',
+      hashes: { sha256: 'h1' },
+      v: 'v2',
+    };
+
+    it.each([
+      ['key', { key: { k: 'k2' } as JsonWebKey }],
+      ['iv', { iv: 'iv2' }],
+      ['hash', { hashes: { sha256: 'h2' } }],
+      ['version', { v: 'v1' }],
+    ])(
+      'tells an encrypted file or thumbnail apart by its %s alone',
+      (_, change) => {
+        const { pipeline, client } = setup();
+        const changed = { ...cipher, ...change };
+        const encrypted = { ...photo, mxc: null, file: cipher };
+        const same = (a: MediaPayload, b: MediaPayload) =>
+          pipeline.sameMedia(
+            pipeline.present(a, client as never),
+            pipeline.present(b, client as never),
+          );
+
+        expect(same(encrypted, { ...encrypted, file: changed })).toBe(false);
+        expect(
+          same(
+            { ...encrypted, thumbnailFile: cipher },
+            { ...encrypted, thumbnailFile: changed },
+          ),
+        ).toBe(false);
+      },
+    );
+
+    it('tells a thumbnail declared with another type apart', () => {
+      const { pipeline, client } = setup();
+      const thumbed = { ...photo, thumbnailMxc: 'mxc://example.org/thumb' };
+
+      expect(
+        pipeline.sameMedia(
+          pipeline.present(
+            { ...thumbed, thumbnailMimeType: 'image/png' },
+            client as never,
+          ),
+          pipeline.present(
+            { ...thumbed, thumbnailMimeType: 'image/jpeg' },
             client as never,
           ),
         ),
