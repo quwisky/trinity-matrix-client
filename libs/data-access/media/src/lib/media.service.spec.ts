@@ -113,7 +113,7 @@ describe('MediaService', () => {
   });
 
   it('resolves a full plaintext image with an authenticated fetch and caches the result', async () => {
-    const { svc } = setup(); // isVersionSupported → true
+    const { svc } = setup(); // the server advertises v1.11
     const media = plainMedia('mxc://hs/abc');
 
     const url = await firstValueFrom(svc.resolveMedia(media, 'full'));
@@ -160,9 +160,9 @@ describe('MediaService', () => {
     expect(fetchMock.mock.calls[0]?.[1].headers.Authorization).toBe(
       'Bearer exact-token',
     );
-    expect(exactClient.isVersionSupported).toHaveBeenCalledOnce();
+    expect(exactClient.getVersions).toHaveBeenCalledOnce();
     expect(exactClient.uploadContent).toHaveBeenCalledOnce();
-    expect(activeClient.isVersionSupported).not.toHaveBeenCalled();
+    expect(activeClient.getVersions).not.toHaveBeenCalled();
     expect(activeClient.uploadContent).not.toHaveBeenCalled();
   });
 
@@ -171,18 +171,18 @@ describe('MediaService', () => {
     await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'));
     await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/b'), 'full'));
     // The v1.11 capability probe is cached across resolves — one call so far.
-    expect(client.isVersionSupported).toHaveBeenCalledTimes(1);
+    expect(client.getVersions).toHaveBeenCalledTimes(1);
 
     // A logout→login can switch homeservers; releaseAll must drop the cached
     // probe so the next resolve re-checks (a stale result would break all media).
     svc.releaseAll();
     await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/c'), 'full'));
-    expect(client.isVersionSupported).toHaveBeenCalledTimes(2);
+    expect(client.getVersions).toHaveBeenCalledTimes(2);
   });
 
   it('uses the legacy media endpoint without an Authorization header when v1.11 is unsupported', async () => {
     const { svc } = setup({
-      isVersionSupported: vi.fn().mockResolvedValue(false),
+      getVersions: vi.fn().mockResolvedValue({ versions: ['v1.10'] }),
     });
 
     await firstValueFrom(
@@ -192,6 +192,51 @@ describe('MediaService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, opts] = fetchMock.mock.calls[0];
     expect(opts.headers).toBeUndefined();
+  });
+
+  it.each([
+    ['a later spec version only', { versions: ['v1.12'] }],
+    [
+      'the unstable authenticated-media flag',
+      {
+        versions: ['v1.10'],
+        unstable_features: { 'org.matrix.msc3916.stable': true },
+      },
+    ],
+  ])(
+    'uses authenticated media when the server advertises %s',
+    async (_label, versions) => {
+      const { svc } = setup({
+        getVersions: vi.fn().mockResolvedValue(versions),
+      });
+
+      await firstValueFrom(
+        svc.resolveMedia(plainMedia('mxc://hs/newer'), 'full'),
+      );
+
+      expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(
+        'Bearer tok',
+      );
+    },
+  );
+
+  it('uses legacy media while /versions is unreadable and asks again on the next request', async () => {
+    const getVersions = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue({ versions: ['v1.11'] });
+    const { svc } = setup({ getVersions });
+
+    await firstValueFrom(
+      svc.resolveMedia(plainMedia('mxc://hs/first'), 'full'),
+    );
+    expect(fetchMock.mock.calls[0][1].headers).toBeUndefined();
+
+    await firstValueFrom(
+      svc.resolveMedia(plainMedia('mxc://hs/second'), 'full'),
+    );
+    expect(getVersions).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe('Bearer tok');
   });
 
   it('falls back to a legacy fetch when the authenticated request fails', async () => {

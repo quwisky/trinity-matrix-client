@@ -20,7 +20,11 @@ import {
   displaySafeMime,
   encryptAttachment,
 } from '@trinity/util/matrix';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  serverAdvertises,
+  type ServerSupportQuery,
+} from '@trinity/data-access/matrix-client';
 import { fetchMediaBytes } from '@trinity/util/matrix';
 import type { EncryptedFileInfo, MediaPayload } from '@trinity/util/matrix';
 import type { ImageMetadataPolicy, MediaHints } from './media-pipeline.models';
@@ -122,6 +126,12 @@ type MediaSource =
       /** Server-thumbnail dimensions, or null to download the resource as-is. */
       readonly resize: { w: number; h: number } | null;
     };
+
+/** Authenticated media arrived in spec v1.11; servers advertised MSC3916's stable flag before that. */
+const AUTHENTICATED_MEDIA = {
+  version: 'v1.11',
+  unstableFeature: 'org.matrix.msc3916.stable',
+} as const satisfies ServerSupportQuery;
 
 /**
  * Resolves Matrix media (`mxc://` plaintext or encrypted `content.file`) into `blob:` object
@@ -650,8 +660,12 @@ export class MediaService {
   private supportsAuthedMedia(client: MatrixClient): Observable<boolean> {
     let probe = this.authedMedia.get(client);
     if (!probe) {
-      probe = from(client.isVersionSupported('v1.11')).pipe(
-        catchError(() => of(false)),
+      probe = serverAdvertises(client, AUTHENTICATED_MEDIA).pipe(
+        map((supported) => {
+          // An unreadable /versions uses legacy media this once; the next request asks again.
+          if (supported === null) this.authedMedia.delete(client);
+          return supported === true;
+        }),
         shareReplay(1),
       );
       this.authedMedia.set(client, probe);
