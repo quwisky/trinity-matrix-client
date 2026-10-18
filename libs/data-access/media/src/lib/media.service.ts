@@ -656,18 +656,26 @@ export class MediaService {
     );
   }
 
-  /** Probe (once per exact client/account) whether its homeserver supports authenticated media. */
+  /** Whether this client's homeserver supports authenticated media, cached unless unknown. */
   private supportsAuthedMedia(client: MatrixClient): Observable<boolean> {
     let probe = this.authedMedia.get(client);
     if (!probe) {
-      probe = serverAdvertises(client, AUTHENTICATED_MEDIA).pipe(
+      const answer: Observable<boolean> = serverAdvertises(
+        client,
+        AUTHENTICATED_MEDIA,
+      ).pipe(
         map((supported) => {
-          // An unreadable /versions uses legacy media this once; the next request asks again.
-          if (supported === null) this.authedMedia.delete(client);
-          return supported === true;
+          if (supported !== null) return supported;
+          // Unknown: ask again next time, and try authenticated media, which falls back to
+          // legacy; legacy does not fall back, and servers may have turned it off.
+          if (this.authedMedia.get(client) === answer) {
+            this.authedMedia.delete(client);
+          }
+          return true;
         }),
         shareReplay(1),
       );
+      probe = answer;
       this.authedMedia.set(client, probe);
     }
     return probe;

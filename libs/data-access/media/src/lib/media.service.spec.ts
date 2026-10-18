@@ -220,23 +220,23 @@ describe('MediaService', () => {
     },
   );
 
-  it('uses legacy media while /versions is unreadable and asks again on the next request', async () => {
+  it('tries authenticated media while /versions is unreadable and asks again on the next request', async () => {
     const getVersions = vi
       .fn()
       .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValue({ versions: ['v1.11'] });
+      .mockResolvedValue({ versions: ['v1.10'] });
     const { svc } = setup({ getVersions });
 
     await firstValueFrom(
       svc.resolveMedia(plainMedia('mxc://hs/first'), 'full'),
     );
-    expect(fetchMock.mock.calls[0][1].headers).toBeUndefined();
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer tok');
 
     await firstValueFrom(
       svc.resolveMedia(plainMedia('mxc://hs/second'), 'full'),
     );
     expect(getVersions).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe('Bearer tok');
+    expect(fetchMock.mock.calls[1][1].headers).toBeUndefined();
   });
 
   it('falls back to a legacy fetch when the authenticated request fails', async () => {
