@@ -121,6 +121,13 @@ const separatedFocusRing =
 const rowShape = 'h-auto w-full justify-start text-start whitespace-normal';
 
 /**
+ * A solid secondary row, such as Block on the member card. The shared secondary fill is about
+ * 1:1 on the overlay, so a row takes the neutral fill that reads there as a filled shape.
+ */
+const solidSecondaryRowTone =
+  'bg-[color:var(--trinity-neutral-fill-surface)] hover:bg-[color:var(--trinity-neutral-fill-hover-surface)]';
+
+/**
  * A link-style action in a column of text, such as a Preview toggle under a description:
  * no inline padding, so its label lines up with the text above and below it.
  */
@@ -140,7 +147,7 @@ const tileTone = {
   primary:
     '[&>trn-icon]:bg-primary [&>trn-icon]:text-primary-foreground hover:[&>trn-icon]:bg-primary/80',
   secondary:
-    '[&>trn-icon]:bg-[color:var(--trinity-tile-surface)] [&>trn-icon]:text-secondary-foreground hover:[&>trn-icon]:bg-[color:var(--trinity-tile-hover-surface)]',
+    '[&>trn-icon]:bg-[color:var(--trinity-neutral-fill-surface)] [&>trn-icon]:text-secondary-foreground hover:[&>trn-icon]:bg-[color:var(--trinity-neutral-fill-hover-surface)]',
   danger:
     '[&>trn-icon]:bg-[color:var(--trinity-danger-solid)] [&>trn-icon]:text-[color:var(--trinity-danger-solid-foreground)] hover:[&>trn-icon]:bg-[color:var(--trinity-danger-solid-hover)]',
 } as const;
@@ -175,7 +182,9 @@ export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
       : options.presentation;
   const tone =
     options.presentation === 'solid'
-      ? solidTone[options.variant]
+      ? options.shape === 'row' && options.variant === 'secondary'
+        ? solidSecondaryRowTone
+        : solidTone[options.variant]
       : nonSolidTone[options.variant][options.presentation];
 
   const ring =

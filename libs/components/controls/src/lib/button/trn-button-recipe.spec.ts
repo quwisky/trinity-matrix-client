@@ -362,6 +362,31 @@ it('keeps an outline action transparent with attention roles only inside an atte
   );
 });
 
+it('fills a solid secondary row with the neutral fill that reads on the overlay', () => {
+  const row = trnButtonRecipe({
+    presentation: 'solid',
+    shape: 'row',
+    size: 'md',
+    variant: 'secondary',
+  }).split(' ');
+
+  expect(row).toEqual(
+    expect.arrayContaining([
+      'bg-[color:var(--trinity-neutral-fill-surface)]',
+      'hover:bg-[color:var(--trinity-neutral-fill-hover-surface)]',
+    ]),
+  );
+  expect(row).not.toContain('bg-secondary');
+  expect(
+    trnButtonRecipe({
+      presentation: 'solid',
+      shape: 'label',
+      size: 'md',
+      variant: 'secondary',
+    }).split(' '),
+  ).toContain('bg-secondary');
+});
+
 describe('tile shape', () => {
   const tile = (variant: TrnButtonVariant): string[] =>
     trnButtonRecipe({
@@ -393,8 +418,8 @@ describe('tile shape', () => {
   it('gives a secondary tile its own visible neutral square and hover', () => {
     expect(tile('secondary')).toEqual(
       expect.arrayContaining([
-        '[&>trn-icon]:bg-[color:var(--trinity-tile-surface)]',
-        'hover:[&>trn-icon]:bg-[color:var(--trinity-tile-hover-surface)]',
+        '[&>trn-icon]:bg-[color:var(--trinity-neutral-fill-surface)]',
+        'hover:[&>trn-icon]:bg-[color:var(--trinity-neutral-fill-hover-surface)]',
       ]),
     );
     expect(tile('secondary')).not.toContain('[&>trn-icon]:bg-primary');

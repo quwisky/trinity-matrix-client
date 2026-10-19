@@ -94,6 +94,14 @@ const ROLES = [
     text: '--trinity-text',
     on: PANE_GROUNDS,
   },
+  // A solid secondary row's label on the neutral fill (`trnBtn shape="row"`), at rest and hovered.
+  {
+    text: '--trinity-control-secondary-foreground',
+    on: [
+      '--trinity-neutral-fill-surface',
+      '--trinity-neutral-fill-hover-surface',
+    ],
+  },
   {
     text: '--trinity-text-muted',
     on: PANE_GROUNDS,
@@ -723,14 +731,14 @@ describe('contrast matrix', () => {
     expect(failures).toEqual([]);
   });
 
-  it('keeps a secondary tile square visible as a shape on the panes that hold it', () => {
-    // Decorative: the tile's label and glyph name the action, so the floor is shape, not 3:1.
+  it('keeps the neutral fill visible as a shape on the panes that hold it', () => {
+    // Decorative: the label names the action, so the floor is a visible shape, not 3:1.
     const failures = [];
     for (const theme of themes) {
       for (const mode of ['light', 'dark']) {
         for (const fill of [
-          '--trinity-tile-surface',
-          '--trinity-tile-hover-surface',
+          '--trinity-neutral-fill-surface',
+          '--trinity-neutral-fill-hover-surface',
         ]) {
           for (const surface of [
             '--trinity-surface-overlay',
