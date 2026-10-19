@@ -6,6 +6,8 @@ import {
   input,
   output,
 } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { map, shareReplay, timer } from 'rxjs';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnToastService } from '@trinity/components/overlay';
@@ -20,6 +22,12 @@ const PRESENCE_LABEL = {
   offline: 'Offline',
 } as const;
 
+// Open cards share a minute tick so "Last seen" stays current; the last unmount releases it.
+const clock = timer(60_000, 60_000).pipe(
+  map(() => Date.now()),
+  shareReplay({ bufferSize: 1, refCount: true }),
+);
+
 /** The member card's Profile tab: quick actions, then the Status and Global name rows. */
 @Component({
   selector: 'trn-member-profile-tab',
@@ -29,6 +37,7 @@ const PRESENCE_LABEL = {
 })
 export class MemberProfileTabComponent {
   private readonly toast = inject(TrnToastService);
+  private readonly now = toSignal(clock, { initialValue: Date.now() });
 
   readonly member = input.required<MemberSummary>();
   readonly isSelf = input.required<boolean>();
@@ -53,10 +62,9 @@ export class MemberProfileTabComponent {
   readonly status = computed(() => {
     const presence = this.presence();
     if (!presence) return null;
-    // shortcut: the relative time is fixed when presence changes; add a clock if it must tick.
     const state =
       presence.state === 'offline' && presence.lastActiveAt !== null
-        ? `Last seen ${relativeTimeLabel(presence.lastActiveAt, Date.now())}`
+        ? `Last seen ${relativeTimeLabel(presence.lastActiveAt, this.now())}`
         : PRESENCE_LABEL[presence.state];
     return presence.statusMessage
       ? `${state} · ${presence.statusMessage}`

@@ -201,6 +201,25 @@ describe('TrnRadioGroupComponent', () => {
     expect(disabled[0].closest('label')?.dataset['testid']).toBe('theme-light');
   });
 
+  it('dims a disabled option but keeps its description at full contrast', async () => {
+    const { container } = await render(TrnRadioGroupComponent<string>, {
+      inputs: { options: [{ ...OPTIONS[0], disabled: true }] },
+    });
+    const dimmed = [
+      ...container.querySelectorAll(
+        '[class*="group-data-[disabled=true]:opacity"]',
+      ),
+    ];
+    const label = container.querySelector('label')!;
+
+    expect(label.className).not.toContain('opacity');
+    expect(dimmed).toHaveLength(2);
+    expect(
+      dimmed.some((node) => node.textContent?.includes('Use system')),
+    ).toBe(true);
+    expect(dimmed.some((node) => node.querySelector('small'))).toBe(false);
+  });
+
   it('marks the active option in the segmented presentation', async () => {
     const { container } = await render(HostComponent);
     const host = container.querySelector('trn-radio-group');

@@ -70,6 +70,7 @@ async function build(
     trust?: UserTrust | null;
     commonRooms?: readonly CommonRoom[] | null;
     presence?: PresenceDetails | null;
+    presenceAvailable?: boolean;
     lookup?: Mock;
   } = {},
 ) {
@@ -115,6 +116,7 @@ async function build(
         useValue: {
           presenceFor: () => signal('online'),
           presenceDetailsFor: () => signal(opts.presence ?? null),
+          presenceAvailable: signal(opts.presenceAvailable ?? true),
           myPresence: signal('unavailable'),
           myStatusMessage: signal('Heads down'),
         },
@@ -639,6 +641,19 @@ describe('MemberInfoComponent', () => {
     });
   });
 
+  it('hides your own Status while presence is unavailable', async () => {
+    // Your presence defaults to online, which would misreport a server with presence off.
+    const { cmp, container } = await build(member({ userId: '@me:hs' }), {
+      activeUserId: '@me:hs',
+      presenceAvailable: false,
+    });
+
+    expect(cmp.presenceDetails()).toBeNull();
+    expect(
+      container.querySelector('[data-testid="member-info-status"]'),
+    ).toBeNull();
+  });
+
   it("reads another person's Status from their presence", async () => {
     const presence: PresenceDetails = {
       state: 'online',
@@ -681,7 +696,7 @@ describe('MemberInfoComponent', () => {
     expect(
       container.querySelector('[data-testid="member-info-message"]'),
     ).toBeNull();
-    // Copy user ID stays available.
+    // Copy ID stays available on the Profile tab.
     expect(
       container.querySelector('[data-testid="member-info-copy"]'),
     ).not.toBeNull();

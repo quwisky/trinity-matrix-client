@@ -60,9 +60,16 @@ export function trnRadioGroupRecipe(layout: TrnRadioGroupLayout): string {
   return 'grid gap-2';
 }
 
+/**
+ * Dims a disabled option's indicator and label but not its description, which may explain
+ * why the option is unavailable and must stay readable.
+ */
+export const trnRadioDisabledDim =
+  'group-data-[disabled=true]:opacity-[var(--trinity-disabled-opacity)]';
+
 export function trnRadioOptionRecipe(layout: TrnRadioGroupLayout): string {
   return hlm(
-    'group flex cursor-pointer items-center font-medium text-[var(--trinity-text-muted)] transition-[background-color,color,box-shadow] has-[:focus-visible]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)] data-[disabled=true]:cursor-default data-[disabled=true]:opacity-[var(--trinity-disabled-opacity)]',
+    'group flex cursor-pointer items-center font-medium text-[var(--trinity-text-muted)] transition-[background-color,color,box-shadow] has-[:focus-visible]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)] data-[disabled=true]:cursor-default',
     'min-h-[max(2rem,var(--trinity-interaction-target-min-size))] text-sm',
     layout === 'segmented'
       ? 'justify-center rounded-[calc(var(--trinity-shape-control-radius)-2px)] px-3 text-center [overflow-wrap:anywhere] hover:bg-[var(--trinity-state-hover-surface)] hover:text-[var(--trinity-state-hover-foreground)]'

@@ -83,9 +83,9 @@ import { MemberProfileTabComponent } from './member-profile-tab/member-profile-t
  * A room-scoped info card for a member (avatar, name, id, live presence, role), shown
  * when a member row is clicked: a dialog on a large screen, a bottom sheet on a phone or
  * tablet or below `md`, or in place inside settings. It launches member actions:
- * **Message** (closes resolving the user id so the host opens/reuses a DM), **Copy user
- * ID**, and, when the viewer's power permits, **change role** and **remove / ban**. The
- * moderation writes run here; the host only handles the DM and computes the permission caps.
+ * **Message** (closes resolving the user id so the host opens/reuses a DM) and **Copy ID**,
+ * both on the Profile tab, and, when the viewer's power permits, **change role** and
+ * **remove / ban**. The moderation writes run here; the host only handles the DM and computes the permission caps.
  */
 @Component({
   selector: 'trn-member-info',
@@ -246,6 +246,7 @@ export class MemberInfoComponent {
     if (this.accountId() || this.ownerInactive()) return null;
     // Your own SDK user is often stale, so yourself reads the presence you set.
     if (this.isSelf()) {
+      if (!this.presence.presenceAvailable()) return null;
       return {
         state: this.presence.myPresence(),
         statusMessage: this.presence.myStatusMessage(),

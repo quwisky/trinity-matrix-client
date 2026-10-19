@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import {
   trnRadioDescriptionRecipe,
+  trnRadioDisabledDim,
   trnRadioGroupRecipe,
   trnRadioIndicatorDotRecipe,
   trnRadioIndicatorRecipe,
@@ -87,11 +88,14 @@ export interface TrnRadioOption<T> {
             [attr.aria-invalid]="invalid() ? 'true' : null"
             (change)="onValueChange(option.value)"
           />
-          <span aria-hidden="true" [class]="indicatorClass()">
+          <span
+            aria-hidden="true"
+            [class]="indicatorClass() + ' ' + disabledDim"
+          >
             <span [class]="indicatorDotClass(option.value === value())"></span>
           </span>
           <span class="flex min-w-0 flex-col items-start gap-0.5">
-            <span>{{ option.label }}</span>
+            <span [class]="disabledDim">{{ option.label }}</span>
             @if (option.description) {
               <small [class]="descriptionClass">
                 {{ option.description }}
@@ -113,6 +117,7 @@ export class TrnRadioGroupComponent<T> {
     trnRadioIndicatorRecipe(this.layout(), this.invalid()),
   );
   protected readonly descriptionClass = trnRadioDescriptionRecipe();
+  protected readonly disabledDim = trnRadioDisabledDim;
 
   protected optionClass(): string {
     return trnRadioOptionRecipe(this.layout());

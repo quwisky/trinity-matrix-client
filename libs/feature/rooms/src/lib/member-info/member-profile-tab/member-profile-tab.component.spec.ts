@@ -150,6 +150,24 @@ describe('MemberProfileTabComponent', () => {
     );
   });
 
+  it('keeps "Last seen" current as time passes', async () => {
+    vi.useFakeTimers({ now: new Date('2026-10-19T12:00:00Z') });
+    const { container, fixture } = await build({
+      presence: presence({
+        state: 'offline',
+        currentlyActive: false,
+        lastActiveAt: Date.now() - 5 * 60_000,
+      }),
+    });
+
+    vi.advanceTimersByTime(60_000);
+    fixture.detectChanges();
+
+    expect(byTestId(container, 'member-info-status')?.textContent?.trim()).toBe(
+      'Last seen 6 min. ago',
+    );
+  });
+
   it('Status hidden while presence is unknown', async () => {
     await build({ presence: null });
     expect(screen.queryByText('Status')).toBeNull();
