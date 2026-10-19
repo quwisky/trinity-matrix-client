@@ -641,6 +641,8 @@ describe('QrSignInService.linkByScanning', () => {
     );
     expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalledWith();
     expect(flows[0].cancel).not.toHaveBeenCalled();
+    // The new device reads the secrets after this, so the session stays for it to delete.
+    expect(flows[0].close).not.toHaveBeenCalled();
   });
 
   it('never shares secrets before the check code is confirmed', async () => {
@@ -672,7 +674,6 @@ describe('QrSignInService.linkByScanning', () => {
       'negotiateProtocols',
       'decline',
       'cancel:insecure_channel_detected',
-      'close',
     ]);
     expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
     expect(flows[0].shareSecrets).not.toHaveBeenCalled();
@@ -701,10 +702,7 @@ describe('QrSignInService.linkByScanning', () => {
       expect(run.kinds()).not.toContain('approve-in-browser');
       expect(JSON.stringify(run.states)).not.toContain(verificationUri);
       expect(flows[0].shareSecrets).not.toHaveBeenCalled();
-      expect(flows[0].calls.slice(-2)).toEqual([
-        'cancel:user_cancelled',
-        'close',
-      ]);
+      expect(flows[0].calls.at(-1)).toBe('cancel:user_cancelled');
     },
   );
 
@@ -750,10 +748,10 @@ describe('QrSignInService.linkByScanning', () => {
 
   it.each<[ExistingDeviceState['kind'], Step | null, string[]]>([
     // Not connected yet, so there is no channel to send a decline over.
-    ['connecting', 'negotiateProtocols', ['cancel:user_cancelled', 'close']],
-    ['confirm-check-code', null, ['decline', 'cancel:user_cancelled', 'close']],
+    ['connecting', 'negotiateProtocols', ['cancel:user_cancelled']],
+    ['confirm-check-code', null, ['decline', 'cancel:user_cancelled']],
     // Secrets may be in flight, so the cancel goes first and alone.
-    ['sharing-secrets', 'shareSecrets', ['cancel:user_cancelled', 'close']],
+    ['sharing-secrets', 'shareSecrets', ['cancel:user_cancelled']],
   ])('unsubscribing at %s cancels', async (kind, hung, tail) => {
     const { service, flows } = setup((flow) => hung && flow.hang.add(hung));
     const link = service.linkByScanning(existingClient, qrBytes);
@@ -806,7 +804,7 @@ describe('QrSignInService.linkByScanning', () => {
     run.subscription.unsubscribe();
     release();
     await settle();
-    expect(flows[0].calls).toEqual(['cancel:user_cancelled', 'close']);
+    expect(flows[0].calls).toEqual(['cancel:user_cancelled']);
   });
 
   it.each([
@@ -887,10 +885,9 @@ describe('QrSignInService.linkByScanning', () => {
     expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
     expect(flows[0].shareSecrets).not.toHaveBeenCalled();
     // The new device is told the link ended.
-    expect(flows[0].calls.slice(-3)).toEqual([
+    expect(flows[0].calls.slice(-2)).toEqual([
       'decline',
       'cancel:user_cancelled',
-      'close',
     ]);
   });
 

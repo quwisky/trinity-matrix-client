@@ -216,6 +216,7 @@ export class QrSignInAdapter {
     let current: FlowRun<ExistingDeviceState> | undefined;
     const state$ = new Observable<ExistingDeviceState>((subscriber) => {
       const run = new FlowRun(subscriber);
+      run.closesSession = false;
       current = run;
       run.start(async () => {
         run.emit({ kind: 'connecting' });
@@ -343,6 +344,12 @@ class FlowRun<S extends { kind: string }> {
   declineOnCancel = false;
   /** Set once the flow's outcome stands: a later failure ends with it instead. */
   failAs?: S;
+  /**
+   * Delete the rendezvous session at the end. The existing device leaves that to the new
+   * device, which reads the secrets only after the existing device has sent them. The SDK's
+   * cancel still deletes it.
+   */
+  closesSession = true;
 
   constructor(
     private readonly subscriber: Subscriber<
@@ -450,7 +457,7 @@ class FlowRun<S extends { kind: string }> {
         .cancel(MSC4108FailureReason.UserCancelled)
         .catch(() => undefined);
     }
-    await flow.close().catch(() => undefined);
+    if (this.closesSession) await flow.close().catch(() => undefined);
   }
 }
 
