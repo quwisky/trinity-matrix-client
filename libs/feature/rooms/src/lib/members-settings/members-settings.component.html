@@ -80,6 +80,7 @@
           [embedded]="true"
           (messageUser)="message($event)"
           (dismissed)="dismissMember()"
+          (roomOpened)="closeAfterRoomOpened()"
         />
       </div>
     } @else if (destination() === 'current') {

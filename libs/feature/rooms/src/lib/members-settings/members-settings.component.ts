@@ -174,6 +174,10 @@ export class MembersSettingsComponent implements OnInit {
       });
   }
 
+  closeAfterRoomOpened(): void {
+    this.dialogRef.close(false);
+  }
+
   message(userId: string): void {
     this.workspace
       .navigate({

@@ -158,6 +158,8 @@ export class MemberInfoComponent {
   readonly messageUser = output<string>();
   /** Closed without picking anything. Embedded mode only. */
   readonly dismissed = output<void>();
+  /** Embedded mode only: a shared room was opened, so the host should close what shows this. */
+  readonly roomOpened = output<void>();
 
   /**
    * Whether this renders in place (embedded in settings) rather than as a dialog or sheet.
@@ -578,8 +580,9 @@ export class MemberInfoComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (outcome) => {
-          if (outcome.kind === 'ready') this.finish(null);
-          else this.openFailed();
+          if (outcome.kind !== 'ready') this.openFailed();
+          else if (this.dialogRef && !this.embedded()) this.finish(null);
+          else this.roomOpened.emit();
         },
         error: () => this.openFailed(),
       });

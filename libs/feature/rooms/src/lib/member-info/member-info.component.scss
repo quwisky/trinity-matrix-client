@@ -103,7 +103,10 @@
   .member-info__rooms {
     display: block;
     margin-top: var(--trinity-space-4);
-    color: var(--trinity-text-muted);
+
+    &[hidden] {
+      display: none;
+    }
   }
 
   // The moderation actions sit below a divider so they read as a separate, weightier group.

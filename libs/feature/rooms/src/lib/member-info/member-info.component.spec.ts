@@ -216,17 +216,24 @@ async function build(
 async function buildPanel(m: MemberSummary = member()) {
   const messaged: string[] = [];
   let dismissals = 0;
-  const { container } = await render(MemberInfoComponent, {
+  let roomOpened = 0;
+  const { container, fixture } = await render(MemberInfoComponent, {
     inputs: { member: m, roomId: '!r:hs' },
     on: {
       messageUser: (userId: string) => messaged.push(userId),
       dismissed: () => {
         dismissals += 1;
       },
+      roomOpened: () => {
+        roomOpened += 1;
+      },
     },
     providers: [
       MockProvider(TrnToastService),
-      MockProvider(WorkspaceNavigationService),
+      MockProvider(WorkspaceNavigationService, {
+        navigate: () =>
+          of({ kind: 'ready' as const, change: 'committed' as const }),
+      }),
       {
         provide: IdentityPresenceService,
         useValue: {
@@ -262,7 +269,13 @@ async function buildPanel(m: MemberSummary = member()) {
       }),
     ],
   });
-  return { container, messaged, dismissals: () => dismissals };
+  return {
+    cmp: fixture.componentInstance,
+    container,
+    messaged,
+    dismissals: () => dismissals,
+    roomOpened: () => roomOpened,
+  };
 }
 
 function commonRoom(id: string): CommonRoom {
@@ -475,6 +488,22 @@ describe('MemberInfoComponent', () => {
 
     expect(dismissals()).toBe(1);
     expect(messaged).toEqual([]);
+  });
+
+  it('announces roomOpened, not a dismissal, when a shared room is opened', async () => {
+    const { cmp, dismissals, roomOpened } = await buildPanel();
+
+    cmp.openRoom(commonRoom('!a:hs'));
+
+    expect(roomOpened()).toBe(1);
+    expect(dismissals()).toBe(0);
+  });
+
+  it('keeps the Rooms panel hidden while Profile is selected', async () => {
+    const { container } = await build(member(), { commonRooms: [] });
+
+    const panel = container.querySelector<HTMLElement>('.member-info__rooms');
+    expect(panel?.hidden).toBe(true);
   });
 
   it('announces the user id for "Message" rather than resolving a ref', async () => {
