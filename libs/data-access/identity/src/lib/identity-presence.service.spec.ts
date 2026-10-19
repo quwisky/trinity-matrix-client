@@ -163,7 +163,7 @@ describe('IdentityPresenceService', () => {
       expect(details()).toBe(before);
     });
 
-    it('lastActiveAt is null for the SDK default (lastActiveAgo 0, lastPresenceTs 0)', () => {
+    it('is null for a user with no presence event (SDK default offline)', () => {
       const { svc, client } = setup();
       client.getUser.mockReturnValue({
         userId: '@a:hs',
@@ -173,7 +173,26 @@ describe('IdentityPresenceService', () => {
       });
       const details = svc.presenceDetailsFor('@a:hs');
       svc.runProjection().subscribe();
-      expect(details()?.lastActiveAt).toBeNull();
+      expect(details()).toBeNull();
+    });
+
+    it('lastActiveAt is null when lastActiveAgo is missing', () => {
+      const { svc, client } = setup();
+      client.getUser.mockReturnValue({
+        userId: '@a:hs',
+        presence: 'online',
+        lastPresenceTs: NOW,
+      });
+      const details = svc.presenceDetailsFor('@a:hs');
+      svc.runProjection().subscribe();
+      expect(details()).toMatchObject({ state: 'online', lastActiveAt: null });
+    });
+
+    it('keeps the signed-in user online without a presence event', () => {
+      const { svc } = setup();
+      const details = svc.presenceDetailsFor(SELF);
+      svc.runProjection().subscribe();
+      expect(details()).toMatchObject({ state: 'online', lastActiveAt: null });
     });
 
     it('presenceDetailsFor is null for a user the client does not know', () => {

@@ -193,15 +193,19 @@ export class IdentityPresenceService {
     client: IdentityMatrixClient,
   ): PresenceDetails | null {
     const state = this.currentPresence(userId, client);
-    if (!state) return null;
     const user = client.getUser(userId);
+    // The SDK seeds every loaded member as offline with lastPresenceTs 0 and sets it only
+    // when a presence event arrives; self stays known as online without one.
+    const known = !!user?.lastPresenceTs || userId === client.getUserId();
+    if (!state || !known) return null;
     return {
       state,
       statusMessage: user?.presenceStatusMsg ?? '',
-      // Same anchor as the SDK's getLastActiveTs(); both fields are 0 until the server reports.
-      lastActiveAt: user?.lastPresenceTs
-        ? user.lastPresenceTs - (user.lastActiveAgo ?? 0)
-        : null,
+      // Same anchor as the SDK's getLastActiveTs().
+      lastActiveAt:
+        user?.lastPresenceTs && user.lastActiveAgo != null
+          ? user.lastPresenceTs - user.lastActiveAgo
+          : null,
       currentlyActive: user?.currentlyActive ?? false,
     };
   }
