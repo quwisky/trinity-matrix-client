@@ -69,6 +69,17 @@ describe('MemberRolePickerComponent', () => {
     expect(choose).toHaveBeenCalledWith(ASSIGNABLE_MEMBER_ROLES[1]);
   });
 
+  it('keeps the current role checked after a choice the caller has not applied', async () => {
+    // The caller confirms first; a cancel or failure must not leave the new radio checked.
+    const { choose } = await build(0);
+
+    radio('Moderator').click();
+
+    expect(choose).toHaveBeenCalledWith(ASSIGNABLE_MEMBER_ROLES[1]);
+    expect(radio('Member').checked).toBe(true);
+    expect(radio('Moderator').checked).toBe(false);
+  });
+
   it('options keep data-testid member-info-role-<level>', async () => {
     const { container } = await build();
     for (const { level } of ASSIGNABLE_MEMBER_ROLES) {

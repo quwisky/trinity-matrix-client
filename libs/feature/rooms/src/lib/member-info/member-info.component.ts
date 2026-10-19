@@ -7,7 +7,6 @@ import {
   inject,
   input,
   output,
-  signal,
   untracked,
   viewChild,
 } from '@angular/core';
@@ -20,40 +19,24 @@ import {
   toObservable,
   toSignal,
 } from '@angular/core/rxjs-interop';
+import { catchError, map, of, startWith, switchMap } from 'rxjs';
 import {
-  catchError,
-  filter,
-  map,
-  of,
-  startWith,
-  switchMap,
-  type Observable,
-} from 'rxjs';
-import {
-  TrnActionAvailability,
-  TrnButton,
   TrnTab,
   TrnTabList,
   TrnTabPanel,
   TrnTabs,
 } from '@trinity/components/controls';
-import { TrnBadge, TrnTooltip } from '@trinity/components/generic-content';
+import { TrnBadge } from '@trinity/components/generic-content';
 import {
   TrnDialogRef,
-  TrnAlertService,
   TrnDialogShellComponent,
   TrnOverlaySurfaceDirective,
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
-  ASSIGNABLE_MEMBER_ROLES,
-  ContentReportingService,
-  type AssignableMemberRole,
   MEMBER_ROLE_LABEL,
   RoomActionPermissionsService,
-  type ActionAvailability,
   type MemberSummary,
-  RoomModerationService,
   memberRole,
 } from '@trinity/data-access/room-administration';
 import {
@@ -63,7 +46,6 @@ import {
 } from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
-  IgnoredUsersService,
   IdentityPresenceService,
   IdentityService,
   type PresenceDetails,
@@ -74,13 +56,8 @@ import {
   TrustVerificationService,
 } from '@trinity/data-access/trust';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import {
-  BLOCK_FAILED_TOAST,
-  BLOCKED_TOAST,
-  ReportService,
-  UNBLOCKED_TOAST,
-} from '../report/report.service';
 import { MemberProfileTabComponent } from './member-profile-tab/member-profile-tab.component';
+import { MemberManageTabComponent } from './member-manage-tab/member-manage-tab.component';
 
 /**
  * A room-scoped info card for a member (avatar, name, id, live presence, role), shown
@@ -88,7 +65,8 @@ import { MemberProfileTabComponent } from './member-profile-tab/member-profile-t
  * tablet or below `md`, or in place inside settings. It launches member actions:
  * **Message** (closes resolving the user id so the host opens/reuses a DM) and **Copy ID**,
  * both on the Profile tab, and, when the viewer's power permits, **change role** and
- * **remove / ban**. The moderation writes run here; the host only handles the DM and computes the permission caps.
+ * **remove / ban** on the Manage tab, which runs the moderation writes; the host only handles
+ * the DM and computes the permission caps.
  */
 @Component({
   selector: 'trn-member-info',
@@ -99,9 +77,6 @@ import { MemberProfileTabComponent } from './member-profile-tab/member-profile-t
     TrnDialogShellComponent,
     TrnOverlaySurfaceDirective,
     AvatarComponent,
-    TrnButton,
-    TrnActionAvailability,
-    TrnTooltip,
     TrnBadge,
     TrnTabs,
     TrnTabList,
@@ -109,6 +84,7 @@ import { MemberProfileTabComponent } from './member-profile-tab/member-profile-t
     TrnTabPanel,
     MemberProfileTabComponent,
     MemberRoomsTabComponent,
+    MemberManageTabComponent,
   ],
   templateUrl: './member-info.component.html',
   styleUrl: './member-info.component.scss',
@@ -173,14 +149,9 @@ export class MemberInfoComponent {
   private readonly presence = inject(IdentityPresenceService);
   private readonly toast = inject(TrnToastService);
   private readonly identity = inject(IdentityService);
-  private readonly moderation = inject(RoomModerationService);
   private readonly permissionsService = inject(RoomActionPermissionsService);
-  private readonly ignoredUsers = inject(IgnoredUsersService);
   private readonly rooms = inject(RoomLibraryService);
   private readonly verification = inject(TrustVerificationService);
-  private readonly alert = inject(TrnAlertService);
-  private readonly reporting = inject(ContentReportingService);
-  private readonly reports = inject(ReportService);
   private readonly trustUsers = inject(TrustUsersService);
   private readonly commonRoomsService = inject(RoomsInCommonService);
   private readonly matrix = inject(MatrixClientService);
@@ -188,32 +159,8 @@ export class MemberInfoComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly userIdHandle =
     viewChild<ElementRef<HTMLElement>>('userIdHandle');
-
-  constructor() {
-    this.ignoredUsers
-      .runProjection()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
-  }
-
-  /** Whether the active account blocks this member, as its synced ignore list says. */
-  readonly ignored = computed(() =>
-    this.ignoredUsers.isIgnored(this.member().userId),
-  );
-
-  private readonly blockAnswer = signal<{
-    readonly text: string;
-    readonly failed: boolean;
-    readonly ignored: boolean;
-  } | null>(null);
-  /**
-   * The last block or unblock answer, said under the button because a toast would cover it
-   * on desktop. Gone once the list no longer matches it, as after a change on another device.
-   */
-  readonly blockNotice = computed(() => {
-    const answer = this.blockAnswer();
-    return answer?.ignored === this.ignored() ? answer : null;
-  });
+  /** Hides the Manage tab when its panel would be empty. */
+  protected readonly manageTab = viewChild(MemberManageTabComponent);
 
   /** The owning Account is no longer the active one (the host is about to close this). */
   private readonly ownerInactive = computed(() => {
@@ -221,24 +168,9 @@ export class MemberInfoComponent {
     return owner !== null && owner !== this.identity.activeUserId();
   });
 
-  /**
-   * Blocking acts on the active account's list, so while another account is active the card
-   * can neither show nor change this owner's block.
-   */
-  readonly blockUnavailableReason = computed(() =>
-    this.ownerInactive()
-      ? `Switch back to ${this.owningAccountId()} to block or unblock from this card.`
-      : null,
-  );
-
   /** The Account the commands run as, when one is known. */
   private readonly commandAccountId = computed(
     () => this.accountId() ?? this.owningAccountId(),
-  );
-
-  /** The account a report goes out as: the one this card was opened for. */
-  private readonly reporterId = computed(
-    () => this.commandAccountId() ?? this.identity.activeUserId(),
   );
 
   /** Live online status for the presence dot. */
@@ -352,36 +284,6 @@ export class MemberInfoComponent {
       ],
   );
 
-  /** Every meaningful preset except the current one; unavailable choices explain why. */
-  readonly roleOptions = computed(() => {
-    const current = this.permissions().targetPower;
-    return ASSIGNABLE_MEMBER_ROLES.filter((role) => role.level !== current);
-  });
-
-  rolePermission(level: number): ActionAvailability {
-    return this.permissionsService.role(
-      this.target(),
-      this.member().userId,
-      level,
-    );
-  }
-
-  readonly showModeration = computed(() => {
-    if (!this.hideUnavailableModeration()) return true;
-    const permissions = this.permissions();
-    return (
-      permissions.kick.available ||
-      permissions.ban.available ||
-      this.roleOptions().some(
-        (option) => this.rolePermission(option.level).available,
-      )
-    );
-  });
-
-  showModerationAction(permission: ActionAvailability): boolean {
-    return !this.hideUnavailableModeration() || permission.available;
-  }
-
   /** Start (or reuse) a direct message with this member — the host does the navigation. */
   message(): void {
     this.finish(this.member().userId);
@@ -423,137 +325,6 @@ export class MemberInfoComponent {
     range.selectNodeContents(handle);
     selection.removeAllRanges();
     selection.addRange(range);
-  }
-
-  /** Block or unblock the member (account-wide ignore); the button follows the synced list. */
-  toggleIgnore(): void {
-    if (this.ownerInactive()) return;
-    const userId = this.member().userId;
-    const wasIgnored = this.ignored();
-    const action = wasIgnored
-      ? this.ignoredUsers.unignore(userId)
-      : this.ignoredUsers.ignore(userId);
-    this.blockAnswer.set(null);
-    action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: () =>
-        this.blockAnswer.set({
-          text: wasIgnored ? UNBLOCKED_TOAST : BLOCKED_TOAST,
-          failed: false,
-          ignored: !wasIgnored,
-        }),
-      error: () =>
-        this.blockAnswer.set({
-          text: BLOCK_FAILED_TOAST,
-          failed: true,
-          ignored: wasIgnored,
-        }),
-    });
-  }
-
-  /** Hidden once the reporter's server has said it takes no user reports. */
-  readonly canReport = computed(() => {
-    const reporter = this.reporterId();
-    return !!reporter && this.reporting.offers(reporter, 'user');
-  });
-
-  /** Report the member to the reporter's server admins, then offer to block them. */
-  report(): void {
-    const accountId = this.reporterId();
-    if (!accountId) return;
-    const member = this.member();
-    this.reports
-      .reportUser$({
-        accountId,
-        userId: member.userId,
-        name: member.roomDisplayName,
-      })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
-  }
-
-  /** Remove the member from the room (with an optional reason), on confirmation. */
-  kick(): void {
-    if (!this.permissions().kick.available) {
-      return;
-    }
-    this.alert
-      .prompt$({
-        header: `Remove from ${this.noun().toLowerCase()}`,
-        message: `Remove ${this.member().roomDisplayName} from ${this.targetName()} using account ${this.commandAccountId() ?? 'currently active'}? They can rejoin if invited or if this ${this.noun().toLowerCase()} is public.`,
-        confirmText: 'Remove',
-        variant: 'danger',
-        placeholder: 'Reason (optional)',
-      })
-      .pipe(
-        filter((reason): reason is string => reason !== null),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe((reason) =>
-        this.run(
-          this.moderation.kick(
-            this.target(),
-            this.member().userId,
-            reason || undefined,
-          ),
-          'Could not remove them.',
-        ),
-      );
-  }
-
-  /** Ban the member from the room (with an optional reason), on confirmation. */
-  ban(): void {
-    if (!this.permissions().ban.available) {
-      return;
-    }
-    this.alert
-      .prompt$({
-        header: `Ban from ${this.noun().toLowerCase()}`,
-        message: `Ban ${this.member().roomDisplayName} from ${this.targetName()} using account ${this.commandAccountId() ?? 'currently active'}? They won't be able to rejoin until they're unbanned.`,
-        confirmText: 'Ban',
-        variant: 'danger',
-        placeholder: 'Reason (optional)',
-      })
-      .pipe(
-        filter((reason): reason is string => reason !== null),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe((reason) =>
-        this.run(
-          this.moderation.ban(
-            this.target(),
-            this.member().userId,
-            reason || undefined,
-          ),
-          'Could not ban them.',
-        ),
-      );
-  }
-
-  /** Promote / demote the member to a preset role, on confirmation. */
-  setRole(option: Pick<AssignableMemberRole, 'label' | 'level'>): void {
-    if (!this.rolePermission(option.level).available) {
-      return;
-    }
-    this.alert
-      .confirm$({
-        header: 'Change role',
-        message: `Change ${this.member().roomDisplayName}'s role in ${this.targetName()} to ${option.label} using account ${this.commandAccountId() ?? 'currently active'}?`,
-        confirmText: 'Change',
-        // A demotion is the weightier direction.
-        variant:
-          option.level < this.permissions().targetPower ? 'danger' : 'neutral',
-      })
-      .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
-      .subscribe(() =>
-        this.run(
-          this.moderation.setPowerLevel(
-            this.target(),
-            this.member().userId,
-            option.level,
-          ),
-          'Could not change their role.',
-        ),
-      );
   }
 
   close(): void {
@@ -609,14 +380,5 @@ export class MemberInfoComponent {
       return;
     }
     this.dismissed.emit();
-  }
-
-  /** Run a moderation write: close the panel on success (the row leaves via sync), toast on failure. */
-  private run(action: Observable<void>, failure: string): void {
-    action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: () => this.finish(null),
-      error: () =>
-        this.toast.show(failure, { duration: 4000, variant: 'danger' }),
-    });
   }
 }

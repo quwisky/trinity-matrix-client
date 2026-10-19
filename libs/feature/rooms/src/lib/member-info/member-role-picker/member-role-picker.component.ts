@@ -1,7 +1,9 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   computed,
+  inject,
   input,
   output,
 } from '@angular/core';
@@ -22,6 +24,8 @@ import {
   templateUrl: './member-role-picker.component.html',
 })
 export class MemberRolePickerComponent {
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+
   readonly options = input.required<readonly AssignableMemberRole[]>();
   readonly current = input.required<number>();
   readonly permissionFor =
@@ -51,6 +55,14 @@ export class MemberRolePickerComponent {
   );
 
   protected pick(option: AssignableMemberRole): void {
+    // A native radio stays where the user moved it, but the role only changes once the
+    // caller's confirmed write lands, so show the current role until then.
+    const current = this.options().findIndex(
+      ({ level }) => level === this.current(),
+    );
+    this.host.nativeElement
+      .querySelectorAll<HTMLInputElement>('input[type="radio"]')
+      .forEach((radio, index) => (radio.checked = index === current));
     if (
       option.level === this.current() ||
       !this.permissionFor()(option.level).available
