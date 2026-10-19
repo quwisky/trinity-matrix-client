@@ -54,6 +54,7 @@ interface CommonView {
 }
 
 const REFETCH_DELAY_MS = 1000;
+const MAX_VIEWS = 20;
 const NO_ROOMS: Signal<CommonRooms> = signal(null).asReadonly();
 
 function sameCommonRooms(a: CommonRooms, b: CommonRooms): boolean {
@@ -83,22 +84,6 @@ export class RoomsInCommonService {
   /** Bumped when local membership, a room name or a room avatar changes. */
   private readonly revision = signal(0);
 
-  private readonly onMember = (
-    _event: MatrixEvent,
-    _state: RoomState,
-    member: RoomMember,
-  ): void => {
-    if (!this.watched.has(member.userId)) return;
-    this.bump();
-    for (const entry of this.views.values()) {
-      if (entry.userId === member.userId) this.refetchSoon(entry);
-    }
-  };
-  private readonly onMyMembership = (): void => {
-    if (!this.views.size) return;
-    this.bump();
-    for (const entry of this.views.values()) this.refetchSoon(entry);
-  };
   private readonly onName = (): void => {
     if (this.views.size) this.bump();
   };
@@ -119,20 +104,26 @@ export class RoomsInCommonService {
         .filter((client): client is MatrixClient => client !== null);
       if (!first) untracked(() => this.forget());
       first = false;
-      for (const client of clients) {
-        client.on(RoomStateEvent.Members, this.onMember);
+      // Per-client handlers, so a membership change refetches only that account's views.
+      const bound = clients.map((client) => {
+        const onMember = (
+          _event: MatrixEvent,
+          _state: RoomState,
+          member: RoomMember,
+        ): void => this.membershipChanged(client, member.userId);
+        const onMyMembership = (): void => this.membershipChanged(client);
+        client.on(RoomStateEvent.Members, onMember);
         client.on(RoomStateEvent.Events, this.onStateEvent);
-        client.on(RoomEvent.MyMembership, this.onMyMembership);
+        client.on(RoomEvent.MyMembership, onMyMembership);
         client.on(RoomEvent.Name, this.onName);
-      }
-      onCleanup(() => {
-        for (const client of clients) {
-          client.off(RoomStateEvent.Members, this.onMember);
+        return () => {
+          client.off(RoomStateEvent.Members, onMember);
           client.off(RoomStateEvent.Events, this.onStateEvent);
-          client.off(RoomEvent.MyMembership, this.onMyMembership);
+          client.off(RoomEvent.MyMembership, onMyMembership);
           client.off(RoomEvent.Name, this.onName);
-        }
+        };
       });
+      onCleanup(() => bound.forEach((unbind) => unbind()));
     });
   }
 
@@ -140,7 +131,8 @@ export class RoomsInCommonService {
    * Rooms and spaces that `accountId` (default: the active account) and `userId` have both
    * joined, without `excludeRoomId`, ordered by name. Null until that account's rooms are
    * prepared and the first answer arrives, and, without `accountId`, once another account is
-   * active. Cached per user, excluded room and account.
+   * active. Cached per user, excluded room and account, for the {@link MAX_VIEWS} latest.
+   * Call again when `accountIds()` changes: a held view is orphaned once its client restarts.
    */
   roomsInCommon(
     userId: string,
@@ -153,7 +145,11 @@ export class RoomsInCommonService {
     if (!owner || !client) return NO_ROOMS;
     const key = [userId, excludeRoomId, owner, follows].join('\n');
     let entry = this.views.get(key);
-    if (!entry) {
+    if (entry) {
+      // Least recently requested first, for eviction.
+      this.views.delete(key);
+      this.views.set(key, entry);
+    } else {
       const server = signal<ServerAnswer>(undefined);
       const view = computed(
         () => {
@@ -173,6 +169,7 @@ export class RoomsInCommonService {
       this.views.set(key, entry);
       this.watched.add(userId);
       this.fetch(entry);
+      this.evictBeyondCap();
     }
     return entry.view;
   }
@@ -216,15 +213,41 @@ export class RoomsInCommonService {
     entry.timer = setTimeout(() => this.fetch(entry), REFETCH_DELAY_MS);
   }
 
+  /** A member event for `userId`, or this account's own membership when `userId` is absent. */
+  private membershipChanged(client: MatrixClient, userId?: string): void {
+    if (userId !== undefined && !this.watched.has(userId)) return;
+    let affected = false;
+    for (const entry of this.views.values()) {
+      if (entry.client !== client) continue;
+      if (userId !== undefined && entry.userId !== userId) continue;
+      affected = true;
+      this.refetchSoon(entry);
+    }
+    if (affected) this.bump();
+  }
+
+  private evictBeyondCap(): void {
+    for (const [key, entry] of this.views) {
+      if (this.views.size <= MAX_VIEWS) return;
+      this.release(entry);
+      this.views.delete(key);
+      if (![...this.views.values()].some((e) => e.userId === entry.userId)) {
+        this.watched.delete(entry.userId);
+      }
+    }
+  }
+
+  private release(entry: CommonView): void {
+    clearTimeout(entry.timer);
+    entry.fetch?.unsubscribe();
+  }
+
   private bump(): void {
     this.revision.update((n) => n + 1);
   }
 
   private forget(): void {
-    for (const entry of this.views.values()) {
-      clearTimeout(entry.timer);
-      entry.fetch?.unsubscribe();
-    }
+    for (const entry of this.views.values()) this.release(entry);
     this.views.clear();
     this.watched.clear();
   }

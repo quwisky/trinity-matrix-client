@@ -1,5 +1,13 @@
 import { Method, type MatrixClient } from 'matrix-js-sdk';
-import { Observable, catchError, forkJoin, from, of, switchMap } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  forkJoin,
+  from,
+  of,
+  switchMap,
+  timeout,
+} from 'rxjs';
 import { serverAdvertises } from './server-support';
 
 // MSC2666: the stable endpoint has no `/user` segment; the unstable one does.
@@ -7,6 +15,7 @@ const STABLE_PATH = '/_matrix/client/v1/mutual_rooms';
 const UNSTABLE_PATH =
   '/_matrix/client/unstable/uk.half-shot.msc2666/user/mutual_rooms';
 const MAX_PAGES = 10;
+const ANSWER_TIMEOUT_MS = 10_000;
 
 interface MutualRoomsPage {
   readonly joined?: unknown;
@@ -16,7 +25,8 @@ interface MutualRoomsPage {
 /**
  * The rooms `client`'s account and `userId` have both joined, as the homeserver reports them
  * (MSC2666). Null when the server does not advertise the endpoint or the request fails, so the
- * caller falls back to its local view. Cold and finite; at most {@link MAX_PAGES} pages.
+ * caller falls back to its local view; so does no answer within {@link ANSWER_TIMEOUT_MS}. Cold and
+ * finite; at most {@link MAX_PAGES} pages.
  */
 export function mutualRoomIds(
   client: MatrixClient,
@@ -33,10 +43,10 @@ export function mutualRoomIds(
   ]).pipe(
     switchMap(([stable, unstable]) => {
       const path = stable ? STABLE_PATH : unstable ? UNSTABLE_PATH : null;
-      return path
-        ? from(fetchAll(client, path, userId)).pipe(catchError(() => of(null)))
-        : of(null);
+      return path ? from(fetchAll(client, path, userId)) : of(null);
     }),
+    timeout(ANSWER_TIMEOUT_MS),
+    catchError(() => of(null)),
   );
 }
 

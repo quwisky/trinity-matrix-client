@@ -46,6 +46,8 @@ function fakeClient(
     versions?: string[];
     features?: Record<string, boolean>;
     pages?: Page[] | Error;
+    /** `/versions` never answers. */
+    hang?: boolean;
   } = {},
 ) {
   const handlers = new Map<string, Set<Handler>>();
@@ -58,10 +60,13 @@ function fakeClient(
     getRooms: () => rooms,
     getAccountData: (type: string) =>
       type === 'm.direct' ? { getContent: () => opts.direct ?? {} } : undefined,
-    getVersions: async () => ({
-      versions: opts.versions ?? ['v1.11'],
-      unstable_features: opts.features ?? {},
-    }),
+    getVersions: () =>
+      opts.hang
+        ? new Promise<never>(() => undefined)
+        : Promise.resolve({
+            versions: opts.versions ?? ['v1.11'],
+            unstable_features: opts.features ?? {},
+          }),
     http: { authedRequest },
     on: (event: string, handler: Handler) => {
       const set = handlers.get(event) ?? new Set<Handler>();
@@ -442,6 +447,63 @@ describe('RoomsInCommonService', () => {
 
       expect(client.http.authedRequest).toHaveBeenCalledTimes(2);
       expect(ids(common())).toEqual(['!a', '!b']);
+    });
+
+    it('falls back to the local list when the server does not answer in time', async () => {
+      vi.useFakeTimers();
+      const client = fakeClient(
+        [
+          fakeRoom({ roomId: '!a', name: 'A' }),
+          fakeRoom({ roomId: '!b', name: 'B', members: { [PERSON]: 'join' } }),
+        ],
+        { hang: true },
+      );
+      const { svc } = setup({ [ME]: client });
+      const common = svc.roomsInCommon(PERSON, '!x');
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(common()).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(ids(common())).toEqual(['!b']);
+    });
+
+    it('an own membership change refetches only views of that account', async () => {
+      vi.useFakeTimers();
+      const advertised = { features: { [UNSTABLE_FLAG]: true } };
+      const mine = fakeClient([], advertised);
+      const other = fakeClient([], advertised);
+      const { svc } = setup({ [ME]: mine, [OTHER_ACCOUNT]: other });
+      svc.roomsInCommon(PERSON, '!x');
+      svc.roomsInCommon(PERSON, '!x', OTHER_ACCOUNT);
+      await vi.advanceTimersByTimeAsync(0);
+      TestBed.tick();
+      expect(mine.http.authedRequest).toHaveBeenCalledTimes(1);
+      expect(other.http.authedRequest).toHaveBeenCalledTimes(1);
+
+      mine.emit(RoomEvent.MyMembership, {}, 'join');
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(mine.http.authedRequest).toHaveBeenCalledTimes(2);
+      expect(other.http.authedRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it('evicts the oldest views beyond the cap', async () => {
+      vi.useFakeTimers();
+      const client = fakeClient([], { features: { [UNSTABLE_FLAG]: true } });
+      const { svc } = setup({ [ME]: client });
+      const oldest = svc.roomsInCommon('@u0:hs', '!x');
+      for (let i = 1; i <= 20; i++) svc.roomsInCommon(`@u${i}:hs`, '!x');
+      await vi.advanceTimersByTimeAsync(0);
+      TestBed.tick();
+      // Eviction cancelled the oldest view's request before `/versions` answered.
+      expect(client.http.authedRequest).toHaveBeenCalledTimes(20);
+
+      client.emit(RoomStateEvent.Members, {}, {}, { userId: '@u0:hs' });
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(client.http.authedRequest).toHaveBeenCalledTimes(20);
+      expect(svc.roomsInCommon('@u0:hs', '!x')).not.toBe(oldest);
     });
   });
 });
