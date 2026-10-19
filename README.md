@@ -115,8 +115,10 @@ connecting when their access token expires but keep their local encryption keys;
 [Server requirements](https://docs.trinityproject.dev/trinity-matrix-client/users/#server-requirements).
 
 Trinity also supports polls, voice messages, location sharing, stickers, custom emoji
-and GIFs, room widgets, jump to date, pinned messages, room key export and import, and
-desktop notifications.
+and GIFs, room widgets, jump to date, pinned messages, room key export and import,
+desktop notifications, and
+[signing in on a new device with a QR code](https://docs.trinityproject.dev/trinity-matrix-client/users/#qr-sign-in)
+on servers that support it.
 
 Other clients: each client's GitHub repository (code, changelogs and issues) and its
 latest release, with [matrix.org client pages](https://matrix.org/ecosystem/clients/)

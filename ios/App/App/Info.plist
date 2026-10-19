@@ -76,7 +76,7 @@
 		</dict>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Trinity needs camera access to take photos and videos for your messages and scan device-verification QR codes.</string>
+	<string>Trinity needs camera access to take photos and videos for your messages and scan QR codes for device verification and linking new devices.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Trinity uses Face ID to unlock when App lock is on.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
