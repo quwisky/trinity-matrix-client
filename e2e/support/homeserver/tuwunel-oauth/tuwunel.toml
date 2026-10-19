@@ -33,6 +33,9 @@ default_room_version = "10"
 oidc_native_auth = true
 # The default, written out: QR sign-in depends on it.
 rendezvous_enabled = true
+# Synapse's lifetime, which the app assumes; the default ten minutes would make the
+# expired-code journey wait that long.
+rendezvous_session_ttl = 60
 
 # oidc_native_auth requires it; it is also the OAuth issuer.
 [global.well_known]
