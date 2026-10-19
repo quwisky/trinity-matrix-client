@@ -351,12 +351,15 @@ export class AuthService implements QrSignInCompletion {
     return defer(async () => {
       const crypto = client.getCrypto();
       const deviceId = client.getDeviceId();
-      if (!crypto?.importSecretsBundle || !deviceId) return false;
+      const userId = client.getUserId();
+      if (!crypto?.importSecretsBundle || !deviceId || !userId) return false;
       await crypto.importSecretsBundle(secrets);
       await crypto.crossSignDevice(deviceId);
       // Best effort: backup does not decide whether the device is verified.
       await crypto.checkKeyBackupAndEnable().catch(() => undefined);
-      return true;
+      if (!(await crypto.isCrossSigningReady())) return false;
+      const status = await crypto.getDeviceVerificationStatus(userId, deviceId);
+      return status?.crossSigningVerified === true;
     }).pipe(catchError(() => of(false)));
   }
 

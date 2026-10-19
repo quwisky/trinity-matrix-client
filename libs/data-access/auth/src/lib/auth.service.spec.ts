@@ -1141,15 +1141,22 @@ describe('AuthService', () => {
       importSecretsBundle: vi.fn(),
       crossSignDevice: vi.fn(),
       checkKeyBackupAndEnable: vi.fn(),
+      isCrossSigningReady: vi.fn(),
+      getDeviceVerificationStatus: vi.fn(),
     };
     const client = {
       getCrypto: () => crypto,
       getDeviceId: () => 'QRDEV',
+      getUserId: () => '@me:hs',
     } as unknown as MatrixClient;
     beforeEach(() => {
       crypto.importSecretsBundle.mockReset().mockResolvedValue(undefined);
       crypto.crossSignDevice.mockReset().mockResolvedValue(undefined);
       crypto.checkKeyBackupAndEnable.mockReset().mockResolvedValue(null);
+      crypto.isCrossSigningReady.mockReset().mockResolvedValue(true);
+      crypto.getDeviceVerificationStatus
+        .mockReset()
+        .mockResolvedValue({ crossSigningVerified: true });
     });
     const importSecrets = () =>
       firstValueFrom(auth.importLinkedSecrets(client, secrets as never));
@@ -1187,6 +1194,24 @@ describe('AuthService', () => {
       crypto.checkKeyBackupAndEnable.mockRejectedValue(new Error('no backup'));
 
       expect(await importSecrets()).toBe(true);
+    });
+
+    it('reports an unverified device when it is not cross-signing verified after the import', async () => {
+      crypto.getDeviceVerificationStatus.mockResolvedValue({
+        crossSigningVerified: false,
+      });
+
+      expect(await importSecrets()).toBe(false);
+      expect(crypto.getDeviceVerificationStatus).toHaveBeenCalledWith(
+        '@me:hs',
+        'QRDEV',
+      );
+    });
+
+    it('reports an unverified device when cross-signing is not ready after the import', async () => {
+      crypto.isCrossSigningReady.mockResolvedValue(false);
+
+      expect(await importSecrets()).toBe(false);
     });
 
     it('reports an unverified device when cross-signing fails', async () => {

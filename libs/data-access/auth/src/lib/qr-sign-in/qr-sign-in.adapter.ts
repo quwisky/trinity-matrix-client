@@ -40,7 +40,7 @@ const INVALID_AUTH_METADATA =
 
 // Thrown by the SDK's rendezvous session when the homeserver has no MSC4108 endpoint.
 const INVALID_RENDEZVOUS_URI = 'Invalid rendezvous URI';
-// Synapse keeps a rendezvous session for 60 s; the SDK does not expose the server's expiry.
+// Synapse keeps a rendezvous session for 60 s; used when the server sends no Expires header.
 const CODE_LIFETIME_MS = 60_000;
 const DEVICE_ID_CHARS =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -55,12 +55,27 @@ export class QrRendezvousFactory {
   async newDevice(
     homeserverUrl: string,
     onFailure: RendezvousFailureListener,
-  ): Promise<{ flow: QrRendezvousFlow; metadata: ValidatedAuthMetadata }> {
+  ): Promise<{
+    flow: QrRendezvousFlow;
+    metadata: ValidatedAuthMetadata;
+    expires: string | null;
+  }> {
     await firstValueFrom(preloadCryptoWasm());
     const client = createClient({ baseUrl: homeserverUrl });
     try {
       const metadata = await client.getAuthMetadata();
-      const session = new MSC4108RendezvousSession({ client, onFailure });
+      let expires: string | null = null;
+      // The SDK keeps the Expires header of the session-creating POST to itself.
+      const fetchFn: typeof fetch = async (input, init) => {
+        const response = await fetch(input, init);
+        if (init?.method === 'POST') expires = response.headers.get('expires');
+        return response;
+      };
+      const session = new MSC4108RendezvousSession({
+        client,
+        onFailure,
+        fetchFn,
+      });
       const channel = new MSC4108SecureChannel(session, undefined, onFailure);
       const flow = new MSC4108SignInWithQR(
         channel,
@@ -70,7 +85,7 @@ export class QrRendezvousFactory {
       );
       // Creates the session, which gives it the URL the code carries.
       await session.send('');
-      return { flow, metadata };
+      return { flow, metadata, expires };
     } finally {
       client.stopClient();
     }
@@ -118,7 +133,7 @@ export class QrSignInAdapter {
       const run = new FlowRun(subscriber);
       run.start(async () => {
         run.emit({ kind: 'creating' });
-        const { flow, metadata } = await this.factory.newDevice(
+        const { flow, metadata, expires } = await this.factory.newDevice(
           homeserverUrl,
           run.onFailure,
         );
@@ -130,7 +145,7 @@ export class QrSignInAdapter {
         run.emit({
           kind: 'showing-code',
           qr: required(flow.code),
-          expiresAt: Date.now() + CODE_LIFETIME_MS,
+          expiresAt: codeExpiry(expires),
         });
         await run.step(flow.negotiateProtocols());
         run.emit({
@@ -176,6 +191,9 @@ export class QrSignInAdapter {
             homeserverUrl,
           ),
         );
+        // The account is stored and running, so a failed secrets stage leaves it signed in
+        // but unverified, for the app's usual verification prompt.
+        run.failAs = { kind: 'done', verified: false };
         const { secrets } = await run.step(flow.shareSecrets());
         const verified = secrets
           ? await run.read(this.completion.importLinkedSecrets(client, secrets))
@@ -233,6 +251,13 @@ export class QrSignInAdapter {
         const { verificationUri } = await run.step(
           flow.deviceAuthorizationGrant(),
         );
+        // Security: the peer chooses this link, so open it only on the account's own server.
+        if (
+          !(await run.step(onAccountServer(client, required(verificationUri))))
+        ) {
+          run.fail(ClientRendezvousFailureReason.InsecureChannelDetected);
+          return;
+        }
         run.emit({
           kind: 'approve-in-browser',
           verificationUri: required(verificationUri),
@@ -304,6 +329,8 @@ class FlowRun<S extends { kind: string }> {
 
   /** Send a decline before cancelling, so the other device learns the user stopped. */
   declineOnCancel = false;
+  /** Set once the flow's outcome stands: a later failure ends with it instead. */
+  failAs?: S;
 
   constructor(
     private readonly subscriber: Subscriber<
@@ -374,6 +401,11 @@ class FlowRun<S extends { kind: string }> {
   fail(error: unknown, channelEnded = false): void {
     if (this.ended) return;
     this.channelEnded = channelEnded || error instanceof RendezvousError;
+    if (this.failAs) {
+      this.subscriber.next(this.failAs);
+      this.subscriber.complete();
+      return;
+    }
     const reason =
       error instanceof RendezvousError
         ? error.code
@@ -416,6 +448,34 @@ function isClientRejection(error: unknown): boolean {
     error instanceof Error &&
     error.message === OAuth2Error.InvalidDeviceAuthorizationResponse
   );
+}
+
+/** Whether a peer-sent link opens on the account's OAuth issuer or device endpoint. */
+async function onAccountServer(
+  client: MatrixClient,
+  uri: string,
+): Promise<boolean> {
+  const metadata = await client.getAuthMetadata();
+  const origin = originOf(uri);
+  return (
+    origin !== null &&
+    [metadata.issuer, metadata.device_authorization_endpoint].some(
+      (url) => url !== undefined && originOf(url) === origin,
+    )
+  );
+}
+
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+function codeExpiry(expires: string | null): number {
+  const at = expires ? Date.parse(expires) : NaN;
+  return Number.isNaN(at) ? Date.now() + CODE_LIFETIME_MS : at;
 }
 
 function required<T>(value: T | undefined): T {

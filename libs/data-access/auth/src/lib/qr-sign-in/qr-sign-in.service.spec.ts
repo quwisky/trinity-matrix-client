@@ -5,7 +5,7 @@ import {
   MSC4108FailureReason,
   RendezvousError,
 } from 'matrix-js-sdk/lib/rendezvous';
-import { Observable, of, type Subscription } from 'rxjs';
+import { Observable, of, throwError, type Subscription } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   QrRendezvousFactory,
@@ -29,11 +29,14 @@ type Step =
   | 'completeLoginOnNewDevice'
   | 'shareSecrets';
 
-const metadata = { issuer: 'https://auth' } as never;
+const metadata = { issuer: 'https://auth/' } as never;
 const tokens = { access_token: 'at', token_type: 'Bearer' };
 const secrets = { cross_signing: {} } as unknown as LinkedSecrets;
 const signedIn = { id: 'new-client' } as unknown as MatrixClient;
-const existingClient = { id: 'existing-client' } as unknown as MatrixClient;
+const existingClient = {
+  id: 'existing-client',
+  getAuthMetadata: vi.fn(async () => metadata),
+} as unknown as MatrixClient;
 
 /** A fake MSC4108SignInWithQR whose steps resolve unless told to hang or fail. */
 class FakeFlow {
@@ -114,6 +117,7 @@ function setup(configure: (flow: FakeFlow) => void = () => undefined) {
       async (_url: string, onFailure: (reason: string) => void) => ({
         flow: build(onFailure, true),
         metadata,
+        expires: null as string | null,
       }),
     ),
     existingDevice: vi.fn(
@@ -346,6 +350,101 @@ describe('QrSignInService.signInByShowingCode', () => {
     });
   });
 
+  it('shows the expiry the server sent for the session', async () => {
+    const now = Date.parse('2026-10-19T12:00:00Z');
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    const { service, factory } = setup((flow) =>
+      flow.hang.add('negotiateProtocols'),
+    );
+    const created = factory.newDevice.getMockImplementation()!;
+    factory.newDevice.mockImplementation(async (url, onFailure) => ({
+      ...(await created(url, onFailure)),
+      expires: new Date(now + 10 * 60_000).toUTCString(),
+    }));
+    const run = record(service.signInByShowingCode('https://hs'));
+    await settle();
+
+    expect(run.states.at(-1)).toEqual(
+      expect.objectContaining({
+        kind: 'showing-code',
+        expiresAt: now + 10 * 60_000,
+      }),
+    );
+    vi.restoreAllMocks();
+  });
+
+  it('falls back to a one-minute expiry when the Expires header cannot be read', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    const { service, factory } = setup((flow) =>
+      flow.hang.add('negotiateProtocols'),
+    );
+    const created = factory.newDevice.getMockImplementation()!;
+    factory.newDevice.mockImplementation(async (url, onFailure) => ({
+      ...(await created(url, onFailure)),
+      expires: 'not a date',
+    }));
+    const run = record(service.signInByShowingCode('https://hs'));
+    await settle();
+
+    expect(run.states.at(-1)).toEqual(
+      expect.objectContaining({ kind: 'showing-code', expiresAt: 61_000 }),
+    );
+    vi.restoreAllMocks();
+  });
+
+  describe('a failure after the account is signed in', () => {
+    it('ends done but unverified when sharing the secrets fails', async () => {
+      const { service, flows } = setup((flow) =>
+        flow.failures.set(
+          'shareSecrets',
+          new RendezvousError('failed', MSC4108FailureReason.UserCancelled),
+        ),
+      );
+      const run = record(service.signInByShowingCode('https://hs'));
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({ kind: 'done', verified: false });
+      expect(run.kinds()).not.toContain('failed');
+      expect(run.completed()).toBe(true);
+      expect(flows[0].cancel).not.toHaveBeenCalled();
+    });
+
+    it('ends done but unverified when the other device cancels while secrets are shared', async () => {
+      const { service, flows } = setup((flow) => flow.hang.add('shareSecrets'));
+      const run = record(service.signInByShowingCode('https://hs'));
+      await settle();
+
+      flows[0].failSession(MSC4108FailureReason.UserCancelled);
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({ kind: 'done', verified: false });
+      expect(run.kinds()).not.toContain('failed');
+    });
+
+    it('ends done but unverified when importing the secrets fails', async () => {
+      const { service, completion } = setup();
+      completion.importLinkedSecrets.mockReturnValue(
+        throwError(() => new Error('import failed')),
+      );
+      const run = record(service.signInByShowingCode('https://hs'));
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({ kind: 'done', verified: false });
+      expect(run.kinds()).not.toContain('failed');
+    });
+
+    it('still fails when the account could not be signed in', async () => {
+      const { service, completion } = setup();
+      completion.completeDeviceGrant.mockReturnValue(
+        throwError(() => new Error('store failed')),
+      );
+      const run = record(service.signInByShowingCode('https://hs'));
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
+    });
+  });
+
   it('ends unverified when no secrets arrive', async () => {
     const { service, completion } = setup((flow) =>
       flow.shareSecrets.mockResolvedValue({} as never),
@@ -562,6 +661,55 @@ describe('QrSignInService.linkByScanning', () => {
     ]);
     expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
     expect(flows[0].shareSecrets).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['another origin', 'https://evil.example/link?code=ABCD'],
+    ['a look-alike host', 'https://auth.evil.example/link'],
+    ['an unparseable link', 'not a url'],
+  ])(
+    'fails insecure and never shows an approval link on %s',
+    async (_name, verificationUri) => {
+      const { service, flows } = setup((flow) =>
+        flow.deviceAuthorizationGrant.mockResolvedValue({
+          verificationUri,
+        } as never),
+      );
+      const link = service.linkByScanning(existingClient, qrBytes);
+      const run = record(link.state$);
+      await settle();
+
+      link.confirmCheckCode(true);
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'insecure' });
+      expect(run.kinds()).not.toContain('approve-in-browser');
+      expect(JSON.stringify(run.states)).not.toContain(verificationUri);
+      expect(flows[0].shareSecrets).not.toHaveBeenCalled();
+      expect(flows[0].calls.slice(-2)).toEqual([
+        'cancel:user_cancelled',
+        'close',
+      ]);
+    },
+  );
+
+  it('accepts an approval link on the device-authorization endpoint origin', async () => {
+    const accountClient = {
+      getAuthMetadata: vi.fn(async () => ({
+        issuer: 'https://id.example/',
+        device_authorization_endpoint: 'https://auth/oauth2/device',
+      })),
+    } as unknown as MatrixClient;
+    const { service } = setup();
+    const link = service.linkByScanning(accountClient, qrBytes);
+    const run = record(link.state$);
+    await settle();
+
+    link.confirmCheckCode(true);
+    await settle();
+
+    expect(run.kinds()).toContain('approve-in-browser');
+    expect(run.states.at(-1)).toEqual({ kind: 'done' });
   });
 
   it('ignores a confirmation that arrives before the check code is shown', async () => {
