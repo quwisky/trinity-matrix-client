@@ -193,6 +193,7 @@ describe('split E2E jobs', () => {
       'browser-e2e',
       'storybook',
       'mas-e2e',
+      'tuwunel-oauth-e2e',
       'scrollbars-e2e',
     ]);
     for (const id of [
@@ -200,6 +201,7 @@ describe('split E2E jobs', () => {
       'browser-e2e',
       'storybook',
       'mas-e2e',
+      'tuwunel-oauth-e2e',
       'scrollbars-e2e',
     ]) {
       expect(jobs[id].name).not.toBe('E2E (Playwright + homeserver)');
@@ -250,6 +252,41 @@ describe('split E2E jobs', () => {
   });
 });
 
+describe('QR sign-in journeys on Tuwunel OAuth', () => {
+  const jobs = workflow.jobs;
+  const job = jobs['tuwunel-oauth-e2e'];
+  const browser = job.steps.find((candidate) => candidate.id === 'browser');
+
+  it('runs on the same pull requests as the MAS journeys', () => {
+    expect([job.needs].flat()).toEqual(['classify']);
+    expect(job.if).toBe(jobs['mas-e2e'].if);
+  });
+
+  it('starts Tuwunel OAuth for every step and runs only the QR journeys', () => {
+    // At job level, so the prerequisites step pulls this kind's images too.
+    expect(job.env).toEqual({ TRINITY_E2E_HOMESERVER: 'tuwunel-oauth' });
+    expect(browser.env).toEqual({
+      TRINITY_E2E_SPEC: 'accounts/qr-sign-in.spec.mts',
+    });
+    expect(browser.run).toContain(
+      '-- pnpm exec nx run trinity-e2e-browser:e2e\n',
+    );
+    expect(browser.run).toContain('--timeout-ms 1200000 --');
+    expect(job['timeout-minutes']).toBeGreaterThan(0);
+    expect(
+      job.steps.some((candidate) => candidate.id === 'prerequisites'),
+    ).toBe(true);
+  });
+
+  it('keeps its diagnostics apart from the other browser jobs', () => {
+    expect(diagnosticsUpload(job).with.surface).toBe('browser-tuwunel-oauth');
+    expect(
+      job.steps.find((candidate) => candidate.with?.path === 'dist/.ci/').with
+        .name,
+    ).toContain('${{ github.job }}');
+  });
+});
+
 describe('MAS sign-in journeys', () => {
   const jobs = workflow.jobs;
   const job = jobs['mas-e2e'];
@@ -279,6 +316,27 @@ describe('MAS sign-in journeys', () => {
     expect(
       job.steps.some((candidate) => candidate.id === 'prerequisites'),
     ).toBe(true);
+  });
+
+  it('runs QR sign-in as a second invocation, with its own diagnostics', () => {
+    const qr = step('qr');
+    expect(qr.env).toEqual({
+      TRINITY_E2E_MAS: '1',
+      TRINITY_E2E_SPEC: 'accounts/qr-sign-in.spec.mts',
+    });
+    expect(qr.run).toContain('-- pnpm exec nx run trinity-e2e-browser:e2e\n');
+    expect(qr.run).toContain('--timeout-ms 1200000 --');
+    // A failed MAS session journey must not hide the QR results.
+    expect(qr.if).toContain("steps.prerequisites.outcome == 'success'");
+    const uploads = job.steps.filter(
+      (candidate) =>
+        candidate.uses === './.github/actions/upload-playwright-diagnostics',
+    );
+    expect(uploads.map((upload) => upload.with.surface)).toEqual([
+      'browser-mas',
+      'browser-mas-qr',
+    ]);
+    expect(uploads[1].if).toContain("steps.qr.outputs.started == 'true'");
   });
 
   it('is the only job that opts into the MAS stack', () => {
@@ -315,8 +373,8 @@ describe('MAS sign-in journeys', () => {
       expect(run({}).status).toBe(0);
     });
 
-    // Both are skipped by design when a pull request leaves the paths they check alone.
-    const pathFiltered = ['mas-e2e', 'scrollbars-e2e'];
+    // Each is skipped by design when a pull request leaves the paths it checks alone.
+    const pathFiltered = ['mas-e2e', 'tuwunel-oauth-e2e', 'scrollbars-e2e'];
 
     it.each(pathFiltered)('passes when only %s was skipped', (id) => {
       expect(run({ [id]: 'skipped' }).status).toBe(0);
@@ -448,6 +506,12 @@ describe('MAS sign-in journeys', () => {
       'e2e/support/homeserver/constants.mjs',
       'e2e/support/homeserver/kind.mts',
       'e2e/support/homeserver/paths.mjs',
+      'e2e/browser/journeys/accounts/qr-sign-in.spec.mts',
+      'e2e/browser/support/qr-existing-device.mts',
+      'e2e/support/qr-camera.mts',
+      'e2e/support/homeserver/tuwunel-oauth/tuwunel.toml',
+      'libs/data-access/auth/src/lib/qr-sign-in/qr-sign-in.adapter.ts',
+      'libs/feature/settings/src/lib/devices/link-device/link-device.component.ts',
     ])('runs the journeys when a pull request changes %s', (path) => {
       expect(detect({ [path]: 'changed\n' })).toBe('run=true');
     });
