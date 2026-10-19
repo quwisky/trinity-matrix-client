@@ -2,6 +2,8 @@ import { Injectable, inject } from '@angular/core';
 import {
   createClient,
   type AuthDict,
+  type DeviceAccessTokenResponse,
+  type MatrixClient,
   type ValidatedAuthMetadata,
 } from 'matrix-js-sdk';
 import {
@@ -32,6 +34,7 @@ import {
 import {
   UiaCancelledError,
   runPasswordUia,
+  type OidcSessionBinding,
   type PasswordPrompt,
 } from '@trinity/util/matrix';
 import {
@@ -59,6 +62,11 @@ import {
   type AccountManagement,
   type AccountServerApi,
 } from './account-server-api';
+import type {
+  LinkedSecrets,
+  QrSignInCompletion,
+} from './qr-sign-in/qr-sign-in-completion.port';
+import { QrAccountAlreadyStoredError } from './qr-sign-in/qr-sign-in.model';
 
 export type { LoginMode } from './account-establishment';
 export type { AccountEstablishmentOutcome } from '@trinity/data-access/accounts';
@@ -76,7 +84,7 @@ interface NewDeviceCheck {
 }
 
 @Injectable({ providedIn: 'root' })
-export class AuthService {
+export class AuthService implements QrSignInCompletion {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
   private readonly oidc = inject(OidcClientService);
@@ -231,6 +239,128 @@ export class AuthService {
         ),
       ),
     );
+  }
+
+  /** The OAuth client id QR sign-in uses for the device grant. */
+  deviceGrantClientId(
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<string> {
+    return this.oidc.deviceGrantClientId(metadata, homeserverUrl);
+  }
+
+  /** Forget the device-grant client id after the provider rejected it. */
+  forgetDeviceGrantClientId(
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<void> {
+    return this.oidc.forgetDeviceGrantClientId(metadata, homeserverUrl);
+  }
+
+  /**
+   * Sign in a QR-linked new device with its device-grant tokens, keeping other signed-in
+   * accounts. Emits the started client only after `whoami` has succeeded with the new
+   * token, so the device exists on the server before the existing device shares secrets.
+   * An account this device already stores is refused and left as it was. Until `establish`
+   * takes the tokens over, any failure or unsubscribe revokes them.
+   */
+  completeDeviceGrant(
+    tokens: DeviceAccessTokenResponse,
+    clientId: string,
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<MatrixClient> {
+    return defer(() => {
+      const issuedBy = Date.now();
+      let binding: OidcSessionBinding = { issuer: metadata.issuer, clientId };
+      let owned = false;
+      return from(
+        createClient({
+          baseUrl: homeserverUrl,
+          accessToken: tokens.access_token,
+        }).whoami(),
+      ).pipe(
+        switchMap((who) => {
+          const deviceId = who.device_id;
+          if (!deviceId) {
+            throw new Error(
+              'The provider returned no device for this session.',
+            );
+          }
+          return this.storage.record(who.user_id).pipe(
+            take(1),
+            switchMap((stored) => {
+              if (stored) throw new QrAccountAlreadyStoredError();
+              return this.oidc.deviceGrantBinding(metadata, clientId);
+            }),
+            map((pinned) => {
+              binding = pinned;
+              return { userId: who.user_id, deviceId };
+            }),
+          );
+        }),
+        switchMap(({ userId, deviceId }) => {
+          owned = true;
+          return this.establish(
+            homeserverUrl,
+            {
+              user_id: userId,
+              device_id: deviceId,
+              access_token: tokens.access_token,
+              refresh_token: tokens.refresh_token,
+              ...(tokens.expires_in !== undefined
+                ? { accessTokenExpiresAt: issuedBy + tokens.expires_in * 1000 }
+                : {}),
+              oidc: binding,
+            },
+            'add',
+          );
+        }),
+        map((outcome) => {
+          const client =
+            outcome.kind === 'ready'
+              ? this.matrix.clientFor(outcome.accountId)
+              : null;
+          if (!client) {
+            throw new Error(`The QR sign-in did not start (${outcome.kind}).`);
+          }
+          return client;
+        }),
+        finalize(() => {
+          if (owned) return;
+          this.oidc
+            .revokeTokens(homeserverUrl, binding, {
+              accessToken: tokens.access_token,
+              refreshToken: tokens.refresh_token,
+            })
+            .subscribe({ error: () => undefined });
+        }),
+      );
+    });
+  }
+
+  /**
+   * Import the secrets a QR link shared, cross-sign this device and enable key backup.
+   * Emits whether the device ended cross-signed; `false` leaves it to the usual check.
+   * Errors are dropped unlogged: they can quote the secrets.
+   */
+  importLinkedSecrets(
+    client: MatrixClient,
+    secrets: LinkedSecrets,
+  ): Observable<boolean> {
+    return defer(async () => {
+      const crypto = client.getCrypto();
+      const deviceId = client.getDeviceId();
+      const userId = client.getUserId();
+      if (!crypto?.importSecretsBundle || !deviceId || !userId) return false;
+      await crypto.importSecretsBundle(secrets);
+      await crypto.crossSignDevice(deviceId);
+      // Best effort: backup does not decide whether the device is verified.
+      await crypto.checkKeyBackupAndEnable().catch(() => undefined);
+      if (!(await crypto.isCrossSigningReady())) return false;
+      const status = await crypto.getDeviceVerificationStatus(userId, deviceId);
+      return status?.crossSigningVerified === true;
+    }).pipe(catchError(() => of(false)));
   }
 
   /**

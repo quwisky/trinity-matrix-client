@@ -1268,4 +1268,118 @@ describe('OidcClientService', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('deviceGrantClientId', () => {
+    const DEVICE_KEY =
+      'oidc.deviceGrantClientId.v2:https://hs.example https://op.example';
+    const registrations = (fetchMock: ReturnType<typeof stubFetch>) =>
+      fetchMock.mock.calls.filter(
+        ([url]) => url === AUTH_METADATA.registration_endpoint,
+      );
+
+    it('registers a client of its own with the device-code grant and an https redirect', async () => {
+      prefs.set(CLIENT_ID_KEY, 'pkce-client');
+      // Unrouted URLs throw, so this also pins that no device-authorization request is made.
+      const fetchMock = stubFetch({
+        registration: () => jsonResponse({ client_id: 'qr-client' }),
+      });
+
+      expect(
+        await firstValueFrom(
+          svc.deviceGrantClientId(AUTH_METADATA, HOMESERVER),
+        ),
+      ).toBe('qr-client');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(jsonBody(registrations(fetchMock)[0][1])).toMatchObject({
+        application_type: 'web',
+        client_uri: 'https://trinity.trinityproject.dev',
+        redirect_uris: ['https://trinity.trinityproject.dev/sso-callback'],
+        grant_types: [
+          'authorization_code',
+          'refresh_token',
+          'urn:ietf:params:oauth:grant-type:device_code',
+        ],
+      });
+      expect(prefs.get(DEVICE_KEY)).toBe('qr-client');
+      // The PKCE sign-in keeps its own registration.
+      expect(prefs.get(CLIENT_ID_KEY)).toBe('pkce-client');
+    });
+
+    it('reuses a cached client id without any request', async () => {
+      prefs.set(DEVICE_KEY, 'cached-client');
+      const fetchMock = stubFetch({});
+
+      expect(
+        await firstValueFrom(
+          svc.deviceGrantClientId(AUTH_METADATA, HOMESERVER),
+        ),
+      ).toBe('cached-client');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps a separate client id for each homeserver naming the same issuer', async () => {
+      prefs.set(DEVICE_KEY, 'planted-client');
+      stubFetch({
+        registration: () => jsonResponse({ client_id: 'other-client' }),
+      });
+
+      expect(
+        await firstValueFrom(
+          svc.deviceGrantClientId(AUTH_METADATA, 'https://other.example'),
+        ),
+      ).toBe('other-client');
+      expect(
+        prefs.get(
+          'oidc.deviceGrantClientId.v2:https://other.example https://op.example',
+        ),
+      ).toBe('other-client');
+      expect(prefs.get(DEVICE_KEY)).toBe('planted-client');
+    });
+
+    it('forgets only that homeserver and issuer', async () => {
+      prefs.set(DEVICE_KEY, 'stale-client');
+      prefs.set(CLIENT_ID_KEY, 'pkce-client');
+
+      await firstValueFrom(
+        svc.forgetDeviceGrantClientId(AUTH_METADATA, HOMESERVER),
+      );
+
+      expect(prefs.has(DEVICE_KEY)).toBe(false);
+      expect(prefs.get(CLIENT_ID_KEY)).toBe('pkce-client');
+    });
+  });
+
+  describe('deviceGrantBinding', () => {
+    it('pins the metadata endpoints when the issuer serves no document of its own', async () => {
+      stubFetch({});
+
+      expect(
+        await firstValueFrom(
+          svc.deviceGrantBinding(AUTH_METADATA, 'qr-client'),
+        ),
+      ).toEqual({
+        issuer: AUTH_METADATA.issuer,
+        clientId: 'qr-client',
+        tokenEndpoint: AUTH_METADATA.token_endpoint,
+        revocationEndpoint: AUTH_METADATA.revocation_endpoint,
+      });
+    });
+
+    it("refuses endpoints the issuer's own document contradicts", async () => {
+      stubFetch(
+        {},
+        {
+          [RFC8414_DISCOVERY]: () =>
+            jsonResponse({
+              ...AUTH_METADATA,
+              token_endpoint: 'https://op.example/other-token',
+            }),
+        },
+      );
+
+      await expect(
+        firstValueFrom(svc.deviceGrantBinding(AUTH_METADATA, 'qr-client')),
+      ).rejects.toThrow();
+    });
+  });
 });

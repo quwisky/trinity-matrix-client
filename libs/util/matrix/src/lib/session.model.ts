@@ -51,8 +51,11 @@ export interface OidcSessionBinding {
   issuer: string;
   /** This client's id as registered with the provider (dynamic or static registration). */
   clientId: string;
-  /** The redirect URI registered for this platform; repeated in the code exchange. */
-  redirectUri: string;
+  /**
+   * The redirect URI registered for this platform; repeated in the code exchange. Absent
+   * for a QR sign-in, whose device grant has no redirect.
+   */
+  redirectUri?: string;
   /**
    * The issuer's token endpoint as verified at sign-in. Token refresh refuses homeserver
    * metadata that names another. Absent for sessions saved before it was recorded, until

@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import {
   OAuth2,
+  OAuthGrantType,
   createClient,
   type BearerTokenResponse,
   type OAuthRegistrationRequest,
@@ -37,6 +38,11 @@ const CLIENT_URI = 'https://trinity.trinityproject.dev';
  * the registered metadata to force a clean re-registration.
  */
 const CLIENT_ID_KEY_PREFIX = 'oidc.clientId.v4:';
+/**
+ * Preferences key prefix for the QR sign-in client id, cached per homeserver and issuer
+ * apart from the PKCE client. Versioned like {@link CLIENT_ID_KEY_PREFIX}.
+ */
+const DEVICE_GRANT_CLIENT_ID_KEY_PREFIX = 'oidc.deviceGrantClientId.v2:';
 
 /** What platform this build registers as (drives redirect-uri + registration policy). */
 export type OidcApplicationType = 'web' | 'native';
@@ -233,13 +239,11 @@ export class OidcClientService {
     // code or the verifier is sent anywhere.
     checkIssuer(metadata, context);
     checkSavedEndpoints(metadata, context);
-    const verified = await checkIssuerDiscovery(metadata);
+    const verified = await verifiedEndpoints(metadata);
     const endpoints = {
       tokenEndpoint: context.tokenEndpoint,
       revocationEndpoint:
-        context.revocationEndpoint ??
-        verified?.revocationEndpoint ??
-        metadata.revocation_endpoint,
+        context.revocationEndpoint ?? verified.revocationEndpoint,
     };
     const auth = new OAuth2(
       { ...metadata, token_endpoint: endpoints.tokenEndpoint },
@@ -300,6 +304,77 @@ export class OidcClientService {
    */
   forgetClientId(baseUrl: string, issuer: string): Observable<void> {
     return this.storage.remove(clientIdKey(baseUrl, issuer));
+  }
+
+  /**
+   * The client id QR sign-in uses for the device grant, registered apart from the PKCE
+   * client and cached per homeserver and issuer.
+   */
+  deviceGrantClientId(
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<string> {
+    return defer(() =>
+      from(this.resolveDeviceGrantClientId(metadata, homeserverUrl)),
+    );
+  }
+
+  /** Forget the device-grant client id, so the next sign-in registers a new one. */
+  forgetDeviceGrantClientId(
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<void> {
+    return this.storage.remove(
+      clientIdKey(
+        homeserverUrl,
+        metadata.issuer,
+        DEVICE_GRANT_CLIENT_ID_KEY_PREFIX,
+      ),
+    );
+  }
+
+  /**
+   * The binding for a device-grant session, pinned to the endpoints the issuer's own
+   * document confirms, as for a PKCE sign-in.
+   */
+  deviceGrantBinding(
+    metadata: ValidatedAuthMetadata,
+    clientId: string,
+  ): Observable<OidcSessionBinding> {
+    return defer(() => from(verifiedEndpoints(metadata))).pipe(
+      map((endpoints) => ({ issuer: metadata.issuer, clientId, ...endpoints })),
+    );
+  }
+
+  private async resolveDeviceGrantClientId(
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Promise<string> {
+    const key = clientIdKey(
+      homeserverUrl,
+      metadata.issuer,
+      DEVICE_GRANT_CLIENT_ID_KEY_PREFIX,
+    );
+    const cached = await firstValueFrom(this.storage.get(key));
+    if (cached) {
+      return cached;
+    }
+    const clientId = await OAuth2.registerClient(metadata, {
+      client_name: this.handoff.deviceDisplayName(),
+      client_uri: CLIENT_URI,
+      application_type: 'web',
+      // The device grant never redirects, but providers require a redirect URI, and
+      // Tuwunel accepts only https.
+      redirect_uris: [`${CLIENT_URI}/sso-callback`],
+      // Tuwunel registers no client without the authorization-code and refresh grants.
+      grant_types: [
+        OAuthGrantType.AuthorizationCode,
+        OAuthGrantType.RefreshToken,
+        OAuthGrantType.DeviceAuthorization,
+      ],
+    });
+    await firstValueFrom(this.storage.set(key, clientId));
+    return clientId;
   }
 
   private async revoke(
@@ -446,11 +521,30 @@ export class OidcClientService {
 }
 
 /**
+ * The token and revocation endpoints from the issuer's own document when it serves one,
+ * otherwise from the homeserver's metadata. Throws when the two disagree.
+ */
+async function verifiedEndpoints(
+  metadata: ValidatedAuthMetadata,
+): Promise<{ tokenEndpoint: string; revocationEndpoint: string }> {
+  return (
+    (await checkIssuerDiscovery(metadata)) ?? {
+      tokenEndpoint: metadata.token_endpoint,
+      revocationEndpoint: metadata.revocation_endpoint,
+    }
+  );
+}
+
+/**
  * The cache key for a client id. The homeserver is part of it because the homeserver
  * chooses the issuer it names: keyed on the issuer alone, one homeserver could leave a
  * client id that another homeserver's sign-in to the same issuer reuses. A URL has no
  * space, so the first space separates the two.
  */
-function clientIdKey(baseUrl: string, issuer: string): string {
-  return `${CLIENT_ID_KEY_PREFIX}${baseUrl} ${issuer}`;
+function clientIdKey(
+  baseUrl: string,
+  issuer: string,
+  prefix = CLIENT_ID_KEY_PREFIX,
+): string {
+  return `${prefix}${baseUrl} ${issuer}`;
 }
