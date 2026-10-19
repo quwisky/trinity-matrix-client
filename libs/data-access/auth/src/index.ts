@@ -42,8 +42,11 @@ export {
 export { QrSignInAvailability } from './lib/qr-sign-in/qr-sign-in-availability.service';
 export { QrSignInService } from './lib/qr-sign-in/qr-sign-in.service';
 export type { ExistingDeviceLink } from './lib/qr-sign-in/qr-sign-in.adapter';
+export type { QrDeviceLinker } from './lib/qr-sign-in/qr-sign-in.service';
 export {
+  QR_LINK_IDENTITY_CHECK,
   QR_SIGN_IN_COMPLETION,
   type LinkedSecrets,
+  type QrLinkIdentityCheck,
   type QrSignInCompletion,
 } from './lib/qr-sign-in/qr-sign-in-completion.port';

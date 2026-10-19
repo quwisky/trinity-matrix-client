@@ -40,7 +40,7 @@ const FINAL_FAILURES: ReadonlySet<QrSignInFailure> = new Set([
   templateUrl: 'qr-sign-in-panel.component.html',
   styleUrl: 'qr-sign-in-panel.component.scss',
   imports: [DatePipe, TrnButton, TrnSpinnerComponent],
-  host: { '(keydown.escape)': 'leave()' },
+  host: { '(keydown.escape)': 'onEscape($event)' },
 })
 export class QrSignInPanelComponent implements OnInit {
   private readonly qrSignIn = inject(QrSignInService);
@@ -109,6 +109,13 @@ export class QrSignInPanelComponent implements OnInit {
         next: (state) => this.apply(state),
         error: () => this.state.set({ kind: 'failed', reason: 'unknown' }),
       });
+  }
+
+  /** Escape belongs to this panel, so nothing around it acts on it too. */
+  onEscape(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.leave();
   }
 
   /** Cancel the sign-in and return to the other ways to sign in. */

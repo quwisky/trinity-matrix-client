@@ -7,7 +7,10 @@ import {
   createClient,
 } from 'matrix-js-sdk';
 import { QrSignInAdapter } from './qr-sign-in.adapter';
-import { QR_SIGN_IN_COMPLETION } from './qr-sign-in-completion.port';
+import {
+  QR_LINK_IDENTITY_CHECK,
+  QR_SIGN_IN_COMPLETION,
+} from './qr-sign-in-completion.port';
 
 vi.mock('matrix-js-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('matrix-js-sdk')>()),
@@ -29,7 +32,10 @@ function fakeClient(
 
 function adapter(): QrSignInAdapter {
   TestBed.configureTestingModule({
-    providers: [{ provide: QR_SIGN_IN_COMPLETION, useValue: {} }],
+    providers: [
+      { provide: QR_SIGN_IN_COMPLETION, useValue: {} },
+      { provide: QR_LINK_IDENTITY_CHECK, useValue: {} },
+    ],
   });
   return TestBed.inject(QrSignInAdapter);
 }

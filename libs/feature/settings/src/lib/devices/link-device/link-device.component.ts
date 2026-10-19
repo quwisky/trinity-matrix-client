@@ -8,6 +8,7 @@ import {
   computed,
   effect,
   inject,
+  input,
   output,
   signal,
   viewChild,
@@ -16,11 +17,10 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { Subscription } from 'rxjs';
 import {
   QR_SIGN_IN_FAILURE_MESSAGES,
-  QrSignInService,
   type ExistingDeviceLink,
   type ExistingDeviceState,
+  type QrDeviceLinker,
 } from '@trinity/data-access/auth';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { QrScannerComponent, TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { ExternalBrowserService } from '@trinity/platform-native';
@@ -34,11 +34,9 @@ type LinkState = { kind: 'scanning' } | ExistingDeviceState;
   templateUrl: 'link-device.component.html',
   styleUrl: 'link-device.component.scss',
   imports: [QrScannerComponent, TrnButton, TrnSpinnerComponent],
-  host: { '(keydown.escape)': 'close()' },
+  host: { '(keydown.escape)': 'onEscape($event)' },
 })
 export class LinkDeviceComponent {
-  private readonly qrSignIn = inject(QrSignInService);
-  private readonly matrix = inject(MatrixClientService);
   private readonly browser = inject(ExternalBrowserService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
@@ -47,6 +45,8 @@ export class LinkDeviceComponent {
   private link: ExistingDeviceLink | null = null;
   private flow: Subscription | null = null;
 
+  /** Links as the account that was active when the owner opened this panel. */
+  readonly linker = input.required<QrDeviceLinker>();
   /** The flow ended or was cancelled; the owner removes this panel. */
   readonly closed = output<void>();
 
@@ -56,6 +56,8 @@ export class LinkDeviceComponent {
   readonly checkCode = signal<string | null>(null);
   /** Kept through `sharing-secrets`, which follows `approve-in-browser` at once. */
   readonly verificationUri = signal<string | null>(null);
+  /** The approval page did not open; the link on screen is the way there. */
+  readonly openFailed = signal(false);
   /** The heading on screen; approval and sharing share one, so focus stays put. */
   readonly step = computed(() => {
     const kind = this.state().kind;
@@ -86,10 +88,7 @@ export class LinkDeviceComponent {
   scan(data: Uint8ClampedArray): void {
     this.flow?.unsubscribe();
     this.notice.set(null);
-    const link = this.qrSignIn.linkByScanning(
-      this.matrix.instance,
-      new Uint8Array(data),
-    );
+    const link = this.linker().link(new Uint8Array(data));
     this.link = link;
     this.flow = link.state$
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -109,7 +108,7 @@ export class LinkDeviceComponent {
       this.browser
         .open(url)
         .pipe(takeUntilDestroyed(this.destroyRef))
-        .subscribe();
+        .subscribe((opened) => this.openFailed.set(!opened));
     }
   }
 
@@ -117,6 +116,13 @@ export class LinkDeviceComponent {
   scanAgain(): void {
     this.flow?.unsubscribe();
     this.reset();
+  }
+
+  /** Escape belongs to this panel, so the Settings dialog around it stays open. */
+  onEscape(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.close();
   }
 
   /** Cancel any link in progress (declining it at the check code) and close. */
@@ -142,6 +148,7 @@ export class LinkDeviceComponent {
     this.link = null;
     this.checkCode.set(null);
     this.verificationUri.set(null);
+    this.openFailed.set(false);
     this.notice.set(null);
     this.state.set({ kind: 'scanning' });
   }

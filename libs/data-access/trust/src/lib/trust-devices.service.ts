@@ -10,6 +10,10 @@ import {
   recoverTrustOperation,
 } from './trust-operation-error';
 import {
+  holdsCrossSigningIdentity,
+  readPublishedMasterKey,
+} from './trust-snapshot';
+import {
   UiaCancelledError,
   runPasswordUia,
   type PasswordPrompt,
@@ -44,8 +48,9 @@ export class TrustDevicesService {
 
   private readonly _canShareSecrets = signal(false);
   /**
-   * This device caches all three private cross-signing keys, so it can hand them to a
-   * device it links. Read with the device list and again whenever trust changes.
+   * This device caches all three private cross-signing keys and they match its identity,
+   * so it can hand them to a device it links. Read with the device list and again whenever
+   * trust changes. A local read: {@link holdsPublishedIdentity} asks the server at link time.
    */
   readonly canShareSecrets = this._canShareSecrets.asReadonly();
 
@@ -168,17 +173,43 @@ export class TrustDevicesService {
     const gen = ++this.shareGen;
     let canShare = false;
     try {
-      const status = await client.getCrypto()?.getCrossSigningStatus();
-      const cached = status?.privateKeysCachedLocally;
-      canShare = Boolean(
-        cached?.masterKey && cached.selfSigningKey && cached.userSigningKey,
-      );
+      const crypto = client.getCrypto();
+      if (crypto) {
+        const [status, crossSigningReady] = await Promise.all([
+          crypto.getCrossSigningStatus(),
+          crypto.isCrossSigningReady(),
+        ]);
+        canShare = holdsCrossSigningIdentity(status, crossSigningReady);
+      }
     } catch {
       // An unreadable key cache offers nothing to share.
     }
     if (gen === this.shareGen) {
       this._canShareSecrets.set(canShare);
     }
+  }
+
+  /**
+   * Whether this device caches the private keys of the identity the homeserver publishes.
+   * Asks the server first: that query also makes the crypto machine drop cached keys that
+   * differ from the published ones, such as those a cancelled reset leaves behind.
+   */
+  holdsPublishedIdentity(client: TrustMatrixClient): Observable<boolean> {
+    return defer(async () => {
+      const crypto = client.getCrypto();
+      if (!crypto) return false;
+      const published = await readPublishedMasterKey(client);
+      const [status, crossSigningReady, local] = await Promise.all([
+        crypto.getCrossSigningStatus(),
+        crypto.isCrossSigningReady(),
+        crypto.getCrossSigningKeyId(),
+      ]);
+      return (
+        published !== null &&
+        local === published &&
+        holdsCrossSigningIdentity(status, crossSigningReady)
+      );
+    });
   }
 
   /** Rename a device's public display name. */

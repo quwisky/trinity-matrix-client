@@ -6,11 +6,18 @@ import {
   Injector,
   afterNextRender,
   computed,
+  effect,
   inject,
   input,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
+import {
+  QrSignInService,
+  type QrDeviceLinker,
+} from '@trinity/data-access/auth';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnBadge } from '@trinity/components/generic-content';
@@ -56,8 +63,11 @@ export class DevicesSectionComponent {
   private readonly applicationSurfaces = inject(
     WorkspaceApplicationSurfaceService,
   );
+  private readonly qrSignIn = inject(QrSignInService);
+  private readonly activeAccountId = inject(MatrixClientService).activeUserId;
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly linkButton =
     viewChild<ElementRef<HTMLButtonElement>>('linkButton');
   private destroyed = false;
@@ -68,7 +78,8 @@ export class DevicesSectionComponent {
   readonly devices = this.devicesSvc.devices;
   /** Only a device holding all three cross-signing keys can link another one. */
   readonly canLinkDevice = this.devicesSvc.canShareSecrets;
-  readonly linking = signal(false);
+  /** The open link flow's account, captured when "Link a new device" was clicked. */
+  readonly linker = signal<QrDeviceLinker | null>(null);
   readonly loading = signal(false);
   readonly busy = signal(false); // a rename/remove in flight
   readonly error = signal<string | null>(null);
@@ -90,14 +101,37 @@ export class DevicesSectionComponent {
     // signs a device out), and detach on destroy.
     this.devicesSvc.connect();
     this.destroyRef.onDestroy(() => this.devicesSvc.disconnect());
+    // Closing the panel cancels its flow: a link never outlives its account or this
+    // device's ability to share the keys.
+    effect(() => {
+      const linker = this.linker();
+      if (
+        linker &&
+        (linker.accountId !== this.activeAccountId() || !this.canLinkDevice())
+      ) {
+        untracked(() => this.closeLink());
+      }
+    });
   }
 
-  /** Close the link flow and return focus to the button that opened it. */
+  openLink(): void {
+    this.linker.set(this.qrSignIn.linkerForActiveAccount());
+  }
+
+  /** Close the link flow; focus returns to its button, or to the section heading without one. */
   closeLink(): void {
-    this.linking.set(false);
-    afterNextRender(() => this.linkButton()?.nativeElement.focus(), {
-      injector: this.injector,
-    });
+    this.linker.set(null);
+    afterNextRender(
+      () => {
+        const target =
+          this.linkButton()?.nativeElement ??
+          this.host.nativeElement
+            .closest('section[aria-label]')
+            ?.querySelector<HTMLElement>('h1[tabindex="-1"]');
+        target?.focus();
+      },
+      { injector: this.injector },
+    );
   }
 
   /** Prompt for a new display name, then rename. */

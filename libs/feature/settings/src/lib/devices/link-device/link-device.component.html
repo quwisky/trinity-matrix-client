@@ -88,6 +88,11 @@
       Open the approval page and approve the new device. Trinity then shares
       your encryption keys with it.
     </p>
+    @if (openFailed()) {
+      <p class="m-0 mt-2 text-13 text-danger" role="alert">
+        Couldn't open the page. Use the link below.
+      </p>
+    }
     <p
       class="link-device__uri m-0 mt-2 text-13"
       data-testid="link-device-approval-link"

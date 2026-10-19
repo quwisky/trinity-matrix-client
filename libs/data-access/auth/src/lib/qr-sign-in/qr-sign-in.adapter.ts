@@ -25,7 +25,10 @@ import {
   type Subscriber,
 } from 'rxjs';
 import { lacksAuthMetadata } from '../account-server-api';
-import { QR_SIGN_IN_COMPLETION } from './qr-sign-in-completion.port';
+import {
+  QR_LINK_IDENTITY_CHECK,
+  QR_SIGN_IN_COMPLETION,
+} from './qr-sign-in-completion.port';
 import {
   DeviceGrantRejectedError,
   qrSignInFailureOf,
@@ -126,6 +129,7 @@ export interface ExistingDeviceLink {
 export class QrSignInAdapter {
   private readonly factory = inject(QrRendezvousFactory);
   private readonly completion = inject(QR_SIGN_IN_COMPLETION);
+  private readonly identity = inject(QR_LINK_IDENTITY_CHECK);
 
   /** Cold: each subscription shows a new code. */
   signInByShowingCode(homeserverUrl: string): Observable<NewDeviceState> {
@@ -244,6 +248,14 @@ export class QrSignInAdapter {
             .catch(() => undefined);
           run.fail(ClientRendezvousFailureReason.InsecureChannelDetected, true);
           return;
+        }
+        // Security: share only the identity the server publishes. Checked before the grant, so
+        // a refusal leaves no approved device behind; it fails as `unknown` and, through
+        // teardown, declines and cancels on the new device.
+        if (!(await run.read(this.identity.holdsPublishedIdentity(client)))) {
+          throw new Error(
+            'This device does not hold the published cross-signing identity.',
+          );
         }
         // From here a cancel must reach the session at once: shareSecrets sends the secrets
         // unless the session is already cancelled, and a decline PUT first could let them out.

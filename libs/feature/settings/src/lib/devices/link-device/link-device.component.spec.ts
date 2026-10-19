@@ -1,10 +1,8 @@
 import { By } from '@angular/platform-browser';
 import {
-  QrSignInService,
   type ExistingDeviceState,
   type QrSignInFailure,
 } from '@trinity/data-access/auth';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { QrScannerComponent } from '@trinity/components/controls';
 import {
   ExternalBrowserService,
@@ -16,7 +14,6 @@ import { Observable, Subject, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { LinkDeviceComponent } from './link-device.component';
 
-const CLIENT = { id: 'active-client' };
 const APPROVAL = 'https://auth.example/device?code=ABCD';
 
 /** A fake link whose every scan is one flow the test drives. */
@@ -26,8 +23,9 @@ function fakeLinking() {
     closed: boolean;
     confirmCheckCode: ReturnType<typeof vi.fn>;
   }[] = [];
-  const service = {
-    linkByScanning: vi.fn(() => {
+  const linker = {
+    accountId: '@me:hs',
+    link: vi.fn((_qrBytes: Uint8Array) => {
       const flow = {
         states: new Subject<ExistingDeviceState>(),
         closed: false,
@@ -46,7 +44,7 @@ function fakeLinking() {
       };
     }),
   };
-  return { service, flows, current: () => flows[flows.length - 1]! };
+  return { linker, flows, current: () => flows[flows.length - 1]! };
 }
 
 async function renderLink() {
@@ -54,10 +52,9 @@ async function renderLink() {
   const closed = vi.fn();
   const open = vi.fn(() => of(true));
   const result = await render(LinkDeviceComponent, {
+    inputs: { linker: fake.linker },
     on: { closed },
     providers: [
-      MockProvider(QrSignInService, fake.service),
-      MockProvider(MatrixClientService, { instance: CLIENT as never }),
       MockProvider(ExternalBrowserService, { open }),
       MockProvider(QrCodeService, {
         openCamera: vi.fn().mockRejectedValue(new Error('camera unavailable')),
@@ -82,17 +79,13 @@ async function renderLink() {
 }
 
 describe('LinkDeviceComponent', () => {
-  it('links the scanned code with this account, as a copy of the bytes', async () => {
-    const { scan, service } = await renderLink();
+  it('links the scanned code through its linker, as a copy of the bytes', async () => {
+    const { scan, linker } = await renderLink();
 
     await scan([9, 8, 7]);
 
-    expect(service.linkByScanning).toHaveBeenCalledOnce();
-    const [client, bytes] = service.linkByScanning.mock.calls[0] as unknown as [
-      unknown,
-      Uint8Array,
-    ];
-    expect(client).toBe(CLIENT);
+    expect(linker.link).toHaveBeenCalledOnce();
+    const [bytes] = linker.link.mock.calls[0]!;
     expect(bytes).toBeInstanceOf(Uint8Array);
     expect(bytes).not.toBeInstanceOf(Uint8ClampedArray);
     expect([...bytes]).toEqual([9, 8, 7]);
@@ -144,6 +137,21 @@ describe('LinkDeviceComponent', () => {
 
     expect(open).toHaveBeenCalledOnce();
     expect(open).toHaveBeenCalledWith(APPROVAL);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('points to the link when the approval page does not open', async () => {
+    const { scan, emit, open, fixture } = await renderLink();
+    open.mockReturnValue(of(false));
+    await scan();
+    await emit({ kind: 'approve-in-browser', verificationUri: APPROVAL });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open approval page' }));
+    fixture.detectChanges();
+
+    expect(screen.getByRole('alert').textContent?.trim()).toBe(
+      "Couldn't open the page. Use the link below.",
+    );
   });
 
   it('keeps scanning after a code that is not a sign-in code', async () => {
@@ -230,14 +238,21 @@ describe('LinkDeviceComponent', () => {
     expect(closed).toHaveBeenCalledOnce();
   });
 
-  it('cancels the link and closes on Escape', async () => {
+  it('cancels the link and closes on Escape, keeping the Escape to itself', async () => {
     const { scan, current, closed, fixture } = await renderLink();
     await scan();
+    const outer = vi.fn();
+    document.addEventListener('keydown', outer);
 
-    fireEvent.keyDown(fixture.nativeElement as HTMLElement, { key: 'Escape' });
+    const unhandled = fireEvent.keyDown(fixture.nativeElement as HTMLElement, {
+      key: 'Escape',
+    });
+    document.removeEventListener('keydown', outer);
 
     expect(current().closed).toBe(true);
     expect(closed).toHaveBeenCalledOnce();
+    expect(unhandled).toBe(false); // default prevented
+    expect(outer).not.toHaveBeenCalled(); // the Settings dialog never sees it
   });
 
   it('cancels the link when it is destroyed', async () => {

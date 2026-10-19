@@ -1,4 +1,6 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import type { MatrixClient } from 'matrix-js-sdk';
 import {
   ClientRendezvousFailureReason,
@@ -12,6 +14,7 @@ import {
   type QrRendezvousFlow,
 } from './qr-sign-in.adapter';
 import {
+  QR_LINK_IDENTITY_CHECK,
   QR_SIGN_IN_COMPLETION,
   type LinkedSecrets,
 } from './qr-sign-in-completion.port';
@@ -137,10 +140,19 @@ function setup(configure: (flow: FakeFlow) => void = () => undefined) {
     }),
     importLinkedSecrets: vi.fn(() => of(true)),
   };
+  const identity = { holdsPublishedIdentity: vi.fn(() => of(true)) };
+  const activeUserId = signal<string | null>('@me:hs');
+  const clients = new Map<string, MatrixClient>([['@me:hs', existingClient]]);
+  const matrix = {
+    activeUserId: activeUserId.asReadonly(),
+    clientFor: vi.fn((id: string) => clients.get(id) ?? null),
+  };
   TestBed.configureTestingModule({
     providers: [
       { provide: QrRendezvousFactory, useValue: factory },
       { provide: QR_SIGN_IN_COMPLETION, useValue: completion },
+      { provide: QR_LINK_IDENTITY_CHECK, useValue: identity },
+      { provide: MatrixClientService, useValue: matrix },
     ],
   });
   return {
@@ -148,6 +160,9 @@ function setup(configure: (flow: FakeFlow) => void = () => undefined) {
     order,
     factory,
     completion,
+    identity,
+    activeUserId,
+    clients,
     service: TestBed.inject(QrSignInService),
   };
 }
@@ -854,5 +869,52 @@ describe('QrSignInService.linkByScanning', () => {
       kind: 'failed',
       reason: qrSignInFailureOf(reason),
     });
+  });
+  it('refuses, before any grant or secret, keys that are not the published identity', async () => {
+    const { service, flows, identity } = setup();
+    identity.holdsPublishedIdentity.mockReturnValue(of(false));
+    const link = service.linkByScanning(existingClient, qrBytes);
+    const run = record(link.state$);
+    await settle();
+
+    link.confirmCheckCode(true);
+    await settle();
+
+    expect(identity.holdsPublishedIdentity).toHaveBeenCalledWith(
+      existingClient,
+    );
+    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
+    expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
+    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
+    // The new device is told the link ended.
+    expect(flows[0].calls.slice(-3)).toEqual([
+      'decline',
+      'cancel:user_cancelled',
+      'close',
+    ]);
+  });
+
+  it('links as the account that was active when the linker was made', async () => {
+    const { service, factory, activeUserId, clients } = setup();
+    const linker = service.linkerForActiveAccount();
+    expect(linker?.accountId).toBe('@me:hs');
+
+    clients.set('@other:hs', { id: 'other' } as unknown as MatrixClient);
+    activeUserId.set('@other:hs');
+    record(linker!.link(qrBytes).state$);
+    await settle();
+
+    expect(factory.existingDevice).toHaveBeenCalledWith(
+      existingClient,
+      qrBytes,
+      expect.any(Function),
+    );
+  });
+
+  it('has no linker without a live active account', () => {
+    const { service, activeUserId } = setup();
+    activeUserId.set(null);
+
+    expect(service.linkerForActiveAccount()).toBeNull();
   });
 });

@@ -225,11 +225,18 @@ describe('QrSignInPanelComponent', () => {
 
   it('cancels and goes back on Escape', async () => {
     const { back, current, fixture } = await renderPanel();
+    const outer = vi.fn();
+    document.addEventListener('keydown', outer);
 
-    fireEvent.keyDown(fixture.nativeElement as HTMLElement, { key: 'Escape' });
+    const unhandled = fireEvent.keyDown(fixture.nativeElement as HTMLElement, {
+      key: 'Escape',
+    });
+    document.removeEventListener('keydown', outer);
 
     expect(back).toHaveBeenCalledOnce();
     expect(current().closed).toBe(true);
+    expect(unhandled).toBe(false);
+    expect(outer).not.toHaveBeenCalled();
   });
 
   it('cancels the sign-in when it is destroyed', async () => {
