@@ -161,8 +161,6 @@ the new device opens your rooms.
 
 - When the codes don't match, the new device may show only "Something went wrong. Try again or
   sign in another way." instead of saying why.
-- The new device always shows an expiry one minute ahead, even if your server keeps the code
-  valid for longer.
 - Only the new device shows a code. A signed-in device can't show one for a new device to
   scan.
 - Element Web can't scan a code, so it can't link a new Trinity device. Trinity can link a new
