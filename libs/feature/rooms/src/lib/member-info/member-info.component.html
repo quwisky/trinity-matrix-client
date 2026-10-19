@@ -31,49 +31,47 @@
 }
 <ng-template #profile>
   <div class="member-info" data-testid="member-info">
-    <div class="member-info__header">
-      <trn-avatar
-        class="member-info__avatar"
-        [mxc]="member().roomAvatarMxc"
-        [initial]="member().roomInitial"
-        [name]="member().roomDisplayName"
-        [exactSize]="56"
-        [presence]="presenceState()"
-      />
-      <div class="member-info__id">
-        <span class="member-info__name" data-testid="member-info-name">{{
-          member().roomDisplayName
-        }}</span>
-        <span
-          #userIdHandle
-          class="member-info__handle"
-          data-testid="member-info-handle"
-          tabindex="0"
-          role="textbox"
-          aria-readonly="true"
-          [attr.aria-label]="'Matrix user ID ' + member().userId"
-          (focus)="selectUserId()"
-          >{{ member().userId }}</span
-        >
-        <div class="member-info__badges">
-          @switch (trust()) {
-            @case ('verified') {
-              <span trnBadge variant="success" role="img" aria-label="Verified"
-                >✓ Verified</span
-              >
-            }
-            @case ('changed') {
-              <span
-                trnBadge
-                variant="warning"
-                role="img"
-                aria-label="Identity changed — verify again"
-                >⚠ Identity changed</span
-              >
-            }
+    <trn-avatar
+      class="member-info__avatar"
+      [mxc]="member().roomAvatarMxc"
+      [initial]="member().roomInitial"
+      [name]="member().roomDisplayName"
+      [exactSize]="56"
+      [presence]="presenceState()"
+    />
+    <div class="member-info__id">
+      <span class="member-info__name" data-testid="member-info-name">{{
+        member().roomDisplayName
+      }}</span>
+      <span
+        #userIdHandle
+        class="member-info__handle"
+        data-testid="member-info-handle"
+        tabindex="0"
+        role="textbox"
+        aria-readonly="true"
+        [attr.aria-label]="'Matrix user ID ' + member().userId"
+        (focus)="selectUserId()"
+        >{{ member().userId }}</span
+      >
+      <div class="member-info__badges">
+        @switch (trust()) {
+          @case ('verified') {
+            <span trnBadge variant="success" data-testid="member-info-trust"
+              ><span aria-hidden="true">✓</span> Verified</span
+            >
           }
-          <span trnBadge data-testid="member-info-role">{{ role() }}</span>
-        </div>
+          @case ('changed') {
+            <span trnBadge variant="warning" data-testid="member-info-trust"
+              ><span aria-hidden="true">⚠</span> Identity changed<span
+                class="sr-only"
+              >
+                — verify again</span
+              ></span
+            >
+          }
+        }
+        <span trnBadge data-testid="member-info-role">{{ role() }}</span>
       </div>
     </div>
 

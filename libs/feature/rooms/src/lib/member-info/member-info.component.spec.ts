@@ -256,6 +256,15 @@ function commonRoom(id: string): CommonRoom {
   };
 }
 
+/** The text a screen reader reads: without aria-hidden glyphs, with sr-only text. */
+function accessibleText(element: HTMLElement): string {
+  const copy = element.cloneNode(true) as HTMLElement;
+  copy
+    .querySelectorAll('[aria-hidden="true"]')
+    .forEach((node) => node.remove());
+  return copy.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+}
+
 const tabNames = () =>
   screen.getAllByRole('tab').map((tab) => tab.textContent?.trim());
 
@@ -284,32 +293,30 @@ describe('MemberInfoComponent', () => {
     expect(tabNames()).toEqual(['Profile', 'Rooms']);
   });
 
-  // Rooms tab reads "Rooms (2)" with two rooms in common and "Rooms" while unknown.
   it.each([
     { rooms: [commonRoom('!a:hs'), commonRoom('!b:hs')], label: 'Rooms (2)' },
     { rooms: null, label: 'Rooms' },
-  ])('labels the Rooms tab "$label"', async ({ rooms, label }) => {
-    await build(member(), { commonRooms: rooms });
+  ])(
+    'Rooms tab reads "Rooms (2)" with two rooms in common and "Rooms" while unknown ($label)',
+    async ({ rooms, label }) => {
+      await build(member(), { commonRooms: rooms });
 
-    expect(screen.getByRole('tab', { name: label })).toBeTruthy();
-  });
+      expect(screen.getByRole('tab', { name: label })).toBeTruthy();
+    },
+  );
 
-  // The header shows the Verified badge for a verified person and Identity changed for a
-  // changed one, none when unverified.
   it.each([
     { trust: 'verified', badge: 'Verified' },
     { trust: 'changed', badge: 'Identity changed — verify again' },
     { trust: 'unverified', badge: null },
     { trust: null, badge: null },
   ] as const)(
-    'header trust badge for $trust is $badge',
+    'header shows the Verified badge for a verified person and Identity changed for a changed one, none when unverified ($trust)',
     async ({ trust, badge }) => {
       await build(member(), { trust });
 
-      const badges = ['Verified', 'Identity changed — verify again'].filter(
-        (name) => screen.queryByRole('img', { name }),
-      );
-      expect(badges).toEqual(badge ? [badge] : []);
+      const shown = screen.queryByTestId('member-info-trust');
+      expect(shown ? accessibleText(shown) : null).toBe(badge);
     },
   );
 
@@ -328,6 +335,20 @@ describe('MemberInfoComponent', () => {
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
     await fixture.whenStable();
     expect(document.activeElement?.textContent?.trim()).toBe('Profile');
+  });
+
+  it('puts focus on the close button when the card opens, not on the tabs', async () => {
+    // CDK focuses the first tabbable element on open; jsdom has no layout for that check, so
+    // this pins its inputs: nothing in the card takes focus, and the close button comes first.
+    await build();
+
+    const close = screen.getByTestId('member-info-close');
+    const firstTab = screen.getAllByRole('tab')[0];
+    expect(
+      close.compareDocumentPosition(firstTab) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(document.activeElement).toBe(document.body);
   });
 
   it('is built on the shared dialog shell as a dialog', async () => {

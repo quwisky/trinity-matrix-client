@@ -4,9 +4,6 @@
   .member-info {
     @include profile-card;
 
-    align-items: stretch;
-    text-align: start;
-
     // The hosts (sheet frame, embedding settings column) own the bottom safe area; the card
     // keeps only its own inset below the last action.
     padding-bottom: var(--trinity-space-5);
@@ -33,12 +30,6 @@
     }
   }
 
-  .member-info__header {
-    display: flex;
-    align-items: center;
-    gap: var(--trinity-space-4);
-  }
-
   .member-info__avatar {
     flex: 0 0 auto;
   }
@@ -46,6 +37,7 @@
   .member-info__id {
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 2px;
     min-width: 0;
     width: 100%;
@@ -75,8 +67,15 @@
   .member-info__badges {
     display: flex;
     flex-wrap: wrap;
+    justify-content: center;
     gap: var(--trinity-space-2);
     margin-top: var(--trinity-space-2);
+  }
+
+  .member-info__tabs {
+    align-self: stretch;
+    width: 100%;
+    text-align: start;
   }
 
   .member-info__actions {
