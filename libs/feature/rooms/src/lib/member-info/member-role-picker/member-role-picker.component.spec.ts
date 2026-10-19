@@ -3,7 +3,7 @@ import {
   type ActionAvailability,
   type AssignableMemberRole,
 } from '@trinity/data-access/room-administration';
-import { render, screen } from '@trinity/testing';
+import { render, screen, waitFor } from '@trinity/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { MemberRolePickerComponent } from './member-role-picker.component';
 
@@ -11,7 +11,7 @@ const NO_ADMIN = 'Only admins can make someone an admin.';
 
 async function build(current = 0) {
   const choose = vi.fn<(option: AssignableMemberRole) => void>();
-  const { container } = await render(MemberRolePickerComponent, {
+  const { container, fixture } = await render(MemberRolePickerComponent, {
     inputs: {
       options: ASSIGNABLE_MEMBER_ROLES,
       current,
@@ -23,11 +23,13 @@ async function build(current = 0) {
     },
     on: { choose },
   });
-  return { container, choose };
+  return { container, choose, fixture };
 }
 
 const radio = (name: string) =>
   screen.getByRole<HTMLInputElement>('radio', { name: new RegExp(`^${name}`) });
+const applyButton = () =>
+  screen.getByRole<HTMLButtonElement>('button', { name: 'Change role' });
 
 describe('MemberRolePickerComponent', () => {
   it('labels the group "Role in Design team"', async () => {
@@ -50,33 +52,54 @@ describe('MemberRolePickerComponent', () => {
     expect(screen.getByText(NO_ADMIN)).toBeTruthy();
   });
 
-  it('choosing the current or a disabled role emits nothing', async () => {
-    const { container, choose } = await build(0);
-    container
-      .querySelector<HTMLElement>('[data-testid="member-info-role-0"]')
-      ?.click();
-    container
-      .querySelector<HTMLElement>('[data-testid="member-info-role-100"]')
-      ?.click();
-    expect(choose).not.toHaveBeenCalled();
-  });
-
-  it('choosing another role emits it', async () => {
-    const { container, choose } = await build(0);
-    container
-      .querySelector<HTMLElement>('[data-testid="member-info-role-50"]')
-      ?.click();
-    expect(choose).toHaveBeenCalledWith(ASSIGNABLE_MEMBER_ROLES[1]);
-  });
-
-  it('keeps the current role checked after a choice the caller has not applied', async () => {
-    // The caller confirms first; a cancel or failure must not leave the new radio checked.
-    const { choose } = await build(0);
+  it('"Change role" is disabled until another role is chosen', async () => {
+    await build(0);
+    expect(applyButton().disabled).toBe(true);
 
     radio('Moderator').click();
 
+    await waitFor(() => expect(applyButton().disabled).toBe(false));
+  });
+
+  it('arrow keys move the choice without opening a confirmation', async () => {
+    // A native arrow key checks the next radio and fires `change`, exactly like a click.
+    const { choose } = await build(0);
+
+    radio('Moderator').click();
+    radio('Member').click();
+    radio('Moderator').click();
+
+    expect(choose).not.toHaveBeenCalled();
+    expect(radio('Moderator').checked).toBe(true);
+  });
+
+  it('"Change role" emits the chosen role and keeps it checked until the role changes', async () => {
+    const { choose, fixture } = await build(0);
+
+    radio('Moderator').click();
+    await waitFor(() => expect(applyButton().disabled).toBe(false));
+    applyButton().click();
+    await fixture.whenStable();
+
     expect(choose).toHaveBeenCalledWith(ASSIGNABLE_MEMBER_ROLES[1]);
-    expect(radio('Member').checked).toBe(true);
+    // A cancelled confirmation leaves the choice in place for another try.
+    expect(radio('Moderator').checked).toBe(true);
+    expect(applyButton().disabled).toBe(false);
+
+    fixture.componentRef.setInput('current', 50);
+    await fixture.whenStable();
+    expect(radio('Moderator').checked).toBe(true);
+    expect(applyButton().disabled).toBe(true);
+  });
+
+  it('resets the choice when the real role changes', async () => {
+    const { fixture } = await build(0);
+    radio('Moderator').click();
+
+    fixture.componentRef.setInput('current', 100);
+    await fixture.whenStable();
+
+    expect(radio('Admin').checked).toBe(true);
     expect(radio('Moderator').checked).toBe(false);
   });
 

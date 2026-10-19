@@ -91,7 +91,7 @@ describe('MemberProfileTabComponent', () => {
     expect(verify).toHaveBeenCalledOnce();
   });
 
-  it.each(['changed', null] as const)(
+  it.each(['unverified', 'changed'] as const)(
     'offers Verify when trust is %s',
     async (trust) => {
       const { container } = await build({ trust });
@@ -99,18 +99,24 @@ describe('MemberProfileTabComponent', () => {
     },
   );
 
-  it('no Verify when verified', async () => {
-    const { container } = await build({ trust: 'verified' });
-    expect(byTestId(container, 'member-info-verify')).toBeNull();
-  });
+  it.each(['verified', null] as const)(
+    'no Verify when trust is %s',
+    async (trust) => {
+      const { container } = await build({ trust });
+      expect(byTestId(container, 'member-info-verify')).toBeNull();
+    },
+  );
 
   it('no Verify without identity actions', async () => {
-    const { container } = await build({ showIdentityActions: false });
+    const { container } = await build({
+      trust: 'unverified',
+      showIdentityActions: false,
+    });
     expect(byTestId(container, 'member-info-verify')).toBeNull();
   });
 
   it('no Message or Verify for yourself', async () => {
-    const { container } = await build({ isSelf: true });
+    const { container } = await build({ trust: 'unverified', isSelf: true });
     expect(byTestId(container, 'member-info-message')).toBeNull();
     expect(byTestId(container, 'member-info-verify')).toBeNull();
     expect(byTestId(container, 'member-info-copy')).not.toBeNull();

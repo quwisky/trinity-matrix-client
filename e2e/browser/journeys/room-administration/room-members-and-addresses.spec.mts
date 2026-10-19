@@ -240,6 +240,7 @@ test.describe('Room settings', () => {
     await expectMemberInfoFillsDetail(page);
     await openMemberTab(page, 'Manage');
     await page.getByTestId('member-info-role-50').click();
+    await page.getByTestId('member-info-role-apply').click();
     const roleConfirmation = page.getByRole('dialog', { name: 'Change role' });
     await expect(roleConfirmation).toContainText(roomName);
     await expect(roleConfirmation).toContainText(`account ${adminId}`);

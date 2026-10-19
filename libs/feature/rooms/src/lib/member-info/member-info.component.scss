@@ -78,6 +78,12 @@
     text-align: start;
   }
 
+  // A centred dialog or sheet would shift as tabs of different heights swap in; this fits
+  // a moderator's Manage tab (Safety, roles, Change role, Remove, Ban).
+  :host(:not(.member-info--panel)) .member-info__tabs {
+    min-height: 27rem;
+  }
+
   .member-info__actions {
     display: flex;
     flex-direction: column;

@@ -1,6 +1,16 @@
 <trn-radio-group
   [aria-label]="'Role in ' + targetName()"
   [options]="radios()"
-  [value]="selected()"
+  [value]="pending()"
   (valueChange)="pick($event)"
 />
+<button
+  trnBtn
+  variant="secondary"
+  class="w-full"
+  [disabled]="unchanged()"
+  (click)="apply()"
+  data-testid="member-info-role-apply"
+>
+  Change role
+</button>

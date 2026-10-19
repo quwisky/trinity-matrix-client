@@ -1,13 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  ElementRef,
   computed,
-  inject,
   input,
+  linkedSignal,
   output,
 } from '@angular/core';
 import {
+  TrnButton,
   TrnRadioGroupComponent,
   type TrnRadioOption,
 } from '@trinity/components/controls';
@@ -16,16 +16,19 @@ import {
   type AssignableMemberRole,
 } from '@trinity/data-access/room-administration';
 
-/** One radio per role, the current one checked; a role the viewer cannot assign says why. */
+/**
+ * One radio per role, the current one checked; a role the viewer cannot assign says why.
+ * Choosing only moves the selection (arrow keys fire `change` on every step); the
+ * "Change role" button commits it.
+ */
 @Component({
   selector: 'trn-member-role-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnRadioGroupComponent],
+  imports: [TrnButton, TrnRadioGroupComponent],
   templateUrl: './member-role-picker.component.html',
+  host: { class: 'flex flex-col gap-2' },
 })
 export class MemberRolePickerComponent {
-  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
-
   readonly options = input.required<readonly AssignableMemberRole[]>();
   readonly current = input.required<number>();
   readonly permissionFor =
@@ -49,21 +52,24 @@ export class MemberRolePickerComponent {
     }),
   );
 
-  protected readonly selected = computed(
+  /** The checked role; resets to the current one whenever the real role changes. */
+  protected readonly pending = linkedSignal(
     () =>
       this.options().find((option) => option.level === this.current()) ?? null,
   );
 
+  protected readonly unchanged = computed(
+    () => (this.pending()?.level ?? this.current()) === this.current(),
+  );
+
   protected pick(option: AssignableMemberRole): void {
-    // A native radio stays where the user moved it, but the role only changes once the
-    // caller's confirmed write lands, so show the current role until then.
-    const current = this.options().findIndex(
-      ({ level }) => level === this.current(),
-    );
-    this.host.nativeElement
-      .querySelectorAll<HTMLInputElement>('input[type="radio"]')
-      .forEach((radio, index) => (radio.checked = index === current));
+    this.pending.set(option);
+  }
+
+  protected apply(): void {
+    const option = this.pending();
     if (
+      !option ||
       option.level === this.current() ||
       !this.permissionFor()(option.level).available
     ) {

@@ -43,9 +43,9 @@ describe('MemberRoomsTabComponent', () => {
     expect(screen.getByText('No other rooms in common.')).toBeTruthy();
   });
 
-  it('renders nothing while null', async () => {
+  it('shows "Loading…" while null', async () => {
     const { container } = await build(null);
-    expect(container.textContent?.trim()).toBe('');
+    expect(container.textContent?.trim()).toBe('Loading…');
   });
 
   it('activating a room emits open', async () => {

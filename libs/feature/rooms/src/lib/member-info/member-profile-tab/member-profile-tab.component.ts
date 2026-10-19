@@ -56,7 +56,7 @@ export class MemberProfileTabComponent {
     () =>
       !this.isSelf() &&
       this.showIdentityActions() &&
-      this.trust() !== 'verified',
+      (this.trust() === 'unverified' || this.trust() === 'changed'),
   );
 
   readonly status = computed(() => {

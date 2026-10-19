@@ -5,7 +5,7 @@ import {
   RoomModerationService,
 } from '@trinity/data-access/room-administration';
 import { signal } from '@angular/core';
-import { render, screen, within } from '@trinity/testing';
+import { render, screen, waitFor, within } from '@trinity/testing';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
   IgnoredUsersService,
@@ -597,6 +597,12 @@ describe('MemberManageTabComponent', () => {
       .getByRole('radiogroup', { name: 'Role in Design team' })
       .querySelector<HTMLElement>('[data-testid="member-info-role-50"]')
       ?.click();
+    expect(alertConfirm).not.toHaveBeenCalled();
+    const apply = within(moderation).getByRole<HTMLButtonElement>('button', {
+      name: 'Change role',
+    });
+    await waitFor(() => expect(apply.disabled).toBe(false));
+    apply.click();
 
     expect(alertConfirm).toHaveBeenCalledWith(
       expect.objectContaining({ header: 'Change role' }),
