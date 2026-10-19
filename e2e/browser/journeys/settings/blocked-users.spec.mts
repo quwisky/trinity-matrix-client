@@ -149,7 +149,9 @@ test.describe('Blocked users in Settings', () => {
 
     await blocked.getByRole('button', { name: `Unblock ${otherName}` }).click();
     await expect(
-      page.getByText(`Unblocked ${otherName}.`, { exact: true }),
+      page
+        .getByLabel('Notifications alt+T')
+        .getByText(`Unblocked ${otherName}.`, { exact: true }),
     ).toBeVisible({ timeout: 30_000 });
     await expect(row).toHaveCount(1, { timeout: 30_000 });
     await expect(row).toContainText(elsewhere);
