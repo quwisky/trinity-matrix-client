@@ -116,6 +116,10 @@ async function linkFromNode(
   server: QrServerKind,
   account: QrAccount,
 ): Promise<string> {
+  // Tuwunel's registration leaves a device of its own, so the new one is the one added here.
+  const before = new Set(
+    (await device.client.getDevices()).devices.map((known) => known.device_id),
+  );
   const flow = await device.scan(
     await readQrBytes(await showCode(page, account.hs)),
   );
@@ -135,7 +139,7 @@ async function linkFromNode(
   await shared;
   const devices = await device.client.getDevices();
   const signedIn = devices.devices.find(
-    (other) => other.device_id !== device.client.getDeviceId(),
+    (other) => !before.has(other.device_id),
   );
   expect(signedIn).toBeDefined();
   return signedIn!.device_id;
