@@ -1,0 +1,6 @@
+<trn-radio-group
+  [aria-label]="'Role in ' + targetName()"
+  [options]="radios()"
+  [value]="selected()"
+  (valueChange)="pick($event)"
+/>

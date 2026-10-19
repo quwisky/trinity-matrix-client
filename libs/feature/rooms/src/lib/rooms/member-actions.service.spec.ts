@@ -82,10 +82,14 @@ function build({ narrow = false } = {}) {
       }),
       {
         provide: IdentityPresenceService,
-        useValue: { presenceFor: () => signal(null) },
+        useValue: {
+          presenceFor: () => signal(null),
+          presenceDetailsFor: () => signal(null),
+        },
       },
       MockProvider(IdentityService, {
         activeUserId: activeAccountId.asReadonly(),
+        lookup: () => NEVER,
       }),
       MockProvider(RoomModerationService, { kick }),
       MockProvider(RoomActionPermissionsService, {

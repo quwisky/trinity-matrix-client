@@ -13,8 +13,20 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { filter, type Observable } from 'rxjs';
+import {
+  takeUntilDestroyed,
+  toObservable,
+  toSignal,
+} from '@angular/core/rxjs-interop';
+import {
+  catchError,
+  filter,
+  map,
+  of,
+  startWith,
+  switchMap,
+  type Observable,
+} from 'rxjs';
 import {
   TrnActionAvailability,
   TrnButton,
@@ -51,6 +63,7 @@ import {
   IgnoredUsersService,
   IdentityPresenceService,
   IdentityService,
+  type PresenceDetails,
 } from '@trinity/data-access/identity';
 import {
   TrustOperationError,
@@ -64,6 +77,7 @@ import {
   ReportService,
   UNBLOCKED_TOAST,
 } from '../report/report.service';
+import { MemberProfileTabComponent } from './member-profile-tab/member-profile-tab.component';
 
 /**
  * A room-scoped info card for a member (avatar, name, id, live presence, role), shown
@@ -90,6 +104,7 @@ import {
     TrnTabList,
     TrnTab,
     TrnTabPanel,
+    MemberProfileTabComponent,
   ],
   templateUrl: './member-info.component.html',
   styleUrl: './member-info.component.scss',
@@ -226,6 +241,42 @@ export class MemberInfoComponent {
       : this.presence.presenceFor(this.member().userId)(),
   );
 
+  /** Presence text for the Profile tab, on the same terms as {@link presenceState}. */
+  readonly presenceDetails = computed<PresenceDetails | null>(() => {
+    if (this.accountId() || this.ownerInactive()) return null;
+    // Your own SDK user is often stale, so yourself reads the presence you set.
+    if (this.isSelf()) {
+      return {
+        state: this.presence.myPresence(),
+        statusMessage: this.presence.myStatusMessage(),
+        lastActiveAt: null,
+        currentlyActive: true,
+      };
+    }
+    const userId = this.member().userId;
+    return untracked(() => this.presence.presenceDetailsFor(userId))();
+  });
+
+  /** The member's global display name, only when it differs from their name in this room. */
+  readonly globalName = toSignal(
+    toObservable(this.member).pipe(
+      switchMap((member) =>
+        this.identity.lookup(member.userId).pipe(
+          // A lookup without a name falls back to the user id: that is no global name.
+          map(({ displayName }) =>
+            displayName === member.roomDisplayName ||
+            displayName === member.userId
+              ? null
+              : displayName,
+          ),
+          catchError(() => of(null)),
+          startWith(null),
+        ),
+      ),
+    ),
+    { initialValue: null },
+  );
+
   /** Trust is the active Account's view, so it shows only while that is the card's Account. */
   readonly trust = computed(() => {
     const active = this.identity.activeUserId();
@@ -350,34 +401,6 @@ export class MemberInfoComponent {
             { duration: 4000, variant: 'danger' },
           ),
       });
-  }
-
-  /**
-   * Copy the member's user id, confirming with a toast only once the write has resolved:
-   * a rejected write (denied permission, non-secure context) must not be reported as success.
-   */
-  copyId(): void {
-    const value = this.member().userId;
-    let write: Promise<void>;
-    try {
-      const clipboard = navigator.clipboard;
-      write =
-        typeof clipboard?.writeText === 'function'
-          ? clipboard.writeText(value)
-          : Promise.reject(new Error('Clipboard API unavailable'));
-    } catch (error) {
-      write = Promise.reject(error);
-    }
-    void write.then(
-      () => this.toast.show('User ID copied.', { duration: 2000 }),
-      () => {
-        this.selectUserId();
-        this.toast.show(
-          'Could not copy the user ID. It is selected above; copy it manually.',
-          { duration: 5000, variant: 'danger' },
-        );
-      },
-    );
   }
 
   /** Focus and select the complete MXID for keyboard-accessible manual copying. */

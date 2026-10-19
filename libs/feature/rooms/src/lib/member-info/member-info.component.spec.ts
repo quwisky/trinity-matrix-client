@@ -15,6 +15,7 @@ import {
   IgnoredUsersService,
   IdentityPresenceService,
   IdentityService,
+  type PresenceDetails,
 } from '@trinity/data-access/identity';
 import {
   type CommonRoom,
@@ -29,7 +30,7 @@ import {
   type UserTrust,
 } from '@trinity/data-access/trust';
 import { MockProvider } from 'ng-mocks';
-import { Subject, of, throwError } from 'rxjs';
+import { NEVER, Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MemberInfoComponent } from './member-info.component';
 import { ReportService } from '../report/report.service';
@@ -68,6 +69,8 @@ async function build(
     reportsOffered?: boolean;
     trust?: UserTrust | null;
     commonRooms?: readonly CommonRoom[] | null;
+    presence?: PresenceDetails | null;
+    lookup?: Mock;
   } = {},
 ) {
   const close = vi.fn();
@@ -109,12 +112,18 @@ async function build(
       MockProvider(TrnToastService, { show: toastShow }),
       {
         provide: IdentityPresenceService,
-        useValue: { presenceFor: () => signal('online') },
+        useValue: {
+          presenceFor: () => signal('online'),
+          presenceDetailsFor: () => signal(opts.presence ?? null),
+          myPresence: signal('unavailable'),
+          myStatusMessage: signal('Heads down'),
+        },
       },
       MockProvider(IdentityService, {
         activeUserId: signal<string | null>(
           opts.activeUserId ?? '@me:hs',
         ).asReadonly(),
+        lookup: opts.lookup ?? vi.fn(() => NEVER),
       }),
       MockProvider(RoomModerationService, { kick, ban, setPowerLevel }),
       MockProvider(RoomActionPermissionsService, {
@@ -212,10 +221,14 @@ async function buildPanel(m: MemberSummary = member()) {
       MockProvider(TrnToastService),
       {
         provide: IdentityPresenceService,
-        useValue: { presenceFor: () => signal('online') },
+        useValue: {
+          presenceFor: () => signal('online'),
+          presenceDetailsFor: () => signal(null),
+        },
       },
       MockProvider(IdentityService, {
         activeUserId: signal<string | null>('@me:hs').asReadonly(),
+        lookup: () => NEVER,
       }),
       MockProvider(RoomModerationService),
       MockProvider(RoomLibraryService, {
@@ -284,7 +297,7 @@ describe('MemberInfoComponent', () => {
     expect(
       screen.getByRole('tab', { selected: true }).textContent?.trim(),
     ).toBe('Profile');
-    expect(screen.getByRole('tabpanel').textContent).toContain('Copy user ID');
+    expect(screen.getByRole('tabpanel').textContent).toContain('Copy ID');
   });
 
   it('shows only Profile and Rooms for yourself', async () => {
@@ -579,89 +592,67 @@ describe('MemberInfoComponent', () => {
     expect(close).toHaveBeenCalledWith('@bob:hs');
   });
 
-  it('copies the user id and toasts once the write resolves', async () => {
-    // The real writeText returns a Promise; the toast must follow it, not fire blind.
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('navigator', { clipboard: { writeText } });
-    const { cmp, toastShow } = await build();
-
-    cmp.copyId();
-    await Promise.resolve();
-
-    expect(writeText).toHaveBeenCalledWith('@bob:hs');
-    expect(toastShow).toHaveBeenCalledWith(
-      'User ID copied.',
-      expect.anything(),
-    );
-  });
-
-  it('does not claim success when the clipboard write is rejected', async () => {
-    // Denied permission / non-secure context. Telling the user "copied" here leaves
-    // them believing they have the id when the clipboard is untouched.
-    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
-    vi.stubGlobal('navigator', { clipboard: { writeText } });
-    const { cmp, toastShow } = await build();
-
-    cmp.copyId();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(toastShow).not.toHaveBeenCalledWith(
-      'User ID copied.',
-      expect.anything(),
-    );
-    expect(toastShow).toHaveBeenCalledWith(
-      'Could not copy the user ID. It is selected above; copy it manually.',
-      expect.objectContaining({ variant: 'danger' }),
-    );
-  });
-
-  it('offers the same manual fallback when the Clipboard API is unavailable', async () => {
+  it('selects the user id handle when the Profile tab cannot copy it', async () => {
     vi.stubGlobal('navigator', {});
-    const { cmp, toastShow } = await build();
+    const { container } = await build();
+    const handle = container.querySelector<HTMLElement>(
+      '[data-testid="member-info-handle"]',
+    )!;
 
-    cmp.copyId();
+    container
+      .querySelector<HTMLElement>('[data-testid="member-info-copy"]')!
+      .click();
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(toastShow).toHaveBeenCalledWith(
-      'Could not copy the user ID. It is selected above; copy it manually.',
-      expect.objectContaining({ variant: 'danger' }),
-    );
+    expect(document.activeElement).toBe(handle);
+    expect(document.getSelection()?.toString()).toBe('@bob:hs');
   });
 
-  it('offers the fallback when clipboard exists without writeText', async () => {
-    vi.stubGlobal('navigator', { clipboard: {} });
-    const { cmp, toastShow } = await build();
+  it.each([
+    ['a different global name', of({ displayName: 'Robert' }), 'Robert'],
+    ['the same name', of({ displayName: 'Bob' }), null],
+    [
+      'no name, which reads as the user id',
+      of({ displayName: '@bob:hs' }),
+      null,
+    ],
+    ['a failed lookup', throwError(() => new Error('down')), null],
+  ])('passes the Profile tab a global name for %s', async (_, result, name) => {
+    const lookup = vi.fn(() => result);
+    const { cmp } = await build(member(), { lookup });
 
-    expect(() => cmp.copyId()).not.toThrow();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(toastShow).toHaveBeenCalledWith(
-      'Could not copy the user ID. It is selected above; copy it manually.',
-      expect.objectContaining({ variant: 'danger' }),
-    );
+    expect(lookup).toHaveBeenCalledWith('@bob:hs');
+    expect(cmp.globalName()).toBe(name);
   });
 
-  it('offers the fallback when writeText throws synchronously', async () => {
-    vi.stubGlobal('navigator', {
-      clipboard: {
-        writeText: () => {
-          throw new Error('not available');
-        },
-      },
+  it('reads your own Status from the presence you set', async () => {
+    const { cmp } = await build(member({ userId: '@me:hs' }), {
+      activeUserId: '@me:hs',
     });
-    const { cmp, toastShow } = await build();
 
-    expect(() => cmp.copyId()).not.toThrow();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(cmp.presenceDetails()).toEqual({
+      state: 'unavailable',
+      statusMessage: 'Heads down',
+      lastActiveAt: null,
+      currentlyActive: true,
+    });
+  });
 
-    expect(toastShow).toHaveBeenCalledWith(
-      'Could not copy the user ID. It is selected above; copy it manually.',
-      expect.objectContaining({ variant: 'danger' }),
-    );
+  it("reads another person's Status from their presence", async () => {
+    const presence: PresenceDetails = {
+      state: 'online',
+      statusMessage: 'On holiday',
+      lastActiveAt: null,
+      currentlyActive: true,
+    };
+    const { container } = await build(member(), { presence });
+
+    expect(
+      container
+        .querySelector('[data-testid="member-info-status"]')
+        ?.textContent?.trim(),
+    ).toBe('Online · On holiday');
   });
 
   it('makes the complete user id keyboard focusable', async () => {

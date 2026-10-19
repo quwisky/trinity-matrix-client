@@ -117,9 +117,11 @@ async function build(options: { readonly canManage?: boolean } = {}) {
       }),
       MockProvider(IdentityPresenceService, {
         presenceFor: () => signal(null),
+        presenceDetailsFor: () => signal(null),
       }),
       MockProvider(IdentityService, {
         activeUserId: signal<string | null>(TARGET.accountId).asReadonly(),
+        lookup: () => NEVER,
       }),
       MockProvider(IgnoredUsersService, {
         isIgnored: () => false,

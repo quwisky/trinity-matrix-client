@@ -84,44 +84,20 @@
         }
       </div>
 
-      <div
-        class="member-info__actions"
+      <trn-member-profile-tab
+        class="member-info__profile"
         trnTabPanel="profile"
         [focusable]="false"
-      >
-        @if (!isSelf()) {
-          <button
-            trnBtn
-            class="w-full"
-            (click)="message()"
-            data-testid="member-info-message"
-          >
-            Message
-          </button>
-        }
-        <button
-          trnBtn
-          variant="secondary"
-          presentation="ghost"
-          class="w-full"
-          (click)="copyId()"
-          data-testid="member-info-copy"
-        >
-          Copy user ID
-        </button>
-        @if (!isSelf() && showIdentityActions()) {
-          <button
-            trnBtn
-            variant="secondary"
-            presentation="ghost"
-            class="w-full"
-            (click)="verify()"
-            data-testid="member-info-verify"
-          >
-            Verify
-          </button>
-        }
-      </div>
+        [member]="member()"
+        [isSelf]="isSelf()"
+        [trust]="trust()"
+        [presence]="presenceDetails()"
+        [globalName]="globalName()"
+        [showIdentityActions]="showIdentityActions()"
+        (messageUser)="message()"
+        (verify)="verify()"
+        (copyFailed)="selectUserId()"
+      />
 
       <!-- shortcut: a plain list until the Rooms tab component replaces it (Task 6). -->
       <div class="member-info__rooms" trnTabPanel="rooms">

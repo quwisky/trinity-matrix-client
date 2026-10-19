@@ -91,6 +91,15 @@
     }
   }
 
+  .member-info__profile {
+    display: block;
+    margin-top: var(--trinity-space-4);
+
+    &[hidden] {
+      display: none;
+    }
+  }
+
   .member-info__rooms {
     margin-top: var(--trinity-space-4);
     color: var(--trinity-text-muted);

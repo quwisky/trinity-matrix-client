@@ -187,6 +187,20 @@ describe('TrnRadioGroupComponent', () => {
     ).toHaveLength(OPTIONS.length);
   });
 
+  it('disables only the option marked disabled', async () => {
+    const { container } = await render(TrnRadioGroupComponent<string>, {
+      inputs: {
+        options: [OPTIONS[0], { ...OPTIONS[1], disabled: true }, OPTIONS[2]],
+      },
+    });
+
+    const disabled = container.querySelectorAll<HTMLInputElement>(
+      'input[type=radio]:disabled',
+    );
+    expect(disabled).toHaveLength(1);
+    expect(disabled[0].closest('label')?.dataset['testid']).toBe('theme-light');
+  });
+
   it('marks the active option in the segmented presentation', async () => {
     const { container } = await render(HostComponent);
     const host = container.querySelector('trn-radio-group');

@@ -1,0 +1,56 @@
+<div class="flex gap-2">
+  @if (!isSelf()) {
+    <button
+      trnBtn
+      class="flex-1"
+      (click)="messageUser.emit()"
+      data-testid="member-info-message"
+    >
+      <trn-icon name="message-square" />
+      Message
+    </button>
+  }
+  <button
+    trnBtn
+    variant="secondary"
+    presentation="outline"
+    class="flex-1"
+    (click)="copyId()"
+    data-testid="member-info-copy"
+  >
+    <trn-icon name="copy" />
+    Copy ID
+  </button>
+  @if (canVerify()) {
+    <button
+      trnBtn
+      variant="secondary"
+      presentation="outline"
+      class="flex-1"
+      (click)="verify.emit()"
+      data-testid="member-info-verify"
+    >
+      <trn-icon name="shield-check" />
+      Verify
+    </button>
+  }
+</div>
+
+@if (status() || globalName()) {
+  <dl class="m-0 mt-4 flex flex-col gap-3">
+    @if (status(); as status) {
+      <div>
+        <dt class="text-13 text-muted-foreground">Status</dt>
+        <dd class="m-0" data-testid="member-info-status">{{ status }}</dd>
+      </div>
+    }
+    @if (globalName(); as globalName) {
+      <div>
+        <dt class="text-13 text-muted-foreground">Global name</dt>
+        <dd class="m-0" data-testid="member-info-global-name">
+          {{ globalName }}
+        </dd>
+      </div>
+    }
+  </dl>
+}
