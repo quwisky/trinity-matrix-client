@@ -4,7 +4,9 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { UserEvent, type MatrixClient } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { toPresenceState } from '@trinity/util/matrix';
 import { IdentityPresenceService } from './identity-presence.service';
+import type { IdentitySdkUser } from '@trinity/data-access/matrix-client';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 /**
@@ -26,9 +28,13 @@ function fakeClient(
     on: vi.fn(),
     off: vi.fn(),
     getUserId: vi.fn(() => SELF),
-    getUser: vi.fn((id: string) =>
+    getUser: vi.fn((id: string): IdentitySdkUser | null =>
       id in users
-        ? { userId: id, presence: users[id], presenceStatusMsg: statuses[id] }
+        ? {
+            userId: id,
+            presence: users[id],
+            presenceStatusMsg: statuses[id],
+          }
         : null,
     ),
     setPresence: vi.fn(() => Promise.resolve()),
@@ -108,6 +114,65 @@ describe('IdentityPresenceService', () => {
     svc.runProjection().subscribe();
     expect(online()).toBe('online');
     expect(stranger()).toBeNull();
+  });
+
+  describe('presenceDetailsFor', () => {
+    const NOW = 1_700_000_000_000;
+    const seed = (client: ReturnType<typeof fakeClient>, presence: string) =>
+      client.getUser.mockReturnValue({
+        userId: '@a:hs',
+        presence,
+        presenceStatusMsg: 'On holiday',
+        lastActiveAgo: 7_200_000,
+        currentlyActive: false,
+      });
+
+    beforeEach(() => {
+      vi.spyOn(Date, 'now').mockReturnValue(NOW);
+    });
+
+    it('presenceDetailsFor exposes state, status message and last active time', () => {
+      const { svc, client } = setup();
+      seed(client, 'unavailable');
+      const details = svc.presenceDetailsFor('@a:hs');
+      svc.runProjection().subscribe();
+      expect(details()).toEqual({
+        state: toPresenceState('unavailable'),
+        statusMessage: 'On holiday',
+        lastActiveAt: NOW - 7_200_000,
+        currentlyActive: false,
+      });
+    });
+
+    it('presenceDetailsFor is null while presence is unavailable', () => {
+      const { svc, client } = setup();
+      seed(client, 'online');
+      expect(svc.presenceDetailsFor('@a:hs')()).toBeNull();
+    });
+
+    it('presenceDetailsFor updates on a presence event', async () => {
+      const { svc, client } = setup();
+      const details = svc.presenceDetailsFor('@a:hs');
+      svc.runProjection().subscribe();
+      expect(details()).toBeNull();
+      seed(client, 'online');
+      presenceHandler(client)(undefined, {
+        userId: '@a:hs',
+        presence: 'online',
+      });
+      await Promise.resolve();
+      expect(details()?.state).toBe('online');
+    });
+
+    it('presenceDetailsFor resets to null on account switch', () => {
+      const { svc, client } = setup();
+      seed(client, 'online');
+      const details = svc.presenceDetailsFor('@a:hs');
+      const lifetime = svc.runProjection().subscribe();
+      expect(details()).not.toBeNull();
+      lifetime.unsubscribe();
+      expect(details()).toBeNull();
+    });
   });
 
   it('memoizes the signal per user id', () => {
