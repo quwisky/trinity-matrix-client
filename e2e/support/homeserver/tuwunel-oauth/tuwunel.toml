@@ -1,0 +1,39 @@
+# Primary Tuwunel with its built-in OAuth server (TRINITY_E2E_HOMESERVER=tuwunel-oauth),
+# for QR sign-in (MSC4108). server_name `localhost`, set by the compose file. Test-only
+# settings: never copy any of this to a real server.
+#
+# Mounted read-only at /etc/tuwunel/tuwunel.toml; see docker-compose.yml beside it.
+
+[global]
+address = ["0.0.0.0"]
+port = 8008
+database_path = "/var/lib/tuwunel"
+
+# The same harness settings as ../tuwunel/tuwunel.toml.
+allow_registration = true
+yes_i_am_very_very_sure_i_want_an_open_registration_server_prone_to_abuse = true
+registration_shared_secret = "trinity-e2e-shared-secret"
+grant_admin_to_first_user = false
+
+allow_federation = true
+trusted_servers = []
+allow_invalid_tls_certificates = true
+ip_range_denylist = []
+query_over_tcp_only = true
+
+url_preview_domain_contains_allowlist = ["*"]
+
+allow_public_room_directory_over_federation = true
+allow_public_room_directory_without_auth = true
+
+default_room_version = "10"
+
+# The built-in OAuth server signs in local accounts itself (no Dex, no SSO). It advertises
+# the device authorization grant QR sign-in needs. Password login stays on.
+oidc_native_auth = true
+# The default, written out: QR sign-in depends on it.
+rendezvous_enabled = true
+
+# oidc_native_auth requires it; it is also the OAuth issuer.
+[global.well_known]
+client = "https://localhost:8448"

@@ -38,12 +38,13 @@ async function exists(path) {
 }
 
 /**
- * Patch a Synapse-generated homeserver.yaml to delegate authentication to MAS. Idempotent.
+ * Patch a Synapse-generated homeserver.yaml to delegate authentication to MAS. Idempotent,
+ * and rewrites an earlier patch so a kept mas-data picks up new settings.
  * Delegation refuses to start while Synapse still owns passwords, so they go off here.
  */
 export function delegateToMas(yaml) {
-  if (yaml.includes(MARKER)) return yaml;
   const base = yaml
+    .split(MARKER)[0]
     .replace(
       /^trusted_key_servers:[^\n]*(?:\n[ \t]+[^\n]*)*/m,
       'trusted_key_servers: []',
@@ -61,6 +62,9 @@ export function delegateToMas(yaml) {
     '  enabled: true',
     '  endpoint: "http://mas:8080/"',
     `  secret: "${MAS_SHARED_SECRET}"`,
+    // QR sign-in (MSC4108): rendezvous sessions; MAS provides the device code grant.
+    'experimental_features:',
+    '  msc4108_enabled: true',
   ].join('\n')}\n`;
 }
 

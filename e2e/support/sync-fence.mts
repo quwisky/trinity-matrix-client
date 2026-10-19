@@ -1,5 +1,6 @@
 import type { APIRequestContext, Page, Route } from '@playwright/test';
 import type { HomeserverSession } from './app.mts';
+import { isTuwunel } from './homeserver/kind.mts';
 
 /**
  * Run `write`, which changes room state, while none of `page`'s /sync requests is waiting
@@ -23,7 +24,7 @@ export async function withSyncFence(
   auth: { readonly userId: string; readonly headers: Record<string, string> },
   write: () => Promise<void>,
 ): Promise<void> {
-  if (session.kind !== 'tuwunel') {
+  if (!isTuwunel(session.kind)) {
     await write();
     return;
   }

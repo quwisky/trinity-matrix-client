@@ -1,0 +1,39 @@
+# Tuwunel OAuth adapter (TRINITY_E2E_HOMESERVER=tuwunel-oauth), layered on
+# ../docker-compose.yml. Paths resolve against the shared file's directory.
+#
+# The ../tuwunel adapter with the built-in OAuth server instead of Dex SSO, so the primary
+# needs no Dex namespace and sits on the compose network like Synapse's. The remote server
+# reuses ../tuwunel/tuwunel-remote.toml. Keep both images on ../tuwunel's pin.
+services:
+  homeserver:
+    image: ghcr.io/matrix-construct/tuwunel:v1.9.3@sha256:678b7f5350e06a41614444497c587da9dddf66767e4068a27480402f3c1367d0
+    container_name: trinity-e2e-homeserver
+    restart: 'no'
+    user: '${TRINITY_E2E_UID:-1000}:${TRINITY_E2E_GID:-1000}'
+    environment:
+      TUWUNEL_CONFIG: /etc/tuwunel/tuwunel.toml
+      TUWUNEL_SERVER_NAME: localhost
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/tuwunel-oauth/tuwunel.toml:/etc/tuwunel/tuwunel.toml:ro
+      - ${TRINITY_E2E_STATE_DIR:-.}/data/tuwunel:/var/lib/tuwunel
+    ports:
+      - '127.0.0.1:8008:8008'
+    networks:
+      - trinity-e2e
+
+  homeserver-remote:
+    image: ghcr.io/matrix-construct/tuwunel:v1.9.3@sha256:678b7f5350e06a41614444497c587da9dddf66767e4068a27480402f3c1367d0
+    container_name: trinity-e2e-homeserver-remote
+    restart: 'no'
+    network_mode: 'service:caddy'
+    user: '${TRINITY_E2E_UID:-1000}:${TRINITY_E2E_GID:-1000}'
+    environment:
+      TUWUNEL_CONFIG: /etc/tuwunel/tuwunel.toml
+      TUWUNEL_SERVER_NAME: ${TRINITY_E2E_REMOTE_SERVER_NAME:-caddy:9448}
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/tuwunel/tuwunel-remote.toml:/etc/tuwunel/tuwunel.toml:ro
+      - ${TRINITY_E2E_STATE_DIR:-.}/remote-data/tuwunel:/var/lib/tuwunel
+
+  caddy:
+    depends_on:
+      - homeserver
