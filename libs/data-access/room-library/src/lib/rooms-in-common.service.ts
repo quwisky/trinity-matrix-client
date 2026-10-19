@@ -93,6 +93,9 @@ export class RoomsInCommonService {
     }
   };
 
+  /** The live accounts; ask {@link roomsInCommon} again when they change. */
+  readonly accountIds = this.matrix.accountIds;
+
   constructor() {
     let first = true;
     // One listener set per live account client, not per room; re-bound when a client is

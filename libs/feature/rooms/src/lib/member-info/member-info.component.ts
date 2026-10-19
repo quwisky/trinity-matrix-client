@@ -45,7 +45,6 @@ import {
   RoomsInCommonService,
   type CommonRoom,
 } from '@trinity/data-access/room-library';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   IdentityPresenceService,
   IdentityService,
@@ -155,7 +154,6 @@ export class MemberInfoComponent {
   private readonly verification = inject(TrustVerificationService);
   private readonly trustUsers = inject(TrustUsersService);
   private readonly commonRoomsService = inject(RoomsInCommonService);
-  private readonly matrix = inject(MatrixClientService);
   private readonly workspace = inject(WorkspaceNavigationService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly userIdHandle =
@@ -238,7 +236,7 @@ export class MemberInfoComponent {
   /** Joined rooms shared with the member besides this one; null while unknown. */
   readonly commonRooms = computed(() => {
     // A client restart orphans a held view, so ask again when the accounts change.
-    this.matrix.accountIds();
+    this.commonRoomsService.accountIds();
     const userId = this.member().userId;
     const roomId = this.roomId();
     const accountId = this.commandAccountId();

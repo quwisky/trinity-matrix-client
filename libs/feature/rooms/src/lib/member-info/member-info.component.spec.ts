@@ -22,7 +22,6 @@ import {
   RoomLibraryService,
   RoomsInCommonService,
 } from '@trinity/data-access/room-library';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   TrustOperationError,
   TrustUsersService,
@@ -180,10 +179,7 @@ async function build(
       }),
       MockProvider(RoomsInCommonService, {
         roomsInCommon: () => signal(opts.commonRooms ?? null).asReadonly(),
-      }),
-      MockProvider(MatrixClientService, {
         accountIds: signal(['@me:hs']).asReadonly(),
-        activeUserId: signal<string | null>('@me:hs').asReadonly(),
       }),
     ],
   });
@@ -262,10 +258,7 @@ async function buildPanel(m: MemberSummary = member()) {
       }),
       MockProvider(RoomsInCommonService, {
         roomsInCommon: () => signal(null).asReadonly(),
-      }),
-      MockProvider(MatrixClientService, {
         accountIds: signal(['@me:hs']).asReadonly(),
-        activeUserId: signal<string | null>('@me:hs').asReadonly(),
       }),
     ],
   });
