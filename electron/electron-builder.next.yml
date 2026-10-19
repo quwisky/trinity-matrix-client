@@ -59,7 +59,7 @@ appImage:
 mac:
   icon: build/next/Trinity.icon
   extendInfo:
-    NSCameraUsageDescription: Trinity Next uses the camera to scan device-verification QR codes.
+    NSCameraUsageDescription: Trinity Next uses the camera to scan QR codes for device verification and linking new devices.
   # The zip's name; the dmg has its own below.
   artifactName: Trinity-${version}-${arch}-mac.${ext}
 dmg:

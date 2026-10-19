@@ -112,6 +112,67 @@ address, it shows "Trinity needs a secure connection" and doesn't start.
 
 The desktop app always runs in one window, so this doesn't apply to it.
 
+## Sign in with a QR code {#qr-sign-in}
+
+You can sign in on a new device by scanning a QR code with Trinity on a device where you're
+already signed in, instead of typing your password. If all goes well, the new device comes out
+verified and can read your encrypted messages, because your signed-in device shares your
+encryption keys with it.
+
+**Which servers support it.** Your server must support signing in with a QR code (MSC4108)
+and use an OAuth sign-in server, such as Synapse with Matrix Authentication Service (MAS) or
+Tuwunel with its built-in OAuth server. On other servers, Trinity doesn't show the option.
+It also doesn't show it when you sign in again to reconnect an account already on this device,
+or while it asks you to confirm a sign-in provider on another site than your server.
+The signed-in device also needs your cross-signing keys: if Settings › Devices doesn't offer
+**Link a new device**, verify that device first.
+
+**On the new device.** On the sign-in page, choose your server, then **Sign in with QR code**.
+Trinity shows a QR code and the time it expires. **Sign in another way** takes you back to the
+other sign-in options at any step.
+
+**On the signed-in device.** Open Settings › Devices and choose **Link a new device**, then
+scan the code on the new device with your camera.
+
+**Compare the codes.** Both devices then show the same two-digit number. If they match, choose
+**They match** on the signed-in device; if not, choose **They don't match**, and nothing is
+shared. Trinity then asks you to approve the new device: choose **Open approval page**, and
+approve it on your server's page in the browser. If that page asks for a code, enter the one
+the new device shows. The signed-in device then shares your keys, says "Device linked", and
+the new device opens your rooms.
+
+**If it doesn't work.**
+
+- **"The code expired."** The code wasn't scanned in time. On the new device, choose
+  **Show a new code** and scan again.
+- **"The codes didn't match, so nothing was shared."** Shown on the signed-in device: you chose
+  **They don't match**, the devices couldn't agree on a secure connection, or the approval page
+  the new device asked for isn't on your server. No keys were shared. Start again from the new device; if the numbers differ again, someone else may have
+  scanned or shown the code, so don't continue.
+- **"Sign-in was cancelled on the other device."** The other device left the screen or
+  cancelled.
+- **"That device is already signed in."** on the signed-in device, or **"This account is
+  already signed in on this device."** on the new device: the new device is already signed in
+  to your account, so there's nothing to link. A new code doesn't help; sign in another way.
+- **The new device signs in but asks you to verify it.** It signed in, but your keys didn't
+  reach it. Verify it the usual way, with your recovery key or another device.
+- **"Lost connection. Check your network and try again."** One of the devices lost its
+  connection to your server. Check both devices' network, then choose **Show a new code**.
+- **"Your server doesn't support QR sign-in."** Sign in another way.
+
+**Known limits.**
+
+- When the codes don't match, the new device may show only "Something went wrong. Try again or
+  sign in another way." instead of saying why.
+- Only the new device shows a code. A signed-in device can't show one for a new device to
+  scan.
+- Element Web can't scan a code, so it can't link a new Trinity device. Trinity can link a new
+  Element Web device (tested with Element Web 1.12.32 on Synapse with MAS); Element Web then
+  asks you to type the two-digit number instead of showing it.
+- Only the web app in a desktop browser has been tested. Signing in or scanning on a phone
+  (Android or iOS) or in the desktop app hasn't been tested yet, and no Matrix app other than
+  Element Web has been tried.
+
 ## Lock Trinity on this device {#app-lock}
 
 App lock hides the desktop or mobile app behind a lock screen until you unlock it. It's a

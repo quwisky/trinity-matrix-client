@@ -117,11 +117,11 @@ describe('electron-builder config by release channel', () => {
   it("names each app in macOS's camera prompt", () => {
     expect(stable().mac?.extendInfo).toEqual({
       NSCameraUsageDescription:
-        'Trinity uses the camera to scan device-verification QR codes.',
+        'Trinity uses the camera to scan QR codes for device verification and linking new devices.',
     });
     expect(next().mac?.extendInfo).toEqual({
       NSCameraUsageDescription:
-        'Trinity Next uses the camera to scan device-verification QR codes.',
+        'Trinity Next uses the camera to scan QR codes for device verification and linking new devices.',
     });
   });
 
