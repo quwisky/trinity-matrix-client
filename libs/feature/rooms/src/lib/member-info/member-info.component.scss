@@ -111,9 +111,9 @@
     }
   }
 
+  // The list starts at the tab strip's divider, as its rows carry their own dividers.
   .member-info__rooms {
     display: block;
-    margin-top: var(--trinity-space-4);
 
     &[hidden] {
       display: none;

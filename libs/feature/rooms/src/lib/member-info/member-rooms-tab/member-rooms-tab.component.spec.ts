@@ -38,6 +38,14 @@ describe('MemberRoomsTabComponent', () => {
     expect(screen.getByText('Space')).toBeTruthy();
   });
 
+  it('gives rooms and spaces the place avatar and a direct message the person avatar', async () => {
+    const { container } = await build(ROOMS);
+    const shapes = [...container.querySelectorAll('trn-avatar')].map((avatar) =>
+      avatar.getAttribute('data-shape'),
+    );
+    expect(shapes).toEqual(['place', 'person', 'place']);
+  });
+
   it('shows "No other rooms in common." when empty', async () => {
     await build([]);
     expect(screen.getByText('No other rooms in common.')).toBeTruthy();

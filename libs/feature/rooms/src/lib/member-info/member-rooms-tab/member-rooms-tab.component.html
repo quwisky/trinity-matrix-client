@@ -1,18 +1,21 @@
 @if (rooms(); as list) {
   @if (list.length) {
-    <ul class="flex flex-col">
+    <ul class="m-0 flex list-none flex-col p-0">
       @for (room of list; track room.accountId + room.id) {
-        <li>
+        <li
+          class="border-b border-[var(--trinity-border-overlay)] last:border-b-0"
+        >
           <button
             type="button"
-            class="flex w-full items-center gap-3 rounded-md p-2 text-left hover:bg-accent"
+            class="flex w-full items-center gap-3 px-4 py-2 text-start hover:bg-[var(--trinity-state-hover-surface)]"
             (click)="open.emit(room)"
           >
             <trn-avatar
               [mxc]="room.avatarMxc"
               [initial]="room.initial"
               [name]="room.name"
-              [exactSize]="36"
+              [shape]="room.kind === 'direct' ? 'person' : 'place'"
+              [exactSize]="32"
             />
             <span class="min-w-0 flex-1">
               <span class="block truncate text-sm font-medium">{{
@@ -37,8 +40,10 @@
       }
     </ul>
   } @else {
-    <p class="text-sm text-muted-foreground">No other rooms in common.</p>
+    <p class="m-0 px-4 py-3 text-sm text-muted-foreground">
+      No other rooms in common.
+    </p>
   }
 } @else {
-  <p class="text-sm text-muted-foreground">Loading…</p>
+  <p class="m-0 px-4 py-3 text-sm text-muted-foreground">Loading…</p>
 }
