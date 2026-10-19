@@ -30,6 +30,7 @@ import {
   type UserTrust,
 } from '@trinity/data-access/trust';
 import { MockProvider } from 'ng-mocks';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { NEVER, Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MemberInfoComponent } from './member-info.component';
@@ -72,6 +73,7 @@ async function build(
     presence?: PresenceDetails | null;
     presenceAvailable?: boolean;
     lookup?: Mock;
+    navigate?: Mock;
   } = {},
 ) {
   const close = vi.fn();
@@ -110,6 +112,9 @@ async function build(
     },
     providers: [
       MockProvider(TrnDialogRef, { close }),
+      MockProvider(WorkspaceNavigationService, {
+        navigate: opts.navigate ?? vi.fn(() => of({ kind: 'ready' })),
+      }),
       MockProvider(TrnToastService, { show: toastShow }),
       {
         provide: IdentityPresenceService,
@@ -221,6 +226,7 @@ async function buildPanel(m: MemberSummary = member()) {
     },
     providers: [
       MockProvider(TrnToastService),
+      MockProvider(WorkspaceNavigationService),
       {
         provide: IdentityPresenceService,
         useValue: {
@@ -307,6 +313,37 @@ describe('MemberInfoComponent', () => {
 
     expect(tabNames()).toEqual(['Profile', 'Rooms']);
   });
+
+  it.each([
+    {
+      kind: 'room',
+      intent: {
+        kind: 'room',
+        accountId: '@me:hs',
+        roomId: '!a:hs',
+        origin: 'room-action',
+      },
+    },
+    {
+      kind: 'space',
+      intent: {
+        kind: 'scope',
+        accountId: '@me:hs',
+        scope: { kind: 'space', spaceId: '!a:hs' },
+      },
+    },
+  ] as const)(
+    'opening a shared $kind navigates to it and closes the card',
+    async ({ kind, intent }) => {
+      const navigate = vi.fn(() => of({ kind: 'ready' }));
+      const { cmp, close } = await build(member(), { navigate });
+
+      cmp.openRoom({ ...commonRoom('!a:hs'), accountId: '@me:hs', kind });
+
+      expect(navigate).toHaveBeenCalledWith(intent);
+      expect(close).toHaveBeenCalledWith(null);
+    },
+  );
 
   it.each([
     { rooms: [commonRoom('!a:hs'), commonRoom('!b:hs')], label: 'Rooms (2)' },

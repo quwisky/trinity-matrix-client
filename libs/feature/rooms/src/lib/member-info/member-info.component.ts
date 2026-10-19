@@ -12,6 +12,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
+import { MemberRoomsTabComponent } from './member-rooms-tab/member-rooms-tab.component';
 import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import {
   takeUntilDestroyed,
@@ -57,6 +59,7 @@ import {
 import {
   RoomLibraryService,
   RoomsInCommonService,
+  type CommonRoom,
 } from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
@@ -105,6 +108,7 @@ import { MemberProfileTabComponent } from './member-profile-tab/member-profile-t
     TrnTab,
     TrnTabPanel,
     MemberProfileTabComponent,
+    MemberRoomsTabComponent,
   ],
   templateUrl: './member-info.component.html',
   styleUrl: './member-info.component.scss',
@@ -178,6 +182,7 @@ export class MemberInfoComponent {
   private readonly trustUsers = inject(TrustUsersService);
   private readonly commonRoomsService = inject(RoomsInCommonService);
   private readonly matrix = inject(MatrixClientService);
+  private readonly workspace = inject(WorkspaceNavigationService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly userIdHandle =
     viewChild<ElementRef<HTMLElement>>('userIdHandle');
@@ -551,6 +556,40 @@ export class MemberInfoComponent {
 
   close(): void {
     this.finish(null);
+  }
+
+  /** Opens a shared room (a space opens its home scope), then closes the card. */
+  openRoom(room: CommonRoom): void {
+    this.workspace
+      .navigate(
+        room.kind === 'space'
+          ? {
+              kind: 'scope',
+              accountId: room.accountId,
+              scope: { kind: 'space', spaceId: room.id },
+            }
+          : {
+              kind: 'room',
+              accountId: room.accountId,
+              roomId: room.id,
+              origin: 'room-action',
+            },
+      )
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (outcome) => {
+          if (outcome.kind === 'ready') this.finish(null);
+          else this.openFailed();
+        },
+        error: () => this.openFailed(),
+      });
+  }
+
+  private openFailed(): void {
+    this.toast.show('Unable to open that destination right now.', {
+      duration: 4000,
+      variant: 'danger',
+    });
   }
 
   /**

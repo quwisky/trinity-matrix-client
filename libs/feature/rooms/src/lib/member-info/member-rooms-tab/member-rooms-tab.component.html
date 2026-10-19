@@ -1,0 +1,42 @@
+@if (rooms(); as list) {
+  @if (list.length) {
+    <ul class="flex flex-col">
+      @for (room of list; track room.accountId + room.id) {
+        <li>
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 rounded-md p-2 text-left hover:bg-accent"
+            (click)="open.emit(room)"
+          >
+            <trn-avatar
+              [mxc]="room.avatarMxc"
+              [initial]="room.initial"
+              [name]="room.name"
+              [exactSize]="36"
+            />
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-medium">{{
+                room.name
+              }}</span>
+              <span class="block truncate text-xs text-muted-foreground">
+                @switch (room.kind) {
+                  @case ('direct') {
+                    Direct message
+                  }
+                  @case ('space') {
+                    Space
+                  }
+                  @default {
+                    {{ room.memberCount }} members
+                  }
+                }
+              </span>
+            </span>
+          </button>
+        </li>
+      }
+    </ul>
+  } @else {
+    <p class="text-sm text-muted-foreground">No other rooms in common.</p>
+  }
+}

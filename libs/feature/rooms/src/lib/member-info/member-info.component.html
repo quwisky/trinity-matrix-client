@@ -99,20 +99,12 @@
         (copyFailed)="selectUserId()"
       />
 
-      <!-- shortcut: a plain list until the Rooms tab component replaces it (Task 6). -->
-      <div class="member-info__rooms" trnTabPanel="rooms">
-        @if (commonRooms(); as rooms) {
-          @if (rooms.length) {
-            <ul>
-              @for (room of rooms; track room.id) {
-                <li>{{ room.name }}</li>
-              }
-            </ul>
-          } @else {
-            <p>No other rooms in common.</p>
-          }
-        }
-      </div>
+      <trn-member-rooms-tab
+        class="member-info__rooms"
+        trnTabPanel="rooms"
+        [rooms]="commonRooms()"
+        (open)="openRoom($event)"
+      />
 
       @if (!isSelf()) {
         <div
