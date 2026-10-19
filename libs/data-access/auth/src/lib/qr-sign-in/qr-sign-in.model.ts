@@ -8,7 +8,7 @@ export type QrSignInFailure =
   | 'network'
   | 'unknown';
 
-/** The plain sentence each failure shows, on the new device and the existing one alike. */
+/** The plain sentence each failure shows; the new device words `already-signed-in` its own way. */
 export const QR_SIGN_IN_FAILURE_MESSAGES: Readonly<
   Record<QrSignInFailure, string>
 > = {

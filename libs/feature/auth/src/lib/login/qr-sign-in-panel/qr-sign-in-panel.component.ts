@@ -73,7 +73,11 @@ export class QrSignInPanelComponent implements OnInit {
   );
   /** What the live region says; written after each render, never on insertion. */
   readonly announcement = signal('');
-  readonly failureMessages = QR_SIGN_IN_FAILURE_MESSAGES;
+  readonly failureMessages = {
+    ...QR_SIGN_IN_FAILURE_MESSAGES,
+    // Here it is this device that already holds the account.
+    'already-signed-in': 'This account is already signed in on this device.',
+  };
   readonly finalFailures = FINAL_FAILURES;
 
   constructor() {

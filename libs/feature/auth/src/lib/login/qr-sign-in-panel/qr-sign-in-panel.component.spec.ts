@@ -157,7 +157,11 @@ describe('QrSignInPanelComponent', () => {
     ['declined', 'Sign-in was cancelled on the other device.', true],
     ['insecure', "The codes didn't match, so nothing was shared.", true],
     ['unsupported', "Your server doesn't support QR sign-in.", false],
-    ['already-signed-in', 'That device is already signed in.', false],
+    [
+      'already-signed-in',
+      'This account is already signed in on this device.',
+      false,
+    ],
     ['network', 'Lost connection. Check your network and try again.', true],
     [
       'unknown',
