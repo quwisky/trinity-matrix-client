@@ -18,6 +18,7 @@ import {
   type ApiUser,
 } from '../../../support/account.mts';
 import { focusWithKeyboard } from '../../support/keyboard-focus.mts';
+import { openMemberTab } from '../../support/member-card.mts';
 import { describeFailure } from '../../../support/http-failure.mts';
 
 const { defaultBrowserType: _pixelBrowser, ...pixel5 } = devices['Pixel 5'];
@@ -480,6 +481,7 @@ test.describe('Member role sections', () => {
       .getByTestId('member-row')
       .filter({ hasText: plain.name })
       .click();
+    await openMemberTab(page, 'Manage');
 
     const kick = page.getByTestId('member-info-kick');
     await expect(kick).not.toHaveAttribute('aria-disabled', 'true');
@@ -590,6 +592,7 @@ test.describe('Unavailable action touch feedback', () => {
       .getByTestId('member-row')
       .filter({ hasText: plain.name })
       .click();
+    await openMemberTab(page, 'Manage');
     const kick = page.getByTestId('member-info-kick');
     await setPowerLevel(request, hs, admin, roomId, admin.userId, 0);
     await expect(kick).toHaveAttribute('aria-disabled', 'true', {

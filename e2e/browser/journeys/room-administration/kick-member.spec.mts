@@ -7,6 +7,7 @@ import {
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { openMemberTab } from '../../support/member-card.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
 // Covers kick and ban projection recovery. Member info opens as a dialog over the roster,
@@ -101,6 +102,7 @@ test.describe('Remove a member', () => {
       await expect(page.getByTestId('member-info')).toBeVisible({
         timeout: 10_000,
       });
+      await openMemberTab(page, 'Manage');
       await page.getByTestId(moderation.actionTestId).click();
       await page.getByTestId('alert-confirm').click();
 

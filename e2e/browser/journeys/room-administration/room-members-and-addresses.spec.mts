@@ -11,6 +11,7 @@ import {
   session,
   tokenFor,
 } from '../../support/room-settings-journey.mts';
+import { openMemberTab } from '../../support/member-card.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
 /**
@@ -237,6 +238,7 @@ test.describe('Room settings', () => {
     await page.setViewportSize(desktopViewport);
     await expect(detail).toContainText(memberName);
     await expectMemberInfoFillsDetail(page);
+    await openMemberTab(page, 'Manage');
     await page.getByTestId('member-info-role-50').click();
     const roleConfirmation = page.getByRole('dialog', { name: 'Change role' });
     await expect(roleConfirmation).toContainText(roomName);
@@ -286,6 +288,7 @@ test.describe('Room settings', () => {
         users: { ...(powerLevels.users ?? {}), [adminId]: 100 },
       },
     });
+    await openMemberTab(page, 'Manage');
     const kick = page.getByTestId('member-info-kick');
     await expect(kick).toBeVisible({ timeout: 20_000 });
     await kick.focus();
@@ -321,6 +324,7 @@ test.describe('Room settings', () => {
     await expect(row).toBeVisible({ timeout: 20_000 });
     await row.focus();
     await row.press('Enter');
+    await openMemberTab(page, 'Manage');
     const ban = page.getByTestId('member-info-ban');
     await expect(ban).toBeVisible();
     await ban.focus();
