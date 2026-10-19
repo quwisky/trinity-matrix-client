@@ -42,6 +42,8 @@ it('lets a row shape wrap its label instead of keeping the fixed height and nowr
   );
   expect(row).not.toContain('h-7');
   expect(row).not.toContain('whitespace-nowrap');
+  // The fixed height becomes a floor, so a one-line row keeps its size.
+  expect(row).toContain('min-h-7');
 });
 
 describe('inline shape', () => {

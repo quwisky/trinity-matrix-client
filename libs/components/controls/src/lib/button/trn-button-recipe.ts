@@ -120,6 +120,14 @@ const separatedFocusRing =
 /** A full-width list row: the label starts at the inline start and wraps instead of clipping. */
 const rowShape = 'h-auto w-full justify-start text-start whitespace-normal';
 
+/** A wrapping row keeps its size's height as a floor, so a one-line label is not squashed. */
+const rowMinHeight = {
+  xs: 'min-h-6',
+  sm: 'min-h-7',
+  md: 'min-h-8',
+  lg: 'min-h-9',
+} as const;
+
 /**
  * A solid secondary row, such as Block on the member card. The shared secondary fill is about
  * 1:1 on the overlay, so a row takes the neutral fill that reads there as a filled shape.
@@ -195,6 +203,7 @@ export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
   return hlm(
     buttonVariants({ variant, size }),
     shapeClasses[options.shape],
+    options.shape === 'row' ? rowMinHeight[options.size] : '',
     tone,
     ring,
   );
