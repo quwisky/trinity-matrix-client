@@ -1107,13 +1107,40 @@ describe('RoomsPage room / DM / invite actions', () => {
     return ref;
   }
 
-  function memberInfoOptions(roomId: string, direct = false) {
+  function memberInfoOptions(
+    roomId: string,
+    direct = false,
+    targetName = 'this room',
+  ) {
     return {
       ariaLabel: 'Member info',
       align: 'top',
-      inputs: { member: bob, roomId, owningAccountId: '@me:hs', direct },
+      inputs: {
+        member: bob,
+        roomId,
+        owningAccountId: '@me:hs',
+        direct,
+        targetName,
+      },
     };
   }
+
+  it('names the room in member info, so moderation and its confirmations say which', async () => {
+    const shell = build();
+    (
+      TestBed.inject(RoomLibraryService).rooms as WritableSignal<RoomSummary[]>
+    ).set([{ id: '!r:hs', name: 'Design team' } as RoomSummary]);
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+    memberInfoRef();
+
+    shell.members.onSelectMember(bob);
+
+    expect(surfaceOpen).toHaveBeenCalledWith(
+      MemberInfoComponent,
+      memberInfoOptions('!r:hs', false, 'Design team'),
+    );
+  });
 
   it('opens member info over the roster and starts a DM only if messaged', async () => {
     const shell = build();

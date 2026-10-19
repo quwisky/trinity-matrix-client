@@ -43,7 +43,7 @@ export class MemberActionsService {
 
   /**
    * Show a member's info as a modal surface: a bottom sheet on a phone, a tablet or below
-   * `md`, a centred dialog otherwise (the rule `TrnSurfaceService` applies).
+   * `md`, otherwise a dialog hung from the top (the rule `TrnSurfaceService` applies).
    *
    * The Room surface slot is left alone, so the member list stays underneath. Closing, or a
    * kick or ban landing, returns to that list with the change visible; "Message" closes it
@@ -68,6 +68,10 @@ export class MemberActionsService {
           roomId: owner.roomId,
           owningAccountId: owner.accountId,
           direct: this.rooms.directRoomIds().has(owner.roomId),
+          // A conversation's member list is always a room's; spaces have no conversation.
+          targetName:
+            this.rooms.rooms().find((r) => r.id === owner.roomId)?.name ??
+            'this room',
         },
       },
     );

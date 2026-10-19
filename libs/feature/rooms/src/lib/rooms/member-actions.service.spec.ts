@@ -15,7 +15,10 @@ import {
   RoomModerationService,
   type MemberSummary,
 } from '@trinity/data-access/room-administration';
-import { RoomLibraryService } from '@trinity/data-access/room-library';
+import {
+  RoomLibraryService,
+  type RoomSummary,
+} from '@trinity/data-access/room-library';
 import { TrustVerificationService } from '@trinity/data-access/trust';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { MockProvider } from 'ng-mocks';
@@ -80,6 +83,7 @@ function build({ narrow = false } = {}) {
       MockProvider(RoomShellNavigationService, { onSelectRoom }),
       MockProvider(RoomLibraryService, {
         directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
+        rooms: signal<RoomSummary[]>([]).asReadonly(),
         createDirectMessage,
       }),
       {
