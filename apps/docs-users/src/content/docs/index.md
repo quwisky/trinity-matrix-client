@@ -146,13 +146,16 @@ the new device opens your rooms.
 - **"The code expired."** The code wasn't scanned in time. On the new device, choose
   **Show a new code** and scan again.
 - **"The codes didn't match, so nothing was shared."** Shown on the signed-in device: you chose
-  **They don't match**, or the devices couldn't agree on a secure connection. No keys were
-  shared. Start again from the new device; if the numbers differ again, someone else may have
+  **They don't match**, the devices couldn't agree on a secure connection, or the approval page
+  the new device asked for isn't on your server. No keys were shared. Start again from the new device; if the numbers differ again, someone else may have
   scanned or shown the code, so don't continue.
 - **"Sign-in was cancelled on the other device."** The other device left the screen or
   cancelled.
-- **"That device is already signed in."** The new device is already signed in to your account,
-  so there's nothing to link. A new code doesn't help; sign in another way.
+- **"That device is already signed in."** on the signed-in device, or **"This account is
+  already signed in on this device."** on the new device: the new device is already signed in
+  to your account, so there's nothing to link. A new code doesn't help; sign in another way.
+- **The new device signs in but asks you to verify it.** It signed in, but your keys didn't
+  reach it. Verify it the usual way, with your recovery key or another device.
 - **"Lost connection. Check your network and try again."** One of the devices lost its
   connection to your server. Check both devices' network, then choose **Show a new code**.
 - **"Your server doesn't support QR sign-in."** Sign in another way.
