@@ -1,3 +1,4 @@
+// Keep this file free of imports: the browser journeys import it for the failure copy.
 export type QrSignInFailure =
   | 'expired'
   | 'declined'

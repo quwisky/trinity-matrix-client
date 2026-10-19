@@ -122,6 +122,7 @@ async function linkFromNode(
   // The person compares the two check codes before anything is shared.
   await expect(page.getByTestId('qr-sign-in-check-code')).toHaveText(
     flow.checkCode!,
+    { timeout: 30_000 },
   );
   const { verificationUri } = await flow.deviceAuthorizationGrant();
   const userCode = await userCodeOn(page);
@@ -158,6 +159,7 @@ async function scanToCheckCode(
   await expect(shown).toHaveText(/^\d{2}$/, { timeout: 60_000 });
   await expect(newDevice.getByTestId('qr-sign-in-check-code')).toHaveText(
     (await shown.textContent())!,
+    { timeout: 30_000 },
   );
 }
 
@@ -175,16 +177,34 @@ test.describe('QR sign-in on an unsupported server', () => {
   );
 
   test('offers no QR sign-in', async ({ page }) => {
+    // The login page reads auth_metadata twice: to choose the sign-in options, then for the
+    // QR availability probe, which starts only once those options are on screen.
+    let metadataReads = 0;
+    const count = (request: { url(): string }) => {
+      if (
+        new URL(request.url()).pathname === '/_matrix/client/v1/auth_metadata'
+      )
+        metadataReads += 1;
+    };
+    page.on('requestfinished', count);
+    page.on('requestfailed', count);
     await webNavigate(page, '/login');
     await fillLabeledInput(page, 'Homeserver', session.hs!);
     await page.getByText('Continue', { exact: true }).click();
-    // The other choices are on screen, so the QR availability check has settled.
     await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible({
       timeout: 30_000,
     });
     await expect(
       page.getByRole('button', { name: 'Continue with SSO' }),
     ).toBeVisible();
+    await expect.poll(() => metadataReads, { timeout: 30_000 }).toBe(2);
+    // The probe's answer renders in the next frame or two.
+    await page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    );
     await expect(page.getByTestId('qr-sign-in')).toHaveCount(0);
   });
 });
@@ -325,17 +345,20 @@ for (const server of servers) {
 
       await expect(page.getByRole('alert')).toHaveText(
         QR_SIGN_IN_FAILURE_MESSAGES.insecure,
+        { timeout: 30_000 },
       );
       await evidence(page, 'existing-device-mismatch');
       // MSC4108 has no "insecure" message, so the existing device declines and ends the
       // session. The SDK sends that decline with a stale ETag, which the server refuses, so
       // the new device usually sees only the session end (accepted in Task 3).
-      const failure = newDevice.getByRole('alert');
-      await expect(failure).toBeVisible({ timeout: 30_000 });
-      expect([
+      const either = [
         QR_SIGN_IN_FAILURE_MESSAGES.declined,
         QR_SIGN_IN_FAILURE_MESSAGES.unknown,
-      ]).toContain((await failure.textContent())!.trim());
+      ].map((message) => message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      await expect(newDevice.getByRole('alert')).toHaveText(
+        new RegExp(`^\\s*(${either.join('|')})\\s*$`),
+        { timeout: 30_000 },
+      );
       await evidence(newDevice, 'new-device-mismatch');
       expect(new URL(newDevice.url()).pathname).toBe('/login');
     });

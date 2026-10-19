@@ -868,6 +868,25 @@ describe('QrSignInService.linkByScanning', () => {
       reason: qrSignInFailureOf(reason),
     });
   });
+  it('leaves the session to the new device when sharing the secrets fails', async () => {
+    const { service, flows } = setup((flow) =>
+      flow.failures.set(
+        'shareSecrets',
+        new RendezvousError(
+          'failed',
+          MSC4108FailureReason.UnexpectedMessageReceived,
+        ),
+      ),
+    );
+    const link = service.linkByScanning(existingClient, qrBytes);
+    const run = record(link.state$);
+    await settle();
+    link.confirmCheckCode(true);
+    await settle();
+    expect(run.states.at(-1)?.kind).toBe('failed');
+    expect(flows[0].close).not.toHaveBeenCalled();
+  });
+
   it('refuses, before any grant or secret, keys that are not the published identity', async () => {
     const { service, flows, identity } = setup();
     identity.holdsPublishedIdentity.mockReturnValue(of(false));
