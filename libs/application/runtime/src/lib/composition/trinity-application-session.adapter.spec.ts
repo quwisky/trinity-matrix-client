@@ -55,6 +55,7 @@ import {
 import {
   TrustAccountStatusService,
   TrustLifetime,
+  TrustUsersService,
   type TrustCapabilityHealth,
   type TrustLifetimeEvent,
 } from '@trinity/data-access/trust';
@@ -192,6 +193,7 @@ function setup({
         recover: recoverTrust,
       }),
       MockProvider(TrustAccountStatusService, { run: () => EMPTY }),
+      MockProvider(TrustUsersService, { runProjection: () => EMPTY }),
       MockProvider(DeviceConfirmationCoordinator, { run: () => EMPTY }),
       MockProvider(IdentityLifetime, { run: () => identity }),
       MockProvider(NotificationLifetime, {
@@ -551,6 +553,25 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     lifetime.unsubscribe();
     expect(accountTrust.observed).toBe(false);
+  });
+
+  it("retains other users' trust for the whole session", () => {
+    const test = setup();
+    const userTrust = new Subject<never>();
+    vi.spyOn(
+      TestBed.inject(TrustUsersService),
+      'runProjection',
+    ).mockReturnValue(userTrust);
+    const readiness = new Subject<void>();
+
+    lifetime = test.adapter.run(readiness).subscribe();
+    expect(userTrust.observed).toBe(true);
+
+    readiness.next();
+    expect(userTrust.observed).toBe(true);
+
+    lifetime.unsubscribe();
+    expect(userTrust.observed).toBe(false);
   });
 
   it('runs the new-device check from before any sign-in until the session ends', () => {
