@@ -52,22 +52,27 @@ export class MemberRolePickerComponent {
     }),
   );
 
-  /** The checked role; resets to the current one whenever the real role changes. */
-  protected readonly pending = linkedSignal(
+  /**
+   * The checked role's level. It resets only when the real role changes: callers rebuild
+   * `options` on every room update, which must not drop an unapplied pick.
+   */
+  private readonly pending = linkedSignal(() => this.current());
+
+  protected readonly selected = computed(
     () =>
-      this.options().find((option) => option.level === this.current()) ?? null,
+      this.options().find((option) => option.level === this.pending()) ?? null,
   );
 
   protected readonly unchanged = computed(
-    () => (this.pending()?.level ?? this.current()) === this.current(),
+    () => (this.selected()?.level ?? this.current()) === this.current(),
   );
 
   protected pick(option: AssignableMemberRole): void {
-    this.pending.set(option);
+    this.pending.set(option.level);
   }
 
   protected apply(): void {
-    const option = this.pending();
+    const option = this.selected();
     if (
       !option ||
       option.level === this.current() ||

@@ -103,6 +103,21 @@ describe('MemberRolePickerComponent', () => {
     expect(radio('Moderator').checked).toBe(false);
   });
 
+  it('keeps a picked role when the options array is replaced with the same roles', async () => {
+    const { fixture } = await build(0);
+    radio('Moderator').click();
+    await waitFor(() => expect(applyButton().disabled).toBe(false));
+
+    fixture.componentRef.setInput(
+      'options',
+      ASSIGNABLE_MEMBER_ROLES.map((role) => ({ ...role })),
+    );
+    await fixture.whenStable();
+
+    expect(radio('Moderator').checked).toBe(true);
+    expect(applyButton().disabled).toBe(false);
+  });
+
   it('options keep data-testid member-info-role-<level>', async () => {
     const { container } = await build();
     for (const { level } of ASSIGNABLE_MEMBER_ROLES) {
