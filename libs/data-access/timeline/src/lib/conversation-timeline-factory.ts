@@ -5,6 +5,7 @@ import {
   createEnvironmentInjector,
   inject,
 } from '@angular/core';
+import type { Observable } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ConversationActionContextService } from './conversation-action-context.service';
 import type { ConversationKey } from './conversation-messages';
@@ -71,6 +72,8 @@ export interface ConversationTimelineController {
    * what `guard` names as well.
    */
   trimWhileHidden(guard: TrimGuard): void;
+  /** Page the room back in after its live timeline was rewound; see {@link TimelineService.refill}. */
+  refill(depth: number): Observable<void>;
   resources(): ConversationResources;
 }
 
@@ -125,6 +128,7 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       threads,
       pins,
       search,
+      refill: (depth) => timeline.refill(depth),
       setVisible: (visible) => {
         timeline.setVisible(visible);
         // After the timeline: loadOlder() no-ops while hidden, so readiness must resume second.

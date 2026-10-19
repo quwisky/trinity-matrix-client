@@ -4,19 +4,25 @@ import {
   ClientEvent,
   Direction,
   EventType,
+  KnownMembership,
   MatrixEvent,
+  MatrixEventEvent,
+  NotificationCountType,
   Room,
   SyncState,
   createClient,
   type MatrixClient,
 } from 'matrix-js-sdk';
+import { EMPTY, Observable, concatWith, defer, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ConversationRuntime } from './conversation-runtime.service';
 import { TRIM_HIGH_WATER, TRIM_KEEP } from './live-timeline-trim';
 import { LiveTimelineTrimmer } from './live-timeline-trimmer.service';
+import { scrollbackLive } from './live-scrollback';
 
 const ALICE = '@alice:hs';
+const MALLORY = '@mallory:hs';
 
 function message(roomId: string, n: number): MatrixEvent {
   return new MatrixEvent({
@@ -38,6 +44,7 @@ function setup() {
   });
   const rooms = ['!quiet:hs', '!busy:hs', '!open:hs'].map((roomId) => {
     const room = new Room(roomId, client, ALICE);
+    room.updateMyMembership(KnownMembership.Join);
     room.getLiveTimeline().setPaginationToken('start', Direction.Backward);
     client.store.storeRoom(room);
     return room;
@@ -47,6 +54,7 @@ function setup() {
   const held = new Set(['!open:hs']);
   const errors = { handleError: vi.fn() };
   const trimHeld = vi.fn();
+  const refillHeld = vi.fn((): Observable<void> => EMPTY);
   const windowHidden = signal(false);
   const focused = signal<{ key: { accountId: string; roomId: string } } | null>(
     { key: { accountId: ALICE, roomId: '!open:hs' } },
@@ -66,6 +74,7 @@ function setup() {
           holds: (accountId: string, roomId: string) =>
             accountId === ALICE && held.has(roomId),
           trimHeld,
+          refillHeld,
           windowHidden: windowHidden.asReadonly(),
           focused: focused.asReadonly(),
         },
@@ -99,6 +108,7 @@ function setup() {
     held,
     errors,
     trimHeld,
+    refillHeld,
     windowHidden,
     sync,
     loaded,
@@ -283,5 +293,235 @@ describe('LiveTimelineTrimmer', () => {
     expect(errors.handleError).toHaveBeenCalledOnce();
     expect(errors.handleError).toHaveBeenCalledWith(failure);
     running.unsubscribe();
+  });
+
+  describe('after an unblock', () => {
+    const ignoring = (...userIds: string[]) =>
+      new MatrixEvent({
+        type: EventType.IgnoredUserList,
+        content: {
+          ignored_users: Object.fromEntries(userIds.map((id) => [id, {}])),
+        },
+      });
+
+    function started() {
+      const context = setup();
+      const { client, trimmer, accountIds } = context;
+      const busy = client.getRoom('!busy:hs')!;
+      busy.currentState.setStateEvents([
+        new MatrixEvent({
+          type: EventType.RoomMember,
+          event_id: '$mallory-join',
+          room_id: busy.roomId,
+          sender: MALLORY,
+          state_key: MALLORY,
+          content: { membership: 'join' },
+        }),
+      ]);
+      const page = vi
+        .spyOn(client, 'createMessagesRequest')
+        .mockResolvedValue({ chunk: [], start: 's' });
+      const running = trimmer.run().subscribe();
+      accountIds.set([ALICE]);
+      TestBed.tick();
+      const timelines = () =>
+        new Map(
+          client
+            .getRooms()
+            .map((room) => [room.roomId, room.getLiveTimeline()]),
+        );
+      return { ...context, page, running, timelines };
+    }
+
+    it('rewinds the rooms the person may have written in, once, at the next sync', async () => {
+      const { client, refillHeld, page, running, sync, loaded, timelines } =
+        started();
+      await sync();
+      client.emit(ClientEvent.AccountData, ignoring(), ignoring(MALLORY));
+      const before = timelines();
+      expect(loaded('!busy:hs')).toBe(10);
+
+      await sync();
+
+      const after = timelines();
+      expect(after.get('!quiet:hs')).toBe(before.get('!quiet:hs'));
+      expect(loaded('!busy:hs')).toBe(0);
+      expect(loaded('!open:hs')).toBe(0);
+      expect(
+        after.get('!open:hs')!.getPaginationToken(Direction.Backward),
+      ).toBe('s20');
+      expect(page).toHaveBeenCalledExactlyOnceWith(
+        '!busy:hs',
+        's20',
+        30,
+        Direction.Backward,
+      );
+      expect(refillHeld).toHaveBeenCalledExactlyOnceWith(ALICE, '!open:hs', 20);
+
+      await sync();
+      expect(page).toHaveBeenCalledOnce();
+      expect(refillHeld).toHaveBeenCalledOnce();
+      running.unsubscribe();
+    });
+
+    it('rewinds nothing for a block, the list as first loaded, or an unblock the server never echoed', async () => {
+      const { client, refillHeld, page, running, sync, timelines } = started();
+      client.emit(ClientEvent.AccountData, ignoring(MALLORY), undefined);
+      client.emit(
+        ClientEvent.AccountData,
+        ignoring(MALLORY, '@eve:hs'),
+        ignoring(MALLORY),
+      );
+      client.emit(
+        ClientEvent.AccountData,
+        new MatrixEvent({ type: EventType.Direct, content: {} }),
+        new MatrixEvent({
+          type: EventType.Direct,
+          content: { [MALLORY]: ['!busy:hs'] },
+        }),
+      );
+      const before = timelines();
+
+      await sync();
+
+      expect(timelines()).toEqual(before);
+      expect(page).not.toHaveBeenCalled();
+      expect(refillHeld).not.toHaveBeenCalled();
+      running.unsubscribe();
+    });
+
+    it('leaves a room the account has not joined', async () => {
+      const { client, page, running, sync } = started();
+      client.getRoom('!busy:hs')!.updateMyMembership(KnownMembership.Leave);
+      client.emit(ClientEvent.AccountData, ignoring(), ignoring(MALLORY));
+
+      await sync();
+
+      expect(page).not.toHaveBeenCalled();
+      running.unsubscribe();
+    });
+
+    it('counts an unread message paged in again once, and a hidden one that is unread', async () => {
+      const { client, page, running, sync, loaded } = started();
+      const busy = client.getRoom('!busy:hs')!;
+      await sync();
+      busy.addReceipt(
+        new MatrixEvent({
+          type: EventType.Receipt,
+          room_id: busy.roomId,
+          content: {
+            [message(busy.roomId, 5).getId()!]: {
+              'm.read': { [ALICE]: { ts: 5 } },
+            },
+          },
+        }),
+      );
+      // What the SDK's own decryption listener reads to count each unread event.
+      vi.spyOn(client, 'getPushActionsForEvent').mockReturnValue({
+        notify: true,
+        tweaks: { highlight: true },
+      });
+      const hidden = new MatrixEvent({
+        event_id: '$hidden',
+        room_id: busy.roomId,
+        type: 'm.room.message',
+        sender: MALLORY,
+        origin_server_ts: 11,
+        content: { msgtype: 'm.text', body: 'hidden' },
+      });
+      page.mockResolvedValue({
+        start: 's20',
+        chunk: [
+          hidden.event,
+          ...Array.from(
+            { length: 10 },
+            (_, i) => message(busy.roomId, 10 - i).event,
+          ),
+        ],
+      } as Awaited<ReturnType<MatrixClient['createMessagesRequest']>>);
+      let decryptionDone!: () => void;
+      const decrypting = new Promise<void>((resolve) => {
+        decryptionDone = resolve;
+      });
+      vi.spyOn(MatrixEvent.prototype, 'getDecryptionPromise').mockReturnValue(
+        decrypting,
+      );
+      client.emit(ClientEvent.AccountData, ignoring(), ignoring(MALLORY));
+      busy.setUnreadNotificationCount(NotificationCountType.Total, 15);
+      busy.setUnreadNotificationCount(NotificationCountType.Highlight, 15);
+
+      // The rewind follows this sync, whose events were counted like the earlier ones.
+      await sync();
+      await vi.waitFor(() => expect(loaded('!busy:hs')).toBe(11));
+      const counts = () => [
+        busy.getUnreadNotificationCount(NotificationCountType.Total),
+        busy.getUnreadNotificationCount(NotificationCountType.Highlight),
+      ];
+      const decrypt = (event: MatrixEvent) =>
+        client.emit(MatrixEventEvent.Decrypted, event);
+      const pagedIn = busy.getLiveTimeline().getEvents();
+      const again = pagedIn.filter((event) => event.getId() !== '$hidden');
+
+      for (const event of again) decrypt(event);
+      expect(counts()).toEqual([15, 15]);
+
+      decrypt(pagedIn.find((event) => event.getId() === '$hidden')!);
+      expect(counts()).toEqual([16, 16]);
+
+      // Once the page has decrypted, the room counts as usual again.
+      decryptionDone();
+      await vi.waitFor(() => {
+        decrypt(again.at(-1)!);
+        expect(counts()[0]).toBeGreaterThan(16);
+      });
+      running.unsubscribe();
+    });
+
+    it('holds the counts until a page that landed has decrypted, when a later page fails', async () => {
+      const { client, errors, page, refillHeld, running, sync } = started();
+      const open = client.getRoom('!open:hs')!;
+      await sync();
+      vi.spyOn(client, 'getPushActionsForEvent').mockReturnValue({
+        notify: true,
+        tweaks: { highlight: true },
+      });
+      page.mockResolvedValue({
+        start: 's20',
+        chunk: Array.from(
+          { length: 10 },
+          (_, i) => message(open.roomId, 10 - i).event,
+        ),
+      } as Awaited<ReturnType<MatrixClient['createMessagesRequest']>>);
+      const failure = new Error('page failed');
+      refillHeld.mockImplementation(() =>
+        defer(() => scrollbackLive(client, open, 30)).pipe(
+          concatWith(throwError(() => failure)),
+        ),
+      );
+      let decryptionDone!: () => void;
+      const decrypting = new Promise<void>((resolve) => {
+        decryptionDone = resolve;
+      });
+      vi.spyOn(MatrixEvent.prototype, 'getDecryptionPromise').mockReturnValue(
+        decrypting,
+      );
+      client.emit(ClientEvent.AccountData, ignoring(), ignoring(MALLORY));
+      open.setUnreadNotificationCount(NotificationCountType.Total, 20);
+
+      await sync();
+      await vi.waitFor(() =>
+        expect(errors.handleError).toHaveBeenCalledWith(failure),
+      );
+      for (const event of open.getLiveTimeline().getEvents()) {
+        client.emit(MatrixEventEvent.Decrypted, event);
+      }
+
+      expect(open.getLiveTimeline().getEvents()).toHaveLength(10);
+      expect(open.getUnreadNotificationCount(NotificationCountType.Total)).toBe(
+        20,
+      );
+      decryptionDone();
+      running.unsubscribe();
+    });
   });
 });

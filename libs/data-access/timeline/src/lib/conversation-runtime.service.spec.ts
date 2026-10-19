@@ -169,6 +169,7 @@ function setup(
           history.set(released() ? 'released' : 'released-while-attached'),
         ),
         trimWhileHidden: vi.fn(),
+        refill: vi.fn(() => of(undefined)),
         resources: () => ({ listenerCount: 11, retainedBytes: 64 }),
         visible,
         released,
@@ -639,6 +640,22 @@ describe('ConversationRuntime', () => {
     expect(a.state()).toBe('retired');
     expect(controller('!a:example.org').released()).toBe(true);
     expect(errors.handleError).toHaveBeenCalledWith(failure);
+  });
+
+  it('pages a rewound room back in through the handle that holds it, and only that one', async () => {
+    const { runtime, controller } = setup();
+    runtime.focus({ accountId: ALICE, roomId: '!a:example.org' });
+
+    await firstValueFrom(runtime.refillHeld(ALICE, '!a:example.org', 40), {
+      defaultValue: undefined,
+    });
+    await firstValueFrom(runtime.refillHeld(BOB, '!a:example.org', 40), {
+      defaultValue: undefined,
+    });
+
+    expect(controller('!a:example.org').refill).toHaveBeenCalledExactlyOnceWith(
+      40,
+    );
   });
 
   describe('while the window is hidden', () => {

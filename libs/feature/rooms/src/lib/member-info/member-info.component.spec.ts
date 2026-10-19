@@ -914,9 +914,7 @@ describe('MemberInfoComponent', () => {
 
     expect(unignore).toHaveBeenCalledWith('@bob:hs');
     expect(cmp.ignored()).toBe(false);
-    expect(screen.getByRole('status').textContent?.trim()).toBe(
-      'Unblocked. Their earlier messages appear after you reload.',
-    );
+    expect(screen.getByRole('status').textContent?.trim()).toBe('Unblocked.');
     expect(toastShow).not.toHaveBeenCalled();
   });
 

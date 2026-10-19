@@ -24,7 +24,7 @@ import { openNamedRoom as openRoom } from '../../../support/message-composer.mts
 // Covers Settings › Privacy › Blocked users: a member blocked from their card is listed
 // there (IgnoredUsersService.ignoredUsers over m.ignored_user_list), unblocking from the
 // list removes them, and the card follows the same list back to "Block", including changes
-// made on another device. A message sent while blocked shows after unblocking and a reload.
+// made on another device. A message sent while blocked shows once they are unblocked.
 const session = homeserverSession();
 
 async function openMemberCard(page: Page, memberName: string): Promise<void> {
@@ -149,17 +149,13 @@ test.describe('Blocked users in Settings', () => {
 
     await blocked.getByRole('button', { name: `Unblock ${otherName}` }).click();
     await expect(
-      page.getByText(
-        `Unblocked ${otherName}. Their earlier messages appear after you reload.`,
-      ),
+      page.getByText(`Unblocked ${otherName}.`, { exact: true }),
     ).toBeVisible({ timeout: 30_000 });
     await expect(row).toHaveCount(1, { timeout: 30_000 });
     await expect(row).toContainText(elsewhere);
     await closeSettings(page);
 
-    // The server does not resend what it hid while they were blocked; a reload fetches it.
-    await page.reload();
-    await openRoom(page, roomName);
+    // What the server hid while they were blocked appears in the open room, with no reload.
     await expect(hiddenMessage.first()).toBeVisible({ timeout: 30_000 });
 
     await openMemberCard(page, otherName);

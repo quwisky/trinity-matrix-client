@@ -2,15 +2,23 @@ import { ErrorHandler, Injectable, Injector, inject } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import {
   ClientEvent,
+  EventType,
+  KnownMembership,
   SyncState,
   type EventTimeline,
+  type MatrixClient,
+  type MatrixEvent,
   type SyncStateData,
   type Room,
 } from 'matrix-js-sdk';
 import {
   EMPTY,
   Observable,
+  Subscription,
+  catchError,
+  concatWith,
   defer,
+  finalize,
   ignoreElements,
   merge,
   switchMap,
@@ -20,8 +28,18 @@ import { ConversationRuntime } from './conversation-runtime.service';
 import {
   TRIM_HIGH_WATER,
   noteSyncPosition,
+  rewindLiveTimeline,
   trimLiveTimeline,
 } from './live-timeline-trim';
+import { scrollbackLive } from './live-scrollback';
+import {
+  decrypted,
+  heldEventIds,
+  holdUnreadCounts,
+} from './rewind-unread-hold';
+
+/** The page a rewound room nobody has open gets back, so its room-list preview is not blank. */
+const REFILL_PAGE = 30;
 
 /**
  * Keeps the rooms of every live Account bounded while they receive events nobody reads.
@@ -37,6 +55,8 @@ import {
  * soon as the window has been hidden a while, then after each sync. If its trim fails it
  * is reported once and not tried again while open; once nobody has it open, it is trimmed
  * like any other room.
+ *
+ * It also rewinds rooms after the person unblocks someone; see {@link rewind}.
  *
  * Not bounded: a focused room scrolled back, or whose composer replies to or edits an
  * event, keeps what it holds from there on while the window is hidden, until the person
@@ -57,6 +77,51 @@ export class LiveTimelineTrimmer {
       switchMap((ids) => merge(...ids.map((id) => this.bound(id)))),
       ignoreElements(),
     );
+  }
+
+  /**
+   * Rewind every room a Conversation handle holds or one of `userIds` is known to be in,
+   * and page it back in, so it shows their messages. Thread replies stay as they were
+   * until the thread is opened again. A member the room has not lazily loaded is missed.
+   * Unread counts stay as they were, plus the hidden messages that are unread.
+   */
+  private rewind(
+    client: MatrixClient,
+    accountId: string,
+    userIds: readonly string[],
+    syncToken: string,
+    refills: Subscription,
+  ): void {
+    for (const room of client.getRooms()) {
+      // Only a joined room can be paged: the server refuses an invite or a room left.
+      if (room.getMyMembership() !== KnownMembership.Join) continue;
+      const held = this.conversations.holds(accountId, room.roomId);
+      if (!held && !userIds.some((userId) => room.getMember(userId))) continue;
+      try {
+        const depth = room.getLiveTimeline().getEvents().length;
+        const counted = heldEventIds(room);
+        rewindLiveTimeline(room, syncToken);
+        const release = holdUnreadCounts(client, room, counted);
+        const refill = held
+          ? this.conversations.refillHeld(accountId, room.roomId, depth)
+          : defer(() => scrollbackLive(client, room, REFILL_PAGE));
+        refills.add(
+          refill
+            .pipe(
+              // A failed page still waits for the pages before it to decrypt.
+              catchError((error: unknown) => {
+                this.errors.handleError(error);
+                return EMPTY;
+              }),
+              concatWith(defer(() => decrypted(room))),
+              finalize(release),
+            )
+            .subscribe(),
+        );
+      } catch (error: unknown) {
+        this.errors.handleError(error);
+      }
+    }
   }
 
   private bound(accountId: string): Observable<never> {
@@ -88,6 +153,19 @@ export class LiveTimelineTrimmer {
         // scanned again until it receives an event. A trim or a gappy sync replaces the
         // timeline, which starts unseen.
         const seen = new WeakMap<EventTimeline, TimelineMark>();
+        // The server leaves a blocked person's events out of every sync and page, and an
+        // unblock brings back none of them. Rooms they may have written in are rewound at the
+        // first sync after the server echoed the unblock, so they page back in complete.
+        const unblocked = new Set<string>();
+        const onAccountData = (event: MatrixEvent, previous?: MatrixEvent) => {
+          if (event.getType() !== EventType.IgnoredUserList || !previous)
+            return;
+          const now = ignoredIn(event);
+          for (const userId of ignoredIn(previous)) {
+            if (!now.has(userId)) unblocked.add(userId);
+          }
+        };
+        const refills = new Subscription();
         const onSync = (
           state: SyncState,
           _previous: SyncState | null,
@@ -99,6 +177,10 @@ export class LiveTimelineTrimmer {
             (state !== SyncState.Syncing && state !== SyncState.Prepared)
           ) {
             return;
+          }
+          if (unblocked.size > 0) {
+            this.rewind(client, accountId, [...unblocked], token, refills);
+            unblocked.clear();
           }
           for (const room of client.getRooms()) {
             if (failed.has(room)) continue;
@@ -122,6 +204,7 @@ export class LiveTimelineTrimmer {
             }
           }
         };
+        client.on(ClientEvent.AccountData, onAccountData);
         client.on(ClientEvent.Sync, onSync);
         // The window has just been hidden for a while: trim the open room now rather than
         // at its next event, which may be hours away.
@@ -136,12 +219,19 @@ export class LiveTimelineTrimmer {
           if (room) trimHeld(room);
         });
         return () => {
+          client.off(ClientEvent.AccountData, onAccountData);
           client.off(ClientEvent.Sync, onSync);
           hidden.unsubscribe();
+          refills.unsubscribe();
         };
       });
     });
   }
+}
+
+function ignoredIn(event: MatrixEvent): Set<string> {
+  const users: unknown = event.getContent()['ignored_users'];
+  return new Set(users && typeof users === 'object' ? Object.keys(users) : []);
 }
 
 /** How many events a live timeline held and which came last. */

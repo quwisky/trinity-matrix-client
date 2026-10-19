@@ -241,6 +241,18 @@ export function trimLiveTimeline(
 }
 
 /**
+ * Empty a room's live timeline but for its local echoes, so it pages back in from
+ * `syncToken` (a `next_batch`): what the server now sends, such as the messages of a person
+ * it left out while they were blocked. Like a trim, it leaves threads, unread counts and
+ * receipts alone.
+ */
+export function rewindLiveTimeline(room: Room, syncToken: string): void {
+  const timelineSet = room.getUnfilteredTimelineSet();
+  const pending = timelineSet.getLiveTimeline().getEvents().filter(isPending);
+  rebase(room, timelineSet, pending, syncToken);
+}
+
+/**
  * Replace the live timeline with one holding only `kept`, paging back from `token`: what
  * the SDK does on a gappy sync, except that the kept events (the same objects) carry over.
  *

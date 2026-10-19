@@ -8,7 +8,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { Observable, defer, of } from 'rxjs';
+import { EMPTY, Observable, defer, of } from 'rxjs';
 import {
   MediaPipeline,
   type MediaTransferEvent,
@@ -273,6 +273,22 @@ export class ConversationRuntime {
       kept: intent.kind === 'message' ? [] : [intent.eventId],
       marked: root ? [root] : [],
     });
+  }
+
+  /**
+   * Page a held room back in after its live timeline was rewound: to about `depth` events
+   * while it is focused, one page while it is retained. Cold; completes at once for a room
+   * no handle holds.
+   */
+  refillHeld(
+    accountId: string,
+    roomId: string,
+    depth: number,
+  ): Observable<void> {
+    return defer(
+      () =>
+        this.entry({ accountId, roomId })?.controller.refill(depth) ?? EMPTY,
+    );
   }
 
   retireAll(): void {
