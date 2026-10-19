@@ -46,7 +46,10 @@ export class TrnDialogActions {}
   ],
   templateUrl: './trn-dialog-shell.component.html',
   styleUrl: './trn-dialog-shell.component.scss',
-  host: { '[attr.data-presentation]': 'layout()' },
+  host: {
+    '[attr.data-presentation]': 'layout()',
+    '[style.--trn-overlay-block-start]': 'blockStart',
+  },
 })
 export class TrnDialogShellComponent {
   private readonly ref = inject(TrnDialogRef, { optional: true });
@@ -54,6 +57,8 @@ export class TrnDialogShellComponent {
 
   /** The opener labels its dialog container with this id; a bare shell mints its own. */
   protected readonly titleId = this.ref?.titleId ?? dialogTitleId();
+  /** A top-anchored dialog's offset, which the card's height cap subtracts. */
+  protected readonly blockStart = this.ref?.blockStart ?? null;
   protected readonly actions = contentChild(TrnDialogActions);
   protected readonly layout = computed<TrnOverlaySurfaceLayout>(() => {
     const presentation = this.ref?.presentation;

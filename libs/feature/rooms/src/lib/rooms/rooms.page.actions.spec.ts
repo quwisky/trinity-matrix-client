@@ -1110,6 +1110,7 @@ describe('RoomsPage room / DM / invite actions', () => {
   function memberInfoOptions(roomId: string, direct = false) {
     return {
       ariaLabel: 'Member info',
+      align: 'top',
       inputs: { member: bob, roomId, owningAccountId: '@me:hs', direct },
     };
   }

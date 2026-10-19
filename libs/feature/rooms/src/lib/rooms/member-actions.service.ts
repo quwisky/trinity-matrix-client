@@ -61,6 +61,8 @@ export class MemberActionsService {
       MemberInfoComponent,
       {
         ariaLabel: 'Member info',
+        // Its tabs differ in height; hung from the top, the header and tab strip stay put.
+        align: 'top',
         inputs: {
           member,
           roomId: owner.roomId,

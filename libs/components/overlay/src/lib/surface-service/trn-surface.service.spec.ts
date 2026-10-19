@@ -90,6 +90,20 @@ describe('TrnSurfaceService', () => {
     },
   );
 
+  it('hangs a top-aligned dialog from the top, and still makes a sheet below md', () => {
+    const top = surfaces.open(PlainComponent, { align: 'top' });
+    const centred = surfaces.open(PlainComponent);
+    media.narrow = true;
+    const sheet = surfaces.open(PlainComponent, { align: 'top' });
+    tick();
+
+    expect(top.presentation).toBe('dialog');
+    expect(top.blockStart).toBe('10vh');
+    expect(centred.blockStart).toBeNull();
+    expect(sheet.presentation).toBe('sheet');
+    expect(sheet.blockStart).toBeNull();
+  });
+
   it('anchors a popover on a fine pointer', () => {
     const ref = surfaces.open(PlainComponent, {
       kind: 'popover',

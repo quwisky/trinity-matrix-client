@@ -83,9 +83,9 @@
     text-align: start;
   }
 
-  // A centred dialog or sheet would shift as tabs of different heights swap in; this fits
-  // a moderator's Manage tab (Safety, roles, Change role, Remove, Ban).
-  :host(:not(.member-info--panel)) .member-info__tabs {
+  // A bottom sheet grows upward, so it would shift as tabs of different heights swap in; this
+  // fits a moderator's Manage tab. The desktop dialog is hung from the top and fits its content.
+  [data-presentation='sheet'] .member-info__tabs {
     min-height: 27rem;
   }
 

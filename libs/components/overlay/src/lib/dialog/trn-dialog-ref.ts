@@ -64,14 +64,22 @@ export class TrnDialogRef<R = unknown> {
    */
   readonly titleId: string;
 
+  /**
+   * How far below the viewport top a top-anchored dialog opens; null when it is centred. The
+   * shell shortens the card's height cap by this much, so its end stays on screen.
+   */
+  readonly blockStart: string | null;
+
   constructor(
     private readonly cdkRef: ClosableRef<R>,
     presentation: TrnDialogPresentation = 'dialog',
     titleId = dialogTitleId(),
+    blockStart: string | null = null,
   ) {
     this.closed = cdkRef.closed;
     this.presentation = presentation;
     this.titleId = titleId;
+    this.blockStart = blockStart;
   }
 
   /** Opened non-dismissible: no gesture may close it, only the flow itself. */
