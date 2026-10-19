@@ -290,6 +290,11 @@ for (const server of servers) {
       const room = `QR history ${testResourceId('room')}`;
       const message = `sent before the new device ${testResourceId('msg')}`;
       await device!.sendEncrypted(room, message);
+      const before = new Set(
+        (await device!.client.getDevices()).devices.map(
+          (known) => known.device_id,
+        ),
+      );
 
       const newDevice = await secondaryApp.launch();
       const code = await showCode(newDevice, account.hs);
@@ -314,6 +319,18 @@ for (const server of servers) {
         page.getByRole('heading', { name: 'Device linked' }),
       ).toBeVisible({ timeout: 90_000 });
       await evidence(page, 'existing-device-linked');
+      // "Device linked" means the keys were sent; the Devices list shows when the new
+      // device has used them to cross-sign itself.
+      const linkedId = (await device!.client.getDevices()).devices.find(
+        (other) => !before.has(other.device_id),
+      )?.device_id;
+      expect(linkedId).toBeDefined();
+      await expect(
+        page
+          .getByTestId('device-row')
+          .filter({ hasText: linkedId! })
+          .getByText('Verified', { exact: true }),
+      ).toBeVisible({ timeout: 30_000 });
       // Both devices hold the account's identity, so the new one opens Rooms verified.
       await settleSignIn(newDevice, 'forbid', 90_000);
       await openNamedRoom(newDevice, room);

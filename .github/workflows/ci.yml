@@ -42,7 +42,7 @@ jobs:
         run: node scripts/ci-classify.mjs
       # Whether a pull request touches what the `mas-e2e` and `tuwunel-oauth-e2e` journeys
       # check: sign-in code (QR sign-in's lib is under libs/data-access/auth), the Settings
-      # link-device panel, the matrix-js-sdk or crypto-wasm version, the SDK patch, and the MAS
+      # link-device panel and the Devices list and trust state it reads, the matrix-js-sdk or crypto-wasm version, the SDK patch, and the MAS
       # and Tuwunel OAuth harnesses with those journeys. It is a step here, not an `on.pull_request.paths` filter, so a pull request
       # that skips the journeys still reports the required check. Pushes skip them: the Synapse
       # nightly runs the same journeys against main. The diffs are read into variables first,
@@ -55,7 +55,7 @@ jobs:
           run=false
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             : "${BASE:?pull request has no base sha}"
-            paths='^(libs/data-access/(auth|matrix-client|accounts)/|libs/feature/auth/|libs/platform-native/src/lib/(session|secure)-storage\.service\.ts$|libs/util/matrix/src/lib/session\.model\.ts$|libs/application/runtime/src/lib/composition/application-capability\.providers\.ts$|patches/matrix-js-sdk|e2e/support/homeserver/mas/|e2e/support/homeserver/(Caddyfile|start\.mjs|stop\.mjs|constants\.mjs|kind\.mts|paths\.mjs)$|e2e/browser/journeys/accounts/mas-[^/]*\.spec\.mts$|e2e/browser/support/mas\.mts$|e2e/browser/journeys/accounts/qr-sign-in\.spec\.mts$|e2e/browser/support/qr-existing-device\.mts$|e2e/support/qr-camera\.mts$|e2e/support/homeserver/tuwunel-oauth/|libs/feature/settings/src/lib/devices/link-device/)'
+            paths='^(libs/data-access/(auth|matrix-client|accounts)/|libs/feature/auth/|libs/platform-native/src/lib/(session|secure)-storage\.service\.ts$|libs/util/matrix/src/lib/session\.model\.ts$|libs/application/runtime/src/lib/composition/application-capability\.providers\.ts$|patches/matrix-js-sdk|e2e/support/homeserver/mas/|e2e/support/homeserver/(Caddyfile|start\.mjs|stop\.mjs|constants\.mjs|kind\.mts|paths\.mjs)$|e2e/browser/journeys/accounts/mas-[^/]*\.spec\.mts$|e2e/browser/support/mas\.mts$|e2e/browser/journeys/accounts/qr-sign-in\.spec\.mts$|e2e/browser/support/qr-existing-device\.mts$|e2e/support/qr-camera\.mts$|e2e/support/homeserver/tuwunel-oauth/|libs/feature/settings/src/lib/devices/link-device/|libs/data-access/trust/|libs/feature/settings/src/lib/devices/devices-section\.component)'
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
             # A version bump rewrites the matrix-js-sdk or crypto-wasm entries in these manifests.
             manifests=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json pnpm-lock.yaml pnpm-workspace.yaml)

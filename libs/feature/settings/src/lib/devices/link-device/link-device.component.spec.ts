@@ -207,6 +207,13 @@ describe('LinkDeviceComponent', () => {
     await emit({ kind: 'done' });
 
     expect(screen.getByRole('heading', { name: 'Device linked' })).toBeTruthy();
+    // Only the keys were sent; the new device has not yet confirmed it imported them.
+    expect(
+      screen.getByText(
+        'Your encryption keys were sent to your new device. It finishes setting up there.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/can read your encrypted messages/)).toBeNull();
   });
 
   it('moves focus into each step', async () => {

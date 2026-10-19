@@ -512,6 +512,8 @@ describe('MAS sign-in journeys', () => {
       'e2e/support/homeserver/tuwunel-oauth/tuwunel.toml',
       'libs/data-access/auth/src/lib/qr-sign-in/qr-sign-in.adapter.ts',
       'libs/feature/settings/src/lib/devices/link-device/link-device.component.ts',
+      'libs/data-access/trust/src/lib/trust-devices.service.ts',
+      'libs/feature/settings/src/lib/devices/devices-section.component.html',
     ])('runs the journeys when a pull request changes %s', (path) => {
       expect(detect({ [path]: 'changed\n' })).toBe('run=true');
     });
@@ -520,6 +522,7 @@ describe('MAS sign-in journeys', () => {
       'libs/data-access/media/src/index.ts',
       'libs/data-access/accounts-archive/src/index.ts',
       'libs/feature/rooms/src/index.ts',
+      'libs/feature/settings/src/lib/devices/device-row.component.ts',
       'patches/pagefind@1.5.3.patch',
       'e2e/support/homeserver/synapse/adapter.mjs',
       'e2e/support/homeserver/lease.mts',
