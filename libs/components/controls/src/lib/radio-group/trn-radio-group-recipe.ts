@@ -1,6 +1,7 @@
 import { hlm } from '@trinity/helm/utils';
 
-export type TrnRadioGroupLayout = 'list' | 'segmented';
+/** `boxed` is a list inside a bordered box, each option's description at the end of its line. */
+export type TrnRadioGroupLayout = 'list' | 'segmented' | 'boxed';
 
 const selectedTone =
   'data-[state=selected]:bg-[var(--trinity-state-selected-surface)] data-[state=selected]:text-[var(--trinity-state-selected-foreground)]';
@@ -57,7 +58,18 @@ export function trnRadioGroupRecipe(layout: TrnRadioGroupLayout): string {
     );
   }
 
+  if (layout === 'boxed') {
+    return 'grid rounded-[var(--trinity-shape-control-radius)] border border-[var(--trinity-border-overlay)] px-3 py-1';
+  }
+
   return 'grid gap-2';
+}
+
+/** The label and description: stacked, or on one line with the description at the end. */
+export function trnRadioTextRecipe(layout: TrnRadioGroupLayout): string {
+  return layout === 'boxed'
+    ? 'flex min-w-0 flex-1 items-baseline justify-between gap-3 [&>small]:text-end'
+    : 'flex min-w-0 flex-col items-start gap-0.5';
 }
 
 /**

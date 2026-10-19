@@ -122,7 +122,9 @@ describe('TrnRadioComponent', () => {
 
 describe('TrnRadioGroupComponent', () => {
   it('limits the structural layout', () => {
-    expectTypeOf<TrnRadioGroupLayout>().toEqualTypeOf<'list' | 'segmented'>();
+    expectTypeOf<TrnRadioGroupLayout>().toEqualTypeOf<
+      'list' | 'segmented' | 'boxed'
+    >();
   });
 
   it('renders the layout and invalid state on the radiogroup', async () => {
@@ -218,6 +220,24 @@ describe('TrnRadioGroupComponent', () => {
       dimmed.some((node) => node.textContent?.includes('Use system')),
     ).toBe(true);
     expect(dimmed.some((node) => node.querySelector('small'))).toBe(false);
+  });
+
+  it('boxes a list and puts each description at the end of its option line', async () => {
+    const { container } = await render(TrnRadioGroupComponent<string>, {
+      inputs: { layout: 'boxed', options: OPTIONS },
+    });
+    const group = container.querySelector('[role=radiogroup]')!;
+    const description = container.querySelector('small')!;
+    const text = description.parentElement!;
+
+    expect(group.className).toContain('border');
+    expect(group.className).toContain('rounded-');
+    expect(text.className).toContain('justify-between');
+    expect(text.className).not.toContain('flex-col');
+    // The radios still show; only segmented hides them.
+    expect(
+      container.querySelector('label [aria-hidden=true]')!.className,
+    ).not.toContain('hidden');
   });
 
   it('marks the active option in the segmented presentation', async () => {

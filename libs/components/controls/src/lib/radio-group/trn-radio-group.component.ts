@@ -14,6 +14,7 @@ import {
   trnRadioIndicatorDotRecipe,
   trnRadioIndicatorRecipe,
   trnRadioOptionRecipe,
+  trnRadioTextRecipe,
   type TrnRadioGroupLayout,
 } from './trn-radio-group-recipe';
 
@@ -94,7 +95,7 @@ export interface TrnRadioOption<T> {
           >
             <span [class]="indicatorDotClass(option.value === value())"></span>
           </span>
-          <span class="flex min-w-0 flex-col items-start gap-0.5">
+          <span [class]="textClass()">
             <span [class]="disabledDim">{{ option.label }}</span>
             @if (option.description) {
               <small [class]="descriptionClass">
@@ -115,6 +116,9 @@ export class TrnRadioGroupComponent<T> {
   );
   protected readonly indicatorClass = computed(() =>
     trnRadioIndicatorRecipe(this.layout(), this.invalid()),
+  );
+  protected readonly textClass = computed(() =>
+    trnRadioTextRecipe(this.layout()),
   );
   protected readonly descriptionClass = trnRadioDescriptionRecipe();
   protected readonly disabledDim = trnRadioDisabledDim;

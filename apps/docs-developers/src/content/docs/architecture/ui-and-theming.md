@@ -86,7 +86,7 @@ A component that paints the attention surface (`--trinity-state-attention-surfac
 
 Inside that element, a solid primary `trnBtn` inverts to the `--trinity-state-attention-action-*` roles, because its normal accent fill would vanish on the accent ground. In an accent overlay this includes the overlay's own primary action, which is the button that needs it. The surface also switches every focusable inside it, including buttons of any presentation, fields, select triggers and links, to `--trinity-focus-ring-on-attention`, because they all sit on the accent and the default ring fails against it. A solid primary action keeps its [separated ring](#button-focus-ring) there, in that colour. The select trigger replaces Helm's half-transparent `--ring` halo with that ring, since the halo falls below 3:1 on the dark accents. Menus and tooltips opened from inside render in a portal outside the surface and keep their normal look.
 
-Form controls are supported there too. A `trnInput` or `trnTextarea` field (including a file input's button label), a `trn-radio-group` in either layout, a `trn-select` trigger, a `trn-checkbox`, a `trn-switch` and a primary or secondary outline `trnBtn` sit on the accent, so they switch to the `--trinity-state-attention-control-*` roles:
+Form controls are supported there too. A `trnInput` or `trnTextarea` field (including a file input's button label), a `trn-radio-group` in its `list` or `segmented` layout, a `trn-select` trigger, a `trn-checkbox`, a `trn-switch` and a primary or secondary outline `trnBtn` sit on the accent, so they switch to the `--trinity-state-attention-control-*` roles:
 
 | Role                                              | Used for                                                                                                    | Floor against the attention surface |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------- |
@@ -106,6 +106,7 @@ These have no attention roles yet, so keep them off attention surfaces:
 - primary link buttons, whose label is the accent and so disappears on it;
 - secondary ghost, link and solid buttons;
 - tile buttons (`shape="tile"`), whose primary square is the accent and whose neutral square has no attention role;
+- the `boxed` layout of `trn-radio-group`: a list inside a `--trinity-border-overlay` box, with each option's description (such as why it is unavailable) at the end of its line, as in the member card's role picker;
 - the hover fill of a primary ghost button, which is a neutral fill;
 - `trnLabel` and `trn-field-label`, which keep `--trinity-text-bright`, `--trinity-text-muted` and `text-danger`.
 
