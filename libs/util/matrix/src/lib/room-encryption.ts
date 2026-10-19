@@ -1,9 +1,52 @@
-import type { MatrixEvent, Room } from 'matrix-js-sdk';
+import {
+  EventType,
+  MatrixEvent,
+  type IContent,
+  type Room,
+} from 'matrix-js-sdk';
 import { validReplacement } from './replacement';
 
 /** The crypto-store half of the SDK's own "encrypt this send?" test. */
 interface RoomEncryptionProbe {
   isEncryptionEnabledInRoom(roomId: string): Promise<boolean>;
+}
+
+/**
+ * The SDK's crypto backend (`RustCrypto`) takes `m.room.encryption` through this method, which
+ * only its sync loop calls and the exported `CryptoApi` type leaves out.
+ */
+interface RoomEncryptionSink extends RoomEncryptionProbe {
+  onCryptoEvent(room: Room, event: MatrixEvent): Promise<void>;
+}
+
+/**
+ * Configure `crypto` for a room's `m.room.encryption` `content` as sync would, so this device
+ * encrypts there even when sync never delivers the event (Tuwunel's `state_after` race), then
+ * read the crypto store back. Resolves whether the room is now recorded as encrypted; rejects
+ * when the backend lacks the method or refuses the content.
+ */
+export async function applyRoomEncryption(
+  crypto: unknown,
+  room: Room,
+  content: IContent,
+): Promise<boolean> {
+  const sink = crypto as Partial<RoomEncryptionSink> | null | undefined;
+  if (
+    typeof sink?.onCryptoEvent !== 'function' ||
+    typeof sink.isEncryptionEnabledInRoom !== 'function'
+  ) {
+    throw new Error('The crypto backend cannot apply room encryption.');
+  }
+  await sink.onCryptoEvent(
+    room,
+    new MatrixEvent({
+      type: EventType.RoomEncryption,
+      state_key: '',
+      room_id: room.roomId,
+      content,
+    }),
+  );
+  return sink.isEncryptionEnabledInRoom(room.roomId);
 }
 
 /**

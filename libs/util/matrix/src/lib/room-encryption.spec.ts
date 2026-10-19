@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RoomEncryptionFlags, isRoomEncrypted } from './room-encryption';
+import type { MatrixEvent } from 'matrix-js-sdk';
+import {
+  RoomEncryptionFlags,
+  applyRoomEncryption,
+  isRoomEncrypted,
+} from './room-encryption';
 
 const room = (stateSaysEncrypted: boolean, roomId = '!r:hs') => ({
   roomId,
@@ -144,5 +149,58 @@ describe('isRoomEncrypted', () => {
     await expect(isRoomEncrypted(room(false), null)).resolves.toBe(true);
     await expect(isRoomEncrypted(room(false), undefined)).resolves.toBe(true);
     await expect(isRoomEncrypted(room(false), failing)).resolves.toBe(true);
+  });
+});
+
+describe('applyRoomEncryption', () => {
+  // The SDK hands m.room.encryption to its crypto backend only from the sync loop, through a
+  // method its exported CryptoApi type leaves out. An upgrade that renames it must fail here.
+  it('relies on a method the installed RustCrypto backend still has', async () => {
+    const { RustCrypto } =
+      await import('matrix-js-sdk/lib/rust-crypto/rust-crypto');
+
+    expect(typeof RustCrypto.prototype.onCryptoEvent).toBe('function');
+    expect(typeof RustCrypto.prototype.isEncryptionEnabledInRoom).toBe(
+      'function',
+    );
+  });
+
+  it('hands the backend the content as an m.room.encryption state event and reads the store back', async () => {
+    const target = room(false);
+    const onCryptoEvent = vi.fn((_room: unknown, _event: MatrixEvent) =>
+      Promise.resolve(),
+    );
+    const crypto = {
+      onCryptoEvent,
+      isEncryptionEnabledInRoom: () => Promise.resolve(true),
+    };
+
+    await expect(
+      applyRoomEncryption(crypto, target as never, {
+        algorithm: 'm.megolm.v1.aes-sha2',
+      }),
+    ).resolves.toBe(true);
+
+    const [appliedRoom, event] = onCryptoEvent.mock.calls[0] ?? [];
+    expect(appliedRoom).toBe(target);
+    expect(event?.getType()).toBe('m.room.encryption');
+    expect(event?.getStateKey()).toBe('');
+    expect(event?.getRoomId()).toBe('!r:hs');
+    expect(event?.getContent()).toEqual({ algorithm: 'm.megolm.v1.aes-sha2' });
+  });
+
+  it('rejects a crypto backend without the method', async () => {
+    const content = { algorithm: 'm.megolm.v1.aes-sha2' };
+
+    await expect(
+      applyRoomEncryption(
+        { isEncryptionEnabledInRoom: () => Promise.resolve(true) },
+        room(false) as never,
+        content,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      applyRoomEncryption(null, room(false) as never, content),
+    ).rejects.toThrow();
   });
 });

@@ -51,6 +51,7 @@ export function fakeClient(baseUrl = 'https://hs.example') {
     stopClient: vi.fn(),
     clearStores: vi.fn().mockResolvedValue(undefined),
     getCrypto: vi.fn().mockReturnValue(undefined),
+    getRooms: vi.fn().mockReturnValue([]),
   };
 }
 

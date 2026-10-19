@@ -24,8 +24,10 @@ const NO_PERMISSION: ActionAvailability = {
   available: false,
   reason: 'Only people who can change room settings can turn on encryption.',
 };
+const LATE_STATUS =
+  'Encryption is on for this room, but not yet on this device.';
 const LATE =
-  "Encryption is on, but this device hasn't caught up yet. Messages you send from here may not be encrypted.";
+  "This device couldn't apply it, so messages you send from here may not be encrypted.";
 
 interface State {
   readonly encrypted: boolean | null;
@@ -208,10 +210,12 @@ describe('RoomSettingsEncryptionComponent', () => {
     expect(withdrawn).toHaveBeenCalled();
   });
 
-  it('keeps the focused button in place, busy, until sync says it is on', async () => {
+  it('keeps the focused button in place, busy, until this device has applied it', async () => {
     const pending = new Subject<void>();
-    const { fixture, button, press, status, announced, turnOn, update } =
-      await build({ encrypted: false }, { turnOn: () => pending });
+    const { fixture, button, press, status, announced, turnOn } = await build(
+      { encrypted: false },
+      { turnOn: () => pending },
+    );
 
     press();
     const busy = button();
@@ -224,14 +228,6 @@ describe('RoomSettingsEncryptionComponent', () => {
     pending.complete();
     fixture.detectChanges();
 
-    expect(button()).toBe(busy);
-    expect(document.activeElement).toBe(busy);
-    expect(status()).toBe(
-      'Messages in this room are not end-to-end encrypted.',
-    );
-
-    update({ encrypted: true });
-
     expect(button()).toBeNull();
     expect(status()).toBe(
       "Messages in this room are end-to-end encrypted. This can't be turned off.",
@@ -240,6 +236,20 @@ describe('RoomSettingsEncryptionComponent', () => {
     expect(document.activeElement?.getAttribute('data-testid')).toBe(
       'room-settings-encryption',
     );
+  });
+
+  it('shows it on when sync delivers it before the request settles', async () => {
+    const pending = new Subject<void>();
+    const { button, press, announced, update } = await build(
+      { encrypted: false },
+      { turnOn: () => pending },
+    );
+
+    press();
+    update({ encrypted: true });
+
+    expect(button()).toBeNull();
+    expect(announced()).toBe('Encryption is on.');
   });
 
   it('ignores presses while busy', async () => {
@@ -280,44 +290,121 @@ describe('RoomSettingsEncryptionComponent', () => {
     expect(button()?.getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('warns after 15 s without sync that this device may still send unencrypted', async () => {
-    vi.useFakeTimers();
-    const { fixture, button, press, text, announced, update } = await build({
-      encrypted: false,
-    });
+  it('warns that this device may still send unencrypted when it could not apply it, and retries without asking again', async () => {
+    let failures = 1;
+    const notApplied = () =>
+      new RoomAdministrationError(
+        {
+          kind: 'rejected',
+          failure: 'partial-update',
+          recovery: 'review-room-state',
+          operation: 'turn-on-encryption',
+        },
+        "Encryption is on, but this device couldn't apply it.",
+      );
+    const { button, press, text, status, announced, confirm, turnOn } =
+      await build(
+        { encrypted: false },
+        {
+          turnOn: () =>
+            failures-- > 0 ? throwError(notApplied) : of(undefined),
+        },
+      );
 
     press();
-    vi.advanceTimersByTime(14_999);
-    fixture.detectChanges();
-    expect(text('room-settings-encryption-late')).toBe('');
 
-    vi.advanceTimersByTime(1);
-    fixture.detectChanges();
-
+    expect(status()).toBe(LATE_STATUS);
     expect(text('room-settings-encryption-late')).toBe(LATE);
-    expect(announced()).toBe(LATE);
+    expect(announced()).toBe(`${LATE_STATUS} ${LATE}`);
+    expect(text('room-settings-encryption-error')).toBe('');
+    expect(button()?.textContent?.trim()).toBe('Try again on this device');
+    expect(button()?.getAttribute('aria-disabled')).toBeNull();
+    expect(document.activeElement).toBe(button());
+
+    press();
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(turnOn).toHaveBeenCalledTimes(2);
+    expect(text('room-settings-encryption-late')).toBe('');
     expect(button()).toBeNull();
-    expect(document.activeElement?.getAttribute('data-testid')).toBe(
-      'room-settings-encryption-late',
+    expect(status()).toBe(
+      "Messages in this room are end-to-end encrypted. This can't be turned off.",
+    );
+    expect(announced()).toBe('Encryption is on.');
+  });
+
+  it('stays in the warning with a plain failure when a retry fails otherwise', async () => {
+    let calls = 0;
+    const { press, text, status, button } = await build(
+      { encrypted: false },
+      {
+        turnOn: () =>
+          throwError(() =>
+            ++calls === 1
+              ? new RoomAdministrationError(
+                  {
+                    kind: 'rejected',
+                    failure: 'partial-update',
+                    recovery: 'review-room-state',
+                    operation: 'turn-on-encryption',
+                  },
+                  'not applied',
+                )
+              : new Error('offline'),
+          ),
+      },
     );
 
+    press();
+    press();
+
+    expect(status()).toBe(LATE_STATUS);
+    expect(text('room-settings-encryption-late')).toBe(LATE);
+    expect(text('room-settings-encryption-error')).toBe(
+      "Couldn't turn on encryption. Try again.",
+    );
+    expect(button()?.textContent?.trim()).toBe('Try again on this device');
+  });
+
+  it('ends the warning when sync later delivers the event', async () => {
+    const { press, text, announced, update } = await build(
+      { encrypted: false },
+      {
+        turnOn: () =>
+          throwError(
+            () =>
+              new RoomAdministrationError(
+                {
+                  kind: 'rejected',
+                  failure: 'partial-update',
+                  recovery: 'review-room-state',
+                  operation: 'turn-on-encryption',
+                },
+                'not applied',
+              ),
+          ),
+      },
+    );
+
+    press();
     update({ encrypted: true });
 
     expect(text('room-settings-encryption-late')).toBe('');
     expect(announced()).toBe('Encryption is on.');
   });
 
-  it('shows no warning when sync arrives in time', async () => {
+  it('shows no warning once this device has applied it, however long sync takes', async () => {
     vi.useFakeTimers();
-    const { fixture, press, text, update } = await build({ encrypted: false });
+    const { fixture, press, text, status } = await build({ encrypted: false });
 
     press();
-    vi.advanceTimersByTime(5_000);
-    update({ encrypted: true });
-    vi.advanceTimersByTime(20_000);
+    vi.advanceTimersByTime(60_000);
     fixture.detectChanges();
 
     expect(text('room-settings-encryption-late')).toBe('');
+    expect(status()).toBe(
+      "Messages in this room are end-to-end encrypted. This can't be turned off.",
+    );
   });
 
   it('shows a plain failure next to the button and lets the user try again', async () => {

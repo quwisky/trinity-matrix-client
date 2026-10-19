@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { EventType, MatrixError } from 'matrix-js-sdk';
+import { EventType, MatrixError, type MatrixEvent } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -23,8 +23,18 @@ function setup(
     send?: () => Promise<unknown>;
     serverState?: () => Promise<unknown>;
     store?: () => Promise<boolean>;
+    /** The store's answer once the local apply has run. */
+    applied?: () => Promise<boolean>;
+    onCryptoEvent?: ((...args: unknown[]) => Promise<void>) | null;
   } = {},
 ) {
+  let afterApply = false;
+  const onCryptoEvent = vi.fn(
+    options.onCryptoEvent ??
+      (async () => {
+        afterApply = true;
+      }),
+  );
   const getStateEvent = vi.fn(
     options.serverState ??
       (() =>
@@ -46,8 +56,11 @@ function setup(
     getStateEvent,
     sendStateEvent,
     getCrypto: () => ({
-      isEncryptionEnabledInRoom:
-        options.store ?? (() => Promise.resolve(false)),
+      isEncryptionEnabledInRoom: () =>
+        afterApply
+          ? (options.applied ?? (() => Promise.resolve(true)))()
+          : (options.store ?? (() => Promise.resolve(false)))(),
+      ...(options.onCryptoEvent === null ? {} : { onCryptoEvent }),
     }),
     getRoom: (roomId: string) => (roomId === TARGET.roomId ? room : null),
   };
@@ -78,7 +91,21 @@ function setup(
     getStateEvent,
     sendStateEvent,
     settingsFor,
+    onCryptoEvent,
+    room,
   };
+}
+
+async function notAppliedError(
+  options: Parameters<typeof setup>[0],
+): Promise<RoomAdministrationError> {
+  const { service, sendStateEvent } = setup(options);
+  const error = await firstValueFrom(service.turnOn(TARGET)).catch(
+    (cause: unknown) => cause,
+  );
+  expect(sendStateEvent).toHaveBeenCalledTimes(1);
+  expect(error).toBeInstanceOf(RoomAdministrationError);
+  return error as RoomAdministrationError;
 }
 
 describe('RoomEncryptionService', () => {
@@ -144,24 +171,44 @@ describe('RoomEncryptionService', () => {
     expect(sendStateEvent).not.toHaveBeenCalled();
   });
 
-  it('asks the server first, so a missed sync never sends a second event', async () => {
-    const { service, getStateEvent, sendStateEvent } = setup({
-      serverState: () => Promise.resolve({ algorithm: 'm.megolm.v1.aes-sha2' }),
-    });
+  it("applies the server's settings here instead of sending a second event when only this device lacks them", async () => {
+    const onServer = {
+      algorithm: 'm.megolm.v1.aes-sha2',
+      rotation_period_ms: 604_800_000,
+    };
+    const { service, getStateEvent, sendStateEvent, onCryptoEvent, room } =
+      setup({ serverState: () => Promise.resolve(onServer) });
 
-    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
-      (cause: unknown) => cause,
-    );
+    await firstValueFrom(service.turnOn(TARGET), { defaultValue: undefined });
 
     expect(getStateEvent).toHaveBeenCalledWith(
       TARGET.roomId,
       EventType.RoomEncryption,
       '',
     );
-    expect((error as RoomAdministrationError).outcome.failure).toBe(
-      'invalid-input',
+    expect(sendStateEvent).not.toHaveBeenCalled();
+    expect(onCryptoEvent).toHaveBeenCalledTimes(1);
+    const [appliedRoom, event] = onCryptoEvent.mock.calls[0] as [
+      unknown,
+      MatrixEvent,
+    ];
+    expect(appliedRoom).toBe(room);
+    expect(event.getContent()).toEqual(onServer);
+  });
+
+  it('reports a partial update when the server has the event but this device cannot apply it', async () => {
+    const { service, sendStateEvent } = setup({
+      serverState: () => Promise.resolve({ algorithm: 'm.megolm.v1.aes-sha2' }),
+      applied: () => Promise.resolve(false),
+    });
+
+    const error = await firstValueFrom(service.turnOn(TARGET)).catch(
+      (cause: unknown) => cause,
     );
-    expect((error as Error).message).toBe('This room is already encrypted.');
+
+    expect((error as RoomAdministrationError).outcome.failure).toBe(
+      'partial-update',
+    );
     expect(sendStateEvent).not.toHaveBeenCalled();
   });
 
@@ -248,5 +295,71 @@ describe('RoomEncryptionService', () => {
       recovery: 'retry-operation',
       operation: 'turn-on-encryption',
     });
+  });
+
+  it('applies the sent content to this device once the server accepts it', async () => {
+    const { service, onCryptoEvent, room } = setup();
+
+    await firstValueFrom(service.turnOn(TARGET), { defaultValue: undefined });
+
+    expect(onCryptoEvent).toHaveBeenCalledTimes(1);
+    const [appliedRoom, event] = onCryptoEvent.mock.calls[0] as [
+      unknown,
+      MatrixEvent,
+    ];
+    expect(appliedRoom).toBe(room);
+    expect(event.getType()).toBe(EventType.RoomEncryption);
+    expect(event.getStateKey()).toBe('');
+    expect(event.getRoomId()).toBe(TARGET.roomId);
+    expect(event.getContent()).toEqual({ algorithm: 'm.megolm.v1.aes-sha2' });
+  });
+
+  it('applies nothing when the server rejects the event', async () => {
+    const { service, onCryptoEvent } = setup({
+      send: () => Promise.reject(new Error('M_FORBIDDEN')),
+    });
+
+    await firstValueFrom(service.turnOn(TARGET)).catch(() => undefined);
+
+    expect(onCryptoEvent).not.toHaveBeenCalled();
+  });
+
+  it('applies nothing to a room that is already encrypted', async () => {
+    for (const options of [
+      { encrypted: true },
+      { store: () => Promise.resolve(true) },
+    ]) {
+      TestBed.resetTestingModule();
+      const { service, onCryptoEvent } = setup(options);
+
+      await firstValueFrom(service.turnOn(TARGET)).catch(() => undefined);
+
+      expect(onCryptoEvent).not.toHaveBeenCalled();
+    }
+  });
+
+  it('reports a partial update when the crypto backend cannot apply it', async () => {
+    const error = await notAppliedError({ onCryptoEvent: null });
+
+    expect(error.outcome).toMatchObject({
+      failure: 'partial-update',
+      operation: 'turn-on-encryption',
+    });
+  });
+
+  it('reports a partial update when applying it throws', async () => {
+    const error = await notAppliedError({
+      onCryptoEvent: () => Promise.reject(new Error('encryptor mismatch')),
+    });
+
+    expect(error.outcome.failure).toBe('partial-update');
+  });
+
+  it('reports a partial update when the crypto store does not read back as encrypted', async () => {
+    const error = await notAppliedError({
+      applied: () => Promise.resolve(false),
+    });
+
+    expect(error.outcome.failure).toBe('partial-update');
   });
 });

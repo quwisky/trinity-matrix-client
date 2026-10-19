@@ -55,6 +55,7 @@ import {
   syncStoreIndexedDbName,
 } from '@trinity/util/matrix';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
+import { roomEncryptionRepair } from './room-encryption-repair';
 import {
   clientHasOutgoingWork,
   clientPendingTexts,
@@ -908,6 +909,7 @@ export class MatrixClientService {
         ),
         tap(() => {
           const client = created!;
+          const repairEncryption = roomEncryptionRepair(client);
           syncProjection = this.projections.activate({
             id: 'matrix.sync-state',
             scope: { kind: 'exact-account', accountId: session.userId },
@@ -921,6 +923,7 @@ export class MatrixClientService {
                 latestServerSynced ||= isServerSync(state, data);
                 latestRoomsPrepared ||=
                   state === SyncState.Prepared || state === SyncState.Syncing;
+                repairEncryption(state);
                 invalidate();
               };
               client.on(ClientEvent.Sync, onSync);
