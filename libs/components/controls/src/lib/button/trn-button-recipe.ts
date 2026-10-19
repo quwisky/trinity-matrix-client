@@ -8,7 +8,7 @@ export type TrnButtonVariant = Extract<
 >;
 export type TrnButtonSize = Extract<TrnSize, 'xs' | 'sm' | 'md' | 'lg'>;
 export type TrnButtonPresentation = 'solid' | 'outline' | 'ghost' | 'link';
-export type TrnButtonShape = 'label' | 'icon' | 'row' | 'inline';
+export type TrnButtonShape = 'label' | 'icon' | 'row' | 'inline' | 'tile';
 
 interface TrnButtonRecipeOptions {
   presentation: TrnButtonPresentation;
@@ -127,11 +127,30 @@ const rowShape = 'h-auto w-full justify-start text-start whitespace-normal';
 const inlineShape =
   'px-0 has-data-[icon=inline-end]:pe-0 has-data-[icon=inline-start]:ps-0';
 
+/**
+ * A quick-action tile: the projected `trn-icon` becomes a 36px square that carries the
+ * variant's fill, with the label in small text below it. The button itself stays transparent,
+ * so its focus ring surrounds the whole tile and no separated ring is needed.
+ */
+const tileShape =
+  'h-auto min-w-14 flex-col gap-1 px-1 py-1 text-xs font-normal text-foreground [&>trn-icon]:size-9 [&>trn-icon]:items-center [&>trn-icon]:justify-center [&>trn-icon]:rounded-[10px] [&>trn-icon]:transition-colors';
+
+/** A tile always fills its square, whatever its presentation. */
+const tileTone = {
+  primary:
+    '[&>trn-icon]:bg-primary [&>trn-icon]:text-primary-foreground hover:[&>trn-icon]:bg-primary/80',
+  secondary:
+    '[&>trn-icon]:bg-secondary [&>trn-icon]:text-secondary-foreground hover:[&>trn-icon]:bg-secondary/80',
+  danger:
+    '[&>trn-icon]:bg-[color:var(--trinity-danger-solid)] [&>trn-icon]:text-[color:var(--trinity-danger-solid-foreground)] hover:[&>trn-icon]:bg-[color:var(--trinity-danger-solid-hover)]',
+} as const;
+
 const shapeClasses: Record<TrnButtonShape, string> = {
   label: '',
   icon: '',
   row: rowShape,
   inline: inlineShape,
+  tile: tileShape,
 };
 
 /**
@@ -139,6 +158,15 @@ const shapeClasses: Record<TrnButtonShape, string> = {
  * crosses the public Controls entrypoint.
  */
 export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
+  if (options.shape === 'tile') {
+    // Null variant and size keep only Helm's base classes: no fill, height or padding.
+    return hlm(
+      buttonVariants({ variant: null, size: null }),
+      tileShape,
+      tileTone[options.variant],
+      focusRing,
+    );
+  }
   const size =
     options.shape === 'icon' ? iconSize[options.size] : labelSize[options.size];
   const variant =

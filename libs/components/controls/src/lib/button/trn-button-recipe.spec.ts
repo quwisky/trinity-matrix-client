@@ -361,3 +361,46 @@ it('keeps an outline action transparent with attention roles only inside an atte
     'in-data-[trn-surface=attention]:',
   );
 });
+
+describe('tile shape', () => {
+  const tile = (variant: TrnButtonVariant): string[] =>
+    trnButtonRecipe({
+      presentation: 'solid',
+      shape: 'tile',
+      size: 'md',
+      variant,
+    }).split(' ');
+
+  it('stacks a filled icon square over its label on a transparent button', () => {
+    const primary = tile('primary');
+
+    expect(primary).toEqual(
+      expect.arrayContaining([
+        'flex-col',
+        'text-xs',
+        '[&>trn-icon]:size-9',
+        '[&>trn-icon]:rounded-[10px]',
+        '[&>trn-icon]:bg-primary',
+        '[&>trn-icon]:text-primary-foreground',
+      ]),
+    );
+    // The fill lives on the square only, and Helm's fixed height and padding are gone.
+    expect(primary).not.toContain('bg-primary');
+    expect(primary).not.toContain('h-8');
+    expect(primary).not.toContain('px-2.5');
+  });
+
+  it('gives a secondary tile the neutral square', () => {
+    expect(tile('secondary')).toContain('[&>trn-icon]:bg-secondary');
+    expect(tile('secondary')).not.toContain('[&>trn-icon]:bg-primary');
+  });
+
+  it('rings the whole tile with the shared focus ring, not the separated one', () => {
+    const primary = tile('primary');
+
+    expect(primary).toContain(
+      'focus-visible:ring-[color:var(--trinity-focus-ring)]',
+    );
+    expect(primary).not.toContain('focus-visible:outline-solid');
+  });
+});

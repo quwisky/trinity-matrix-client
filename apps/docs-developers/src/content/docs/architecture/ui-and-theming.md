@@ -20,12 +20,13 @@ If a control has product meaning, keep it with the owning feature. Move it into 
 
 `trnBtn` takes a `shape` alongside its variant, size and presentation:
 
-| Shape    | Use it for                                                                                                                                                                                |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `label`  | The default: a text button with its size's padding.                                                                                                                                       |
-| `icon`   | An icon-only button. It needs an accessible name and joins the shared icon-button interaction contract.                                                                                   |
-| `row`    | A full-width list row whose label starts at the inline start and wraps instead of clipping; pair it with `ghost`.                                                                         |
-| `inline` | A link-style action inside a column of text, such as a Preview toggle under a description. It has no inline padding, so its label lines up with the text; pair it with `link` or `ghost`. |
+| Shape    | Use it for                                                                                                                                                                                                                                                                                 |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `label`  | The default: a text button with its size's padding.                                                                                                                                                                                                                                        |
+| `icon`   | An icon-only button. It needs an accessible name and joins the shared icon-button interaction contract.                                                                                                                                                                                    |
+| `row`    | A full-width list row whose label starts at the inline start and wraps instead of clipping; pair it with `ghost`.                                                                                                                                                                          |
+| `inline` | A link-style action inside a column of text, such as a Preview toggle under a description. It has no inline padding, so its label lines up with the text; pair it with `link` or `ghost`.                                                                                                  |
+| `tile`   | A quick action in a centred row, such as Message on the member card: the projected icon sits in a 36px square carrying the variant's fill, with the label in small text below. The presentation is ignored, and a disabled primary or danger tile moves the disabled fill onto its square. |
 
 Feature templates choose a shape instead of adding padding, height or width classes to a `trnBtn`; the design-system contract rejects those.
 
