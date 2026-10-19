@@ -26,6 +26,7 @@ export interface IdentitySdkUser {
   readonly presence?: string;
   readonly presenceStatusMsg?: string;
   readonly lastActiveAgo?: number;
+  readonly lastPresenceTs?: number;
   readonly currentlyActive?: boolean;
 }
 

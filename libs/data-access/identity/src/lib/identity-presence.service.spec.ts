@@ -124,6 +124,7 @@ describe('IdentityPresenceService', () => {
         presence,
         presenceStatusMsg: 'On holiday',
         lastActiveAgo: 7_200_000,
+        lastPresenceTs: NOW,
         currentlyActive: false,
       });
 
@@ -142,6 +143,44 @@ describe('IdentityPresenceService', () => {
         lastActiveAt: NOW - 7_200_000,
         currentlyActive: false,
       });
+    });
+
+    it("lastActiveAt stays fixed when another user's presence event rebuilds the projection", async () => {
+      const { svc, client } = setup();
+      seed(client, 'unavailable');
+      const details = svc.presenceDetailsFor('@a:hs');
+      svc.runProjection().subscribe();
+      const before = details();
+
+      vi.spyOn(Date, 'now').mockReturnValue(NOW + 3 * 3_600_000);
+      presenceHandler(client)(undefined, {
+        userId: '@b:hs',
+        presence: 'online',
+      });
+      await Promise.resolve();
+
+      expect(details()?.lastActiveAt).toBe(NOW - 7_200_000);
+      expect(details()).toBe(before);
+    });
+
+    it('lastActiveAt is null for the SDK default (lastActiveAgo 0, lastPresenceTs 0)', () => {
+      const { svc, client } = setup();
+      client.getUser.mockReturnValue({
+        userId: '@a:hs',
+        presence: 'offline',
+        lastActiveAgo: 0,
+        lastPresenceTs: 0,
+      });
+      const details = svc.presenceDetailsFor('@a:hs');
+      svc.runProjection().subscribe();
+      expect(details()?.lastActiveAt).toBeNull();
+    });
+
+    it('presenceDetailsFor is null for a user the client does not know', () => {
+      const { svc } = setup();
+      const details = svc.presenceDetailsFor('@ghost:hs');
+      svc.runProjection().subscribe();
+      expect(details()).toBeNull();
     });
 
     it('presenceDetailsFor is null while presence is unavailable', () => {

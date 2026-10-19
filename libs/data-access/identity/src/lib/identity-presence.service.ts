@@ -20,6 +20,21 @@ export interface PresenceDetails {
   readonly currentlyActive: boolean;
 }
 
+function samePresenceDetails(
+  a: PresenceDetails | null,
+  b: PresenceDetails | null,
+): boolean {
+  return (
+    a === b ||
+    (!!a &&
+      !!b &&
+      a.state === b.state &&
+      a.statusMessage === b.statusMessage &&
+      a.lastActiveAt === b.lastActiveAt &&
+      a.currentlyActive === b.currentlyActive)
+  );
+}
+
 /** Projects authoritative Matrix presence; unavailable or unseen status remains unknown. */
 @Injectable({ providedIn: 'root' })
 export class IdentityPresenceService {
@@ -89,7 +104,9 @@ export class IdentityPresenceService {
         state.set(this.currentPresence(userId, client));
       }
       for (const [userId, details] of this.details) {
-        details.set(this.currentDetails(userId, client));
+        const next = this.currentDetails(userId, client);
+        // Keep the existing object when nothing changed so unrelated events don't re-render consumers.
+        if (!samePresenceDetails(details(), next)) details.set(next);
       }
     },
     reset: () => {
@@ -181,10 +198,10 @@ export class IdentityPresenceService {
     return {
       state,
       statusMessage: user?.presenceStatusMsg ?? '',
-      lastActiveAt:
-        user?.lastActiveAgo === undefined
-          ? null
-          : Date.now() - user.lastActiveAgo,
+      // Same anchor as the SDK's getLastActiveTs(); both fields are 0 until the server reports.
+      lastActiveAt: user?.lastPresenceTs
+        ? user.lastPresenceTs - (user.lastActiveAgo ?? 0)
+        : null,
       currentlyActive: user?.currentlyActive ?? false,
     };
   }
