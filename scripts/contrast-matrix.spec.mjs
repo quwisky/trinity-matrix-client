@@ -102,6 +102,12 @@ const ROLES = [
       '--trinity-neutral-fill-hover-surface',
     ],
   },
+  // A ghost or outline danger row's label on the same fill (Remove on the member card). Its
+  // hover is the danger tint, measured with the other danger roles.
+  {
+    text: '--trinity-danger',
+    on: ['--trinity-neutral-fill-surface'],
+  },
   {
     text: '--trinity-text-muted',
     on: PANE_GROUNDS,

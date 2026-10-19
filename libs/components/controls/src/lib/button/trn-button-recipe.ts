@@ -136,6 +136,13 @@ const solidSecondaryRowTone =
   'bg-[color:var(--trinity-neutral-fill-surface)] hover:bg-[color:var(--trinity-neutral-fill-hover-surface)]';
 
 /**
+ * A ghost or outline danger row, such as Remove on the member card: the same neutral fill as a
+ * secondary row, so it reads as a row, with the danger label and the danger tint on hover.
+ */
+const dangerRowFill =
+  'bg-[color:var(--trinity-neutral-fill-surface)] dark:bg-[color:var(--trinity-neutral-fill-surface)] hover:bg-[var(--trinity-danger-tint-10)] dark:hover:bg-[var(--trinity-danger-tint-10)]';
+
+/**
  * A link-style action in a column of text, such as a Preview toggle under a description:
  * no inline padding, so its label lines up with the text above and below it.
  */
@@ -193,7 +200,11 @@ export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
       ? options.shape === 'row' && options.variant === 'secondary'
         ? solidSecondaryRowTone
         : solidTone[options.variant]
-      : nonSolidTone[options.variant][options.presentation];
+      : options.shape === 'row' &&
+          options.variant === 'danger' &&
+          options.presentation !== 'link'
+        ? `${nonSolidTone.danger[options.presentation]} ${dangerRowFill}`
+        : nonSolidTone[options.variant][options.presentation];
 
   const ring =
     options.presentation === 'solid' && options.variant === 'primary'

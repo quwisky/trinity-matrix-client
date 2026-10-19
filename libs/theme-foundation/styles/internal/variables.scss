@@ -645,6 +645,9 @@
     --trinity-status-neutral-surface: oklch(37% 0.03 265deg);
     --trinity-status-neutral-foreground: oklch(90% 0.012 265deg);
     --trinity-surface-control: oklch(32% 0.018 265deg);
+
+    // The pressed surface leaves a danger row's label below 4.5:1 here; one step darker.
+    --trinity-neutral-fill-surface: oklch(35% 0.016 265deg);
     --trinity-control-foreground: oklch(97% 0.006 265deg);
     --trinity-control-muted-foreground: oklch(74% 0.018 265deg);
     --trinity-border-control: var(--trinity-control-muted-foreground);
@@ -795,6 +798,9 @@
     --trinity-status-neutral-foreground: oklch(90% 0.018 300deg);
     --trinity-surface-canvas: oklch(16% 0.018 300deg);
     --trinity-surface-control: oklch(34% 0.035 300deg);
+
+    // The pressed surface leaves a danger row's label below 4.5:1 here; one step darker.
+    --trinity-neutral-fill-surface: oklch(35% 0.04 300deg);
     --trinity-control-foreground: oklch(97% 0.008 300deg);
     --trinity-control-muted-foreground: oklch(74% 0.025 300deg);
     --trinity-border-control: var(--trinity-control-muted-foreground);

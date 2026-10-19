@@ -60,7 +60,7 @@
     [attr.aria-labelledby]="id + '-moderation'"
   >
     <h3
-      class="m-0 text-xs font-medium tracking-wider text-muted-foreground uppercase"
+      class="m-0 text-xs font-medium tracking-wider [overflow-wrap:anywhere] text-muted-foreground uppercase"
       [id]="id + '-moderation'"
     >
       Moderation · {{ targetName() }}
@@ -78,7 +78,7 @@
       <button
         trnBtn
         variant="danger"
-        presentation="outline"
+        presentation="ghost"
         shape="row"
         (click)="kick()"
         [trnActionAllowed]="permissions().kick.available"

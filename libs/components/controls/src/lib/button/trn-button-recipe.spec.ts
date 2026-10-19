@@ -389,6 +389,32 @@ it('fills a solid secondary row with the neutral fill that reads on the overlay'
   ).toContain('bg-secondary');
 });
 
+it('fills a ghost danger row with the neutral fill and keeps its danger label', () => {
+  const remove = trnButtonRecipe({
+    presentation: 'ghost',
+    shape: 'row',
+    size: 'md',
+    variant: 'danger',
+  }).split(' ');
+
+  expect(remove).toEqual(
+    expect.arrayContaining([
+      'text-danger',
+      'bg-[color:var(--trinity-neutral-fill-surface)]',
+      'hover:bg-[var(--trinity-danger-tint-10)]',
+    ]),
+  );
+  // A ghost danger label button stays unfilled.
+  expect(
+    trnButtonRecipe({
+      presentation: 'ghost',
+      shape: 'label',
+      size: 'md',
+      variant: 'danger',
+    }),
+  ).not.toContain('neutral-fill');
+});
+
 describe('tile shape', () => {
   const tile = (variant: TrnButtonVariant): string[] =>
     trnButtonRecipe({
@@ -433,7 +459,7 @@ describe('tile shape', () => {
         size: 'md',
         variant: 'secondary',
       }),
-    ).not.toContain('tile-surface');
+    ).not.toContain('neutral-fill');
   });
 
   it('rings the whole tile with the shared focus ring, not the separated one', () => {
