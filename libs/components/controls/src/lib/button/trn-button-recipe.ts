@@ -133,14 +133,14 @@ const inlineShape =
  * so its focus ring surrounds the whole tile and no separated ring is needed.
  */
 const tileShape =
-  'h-auto min-w-14 flex-col gap-1 px-1 py-1 text-xs font-normal text-foreground [&>trn-icon]:size-9 [&>trn-icon]:items-center [&>trn-icon]:justify-center [&>trn-icon]:rounded-[10px] [&>trn-icon]:transition-colors';
+  'h-auto min-w-14 flex-col gap-1.5 px-1 py-1 text-xs font-normal text-foreground [&>trn-icon]:size-9 [&>trn-icon]:items-center [&>trn-icon]:justify-center [&>trn-icon]:rounded-lg [&>trn-icon]:transition-colors';
 
 /** A tile always fills its square, whatever its presentation. */
 const tileTone = {
   primary:
     '[&>trn-icon]:bg-primary [&>trn-icon]:text-primary-foreground hover:[&>trn-icon]:bg-primary/80',
   secondary:
-    '[&>trn-icon]:bg-secondary [&>trn-icon]:text-secondary-foreground hover:[&>trn-icon]:bg-secondary/80',
+    '[&>trn-icon]:bg-[color:var(--trinity-tile-surface)] [&>trn-icon]:text-secondary-foreground hover:[&>trn-icon]:bg-[color:var(--trinity-tile-hover-surface)]',
   danger:
     '[&>trn-icon]:bg-[color:var(--trinity-danger-solid)] [&>trn-icon]:text-[color:var(--trinity-danger-solid-foreground)] hover:[&>trn-icon]:bg-[color:var(--trinity-danger-solid-hover)]',
 } as const;

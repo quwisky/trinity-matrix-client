@@ -379,7 +379,7 @@ describe('tile shape', () => {
         'flex-col',
         'text-xs',
         '[&>trn-icon]:size-9',
-        '[&>trn-icon]:rounded-[10px]',
+        '[&>trn-icon]:rounded-lg',
         '[&>trn-icon]:bg-primary',
         '[&>trn-icon]:text-primary-foreground',
       ]),
@@ -390,9 +390,23 @@ describe('tile shape', () => {
     expect(primary).not.toContain('px-2.5');
   });
 
-  it('gives a secondary tile the neutral square', () => {
-    expect(tile('secondary')).toContain('[&>trn-icon]:bg-secondary');
+  it('gives a secondary tile its own visible neutral square and hover', () => {
+    expect(tile('secondary')).toEqual(
+      expect.arrayContaining([
+        '[&>trn-icon]:bg-[color:var(--trinity-tile-surface)]',
+        'hover:[&>trn-icon]:bg-[color:var(--trinity-tile-hover-surface)]',
+      ]),
+    );
     expect(tile('secondary')).not.toContain('[&>trn-icon]:bg-primary');
+    // Other secondary buttons keep the shared control fill.
+    expect(
+      trnButtonRecipe({
+        presentation: 'solid',
+        shape: 'label',
+        size: 'md',
+        variant: 'secondary',
+      }),
+    ).not.toContain('tile-surface');
   });
 
   it('rings the whole tile with the shared focus ring, not the separated one', () => {

@@ -723,6 +723,36 @@ describe('contrast matrix', () => {
     expect(failures).toEqual([]);
   });
 
+  it('keeps a secondary tile square visible as a shape on the panes that hold it', () => {
+    // Decorative: the tile's label and glyph name the action, so the floor is shape, not 3:1.
+    const failures = [];
+    for (const theme of themes) {
+      for (const mode of ['light', 'dark']) {
+        for (const fill of [
+          '--trinity-tile-surface',
+          '--trinity-tile-hover-surface',
+        ]) {
+          for (const surface of [
+            '--trinity-surface-overlay',
+            '--trinity-surface-raised',
+          ]) {
+            const foreground = toRgb(resolve(fill, theme, mode));
+            const background = toRgb(resolve(surface, theme, mode));
+            const measuredRatio =
+              foreground && background ? ratio(foreground, background) : 0;
+            if (measuredRatio < 1.15) {
+              failures.push(
+                `${theme}/${mode}: ${fill} on ${surface} = ${measuredRatio.toFixed(2)}:1`,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    expect(failures).toEqual([]);
+  });
+
   it('colours the room preview on a selected row with the measured selected-state foreground', () => {
     // A5: the preview used --trinity-text-muted on the selected surface (3.86:1 in dark). The
     // matrix above measures the selected foreground on that surface, so the preview must use it.

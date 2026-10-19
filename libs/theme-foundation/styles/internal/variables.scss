@@ -420,6 +420,12 @@
     --trinity-surface-card: var(--trinity-surface-overlay);
     --trinity-surface-popover: var(--trinity-surface-overlay);
     --trinity-surface-control: oklch(95% 0.008 85deg);
+
+    // A secondary `trnBtn` tile's icon square. The control surface is about 1:1 on the
+    // overlay; the square is decorative (its label and glyph name the action), so it needs
+    // only to read as a shape, not 3:1.
+    --trinity-tile-surface: var(--trinity-state-pressed-surface);
+    --trinity-tile-hover-surface: var(--trinity-state-selected-hover-surface);
     --trinity-control-foreground: oklch(22% 0.012 60deg);
     --trinity-control-secondary-foreground: var(--trinity-control-foreground);
     --trinity-control-accent-foreground: var(--trinity-control-foreground);
@@ -700,6 +706,10 @@
     --trinity-status-neutral-surface: oklch(23% 0.007 269deg);
     --trinity-status-neutral-foreground: oklch(91% 0.004 269deg);
     --trinity-surface-control: oklch(20% 0.007 269deg);
+
+    // The pressed surface is only 1.16:1 on Midnight's darker overlay; one step brighter.
+    --trinity-tile-surface: var(--trinity-state-selected-hover-surface);
+    --trinity-tile-hover-surface: oklch(30% 0.01 269deg);
     --trinity-control-foreground: oklch(98% 0.002 269deg);
     --trinity-control-muted-foreground: oklch(70% 0.008 269deg);
     --trinity-border-control: var(--trinity-control-muted-foreground);
