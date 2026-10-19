@@ -48,7 +48,7 @@ export class TrnTab {
   readonly value = input('', { alias: 'trnTab' });
 
   constructor() {
-    classes(() => trnTabRecipe());
+    classes(() => trnTabRecipe(this.root.appearance()));
     // Not a host binding: brain binds `tabindex` to the selection and rewrites it whenever that
     // changes, so this has to run after it each time either does.
     afterRenderEffect(() => {

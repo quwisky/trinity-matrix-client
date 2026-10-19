@@ -46,7 +46,11 @@ export { TrnSwitchComponent } from './lib/switch/trn-switch.component';
 export { TrnTab } from './lib/tabs/trn-tab';
 export { TrnTabList } from './lib/tabs/trn-tab-list';
 export { TrnTabPanel } from './lib/tabs/trn-tab-panel';
-export { TrnTabs, type TrnTabsActivation } from './lib/tabs/trn-tabs';
+export {
+  TrnTabs,
+  type TrnTabsActivation,
+  type TrnTabsAppearance,
+} from './lib/tabs/trn-tabs';
 export { TrnTextarea } from './lib/textarea/trn-textarea';
 
 import { TrnFieldComponent } from './lib/field/field/trn-field.component';

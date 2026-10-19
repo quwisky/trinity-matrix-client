@@ -51,6 +51,7 @@ The directives in `TrnTabsImports` from `@trinity/components/controls` follow th
 - A `disabled` tab is skipped by the arrow keys and left out of the tab order. When nothing is selected, or the selected tab is disabled, the first enabled tab holds the tab stop.
 - A panel whose tab is not in the list is plain content, with no `tabpanel` role, so a list can come and go without rebuilding the panels.
 - Each panel is a tab stop. Set `[focusable]="false"` when the panel's first content is focusable itself.
+- The default `appearance` is `segmented`: filled pills. Set `appearance="underline"` for a strip with a 1px `--trinity-border-overlay` divider and a 2px `--trinity-accent` bar under the selected tab, as on the member card. The selected tab's label also turns `--trinity-text-bright`, so the bar is not the only cue.
 - A hidden panel stays in the DOM. Put its content behind `@if` when it should not run while hidden, as the expression picker does with its GIF search.
 - The selected tab draws the `--trinity-state-selected-*` pill, hover the `--trinity-state-hover-*` roles, and a coarse pointer gets the 44px target. There is no attention-surface variant yet, so keep tabs off attention surfaces.
 

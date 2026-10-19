@@ -3,11 +3,15 @@ import {
   Directive,
   effect,
   inject,
+  input,
   model,
   signal,
   type Signal,
 } from '@angular/core';
 import { BrnTabs } from '@spartan-ng/brain/tabs';
+import type { TrnTabsAppearance } from './trn-tabs-recipe';
+
+export type { TrnTabsAppearance };
 
 /** What the root reads of each tab in the list. */
 interface TrnTabState {
@@ -68,6 +72,7 @@ export class TrnTabs {
   readonly direction = this.brn.direction;
 
   readonly value = model<string>();
+  readonly appearance = input<TrnTabsAppearance>('segmented');
 
   constructor() {
     this.brn.activeTab.subscribe((tab) => {

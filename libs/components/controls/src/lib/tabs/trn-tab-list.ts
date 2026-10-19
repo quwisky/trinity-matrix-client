@@ -33,7 +33,7 @@ export class TrnTabList {
   constructor() {
     this.root.connect(this.tabs);
     inject(DestroyRef).onDestroy(() => this.root.connect(signal([])));
-    classes(() => trnTabListRecipe());
+    classes(() => trnTabListRecipe(this.root.appearance()));
   }
 
   protected onKeydown(event: KeyboardEvent): void {

@@ -6,10 +6,15 @@ import {
 import { TrnTab } from './trn-tab';
 import { TrnTabList } from './trn-tab-list';
 import { TrnTabPanel } from './trn-tab-panel';
-import { TrnTabs, type TrnTabsActivation } from './trn-tabs';
+import {
+  TrnTabs,
+  type TrnTabsActivation,
+  type TrnTabsAppearance,
+} from './trn-tabs';
 
 interface TabsStoryArgs {
   activation: TrnTabsActivation;
+  appearance: TrnTabsAppearance;
   disabledTab: string | null;
   width: string;
 }
@@ -25,9 +30,18 @@ const meta: Meta<TabsStoryArgs> = {
   decorators: [
     moduleMetadata({ imports: [TrnTabs, TrnTabList, TrnTab, TrnTabPanel] }),
   ],
-  args: { activation: 'automatic', disabledTab: null, width: '18.875rem' },
+  args: {
+    activation: 'automatic',
+    appearance: 'segmented',
+    disabledTab: null,
+    width: '18.875rem',
+  },
   argTypes: {
     activation: { control: 'inline-radio', options: ['automatic', 'manual'] },
+    appearance: {
+      control: 'inline-radio',
+      options: ['segmented', 'underline'],
+    },
   },
   parameters: {
     layout: 'centered',
@@ -47,7 +61,7 @@ const meta: Meta<TabsStoryArgs> = {
         class="rounded-[var(--trinity-shape-control-radius)] bg-[var(--trinity-surface-overlay)] p-3"
         [style.width]="width"
       >
-        <div trnTabs [activation]="activation" [(value)]="value">
+        <div trnTabs [activation]="activation" [appearance]="appearance" [(value)]="value">
           <div trnTabList aria-label="Picker type">
             @for (tab of tabs; track tab.value) {
               <button [trnTab]="tab.value" [disabled]="tab.value === disabledTab">
@@ -79,3 +93,6 @@ export const DisabledTab: Story = { args: { disabledTab: 'sticker' } };
 
 /** On a coarse pointer every tab is at least 44px tall; open this on a touch device. */
 export const CoarsePointer: Story = { args: { width: '22rem' } };
+
+/** A divided strip with an accent bar under the selected tab, as on the member card. */
+export const Underline: Story = { args: { appearance: 'underline' } };
