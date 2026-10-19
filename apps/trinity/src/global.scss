@@ -307,10 +307,11 @@
     }
   }
 
+  /* Colour only: the offset stays with the base rule and the controls' own utilities, so an
+   * inset ring (an edge-to-edge tab or row in a clipping scroller) stays inset here too. */
   @media (forced-colors: active) {
     :focus-visible {
       outline: var(--trinity-focus-ring-width) solid Highlight;
-      outline-offset: var(--trinity-focus-ring-offset);
     }
   }
 
