@@ -25,7 +25,10 @@ import {
   type Subscriber,
 } from 'rxjs';
 import { lacksAuthMetadata } from '../account-server-api';
-import { QR_SIGN_IN_COMPLETION } from './qr-sign-in-completion.port';
+import {
+  QR_LINK_IDENTITY_CHECK,
+  QR_SIGN_IN_COMPLETION,
+} from './qr-sign-in-completion.port';
 import {
   DeviceGrantRejectedError,
   qrSignInFailureOf,
@@ -126,6 +129,7 @@ export interface ExistingDeviceLink {
 export class QrSignInAdapter {
   private readonly factory = inject(QrRendezvousFactory);
   private readonly completion = inject(QR_SIGN_IN_COMPLETION);
+  private readonly identity = inject(QR_LINK_IDENTITY_CHECK);
 
   /** Cold: each subscription shows a new code. */
   signInByShowingCode(homeserverUrl: string): Observable<NewDeviceState> {
@@ -212,6 +216,7 @@ export class QrSignInAdapter {
     let current: FlowRun<ExistingDeviceState> | undefined;
     const state$ = new Observable<ExistingDeviceState>((subscriber) => {
       const run = new FlowRun(subscriber);
+      run.closesSession = false;
       current = run;
       run.start(async () => {
         run.emit({ kind: 'connecting' });
@@ -244,6 +249,14 @@ export class QrSignInAdapter {
             .catch(() => undefined);
           run.fail(ClientRendezvousFailureReason.InsecureChannelDetected, true);
           return;
+        }
+        // Security: share only the identity the server publishes. Checked before the grant, so
+        // a refusal leaves no approved device behind; it fails as `unknown` and, through
+        // teardown, declines and cancels on the new device.
+        if (!(await run.read(this.identity.holdsPublishedIdentity(client)))) {
+          throw new Error(
+            'This device does not hold the published cross-signing identity.',
+          );
         }
         // From here a cancel must reach the session at once: shareSecrets sends the secrets
         // unless the session is already cancelled, and a decline PUT first could let them out.
@@ -331,6 +344,12 @@ class FlowRun<S extends { kind: string }> {
   declineOnCancel = false;
   /** Set once the flow's outcome stands: a later failure ends with it instead. */
   failAs?: S;
+  /**
+   * Delete the rendezvous session at the end. The existing device leaves that to the new
+   * device, which reads the secrets only after the existing device has sent them. The SDK's
+   * cancel still deletes it.
+   */
+  closesSession = true;
 
   constructor(
     private readonly subscriber: Subscriber<
@@ -438,7 +457,7 @@ class FlowRun<S extends { kind: string }> {
         .cancel(MSC4108FailureReason.UserCancelled)
         .catch(() => undefined);
     }
-    await flow.close().catch(() => undefined);
+    if (this.closesSession) await flow.close().catch(() => undefined);
   }
 }
 

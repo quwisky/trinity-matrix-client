@@ -1,4 +1,6 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import type { MatrixClient } from 'matrix-js-sdk';
 import {
   ClientRendezvousFailureReason,
@@ -12,6 +14,7 @@ import {
   type QrRendezvousFlow,
 } from './qr-sign-in.adapter';
 import {
+  QR_LINK_IDENTITY_CHECK,
   QR_SIGN_IN_COMPLETION,
   type LinkedSecrets,
 } from './qr-sign-in-completion.port';
@@ -137,10 +140,19 @@ function setup(configure: (flow: FakeFlow) => void = () => undefined) {
     }),
     importLinkedSecrets: vi.fn(() => of(true)),
   };
+  const identity = { holdsPublishedIdentity: vi.fn(() => of(true)) };
+  const activeUserId = signal<string | null>('@me:hs');
+  const clients = new Map<string, MatrixClient>([['@me:hs', existingClient]]);
+  const matrix = {
+    activeUserId: activeUserId.asReadonly(),
+    clientFor: vi.fn((id: string) => clients.get(id) ?? null),
+  };
   TestBed.configureTestingModule({
     providers: [
       { provide: QrRendezvousFactory, useValue: factory },
       { provide: QR_SIGN_IN_COMPLETION, useValue: completion },
+      { provide: QR_LINK_IDENTITY_CHECK, useValue: identity },
+      { provide: MatrixClientService, useValue: matrix },
     ],
   });
   return {
@@ -148,6 +160,9 @@ function setup(configure: (flow: FakeFlow) => void = () => undefined) {
     order,
     factory,
     completion,
+    identity,
+    activeUserId,
+    clients,
     service: TestBed.inject(QrSignInService),
   };
 }
@@ -626,6 +641,8 @@ describe('QrSignInService.linkByScanning', () => {
     );
     expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalledWith();
     expect(flows[0].cancel).not.toHaveBeenCalled();
+    // The new device reads the secrets after this, so the session stays for it to delete.
+    expect(flows[0].close).not.toHaveBeenCalled();
   });
 
   it('never shares secrets before the check code is confirmed', async () => {
@@ -657,7 +674,6 @@ describe('QrSignInService.linkByScanning', () => {
       'negotiateProtocols',
       'decline',
       'cancel:insecure_channel_detected',
-      'close',
     ]);
     expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
     expect(flows[0].shareSecrets).not.toHaveBeenCalled();
@@ -686,10 +702,7 @@ describe('QrSignInService.linkByScanning', () => {
       expect(run.kinds()).not.toContain('approve-in-browser');
       expect(JSON.stringify(run.states)).not.toContain(verificationUri);
       expect(flows[0].shareSecrets).not.toHaveBeenCalled();
-      expect(flows[0].calls.slice(-2)).toEqual([
-        'cancel:user_cancelled',
-        'close',
-      ]);
+      expect(flows[0].calls.at(-1)).toBe('cancel:user_cancelled');
     },
   );
 
@@ -735,10 +748,10 @@ describe('QrSignInService.linkByScanning', () => {
 
   it.each<[ExistingDeviceState['kind'], Step | null, string[]]>([
     // Not connected yet, so there is no channel to send a decline over.
-    ['connecting', 'negotiateProtocols', ['cancel:user_cancelled', 'close']],
-    ['confirm-check-code', null, ['decline', 'cancel:user_cancelled', 'close']],
+    ['connecting', 'negotiateProtocols', ['cancel:user_cancelled']],
+    ['confirm-check-code', null, ['decline', 'cancel:user_cancelled']],
     // Secrets may be in flight, so the cancel goes first and alone.
-    ['sharing-secrets', 'shareSecrets', ['cancel:user_cancelled', 'close']],
+    ['sharing-secrets', 'shareSecrets', ['cancel:user_cancelled']],
   ])('unsubscribing at %s cancels', async (kind, hung, tail) => {
     const { service, flows } = setup((flow) => hung && flow.hang.add(hung));
     const link = service.linkByScanning(existingClient, qrBytes);
@@ -791,7 +804,7 @@ describe('QrSignInService.linkByScanning', () => {
     run.subscription.unsubscribe();
     release();
     await settle();
-    expect(flows[0].calls).toEqual(['cancel:user_cancelled', 'close']);
+    expect(flows[0].calls).toEqual(['cancel:user_cancelled']);
   });
 
   it.each([
@@ -854,5 +867,70 @@ describe('QrSignInService.linkByScanning', () => {
       kind: 'failed',
       reason: qrSignInFailureOf(reason),
     });
+  });
+  it('leaves the session to the new device when sharing the secrets fails', async () => {
+    const { service, flows } = setup((flow) =>
+      flow.failures.set(
+        'shareSecrets',
+        new RendezvousError(
+          'failed',
+          MSC4108FailureReason.UnexpectedMessageReceived,
+        ),
+      ),
+    );
+    const link = service.linkByScanning(existingClient, qrBytes);
+    const run = record(link.state$);
+    await settle();
+    link.confirmCheckCode(true);
+    await settle();
+    expect(run.states.at(-1)?.kind).toBe('failed');
+    expect(flows[0].close).not.toHaveBeenCalled();
+  });
+
+  it('refuses, before any grant or secret, keys that are not the published identity', async () => {
+    const { service, flows, identity } = setup();
+    identity.holdsPublishedIdentity.mockReturnValue(of(false));
+    const link = service.linkByScanning(existingClient, qrBytes);
+    const run = record(link.state$);
+    await settle();
+
+    link.confirmCheckCode(true);
+    await settle();
+
+    expect(identity.holdsPublishedIdentity).toHaveBeenCalledWith(
+      existingClient,
+    );
+    expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
+    expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
+    expect(flows[0].shareSecrets).not.toHaveBeenCalled();
+    // The new device is told the link ended.
+    expect(flows[0].calls.slice(-2)).toEqual([
+      'decline',
+      'cancel:user_cancelled',
+    ]);
+  });
+
+  it('links as the account that was active when the linker was made', async () => {
+    const { service, factory, activeUserId, clients } = setup();
+    const linker = service.linkerForActiveAccount();
+    expect(linker?.accountId).toBe('@me:hs');
+
+    clients.set('@other:hs', { id: 'other' } as unknown as MatrixClient);
+    activeUserId.set('@other:hs');
+    record(linker!.link(qrBytes).state$);
+    await settle();
+
+    expect(factory.existingDevice).toHaveBeenCalledWith(
+      existingClient,
+      qrBytes,
+      expect.any(Function),
+    );
+  });
+
+  it('has no linker without a live active account', () => {
+    const { service, activeUserId } = setup();
+    activeUserId.set(null);
+
+    expect(service.linkerForActiveAccount()).toBeNull();
   });
 });

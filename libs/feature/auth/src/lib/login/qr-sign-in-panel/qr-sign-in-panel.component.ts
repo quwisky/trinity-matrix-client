@@ -18,6 +18,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { Subscription } from 'rxjs';
 import {
+  QR_SIGN_IN_FAILURE_MESSAGES,
   QrSignInService,
   type NewDeviceState,
   type QrSignInFailure,
@@ -25,16 +26,6 @@ import {
 import { QrCodeService } from '@trinity/platform-native';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
-
-const FAILURE_MESSAGES: Record<QrSignInFailure, string> = {
-  expired: 'The code expired.',
-  declined: 'Sign-in was cancelled on the other device.',
-  insecure: "The codes didn't match, so nothing was shared.",
-  unsupported: "Your server doesn't support QR sign-in.",
-  'already-signed-in': 'That device is already signed in.',
-  network: 'Lost connection. Check your network and try again.',
-  unknown: 'Something went wrong. Try again or sign in another way.',
-};
 
 /** Failures a new code cannot fix; "Sign in another way" is their next action. */
 const FINAL_FAILURES: ReadonlySet<QrSignInFailure> = new Set([
@@ -49,7 +40,7 @@ const FINAL_FAILURES: ReadonlySet<QrSignInFailure> = new Set([
   templateUrl: 'qr-sign-in-panel.component.html',
   styleUrl: 'qr-sign-in-panel.component.scss',
   imports: [DatePipe, TrnButton, TrnSpinnerComponent],
-  host: { '(keydown.escape)': 'leave()' },
+  host: { '(keydown.escape)': 'onEscape($event)' },
 })
 export class QrSignInPanelComponent implements OnInit {
   private readonly qrSignIn = inject(QrSignInService);
@@ -82,7 +73,11 @@ export class QrSignInPanelComponent implements OnInit {
   );
   /** What the live region says; written after each render, never on insertion. */
   readonly announcement = signal('');
-  readonly failureMessages = FAILURE_MESSAGES;
+  readonly failureMessages = {
+    ...QR_SIGN_IN_FAILURE_MESSAGES,
+    // Here it is this device that already holds the account.
+    'already-signed-in': 'This account is already signed in on this device.',
+  };
   readonly finalFailures = FINAL_FAILURES;
 
   constructor() {
@@ -118,6 +113,13 @@ export class QrSignInPanelComponent implements OnInit {
         next: (state) => this.apply(state),
         error: () => this.state.set({ kind: 'failed', reason: 'unknown' }),
       });
+  }
+
+  /** Escape belongs to this panel, so nothing around it acts on it too. */
+  onEscape(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.leave();
   }
 
   /** Cancel the sign-in and return to the other ways to sign in. */

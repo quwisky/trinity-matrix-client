@@ -166,9 +166,18 @@ describe('Nightly Synapse workflow', () => {
     const { on } = workflow();
     expect(on.schedule).toEqual([{ cron: '47 2 * * *' }]);
     expect(on).toHaveProperty('workflow_dispatch');
-    expect(read('.github/workflows/ci.yml')).not.toContain(
+    // ci.yml picks a server only for QR sign-in on Tuwunel OAuth, never Synapse.
+    const ci = loadWorkflow('ci.yml');
+    expect(JSON.stringify(ci.env ?? {})).not.toContain(
       'TRINITY_E2E_HOMESERVER',
     );
+    for (const [id, job] of Object.entries(ci.jobs)) {
+      if (id === 'tuwunel-oauth-e2e') {
+        expect(job.env.TRINITY_E2E_HOMESERVER).toBe('tuwunel-oauth');
+      } else {
+        expect(JSON.stringify(job), id).not.toContain('TRINITY_E2E_HOMESERVER');
+      }
+    }
   });
 
   it('runs the browser, Electron full and protocol suites against Synapse', () => {

@@ -157,7 +157,11 @@ describe('QrSignInPanelComponent', () => {
     ['declined', 'Sign-in was cancelled on the other device.', true],
     ['insecure', "The codes didn't match, so nothing was shared.", true],
     ['unsupported', "Your server doesn't support QR sign-in.", false],
-    ['already-signed-in', 'That device is already signed in.', false],
+    [
+      'already-signed-in',
+      'This account is already signed in on this device.',
+      false,
+    ],
     ['network', 'Lost connection. Check your network and try again.', true],
     [
       'unknown',
@@ -225,11 +229,18 @@ describe('QrSignInPanelComponent', () => {
 
   it('cancels and goes back on Escape', async () => {
     const { back, current, fixture } = await renderPanel();
+    const outer = vi.fn();
+    document.addEventListener('keydown', outer);
 
-    fireEvent.keyDown(fixture.nativeElement as HTMLElement, { key: 'Escape' });
+    const unhandled = fireEvent.keyDown(fixture.nativeElement as HTMLElement, {
+      key: 'Escape',
+    });
+    document.removeEventListener('keydown', outer);
 
     expect(back).toHaveBeenCalledOnce();
     expect(current().closed).toBe(true);
+    expect(unhandled).toBe(false);
+    expect(outer).not.toHaveBeenCalled();
   });
 
   it('cancels the sign-in when it is destroyed', async () => {

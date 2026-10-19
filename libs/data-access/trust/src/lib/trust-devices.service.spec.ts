@@ -313,4 +313,164 @@ describe('TrustDevicesService', () => {
     expect(client.off).toHaveBeenCalled(); // detached from A
     expect(clientB.on).toHaveBeenCalled(); // attached to B
   });
+
+  const ALL = { masterKey: true, selfSigningKey: true, userSigningKey: true };
+
+  /** A client whose crypto reports `cached` private keys and the given identity reads. */
+  function withKeys(
+    cached: Record<string, boolean>,
+    {
+      ready = true,
+      local = 'MASTER',
+      published = 'MASTER' as string | null,
+    } = {},
+  ) {
+    const crypto = {
+      getDeviceVerificationStatus: vi.fn(async () => ({
+        isVerified: () => true,
+      })),
+      getCrossSigningStatus: vi.fn(async () => ({
+        publicKeysOnDevice: true,
+        privateKeysInSecretStorage: false,
+        privateKeysCachedLocally: { ...cached },
+      })),
+      isCrossSigningReady: vi.fn(async () => ready),
+      getCrossSigningKeyId: vi.fn(async () => local),
+    };
+    return {
+      crypto,
+      getCrypto: vi.fn(() => crypto),
+      downloadKeysForUsers: vi.fn(async () => ({
+        master_keys: published
+          ? { '@me:hs': { keys: { ['ed25519:' + published]: published } } }
+          : {},
+      })),
+    };
+  }
+
+  function onKeysChanged(client: { on: ReturnType<typeof vi.fn> }) {
+    return client.on.mock.calls.find(
+      ([event]) => event === CryptoEvent.KeysChanged,
+    )?.[1] as () => void;
+  }
+
+  describe('canShareSecrets', () => {
+    it('is true once all three private cross-signing keys are cached here', async () => {
+      const { svc } = setup(withKeys(ALL));
+      expect(svc.canShareSecrets()).toBe(false);
+
+      await firstValueFrom(svc.list());
+
+      await vi.waitFor(() => expect(svc.canShareSecrets()).toBe(true));
+    });
+
+    it('stays false while any one of the three is missing', async () => {
+      const { svc } = setup(withKeys({ ...ALL, userSigningKey: false }));
+
+      await firstValueFrom(svc.list());
+      await new Promise((resolve) => setTimeout(resolve));
+
+      expect(svc.canShareSecrets()).toBe(false);
+    });
+
+    it('stays false when the cached keys do not match the identity', async () => {
+      const { svc } = setup(withKeys(ALL, { ready: false }));
+
+      await firstValueFrom(svc.list());
+      await new Promise((resolve) => setTimeout(resolve));
+
+      expect(svc.canShareSecrets()).toBe(false);
+    });
+
+    it('refreshes when this account’s trust changes', async () => {
+      const keys = withKeys({ ...ALL, masterKey: false });
+      const { svc, client } = setup(keys);
+      await firstValueFrom(svc.list());
+      svc.connect();
+
+      for (const event of [
+        CryptoEvent.KeysChanged,
+        CryptoEvent.UserTrustStatusChanged,
+      ]) {
+        expect(client.on).toHaveBeenCalledWith(event, expect.any(Function));
+      }
+      keys.crypto.getCrossSigningStatus.mockResolvedValue({
+        publicKeysOnDevice: true,
+        privateKeysInSecretStorage: false,
+        privateKeysCachedLocally: ALL,
+      });
+      onKeysChanged(client)();
+
+      await vi.waitFor(() => expect(svc.canShareSecrets()).toBe(true));
+    });
+
+    it('keeps the newest read when an older one answers last', async () => {
+      const keys = withKeys(ALL);
+      const { svc, client } = setup(keys);
+      let answerOld!: (value: unknown) => void;
+      keys.crypto.getCrossSigningStatus.mockReturnValueOnce(
+        new Promise((resolve) => (answerOld = resolve)) as never,
+      );
+      await firstValueFrom(svc.list()); // starts the slow, older read
+      svc.connect();
+      onKeysChanged(client)(); // the newer read: all three cached
+      await vi.waitFor(() => expect(svc.canShareSecrets()).toBe(true));
+
+      answerOld({
+        publicKeysOnDevice: true,
+        privateKeysInSecretStorage: false,
+        privateKeysCachedLocally: { ...ALL, masterKey: false },
+      });
+      await new Promise((resolve) => setTimeout(resolve));
+
+      expect(svc.canShareSecrets()).toBe(true);
+    });
+
+    it('resets on an account switch', async () => {
+      const { svc, matrix } = setup(withKeys(ALL));
+      activeUserId.set('@a:hs');
+      svc.connect();
+      TestBed.inject(ApplicationRef).tick();
+      await vi.waitFor(() => expect(svc.canShareSecrets()).toBe(true));
+
+      // The next account's key read never answers, so only the reset can clear it.
+      const next = withKeys(ALL);
+      next.crypto.getCrossSigningStatus.mockReturnValue(
+        new Promise(() => undefined) as never,
+      );
+      ngMocks.stubMember(
+        matrix,
+        'instance',
+        fakeClient(next) as unknown as MatrixClient,
+      );
+      activeUserId.set('@b:hs');
+      TestBed.inject(ApplicationRef).tick();
+
+      expect(svc.canShareSecrets()).toBe(false);
+    });
+  });
+
+  describe('holdsPublishedIdentity', () => {
+    it('is true when the cached keys are the published identity', async () => {
+      const keys = withKeys(ALL);
+      const { svc, client } = setup(keys);
+
+      expect(
+        await firstValueFrom(svc.holdsPublishedIdentity(client as never)),
+      ).toBe(true);
+      expect(keys.downloadKeysForUsers).toHaveBeenCalledWith(['@me:hs']);
+    });
+
+    it.each([
+      ['a local master key the server never published', { local: 'ROTATED' }],
+      ['an account with no published identity', { published: null }],
+      ['keys that do not match the identity', { ready: false }],
+    ])('is false for %s', async (_case, options) => {
+      const { svc, client } = setup(withKeys(ALL, options));
+
+      expect(
+        await firstValueFrom(svc.holdsPublishedIdentity(client as never)),
+      ).toBe(false);
+    });
+  });
 });

@@ -64,6 +64,24 @@
     </p>
   }
 
+  @if (linker(); as linker) {
+    <trn-link-device [linker]="linker" (closed)="closeLink()" />
+  } @else if (canLinkDevice()) {
+    <div class="py-3">
+      <button
+        #linkButton
+        trnBtn
+        presentation="ghost"
+        size="sm"
+        data-testid="link-device"
+        (click)="openLink()"
+      >
+        <trn-icon name="monitor-smartphone" size="md" />
+        Link a new device
+      </button>
+    </div>
+  }
+
   @if (hasUnverified()) {
     <div class="py-3">
       <button

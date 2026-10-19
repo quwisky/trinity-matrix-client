@@ -125,14 +125,15 @@ jobs:
           surface: protocol-synapse
           report-path: dist/.playwright/trinity-e2e-protocol/**
 
-  # The MAS-backed OAuth journeys (accounts/mas-session.spec.mts) against the opt-in MAS
-  # stack. Their own job: the refresh test waits out two real 60 s token lifetimes (about three
+  # The MAS-backed OAuth journeys (accounts/mas-session.spec.mts) and QR sign-in
+  # (accounts/qr-sign-in.spec.mts) against the opt-in MAS stack. Their own job: the refresh test waits out two real 60 s token lifetimes (about three
   # minutes), and the Synapse browser shards above stay MAS-free.
   mas:
     name: Browser E2E (MAS)
     runs-on: ubuntu-latest
-    # Hang containment. Expected ~12 min: setup and build ~5, images and stack ~1, specs ~6.
-    timeout-minutes: 30
+    # Hang containment. Expected ~16 min: setup and build ~5, and per spec file the stack ~1
+    # plus specs ~6 and ~2.
+    timeout-minutes: 45
     env:
       TRINITY_E2E_MAS: '1'
     steps:
@@ -167,6 +168,16 @@ jobs:
         if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
         with:
           surface: browser-mas
+          report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
+      - id: qr
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'success' }}
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e -- accounts/qr-sign-in.spec.mts
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.qr.outputs.started == 'true' }}
+        with:
+          surface: browser-mas-qr
           report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
 
   # A red cron run notifies nobody: open (or update) an issue, and close it on the next green run.

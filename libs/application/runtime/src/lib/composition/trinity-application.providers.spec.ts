@@ -47,9 +47,13 @@ import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { NEVER, firstValueFrom, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ACCOUNT_LIFECYCLE_PORT } from '@trinity/data-access/accounts';
-import { DEVICE_CONFIRMATION_POLICY } from '@trinity/data-access/trust';
+import {
+  DEVICE_CONFIRMATION_POLICY,
+  TrustDevicesService,
+} from '@trinity/data-access/trust';
 import {
   AuthService,
+  QR_LINK_IDENTITY_CHECK,
   QR_SIGN_IN_COMPLETION,
   QrSignInAvailability,
 } from '@trinity/data-access/auth';
@@ -431,6 +435,9 @@ describe('Trinity application provider composition', () => {
     try {
       expect(TestBed.inject(QR_SIGN_IN_COMPLETION)).toBe(
         TestBed.inject(AuthService),
+      );
+      expect(TestBed.inject(QR_LINK_IDENTITY_CHECK)).toBe(
+        TestBed.inject(TrustDevicesService),
       );
       expect(TestBed.inject(QrSignInAvailability)).toBeTruthy();
     } finally {

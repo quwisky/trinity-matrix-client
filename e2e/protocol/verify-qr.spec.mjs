@@ -4,6 +4,7 @@
 // reads that image from a synthetic canvas MediaStream, avoiding physical camera
 // hardware while still exercising rendering, decoding, and scanQRCode end to end.
 import { waitForRooms } from '../support/navigation.mjs';
+import { installSyntheticCamera, showOnCamera } from '../support/qr-camera.mts';
 import { applicationOrigin } from '../support/session.mts';
 import { test, expect } from './fixtures.mts';
 
@@ -69,41 +70,6 @@ async function setUpEncryption(page) {
   await waitForRooms(page);
 }
 
-/** Install a camera seam backed by a canvas containing the other device's QR. */
-async function installSyntheticCamera(page) {
-  await page.addInitScript(() => {
-    let stream;
-    let resolveImage;
-    const imageReady = new Promise((resolve) => {
-      resolveImage = resolve;
-    });
-
-    window.__trinitySetQrCameraImage = async (url) => {
-      const image = new Image();
-      image.src = url;
-      await image.decode();
-      const canvas = document.createElement('canvas');
-      canvas.width = image.naturalWidth;
-      canvas.height = image.naturalHeight;
-      canvas.getContext('2d').drawImage(image, 0, 0);
-      stream = canvas.captureStream(5);
-      resolveImage();
-    };
-
-    const mediaDevices = navigator.mediaDevices ?? {};
-    Object.defineProperty(navigator, 'mediaDevices', {
-      configurable: true,
-      value: {
-        ...mediaDevices,
-        getUserMedia: async () => {
-          await imageReady;
-          return stream;
-        },
-      },
-    });
-  });
-}
-
 async function main(protocolBrowser) {
   const A = await protocolBrowser.newAuthenticatedPage({ label: 'device-a' });
   const B = await protocolBrowser.newPage({ label: 'device-b' });
@@ -134,7 +100,7 @@ async function main(protocolBrowser) {
     if (!qrUrl?.startsWith('data:image/gif;base64,')) {
       throw new Error('A did not render the verification QR data URL');
     }
-    await B.evaluate((url) => window.__trinitySetQrCameraImage(url), qrUrl);
+    await showOnCamera(B, qrUrl);
 
     log('B: scanning A through the synthetic camera seam');
     await B.getByTestId('verify-scan-qr').click();

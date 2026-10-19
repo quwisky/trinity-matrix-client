@@ -1,0 +1,141 @@
+@let current = state();
+@switch (current.kind) {
+  @case ('scanning') {
+    <h3 #stepHeading tabindex="-1" class="link-device__heading">
+      Scan the code on your new device
+    </h3>
+    <p class="m-0 text-13 text-muted-foreground">
+      On your new device, choose "Sign in with QR code".
+    </p>
+    @if (notice(); as message) {
+      <p class="m-0 mt-2 text-13 text-danger">{{ message }}</p>
+    }
+    <trn-qr-scanner
+      class="mt-3"
+      (scanned)="scan($event)"
+      (cancelled)="close()"
+    />
+  }
+  @case ('confirm-check-code') {
+    <h3 #stepHeading tabindex="-1" class="link-device__heading">
+      Check the code on your new device
+    </h3>
+    <p class="m-0 text-13 text-muted-foreground">
+      Does your new device show the same number?
+    </p>
+    <!-- Read digit by digit: "4 2", not "forty-two". -->
+    <p class="link-device__check-code">
+      <span aria-hidden="true" data-testid="link-device-check-code">{{
+        checkCode()
+      }}</span>
+      <span class="sr-only">{{ spokenCheckCode() }}</span>
+    </p>
+    <div class="flex flex-wrap gap-2">
+      <button trnBtn type="button" (click)="confirmCheckCode(true)">
+        They match
+      </button>
+      <button
+        trnBtn
+        variant="secondary"
+        type="button"
+        (click)="confirmCheckCode(false)"
+      >
+        They don't match
+      </button>
+    </div>
+  }
+  @case ('done') {
+    <h3 #stepHeading tabindex="-1" class="link-device__heading">
+      Device linked
+    </h3>
+    <p class="m-0 text-13 text-muted-foreground">
+      Your encryption keys were sent to your new device. It finishes setting up
+      there.
+    </p>
+  }
+  @case ('failed') {
+    <h3 #stepHeading tabindex="-1" class="link-device__heading">
+      Couldn't link the device
+    </h3>
+    <p class="m-0 text-13 text-danger" role="alert">
+      {{ failureMessages[current.reason] }}
+    </p>
+    <button
+      trnBtn
+      variant="secondary"
+      size="sm"
+      type="button"
+      class="mt-3"
+      (click)="scanAgain()"
+    >
+      Scan again
+    </button>
+  }
+  @case ('connecting') {
+    <h3 #stepHeading tabindex="-1" class="link-device__heading">Connecting</h3>
+    <div class="flex items-center gap-2">
+      <trn-spinner />
+      <p class="m-0 text-13 text-muted-foreground">
+        Connecting to your new device…
+      </p>
+    </div>
+  }
+  @default {
+    <!-- Approval and sharing the keys arrive together: one step, so focus stays put. -->
+    <h3 #stepHeading tabindex="-1" class="link-device__heading">
+      Approve the sign-in
+    </h3>
+    <p class="m-0 text-13 text-muted-foreground">
+      Open the approval page and approve the new device. Trinity then shares
+      your encryption keys with it.
+    </p>
+    @if (openFailed()) {
+      <p class="m-0 mt-2 text-13 text-danger" role="alert">
+        Couldn't open the page. Use the link below.
+      </p>
+    }
+    <p
+      class="link-device__uri m-0 mt-2 text-13"
+      data-testid="link-device-approval-link"
+    >
+      {{ verificationUri() }}
+    </p>
+    <div class="mt-3 flex flex-wrap items-center gap-3">
+      <button trnBtn type="button" (click)="openApprovalPage()">
+        Open approval page
+      </button>
+      @if (current.kind === 'sharing-secrets') {
+        <span class="flex items-center gap-2 text-13 text-muted-foreground">
+          <trn-spinner />
+          Waiting for approval…
+        </span>
+      }
+    </div>
+  }
+}
+
+<!-- One polite region, present and empty from the first render, so each step's
+     announcement is a change that screen readers read. -->
+<p
+  class="sr-only"
+  role="status"
+  aria-live="polite"
+  data-testid="link-device-announcement"
+>
+  {{ announcement() }}
+</p>
+
+@if (current.kind !== 'scanning') {
+  <button
+    trnBtn
+    presentation="ghost"
+    size="sm"
+    type="button"
+    class="mt-3"
+    (click)="close()"
+  >
+    {{
+      current.kind === 'done' || current.kind === 'failed' ? 'Close' : 'Cancel'
+    }}
+  </button>
+}

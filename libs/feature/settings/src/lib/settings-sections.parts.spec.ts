@@ -21,7 +21,7 @@ import {
 } from '@trinity/components/overlay';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AppLockService } from '@trinity/data-access/app-lock';
-import { AuthService } from '@trinity/data-access/auth';
+import { AuthService, QrSignInService } from '@trinity/data-access/auth';
 import {
   AccountIdentitiesService,
   IdentityPresenceService,
@@ -116,10 +116,12 @@ const SETUPS: Record<string, () => Setup> = {
     providers: [
       MockProvider(TrustDevicesService, {
         devices: signal([]),
+        canShareSecrets: signal(false),
         list: () => of([]),
       }),
       MockProvider(TrnAlertService),
       MockProvider(WorkspaceApplicationSurfaceService),
+      MockProvider(QrSignInService),
     ],
   }),
   account: () => ({

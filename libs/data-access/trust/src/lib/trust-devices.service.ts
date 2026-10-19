@@ -10,6 +10,10 @@ import {
   recoverTrustOperation,
 } from './trust-operation-error';
 import {
+  holdsCrossSigningIdentity,
+  readPublishedMasterKey,
+} from './trust-snapshot';
+import {
   UiaCancelledError,
   runPasswordUia,
   type PasswordPrompt,
@@ -42,8 +46,24 @@ export class TrustDevicesService {
   private readonly _devices = signal<DeviceInfo[]>([]);
   readonly devices = this._devices.asReadonly();
 
+  private readonly _canShareSecrets = signal(false);
+  /**
+   * This device caches all three private cross-signing keys and they match its identity,
+   * so it can hand them to a device it links. Read with the device list and again whenever
+   * trust changes. A local read: {@link holdsPublishedIdentity} asks the server at link time.
+   */
+  readonly canShareSecrets = this._canShareSecrets.asReadonly();
+
   /** Increments per load (and per mutation) so a stale reload can't clobber. */
   private loadGen = 0;
+  /** Increments per key-cache read, so a slow read cannot overwrite a newer one. */
+  private shareGen = 0;
+
+  private readonly onTrustChanged = (): void => {
+    if (this.cryptoPort.isAvailable()) {
+      void this.readCanShareSecrets(this.cryptoPort.active().client);
+    }
+  };
 
   /** Refresh only when OUR session list could have changed — the event also fires
    * for other users we share encrypted rooms with (and on the initial fetch). */
@@ -70,14 +90,22 @@ export class TrustDevicesService {
    */
   private readonly projection = this.cryptoPort.project({
     id: 'crypto.devices',
-    bind: (client) =>
-      client.on(CryptoEvent.DevicesUpdated, this.onDevicesUpdated),
-    unbind: (client) =>
-      client.off(CryptoEvent.DevicesUpdated, this.onDevicesUpdated),
+    bind: (client) => {
+      client.on(CryptoEvent.KeysChanged, this.onTrustChanged);
+      client.on(CryptoEvent.UserTrustStatusChanged, this.onTrustChanged);
+      client.on(CryptoEvent.DevicesUpdated, this.onDevicesUpdated);
+    },
+    unbind: (client) => {
+      client.off(CryptoEvent.KeysChanged, this.onTrustChanged);
+      client.off(CryptoEvent.UserTrustStatusChanged, this.onTrustChanged);
+      client.off(CryptoEvent.DevicesUpdated, this.onDevicesUpdated);
+    },
     rebuild: (client) => void this.loadDevices(client).catch(() => undefined),
     reset: () => {
       this.loadGen++;
+      this.shareGen++;
       this._devices.set([]);
+      this._canShareSecrets.set(false);
     },
   });
 
@@ -105,6 +133,7 @@ export class TrustDevicesService {
     const userId = client.getUserId() ?? '';
     const currentId = client.getDeviceId();
     const crypto = client.getCrypto();
+    void this.readCanShareSecrets(client);
     const { devices } = await client.getDevices();
 
     const result = await Promise.all(
@@ -138,6 +167,49 @@ export class TrustDevicesService {
       this._devices.set(result);
     }
     return result;
+  }
+
+  private async readCanShareSecrets(client: TrustMatrixClient): Promise<void> {
+    const gen = ++this.shareGen;
+    let canShare = false;
+    try {
+      const crypto = client.getCrypto();
+      if (crypto) {
+        const [status, crossSigningReady] = await Promise.all([
+          crypto.getCrossSigningStatus(),
+          crypto.isCrossSigningReady(),
+        ]);
+        canShare = holdsCrossSigningIdentity(status, crossSigningReady);
+      }
+    } catch {
+      // An unreadable key cache offers nothing to share.
+    }
+    if (gen === this.shareGen) {
+      this._canShareSecrets.set(canShare);
+    }
+  }
+
+  /**
+   * Whether this device caches the private keys of the identity the homeserver publishes.
+   * Asks the server first: that query also makes the crypto machine drop cached keys that
+   * differ from the published ones, such as those a cancelled reset leaves behind.
+   */
+  holdsPublishedIdentity(client: TrustMatrixClient): Observable<boolean> {
+    return defer(async () => {
+      const crypto = client.getCrypto();
+      if (!crypto) return false;
+      const published = await readPublishedMasterKey(client);
+      const [status, crossSigningReady, local] = await Promise.all([
+        crypto.getCrossSigningStatus(),
+        crypto.isCrossSigningReady(),
+        crypto.getCrossSigningKeyId(),
+      ]);
+      return (
+        published !== null &&
+        local === published &&
+        holdsCrossSigningIdentity(status, crossSigningReady)
+      );
+    });
   }
 
   /** Rename a device's public display name. */
