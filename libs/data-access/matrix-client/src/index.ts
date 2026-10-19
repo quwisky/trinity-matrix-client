@@ -12,3 +12,4 @@ export * from './lib/identity-matrix.port';
 export * from './lib/known-names';
 export type { PendingTextMessage } from './lib/outgoing-work';
 export * from './lib/server-support';
+export * from './lib/mutual-rooms';
