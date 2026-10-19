@@ -1,0 +1,66 @@
+<div class="flex justify-center gap-3">
+  @if (!isSelf()) {
+    <button
+      trnBtn
+      shape="tile"
+      (click)="messageUser.emit()"
+      data-testid="member-info-message"
+    >
+      <trn-icon name="message-square" />
+      Message
+    </button>
+  }
+  <button
+    trnBtn
+    variant="secondary"
+    shape="tile"
+    (click)="copyId()"
+    data-testid="member-info-copy"
+  >
+    <trn-icon name="copy" />
+    Copy ID
+  </button>
+  @if (canVerify()) {
+    <button
+      trnBtn
+      variant="secondary"
+      shape="tile"
+      (click)="verify.emit()"
+      data-testid="member-info-verify"
+    >
+      <trn-icon name="shield-check" />
+      Verify
+    </button>
+  }
+</div>
+
+@if (status() || globalName()) {
+  <dl class="m-0 mt-3 flex flex-col">
+    @if (status(); as status) {
+      <div
+        class="flex items-baseline justify-between gap-4 border-t border-[var(--trinity-border-overlay)] px-4 py-2.5 text-sm"
+      >
+        <dt class="shrink-0 text-muted-foreground">Status</dt>
+        <dd
+          class="m-0 min-w-0 text-end [overflow-wrap:anywhere]"
+          data-testid="member-info-status"
+        >
+          {{ status }}
+        </dd>
+      </div>
+    }
+    @if (globalName(); as globalName) {
+      <div
+        class="flex items-baseline justify-between gap-4 border-t border-[var(--trinity-border-overlay)] px-4 py-2.5 text-sm"
+      >
+        <dt class="shrink-0 text-muted-foreground">Global name</dt>
+        <dd
+          class="m-0 min-w-0 text-end [overflow-wrap:anywhere]"
+          data-testid="member-info-global-name"
+        >
+          {{ globalName }}
+        </dd>
+      </div>
+    }
+  </dl>
+}

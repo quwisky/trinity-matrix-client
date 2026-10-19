@@ -94,6 +94,20 @@ const ROLES = [
     text: '--trinity-text',
     on: PANE_GROUNDS,
   },
+  // A solid secondary row's label on the neutral fill (`trnBtn shape="row"`), at rest and hovered.
+  {
+    text: '--trinity-control-secondary-foreground',
+    on: [
+      '--trinity-neutral-fill-surface',
+      '--trinity-neutral-fill-hover-surface',
+    ],
+  },
+  // A ghost or outline danger row's label on the same fill (Remove on the member card). Its
+  // hover is the danger tint, measured with the other danger roles.
+  {
+    text: '--trinity-danger',
+    on: ['--trinity-neutral-fill-surface'],
+  },
   {
     text: '--trinity-text-muted',
     on: PANE_GROUNDS,
@@ -252,6 +266,11 @@ const ROLES = [
 
 /** Essential graphics and focus indicators use WCAG's 3:1 non-text threshold. */
 const NON_TEXT_ROLES = [
+  // The underline tabs' selected bar (`trnTabs appearance="underline"`) on the cards it sits in.
+  {
+    foreground: '--trinity-accent',
+    on: ['--trinity-surface-overlay', '--trinity-surface-raised'],
+  },
   {
     foreground: '--trinity-focus-ring',
     on: [
@@ -719,6 +738,36 @@ describe('contrast matrix', () => {
           `${measurement.theme}/${measurement.mode}: ${measurement.foreground} on ${measurement.surface} = ${measurement.ratio.toFixed(2)}:1`,
       )
       .sort();
+
+    expect(failures).toEqual([]);
+  });
+
+  it('keeps the neutral fill visible as a shape on the panes that hold it', () => {
+    // Decorative: the label names the action, so the floor is a visible shape, not 3:1.
+    const failures = [];
+    for (const theme of themes) {
+      for (const mode of ['light', 'dark']) {
+        for (const fill of [
+          '--trinity-neutral-fill-surface',
+          '--trinity-neutral-fill-hover-surface',
+        ]) {
+          for (const surface of [
+            '--trinity-surface-overlay',
+            '--trinity-surface-raised',
+          ]) {
+            const foreground = toRgb(resolve(fill, theme, mode));
+            const background = toRgb(resolve(surface, theme, mode));
+            const measuredRatio =
+              foreground && background ? ratio(foreground, background) : 0;
+            if (measuredRatio < 1.15) {
+              failures.push(
+                `${theme}/${mode}: ${fill} on ${surface} = ${measuredRatio.toFixed(2)}:1`,
+              );
+            }
+          }
+        }
+      }
+    }
 
     expect(failures).toEqual([]);
   });

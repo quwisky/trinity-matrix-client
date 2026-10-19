@@ -3,7 +3,6 @@ import {
   test,
   expect,
   type APIRequestContext,
-  type Page,
 } from '../../../fixtures.mts';
 import {
   login,
@@ -20,26 +19,13 @@ import {
   openSettingsSection,
 } from '../../../support/journeys/navigation.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { openMemberCard, openMemberTab } from '../../support/member-card.mts';
 
 // Covers Settings › Privacy › Blocked users: a member blocked from their card is listed
 // there (IgnoredUsersService.ignoredUsers over m.ignored_user_list), unblocking from the
 // list removes them, and the card follows the same list back to "Block", including changes
 // made on another device. A message sent while blocked shows once they are unblocked.
 const session = homeserverSession();
-
-async function openMemberCard(page: Page, memberName: string): Promise<void> {
-  if (!(await page.locator('.chat-members').isVisible())) {
-    await page.getByTestId('toggle-members').click();
-  }
-  const memberRow = page.locator('[data-testid="member-row"]', {
-    hasText: memberName,
-  });
-  await memberRow.first().waitFor({ state: 'visible', timeout: 20_000 });
-  await memberRow.first().click();
-  await expect(page.getByTestId('member-info')).toBeVisible({
-    timeout: 10_000,
-  });
-}
 
 function serverOf(userId: string): string {
   return userId.slice(userId.indexOf(':') + 1);
@@ -111,6 +97,7 @@ test.describe('Blocked users in Settings', () => {
     } as HomeserverSession);
     await openRoom(page, roomName);
     await openMemberCard(page, otherName);
+    await openMemberTab(page, 'Manage');
     const cardAction = page.getByTestId('member-info-ignore');
     await expect(cardAction).toHaveText('Block');
     await cardAction.click();
@@ -161,6 +148,7 @@ test.describe('Blocked users in Settings', () => {
     await expect(hiddenMessage.first()).toBeVisible({ timeout: 30_000 });
 
     await openMemberCard(page, otherName);
+    await openMemberTab(page, 'Manage');
     const card = page.getByTestId('member-info-ignore');
     await expect(card).toHaveText('Block', { timeout: 15_000 });
 

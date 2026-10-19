@@ -110,3 +110,35 @@ export const CanonicalStates: Story = {
     `,
   }),
 };
+
+/** A boxed list: each option's reason sits at the end of its line, as in the member card's role picker. */
+export const BoxedRadioGroup: Story = {
+  render: () => ({
+    props: {
+      options: [
+        {
+          value: 100,
+          label: 'Admin',
+          description: 'Only admins can',
+          disabled: true,
+          testId: 'radio-boxed-admin',
+        },
+        { value: 50, label: 'Moderator', testId: 'radio-boxed-moderator' },
+        { value: 0, label: 'Member', testId: 'radio-boxed-member' },
+      ],
+      selected: 50,
+    },
+    template: `
+      <div class="max-w-xs p-4">
+        <trn-radio-group
+          data-testid="radio-boxed"
+          layout="boxed"
+          aria-label="Role in Design team"
+          [options]="options"
+          [value]="selected"
+          (valueChange)="selected = $event"
+        />
+      </div>
+    `,
+  }),
+};

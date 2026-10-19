@@ -33,6 +33,7 @@ import {
     '[attr.data-trn-icon-button]': "iconButton() ? '' : null",
     '[attr.data-trn-presentation]': 'presentation()',
     '[attr.data-trn-variant]': 'variant()',
+    '[attr.data-trn-shape]': 'shape()',
     '[attr.aria-busy]': 'loading() ? "true" : null',
     '[attr.data-loading]': 'loading() ? "" : null',
   },

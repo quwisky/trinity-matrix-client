@@ -37,6 +37,7 @@
   .member-info__id {
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 2px;
     min-width: 0;
     width: 100%;
@@ -63,28 +64,56 @@
     }
   }
 
-  .member-info__role {
-    margin-top: 2px;
-    font-size: 12px;
-    color: var(--trinity-text-muted);
+  .member-info__badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--trinity-space-2);
+    margin-top: var(--trinity-space-2);
+  }
+
+  // The tab strip, its divider and the panels' row dividers run edge to edge across the card;
+  // each panel insets its own content by the card's side inset.
+  .member-info__tabs {
+    align-self: stretch;
+    margin-inline: calc(-1 * var(--profile-card-inset));
+    text-align: start;
+  }
+
+  // A bottom sheet grows upward, so it would shift as tabs of different heights swap in; this
+  // fits a moderator's Manage tab. The desktop dialog is hung from the top and fits its content.
+  [data-presentation='sheet'] .member-info__tabs {
+    min-height: 27rem;
   }
 
   .member-info__actions {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    width: 100%;
-    margin-top: 4px;
+    padding-inline: var(--profile-card-inset);
+    margin-top: var(--trinity-space-4);
+
+    // `display: flex` would otherwise override the `hidden` an unselected panel carries.
+    &[hidden] {
+      display: none;
+    }
   }
 
-  // The moderation actions sit below a divider so they read as a separate, weightier group.
-  .member-info__moderation {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 100%;
-    margin-top: 6px;
-    padding-top: 10px;
-    border-top: 1px solid var(--trinity-divider);
+  .member-info__profile {
+    display: block;
+    margin-top: var(--trinity-space-4);
+
+    &[hidden] {
+      display: none;
+    }
+  }
+
+  // The list starts at the tab strip's divider, as its rows carry their own dividers.
+  .member-info__rooms {
+    display: block;
+
+    &[hidden] {
+      display: none;
+    }
   }
 }

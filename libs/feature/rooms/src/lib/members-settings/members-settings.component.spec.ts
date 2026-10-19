@@ -1,4 +1,6 @@
 import { signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { MemberInfoComponent } from '../member-info/member-info.component';
 import { render } from '@trinity/testing';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { provideTrnIcons } from '@trinity/components/foundations';
@@ -117,9 +119,11 @@ async function build(options: { readonly canManage?: boolean } = {}) {
       }),
       MockProvider(IdentityPresenceService, {
         presenceFor: () => signal(null),
+        presenceDetailsFor: () => signal(null),
       }),
       MockProvider(IdentityService, {
         activeUserId: signal<string | null>(TARGET.accountId).asReadonly(),
+        lookup: () => NEVER,
       }),
       MockProvider(IgnoredUsersService, {
         isIgnored: () => false,
@@ -164,6 +168,18 @@ describe('MembersSettingsComponent', () => {
     expect(
       container.querySelector('[data-testid="members-settings-invite"]'),
     ).toBeNull();
+  });
+
+  it('closes the settings dialog once a shared room is opened from member detail', async () => {
+    const { cmp, fixture, close } = await build();
+    cmp.selectMember(ADA);
+    await fixture.whenStable();
+
+    fixture.debugElement
+      .query(By.directive(MemberInfoComponent))
+      .componentInstance.roomOpened.emit();
+
+    expect(close).toHaveBeenCalledWith(false);
   });
 
   it('returns member detail to the roster before the settings dialog retreats', async () => {

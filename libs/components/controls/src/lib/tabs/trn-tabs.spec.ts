@@ -311,4 +311,45 @@ describe('trnTabs', () => {
     expect(orphan).not.toHaveAttribute('aria-labelledby');
     expect(orphan).not.toHaveAttribute('tabindex');
   });
+
+  it('draws segmented pills by default', async () => {
+    await renderTabs();
+    const segmented = view.getByRole('tablist', { name: 'Picker type' });
+    expect(segmented.className).not.toContain('border-b');
+    expect(tab('gifs').className).toContain('rounded-');
+  });
+
+  it('draws an underlined strip with an accent bar on request', async () => {
+    @Component({
+      imports: [TrnTabs, TrnTabList, TrnTab],
+      template: `
+        <div trnTabs appearance="underline" value="a">
+          <div trnTabList aria-label="Underlined">
+            <button trnTab="a">A</button>
+          </div>
+        </div>
+      `,
+    })
+    class UnderlineHostComponent {}
+
+    const underline = await render(UnderlineHostComponent);
+    const list = underline.getByRole('tablist', { name: 'Underlined' });
+    const selected = within(list).getByRole('tab', { name: 'A' });
+    expect(list.className).toContain('border-b');
+    expect(selected.className).toContain('border-b-2');
+    expect(selected.className).toContain(
+      'aria-selected:border-[var(--trinity-accent)]',
+    );
+    expect(selected.className).not.toContain(
+      'aria-selected:bg-[var(--trinity-state-selected-surface)]',
+    );
+    // Forced colours replace the accent, so the system selection colour marks the tab there.
+    expect(selected.className).toContain(
+      'forced-colors:aria-selected:border-b-[Highlight]',
+    );
+    // An edge-to-edge strip sits in a clipping scroller, so its focus ring is inset.
+    expect(selected.className).toContain(
+      'focus-visible:outline-offset-[calc(-1*var(--trinity-focus-ring-width))]',
+    );
+  });
 });

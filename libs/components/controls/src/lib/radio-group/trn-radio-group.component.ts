@@ -9,10 +9,12 @@ import {
 } from '@angular/core';
 import {
   trnRadioDescriptionRecipe,
+  trnRadioDisabledDim,
   trnRadioGroupRecipe,
   trnRadioIndicatorDotRecipe,
   trnRadioIndicatorRecipe,
   trnRadioOptionRecipe,
+  trnRadioTextRecipe,
   type TrnRadioGroupLayout,
 } from './trn-radio-group-recipe';
 
@@ -29,6 +31,8 @@ export interface TrnRadioOption<T> {
   readonly description?: string;
   /** Addresses this choice from a test. Every call site derives it from the value. */
   readonly testId?: string;
+  /** Disables this choice alone; the group's `disabled` still disables every choice. */
+  readonly disabled?: boolean;
 }
 
 /**
@@ -71,7 +75,7 @@ export interface TrnRadioOption<T> {
         <label
           [class]="optionClass()"
           [attr.data-state]="option.value === value() ? 'selected' : 'idle'"
-          [attr.data-disabled]="disabled() ? 'true' : null"
+          [attr.data-disabled]="disabled() || option.disabled ? 'true' : null"
           [attr.data-testid]="option.testId"
         >
           <input
@@ -80,16 +84,19 @@ export interface TrnRadioOption<T> {
             role="radio"
             [name]="controlName"
             [checked]="option.value === value()"
-            [disabled]="disabled()"
+            [disabled]="disabled() || !!option.disabled"
             [attr.aria-checked]="option.value === value()"
             [attr.aria-invalid]="invalid() ? 'true' : null"
             (change)="onValueChange(option.value)"
           />
-          <span aria-hidden="true" [class]="indicatorClass()">
+          <span
+            aria-hidden="true"
+            [class]="indicatorClass() + ' ' + disabledDim"
+          >
             <span [class]="indicatorDotClass(option.value === value())"></span>
           </span>
-          <span class="flex min-w-0 flex-col items-start gap-0.5">
-            <span>{{ option.label }}</span>
+          <span [class]="textClass()">
+            <span [class]="disabledDim">{{ option.label }}</span>
             @if (option.description) {
               <small [class]="descriptionClass">
                 {{ option.description }}
@@ -110,7 +117,11 @@ export class TrnRadioGroupComponent<T> {
   protected readonly indicatorClass = computed(() =>
     trnRadioIndicatorRecipe(this.layout(), this.invalid()),
   );
+  protected readonly textClass = computed(() =>
+    trnRadioTextRecipe(this.layout()),
+  );
   protected readonly descriptionClass = trnRadioDescriptionRecipe();
+  protected readonly disabledDim = trnRadioDisabledDim;
 
   protected optionClass(): string {
     return trnRadioOptionRecipe(this.layout());

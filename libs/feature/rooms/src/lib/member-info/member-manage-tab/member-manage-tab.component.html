@@ -1,0 +1,111 @@
+@if (showIdentityActions()) {
+  <section class="flex flex-col gap-2" [attr.aria-labelledby]="id + '-safety'">
+    <h3
+      class="m-0 text-xs font-medium tracking-wider text-muted-foreground uppercase"
+      [id]="id + '-safety'"
+    >
+      Safety
+    </h3>
+    <div class="flex flex-col">
+      <button
+        trnBtn
+        variant="secondary"
+        shape="row"
+        (click)="toggleIgnore()"
+        [trnActionAllowed]="blockUnavailableReason() === null"
+        [trnActionDisabledReason]="blockUnavailableReason()"
+        data-testid="member-info-ignore"
+      >
+        {{ ignored() ? 'Unblock' : 'Block' }}
+      </button>
+      <!-- Always present, so screen readers hear a confirmation as it arrives. -->
+      <p
+        class="m-0 text-13 text-muted-foreground not-empty:mt-2"
+        role="status"
+        data-testid="member-info-block-notice"
+      >
+        @if (blockNotice(); as notice) {
+          @if (!notice.failed) {
+            {{ notice.text }}
+          }
+        }
+      </p>
+      @if (blockNotice()?.failed) {
+        <p
+          class="m-0 mt-2 text-13 text-danger"
+          role="alert"
+          data-testid="member-info-block-failure"
+        >
+          {{ blockNotice()?.text }}
+        </p>
+      }
+    </div>
+    @if (canReport()) {
+      <button
+        trnBtn
+        variant="secondary"
+        shape="row"
+        [attr.aria-label]="'Report ' + member().roomDisplayName"
+        (click)="report()"
+        data-testid="member-info-report"
+      >
+        Report
+      </button>
+    }
+  </section>
+}
+@if (showModeration()) {
+  <section
+    class="mt-3 flex w-full flex-col gap-2"
+    [attr.aria-labelledby]="id + '-moderation'"
+  >
+    <h3
+      class="m-0 text-xs font-medium tracking-wider [overflow-wrap:anywhere] text-muted-foreground uppercase"
+      [id]="id + '-moderation'"
+    >
+      Moderation · {{ targetName() }}
+    </h3>
+    @if (showRolePicker()) {
+      <trn-member-role-picker
+        [options]="roleChoices()"
+        [current]="permissions().targetPower"
+        [permissionFor]="rolePermissionFor"
+        [targetName]="targetName()"
+        (choose)="setRole($event)"
+      />
+    }
+    @if (showModerationAction(permissions().kick)) {
+      <button
+        trnBtn
+        variant="danger"
+        presentation="ghost"
+        shape="row"
+        (click)="kick()"
+        [trnActionAllowed]="permissions().kick.available"
+        [trnActionDisabledReason]="permissions().kick.reason"
+        [trnTooltip]="
+          permissions().kick.reason ?? 'Remove from ' + noun().toLowerCase()
+        "
+        data-testid="member-info-kick"
+      >
+        Remove from {{ noun().toLowerCase() }}
+      </button>
+    }
+    @if (showModerationAction(permissions().ban)) {
+      <button
+        trnBtn
+        variant="danger"
+        shape="row"
+        (click)="ban()"
+        [trnActionAllowed]="permissions().ban.available"
+        [trnActionDisabledReason]="permissions().ban.reason"
+        [trnTooltip]="
+          permissions().ban.reason ?? 'Ban from ' + noun().toLowerCase()
+        "
+        data-testid="member-info-ban"
+      >
+        Ban from {{ noun().toLowerCase() }}
+      </button>
+    }
+  </section>
+}

@@ -167,3 +167,25 @@ export const SolidPrimaryFocus: Story = {
     `,
   }),
 };
+
+/** Quick-action tiles: the icon square carries the fill and the label sits below it. */
+export const Tiles: Story = {
+  render: () => ({
+    template: `
+      <div class="flex justify-center gap-2 p-4">
+        <button data-testid="tile-primary" type="button" trnBtn shape="tile">
+          <trn-icon name="message-square" />
+          Message
+        </button>
+        <button data-testid="tile-secondary" type="button" trnBtn variant="secondary" shape="tile">
+          <trn-icon name="copy" />
+          Copy ID
+        </button>
+        <button data-testid="tile-disabled" type="button" trnBtn shape="tile" disabled>
+          <trn-icon name="shield-check" />
+          Verify
+        </button>
+      </div>
+    `,
+  }),
+};

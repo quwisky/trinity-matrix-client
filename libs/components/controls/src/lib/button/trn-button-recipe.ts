@@ -8,7 +8,7 @@ export type TrnButtonVariant = Extract<
 >;
 export type TrnButtonSize = Extract<TrnSize, 'xs' | 'sm' | 'md' | 'lg'>;
 export type TrnButtonPresentation = 'solid' | 'outline' | 'ghost' | 'link';
-export type TrnButtonShape = 'label' | 'icon' | 'row' | 'inline';
+export type TrnButtonShape = 'label' | 'icon' | 'row' | 'inline' | 'tile';
 
 interface TrnButtonRecipeOptions {
   presentation: TrnButtonPresentation;
@@ -120,6 +120,28 @@ const separatedFocusRing =
 /** A full-width list row: the label starts at the inline start and wraps instead of clipping. */
 const rowShape = 'h-auto w-full justify-start text-start whitespace-normal';
 
+/** A wrapping row keeps its size's height as a floor, so a one-line label is not squashed. */
+const rowMinHeight = {
+  xs: 'min-h-6',
+  sm: 'min-h-7',
+  md: 'min-h-8',
+  lg: 'min-h-9',
+} as const;
+
+/**
+ * A solid secondary row, such as Block on the member card. The shared secondary fill is about
+ * 1:1 on the overlay, so a row takes the neutral fill that reads there as a filled shape.
+ */
+const solidSecondaryRowTone =
+  'bg-[color:var(--trinity-neutral-fill-surface)] hover:bg-[color:var(--trinity-neutral-fill-hover-surface)]';
+
+/**
+ * A ghost or outline danger row, such as Remove on the member card: the same neutral fill as a
+ * secondary row, so it reads as a row, with the danger label and the danger tint on hover.
+ */
+const dangerRowFill =
+  'bg-[color:var(--trinity-neutral-fill-surface)] dark:bg-[color:var(--trinity-neutral-fill-surface)] hover:bg-[var(--trinity-danger-tint-10)] dark:hover:bg-[var(--trinity-danger-tint-10)]';
+
 /**
  * A link-style action in a column of text, such as a Preview toggle under a description:
  * no inline padding, so its label lines up with the text above and below it.
@@ -127,11 +149,30 @@ const rowShape = 'h-auto w-full justify-start text-start whitespace-normal';
 const inlineShape =
   'px-0 has-data-[icon=inline-end]:pe-0 has-data-[icon=inline-start]:ps-0';
 
+/**
+ * A quick-action tile: the projected `trn-icon` becomes a 36px square that carries the
+ * variant's fill, with the label in small text below it. The button itself stays transparent,
+ * so its focus ring surrounds the whole tile and no separated ring is needed.
+ */
+const tileShape =
+  'h-auto min-w-14 flex-col gap-1.5 px-1 py-1 text-xs font-normal text-foreground [&>trn-icon]:size-9 [&>trn-icon]:items-center [&>trn-icon]:justify-center [&>trn-icon]:rounded-lg [&>trn-icon]:transition-colors';
+
+/** A tile always fills its square, whatever its presentation. */
+const tileTone = {
+  primary:
+    '[&>trn-icon]:bg-primary [&>trn-icon]:text-primary-foreground hover:[&>trn-icon]:bg-primary/80',
+  secondary:
+    '[&>trn-icon]:bg-[color:var(--trinity-neutral-fill-surface)] [&>trn-icon]:text-secondary-foreground hover:[&>trn-icon]:bg-[color:var(--trinity-neutral-fill-hover-surface)]',
+  danger:
+    '[&>trn-icon]:bg-[color:var(--trinity-danger-solid)] [&>trn-icon]:text-[color:var(--trinity-danger-solid-foreground)] hover:[&>trn-icon]:bg-[color:var(--trinity-danger-solid-hover)]',
+} as const;
+
 const shapeClasses: Record<TrnButtonShape, string> = {
   label: '',
   icon: '',
   row: rowShape,
   inline: inlineShape,
+  tile: tileShape,
 };
 
 /**
@@ -139,6 +180,15 @@ const shapeClasses: Record<TrnButtonShape, string> = {
  * crosses the public Controls entrypoint.
  */
 export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
+  if (options.shape === 'tile') {
+    // Null variant and size keep only Helm's base classes: no fill, height or padding.
+    return hlm(
+      buttonVariants({ variant: null, size: null }),
+      tileShape,
+      tileTone[options.variant],
+      focusRing,
+    );
+  }
   const size =
     options.shape === 'icon' ? iconSize[options.size] : labelSize[options.size];
   const variant =
@@ -147,8 +197,14 @@ export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
       : options.presentation;
   const tone =
     options.presentation === 'solid'
-      ? solidTone[options.variant]
-      : nonSolidTone[options.variant][options.presentation];
+      ? options.shape === 'row' && options.variant === 'secondary'
+        ? solidSecondaryRowTone
+        : solidTone[options.variant]
+      : options.shape === 'row' &&
+          options.variant === 'danger' &&
+          options.presentation !== 'link'
+        ? `${nonSolidTone.danger[options.presentation]} ${dangerRowFill}`
+        : nonSolidTone[options.variant][options.presentation];
 
   const ring =
     options.presentation === 'solid' && options.variant === 'primary'
@@ -158,6 +214,7 @@ export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
   return hlm(
     buttonVariants({ variant, size }),
     shapeClasses[options.shape],
+    options.shape === 'row' ? rowMinHeight[options.size] : '',
     tone,
     ring,
   );

@@ -19,7 +19,7 @@ import { TrnDialogOpenerService } from './trn-dialog-opener.service';
 
 /** Structural position for a component dialog. Appearance belongs to its surface. */
 export type TrnDialogPlacement =
-  'center' | 'inline-end' | 'bottom' | 'fullscreen';
+  'center' | 'top' | 'inline-end' | 'bottom' | 'fullscreen';
 
 /** Trinity's focus target vocabulary, independent of CDK's configuration type. */
 export type TrnDialogAutoFocus = string | false;
@@ -28,7 +28,9 @@ export interface DialogOptions<C = object> {
   /** Set on the opened component as inputs after creation. */
   inputs?: Record<string, unknown>;
   /**
-   * Where the panel sits. `'center'` (default) is a centered modal card;
+   * Where the panel sits. `'center'` (default) is a centered modal card; `'top'` the same
+   * card hung from {@link DIALOG_BLOCK_START} below the viewport top, so a card whose height
+   * changes (tabs) keeps its header still;
    * `'inline-end'` pins it full-height against the logical end edge — the
    * split-pane side panel (the surface recipe supplies its own bounded geometry).
    * `'bottom'` is a full-width bottom sheet; the surface service picks it by {@link prefersSheet}.
@@ -120,6 +122,9 @@ const POPOVER_POSITIONS: ConnectedPosition[] = [
   },
 ];
 
+/** Where a `'top'` dialog's card starts below the viewport top. */
+const DIALOG_BLOCK_START = '10vh';
+
 /** The sheet rule: any phone or tablet, or any screen narrower than `md`. */
 export function prefersSheet(): boolean {
   return isMobileOs() || matchesQuery(BELOW_MD_QUERY);
@@ -183,17 +188,23 @@ export function dialogPresentation(
         .withPush(true)
     : placement === 'inline-end'
       ? overlay.position().global().top('0').right('0')
-      : sheet
-        ? overlay.position().global().centerHorizontally().bottom('0')
-        : fullScreen
-          ? overlay
-              .position()
-              .global()
-              .top('0')
-              .right('0')
-              .bottom('0')
-              .left('0')
-          : undefined;
+      : placement === 'top'
+        ? overlay
+            .position()
+            .global()
+            .centerHorizontally()
+            .top(DIALOG_BLOCK_START)
+        : sheet
+          ? overlay.position().global().centerHorizontally().bottom('0')
+          : fullScreen
+            ? overlay
+                .position()
+                .global()
+                .top('0')
+                .right('0')
+                .bottom('0')
+                .left('0')
+            : undefined;
   return {
     pane: {
       ariaLabelledBy: titleId,
@@ -214,7 +225,15 @@ export function dialogPresentation(
       // Undefined lets CDK center the card; `'inline-end'` pins it to the logical end edge.
       ...(positionStrategy && { positionStrategy }),
     },
-    createRef: (cdkRef) => new TrnDialogRef(cdkRef, presentation, titleId),
+    createRef: (cdkRef) =>
+      new TrnDialogRef(
+        cdkRef,
+        presentation,
+        titleId,
+        placement === 'top' && presentation === 'dialog'
+          ? DIALOG_BLOCK_START
+          : null,
+      ),
   };
 }
 

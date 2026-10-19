@@ -29,6 +29,12 @@ export interface TrnSurfaceOptions<C = object> {
   dismissGuard?: (component: C | null) => boolean;
   kind?: TrnSurfaceKind;
   /**
+   * Where an `'auto'` dialog sits on a large screen: centred (default), or `'top'`, hung a
+   * fixed distance below the viewport top so a card whose height changes keeps its header
+   * still. A sheet ignores it.
+   */
+  align?: 'center' | 'top';
+  /**
    * The element a `'popover'` hangs off. Without one, or on a touch pointer, a popover
    * follows the `'auto'` rule instead.
    */
@@ -116,12 +122,20 @@ export class TrnSurfaceService {
   private dialogOptions<C>({
     kind = 'auto',
     anchor,
+    align = 'center',
     ...rest
   }: TrnSurfaceOptions<C>): DialogOptions<C> {
     if (kind === 'fullscreen') return { ...rest, placement: 'fullscreen' };
     if (kind === 'popover' && anchor && !prefersCentred()) {
       return { ...rest, anchor };
     }
-    return { ...rest, placement: this.prefersSheet() ? 'bottom' : 'center' };
+    return {
+      ...rest,
+      placement: this.prefersSheet()
+        ? 'bottom'
+        : align === 'top'
+          ? 'top'
+          : 'center',
+    };
   }
 }

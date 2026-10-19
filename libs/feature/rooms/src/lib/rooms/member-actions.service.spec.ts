@@ -15,10 +15,14 @@ import {
   RoomModerationService,
   type MemberSummary,
 } from '@trinity/data-access/room-administration';
-import { RoomLibraryService } from '@trinity/data-access/room-library';
+import {
+  RoomLibraryService,
+  type RoomSummary,
+} from '@trinity/data-access/room-library';
 import { TrustVerificationService } from '@trinity/data-access/trust';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { MockProvider } from 'ng-mocks';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { NEVER, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemberActionsService } from './member-actions.service';
@@ -68,6 +72,7 @@ function build({ narrow = false } = {}) {
     providers: [
       MemberActionsService,
       ShellStatusService,
+      MockProvider(WorkspaceNavigationService),
       MockProvider(TrnToastService),
       MockProvider(TrnAlertService, { prompt$: () => of('') }),
       MockProvider(RoomShellStore, {
@@ -78,14 +83,19 @@ function build({ narrow = false } = {}) {
       MockProvider(RoomShellNavigationService, { onSelectRoom }),
       MockProvider(RoomLibraryService, {
         directRoomIds: signal<ReadonlySet<string>>(new Set()).asReadonly(),
+        rooms: signal<RoomSummary[]>([]).asReadonly(),
         createDirectMessage,
       }),
       {
         provide: IdentityPresenceService,
-        useValue: { presenceFor: () => signal(null) },
+        useValue: {
+          presenceFor: () => signal(null),
+          presenceDetailsFor: () => signal(null),
+        },
       },
       MockProvider(IdentityService, {
         activeUserId: activeAccountId.asReadonly(),
+        lookup: () => NEVER,
       }),
       MockProvider(RoomModerationService, { kick }),
       MockProvider(RoomActionPermissionsService, {

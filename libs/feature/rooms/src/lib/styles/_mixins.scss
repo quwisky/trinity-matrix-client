@@ -57,7 +57,11 @@ $below-md: '(max-width: 767.98px)';
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 20px 16px 16px;
+
+  // The side inset, which full-width rows inside the card bleed through.
+  --profile-card-inset: 16px;
+
+  padding: 20px var(--profile-card-inset) 16px;
   text-align: center;
 }
 

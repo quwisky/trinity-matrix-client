@@ -41,6 +41,8 @@ export class IdentityPresenceService {
   private readonly matrix = inject(IdentityMatrixPort);
   private readonly runtime = inject(ProjectionRuntime);
   private readonly available = signal(false);
+  /** Whether presence is known at all; false while it is loading or the server has it off. */
+  readonly presenceAvailable = this.available.asReadonly();
   private readonly views = new Map<string, Signal<PresenceState | null>>();
 
   /** One writable signal per tracked user id, updated in place as presence changes. */

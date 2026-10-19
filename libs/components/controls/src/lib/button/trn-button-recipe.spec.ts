@@ -42,6 +42,8 @@ it('lets a row shape wrap its label instead of keeping the fixed height and nowr
   );
   expect(row).not.toContain('h-7');
   expect(row).not.toContain('whitespace-nowrap');
+  // The fixed height becomes a floor, so a one-line row keeps its size.
+  expect(row).toContain('min-h-7');
 });
 
 describe('inline shape', () => {
@@ -360,4 +362,112 @@ it('keeps an outline action transparent with attention roles only inside an atte
   expect(recipe('danger', 'outline').join(' ')).not.toContain(
     'in-data-[trn-surface=attention]:',
   );
+});
+
+it('fills a solid secondary row with the neutral fill that reads on the overlay', () => {
+  const row = trnButtonRecipe({
+    presentation: 'solid',
+    shape: 'row',
+    size: 'md',
+    variant: 'secondary',
+  }).split(' ');
+
+  expect(row).toEqual(
+    expect.arrayContaining([
+      'bg-[color:var(--trinity-neutral-fill-surface)]',
+      'hover:bg-[color:var(--trinity-neutral-fill-hover-surface)]',
+    ]),
+  );
+  expect(row).not.toContain('bg-secondary');
+  expect(
+    trnButtonRecipe({
+      presentation: 'solid',
+      shape: 'label',
+      size: 'md',
+      variant: 'secondary',
+    }).split(' '),
+  ).toContain('bg-secondary');
+});
+
+it('fills a ghost danger row with the neutral fill and keeps its danger label', () => {
+  const remove = trnButtonRecipe({
+    presentation: 'ghost',
+    shape: 'row',
+    size: 'md',
+    variant: 'danger',
+  }).split(' ');
+
+  expect(remove).toEqual(
+    expect.arrayContaining([
+      'text-danger',
+      'bg-[color:var(--trinity-neutral-fill-surface)]',
+      'hover:bg-[var(--trinity-danger-tint-10)]',
+    ]),
+  );
+  // A ghost danger label button stays unfilled.
+  expect(
+    trnButtonRecipe({
+      presentation: 'ghost',
+      shape: 'label',
+      size: 'md',
+      variant: 'danger',
+    }),
+  ).not.toContain('neutral-fill');
+});
+
+describe('tile shape', () => {
+  const tile = (variant: TrnButtonVariant): string[] =>
+    trnButtonRecipe({
+      presentation: 'solid',
+      shape: 'tile',
+      size: 'md',
+      variant,
+    }).split(' ');
+
+  it('stacks a filled icon square over its label on a transparent button', () => {
+    const primary = tile('primary');
+
+    expect(primary).toEqual(
+      expect.arrayContaining([
+        'flex-col',
+        'text-xs',
+        '[&>trn-icon]:size-9',
+        '[&>trn-icon]:rounded-lg',
+        '[&>trn-icon]:bg-primary',
+        '[&>trn-icon]:text-primary-foreground',
+      ]),
+    );
+    // The fill lives on the square only, and Helm's fixed height and padding are gone.
+    expect(primary).not.toContain('bg-primary');
+    expect(primary).not.toContain('h-8');
+    expect(primary).not.toContain('px-2.5');
+  });
+
+  it('gives a secondary tile its own visible neutral square and hover', () => {
+    expect(tile('secondary')).toEqual(
+      expect.arrayContaining([
+        '[&>trn-icon]:bg-[color:var(--trinity-neutral-fill-surface)]',
+        'hover:[&>trn-icon]:bg-[color:var(--trinity-neutral-fill-hover-surface)]',
+      ]),
+    );
+    expect(tile('secondary')).not.toContain('[&>trn-icon]:bg-primary');
+    // Other secondary buttons keep the shared control fill.
+    expect(
+      trnButtonRecipe({
+        presentation: 'solid',
+        shape: 'label',
+        size: 'md',
+        variant: 'secondary',
+      }),
+    ).not.toContain('neutral-fill');
+  });
+
+  it('rings the whole tile with the shared focus ring, not the separated one', () => {
+    const primary = tile('primary');
+
+    expect(primary).toContain(
+      'focus-visible:ring-[color:var(--trinity-focus-ring)]',
+    );
+    expect(primary).not.toContain('focus-visible:outline-solid');
+  });
 });

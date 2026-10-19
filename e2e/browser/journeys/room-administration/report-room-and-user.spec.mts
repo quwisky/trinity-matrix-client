@@ -16,6 +16,7 @@ import {
   registerUser,
   type AccountSession,
 } from '../../../support/account.mts';
+import { openMemberTab } from '../../support/member-card.mts';
 
 // Covers reporting to the reporter's own server admins (ReportService):
 // - a message, from its ⋯ menu (RoomModerationService.reportMessage → reportEvent);
@@ -150,6 +151,7 @@ test.describe('Report to your server admins', () => {
     await memberRow.first().click();
     const card = page.getByTestId('member-info');
     await expect(card).toBeVisible({ timeout: 10_000 });
+    await openMemberTab(page, 'Manage');
 
     await card.getByRole('button', { name: `Report ${otherName}` }).click();
     const prompt = page.getByRole('dialog', { name: `Report ${otherName}` });

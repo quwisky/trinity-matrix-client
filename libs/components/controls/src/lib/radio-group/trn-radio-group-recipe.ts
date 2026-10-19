@@ -1,6 +1,7 @@
 import { hlm } from '@trinity/helm/utils';
 
-export type TrnRadioGroupLayout = 'list' | 'segmented';
+/** `boxed` is a list inside a bordered box, each option's description at the end of its line. */
+export type TrnRadioGroupLayout = 'list' | 'segmented' | 'boxed';
 
 const selectedTone =
   'data-[state=selected]:bg-[var(--trinity-state-selected-surface)] data-[state=selected]:text-[var(--trinity-state-selected-foreground)]';
@@ -57,12 +58,30 @@ export function trnRadioGroupRecipe(layout: TrnRadioGroupLayout): string {
     );
   }
 
+  if (layout === 'boxed') {
+    return 'grid rounded-[var(--trinity-shape-control-radius)] border border-[var(--trinity-border-overlay)] px-3 py-1';
+  }
+
   return 'grid gap-2';
 }
 
+/** The label and description: stacked, or on one line with the description at the end. */
+export function trnRadioTextRecipe(layout: TrnRadioGroupLayout): string {
+  return layout === 'boxed'
+    ? 'flex min-w-0 flex-1 items-baseline justify-between gap-3 [&>small]:text-end'
+    : 'flex min-w-0 flex-col items-start gap-0.5';
+}
+
+/**
+ * Dims a disabled option's indicator and label but not its description, which may explain
+ * why the option is unavailable and must stay readable.
+ */
+export const trnRadioDisabledDim =
+  'group-data-[disabled=true]:opacity-[var(--trinity-disabled-opacity)]';
+
 export function trnRadioOptionRecipe(layout: TrnRadioGroupLayout): string {
   return hlm(
-    'group flex cursor-pointer items-center font-medium text-[var(--trinity-text-muted)] transition-[background-color,color,box-shadow] has-[:focus-visible]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)] data-[disabled=true]:cursor-default data-[disabled=true]:opacity-[var(--trinity-disabled-opacity)]',
+    'group flex cursor-pointer items-center font-medium text-[var(--trinity-text-muted)] transition-[background-color,color,box-shadow] has-[:focus-visible]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)] data-[disabled=true]:cursor-default',
     'min-h-[max(2rem,var(--trinity-interaction-target-min-size))] text-sm',
     layout === 'segmented'
       ? 'justify-center rounded-[calc(var(--trinity-shape-control-radius)-2px)] px-3 text-center [overflow-wrap:anywhere] hover:bg-[var(--trinity-state-hover-surface)] hover:text-[var(--trinity-state-hover-foreground)]'

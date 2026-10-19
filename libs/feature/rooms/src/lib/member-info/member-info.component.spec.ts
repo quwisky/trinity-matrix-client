@@ -5,7 +5,7 @@ import {
   RoomModerationService,
 } from '@trinity/data-access/room-administration';
 import { signal } from '@angular/core';
-import { render, screen, within } from '@trinity/testing';
+import { fireEvent, render, screen, within } from '@trinity/testing';
 import {
   TrnDialogRef,
   TrnAlertService,
@@ -15,14 +15,22 @@ import {
   IgnoredUsersService,
   IdentityPresenceService,
   IdentityService,
+  type PresenceDetails,
 } from '@trinity/data-access/identity';
-import { RoomLibraryService } from '@trinity/data-access/room-library';
+import {
+  type CommonRoom,
+  RoomLibraryService,
+  RoomsInCommonService,
+} from '@trinity/data-access/room-library';
 import {
   TrustOperationError,
+  TrustUsersService,
   TrustVerificationService,
+  type UserTrust,
 } from '@trinity/data-access/trust';
 import { MockProvider } from 'ng-mocks';
-import { Subject, of, throwError } from 'rxjs';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
+import { NEVER, Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MemberInfoComponent } from './member-info.component';
 import { ReportService } from '../report/report.service';
@@ -59,6 +67,12 @@ async function build(
     createDirectMessage?: Mock;
     startUserVerification?: Mock;
     reportsOffered?: boolean;
+    trust?: UserTrust | null;
+    commonRooms?: readonly CommonRoom[] | null;
+    presence?: PresenceDetails | null;
+    presenceAvailable?: boolean;
+    lookup?: Mock;
+    navigate?: Mock;
   } = {},
 ) {
   const close = vi.fn();
@@ -97,15 +111,25 @@ async function build(
     },
     providers: [
       MockProvider(TrnDialogRef, { close }),
+      MockProvider(WorkspaceNavigationService, {
+        navigate: opts.navigate ?? vi.fn(() => of({ kind: 'ready' })),
+      }),
       MockProvider(TrnToastService, { show: toastShow }),
       {
         provide: IdentityPresenceService,
-        useValue: { presenceFor: () => signal('online') },
+        useValue: {
+          presenceFor: () => signal('online'),
+          presenceDetailsFor: () => signal(opts.presence ?? null),
+          presenceAvailable: signal(opts.presenceAvailable ?? true),
+          myPresence: signal('unavailable'),
+          myStatusMessage: signal('Heads down'),
+        },
       },
       MockProvider(IdentityService, {
         activeUserId: signal<string | null>(
           opts.activeUserId ?? '@me:hs',
         ).asReadonly(),
+        lookup: opts.lookup ?? vi.fn(() => NEVER),
       }),
       MockProvider(RoomModerationService, { kick, ban, setPowerLevel }),
       MockProvider(RoomActionPermissionsService, {
@@ -150,6 +174,13 @@ async function build(
         offers: () => opts.reportsOffered ?? true,
       }),
       MockProvider(ReportService, { reportUser$ }),
+      MockProvider(TrustUsersService, {
+        userTrust: () => signal(opts.trust ?? null).asReadonly(),
+      }),
+      MockProvider(RoomsInCommonService, {
+        roomsInCommon: () => signal(opts.commonRooms ?? null).asReadonly(),
+        accountIds: signal(['@me:hs']).asReadonly(),
+      }),
     ],
   });
   return {
@@ -181,22 +212,34 @@ async function build(
 async function buildPanel(m: MemberSummary = member()) {
   const messaged: string[] = [];
   let dismissals = 0;
-  const { container } = await render(MemberInfoComponent, {
+  let roomOpened = 0;
+  const { container, fixture } = await render(MemberInfoComponent, {
     inputs: { member: m, roomId: '!r:hs' },
     on: {
       messageUser: (userId: string) => messaged.push(userId),
       dismissed: () => {
         dismissals += 1;
       },
+      roomOpened: () => {
+        roomOpened += 1;
+      },
     },
     providers: [
       MockProvider(TrnToastService),
+      MockProvider(WorkspaceNavigationService, {
+        navigate: () =>
+          of({ kind: 'ready' as const, change: 'committed' as const }),
+      }),
       {
         provide: IdentityPresenceService,
-        useValue: { presenceFor: () => signal('online') },
+        useValue: {
+          presenceFor: () => signal('online'),
+          presenceDetailsFor: () => signal(null),
+        },
       },
       MockProvider(IdentityService, {
         activeUserId: signal<string | null>('@me:hs').asReadonly(),
+        lookup: () => NEVER,
       }),
       MockProvider(RoomModerationService),
       MockProvider(RoomLibraryService, {
@@ -210,13 +253,194 @@ async function buildPanel(m: MemberSummary = member()) {
       MockProvider(ContentReportingService, { offers: () => true }),
       MockProvider(ReportService),
       MockProvider(TrnAlertService),
+      MockProvider(TrustUsersService, {
+        userTrust: () => signal(null).asReadonly(),
+      }),
+      MockProvider(RoomsInCommonService, {
+        roomsInCommon: () => signal(null).asReadonly(),
+        accountIds: signal(['@me:hs']).asReadonly(),
+      }),
     ],
   });
-  return { container, messaged, dismissals: () => dismissals };
+  return {
+    cmp: fixture.componentInstance,
+    container,
+    messaged,
+    dismissals: () => dismissals,
+    roomOpened: () => roomOpened,
+  };
+}
+
+function commonRoom(id: string): CommonRoom {
+  return {
+    id,
+    accountId: '@me:hs',
+    name: id,
+    initial: 'R',
+    avatarMxc: null,
+    kind: 'room',
+    memberCount: 3,
+  };
+}
+
+/** The text a screen reader reads: without aria-hidden glyphs, with sr-only text. */
+function accessibleText(element: HTMLElement): string {
+  const copy = element.cloneNode(true) as HTMLElement;
+  copy
+    .querySelectorAll('[aria-hidden="true"]')
+    .forEach((node) => node.remove());
+  return copy.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+}
+
+const tabNames = () =>
+  screen.getAllByRole('tab').map((tab) => tab.textContent?.trim());
+
+/** Block, report and moderation live on the Manage tab, hidden until it is chosen. */
+async function openManage(fixture: { whenStable(): Promise<void> }) {
+  screen.getByRole('tab', { name: 'Manage' }).click();
+  await fixture.whenStable();
 }
 
 describe('MemberInfoComponent', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('shows Profile, Rooms and Manage tabs for another person, Profile selected', async () => {
+    await build();
+
+    expect(tabNames()).toEqual(['Profile', 'Rooms', 'Manage']);
+    expect(
+      screen.getByRole('tab', { selected: true }).textContent?.trim(),
+    ).toBe('Profile');
+    expect(screen.getByRole('tabpanel').textContent).toContain('Copy ID');
+  });
+
+  it('shows only Profile and Rooms for yourself', async () => {
+    await build(member({ userId: '@me:hs' }), { activeUserId: '@me:hs' });
+
+    expect(tabNames()).toEqual(['Profile', 'Rooms']);
+  });
+
+  it('hides Manage when it would be empty', async () => {
+    const { fixture } = await build();
+    fixture.componentRef.setInput('showIdentityActions', false);
+    fixture.componentRef.setInput('hideUnavailableModeration', true);
+    await fixture.whenStable();
+
+    expect(tabNames()).toEqual(['Profile', 'Rooms']);
+  });
+
+  it('falls back to Profile when Manage empties while it is selected', async () => {
+    const { fixture } = await build();
+    await openManage(fixture);
+
+    fixture.componentRef.setInput('showIdentityActions', false);
+    fixture.componentRef.setInput('hideUnavailableModeration', true);
+    await fixture.whenStable();
+
+    expect(
+      screen.getByRole('tab', { selected: true }).textContent?.trim(),
+    ).toBe('Profile');
+    expect(screen.getByRole('tabpanel').textContent).toContain('Copy ID');
+  });
+
+  it('closes the card once a moderation write from Manage lands', async () => {
+    const { fixture, kick, close } = await build(member(), { canKick: true });
+    await openManage(fixture);
+
+    screen.getByTestId('member-info-kick').click();
+
+    expect(kick).toHaveBeenCalledWith('!r:hs', '@bob:hs', undefined);
+    expect(close).toHaveBeenCalledWith(null);
+  });
+
+  it.each([
+    {
+      kind: 'room',
+      intent: {
+        kind: 'room',
+        accountId: '@me:hs',
+        roomId: '!a:hs',
+        origin: 'room-action',
+      },
+    },
+    {
+      kind: 'space',
+      intent: {
+        kind: 'scope',
+        accountId: '@me:hs',
+        scope: { kind: 'space', spaceId: '!a:hs' },
+      },
+    },
+  ] as const)(
+    'opening a shared $kind navigates to it and closes the card',
+    async ({ kind, intent }) => {
+      const navigate = vi.fn(() => of({ kind: 'ready' }));
+      const { cmp, close } = await build(member(), { navigate });
+
+      cmp.openRoom({ ...commonRoom('!a:hs'), accountId: '@me:hs', kind });
+
+      expect(navigate).toHaveBeenCalledWith(intent);
+      expect(close).toHaveBeenCalledWith(null);
+    },
+  );
+
+  it.each([
+    { rooms: [commonRoom('!a:hs'), commonRoom('!b:hs')], label: 'Rooms (2)' },
+    { rooms: null, label: 'Rooms' },
+  ])(
+    'Rooms tab reads "Rooms (2)" with two rooms in common and "Rooms" while unknown ($label)',
+    async ({ rooms, label }) => {
+      await build(member(), { commonRooms: rooms });
+
+      expect(screen.getByRole('tab', { name: label })).toBeTruthy();
+    },
+  );
+
+  it.each([
+    { trust: 'verified', badge: 'Verified' },
+    { trust: 'changed', badge: 'Identity changed — verify again' },
+    { trust: 'unverified', badge: null },
+    { trust: null, badge: null },
+  ] as const)(
+    'header shows the Verified badge for a verified person and Identity changed for a changed one, none when unverified ($trust)',
+    async ({ trust, badge }) => {
+      await build(member(), { trust });
+
+      const shown = screen.queryByTestId('member-info-trust');
+      expect(shown ? accessibleText(shown) : null).toBe(badge);
+    },
+  );
+
+  it('arrow keys move between tabs', async () => {
+    const { fixture } = await build();
+    const profile = screen.getByRole('tab', { name: 'Profile' });
+
+    profile.focus();
+    fireEvent.keyDown(profile, { key: 'ArrowRight' });
+    await fixture.whenStable();
+    expect(document.activeElement?.textContent?.trim()).toBe('Rooms');
+    expect(
+      screen.getByRole('tab', { selected: true }).textContent?.trim(),
+    ).toBe('Rooms');
+
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
+    await fixture.whenStable();
+    expect(document.activeElement?.textContent?.trim()).toBe('Profile');
+  });
+
+  it('puts focus on the close button when the card opens, not on the tabs', async () => {
+    // CDK focuses the first tabbable element on open; jsdom has no layout for that check, so
+    // this pins its inputs: nothing in the card takes focus, and the close button comes first.
+    await build();
+
+    const close = screen.getByTestId('member-info-close');
+    const firstTab = screen.getAllByRole('tab')[0];
+    expect(
+      close.compareDocumentPosition(firstTab) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(document.activeElement).toBe(document.body);
+  });
 
   it('is built on the shared dialog shell as a dialog', async () => {
     const { container } = await build();
@@ -290,6 +514,22 @@ describe('MemberInfoComponent', () => {
 
     expect(dismissals()).toBe(1);
     expect(messaged).toEqual([]);
+  });
+
+  it('announces roomOpened, not a dismissal, when a shared room is opened', async () => {
+    const { cmp, dismissals, roomOpened } = await buildPanel();
+
+    cmp.openRoom(commonRoom('!a:hs'));
+
+    expect(roomOpened()).toBe(1);
+    expect(dismissals()).toBe(0);
+  });
+
+  it('keeps the Rooms panel hidden while Profile is selected', async () => {
+    const { container } = await build(member(), { commonRooms: [] });
+
+    const panel = container.querySelector<HTMLElement>('.member-info__rooms');
+    expect(panel?.hidden).toBe(true);
   });
 
   it('announces the user id for "Message" rather than resolving a ref', async () => {
@@ -413,122 +653,86 @@ describe('MemberInfoComponent', () => {
     expect(cmp.role()).toBe('Member');
   });
 
-  it('never offers Owner as a role you can assign', async () => {
-    // The invariant this whole feature turns on. Owner is the room's CREATOR, and no
-    // power level makes someone that — so offering it would be an action the server
-    // cannot perform. The displayed role and the assignable roles deliberately come
-    // from two different places, and this is what keeps them apart.
-    //
-    // The viewer's power is deliberately absurd. `roleOptions` hides presets ABOVE the
-    // viewer's level, so asserting this as a mere admin would pass for the wrong reason:
-    // an Owner preset added at 101 would be filtered out by rank rather than excluded by
-    // design, and the test would keep passing while the invariant broke.
-    const { cmp } = await build(member({ powerLevel: 0 }), { myPower: 10_000 });
-
-    const labels = cmp.roleOptions().map((option) => option.label);
-    expect(labels).not.toContain('Owner');
-    expect(labels).toEqual(['Moderator', 'Admin']);
-  });
-
-  it('offers no way to assign Owner even to the creator themselves', async () => {
-    const { cmp } = await build(member({ powerLevel: 100, isCreator: true }), {
-      myPower: 10_000,
-    });
-
-    expect(cmp.roleOptions().map((option) => option.label)).not.toContain(
-      'Owner',
-    );
-  });
-
   it('closes resolving the user id when Message is picked', async () => {
     const { cmp, close } = await build();
     cmp.message();
     expect(close).toHaveBeenCalledWith('@bob:hs');
   });
 
-  it('copies the user id and toasts once the write resolves', async () => {
-    // The real writeText returns a Promise; the toast must follow it, not fire blind.
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('navigator', { clipboard: { writeText } });
-    const { cmp, toastShow } = await build();
-
-    cmp.copyId();
-    await Promise.resolve();
-
-    expect(writeText).toHaveBeenCalledWith('@bob:hs');
-    expect(toastShow).toHaveBeenCalledWith(
-      'User ID copied.',
-      expect.anything(),
-    );
-  });
-
-  it('does not claim success when the clipboard write is rejected', async () => {
-    // Denied permission / non-secure context. Telling the user "copied" here leaves
-    // them believing they have the id when the clipboard is untouched.
-    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
-    vi.stubGlobal('navigator', { clipboard: { writeText } });
-    const { cmp, toastShow } = await build();
-
-    cmp.copyId();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(toastShow).not.toHaveBeenCalledWith(
-      'User ID copied.',
-      expect.anything(),
-    );
-    expect(toastShow).toHaveBeenCalledWith(
-      'Could not copy the user ID. It is selected above; copy it manually.',
-      expect.objectContaining({ variant: 'danger' }),
-    );
-  });
-
-  it('offers the same manual fallback when the Clipboard API is unavailable', async () => {
+  it('selects the user id handle when the Profile tab cannot copy it', async () => {
     vi.stubGlobal('navigator', {});
-    const { cmp, toastShow } = await build();
+    const { container } = await build();
+    const handle = container.querySelector<HTMLElement>(
+      '[data-testid="member-info-handle"]',
+    )!;
 
-    cmp.copyId();
+    container
+      .querySelector<HTMLElement>('[data-testid="member-info-copy"]')!
+      .click();
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(toastShow).toHaveBeenCalledWith(
-      'Could not copy the user ID. It is selected above; copy it manually.',
-      expect.objectContaining({ variant: 'danger' }),
-    );
+    expect(document.activeElement).toBe(handle);
+    expect(document.getSelection()?.toString()).toBe('@bob:hs');
   });
 
-  it('offers the fallback when clipboard exists without writeText', async () => {
-    vi.stubGlobal('navigator', { clipboard: {} });
-    const { cmp, toastShow } = await build();
+  it.each([
+    ['a different global name', of({ displayName: 'Robert' }), 'Robert'],
+    ['the same name', of({ displayName: 'Bob' }), null],
+    [
+      'no name, which reads as the user id',
+      of({ displayName: '@bob:hs' }),
+      null,
+    ],
+    ['a failed lookup', throwError(() => new Error('down')), null],
+  ])('passes the Profile tab a global name for %s', async (_, result, name) => {
+    const lookup = vi.fn(() => result);
+    const { cmp } = await build(member(), { lookup });
 
-    expect(() => cmp.copyId()).not.toThrow();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(toastShow).toHaveBeenCalledWith(
-      'Could not copy the user ID. It is selected above; copy it manually.',
-      expect.objectContaining({ variant: 'danger' }),
-    );
+    expect(lookup).toHaveBeenCalledWith('@bob:hs');
+    expect(cmp.globalName()).toBe(name);
   });
 
-  it('offers the fallback when writeText throws synchronously', async () => {
-    vi.stubGlobal('navigator', {
-      clipboard: {
-        writeText: () => {
-          throw new Error('not available');
-        },
-      },
+  it('reads your own Status from the presence you set', async () => {
+    const { cmp } = await build(member({ userId: '@me:hs' }), {
+      activeUserId: '@me:hs',
     });
-    const { cmp, toastShow } = await build();
 
-    expect(() => cmp.copyId()).not.toThrow();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(cmp.presenceDetails()).toEqual({
+      state: 'unavailable',
+      statusMessage: 'Heads down',
+      lastActiveAt: null,
+      currentlyActive: true,
+    });
+  });
 
-    expect(toastShow).toHaveBeenCalledWith(
-      'Could not copy the user ID. It is selected above; copy it manually.',
-      expect.objectContaining({ variant: 'danger' }),
-    );
+  it('hides your own Status while presence is unavailable', async () => {
+    // Your presence defaults to online, which would misreport a server with presence off.
+    const { cmp, container } = await build(member({ userId: '@me:hs' }), {
+      activeUserId: '@me:hs',
+      presenceAvailable: false,
+    });
+
+    expect(cmp.presenceDetails()).toBeNull();
+    expect(
+      container.querySelector('[data-testid="member-info-status"]'),
+    ).toBeNull();
+  });
+
+  it("reads another person's Status from their presence", async () => {
+    const presence: PresenceDetails = {
+      state: 'online',
+      statusMessage: 'On holiday',
+      lastActiveAt: null,
+      currentlyActive: true,
+    };
+    const { container } = await build(member(), { presence });
+
+    expect(
+      container
+        .querySelector('[data-testid="member-info-status"]')
+        ?.textContent?.trim(),
+    ).toBe('Online · On holiday');
   });
 
   it('makes the complete user id keyboard focusable', async () => {
@@ -557,169 +761,22 @@ describe('MemberInfoComponent', () => {
     expect(
       container.querySelector('[data-testid="member-info-message"]'),
     ).toBeNull();
-    // Copy user ID stays available.
+    // Copy ID stays available on the Profile tab.
     expect(
       container.querySelector('[data-testid="member-info-copy"]'),
     ).not.toBeNull();
   });
 
-  it('shows kick/ban actions when permitted', async () => {
-    const { container } = await build(member(), {
-      canKick: true,
-      canBan: true,
-    });
-    expect(
-      container.querySelector('[data-testid="member-info-kick"]'),
-    ).not.toBeNull();
-    expect(
-      container.querySelector('[data-testid="member-info-ban"]'),
-    ).not.toBeNull();
-  });
-
-  it('keeps kick/ban actions discoverable but unavailable without permission', async () => {
-    const { container } = await build(); // canKick/canBan default false
-    expect(
-      container
-        .querySelector('[data-testid="member-info-kick"]')
-        ?.getAttribute('aria-disabled'),
-    ).toBe('true');
-    expect(
-      container
-        .querySelector('[data-testid="member-info-ban"]')
-        ?.getAttribute('aria-disabled'),
-    ).toBe('true');
-  });
-
-  it('kicks the member with the entered reason and closes on confirm', async () => {
-    const alertPrompt = vi.fn(() => of('spam'));
-    const { cmp, kick, close } = await build(member(), {
-      canKick: true,
-      alertPrompt,
-    });
-
-    await cmp.kick();
-
-    expect(kick).toHaveBeenCalledWith('!r:hs', '@bob:hs', 'spam');
-    expect(close).toHaveBeenCalledWith(null);
-  });
-
-  it('keeps Conversation moderation on the live room while its owning Account is active', async () => {
-    const alertPrompt = vi.fn(() => of(''));
-    const { cmp, fixture, kick } = await build(member(), {
-      canKick: true,
-      alertPrompt,
-    });
-    fixture.componentRef.setInput('owningAccountId', '@me:hs');
-    await fixture.whenStable();
-
-    cmp.kick();
-
-    expect(kick).toHaveBeenCalledWith('!r:hs', '@bob:hs', undefined);
-    expect(alertPrompt).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: expect.stringContaining('using account @me:hs'),
-      }),
-    );
-  });
-
-  it('aims moderation at the owning Account once another Account is active', async () => {
-    // #1041: member info outlives nothing on purpose, but between an Account switch and the
-    // host closing it a command must still reach the Account it was opened for.
-    const { cmp, fixture, kick, ban, setPowerLevel } = await build(member(), {
-      canKick: true,
-      canBan: true,
-      canSetPower: true,
-      myPower: 100,
-      activeUserId: '@other:hs',
-    });
-    fixture.componentRef.setInput('owningAccountId', '@me:hs');
-    await fixture.whenStable();
-    const owner = { accountId: '@me:hs', roomId: '!r:hs' };
-
-    cmp.kick();
-    cmp.ban();
-    cmp.setRole({ label: 'Moderator', level: 50 });
-
-    expect(kick).toHaveBeenCalledWith(owner, '@bob:hs', undefined);
-    expect(ban).toHaveBeenCalledWith(owner, '@bob:hs', undefined);
-    expect(setPowerLevel).toHaveBeenCalledWith(owner, '@bob:hs', 50);
-  });
-
   it('runs no identity action once its owning Account is no longer active', async () => {
-    const { cmp, fixture, createDirectMessage, startUserVerification, ignore } =
+    const { cmp, fixture, createDirectMessage, startUserVerification } =
       await build(member(), { activeUserId: '@other:hs' });
     fixture.componentRef.setInput('owningAccountId', '@me:hs');
     await fixture.whenStable();
 
     cmp.verify();
-    cmp.toggleIgnore();
 
     expect(createDirectMessage).not.toHaveBeenCalled();
     expect(startUserVerification).not.toHaveBeenCalled();
-    expect(ignore).not.toHaveBeenCalled();
-  });
-
-  it('disables Block, with the reason, while another account is active', async () => {
-    const { fixture, container } = await build(member(), {
-      activeUserId: '@other:hs',
-    });
-    fixture.componentRef.setInput('owningAccountId', '@me:hs');
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    const block = container.querySelector<HTMLElement>(
-      '[data-testid="member-info-ignore"]',
-    )!;
-    expect(block.getAttribute('aria-disabled')).toBe('true');
-    expect(block.getAttribute('aria-description')).toBe(
-      'Switch back to @me:hs to block or unblock from this card.',
-    );
-  });
-
-  it('leaves Block enabled for the active owning account', async () => {
-    const { fixture, container } = await build(member());
-    fixture.componentRef.setInput('owningAccountId', '@me:hs');
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    expect(
-      container
-        .querySelector('[data-testid="member-info-ignore"]')!
-        .getAttribute('aria-disabled'),
-    ).toBeNull();
-  });
-
-  it('confirms exact Space context and keeps the command on the opening Account', async () => {
-    const alertPrompt = vi.fn(() => of('spam'));
-    const { cmp, fixture, kick, close } = await build(member(), {
-      canKick: true,
-      alertPrompt,
-    });
-    fixture.componentRef.setInput('accountId', '@opening:hs');
-    fixture.componentRef.setInput('targetName', 'Design Space');
-    fixture.componentRef.setInput('noun', 'Space');
-    fixture.componentRef.setInput('embedded', true);
-    let dismissed = false;
-    cmp.dismissed.subscribe(() => (dismissed = true));
-    await fixture.whenStable();
-
-    cmp.kick();
-
-    expect(alertPrompt).toHaveBeenCalledWith(
-      expect.objectContaining({
-        header: 'Remove from space',
-        message: expect.stringContaining(
-          'Design Space using account @opening:hs',
-        ),
-      }),
-    );
-    expect(kick).toHaveBeenCalledWith(
-      { accountId: '@opening:hs', roomId: '!r:hs' },
-      '@bob:hs',
-      'spam',
-    );
-    expect(dismissed).toBe(true);
-    expect(close).not.toHaveBeenCalled();
   });
 
   it('suppresses active-Account presence and retains the known role when an exact target is unavailable', async () => {
@@ -732,251 +789,6 @@ describe('MemberInfoComponent', () => {
 
     expect(cmp.presenceState()).toBeNull();
     expect(cmp.role()).toBe('Admin');
-  });
-
-  it('names a Space in its ban confirmation heading', async () => {
-    const alertPrompt = vi.fn(() => of(''));
-    const { cmp, fixture } = await build(member(), {
-      canBan: true,
-      alertPrompt,
-    });
-    fixture.componentRef.setInput('noun', 'Space');
-    await fixture.whenStable();
-
-    cmp.ban();
-
-    expect(alertPrompt).toHaveBeenCalledWith(
-      expect.objectContaining({ header: 'Ban from space' }),
-    );
-  });
-
-  it('does not kick when the confirmation is cancelled', async () => {
-    const alertPrompt = vi.fn(() => of(null)); // cancelled
-    const { cmp, kick } = await build(member(), { canKick: true, alertPrompt });
-
-    await cmp.kick();
-
-    expect(kick).not.toHaveBeenCalled();
-  });
-
-  it('bans the member (no reason → undefined) and closes on confirm', async () => {
-    const alertPrompt = vi.fn(() => of(''));
-    const { cmp, ban, close } = await build(member(), {
-      canBan: true,
-      alertPrompt,
-    });
-
-    await cmp.ban();
-
-    expect(ban).toHaveBeenCalledWith('!r:hs', '@bob:hs', undefined);
-    expect(close).toHaveBeenCalledWith(null);
-  });
-
-  it('toasts and stays open when a moderation action fails', async () => {
-    const kick = vi.fn(() => throwError(() => new Error('nope')));
-    const alertPrompt = vi.fn(() => of(''));
-    const { cmp, close, toastShow } = await build(member(), {
-      canKick: true,
-      kick,
-      alertPrompt,
-    });
-
-    await cmp.kick();
-
-    expect(toastShow).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ variant: 'danger' }),
-    );
-    expect(close).not.toHaveBeenCalled();
-  });
-
-  it('offers every preset except the member’s current one', async () => {
-    const { cmp } = await build(member({ powerLevel: 0 }), {
-      canSetPower: true,
-      myPower: 100,
-    });
-    // Member (0) is the current role and excluded; Moderator + Admin remain.
-    expect(cmp.roleOptions().map((r) => r.level)).toEqual([50, 100]);
-  });
-
-  it('renders higher roles as unavailable instead of hiding them', async () => {
-    const { container } = await build(member({ powerLevel: 0 }), {
-      canSetPower: true,
-      myPower: 50, // can reach Moderator, not Admin
-    });
-    expect(
-      container.querySelector('[data-testid="member-info-role-50"]'),
-    ).not.toBeNull();
-    expect(
-      container
-        .querySelector('[data-testid="member-info-role-100"]')
-        ?.getAttribute('aria-disabled'),
-    ).toBe('true');
-    expect(
-      container.querySelector('[data-testid="member-info-role-0"]'),
-    ).toBeNull(); // current role
-  });
-
-  it('changes the role on confirm and closes', async () => {
-    const setPowerLevel = vi.fn(() => of(undefined));
-    const { cmp, close } = await build(member({ powerLevel: 0 }), {
-      canSetPower: true,
-      myPower: 100,
-      setPowerLevel,
-    });
-
-    await cmp.setRole({ label: 'Moderator', level: 50 });
-
-    expect(setPowerLevel).toHaveBeenCalledWith('!r:hs', '@bob:hs', 50);
-    expect(close).toHaveBeenCalledWith(null);
-  });
-
-  it('styles a demotion from the live target role as danger', async () => {
-    const alertConfirm = vi.fn(() => of(false));
-    const { cmp } = await build(member({ powerLevel: 0 }), {
-      canSetPower: true,
-      myPower: 100,
-      targetPower: 100,
-      alertConfirm,
-    });
-
-    await cmp.setRole({ label: 'Moderator', level: 50 });
-
-    expect(alertConfirm).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: 'danger' }),
-    );
-  });
-
-  it('does not change the role when the confirmation is cancelled', async () => {
-    const setPowerLevel = vi.fn(() => of(undefined));
-    const alertConfirm = vi.fn(() => of(false));
-    const { cmp } = await build(member({ powerLevel: 0 }), {
-      canSetPower: true,
-      myPower: 100,
-      setPowerLevel,
-      alertConfirm,
-    });
-
-    await cmp.setRole({ label: 'Admin', level: 100 });
-
-    expect(setPowerLevel).not.toHaveBeenCalled();
-  });
-
-  it('offers Block for a not-yet-ignored member and blocks them on click', async () => {
-    const { cmp, container, ignore } = await build(member(), {
-      isIgnored: false,
-    });
-    const btn = container.querySelector<HTMLElement>(
-      '[data-testid="member-info-ignore"]',
-    );
-    expect(btn?.textContent?.trim()).toBe('Block');
-
-    cmp.toggleIgnore();
-
-    expect(ignore).toHaveBeenCalledWith('@bob:hs');
-    expect(cmp.ignored()).toBe(true); // button flips to "Unblock"
-  });
-
-  it('follows the account ignore list, so a block made elsewhere shows here', async () => {
-    const { fixture, container, ignoredIds, ignoreProjection } =
-      await build(member());
-    expect(ignoreProjection.observed).toBe(true);
-    const btn = () =>
-      container
-        .querySelector<HTMLElement>('[data-testid="member-info-ignore"]')
-        ?.textContent?.trim();
-    expect(btn()).toBe('Block');
-
-    ignoredIds.set(['@bob:hs']);
-    fixture.detectChanges();
-
-    expect(btn()).toBe('Unblock');
-  });
-
-  it('does not flip when a block write fails', async () => {
-    const { cmp } = await build(member(), {
-      ignore: vi.fn(() => throwError(() => new Error('offline'))),
-    });
-
-    cmp.toggleIgnore();
-
-    expect(cmp.ignored()).toBe(false);
-  });
-
-  it('offers Unblock for an ignored member and unblocks them on click', async () => {
-    const { cmp, fixture, unignore, toastShow } = await build(member(), {
-      isIgnored: true,
-    });
-    expect(cmp.ignored()).toBe(true);
-
-    cmp.toggleIgnore();
-    fixture.detectChanges();
-
-    expect(unignore).toHaveBeenCalledWith('@bob:hs');
-    expect(cmp.ignored()).toBe(false);
-    expect(screen.getByRole('status').textContent?.trim()).toBe('Unblocked.');
-    expect(toastShow).not.toHaveBeenCalled();
-  });
-
-  it('confirms a block in the card, where no toast covers the button', async () => {
-    const { cmp, fixture, toastShow } = await build(member());
-
-    cmp.toggleIgnore();
-    fixture.detectChanges();
-
-    expect(screen.getByRole('status').textContent?.trim()).toBe(
-      "Blocked — you won't see their messages.",
-    );
-    expect(toastShow).not.toHaveBeenCalled();
-  });
-
-  it('says in the card when a block fails', async () => {
-    const { cmp, fixture, toastShow } = await build(member(), {
-      ignore: vi.fn(() => throwError(() => new Error('offline'))),
-    });
-
-    cmp.toggleIgnore();
-    fixture.detectChanges();
-
-    expect(screen.getByRole('alert').textContent?.trim()).toBe(
-      'Could not update the block.',
-    );
-    expect(toastShow).not.toHaveBeenCalled();
-  });
-
-  it('keeps its status region in place, empty, until there is something to say', async () => {
-    await build(member());
-
-    expect(screen.getByRole('status').matches(':empty')).toBe(true);
-  });
-
-  it('drops the confirmation once the list changes elsewhere', async () => {
-    const { cmp, fixture, ignoredIds } = await build(member());
-    cmp.toggleIgnore();
-    fixture.detectChanges();
-
-    ignoredIds.set([]);
-    fixture.detectChanges();
-
-    expect(screen.getByRole('status').matches(':empty')).toBe(true);
-  });
-
-  it('offers to report the member, named, as the active account', async () => {
-    const { reportUser$ } = await build(member());
-
-    screen.getByRole('button', { name: 'Report Bob' }).click();
-
-    expect(reportUser$).toHaveBeenCalledExactlyOnceWith({
-      accountId: '@me:hs',
-      userId: '@bob:hs',
-      name: 'Bob',
-    });
-  });
-
-  it('hides Report once this server has said it does not take user reports', async () => {
-    await build(member(), { reportsOffered: false });
-
-    expect(screen.queryByRole('button', { name: 'Report Bob' })).toBeNull();
   });
 
   it('hides Report on your own row', async () => {

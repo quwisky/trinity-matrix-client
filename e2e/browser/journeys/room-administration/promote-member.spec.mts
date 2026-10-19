@@ -6,11 +6,12 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { openMemberTab } from '../../support/member-card.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
-// Covers power-level editing: from the member info dialog an admin uses a role
-// button (data-testid="member-info-role-50" = Moderator), confirms
-// (data-testid="alert-confirm"), and the member is promoted
+// Covers power-level editing: from the member info dialog's Manage tab an admin picks a
+// role radio (data-testid="member-info-role-50" = Moderator), presses "Change role"
+// (data-testid="member-info-role-apply"), confirms (data-testid="alert-confirm"), and the member is promoted
 // (RoomModerationService.setPowerLevel → client.setPowerLevel → sync). Member info
 // closes itself and the member list it opened over shows them in the Moderator
 // section. Needs a Synapse homeserver (Docker); self-skips otherwise.
@@ -73,7 +74,9 @@ test.describe('Promote a member', () => {
       timeout: 10_000,
     });
     await expect(page.locator('.chat-members')).toBeVisible();
+    await openMemberTab(page, 'Manage');
     await page.getByTestId('member-info-role-50').click();
+    await page.getByTestId('member-info-role-apply').click();
     await page.getByTestId('alert-confirm').click();
 
     // Member info closes once the change lands, back to the list it opened over, where the

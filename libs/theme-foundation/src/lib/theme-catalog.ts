@@ -89,6 +89,8 @@ const colorRoles = Object.freeze([
   '--trinity-surface-card',
   '--trinity-surface-popover',
   '--trinity-surface-control',
+  '--trinity-neutral-fill-surface',
+  '--trinity-neutral-fill-hover-surface',
   '--trinity-surface-drop-overlay',
   '--trinity-border-subtle',
   '--trinity-border-strong',

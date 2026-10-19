@@ -6,12 +6,13 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
+import { openMemberTab } from '../../support/member-card.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
 // Covers member info: clicking a member row in the member list
 // (data-testid="member-row") opens a room-scoped info card
 // (data-testid="member-info") with the member's name, id, role, and a Message /
-// Copy user ID action. It is a centred dialog on a large screen and a bottom sheet
+// Copy ID action on its Profile tab. It is a centred dialog on a large screen and a bottom sheet
 // on a phone-sized window, over the member list either way (#1041). Two users so
 // there's a member to click that isn't the viewer. Needs a Synapse homeserver
 // (Docker); self-skips otherwise.
@@ -122,6 +123,15 @@ test.describe('Member info', () => {
       'data-trn-layout',
       'dialog',
     );
+    await expect(dialog.getByTestId('member-info-close')).toBeFocused();
+    // Only the selected tab's panel shows; the [hidden] rule needs a real cascade.
+    await expect(panel.getByRole('tab', { name: 'Profile' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(panel.locator('trn-member-rooms-tab')).toBeHidden();
+    await expect(panel.locator('trn-member-manage-tab')).toBeHidden();
+    await expect(panel.getByTestId('member-info-kick')).toBeHidden();
     await expect(dialog.getByTestId('sheet-handle')).toHaveCount(0);
     await expect(page.locator('.chat-members')).toBeVisible();
     await expect(page.locator('.chat-body trn-member-info')).toHaveCount(0);
@@ -134,7 +144,9 @@ test.describe('Member info', () => {
 
     // The card keeps its bottom padding: the last action does not sit on the dialog's edge.
     const bottomGap = await panel.evaluate((card) => {
-      const buttons = card.querySelectorAll('button');
+      const buttons = [...card.querySelectorAll('button')].filter((button) =>
+        button.checkVisibility(),
+      );
       const last = buttons[buttons.length - 1];
       return (
         card.getBoundingClientRect().bottom -
@@ -239,6 +251,67 @@ test.describe('Member info', () => {
     await expect(dialog).toBeHidden({ timeout: 10_000 });
     // The title carries the avatar initial before the name.
     await expect(page.getByTestId('room-title')).toContainText(memberName, {
+      timeout: 30_000,
+    });
+  });
+  test('shows rooms in common and opens one', async ({ page, request }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}mc`;
+    const viewerUser = `mc-viewer-${runId}`;
+    const viewerPass = `${viewerUser}-pass`;
+    const otherUser = `mc-other-${runId}`;
+    const otherName = `Common ${runId}`;
+    const hereName = `Lobby ${runId}`;
+    const elsewhereName = `Garden ${runId}`;
+
+    await registerUser(request, viewerUser, viewerPass);
+    await registerUser(request, otherUser, `${otherUser}-pass`);
+    const viewer = await apiLogin(request, hs, viewerUser, viewerPass);
+    const other = await apiLogin(request, hs, otherUser, `${otherUser}-pass`);
+    await request.put(
+      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(other.userId)}/displayname`,
+      { headers: other.headers, data: { displayname: otherName } },
+    );
+    for (const name of [hereName, elsewhereName]) {
+      const roomId = await createRoom(request, hs, viewer, name, {
+        invite: [other.userId],
+      });
+      await request.post(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
+        { headers: other.headers },
+      );
+    }
+
+    await login(page, {
+      available: true,
+      hs,
+      user: viewerUser,
+      pass: viewerPass,
+    } as HomeserverSession);
+    await openRoom(page, hereName);
+    await openMembers(page);
+    const memberRow = page.locator('[data-testid="member-row"]', {
+      hasText: otherName,
+    });
+    await memberRow.first().waitFor({ state: 'visible', timeout: 20_000 });
+    await memberRow.first().click();
+    const dialog = page.getByRole('dialog', { name: 'Member info' });
+    const panel = dialog.getByTestId('member-info');
+    await expect(panel).toBeVisible({ timeout: 10_000 });
+
+    // The room the card opened from is not "in common" elsewhere, so one room remains.
+    const roomsTab = panel.getByRole('tab', { name: /^Rooms/ });
+    await expect(roomsTab).toHaveText('Rooms (1)', { timeout: 20_000 });
+    await openMemberTab(page, 'Rooms');
+    const entry = panel
+      .locator('trn-member-rooms-tab')
+      .getByRole('button', { name: new RegExp(elsewhereName) });
+    await expect(entry).toBeVisible();
+    await expect(panel.locator('trn-member-profile-tab')).toBeHidden();
+
+    await entry.click();
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+    await expect(page.getByTestId('room-title')).toContainText(elsewhereName, {
       timeout: 30_000,
     });
   });
