@@ -122,6 +122,8 @@ encryption keys with it.
 **Which servers support it.** Your server must support signing in with a QR code (MSC4108)
 and use an OAuth sign-in server, such as Synapse with Matrix Authentication Service (MAS) or
 Tuwunel with its built-in OAuth server. On other servers, Trinity doesn't show the option.
+It also doesn't show it when you sign in again to reconnect an account already on this device,
+or while it asks you to confirm a sign-in provider on another site than your server.
 The signed-in device also needs your cross-signing keys: if Settings › Devices doesn't offer
 **Link a new device**, verify that device first.
 
@@ -141,14 +143,19 @@ the new device opens your rooms.
 
 **If it doesn't work.**
 
-- "The code expired.": the code wasn't scanned in time. On the new device, choose
+- **"The code expired."** The code wasn't scanned in time. On the new device, choose
   **Show a new code** and scan again.
-- "The codes didn't match, so nothing was shared." (on the signed-in device): you chose
+- **"The codes didn't match, so nothing was shared."** Shown on the signed-in device: you chose
   **They don't match**, or the devices couldn't agree on a secure connection. No keys were
   shared. Start again from the new device; if the numbers differ again, someone else may have
   scanned or shown the code, so don't continue.
-- "Sign-in was cancelled on the other device.": the other device left the screen or cancelled.
-- "Your server doesn't support QR sign-in.": sign in another way.
+- **"Sign-in was cancelled on the other device."** The other device left the screen or
+  cancelled.
+- **"That device is already signed in."** The new device is already signed in to your account,
+  so there's nothing to link. A new code doesn't help; sign in another way.
+- **"Lost connection. Check your network and try again."** One of the devices lost its
+  connection to your server. Check both devices' network, then choose **Show a new code**.
+- **"Your server doesn't support QR sign-in."** Sign in another way.
 
 **Known limits.**
 
@@ -161,8 +168,9 @@ the new device opens your rooms.
 - Element Web can't scan a code, so it can't link a new Trinity device. Trinity can link a new
   Element Web device (tested with Element Web 1.12.32 on Synapse with MAS); Element Web then
   asks you to type the two-digit number instead of showing it.
-- This has been tested in the web app in a desktop browser. Scanning with the desktop app or a
-  phone, and linking with other Matrix apps, hasn't been tested yet.
+- Only the web app in a desktop browser has been tested. Signing in or scanning on a phone
+  (Android or iOS) or in the desktop app hasn't been tested yet, and no Matrix app other than
+  Element Web has been tried.
 
 ## Lock Trinity on this device {#app-lock}
 
