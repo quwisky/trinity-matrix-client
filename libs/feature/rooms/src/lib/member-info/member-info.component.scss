@@ -8,9 +8,6 @@
     // keeps only its own inset below the last action.
     padding-bottom: var(--trinity-space-5);
 
-    // The profile-card mixin's side padding, which full-width tab rows bleed through.
-    --member-info-inset: 16px;
-
     // Mounted outside .members either way (CDK overlay, or settings' detail column), so
     // tell the presence dot what surface it rings against, else the ring halos (see
     // member-list).
@@ -76,10 +73,10 @@
   }
 
   // The tab strip, its divider and the panels' row dividers run edge to edge across the card;
-  // each panel insets its own content by the card's 16px side padding.
+  // each panel insets its own content by the card's side inset.
   .member-info__tabs {
     align-self: stretch;
-    margin-inline: calc(-1 * var(--member-info-inset));
+    margin-inline: calc(-1 * var(--profile-card-inset));
     text-align: start;
   }
 
@@ -93,7 +90,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding-inline: var(--member-info-inset);
+    padding-inline: var(--profile-card-inset);
     margin-top: var(--trinity-space-4);
 
     // `display: flex` would otherwise override the `hidden` an unselected panel carries.
