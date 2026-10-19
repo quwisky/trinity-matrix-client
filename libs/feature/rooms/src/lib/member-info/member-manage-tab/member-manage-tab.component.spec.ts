@@ -603,7 +603,7 @@ describe('MemberManageTabComponent', () => {
     );
   });
 
-  it('a member who left keeps Ban and hides Remove', async () => {
+  it('hides unavailable Remove, keeps available Ban (a member who left)', async () => {
     await build(member(), {
       canBan: true,
       inputs: { hideUnavailableModeration: true },
@@ -611,6 +611,29 @@ describe('MemberManageTabComponent', () => {
 
     expect(screen.getByTestId('member-info-ban')).toBeTruthy();
     expect(screen.queryByTestId('member-info-kick')).toBeNull();
+  });
+
+  it('with hideUnavailableModeration, the picker offers the current role and the assignable ones', async () => {
+    const { container } = await build(member({ powerLevel: 0 }), {
+      canSetPower: true,
+      myPower: 50,
+      inputs: { hideUnavailableModeration: true },
+    });
+
+    const role = (level: number) =>
+      container.querySelector(`[data-testid="member-info-role-${level}"]`);
+    expect(role(0)).not.toBeNull();
+    expect(role(50)).not.toBeNull();
+    expect(role(100)).toBeNull();
+  });
+
+  it('with hideUnavailableModeration and no assignable role, renders no picker', async () => {
+    await build(member(), {
+      canBan: true,
+      inputs: { hideUnavailableModeration: true },
+    });
+
+    expect(screen.queryByRole('radiogroup')).toBeNull();
   });
 
   it('showIdentityActions=false hides Safety', async () => {

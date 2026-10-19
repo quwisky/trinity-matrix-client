@@ -7,6 +7,7 @@ import {
   inject,
   input,
   output,
+  signal,
   untracked,
   viewChild,
 } from '@angular/core';
@@ -161,6 +162,14 @@ export class MemberInfoComponent {
     viewChild<ElementRef<HTMLElement>>('userIdHandle');
   /** Hides the Manage tab when its panel would be empty. */
   protected readonly manageTab = viewChild(MemberManageTabComponent);
+  protected readonly manageOffered = computed(
+    () => !this.isSelf() && !!this.manageTab()?.hasContent(),
+  );
+  protected readonly tab = signal<string | undefined>('profile');
+  /** Falls back to Profile when Manage empties while selected, so the card never goes blank. */
+  protected readonly activeTab = computed(() =>
+    this.tab() === 'manage' && !this.manageOffered() ? 'profile' : this.tab(),
+  );
 
   /** The owning Account is no longer the active one (the host is about to close this). */
   private readonly ownerInactive = computed(() => {

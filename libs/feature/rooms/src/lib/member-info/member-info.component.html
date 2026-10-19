@@ -75,11 +75,16 @@
       </div>
     </div>
 
-    <div trnTabs class="member-info__tabs" value="profile">
+    <div
+      trnTabs
+      class="member-info__tabs"
+      [value]="activeTab()"
+      (valueChange)="tab.set($event)"
+    >
       <div trnTabList aria-label="Member info sections">
         <button trnTab="profile">Profile</button>
         <button trnTab="rooms">{{ roomsTabLabel() }}</button>
-        @if (!isSelf() && manageTab()?.hasContent()) {
+        @if (manageOffered()) {
           <button trnTab="manage">Manage</button>
         }
       </div>

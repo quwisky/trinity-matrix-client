@@ -336,6 +336,20 @@ describe('MemberInfoComponent', () => {
     expect(tabNames()).toEqual(['Profile', 'Rooms']);
   });
 
+  it('falls back to Profile when Manage empties while it is selected', async () => {
+    const { fixture } = await build();
+    await openManage(fixture);
+
+    fixture.componentRef.setInput('showIdentityActions', false);
+    fixture.componentRef.setInput('hideUnavailableModeration', true);
+    await fixture.whenStable();
+
+    expect(
+      screen.getByRole('tab', { selected: true }).textContent?.trim(),
+    ).toBe('Profile');
+    expect(screen.getByRole('tabpanel').textContent).toContain('Copy ID');
+  });
+
   it('closes the card once a moderation write from Manage lands', async () => {
     const { fixture, kick, close } = await build(member(), { canKick: true });
     await openManage(fixture);
