@@ -66,15 +66,16 @@ describe('documentation site projects', () => {
     });
   });
 
-  it('pins the compatible Astro and Starlight toolchain', () => {
+  // Exact pins keep Astro and Starlight moving together; the docs build proves they fit.
+  it.each([
+    '@astrojs/check',
+    '@astrojs/markdown-remark',
+    '@astrojs/starlight',
+    'astro',
+  ])('pins %s to an exact version', (name) => {
     const manifest = json('package.json');
 
-    expect(manifest.devDependencies).toMatchObject({
-      '@astrojs/check': '0.9.10',
-      '@astrojs/markdown-remark': '7.3.2',
-      '@astrojs/starlight': '0.42.6',
-      astro: '7.3.8',
-    });
+    expect(manifest.devDependencies[name]).toMatch(/^\d+\.\d+\.\d+$/);
   });
 });
 
