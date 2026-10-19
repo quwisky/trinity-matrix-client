@@ -5,7 +5,7 @@ import {
   RoomModerationService,
 } from '@trinity/data-access/room-administration';
 import { signal } from '@angular/core';
-import { render, screen, within } from '@trinity/testing';
+import { fireEvent, render, screen, within } from '@trinity/testing';
 import {
   TrnDialogRef,
   TrnAlertService,
@@ -16,10 +16,17 @@ import {
   IdentityPresenceService,
   IdentityService,
 } from '@trinity/data-access/identity';
-import { RoomLibraryService } from '@trinity/data-access/room-library';
+import {
+  type CommonRoom,
+  RoomLibraryService,
+  RoomsInCommonService,
+} from '@trinity/data-access/room-library';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   TrustOperationError,
+  TrustUsersService,
   TrustVerificationService,
+  type UserTrust,
 } from '@trinity/data-access/trust';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
@@ -59,6 +66,8 @@ async function build(
     createDirectMessage?: Mock;
     startUserVerification?: Mock;
     reportsOffered?: boolean;
+    trust?: UserTrust | null;
+    commonRooms?: readonly CommonRoom[] | null;
   } = {},
 ) {
   const close = vi.fn();
@@ -150,6 +159,16 @@ async function build(
         offers: () => opts.reportsOffered ?? true,
       }),
       MockProvider(ReportService, { reportUser$ }),
+      MockProvider(TrustUsersService, {
+        userTrust: () => signal(opts.trust ?? null).asReadonly(),
+      }),
+      MockProvider(RoomsInCommonService, {
+        roomsInCommon: () => signal(opts.commonRooms ?? null).asReadonly(),
+      }),
+      MockProvider(MatrixClientService, {
+        accountIds: signal(['@me:hs']).asReadonly(),
+        activeUserId: signal<string | null>('@me:hs').asReadonly(),
+      }),
     ],
   });
   return {
@@ -210,13 +229,106 @@ async function buildPanel(m: MemberSummary = member()) {
       MockProvider(ContentReportingService, { offers: () => true }),
       MockProvider(ReportService),
       MockProvider(TrnAlertService),
+      MockProvider(TrustUsersService, {
+        userTrust: () => signal(null).asReadonly(),
+      }),
+      MockProvider(RoomsInCommonService, {
+        roomsInCommon: () => signal(null).asReadonly(),
+      }),
+      MockProvider(MatrixClientService, {
+        accountIds: signal(['@me:hs']).asReadonly(),
+        activeUserId: signal<string | null>('@me:hs').asReadonly(),
+      }),
     ],
   });
   return { container, messaged, dismissals: () => dismissals };
 }
 
+function commonRoom(id: string): CommonRoom {
+  return {
+    id,
+    accountId: '@me:hs',
+    name: id,
+    initial: 'R',
+    avatarMxc: null,
+    kind: 'room',
+    memberCount: 3,
+  };
+}
+
+const tabNames = () =>
+  screen.getAllByRole('tab').map((tab) => tab.textContent?.trim());
+
+/** Block, report and moderation live on the Manage tab, hidden until it is chosen. */
+async function openManage(fixture: { whenStable(): Promise<void> }) {
+  screen.getByRole('tab', { name: 'Manage' }).click();
+  await fixture.whenStable();
+}
+
 describe('MemberInfoComponent', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('shows Profile, Rooms and Manage tabs for another person, Profile selected', async () => {
+    await build();
+
+    expect(tabNames()).toEqual(['Profile', 'Rooms', 'Manage']);
+    expect(
+      screen.getByRole('tab', { selected: true }).textContent?.trim(),
+    ).toBe('Profile');
+    expect(screen.getByRole('tabpanel').textContent).toContain('Copy user ID');
+  });
+
+  it('shows only Profile and Rooms for yourself', async () => {
+    await build(member({ userId: '@me:hs' }), { activeUserId: '@me:hs' });
+
+    expect(tabNames()).toEqual(['Profile', 'Rooms']);
+  });
+
+  // Rooms tab reads "Rooms (2)" with two rooms in common and "Rooms" while unknown.
+  it.each([
+    { rooms: [commonRoom('!a:hs'), commonRoom('!b:hs')], label: 'Rooms (2)' },
+    { rooms: null, label: 'Rooms' },
+  ])('labels the Rooms tab "$label"', async ({ rooms, label }) => {
+    await build(member(), { commonRooms: rooms });
+
+    expect(screen.getByRole('tab', { name: label })).toBeTruthy();
+  });
+
+  // The header shows the Verified badge for a verified person and Identity changed for a
+  // changed one, none when unverified.
+  it.each([
+    { trust: 'verified', badge: 'Verified' },
+    { trust: 'changed', badge: 'Identity changed — verify again' },
+    { trust: 'unverified', badge: null },
+    { trust: null, badge: null },
+  ] as const)(
+    'header trust badge for $trust is $badge',
+    async ({ trust, badge }) => {
+      await build(member(), { trust });
+
+      const badges = ['Verified', 'Identity changed — verify again'].filter(
+        (name) => screen.queryByRole('img', { name }),
+      );
+      expect(badges).toEqual(badge ? [badge] : []);
+    },
+  );
+
+  it('arrow keys move between tabs', async () => {
+    const { fixture } = await build();
+    const profile = screen.getByRole('tab', { name: 'Profile' });
+
+    profile.focus();
+    fireEvent.keyDown(profile, { key: 'ArrowRight' });
+    await fixture.whenStable();
+    expect(document.activeElement?.textContent?.trim()).toBe('Rooms');
+    expect(
+      screen.getByRole('tab', { selected: true }).textContent?.trim(),
+    ).toBe('Rooms');
+
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
+    await fixture.whenStable();
+    expect(document.activeElement?.textContent?.trim()).toBe('Profile');
+  });
 
   it('is built on the shared dialog shell as a dialog', async () => {
     const { container } = await build();
@@ -907,6 +1019,7 @@ describe('MemberInfoComponent', () => {
     const { cmp, fixture, unignore, toastShow } = await build(member(), {
       isIgnored: true,
     });
+    await openManage(fixture);
     expect(cmp.ignored()).toBe(true);
 
     cmp.toggleIgnore();
@@ -920,6 +1033,7 @@ describe('MemberInfoComponent', () => {
 
   it('confirms a block in the card, where no toast covers the button', async () => {
     const { cmp, fixture, toastShow } = await build(member());
+    await openManage(fixture);
 
     cmp.toggleIgnore();
     fixture.detectChanges();
@@ -934,6 +1048,7 @@ describe('MemberInfoComponent', () => {
     const { cmp, fixture, toastShow } = await build(member(), {
       ignore: vi.fn(() => throwError(() => new Error('offline'))),
     });
+    await openManage(fixture);
 
     cmp.toggleIgnore();
     fixture.detectChanges();
@@ -945,13 +1060,15 @@ describe('MemberInfoComponent', () => {
   });
 
   it('keeps its status region in place, empty, until there is something to say', async () => {
-    await build(member());
+    const { fixture } = await build(member());
+    await openManage(fixture);
 
     expect(screen.getByRole('status').matches(':empty')).toBe(true);
   });
 
   it('drops the confirmation once the list changes elsewhere', async () => {
     const { cmp, fixture, ignoredIds } = await build(member());
+    await openManage(fixture);
     cmp.toggleIgnore();
     fixture.detectChanges();
 
@@ -962,7 +1079,8 @@ describe('MemberInfoComponent', () => {
   });
 
   it('offers to report the member, named, as the active account', async () => {
-    const { reportUser$ } = await build(member());
+    const { fixture, reportUser$ } = await build(member());
+    await openManage(fixture);
 
     screen.getByRole('button', { name: 'Report Bob' }).click();
 
@@ -974,7 +1092,8 @@ describe('MemberInfoComponent', () => {
   });
 
   it('hides Report once this server has said it does not take user reports', async () => {
-    await build(member(), { reportsOffered: false });
+    const { fixture } = await build(member(), { reportsOffered: false });
+    await openManage(fixture);
 
     expect(screen.queryByRole('button', { name: 'Report Bob' })).toBeNull();
   });

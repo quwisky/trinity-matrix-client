@@ -31,170 +31,227 @@
 }
 <ng-template #profile>
   <div class="member-info" data-testid="member-info">
-    <trn-avatar
-      class="member-info__avatar"
-      [mxc]="member().roomAvatarMxc"
-      [initial]="member().roomInitial"
-      [name]="member().roomDisplayName"
-      [exactSize]="64"
-      [presence]="presenceState()"
-    />
-    <div class="member-info__id">
-      <span class="member-info__name" data-testid="member-info-name">{{
-        member().roomDisplayName
-      }}</span>
-      <span
-        #userIdHandle
-        class="member-info__handle"
-        data-testid="member-info-handle"
-        tabindex="0"
-        role="textbox"
-        aria-readonly="true"
-        [attr.aria-label]="'Matrix user ID ' + member().userId"
-        (focus)="selectUserId()"
-        >{{ member().userId }}</span
-      >
-      <span class="member-info__role" data-testid="member-info-role">{{
-        role()
-      }}</span>
+    <div class="member-info__header">
+      <trn-avatar
+        class="member-info__avatar"
+        [mxc]="member().roomAvatarMxc"
+        [initial]="member().roomInitial"
+        [name]="member().roomDisplayName"
+        [exactSize]="56"
+        [presence]="presenceState()"
+      />
+      <div class="member-info__id">
+        <span class="member-info__name" data-testid="member-info-name">{{
+          member().roomDisplayName
+        }}</span>
+        <span
+          #userIdHandle
+          class="member-info__handle"
+          data-testid="member-info-handle"
+          tabindex="0"
+          role="textbox"
+          aria-readonly="true"
+          [attr.aria-label]="'Matrix user ID ' + member().userId"
+          (focus)="selectUserId()"
+          >{{ member().userId }}</span
+        >
+        <div class="member-info__badges">
+          @switch (trust()) {
+            @case ('verified') {
+              <span trnBadge variant="success" role="img" aria-label="Verified"
+                >✓ Verified</span
+              >
+            }
+            @case ('changed') {
+              <span
+                trnBadge
+                variant="warning"
+                role="img"
+                aria-label="Identity changed — verify again"
+                >⚠ Identity changed</span
+              >
+            }
+          }
+          <span trnBadge data-testid="member-info-role">{{ role() }}</span>
+        </div>
+      </div>
     </div>
 
-    <div class="member-info__actions">
-      @if (!isSelf()) {
-        <button
-          trnBtn
-          class="w-full"
-          (click)="message()"
-          data-testid="member-info-message"
-        >
-          Message
-        </button>
-      }
-      <button
-        trnBtn
-        variant="secondary"
-        presentation="ghost"
-        class="w-full"
-        (click)="copyId()"
-        data-testid="member-info-copy"
-      >
-        Copy user ID
-      </button>
+    <div trnTabs class="member-info__tabs" value="profile">
+      <div trnTabList aria-label="Member info sections">
+        <button trnTab="profile">Profile</button>
+        <button trnTab="rooms">{{ roomsTabLabel() }}</button>
+        @if (!isSelf()) {
+          <button trnTab="manage">Manage</button>
+        }
+      </div>
 
-      @if (!isSelf() && showIdentityActions()) {
+      <div
+        class="member-info__actions"
+        trnTabPanel="profile"
+        [focusable]="false"
+      >
+        @if (!isSelf()) {
+          <button
+            trnBtn
+            class="w-full"
+            (click)="message()"
+            data-testid="member-info-message"
+          >
+            Message
+          </button>
+        }
         <button
           trnBtn
           variant="secondary"
           presentation="ghost"
           class="w-full"
-          (click)="verify()"
-          data-testid="member-info-verify"
+          (click)="copyId()"
+          data-testid="member-info-copy"
         >
-          Verify
+          Copy user ID
         </button>
-        <div class="flex flex-col">
+        @if (!isSelf() && showIdentityActions()) {
           <button
             trnBtn
             variant="secondary"
             presentation="ghost"
             class="w-full"
-            (click)="toggleIgnore()"
-            [trnActionAllowed]="blockUnavailableReason() === null"
-            [trnActionDisabledReason]="blockUnavailableReason()"
-            data-testid="member-info-ignore"
+            (click)="verify()"
+            data-testid="member-info-verify"
           >
-            {{ ignored() ? 'Unblock' : 'Block' }}
-          </button>
-          <!-- Always present, so screen readers hear a confirmation as it arrives. -->
-          <p
-            class="m-0 text-13 text-muted-foreground not-empty:mt-2"
-            role="status"
-            data-testid="member-info-block-notice"
-          >
-            @if (blockNotice(); as notice) {
-              @if (!notice.failed) {
-                {{ notice.text }}
-              }
-            }
-          </p>
-          @if (blockNotice()?.failed) {
-            <p
-              class="m-0 mt-2 text-13 text-danger"
-              role="alert"
-              data-testid="member-info-block-failure"
-            >
-              {{ blockNotice()?.text }}
-            </p>
-          }
-        </div>
-        @if (canReport()) {
-          <button
-            trnBtn
-            variant="secondary"
-            presentation="ghost"
-            class="w-full"
-            [attr.aria-label]="'Report ' + member().roomDisplayName"
-            (click)="report()"
-            data-testid="member-info-report"
-          >
-            Report
+            Verify
           </button>
         }
-      }
+      </div>
 
-      @if (!isSelf() && showModeration()) {
-        <div class="member-info__moderation">
-          @for (option of roleOptions(); track option.level) {
-            @let permission = rolePermission(option.level);
-            @if (showModerationAction(permission)) {
+      <!-- shortcut: a plain list until the Rooms tab component replaces it (Task 6). -->
+      <div class="member-info__rooms" trnTabPanel="rooms">
+        @if (commonRooms(); as rooms) {
+          @if (rooms.length) {
+            <ul>
+              @for (room of rooms; track room.id) {
+                <li>{{ room.name }}</li>
+              }
+            </ul>
+          } @else {
+            <p>No other rooms in common.</p>
+          }
+        }
+      </div>
+
+      @if (!isSelf()) {
+        <div
+          class="member-info__actions"
+          trnTabPanel="manage"
+          [focusable]="false"
+        >
+          @if (showIdentityActions()) {
+            <div class="flex flex-col">
               <button
                 trnBtn
                 variant="secondary"
-                presentation="outline"
+                presentation="ghost"
                 class="w-full"
-                (click)="setRole(option)"
-                [trnActionAllowed]="permission.available"
-                [trnActionDisabledReason]="permission.reason"
-                [trnTooltip]="permission.reason ?? 'Change role'"
-                [attr.data-testid]="'member-info-role-' + option.level"
+                (click)="toggleIgnore()"
+                [trnActionAllowed]="blockUnavailableReason() === null"
+                [trnActionDisabledReason]="blockUnavailableReason()"
+                data-testid="member-info-ignore"
               >
-                Make {{ option.label.toLowerCase() }}
+                {{ ignored() ? 'Unblock' : 'Block' }}
+              </button>
+              <!-- Always present, so screen readers hear a confirmation as it arrives. -->
+              <p
+                class="m-0 text-13 text-muted-foreground not-empty:mt-2"
+                role="status"
+                data-testid="member-info-block-notice"
+              >
+                @if (blockNotice(); as notice) {
+                  @if (!notice.failed) {
+                    {{ notice.text }}
+                  }
+                }
+              </p>
+              @if (blockNotice()?.failed) {
+                <p
+                  class="m-0 mt-2 text-13 text-danger"
+                  role="alert"
+                  data-testid="member-info-block-failure"
+                >
+                  {{ blockNotice()?.text }}
+                </p>
+              }
+            </div>
+            @if (canReport()) {
+              <button
+                trnBtn
+                variant="secondary"
+                presentation="ghost"
+                class="w-full"
+                [attr.aria-label]="'Report ' + member().roomDisplayName"
+                (click)="report()"
+                data-testid="member-info-report"
+              >
+                Report
               </button>
             }
           }
-          @if (showModerationAction(permissions().kick)) {
-            <button
-              trnBtn
-              variant="danger"
-              presentation="outline"
-              class="w-full"
-              (click)="kick()"
-              [trnActionAllowed]="permissions().kick.available"
-              [trnActionDisabledReason]="permissions().kick.reason"
-              [trnTooltip]="
-                permissions().kick.reason ??
-                'Remove from ' + noun().toLowerCase()
-              "
-              data-testid="member-info-kick"
-            >
-              Remove from {{ noun().toLowerCase() }}
-            </button>
-          }
-          @if (showModerationAction(permissions().ban)) {
-            <button
-              trnBtn
-              variant="danger"
-              class="w-full"
-              (click)="ban()"
-              [trnActionAllowed]="permissions().ban.available"
-              [trnActionDisabledReason]="permissions().ban.reason"
-              [trnTooltip]="
-                permissions().ban.reason ?? 'Ban from ' + noun().toLowerCase()
-              "
-              data-testid="member-info-ban"
-            >
-              Ban from {{ noun().toLowerCase() }}
-            </button>
+          @if (showModeration()) {
+            <div class="member-info__moderation">
+              @for (option of roleOptions(); track option.level) {
+                @let permission = rolePermission(option.level);
+                @if (showModerationAction(permission)) {
+                  <button
+                    trnBtn
+                    variant="secondary"
+                    presentation="outline"
+                    class="w-full"
+                    (click)="setRole(option)"
+                    [trnActionAllowed]="permission.available"
+                    [trnActionDisabledReason]="permission.reason"
+                    [trnTooltip]="permission.reason ?? 'Change role'"
+                    [attr.data-testid]="'member-info-role-' + option.level"
+                  >
+                    Make {{ option.label.toLowerCase() }}
+                  </button>
+                }
+              }
+              @if (showModerationAction(permissions().kick)) {
+                <button
+                  trnBtn
+                  variant="danger"
+                  presentation="outline"
+                  class="w-full"
+                  (click)="kick()"
+                  [trnActionAllowed]="permissions().kick.available"
+                  [trnActionDisabledReason]="permissions().kick.reason"
+                  [trnTooltip]="
+                    permissions().kick.reason ??
+                    'Remove from ' + noun().toLowerCase()
+                  "
+                  data-testid="member-info-kick"
+                >
+                  Remove from {{ noun().toLowerCase() }}
+                </button>
+              }
+              @if (showModerationAction(permissions().ban)) {
+                <button
+                  trnBtn
+                  variant="danger"
+                  class="w-full"
+                  (click)="ban()"
+                  [trnActionAllowed]="permissions().ban.available"
+                  [trnActionDisabledReason]="permissions().ban.reason"
+                  [trnTooltip]="
+                    permissions().ban.reason ??
+                    'Ban from ' + noun().toLowerCase()
+                  "
+                  data-testid="member-info-ban"
+                >
+                  Ban from {{ noun().toLowerCase() }}
+                </button>
+              }
+            </div>
           }
         </div>
       }

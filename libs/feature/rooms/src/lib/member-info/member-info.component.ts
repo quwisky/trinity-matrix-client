@@ -8,14 +8,22 @@ import {
   input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, type Observable } from 'rxjs';
-import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
-import { TrnTooltip } from '@trinity/components/generic-content';
+import {
+  TrnActionAvailability,
+  TrnButton,
+  TrnTab,
+  TrnTabList,
+  TrnTabPanel,
+  TrnTabs,
+} from '@trinity/components/controls';
+import { TrnBadge, TrnTooltip } from '@trinity/components/generic-content';
 import {
   TrnDialogRef,
   TrnAlertService,
@@ -34,7 +42,11 @@ import {
   RoomModerationService,
   memberRole,
 } from '@trinity/data-access/room-administration';
-import { RoomLibraryService } from '@trinity/data-access/room-library';
+import {
+  RoomLibraryService,
+  RoomsInCommonService,
+} from '@trinity/data-access/room-library';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   IgnoredUsersService,
   IdentityPresenceService,
@@ -42,6 +54,7 @@ import {
 } from '@trinity/data-access/identity';
 import {
   TrustOperationError,
+  TrustUsersService,
   TrustVerificationService,
 } from '@trinity/data-access/trust';
 import { AvatarComponent } from '@trinity/components/generic-content';
@@ -72,6 +85,11 @@ import {
     TrnButton,
     TrnActionAvailability,
     TrnTooltip,
+    TrnBadge,
+    TrnTabs,
+    TrnTabList,
+    TrnTab,
+    TrnTabPanel,
   ],
   templateUrl: './member-info.component.html',
   styleUrl: './member-info.component.scss',
@@ -142,6 +160,9 @@ export class MemberInfoComponent {
   private readonly alert = inject(TrnAlertService);
   private readonly reporting = inject(ContentReportingService);
   private readonly reports = inject(ReportService);
+  private readonly trustUsers = inject(TrustUsersService);
+  private readonly commonRoomsService = inject(RoomsInCommonService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly userIdHandle =
     viewChild<ElementRef<HTMLElement>>('userIdHandle');
@@ -204,6 +225,32 @@ export class MemberInfoComponent {
       ? null
       : this.presence.presenceFor(this.member().userId)(),
   );
+
+  /** Trust is the active Account's view, so it shows only while that is the card's Account. */
+  readonly trust = computed(() => {
+    const active = this.identity.activeUserId();
+    if ((this.commandAccountId() ?? active) !== active) return null;
+    const userId = this.member().userId;
+    // untracked: the service may settle its signal synchronously, which a computed forbids.
+    return untracked(() => this.trustUsers.userTrust(userId))();
+  });
+
+  /** Joined rooms shared with the member besides this one; null while unknown. */
+  readonly commonRooms = computed(() => {
+    // A client restart orphans a held view, so ask again when the accounts change.
+    this.matrix.accountIds();
+    const userId = this.member().userId;
+    const roomId = this.roomId();
+    const accountId = this.commandAccountId();
+    return untracked(() =>
+      this.commonRoomsService.roomsInCommon(userId, roomId, accountId),
+    )();
+  });
+
+  readonly roomsTabLabel = computed(() => {
+    const rooms = this.commonRooms();
+    return rooms ? `Rooms (${rooms.length})` : 'Rooms';
+  });
 
   /** Whether this row is the signed-in user — no point messaging yourself. */
   readonly isSelf = computed(
