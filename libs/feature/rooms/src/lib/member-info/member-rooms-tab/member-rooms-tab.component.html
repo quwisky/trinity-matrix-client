@@ -7,7 +7,7 @@
         >
           <button
             type="button"
-            class="flex w-full items-center gap-3 px-4 py-2 text-start hover:bg-[var(--trinity-state-hover-surface)]"
+            class="flex w-full items-center gap-3 px-4 py-2 text-start hover:bg-[var(--trinity-state-hover-surface)] focus-visible:outline-offset-[calc(-1*var(--trinity-focus-ring-width))]"
             (click)="open.emit(room)"
           >
             <trn-avatar

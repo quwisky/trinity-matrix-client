@@ -260,6 +260,11 @@ const ROLES = [
 
 /** Essential graphics and focus indicators use WCAG's 3:1 non-text threshold. */
 const NON_TEXT_ROLES = [
+  // The underline tabs' selected bar (`trnTabs appearance="underline"`) on the cards it sits in.
+  {
+    foreground: '--trinity-accent',
+    on: ['--trinity-surface-overlay', '--trinity-surface-raised'],
+  },
   {
     foreground: '--trinity-focus-ring',
     on: [

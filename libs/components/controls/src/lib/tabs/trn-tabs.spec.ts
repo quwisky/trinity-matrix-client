@@ -343,5 +343,13 @@ describe('trnTabs', () => {
     expect(selected.className).not.toContain(
       'aria-selected:bg-[var(--trinity-state-selected-surface)]',
     );
+    // Forced colours replace the accent, so the system selection colour marks the tab there.
+    expect(selected.className).toContain(
+      'forced-colors:aria-selected:border-b-[Highlight]',
+    );
+    // An edge-to-edge strip sits in a clipping scroller, so its focus ring is inset.
+    expect(selected.className).toContain(
+      'focus-visible:outline-offset-[calc(-1*var(--trinity-focus-ring-width))]',
+    );
   });
 });
