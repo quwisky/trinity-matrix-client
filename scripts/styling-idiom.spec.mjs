@@ -77,6 +77,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/components/overlay/src/lib/sheet-frame/trn-sheet-frame.component.scss',
   'libs/feature/auth/src/lib/auth-card/auth-card.component.scss',
   'libs/feature/auth/src/lib/login/login.page.scss',
+  'libs/feature/auth/src/lib/login/qr-sign-in-panel/qr-sign-in-panel.component.scss',
   'libs/feature/auth/src/lib/registration/registration.page.scss',
   'libs/feature/crypto/src/lib/device-confirmation/device-confirmation.page.scss',
   'libs/feature/crypto/src/lib/encryption-setup/encryption-setup.page.scss',

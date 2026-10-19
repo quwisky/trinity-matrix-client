@@ -8,15 +8,19 @@ import {
   AUTHENTICATION_HOMESERVER_DISCOVERY,
   NewDeviceSignInCancelledError,
   OidcStateStore,
+  QrSignInAvailability,
+  QrSignInService,
   RegistrationService,
   SignInRedirectService,
   UnprotectedStorageDeclinedError,
+  type NewDeviceState,
 } from '@trinity/data-access/auth';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   ACCOUNT_DELETION_LAUNCHER,
   AppRestartService,
   BUG_REPORT_LAUNCHER,
+  QrCodeService,
   SessionStorageService,
   provideHostCapabilities,
 } from '@trinity/platform-native';
@@ -67,6 +71,10 @@ async function renderLogin(
     bugReport?: { open: () => void };
     /** The account whose deletion led here, as the deletion launcher hands it over. */
     deleted?: string | WritableSignal<string | null>;
+    /** Whether the homeserver supports QR sign-in; it does not unless a test says so. */
+    qrSupported?: boolean;
+    /** The states a QR sign-in emits; it never moves unless a test says so. */
+    qrFlow?: Observable<NewDeviceState>;
   } = {},
 ): Promise<{
   fixture: Awaited<ReturnType<typeof render<LoginPage>>>['fixture'];
@@ -155,6 +163,13 @@ async function renderLogin(
         ),
       }),
       MockProvider(AppRestartService, { restart: vi.fn() }),
+      MockProvider(QrSignInAvailability, {
+        supports: vi.fn(() => of(opts.qrSupported ?? false)),
+      }),
+      MockProvider(QrSignInService, {
+        signInByShowingCode: vi.fn(() => opts.qrFlow ?? NEVER),
+      }),
+      MockProvider(QrCodeService),
       ...(opts.bugReport
         ? [{ provide: BUG_REPORT_LAUNCHER, useValue: opts.bugReport }]
         : []),
@@ -1597,6 +1612,120 @@ describe('LoginPage', () => {
           '[data-testid="login-report-bug"]',
         ),
       ).toBeNull();
+    });
+  });
+
+  describe('QR sign-in', () => {
+    const oidcServer = {
+      discoverHomeserver: vi.fn(() => of('https://hs.example')),
+      getSupportedFlows: vi.fn(() => of([])),
+      getDelegatedAuthConfig: vi.fn(() =>
+        of({ issuer: 'https://hs.example/' }),
+      ),
+    } as unknown as Partial<AuthService>;
+    const qrButton = (root: HTMLElement) =>
+      root.querySelector<HTMLButtonElement>('[data-testid="qr-sign-in"]');
+
+    it('hides "Sign in with QR code" when the server does not support it', async () => {
+      const { cmp, fixture } = await renderLogin(oidcServer);
+
+      cmp.discover();
+      fixture.detectChanges();
+
+      expect(qrButton(fixture.nativeElement as HTMLElement)).toBeNull();
+    });
+
+    it('offers "Sign in with QR code" once the server supports it', async () => {
+      const { cmp, fixture } = await renderLogin(oidcServer, {
+        qrSupported: true,
+      });
+
+      cmp.discover();
+      fixture.detectChanges();
+
+      expect(
+        qrButton(fixture.nativeElement as HTMLElement)?.textContent?.trim(),
+      ).toBe('Sign in with QR code');
+    });
+
+    it('swaps the sign-in choices for the QR panel and back', async () => {
+      const { cmp, fixture } = await renderLogin(oidcServer, {
+        qrSupported: true,
+      });
+      const root = fixture.nativeElement as HTMLElement;
+      cmp.discover();
+      fixture.detectChanges();
+
+      fireEvent.click(qrButton(root)!);
+      fixture.detectChanges();
+
+      expect(root.querySelector('trn-qr-sign-in-panel')).not.toBeNull();
+      expect(root.querySelector('[data-testid="oidc-continue"]')).toBeNull();
+
+      fireEvent.click(
+        [...root.querySelectorAll('button')].find(
+          (b) => b.textContent?.trim() === 'Sign in another way',
+        )!,
+      );
+      fixture.detectChanges();
+
+      expect(root.querySelector('trn-qr-sign-in-panel')).toBeNull();
+      expect(
+        root.querySelector('[data-testid="oidc-continue"]'),
+      ).not.toBeNull();
+    });
+
+    it('returns focus to "Sign in with QR code" when the panel is left', async () => {
+      const { cmp, fixture } = await renderLogin(oidcServer, {
+        qrSupported: true,
+      });
+      const root = fixture.nativeElement as HTMLElement;
+      cmp.discover();
+      fixture.detectChanges();
+      fireEvent.click(qrButton(root)!);
+      fixture.detectChanges();
+
+      fireEvent.keyDown(root.querySelector('trn-qr-sign-in-panel')!, {
+        key: 'Escape',
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(document.activeElement).toBe(qrButton(root));
+    });
+
+    it.each([true, false])(
+      'opens the rooms after a QR sign-in like any other (verified: %s)',
+      async (verified) => {
+        const { cmp, fixture, router } = await renderLogin(oidcServer, {
+          qrSupported: true,
+          qrFlow: of({ kind: 'done', verified } as const),
+        });
+        cmp.discover();
+        fixture.detectChanges();
+
+        fireEvent.click(qrButton(fixture.nativeElement as HTMLElement)!);
+        fixture.detectChanges();
+
+        expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
+          replaceUrl: true,
+        });
+      },
+    );
+
+    it('does not offer QR sign-in while re-authenticating an account', async () => {
+      const { fixture } = await renderLogin(oidcServer, {
+        reauth: '@me:hs.example',
+        record: {
+          userId: '@me:hs.example',
+          baseUrl: 'https://hs.example',
+          deviceId: 'D',
+        },
+        qrSupported: true,
+      });
+      fixture.detectChanges();
+
+      expect(qrButton(fixture.nativeElement as HTMLElement)).toBeNull();
     });
   });
 });

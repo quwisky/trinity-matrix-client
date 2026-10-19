@@ -82,6 +82,12 @@
     >
       Continue
     </button>
+  } @else if (showingQr()) {
+    <trn-qr-sign-in-panel
+      [homeserverUrl]="baseUrl()!"
+      (signedIn)="qrSignedIn()"
+      (back)="closeQr()"
+    />
   } @else {
     @if (passwordSupported()) {
       <trn-field class="login-card__field">
@@ -235,6 +241,21 @@
           Create account
         </button>
       }
+    }
+
+    @if (qrSignInSupported() && !otherSiteSignIn()) {
+      <button
+        trnBtn
+        presentation="outline"
+        size="lg"
+        class="login-card__sso w-full"
+        [disabled]="busy()"
+        (click)="showingQr.set(true)"
+        #qrSignInButton
+        data-testid="qr-sign-in"
+      >
+        Sign in with QR code
+      </button>
     }
   }
 

@@ -1,0 +1,114 @@
+@let current = state();
+@switch (current.kind) {
+  @case ('showing-code') {
+    <h2 #stepHeading tabindex="-1" class="qr-sign-in__heading">
+      Scan this code with your other device
+    </h2>
+    <p class="qr-sign-in__hint text-muted-foreground">
+      Use Trinity on a device where you're already signed in.
+    </p>
+    @if (qrUrl(); as url) {
+      <img
+        class="qr-sign-in__code"
+        data-testid="qr-sign-in-code"
+        [src]="url"
+        alt="QR code to sign in on this device"
+      />
+    }
+    <p
+      class="qr-sign-in__hint text-center text-muted-foreground"
+      data-testid="qr-sign-in-expiry"
+    >
+      The code expires at {{ current.expiresAt | date: 'shortTime' }}.
+    </p>
+  }
+  @case ('signing-in') {
+    <h2 #stepHeading tabindex="-1" class="qr-sign-in__heading">Signing in</h2>
+    <div class="qr-sign-in__busy">
+      <trn-spinner />
+      <p class="text-muted-foreground">Signing in…</p>
+    </div>
+  }
+  @case ('done') {
+    <h2 #stepHeading tabindex="-1" class="qr-sign-in__heading">Signed in</h2>
+  }
+  @case ('failed') {
+    <h2 #stepHeading tabindex="-1" class="qr-sign-in__heading">
+      Couldn't sign in
+    </h2>
+    <p class="qr-sign-in__error text-danger" role="alert">
+      {{ failureMessages[current.reason] }}
+    </p>
+    @if (!finalFailures.has(current.reason)) {
+      <button
+        trnBtn
+        size="lg"
+        class="qr-sign-in__action w-full"
+        type="button"
+        data-testid="qr-sign-in-retry"
+        (click)="start()"
+      >
+        Show a new code
+      </button>
+    }
+  }
+  @case ('creating') {
+    <h2 #stepHeading tabindex="-1" class="qr-sign-in__heading">
+      Sign in with QR code
+    </h2>
+    <div class="qr-sign-in__busy">
+      <trn-spinner />
+      <p class="text-muted-foreground">Creating a code…</p>
+    </div>
+  }
+  @default {
+    <!-- The check code and the wait for approval: one step, so focus stays put. -->
+    <h2 #stepHeading tabindex="-1" class="qr-sign-in__heading">
+      Check the code on your other device
+    </h2>
+    <div>
+      <p class="qr-sign-in__hint text-muted-foreground">
+        Make sure your other device shows the same number:
+      </p>
+      <!-- Read digit by digit: "4 2", not "forty-two". -->
+      <p class="qr-sign-in__check-code">
+        <span aria-hidden="true" data-testid="qr-sign-in-check-code">{{
+          checkCode()
+        }}</span>
+        <span class="sr-only">{{ spokenCheckCode() }}</span>
+      </p>
+      @if (current.kind === 'waiting-for-approval') {
+        <p
+          class="qr-sign-in__hint text-muted-foreground"
+          data-testid="qr-sign-in-user-code"
+        >
+          Then approve the sign-in there. If it asks for a code, enter
+          <strong class="qr-sign-in__user-code">{{ current.userCode }}</strong
+          >.
+        </p>
+      }
+    </div>
+  }
+}
+
+<!-- One polite region, present and empty from the first render, so each step's
+     announcement is a change that screen readers read. -->
+<p
+  class="sr-only"
+  role="status"
+  aria-live="polite"
+  data-testid="qr-sign-in-announcement"
+>
+  {{ announcement() }}
+</p>
+
+<button
+  trnBtn
+  presentation="ghost"
+  class="qr-sign-in__action w-full"
+  type="button"
+  data-testid="qr-sign-in-back"
+  (click)="leave()"
+>
+  Sign in another way
+</button>

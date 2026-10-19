@@ -1,0 +1,65 @@
+@use '../../styles/auth-form' as auth;
+
+@layer components {
+  :host {
+    display: block;
+  }
+
+  .qr-sign-in__heading {
+    margin: 0 0 var(--trinity-space-3);
+    color: var(--trinity-text-bright);
+    font-size: var(--trinity-type-title-size);
+    font-weight: var(--trinity-type-title-weight);
+    line-height: var(--trinity-type-title-line-height);
+  }
+
+  .qr-sign-in__hint {
+    margin: var(--trinity-space-2) 0 0;
+    font-size: var(--trinity-type-body-size);
+    line-height: var(--trinity-type-body-line-height);
+  }
+
+  // The QR modules need a light quiet zone in every theme to stay scannable.
+  .qr-sign-in__code {
+    display: block;
+    width: min(100%, 280px);
+    height: auto;
+    margin: var(--trinity-space-4) auto 0;
+    padding: var(--trinity-space-3);
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-qr-surface);
+    image-rendering: pixelated;
+  }
+
+  .qr-sign-in__check-code {
+    margin: var(--trinity-space-4) 0;
+    color: var(--trinity-text-bright);
+    font-size: calc(var(--trinity-type-title-size) * 2.5);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--trinity-type-title-weight);
+    line-height: 1;
+    letter-spacing: 0.1em;
+    text-align: center;
+  }
+
+  .qr-sign-in__user-code {
+    color: var(--trinity-text-bright);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+
+  .qr-sign-in__busy {
+    @include auth.busy;
+
+    text-align: center;
+  }
+
+  .qr-sign-in__error {
+    @include auth.error;
+  }
+
+  .qr-sign-in__action {
+    margin-top: var(--trinity-space-4);
+  }
+}
