@@ -3,6 +3,7 @@ export * from './lib/trust-lifetime';
 export type { TrustCapabilityHealth } from './lib/trust-health.models';
 export * from './lib/trust-verification.service';
 export * from './lib/trust-devices.service';
+export * from './lib/trust-users.service';
 export * from './lib/trust-operation-error';
 export * from './lib/trust-dialog-result';
 export {

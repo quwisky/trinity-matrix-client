@@ -25,6 +25,9 @@ export interface IdentitySdkUser {
   readonly avatarUrl?: string | null;
   readonly presence?: string;
   readonly presenceStatusMsg?: string;
+  readonly lastActiveAgo?: number;
+  readonly lastPresenceTs?: number;
+  readonly currentlyActive?: boolean;
 }
 
 /** Protocol operations owned by Identity; Account and sync lifecycle methods are absent. */

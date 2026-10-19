@@ -23,6 +23,7 @@ import {
 import {
   TrustAccountStatusService,
   TrustLifetime,
+  TrustUsersService,
 } from '@trinity/data-access/trust';
 import { LiveTimelineTrimmer } from '@trinity/data-access/timeline';
 import { HostLifecycleService } from '@trinity/runtime/host';
@@ -73,6 +74,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly roomLibrary = inject(RoomLibraryLifetime);
   private readonly trust = inject(TrustLifetime);
   private readonly accountTrust = inject(TrustAccountStatusService);
+  private readonly userTrust = inject(TrustUsersService);
   private readonly deviceConfirmation = inject(DeviceConfirmationCoordinator);
   private readonly identity = inject(IdentityLifetime);
   private readonly health = inject(CapabilityHealthService);
@@ -159,6 +161,7 @@ export class TrinityApplicationSessionAdapter {
         ),
       );
       observeOptional(this.accountTrust.run());
+      observeOptional(this.userTrust.runProjection());
       observeOptional(this.deviceConfirmation.run());
       observeOptional(
         this.identity.run(this.routedSurfaces.roomProjectionDemand).pipe(

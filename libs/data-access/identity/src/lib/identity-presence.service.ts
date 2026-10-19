@@ -12,6 +12,29 @@ import {
   recoverIdentityOperation,
 } from './identity-operation-error';
 
+export interface PresenceDetails {
+  readonly state: PresenceState;
+  readonly statusMessage: string;
+  /** Epoch ms of the user's last activity, or null when the server did not say. */
+  readonly lastActiveAt: number | null;
+  readonly currentlyActive: boolean;
+}
+
+function samePresenceDetails(
+  a: PresenceDetails | null,
+  b: PresenceDetails | null,
+): boolean {
+  return (
+    a === b ||
+    (!!a &&
+      !!b &&
+      a.state === b.state &&
+      a.statusMessage === b.statusMessage &&
+      a.lastActiveAt === b.lastActiveAt &&
+      a.currentlyActive === b.currentlyActive)
+  );
+}
+
 /** Projects authoritative Matrix presence; unavailable or unseen status remains unknown. */
 @Injectable({ providedIn: 'root' })
 export class IdentityPresenceService {
@@ -24,6 +47,15 @@ export class IdentityPresenceService {
   private readonly states = new Map<
     string,
     ReturnType<typeof signal<PresenceState | null>>
+  >();
+
+  private readonly detailViews = new Map<
+    string,
+    Signal<PresenceDetails | null>
+  >();
+  private readonly details = new Map<
+    string,
+    ReturnType<typeof signal<PresenceDetails | null>>
   >();
 
   // The signed-in user's own presence and status message, seeded by loadOwnPresence().
@@ -49,6 +81,19 @@ export class IdentityPresenceService {
     return view;
   }
 
+  /** Presence state, status message and last-active time for a user; null while unknown. */
+  presenceDetailsFor(userId: string): Signal<PresenceDetails | null> {
+    let view = this.detailViews.get(userId);
+    if (!view) {
+      const details = signal<PresenceDetails | null>(null);
+      this.details.set(userId, details);
+      view = computed(() => (this.available() ? details() : null));
+      this.detailViews.set(userId, view);
+      if (this.available()) queueMicrotask(() => this.projection.schedule());
+    }
+    return view;
+  }
+
   /** Coalesce SDK invalidations so read failures are observed by Projection Runtime. */
   private readonly projection = this.matrix.project({
     id: 'identity.presence',
@@ -58,10 +103,18 @@ export class IdentityPresenceService {
       for (const [userId, state] of this.states) {
         state.set(this.currentPresence(userId, client));
       }
+      for (const [userId, details] of this.details) {
+        const next = this.currentDetails(userId, client);
+        // Keep the existing object when nothing changed so unrelated events don't re-render consumers.
+        if (!samePresenceDetails(details(), next)) details.set(next);
+      }
     },
     reset: () => {
       for (const state of this.states.values()) {
         state.set(null);
+      }
+      for (const details of this.details.values()) {
+        details.set(null);
       }
       this._myPresence.set('online');
       this._myStatusMessage.set('');
@@ -133,6 +186,28 @@ export class IdentityPresenceService {
         }),
       );
     }).pipe(recoverIdentityOperation('set-presence'));
+  }
+
+  private currentDetails(
+    userId: string,
+    client: IdentityMatrixClient,
+  ): PresenceDetails | null {
+    const state = this.currentPresence(userId, client);
+    const user = client.getUser(userId);
+    // The SDK seeds every loaded member as offline with lastPresenceTs 0 and sets it only
+    // when a presence event arrives; self stays known as online without one.
+    const known = !!user?.lastPresenceTs || userId === client.getUserId();
+    if (!state || !known) return null;
+    return {
+      state,
+      statusMessage: user?.presenceStatusMsg ?? '',
+      // Same anchor as the SDK's getLastActiveTs().
+      lastActiveAt:
+        user?.lastPresenceTs && user.lastActiveAgo != null
+          ? user.lastPresenceTs - user.lastActiveAgo
+          : null,
+      currentlyActive: user?.currentlyActive ?? false,
+    };
   }
 
   /**
