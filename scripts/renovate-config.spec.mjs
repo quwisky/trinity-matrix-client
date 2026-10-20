@@ -109,9 +109,10 @@ describe('Renovate post-upgrade commands', () => {
     );
     expect(owners).toHaveLength(1);
     expect(owners[0].step.uses).toMatch(/^renovatebot\/github-action@/);
-    // A shell executor would let a command allowed by regex chain arbitrary others.
+    // A shell executor would let a command allowed by regex chain arbitrary others; exposed
+    // env or allowed install scripts would hand the App token to code from a dependency.
     expect(JSON.stringify(workflow('renovate.yml'))).not.toMatch(
-      /ALLOW_SHELL_EXECUTOR|allowShellExecutor/,
+      /ALLOW_SHELL_EXECUTOR|allowShellExecutor|EXPOSE_ALL_ENV|exposeAllEnv|ALLOW_SCRIPTS|allowScripts/,
     );
   });
 

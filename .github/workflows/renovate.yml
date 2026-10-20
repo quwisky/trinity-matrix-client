@@ -104,7 +104,7 @@ jobs:
           # rule in .github/renovate.json). Anchored at both ends, because these regexes
           # are the only thing standing between a repo config edit and arbitrary commands
           # in a job holding the App token. `allowedCommands` was formerly
-          # `allowedPostUpgradeCommands`; the image runs it with its own /bin/node.
+          # `allowedPostUpgradeCommands`; it runs with the node on the image's PATH.
           RENOVATE_ALLOWED_COMMANDS: '["^node scripts/sync-native-plugin-paths\\.mjs$"]'
           LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
           RENOVATE_DRY_RUN: ${{ inputs.dryRun && 'full' || '' }}
