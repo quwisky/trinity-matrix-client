@@ -11,11 +11,13 @@ import {
   setDirectRooms,
   uniqueId,
 } from '../support/matrix.mts';
-import { iosAppGroupContainer, resetApp } from '../support/session.mts';
+import {
+  IOS_APP_GROUP as APP_GROUP,
+  iosAppGroupContainer,
+  resetApp,
+} from '../support/session.mts';
 import { onlyOn } from '../support/platform.mts';
 import { storeExpiredPushAccount } from '../support/push-handoff.mts';
-
-const APP_GROUP = 'group.dev.trinityproject.trinity';
 
 /** What the NotificationService extension would show, as the debug render probe reports it. */
 interface RenderedPush {
