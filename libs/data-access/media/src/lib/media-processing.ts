@@ -193,7 +193,7 @@ export function needsDownscale(
 }
 
 /** Whether PNG bytes carry an `acTL` (animation control) chunk before the first `IDAT`. */
-function isAnimatedPng(bytes: ArrayBuffer): boolean {
+export function isAnimatedPng(bytes: ArrayBuffer): boolean {
   const view = new DataView(bytes);
   for (let at = 8; at + 8 <= view.byteLength;) {
     const type = String.fromCharCode(
