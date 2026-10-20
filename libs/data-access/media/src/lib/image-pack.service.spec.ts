@@ -8,6 +8,7 @@ import {
   ImagePackService,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
   LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
+  PERSONAL_IMAGE_PACK_EVENT_TYPE,
   LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE,
   TRINITY_IMAGE_PACK_ENABLED_USAGE,
   isValidMxcUri,
@@ -110,6 +111,83 @@ function pack(name: string, usage?: unknown, extraImages = 0) {
 
 describe('ImagePackService', () => {
   beforeEach(() => TestBed.resetTestingModule());
+
+  const personal = {
+    pack: {},
+    images: {
+      smile: {
+        url: 'mxc://hs/smile',
+        info: { mimetype: 'image/png', w: 8, h: 9 },
+        usage: ['emoticon'],
+      },
+      cat: { url: 'mxc://hs/cat', body: 'A cat', usage: ['sticker'] },
+    },
+  };
+
+  it('puts the personal pack first', () => {
+    const { client, account, roomEvents, rebuildRoom } = setup();
+    account.set(
+      PERSONAL_IMAGE_PACK_EVENT_TYPE,
+      event(PERSONAL_IMAGE_PACK_EVENT_TYPE, '', personal),
+    );
+    roomEvents.set('!current:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, 'local', pack('Local')),
+    ]);
+    rebuildRoom('!current:hs');
+
+    const packs = readImagePacks(client as never, '!current:hs');
+
+    expect(packs.map((item) => item.name)).toEqual(['Your emoji', 'Local']);
+    expect(packs[0]).toMatchObject({
+      id: 'personal',
+      roomId: '',
+      stateKey: '',
+      attribution: null,
+      scope: { emoticon: 'account', sticker: 'account' },
+    });
+    expect(packs[0].images).toEqual([
+      expect.objectContaining({
+        shortcode: 'smile',
+        body: 'smile',
+        mimetype: 'image/png',
+        width: 8,
+        height: 9,
+        usage: ['emoticon'],
+        packId: 'personal',
+        packName: 'Your emoji',
+      }),
+      expect.objectContaining({ shortcode: 'cat', body: 'A cat' }),
+    ]);
+  });
+
+  it('omits it when empty or absent', () => {
+    const { client, account } = setup();
+    expect(readImagePacks(client as never, '!x:hs')).toEqual([]);
+    account.set(
+      PERSONAL_IMAGE_PACK_EVENT_TYPE,
+      event(PERSONAL_IMAGE_PACK_EVENT_TYPE, '', { pack: {}, images: {} }),
+    );
+    expect(readImagePacks(client as never, '!x:hs')).toEqual([]);
+  });
+
+  it('updates on an m.image_pack account-data event', async () => {
+    const { service, client, account, roomEvents, rebuildRoom } = setup();
+    roomEvents.set('!current:hs', []);
+    rebuildRoom('!current:hs');
+    const packs = service.packsFor('!current:hs');
+    service.connect('!current:hs');
+    account.set(
+      PERSONAL_IMAGE_PACK_EVENT_TYPE,
+      event(PERSONAL_IMAGE_PACK_EVENT_TYPE, '', personal),
+    );
+    const handler = client.on.mock.calls.find(
+      ([name]) => name === 'accountData',
+    )?.[1] as ((changed: ReturnType<typeof event>) => void) | undefined;
+    handler?.(event(PERSONAL_IMAGE_PACK_EVENT_TYPE, '', personal));
+    await Promise.resolve();
+
+    expect(packs().map((item) => item.name)).toEqual(['Your emoji']);
+  });
 
   it('orders account-selected packs before current-room packs and reads both usages', () => {
     const { client, account, roomEvents, rebuildRoom } = setup();
