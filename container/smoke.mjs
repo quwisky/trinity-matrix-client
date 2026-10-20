@@ -124,58 +124,28 @@ async function inspect(container) {
 }
 
 async function assertStaticCaching(baseURL, manifest) {
-  const fixed = new Set([
-    'index.html',
-    'ngsw.json',
-    'ngsw-worker.js',
-    'safety-worker.js',
-    'worker-basic.min.js',
-    'manifest.webmanifest',
-    'favicon.ico',
-  ]);
-  for (const path of manifest.files.map((file) => file.path)) {
-    if (path.startsWith('assets/icons/')) fixed.add(path);
-  }
-  const manifestPaths = new Set(manifest.files.map((file) => file.path));
-  for (const path of fixed) {
-    if (!manifestPaths.has(path)) continue;
-    const expected = await readFile(join(root, 'www', path));
-    const response = await assertResponse(`${baseURL}/${path}`, 200, path);
-    if (header(response, 'cache-control') !== 'no-cache')
-      throw new Error(`${path} must use exact no-cache revalidation`);
-    if (!Buffer.from(await response.arrayBuffer()).equals(expected))
-      throw new Error(`${path} response differs from the verified renderer`);
-  }
-  const hashed = manifest.files.filter(
-    (file) =>
-      !file.path.includes('/') &&
-      /\.(?:js|css)$/u.test(file.path) &&
-      !fixed.has(file.path),
-  );
-  for (const asset of hashed) {
-    if (!/^[^/]+-[A-Za-z0-9_-]{8}\.(?:js|css)$/u.test(asset.path))
-      throw new Error(`unexpected root bundle filename: ${asset.path}`);
-  }
-  if (!hashed.some((file) => file.path.endsWith('.js')))
+  // Mirrors sws.toml: content-hashed root bundles are immutable, everything else revalidates.
+  const hashed = /^[^/]+-[A-Za-z0-9_-]{8}\.(?:js|css)$/u;
+  const paths = manifest.files.map((file) => file.path);
+  if (!paths.some((path) => hashed.test(path) && path.endsWith('.js')))
     throw new Error('verified renderer has no hashed JS bundle');
-  if (!hashed.some((file) => file.path.endsWith('.css')))
+  if (!paths.some((path) => hashed.test(path) && path.endsWith('.css')))
     throw new Error('verified renderer has no hashed CSS bundle');
-  for (const asset of hashed) {
-    const expected = await readFile(join(root, 'www', asset.path));
-    const response = await assertResponse(
-      `${baseURL}/${asset.path}`,
-      200,
-      asset.path,
-    );
-    if (
-      header(response, 'cache-control') !==
-      'public, max-age=31536000, immutable'
-    )
-      throw new Error(`${asset.path} must use exact immutable caching`);
-    if (!Buffer.from(await response.arrayBuffer()).equals(expected))
+  for (const path of paths) {
+    const expected = hashed.test(path)
+      ? 'public, max-age=31536000, immutable'
+      : 'no-cache';
+    const response = await assertResponse(`${baseURL}/${path}`, 200, path);
+    if (header(response, 'cache-control') !== expected)
       throw new Error(
-        `${asset.path} response differs from the verified renderer`,
+        `${path} must use Cache-Control ${JSON.stringify(expected)} (got ${JSON.stringify(header(response, 'cache-control'))})`,
       );
+    if (
+      !Buffer.from(await response.arrayBuffer()).equals(
+        await readFile(join(root, 'www', path)),
+      )
+    )
+      throw new Error(`${path} response differs from the verified renderer`);
   }
 }
 
