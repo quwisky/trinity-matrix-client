@@ -1,7 +1,7 @@
 /** Renovate merges nothing on its own, and proposes nothing brand new. */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { workflow, workflows } from './workspace-sources.mjs';
+import { read, workflow, workflows } from './workspace-sources.mjs';
 
 const source = readFileSync(
   resolve(import.meta.dirname, '../.github/renovate.json'),
@@ -80,8 +80,101 @@ describe('Renovate update policy', () => {
     expect(config.vulnerabilityAlerts.automerge).not.toBe(true);
   });
 
+  it('rebases update branches on the next run after main moves', () => {
+    expect(config.rebaseWhen).toBe('behind-base-branch');
+  });
+
   it('describes main as protected by its ruleset', () => {
     expect(source).not.toMatch(/no protection rule|unprotected branch/);
+  });
+});
+
+describe('Renovate post-upgrade commands', () => {
+  const renovateSteps = Object.entries(workflow('renovate.yml').jobs).flatMap(
+    ([id, job]) => job.steps.map((step) => ({ id, step })),
+  );
+  const allowed = renovateSteps.flatMap(({ step }) =>
+    step.env?.RENOVATE_ALLOWED_COMMANDS
+      ? JSON.parse(step.env.RENOVATE_ALLOWED_COMMANDS)
+      : [],
+  );
+  const commands = config.packageRules.flatMap(
+    (rule) => rule.postUpgradeTasks?.commands ?? [],
+  );
+
+  it('allows exactly the native-path sync, anchored, on the Renovate step only', () => {
+    expect(allowed).toEqual(['^node scripts/sync-native-plugin-paths\\.mjs$']);
+    const owners = renovateSteps.filter(
+      ({ step }) => step.env?.RENOVATE_ALLOWED_COMMANDS,
+    );
+    expect(owners).toHaveLength(1);
+    expect(owners[0].step.uses).toMatch(/^renovatebot\/github-action@/);
+    // A shell executor would let a command allowed by regex chain arbitrary others; exposed
+    // env or allowed install scripts would hand the App token to code from a dependency.
+    expect(JSON.stringify(workflow('renovate.yml'))).not.toMatch(
+      /ALLOW_SHELL_EXECUTOR|allowShellExecutor|EXPOSE_ALL_ENV|exposeAllEnv|ALLOW_SCRIPTS|allowScripts/,
+    );
+  });
+
+  it('runs only commands the workflow allows', () => {
+    expect(commands.length).toBeGreaterThan(0);
+    for (const command of commands) {
+      expect(
+        allowed.some((pattern) => new RegExp(pattern).test(command)),
+        command,
+      ).toBe(true);
+    }
+  });
+
+  const SYNC = {
+    commands: ['node scripts/sync-native-plugin-paths.mjs'],
+    fileFilters: [
+      'ios/App/CapApp-SPM/Package.swift',
+      'android/capacitor.settings.gradle',
+    ],
+    executionMode: 'branch',
+  };
+
+  it('syncs the native files on every Capacitor branch, covering every native package', () => {
+    const rule = config.packageRules.find((r) => r.groupName === 'capacitor');
+    expect(rule.postUpgradeTasks).toEqual(SYNC);
+    // Every package with a virtual-store path in those files must trigger the sync.
+    const referenced = SYNC.fileFilters.flatMap((file) =>
+      [
+        ...read(file).matchAll(
+          /node_modules\/\.pnpm\/[^/'"]+\/node_modules\/((?:@[^/'"]+\/)?[^/'"]+)/g,
+        ),
+      ].map((match) => match[1]),
+    );
+    expect(referenced.length).toBeGreaterThan(0);
+    for (const name of referenced) {
+      expect(
+        rule.matchPackageNames.some((pattern) =>
+          pattern.endsWith('/**')
+            ? name.startsWith(pattern.slice(0, -2))
+            : pattern === name,
+        ),
+        name,
+      ).toBe(true);
+    }
+  });
+
+  it('leaves the capacitor-swift-pm pin to @capacitor/ios and the sync script', () => {
+    const rule = config.packageRules.find((r) =>
+      r.matchPackageNames?.includes('ionic-team/capacitor-swift-pm'),
+    );
+    expect(rule).toMatchObject({ matchManagers: ['swift'], enabled: false });
+    expect(read('ios/App/CapApp-SPM/Package.swift')).toContain(
+      'github.com/ionic-team/capacitor-swift-pm.git',
+    );
+  });
+
+  it('syncs the native files on lock-file maintenance, which can move them too', () => {
+    const rule = config.packageRules.find((r) =>
+      r.matchUpdateTypes?.includes('lockFileMaintenance'),
+    );
+    expect(rule.postUpgradeTasks).toEqual(SYNC);
+    expect(config.lockFileMaintenance.enabled).toBe(true);
   });
 });
 

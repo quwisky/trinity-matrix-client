@@ -100,6 +100,12 @@ jobs:
           # fresh install can still open an onboarding PR.
           RENOVATE_ONBOARDING: 'false'
           RENOVATE_REQUIRE_CONFIG: 'required'
+          # The one postUpgradeTasks command the repo config may run (see the native-path
+          # rule in .github/renovate.json). Anchored at both ends, because these regexes
+          # are the only thing standing between a repo config edit and arbitrary commands
+          # in a job holding the App token. `allowedCommands` was formerly
+          # `allowedPostUpgradeCommands`; it runs with the node on the image's PATH.
+          RENOVATE_ALLOWED_COMMANDS: '["^node scripts/sync-native-plugin-paths\\.mjs$"]'
           LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
           RENOVATE_DRY_RUN: ${{ inputs.dryRun && 'full' || '' }}
           # The container action mounts the runner's /tmp, but not its workspace. Keep the

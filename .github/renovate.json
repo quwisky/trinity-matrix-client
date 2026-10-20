@@ -10,7 +10,8 @@
     "What replaced them is the dashboard gate — for everything EXCEPT patches, which are exempt from it and open a pull request straight away (see the patch rule below). So patches are the one unbounded category: a pull request each, in whatever quantity a given day produces, each firing the full CI matrix. That is the deliberate shape of this config, not an oversight, but it is the thing to change first if the runners or the review queue ever suffer for it.",
     "Generated build output ONLY. `android/**` and `ios/**` used to be listed wholesale, and that removed two of the four shipped platforms from dependency automation entirely: the AGP and google-services pins in android/build.gradle, the eleven androidx/Cordova versions in android/variables.gradle, the Gradle wrapper, and the iOS SPM graph — none of it watched by anything.",
     "The reason that mattered more than a missed minor: ignorePaths is evaluated BEFORE package rules, so the vulnerabilityAlerts block below — the one category deliberately exempt from the dashboard gate — could not reach these files either. An advisory against androidx.webkit, which backs the WebView rendering an E2EE client, produced no branch, no PR and no dashboard row. Silent by construction.",
-    "What remains here is the copy of the web build each native shell embeds. Those trees are `pnpm build` output committed into the platform projects; a lockfile or manifest found inside one is a stale artefact, not a dependency, and updating it would be updating a build product."
+    "What remains here is the copy of the web build each native shell embeds. Those trees are `pnpm build` output committed into the platform projects; a lockfile or manifest found inside one is a stale artefact, not a dependency, and updating it would be updating a build product.",
+    "rebaseWhen is behind-base-branch, not conflicted: Renovate rebases each branch on its next run after main moves, which keeps each lockfile current between runs instead of letting it age until a textual conflict. It does NOT prevent a same-day merge race. #1629 and #1630 merged 19 seconds apart, each with a lockfile generated against an older main and neither conflicting as text, and together they broke every frozen install (ajv-formats); a once-a-day bot cannot rebase between two merges that close. The real guard is strict up-to-date checks on 'Protect main', a maintainer setting; until it is on, the runbook in docs-internal/maintenance/ci-and-releases.md has the manual step. The cost of this setting is that every merge to main re-runs CI on every open Renovate pull request at the next run."
   ],
   "baseBranchPatterns": ["main"],
   "timezone": "Europe/Berlin",
@@ -21,7 +22,7 @@
   "dependencyDashboardApproval": true,
   "prConcurrentLimit": 0,
   "prHourlyLimit": 0,
-  "rebaseWhen": "conflicted",
+  "rebaseWhen": "behind-base-branch",
   "minimumReleaseAge": "3 days",
   "ignorePaths": [
     "android/app/src/main/assets/**",
@@ -77,14 +78,39 @@
       "matchPackageNames": ["matrix-js-sdk", "@matrix-org/**"]
     },
     {
-      "description": "Capacitor core, CLI and every plugin track one major — including the third-party ones, which peer-depend on @capacitor/core and break if they lag behind it.",
+      "description": [
+        "Capacitor core, CLI and every plugin track one major — including the third-party ones, which peer-depend on @capacitor/core and break if they lag behind it.",
+        "`cap sync` writes each native plugin's pnpm virtual-store folder, version and peer suffix included, into ios/App/CapApp-SPM/Package.swift and android/capacitor.settings.gradle, and pins capacitor-swift-pm in Package.swift to the installed @capacitor/ios version. Renovate only regenerates pnpm-lock.yaml, so without this every update to one of these packages failed the iOS and Android jobs, which run `cap sync` and then `git diff --exit-code` (#1630, #1641).",
+        "`cap sync` itself needs node_modules and a web build, neither of which exists after Renovate's lockfile-only install, so scripts/sync-native-plugin-paths.mjs derives the folder names from the lockfile alone. It runs once per branch, after the lockfile is updated, and commits only those two files. The command must match allowedCommands in .github/workflows/renovate.yml exactly, or Renovate refuses to run it and reports an artifact error on the pull request; a package missing from the lockfile fails the script and is reported the same way.",
+        "The package list is also every package with a virtual-store path in those two files, so the next native plugin joins this group; scripts/renovate-config.spec.mjs fails if one is missing."
+      ],
       "groupName": "capacitor",
       "matchPackageNames": [
         "@capacitor/**",
         "@capawesome/**",
         "@aparajita/capacitor-secure-storage",
         "@aparajita/capacitor-biometric-auth"
-      ]
+      ],
+      "postUpgradeTasks": {
+        "commands": ["node scripts/sync-native-plugin-paths.mjs"],
+        "fileFilters": [
+          "ios/App/CapApp-SPM/Package.swift",
+          "android/capacitor.settings.gradle"
+        ],
+        "executionMode": "branch"
+      }
+    },
+    {
+      "description": "Lock-file maintenance re-resolves every caret range, the native plugins' included, so its Monday branch can move a virtual-store path without any rule above matching a package name. It runs the same sync for the same reason.",
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "postUpgradeTasks": {
+        "commands": ["node scripts/sync-native-plugin-paths.mjs"],
+        "fileFilters": [
+          "ios/App/CapApp-SPM/Package.swift",
+          "android/capacitor.settings.gradle"
+        ],
+        "executionMode": "branch"
+      }
     },
     {
       "description": "Brain (headless) and the CLI that generates the Helm components from it.",
@@ -155,6 +181,12 @@
       "groupName": "native platforms",
       "matchManagers": ["gradle", "gradle-wrapper", "swift"],
       "dependencyDashboardApproval": true
+    },
+    {
+      "description": "The capacitor-swift-pm pin in ios/App/CapApp-SPM/Package.swift is not a dependency of its own: `cap sync` writes it as the installed @capacitor/ios version, and scripts/sync-native-plugin-paths.mjs keeps it there on every Capacitor branch. A swift-manager bump would move it away from @capacitor/ios, and the next `cap sync` in CI would move it back and fail the diff check, so it follows @capacitor/ios only.",
+      "matchManagers": ["swift"],
+      "matchPackageNames": ["ionic-team/capacitor-swift-pm"],
+      "enabled": false
     },
     {
       "description": [

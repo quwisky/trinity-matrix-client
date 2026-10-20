@@ -946,6 +946,29 @@ repository log and, outside dry runs, an open Dependency Dashboard. For a
 failure, start with the `renovate-log` artifact and the workflow's failed health
 check rather than assuming a zero exit status means an update was considered.
 
+Capacitor's `cap sync` writes each native plugin's pnpm virtual-store folder, version and
+peer suffix included, into `ios/App/CapApp-SPM/Package.swift` and
+`android/capacitor.settings.gradle`, and pins `capacitor-swift-pm` to the installed `@capacitor/ios`. The iOS and Android CI jobs fail when a fresh sync
+changes them. Renovate only regenerates the lockfile, so a `postUpgradeTasks` rule runs
+`node scripts/sync-native-plugin-paths.mjs` on every Capacitor branch and on the Monday lock-file maintenance branch to rewrite those paths and the pin
+from `pnpm-lock.yaml`. The workflow's `RENOVATE_ALLOWED_COMMANDS` allows that one command
+and nothing else; a refused or failing run shows as an artifact error on the pull request.
+`scripts/sync-native-plugin-paths.spec.mjs` fails ordinary CI when the paths drift; run the
+script without `--check` to repair them by hand.
+
+Renovate rebases each branch on its next run after `main` moves
+(`rebaseWhen: behind-base-branch`), not only on a conflict, which keeps each lockfile current
+between runs. The cost is a fresh CI run on every open Renovate pull request after each merge
+to `main`. It does not prevent a same-day merge race: #1629 and #1630 merged 19 seconds apart
+with lockfiles generated against an older `main`, neither conflicted as text, and together
+they broke every frozen install (ajv-formats). Renovate runs once a day, so it cannot rebase
+between two merges that close.
+
+Until strict up-to-date checks are on for `Protect main`, after merging a Renovate pull
+request, tick **rebase** on the other open Renovate pull requests (or dispatch the Renovate
+workflow) and let their CI finish before merging another one. Turning strict checks on is the
+real guard, and it is a maintainer action.
+
 ### Apply the update policy
 
 The committed [Renovate policy](../../.github/renovate.json) applies a
