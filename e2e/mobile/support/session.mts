@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { mkdir, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { browser } from '@wdio/globals';
@@ -21,6 +22,7 @@ import { appiumLogPath } from './artifacts.mts';
 import {
   chromedriverFromAppiumLog,
   frontBoardReason,
+  isAbsentDefaultsDomain,
   isAppNotYetKnown,
   parseWebViewVersion,
   webviewSwitchError,
@@ -33,6 +35,8 @@ export const APP_PACKAGE = 'dev.trinityproject.trinity';
 const WEBVIEW_CONTEXT = `WEBVIEW_${APP_PACKAGE}`;
 /** WKWebView serves the bundled app from this origin. */
 export const IOS_APP_ORIGIN = 'capacitor://localhost';
+/** Shared by the app and its NotificationService extension. */
+export const IOS_APP_GROUP = 'group.dev.trinityproject.trinity';
 
 function requiredEnv(name: 'TRINITY_IOS_UDID' | 'TRINITY_IOS_APP'): string {
   const value = process.env[name];
@@ -47,6 +51,7 @@ function requiredEnv(name: 'TRINITY_IOS_UDID' | 'TRINITY_IOS_APP'): string {
 async function simctl(...args: string[]): Promise<string> {
   const { stdout } = await execFileAsync('xcrun', ['simctl', ...args], {
     maxBuffer: 20 * 1024 * 1024,
+    timeout: 30_000,
   });
   return stdout.trim();
 }
@@ -195,17 +200,18 @@ async function closeSystemErrorDialogs(): Promise<void> {
   });
 }
 
+/**
+ * Start the app from empty data. On iOS this empties its containers in place; a spec that
+ * needs first-launch OS state calls {@link reinstallApp} instead.
+ */
 export async function resetApp(): Promise<void> {
+  const started = Date.now();
   await native();
   if (!browser.isIOS) await closeSystemErrorDialogs();
   await browser.terminateApp(APP_PACKAGE);
   if (browser.isIOS) {
-    // A reinstall is the Simulator's only route to an empty app container. The
-    // notification prompt at first launch is accepted by appium:autoAcceptAlerts.
-    const app = requiredEnv('TRINITY_IOS_APP');
-    await browser.removeApp(APP_PACKAGE);
-    await browser.installApp(app);
-    await launchAfterInstall(app);
+    await clearIosAppData();
+    await browser.activateApp(APP_PACKAGE);
   } else {
     const cleared = await shell('pm', ['clear', APP_PACKAGE]);
     if (!cleared.includes('Success'))
@@ -221,6 +227,76 @@ export async function resetApp(): Promise<void> {
       throw new Error(`pm grant POST_NOTIFICATIONS failed: ${granted}`);
     await browser.activateApp(APP_PACKAGE);
   }
+  await webview();
+  console.log(`[mobile] app reset in ${Date.now() - started} ms`);
+}
+
+/** The Simulator's record of the container's owner; everything else is app data. */
+const CONTAINER_METADATA = '.com.apple.mobile_container_manager.metadata.plist';
+
+/**
+ * Empty, with the app terminated, what a reinstall empties: the data container (WebKit
+ * storage, Capacitor Preferences, caches) and the app group container (the push handoff
+ * store). Keychain items and privacy grants survive, as they do a Simulator reinstall.
+ * Delivered notifications and the notification grant survive too; only {@link reinstallApp}
+ * resets them. About 8 s a reset (median) against 14-28 s for a reinstall and FrontBoard's
+ * re-registration (#1636).
+ */
+async function clearIosAppData(): Promise<void> {
+  const udid = requiredEnv('TRINITY_IOS_UDID');
+  const data = await simctl('get_app_container', udid, APP_PACKAGE, 'data');
+  const group = await simctl(
+    'get_app_container',
+    udid,
+    APP_PACKAGE,
+    IOS_APP_GROUP,
+  );
+  // cfprefsd caches UserDefaults and would serve deleted files' values (the Active Account
+  // among them) to the next launch: delete each domain through it first.
+  const preferences = join(data, 'Library/Preferences');
+  for (const plist of await readdir(preferences).catch(() => [])) {
+    if (!plist.endsWith('.plist')) continue;
+    await simctl(
+      'spawn',
+      udid,
+      'defaults',
+      'delete',
+      join(preferences, plist.slice(0, -'.plist'.length)),
+    ).catch((error: unknown) => {
+      if (!isAbsentDefaultsDomain(error)) throw error;
+    });
+  }
+  for (const container of [data, group]) {
+    for (const entry of await readdir(container)) {
+      if (entry !== CONTAINER_METADATA)
+        await rm(join(container, entry), {
+          recursive: true,
+          force: true,
+          maxRetries: 3,
+        });
+    }
+  }
+  for (const dir of [
+    'Documents',
+    'Library/Caches',
+    'Library/Preferences',
+    'tmp',
+  ])
+    await mkdir(join(data, dir), { recursive: true });
+}
+
+/**
+ * Uninstall and install the app, for a spec that needs what only a fresh install gives on
+ * iOS: the first-launch notification prompt (accepted by appium:autoAcceptAlerts). No spec
+ * needs it today.
+ */
+export async function reinstallApp(): Promise<void> {
+  await native();
+  await browser.terminateApp(APP_PACKAGE);
+  const app = requiredEnv('TRINITY_IOS_APP');
+  await browser.removeApp(APP_PACKAGE);
+  await browser.installApp(app);
+  await launchAfterInstall(app);
   await webview();
 }
 

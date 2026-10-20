@@ -71,3 +71,18 @@ export function frontBoardReason(error: unknown): string {
     return message.split('\n')[0]!.slice(0, 160);
   return [codes.join(' > '), reason].filter(Boolean).join(': ');
 }
+
+/**
+ * `defaults delete` refused a domain cfprefsd does not hold: iOS 26.5 prints
+ * `Domain (…) not found.`, older releases `Domain … does not exist`. Nothing is cached to
+ * flush, so the reset can go on.
+ */
+export function isAbsentDefaultsDomain(error: unknown): boolean {
+  const { stderr = '', message = String(error) } = (error ?? {}) as {
+    stderr?: string;
+    message?: string;
+  };
+  return /Domain .* (?:not found|does not exist)/u.test(
+    `${stderr}\n${message}`,
+  );
+}
