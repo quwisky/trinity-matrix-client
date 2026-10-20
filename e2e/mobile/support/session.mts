@@ -50,6 +50,7 @@ function requiredEnv(name: 'TRINITY_IOS_UDID' | 'TRINITY_IOS_APP'): string {
 async function simctl(...args: string[]): Promise<string> {
   const { stdout } = await execFileAsync('xcrun', ['simctl', ...args], {
     maxBuffer: 20 * 1024 * 1024,
+    timeout: 30_000,
   });
   return stdout.trim();
 }
@@ -235,9 +236,10 @@ const CONTAINER_METADATA = '.com.apple.mobile_container_manager.metadata.plist';
 /**
  * Empty, with the app terminated, what a reinstall empties: the data container (WebKit
  * storage, Capacitor Preferences, caches) and the app group container (the push handoff
- * store). Keychain items and privacy grants survive, as they do a Simulator reinstall; the
- * notification grant also survives, which only {@link reinstallApp} resets. About 1 s
- * against 14-28 s for a reinstall and FrontBoard's re-registration (#1636).
+ * store). Keychain items and privacy grants survive, as they do a Simulator reinstall.
+ * Delivered notifications and the notification grant survive too; only {@link reinstallApp}
+ * resets them. About 8 s a reset (median) against 14-28 s for a reinstall and FrontBoard's
+ * re-registration (#1636).
  */
 async function clearIosAppData(): Promise<void> {
   const udid = requiredEnv('TRINITY_IOS_UDID');
@@ -259,12 +261,24 @@ async function clearIosAppData(): Promise<void> {
       'defaults',
       'delete',
       join(preferences, plist.slice(0, -'.plist'.length)),
-    );
+    ).catch((error: unknown) => {
+      // A domain cfprefsd never loaded, or a plist already gone, has nothing to restore.
+      const { stderr = '' } = error as { stderr?: string };
+      if (
+        existsSync(join(preferences, plist)) &&
+        !/Domain .* does not exist/u.test(stderr)
+      )
+        throw error;
+    });
   }
   for (const container of [data, group]) {
     for (const entry of await readdir(container)) {
       if (entry !== CONTAINER_METADATA)
-        await rm(join(container, entry), { recursive: true, force: true });
+        await rm(join(container, entry), {
+          recursive: true,
+          force: true,
+          maxRetries: 3,
+        });
     }
   }
   for (const dir of [
