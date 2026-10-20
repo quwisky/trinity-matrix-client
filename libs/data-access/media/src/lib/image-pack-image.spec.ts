@@ -19,7 +19,7 @@ function stubBrowserImage(w: number, h: number): void {
         return { drawImage: vi.fn() };
       }
       async convertToBlob(opts: { type: string }) {
-        return new Blob([new Uint8Array(2)], { type: opts.type });
+        return new Blob([new Uint8Array(5000)], { type: opts.type });
       }
     },
   );
@@ -43,6 +43,20 @@ async function resizedEdge(
   return calls.find(([, opts]) => opts?.resizeWidth)?.[1]?.resizeWidth;
 }
 
+const webp = (bytes: number, flags: number) => {
+  const data = new Uint8Array(bytes);
+  data.set(
+    [...'RIFF'].map((c) => c.charCodeAt(0)),
+    0,
+  );
+  data.set(
+    [...'WEBPVP8X'].map((c) => c.charCodeAt(0)),
+    8,
+  );
+  data[20] = flags;
+  return new File([data], 'a.webp', { type: 'image/webp' });
+};
+
 describe('prepareImagePackImage', () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -56,6 +70,29 @@ describe('prepareImagePackImage', () => {
     expect(await resizedEdge(['sticker'])).toBe(512);
     stubBrowserImage(1024, 1024);
     expect(await resizedEdge(['emoticon', 'sticker'])).toBe(512);
+  });
+
+  it('downscales a large static WebP, keeping alpha and fixing the extension', async () => {
+    stubBrowserImage(1024, 1024);
+    const out = await prepareImagePackImage(webp(100, 0), ['emoticon']);
+    expect(out.type).toBe('image/webp');
+    expect(out.name).toBe('a.webp');
+  });
+
+  it('returns resized output for a PNG even when it is larger in bytes, as WebP', async () => {
+    stubBrowserImage(1024, 1024);
+    const out = await prepareImagePackImage(png(100), ['emoticon']);
+    expect(out.size).toBe(5000);
+    expect(out.type).toBe('image/webp');
+    expect(out.name).toBe('a.webp');
+  });
+
+  it('keeps an animated WebP unchanged under 1 MB and rejects it over', async () => {
+    const small = webp(ONE_MB, 0x02);
+    expect(await prepareImagePackImage(small, ['emoticon'])).toBe(small);
+    await expect(
+      prepareImagePackImage(webp(ONE_MB + 1, 0x02), ['emoticon']),
+    ).rejects.toMatchObject({ code: 'animated-too-large' });
   });
 
   it('keeps a small image unchanged', async () => {

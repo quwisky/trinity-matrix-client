@@ -209,11 +209,14 @@ export function isAnimatedPng(bytes: ArrayBuffer): boolean {
 /**
  * Shrink a decrypted image to at most `maxEdge` px on its long edge. Best-effort:
  * an image already that small, or any decode/resize/encode failure, yields the
- * original so a thumbnail never fails because it could not be shrunk.
+ * original so a thumbnail never fails because it could not be shrunk. With `force`, an
+ * oversized image always comes back as the resized encode (alpha-safe unless JPEG), even
+ * when that is larger in bytes.
  */
 export async function downscaleImage(
   blob: Blob,
   maxEdge: number,
+  { force = false }: { force?: boolean } = {},
 ): Promise<Blob> {
   if (typeof createImageBitmap !== 'function') {
     return blob;
@@ -243,9 +246,11 @@ export async function downscaleImage(
       resized,
       w,
       h,
-      isPng ? THUMBNAIL_ALPHA_MIME : THUMBNAIL_MIME,
+      (force ? blob.type.toLowerCase() !== 'image/jpeg' : isPng)
+        ? THUMBNAIL_ALPHA_MIME
+        : THUMBNAIL_MIME,
     );
-    return encoded && encoded.size < blob.size ? encoded : blob;
+    return encoded && (force || encoded.size < blob.size) ? encoded : blob;
   } catch {
     return blob;
   } finally {

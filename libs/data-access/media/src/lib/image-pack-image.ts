@@ -1,11 +1,6 @@
 import { mimeEssence } from '@trinity/util/matrix';
 import type { ImagePackUsage } from './image-pack.model';
-import {
-  describeMedia,
-  downscaleImage,
-  isAnimatedPng,
-  needsDownscale,
-} from './media-processing';
+import { downscaleImage, isAnimatedPng } from './media-processing';
 
 const EMOTICON_EDGE_PX = 256;
 const STICKER_EDGE_PX = 512;
@@ -36,15 +31,12 @@ export async function prepareImagePackImage(
     return file;
   }
   const edge = usage.includes('sticker') ? STICKER_EDGE_PX : EMOTICON_EDGE_PX;
-  const { dims } = await describeMedia(file, undefined);
-  const payload = { mimeType, width: dims.w, height: dims.h };
-  if (!needsDownscale(payload as Parameters<typeof needsDownscale>[0], edge)) {
-    return file;
-  }
-  const scaled = await downscaleImage(file, edge);
-  return scaled === file
-    ? file
-    : new File([scaled], file.name, { type: scaled.type });
+  const scaled = await downscaleImage(file, edge, { force: true });
+  if (scaled === file) return file;
+  const ext = scaled.type === 'image/jpeg' ? 'jpg' : 'webp';
+  return new File([scaled], file.name.replace(/\.[^.]*$/, '') + `.${ext}`, {
+    type: scaled.type,
+  });
 }
 
 async function isAnimated(file: File, mimeType: string): Promise<boolean> {
