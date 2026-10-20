@@ -113,8 +113,10 @@ function choose(input: HTMLInputElement, files: File[]): void {
   input.dispatchEvent(new Event('change'));
 }
 
-function type(input: HTMLInputElement, value: string): void {
-  input.value = value;
+const tick = () => new Promise((resolve) => setTimeout(resolve));
+
+function type(input: HTMLElement, value: string): void {
+  (input as HTMLInputElement).value = value;
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
@@ -238,7 +240,7 @@ describe('PersonalPackComponent', () => {
       'New shortcode for :fox:',
     ) as HTMLInputElement;
     expect(field.value).toBe('fox');
-    await new Promise((resolve) => setTimeout(resolve));
+    await tick();
     expect(document.activeElement).toBe(field);
 
     type(field, 'bad name');
@@ -275,6 +277,89 @@ describe('PersonalPackComponent', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       'Couldn’t change your emoji. Try again.',
     );
+  });
+
+  it('words failed changes for the change, not for an add', async () => {
+    const view = await build();
+    view.remove.mockReturnValueOnce(
+      throwError(() => new ImagePackEditError('not-signed-in')),
+    );
+    view.pick('fox', 'Delete');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Sign in to change your emoji.',
+    );
+    view.setUsage.mockReturnValueOnce(
+      throwError(() => new ImagePackEditError('invalid-usage')),
+    );
+    view.pick('fox', 'Use as sticker');
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Couldn’t change your emoji. Try again.',
+    );
+  });
+
+  it('Cancel returns focus to the tile that opened rename', async () => {
+    const view = await build([FOX, LEAF]);
+    view.pick('leaf', 'Rename shortcode');
+    await tick();
+    screen.getByRole('button', { name: 'Cancel' }).click();
+    view.settle();
+    await tick();
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: ':leaf:' }),
+    );
+  });
+
+  it('Save focuses the renamed tile once it renders', async () => {
+    const view = await build();
+    view.pick('fox', 'Rename shortcode');
+    await tick();
+    type(screen.getByLabelText('New shortcode for :fox:'), 'kitsune');
+    screen.getByRole('button', { name: 'Save' }).click();
+    view.settle();
+    await tick();
+    // The echo has not arrived yet: focus waits on Add images.
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Add images' }),
+    );
+    view.personal.set([{ ...FOX, shortcode: 'kitsune' }]);
+    view.settle();
+    await tick();
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: ':kitsune:' }),
+    );
+  });
+
+  it('a failed Save keeps focus in the field', async () => {
+    const view = await build([FOX, LEAF]);
+    view.rename.mockReturnValueOnce(
+      throwError(() => new ImagePackEditError('shortcode-taken')),
+    );
+    view.pick('fox', 'Rename shortcode');
+    await tick();
+    const field = screen.getByLabelText('New shortcode for :fox:');
+    type(field, 'leaf');
+    screen.getByRole('button', { name: 'Save' }).focus();
+    screen.getByRole('button', { name: 'Save' }).click();
+    view.settle();
+    await tick();
+    expect(document.activeElement).toBe(field);
+  });
+
+  it('a double Save sends one rename', async () => {
+    const view = await build();
+    view.rename.mockReturnValueOnce(new Subject<void>());
+    view.pick('fox', 'Rename shortcode');
+    type(screen.getByLabelText('New shortcode for :fox:'), 'kitsune');
+    screen.getByRole('button', { name: 'Save' }).click();
+    screen.getByRole('button', { name: 'Save' }).click();
+    expect(view.rename).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an image added after the first render', async () => {
+    const view = await build([FOX]);
+    view.personal.set([FOX, LEAF]);
+    view.settle();
+    expect(screen.getByRole('button', { name: ':leaf:' })).toBeTruthy();
   });
 
   it('each tile is a button named :code: with alt text', async () => {

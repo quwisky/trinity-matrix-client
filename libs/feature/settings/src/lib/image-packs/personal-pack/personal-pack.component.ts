@@ -3,7 +3,10 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  Injector,
+  afterNextRender,
   computed,
+  effect,
   inject,
   signal,
   viewChild,
@@ -34,7 +37,14 @@ import {
   type PackEntry,
 } from '@trinity/data-access/media';
 import { TrackFileChooserDirective } from '@trinity/platform-native';
-import { concatMap, filter, from, switchMap, type Observable } from 'rxjs';
+import {
+  concatMap,
+  filter,
+  finalize,
+  from,
+  switchMap,
+  type Observable,
+} from 'rxjs';
 import {
   AddToPackDialogComponent,
   SHORTCODE_HINT,
@@ -56,6 +66,20 @@ const USE_AS_ACTIONS: Record<UseAs, string> = {
   sticker: 'Use as sticker',
   both: 'Use as emoji and sticker',
 };
+
+/** Copy for a failed rename, usage change or delete. */
+function changeFailure(error: unknown, shortcode: string): string {
+  if (error instanceof ImagePackEditError) {
+    if (error.code === 'not-signed-in') return 'Sign in to change your emoji.';
+    if (
+      error.code === 'shortcode-taken' ||
+      error.code === 'invalid-shortcode'
+    ) {
+      return addFailure(error, shortcode).message;
+    }
+  }
+  return CHANGE_FAILED;
+}
 
 function useAsOf(entry: PackEntry): UseAs {
   if (entry.usage.includes('sticker')) {
@@ -88,6 +112,11 @@ export class PersonalPackComponent {
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  /** A renamed shortcode whose tile takes focus once the pack shows it. */
+  private readonly focusPending = signal<string | null>(null);
+  private renameRunning = false;
   private readonly renameInput =
     viewChild<ElementRef<HTMLInputElement>>('renameInput');
   private readonly renameModel = signal({ shortcode: '' });
@@ -121,6 +150,13 @@ export class PersonalPackComponent {
 
   constructor() {
     this.editor.run().pipe(takeUntilDestroyed()).subscribe();
+    effect(() => {
+      const code = this.focusPending();
+      if (code && this.entries()?.some((entry) => entry.shortcode === code)) {
+        this.focusPending.set(null);
+        this.focusTile(code);
+      }
+    });
   }
 
   protected addFiles(event: Event): void {
@@ -183,34 +219,52 @@ export class PersonalPackComponent {
     setTimeout(() => this.renameInput()?.nativeElement.focus());
   }
 
+  protected cancelRename(): void {
+    const original = this.renaming();
+    this.renaming.set(null);
+    if (original !== null) this.focusTile(original);
+  }
+
   protected saveRename(): void {
-    const from_ = this.renaming();
-    if (from_ === null) return;
+    const original = this.renaming();
+    if (original === null || this.renameRunning) return;
     if (this.renameForm.shortcode().invalid()) {
       this.renameForm.shortcode().markAsTouched();
       return;
     }
     const to = this.renameModel().shortcode;
     this.renameFailure.set(null);
+    this.renameRunning = true;
     this.editor
-      .rename(from_, to)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .rename(original, to)
+      .pipe(
+        finalize(() => (this.renameRunning = false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
-        complete: () => this.renaming.set(null),
-        error: (error: unknown) =>
+        // Not `complete`: takeUntilDestroyed completes the stream on destroy too.
+        next: () => {
+          this.renaming.set(null);
+          // Add images holds focus until the pack's echo renders the renamed tile.
+          this.focusTile(to);
+          this.focusPending.set(to);
+        },
+        error: (error: unknown) => {
           this.renameFailure.set({
             shortcode: to,
-            message:
-              error instanceof ImagePackEditError
-                ? addFailure(error, to).message
-                : CHANGE_FAILED,
-          }),
+            message: changeFailure(error, to),
+          });
+          this.renameInput()?.nativeElement.focus();
+        },
       });
   }
 
   private setUsage(entry: PackEntry, useAs: UseAs): void {
     if (useAsOf(entry) === useAs) return;
-    this.change(this.editor.setUsage(entry.shortcode, USAGES[useAs]));
+    this.change(
+      this.editor.setUsage(entry.shortcode, USAGES[useAs]),
+      entry.shortcode,
+    );
   }
 
   private remove(entry: PackEntry): void {
@@ -225,18 +279,29 @@ export class PersonalPackComponent {
           filter(Boolean),
           switchMap(() => this.editor.remove(entry.shortcode)),
         ),
+      entry.shortcode,
     );
   }
 
-  private change(action: Observable<unknown>): void {
+  private change(action: Observable<unknown>, shortcode: string): void {
     this.status.set('');
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       error: (error: unknown) =>
-        this.status.set(
-          error instanceof ImagePackEditError
-            ? addFailure(error, '').message
-            : CHANGE_FAILED,
-        ),
+        this.status.set(changeFailure(error, shortcode)),
     });
+  }
+
+  /** Focuses the tile for `code` after the next render, or Add images without one. */
+  private focusTile(code: string): void {
+    afterNextRender(
+      () => {
+        const host = this.host.nativeElement;
+        (
+          host.querySelector<HTMLElement>(`[aria-label=":${code}:"]`) ??
+          host.querySelector('button')
+        )?.focus();
+      },
+      { injector: this.injector },
+    );
   }
 }

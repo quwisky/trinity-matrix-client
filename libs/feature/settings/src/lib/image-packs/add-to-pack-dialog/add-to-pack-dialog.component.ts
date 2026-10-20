@@ -43,7 +43,7 @@ import {
   type PackEntry,
 } from '@trinity/data-access/media';
 import type { Subscription } from 'rxjs';
-import { packImagePayload } from '../personal-pack/pack-image.component';
+import { packImagePayload } from '../pack-image-payload';
 
 export type UseAs = 'emoticon' | 'sticker' | 'both';
 

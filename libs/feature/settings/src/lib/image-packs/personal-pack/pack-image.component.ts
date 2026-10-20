@@ -8,25 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { MediaService, type PackEntry } from '@trinity/data-access/media';
-import type { MediaPayload } from '@trinity/util/matrix';
-
-/** An image-pack image as a media payload, for the media cache. */
-export function packImagePayload(
-  url: string,
-  info: Readonly<Record<string, unknown>> = {},
-  filename = '',
-): MediaPayload {
-  return {
-    kind: 'image',
-    mxc: url,
-    file: null,
-    filename,
-    mimeType:
-      typeof info['mimetype'] === 'string' ? info['mimetype'] : 'image/png',
-    thumbnailMxc: null,
-    thumbnailFile: null,
-  };
-}
+import { packImagePayload } from '../pack-image-payload';
 
 /** A personal-pack image, resolved through the media cache and pinned while shown. */
 @Component({
