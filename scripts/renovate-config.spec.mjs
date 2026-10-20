@@ -1,7 +1,7 @@
 /** Renovate merges nothing on its own, and proposes nothing brand new. */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { workflow, workflows } from './workspace-sources.mjs';
+import { read, workflow, workflows } from './workspace-sources.mjs';
 
 const source = readFileSync(
   resolve(import.meta.dirname, '../.github/renovate.json'),
@@ -82,6 +82,77 @@ describe('Renovate update policy', () => {
 
   it('describes main as protected by its ruleset', () => {
     expect(source).not.toMatch(/no protection rule|unprotected branch/);
+  });
+});
+
+describe('Renovate post-upgrade commands', () => {
+  const renovateSteps = Object.entries(workflow('renovate.yml').jobs).flatMap(
+    ([id, job]) => job.steps.map((step) => ({ id, step })),
+  );
+  const allowed = renovateSteps.flatMap(({ step }) =>
+    step.env?.RENOVATE_ALLOWED_COMMANDS
+      ? JSON.parse(step.env.RENOVATE_ALLOWED_COMMANDS)
+      : [],
+  );
+  const commands = config.packageRules.flatMap(
+    (rule) => rule.postUpgradeTasks?.commands ?? [],
+  );
+
+  it('allows exactly the native-path sync, anchored, on the Renovate step only', () => {
+    expect(allowed).toEqual(['^node scripts/sync-native-plugin-paths\\.mjs$']);
+    const owners = renovateSteps.filter(
+      ({ step }) => step.env?.RENOVATE_ALLOWED_COMMANDS,
+    );
+    expect(owners).toHaveLength(1);
+    expect(owners[0].step.uses).toMatch(/^renovatebot\/github-action@/);
+    // A shell executor would let a command allowed by regex chain arbitrary others.
+    expect(JSON.stringify(workflow('renovate.yml'))).not.toMatch(
+      /ALLOW_SHELL_EXECUTOR|allowShellExecutor/,
+    );
+  });
+
+  it('runs only commands the workflow allows', () => {
+    expect(commands).toEqual(['node scripts/sync-native-plugin-paths.mjs']);
+    for (const command of commands) {
+      expect(allowed.some((pattern) => new RegExp(pattern).test(command))).toBe(
+        true,
+      );
+    }
+  });
+
+  it('commits only the native files, once per Capacitor branch', () => {
+    const rule = config.packageRules.find((r) => r.postUpgradeTasks);
+    expect(rule.matchPackageNames).toEqual(
+      config.packageRules.find((r) => r.groupName === 'capacitor')
+        .matchPackageNames,
+    );
+    expect(rule.postUpgradeTasks).toEqual({
+      commands: ['node scripts/sync-native-plugin-paths.mjs'],
+      fileFilters: [
+        'ios/App/CapApp-SPM/Package.swift',
+        'android/capacitor.settings.gradle',
+      ],
+      executionMode: 'branch',
+    });
+    // Every package with a virtual-store path in those files must trigger the sync.
+    const referenced = rule.postUpgradeTasks.fileFilters.flatMap((file) =>
+      [
+        ...read(file).matchAll(
+          /node_modules\/\.pnpm\/[^/]+\/node_modules\/(@[^/]+\/[^/'"]+)/g,
+        ),
+      ].map((match) => match[1]),
+    );
+    expect(referenced.length).toBeGreaterThan(0);
+    for (const name of referenced) {
+      expect(
+        rule.matchPackageNames.some((pattern) =>
+          pattern.endsWith('/**')
+            ? name.startsWith(pattern.slice(0, -2))
+            : pattern === name,
+        ),
+        name,
+      ).toBe(true);
+    }
   });
 });
 

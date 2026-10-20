@@ -946,6 +946,16 @@ repository log and, outside dry runs, an open Dependency Dashboard. For a
 failure, start with the `renovate-log` artifact and the workflow's failed health
 check rather than assuming a zero exit status means an update was considered.
 
+Capacitor's `cap sync` writes each native plugin's pnpm virtual-store folder, version and
+peer suffix included, into `ios/App/CapApp-SPM/Package.swift` and
+`android/capacitor.settings.gradle`, and the iOS and Android CI jobs fail when a fresh sync
+changes them. Renovate only regenerates the lockfile, so a `postUpgradeTasks` rule runs
+`node scripts/sync-native-plugin-paths.mjs` on every Capacitor branch to rewrite those paths
+from `pnpm-lock.yaml`. The workflow's `RENOVATE_ALLOWED_COMMANDS` allows that one command
+and nothing else; a refused or failing run shows as an artifact error on the pull request.
+`scripts/sync-native-plugin-paths.spec.mjs` fails ordinary CI when the paths drift; run the
+script without `--check` to repair them by hand.
+
 ### Apply the update policy
 
 The committed [Renovate policy](../../.github/renovate.json) applies a
