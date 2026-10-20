@@ -80,7 +80,7 @@ describe('Renovate update policy', () => {
     expect(config.vulnerabilityAlerts.automerge).not.toBe(true);
   });
 
-  it('rebases update branches whenever main moves, so lockfiles never merge stale', () => {
+  it('rebases update branches on the next run after main moves', () => {
     expect(config.rebaseWhen).toBe('behind-base-branch');
   });
 
