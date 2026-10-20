@@ -247,7 +247,7 @@ async function launchAfterInstall(app: string): Promise<void> {
       const elapsed = Date.now() - started;
       if (!isAppNotYetKnown(error) || elapsed > LAUNCH_DEADLINE_MS) throw error;
       console.log(
-        `[mobile] launch not ready yet (attempt ${attempts}, ${seconds(elapsed)} after install), retrying: ${frontBoardReason(error)}`,
+        `[mobile] launch not ready yet (attempt ${attempts}, ${seconds(elapsed)} after the first install returned), retrying: ${frontBoardReason(error)}`,
       );
       if (!reinstalled && elapsed >= REINSTALL_AFTER_MS) {
         console.log(

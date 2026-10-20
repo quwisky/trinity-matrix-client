@@ -1,7 +1,9 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import {
+  closeSync,
   copyFileSync,
   mkdirSync,
+  openSync,
   readdirSync,
   statSync,
   writeFileSync,
@@ -58,7 +60,7 @@ async function simctlWithin(
 ): Promise<string> {
   const { stdout } = await exec('xcrun', ['simctl', ...args], {
     cwd: workspaceRoot,
-    maxBuffer: 400 * 1024 * 1024,
+    maxBuffer: 50 * 1024 * 1024,
     signal: commandSignal(),
     timeout: isCleaningUp() ? cleanupTimeout : undefined,
   });
@@ -196,6 +198,31 @@ async function captureDiagnostics(): Promise<void> {
       writeFileSync(join(outputDirectory, file), failureText(error));
     }
   };
+  // Most telling first: after the CI timeout's SIGINT, teardown has until SIGKILL.
+  copyCrashReports(outputDirectory);
+  // The whole run's WebContent lifecycle: syslog-tail covers only the last minutes.
+  await logShow(
+    'webkit-process.log',
+    udid,
+    [
+      '--start',
+      logStart,
+      '--predicate',
+      '(process == "App" AND subsystem == "com.apple.WebKit" AND category IN {"Process", "ProcessSuspension", "Loading"}) OR (process == "com.apple.WebKit.WebContent" AND messageType >= 16) OR (process == "runningboardd" AND composedMessage CONTAINS "WebContent")',
+    ],
+    150_000,
+  );
+  await logShow(
+    'syslog-tail.txt',
+    udid,
+    [
+      '--last',
+      '10m',
+      '--predicate',
+      'process == "App" OR process BEGINSWITH "com.apple.WebKit" OR subsystem == "com.apple.network"',
+    ],
+    120_000,
+  );
   await capture('devices.json', ['list', '-j', 'devices']);
   await capture('app-container.txt', [
     'get_app_container',
@@ -203,58 +230,56 @@ async function captureDiagnostics(): Promise<void> {
     APP_PACKAGE,
     'data',
   ]);
-  // `log show` over the whole Simulator is slow: allow it 3 minutes, one argv element
-  // for the predicate (no shell).
-  await capture(
-    'syslog-tail.txt',
-    [
-      'spawn',
-      udid,
-      'log',
-      'show',
-      '--last',
-      '10m',
-      '--style',
-      'compact',
-      '--predicate',
-      'process == "App" OR process BEGINSWITH "com.apple.WebKit" OR subsystem == "com.apple.network"',
-    ],
-    180_000,
-  );
-  // The whole run's WebContent lifecycle: syslog-tail covers only the last minutes, and a
-  // `log stream` started with the run recorded nothing.
-  await capture(
-    'webkit-process.log',
-    [
-      'spawn',
-      udid,
-      'log',
-      'show',
-      '--start',
-      logStart,
-      '--style',
-      'compact',
-      '--predicate',
-      '(process == "App" AND subsystem == "com.apple.WebKit" AND category IN {"Process", "ProcessSuspension", "Loading"}) OR (process == "com.apple.WebKit.WebContent" AND messageType >= 16) OR (process == "runningboardd" AND composedMessage CONTAINS "WebContent")',
-    ],
-    300_000,
-  );
-  copyCrashReports(outputDirectory);
+}
+
+/**
+ * `log show` over the Simulator, written straight to a file: its output can exceed any
+ * in-memory buffer. One argv element for the predicate (no shell).
+ */
+async function logShow(
+  file: string,
+  udid: string,
+  args: string[],
+  cleanupTimeout: number,
+): Promise<void> {
+  const out = openSync(join(artifactsDir(), file), 'w');
+  try {
+    await new Promise<void>((resolve) => {
+      const child = spawn(
+        'xcrun',
+        ['simctl', 'spawn', udid, 'log', 'show', '--style', 'compact', ...args],
+        {
+          stdio: ['ignore', out, out],
+          signal: commandSignal(),
+          timeout: isCleaningUp() ? cleanupTimeout : undefined,
+        },
+      );
+      child.once('error', () => resolve());
+      child.once('close', () => resolve());
+    });
+  } finally {
+    closeSync(out);
+  }
 }
 
 /** Every crash report the host wrote during this run, such as a WebContent crash. */
 function copyCrashReports(outputDirectory: string): void {
   const dir = join(homedir(), 'Library/Logs/DiagnosticReports');
-  let names: string[] = [];
+  let entries;
   try {
-    names = readdirSync(dir);
+    entries = readdirSync(dir, { withFileTypes: true });
   } catch {
     return;
   }
-  for (const name of names) {
-    const file = join(dir, name);
-    if (statSync(file).mtime < runStarted) continue;
-    copyFileSync(file, join(outputDirectory, `crash-${name}.txt`));
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const file = join(dir, entry.name);
+    try {
+      if (statSync(file).mtime < runStarted) continue;
+      copyFileSync(file, join(outputDirectory, `crash-${entry.name}.txt`));
+    } catch {
+      // A report removed or unreadable mid-copy must not cost the rest.
+    }
   }
 }
 

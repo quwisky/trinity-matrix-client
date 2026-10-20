@@ -139,12 +139,22 @@ export function resultExitCode(result) {
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { 'timeout-ms': { type: 'string' } },
+    options: {
+      'timeout-ms': { type: 'string' },
+      'kill-grace-ms': { type: 'string' },
+    },
   });
   const timeoutMs = Number(values['timeout-ms']);
-  if (!(timeoutMs > 0) || !Number.isFinite(timeoutMs) || !positionals[0]) {
+  const killGraceMs = Number(values['kill-grace-ms'] ?? CLI_KILL_GRACE_MS);
+  if (
+    !(timeoutMs > 0) ||
+    !Number.isFinite(timeoutMs) ||
+    !(killGraceMs > 0) ||
+    !Number.isFinite(killGraceMs) ||
+    !positionals[0]
+  ) {
     console.error(
-      'usage: node scripts/ci-run-command.mjs --timeout-ms N -- <executable> [args...]',
+      'usage: node scripts/ci-run-command.mjs --timeout-ms N [--kill-grace-ms N] -- <executable> [args...]',
     );
     process.exitCode = 2;
     return;
@@ -162,7 +172,7 @@ async function main() {
     args: positionals.slice(1),
     label: 'suite',
     timeoutMs,
-    killGraceMs: CLI_KILL_GRACE_MS,
+    killGraceMs,
     abortSignal: controller.signal,
   });
   const output = {
