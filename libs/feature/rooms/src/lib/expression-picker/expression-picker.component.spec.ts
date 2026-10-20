@@ -441,6 +441,27 @@ describe('ExpressionPickerComponent', () => {
     );
   });
 
+  it('leaves out Your emoji whose shortcode could not be sent as an image', async () => {
+    await renderPanel({
+      stickerPacks: [
+        {
+          ...personalPack,
+          images: [
+            personalImage('blob.cat', ['emoticon']),
+            personalImage('wave', ['emoticon']),
+          ],
+        },
+      ],
+    });
+
+    const section = view.getByRole('region', { name: 'Your emoji' });
+    expect(
+      [...section.querySelectorAll('button')].map((b) =>
+        b.getAttribute('aria-label'),
+      ),
+    ).toEqual([':wave:']);
+  });
+
   it('picking Your emoji emits its :code: without recording it as recent', async () => {
     const { handlers, record } = await renderPanel({
       stickerPacks: [personalPack],

@@ -37,6 +37,7 @@ class MissingLocalEchoError extends Error {
 @Injectable({ providedIn: 'root' })
 class MatrixConversationTextSender implements ConversationTextSender {
   private readonly matrix = inject(MatrixClientService);
+  // Its emoticons() map is filled only while the rooms page subscribes run(); else it is empty.
   private readonly packs = inject(ImagePackEditorService);
 
   send(request: ConversationTextSendRequest): ConversationTextSendOperation {

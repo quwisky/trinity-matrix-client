@@ -51,6 +51,11 @@ export class AddToMyEmojiService {
     return entries ? new Set(entries.map((entry) => entry.url)) : null;
   });
 
+  /** The personal pack's emoticon shortcodes → mxc; empty where there is no editor. */
+  readonly emoticons: Signal<ReadonlyMap<string, string>> = computed(
+    () => this.editor?.emoticons() ?? new Map<string, string>(),
+  );
+
   /** Whether images can be added here at all. */
   readonly available = computed(() => this.owned() !== null);
 

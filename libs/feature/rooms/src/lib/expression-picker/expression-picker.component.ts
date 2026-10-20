@@ -29,6 +29,7 @@ import { type GifResult } from '@trinity/data-access/gif';
 import {
   PERSONAL_IMAGE_PACK_ID,
   RecentEmojiService,
+  SHORTCODE_PATTERN,
   type ImagePack,
   type ImagePackImage,
 } from '@trinity/data-access/media';
@@ -143,7 +144,12 @@ export class ExpressionPickerComponent {
     () =>
       this.stickerPacks()
         .find((pack) => pack.id === PERSONAL_IMAGE_PACK_ID)
-        ?.images.filter((image) => image.usage.includes('emoticon')) ?? [],
+        // Another client's code (`blob.cat`) never matches on send, so it would go out as text.
+        ?.images.filter(
+          (image) =>
+            image.usage.includes('emoticon') &&
+            SHORTCODE_PATTERN.test(image.shortcode),
+        ) ?? [],
   );
 
   protected readonly tabs = computed<readonly ComposerExpressionTab[]>(() =>

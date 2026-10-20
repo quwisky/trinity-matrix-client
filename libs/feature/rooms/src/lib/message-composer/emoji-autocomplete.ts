@@ -1,8 +1,9 @@
-import { computed, signal } from '@angular/core';
+import { computed, inject, signal } from '@angular/core';
 import type {
   TrnEmojiIndex,
   TrnEmojiSuggestion,
 } from '@trinity/components/controls';
+import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
 import { type CaretReplacement } from './caret-replacement';
 
 /**
@@ -30,6 +31,9 @@ export type EmojiAcceptance =
  * every composer instance (room and thread) needs its own.
  */
 export class EmojiAutocomplete {
+  /** A personal emoji's `:shortcode:` stays text, so the send path can inline its image. */
+  private readonly personal = inject(AddToMyEmojiService).emoticons;
+
   /** The `:shortcode` fragment under the caret, or null when the menu is closed. */
   readonly query = signal<string | null>(null);
 
@@ -60,7 +64,7 @@ export class EmojiAutocomplete {
     const before = text.slice(0, caret);
 
     const complete = EMOJI_COMPLETE.exec(before);
-    if (complete) {
+    if (complete && !this.personal().has(complete[1])) {
       const char = this.nativeForShortcode(complete[1].toLowerCase());
       if (char) {
         this.query.set(null);

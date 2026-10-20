@@ -95,6 +95,7 @@ const THREAD_SCROLLBACK = 30;
 @Injectable()
 export class ThreadsService {
   private readonly mediaPipeline = inject(MediaPipeline);
+  // Its emoticons() map is filled only while the rooms page subscribes run(); else it is empty.
   private readonly packs = inject(ImagePackEditorService);
   private readonly messageAdapter = inject(CONVERSATION_MESSAGE_ADAPTER);
   private readonly attention = inject(CONVERSATION_ATTENTION, {
