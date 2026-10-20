@@ -179,6 +179,7 @@ describe('Trinity application provider composition', () => {
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
             whatsNew: () => NEVER,
+            addToImagePack: () => NEVER,
           },
         }),
       ],
@@ -209,6 +210,7 @@ describe('Trinity application provider composition', () => {
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
             whatsNew: () => NEVER,
+            addToImagePack: () => NEVER,
           },
         }),
         {
@@ -337,6 +339,7 @@ describe('Trinity application provider composition', () => {
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
             whatsNew: () => NEVER,
+            addToImagePack: () => NEVER,
           },
         }),
       ],
@@ -367,6 +370,7 @@ describe('Trinity application provider composition', () => {
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
             whatsNew: () => NEVER,
+            addToImagePack: () => NEVER,
           },
         }),
       ],
@@ -397,6 +401,7 @@ describe('Trinity application provider composition', () => {
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
             whatsNew: () => NEVER,
+            addToImagePack: () => NEVER,
           },
         }),
       ],
@@ -427,6 +432,7 @@ describe('Trinity application provider composition', () => {
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => NEVER,
             whatsNew: () => NEVER,
+            addToImagePack: () => NEVER,
           },
         }),
       ],
@@ -459,6 +465,7 @@ describe('Trinity application provider composition', () => {
         encryption: { unlock: () => NEVER, verify: () => NEVER },
         reportBug: () => NEVER,
         whatsNew: () => NEVER,
+        addToImagePack: () => NEVER,
       },
     };
     for (const [options, allowSkip] of [
@@ -494,6 +501,7 @@ describe('Trinity application provider composition', () => {
             encryption: { unlock: () => NEVER, verify: () => NEVER },
             reportBug: () => of(ReportBugDependencyProbeComponent),
             whatsNew: () => NEVER,
+            addToImagePack: () => NEVER,
           },
         }),
         {

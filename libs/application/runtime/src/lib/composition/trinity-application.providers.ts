@@ -29,6 +29,7 @@ import {
   provideMatrixSdkLogging,
   type MatrixSdkLogLevel,
 } from '@trinity/data-access/matrix-client';
+import { ADD_TO_IMAGE_PACK_DIALOG } from '@trinity/data-access/media';
 import type { PushConfig } from '@trinity/data-access/notifications';
 import {
   WHATS_NEW_LAUNCHER,
@@ -79,6 +80,8 @@ export interface TrinityApplicationDialogLoaders {
   readonly reportBug: ApplicationDialogLoader;
   /** The What's new dialog, opened once after an update and from Settings. */
   readonly whatsNew: ApplicationDialogLoader;
+  /** "Add to your emoji", for features that cannot import Settings. */
+  readonly addToImagePack: ApplicationDialogLoader;
 }
 
 export interface TrinityApplicationProviderOptions {
@@ -181,6 +184,10 @@ export function provideTrinityApplication(
       useValue: options.dialogLoaders.reportBug,
     },
     { provide: BUG_REPORT_LAUNCHER, useExisting: ReportBugLauncherAdapter },
+    {
+      provide: ADD_TO_IMAGE_PACK_DIALOG,
+      useValue: options.dialogLoaders.addToImagePack,
+    },
     {
       provide: WHATS_NEW_DIALOG_COMPONENT,
       useValue: options.dialogLoaders.whatsNew,

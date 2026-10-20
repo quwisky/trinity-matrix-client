@@ -1,0 +1,101 @@
+<!-- `[formRoot]` sets novalidate and preventDefaults the submit. -->
+<form [formRoot]="addForm" (submit)="add()" data-testid="add-to-pack-dialog">
+  <trn-dialog-shell title="Add to your emoji" (closed)="cancel()">
+    <div class="flex flex-col gap-3">
+      <div
+        class="mx-auto flex size-20 items-center justify-center overflow-hidden rounded-lg bg-muted"
+      >
+        @if (preview(); as src) {
+          <img
+            class="size-16 object-contain"
+            [src]="src"
+            [alt]="model().shortcode"
+            data-testid="add-to-pack-preview"
+          />
+        }
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <label trnLabel for="add-to-pack-shortcode">Shortcode</label>
+        <input
+          trnInput
+          id="add-to-pack-shortcode"
+          autocomplete="off"
+          spellcheck="false"
+          data-autofocus
+          [formField]="addForm.shortcode"
+          [attr.aria-invalid]="shortcodeError() ? 'true' : null"
+          [attr.aria-describedby]="
+            shortcodeError() ? 'add-to-pack-shortcode-error' : null
+          "
+          data-testid="add-to-pack-shortcode"
+        />
+        @if (shortcodeError(); as message) {
+          <p
+            id="add-to-pack-shortcode-error"
+            class="text-sm text-danger"
+            data-testid="add-to-pack-shortcode-error"
+          >
+            {{ message }}
+          </p>
+        }
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <span id="add-to-pack-use-as" trnLabel>Use as</span>
+        <trn-radio-group
+          layout="segmented"
+          aria-labelledby="add-to-pack-use-as"
+          [options]="useAsOptions"
+          [value]="model().useAs"
+          [disabled]="busy()"
+          (valueChange)="setUseAs($event)"
+        />
+      </div>
+
+      @if (formError(); as failure) {
+        <div class="flex items-center gap-2 text-sm">
+          <p class="text-danger" data-testid="add-to-pack-error">
+            {{ failure.message }}
+          </p>
+          @if (failure.retry) {
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              size="sm"
+              (click)="add()"
+              data-testid="add-to-pack-retry"
+            >
+              Try again
+            </button>
+          }
+        </div>
+      }
+      <p class="sr-only" role="status">
+        {{ busy() ? 'Adding to your emoji…' : (failure()?.message ?? '') }}
+      </p>
+    </div>
+
+    <div trnDialogActions>
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        [disabled]="busy()"
+        (click)="cancel()"
+        data-testid="add-to-pack-cancel"
+      >
+        Cancel
+      </button>
+      <button
+        trnBtn
+        type="submit"
+        [loading]="busy()"
+        data-testid="add-to-pack-confirm"
+      >
+        Add
+      </button>
+    </div>
+  </trn-dialog-shell>
+</form>

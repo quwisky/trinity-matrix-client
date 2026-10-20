@@ -1,4 +1,11 @@
-import { Injectable, type Signal, inject, signal } from '@angular/core';
+import {
+  InjectionToken,
+  Injectable,
+  type Signal,
+  type Type,
+  inject,
+  signal,
+} from '@angular/core';
 import { defer, firstValueFrom, from, type Observable } from 'rxjs';
 import { MatrixError, Method, type MatrixClient } from 'matrix-js-sdk';
 import {
@@ -34,6 +41,15 @@ export type AddInput =
       readonly info?: Record<string, unknown>;
       readonly body?: string;
     };
+
+/**
+ * Lazily loads the "Add to your emoji" dialog, which lives in feature-settings, for features
+ * that cannot import it. Its inputs are `input: AddInput` and `suggestedName: string`; it
+ * closes with the added `PackEntry`, or null.
+ */
+export const ADD_TO_IMAGE_PACK_DIALOG = new InjectionToken<
+  () => Observable<Type<unknown>>
+>('ADD_TO_IMAGE_PACK_DIALOG');
 
 export type ImagePackEditErrorCode =
   | 'invalid-shortcode'
