@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   chromedriverFromAppiumLog,
+  frontBoardReason,
   isAppNotYetKnown,
   parseWebViewVersion,
   webviewSwitchError,
@@ -96,5 +97,23 @@ describe('iOS launch race classifier', () => {
     );
     expect(isAppNotYetKnown(new Error('socket hang up'))).toBe(false);
     expect(isAppNotYetKnown('is unknown to FrontBoard')).toBe(true);
+  });
+});
+
+describe('FrontBoard launch failure reason', () => {
+  it('names the error codes and the outer reason', () => {
+    // As WebDriverAgent reported it in nightly 39233620715.
+    const error = new Error(
+      'invalid argument: WebDriverError: Error Domain=FBSOpenApplicationServiceErrorDomain Code=1 "The request to open "dev.trinityproject.trinity" failed." UserInfo={BSErrorCodeDescription=RequestDenied, NSUnderlyingError=0x114fac180 {Error Domain=FBSOpenApplicationErrorDomain Code=4 "Application "dev.trinityproject.trinity" is unknown to FrontBoard." UserInfo={BSErrorCodeDescription=NotFound, NSLocalizedFailureReason=Application "dev.trinityproject.trinity" is unknown to FrontBoard.}}, NSLocalizedDescription=The request to open "dev.trinityproject.trinity" failed., FBSOpenApplicationRequestID=0xeb5d, NSLocalizedFailureReason=The request was denied by service delegate (SBMainWorkspace) for reason: NotFound ("Application "dev.trinityproject.trinity" is unknown to FrontBoard").}',
+    );
+    expect(frontBoardReason(error)).toBe(
+      'RequestDenied > NotFound: The request was denied by service delegate (SBMainWorkspace) for reason: NotFound ("Application "dev.trinityproject.trinity" is unknown to FrontBoard").',
+    );
+  });
+
+  it('falls back to the first line of an error without FrontBoard detail', () => {
+    expect(frontBoardReason(new Error('socket hang up\nat x'))).toBe(
+      'socket hang up',
+    );
   });
 });

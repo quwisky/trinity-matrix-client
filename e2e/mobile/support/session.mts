@@ -20,6 +20,7 @@ import { describeAppiumFailure } from '../../support/http-failure.mts';
 import { appiumLogPath } from './artifacts.mts';
 import {
   chromedriverFromAppiumLog,
+  frontBoardReason,
   isAppNotYetKnown,
   parseWebViewVersion,
   webviewSwitchError,
@@ -204,19 +205,7 @@ export async function resetApp(): Promise<void> {
     const app = requiredEnv('TRINITY_IOS_APP');
     await browser.removeApp(APP_PACKAGE);
     await browser.installApp(app);
-    try {
-      await activateWhenKnown(15_000);
-    } catch (error) {
-      if (!isAppNotYetKnown(error)) throw error;
-      // On a cold hosted runner FrontBoard once never registered a 1.4 s reinstall within
-      // 15 s, while every other reinstall in the run launched within two attempts.
-      // Installing again re-registers it.
-      console.log(
-        '[mobile] launch still not ready after 15 s; reinstalling once',
-      );
-      await browser.installApp(app);
-      await activateWhenKnown(30_000);
-    }
+    await launchAfterInstall(app);
   } else {
     const cleared = await shell('pm', ['clear', APP_PACKAGE]);
     if (!cleared.includes('Success'))
@@ -235,22 +224,51 @@ export async function resetApp(): Promise<void> {
   await webview();
 }
 
-/** FrontBoard lags a fresh install by a moment: retry its NotFound or RequestDenied for `ms`. */
-async function activateWhenKnown(ms: number): Promise<void> {
-  const deadline = Date.now() + ms;
+/**
+ * Every refused launch after a reinstall in nightlies 38877693663, 39113082294 and 39233620715
+ * was RequestDenied > NotFound: SpringBoard had not registered the new install yet. Either it
+ * did within 8.5 s, or it never did: 15 s of retries changed nothing there, and installing
+ * again registered the app at once. So retry briefly, then install again.
+ */
+const REINSTALL_AFTER_MS = 10_000;
+const LAUNCH_DEADLINE_MS = 40_000;
+
+async function launchAfterInstall(app: string): Promise<void> {
+  const started = Date.now();
+  let attempts = 0;
+  let reinstalled = false;
+  let delay = 250;
   for (;;) {
+    attempts += 1;
     try {
       await browser.activateApp(APP_PACKAGE);
-      return;
+      break;
     } catch (error) {
-      if (!isAppNotYetKnown(error) || Date.now() > deadline) throw error;
+      const elapsed = Date.now() - started;
+      if (!isAppNotYetKnown(error) || elapsed > LAUNCH_DEADLINE_MS) throw error;
       console.log(
-        `[mobile] launch not ready yet, retrying: ${String(error).split('\n')[0].slice(0, 160)}`,
+        `[mobile] launch not ready yet (attempt ${attempts}, ${seconds(elapsed)} after install), retrying: ${frontBoardReason(error)}`,
       );
-      await browser.pause(500);
+      if (!reinstalled && elapsed >= REINSTALL_AFTER_MS) {
+        console.log(
+          '[mobile] FrontBoard still does not know the app; installing it again',
+        );
+        await browser.installApp(app);
+        reinstalled = true;
+        delay = 250;
+        continue;
+      }
+      await browser.pause(delay);
+      delay = Math.min(delay * 2, 1_000);
     }
   }
+  if (attempts > 1)
+    console.log(
+      `[mobile] launched after ${attempts} attempts in ${seconds(Date.now() - started)}${reinstalled ? ', after a second install' : ''}`,
+    );
 }
+
+const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)} s`;
 
 export async function restartApp(): Promise<void> {
   await native();
