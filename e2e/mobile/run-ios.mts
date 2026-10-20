@@ -1,5 +1,12 @@
-import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import { closeSync, mkdirSync, openSync, writeFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import {
+  copyFileSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { E2EInvocation } from '../support/invocation.mts';
@@ -32,33 +39,10 @@ const appPath = join(
 );
 
 let simulator: Simulator | undefined;
-let networkLog: ChildProcess | undefined;
+const runStarted = new Date();
+const pad = (n: number): string => String(n).padStart(2, '0');
+const logStart = `${runStarted.getFullYear()}-${pad(runStarted.getMonth() + 1)}-${pad(runStarted.getDate())} ${pad(runStarted.getHours())}:${pad(runStarted.getMinutes())}:${pad(runStarted.getSeconds())}`;
 
-/**
- * Stream the WebKit networking process's log for the whole run. `log show --last 10m` after
- * the suite overflowed its buffer and only reached the last minutes, so a TLS stall in an
- * early spec left no evidence.
- */
-function streamNetworkLog(udid: string): void {
-  const out = openSync(join(artifactsDir(), 'webkit-networking.log'), 'a');
-  networkLog = spawn(
-    'xcrun',
-    [
-      'simctl',
-      'spawn',
-      udid,
-      'log',
-      'stream',
-      '--style',
-      'compact',
-      '--predicate',
-      // Also the app's own WebKit lines naming why a WebContent process ended.
-      'process == "com.apple.WebKit.Networking" OR (process == "App" AND subsystem == "com.apple.WebKit" AND (composedMessage CONTAINS[c] "terminat" OR composedMessage CONTAINS[c] "crash"))',
-    ],
-    { stdio: ['ignore', out, out] },
-  );
-  closeSync(out);
-}
 let ownsBoot = false;
 
 const artifactsDir = (): string =>
@@ -74,7 +58,7 @@ async function simctlWithin(
 ): Promise<string> {
   const { stdout } = await exec('xcrun', ['simctl', ...args], {
     cwd: workspaceRoot,
-    maxBuffer: 50 * 1024 * 1024,
+    maxBuffer: 400 * 1024 * 1024,
     signal: commandSignal(),
     timeout: isCleaningUp() ? cleanupTimeout : undefined,
   });
@@ -144,7 +128,6 @@ async function main(invocation: E2EInvocation): Promise<void> {
   process.env['TRINITY_IOS_UDID'] = udid;
   process.env['TRINITY_IOS_APP'] = appPath;
   mkdirSync(artifactsDir(), { recursive: true });
-  streamNetworkLog(udid);
   // Keychain access needs entitlements; keep the evidence whatever the next run does.
   // Simulator builds embed them in the Mach-O __TEXT,__entitlements section, which
   // codesign does not print, so read both.
@@ -238,10 +221,44 @@ async function captureDiagnostics(): Promise<void> {
     ],
     180_000,
   );
+  // The whole run's WebContent lifecycle: syslog-tail covers only the last minutes, and a
+  // `log stream` started with the run recorded nothing.
+  await capture(
+    'webkit-process.log',
+    [
+      'spawn',
+      udid,
+      'log',
+      'show',
+      '--start',
+      logStart,
+      '--style',
+      'compact',
+      '--predicate',
+      '(process == "App" AND subsystem == "com.apple.WebKit" AND category IN {"Process", "ProcessSuspension", "Loading"}) OR (process == "com.apple.WebKit.WebContent" AND messageType >= 16) OR (process == "runningboardd" AND composedMessage CONTAINS "WebContent")',
+    ],
+    300_000,
+  );
+  copyCrashReports(outputDirectory);
+}
+
+/** Every crash report the host wrote during this run, such as a WebContent crash. */
+function copyCrashReports(outputDirectory: string): void {
+  const dir = join(homedir(), 'Library/Logs/DiagnosticReports');
+  let names: string[] = [];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const file = join(dir, name);
+    if (statSync(file).mtime < runStarted) continue;
+    copyFileSync(file, join(outputDirectory, `crash-${name}.txt`));
+  }
 }
 
 async function releaseDevice(): Promise<void> {
-  networkLog?.kill();
   await captureDiagnostics().catch(() => undefined);
   if (!simulator) return;
   await simctl('terminate', simulator.udid, APP_PACKAGE).catch(() => undefined);
