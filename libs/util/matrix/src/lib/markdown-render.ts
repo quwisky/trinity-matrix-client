@@ -1,7 +1,7 @@
 import { Marked, Renderer, type Tokens } from 'marked';
 import { escapeHtml, sanitizeOutgoingHtml, taskGlyph } from './message-html';
 import { trimTrailing } from './trim-trailing';
-import { SHORTCODE_CHARACTERS } from './shortcode';
+import { SHORTCODE_CHARACTERS, SHORTCODE_JOINER } from './shortcode';
 
 /** Result of rendering composer markdown to sanitized HTML. */
 export interface RenderedMarkdown {
@@ -156,8 +156,10 @@ function restoreSpaceRuns(html: string, runs: readonly number[]): string {
   });
 }
 
-/** A `:shortcode:` opening; the closing colon is a lookahead so `:a:b:` can still find `:b:`. */
+/** A `:shortcode:` candidate; the closing colon is a lookahead, so it may also open the next. */
 const SHORTCODE = new RegExp(`:([${SHORTCODE_CHARACTERS}]{1,100})(?=:)`, 'g');
+/** A `:shortcode:` at the start of a string. */
+const LEADING_SHORTCODE = new RegExp(`^:([${SHORTCODE_CHARACTERS}]{1,100}):`);
 
 /**
  * Each known `:shortcode:` outside code as an MSC2545 inline image. Runs before the outgoing
@@ -181,6 +183,16 @@ function inlineEmoticons(
       // Overlap: this opening colon closed the previous code.
       if (!url || match.index < copied) continue;
       const code = `:${match[1]}:`;
+      const before = text.data[match.index - 1] ?? '';
+      const rest = text.data.slice(match.index + code.length);
+      // A boundary on both sides, so `10:30:45` stays text; adjacent known codes share one.
+      if (SHORTCODE_JOINER.test(before) && match.index !== copied) continue;
+      if (
+        SHORTCODE_JOINER.test(rest.charAt(0)) &&
+        !emoticons.has(LEADING_SHORTCODE.exec(rest)?.[1] ?? '')
+      ) {
+        continue;
+      }
       const image = doc.createElement('img');
       image.setAttribute('data-mx-emoticon', '');
       image.setAttribute('src', url);

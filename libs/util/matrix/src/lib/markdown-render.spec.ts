@@ -49,13 +49,24 @@ describe('renderMarkdown — custom emoji (MSC2545)', () => {
     expect(html).toContain(':cat:\n</code></pre>');
   });
 
-  it('finds a known code right after an unknown one', () => {
-    const { html } = renderMarkdown(':nope:wave:', emoticons);
+  it('needs a boundary on both sides, so a time stays text', () => {
+    const times = new Map([['30', 'mxc://hs/thirty']]);
+
+    expect(images(renderMarkdown('10:30:45', times).html)).toEqual([]);
+    expect(images(renderMarkdown('a:wave:', emoticons).html)).toEqual([]);
+    expect(images(renderMarkdown(':wave:b', emoticons).html)).toEqual([]);
+    expect(images(renderMarkdown(':nope:wave:', emoticons).html)).toEqual([]);
+    expect(images(renderMarkdown('hi :wave:', emoticons).html)).toHaveLength(1);
+    expect(images(renderMarkdown('(:wave:)!', emoticons).html)).toHaveLength(1);
+  });
+
+  it('converts adjacent codes, which share one boundary', () => {
+    const { html } = renderMarkdown(':cat::wave:', emoticons);
 
     expect(images(html).map((image) => image.getAttribute('alt'))).toEqual([
+      ':cat:',
       ':wave:',
     ]);
-    expect(html).toContain(':nope<img');
   });
 
   it('marks an emoji-only message as formatted', () => {

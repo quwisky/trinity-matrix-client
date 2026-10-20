@@ -30,7 +30,11 @@ import {
 } from '@trinity/platform-native';
 import { type GifResult } from '@trinity/data-access/gif';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
-import { type FormatAction, type Mention } from '@trinity/util/matrix';
+import {
+  SHORTCODE_JOINER,
+  type FormatAction,
+  type Mention,
+} from '@trinity/util/matrix';
 import { ComposerFormatMenuComponent } from './composer-format-menu/composer-format-menu.component';
 import { ComposerAttachmentStripComponent } from './composer-attachment-strip/composer-attachment-strip.component';
 import { ComposerInsertMenuComponent } from './composer-insert-menu/composer-insert-menu.component';
@@ -647,7 +651,7 @@ export class MessageComposerComponent {
   /** The emoji picker chose an emoji → insert its native character at the cursor. */
   onPickerSelect(pick: TrnEmojiPick): void {
     // No emptiness check: the wrapper drops picks with no character.
-    this.insertEmoji(pick.native);
+    this.insertEmoji(pick.native, pick.native.startsWith(':'));
   }
 
   /** Open the create-poll dialog (starts a poll in the active room on confirm). */
@@ -934,12 +938,18 @@ export class MessageComposerComponent {
     }
   }
 
-  /** Insert an emoji at the cursor (or append), then keep the textarea focused. */
-  insertEmoji(emoji: string): void {
+  /**
+   * Insert an emoji at the cursor (or append), then keep the textarea focused. A `:shortcode:`
+   * is spaced off a touching word, which would otherwise keep it text on send.
+   */
+  insertEmoji(text: string, shortcode = false): void {
     const el = this.textarea()?.nativeElement;
     const value = this.text();
     const start = el?.selectionStart ?? value.length;
     const end = el?.selectionEnd ?? value.length;
+    const pad = (char: string | undefined) =>
+      shortcode && SHORTCODE_JOINER.test(char ?? '') ? ' ' : '';
+    const emoji = pad(value[start - 1]) + text + pad(value[end]);
     this.text.set(value.slice(0, start) + emoji + value.slice(end));
     this.pickerOpen.set(false);
     queueMicrotask(() => {

@@ -160,7 +160,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     expect(placeholder()).toBeNull();
   });
 
-  it('picking Your emoji inserts :code: at the cursor', async () => {
+  it('picking Your emoji inserts :code: at the cursor, spaced off a word so it converts', async () => {
     const personal: ImagePack = {
       ...stickerPack,
       id: PERSONAL_IMAGE_PACK_ID,
@@ -186,16 +186,22 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     );
     const cmp = fixture.componentInstance;
     const ta = container.querySelector('textarea') as HTMLTextAreaElement;
-    cmp.text.set('ab');
-    fixture.detectChanges();
-    ta.selectionStart = ta.selectionEnd = 1;
-    cmp.pickerOpen.set(true);
-    TestBed.tick();
+    const pickAt = (text: string, caret: number) => {
+      cmp.text.set(text);
+      fixture.detectChanges();
+      ta.selectionStart = ta.selectionEnd = caret;
+      cmp.pickerOpen.set(true);
+      TestBed.tick();
+      document
+        .querySelector<HTMLButtonElement>('[aria-label=":wave:"]')
+        ?.click();
+      return cmp.text();
+    };
 
-    document.querySelector<HTMLButtonElement>('[aria-label=":wave:"]')?.click();
-
-    expect(cmp.text()).toBe('a:wave:b');
+    expect(pickAt('hi', 2)).toBe('hi :wave:');
     expect(cmp.pickerOpen()).toBe(false);
+    expect(pickAt('ab', 1)).toBe('a :wave: b');
+    expect(pickAt('hi ', 3)).toBe('hi :wave:');
   });
 
   it('closes the picker with the button that opened it', async () => {
