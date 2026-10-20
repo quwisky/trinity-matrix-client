@@ -33,6 +33,7 @@ import {
 import {
   ImagePackEditError,
   ImagePackEditorService,
+  MAX_PERSONAL_IMAGES,
   SHORTCODE_PATTERN,
   type PackEntry,
 } from '@trinity/data-access/media';
@@ -54,7 +55,6 @@ import {
 } from '../add-to-pack-dialog/add-to-pack-dialog.component';
 import { PackImageComponent } from './pack-image.component';
 
-const MAX_IMAGES = 500;
 const CHANGE_FAILED = 'Couldn’t change your emoji. Try again.';
 const USE_AS_LABELS: Record<UseAs, string> = {
   emoticon: 'Emoji',
@@ -128,7 +128,7 @@ export class PersonalPackComponent {
 
   protected readonly entries = this.editor.personal;
   protected readonly full = computed(
-    () => (this.entries()?.length ?? 0) >= MAX_IMAGES,
+    () => (this.entries()?.length ?? 0) >= MAX_PERSONAL_IMAGES,
   );
   protected readonly useAsOf = useAsOf;
   protected readonly labels = USE_AS_LABELS;

@@ -1,6 +1,7 @@
 import { Marked, Renderer, type Tokens } from 'marked';
 import { escapeHtml, sanitizeOutgoingHtml, taskGlyph } from './message-html';
 import { trimTrailing } from './trim-trailing';
+import { SHORTCODE_CHARACTERS } from './shortcode';
 
 /** Result of rendering composer markdown to sanitized HTML. */
 export interface RenderedMarkdown {
@@ -156,7 +157,7 @@ function restoreSpaceRuns(html: string, runs: readonly number[]): string {
 }
 
 /** A `:shortcode:` opening; the closing colon is a lookahead so `:a:b:` can still find `:b:`. */
-const SHORTCODE = /:([A-Za-z0-9_-]{1,100})(?=:)/g;
+const SHORTCODE = new RegExp(`:([${SHORTCODE_CHARACTERS}]{1,100})(?=:)`, 'g');
 
 /**
  * Each known `:shortcode:` outside code as an MSC2545 inline image. Runs before the outgoing

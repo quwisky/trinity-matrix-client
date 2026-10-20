@@ -14,6 +14,7 @@ export * from './lib/rust-crypto-store';
 export * from './lib/presence';
 export * from './lib/message-content';
 export * from './lib/markdown-render';
+export * from './lib/shortcode';
 export * from './lib/markdown-edit';
 export * from './lib/voice';
 export * from './lib/typing';

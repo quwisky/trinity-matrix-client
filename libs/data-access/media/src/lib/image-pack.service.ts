@@ -30,6 +30,7 @@ import {
   LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE,
   PERSONAL_IMAGE_PACK_EVENT_TYPE,
   PERSONAL_IMAGE_PACK_ID,
+  PERSONAL_IMAGE_PACK_NAME,
   TRINITY_IMAGE_PACK_ENABLED_USAGE,
   isImagePackUsage,
   isValidMxcUri,
@@ -268,7 +269,7 @@ export function readImagePacks(
 function personalPack(client: MatrixClient): ImagePack | null {
   if (!client.getAccountData) return null;
   const id = PERSONAL_IMAGE_PACK_ID;
-  const name = 'Your emoji';
+  const name = PERSONAL_IMAGE_PACK_NAME;
   const images: ImagePackImage[] = packEntries(
     new AccountPackTarget().read(client),
   )
