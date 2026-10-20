@@ -1,0 +1,115 @@
+@if (entries(); as list) {
+  <trn-settings-group title="Your emoji">
+    <div class="flex flex-wrap items-center justify-end gap-2">
+      @if (full()) {
+        <p id="personal-pack-full" class="text-sm text-muted-foreground">
+          Your emoji pack is full.
+        </p>
+      }
+      <button
+        trnBtn
+        type="button"
+        size="sm"
+        [disabled]="full()"
+        [attr.aria-describedby]="full() ? 'personal-pack-full' : null"
+        (click)="fileInput.click()"
+      >
+        Add images
+      </button>
+    </div>
+
+    @if (list.length) {
+      <ul
+        class="mt-2 grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2"
+        aria-label="Your emoji"
+      >
+        @for (entry of list; track entry.shortcode) {
+          <li class="rounded-lg bg-muted">
+            <button
+              trnBtn
+              shape="tile"
+              variant="secondary"
+              type="button"
+              class="relative w-full"
+              #tile
+              (click)="openActions(entry, tile)"
+              [attr.aria-label]="':' + entry.shortcode + ':'"
+              data-testid="personal-pack-tile"
+            >
+              <span class="absolute top-1 right-1 flex text-muted-foreground">
+                <trn-icon name="ellipsis" size="sm" />
+              </span>
+              <trn-pack-image [entry]="entry" />
+              <span class="max-w-full truncate">:{{ entry.shortcode }}:</span>
+              <span trnBadge size="sm">{{ labels[useAsOf(entry)] }}</span>
+            </button>
+          </li>
+        }
+      </ul>
+    } @else {
+      <trn-empty-state
+        layout="line"
+        body="Add images to use your own emoji and stickers in every room."
+      />
+    }
+
+    @if (renaming(); as from) {
+      <form
+        [formRoot]="renameForm"
+        class="mt-3 flex flex-col gap-1"
+        (submit)="saveRename()"
+      >
+        <label trnLabel for="personal-pack-rename-input">
+          New shortcode for :{{ from }}:
+        </label>
+        <div class="flex gap-2">
+          <input
+            trnInput
+            #renameInput
+            id="personal-pack-rename-input"
+            class="min-w-0 flex-1"
+            autocomplete="off"
+            spellcheck="false"
+            [formField]="renameForm.shortcode"
+            [attr.aria-invalid]="renameError() ? 'true' : null"
+            [attr.aria-describedby]="
+              renameError() ? 'personal-pack-rename-error' : null
+            "
+          />
+          <button trnBtn type="submit" size="sm">Save</button>
+          <button
+            trnBtn
+            type="button"
+            variant="secondary"
+            size="sm"
+            (click)="renaming.set(null)"
+          >
+            Cancel
+          </button>
+        </div>
+        @if (renameError(); as message) {
+          <p
+            id="personal-pack-rename-error"
+            class="text-sm text-danger"
+            data-testid="personal-pack-rename-error"
+          >
+            {{ message }}
+          </p>
+        }
+      </form>
+    }
+
+    <p class="text-sm text-danger" role="status">{{ status() }}</p>
+  </trn-settings-group>
+
+  <input
+    #fileInput
+    type="file"
+    trnTrackFileChooser
+    accept="image/png,image/jpeg,image/webp,image/gif"
+    multiple
+    hidden
+    data-testid="personal-pack-files"
+    (change)="addFiles($event)"
+  />
+}

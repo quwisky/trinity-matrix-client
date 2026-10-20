@@ -43,8 +43,9 @@ import {
   type PackEntry,
 } from '@trinity/data-access/media';
 import type { Subscription } from 'rxjs';
+import { packImagePayload } from '../personal-pack/pack-image.component';
 
-type UseAs = 'emoticon' | 'sticker' | 'both';
+export type UseAs = 'emoticon' | 'sticker' | 'both';
 
 interface Failure {
   readonly message: string;
@@ -54,13 +55,14 @@ interface Failure {
   readonly retry: boolean;
 }
 
-const USAGES: Record<UseAs, readonly ImagePackUsage[]> = {
+export const USAGES: Record<UseAs, readonly ImagePackUsage[]> = {
   emoticon: ['emoticon'],
   sticker: ['sticker'],
   both: ['emoticon', 'sticker'],
 };
 
-const SHORTCODE_HINT = 'Use 1–100 letters, digits, underscores or hyphens.';
+export const SHORTCODE_HINT =
+  'Use 1–100 letters, digits, underscores or hyphens.';
 
 /** The dialog's copy for a failed add of `shortcode`. */
 export function addFailure(error: unknown, shortcode: string): Failure {
@@ -182,21 +184,9 @@ export class AddToPackDialogComponent {
         return;
       }
       let pinned: string | null = null;
-      const info = source.info ?? {};
       const subscription = this.media
         .resolveMedia(
-          {
-            kind: 'image',
-            mxc: source.url,
-            file: null,
-            filename: source.body ?? '',
-            mimeType:
-              typeof info['mimetype'] === 'string'
-                ? info['mimetype']
-                : 'image/png',
-            thumbnailMxc: null,
-            thumbnailFile: null,
-          },
+          packImagePayload(source.url, source.info, source.body),
           'thumbnail',
         )
         .subscribe({
