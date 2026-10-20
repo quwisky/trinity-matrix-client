@@ -116,33 +116,32 @@ describe('Renovate post-upgrade commands', () => {
   });
 
   it('runs only commands the workflow allows', () => {
-    expect(commands).toEqual(['node scripts/sync-native-plugin-paths.mjs']);
+    expect(commands.length).toBeGreaterThan(0);
     for (const command of commands) {
-      expect(allowed.some((pattern) => new RegExp(pattern).test(command))).toBe(
-        true,
-      );
+      expect(
+        allowed.some((pattern) => new RegExp(pattern).test(command)),
+        command,
+      ).toBe(true);
     }
   });
 
-  it('commits only the native files, once per Capacitor branch', () => {
-    const rule = config.packageRules.find((r) => r.postUpgradeTasks);
-    expect(rule.matchPackageNames).toEqual(
-      config.packageRules.find((r) => r.groupName === 'capacitor')
-        .matchPackageNames,
-    );
-    expect(rule.postUpgradeTasks).toEqual({
-      commands: ['node scripts/sync-native-plugin-paths.mjs'],
-      fileFilters: [
-        'ios/App/CapApp-SPM/Package.swift',
-        'android/capacitor.settings.gradle',
-      ],
-      executionMode: 'branch',
-    });
+  const SYNC = {
+    commands: ['node scripts/sync-native-plugin-paths.mjs'],
+    fileFilters: [
+      'ios/App/CapApp-SPM/Package.swift',
+      'android/capacitor.settings.gradle',
+    ],
+    executionMode: 'branch',
+  };
+
+  it('syncs the native files on every Capacitor branch, covering every native package', () => {
+    const rule = config.packageRules.find((r) => r.groupName === 'capacitor');
+    expect(rule.postUpgradeTasks).toEqual(SYNC);
     // Every package with a virtual-store path in those files must trigger the sync.
-    const referenced = rule.postUpgradeTasks.fileFilters.flatMap((file) =>
+    const referenced = SYNC.fileFilters.flatMap((file) =>
       [
         ...read(file).matchAll(
-          /node_modules\/\.pnpm\/[^/]+\/node_modules\/(@[^/]+\/[^/'"]+)/g,
+          /node_modules\/\.pnpm\/[^/'"]+\/node_modules\/((?:@[^/'"]+\/)?[^/'"]+)/g,
         ),
       ].map((match) => match[1]),
     );
@@ -157,6 +156,14 @@ describe('Renovate post-upgrade commands', () => {
         name,
       ).toBe(true);
     }
+  });
+
+  it('syncs the native files on lock-file maintenance, which can move them too', () => {
+    const rule = config.packageRules.find((r) =>
+      r.matchUpdateTypes?.includes('lockFileMaintenance'),
+    );
+    expect(rule.postUpgradeTasks).toEqual(SYNC);
+    expect(config.lockFileMaintenance.enabled).toBe(true);
   });
 });
 

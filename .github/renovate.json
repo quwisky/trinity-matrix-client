@@ -78,27 +78,31 @@
       "matchPackageNames": ["matrix-js-sdk", "@matrix-org/**"]
     },
     {
-      "description": "Capacitor core, CLI and every plugin track one major — including the third-party ones, which peer-depend on @capacitor/core and break if they lag behind it.",
+      "description": [
+        "Capacitor core, CLI and every plugin track one major — including the third-party ones, which peer-depend on @capacitor/core and break if they lag behind it.",
+        "`cap sync` writes each native plugin's pnpm virtual-store folder, version and peer suffix included, into ios/App/CapApp-SPM/Package.swift and android/capacitor.settings.gradle, and pins capacitor-swift-pm in Package.swift to the installed @capacitor/ios version. Renovate only regenerates pnpm-lock.yaml, so without this every update to one of these packages failed the iOS and Android jobs, which run `cap sync` and then `git diff --exit-code` (#1630, #1641).",
+        "`cap sync` itself needs node_modules and a web build, neither of which exists after Renovate's lockfile-only install, so scripts/sync-native-plugin-paths.mjs derives the folder names from the lockfile alone. It runs once per branch, after the lockfile is updated, and commits only those two files. The command must match allowedCommands in .github/workflows/renovate.yml exactly, or Renovate refuses to run it and reports an artifact error on the pull request; a package missing from the lockfile fails the script and is reported the same way.",
+        "The package list is also every package with a virtual-store path in those two files, so the next native plugin joins this group; scripts/renovate-config.spec.mjs fails if one is missing."
+      ],
       "groupName": "capacitor",
       "matchPackageNames": [
         "@capacitor/**",
         "@capawesome/**",
         "@aparajita/capacitor-secure-storage",
         "@aparajita/capacitor-biometric-auth"
-      ]
+      ],
+      "postUpgradeTasks": {
+        "commands": ["node scripts/sync-native-plugin-paths.mjs"],
+        "fileFilters": [
+          "ios/App/CapApp-SPM/Package.swift",
+          "android/capacitor.settings.gradle"
+        ],
+        "executionMode": "branch"
+      }
     },
     {
-      "description": [
-        "`cap sync` writes each native plugin's pnpm virtual-store folder, version and peer suffix included, into ios/App/CapApp-SPM/Package.swift and android/capacitor.settings.gradle, and pins capacitor-swift-pm in Package.swift to the installed @capacitor/ios version. Renovate only regenerates pnpm-lock.yaml, so without this every update to one of these packages failed the iOS and Android jobs, which run `cap sync` and then `git diff --exit-code` (#1630, #1641).",
-        "`cap sync` itself needs node_modules and a web build, neither of which exists after Renovate's lockfile-only install, so scripts/sync-native-plugin-paths.mjs derives the folder names from the lockfile alone. It runs once per branch, after the lockfile is updated, and commits only those two files. The command must match allowedCommands in .github/workflows/renovate.yml exactly, or Renovate refuses to run it and reports an artifact error on the pull request; a package missing from the lockfile fails the script and is reported the same way.",
-        "The package list is every package with a virtual-store path in those two files; extend it with the next native plugin."
-      ],
-      "matchPackageNames": [
-        "@capacitor/**",
-        "@capawesome/**",
-        "@aparajita/capacitor-secure-storage",
-        "@aparajita/capacitor-biometric-auth"
-      ],
+      "description": "Lock-file maintenance re-resolves every caret range, the native plugins' included, so its Monday branch can move a virtual-store path without any rule above matching a package name. It runs the same sync for the same reason.",
+      "matchUpdateTypes": ["lockFileMaintenance"],
       "postUpgradeTasks": {
         "commands": ["node scripts/sync-native-plugin-paths.mjs"],
         "fileFilters": [
