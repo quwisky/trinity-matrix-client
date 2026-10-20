@@ -3,7 +3,7 @@ title: Install Trinity
 description: Install Trinity on macOS, Windows or Linux, or self-host the web app.
 audience: user
 contentChannel: release
-productVersion: '0.5.0' # x-release-please-version
+productVersion: '0.5.1' # x-release-please-version
 canonicalTopic: user-home
 pageType: how-to
 platforms: [web, desktop]
@@ -11,7 +11,7 @@ platforms: [web, desktop]
 
 <!-- x-release-please-start-version -->
 
-Trinity is an end-to-end encrypted [Matrix](https://matrix.org) client. Release 0.5.0 is
+Trinity is an end-to-end encrypted [Matrix](https://matrix.org) client. Release 0.5.1 is
 available for macOS, Windows and Linux, and as a self-hostable web app (PWA). Android and
 iOS apps are still in development.
 
@@ -46,14 +46,14 @@ the sandbox they rely on.
 On Debian and Ubuntu:
 
 ```bash
-sudo apt install ./trinity-desktop_0.5.0_amd64.deb
+sudo apt install ./trinity-desktop_0.5.1_amd64.deb
 ```
 
 With the AppImage:
 
 ```bash
-chmod +x Trinity-0.5.0.AppImage
-./Trinity-0.5.0.AppImage
+chmod +x Trinity-0.5.1.AppImage
+./Trinity-0.5.1.AppImage
 ```
 
 Trinity keeps your sign-in and encryption keys in your desktop's keyring (GNOME Keyring or
@@ -80,7 +80,7 @@ On Debian and Ubuntu, the prerelease's `.deb` installs as a separate package,
 `trinity-next`.
 
 Older prereleases installed as "Trinity": you can tell one by its name, Trinity, with a
-version ending in `-next.` and a number (for example `0.5.0`). With Homebrew,
+version ending in `-next.` and a number (for example `0.5.1`). With Homebrew,
 `brew upgrade` replaces that app with Trinity Next. If you installed it by hand and don't
 use stable Trinity, remove it. Removing the app doesn't delete its data: that stays in
 Trinity's data folder, and a stable Trinity installed later would use it.
@@ -94,7 +94,7 @@ docker run -d -p 8080:8080 ghcr.io/quwisky/trinity-web:latest
 ```
 
 Then open `http://localhost:8080`. You can also serve the static files from
-`Trinity-Web-0.5.0.zip` with any web server. For HTTPS, headers and updates, see
+`Trinity-Web-0.5.1.zip` with any web server. For HTTPS, headers and updates, see
 [Self-host a release](/trinity-matrix-client/developers/platforms/web-and-pwa/#self-host-release)
 in the developer guide.
 
@@ -167,7 +167,7 @@ the new device opens your rooms.
 - Only the new device shows a code. A signed-in device can't show one for a new device to
   scan.
 - Element Web can't scan a code, so it can't link a new Trinity device. Trinity can link a new
-  Element Web device (tested with Element Web 0.5.0 on Synapse with MAS); Element Web then
+  Element Web device (tested with Element Web 0.5.1 on Synapse with MAS); Element Web then
   asks you to type the two-digit number instead of showing it.
 - Only the web app in a desktop browser has been tested. Signing in or scanning on a phone
   (Android or iOS) or in the desktop app hasn't been tested yet, and no Matrix app other than
