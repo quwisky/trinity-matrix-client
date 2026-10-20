@@ -1,6 +1,10 @@
 <!-- `[formRoot]` sets novalidate and preventDefaults the submit. -->
 <form [formRoot]="addForm" (submit)="add()" data-testid="add-to-pack-dialog">
-  <trn-dialog-shell title="Add to your emoji" (closed)="cancel()">
+  <trn-dialog-shell
+    title="Add to your emoji"
+    [closable]="!busy()"
+    (closed)="cancel()"
+  >
     <div class="flex flex-col gap-3">
       <div
         class="mx-auto flex size-20 items-center justify-center overflow-hidden rounded-lg bg-muted"

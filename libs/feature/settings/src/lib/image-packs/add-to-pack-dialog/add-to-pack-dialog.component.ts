@@ -36,6 +36,7 @@ import {
   ImagePackEditorService,
   ImagePackImageError,
   MediaService,
+  SHORTCODE_PATTERN,
   sanitizeShortcode,
   type AddInput,
   type ImagePackUsage,
@@ -59,7 +60,7 @@ const USAGES: Record<UseAs, readonly ImagePackUsage[]> = {
   both: ['emoticon', 'sticker'],
 };
 
-const SHORTCODE_HINT = 'Use 1–100 letters, digits, _ or -.';
+const SHORTCODE_HINT = 'Use 1–100 letters, digits, underscores or hyphens.';
 
 /** The dialog's copy for a failed add of `shortcode`. */
 export function addFailure(error: unknown, shortcode: string): Failure {
@@ -102,7 +103,8 @@ export function addFailure(error: unknown, shortcode: string): Failure {
 /**
  * "Add to your emoji": names an image and adds it to the personal pack. Shared by Settings and,
  * through `ADD_TO_IMAGE_PACK_DIALOG`, the rooms feature. Closes with the added entry, or null;
- * an account switch closes it with null so nothing is written to the other account.
+ * an account switch closes it with null so nothing is written to the other account. An add
+ * already started when the account switches still finishes on the original account.
  */
 @Component({
   selector: 'trn-add-to-pack-dialog',
@@ -141,7 +143,7 @@ export class AddToPackDialogComponent {
   protected readonly busy = signal(false);
   protected readonly addForm = form(this.model, (path) => {
     required(path.shortcode, { message: SHORTCODE_HINT });
-    pattern(path.shortcode, /^[A-Za-z0-9_-]{1,100}$/, {
+    pattern(path.shortcode, SHORTCODE_PATTERN, {
       message: SHORTCODE_HINT,
     });
     disabled(path.shortcode, { when: () => this.busy() });
@@ -210,6 +212,11 @@ export class AddToPackDialogComponent {
         this.media.unpin(pinned);
       });
     });
+  }
+
+  /** The opener's dismiss guard: no Escape, backdrop or Back while an add runs. */
+  canDismiss(): boolean {
+    return !this.busy();
   }
 
   protected setUseAs(useAs: UseAs): void {

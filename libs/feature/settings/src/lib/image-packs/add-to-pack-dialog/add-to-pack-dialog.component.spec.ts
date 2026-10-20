@@ -139,11 +139,23 @@ describe('AddToPackDialogComponent', () => {
     );
   });
 
-  it('closes without writing when the active account changes', async () => {
+  it('closes without writing when the active account changes while idle', async () => {
     const view = await build(() => of(ENTRY));
     view.activeUserId.set('@other:hs');
     view.settle();
     expect(view.close).toHaveBeenCalledWith(null);
     expect(view.add).not.toHaveBeenCalled();
+  });
+
+  it('cannot be dismissed while an add runs', async () => {
+    const result = new Subject<PackEntry>();
+    const view = await build(() => result);
+    const dialog = view.fixture.componentInstance;
+    expect(dialog.canDismiss()).toBe(true);
+    view.submit();
+    expect(dialog.canDismiss()).toBe(false);
+    result.error(new Error('offline'));
+    view.settle();
+    expect(dialog.canDismiss()).toBe(true);
   });
 });

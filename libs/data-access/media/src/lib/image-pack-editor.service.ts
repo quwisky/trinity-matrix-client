@@ -30,7 +30,8 @@ import { MediaService } from './media.service';
 const PACK_NAME = 'Your emoji';
 const MAX_IMAGES = 500;
 const MAX_SHORTCODE_LENGTH = 100;
-const SHORTCODE_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
+/** A valid personal-pack shortcode. */
+export const SHORTCODE_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
 const MEGABYTE = 1_048_576;
 
 export type AddInput =
@@ -45,7 +46,9 @@ export type AddInput =
 /**
  * Lazily loads the "Add to your emoji" dialog, which lives in feature-settings, for features
  * that cannot import it. Its inputs are `input: AddInput` and `suggestedName: string`; it
- * closes with the added `PackEntry`, or null.
+ * closes with the added `PackEntry`, or null. Every opener passes
+ * `autoFocus: '[data-autofocus]'` and `dismissGuard: (d) => d?.canDismiss() ?? true`, so
+ * nothing dismisses it while an add runs.
  */
 export const ADD_TO_IMAGE_PACK_DIALOG = new InjectionToken<
   () => Observable<Type<unknown>>
