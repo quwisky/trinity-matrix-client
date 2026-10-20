@@ -10,7 +10,8 @@
     "What replaced them is the dashboard gate — for everything EXCEPT patches, which are exempt from it and open a pull request straight away (see the patch rule below). So patches are the one unbounded category: a pull request each, in whatever quantity a given day produces, each firing the full CI matrix. That is the deliberate shape of this config, not an oversight, but it is the thing to change first if the runners or the review queue ever suffer for it.",
     "Generated build output ONLY. `android/**` and `ios/**` used to be listed wholesale, and that removed two of the four shipped platforms from dependency automation entirely: the AGP and google-services pins in android/build.gradle, the eleven androidx/Cordova versions in android/variables.gradle, the Gradle wrapper, and the iOS SPM graph — none of it watched by anything.",
     "The reason that mattered more than a missed minor: ignorePaths is evaluated BEFORE package rules, so the vulnerabilityAlerts block below — the one category deliberately exempt from the dashboard gate — could not reach these files either. An advisory against androidx.webkit, which backs the WebView rendering an E2EE client, produced no branch, no PR and no dashboard row. Silent by construction.",
-    "What remains here is the copy of the web build each native shell embeds. Those trees are `pnpm build` output committed into the platform projects; a lockfile or manifest found inside one is a stale artefact, not a dependency, and updating it would be updating a build product."
+    "What remains here is the copy of the web build each native shell embeds. Those trees are `pnpm build` output committed into the platform projects; a lockfile or manifest found inside one is a stale artefact, not a dependency, and updating it would be updating a build product.",
+    "rebaseWhen is behind-base-branch, not conflicted. #1629 and #1630 merged back to back: each lockfile had been generated against an older main and merged as text without a conflict, and together they broke every frozen install (ajv-formats). Rebasing whenever main moves regenerates each branch's lockfile against the current main. The cost is that every merge to main re-runs CI on every open Renovate pull request."
   ],
   "baseBranchPatterns": ["main"],
   "timezone": "Europe/Berlin",
@@ -21,7 +22,7 @@
   "dependencyDashboardApproval": true,
   "prConcurrentLimit": 0,
   "prHourlyLimit": 0,
-  "rebaseWhen": "conflicted",
+  "rebaseWhen": "behind-base-branch",
   "minimumReleaseAge": "3 days",
   "ignorePaths": [
     "android/app/src/main/assets/**",

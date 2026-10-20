@@ -956,6 +956,12 @@ and nothing else; a refused or failing run shows as an artifact error on the pul
 `scripts/sync-native-plugin-paths.spec.mjs` fails ordinary CI when the paths drift; run the
 script without `--check` to repair them by hand.
 
+Renovate rebases its branches whenever `main` moves (`rebaseWhen: behind-base-branch`), not
+only on a conflict. #1629 and #1630 merged back to back with lockfiles generated against an
+older `main`; neither conflicted as text, and together they broke every frozen install
+(ajv-formats). Rebasing regenerates each lockfile against the current `main`. The cost is a
+fresh CI run on every open Renovate pull request after each merge to `main`.
+
 ### Apply the update policy
 
 The committed [Renovate policy](../../.github/renovate.json) applies a

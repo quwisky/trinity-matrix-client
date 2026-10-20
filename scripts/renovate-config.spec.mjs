@@ -80,6 +80,10 @@ describe('Renovate update policy', () => {
     expect(config.vulnerabilityAlerts.automerge).not.toBe(true);
   });
 
+  it('rebases update branches whenever main moves, so lockfiles never merge stale', () => {
+    expect(config.rebaseWhen).toBe('behind-base-branch');
+  });
+
   it('describes main as protected by its ruleset', () => {
     expect(source).not.toMatch(/no protection rule|unprotected branch/);
   });
