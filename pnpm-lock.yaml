@@ -214,7 +214,7 @@ importers:
         version: 8.0.5(@capacitor/core@8.5.3)
       '@capacitor/camera':
         specifier: ^8.2.5
-        version: 8.2.5(@capacitor/core@8.5.3)
+        version: 8.2.6(@capacitor/core@8.5.3)
       '@capacitor/core':
         specifier: 8.5.3
         version: 8.5.3
@@ -223,7 +223,7 @@ importers:
         version: 8.1.5(@capacitor/core@8.5.3)
       '@capacitor/geolocation':
         specifier: ^8.2.3
-        version: 8.2.3(@capacitor/core@8.5.3)
+        version: 8.2.4(@capacitor/core@8.5.3)
       '@capacitor/haptics':
         specifier: 8.0.2
         version: 8.0.2(@capacitor/core@8.5.3)
@@ -1711,8 +1711,8 @@ packages:
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
-  '@capacitor/camera@8.2.5':
-    resolution: {integrity: sha512-FPuwY7byjTlBjeUKm17eTjLCPhuqBPJqTF4N3JCQuymLn2FUgfu0SMSN6OUQvCiiz/EVJVyZ9Mmg5GEmDfFoIA==}
+  '@capacitor/camera@8.2.6':
+    resolution: {integrity: sha512-jzvrMrEKs5ACw1/HmcgN5XwSlXYF+/xRKzWtBUESQs5ePf3tTfnR8Nk/p+aSEgay8yZEI0aZQ+2/1xDwMCdV2w==}
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
@@ -1729,8 +1729,8 @@ packages:
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
-  '@capacitor/geolocation@8.2.3':
-    resolution: {integrity: sha512-tJWi6Vmj1tncFaFpruxrmXRsmvDb8i9Pp6Z04Bxsp39JeBavvvtHPMaNVf/jN/lKlohI8i7BqHqbrDVq3RD+cA==}
+  '@capacitor/geolocation@8.2.4':
+    resolution: {integrity: sha512-FDcUiPQc2AXSTAV61QSDPXml11guKBx5HPEkdWvUqw7kMqrc2Ucp0bsWngeLyRs/01a5aWBI0hEuvetuF3PsrQ==}
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
@@ -11877,7 +11877,7 @@ snapshots:
     dependencies:
       '@capacitor/core': 8.5.3
 
-  '@capacitor/camera@8.2.5(@capacitor/core@8.5.3)':
+  '@capacitor/camera@8.2.6(@capacitor/core@8.5.3)':
     dependencies:
       '@capacitor/core': 8.5.3
 
@@ -11913,7 +11913,7 @@ snapshots:
       '@capacitor/core': 8.5.3
       '@capacitor/synapse': 1.0.4
 
-  '@capacitor/geolocation@8.2.3(@capacitor/core@8.5.3)':
+  '@capacitor/geolocation@8.2.4(@capacitor/core@8.5.3)':
     dependencies:
       '@capacitor/core': 8.5.3
       '@capacitor/synapse': 1.0.4
