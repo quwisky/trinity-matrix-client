@@ -19,13 +19,16 @@ import {
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util/matrix';
+import { AccountPackTarget, packEntries } from './image-pack-target';
 import { ImagePackSelectionStore } from './image-pack-selection.store';
 import {
   IMAGE_PACK_EVENT_TYPE,
   IMAGE_PACK_ROOMS_EVENT_TYPE,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
   LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
+  LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE,
   LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE,
+  PERSONAL_IMAGE_PACK_EVENT_TYPE,
   TRINITY_IMAGE_PACK_ENABLED_USAGE,
   isImagePackUsage,
   isValidMxcUri,
@@ -100,7 +103,11 @@ export class ImagePackService {
         this.selections.clear(client);
       }
       this.projection.schedule();
-    } else if (event.getType() === LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE) {
+    } else if (
+      event.getType() === LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE ||
+      event.getType() === PERSONAL_IMAGE_PACK_EVENT_TYPE ||
+      event.getType() === LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE
+    ) {
       this.projection.schedule();
     }
   };
@@ -235,8 +242,9 @@ export function readImagePacks(
     }
   }
 
-  const packs: ImagePack[] = [];
-  let totalImages = 0;
+  const personal = personalPack(client);
+  const packs: ImagePack[] = personal ? [personal] : [];
+  let totalImages = personal?.images.length ?? 0;
   for (const source of sources) {
     if (packs.length >= MAX_PACKS || totalImages >= MAX_IMAGES) break;
     const sourceRoom = client.getRoom?.(source.roomId);
@@ -254,6 +262,43 @@ export function readImagePacks(
     totalImages += bounded.images.length;
   }
   return packs;
+}
+
+function personalPack(client: MatrixClient): ImagePack | null {
+  if (!client.getAccountData) return null;
+  const id = 'personal';
+  const name = 'Your emoji';
+  const images: ImagePackImage[] = packEntries(
+    new AccountPackTarget().read(client),
+  )
+    .slice(0, MAX_IMAGES_PER_PACK)
+    .map((entry) => {
+      const info = entry.info ?? {};
+      return {
+        shortcode: entry.shortcode.slice(0, MAX_LABEL_LENGTH),
+        url: entry.url,
+        body: entry.body ?? entry.shortcode,
+        mimetype: boundedText(info['mimetype']),
+        width: positiveNumber(info['w']),
+        height: positiveNumber(info['h']),
+        info: { ...info },
+        usage: entry.usage,
+        packId: id,
+        packName: name,
+      };
+    });
+  if (images.length === 0) return null;
+  const scopeFor = (usage: ImagePackUsage): ImagePackScope | null =>
+    images.some((image) => image.usage.includes(usage)) ? 'account' : null;
+  return {
+    id,
+    roomId: '',
+    stateKey: '',
+    name,
+    attribution: null,
+    scope: { emoticon: scopeFor('emoticon'), sticker: scopeFor('sticker') },
+    images,
+  };
 }
 
 interface PackSource {
