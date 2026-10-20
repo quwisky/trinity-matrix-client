@@ -374,6 +374,9 @@ test.describe('Timeline loading states', () => {
     await watchSkeleton(page);
     await login(page, f.me);
     const account = new URL(page.url()).searchParams.get('account') as string;
+    // The sign-in can return before its first sync lands. That sync is the one the SDK
+    // persists, so if it carried the room seeded below, the reload would restore the room.
+    await waitForPersistedSync(page, f.me.user as string);
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
     await page.route('**/_matrix/client/**/sync*', async (route) => {
