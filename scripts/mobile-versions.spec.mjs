@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   chromedriverFromAppiumLog,
   frontBoardReason,
+  isAbsentDefaultsDomain,
   isAppNotYetKnown,
   parseWebViewVersion,
   webviewSwitchError,
@@ -115,5 +116,36 @@ describe('FrontBoard launch failure reason', () => {
     expect(frontBoardReason(new Error('socket hang up\nat x'))).toBe(
       'socket hang up',
     );
+  });
+});
+
+describe('absent defaults domain', () => {
+  const failure = (stderr) =>
+    Object.assign(new Error('Command failed: xcrun simctl spawn'), { stderr });
+
+  it('accepts both wordings for a domain cfprefsd does not hold', () => {
+    // As iOS 26.5 printed it in run 39427546415.
+    expect(
+      isAbsentDefaultsDomain(
+        failure(
+          'Domain (/Users/runner/Library/Developer/CoreSimulator/Devices/X/data/Containers/Data/Application/Y/Library/Preferences/dev.trinityproject.trinity) not found.\nDefaults have not been changed.\n',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isAbsentDefaultsDomain(
+        failure(
+          'Domain /tmp/prefs/dev.trinityproject.trinity does not exist\n',
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects any other failure', () => {
+    expect(isAbsentDefaultsDomain(failure('Invalid device: X\n'))).toBe(false);
+    expect(isAbsentDefaultsDomain(new Error('spawn xcrun ETIMEDOUT'))).toBe(
+      false,
+    );
+    expect(isAbsentDefaultsDomain(undefined)).toBe(false);
   });
 });

@@ -22,6 +22,7 @@ import { appiumLogPath } from './artifacts.mts';
 import {
   chromedriverFromAppiumLog,
   frontBoardReason,
+  isAbsentDefaultsDomain,
   isAppNotYetKnown,
   parseWebViewVersion,
   webviewSwitchError,
@@ -262,13 +263,7 @@ async function clearIosAppData(): Promise<void> {
       'delete',
       join(preferences, plist.slice(0, -'.plist'.length)),
     ).catch((error: unknown) => {
-      // A domain cfprefsd never loaded, or a plist already gone, has nothing to restore.
-      const { stderr = '' } = error as { stderr?: string };
-      if (
-        existsSync(join(preferences, plist)) &&
-        !/Domain .* does not exist/u.test(stderr)
-      )
-        throw error;
+      if (!isAbsentDefaultsDomain(error)) throw error;
     });
   }
   for (const container of [data, group]) {
