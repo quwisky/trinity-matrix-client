@@ -53,3 +53,21 @@ export function isAppNotYetKnown(error: unknown): boolean {
       message.includes('RequestDenied'))
   );
 }
+
+/**
+ * Why FrontBoard refused a launch: its error codes, outermost first, and its outer failure
+ * reason, e.g. `RequestDenied > NotFound: The request was denied … unknown to FrontBoard`.
+ */
+export function frontBoardReason(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const codes = [...message.matchAll(/BSErrorCodeDescription=(\w+)/g)].map(
+    (match) => match[1],
+  );
+  // The outer reason follows its nested error in the text, so it is the last one.
+  const reason = [
+    ...message.matchAll(/NSLocalizedFailureReason=(.*?)(?=, NS|, FBS|\}|$)/gm),
+  ].at(-1)?.[1];
+  if (codes.length === 0 && !reason)
+    return message.split('\n')[0]!.slice(0, 160);
+  return [codes.join(' > '), reason].filter(Boolean).join(': ');
+}

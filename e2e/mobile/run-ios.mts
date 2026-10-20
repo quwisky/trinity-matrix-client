@@ -1,5 +1,14 @@
-import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import { closeSync, mkdirSync, openSync, writeFileSync } from 'node:fs';
+import { execFile, spawn } from 'node:child_process';
+import {
+  closeSync,
+  copyFileSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { E2EInvocation } from '../support/invocation.mts';
@@ -32,32 +41,10 @@ const appPath = join(
 );
 
 let simulator: Simulator | undefined;
-let networkLog: ChildProcess | undefined;
+const runStarted = new Date();
+const pad = (n: number): string => String(n).padStart(2, '0');
+const logStart = `${runStarted.getFullYear()}-${pad(runStarted.getMonth() + 1)}-${pad(runStarted.getDate())} ${pad(runStarted.getHours())}:${pad(runStarted.getMinutes())}:${pad(runStarted.getSeconds())}`;
 
-/**
- * Stream the WebKit networking process's log for the whole run. `log show --last 10m` after
- * the suite overflowed its buffer and only reached the last minutes, so a TLS stall in an
- * early spec left no evidence.
- */
-function streamNetworkLog(udid: string): void {
-  const out = openSync(join(artifactsDir(), 'webkit-networking.log'), 'a');
-  networkLog = spawn(
-    'xcrun',
-    [
-      'simctl',
-      'spawn',
-      udid,
-      'log',
-      'stream',
-      '--style',
-      'compact',
-      '--predicate',
-      'process == "com.apple.WebKit.Networking"',
-    ],
-    { stdio: ['ignore', out, out] },
-  );
-  closeSync(out);
-}
 let ownsBoot = false;
 
 const artifactsDir = (): string =>
@@ -143,7 +130,6 @@ async function main(invocation: E2EInvocation): Promise<void> {
   process.env['TRINITY_IOS_UDID'] = udid;
   process.env['TRINITY_IOS_APP'] = appPath;
   mkdirSync(artifactsDir(), { recursive: true });
-  streamNetworkLog(udid);
   // Keychain access needs entitlements; keep the evidence whatever the next run does.
   // Simulator builds embed them in the Mach-O __TEXT,__entitlements section, which
   // codesign does not print, so read both.
@@ -212,6 +198,31 @@ async function captureDiagnostics(): Promise<void> {
       writeFileSync(join(outputDirectory, file), failureText(error));
     }
   };
+  // Most telling first: after the CI timeout's SIGINT, teardown has until SIGKILL.
+  copyCrashReports(outputDirectory);
+  // The whole run's WebContent lifecycle: syslog-tail covers only the last minutes.
+  await logShow(
+    'webkit-process.log',
+    udid,
+    [
+      '--start',
+      logStart,
+      '--predicate',
+      '(process == "App" AND subsystem == "com.apple.WebKit" AND category IN {"Process", "ProcessSuspension", "Loading"}) OR (process == "com.apple.WebKit.WebContent" AND messageType >= 16) OR (process == "runningboardd" AND composedMessage CONTAINS "WebContent")',
+    ],
+    150_000,
+  );
+  await logShow(
+    'syslog-tail.txt',
+    udid,
+    [
+      '--last',
+      '10m',
+      '--predicate',
+      'process == "App" OR process BEGINSWITH "com.apple.WebKit" OR subsystem == "com.apple.network"',
+    ],
+    120_000,
+  );
   await capture('devices.json', ['list', '-j', 'devices']);
   await capture('app-container.txt', [
     'get_app_container',
@@ -219,28 +230,60 @@ async function captureDiagnostics(): Promise<void> {
     APP_PACKAGE,
     'data',
   ]);
-  // `log show` over the whole Simulator is slow: allow it 3 minutes, one argv element
-  // for the predicate (no shell).
-  await capture(
-    'syslog-tail.txt',
-    [
-      'spawn',
-      udid,
-      'log',
-      'show',
-      '--last',
-      '10m',
-      '--style',
-      'compact',
-      '--predicate',
-      'process == "App" OR process BEGINSWITH "com.apple.WebKit" OR subsystem == "com.apple.network"',
-    ],
-    180_000,
-  );
+}
+
+/**
+ * `log show` over the Simulator, written straight to a file: its output can exceed any
+ * in-memory buffer. One argv element for the predicate (no shell).
+ */
+async function logShow(
+  file: string,
+  udid: string,
+  args: string[],
+  cleanupTimeout: number,
+): Promise<void> {
+  const out = openSync(join(artifactsDir(), file), 'w');
+  try {
+    await new Promise<void>((resolve) => {
+      const child = spawn(
+        'xcrun',
+        ['simctl', 'spawn', udid, 'log', 'show', '--style', 'compact', ...args],
+        {
+          stdio: ['ignore', out, out],
+          signal: commandSignal(),
+          timeout: isCleaningUp() ? cleanupTimeout : undefined,
+        },
+      );
+      child.once('error', () => resolve());
+      child.once('close', () => resolve());
+    });
+  } finally {
+    closeSync(out);
+  }
+}
+
+/** Every crash report the host wrote during this run, such as a WebContent crash. */
+function copyCrashReports(outputDirectory: string): void {
+  const dir = join(homedir(), 'Library/Logs/DiagnosticReports');
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const file = join(dir, entry.name);
+    try {
+      if (statSync(file).mtime < runStarted) continue;
+      copyFileSync(file, join(outputDirectory, `crash-${entry.name}.txt`));
+    } catch {
+      // A report removed or unreadable mid-copy must not cost the rest.
+    }
+  }
 }
 
 async function releaseDevice(): Promise<void> {
-  networkLog?.kill();
   await captureDiagnostics().catch(() => undefined);
   if (!simulator) return;
   await simctl('terminate', simulator.udid, APP_PACKAGE).catch(() => undefined);

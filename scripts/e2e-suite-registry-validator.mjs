@@ -351,7 +351,7 @@ export const yamlRunCommands = (source) => {
   return commands
     .map((command) => {
       const wrapper = command.match(
-        /^(.*?\s)?node scripts\/ci-run-command\.mjs --timeout-ms \d+ -- (.+)$/u,
+        /^(.*?\s)?node scripts\/ci-run-command\.mjs --timeout-ms \d+(?: --kill-grace-ms \d+)? -- (.+)$/u,
       );
       return wrapper ? `${wrapper[1] ?? ''}${wrapper[2]}` : command;
     })

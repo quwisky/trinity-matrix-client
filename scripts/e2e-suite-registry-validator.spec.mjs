@@ -423,10 +423,12 @@ steps:
 steps:
   - run: node scripts/ci-run-command.mjs --timeout-ms 3600000 -- pnpm exec nx run trinity-e2e-browser:e2e
   - run: TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 3600000 -- pnpm e2e:mobile
+  - run: node scripts/ci-run-command.mjs --timeout-ms 3900000 --kill-grace-ms 360000 -- pnpm e2e:mobile:ios
 `),
     ).toEqual([
       'pnpm exec nx run trinity-e2e-browser:e2e',
       'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:mobile',
+      'pnpm e2e:mobile:ios',
     ]);
   });
 
