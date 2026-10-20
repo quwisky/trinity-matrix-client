@@ -21,6 +21,9 @@ const iosCapabilities = {
   // Web Inspector lists the Capacitor app by process name (process-App), not bundle id.
   'appium:additionalWebviewBundleIds': ['process-App'],
   'appium:webviewConnectTimeout': 60_000,
+  // A command sent into a page whose WebContent process died waits out this limit (120 s by
+  // default, two thirds of a test's budget). The slowest live answer seen was 43 s.
+  'appium:webviewAtomWaitTimeout': 60_000,
   // The app's JS console errors land in appium.log (uploaded and scrubbed).
   'appium:showSafariConsoleLog': true,
   'appium:includeSafariInWebviews': false,

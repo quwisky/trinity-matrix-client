@@ -52,7 +52,8 @@ function streamNetworkLog(udid: string): void {
       '--style',
       'compact',
       '--predicate',
-      'process == "com.apple.WebKit.Networking"',
+      // Also the app's own WebKit lines naming why a WebContent process ended.
+      'process == "com.apple.WebKit.Networking" OR (process == "App" AND subsystem == "com.apple.WebKit" AND (composedMessage CONTAINS[c] "terminat" OR composedMessage CONTAINS[c] "crash"))',
     ],
     { stdio: ['ignore', out, out] },
   );
