@@ -82,6 +82,24 @@
       />
     }
     @case ('emoji') {
+      <!-- Custom emoji cannot be picked into a message yet, so the section only adds them. -->
+      @if (adding()) {
+        <section
+          class="flex flex-col gap-2 pt-3"
+          [attr.aria-labelledby]="panelId() + '-your-emoji'"
+          data-testid="your-emoji"
+        >
+          <h3
+            class="m-0 text-xs font-bold text-[var(--trinity-text-muted)] uppercase"
+            [id]="panelId() + '-your-emoji'"
+          >
+            Your emoji
+          </h3>
+          <div class="flex">
+            <trn-add-images-tile />
+          </div>
+        </section>
+      }
       <!-- A sheet's touch cells are 44px with the larger glyph. `min-w-0`: the grid must
            not size its track; the content's width does. -->
       <trn-emoji-picker

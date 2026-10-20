@@ -9,6 +9,7 @@ import {
   isQuotableMessage,
   savableMediaKind,
 } from '@trinity/data-access/timeline';
+import { isValidMxcUri, type AddInput } from '@trinity/data-access/media';
 import { messagePermalink } from '@trinity/util/matrix';
 import { defer, filter, take } from 'rxjs';
 import { type EditHistoryDialogService } from '../edit-history/edit-history.service';
@@ -24,6 +25,7 @@ import { MessageSourceComponent } from '../message-source/message-source.compone
 import { ReactionPickerComponent } from '../reaction-picker/reaction-picker.component';
 import { type ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import { type ReportService } from '../report/report.service';
+import { type AddToMyEmojiService } from './add-to-my-emoji.service';
 import { type UndecryptableFixService } from './undecryptable-fix.service';
 
 /** What the message list and the thread panel hand the shared row-action dispatcher. */
@@ -41,6 +43,7 @@ export interface SharedRowActionContext {
   readonly editHistory: Pick<EditHistoryDialogService, 'openHistory$'>;
   /** Open the fix for a message this device could not decrypt. */
   readonly undecryptableFix: Pick<UndecryptableFixService, 'open'>;
+  readonly addToEmoji: Pick<AddToMyEmojiService, 'add'>;
   /** Toggle a reaction; each host sends it its own way. */
   readonly react: (id: string, key: string) => void;
   /** Quote a row into the composer; hosts differ in what quoting cancels. */
@@ -55,6 +58,8 @@ export interface RowCapsPolicy {
   readonly canPin: boolean;
   readonly canThread: boolean;
   readonly pinnedIds: readonly string[];
+  /** Whether the sticker event with this id may be offered for the personal pack. */
+  readonly canAddToEmoji: (eventId: string) => boolean;
 }
 
 /** One row's capabilities under a host's {@link RowCapsPolicy}. */
@@ -77,8 +82,42 @@ export function buildRowCaps(
     canQuote: isQuotableMessage(message),
     saveMedia: savableMediaKind(message),
     canForward: isForwardableMessage(message),
+    addToEmoji:
+      message.kind === 'sticker' && !unsent && policy.canAddToEmoji(message.id),
     readOnly: false,
   };
+}
+
+/**
+ * A sticker event's image as "Add to my emoji" takes it: its own mxc, info and body. Null for
+ * anything else, or an encrypted sticker, which has no plain mxc to put in a pack.
+ */
+export function stickerImage(
+  raw: object | null,
+): Extract<AddInput, { kind: 'existing' }> | null {
+  const event = raw as { type?: unknown; content?: unknown } | null;
+  if (event?.type !== 'm.sticker' || !isRecord(event.content)) return null;
+  const { url, info, body } = event.content;
+  if (!isValidMxcUri(url)) return null;
+  return {
+    kind: 'existing',
+    url,
+    ...(isRecord(info) ? { info } : {}),
+    ...(typeof body === 'string' ? { body } : {}),
+  };
+}
+
+/** Whether `raw` is a sticker whose image is not in the personal pack yet. */
+export function canAddSticker(
+  adder: Pick<AddToMyEmojiService, 'canAdd'>,
+  raw: object | null,
+): boolean {
+  const image = stickerImage(raw);
+  return !!image && adder.canAdd(image.url);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Whether two caps carry the same capabilities — every field is a flat primitive. */
@@ -92,6 +131,7 @@ export function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
     a.canQuote === b.canQuote &&
     a.saveMedia === b.saveMedia &&
     a.canForward === b.canForward &&
+    a.addToEmoji === b.addToEmoji &&
     a.readOnly === b.readOnly
   );
 }
@@ -125,6 +165,7 @@ type SharedRowAction = Extract<
       | 'copy'
       | 'copy-link'
       | 'save-media'
+      | 'add-to-emoji'
       | 'view-source'
       | 'forward'
       | 'report'
@@ -173,6 +214,11 @@ export function dispatchSharedRowAction(
     case 'save-media':
       if (row.media) ctx.mediaSave.save(row.media);
       return true;
+    case 'add-to-emoji': {
+      const image = stickerImage(ctx.timeline.rawEvent(ctx.roomId, row.id));
+      if (image) ctx.addToEmoji.add(image, image.body ?? '');
+      return true;
+    }
     case 'view-source': {
       const raw = ctx.timeline.rawEvent(ctx.roomId, row.id);
       if (raw) {

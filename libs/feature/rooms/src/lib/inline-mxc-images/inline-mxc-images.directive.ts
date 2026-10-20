@@ -6,9 +6,13 @@ import {
   effect,
   inject,
   input,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { MediaPipeline, MediaService } from '@trinity/data-access/media';
 import type { MediaPayload } from '@trinity/util/matrix';
 import { latestGuard } from '@trinity/util/ui';
@@ -17,6 +21,7 @@ import {
   MediaViewerLauncher,
   type MediaViewerOutcome,
 } from '../media-attachment/media-viewer-launcher';
+import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import {
   IMAGE_ONLY_SPOILER,
@@ -55,7 +60,8 @@ interface Declaration {
  * media server the emoji was shown. Images (cap 10) wait until they come within one
  * viewport of view and, inside a concealed spoiler, until it is revealed. Click, Enter or
  * Space on an image opens the full image in the shared viewer; an image inside a link is
- * left to the link.
+ * left to the link. A shown emoji not yet in the personal pack is a button whose menu offers
+ * "Add to my emoji".
  */
 @Directive({
   selector: '[trnInlineMxcImages]',
@@ -69,6 +75,7 @@ interface Declaration {
 export class InlineMxcImagesDirective implements OnDestroy {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly media = inject(MediaService);
+  private readonly adder = inject(AddToMyEmojiService);
   private readonly visibility = inject(InlineImageVisibility);
   // The viewer, MediaPipeline and toast are resolved on activation, not per rendered body.
   private readonly injector = inject(Injector);
@@ -86,6 +93,8 @@ export class InlineMxcImagesDirective implements OnDestroy {
   private readonly viewerRequests = new Subscription();
   /** One entry per pin taken: the same emoji twice in a body pins its shared URL twice. */
   private pinned: string[] = [];
+  /** Emoji on screen and what they show, for "Add to my emoji". */
+  private readonly emotes = new Map<HTMLImageElement, Declaration>();
   /** Images on screen and what they show, for the viewer. */
   private readonly images = new Map<HTMLImageElement, Declaration>();
   /** Images inside a concealed spoiler, with what to start once it is revealed. */
@@ -100,6 +109,12 @@ export class InlineMxcImagesDirective implements OnDestroy {
     this.spoilers?.revealed
       .pipe(takeUntilDestroyed())
       .subscribe((spoiler) => this.startRevealed(spoiler));
+    effect(() => {
+      this.adder.owned();
+      untracked(() =>
+        this.emotes.forEach((d, emote) => mark(emote, this.offers(emote, d))),
+      );
+    });
     effect(() => {
       const source = this.source();
       const token = this.reveal.next();
@@ -123,6 +138,11 @@ export class InlineMxcImagesDirective implements OnDestroy {
       return;
     }
     const host = this.host.nativeElement;
+    const emote = (event.target as Element | null)?.closest('img.mx-emoticon');
+    if (emote instanceof HTMLImageElement && host.contains(emote)) {
+      this.offerEmote(event, emote);
+      return;
+    }
     const image = (event.target as Element | null)?.closest('img.mx-image');
     if (!(image instanceof HTMLImageElement) || !host.contains(image)) {
       return;
@@ -146,6 +166,42 @@ export class InlineMxcImagesDirective implements OnDestroy {
         .get(MediaViewerLauncher)
         .open(reference)
         .subscribe((outcome) => this.onViewerOutcome(outcome)),
+    );
+  }
+
+  private offerEmote(event: Event, emote: HTMLImageElement): void {
+    const declaration = this.emotes.get(emote);
+    if (!declaration || !this.offers(emote, declaration)) {
+      return;
+    }
+    event.preventDefault();
+    const name = declaration.alt.replace(/^:|:$/g, '');
+    this.injector.get(TrnSurfaceService).openActions(
+      {
+        header: declaration.alt,
+        buttons: [
+          {
+            text: 'Add to my emoji',
+            icon: 'smile',
+            handler: () =>
+              this.adder.add(
+                { kind: 'existing', url: declaration.mxc, body: name },
+                name,
+              ),
+          },
+          { text: 'Cancel', role: 'cancel' },
+        ],
+      },
+      { anchor: emote, ariaLabel: declaration.alt },
+    );
+  }
+
+  /** An emoji inside a link is left to the link, as an image is. */
+  private offers(emote: HTMLImageElement, { mxc }: Declaration): boolean {
+    const link = emote.closest('a[href]');
+    return (
+      this.adder.canAdd(mxc) &&
+      !(link && this.host.nativeElement.contains(link))
     );
   }
 
@@ -260,6 +316,10 @@ export class InlineMxcImagesDirective implements OnDestroy {
               .subscribe(() => target.classList.remove('mx-image--loading')),
           );
           target.src = url;
+          if (declaration.kind === 'emote') {
+            this.emotes.set(target, declaration);
+            mark(target, this.offers(target, declaration));
+          }
         },
         error: () => {
           this.forget(target);
@@ -294,6 +354,7 @@ export class InlineMxcImagesDirective implements OnDestroy {
   }
 
   private forget(image: HTMLImageElement): void {
+    this.emotes.delete(image);
     this.images.delete(image);
     this.concealed.delete(image);
     this.concealedEmotes.delete(image);
@@ -304,6 +365,7 @@ export class InlineMxcImagesDirective implements OnDestroy {
     this.subscriptions = new Subscription();
     for (const url of this.pinned) this.media.unpin(url);
     this.pinned = [];
+    this.emotes.clear();
     this.images.clear();
     this.concealed.clear();
     this.concealedEmotes.clear();
@@ -341,6 +403,17 @@ function payloadFor({ mxc, alt }: Declaration): MediaPayload {
     thumbnailMxc: null,
     thumbnailFile: null,
   };
+}
+
+/** Make an emoji a button for its "Add to my emoji" menu, or plain again. */
+function mark(emote: HTMLImageElement, offered: boolean): void {
+  if (offered) {
+    emote.setAttribute('role', 'button');
+    emote.tabIndex = 0;
+  } else {
+    emote.removeAttribute('role');
+    emote.removeAttribute('tabindex');
+  }
 }
 
 /** Replace an image with its alt text, as a failed emoji always has been. */

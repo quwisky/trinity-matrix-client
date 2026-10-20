@@ -133,6 +133,16 @@
         Save {{ kind }}
       </button>
     }
+    @if (caps().addToEmoji) {
+      <button
+        trnDropdownMenuItem
+        (triggered)="action.emit({ type: 'add-to-emoji' })"
+        data-testid="msg-add-to-emoji"
+      >
+        <trn-icon name="smile" />
+        Add to my emoji
+      </button>
+    }
     @if (caps().canForward) {
       <button
         trnDropdownMenuItem

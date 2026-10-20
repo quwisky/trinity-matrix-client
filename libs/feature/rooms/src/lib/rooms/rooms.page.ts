@@ -16,6 +16,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   InboundRoomLinkService,
   roomTitle,
@@ -43,6 +44,7 @@ import {
 } from '../room-header/room-header.component';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { type ExactRoomSelection } from '../shared/exact-selection';
+import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 import { AccountPickerService } from '../account-picker/account-picker.service';
@@ -366,6 +368,8 @@ export class RoomsPage {
     // constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle hooks, so
     // binding there leaves the callback unset in unit tests.
     this.nav.bindFocus(() => this.focusActiveView());
+    // The one owner of the personal pack's projection for the timeline, threads and pickers.
+    inject(AddToMyEmojiService).run().pipe(takeUntilDestroyed()).subscribe();
     this.shortcutActions.bindSearchFocus(() => {
       if (!this.vm.activeRoom()) return false;
       // Below the members breakpoint the field is hidden: panels are drawers over it.

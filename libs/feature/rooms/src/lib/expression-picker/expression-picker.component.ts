@@ -37,6 +37,8 @@ import {
   type ComposerExpressionTab,
 } from '@trinity/data-access/timeline';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
+import { AddImagesTileComponent } from '../shared/add-images-tile/add-images-tile.component';
+import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 
 const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
@@ -62,6 +64,7 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
   selector: 'trn-expression-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    AddImagesTileComponent,
     GifPickerComponent,
     NgTemplateOutlet,
     StickerPickerComponent,
@@ -107,6 +110,8 @@ export class ExpressionPickerComponent {
   private readonly chosen = signal<ComposerExpressionTab | null>(null);
 
   protected readonly labels = TAB_LABELS;
+  /** Whether "Your emoji" and its Add tile are offered. */
+  protected readonly adding = inject(AddToMyEmojiService).available;
   protected readonly recent = this.recentEmoji.recent;
   /** How many times the panel has been shown; see {@link TrnAnchoredOverlayDirective.shown}. */
   protected readonly shown = computed(() => this.layer?.shown() ?? 0);

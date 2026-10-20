@@ -10,6 +10,7 @@ import { type MessageRow } from '../message-row/message-row.component';
 import {
   buildRowCaps,
   buildRowCapsMap,
+  canAddSticker,
   dispatchSharedRowAction,
   sameRowCaps,
   type RowCapsPolicy,
@@ -36,6 +37,7 @@ function setup(overrides: Partial<SharedRowActionContext> = {}) {
     quote: vi.fn(),
     mediaSave: { save: vi.fn() },
     undecryptableFix: { open: vi.fn(() => of(undefined)) },
+    addToEmoji: { add: vi.fn() },
     ...overrides,
   };
   return ctx as typeof ctx & SharedRowActionContext;
@@ -62,6 +64,33 @@ describe('dispatchSharedRowAction', () => {
     ).toBe(true);
 
     expect(ctx.mediaSave.save).toHaveBeenCalledWith(media);
+  });
+
+  it('"Add to my emoji" on a sticker opens the dialog with its mxc and info', () => {
+    const info = { mimetype: 'image/webp', w: 256, h: 240, size: 1234 };
+    const ctx = setup({
+      timeline: {
+        rawEvent: vi.fn(() => ({
+          type: 'm.sticker',
+          content: { url: 'mxc://hs/fox', body: 'Fox', info },
+        })),
+      },
+    });
+
+    expect(dispatchSharedRowAction({ type: 'add-to-emoji' }, row, ctx)).toBe(
+      true,
+    );
+
+    expect(ctx.timeline.rawEvent).toHaveBeenCalledWith('!r:hs', '$e');
+    expect(ctx.addToEmoji.add).toHaveBeenCalledWith(
+      {
+        kind: 'existing',
+        url: 'mxc://hs/fox',
+        body: 'Fox',
+        info: { mimetype: 'image/webp', w: 256, h: 240, size: 1234 },
+      },
+      'Fox',
+    );
   });
 
   it('does nothing for save-media on a row without media', () => {
@@ -206,6 +235,7 @@ describe('row caps', () => {
     canPin: true,
     canThread: true,
     pinnedIds: [],
+    canAddToEmoji: (id) => id !== '$owned',
   };
   const text = (id: string, over: Partial<MessageRow> = {}) =>
     ({
@@ -274,6 +304,34 @@ describe('row caps', () => {
     expect(forwardable({ decryptionFailed: true })).toBe(false);
   });
 
+  it('offers "Add to my emoji" on a sent sticker the host allows', () => {
+    const sticker = (id: string, over: Partial<MessageRow> = {}) =>
+      buildRowCaps(text(id, { kind: 'sticker', ...over }), policy).addToEmoji;
+
+    expect(sticker('$fox')).toBe(true);
+    expect(sticker('$owned')).toBe(false);
+    expect(sticker('$fox', { kind: 'image' })).toBe(false);
+    expect(sticker('$fox', { status: 'sending' })).toBe(false);
+  });
+
+  it('hidden when that mxc is already in the pack', () => {
+    const adder = { canAdd: (mxc: string) => mxc !== 'mxc://hs/owned' };
+    const event = (url: string, type = 'm.sticker') => ({
+      type,
+      content: { url, body: 'Fox' },
+    });
+
+    expect(canAddSticker(adder, event('mxc://hs/fox'))).toBe(true);
+    expect(canAddSticker(adder, event('mxc://hs/owned'))).toBe(false);
+    expect(canAddSticker(adder, event('mxc://hs/fox', 'm.room.message'))).toBe(
+      false,
+    );
+    expect(canAddSticker(adder, event('https://example.org/fox.png'))).toBe(
+      false,
+    );
+    expect(canAddSticker(adder, null)).toBe(false);
+  });
+
   it('compares every capability', () => {
     const caps = buildRowCaps(text('$a'), policy);
     expect(sameRowCaps(caps, { ...caps, canForward: !caps.canForward })).toBe(
@@ -283,6 +341,7 @@ describe('row caps', () => {
     expect(sameRowCaps(caps, { ...caps })).toBe(true);
     expect(sameRowCaps(caps, { ...caps, pinned: true })).toBe(false);
     expect(sameRowCaps(caps, { ...caps, saveMedia: 'image' })).toBe(false);
+    expect(sameRowCaps(caps, { ...caps, addToEmoji: true })).toBe(false);
   });
 
   it('reuses the previous caps object for rows that did not change', () => {

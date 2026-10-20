@@ -1,7 +1,9 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MediaService } from '@trinity/data-access/media';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
 import { StickerPickerComponent } from './sticker-picker.component';
 
 describe('StickerPickerComponent', () => {
@@ -185,5 +187,109 @@ describe('StickerPickerComponent', () => {
 
     expect(resolveMedia).not.toHaveBeenCalled();
     large.destroy();
+  });
+});
+
+describe('StickerPickerComponent with your emoji', () => {
+  const adder = { available: signal(true), addFiles: vi.fn() };
+  const image = (shortcode: string, packId: string, packName: string) => ({
+    shortcode,
+    url: `mxc://hs/${shortcode}`,
+    body: '',
+    mimetype: 'image/png',
+    width: 32,
+    height: 32,
+    info: {},
+    usage: ['sticker'] as const,
+    packId,
+    packName,
+  });
+  const pack = (id: string, name: string, shortcodes: string[]) => ({
+    id,
+    roomId: '',
+    stateKey: '',
+    name,
+    attribution: null,
+    scope: { emoticon: null, sticker: 'account' as const },
+    images: shortcodes.map((code) => image(code, id, name)),
+  });
+
+  async function setup(packs: unknown[]) {
+    adder.addFiles.mockReset();
+    await TestBed.configureTestingModule({
+      imports: [StickerPickerComponent],
+      providers: [
+        {
+          provide: MediaService,
+          useValue: {
+            resolveMedia: vi.fn(() => of('blob:sticker')),
+            pin: vi.fn(),
+            unpin: vi.fn(),
+          },
+        },
+        { provide: AddToMyEmojiService, useValue: adder },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(StickerPickerComponent);
+    fixture.componentRef.setInput('packs', packs);
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  it('the picker lists Your stickers first, then an Add tile', async () => {
+    const host = await setup([
+      pack('personal', 'Your emoji', ['fox']),
+      pack('!r:hs:fun', 'Fun', ['party']),
+    ]);
+
+    const headings = [...host.querySelectorAll('h3')].map((h) =>
+      h.textContent?.trim(),
+    );
+    expect(headings).toEqual(['Your stickers', 'Fun']);
+    const first = host.querySelector('[data-testid="sticker-pack"]')!;
+    const tiles = [...first.querySelectorAll('button')];
+    expect(tiles.map((b) => b.getAttribute('aria-label'))).toEqual([
+      'fox (:fox:)',
+      'Add images',
+    ]);
+  });
+
+  it('keeps Your stickers with its Add tile while the pack has no stickers', async () => {
+    const host = await setup([pack('!r:hs:fun', 'Fun', ['party'])]);
+
+    expect(host.querySelector('h3')?.textContent?.trim()).toBe('Your stickers');
+    expect(host.querySelector('[aria-label="Add images"]')).not.toBeNull();
+  });
+
+  it('Add opens the file chooser, then the dialog', async () => {
+    const host = await setup([]);
+    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const choose = vi.spyOn(input, 'click').mockImplementation(() => undefined);
+
+    host.querySelector<HTMLButtonElement>('[aria-label="Add images"]')!.click();
+    expect(choose).toHaveBeenCalledOnce();
+    expect(input.accept).toBe('image/png,image/jpeg,image/webp,image/gif');
+    expect(input.multiple).toBe(true);
+
+    const fox = new File(['a'], 'fox.png', { type: 'image/png' });
+    Object.defineProperty(input, 'files', { value: [fox], configurable: true });
+    input.dispatchEvent(new Event('change'));
+
+    expect(adder.addFiles).toHaveBeenCalledWith([fox]);
+    expect(input.value).toBe('');
+  });
+
+  it('offers no Add tile where images cannot be added', async () => {
+    adder.available.set(false);
+    try {
+      const host = await setup([pack('!r:hs:fun', 'Fun', ['party'])]);
+
+      expect(host.querySelector('[aria-label="Add images"]')).toBeNull();
+      expect(
+        [...host.querySelectorAll('h3')].map((h) => h.textContent?.trim()),
+      ).toEqual(['Fun']);
+    } finally {
+      adder.available.set(true);
+    }
   });
 });

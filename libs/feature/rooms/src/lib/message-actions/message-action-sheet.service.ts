@@ -29,7 +29,7 @@ const QUICK_SHEET_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '😢']
  *
  *  - `dispatch({ type })` with a union-typed discriminant typechecks through TypeScript's
  *    discriminant cross-product expansion, which is CAPPED AT 25 combinations. The union has
- *    15 payload-free members; the 26th turns this line into a baffling "not assignable to
+ *    16 payload-free members; the 26th turns this line into a baffling "not assignable to
  *    type '{ type: … }'" error with no mention of the cap.
  *  - Exclusion is by REQUIRED property name. A future `{ type: 'react'; key?: string }` would
  *    survive `Exclude` and silently reopen the gap this closes.
@@ -160,6 +160,16 @@ export class MessageActionSheetService {
               icon: 'download' as const,
               testId: 'sheet-save-media',
               handler: act('save-media'),
+            },
+          ]
+        : []),
+      ...(caps.addToEmoji
+        ? [
+            {
+              text: 'Add to my emoji',
+              icon: 'smile' as const,
+              testId: 'sheet-add-to-emoji',
+              handler: act('add-to-emoji'),
             },
           ]
         : []),

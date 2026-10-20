@@ -1,6 +1,10 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+  type ActionSheetButton,
+} from '@trinity/components/overlay';
 import {
   MediaPipeline,
   MediaService,
@@ -13,6 +17,7 @@ import {
   MediaViewerLauncher,
   type MediaViewerOutcome,
 } from '../media-attachment/media-viewer-launcher';
+import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import { LOADING_PLACEHOLDER } from './inline-image-box';
 import { InlineMxcImagesDirective } from './inline-mxc-images.directive';
@@ -199,6 +204,68 @@ describe('InlineMxcImagesDirective', () => {
 
       expect(media.resolveMedia).not.toHaveBeenCalled();
       expect(host.textContent).toBe(':odd:');
+    });
+  });
+
+  describe('Add to my emoji', () => {
+    const owned = signal<ReadonlySet<string> | null>(new Set());
+    const adder = {
+      owned,
+      canAdd: (mxc: string) => owned()?.has(mxc) === false,
+      add: vi.fn(),
+    };
+    let buttons: readonly ActionSheetButton[] = [];
+    const surfaces = {
+      openActions: vi.fn((data: { buttons: readonly ActionSheetButton[] }) => {
+        buttons = data.buttons;
+        return {};
+      }),
+    };
+    const wave = () =>
+      sanitizeMatrixHtml(
+        '<img data-mx-emoticon src="mxc://hs/wave" alt=":wave:">',
+      );
+
+    beforeEach(() => {
+      owned.set(new Set());
+      adder.add.mockReset();
+      surfaces.openActions.mockClear();
+      TestBed.overrideProvider(AddToMyEmojiService, { useValue: adder });
+      TestBed.overrideProvider(TrnSurfaceService, { useValue: surfaces });
+    });
+
+    it('shown for a custom emoji in a message', async () => {
+      const { host } = await render(wave());
+      resolved.next('blob:wave');
+      const emote = host.querySelector('img')!;
+
+      expect(emote.getAttribute('role')).toBe('button');
+      expect(emote.tabIndex).toBe(0);
+      emote.click();
+
+      expect(surfaces.openActions).toHaveBeenCalledWith(
+        expect.objectContaining({ header: ':wave:' }),
+        expect.objectContaining({ anchor: emote, ariaLabel: ':wave:' }),
+      );
+      buttons.find((b) => b.text === 'Add to my emoji')!.handler!();
+      expect(adder.add).toHaveBeenCalledWith(
+        { kind: 'existing', url: 'mxc://hs/wave', body: 'wave' },
+        'wave',
+      );
+    });
+
+    it('hidden when that mxc is already in the pack', async () => {
+      const { fixture, host } = await render(wave());
+      resolved.next('blob:wave');
+      const emote = host.querySelector('img')!;
+
+      owned.set(new Set(['mxc://hs/wave']));
+      fixture.detectChanges();
+
+      expect(emote.getAttribute('role')).toBeNull();
+      expect(emote.hasAttribute('tabindex')).toBe(false);
+      emote.click();
+      expect(surfaces.openActions).not.toHaveBeenCalled();
     });
   });
 

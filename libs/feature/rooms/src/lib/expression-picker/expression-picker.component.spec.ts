@@ -34,6 +34,8 @@ import {
   TrnOverlaySurfaceDirective,
 } from '@trinity/components/overlay';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
+import { AddImagesTileComponent } from '../shared/add-images-tile/add-images-tile.component';
+import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 import { ExpressionPickerComponent } from './expression-picker.component';
 
@@ -99,6 +101,8 @@ interface Options {
   readonly presentation?: 'popover' | 'sheet';
   /** The anchored layer's show count, for a panel that layer keeps between opens. */
   readonly shown?: WritableSignal<number>;
+  /** Provide a host that can add images to the personal pack. */
+  readonly addImages?: boolean;
 }
 
 /** The latest render; queries stay inside its container, since earlier renders are not torn down. */
@@ -123,6 +127,7 @@ async function renderPanel(options: Options = {}) {
   TestBed.overrideComponent(ExpressionPickerComponent, {
     set: {
       imports: [
+        AddImagesTileComponent,
         GifPickerComponent,
         NgTemplateOutlet,
         StickerPickerComponent,
@@ -142,6 +147,14 @@ async function renderPanel(options: Options = {}) {
     },
     on: handlers,
     providers: [
+      ...(options.addImages
+        ? [
+            {
+              provide: AddToMyEmojiService,
+              useValue: { available: signal(true), addFiles: vi.fn() },
+            },
+          ]
+        : []),
       ...(options.shown
         ? [
             {
@@ -367,6 +380,27 @@ describe('ExpressionPickerComponent', () => {
     // Manual activation: moving focus does not switch the panel, because each picker takes
     // focus into its own search field when it appears.
     expect(emoji).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('the picker lists Your emoji first, then an Add tile', async () => {
+    await renderPanel({ addImages: true });
+
+    const section = view.getByRole('region', { name: 'Your emoji' });
+    expect(
+      section.compareDocumentPosition(view.getByTestId('emoji-picker')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      [...section.querySelectorAll('button')].map((b) =>
+        b.getAttribute('aria-label'),
+      ),
+    ).toEqual(['Add images']);
+  });
+
+  it('shows no Your emoji section where images cannot be added', async () => {
+    await renderPanel();
+
+    expect(view.queryByRole('region', { name: 'Your emoji' })).toBeNull();
   });
 
   it('forwards an emoji pick', async () => {
