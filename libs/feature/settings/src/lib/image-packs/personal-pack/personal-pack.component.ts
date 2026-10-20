@@ -30,6 +30,7 @@ import {
   TrnSettingsGroupComponent,
   TrnSurfaceService,
 } from '@trinity/components/overlay';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   ImagePackEditError,
   ImagePackEditorService,
@@ -39,6 +40,7 @@ import {
 } from '@trinity/data-access/media';
 import { TrackFileChooserDirective } from '@trinity/platform-native';
 import {
+  EMPTY,
   concatMap,
   filter,
   finalize,
@@ -111,6 +113,7 @@ export class PersonalPackComponent {
   private readonly editor = inject(ImagePackEditorService);
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly alert = inject(TrnAlertService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -163,20 +166,24 @@ export class PersonalPackComponent {
     const input = event.target as HTMLInputElement;
     const files = [...(input.files ?? [])];
     input.value = '';
+    const account = this.matrix.activeUserId();
     from(files)
       .pipe(
+        // An account switch drops the files still queued; the open dialog closes itself.
         concatMap((file) =>
-          this.surfaces.openAndWait$<PackEntry, AddToPackDialogComponent>(
-            AddToPackDialogComponent,
-            {
-              inputs: {
-                input: { kind: 'file', file },
-                suggestedName: file.name,
-              },
-              autoFocus: '[data-autofocus]',
-              dismissGuard: (dialog) => dialog?.canDismiss() ?? true,
-            },
-          ),
+          this.matrix.activeUserId() !== account
+            ? EMPTY
+            : this.surfaces.openAndWait$<PackEntry, AddToPackDialogComponent>(
+                AddToPackDialogComponent,
+                {
+                  inputs: {
+                    input: { kind: 'file', file },
+                    suggestedName: file.name,
+                  },
+                  autoFocus: '[data-autofocus]',
+                  dismissGuard: (dialog) => dialog?.canDismiss() ?? true,
+                },
+              ),
         ),
         takeUntilDestroyed(this.destroyRef),
       )

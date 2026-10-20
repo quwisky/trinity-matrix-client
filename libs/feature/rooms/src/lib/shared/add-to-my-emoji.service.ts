@@ -9,6 +9,7 @@ import {
   TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   ADD_TO_IMAGE_PACK_DIALOG,
   ImagePackEditorService,
@@ -44,6 +45,7 @@ export class AddToMyEmojiService {
   private busy = false;
   // Only where the dialog exists, so hosts and specs without it never build the editor.
   private readonly editor = this.load ? inject(ImagePackEditorService) : null;
+  private readonly matrix = this.load ? inject(MatrixClientService) : null;
 
   /** The mxc URLs already in the personal pack, or null when nothing can be added. */
   readonly owned: Signal<ReadonlySet<string> | null> = computed(() => {
@@ -77,11 +79,19 @@ export class AddToMyEmojiService {
     this.start(this.open$(input, suggestedName));
   }
 
-  /** Opens the dialog for each file in turn, like Settings' Add images. */
+  /**
+   * Opens the dialog for each file in turn, like Settings' Add images. An account switch drops
+   * the files still queued; the open dialog closes itself.
+   */
   addFiles(files: readonly File[]): void {
+    const account = this.matrix?.activeUserId();
     this.start(
       from(files).pipe(
-        concatMap((file) => this.open$({ kind: 'file', file }, file.name)),
+        concatMap((file) =>
+          this.matrix?.activeUserId() === account
+            ? this.open$({ kind: 'file', file }, file.name)
+            : EMPTY,
+        ),
       ),
     );
   }

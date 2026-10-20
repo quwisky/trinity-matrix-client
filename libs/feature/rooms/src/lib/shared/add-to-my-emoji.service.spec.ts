@@ -4,6 +4,7 @@ import {
   TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   ADD_TO_IMAGE_PACK_DIALOG,
   ImagePackEditorService,
@@ -22,6 +23,7 @@ describe('AddToMyEmojiService', () => {
   const toast = { show: vi.fn() };
   let load: () => Observable<Type<unknown>>;
   const personal = signal<readonly PackEntry[] | null>([]);
+  const activeUserId = signal<string | null>('@a:hs');
   let closes: Subject<PackEntry | null>[];
   const surfaces = {
     openAndWait$: vi.fn(() => {
@@ -36,12 +38,14 @@ describe('AddToMyEmojiService', () => {
     surfaces.openAndWait$.mockClear();
     toast.show.mockReset();
     personal.set([]);
+    activeUserId.set('@a:hs');
     load = () => of(FakeDialogComponent);
     TestBed.configureTestingModule({
       providers: [
         { provide: TrnSurfaceService, useValue: surfaces },
         { provide: TrnToastService, useValue: toast },
         { provide: ImagePackEditorService, useValue: { personal } },
+        { provide: MatrixClientService, useValue: { activeUserId } },
         {
           provide: ADD_TO_IMAGE_PACK_DIALOG,
           useValue: () => load(),
@@ -90,6 +94,21 @@ describe('AddToMyEmojiService', () => {
         },
       }),
     );
+  });
+
+  it('drops the queued files when the account changes', () => {
+    const service = TestBed.inject(AddToMyEmojiService);
+    const fox = new File(['a'], 'fox.png', { type: 'image/png' });
+
+    service.addFiles([fox, fox, fox]);
+    activeUserId.set('@b:hs');
+    // The dialog closes itself on the switch.
+    closes[0].next(null);
+    closes[0].complete();
+
+    expect(surfaces.openAndWait$).toHaveBeenCalledOnce();
+    service.addFiles([fox]);
+    expect(surfaces.openAndWait$).toHaveBeenCalledTimes(2);
   });
 
   it('shows the failed-action toast when the dialog cannot load, and can open again', () => {
