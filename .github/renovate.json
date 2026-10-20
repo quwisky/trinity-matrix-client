@@ -183,6 +183,12 @@
       "dependencyDashboardApproval": true
     },
     {
+      "description": "The capacitor-swift-pm pin in ios/App/CapApp-SPM/Package.swift is not a dependency of its own: `cap sync` writes it as the installed @capacitor/ios version, and scripts/sync-native-plugin-paths.mjs keeps it there on every Capacitor branch. A swift-manager bump would move it away from @capacitor/ios, and the next `cap sync` in CI would move it back and fail the diff check, so it follows @capacitor/ios only.",
+      "matchManagers": ["swift"],
+      "matchPackageNames": ["ionic-team/capacitor-swift-pm"],
+      "enabled": false
+    },
+    {
       "description": [
         "Action digests are pinned for supply-chain reasons (see .github/actions/setup/action.yml); this is what keeps the pins from rotting.",
         "It also sets automerge false, although no rule automerges today, so a patch automerge added later cannot reach it. A pinned action reads `owner/action@<sha> # v7.0.1`, so a v7.0.1 to v7.0.2 bump is updateType 'patch' — but unlike a library patch it repoints a SHA at new third-party code that runs inside CI, including release.yml, whose environment holds the signing certificates. Merging that unattended is precisely the exposure the digest pinning exists to prevent (see .github/actions/setup/action.yml). These stay behind a tick and a human.",

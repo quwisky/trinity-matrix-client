@@ -158,6 +158,16 @@ describe('Renovate post-upgrade commands', () => {
     }
   });
 
+  it('leaves the capacitor-swift-pm pin to @capacitor/ios and the sync script', () => {
+    const rule = config.packageRules.find((r) =>
+      r.matchPackageNames?.includes('ionic-team/capacitor-swift-pm'),
+    );
+    expect(rule).toMatchObject({ matchManagers: ['swift'], enabled: false });
+    expect(read('ios/App/CapApp-SPM/Package.swift')).toContain(
+      'github.com/ionic-team/capacitor-swift-pm.git',
+    );
+  });
+
   it('syncs the native files on lock-file maintenance, which can move them too', () => {
     const rule = config.packageRules.find((r) =>
       r.matchUpdateTypes?.includes('lockFileMaintenance'),
