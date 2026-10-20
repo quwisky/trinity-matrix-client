@@ -1,12 +1,15 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, type Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { TrnSurfaceService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   ADD_TO_IMAGE_PACK_DIALOG,
   ImagePackEditorService,
   type PackEntry,
 } from '@trinity/data-access/media';
-import { Subject, of } from 'rxjs';
+import { Subject, of, throwError, type Observable } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AddToMyEmojiService } from './add-to-my-emoji.service';
 
@@ -16,6 +19,8 @@ class FakeDialogComponent {
 }
 
 describe('AddToMyEmojiService', () => {
+  const toast = { show: vi.fn() };
+  let load: () => Observable<Type<unknown>>;
   const personal = signal<readonly PackEntry[] | null>([]);
   let closes: Subject<PackEntry | null>[];
   const surfaces = {
@@ -29,14 +34,17 @@ describe('AddToMyEmojiService', () => {
   beforeEach(() => {
     closes = [];
     surfaces.openAndWait$.mockClear();
+    toast.show.mockReset();
     personal.set([]);
+    load = () => of(FakeDialogComponent);
     TestBed.configureTestingModule({
       providers: [
         { provide: TrnSurfaceService, useValue: surfaces },
+        { provide: TrnToastService, useValue: toast },
         { provide: ImagePackEditorService, useValue: { personal } },
         {
           provide: ADD_TO_IMAGE_PACK_DIALOG,
-          useValue: () => of(FakeDialogComponent),
+          useValue: () => load(),
         },
       ],
     });
@@ -84,6 +92,40 @@ describe('AddToMyEmojiService', () => {
     );
   });
 
+  it('shows the failed-action toast when the dialog cannot load, and can open again', () => {
+    const service = TestBed.inject(AddToMyEmojiService);
+    load = () => throwError(() => new Error('chunk failed'));
+
+    service.add({ kind: 'existing', url: 'mxc://hs/fox' }, 'fox');
+
+    expect(toast.show).toHaveBeenCalledWith(
+      'Couldn’t open Add to your emoji. Try again.',
+      { variant: 'danger' },
+    );
+    load = () => of(FakeDialogComponent);
+    service.add({ kind: 'existing', url: 'mxc://hs/fox' }, 'fox');
+    expect(surfaces.openAndWait$).toHaveBeenCalledOnce();
+  });
+
+  it('opens no second dialog while one is open or queued', () => {
+    const service = TestBed.inject(AddToMyEmojiService);
+    const fox = new File(['a'], 'fox.png', { type: 'image/png' });
+
+    service.addFiles([fox, fox]);
+    service.add({ kind: 'existing', url: 'mxc://hs/cat' }, 'cat');
+    service.addFiles([fox]);
+    expect(surfaces.openAndWait$).toHaveBeenCalledOnce();
+
+    closes[0].next(null);
+    closes[0].complete();
+    expect(surfaces.openAndWait$).toHaveBeenCalledTimes(2);
+    closes[1].next(null);
+    closes[1].complete();
+
+    service.add({ kind: 'existing', url: 'mxc://hs/cat' }, 'cat');
+    expect(surfaces.openAndWait$).toHaveBeenCalledTimes(3);
+  });
+
   it('hidden when that mxc is already in the pack', () => {
     const service = TestBed.inject(AddToMyEmojiService);
     expect(service.canAdd('mxc://hs/fox')).toBe(true);
@@ -109,7 +151,10 @@ describe('AddToMyEmojiService', () => {
 describe('AddToMyEmojiService without the dialog', () => {
   it('offers nothing in a host that does not provide it', () => {
     TestBed.configureTestingModule({
-      providers: [{ provide: TrnSurfaceService, useValue: {} }],
+      providers: [
+        { provide: TrnSurfaceService, useValue: {} },
+        { provide: TrnToastService, useValue: {} },
+      ],
     });
     const service = TestBed.inject(AddToMyEmojiService);
 

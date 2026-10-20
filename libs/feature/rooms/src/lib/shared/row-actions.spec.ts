@@ -10,7 +10,7 @@ import { type MessageRow } from '../message-row/message-row.component';
 import {
   buildRowCaps,
   buildRowCapsMap,
-  canAddSticker,
+  addableStickers,
   dispatchSharedRowAction,
   sameRowCaps,
   type RowCapsPolicy,
@@ -90,6 +90,24 @@ describe('dispatchSharedRowAction', () => {
         info: { mimetype: 'image/webp', w: 256, h: 240, size: 1234 },
       },
       'Fox',
+    );
+  });
+
+  it('suggests a non-empty name for a sticker without a body', () => {
+    const ctx = setup({
+      timeline: {
+        rawEvent: vi.fn(() => ({
+          type: 'm.sticker',
+          content: { url: 'mxc://hs/fox' },
+        })),
+      },
+    });
+
+    dispatchSharedRowAction({ type: 'add-to-emoji' }, row, ctx);
+
+    expect(ctx.addToEmoji.add).toHaveBeenCalledWith(
+      { kind: 'existing', url: 'mxc://hs/fox' },
+      'sticker',
     );
   });
 
@@ -316,10 +334,17 @@ describe('row caps', () => {
 
   it('hidden when that mxc is already in the pack', () => {
     const adder = { canAdd: (mxc: string) => mxc !== 'mxc://hs/owned' };
-    const event = (url: string, type = 'm.sticker') => ({
-      type,
-      content: { url, body: 'Fox' },
-    });
+    const events = new Map<string, object>();
+    const event = (url: string, type = 'm.sticker') => {
+      events.set('$e', { type, content: { url, body: 'Fox' } });
+      return '$e';
+    };
+    const rawEvent = vi.fn(
+      (_room: string, id: string) => events.get(id) ?? null,
+    );
+    const addable = addableStickers(adder, { rawEvent }, '!r:hs');
+    const canAddSticker = (_adder: unknown, id: string | null) =>
+      addable(id ?? '$missing');
 
     expect(canAddSticker(adder, event('mxc://hs/fox'))).toBe(true);
     expect(canAddSticker(adder, event('mxc://hs/owned'))).toBe(false);
@@ -330,6 +355,7 @@ describe('row caps', () => {
       false,
     );
     expect(canAddSticker(adder, null)).toBe(false);
+    expect(rawEvent).toHaveBeenCalledWith('!r:hs', '$e');
   });
 
   it('compares every capability', () => {

@@ -107,13 +107,16 @@ export function stickerImage(
   };
 }
 
-/** Whether `raw` is a sticker whose image is not in the personal pack yet. */
-export function canAddSticker(
+/** A host's {@link RowCapsPolicy.canAddToEmoji}: stickers in `roomId` not in the pack yet. */
+export function addableStickers(
   adder: Pick<AddToMyEmojiService, 'canAdd'>,
-  raw: object | null,
-): boolean {
-  const image = stickerImage(raw);
-  return !!image && adder.canAdd(image.url);
+  timeline: Pick<ConversationRuntime['timeline'], 'rawEvent'>,
+  roomId: string,
+): (eventId: string) => boolean {
+  return (eventId) => {
+    const image = stickerImage(timeline.rawEvent(roomId, eventId));
+    return !!image && adder.canAdd(image.url);
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -216,7 +219,8 @@ export function dispatchSharedRowAction(
       return true;
     case 'add-to-emoji': {
       const image = stickerImage(ctx.timeline.rawEvent(ctx.roomId, row.id));
-      if (image) ctx.addToEmoji.add(image, image.body ?? '');
+      // The dialog's shortcode starts from this name, so it is never empty.
+      if (image) ctx.addToEmoji.add(image, image.body || 'sticker');
       return true;
     }
     case 'view-source': {

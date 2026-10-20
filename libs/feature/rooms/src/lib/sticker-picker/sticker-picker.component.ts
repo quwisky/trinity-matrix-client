@@ -11,13 +11,14 @@ import {
   viewChild,
 } from '@angular/core';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
-import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
+import {
+  PERSONAL_IMAGE_PACK_ID as PERSONAL,
+  type ImagePack,
+  type ImagePackImage,
+} from '@trinity/data-access/media';
 import { AddImagesTileComponent } from '../shared/add-images-tile/add-images-tile.component';
 import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
 import { StickerImageComponent } from '../sticker-image/sticker-image.component';
-
-/** The reader's id for the personal pack. */
-const PERSONAL = 'personal';
 
 /**
  * Searchable, keyboard-native picker for sticker-capable MSC2545 pack entries: the Stickers

@@ -46,7 +46,7 @@ import {
 } from '../shared/send-media-batch';
 import {
   buildRowCapsMap,
-  canAddSticker,
+  addableStickers,
   dispatchSharedRowAction,
 } from '../shared/row-actions';
 import {
@@ -632,11 +632,11 @@ export abstract class MessageListBase {
         canPin: this.canPin(),
         canThread: true,
         pinnedIds: this.pinnedIds(),
-        canAddToEmoji: (id) =>
-          canAddSticker(
-            this.addToEmoji,
-            this.timeline.rawEvent(this.roomId() ?? '', id),
-          ),
+        canAddToEmoji: addableStickers(
+          this.addToEmoji,
+          this.timeline,
+          this.roomId() ?? '',
+        ),
       },
       this.prevRowCaps,
     );

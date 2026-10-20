@@ -48,7 +48,12 @@
             [id]="'sticker-pack-scope-' + $index"
             data-testid="sticker-pack-scope"
           >
-            {{ pack.scope.sticker === 'account' ? 'All rooms' : 'This room' }}
+            <!-- The personal pack lives in account data: every room, whatever its usage. -->
+            {{
+              pack.id === personal || pack.scope.sticker === 'account'
+                ? 'All rooms'
+                : 'This room'
+            }}
           </span>
         </div>
         <div class="picker__grid">

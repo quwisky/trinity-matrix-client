@@ -18,7 +18,7 @@ import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.compon
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   buildRowCapsMap,
-  canAddSticker,
+  addableStickers,
   dispatchSharedRowAction,
 } from '../shared/row-actions';
 import {
@@ -386,11 +386,11 @@ export class ThreadViewComponent implements OnDestroy {
         canPin: false,
         canThread: false,
         pinnedIds: [],
-        canAddToEmoji: (id) =>
-          canAddSticker(
-            this.addToEmoji,
-            this.timeline.rawEvent(this.roomId(), id),
-          ),
+        canAddToEmoji: addableStickers(
+          this.addToEmoji,
+          this.timeline,
+          this.roomId(),
+        ),
       },
       this.prevRowCaps,
     );

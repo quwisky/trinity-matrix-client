@@ -409,9 +409,11 @@ function payloadFor({ mxc, alt }: Declaration): MediaPayload {
 function mark(emote: HTMLImageElement, offered: boolean): void {
   if (offered) {
     emote.setAttribute('role', 'button');
+    emote.setAttribute('aria-haspopup', 'menu');
     emote.tabIndex = 0;
   } else {
     emote.removeAttribute('role');
+    emote.removeAttribute('aria-haspopup');
     emote.removeAttribute('tabindex');
   }
 }

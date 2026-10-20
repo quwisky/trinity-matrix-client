@@ -9,6 +9,8 @@ export const LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE =
   'eu.qwky.trinity.enabled_usage';
 export const PERSONAL_IMAGE_PACK_EVENT_TYPE = 'm.image_pack';
 export const LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE = 'im.ponies.user_emotes';
+/** The reader's `ImagePack.id` for the personal pack, "Your emoji". */
+export const PERSONAL_IMAGE_PACK_ID = 'personal';
 
 const SERVER_NAME_PATTERN =
   /^(?:(?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})|(?:\[[\dA-Fa-f:.]{2,45}])|(?:[A-Za-z\d\-.]{1,255}))(?::\d{1,5})?$/;

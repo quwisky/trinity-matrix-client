@@ -1,6 +1,10 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { MediaService } from '@trinity/data-access/media';
+import {
+  MediaService,
+  PERSONAL_IMAGE_PACK_ID,
+  type ImagePack,
+} from '@trinity/data-access/media';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
@@ -238,7 +242,7 @@ describe('StickerPickerComponent with your emoji', () => {
 
   it('the picker lists Your stickers first, then an Add tile', async () => {
     const host = await setup([
-      pack('personal', 'Your emoji', ['fox']),
+      pack(PERSONAL_IMAGE_PACK_ID, 'Your emoji', ['fox']),
       pack('!r:hs:fun', 'Fun', ['party']),
     ]);
 
@@ -252,6 +256,55 @@ describe('StickerPickerComponent with your emoji', () => {
       'fox (:fox:)',
       'Add images',
     ]);
+  });
+
+  /** An emoji-only personal pack, in the shape the reader builds it. */
+  const emojiOnly: ImagePack = {
+    id: PERSONAL_IMAGE_PACK_ID,
+    roomId: '',
+    stateKey: '',
+    name: 'Your emoji',
+    attribution: null,
+    scope: { emoticon: 'account', sticker: null },
+    images: [
+      {
+        ...image('wave', PERSONAL_IMAGE_PACK_ID, 'Your emoji'),
+        usage: ['emoticon'],
+      },
+    ],
+  };
+
+  it('offers only the Add tile under Your stickers for an emoji-only pack, in all rooms', async () => {
+    const host = await setup([emojiOnly, pack('!r:hs:fun', 'Fun', ['party'])]);
+
+    const first = host.querySelector('[data-testid="sticker-pack"]')!;
+    expect(first.querySelector('h3')?.textContent?.trim()).toBe(
+      'Your stickers',
+    );
+    expect(
+      first.querySelector('[data-testid="sticker-pack-scope"]')?.textContent,
+    ).toContain('All rooms');
+    expect(
+      [...first.querySelectorAll('button')].map((b) =>
+        b.getAttribute('aria-label'),
+      ),
+    ).toEqual(['Add images']);
+  });
+
+  it('leaves an emoji-only pack out where images cannot be added', async () => {
+    adder.available.set(false);
+    try {
+      const host = await setup([
+        emojiOnly,
+        pack('!r:hs:fun', 'Fun', ['party']),
+      ]);
+
+      expect(
+        [...host.querySelectorAll('h3')].map((h) => h.textContent?.trim()),
+      ).toEqual(['Fun']);
+    } finally {
+      adder.available.set(true);
+    }
   });
 
   it('keeps Your stickers with its Add tile while the pack has no stickers', async () => {
