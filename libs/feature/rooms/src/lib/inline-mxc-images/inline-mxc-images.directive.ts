@@ -60,8 +60,8 @@ interface Declaration {
  * media server the emoji was shown. Images (cap 10) wait until they come within one
  * viewport of view and, inside a concealed spoiler, until it is revealed. Click, Enter or
  * Space on an image opens the full image in the shared viewer; an image inside a link is
- * left to the link. A shown emoji not yet in the personal pack is a button whose menu offers
- * "Add to my emoji".
+ * left to the link. A tap on a shown emoji not yet in the personal pack opens a menu offering
+ * "Add to my emoji"; the message's own menu offers it to the keyboard.
  */
 @Directive({
   selector: '[trnInlineMxcImages]',
@@ -405,15 +405,15 @@ function payloadFor({ mxc, alt }: Declaration): MediaPayload {
   };
 }
 
-/** Make an emoji a button for its "Add to my emoji" menu, or plain again. */
+/**
+ * Let a tap on an emoji open its "Add to my emoji" menu, or not. Focusable only so the menu
+ * hands focus back to it; neither a Tab stop nor a button, since keyboard users reach the
+ * same action from the message's menu.
+ */
 function mark(emote: HTMLImageElement, offered: boolean): void {
   if (offered) {
-    emote.setAttribute('role', 'button');
-    emote.setAttribute('aria-haspopup', 'menu');
-    emote.tabIndex = 0;
+    emote.tabIndex = -1;
   } else {
-    emote.removeAttribute('role');
-    emote.removeAttribute('aria-haspopup');
     emote.removeAttribute('tabindex');
   }
 }

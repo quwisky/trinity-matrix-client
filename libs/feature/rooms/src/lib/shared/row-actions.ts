@@ -34,7 +34,10 @@ export interface SharedRowActionContext {
   /** The account that sees this Conversation; reports go to its server's admins. */
   readonly accountId: string | null;
   readonly destroyRef: DestroyRef;
-  readonly dialog: Pick<TrnSurfaceService, 'open' | 'openAndWait$'>;
+  readonly dialog: Pick<
+    TrnSurfaceService,
+    'open' | 'openAndWait$' | 'openActions'
+  >;
   readonly timeline: Pick<ConversationRuntime['timeline'], 'rawEvent'>;
   readonly forward: Pick<ForwardService, 'forward$'>;
   readonly mediaSave: Pick<MediaSaveService, 'save'>;
@@ -43,7 +46,7 @@ export interface SharedRowActionContext {
   readonly editHistory: Pick<EditHistoryDialogService, 'openHistory$'>;
   /** Open the fix for a message this device could not decrypt. */
   readonly undecryptableFix: Pick<UndecryptableFixService, 'open'>;
-  readonly addToEmoji: Pick<AddToMyEmojiService, 'add'>;
+  readonly addToEmoji: Pick<AddToMyEmojiService, 'add' | 'canAdd'>;
   /** Toggle a reaction; each host sends it its own way. */
   readonly react: (id: string, key: string) => void;
   /** Quote a row into the composer; hosts differ in what quoting cancels. */
@@ -58,8 +61,8 @@ export interface RowCapsPolicy {
   readonly canPin: boolean;
   readonly canThread: boolean;
   readonly pinnedIds: readonly string[];
-  /** Whether the sticker event with this id may be offered for the personal pack. */
-  readonly canAddToEmoji: (eventId: string) => boolean;
+  /** Whether this message has an image (its sticker, or an emoji) to offer for the personal pack. */
+  readonly canAddToEmoji: (message: MessageView) => boolean;
 }
 
 /** One row's capabilities under a host's {@link RowCapsPolicy}. */
@@ -82,8 +85,7 @@ export function buildRowCaps(
     canQuote: isQuotableMessage(message),
     saveMedia: savableMediaKind(message),
     canForward: isForwardableMessage(message),
-    addToEmoji:
-      message.kind === 'sticker' && !unsent && policy.canAddToEmoji(message.id),
+    addToEmoji: !unsent && policy.canAddToEmoji(message),
     readOnly: false,
   };
 }
@@ -107,16 +109,80 @@ export function stickerImage(
   };
 }
 
-/** A host's {@link RowCapsPolicy.canAddToEmoji}: stickers in `roomId` not in the pack yet. */
-export function addableStickers(
+/** A custom emoji in a rendered body: its mxc and `:code:`. */
+interface Emoticon {
+  readonly url: string;
+  readonly code: string;
+}
+
+/** Parsed once per message: caps are rebuilt for every row on each timeline change. */
+const emoticonCache = new WeakMap<MessageView, readonly Emoticon[]>();
+
+/** The distinct custom emoji in `message`'s sanitized HTML, which moved each mxc to `data-mx-src`. */
+function emoticonsIn(message: MessageView): readonly Emoticon[] {
+  if (!message.html?.includes('mx-emoticon')) return [];
+  let found = emoticonCache.get(message);
+  if (!found) {
+    const seen = new Map<string, Emoticon>();
+    new DOMParser()
+      .parseFromString(message.html, 'text/html')
+      .querySelectorAll('img.mx-emoticon')
+      .forEach((image) => {
+        const url = image.getAttribute('data-mx-src') ?? '';
+        if (isValidMxcUri(url) && !seen.has(url)) {
+          seen.set(url, { url, code: image.getAttribute('alt') ?? url });
+        }
+      });
+    found = [...seen.values()];
+    emoticonCache.set(message, found);
+  }
+  return found;
+}
+
+/**
+ * A host's {@link RowCapsPolicy.canAddToEmoji}: a sticker in `roomId`, or a message with a custom
+ * emoji, whose image is not in the pack yet.
+ */
+export function addableImages(
   adder: Pick<AddToMyEmojiService, 'canAdd'>,
   timeline: Pick<ConversationRuntime['timeline'], 'rawEvent'>,
   roomId: string,
-): (eventId: string) => boolean {
-  return (eventId) => {
-    const image = stickerImage(timeline.rawEvent(roomId, eventId));
+): (message: MessageView) => boolean {
+  return (message) => {
+    if (message.kind !== 'sticker') {
+      return emoticonsIn(message).some(({ url }) => adder.canAdd(url));
+    }
+    const image = stickerImage(timeline.rawEvent(roomId, message.id));
     return !!image && adder.canAdd(image.url);
   };
+}
+
+/** Open the dialog for one emoji, or let the user choose among several by `:code:`. */
+function addEmoticon(row: MessageRow, ctx: SharedRowActionContext): void {
+  const add = ({ url, code }: Emoticon): void => {
+    const name = code.replace(/^:|:$/g, '');
+    ctx.addToEmoji.add({ kind: 'existing', url, body: name }, name);
+  };
+  const choices = emoticonsIn(row).filter(({ url }) =>
+    ctx.addToEmoji.canAdd(url),
+  );
+  if (choices.length < 2) {
+    if (choices[0]) add(choices[0]);
+    return;
+  }
+  ctx.dialog.openActions(
+    {
+      header: 'Add to my emoji',
+      buttons: [
+        ...choices.map((choice) => ({
+          text: choice.code,
+          handler: () => add(choice),
+        })),
+        { text: 'Cancel', role: 'cancel' as const },
+      ],
+    },
+    { ariaLabel: 'Add to my emoji' },
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -221,6 +287,7 @@ export function dispatchSharedRowAction(
       const image = stickerImage(ctx.timeline.rawEvent(ctx.roomId, row.id));
       // The dialog's shortcode starts from this name, so it is never empty.
       if (image) ctx.addToEmoji.add(image, image.body || 'sticker');
+      else addEmoticon(row, ctx);
       return true;
     }
     case 'view-source': {

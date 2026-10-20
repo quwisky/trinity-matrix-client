@@ -239,9 +239,10 @@ describe('InlineMxcImagesDirective', () => {
       resolved.next('blob:wave');
       const emote = host.querySelector('img')!;
 
-      expect(emote.getAttribute('role')).toBe('button');
-      expect(emote.tabIndex).toBe(0);
-      expect(emote.getAttribute('aria-haspopup')).toBe('menu');
+      // Not a Tab stop: keyboard users reach it from the message's menu.
+      expect(emote.getAttribute('tabindex')).toBe('-1');
+      expect(emote.getAttribute('role')).toBeNull();
+      expect(emote.hasAttribute('aria-haspopup')).toBe(false);
       emote.click();
 
       expect(surfaces.openActions).toHaveBeenCalledWith(
