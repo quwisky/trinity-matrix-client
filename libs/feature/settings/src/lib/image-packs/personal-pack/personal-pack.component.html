@@ -34,6 +34,8 @@
               #tile
               (click)="openActions(entry, tile)"
               [attr.aria-label]="':' + entry.shortcode + ':'"
+              aria-haspopup="menu"
+              [attr.aria-describedby]="'personal-pack-use-' + $index"
               data-testid="personal-pack-tile"
             >
               <span class="absolute top-1 right-1 flex text-muted-foreground">
@@ -41,7 +43,9 @@
               </span>
               <trn-pack-image [entry]="entry" />
               <span class="max-w-full truncate">:{{ entry.shortcode }}:</span>
-              <span trnBadge size="sm">{{ labels[useAsOf(entry)] }}</span>
+              <span trnBadge size="sm" [id]="'personal-pack-use-' + $index">{{
+                labels[useAsOf(entry)]
+              }}</span>
             </button>
           </li>
         }

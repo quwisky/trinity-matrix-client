@@ -381,6 +381,17 @@ describe('PersonalPackComponent', () => {
     expect(screen.getByRole('button', { name: ':leaf:' })).toBeTruthy();
   });
 
+  it('each tile opens a menu and is described by how it is used', async () => {
+    await build([FOX, PARTY]);
+
+    const fox = screen.getByRole('button', { name: ':fox:' });
+    expect(fox).toHaveAttribute('aria-haspopup', 'menu');
+    expect(fox).toHaveAccessibleDescription('Emoji');
+    expect(
+      screen.getByRole('button', { name: ':party:' }),
+    ).toHaveAccessibleDescription('Sticker');
+  });
+
   it('each tile is a button named :code: with alt text', async () => {
     const view = await build([FOX, LEAF]);
     expect(screen.getByRole('button', { name: ':fox:' })).toBeTruthy();
