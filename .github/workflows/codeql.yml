@@ -52,6 +52,34 @@ jobs:
         with:
           category: /language:${{ matrix.language }}
 
+  # Each analysis of main saves a new overlay base database per language (about 350 MB for
+  # JavaScript, 48 MB for Java) and CodeQL never deletes the old ones, so they filled the
+  # 10 GB Actions cache and evicted every other workflow's entries. CodeQL restores the newest
+  # one, so keep that per language and delete the rest. Its documented off switch, the
+  # `github-codeql-disable-overlay` property, exists only for organization-owned repositories.
+  prune-overlay-caches:
+    name: Prune CodeQL overlay caches
+    needs: analyze
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # The key is codeql-overlay-base-database-<v>-<hash>-<language>-<cli>-<sha>-<run>-<attempt>.
+          stale=$(gh cache list --ref refs/heads/main --key codeql-overlay-base-database- \
+            --limit 100 --json id,key,createdAt \
+            --jq 'group_by(.key | split("-")[6])[] | sort_by(.createdAt) | .[:-1][] | "\(.id) \(.key)"')
+          while read -r id key; do
+            [ -n "$id" ] || continue
+            echo "Deleting $key"
+            gh cache delete "$id"
+          done <<< "$stale"
+
   # Whether a pull request touches Swift or its build files. Swift needs a macOS runner, the
   # most expensive kind, so pull requests that leave Swift alone skip the swift job; pushes to
   # main and the weekly run always analyse it. Like the `mas` step in ci.yml this reads the diff

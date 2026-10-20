@@ -155,8 +155,16 @@ either: a `release/**` push or backport pull request on another Playwright or El
 than `main` downloads them in full on every job, an accepted cost for keeping one copy of each
 entry. In `mobile-e2e` only shard 1 saves, so the two shards do not upload the same entry. The
 [cache cleanup workflow](../../.github/workflows/cache-cleanup.yml) deletes whatever is left
-under `refs/pull/<n>/merge` when a pull request closes. CodeQL manages its own caches. The
-iOS nightly's caches (WebDriverAgent, pip, Appium, Caddy) still use `actions/cache`, which saves
+under `refs/pull/<n>/merge` when a pull request closes. CodeQL saves its own caches: each
+analysis of `main` adds a `codeql-overlay-base-database-*` entry per language (about 350 MB for
+JavaScript, 48 MB for Java) and never deletes the old ones. Left alone they filled the 10 GB
+limit and evicted the other entries, the iOS nightly's WebDriverAgent build among them, every
+night. The `Prune CodeQL overlay caches` job in [`codeql.yml`](../../.github/workflows/codeql.yml)
+therefore runs after the analyses on `main` and keeps only the newest entry per language, which
+is the one CodeQL restores. GitHub's off switch for overlay analysis, the
+`github-codeql-disable-overlay` custom repository property, needs an organization-owned
+repository, and overlay analysis keeps pull request scans incremental, so the job prunes rather
+than disables it. The iOS nightly's caches (WebDriverAgent, pip, Appium, Caddy) still use `actions/cache`, which saves
 from whatever ref runs it, because that workflow runs on its schedule from `main` or by dispatch.
 
 | Entry                                                          | Saved by                                        | Key changes when                       |
