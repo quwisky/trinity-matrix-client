@@ -27,7 +27,11 @@ import { ThreadsService } from './threads.service';
 import { resolvedShields } from './shields';
 import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
+import {
+  ImagePackEditorService,
+  MediaService,
+  type UploadedMedia,
+} from '@trinity/data-access/media';
 import { switchableMatrixProvider } from './timeline.spec-harness';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
 import type { ConversationMessageOutcome } from './conversation-messages';
@@ -319,6 +323,9 @@ function setup(
       }),
       MockProvider(MediaService, {
         uploadMedia: fakeMediaService().uploadMedia,
+      }),
+      MockProvider(ImagePackEditorService, {
+        emoticons: signal(new Map([['wave', 'mxc://hs/wave']])),
       }),
       { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: { acknowledge } },
     ],
@@ -1349,6 +1356,9 @@ describe('ThreadsService', () => {
         MockProvider(MediaService, {
           uploadMedia: fakeMediaService().uploadMedia,
         }),
+        MockProvider(ImagePackEditorService, {
+          emoticons: signal(new Map<string, string>()),
+        }),
         {
           provide: CONVERSATION_MESSAGE_ADAPTER,
           useValue: {
@@ -1424,6 +1434,20 @@ describe('ThreadsService', () => {
       const content = sent[0][2] as Record<string, unknown>;
       expect(content['body']).toBe('**bold**');
       expect(content['formatted_body']).toContain('<strong>bold</strong>');
+    });
+
+    it('sends a :code: from Your emoji as an inline image into the thread', async () => {
+      const { svc, sent } = openedThread();
+
+      await firstValueFrom(svc.sendToThread('hi :wave:'));
+      await firstValueFrom(svc.editInThread('$root', 'hi :wave:'));
+
+      for (const [, , content] of sent) {
+        expect(
+          (content as Record<string, unknown>)['formatted_body'],
+        ).toContain('src="mxc://hs/wave" alt=":wave:"');
+      }
+      expect(sent).toHaveLength(2);
     });
 
     it('interprets a /me slash command in the thread as an emote', async () => {

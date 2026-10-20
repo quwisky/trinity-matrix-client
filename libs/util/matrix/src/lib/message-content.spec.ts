@@ -15,6 +15,23 @@ import {
 import { renderMarkdown, type RenderedMarkdown } from './markdown-render';
 import { UNENCRYPTED_PREVIEW } from './room-encryption';
 
+describe('custom emoji in content builders', () => {
+  it('an emoji-only message still sends formatted_body', () => {
+    const content = textMessageContent(
+      ':wave:',
+      renderMarkdown(':wave:', new Map([['wave', 'mxc://hs/wave']])),
+    );
+
+    expect(content).toMatchObject({
+      body: ':wave:',
+      format: 'org.matrix.custom.html',
+    });
+    expect('formatted_body' in content ? content.formatted_body : '').toMatch(
+      /^<p><img data-mx-emoticon="" src="mxc:\/\/hs\/wave" alt=":wave:" title=":wave:" height="32"><\/p>/,
+    );
+  });
+});
+
 describe('locationMessageContent', () => {
   it('builds an m.location with a geo URI and MSC3488 fields', () => {
     const content = locationMessageContent(52.51, 13.38, 'Berlin') as Record<

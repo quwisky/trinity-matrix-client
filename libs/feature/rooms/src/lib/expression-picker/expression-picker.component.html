@@ -82,8 +82,7 @@
       />
     }
     @case ('emoji') {
-      <!-- Custom emoji cannot be picked into a message yet, so the section only adds them. -->
-      @if (adding()) {
+      @if (adding() || yourEmoji().length > 0) {
         <section
           class="flex flex-col gap-2 pt-3"
           [attr.aria-labelledby]="panelId() + '-your-emoji'"
@@ -95,8 +94,23 @@
           >
             Your emoji
           </h3>
-          <div class="flex">
-            <trn-add-images-tile />
+          <div class="flex flex-wrap gap-1">
+            @for (image of yourEmoji(); track image.shortcode) {
+              <button
+                type="button"
+                class="size-11 cursor-pointer rounded-[var(--trinity-shape-control-radius)] border-0 bg-transparent p-1.5 hover:bg-[var(--trinity-state-hover-surface)] focus-visible:bg-[var(--trinity-state-hover-surface)]"
+                [attr.aria-label]="':' + image.shortcode + ':'"
+                (click)="onYourEmojiPick(image)"
+              >
+                <trn-sticker-image
+                  [image]="image"
+                  [alt]="':' + image.shortcode + ':'"
+                />
+              </button>
+            }
+            @if (adding()) {
+              <trn-add-images-tile />
+            }
           </div>
         </section>
       }

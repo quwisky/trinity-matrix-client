@@ -1,6 +1,79 @@
 import { describe, expect, it } from 'vitest';
 import { renderMarkdown } from './markdown-render';
 
+describe('renderMarkdown — custom emoji (MSC2545)', () => {
+  const emoticons = new Map([
+    ['wave', 'mxc://hs/wave'],
+    ['cat', 'mxc://hs/cat'],
+  ]);
+  const images = (html: string) => [
+    ...new DOMParser()
+      .parseFromString(html, 'text/html')
+      .querySelectorAll('img'),
+  ];
+
+  it('replaces a known :code: with an inline emoji image', () => {
+    const { html } = renderMarkdown('hi :wave: there', emoticons);
+    const [image, ...rest] = images(html);
+
+    expect(rest).toEqual([]);
+    expect(
+      Object.fromEntries(
+        [...image.attributes].map((attribute) => [
+          attribute.name,
+          attribute.value,
+        ]),
+      ),
+    ).toEqual({
+      'data-mx-emoticon': '',
+      src: 'mxc://hs/wave',
+      alt: ':wave:',
+      title: ':wave:',
+      height: '32',
+    });
+    expect(html).toContain('hi <img');
+    expect(html).toContain('> there');
+  });
+
+  it('leaves unknown codes and codes inside code spans as text', () => {
+    const { html } = renderMarkdown(
+      ':nope: :cat: `:wave:`\n\n```\n:cat:\n```',
+      emoticons,
+    );
+
+    expect(images(html).map((image) => image.getAttribute('alt'))).toEqual([
+      ':cat:',
+    ]);
+    expect(html).toContain(':nope:');
+    expect(html).toContain('<code>:wave:</code>');
+    expect(html).toContain(':cat:\n</code></pre>');
+  });
+
+  it('finds a known code right after an unknown one', () => {
+    const { html } = renderMarkdown(':nope:wave:', emoticons);
+
+    expect(images(html).map((image) => image.getAttribute('alt'))).toEqual([
+      ':wave:',
+    ]);
+    expect(html).toContain(':nope<img');
+  });
+
+  it('marks an emoji-only message as formatted', () => {
+    expect(renderMarkdown(':wave:', emoticons).formatted).toBe(true);
+    expect(renderMarkdown(':wave:').formatted).toBe(false);
+  });
+
+  it('drops a pack image whose url is not mxc to its alt text', () => {
+    const { html } = renderMarkdown(
+      ':bad:',
+      new Map([['bad', 'https://x/bad.png']]),
+    );
+
+    expect(images(html)).toEqual([]);
+    expect(html).toContain(':bad:');
+  });
+});
+
 // `formatted` decides whether a message goes on the wire as plain `body` or gains a
 // `formatted_body`. It is a round-trip test — render, strip the tags, compare — so
 // turning on `breaks` (a single newline becomes <br>) put it at risk: <br> contributes

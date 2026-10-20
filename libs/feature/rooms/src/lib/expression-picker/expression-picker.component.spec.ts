@@ -18,6 +18,7 @@ import {
 } from '@trinity/data-access/gif';
 import {
   MediaService,
+  PERSONAL_IMAGE_PACK_ID,
   RecentEmojiService,
   type ImagePack,
 } from '@trinity/data-access/media';
@@ -36,6 +37,7 @@ import {
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { AddImagesTileComponent } from '../shared/add-images-tile/add-images-tile.component';
 import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
+import { StickerImageComponent } from '../sticker-image/sticker-image.component';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 import { ExpressionPickerComponent } from './expression-picker.component';
 
@@ -79,6 +81,31 @@ const stickerPack: ImagePack = {
       packId: '!pack:hs:fun',
       packName: 'Fun',
     },
+  ],
+};
+
+const personalImage = (
+  shortcode: string,
+  usage: ImagePack['images'][number]['usage'],
+): ImagePack['images'][number] => ({
+  ...stickerPack.images[0],
+  shortcode,
+  url: `mxc://hs/${shortcode}`,
+  body: `${shortcode}.png`,
+  usage,
+  packId: PERSONAL_IMAGE_PACK_ID,
+  packName: 'Your emoji',
+});
+
+const personalPack: ImagePack = {
+  ...stickerPack,
+  id: PERSONAL_IMAGE_PACK_ID,
+  name: 'Your emoji',
+  scope: { emoticon: 'account', sticker: 'account' },
+  images: [
+    personalImage('wave', ['emoticon']),
+    personalImage('stick', ['sticker']),
+    personalImage('both', ['emoticon', 'sticker']),
   ],
 };
 
@@ -130,6 +157,7 @@ async function renderPanel(options: Options = {}) {
         AddImagesTileComponent,
         GifPickerComponent,
         NgTemplateOutlet,
+        StickerImageComponent,
         StickerPickerComponent,
         EmojiPickerStubComponent,
         TrnOverlaySurfaceDirective,
@@ -395,6 +423,37 @@ describe('ExpressionPickerComponent', () => {
         b.getAttribute('aria-label'),
       ),
     ).toEqual(['Add images']);
+  });
+
+  it('the emoji picker lists Your emoji images, then the Add tile', async () => {
+    await renderPanel({ addImages: true, stickerPacks: [personalPack] });
+
+    const section = view.getByRole('region', { name: 'Your emoji' });
+    expect(
+      [...section.querySelectorAll('button')].map((b) =>
+        b.getAttribute('aria-label'),
+      ),
+    ).toEqual([':wave:', ':both:', 'Add images']);
+    await vi.waitFor(() =>
+      expect(
+        [...section.querySelectorAll('img')].map((img) => img.alt),
+      ).toEqual([':wave:', ':both:']),
+    );
+  });
+
+  it('picking Your emoji emits its :code: without recording it as recent', async () => {
+    const { handlers, record } = await renderPanel({
+      stickerPacks: [personalPack],
+    });
+
+    fireEvent.click(view.getByRole('button', { name: ':wave:' }));
+
+    expect(handlers.emojiPick).toHaveBeenCalledWith({
+      id: 'wave',
+      native: ':wave:',
+      colons: ':wave:',
+    });
+    expect(record).not.toHaveBeenCalled();
   });
 
   it('shows no Your emoji section where images cannot be added', async () => {

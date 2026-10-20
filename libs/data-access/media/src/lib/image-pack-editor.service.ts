@@ -3,6 +3,7 @@ import {
   Injectable,
   type Signal,
   type Type,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -104,6 +105,16 @@ export class ImagePackEditorService {
   /** The pack's valid entries, or null without an account or before {@link run}. */
   readonly personal: Signal<readonly PackEntry[] | null> =
     this.personalState.asReadonly();
+
+  /** Shortcode → mxc of the pack's emoticon-usage images, for sending them inline. */
+  readonly emoticons: Signal<ReadonlyMap<string, string>> = computed(
+    () =>
+      new Map(
+        (this.personal() ?? [])
+          .filter((entry) => entry.usage.includes('emoticon'))
+          .map((entry) => [entry.shortcode, entry.url]),
+      ),
+  );
 
   private readonly projection = projectFromClient({
     id: 'media.image-pack-editor',

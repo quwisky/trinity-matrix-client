@@ -27,6 +27,7 @@ import {
 } from '@trinity/components/overlay';
 import { type GifResult } from '@trinity/data-access/gif';
 import {
+  PERSONAL_IMAGE_PACK_ID,
   RecentEmojiService,
   type ImagePack,
   type ImagePackImage,
@@ -39,6 +40,7 @@ import {
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { AddImagesTileComponent } from '../shared/add-images-tile/add-images-tile.component';
 import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
+import { StickerImageComponent } from '../sticker-image/sticker-image.component';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 
 const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
@@ -67,6 +69,7 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
     AddImagesTileComponent,
     GifPickerComponent,
     NgTemplateOutlet,
+    StickerImageComponent,
     StickerPickerComponent,
     TrnEmojiPickerComponent,
     TrnOverlaySurfaceDirective,
@@ -134,6 +137,14 @@ export class ExpressionPickerComponent {
   readonly manage = output<void>();
   /** Escape inside the anchored panel, or the sticker picker's own dismiss. */
   readonly dismiss = output<void>();
+
+  /** The personal pack's emoji, from the room's packs (the personal pack is listed first). */
+  protected readonly yourEmoji = computed(
+    () =>
+      this.stickerPacks()
+        .find((pack) => pack.id === PERSONAL_IMAGE_PACK_ID)
+        ?.images.filter((image) => image.usage.includes('emoticon')) ?? [],
+  );
 
   protected readonly tabs = computed<readonly ComposerExpressionTab[]>(() =>
     COMPOSER_EXPRESSION_TABS.filter((tab) => {
@@ -219,6 +230,12 @@ export class ExpressionPickerComponent {
   protected onEmojiPick(pick: TrnEmojiPick): void {
     this.recentEmoji.record(pick.native);
     this.emojiPick.emit(pick);
+  }
+
+  /** Inserted as `:shortcode:`, which the send path turns into the inline image. Not recent. */
+  protected onYourEmojiPick({ shortcode }: ImagePackImage): void {
+    const code = `:${shortcode}:`;
+    this.emojiPick.emit({ id: shortcode, native: code, colons: code });
   }
 
   protected onEscape(event: Event): void {

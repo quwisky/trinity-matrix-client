@@ -1,4 +1,6 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { ImagePackEditorService } from '@trinity/data-access/media';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MatrixEvent, type IEvent } from 'matrix-js-sdk';
@@ -97,6 +99,12 @@ function setup({
       {
         provide: MatrixClientService,
         useValue: { clientFor: () => client },
+      },
+      {
+        provide: ImagePackEditorService,
+        useValue: {
+          emoticons: signal(new Map([['wave', 'mxc://hs/wave']])),
+        },
       },
     ],
   });
@@ -229,6 +237,38 @@ describe('MatrixConversationTextSender', () => {
       event_id: '$original',
     });
     expect(edit['m.new_content']).toMatchObject({ body: 'edited **text**' });
+  });
+
+  it('sending :code: from the composer sends the inline image', async () => {
+    const { sender, client } = setup();
+    const image =
+      '<img data-mx-emoticon="" src="mxc://hs/wave" alt=":wave:" title=":wave:" height="32">';
+
+    for (const intent of [
+      { kind: 'message' },
+      { kind: 'edit', eventId: '$original' },
+      { kind: 'reply', eventId: '$original' },
+    ] as const) {
+      await firstValueFrom(
+        sender.send({ key: KEY, body: 'hi :wave:', mentions: [], intent })
+          .outcome,
+      );
+    }
+
+    const [message, edit, reply] = client.sendMessage.mock.calls.map(
+      (call) => call[1] as Record<string, unknown>,
+    );
+    expect(message).toMatchObject({
+      body: 'hi :wave:',
+      format: 'org.matrix.custom.html',
+    });
+    expect(message['formatted_body']).toContain(image);
+    expect(edit['formatted_body']).toContain(image);
+    expect(edit['m.new_content']).toMatchObject({
+      body: 'hi :wave:',
+      formatted_body: expect.stringContaining(image),
+    });
+    expect(reply['formatted_body']).toContain(image);
   });
 
   it("quotes a reply's target as its row shows it, holding an unchecked edit back", async () => {

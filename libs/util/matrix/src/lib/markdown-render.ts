@@ -155,11 +155,54 @@ function restoreSpaceRuns(html: string, runs: readonly number[]): string {
   });
 }
 
+/** A `:shortcode:` opening; the closing colon is a lookahead so `:a:b:` can still find `:b:`. */
+const SHORTCODE = /:([A-Za-z0-9_-]{1,100})(?=:)/g;
+
+/**
+ * Each known `:shortcode:` outside code as an MSC2545 inline image. Runs before the outgoing
+ * sanitizer, which drops any whose url is not `mxc:` back to its alt text.
+ */
+function inlineEmoticons(
+  html: string,
+  emoticons: ReadonlyMap<string, string>,
+): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  const texts: Text[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.parentElement?.closest('code, pre')) texts.push(node as Text);
+  }
+  for (const text of texts) {
+    const parts: (string | Node)[] = [];
+    let copied = 0;
+    for (const match of text.data.matchAll(SHORTCODE)) {
+      const url = emoticons.get(match[1]);
+      // Overlap: this opening colon closed the previous code.
+      if (!url || match.index < copied) continue;
+      const code = `:${match[1]}:`;
+      const image = doc.createElement('img');
+      image.setAttribute('data-mx-emoticon', '');
+      image.setAttribute('src', url);
+      image.setAttribute('alt', code);
+      image.setAttribute('title', code);
+      image.setAttribute('height', '32');
+      parts.push(text.data.slice(copied, match.index), image);
+      copied = match.index + code.length;
+    }
+    if (copied > 0) text.replaceWith(...parts, text.data.slice(copied));
+  }
+  return doc.body.innerHTML;
+}
+
 /**
  * Render composer markdown to sanitized HTML. `formatted` is false when the HTML
  * carries no formatting beyond the plain text, so the caller can send plain text.
+ * `emoticons` maps a shortcode to its mxc url; each known `:shortcode:` becomes an inline image.
  */
-export function renderMarkdown(text: string): RenderedMarkdown {
+export function renderMarkdown(
+  text: string,
+  emoticons: ReadonlyMap<string, string> = new Map(),
+): RenderedMarkdown {
   let rendered: string;
   try {
     const shielded = shieldSpaceRuns(text);
@@ -172,7 +215,9 @@ export function renderMarkdown(text: string): RenderedMarkdown {
   } catch {
     return { formatted: false, html: '' };
   }
-  const html = sanitizeOutgoingHtml(rendered);
+  const html = sanitizeOutgoingHtml(
+    emoticons.size > 0 ? inlineEmoticons(rendered, emoticons) : rendered,
+  );
   // Input whose every construct the allowlist strips (an HTML comment, a lone <script>)
   // sanitizes to nothing; an empty formatted_body is worse than plain text. Callers check `html`
   // as well as `formatted`: a message with a mention takes the rich branch regardless, and an
