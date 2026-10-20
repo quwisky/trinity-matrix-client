@@ -20,6 +20,8 @@ import {
 const ROOT = resolve(import.meta.dirname, '..');
 const LOCKFILE = readFileSync(join(ROOT, 'pnpm-lock.yaml'), 'utf8');
 const CAMERA = rootImporterVersions(LOCKFILE).get('@capacitor/camera');
+const IOS = rootImporterVersions(LOCKFILE).get('@capacitor/ios');
+const read = (file, root = ROOT) => readFileSync(join(root, file), 'utf8');
 
 /** A copy of the lockfile and the native files, with the lockfile passed through `edit`. */
 function fixture(edit) {
@@ -40,6 +42,10 @@ afterEach(() => {
 describe('native plugin paths', () => {
   it('match pnpm-lock.yaml in the committed native projects', () => {
     expect(syncNativePluginPaths(ROOT, { check: true })).toEqual([]);
+    // The Swift package pin is checked too, not skipped because its line moved.
+    expect(read(NATIVE_FILES[0])).toContain(
+      `capacitor-swift-pm.git", exact: "${IOS.replace(/\(.*$/, '')}"`,
+    );
   });
 
   it('read the same root versions as a YAML parser', () => {
@@ -95,6 +101,29 @@ describe('native plugin paths', () => {
       expect(changed).toHaveLength(1);
       expect(changed[0]).toContain('@capacitor/camera');
     }
+    expect(syncNativePluginPaths(root, { check: true })).toEqual([]);
+  });
+
+  it('pin capacitor-swift-pm to a bumped @capacitor/ios version', () => {
+    const bumped = IOS.replace(/^[^(]+/, '9.9.9');
+    const root = fixture((lock) =>
+      lock.replace(
+        /^( {6}'@capacitor\/ios':\n {8}specifier: .*\n {8}version: ).*$/m,
+        `$1${bumped}`,
+      ),
+    );
+    roots.push(root);
+
+    expect(syncNativePluginPaths(root).map(({ file }) => file)).toEqual([
+      NATIVE_FILES[0],
+    ]);
+    const before = read(NATIVE_FILES[0]).split('\n');
+    const changed = read(NATIVE_FILES[0], root)
+      .split('\n')
+      .filter((line, i) => line !== before[i]);
+    expect(changed).toEqual([
+      '        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "9.9.9"),',
+    ]);
     expect(syncNativePluginPaths(root, { check: true })).toEqual([]);
   });
 

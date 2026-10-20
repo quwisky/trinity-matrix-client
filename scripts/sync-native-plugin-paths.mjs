@@ -1,6 +1,6 @@
 /**
- * Rewrites the pnpm virtual-store paths that `cap sync` writes into the native projects so
- * they match pnpm-lock.yaml. Renovate runs this after `pnpm install --lockfile-only`, where
+ * Rewrites the pnpm virtual-store paths and the capacitor-swift-pm pin that `cap sync` writes
+ * into the native projects so they match pnpm-lock.yaml. Renovate runs this after `pnpm install --lockfile-only`, where
  * neither node_modules nor a web build exists, so `cap sync` cannot run and this script
  * must not import anything outside Node itself.
  *
@@ -23,6 +23,8 @@ const DEPENDENCY_GROUPS = new Set([
   'devDependencies:',
   'optionalDependencies:',
 ]);
+const SWIFT_PM_PIN =
+  /(\.package\(url: "https:\/\/github\.com\/ionic-team\/capacitor-swift-pm\.git", exact: ")[^"]+"/g;
 const STORE_PATH =
   /node_modules\/\.pnpm\/([^/'"]+)\/node_modules\/((?:@[^/'"]+\/)?[^/'"]+)/g;
 
@@ -67,17 +69,29 @@ export function virtualStoreName(name, version) {
   return filename;
 }
 
-/** Returns the file with every virtual-store path resolved from `versions`. */
+/**
+ * Returns the file with every virtual-store path resolved from `versions`, and the
+ * capacitor-swift-pm pin set to the installed `@capacitor/ios` version, as `cap sync` writes it.
+ */
 export function syncPaths(source, versions, file) {
-  return source.replace(STORE_PATH, (match, _folder, name) => {
-    const version = versions.get(name);
-    if (!version) {
-      throw new Error(
-        `${file} references ${name}, which pnpm-lock.yaml does not list as a root dependency. Run \`pnpm exec cap sync\` after changing native plugins.`,
-      );
-    }
-    return `node_modules/.pnpm/${virtualStoreName(name, version)}/node_modules/${name}`;
-  });
+  const version = (name) => {
+    const resolved = versions.get(name);
+    if (resolved) return resolved;
+    throw new Error(
+      `${file} references ${name}, which pnpm-lock.yaml does not list as a root dependency. Run \`pnpm exec cap sync\` after changing native plugins.`,
+    );
+  };
+  return source
+    .replace(
+      STORE_PATH,
+      (_match, _folder, name) =>
+        `node_modules/.pnpm/${virtualStoreName(name, version(name))}/node_modules/${name}`,
+    )
+    .replace(
+      SWIFT_PM_PIN,
+      (_match, prefix) =>
+        `${prefix}${version('@capacitor/ios').replace(/\(.*$/, '')}"`,
+    );
 }
 
 /** Syncs every native file under `root`; returns the files whose paths were stale. */
