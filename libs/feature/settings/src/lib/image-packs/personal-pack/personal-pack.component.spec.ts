@@ -202,7 +202,8 @@ describe('PersonalPackComponent', () => {
     await build(full);
     expect(screen.getByRole('button', { name: 'Add images' })).toBeDisabled();
     expect(screen.getByText('Your emoji pack is full.')).toBeTruthy();
-  });
+    // Rendering 500 tiles takes over 5 s on CI runners.
+  }, 30_000);
 
   it('Delete asks "Remove :code: from your emoji?" and removes it', async () => {
     const view = await build();
