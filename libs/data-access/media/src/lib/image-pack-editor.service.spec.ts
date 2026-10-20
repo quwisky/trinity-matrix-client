@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { ClientEvent } from 'matrix-js-sdk';
+import { ClientEvent, MatrixError, type Method } from 'matrix-js-sdk';
 import { firstValueFrom, lastValueFrom, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -24,23 +24,35 @@ vi.mock('./image-pack-image', async (importOriginal) => ({
 type Content = Record<string, unknown>;
 
 const STABLE = PERSONAL_IMAGE_PACK_EVENT_TYPE;
+const LEGACY = LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE;
 const UPLOAD_INFO = { mimetype: 'image/png', size: 4, w: 64, h: 64 };
 
 function accountEvent(type: string, content: unknown) {
   return { getType: () => type, getContent: () => content };
 }
 
-function setup(local: Record<string, Content> = {}) {
-  const activeUserId = signal<string | null>('@alice:hs');
+function fakeClient(userId: string, local: Record<string, Content>) {
   const store: Record<string, Content> = structuredClone(local);
+  const server: Record<string, Content> = structuredClone(local);
   const listeners = new Set<(event: unknown) => void>();
   // Like the SDK's raw write: the local store only changes when sync echoes it.
-  const write = vi.fn(async (_type: string, _content: Content) => undefined);
+  const write = vi.fn(async (type: string, content: Content) => {
+    server[type] = structuredClone(content);
+  });
   const client = {
-    getUserId: () => '@alice:hs',
+    getUserId: () => userId,
     getAccountData: (type: string) =>
       store[type] ? accountEvent(type, store[type]) : undefined,
     setAccountDataRaw: write,
+    http: {
+      authedRequest: vi.fn(async (_method: Method, path: string) => {
+        const type = decodeURIComponent(path.split('/').at(-1) ?? '');
+        if (!server[type]) {
+          throw new MatrixError({ errcode: 'M_NOT_FOUND' }, 404);
+        }
+        return structuredClone(server[type]);
+      }),
+    },
     on: vi.fn((name: string, listener: (event: unknown) => void) => {
       if (name === ClientEvent.AccountData) listeners.add(listener);
     }),
@@ -48,7 +60,23 @@ function setup(local: Record<string, Content> = {}) {
       listeners.delete(listener),
     ),
   };
-  const matrix = {
+  /** A sync event; `stale` leaves the server copy alone, as a response computed earlier does. */
+  const sync = (type: string, content: Content, { stale = false } = {}) => {
+    store[type] = content;
+    if (!stale) server[type] = content;
+    for (const listener of listeners) listener(accountEvent(type, content));
+  };
+  return { client, write, sync };
+}
+
+function setup(local: Record<string, Content> = {}) {
+  const activeUserId = signal<string | null>('@alice:hs');
+  const { client, write, sync } = fakeClient('@alice:hs', local);
+  const matrix: {
+    isInitialized: boolean;
+    instance: unknown;
+    activeUserId: unknown;
+  } = {
     isInitialized: true,
     instance: client,
     activeUserId: activeUserId.asReadonly(),
@@ -68,13 +96,11 @@ function setup(local: Record<string, Content> = {}) {
     ],
   });
   const service = TestBed.inject(ImagePackEditorService);
-  const sync = (type: string, content: Content) => {
-    store[type] = content;
-    for (const listener of listeners) listener(accountEvent(type, content));
-  };
   const written = () => write.mock.calls.at(-1)?.[1];
   return { service, client, matrix, activeUserId, media, write, written, sync };
 }
+
+const existing = (url: string) => ({ kind: 'existing', url }) as const;
 
 function png(name = 'wave.png') {
   return new File([new Uint8Array(4)], name, { type: 'image/png' });
@@ -241,6 +267,66 @@ describe('ImagePackEditorService', () => {
     ]);
   });
 
+  it('a stale echo after the last write does not drop it', async () => {
+    const { service, written, sync } = setup();
+    await firstValueFrom(
+      service.add(existing('mxc://hs/a'), 'a', ['emoticon']),
+    );
+    await firstValueFrom(
+      service.add(existing('mxc://hs/b'), 'b', ['emoticon']),
+    );
+
+    sync(STABLE, { images: { a: { url: 'mxc://hs/a' } } }, { stale: true });
+    await firstValueFrom(
+      service.add(existing('mxc://hs/c'), 'c', ['emoticon']),
+    );
+
+    expect(Object.keys(written()?.['images'] as Content)).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
+  });
+
+  it('a stale legacy echo does not drop the first write of a legacy-only pack', async () => {
+    const { service, written, sync } = setup({
+      [LEGACY]: { images: { old: { url: 'mxc://hs/old' } } },
+    });
+    await firstValueFrom(
+      service.add(existing('mxc://hs/a'), 'a', ['emoticon']),
+    );
+
+    sync(LEGACY, { images: { old: { url: 'mxc://hs/old' } } }, { stale: true });
+    await firstValueFrom(
+      service.add(existing('mxc://hs/b'), 'b', ['emoticon']),
+    );
+
+    expect(Object.keys(written()?.['images'] as Content)).toEqual([
+      'old',
+      'a',
+      'b',
+    ]);
+  });
+
+  it('rejects an empty usage with invalid-usage', async () => {
+    const { service, write } = setup({
+      [STABLE]: { images: { a: { url: 'mxc://hs/a' } } },
+    });
+
+    const adding = await codeOf(
+      firstValueFrom(service.add(existing('mxc://hs/b'), 'b', [])),
+    );
+    const changing = await codeOf(
+      lastValueFrom(service.setUsage('a', []), { defaultValue: undefined }),
+    );
+
+    expect([adding.code, changing.code]).toEqual([
+      'invalid-usage',
+      'invalid-usage',
+    ]);
+    expect(write).not.toHaveBeenCalled();
+  });
+
   it('a retry after a failed write reuses the uploaded mxc', async () => {
     const { service, media, write, written } = setup();
     const file = png();
@@ -338,7 +424,7 @@ describe('ImagePackEditorService', () => {
     });
   });
 
-  it('personal follows the pack and is null after an account switch', async () => {
+  it('personal follows the pack and the active account, and is null signed out', async () => {
     const { service, matrix, activeUserId, sync } = setup({
       [STABLE]: { images: { a: { url: 'mxc://hs/a' } } },
     });
@@ -354,6 +440,15 @@ describe('ImagePackEditorService', () => {
         'b',
       ]),
     );
+
+    matrix.instance = fakeClient('@bob:hs', {
+      [STABLE]: { images: { bobs: { url: 'mxc://hs/bob' } } },
+    }).client;
+    activeUserId.set('@bob:hs');
+    TestBed.tick();
+    expect(service.personal()?.map((entry) => entry.shortcode)).toEqual([
+      'bobs',
+    ]);
 
     matrix.isInitialized = false;
     activeUserId.set(null);

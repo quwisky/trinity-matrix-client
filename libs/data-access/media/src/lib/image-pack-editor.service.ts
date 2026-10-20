@@ -1,11 +1,16 @@
 import { Injectable, type Signal, inject, signal } from '@angular/core';
 import { defer, firstValueFrom, from, type Observable } from 'rxjs';
-import type { MatrixClient } from 'matrix-js-sdk';
+import { MatrixError, Method, type MatrixClient } from 'matrix-js-sdk';
 import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
-import { isValidMxcUri, type ImagePackUsage } from './image-pack.model';
+import {
+  LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE,
+  PERSONAL_IMAGE_PACK_EVENT_TYPE,
+  isValidMxcUri,
+  type ImagePackUsage,
+} from './image-pack.model';
 import { ImagePackImageError, prepareImagePackImage } from './image-pack-image';
 import {
   AccountPackTarget,
@@ -34,6 +39,7 @@ export type ImagePackEditErrorCode =
   | 'invalid-shortcode'
   | 'shortcode-taken'
   | 'pack-full'
+  | 'invalid-usage'
   | 'too-large-for-server'
   | 'not-signed-in';
 
@@ -58,6 +64,7 @@ export function sanitizeShortcode(name: string): string {
 type Images = Record<string, unknown>;
 
 interface Upload {
+  readonly client: MatrixClient;
   readonly sticker: boolean;
   readonly url: string;
   readonly info: Record<string, unknown>;
@@ -70,10 +77,6 @@ export class ImagePackEditorService {
   private readonly media = inject(MediaService);
   private readonly target = new AccountPackTarget();
   private readonly queues = new WeakMap<MatrixClient, Promise<unknown>>();
-  // A raw write reaches the local store only when sync echoes it; until then the last
-  // write is the latest content.
-  private readonly written = new WeakMap<MatrixClient, PackContent>();
-  private readonly echoWatches = new WeakMap<MatrixClient, () => void>();
   private readonly watches = new WeakMap<MatrixClient, () => void>();
   // Kept until the write succeeds, so a retry does not upload again.
   private readonly uploads = new WeakMap<File, Upload>();
@@ -96,7 +99,7 @@ export class ImagePackEditorService {
       this.watches.delete(client);
     },
     rebuild: (client) =>
-      this.personalState.set(packEntries(this.latest(client))),
+      this.personalState.set(packEntries(this.target.read(client))),
     reset: () => this.personalState.set(null),
   });
 
@@ -139,6 +142,7 @@ export class ImagePackEditorService {
     usage: readonly ImagePackUsage[],
   ): Observable<void> {
     return this.edit((images) => {
+      assertUsage(usage);
       const raw = images[shortcode];
       if (!isRecord(raw)) return null;
       return { ...images, [shortcode]: { ...raw, usage: [...usage] } };
@@ -165,10 +169,6 @@ export class ImagePackEditorService {
     return this.matrix.instance;
   }
 
-  private latest(client: MatrixClient): PackContent {
-    return this.written.get(client) ?? this.target.read(client);
-  }
-
   private async addEntry(
     client: MatrixClient,
     input: AddInput,
@@ -176,7 +176,9 @@ export class ImagePackEditorService {
     usage: readonly ImagePackUsage[],
   ): Promise<PackEntry> {
     assertShortcode(shortcode);
-    assertRoomFor(this.latest(client).images, shortcode);
+    assertUsage(usage);
+    // Fails early before an upload; the queued step checks again against the server copy.
+    assertRoomFor(this.target.read(client).images, shortcode);
     if (input.kind === 'existing' && !isValidMxcUri(input.url)) {
       throw new ImagePackImageError('unsupported-type');
     }
@@ -207,7 +209,7 @@ export class ImagePackEditorService {
   ): Promise<Upload> {
     const sticker = usage.includes('sticker');
     const cached = this.uploads.get(file);
-    if (cached?.sticker === sticker) return cached;
+    if (cached?.client === client && cached.sticker === sticker) return cached;
     const prepared = await prepareImagePackImage(file, usage);
     const limit = await firstValueFrom(this.media.uploadLimit(client));
     if (limit !== null && prepared.size > limit) {
@@ -220,12 +222,17 @@ export class ImagePackEditorService {
       this.media.uploadMedia(prepared, false, undefined, undefined, client),
     );
     if (!uploaded.mxc) throw new Error('Unencrypted upload returned no mxc.');
-    const result = { sticker, url: uploaded.mxc, info: { ...uploaded.info } };
+    const result = {
+      client,
+      sticker,
+      url: uploaded.mxc,
+      info: { ...uploaded.info },
+    };
     this.uploads.set(file, result);
     return result;
   }
 
-  /** Each step re-reads the latest content once the steps before it have written. */
+  /** Each step reads the server copy once the steps before it have written. */
   private enqueue(
     client: MatrixClient,
     change: (images: Images) => Images | null,
@@ -246,7 +253,9 @@ export class ImagePackEditorService {
     client: MatrixClient,
     change: (images: Images) => Images | null,
   ): Promise<void> {
-    const content = this.latest(client);
+    // Account data has no compare-and-set: a write from another device that lands between
+    // this read and the write below is overwritten. Reading just before narrows the window.
+    const content = await serverContent(client);
     const images = change(content.images);
     if (!images) return;
     const pack =
@@ -255,22 +264,44 @@ export class ImagePackEditorService {
         : { ...content.pack, display_name: PACK_NAME };
     const next = { pack, images };
     await this.target.write(client, next);
-    this.written.set(client, next);
-    this.watchEcho(client);
-    if (this.projection.client() === client) this.projection.schedule();
+    if (this.projection.client() === client) {
+      this.personalState.set(packEntries(next));
+    }
   }
+}
 
-  /** Drop the stand-in at the first pack change that lands while no write is in flight. */
-  private watchEcho(client: MatrixClient): void {
-    if (this.echoWatches.has(client)) return;
-    const stop = this.target.watch(client, () => {
-      if (this.queues.has(client)) return;
-      this.written.delete(client);
-      this.echoWatches.get(client)?.();
-      this.echoWatches.delete(client);
-    });
-    this.echoWatches.set(client, stop);
+/**
+ * The server's pack, read past the SDK store, which a raw write does not update until sync
+ * echoes it. The legacy type stands in while the stable one does not exist.
+ */
+async function serverContent(client: MatrixClient): Promise<PackContent> {
+  const userId = client.getUserId();
+  if (!userId) throw new ImagePackEditError('not-signed-in');
+  for (const type of [
+    PERSONAL_IMAGE_PACK_EVENT_TYPE,
+    LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE,
+  ]) {
+    try {
+      const content = await client.http.authedRequest<unknown>(
+        Method.Get,
+        `/user/${encodeURIComponent(userId)}/account_data/${encodeURIComponent(type)}`,
+      );
+      const record = isRecord(content) ? content : {};
+      return {
+        pack: isRecord(record['pack']) ? record['pack'] : {},
+        images: isRecord(record['images']) ? record['images'] : {},
+      };
+    } catch (error) {
+      if (!(error instanceof MatrixError && error.errcode === 'M_NOT_FOUND')) {
+        throw error;
+      }
+    }
   }
+  return { pack: {}, images: {} };
+}
+
+function assertUsage(usage: readonly ImagePackUsage[]): void {
+  if (usage.length === 0) throw new ImagePackEditError('invalid-usage');
 }
 
 function assertShortcode(shortcode: string): void {
