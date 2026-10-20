@@ -4,6 +4,13 @@ All notable changes to this project are documented here. release-please writes e
 entry from Conventional Commit subjects when a stable release is cut, and this project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.1](https://github.com/quwisky/trinity-matrix-client/compare/v0.5.0...v0.5.1) (2026-10-20)
+
+
+### Fixed
+
+* **container:** check static caching by rule instead of a file list ([#1651](https://github.com/quwisky/trinity-matrix-client/issues/1651)) ([#1652](https://github.com/quwisky/trinity-matrix-client/issues/1652)) ([cc78921](https://github.com/quwisky/trinity-matrix-client/commit/cc78921bc08f73aed02be2cc03b2caca10176348))
+
 ## [0.5.0](https://github.com/quwisky/trinity-matrix-client/compare/v0.4.0...v0.5.0) (2026-10-20)
 
 
