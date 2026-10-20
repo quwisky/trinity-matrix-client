@@ -477,6 +477,47 @@ describe('ExpressionPickerComponent', () => {
     expect(record).not.toHaveBeenCalled();
   });
 
+  it('Your emoji is one Tab stop: arrows move focus, Enter picks', async () => {
+    const { fixture, handlers } = await renderPanel({
+      addImages: true,
+      stickerPacks: [personalPack],
+    });
+    const section = view.getByRole('region', { name: 'Your emoji' });
+    const buttons = [...section.querySelectorAll('button')];
+    const stops = () => buttons.map((button) => button.tabIndex);
+    const press = (key: string) => {
+      fireEvent.keyDown(document.activeElement!, { key });
+      fixture.detectChanges();
+    };
+
+    expect(stops()).toEqual([0, -1, -1]);
+    buttons[0].focus();
+    press('ArrowRight');
+    expect(document.activeElement).toBe(buttons[1]);
+    expect(stops()).toEqual([-1, 0, -1]);
+    press('ArrowRight');
+    expect(document.activeElement).toBe(buttons[2]);
+    press('ArrowRight');
+    expect(document.activeElement).toBe(buttons[0]);
+    press('ArrowLeft');
+    expect(document.activeElement).toBe(buttons[2]);
+    press('ArrowLeft');
+    expect(document.activeElement).toBe(buttons[1]);
+
+    press('Enter');
+    expect(handlers.emojiPick).toHaveBeenCalledWith({
+      id: 'both',
+      native: ':both:',
+      colons: ':both:',
+    });
+  });
+
+  it('Your emoji scrolls inside its own area', async () => {
+    await renderPanel({ addImages: true, stickerPacks: [personalPack] });
+
+    expect(view.getByTestId('your-emoji-grid')).toHaveClass('overflow-y-auto');
+  });
+
   it('shows no Your emoji section where images cannot be added', async () => {
     await renderPanel();
 

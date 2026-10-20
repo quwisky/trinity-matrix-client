@@ -1,4 +1,9 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  inject,
+  input,
+} from '@angular/core';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrackFileChooserDirective } from '@trinity/platform-native';
 import { AddToMyEmojiService } from '../add-to-my-emoji.service';
@@ -13,6 +18,9 @@ import { AddToMyEmojiService } from '../add-to-my-emoji.service';
 })
 export class AddImagesTileComponent {
   private readonly adder = inject(AddToMyEmojiService);
+
+  /** False where a grid's roving focus holds the one Tab stop elsewhere. */
+  readonly tabbable = input(true);
 
   protected onFiles(event: Event): void {
     const input = event.target as HTMLInputElement;

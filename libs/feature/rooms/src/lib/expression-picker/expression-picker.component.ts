@@ -152,6 +152,15 @@ export class ExpressionPickerComponent {
         ) ?? [],
   );
 
+  /** The roving Tab stop in Your emoji (the Add tile follows the images), clamped as it shrinks. */
+  private readonly yourEmojiFocus = signal(0);
+  protected readonly yourEmojiStop = computed(() =>
+    Math.min(
+      this.yourEmojiFocus(),
+      this.yourEmoji().length - (this.adding() ? 0 : 1),
+    ),
+  );
+
   protected readonly tabs = computed<readonly ComposerExpressionTab[]>(() =>
     COMPOSER_EXPRESSION_TABS.filter((tab) => {
       switch (tab) {
@@ -242,6 +251,42 @@ export class ExpressionPickerComponent {
   protected onYourEmojiPick({ shortcode }: ImagePackImage): void {
     const code = `:${shortcode}:`;
     this.emojiPick.emit({ id: shortcode, native: code, colons: code });
+  }
+
+  /** Arrows move along Your emoji, wrapping; Enter and Space press the focused tile. */
+  protected onYourEmojiKey(event: KeyboardEvent): void {
+    const buttons = this.yourEmojiButtons(event);
+    const from = buttons.indexOf(event.target as HTMLButtonElement);
+    if (from < 0 || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      buttons[from].click();
+      return;
+    }
+    const last = buttons.length - 1;
+    const moves: Partial<Record<string, number>> = {
+      ArrowRight: from === last ? 0 : from + 1,
+      ArrowLeft: from === 0 ? last : from - 1,
+      Home: 0,
+      End: last,
+    };
+    const to = moves[event.key];
+    if (to === undefined) return;
+    event.preventDefault();
+    this.yourEmojiFocus.set(to);
+    buttons[to].focus();
+  }
+
+  /** A click or a returning Tab makes the focused tile the Tab stop. */
+  protected onYourEmojiFocus(event: FocusEvent): void {
+    const index = this.yourEmojiButtons(event).indexOf(
+      event.target as HTMLButtonElement,
+    );
+    if (index >= 0) this.yourEmojiFocus.set(index);
+  }
+
+  private yourEmojiButtons(event: Event): HTMLButtonElement[] {
+    return [...(event.currentTarget as HTMLElement).querySelectorAll('button')];
   }
 
   protected onEscape(event: Event): void {

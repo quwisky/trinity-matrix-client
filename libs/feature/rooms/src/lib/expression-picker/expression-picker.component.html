@@ -94,11 +94,18 @@
           >
             Your emoji
           </h3>
-          <div class="flex flex-wrap gap-1">
+          <!-- About three rows, then its own scroll; one Tab stop, arrows move within. -->
+          <div
+            class="flex max-h-35 flex-wrap gap-1 overflow-y-auto"
+            data-testid="your-emoji-grid"
+            (keydown)="onYourEmojiKey($event)"
+            (focusin)="onYourEmojiFocus($event)"
+          >
             @for (image of yourEmoji(); track image.shortcode) {
               <button
                 type="button"
                 class="size-11 cursor-pointer rounded-[var(--trinity-shape-control-radius)] border-0 bg-transparent p-1.5 hover:bg-[var(--trinity-state-hover-surface)] focus-visible:bg-[var(--trinity-state-hover-surface)]"
+                [tabindex]="$index === yourEmojiStop() ? 0 : -1"
                 [attr.aria-label]="':' + image.shortcode + ':'"
                 (click)="onYourEmojiPick(image)"
               >
@@ -109,7 +116,9 @@
               </button>
             }
             @if (adding()) {
-              <trn-add-images-tile />
+              <trn-add-images-tile
+                [tabbable]="yourEmojiStop() === yourEmoji().length"
+              />
             }
           </div>
         </section>
