@@ -18,6 +18,7 @@ import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.compon
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   buildRowCapsMap,
+  addableImages,
   dispatchSharedRowAction,
 } from '../shared/row-actions';
 import {
@@ -63,6 +64,7 @@ import {
 } from '../message-composer/message-composer.component';
 import { ForwardService } from '../forward/forward.service';
 import { MediaSaveService } from '../media-attachment/media-save.service';
+import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
 import { ReportService } from '../report/report.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
@@ -123,6 +125,7 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
   private readonly mediaSave = inject(MediaSaveService);
+  private readonly addToEmoji = inject(AddToMyEmojiService);
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly timeline = this.conversations.timeline;
@@ -383,6 +386,11 @@ export class ThreadViewComponent implements OnDestroy {
         canPin: false,
         canThread: false,
         pinnedIds: [],
+        canAddToEmoji: addableImages(
+          this.addToEmoji,
+          this.timeline,
+          this.roomId(),
+        ),
       },
       this.prevRowCaps,
     );
@@ -418,6 +426,7 @@ export class ThreadViewComponent implements OnDestroy {
         mediaSave: this.mediaSave,
         reactions: this.reactionsDialog,
         editHistory: this.editHistorySvc,
+        addToEmoji: this.addToEmoji,
         undecryptableFix: {
           open: () => this.injector.get(UndecryptableFixService).open(),
         },

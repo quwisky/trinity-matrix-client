@@ -330,6 +330,29 @@ describe('MessageToolbarComponent save media', () => {
     expect(seen).toEqual([{ type: 'save-media' }]);
   });
 
+  it('offers "Add to my emoji" only when the caps allow it', async () => {
+    const { fixture, container } = await render(MessageToolbarComponent, {
+      inputs: { caps: caps() },
+    });
+    const seen: MessageAction[] = [];
+    fixture.componentInstance.action.subscribe((a) => seen.push(a));
+
+    openMenu(container, fixture);
+    expect(
+      document.querySelector('[data-testid="msg-add-to-emoji"]'),
+    ).toBeNull();
+
+    fixture.componentRef.setInput('caps', caps({ addToEmoji: true }));
+    fixture.detectChanges();
+    const item = document.querySelector<HTMLButtonElement>(
+      '[data-testid="msg-add-to-emoji"]',
+    )!;
+
+    expect(item.textContent).toContain('Add to my emoji');
+    item.click();
+    expect(seen).toEqual([{ type: 'add-to-emoji' }]);
+  });
+
   it('saves a quick reaction as a recently used emoji with no picker open', async () => {
     vi.useFakeTimers();
     try {

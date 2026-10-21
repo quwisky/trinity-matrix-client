@@ -22,6 +22,7 @@ import { MessageActionSheetService } from '../message-actions/message-action-she
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { ForwardService } from '../forward/forward.service';
 import { MediaSaveService } from '../media-attachment/media-save.service';
+import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
 import { ReportService } from '../report/report.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
@@ -45,6 +46,7 @@ import {
 } from '../shared/send-media-batch';
 import {
   buildRowCapsMap,
+  addableImages,
   dispatchSharedRowAction,
 } from '../shared/row-actions';
 import {
@@ -264,6 +266,7 @@ export abstract class MessageListBase {
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
   private readonly mediaSave = inject(MediaSaveService);
+  private readonly addToEmoji = inject(AddToMyEmojiService);
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly messageSheet = inject(MessageActionSheetService);
@@ -629,6 +632,11 @@ export abstract class MessageListBase {
         canPin: this.canPin(),
         canThread: true,
         pinnedIds: this.pinnedIds(),
+        canAddToEmoji: addableImages(
+          this.addToEmoji,
+          this.timeline,
+          this.roomId() ?? '',
+        ),
       },
       this.prevRowCaps,
     );
@@ -696,6 +704,7 @@ export abstract class MessageListBase {
         reactions: this.reactionsDialog,
         editHistory: this.editHistorySvc,
         // Resolved on use, like the computed above.
+        addToEmoji: this.addToEmoji,
         undecryptableFix: {
           open: () => this.injector.get(UndecryptableFixService).open(),
         },

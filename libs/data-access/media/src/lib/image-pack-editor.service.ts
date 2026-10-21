@@ -3,6 +3,7 @@ import {
   Injectable,
   type Signal,
   type Type,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -12,9 +13,12 @@ import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
+import { SHORTCODE_CHARACTERS } from '@trinity/util/matrix';
 import {
   LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE,
+  MAX_PERSONAL_IMAGES,
   PERSONAL_IMAGE_PACK_EVENT_TYPE,
+  PERSONAL_IMAGE_PACK_NAME,
   isValidMxcUri,
   type ImagePackUsage,
 } from './image-pack.model';
@@ -27,11 +31,11 @@ import {
 } from './image-pack-target';
 import { MediaService } from './media.service';
 
-const PACK_NAME = 'Your emoji';
-const MAX_IMAGES = 500;
 const MAX_SHORTCODE_LENGTH = 100;
 /** A valid personal-pack shortcode. */
-export const SHORTCODE_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
+export const SHORTCODE_PATTERN = new RegExp(
+  `^[${SHORTCODE_CHARACTERS}]{1,${MAX_SHORTCODE_LENGTH}}$`,
+);
 const MEGABYTE = 1_048_576;
 
 export type AddInput =
@@ -76,7 +80,7 @@ export class ImagePackEditError extends Error {
 export function sanitizeShortcode(name: string): string {
   return name
     .replace(/\.[^.]*$/, '')
-    .replace(/[^A-Za-z0-9_-]/g, '_')
+    .replace(new RegExp(`[^${SHORTCODE_CHARACTERS}]`, 'g'), '_')
     .slice(0, MAX_SHORTCODE_LENGTH);
 }
 
@@ -104,6 +108,16 @@ export class ImagePackEditorService {
   /** The pack's valid entries, or null without an account or before {@link run}. */
   readonly personal: Signal<readonly PackEntry[] | null> =
     this.personalState.asReadonly();
+
+  /** Shortcode → mxc of the pack's emoticon-usage images, for sending them inline. */
+  readonly emoticons: Signal<ReadonlyMap<string, string>> = computed(
+    () =>
+      new Map(
+        (this.personal() ?? [])
+          .filter((entry) => entry.usage.includes('emoticon'))
+          .map((entry) => [entry.shortcode, entry.url]),
+      ),
+  );
 
   private readonly projection = projectFromClient({
     id: 'media.image-pack-editor',
@@ -280,7 +294,7 @@ export class ImagePackEditorService {
     const pack =
       typeof content.pack['display_name'] === 'string'
         ? content.pack
-        : { ...content.pack, display_name: PACK_NAME };
+        : { ...content.pack, display_name: PERSONAL_IMAGE_PACK_NAME };
     const next = { pack, images };
     await this.target.write(client, next);
     if (this.projection.client() === client) {
@@ -333,7 +347,7 @@ function assertRoomFor(images: Images, shortcode: string): void {
   if (Object.hasOwn(images, shortcode)) {
     throw new ImagePackEditError('shortcode-taken');
   }
-  if (Object.keys(images).length >= MAX_IMAGES) {
+  if (Object.keys(images).length >= MAX_PERSONAL_IMAGES) {
     throw new ImagePackEditError('pack-full');
   }
 }

@@ -27,7 +27,9 @@ import {
 } from '@trinity/components/overlay';
 import { type GifResult } from '@trinity/data-access/gif';
 import {
+  PERSONAL_IMAGE_PACK_ID,
   RecentEmojiService,
+  SHORTCODE_PATTERN,
   type ImagePack,
   type ImagePackImage,
 } from '@trinity/data-access/media';
@@ -37,6 +39,9 @@ import {
   type ComposerExpressionTab,
 } from '@trinity/data-access/timeline';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
+import { AddImagesTileComponent } from '../shared/add-images-tile/add-images-tile.component';
+import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
+import { StickerImageComponent } from '../sticker-image/sticker-image.component';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 
 const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
@@ -62,8 +67,10 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
   selector: 'trn-expression-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    AddImagesTileComponent,
     GifPickerComponent,
     NgTemplateOutlet,
+    StickerImageComponent,
     StickerPickerComponent,
     TrnEmojiPickerComponent,
     TrnOverlaySurfaceDirective,
@@ -107,6 +114,8 @@ export class ExpressionPickerComponent {
   private readonly chosen = signal<ComposerExpressionTab | null>(null);
 
   protected readonly labels = TAB_LABELS;
+  /** Whether "Your emoji" and its Add tile are offered. */
+  protected readonly adding = inject(AddToMyEmojiService).available;
   protected readonly recent = this.recentEmoji.recent;
   /** How many times the panel has been shown; see {@link TrnAnchoredOverlayDirective.shown}. */
   protected readonly shown = computed(() => this.layer?.shown() ?? 0);
@@ -129,6 +138,28 @@ export class ExpressionPickerComponent {
   readonly manage = output<void>();
   /** Escape inside the anchored panel, or the sticker picker's own dismiss. */
   readonly dismiss = output<void>();
+
+  /** The personal pack's emoji, from the room's packs (the personal pack is listed first). */
+  protected readonly yourEmoji = computed(
+    () =>
+      this.stickerPacks()
+        .find((pack) => pack.id === PERSONAL_IMAGE_PACK_ID)
+        // Another client's code (`blob.cat`) never matches on send, so it would go out as text.
+        ?.images.filter(
+          (image) =>
+            image.usage.includes('emoticon') &&
+            SHORTCODE_PATTERN.test(image.shortcode),
+        ) ?? [],
+  );
+
+  /** The roving Tab stop in Your emoji (the Add tile follows the images), clamped as it shrinks. */
+  private readonly yourEmojiFocus = signal(0);
+  protected readonly yourEmojiStop = computed(() =>
+    Math.min(
+      this.yourEmojiFocus(),
+      this.yourEmoji().length - (this.adding() ? 0 : 1),
+    ),
+  );
 
   protected readonly tabs = computed<readonly ComposerExpressionTab[]>(() =>
     COMPOSER_EXPRESSION_TABS.filter((tab) => {
@@ -214,6 +245,48 @@ export class ExpressionPickerComponent {
   protected onEmojiPick(pick: TrnEmojiPick): void {
     this.recentEmoji.record(pick.native);
     this.emojiPick.emit(pick);
+  }
+
+  /** Inserted as `:shortcode:`, which the send path turns into the inline image. Not recent. */
+  protected onYourEmojiPick({ shortcode }: ImagePackImage): void {
+    const code = `:${shortcode}:`;
+    this.emojiPick.emit({ id: shortcode, native: code, colons: code });
+  }
+
+  /** Arrows move along Your emoji, wrapping; Enter and Space press the focused tile. */
+  protected onYourEmojiKey(event: KeyboardEvent): void {
+    const buttons = this.yourEmojiButtons(event);
+    const from = buttons.indexOf(event.target as HTMLButtonElement);
+    if (from < 0 || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      buttons[from].click();
+      return;
+    }
+    const last = buttons.length - 1;
+    const moves: Partial<Record<string, number>> = {
+      ArrowRight: from === last ? 0 : from + 1,
+      ArrowLeft: from === 0 ? last : from - 1,
+      Home: 0,
+      End: last,
+    };
+    const to = moves[event.key];
+    if (to === undefined) return;
+    event.preventDefault();
+    this.yourEmojiFocus.set(to);
+    buttons[to].focus();
+  }
+
+  /** A click or a returning Tab makes the focused tile the Tab stop. */
+  protected onYourEmojiFocus(event: FocusEvent): void {
+    const index = this.yourEmojiButtons(event).indexOf(
+      event.target as HTMLButtonElement,
+    );
+    if (index >= 0) this.yourEmojiFocus.set(index);
+  }
+
+  private yourEmojiButtons(event: Event): HTMLButtonElement[] {
+    return [...(event.currentTarget as HTMLElement).querySelectorAll('button')];
   }
 
   protected onEscape(event: Event): void {

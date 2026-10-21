@@ -18,6 +18,7 @@ import {
 } from '@trinity/data-access/gif';
 import {
   MediaService,
+  PERSONAL_IMAGE_PACK_ID,
   RecentEmojiService,
   type ImagePack,
 } from '@trinity/data-access/media';
@@ -34,6 +35,9 @@ import {
   TrnOverlaySurfaceDirective,
 } from '@trinity/components/overlay';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
+import { AddImagesTileComponent } from '../shared/add-images-tile/add-images-tile.component';
+import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
+import { StickerImageComponent } from '../sticker-image/sticker-image.component';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 import { ExpressionPickerComponent } from './expression-picker.component';
 
@@ -79,6 +83,31 @@ const stickerPack: ImagePack = {
   ],
 };
 
+const personalImage = (
+  shortcode: string,
+  usage: ImagePack['images'][number]['usage'],
+): ImagePack['images'][number] => ({
+  ...stickerPack.images[0],
+  shortcode,
+  url: `mxc://hs/${shortcode}`,
+  body: `${shortcode}.png`,
+  usage,
+  packId: PERSONAL_IMAGE_PACK_ID,
+  packName: 'Your emoji',
+});
+
+const personalPack: ImagePack = {
+  ...stickerPack,
+  id: PERSONAL_IMAGE_PACK_ID,
+  name: 'Your emoji',
+  scope: { emoticon: 'account', sticker: 'account' },
+  images: [
+    personalImage('wave', ['emoticon']),
+    personalImage('stick', ['sticker']),
+    personalImage('both', ['emoticon', 'sticker']),
+  ],
+};
+
 const gifResult = {
   id: 'g1',
   description: 'Happy Cat',
@@ -98,6 +127,8 @@ interface Options {
   readonly presentation?: 'popover' | 'sheet';
   /** The anchored layer's show count, for a panel that layer keeps between opens. */
   readonly shown?: WritableSignal<number>;
+  /** Provide a host that can add images to the personal pack. */
+  readonly addImages?: boolean;
 }
 
 /** The latest render; queries stay inside its container, since earlier renders are not torn down. */
@@ -122,8 +153,10 @@ async function renderPanel(options: Options = {}) {
   TestBed.overrideComponent(ExpressionPickerComponent, {
     set: {
       imports: [
+        AddImagesTileComponent,
         GifPickerComponent,
         NgTemplateOutlet,
+        StickerImageComponent,
         StickerPickerComponent,
         EmojiPickerStubComponent,
         TrnOverlaySurfaceDirective,
@@ -141,6 +174,14 @@ async function renderPanel(options: Options = {}) {
     },
     on: handlers,
     providers: [
+      ...(options.addImages
+        ? [
+            {
+              provide: AddToMyEmojiService,
+              useValue: { available: signal(true), addFiles: vi.fn() },
+            },
+          ]
+        : []),
       ...(options.shown
         ? [
             {
@@ -366,6 +407,120 @@ describe('ExpressionPickerComponent', () => {
     // Manual activation: moving focus does not switch the panel, because each picker takes
     // focus into its own search field when it appears.
     expect(emoji).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('the picker lists Your emoji first, then an Add tile', async () => {
+    await renderPanel({ addImages: true });
+
+    const section = view.getByRole('region', { name: 'Your emoji' });
+    expect(
+      section.compareDocumentPosition(view.getByTestId('emoji-picker')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      [...section.querySelectorAll('button')].map((b) =>
+        b.getAttribute('aria-label'),
+      ),
+    ).toEqual(['Add images']);
+  });
+
+  it('the emoji picker lists Your emoji images, then the Add tile', async () => {
+    await renderPanel({ addImages: true, stickerPacks: [personalPack] });
+
+    const section = view.getByRole('region', { name: 'Your emoji' });
+    expect(
+      [...section.querySelectorAll('button')].map((b) =>
+        b.getAttribute('aria-label'),
+      ),
+    ).toEqual([':wave:', ':both:', 'Add images']);
+    await vi.waitFor(() =>
+      expect(
+        [...section.querySelectorAll('img')].map((img) => img.alt),
+      ).toEqual([':wave:', ':both:']),
+    );
+  });
+
+  it('leaves out Your emoji whose shortcode could not be sent as an image', async () => {
+    await renderPanel({
+      stickerPacks: [
+        {
+          ...personalPack,
+          images: [
+            personalImage('blob.cat', ['emoticon']),
+            personalImage('wave', ['emoticon']),
+          ],
+        },
+      ],
+    });
+
+    const section = view.getByRole('region', { name: 'Your emoji' });
+    expect(
+      [...section.querySelectorAll('button')].map((b) =>
+        b.getAttribute('aria-label'),
+      ),
+    ).toEqual([':wave:']);
+  });
+
+  it('picking Your emoji emits its :code: without recording it as recent', async () => {
+    const { handlers, record } = await renderPanel({
+      stickerPacks: [personalPack],
+    });
+
+    fireEvent.click(view.getByRole('button', { name: ':wave:' }));
+
+    expect(handlers.emojiPick).toHaveBeenCalledWith({
+      id: 'wave',
+      native: ':wave:',
+      colons: ':wave:',
+    });
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('Your emoji is one Tab stop: arrows move focus, Enter picks', async () => {
+    const { fixture, handlers } = await renderPanel({
+      addImages: true,
+      stickerPacks: [personalPack],
+    });
+    const section = view.getByRole('region', { name: 'Your emoji' });
+    const buttons = [...section.querySelectorAll('button')];
+    const stops = () => buttons.map((button) => button.tabIndex);
+    const press = (key: string) => {
+      fireEvent.keyDown(document.activeElement!, { key });
+      fixture.detectChanges();
+    };
+
+    expect(stops()).toEqual([0, -1, -1]);
+    buttons[0].focus();
+    press('ArrowRight');
+    expect(document.activeElement).toBe(buttons[1]);
+    expect(stops()).toEqual([-1, 0, -1]);
+    press('ArrowRight');
+    expect(document.activeElement).toBe(buttons[2]);
+    press('ArrowRight');
+    expect(document.activeElement).toBe(buttons[0]);
+    press('ArrowLeft');
+    expect(document.activeElement).toBe(buttons[2]);
+    press('ArrowLeft');
+    expect(document.activeElement).toBe(buttons[1]);
+
+    press('Enter');
+    expect(handlers.emojiPick).toHaveBeenCalledWith({
+      id: 'both',
+      native: ':both:',
+      colons: ':both:',
+    });
+  });
+
+  it('Your emoji scrolls inside its own area', async () => {
+    await renderPanel({ addImages: true, stickerPacks: [personalPack] });
+
+    expect(view.getByTestId('your-emoji-grid')).toHaveClass('overflow-y-auto');
+  });
+
+  it('shows no Your emoji section where images cannot be added', async () => {
+    await renderPanel();
+
+    expect(view.queryByRole('region', { name: 'Your emoji' })).toBeNull();
   });
 
   it('forwards an emoji pick', async () => {

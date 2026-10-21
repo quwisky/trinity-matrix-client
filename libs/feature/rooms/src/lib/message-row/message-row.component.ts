@@ -98,6 +98,8 @@ export interface MessageRowCaps {
   saveMedia: 'image' | 'video' | null;
   /** Whether a forward can carry this message; see `isForwardableMessage`. */
   canForward: boolean;
+  /** Offer "Add to my emoji": a sticker or custom emoji whose image is not in the personal pack yet. */
+  addToEmoji?: boolean;
   /** Hide the hover toolbar + retry affordance (view-only thread panel). */
   readOnly: boolean;
 }
@@ -685,6 +687,7 @@ export class MessageRowComponent {
       canQuote: c.canQuote,
       saveMedia: c.saveMedia,
       canForward: c.canForward,
+      addToEmoji: c.addToEmoji,
     };
   });
 

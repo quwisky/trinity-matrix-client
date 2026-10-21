@@ -31,7 +31,10 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { MediaPipeline } from '@trinity/data-access/media';
+import {
+  ImagePackEditorService,
+  MediaPipeline,
+} from '@trinity/data-access/media';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
   collectMessageSenders,
@@ -92,6 +95,8 @@ const THREAD_SCROLLBACK = 30;
 @Injectable()
 export class ThreadsService {
   private readonly mediaPipeline = inject(MediaPipeline);
+  // Its emoticons() map is filled only while the rooms page subscribes run(); else it is empty.
+  private readonly packs = inject(ImagePackEditorService);
   private readonly messageAdapter = inject(CONVERSATION_MESSAGE_ADAPTER);
   private readonly attention = inject(CONVERSATION_ATTENTION, {
     optional: true,
@@ -566,9 +571,11 @@ export class ThreadsService {
       // A leading slash command (/me, /shrug, /plain, /spoiler) rewrites the content as in
       // the main composer; otherwise build normal text content so mentions carry
       // `m.mentions` + matrix.to pills.
+      const render = (value: string) =>
+        renderMarkdown(value, this.packs.emoticons());
       const content =
-        slashCommandContent(text, renderMarkdown, mentions) ??
-        textMessageContent(text, renderMarkdown(text), mentions);
+        slashCommandContent(text, render, mentions) ??
+        textMessageContent(text, render(text), mentions);
       // Ensure a local Thread exists (fetching the root if needed) *before*
       // sending, so the threaded echo has a home; a fetch failure aborts the send.
       return this.ensureThread(room, threadId).pipe(
@@ -595,7 +602,7 @@ export class ThreadsService {
       const content = editMessageContent(
         messageId,
         text,
-        renderMarkdown(text),
+        renderMarkdown(text, this.packs.emoticons()),
         mentions,
       );
       return from(client.sendMessage(roomId, threadId, content as never));
@@ -623,7 +630,7 @@ export class ThreadsService {
         room,
         messageId,
         text,
-        renderMarkdown(text),
+        renderMarkdown(text, this.packs.emoticons()),
         mentions,
         undefined,
         shownContent,

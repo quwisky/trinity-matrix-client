@@ -1,6 +1,7 @@
 import { Marked, Renderer, type Tokens } from 'marked';
 import { escapeHtml, sanitizeOutgoingHtml, taskGlyph } from './message-html';
 import { trimTrailing } from './trim-trailing';
+import { SHORTCODE_CHARACTERS, SHORTCODE_JOINER } from './shortcode';
 
 /** Result of rendering composer markdown to sanitized HTML. */
 export interface RenderedMarkdown {
@@ -155,11 +156,66 @@ function restoreSpaceRuns(html: string, runs: readonly number[]): string {
   });
 }
 
+/** A `:shortcode:` candidate; the closing colon is a lookahead, so it may also open the next. */
+const SHORTCODE = new RegExp(`:([${SHORTCODE_CHARACTERS}]{1,100})(?=:)`, 'g');
+/** A `:shortcode:` at the start of a string. */
+const LEADING_SHORTCODE = new RegExp(`^:([${SHORTCODE_CHARACTERS}]{1,100}):`);
+
+/**
+ * Each known `:shortcode:` outside code as an MSC2545 inline image. Runs before the outgoing
+ * sanitizer, which drops any whose url is not `mxc:` back to its alt text.
+ */
+function inlineEmoticons(
+  html: string,
+  emoticons: ReadonlyMap<string, string>,
+): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  const texts: Text[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.parentElement?.closest('code, pre')) texts.push(node as Text);
+  }
+  for (const text of texts) {
+    const parts: (string | Node)[] = [];
+    let copied = 0;
+    for (const match of text.data.matchAll(SHORTCODE)) {
+      const url = emoticons.get(match[1]);
+      // Overlap: this opening colon closed the previous code.
+      if (!url || match.index < copied) continue;
+      const code = `:${match[1]}:`;
+      const before = text.data[match.index - 1] ?? '';
+      const rest = text.data.slice(match.index + code.length);
+      // A boundary on both sides, so `10:30:45` stays text; adjacent known codes share one.
+      if (SHORTCODE_JOINER.test(before) && match.index !== copied) continue;
+      if (
+        SHORTCODE_JOINER.test(rest.charAt(0)) &&
+        !emoticons.has(LEADING_SHORTCODE.exec(rest)?.[1] ?? '')
+      ) {
+        continue;
+      }
+      const image = doc.createElement('img');
+      image.setAttribute('data-mx-emoticon', '');
+      image.setAttribute('src', url);
+      image.setAttribute('alt', code);
+      image.setAttribute('title', code);
+      image.setAttribute('height', '32');
+      parts.push(text.data.slice(copied, match.index), image);
+      copied = match.index + code.length;
+    }
+    if (copied > 0) text.replaceWith(...parts, text.data.slice(copied));
+  }
+  return doc.body.innerHTML;
+}
+
 /**
  * Render composer markdown to sanitized HTML. `formatted` is false when the HTML
  * carries no formatting beyond the plain text, so the caller can send plain text.
+ * `emoticons` maps a shortcode to its mxc url; each known `:shortcode:` becomes an inline image.
  */
-export function renderMarkdown(text: string): RenderedMarkdown {
+export function renderMarkdown(
+  text: string,
+  emoticons: ReadonlyMap<string, string> = new Map(),
+): RenderedMarkdown {
   let rendered: string;
   try {
     const shielded = shieldSpaceRuns(text);
@@ -172,7 +228,9 @@ export function renderMarkdown(text: string): RenderedMarkdown {
   } catch {
     return { formatted: false, html: '' };
   }
-  const html = sanitizeOutgoingHtml(rendered);
+  const html = sanitizeOutgoingHtml(
+    emoticons.size > 0 ? inlineEmoticons(rendered, emoticons) : rendered,
+  );
   // Input whose every construct the allowlist strips (an HTML comment, a lone <script>)
   // sanitizes to nothing; an empty formatted_body is worse than plain text. Callers check `html`
   // as well as `formatted`: a message with a mention takes the rich branch regardless, and an

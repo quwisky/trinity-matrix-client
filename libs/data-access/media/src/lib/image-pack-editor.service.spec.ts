@@ -457,6 +457,26 @@ describe('ImagePackEditorService', () => {
     lifetime.unsubscribe();
   });
 
+  it('emoticons maps only emoticon-usage shortcodes to their mxc', () => {
+    const { service } = setup({
+      [STABLE]: {
+        images: {
+          wave: { url: 'mxc://hs/wave', usage: ['emoticon'] },
+          both: { url: 'mxc://hs/both' },
+          stick: { url: 'mxc://hs/stick', usage: ['sticker'] },
+        },
+      },
+    });
+    const lifetime = service.run().subscribe();
+    TestBed.tick();
+
+    expect([...service.emoticons()]).toEqual([
+      ['wave', 'mxc://hs/wave'],
+      ['both', 'mxc://hs/both'],
+    ]);
+    lifetime.unsubscribe();
+  });
+
   it('fails with not-signed-in without an account', async () => {
     const { service, matrix } = setup();
     matrix.isInitialized = false;

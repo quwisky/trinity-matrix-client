@@ -9,6 +9,7 @@ import {
   LEGACY_IMAGE_PACK_EVENT_TYPE,
   LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
   PERSONAL_IMAGE_PACK_EVENT_TYPE,
+  PERSONAL_IMAGE_PACK_ID,
   LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE,
   TRINITY_IMAGE_PACK_ENABLED_USAGE,
   isValidMxcUri,
@@ -139,7 +140,7 @@ describe('ImagePackService', () => {
 
     expect(packs.map((item) => item.name)).toEqual(['Your emoji', 'Local']);
     expect(packs[0]).toMatchObject({
-      id: 'personal',
+      id: PERSONAL_IMAGE_PACK_ID,
       roomId: '',
       stateKey: '',
       attribution: null,
@@ -153,7 +154,7 @@ describe('ImagePackService', () => {
         width: 8,
         height: 9,
         usage: ['emoticon'],
-        packId: 'personal',
+        packId: PERSONAL_IMAGE_PACK_ID,
         packName: 'Your emoji',
       }),
       expect.objectContaining({ shortcode: 'cat', body: 'A cat' }),

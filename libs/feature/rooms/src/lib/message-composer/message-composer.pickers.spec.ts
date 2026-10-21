@@ -31,7 +31,11 @@ import {
   type ComposerExpressionTab,
 } from '@trinity/data-access/timeline';
 import { LocationShareService } from '../location-share/location-share.service';
-import { MediaService, type ImagePack } from '@trinity/data-access/media';
+import {
+  MediaService,
+  PERSONAL_IMAGE_PACK_ID,
+  type ImagePack,
+} from '@trinity/data-access/media';
 import { CreatePollService } from '../poll/create-poll.service';
 import { CreatePollDialogComponent } from '../poll/create-poll-dialog.component';
 import {
@@ -154,6 +158,50 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
 
     expect(emojiPicker()).not.toBeNull();
     expect(placeholder()).toBeNull();
+  });
+
+  it('picking Your emoji inserts :code: at the cursor, spaced off a word so it converts', async () => {
+    const personal: ImagePack = {
+      ...stickerPack,
+      id: PERSONAL_IMAGE_PACK_ID,
+      images: [
+        {
+          ...stickerPack.images[0],
+          shortcode: 'wave',
+          url: 'mxc://hs/wave',
+          usage: ['emoticon'],
+          packId: PERSONAL_IMAGE_PACK_ID,
+        },
+      ],
+    };
+    const { fixture, container } = await renderComposer(
+      { stickerPacks: [personal] },
+      [
+        MockProvider(MediaService, {
+          resolveMedia: vi.fn(() => of('blob:wave')),
+          pin: vi.fn(),
+          unpin: vi.fn(),
+        }),
+      ],
+    );
+    const cmp = fixture.componentInstance;
+    const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+    const pickAt = (text: string, caret: number) => {
+      cmp.text.set(text);
+      fixture.detectChanges();
+      ta.selectionStart = ta.selectionEnd = caret;
+      cmp.pickerOpen.set(true);
+      TestBed.tick();
+      document
+        .querySelector<HTMLButtonElement>('[aria-label=":wave:"]')
+        ?.click();
+      return cmp.text();
+    };
+
+    expect(pickAt('hi', 2)).toBe('hi :wave:');
+    expect(cmp.pickerOpen()).toBe(false);
+    expect(pickAt('ab', 1)).toBe('a :wave: b');
+    expect(pickAt('hi ', 3)).toBe('hi :wave:');
   });
 
   it('closes the picker with the button that opened it', async () => {

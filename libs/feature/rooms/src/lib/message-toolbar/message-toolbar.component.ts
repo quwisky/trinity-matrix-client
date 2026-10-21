@@ -34,6 +34,8 @@ export interface MessageToolbarCaps {
   saveMedia: 'image' | 'video' | null;
   /** Offer "Forward"; false for a message a forward cannot carry (a poll, say). */
   canForward: boolean;
+  /** Offer "Add to my emoji": a sticker or custom emoji whose image is not in the personal pack yet. */
+  addToEmoji?: boolean;
 }
 
 /** A single action a user triggers from the message toolbar. */
@@ -51,6 +53,8 @@ export type MessageAction =
   | { type: 'copy-link' }
   /** Save the message's image or video to the device. */
   | { type: 'save-media' }
+  /** Open "Add to your emoji" with this sticker's image, or one of the message's emoji. */
+  | { type: 'add-to-emoji' }
   | { type: 'view-source' }
   | { type: 'forward' }
   | { type: 'report' }

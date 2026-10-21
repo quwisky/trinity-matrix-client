@@ -23,10 +23,13 @@ import { Subscription } from 'rxjs';
 })
 export class StickerImageComponent {
   readonly image = input.required<ImagePackImage>();
+  /** Alt text in place of the image's body, e.g. `:shortcode:` where it names an emoji. */
+  readonly alt = input<string>();
   protected readonly src = signal<string | null>(null);
   protected readonly failed = signal(false);
   protected readonly label = computed(
-    () => this.image().body.slice(0, 256) || this.image().shortcode,
+    () =>
+      this.alt() ?? (this.image().body.slice(0, 256) || this.image().shortcode),
   );
   private readonly media = inject(MediaService);
   private readonly destroyRef = inject(DestroyRef);

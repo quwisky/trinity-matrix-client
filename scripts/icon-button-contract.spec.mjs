@@ -97,6 +97,7 @@ const compositeIconFiles = new Set([
   'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.html',
   'libs/feature/rooms/src/lib/room-header/room-header.component.html',
   'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+  'libs/feature/rooms/src/lib/shared/add-images-tile/add-images-tile.component.html',
   'libs/components/overlay/src/lib/settings-layout/trn-settings-layout.component.html',
   'libs/components/overlay/src/lib/action-sheet/trn-action-list.component.html',
 ]);

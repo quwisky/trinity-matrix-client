@@ -39,6 +39,10 @@ describe('MessageActionSheetService', () => {
 
     sheet.open({}, { canForward: true } as SheetCaps, vi.fn());
     expect(testIds).toContain('sheet-forward');
+    expect(testIds).not.toContain('sheet-add-to-emoji');
+
+    sheet.open({}, { addToEmoji: true } as SheetCaps, vi.fn());
+    expect(testIds).toContain('sheet-add-to-emoji');
   });
 
   it('records a reaction picked from the sheet as a recently used emoji', () => {

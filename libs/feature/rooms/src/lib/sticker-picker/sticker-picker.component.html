@@ -41,14 +41,19 @@
       >
         <div class="picker__pack-heading">
           <h3 class="picker__pack-name" [id]="'sticker-pack-' + $index">
-            {{ pack.name }}
+            {{ pack.id === personal ? 'Your stickers' : pack.name }}
           </h3>
           <span
             class="picker__scope"
             [id]="'sticker-pack-scope-' + $index"
             data-testid="sticker-pack-scope"
           >
-            {{ pack.scope.sticker === 'account' ? 'All rooms' : 'This room' }}
+            <!-- The personal pack lives in account data: every room, whatever its usage. -->
+            {{
+              pack.id === personal || pack.scope.sticker === 'account'
+                ? 'All rooms'
+                : 'This room'
+            }}
           </span>
         </div>
         <div class="picker__grid">
@@ -69,12 +74,16 @@
               >
             </button>
           }
+          @if (pack.id === personal) {
+            <trn-add-images-tile />
+          }
         </div>
         @if (pack.attribution) {
           <p class="picker__attribution">{{ pack.attribution }}</p>
         }
       </section>
-    } @empty {
+    }
+    @if (!found()) {
       <trn-empty-state layout="line" role="status" body="No stickers found." />
     }
   </div>

@@ -20,6 +20,7 @@ import {
   textMessageContent,
 } from '@trinity/util/matrix';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { ImagePackEditorService } from '@trinity/data-access/media';
 import {
   type ConversationTextSendOperation,
   type ConversationTextSendRequest,
@@ -36,6 +37,8 @@ class MissingLocalEchoError extends Error {
 @Injectable({ providedIn: 'root' })
 class MatrixConversationTextSender implements ConversationTextSender {
   private readonly matrix = inject(MatrixClientService);
+  // Its emoticons() map is filled only while the rooms page subscribes run(); else it is empty.
+  private readonly packs = inject(ImagePackEditorService);
 
   send(request: ConversationTextSendRequest): ConversationTextSendOperation {
     const client = this.matrix.clientFor(request.key.accountId);
@@ -133,22 +136,20 @@ class MatrixConversationTextSender implements ConversationTextSender {
     target: MatrixEvent | undefined,
   ): object {
     const mentions = [...request.mentions];
+    const emoticons = this.packs.emoticons();
+    const render = (text: string) => renderMarkdown(text, emoticons);
     switch (request.intent.kind) {
       case 'message':
         return (
-          slashCommandContent(request.body, renderMarkdown, mentions) ??
-          textMessageContent(
-            request.body,
-            renderMarkdown(request.body),
-            mentions,
-          )
+          slashCommandContent(request.body, render, mentions) ??
+          textMessageContent(request.body, render(request.body), mentions)
         );
       case 'reply':
         return replyMessageContent(
           room,
           request.intent.eventId,
           request.body,
-          renderMarkdown(request.body),
+          render(request.body),
           mentions,
           target,
           shownContent,
@@ -157,7 +158,7 @@ class MatrixConversationTextSender implements ConversationTextSender {
         return editMessageContent(
           request.intent.eventId,
           request.body,
-          renderMarkdown(request.body),
+          render(request.body),
           mentions,
         );
     }

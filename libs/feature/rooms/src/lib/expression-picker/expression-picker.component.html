@@ -82,6 +82,47 @@
       />
     }
     @case ('emoji') {
+      @if (adding() || yourEmoji().length > 0) {
+        <section
+          class="flex flex-col gap-2 pt-3"
+          [attr.aria-labelledby]="panelId() + '-your-emoji'"
+          data-testid="your-emoji"
+        >
+          <h3
+            class="m-0 text-xs font-bold text-[var(--trinity-text-muted)] uppercase"
+            [id]="panelId() + '-your-emoji'"
+          >
+            Your emoji
+          </h3>
+          <!-- About three rows, then its own scroll; one Tab stop, arrows move within. -->
+          <div
+            class="flex max-h-35 flex-wrap gap-1 overflow-y-auto"
+            data-testid="your-emoji-grid"
+            (keydown)="onYourEmojiKey($event)"
+            (focusin)="onYourEmojiFocus($event)"
+          >
+            @for (image of yourEmoji(); track image.shortcode) {
+              <button
+                type="button"
+                class="size-11 cursor-pointer rounded-[var(--trinity-shape-control-radius)] border-0 bg-transparent p-1.5 hover:bg-[var(--trinity-state-hover-surface)] focus-visible:bg-[var(--trinity-state-hover-surface)]"
+                [tabindex]="$index === yourEmojiStop() ? 0 : -1"
+                [attr.aria-label]="':' + image.shortcode + ':'"
+                (click)="onYourEmojiPick(image)"
+              >
+                <trn-sticker-image
+                  [image]="image"
+                  [alt]="':' + image.shortcode + ':'"
+                />
+              </button>
+            }
+            @if (adding()) {
+              <trn-add-images-tile
+                [tabbable]="yourEmojiStop() === yourEmoji().length"
+              />
+            }
+          </div>
+        </section>
+      }
       <!-- A sheet's touch cells are 44px with the larger glyph. `min-w-0`: the grid must
            not size its track; the content's width does. -->
       <trn-emoji-picker

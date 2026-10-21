@@ -30,14 +30,17 @@ import {
   TrnSettingsGroupComponent,
   TrnSurfaceService,
 } from '@trinity/components/overlay';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   ImagePackEditError,
   ImagePackEditorService,
+  MAX_PERSONAL_IMAGES,
   SHORTCODE_PATTERN,
   type PackEntry,
 } from '@trinity/data-access/media';
 import { TrackFileChooserDirective } from '@trinity/platform-native';
 import {
+  EMPTY,
   concatMap,
   filter,
   finalize,
@@ -54,7 +57,6 @@ import {
 } from '../add-to-pack-dialog/add-to-pack-dialog.component';
 import { PackImageComponent } from './pack-image.component';
 
-const MAX_IMAGES = 500;
 const CHANGE_FAILED = 'Couldn’t change your emoji. Try again.';
 const USE_AS_LABELS: Record<UseAs, string> = {
   emoticon: 'Emoji',
@@ -111,6 +113,7 @@ export class PersonalPackComponent {
   private readonly editor = inject(ImagePackEditorService);
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly alert = inject(TrnAlertService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -128,7 +131,7 @@ export class PersonalPackComponent {
 
   protected readonly entries = this.editor.personal;
   protected readonly full = computed(
-    () => (this.entries()?.length ?? 0) >= MAX_IMAGES,
+    () => (this.entries()?.length ?? 0) >= MAX_PERSONAL_IMAGES,
   );
   protected readonly useAsOf = useAsOf;
   protected readonly labels = USE_AS_LABELS;
@@ -163,20 +166,24 @@ export class PersonalPackComponent {
     const input = event.target as HTMLInputElement;
     const files = [...(input.files ?? [])];
     input.value = '';
+    const account = this.matrix.activeUserId();
     from(files)
       .pipe(
+        // An account switch drops the files still queued; the open dialog closes itself.
         concatMap((file) =>
-          this.surfaces.openAndWait$<PackEntry, AddToPackDialogComponent>(
-            AddToPackDialogComponent,
-            {
-              inputs: {
-                input: { kind: 'file', file },
-                suggestedName: file.name,
-              },
-              autoFocus: '[data-autofocus]',
-              dismissGuard: (dialog) => dialog?.canDismiss() ?? true,
-            },
-          ),
+          this.matrix.activeUserId() !== account
+            ? EMPTY
+            : this.surfaces.openAndWait$<PackEntry, AddToPackDialogComponent>(
+                AddToPackDialogComponent,
+                {
+                  inputs: {
+                    input: { kind: 'file', file },
+                    suggestedName: file.name,
+                  },
+                  autoFocus: '[data-autofocus]',
+                  dismissGuard: (dialog) => dialog?.canDismiss() ?? true,
+                },
+              ),
         ),
         takeUntilDestroyed(this.destroyRef),
       )

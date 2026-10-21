@@ -1,0 +1,20 @@
+<button
+  type="button"
+  class="flex min-h-11 min-w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[var(--trinity-shape-control-radius)] border border-dashed border-[var(--trinity-divider)] bg-transparent p-1 text-xs text-[var(--trinity-text-muted)] hover:bg-[var(--trinity-state-hover-surface)] focus-visible:bg-[var(--trinity-state-hover-surface)]"
+  aria-label="Add images"
+  [tabindex]="tabbable() ? 0 : -1"
+  data-testid="add-images-tile"
+  (click)="files.click()"
+>
+  <trn-icon name="plus" />
+  Add
+</button>
+<input
+  #files
+  type="file"
+  trnTrackFileChooser
+  accept="image/png,image/jpeg,image/webp,image/gif"
+  multiple
+  hidden
+  (change)="onFiles($event)"
+/>

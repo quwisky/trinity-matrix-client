@@ -5,6 +5,7 @@ import {
   TrnSurfaceService,
   type ActionSheetData,
 } from '@trinity/components/overlay';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   ImagePackEditError,
   ImagePackEditorService,
@@ -36,6 +37,7 @@ const PARTY: PackEntry = {
 
 async function build(entries: readonly PackEntry[] | null = [FOX]) {
   const personal = signal<readonly PackEntry[] | null>(entries);
+  const activeUserId = signal<string | null>('@a:hs');
   let running = 0;
   const run = vi.fn(
     () =>
@@ -68,6 +70,7 @@ async function build(entries: readonly PackEntry[] | null = [FOX]) {
         remove,
       }),
       MockProvider(TrnAlertService, { confirm$ }),
+      MockProvider(MatrixClientService, { activeUserId }),
       MockProvider(TrnSurfaceService, {
         openAndWait$: openAndWait$ as TrnSurfaceService['openAndWait$'],
         openActions: openActions as unknown as TrnSurfaceService['openActions'],
@@ -94,6 +97,7 @@ async function build(entries: readonly PackEntry[] | null = [FOX]) {
   return {
     ...rendered,
     personal,
+    activeUserId,
     running: () => running,
     rename,
     setUsage,
@@ -192,6 +196,20 @@ describe('PersonalPackComponent', () => {
         },
       }),
     );
+  });
+
+  it('drops the queued files when the account changes', async () => {
+    const view = await build();
+    const input = view.byTestId('personal-pack-files') as HTMLInputElement;
+    const fox = new File(['x'], 'fox.png', { type: 'image/png' });
+
+    choose(input, [fox, fox, fox]);
+    view.activeUserId.set('@b:hs');
+    // The dialog closes itself on the switch.
+    view.dialogs[0].next(null);
+    view.dialogs[0].complete();
+
+    expect(view.openAndWait$).toHaveBeenCalledOnce();
   });
 
   it('disables Add with the full-pack copy at 500', async () => {
@@ -361,6 +379,17 @@ describe('PersonalPackComponent', () => {
     view.personal.set([FOX, LEAF]);
     view.settle();
     expect(screen.getByRole('button', { name: ':leaf:' })).toBeTruthy();
+  });
+
+  it('each tile opens a menu and is described by how it is used', async () => {
+    await build([FOX, PARTY]);
+
+    const fox = screen.getByRole('button', { name: ':fox:' });
+    expect(fox).toHaveAttribute('aria-haspopup', 'menu');
+    expect(fox).toHaveAccessibleDescription('Emoji');
+    expect(
+      screen.getByRole('button', { name: ':party:' }),
+    ).toHaveAccessibleDescription('Sticker');
   });
 
   it('each tile is a button named :code: with alt text', async () => {

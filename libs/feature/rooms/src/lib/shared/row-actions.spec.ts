@@ -10,6 +10,7 @@ import { type MessageRow } from '../message-row/message-row.component';
 import {
   buildRowCaps,
   buildRowCapsMap,
+  addableImages,
   dispatchSharedRowAction,
   sameRowCaps,
   type RowCapsPolicy,
@@ -26,6 +27,7 @@ function setup(overrides: Partial<SharedRowActionContext> = {}) {
     dialog: {
       open: vi.fn(),
       openAndWait$: vi.fn(() => of('🎉')),
+      openActions: vi.fn(),
     },
     timeline: { rawEvent: vi.fn(() => ({ type: 'm.room.message' })) },
     forward: { forward$: vi.fn(() => of(undefined)) },
@@ -36,6 +38,7 @@ function setup(overrides: Partial<SharedRowActionContext> = {}) {
     quote: vi.fn(),
     mediaSave: { save: vi.fn() },
     undecryptableFix: { open: vi.fn(() => of(undefined)) },
+    addToEmoji: { add: vi.fn(), canAdd: vi.fn(() => true) },
     ...overrides,
   };
   return ctx as typeof ctx & SharedRowActionContext;
@@ -62,6 +65,105 @@ describe('dispatchSharedRowAction', () => {
     ).toBe(true);
 
     expect(ctx.mediaSave.save).toHaveBeenCalledWith(media);
+  });
+
+  it('"Add to my emoji" on a sticker opens the dialog with its mxc and info', () => {
+    const info = { mimetype: 'image/webp', w: 256, h: 240, size: 1234 };
+    const ctx = setup({
+      timeline: {
+        rawEvent: vi.fn(() => ({
+          type: 'm.sticker',
+          content: { url: 'mxc://hs/fox', body: 'Fox', info },
+        })),
+      },
+    });
+
+    expect(dispatchSharedRowAction({ type: 'add-to-emoji' }, row, ctx)).toBe(
+      true,
+    );
+
+    expect(ctx.timeline.rawEvent).toHaveBeenCalledWith('!r:hs', '$e');
+    expect(ctx.addToEmoji.add).toHaveBeenCalledWith(
+      {
+        kind: 'existing',
+        url: 'mxc://hs/fox',
+        body: 'Fox',
+        info: { mimetype: 'image/webp', w: 256, h: 240, size: 1234 },
+      },
+      'Fox',
+    );
+  });
+
+  it('suggests a non-empty name for a sticker without a body', () => {
+    const ctx = setup({
+      timeline: {
+        rawEvent: vi.fn(() => ({
+          type: 'm.sticker',
+          content: { url: 'mxc://hs/fox' },
+        })),
+      },
+    });
+
+    dispatchSharedRowAction({ type: 'add-to-emoji' }, row, ctx);
+
+    expect(ctx.addToEmoji.add).toHaveBeenCalledWith(
+      { kind: 'existing', url: 'mxc://hs/fox' },
+      'sticker',
+    );
+  });
+
+  describe('"Add to my emoji" on a text message', () => {
+    const emoji = (code: string) =>
+      `<img data-mx-emoticon="" alt=":${code}:" class="mx-emoticon" data-mx-src="mxc://hs/${code}" height="32">`;
+    const withEmoji = (...codes: string[]) =>
+      ({ ...row, html: `hi ${codes.map(emoji).join(' ')}` }) as MessageRow;
+
+    it('opens the dialog for its one addable emoji', () => {
+      const ctx = setup();
+
+      dispatchSharedRowAction({ type: 'add-to-emoji' }, withEmoji('wave'), ctx);
+
+      expect(ctx.addToEmoji.add).toHaveBeenCalledWith(
+        { kind: 'existing', url: 'mxc://hs/wave', body: 'wave' },
+        'wave',
+      );
+      expect(ctx.dialog.openActions).not.toHaveBeenCalled();
+    });
+
+    it('lets the user choose by :code: among several', () => {
+      const ctx = setup({
+        addToEmoji: {
+          add: vi.fn(),
+          canAdd: vi.fn((mxc: string) => mxc !== 'mxc://hs/owned'),
+        },
+      });
+
+      dispatchSharedRowAction(
+        { type: 'add-to-emoji' },
+        withEmoji('wave', 'owned', 'cat', 'wave'),
+        ctx,
+      );
+
+      expect(ctx.addToEmoji.add).not.toHaveBeenCalled();
+      const [data] = vi.mocked(ctx.dialog.openActions).mock
+        .calls[0] as unknown as [
+        {
+          header: string;
+          buttons: { text: string; role?: string; handler?: () => void }[];
+        },
+      ];
+      expect(data.header).toBe('Add to my emoji');
+      expect(data.buttons.map((button) => button.text)).toEqual([
+        ':wave:',
+        ':cat:',
+        'Cancel',
+      ]);
+      data.buttons[1].handler!();
+      expect(ctx.addToEmoji.add).toHaveBeenCalledWith(
+        { kind: 'existing', url: 'mxc://hs/cat', body: 'cat' },
+        'cat',
+      );
+    });
   });
 
   it('does nothing for save-media on a row without media', () => {
@@ -206,6 +308,7 @@ describe('row caps', () => {
     canPin: true,
     canThread: true,
     pinnedIds: [],
+    canAddToEmoji: (message) => message.id !== '$owned',
   };
   const text = (id: string, over: Partial<MessageRow> = {}) =>
     ({
@@ -274,6 +377,51 @@ describe('row caps', () => {
     expect(forwardable({ decryptionFailed: true })).toBe(false);
   });
 
+  it('offers "Add to my emoji" on a sent message the host allows', () => {
+    const offered = (id: string, over: Partial<MessageRow> = {}) =>
+      buildRowCaps(text(id, { kind: 'sticker', ...over }), policy).addToEmoji;
+
+    expect(offered('$fox')).toBe(true);
+    expect(offered('$owned')).toBe(false);
+    expect(offered('$fox', { status: 'sending' })).toBe(false);
+  });
+
+  it('addable: a sticker or a text with an emoji not in the pack yet', () => {
+    const adder = { canAdd: (mxc: string) => mxc !== 'mxc://hs/owned' };
+    const events = new Map<string, object>();
+    const rawEvent = vi.fn(
+      (_room: string, id: string) => events.get(id) ?? null,
+    );
+    const addable = addableImages(adder, { rawEvent }, '!r:hs');
+    const sticker = (url: string, type = 'm.sticker') => {
+      events.set('$e', { type, content: { url, body: 'Fox' } });
+      return addable(text('$e', { kind: 'sticker' }));
+    };
+    const emoji = (...urls: string[]) =>
+      addable(
+        text('$t', {
+          html: urls
+            .map(
+              (url) =>
+                `<img data-mx-emoticon="" alt=":x:" class="mx-emoticon" data-mx-src="${url}" height="32">`,
+            )
+            .join(''),
+        }),
+      );
+
+    expect(sticker('mxc://hs/fox')).toBe(true);
+    expect(sticker('mxc://hs/owned')).toBe(false);
+    expect(sticker('mxc://hs/fox', 'm.room.message')).toBe(false);
+    expect(sticker('https://example.org/fox.png')).toBe(false);
+    expect(addable(text('$missing', { kind: 'sticker' }))).toBe(false);
+    expect(rawEvent).toHaveBeenCalledWith('!r:hs', '$e');
+
+    expect(emoji('mxc://hs/owned', 'mxc://hs/wave')).toBe(true);
+    expect(emoji('mxc://hs/owned')).toBe(false);
+    expect(emoji()).toBe(false);
+    expect(addable(text('$plain'))).toBe(false);
+  });
+
   it('compares every capability', () => {
     const caps = buildRowCaps(text('$a'), policy);
     expect(sameRowCaps(caps, { ...caps, canForward: !caps.canForward })).toBe(
@@ -283,6 +431,9 @@ describe('row caps', () => {
     expect(sameRowCaps(caps, { ...caps })).toBe(true);
     expect(sameRowCaps(caps, { ...caps, pinned: true })).toBe(false);
     expect(sameRowCaps(caps, { ...caps, saveMedia: 'image' })).toBe(false);
+    expect(sameRowCaps(caps, { ...caps, addToEmoji: !caps.addToEmoji })).toBe(
+      false,
+    );
   });
 
   it('reuses the previous caps object for rows that did not change', () => {
