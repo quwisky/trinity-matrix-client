@@ -260,7 +260,8 @@
       flex: none;
       box-shadow: var(--trinity-shadow-overlay);
 
-      // Neither safe-area inset is padded here; each surface takes its own, as split below.
+      // Fixed over the frame, a drawer reaches the status bar, so it takes the top inset.
+      padding-top: env(safe-area-inset-top);
       animation: members-drawer-in var(--trinity-duration-base)
         var(--trinity-ease-decelerate);
 
@@ -279,8 +280,8 @@
     // them full-screen at this width (480px exceeds the viewport here). The dragged width is
     // deliberately not read at this breakpoint: there is no divider to drag, and a width
     // chosen on a desktop has nothing to say about a phone.
-    // INSETS: every panel pads itself at BOTH ends — the shared header takes the top inset,
-    // `safe-bottom` on the root takes the bottom — because their content reaches both edges.
+    // INSETS: the drawer above takes the top inset; every panel pads its own bottom with
+    // `safe-bottom` on the root, because its content reaches that edge.
     // The member list has no `safe-bottom`, so the host takes the bottom inset for it; without
     // it its last row sits under the home indicator.
     .chat-members {

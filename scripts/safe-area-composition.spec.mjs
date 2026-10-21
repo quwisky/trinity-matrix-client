@@ -271,8 +271,8 @@ const TOP_INSET_OWNERS = new Map([
     'CDK overlay',
   ],
   [
-    'libs/feature/rooms/src/lib/side-panel/side-panel-header.component.scss',
-    'heads the drawers, fixed only below the members breakpoint',
+    'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
+    'the fixed phone drawers, below the members breakpoint',
   ],
 ]);
 
@@ -294,14 +294,16 @@ describe('top safe-area ownership', () => {
     ).toEqual([]);
   });
 
-  it('insets a side-panel header only where its panel is a fixed drawer', () => {
-    // Wider than the members breakpoint the panel is an in-flow column under the frame.
-    const css = read(
+  it('insets the side panels only as fixed phone drawers, never in their header', () => {
+    // The header also heads in-flow columns and the member card embedded in settings.
+    const header = read(
       'libs/feature/rooms/src/lib/side-panel/side-panel-header.component.scss',
     );
-    const drawer = css.indexOf('@media #{$below-members}');
+    const rooms = read('libs/feature/rooms/src/lib/rooms/rooms.page.scss');
+    const drawers = rooms.indexOf('@media #{$below-members}');
 
-    expect(drawer).toBeGreaterThan(-1);
-    expect(css.indexOf('safe-area-inset-top')).toBeGreaterThan(drawer);
+    expect(header).not.toContain('safe-area-inset-top');
+    expect(drawers).toBeGreaterThan(-1);
+    expect(rooms.indexOf('safe-area-inset-top')).toBeGreaterThan(drawers);
   });
 });
