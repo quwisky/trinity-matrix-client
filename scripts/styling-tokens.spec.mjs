@@ -31,6 +31,12 @@ const workspaceRoot = join(import.meta.dirname, '..');
  */
 const LITERAL_ANIMATIONS = [];
 
+/** `dvh` height caps that need not give up the iOS keyboard, each with the reason. */
+const KEYBOARD_SHRINK_EXEMPT = {
+  'libs/application/runtime/src/lib/application-root/application-root.component.html: h-dvh':
+    'the root gives up the keyboard as bottom padding, so only an inset change animates',
+};
+
 const files = ['libs/**/*.scss', 'apps/**/*.scss']
   .flatMap((pattern) => globSync(pattern, { cwd: workspaceRoot }))
   .filter((file) => !file.includes('node_modules'))
@@ -82,6 +88,67 @@ describe('styling tokens', () => {
     expect(globalStyles).toContain(
       "textarea:not([data-slot='input'], [data-slot='textarea']):focus-visible",
     );
+  });
+
+  it('keeps every viewport-pinned surface and height cap above the iOS keyboard', () => {
+    // The iOS WebView stays full height under the keyboard (`resize: 'none'`), so `dvh` and a
+    // fixed `bottom: 0` no longer shrink with it. Whatever reaches the bottom of the layout
+    // viewport outside the root and the CDK wrapper, and every cap sized from `100dvh` inside
+    // that wrapper, gives up `--trinity-keyboard-shrink` itself.
+    const rule = (source, selector) =>
+      source.slice(source.indexOf(selector)).split('}')[0];
+    const shrink = '--trinity-keyboard-shrink';
+    expect(
+      rule(
+        read('libs/feature/rooms/src/lib/rooms/rooms.page.scss'),
+        '.chat-members,\n    .chat-panel {',
+      ),
+    ).toContain(`bottom: var(${shrink}`);
+    // Each moves with the keyboard rather than jumping once it has settled.
+    const follows = 'var(--trinity-duration-keyboard)';
+    const lockCover = read(
+      'libs/application/runtime/src/lib/application-root/app-lock-cover/app-lock-cover.component.html',
+    );
+    expect(lockCover).toContain(shrink);
+    expect(lockCover).toContain(`duration-[${follows}]`);
+    expect(rule(globalStyles, '.trn-action-feedback {')).toContain(shrink);
+    expect(rule(globalStyles, '.trn-action-feedback {')).toContain(
+      `transition: bottom ${follows}`,
+    );
+    expect(rule(globalStyles, '[data-sonner-toaster]')).toContain(shrink);
+
+    const caps = [
+      'libs/**/*.{scss,css,html,ts}',
+      'apps/trinity/src/**/*.{scss,css,html,ts}',
+    ]
+      .flatMap((pattern) => globSync(pattern, { cwd: workspaceRoot }))
+      .filter(
+        (file) => !/node_modules|\.storybook|\.(spec|stories)\.ts$/u.test(file),
+      )
+      .sort()
+      .flatMap((file) =>
+        [
+          // Height declarations and the custom properties that carry one, Tailwind height
+          // utilities, and inline pane geometry.
+          ...code(file).matchAll(
+            /(?:(?:max-|min-)?(?:height|block-size)|--[\w-]+)\s*:[^;{}]*?dvh[^;{}]*;/gu,
+          ),
+          ...code(file).matchAll(
+            /(?<![\w-])(?:max-|min-)?h-(?:\[[^\]\s]*dvh[^\]\s]*\]|dvh)/gu,
+          ),
+          ...code(file).matchAll(/'(?:calc|min|max)\([^'\n]*dvh[^'\n]*'/gu),
+        ].map(([cap]) => `${file}: ${cap.replace(/\s+/gu, ' ')}`),
+      );
+    expect(caps.length).toBeGreaterThan(0);
+    expect(
+      caps.filter(
+        (cap) => !cap.includes(shrink) && !(cap in KEYBOARD_SHRINK_EXEMPT),
+      ),
+    ).toEqual([]);
+    // An exemption that no longer matches a cap is stale.
+    expect(
+      Object.keys(KEYBOARD_SHRINK_EXEMPT).filter((cap) => !caps.includes(cap)),
+    ).toEqual([]);
   });
 
   it('uses the motion tokens for every transition', () => {

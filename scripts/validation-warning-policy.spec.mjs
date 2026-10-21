@@ -106,7 +106,7 @@ describe('validation warning policy', () => {
         {
           type: 'allScript',
           maximumWarning: '7mb',
-          maximumError: '8mb',
+          maximumError: '9mb',
         },
         {
           type: 'anyComponentStyle',

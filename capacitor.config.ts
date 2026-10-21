@@ -10,13 +10,20 @@ const config: CapacitorConfig = {
   // `cap sync` for a local debugging build that needs the bridge and console logs.
   loggingBehavior:
     process.env['TRINITY_CAPACITOR_LOGS'] === '1' ? 'debug' : 'none',
+  // The app scrolls inside its own panes, never the WebView itself. Pinning the WebView's
+  // scroll view also stops WebKit scrolling the page to reveal a field under the iOS keyboard
+  // (the keyboard plugin keeps its offset at zero). It also turns off the WebView's
+  // rubber-band bounce app-wide; inner scroll panes keep their own.
+  ios: {
+    scrollEnabled: false,
+  },
   plugins: {
-    // Chat app with a bottom-pinned composer: resize the whole native WebView when
-    // the soft keyboard shows so `100dvh`/`vh` shrink and the composer rides up above
-    // the keyboard instead of being covered. `native` is the default but pinned here
-    // for intent (iOS honours `resize`; Android already resizes the WebView).
+    // `resize` is iOS-only; Android keeps resizing the WebView itself. iOS's `native`
+    // mode resizes the WebView in one step after the keyboard has finished sliding, so the
+    // app jumps and flickers. With `none` the WebView stays full height and the app shrinks
+    // itself in step with the keyboard (NativeKeyboardInsetAdapter, `--trinity-keyboard-inset`).
     Keyboard: {
-      resize: 'native',
+      resize: 'none',
     },
     // Android status-bar icon for local notifications: white-only (Android tints it).
     LocalNotifications: {

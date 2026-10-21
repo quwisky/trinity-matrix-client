@@ -33,7 +33,7 @@
   :host(.member-list--settings) {
     display: block;
     min-height: 22rem;
-    height: min(62dvh, 42rem);
+    height: min((100dvh - var(--trinity-keyboard-shrink, 0px)) * 0.62, 42rem);
   }
 
   :host(.member-list--settings) .members {

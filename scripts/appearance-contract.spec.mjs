@@ -210,11 +210,18 @@ describe('Appearance contraction', () => {
     expect(filesContaining("'font-size'")).toEqual([adapter]);
     // Responsive presentation may observe root text size, but never owns its writes.
     const viewportReader = 'libs/util/ui/src/lib/text-scaled-viewport.ts';
+    // The iOS keyboard inset is layout, not Appearance; the native adapter writes only that.
+    const keyboardInsetWriter =
+      'libs/platform-native/src/lib/native-keyboard-inset.adapter.ts';
     expect(filesContaining('documentElement')).toEqual([
       adapter,
       themeReader,
+      keyboardInsetWriter,
       viewportReader,
     ]);
+    expect(read(keyboardInsetWriter)).not.toMatch(
+      /'font-size'|classList|setAttribute\(/u,
+    );
     expect(read(themeReader)).not.toMatch(
       /\.style\s*(?:\.|\[)|classList\.(?:add|remove|toggle)|setAttribute\(/u,
     );

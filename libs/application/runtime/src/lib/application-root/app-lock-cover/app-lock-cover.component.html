@@ -6,7 +6,7 @@
 -->
 <dialog
   #dialog
-  class="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-y-auto border-0 bg-[var(--trinity-surface-app)] pt-[max(var(--trinity-space-4),env(safe-area-inset-top))] pr-[max(var(--trinity-space-4),env(safe-area-inset-right))] pb-[max(var(--trinity-space-4),env(safe-area-inset-bottom))] pl-[max(var(--trinity-space-4),env(safe-area-inset-left))] text-foreground open:flex open:flex-col open:items-center open:justify-center-safe motion-safe:open:animate-in motion-safe:open:fade-in-0"
+  class="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-y-auto border-0 bg-[var(--trinity-surface-app)] pt-[max(var(--trinity-space-4),env(safe-area-inset-top))] pr-[max(var(--trinity-space-4),env(safe-area-inset-right))] pb-[calc(max(var(--trinity-space-4),env(safe-area-inset-bottom))+var(--trinity-keyboard-shrink,0px))] pl-[max(var(--trinity-space-4),env(safe-area-inset-left))] text-foreground transition-[padding-bottom] duration-[var(--trinity-duration-keyboard)] ease-[var(--trinity-ease-keyboard)] open:flex open:flex-col open:items-center open:justify-center-safe motion-safe:open:animate-in motion-safe:open:fade-in-0"
   aria-labelledby="app-lock-heading"
   [attr.aria-describedby]="describedBy()"
   data-testid="app-lock-cover"

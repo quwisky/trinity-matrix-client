@@ -61,7 +61,10 @@
   .picker__scroll {
     // `dvh` shrinks with a mobile browser's toolbars; `vh` is the fallback before it.
     max-height: min(28rem, 55vh);
-    max-height: min(28rem, 55dvh);
+    max-height: min(
+      28rem,
+      (100dvh - var(--trinity-keyboard-shrink, 0px)) * 0.55
+    );
     margin-top: var(--trinity-space-4);
 
     @include scrollable;

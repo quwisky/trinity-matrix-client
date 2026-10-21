@@ -4,6 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrnDialogService } from '../dialog/trn-dialog.service';
 import { TrnSheetFrameComponent } from './trn-sheet-frame.component';
 
+const platform = vi.hoisted(() => ({ ios: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isNativeIos: () => platform.ios,
+}));
+
 @Component({
   imports: [TrnSheetFrameComponent],
   template: `<trn-sheet-frame testId="probe-sheet">
@@ -121,6 +127,22 @@ describe('TrnSheetKeyboardAvoidance (on every sheet frame)', () => {
 
     expect(surface().style.translate).toBe('');
     expect(surface().style.maxHeight).toBe('');
+  });
+
+  it('leaves the keyboard to the overlay layer in the iOS shell, even before the inset arrives', async () => {
+    // WebKit's viewport resize can land before the plugin's keyboardWillShow sets the inset.
+    platform.ios = true;
+    try {
+      await openSheet();
+
+      viewport.resize(510);
+      await settle();
+
+      expect(surface().style.translate).toBe('');
+      expect(surface().style.maxHeight).toBe('');
+    } finally {
+      platform.ios = false;
+    }
   });
 
   it('ignores a pinch zoom, which shrinks the visual viewport without a keyboard', () => {

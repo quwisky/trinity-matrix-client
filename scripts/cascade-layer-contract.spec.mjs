@@ -278,6 +278,7 @@ describe('cascade layer contract', () => {
       ":is(button, a)[data-trn-icon-button]:not( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] ) > &:active",
       ":is(button, a)[data-trn-icon-button]:is( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] )",
       '.trn-title-row :is(.cdk-global-overlay-wrapper, .cdk-overlay-backdrop)',
+      '.cdk-global-overlay-wrapper',
       '.cdk-overlay-dark-backdrop',
       '@media (prefers-reduced-motion: no-preference)',
       '@media (prefers-reduced-motion: no-preference) > .cdk-overlay-dark-backdrop',
@@ -366,7 +367,7 @@ describe('cascade layer contract', () => {
     }
   });
 
-  it('allows only the audited reduced-motion and title-row overlay important bridges', () => {
+  it('allows only the audited reduced-motion and overlay-geometry important bridges', () => {
     expect(
       [
         ':host { color: red !important }',
@@ -415,6 +416,8 @@ describe('cascade layer contract', () => {
       // CDK injects unlayered overlay geometry at runtime; only an important layered
       // declaration can move the global overlay layers below the desktop title row.
       'apps/trinity/src/global.scss:inset-block:var(--trinity-title-row-inset) 0 !important',
+      'apps/trinity/src/global.scss:height:auto !important',
+      // ...and lets them end above the iOS keyboard (`--trinity-keyboard-shrink`).
       'apps/trinity/src/global.scss:height:auto !important',
       // CDK's runtime `@layer cdk-overlay` scrim out-ranks every declared layer.
       'apps/trinity/src/global.scss:background:var(--trinity-overlay-scrim) !important',

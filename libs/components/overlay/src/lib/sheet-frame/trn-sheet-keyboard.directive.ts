@@ -9,6 +9,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { isNativeIos } from '@trinity/platform-native';
 
 /**
  * The smallest covered height read as a keyboard, in px. Below it the gap is browser chrome:
@@ -61,7 +62,9 @@ interface VirtualKeyboardLike extends EventTarget {
  * visible one and its offset), and from `navigator.virtualKeyboard` where Chromium reports
  * it. A gap counts as a keyboard only when it is at least {@link SHEET_KEYBOARD_MIN_HEIGHT}
  * and an editable element inside this sheet has focus; anything else (browser chrome, a
- * pinch zoom, a keyboard some other field raised) binds nothing. The focused field is
+ * pinch zoom, a keyboard some other field raised) binds nothing. The iOS shell binds nothing
+ * at all: there the overlay wrapper and the sheet's height cap follow `--trinity-keyboard-shrink`
+ * in CSS, so a lift here would count the keyboard twice. The focused field is
  * scrolled into view once per change of the covered height, not on every viewport scroll,
  * so scrolling inside the sheet is not snapped back.
  *
@@ -105,7 +108,7 @@ export class TrnSheetKeyboardAvoidance {
     const keyboard =
       (win?.navigator as { virtualKeyboard?: VirtualKeyboardLike } | undefined)
         ?.virtualKeyboard ?? null;
-    if (!win || (!viewport && !keyboard)) {
+    if (!win || isNativeIos() || (!viewport && !keyboard)) {
       return;
     }
     this.update = () => {

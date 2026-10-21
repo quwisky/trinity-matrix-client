@@ -80,9 +80,9 @@ export interface DialogOptions<C = object> {
   restoreFocus?: boolean;
 }
 
-/** The viewport height left below the desktop title row (the full viewport elsewhere). */
+/** The viewport height left below the desktop title row and above the iOS keyboard. */
 const VIEWPORT_BELOW_TITLE_ROW =
-  'calc(100dvh - var(--trinity-title-row-inset, 0px))';
+  'calc(100dvh - var(--trinity-title-row-inset, 0px) - var(--trinity-keyboard-shrink, 0px))';
 
 /**
  * Where a popover sits relative to its anchor, in preference order.
@@ -139,7 +139,7 @@ export function prefersCentred(): boolean {
 
 /** The sheet's height cap; the same value as the sheet surface recipe's, so the pane never clips it. */
 const SHEET_MAX_HEIGHT =
-  'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px)))';
+  'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px) - var(--trinity-keyboard-shrink, 0px)))';
 
 /**
  * The presentation, CDK pane geometry and ref wiring for a dialog, decided once at open.
@@ -215,7 +215,8 @@ export function dialogPresentation(
         maxHeight: VIEWPORT_BELOW_TITLE_ROW,
       }),
       ...(presentation === 'popover' && {
-        maxHeight: 'calc(100dvh - var(--trinity-title-row-inset, 0px) - 1rem)',
+        maxHeight:
+          'calc(100dvh - var(--trinity-title-row-inset, 0px) - 1rem - var(--trinity-keyboard-shrink, 0px))',
       }),
       ...(sheet && {
         width: '100vw',
