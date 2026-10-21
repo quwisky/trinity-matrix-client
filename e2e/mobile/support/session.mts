@@ -47,15 +47,13 @@ function requiredEnv(name: 'TRINITY_IOS_UDID' | 'TRINITY_IOS_APP'): string {
   return value;
 }
 
-/**
- * `xcrun simctl` on the host; the wdio worker runs beside the Simulator. Right after a cold
- * WebDriverAgent build, `get_app_container` once took over 30 s (run 39550580280), so allow
- * 90 s, inside the 180 s test timeout.
- */
+/** `xcrun simctl` on the host; the wdio worker runs beside the Simulator. */
 async function simctl(...args: string[]): Promise<string> {
   const { stdout } = await execFileAsync('xcrun', ['simctl', ...args], {
     maxBuffer: 20 * 1024 * 1024,
-    timeout: 90_000,
+    // Right after a cold WebDriverAgent build, a container lookup once took over 30 s (run
+    // 39550580280). A reset makes two, so 60 s each stays inside the 180 s hook timeout.
+    timeout: args[0] === 'get_app_container' ? 60_000 : 30_000,
   });
   return stdout.trim();
 }
