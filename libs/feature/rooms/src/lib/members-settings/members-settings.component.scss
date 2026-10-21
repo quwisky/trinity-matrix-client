@@ -77,7 +77,7 @@
 
   .members-settings__detail {
     min-height: 22rem;
-    height: min(62dvh, 42rem);
+    height: min((100dvh - var(--trinity-keyboard-shrink, 0px)) * 0.62, 42rem);
     overflow: auto;
     border: 1px solid var(--trinity-border-subtle);
     border-radius: var(--trinity-shape-container-radius);

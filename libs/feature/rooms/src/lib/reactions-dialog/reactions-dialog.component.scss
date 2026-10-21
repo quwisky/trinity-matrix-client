@@ -8,7 +8,7 @@
 
     // A fixed height keeps the directory and the people list scrolling on their own,
     // inside the shell's body.
-    height: min(32rem, 60dvh);
+    height: min(32rem, (100dvh - var(--trinity-keyboard-shrink, 0px)) * 0.6);
     flex-direction: column;
   }
 

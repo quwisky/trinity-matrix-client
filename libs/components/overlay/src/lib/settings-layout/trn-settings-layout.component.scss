@@ -3,13 +3,15 @@
     display: block;
 
     // The pane around a dialog is sized by the dialog service, but the component between
-    // them is not, so the layer sizes itself to the viewport below the title row.
-    block-size: calc(
+    // them is not, so the layer sizes itself to the viewport below the title row and above
+    // the iOS keyboard. The dialog and sheet caps below reuse that height.
+    --settings-layout-viewport: calc(
       100dvh - var(--trinity-title-row-inset, 0px) - var(
-          --trinity-keyboard-shrink,
-          0px
+          --trinity-keyboard-shrink
         )
     );
+
+    block-size: var(--settings-layout-viewport);
     min-block-size: 0;
     background: var(--trinity-surface-app);
 
@@ -339,17 +341,12 @@
   }
 
   :host([data-presentation='dialog']) .settings-layout {
-    block-size: min(
-      44rem,
-      calc(100dvh - var(--trinity-title-row-inset, 0px) - 6rem)
-    );
+    block-size: min(44rem, calc(var(--settings-layout-viewport) - 6rem));
   }
 
   // The sheet's own cap, less its header band.
   :host([data-presentation='sheet']) .settings-layout {
-    block-size: calc(
-      min(90svh, 100dvh - var(--trinity-title-row-inset, 0px)) - 4rem
-    );
+    block-size: calc(min(90svh, var(--settings-layout-viewport)) - 4rem);
   }
 
   :host(:not([data-presentation='fullscreen'])) .settings-layout__nav {

@@ -71,7 +71,10 @@
       calc(
         100dvh - var(--trinity-navigation-dock-height) - var(
             --trinity-space-6
-          ) - var(--trinity-navigation-safe-area-bottom)
+          ) - var(--trinity-navigation-safe-area-bottom) - var(
+            --trinity-keyboard-shrink,
+            0px
+          )
       )
     );
     overflow-y: auto;

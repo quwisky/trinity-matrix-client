@@ -444,7 +444,7 @@ describe('TitleBarComponent', () => {
         read(
           'libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss',
         ),
-      ).toContain('calc(100dvh - var(--trinity-title-row-inset, 0px))');
+      ).toContain('100dvh - var(--trinity-title-row-inset, 0px) - var(');
     });
 
     it('truncates the title and keeps actions inside the overlay area', () => {

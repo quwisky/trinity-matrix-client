@@ -31,6 +31,12 @@ const workspaceRoot = join(import.meta.dirname, '..');
  */
 const LITERAL_ANIMATIONS = [];
 
+/** `dvh` height caps that need not give up the iOS keyboard, each with the reason. */
+const KEYBOARD_SHRINK_EXEMPT = {
+  'libs/application/runtime/src/lib/application-root/application-root.component.html: h-dvh':
+    'the root gives up the keyboard as bottom padding, so only an inset change animates',
+};
+
 const files = ['libs/**/*.scss', 'apps/**/*.scss']
   .flatMap((pattern) => globSync(pattern, { cwd: workspaceRoot }))
   .filter((file) => !file.includes('node_modules'))
@@ -107,17 +113,37 @@ describe('styling tokens', () => {
     expect(rule(globalStyles, '[data-sonner-toaster]')).toContain(shrink);
 
     const caps = [
-      'libs/components/overlay/src/lib/surface/trn-overlay-surface-recipe.ts',
-      'libs/components/overlay/src/lib/dialog/trn-dialog.service.ts',
-      'libs/components/overlay/src/lib/action-sheet/trn-action-list.component.html',
-      'libs/feature/rooms/src/lib/server-rail/server-rail.component.html',
-    ].flatMap((file) =>
-      [...code(file).matchAll(/[^'"\n]*100dvh[^'"\n]*/gu)].map(
-        ([cap]) => `${file}: ${cap.trim()}`,
-      ),
-    );
+      'libs/**/*.{scss,css,html,ts}',
+      'apps/trinity/src/**/*.{scss,css,html,ts}',
+    ]
+      .flatMap((pattern) => globSync(pattern, { cwd: workspaceRoot }))
+      .filter(
+        (file) => !/node_modules|\.storybook|\.(spec|stories)\.ts$/u.test(file),
+      )
+      .sort()
+      .flatMap((file) =>
+        [
+          // Height declarations and the custom properties that carry one, Tailwind height
+          // utilities, and inline pane geometry.
+          ...code(file).matchAll(
+            /(?:(?:max-|min-)?(?:height|block-size)|--[\w-]+)\s*:[^;{}]*?dvh[^;{}]*;/gu,
+          ),
+          ...code(file).matchAll(
+            /(?<![\w-])(?:max-|min-)?h-(?:\[[^\]\s]*dvh[^\]\s]*\]|dvh)/gu,
+          ),
+          ...code(file).matchAll(/'(?:calc|min|max)\([^'\n]*dvh[^'\n]*'/gu),
+        ].map(([cap]) => `${file}: ${cap.replace(/\s+/gu, ' ')}`),
+      );
     expect(caps.length).toBeGreaterThan(0);
-    expect(caps.filter((cap) => !cap.includes(shrink))).toEqual([]);
+    expect(
+      caps.filter(
+        (cap) => !cap.includes(shrink) && !(cap in KEYBOARD_SHRINK_EXEMPT),
+      ),
+    ).toEqual([]);
+    // An exemption that no longer matches a cap is stale.
+    expect(
+      Object.keys(KEYBOARD_SHRINK_EXEMPT).filter((cap) => !caps.includes(cap)),
+    ).toEqual([]);
   });
 
   it('uses the motion tokens for every transition', () => {
