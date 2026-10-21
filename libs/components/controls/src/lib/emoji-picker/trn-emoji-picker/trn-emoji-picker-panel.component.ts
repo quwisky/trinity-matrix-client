@@ -63,7 +63,6 @@ export class TrnEmojiPickerPanelComponent {
     globalThis.matchMedia?.('(pointer: coarse)').matches ?? false;
 
   readonly size = input.required<TrnEmojiPickerSize>();
-  readonly autoFocusSearch = input(false);
   /** Fill the host's width instead of the vendor's fixed nine-column width. */
   readonly fill = input(false);
   /** See {@link TrnEmojiPickerComponent.shown}. */

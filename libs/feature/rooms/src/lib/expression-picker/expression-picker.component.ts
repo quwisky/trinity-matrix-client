@@ -186,7 +186,7 @@ export class ExpressionPickerComponent {
 
     // A sheet opens with focus on its content, unless focus is already inside. Not the
     // dialog's own autofocus: it runs later and would pull focus out of a search field a
-    // picker has already focused (the emoji grid does once its chunk loads).
+    // picker has already focused (the GIF and sticker pickers focus theirs).
     afterNextRender(() => {
       const content = this.content().nativeElement;
       if (

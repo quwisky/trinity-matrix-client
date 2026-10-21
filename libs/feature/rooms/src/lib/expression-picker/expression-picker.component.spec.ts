@@ -48,7 +48,6 @@ import { ExpressionPickerComponent } from './expression-picker.component';
 })
 class EmojiPickerStubComponent {
   readonly pickerId = input<string | null>(null);
-  readonly autoFocusSearch = input(false);
   readonly framed = input(true);
   readonly layout = input<'fixed' | 'fill'>('fixed');
   readonly size = input<'sm' | 'md' | 'lg'>('md');
@@ -581,24 +580,6 @@ describe('ExpressionPickerComponent', () => {
 
     expect(view.queryByRole('button', { name: 'Close' })).toBeNull();
   });
-
-  it.each(['sheet', 'popover'] as const)(
-    "leaves the %s emoji picker's search unfocused, so a phone keyboard stays down",
-    async (presentation) => {
-      const { fixture } = await renderPanel(
-        presentation === 'sheet' ? { presentation } : {},
-      );
-      const picker = fixture.debugElement.query(
-        (el) => el.name === 'trn-emoji-picker',
-      );
-
-      expect(
-        (
-          picker.componentInstance as EmojiPickerStubComponent
-        ).autoFocusSearch(),
-      ).toBe(false);
-    },
-  );
 
   it('is one card as a popover: the tabs are its header and the picker sits inside it', async () => {
     await renderPanel();
