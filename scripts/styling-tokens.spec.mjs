@@ -84,6 +84,42 @@ describe('styling tokens', () => {
     );
   });
 
+  it('keeps every viewport-pinned surface and height cap above the iOS keyboard', () => {
+    // The iOS WebView stays full height under the keyboard (`resize: 'none'`), so `dvh` and a
+    // fixed `bottom: 0` no longer shrink with it. Whatever reaches the bottom of the layout
+    // viewport outside the root and the CDK wrapper, and every cap sized from `100dvh` inside
+    // that wrapper, gives up `--trinity-keyboard-shrink` itself.
+    const rule = (source, selector) =>
+      source.slice(source.indexOf(selector)).split('}')[0];
+    const shrink = '--trinity-keyboard-shrink';
+    expect(
+      rule(
+        read('libs/feature/rooms/src/lib/rooms/rooms.page.scss'),
+        '.chat-members,\n    .chat-panel {',
+      ),
+    ).toContain(`bottom: var(${shrink}`);
+    expect(
+      read(
+        'libs/application/runtime/src/lib/application-root/app-lock-cover/app-lock-cover.component.html',
+      ),
+    ).toContain(shrink);
+    expect(rule(globalStyles, '.trn-action-feedback {')).toContain(shrink);
+    expect(rule(globalStyles, '[data-sonner-toaster]')).toContain(shrink);
+
+    const caps = [
+      'libs/components/overlay/src/lib/surface/trn-overlay-surface-recipe.ts',
+      'libs/components/overlay/src/lib/dialog/trn-dialog.service.ts',
+      'libs/components/overlay/src/lib/action-sheet/trn-action-list.component.html',
+      'libs/feature/rooms/src/lib/server-rail/server-rail.component.html',
+    ].flatMap((file) =>
+      [...code(file).matchAll(/[^'"\n]*100dvh[^'"\n]*/gu)].map(
+        ([cap]) => `${file}: ${cap.trim()}`,
+      ),
+    );
+    expect(caps.length).toBeGreaterThan(0);
+    expect(caps.filter((cap) => !cap.includes(shrink))).toEqual([]);
+  });
+
   it('uses the motion tokens for every transition', () => {
     // A literal duration cannot be collapsed by the reduced-motion block in variables.scss,
     // so it keeps moving for a user who asked it not to — the blanket `!important` in

@@ -34,7 +34,9 @@
     position: fixed;
     z-index: var(--trinity-z-feedback);
     right: max(1rem, env(safe-area-inset-right));
-    bottom: max(1rem, env(safe-area-inset-bottom));
+    bottom: calc(
+      max(1rem, env(safe-area-inset-bottom)) + var(--trinity-keyboard-shrink)
+    );
     left: max(1rem, env(safe-area-inset-left));
     width: fit-content;
     max-width: min(32rem, calc(100vw - 2rem));
@@ -251,6 +253,14 @@
     );
   }
 
+  /* Sonner pins bottom toasts to the layout viewport, which the iOS keyboard covers; `translate`
+   * lifts them clear of it without touching Sonner's own `transform`. */
+  [data-sonner-toaster][data-y-position='bottom'] {
+    translate: 0 calc(-1 * var(--trinity-keyboard-shrink));
+    transition: translate var(--trinity-duration-keyboard)
+      var(--trinity-ease-keyboard);
+  }
+
   /* Dialog and sheet entrances; the reduced-motion blanket in `overrides` shortens them. */
   @keyframes trn-dialog-in {
     from {
@@ -313,7 +323,8 @@
   }
 
   /* Global overlays (sheets, full-screen dialogs) end above the iOS keyboard, as the root
-   * does. The desktop title-row rule above still pins `bottom: 0` with `!important`. */
+   * does. The desktop title-row rule above still pins `bottom: 0` with `!important`.
+   * CDK-connected menus are not covered: they position against the full-height viewport. */
   .cdk-global-overlay-wrapper {
     bottom: var(--trinity-keyboard-shrink);
     height: auto !important;

@@ -215,7 +215,8 @@ export function dialogPresentation(
         maxHeight: VIEWPORT_BELOW_TITLE_ROW,
       }),
       ...(presentation === 'popover' && {
-        maxHeight: 'calc(100dvh - var(--trinity-title-row-inset, 0px) - 1rem)',
+        maxHeight:
+          'calc(100dvh - var(--trinity-title-row-inset, 0px) - 1rem - var(--trinity-keyboard-shrink, 0px))',
       }),
       ...(sheet && {
         width: '100vw',
