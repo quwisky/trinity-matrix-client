@@ -35,8 +35,8 @@
     flex-direction: column;
 
     // Bottom padding clears the home indicator (safe-area-inset-bottom). env() is 0 off notched
-    // devices and, with the keyboard's native resize mode, while the soft keyboard is up (the
-    // WebView shrinks, hiding the indicator), so the input sits flush above the keyboard.
+    // devices. While the iOS keyboard is up the root shrinks by the keyboard less this inset
+    // (`--trinity-keyboard-shrink`), so the input still sits flush above the keyboard.
     padding: var(--trinity-space-3)
       var(--trinity-density-composer-padding-inline)
       calc(var(--trinity-space-5) + env(safe-area-inset-bottom));

@@ -61,7 +61,9 @@ interface VirtualKeyboardLike extends EventTarget {
  * visible one and its offset), and from `navigator.virtualKeyboard` where Chromium reports
  * it. A gap counts as a keyboard only when it is at least {@link SHEET_KEYBOARD_MIN_HEIGHT}
  * and an editable element inside this sheet has focus; anything else (browser chrome, a
- * pinch zoom, a keyboard some other field raised) binds nothing. The focused field is
+ * pinch zoom, a keyboard some other field raised) binds nothing, and neither does any gap while
+ * the iOS shell publishes `--trinity-keyboard-inset`: the overlay wrapper and the sheet's height
+ * cap follow that inset in CSS, so a lift here would count the keyboard twice. The focused field is
  * scrolled into view once per change of the covered height, not on every viewport scroll,
  * so scrolling inside the sheet is not snapped back.
  *
@@ -118,8 +120,17 @@ export class TrnSheetKeyboardAvoidance {
       const typing = this.host.contains(this.document.activeElement)
         ? isEditable(this.document.activeElement)
         : false;
+      // The iOS shell publishes the keyboard here and the overlay layer already ends above it.
+      const shellHandled =
+        parseFloat(
+          win
+            .getComputedStyle(this.document.documentElement)
+            .getPropertyValue('--trinity-keyboard-inset'),
+        ) > 0;
       const covered =
-        !zoomed && typing && gap >= SHEET_KEYBOARD_MIN_HEIGHT ? gap : 0;
+        !zoomed && !shellHandled && typing && gap >= SHEET_KEYBOARD_MIN_HEIGHT
+          ? gap
+          : 0;
       this.visible.set(
         Math.round(viewport?.height ?? win.innerHeight - fromKeyboard),
       );

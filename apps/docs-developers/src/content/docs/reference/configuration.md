@@ -24,7 +24,7 @@ A push gateway URL and public application identifier are configuration; FCM/APNs
 
 ## Capacitor host {#capacitor-host}
 
-Root `capacitor.config.ts` owns application ID `dev.trinityproject.trinity`, application name `Trinity`, and `webDir: 'www'`. Keyboard resize is explicitly native so the WebView viewport follows the on-screen keyboard.
+Root `capacitor.config.ts` owns application ID `dev.trinityproject.trinity`, application name `Trinity`, and `webDir: 'www'`. Keyboard resize is `none` on iOS, where the app shrinks itself in step with the on-screen keyboard through `--trinity-keyboard-inset`, and `autoBackdropColor: 'auto'` tints the area behind the keyboard; Android ignores `resize` and keeps resizing the WebView.
 
 Capacitor wires the native plugins it finds among the root `package.json` dependencies. Trinity's own push plugin is one of them: the workspace package `@trinity/capacitor-push`, which `pnpm install` links from `libs/native/capacitor-push`.
 

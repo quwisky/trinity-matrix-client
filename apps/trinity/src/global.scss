@@ -5,6 +5,13 @@
  */
 
 @layer base {
+  /* The app scrolls inside <trn-root>, never the document, so a focused field cannot shift
+   * the whole app (iOS keeps the WebView full height under its keyboard). */
+  html,
+  body {
+    overflow: hidden;
+  }
+
   /* Keyboard-focus baseline: the custom controls strip native outlines, so guarantee a
    * visible focus ring for keyboard users. */
   button:focus-visible,
@@ -258,7 +265,7 @@
 @layer utilities {
   /*
    * Safe-area insets (notch / status bar / home indicator). `env(safe-area-inset-*)` is 0 on
-   * web and desktop (and inside a keyboard-resized native WebView), so these helpers only pad
+   * web and desktop (and inside Android's keyboard-resized WebView), so these helpers only pad
    * on notched native devices; index.html sets `viewport-fit=cover`. Pair `.safe-top` with
    * `min-h-*` (not a fixed `h-*`) so the bar grows by the inset and keeps full content height.
    */
@@ -291,6 +298,15 @@
   .trn-title-row :is(.cdk-global-overlay-wrapper, .cdk-overlay-backdrop) {
     inset-block: var(--trinity-title-row-inset) 0 !important;
     height: auto !important;
+  }
+
+  /* Global overlays (sheets, full-screen dialogs) end above the iOS keyboard, as the root
+   * does. The desktop title-row rule above still pins `bottom: 0` with `!important`. */
+  .cdk-global-overlay-wrapper {
+    bottom: var(--trinity-keyboard-shrink);
+    height: auto !important;
+    transition: bottom var(--trinity-duration-keyboard)
+      var(--trinity-ease-keyboard);
   }
 
   /* The scrim colour. CDK writes its own `.cdk-overlay-dark-backdrop` colour and fade inside an

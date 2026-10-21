@@ -49,7 +49,7 @@ describe('Trinity overlay surface recipe', () => {
     expect(accent).toContain('var(--trinity-state-attention-surface)');
     expect(neutral).toContain('--trn-overlay-inline-size:20rem');
     expect(sheet).toContain(
-      'max-h-[min(90svh,calc(100dvh-env(safe-area-inset-top,0px)-var(--trinity-title-row-inset,0px)))]',
+      'max-h-[min(90svh,calc(100dvh-env(safe-area-inset-top,0px)-var(--trinity-title-row-inset,0px)-var(--trinity-keyboard-shrink,0px)))]',
     );
     expect(sheet).toContain('w-screen');
     expect(sheet).toContain('max-w-[100vw]');
@@ -59,7 +59,7 @@ describe('Trinity overlay surface recipe', () => {
     expect(panel).toContain('--trn-overlay-inline-size:40rem');
     expect(panel).toContain('w-screen');
     expect(panel).toContain(
-      'h-[calc(100dvh-var(--trinity-title-row-inset,0px))]',
+      'h-[calc(100dvh-var(--trinity-title-row-inset,0px)-var(--trinity-keyboard-shrink,0px))]',
     );
     expect(workspace).toContain('--trn-overlay-inline-size:72rem');
     expect(workspace).toContain('100vw-2*var(--trinity-space-4)');

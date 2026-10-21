@@ -133,6 +133,17 @@
     --trinity-title-bar-height: 32px;
     --trinity-title-bar-traffic-light-inset: 76px;
 
+    // The iOS keyboard. The native shell keeps the WebView full height (`resize: 'none'`) and
+    // writes the keyboard's height inline on <html> as it starts to slide; elsewhere it stays 0.
+    // The root and the global overlays give up the shrink in step with it. The home-indicator
+    // inset is under the keyboard then, and the bottom bars already pad by it, so they give up
+    // only the rest.
+    --trinity-keyboard-inset: 0px;
+    --trinity-keyboard-shrink: max(
+      0px,
+      var(--trinity-keyboard-inset) - env(safe-area-inset-bottom, 0px)
+    );
+
     // Every visible overflow surface shares this scrollbar treatment. The thumb follows the
     // active rail surface; `.no-scrollbar` is the deliberate exception for compact navigation
     // and select panels.
@@ -198,6 +209,7 @@
     --trinity-duration-fast: 120ms; // hover/focus tints — must not be perceptible as motion
     --trinity-duration-base: 200ms; // the default for anything entering or leaving
     --trinity-duration-overlay: 150ms; // dialog entrance and scrim fade
+    --trinity-duration-keyboard: 250ms; // the iOS keyboard's own slide, which the app follows
 
     // Two durations for motion that is not a transition. They are named by role, not length,
     // because they are not points on the scale above: those say how fast something moves
@@ -212,6 +224,8 @@
       0,
       1
     ); // entering: fast in, settles
+    // UIKit's keyboard curve (7) is private; fit from developer.apple.com/forums/thread/48088.
+    --trinity-ease-keyboard: cubic-bezier(0.38, 0.7, 0.125, 1);
 
     // --- Code size (Mode- & Theme-agnostic) ---------------------------------------
     // A unitless MULTIPLIER, not a size. rendered-markdown.scss multiplies the 85% optical
@@ -842,6 +856,7 @@
       --trinity-duration-fast: 0.01ms;
       --trinity-duration-base: 0.01ms;
       --trinity-duration-overlay: 0.01ms;
+      --trinity-duration-keyboard: 0.01ms;
       --trinity-duration-pulse: 0.01ms;
       --trinity-duration-flash: 0.01ms;
     }

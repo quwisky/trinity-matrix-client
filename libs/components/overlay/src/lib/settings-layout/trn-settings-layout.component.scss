@@ -4,7 +4,12 @@
 
     // The pane around a dialog is sized by the dialog service, but the component between
     // them is not, so the layer sizes itself to the viewport below the title row.
-    block-size: calc(100dvh - var(--trinity-title-row-inset, 0px));
+    block-size: calc(
+      100dvh - var(--trinity-title-row-inset, 0px) - var(
+          --trinity-keyboard-shrink,
+          0px
+        )
+    );
     min-block-size: 0;
     background: var(--trinity-surface-app);
 
