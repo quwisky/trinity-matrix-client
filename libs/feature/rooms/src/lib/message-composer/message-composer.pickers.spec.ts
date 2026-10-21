@@ -537,7 +537,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     expect(document.querySelector('trn-sheet-frame')).toBeNull();
   });
 
-  it('moves focus into the sheet and on into the emoji search once its grid loads, and keeps it there', async () => {
+  it('moves focus into the sheet and keeps it out of the emoji search once its grid loads', async () => {
     const { container } = await renderComposer();
     vi.spyOn(TestBed.inject(TrnSurfaceService), 'prefersSheet').mockReturnValue(
       true,
@@ -565,7 +565,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
         () => {
           TestBed.tick();
           expect(
-            document.activeElement?.closest('.emoji-mart-search'),
+            container.ownerDocument.querySelector('.emoji-mart-search'),
           ).not.toBeNull();
         },
         { timeout: 50_000 },
@@ -574,17 +574,14 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       document.removeEventListener('focusin', record);
     }
 
-    // With a cold chunk focus lands on the content first; with a warm one the search takes
-    // it straight away. Either way it ends in the search and nothing takes it back out.
-    expect(
-      focused.every((step) => step === 'content' || step === 'emoji-search'),
-    ).toBe(true);
-    expect(focused.at(-1)).toBe('emoji-search');
+    // Focus stays on the sheet's content, so a phone keyboard does not rise until the user
+    // taps the search.
+    expect(focused).toEqual(['content']);
     await new Promise((resolve) => setTimeout(resolve, 50));
     TestBed.tick();
     expect(
-      document.activeElement?.closest('.emoji-mart-search'),
-    ).not.toBeNull();
+      document.activeElement?.hasAttribute('data-expression-content'),
+    ).toBe(true);
   }, 60_000);
 
   it('ends the sheet with one visually hidden Close button for screen readers', async () => {

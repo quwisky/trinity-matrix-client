@@ -66,11 +66,6 @@ export class TrnEmojiPickerComponent {
   /** Trinity-owned ordinal size; the vendor's pixel input stays private. */
   readonly size = input<TrnEmojiPickerSize>('md');
   /**
-   * Move focus into the search field when the deferred grid arrives, for a surface that put
-   * focus on its content before the vendor chunk loaded (the composer's bottom sheet).
-   */
-  readonly autoFocusSearch = input(false);
-  /**
    * Draw the picker's own card (border, background, radius and shadow). Off only where a
    * surrounding surface already draws the card, as the composer's expression panel does.
    */
