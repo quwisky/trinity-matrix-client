@@ -104,12 +104,17 @@ describe('styling tokens', () => {
         '.chat-members,\n    .chat-panel {',
       ),
     ).toContain(`bottom: var(${shrink}`);
-    expect(
-      read(
-        'libs/application/runtime/src/lib/application-root/app-lock-cover/app-lock-cover.component.html',
-      ),
-    ).toContain(shrink);
+    // Each moves with the keyboard rather than jumping once it has settled.
+    const follows = 'var(--trinity-duration-keyboard)';
+    const lockCover = read(
+      'libs/application/runtime/src/lib/application-root/app-lock-cover/app-lock-cover.component.html',
+    );
+    expect(lockCover).toContain(shrink);
+    expect(lockCover).toContain(`duration-[${follows}]`);
     expect(rule(globalStyles, '.trn-action-feedback {')).toContain(shrink);
+    expect(rule(globalStyles, '.trn-action-feedback {')).toContain(
+      `transition: bottom ${follows}`,
+    );
     expect(rule(globalStyles, '[data-sonner-toaster]')).toContain(shrink);
 
     const caps = [
