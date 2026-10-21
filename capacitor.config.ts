@@ -11,12 +11,14 @@ const config: CapacitorConfig = {
   loggingBehavior:
     process.env['TRINITY_CAPACITOR_LOGS'] === '1' ? 'debug' : 'none',
   plugins: {
-    // Chat app with a bottom-pinned composer: resize the whole native WebView when
-    // the soft keyboard shows so `100dvh`/`vh` shrink and the composer rides up above
-    // the keyboard instead of being covered. `native` is the default but pinned here
-    // for intent (iOS honours `resize`; Android already resizes the WebView).
+    // `resize` is iOS-only; Android keeps resizing the WebView itself. iOS's `native`
+    // mode resizes the WebView in one step after the keyboard has finished sliding, so the
+    // app jumps and flickers. With `none` the WebView stays full height and the app shrinks
+    // itself in step with the keyboard (NativeKeyboardInsetAdapter, `--trinity-keyboard-inset`);
+    // `autoBackdropColor` paints the area behind the keyboard in the app's background.
     Keyboard: {
-      resize: 'native',
+      resize: 'none',
+      autoBackdropColor: 'auto',
     },
     // Android status-bar icon for local notifications: white-only (Android tints it).
     LocalNotifications: {

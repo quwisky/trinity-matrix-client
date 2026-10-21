@@ -123,6 +123,24 @@ describe('TrnSheetKeyboardAvoidance (on every sheet frame)', () => {
     expect(surface().style.maxHeight).toBe('');
   });
 
+  it('leaves the keyboard to the overlay layer when the iOS shell publishes its inset', async () => {
+    document.documentElement.style.setProperty(
+      '--trinity-keyboard-inset',
+      '334px',
+    );
+    try {
+      await openSheet();
+
+      viewport.resize(510);
+      await settle();
+
+      expect(surface().style.translate).toBe('');
+      expect(surface().style.maxHeight).toBe('');
+    } finally {
+      document.documentElement.style.removeProperty('--trinity-keyboard-inset');
+    }
+  });
+
   it('ignores a pinch zoom, which shrinks the visual viewport without a keyboard', () => {
     dialogs.open(SearchSheetComponent, { placement: 'bottom' });
     tick();

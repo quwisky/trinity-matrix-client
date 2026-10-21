@@ -182,11 +182,11 @@ describe('TrnDialogService', () => {
     const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
     expect(pane?.style.width).toBe('100vw');
     expect(pane?.style.height).toBe(
-      'calc(100dvh - var(--trinity-title-row-inset, 0px))',
+      'calc(100dvh - var(--trinity-title-row-inset, 0px) - var(--trinity-keyboard-shrink, 0px))',
     );
     expect(pane?.style.maxWidth).toBe('100vw');
     expect(pane?.style.maxHeight).toBe(
-      'calc(100dvh - var(--trinity-title-row-inset, 0px))',
+      'calc(100dvh - var(--trinity-title-row-inset, 0px) - var(--trinity-keyboard-shrink, 0px))',
     );
 
     ref.close();
@@ -203,7 +203,7 @@ describe('TrnDialogService', () => {
     expect(pane?.style.maxWidth).toBe('100vw');
     expect(pane?.style.maxHeight).toBe(
       // The same cap as the sheet surface recipe, so the pane never clips the surface.
-      'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px)))',
+      'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px) - var(--trinity-keyboard-shrink, 0px)))',
     );
     expect(document.querySelector('.cdk-global-overlay-wrapper')).toBeTruthy();
 
@@ -537,7 +537,7 @@ describe('TrnDialogService — presentation', () => {
     expect(pane?.style.width).toBe('100vw');
     expect(pane?.style.maxHeight).toBe(
       // The same cap as the sheet surface recipe, so the pane never clips the surface.
-      'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px)))',
+      'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px) - var(--trinity-keyboard-shrink, 0px)))',
     );
     // CDK's global strategy pins a `bottom()` pane by aligning its wrapper to the end.
     const wrapper = document.querySelector<HTMLElement>(
