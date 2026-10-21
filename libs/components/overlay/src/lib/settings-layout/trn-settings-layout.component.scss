@@ -7,7 +7,8 @@
     // the iOS keyboard. The dialog and sheet caps below reuse that height.
     --settings-layout-viewport: calc(
       100dvh - var(--trinity-title-row-inset, 0px) - var(
-          --trinity-keyboard-shrink
+          --trinity-keyboard-shrink,
+          0px
         )
     );
 
