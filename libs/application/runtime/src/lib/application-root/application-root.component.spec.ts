@@ -234,6 +234,21 @@ describe('ApplicationRootComponent', () => {
     );
   });
 
+  it('keeps the app-wide status controls below a notched status bar', async () => {
+    const { fixture, router, getByTestId } = await setup(READY, [
+      { path: 'login', component: RouteProbeComponent },
+    ]);
+
+    await router.navigateByUrl('/login');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // The top inset sits on the root, above the banners, not on any one page.
+    expect(
+      getByTestId('system-status-access').closest('.safe-top'),
+    ).not.toBeNull();
+  });
+
   it('keeps the healthy fallback on login and removes it across every shell URL', async () => {
     const { fixture, router, getByTestId, queryByTestId } = await setup(READY, [
       { path: 'login', component: RouteProbeComponent },
