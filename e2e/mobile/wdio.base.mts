@@ -75,7 +75,7 @@ export function mobileWdioConfig(options: {
     ],
     waitforTimeout: 20_000,
     async afterTest(test, _context, { passed }) {
-      if (passed) return;
+      void passed; // evidence branch: keep a screenshot of every test
       const name = test.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
       mkdirSync(outputDir, { recursive: true });
       await browser
