@@ -16,14 +16,13 @@ const KEYBOARD_INSET = '--trinity-keyboard-inset';
 export class NativeKeyboardInsetAdapter {
   private readonly document = inject(DOCUMENT);
 
-  readonly follow: Observable<never> = defer(() =>
-    isNativeIos() ? this.listen() : EMPTY,
-  );
+  run(): Observable<never> {
+    return defer(() => (isNativeIos() ? this.listen() : EMPTY));
+  }
 
   private listen(): Observable<never> {
     return new Observable<never>(() => {
       const root = this.document.documentElement;
-      const view = this.document.defaultView;
       const handles: Promise<PluginListenerHandle | void>[] = [
         Keyboard.addListener('keyboardWillShow', ({ keyboardHeight }) =>
           root.style.setProperty(KEYBOARD_INSET, `${keyboardHeight}px`),
@@ -31,12 +30,6 @@ export class NativeKeyboardInsetAdapter {
         Keyboard.addListener('keyboardWillHide', () =>
           root.style.setProperty(KEYBOARD_INSET, '0px'),
         ),
-        // WebKit may scroll the document to reveal the focused field; the app already did.
-        Keyboard.addListener('keyboardDidShow', () => {
-          if (view?.scrollY || this.document.scrollingElement?.scrollTop) {
-            view?.scrollTo(0, 0);
-          }
-        }),
       ].map((handle) => handle.catch(() => undefined));
       return () => {
         for (const handle of handles) {

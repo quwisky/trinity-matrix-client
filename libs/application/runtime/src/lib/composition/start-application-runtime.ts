@@ -26,7 +26,8 @@ export function startApplicationRuntime(applicationRef: ApplicationRef): void {
     .subscribe({ error: (error: unknown) => errors.handleError(error) });
   const keyboardInset = applicationRef.injector
     .get(NativeKeyboardInsetAdapter)
-    .follow.subscribe();
+    .run()
+    .subscribe({ error: (error: unknown) => errors.handleError(error) });
 
   applicationRef.onDestroy(() => {
     runtime.stop().pipe(take(1)).subscribe();
