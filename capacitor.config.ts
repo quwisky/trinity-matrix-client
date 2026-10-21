@@ -12,7 +12,8 @@ const config: CapacitorConfig = {
     process.env['TRINITY_CAPACITOR_LOGS'] === '1' ? 'debug' : 'none',
   // The app scrolls inside its own panes, never the WebView itself. Pinning the WebView's
   // scroll view also stops WebKit scrolling the page to reveal a field under the iOS keyboard
-  // (the keyboard plugin keeps its offset at zero).
+  // (the keyboard plugin keeps its offset at zero). It also turns off the WebView's
+  // rubber-band bounce app-wide; inner scroll panes keep their own.
   ios: {
     scrollEnabled: false,
   },
