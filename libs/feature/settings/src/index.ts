@@ -5,3 +5,5 @@ export * from './lib/settings-dialog/settings-dialog.component';
 // Report a bug, which the application host loads lazily for the sign-in screen and System
 // status.
 export * from './lib/advanced/report-bug/report-bug-dialog.component';
+// "Add to your emoji", which the rooms feature opens through ADD_TO_IMAGE_PACK_DIALOG.
+export { AddToPackDialogComponent } from './lib/image-packs/add-to-pack-dialog/add-to-pack-dialog.component';

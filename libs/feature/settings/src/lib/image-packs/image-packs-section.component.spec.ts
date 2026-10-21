@@ -3,10 +3,12 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { TrnAlertService } from '@trinity/components/overlay';
 import {
+  ImagePackEditorService,
   ImagePackManagementService,
   type ManagedImagePack,
+  type PackEntry,
 } from '@trinity/data-access/media';
-import { of, Subject, throwError } from 'rxjs';
+import { NEVER, of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ImagePacksSectionComponent } from './image-packs-section.component';
 
@@ -65,6 +67,13 @@ describe('ImagePacksSectionComponent', () => {
             setEnabledUsage,
           },
         },
+        {
+          provide: ImagePackEditorService,
+          useValue: {
+            personal: signal<readonly PackEntry[]>([]).asReadonly(),
+            run: () => NEVER,
+          },
+        },
         { provide: TrnAlertService, useValue: { confirm$: confirm } },
         {
           provide: ActivatedRoute,
@@ -74,6 +83,18 @@ describe('ImagePacksSectionComponent', () => {
         },
       ],
     });
+  });
+
+  it('shows Your emoji above the installed packs', () => {
+    const fixture = TestBed.createComponent(ImagePacksSectionComponent);
+    fixture.detectChanges();
+    const headings = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('h2'),
+    ].map((heading) => heading.textContent?.trim());
+    expect(headings.slice(0, 2)).toEqual([
+      'Your emoji',
+      'Installed for all rooms',
+    ]);
   });
 
   it('skips no heading level under the page heading', async () => {

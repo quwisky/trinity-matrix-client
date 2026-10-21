@@ -48,6 +48,7 @@ import {
 } from '@trinity/components/overlay';
 import { shownError } from '@trinity/util/ui';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { PersonalPackComponent } from './personal-pack/personal-pack.component';
 
 interface SourceFormModel {
   source: string;
@@ -66,6 +67,7 @@ interface SourceFormModel {
     TrnCheckboxComponent,
     TrnInput,
     TrnLabel,
+    PersonalPackComponent,
   ],
   templateUrl: './image-packs-section.component.html',
   styleUrl: './image-packs-section.component.scss',
