@@ -38,6 +38,8 @@
       max(1rem, env(safe-area-inset-bottom)) + var(--trinity-keyboard-shrink)
     );
     left: max(1rem, env(safe-area-inset-left));
+    transition: bottom var(--trinity-duration-keyboard)
+      var(--trinity-ease-keyboard);
     width: fit-content;
     max-width: min(32rem, calc(100vw - 2rem));
     margin-inline: auto;
