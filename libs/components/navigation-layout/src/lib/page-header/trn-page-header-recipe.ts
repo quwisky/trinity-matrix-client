@@ -16,7 +16,7 @@ const variantRecipe = {
 } as const;
 
 const layoutRecipe = {
-  page: 'safe-top min-h-14 gap-2 border-border px-3',
+  page: 'min-h-14 gap-2 border-border px-3',
   toolbar:
     'h-12 gap-1 border-[var(--trinity-border-subtle)] bg-[var(--trinity-surface-workspace)] px-2 text-[var(--trinity-text-bright)]',
 } as const;
