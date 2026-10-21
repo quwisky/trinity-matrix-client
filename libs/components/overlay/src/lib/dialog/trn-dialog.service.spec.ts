@@ -598,7 +598,7 @@ describe('TrnDialogService — anchored presentation', () => {
     expect(margin).toHaveBeenCalledWith(8);
     const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
     expect(pane?.style.maxHeight).toBe(
-      'calc(100dvh - var(--trinity-title-row-inset, 0px) - 1rem)',
+      'calc(100dvh - var(--trinity-title-row-inset, 0px) - 1rem - var(--trinity-keyboard-shrink, 0px))',
     );
   });
 

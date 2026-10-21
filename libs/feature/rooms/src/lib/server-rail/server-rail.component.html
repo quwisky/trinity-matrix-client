@@ -264,7 +264,7 @@
   @let more = overflowEntries();
   <div
     trnDropdownMenu
-    class="max-h-[min(32rem,calc(100dvh-var(--trinity-title-row-inset,0px)-1rem))] w-80 overflow-y-auto"
+    class="max-h-[min(32rem,calc(100dvh-var(--trinity-title-row-inset,0px)-1rem-var(--trinity-keyboard-shrink,0px)))] w-80 overflow-y-auto"
     [attr.aria-label]="overflowLabel(more.length)"
     data-testid="rail-overflow-list"
   >

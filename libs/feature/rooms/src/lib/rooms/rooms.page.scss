@@ -257,6 +257,11 @@
       position: fixed;
       inset-block: 0;
       inset-block-start: var(--trinity-title-row-inset, 0);
+
+      // Fixed to the layout viewport, outside the root, so it ends above the iOS keyboard itself.
+      bottom: var(--trinity-keyboard-shrink, 0);
+      transition: bottom var(--trinity-duration-keyboard)
+        var(--trinity-ease-keyboard);
       right: 0;
       z-index: var(--trinity-z-panel);
       flex: none;
