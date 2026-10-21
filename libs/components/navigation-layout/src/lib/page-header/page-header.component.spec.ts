@@ -72,7 +72,8 @@ describe('PageHeaderComponent', () => {
     });
     const header = () => container.querySelector('header')!;
 
-    expect(header().className).toContain('safe-top');
+    // The application frame owns the top safe-area inset; a routed header must not add it again.
+    expect(header().className).not.toContain('safe-top');
     expect(header().className).toContain('min-h-14');
     expect(header().className).toContain('border-border');
     expect(header().className).not.toContain(
@@ -104,7 +105,7 @@ describe('PageHeaderComponent', () => {
     expect(header.className).toContain(
       'bg-[var(--trinity-state-attention-surface)]',
     );
-    expect(header.className).toContain('safe-top');
+    expect(header.className).not.toContain('safe-top');
   });
 
   it('declares the attention surface for its actions only in the accent variant', async () => {

@@ -168,10 +168,10 @@ describe('safe-area helpers and padding utilities', () => {
     ]);
     expect(HELPERS.get('safe-top')).toEqual(['top']);
     expect(HELPERS.get('safe-bottom')).toEqual(['bottom']);
-    // And the sweep reaches the places that use them, in both file kinds.
+    // And the sweep reaches the places that use them. No TypeScript recipe names one since the
+    // application frame took over the top inset; the .ts walk stays so a new one is checked.
     expect(classLists.length).toBeGreaterThan(0);
     expect(classLists.some((entry) => entry.file.endsWith('.html'))).toBe(true);
-    expect(classLists.some((entry) => entry.file.endsWith('.ts'))).toBe(true);
   });
 
   it('recognises a padding utility, prefixed or not', () => {
@@ -228,5 +228,69 @@ describe('safe-area helpers and padding utilities', () => {
         'libs/components/overlay/src/lib/action-sheet/trn-action-list.component.html',
       ),
     ).toMatch(/min-h-0 flex-1 overflow-y-auto pb-1\.5/);
+  });
+});
+
+/**
+ * The application frame pads the top safe area once, above every routed page, so an in-flow
+ * surface that pads it again doubles the gap on a notched device. Only out-of-flow surfaces
+ * (overlays, fixed layers, the top-layer lock cover) may apply it themselves.
+ */
+const TOP_INSET_OWNERS = new Map([
+  ['apps/trinity/src/global.scss', 'defines the .safe-top helper'],
+  [
+    'libs/application/runtime/src/lib/application-root/application-root.component.html',
+    'the application frame',
+  ],
+  [
+    'libs/application/runtime/src/lib/application-root/app-lock-cover/app-lock-cover.component.html',
+    'top-layer dialog moved to <body>',
+  ],
+  [
+    'libs/components/overlay/src/lib/dialog-shell/trn-dialog-shell.component.scss',
+    'CDK overlay',
+  ],
+  [
+    'libs/components/overlay/src/lib/dialog/trn-dialog.service.ts',
+    'CDK overlay sizing',
+  ],
+  [
+    'libs/components/overlay/src/lib/settings-layout/trn-settings-layout.component.scss',
+    'CDK overlay',
+  ],
+  [
+    'libs/components/overlay/src/lib/sheet-frame/trn-sheet-keyboard.directive.ts',
+    'CDK overlay sizing',
+  ],
+  [
+    'libs/components/overlay/src/lib/surface/trn-overlay-surface-recipe.ts',
+    'CDK overlay sizing',
+  ],
+  [
+    'libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss',
+    'CDK overlay',
+  ],
+  [
+    'libs/feature/rooms/src/lib/side-panel/side-panel-header.component.scss',
+    'heads the fixed phone drawers',
+  ],
+]);
+
+describe('top safe-area ownership', () => {
+  it('pads the top safe area only in the frame and out-of-flow surfaces', () => {
+    const users = globSync(
+      ['libs/**/*.{html,ts,scss}', 'apps/trinity/src/**/*.{html,ts,scss}'],
+      { cwd: workspaceRoot },
+    ).filter(
+      (file) =>
+        !file.includes('node_modules') &&
+        !/\.(spec|stories)\.ts$/.test(file) &&
+        /\bsafe-top\b|safe-area-inset-top/.test(read(file)),
+    );
+
+    expect(users.filter((file) => !TOP_INSET_OWNERS.has(file))).toEqual([]);
+    expect(
+      [...TOP_INSET_OWNERS.keys()].filter((file) => !users.includes(file)),
+    ).toEqual([]);
   });
 });

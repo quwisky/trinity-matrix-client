@@ -18,10 +18,10 @@ export type {
 
 /**
  * The shared routed-page header shell. Renders exactly one native `<header>` and one `<h1>`.
- *  - `layout="page"` (default): the standard settings / crypto / home header (`safe-top`,
- *    `min-h-14`, page spacing).
- *  - `layout="toolbar"`: tighter spacing and no `safe-top` (the rooms `.main` column already
- *    pads the safe-area top).
+ *  - `layout="page"` (default): the standard settings / crypto / home header (`min-h-14`,
+ *    page spacing).
+ *  - `layout="toolbar"`: tighter spacing.
+ *  Neither pads the top safe area: the application frame does, above every routed page.
  *  - `variant="neutral|accent"`: the surface treatment, independent of geometry.
  *
  * Everything caller-specific is projected, so this shell imports nothing from helm or the
