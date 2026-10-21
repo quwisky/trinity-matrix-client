@@ -20,7 +20,7 @@ function fakeApplication() {
     [ErrorHandler, { handleError }],
     [DiagnosticMarkersBinding, { run: () => markers }],
     [SessionHandoverWorkflow, { run: () => handover }],
-    [NativeKeyboardInsetAdapter, { follow: keyboardInset }],
+    [NativeKeyboardInsetAdapter, { run: () => keyboardInset }],
   ]);
   const applicationRef = {
     injector: { get: (token: unknown) => services.get(token) },

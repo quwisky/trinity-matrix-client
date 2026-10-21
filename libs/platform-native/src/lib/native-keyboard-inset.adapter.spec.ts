@@ -40,7 +40,7 @@ describe('NativeKeyboardInsetAdapter', () => {
   });
 
   it('sets the inset to the keyboard height as it shows and to 0 as it hides', () => {
-    const run = TestBed.inject(NativeKeyboardInsetAdapter).follow.subscribe();
+    const run = TestBed.inject(NativeKeyboardInsetAdapter).run().subscribe();
 
     listeners.get('keyboardWillShow')?.({ keyboardHeight: 336 });
     expect(inset()).toBe('336px');
@@ -50,35 +50,42 @@ describe('NativeKeyboardInsetAdapter', () => {
     run.unsubscribe();
   });
 
+  it('follows the latest height when the keyboard changes while open', () => {
+    // A predictive bar or a switch to the emoji keyboard shows again with another height.
+    TestBed.inject(NativeKeyboardInsetAdapter).run().subscribe();
+
+    listeners.get('keyboardWillShow')?.({ keyboardHeight: 336 });
+    listeners.get('keyboardWillShow')?.({ keyboardHeight: 291 });
+
+    expect(inset()).toBe('291px');
+  });
+
+  it('listens only to the keyboard starting to move', () => {
+    TestBed.inject(NativeKeyboardInsetAdapter).run().subscribe();
+
+    expect([...listeners.keys()]).toEqual([
+      'keyboardWillShow',
+      'keyboardWillHide',
+    ]);
+  });
+
   it.each(['web', 'android'])('does nothing on %s', (host) => {
     platform.mockReturnValue(host);
 
-    TestBed.inject(NativeKeyboardInsetAdapter).follow.subscribe();
+    TestBed.inject(NativeKeyboardInsetAdapter).run().subscribe();
 
     expect(addListener).not.toHaveBeenCalled();
     expect(inset()).toBe('');
   });
 
   it('removes its listeners and the inset on teardown', async () => {
-    const run = TestBed.inject(NativeKeyboardInsetAdapter).follow.subscribe();
+    const run = TestBed.inject(NativeKeyboardInsetAdapter).run().subscribe();
     listeners.get('keyboardWillShow')?.({ keyboardHeight: 336 });
 
     run.unsubscribe();
     await flush();
 
-    expect(remove).toHaveBeenCalledTimes(3);
+    expect(remove).toHaveBeenCalledTimes(2);
     expect(inset()).toBe('');
-  });
-
-  it('puts back a document scroll WebKit made to reveal the focused field', () => {
-    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
-    TestBed.inject(NativeKeyboardInsetAdapter).follow.subscribe();
-
-    listeners.get('keyboardDidShow')?.();
-    expect(scrollTo).not.toHaveBeenCalled();
-
-    vi.spyOn(window, 'scrollY', 'get').mockReturnValue(36);
-    listeners.get('keyboardDidShow')?.();
-    expect(scrollTo).toHaveBeenCalledWith(0, 0);
   });
 });
