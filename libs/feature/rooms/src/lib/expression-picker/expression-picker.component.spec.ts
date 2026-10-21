@@ -582,27 +582,23 @@ describe('ExpressionPickerComponent', () => {
     expect(view.queryByRole('button', { name: 'Close' })).toBeNull();
   });
 
-  it("asks the sheet's emoji picker to take focus into its search once loaded", async () => {
-    const { fixture } = await renderPanel({ presentation: 'sheet' });
-    const picker = fixture.debugElement.query(
-      (el) => el.name === 'trn-emoji-picker',
-    );
+  it.each(['sheet', 'popover'] as const)(
+    "leaves the %s emoji picker's search unfocused, so a phone keyboard stays down",
+    async (presentation) => {
+      const { fixture } = await renderPanel(
+        presentation === 'sheet' ? { presentation } : {},
+      );
+      const picker = fixture.debugElement.query(
+        (el) => el.name === 'trn-emoji-picker',
+      );
 
-    expect(
-      (picker.componentInstance as EmojiPickerStubComponent).autoFocusSearch(),
-    ).toBe(true);
-  });
-
-  it("leaves the anchored emoji picker's focus alone", async () => {
-    const { fixture } = await renderPanel();
-    const picker = fixture.debugElement.query(
-      (el) => el.name === 'trn-emoji-picker',
-    );
-
-    expect(
-      (picker.componentInstance as EmojiPickerStubComponent).autoFocusSearch(),
-    ).toBe(false);
-  });
+      expect(
+        (
+          picker.componentInstance as EmojiPickerStubComponent
+        ).autoFocusSearch(),
+      ).toBe(false);
+    },
+  );
 
   it('is one card as a popover: the tabs are its header and the picker sits inside it', async () => {
     await renderPanel();

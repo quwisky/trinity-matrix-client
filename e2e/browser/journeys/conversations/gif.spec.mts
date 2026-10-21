@@ -326,9 +326,12 @@ test.describe('GIF picker', () => {
     const sheet = page.locator('trn-sheet-frame');
     await expect(sheet).toBeVisible();
     await expect(sheet.getByTestId('sheet-handle')).toBeVisible();
-    // It opens on Emoji, and focus goes on into the emoji search once the grid loads.
+    // It opens on Emoji without focusing the search, so the keyboard stays down until a tap.
     const emojiSearch = sheet.locator('.emoji-mart-search input');
-    await expect(emojiSearch).toBeFocused({ timeout: 20_000 });
+    await expect(emojiSearch).toBeVisible({ timeout: 20_000 });
+    await expect(emojiSearch).not.toBeFocused();
+    await emojiSearch.click();
+    await expect(emojiSearch).toBeFocused();
 
     // A 334px keyboard: the sheet lifts above it and the search stays visible.
     await keyboard(334);
