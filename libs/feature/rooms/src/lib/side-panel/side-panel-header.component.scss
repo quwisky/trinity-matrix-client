@@ -1,15 +1,25 @@
+@use '../styles/mixins' as *;
+
 @layer components {
   :host {
     display: flex;
     align-items: center;
     gap: var(--trinity-space-3);
     flex: none;
-    block-size: calc(3rem + env(safe-area-inset-top));
-    padding-block-start: env(safe-area-inset-top);
+    block-size: 3rem;
     padding-inline: calc(var(--trinity-space-4) + env(safe-area-inset-left))
       calc(var(--trinity-space-4) + env(safe-area-inset-right));
     border-block-end: 1px solid var(--trinity-border-subtle);
     background: var(--trinity-surface-panel);
     color: var(--trinity-text-bright);
+  }
+
+  // Only a fixed drawer reaches the status bar; a wider in-flow column sits under the frame's
+  // inset.
+  @media #{$below-members} {
+    :host {
+      block-size: calc(3rem + env(safe-area-inset-top));
+      padding-block-start: env(safe-area-inset-top);
+    }
   }
 }
