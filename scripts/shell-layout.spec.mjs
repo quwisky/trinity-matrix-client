@@ -89,6 +89,17 @@ describe('modern room shell layout contracts', () => {
     }
   });
 
+  it('paints the status-bar inset with the open page ground', () => {
+    // The app frame owns the top safe-area inset, so its ground is what shows under a
+    // notched status bar: the canvas, or the app ground while the rooms shell is open.
+    expect(ruleBody(globalCss, '.app-frame')).toContain(
+      'background-color: var(--background)',
+    );
+    expect(ruleBody(globalCss, '.app-frame:has(.rooms-shell)')).toContain(
+      'background-color: var(--trinity-surface-app)',
+    );
+  });
+
   it('sets the conversation in a rounded inset pane on the app ground', () => {
     const app = 'var(--trinity-surface-app)';
     const sidebarSurface = 'var(--trinity-surface-sidebar)';

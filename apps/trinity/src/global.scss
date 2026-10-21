@@ -77,6 +77,18 @@
   }
 }
 
+@layer components {
+  /* The application frame owns the top safe-area inset, so its ground shows under a notched
+   * status bar: keep it the open page's ground. */
+  .app-frame {
+    background-color: var(--background);
+  }
+
+  .app-frame:has(.rooms-shell) {
+    background-color: var(--trinity-surface-app);
+  }
+}
+
 @layer overrides {
   /* Disabled interaction is a semantic invariant, not a component default. A public
    * locked-selection row is the exception: its checked value is guaranteed, not excluded. */

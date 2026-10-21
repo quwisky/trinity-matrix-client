@@ -2,10 +2,8 @@
 
 @layer components {
   // The room shell holds the app-global banners above the rail + chat columns. The top
-  // safe-area inset lives here so the banners (not just the columns) clear the notch /
-  // status bar. env() is 0 off notched devices, so this is inert on web/desktop.
+  // safe-area inset is the application root's, so the root's own banners clear it too.
   .rooms-shell {
-    padding-top: env(safe-area-inset-top);
     background: var(--trinity-surface-app);
   }
 
