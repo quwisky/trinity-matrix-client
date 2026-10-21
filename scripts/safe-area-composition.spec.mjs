@@ -272,7 +272,7 @@ const TOP_INSET_OWNERS = new Map([
   ],
   [
     'libs/feature/rooms/src/lib/side-panel/side-panel-header.component.scss',
-    'heads the fixed phone drawers',
+    'heads the drawers, fixed only below the members breakpoint',
   ],
 ]);
 
@@ -292,5 +292,16 @@ describe('top safe-area ownership', () => {
     expect(
       [...TOP_INSET_OWNERS.keys()].filter((file) => !users.includes(file)),
     ).toEqual([]);
+  });
+
+  it('insets a side-panel header only where its panel is a fixed drawer', () => {
+    // Wider than the members breakpoint the panel is an in-flow column under the frame.
+    const css = read(
+      'libs/feature/rooms/src/lib/side-panel/side-panel-header.component.scss',
+    );
+    const drawer = css.indexOf('@media #{$below-members}');
+
+    expect(drawer).toBeGreaterThan(-1);
+    expect(css.indexOf('safe-area-inset-top')).toBeGreaterThan(drawer);
   });
 });
