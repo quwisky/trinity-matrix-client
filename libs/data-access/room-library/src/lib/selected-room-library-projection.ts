@@ -198,17 +198,18 @@ export function projectSelectedRooms(
         continue;
       }
 
+      // The row opens as an Account that has the room as encrypted: another Account's client would send in the clear.
       const winner =
-        accountId === activeAccountId && existing.accountId !== activeAccountId
-          ? summary
-          : existing;
-      const loser = winner === summary ? existing : summary;
-      // The preview follows an Account that has the room as encrypted, so it agrees with the lock.
-      const preview = !winner.encrypted && loser.encrypted ? loser : winner;
+        existing.encrypted !== summary.encrypted
+          ? existing.encrypted
+            ? existing
+            : summary
+          : accountId === activeAccountId &&
+              existing.accountId !== activeAccountId
+            ? summary
+            : existing;
       byRoomId.set(room.roomId, {
         ...winner,
-        lastMessage: preview.lastMessage,
-        lastMessageMark: preview.lastMessageMark,
         accountIds: [...existing.accountIds, accountId],
         unreadCount: Math.max(existing.unreadCount, summary.unreadCount),
         highlightCount: Math.max(

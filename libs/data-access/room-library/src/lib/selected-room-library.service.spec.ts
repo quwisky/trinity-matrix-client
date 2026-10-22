@@ -422,7 +422,7 @@ describe('SelectedRoomLibraryService', () => {
     expect(room('!stored:hs')?.encrypted).toBe(true);
   });
 
-  it('marks a shared room shown as encrypted though the winning Account has it unencrypted', async () => {
+  it('opens a shared room as the encrypted Account when it is the second source and none is active', async () => {
     const store = (encrypted: boolean) => ({
       getCrypto: () => ({
         isEncryptionEnabledInRoom: async () => encrypted,
@@ -448,12 +448,12 @@ describe('SelectedRoomLibraryService', () => {
       harness.service.view().rooms.find((r) => r.id === '!shared:hs');
 
     await vi.waitFor(() => expect(shared()?.encrypted).toBe(true));
-    expect(shared()?.accountId).toBe('@a:hs');
+    expect(shared()?.accountId).toBe('@b:hs');
     expect(shared()?.lastMessage).toBe('hello');
     expect(shared()?.lastMessageMark).toBe('unencrypted');
   });
 
-  it('marks a shared room from the encrypted copy when the active Account has it unencrypted', async () => {
+  it('opens a shared room as the encrypted Account though the active Account has it unencrypted', async () => {
     const store = (encrypted: boolean) => ({
       getCrypto: () => ({
         isEncryptionEnabledInRoom: async () => encrypted,
@@ -480,9 +480,37 @@ describe('SelectedRoomLibraryService', () => {
       harness.service.view().rooms.find((r) => r.id === '!shared:hs');
 
     await vi.waitFor(() => expect(shared()?.encrypted).toBe(true));
-    expect(shared()?.accountId).toBe('@b:hs');
+    expect(shared()?.accountId).toBe('@a:hs');
     expect(shared()?.lastMessage).toBe('from a');
     expect(shared()?.lastMessageMark).toBe('unencrypted');
+  });
+
+  it('keeps the encrypted Account when later unencrypted copies include the active one', async () => {
+    const store = (encrypted: boolean) => ({
+      getCrypto: () => ({
+        isEncryptionEnabledInRoom: async () => encrypted,
+      }),
+    });
+    const copy = (id: string, encrypted: boolean) =>
+      Object.assign(
+        fakeClient(id, [fakeRoom('!shared:hs', { message: id })]),
+        store(encrypted),
+      );
+    const harness = setup({
+      selected: new Set(['@a:hs', '@b:hs', '@c:hs']),
+      live: ['@a:hs', '@b:hs', '@c:hs'],
+      active: '@c:hs',
+      clients: new Map([
+        ['@a:hs', copy('@a:hs', true)],
+        ['@b:hs', copy('@b:hs', false)],
+        ['@c:hs', copy('@c:hs', false)],
+      ]),
+    });
+    const shared = () =>
+      harness.service.view().rooms.find((r) => r.id === '!shared:hs');
+
+    await vi.waitFor(() => expect(shared()?.encrypted).toBe(true));
+    expect(shared()?.accountId).toBe('@a:hs');
   });
 
   it('takes favourite from the winning Account copy', () => {
