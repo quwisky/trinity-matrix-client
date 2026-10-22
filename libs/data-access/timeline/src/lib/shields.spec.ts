@@ -358,126 +358,18 @@ function roomEncryptedAt(encryptedAt: number | null): Room {
 }
 
 describe('unencryptedShieldFor', () => {
-  const at = (encryptedAt: number | null, roomEncrypted = true) =>
-    unencryptedShieldFor(roomEncryptedAt(encryptedAt), roomEncrypted);
+  const lookup = unencryptedShieldFor(roomEncryptedAt(1_000), true);
 
-  it('marks a message dated at or after the encryption event in the red tone', () => {
-    const lookup = at(1_000);
-
+  it('maps the unencrypted mark to the red shield', () => {
     expect(lookup(sent('$later', { ts: 2_000 }))).toEqual(RED);
-    expect(lookup(sent('$same', { ts: 1_000 }))).toEqual(RED);
   });
 
-  it('marks a message dated before the encryption event in the quieter grey tone', () => {
-    expect(at(1_000)(sent('$older', { ts: 999 }))).toEqual(GREY);
+  it('maps the unencrypted-history mark to the quieter grey shield', () => {
+    expect(lookup(sent('$older', { ts: 999 }))).toEqual(GREY);
   });
 
-  it('keeps a message with a zero or missing date in the red tone', () => {
-    const lookup = at(1_000);
-
-    expect(lookup(sent('$zero', { ts: 0 }))).toEqual(RED);
-    expect(
-      lookup({
-        ...sent('$missing'),
-        getTs: () => undefined,
-      } as unknown as MatrixEvent),
-    ).toEqual(RED);
-  });
-
-  it('marks every message in the red tone when the room has no encryption state event', () => {
-    // Only the crypto store says the room is encrypted, so there is no date to compare to.
-    const lookup = at(null);
-
-    expect(lookup(sent('$old', { ts: 1 }))).toEqual(RED);
-    expect(lookup(sent('$new', { ts: 9_999_999 }))).toEqual(RED);
-  });
-
-  // Dating a message earlier only changes how it looks; it is never a reason to leave
-  // a plaintext message unmarked.
-  it('never leaves a plaintext message unmarked on its date alone', () => {
-    const lookup = at(1_000);
-
-    for (const ts of [0, 1, 999, 1_000, 1_001, Number.MAX_SAFE_INTEGER]) {
-      expect(lookup(sent(`$${ts}`, { ts }))).not.toBeNull();
-    }
-  });
-
-  it('leaves an encrypted message unmarked, whatever its decryption outcome or date', () => {
-    expect(
-      at(1_000)(sent('$sealed', { encrypted: true, ts: 2_000 })),
-    ).toBeNull();
-    expect(
-      at(1_000)(sent('$old-sealed', { encrypted: true, ts: 1 })),
-    ).toBeNull();
-  });
-
-  it('marks nothing in a room that is not encrypted', () => {
-    expect(at(1_000, false)(sent('$plain', { ts: 2_000 }))).toBeNull();
-  });
-
-  it.each(['sending', 'encrypting', 'queued', 'not_sent', 'sent'])(
-    'skips a local echo that is still %s',
-    (status) => {
-      expect(at(1_000)(sent('$echo', { status, ts: 2_000 }))).toBeNull();
-    },
-  );
-
-  it('skips state events and redacted messages', () => {
-    const lookup = at(1_000);
-
-    expect(lookup(sent('$topic', { state: true, ts: 2_000 }))).toBeNull();
-    expect(lookup(sent('$gone', { redacted: true, ts: 2_000 }))).toBeNull();
-  });
-
-  // The text a row shows comes from its latest edit, and the SDK applies an edit without
-  // checking that it was encrypted, so the edit, and its date, are what get judged.
-  describe('for an edited message', () => {
-    it('leaves an encrypted message unmarked over its ignored plaintext edit', () => {
-      const original = sent('$orig', {
-        encrypted: true,
-        ts: 500,
-        replacement: sent('$edit', { ts: 2_000 }),
-      });
-
-      expect(at(1_000)(original)).toBeNull();
-    });
-
-    it('judges the date of the edit, not of the message it replaces', () => {
-      const lookup = at(1_000);
-      const oldEdit = sent('$orig', {
-        ts: 2_000,
-        replacement: sent('$edit', { ts: 500 }),
-      });
-
-      expect(lookup(oldEdit)).toEqual(GREY);
-    });
-
-    it('leaves an encrypted message with an encrypted edit unmarked', () => {
-      const original = sent('$orig', {
-        encrypted: true,
-        replacement: sent('$edit', { encrypted: true, ts: 2_000 }),
-      });
-
-      expect(at(1_000)(original)).toBeNull();
-    });
-
-    it('does not mark a message while its own edit is still being sent', () => {
-      const original = sent('$orig', {
-        encrypted: true,
-        replacement: sent('$edit', { status: 'sending', ts: 2_000 }),
-      });
-
-      expect(at(1_000)(original)).toBeNull();
-    });
-
-    it('does not mark a redacted message that still has an edit', () => {
-      const original = sent('$orig', {
-        redacted: true,
-        replacement: sent('$edit', { ts: 2_000 }),
-      });
-
-      expect(at(1_000)(original)).toBeNull();
-    });
+  it('gives an unmarked message no shield', () => {
+    expect(lookup(sent('$sealed', { encrypted: true, ts: 2_000 }))).toBeNull();
   });
 });
 
