@@ -312,7 +312,7 @@ export class ConversationPinsController implements ConversationPins {
           sender,
           senderName: room.getMember(sender)?.name ?? sender,
           // The pin's shield marks unencrypted text, so the text itself stays readable.
-          body: messagePreview(event, false),
+          body: messagePreview(event),
           ts: event.getTs(),
           shield: unencryptedShield(event),
         }),
