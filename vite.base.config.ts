@@ -65,6 +65,12 @@ export function createVitestConfig(
         // vitest's own default, which the plugin overrides. Naming it here wins cleanly via the
         // plugin's own `userConfig` escape hatch — no patching.
         pool: 'forks',
+        // Vitest 5 reuses transformed modules from disk by default, but the Analog plugin only
+        // registers a component's inline styles (`virtual:angular:jit:style:inline;<hash>`)
+        // while it transforms that file. A cached module skips the transform, its style id is
+        // unknown, and every spec that reaches a component with inline `styles` dies at import
+        // with "Cannot find module". A fresh checkout (CI) passes; any second local run fails.
+        fsModuleCache: false,
         // matrix-js-sdk 42.1.0 ships a broken ESM specifier: lib/oauth/authorize.js and
         // lib/oauth/index.js both `import ... from "../http-api"` — a bare directory. An
         // index.js is there, so bundlers resolve it and `pnpm build` is unaffected, but
