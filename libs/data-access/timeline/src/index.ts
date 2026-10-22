@@ -59,7 +59,7 @@ export * from './lib/url-preview.service';
 export * from './lib/edit-history.service';
 export * from './lib/conversation-search.service';
 export * from './lib/message-presentation';
-export { UNENCRYPTED_HISTORY_SHIELD, UNENCRYPTED_SHIELD } from './lib/shields';
+export { unencryptedShield } from './lib/shields';
 export * from './lib/privacy-preferences';
 export * from './lib/appearance-preferences';
 export * from './lib/composer-expression-tab.preference';

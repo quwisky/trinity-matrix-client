@@ -8,6 +8,7 @@ import {
   displayContent,
   shieldSubject,
   unencryptedMarkFor,
+  type UnencryptedMark,
 } from '@trinity/util/matrix';
 import { type MessageShield } from './message-presentation';
 
@@ -166,22 +167,25 @@ export function shownShield(shown: MatrixEvent): MessageShield | null {
 }
 
 /**
- * {@link unencryptedMarkFor} as the timeline's shields: {@link UNENCRYPTED_SHIELD}, or the
- * quieter {@link UNENCRYPTED_HISTORY_SHIELD} for a message dated before the room turned
- * encryption on.
+ * The shield for a not-encrypted mark: {@link UNENCRYPTED_SHIELD}, or the quieter
+ * {@link UNENCRYPTED_HISTORY_SHIELD} for a message dated before the room turned encryption on.
  */
+export function unencryptedShield(
+  mark: UnencryptedMark | null,
+): MessageShield | null {
+  if (mark === null) return null;
+  return mark === 'unencrypted-history'
+    ? UNENCRYPTED_HISTORY_SHIELD
+    : UNENCRYPTED_SHIELD;
+}
+
+/** {@link unencryptedMarkFor} as the timeline's shields; see {@link unencryptedShield}. */
 export function unencryptedShieldFor(
   room: Room,
   roomEncrypted: boolean,
 ): (event: MatrixEvent, subject?: MatrixEvent) => MessageShield | null {
   const markFor = unencryptedMarkFor(room, roomEncrypted);
-  return (event, subject) => {
-    const mark = markFor(event, subject);
-    if (mark === null) return null;
-    return mark === 'unencrypted-history'
-      ? UNENCRYPTED_HISTORY_SHIELD
-      : UNENCRYPTED_SHIELD;
-  };
+  return (event, subject) => unencryptedShield(markFor(event, subject));
 }
 
 /** The slice of the crypto API the shield resolver needs. */
