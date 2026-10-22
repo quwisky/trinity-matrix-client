@@ -124,6 +124,11 @@
   // Italic, matching the timeline's typing row. No dots: the line already truncates, and a second
   // moving thing beside the unread badge is noise. This rule belongs to THIS stylesheet because the
   // class is rendered by this template (`stylesheet-ownership.spec.ts` fails otherwise).
+  .channel__preview-shield {
+    vertical-align: middle;
+    margin-inline-end: var(--trinity-space-2);
+  }
+
   .channel__preview--typing {
     font-style: italic;
   }

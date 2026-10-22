@@ -26,6 +26,7 @@ function room(over: Partial<RoomSummary> & { id: string }): RoomSummary {
     hasUnread: false,
     markedUnread: false,
     lastMessage: '',
+    lastMessageUnencrypted: false,
     activityTs: 0,
     favourite: false,
     lowPriority: false,

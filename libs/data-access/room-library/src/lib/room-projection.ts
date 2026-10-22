@@ -61,20 +61,30 @@ export function initialOf(name: string): string {
 }
 
 /**
- * Single-line preview of the room's most recent `m.room.message`, or `''`. Walked back-to-front
- * to skip state events. `getLiveTimeline` is optional: not every Room stub exposes it.
- * `encrypted` is `undefined` while the crypto store has yet to answer for the room.
+ * Single-line preview of the room's most recent `m.room.message`, or `''`, and whether it
+ * arrived unencrypted in an encrypted room. Walked back-to-front to skip state events.
+ * `getLiveTimeline` is optional: not every Room stub exposes it. `encrypted` is `undefined`
+ * while the crypto store has yet to answer for the room.
  */
-function lastMessageOf(room: Room, encrypted: boolean | undefined): string {
+function lastMessageOf(
+  room: Room,
+  encrypted: boolean | undefined,
+): { text: string; unencrypted: boolean } {
   const events = room.getLiveTimeline?.()?.getEvents() ?? [];
   for (let i = events.length - 1; i >= 0; i--) {
     if (events[i].getType() === EventType.RoomMessage) {
+      const inClear = arrivedInClear(events[i]);
       // Until the store answers, the room may be encrypted without its state saying so.
-      if (encrypted === undefined && arrivedInClear(events[i])) return '';
-      return messagePreview(events[i], encrypted ?? true);
+      if (encrypted === undefined && inClear) {
+        return { text: '', unencrypted: false };
+      }
+      return {
+        text: messagePreview(events[i], false),
+        unencrypted: encrypted === true && inClear,
+      };
     }
   }
-  return '';
+  return { text: '', unencrypted: false };
 }
 
 /**
@@ -157,6 +167,7 @@ export function buildRoomSummary(
     : room.hasEncryptionStateEvent() || encryption?.answered(room.roomId)
       ? encrypted
       : undefined;
+  const lastMessage = lastMessageOf(room, previewEncrypted);
   return {
     id: room.roomId,
     accountId,
@@ -176,7 +187,8 @@ export function buildRoomSummary(
     // A flagged room reads as unread even with nothing new in it, so the badge and the
     // sidebar's unread filter both follow.
     hasUnread: unreadCount > 0 || markedUnread,
-    lastMessage: lastMessageOf(room, previewEncrypted),
+    lastMessage: lastMessage.text,
+    lastMessageUnencrypted: lastMessage.unencrypted,
     activityTs: roomActivityTs(room),
     favourite: room.tags?.['m.favourite'] !== undefined,
     lowPriority: room.tags?.['m.lowpriority'] !== undefined,

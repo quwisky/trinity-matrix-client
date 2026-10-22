@@ -9,7 +9,6 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { UNENCRYPTED_PREVIEW } from '@trinity/util/matrix';
 import { AccountScopeService } from './account-scope.service';
 import { InvitesService, type PendingInvite } from './invites.service';
 import { RoomLibraryService, type RoomSummary } from './room-library.service';
@@ -415,7 +414,8 @@ describe('SelectedRoomLibraryService', () => {
 
     await vi.waitFor(() => {
       expect(room('!plain:hs')?.lastMessage).toBe('hello');
-      expect(room('!stored:hs')?.lastMessage).toBe(UNENCRYPTED_PREVIEW);
+      expect(room('!stored:hs')?.lastMessage).toBe('hello');
+      expect(room('!stored:hs')?.lastMessageUnencrypted).toBe(true);
     });
     expect(room('!plain:hs')?.encrypted).toBe(false);
     expect(room('!stored:hs')?.encrypted).toBe(true);
@@ -1021,6 +1021,7 @@ function roomSummary(id: string, accountId: string): RoomSummary {
     hasUnread: false,
     markedUnread: false,
     lastMessage: '',
+    lastMessageUnencrypted: false,
     activityTs: 0,
     favourite: false,
     lowPriority: false,

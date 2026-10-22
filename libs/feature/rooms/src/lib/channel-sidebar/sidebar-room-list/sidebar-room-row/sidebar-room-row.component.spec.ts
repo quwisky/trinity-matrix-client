@@ -126,6 +126,25 @@ describe('SidebarRoomRowComponent', () => {
     );
   });
 
+  it("marks a preview that arrived unencrypted with the timeline's not-encrypted shield", async () => {
+    const { container, fixture } = await renderRow({
+      room: room({ lastMessage: 'hello', lastMessageUnencrypted: true }),
+    });
+    const preview = container.querySelector('.channel__preview')!;
+    const shield = preview.querySelector(
+      'trn-icon[aria-label="Not encrypted"]',
+    );
+    expect(shield?.getAttribute('data-variant')).toBe('danger');
+    expect(preview.textContent).toContain('hello');
+
+    fixture.componentRef.setInput(
+      'room',
+      room({ lastMessage: 'hello', lastMessageUnencrypted: false }),
+    );
+    fixture.detectChanges();
+    expect(container.querySelector('.channel__preview trn-icon')).toBeNull();
+  });
+
   it('shows the typing notice in place of the preview', async () => {
     const { container, fixture } = await renderRow({
       room: room({ lastMessage: 'hello' }),

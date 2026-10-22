@@ -104,6 +104,8 @@ export interface RoomSummary {
   markedUnread: boolean;
   /** Single-line preview of the room's most recent message (`''` when none). */
   lastMessage: string;
+  /** The previewed message arrived unencrypted in a room counted as encrypted. */
+  lastMessageUnencrypted: boolean;
   /** Last-activity timestamp (ms), used to order the list by recency. */
   activityTs: number;
   /** Whether the room carries the `m.favourite` tag — favourite to the top of the list. */
