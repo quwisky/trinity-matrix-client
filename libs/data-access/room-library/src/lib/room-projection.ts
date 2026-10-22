@@ -9,7 +9,9 @@ import {
   liveRoomState,
   messagePreview,
   roomAvatarMxc,
+  unencryptedMarkFor,
   type RoomEncryptionFlags,
+  type UnencryptedMark,
 } from '@trinity/util/matrix';
 import { compareOrder } from './space-child-order';
 import { type RoomSummary } from './room-library.service';
@@ -61,30 +63,29 @@ export function initialOf(name: string): string {
 }
 
 /**
- * Single-line preview of the room's most recent `m.room.message`, or `''`, and whether it
- * arrived unencrypted in an encrypted room. Walked back-to-front to skip state events.
- * `getLiveTimeline` is optional: not every Room stub exposes it. `encrypted` is `undefined`
- * while the crypto store has yet to answer for the room.
+ * Single-line preview of the room's most recent `m.room.message`, or `''`, and its
+ * not-encrypted mark. Walked back-to-front to skip state events. `getLiveTimeline` is
+ * optional: not every Room stub exposes it. `encrypted` is `undefined` while the crypto store
+ * has yet to answer for the room.
  */
 function lastMessageOf(
   room: Room,
   encrypted: boolean | undefined,
-): { text: string; unencrypted: boolean } {
+): { text: string; mark: UnencryptedMark | null } {
   const events = room.getLiveTimeline?.()?.getEvents() ?? [];
   for (let i = events.length - 1; i >= 0; i--) {
     if (events[i].getType() === EventType.RoomMessage) {
-      const inClear = arrivedInClear(events[i]);
       // Until the store answers, the room may be encrypted without its state saying so.
-      if (encrypted === undefined && inClear) {
-        return { text: '', unencrypted: false };
+      if (encrypted === undefined && arrivedInClear(events[i])) {
+        return { text: '', mark: null };
       }
       return {
         text: messagePreview(events[i], false),
-        unencrypted: encrypted === true && inClear,
+        mark: unencryptedMarkFor(room, encrypted === true)(events[i]),
       };
     }
   }
-  return { text: '', unencrypted: false };
+  return { text: '', mark: null };
 }
 
 /**
@@ -188,7 +189,7 @@ export function buildRoomSummary(
     // sidebar's unread filter both follow.
     hasUnread: unreadCount > 0 || markedUnread,
     lastMessage: lastMessage.text,
-    lastMessageUnencrypted: lastMessage.unencrypted,
+    lastMessageMark: lastMessage.mark,
     activityTs: roomActivityTs(room),
     favourite: room.tags?.['m.favourite'] !== undefined,
     lowPriority: room.tags?.['m.lowpriority'] !== undefined,

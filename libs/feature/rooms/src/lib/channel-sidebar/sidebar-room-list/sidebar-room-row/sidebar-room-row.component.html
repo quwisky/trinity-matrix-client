@@ -26,14 +26,8 @@
         }}</span>
       } @else if (r.lastMessage) {
         <span class="channel__preview">
-          @if (r.lastMessageUnencrypted) {
-            <trn-icon
-              class="channel__preview-shield"
-              name="shield-alert"
-              size="xs"
-              variant="danger"
-              label="Not encrypted"
-            />
+          @if (previewShield(); as shield) {
+            <trn-unencrypted-mark [shield]="shield" />
           }
           {{ r.lastMessage }}
         </span>

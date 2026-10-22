@@ -5,6 +5,7 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { validReplacement } from './replacement';
+import { liveRoomState } from './room-state';
 
 /** The crypto-store half of the SDK's own "encrypt this send?" test. */
 interface RoomEncryptionProbe {
@@ -123,6 +124,50 @@ export function arrivedInClear(
   const settled = (e: MatrixEvent): boolean =>
     !e.status && !e.isState() && !e.isRedacted();
   return settled(event) && settled(subject) && !subject.isEncrypted();
+}
+
+/** How text that arrived unencrypted in an encrypted room is marked; see {@link unencryptedMarkFor}. */
+export type UnencryptedMark = 'unencrypted' | 'unencrypted-history';
+
+/**
+ * A lookup that marks each message whose text arrived in the clear in an encrypted room,
+ * and returns null for everything else (encrypted messages keep their crypto-derived
+ * shield). Local echoes, state events and redactions are never marked. Needs no crypto
+ * call, so it is synchronous; build it once per projection pass.
+ *
+ * Every such message is marked, whatever its date. The date only picks the tone: a message
+ * dated at or after the room's current `m.room.encryption` event gets `'unencrypted'`, an
+ * earlier one the quieter `'unencrypted-history'`. A room with no such event (only the
+ * crypto store says it is encrypted) has nothing to compare against, so every message gets
+ * the first.
+ *
+ * The lookup judges the text of the event's latest edit unless given the `subject` whose
+ * text is shown, such as one version in an edit history.
+ */
+export function unencryptedMarkFor(
+  room: Room,
+  roomEncrypted: boolean,
+): (event: MatrixEvent, subject?: MatrixEvent) => UnencryptedMark | null {
+  if (!roomEncrypted) {
+    return () => null;
+  }
+  const encryptedAt =
+    liveRoomState(room)
+      ?.getStateEvents(EventType.RoomEncryption, '')
+      ?.getTs() ?? null;
+  return (event, subject = shieldSubject(event)) => {
+    if (!arrivedInClear(event, subject)) {
+      return null;
+    }
+    const ts = subject.getTs();
+    // Only a real, earlier date earns the quieter mark; a missing or zero date stays red.
+    return encryptedAt !== null &&
+      Number.isFinite(ts) &&
+      ts > 0 &&
+      ts < encryptedAt
+      ? 'unencrypted-history'
+      : 'unencrypted';
+  };
 }
 
 /**

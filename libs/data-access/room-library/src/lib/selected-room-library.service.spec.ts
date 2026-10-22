@@ -60,6 +60,7 @@ function fakeRoom(id: string, options: FakeRoomOptions = {}) {
           : [
               {
                 getType: () => 'm.room.message',
+                getTs: () => 1,
                 getContent: () => ({ body: options.message }),
                 getOriginalContent: () => ({ body: options.message }),
                 isRedacted: () => false,
@@ -415,7 +416,7 @@ describe('SelectedRoomLibraryService', () => {
     await vi.waitFor(() => {
       expect(room('!plain:hs')?.lastMessage).toBe('hello');
       expect(room('!stored:hs')?.lastMessage).toBe('hello');
-      expect(room('!stored:hs')?.lastMessageUnencrypted).toBe(true);
+      expect(room('!stored:hs')?.lastMessageMark).toBe('unencrypted');
     });
     expect(room('!plain:hs')?.encrypted).toBe(false);
     expect(room('!stored:hs')?.encrypted).toBe(true);
@@ -1021,7 +1022,7 @@ function roomSummary(id: string, accountId: string): RoomSummary {
     hasUnread: false,
     markedUnread: false,
     lastMessage: '',
-    lastMessageUnencrypted: false,
+    lastMessageMark: null,
     activityTs: 0,
     favourite: false,
     lowPriority: false,

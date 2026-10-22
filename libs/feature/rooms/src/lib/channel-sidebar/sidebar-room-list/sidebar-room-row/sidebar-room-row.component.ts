@@ -35,8 +35,13 @@ import {
 } from '@trinity/data-access/notifications';
 import { ContentReportingService } from '@trinity/data-access/room-administration';
 import type { RoomSummary } from '@trinity/data-access/room-library';
+import {
+  UNENCRYPTED_HISTORY_SHIELD,
+  UNENCRYPTED_SHIELD,
+} from '@trinity/data-access/timeline';
 import { formatTypingNotice } from '@trinity/util/matrix';
 import { unreadBadgeLabel } from '../../../shared/unread-badge';
+import { UnencryptedMarkComponent } from '../../../shared/unencrypted-mark/unencrypted-mark.component';
 
 /**
  * What a row asks its list to do. Every variant carries the row's room (a merged row's `accountIds`
@@ -83,6 +88,7 @@ export type SidebarRoomAction =
     TrnDropdownMenuItemSubIndicatorComponent,
     TrnDropdownMenuRadio,
     TrnDropdownMenuRadioIndicatorComponent,
+    UnencryptedMarkComponent,
     TrnDropdownMenuSeparator,
     TrnDropdownMenuSub,
     TrnDropdownMenuSubTrigger,
@@ -117,6 +123,13 @@ export class SidebarRoomRowComponent {
   protected readonly highlightLabel = computed(() =>
     unreadBadgeLabel(this.room().highlightCount),
   );
+  protected readonly previewShield = computed(() => {
+    const mark = this.room().lastMessageMark;
+    if (mark === null) return null;
+    return mark === 'unencrypted-history'
+      ? UNENCRYPTED_HISTORY_SHIELD
+      : UNENCRYPTED_SHIELD;
+  });
   /** Read from the push rules, and re-read when they change (the service reads a signal). */
   protected readonly mode = computed(() => {
     const { id, accountIds } = this.room();

@@ -21,7 +21,7 @@ export function roomSummary(over: Partial<RoomSummary> = {}): RoomSummary {
     hasUnread: false,
     markedUnread: false,
     lastMessage: '',
-    lastMessageUnencrypted: false,
+    lastMessageMark: null,
     activityTs: 0,
     favourite: false,
     lowPriority: false,
