@@ -15,7 +15,6 @@ import { firstValueFrom } from 'rxjs';
 import { InviteBlockedError, RoomLibraryService } from './room-library.service';
 import { ROOM_LIBRARY_GOVERNANCE_POLICY } from './room-library-governance-policy';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { UNENCRYPTED_PREVIEW } from '@trinity/util/matrix';
 import { PrivacySettingsService } from '@trinity/platform-native';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -26,6 +25,7 @@ function timelineEvent(over: {
   redacted?: boolean;
   decryptionFailure?: boolean;
   encrypted?: boolean;
+  ts?: number;
   /** An edit attached to the message by someone else: the text it would show. */
   editedByOther?: string;
 }) {
@@ -39,6 +39,7 @@ function timelineEvent(over: {
   return {
     getId: () => '$e',
     getSender: () => '@a:hs',
+    getTs: () => over.ts ?? 1,
     getType: () => over.type ?? 'm.room.message',
     // As the SDK does: an attached edit's m.new_content, checked or not.
     getContent: () => (edit ? edit.getContent()['m.new_content'] : own),
@@ -63,6 +64,8 @@ function fakeRoom(opts: {
   highlight?: number;
   activity?: number;
   encrypted?: boolean;
+  /** When the room's `m.room.encryption` state event was sent. */
+  encryptedAt?: number;
   favourite?: boolean;
   lowPriority?: boolean;
   /** Widened past `timelineEvent`: markRead also reads an event's id and send status. */
@@ -128,6 +131,9 @@ function fakeRoom(opts: {
       getEvents: () => opts.events ?? [],
       getState: () => ({
         getStateEvents: (type: string, stateKey?: string) => {
+          if (type === 'm.room.encryption' && opts.encryptedAt !== undefined) {
+            return { getTs: () => opts.encryptedAt };
+          }
           if (type === 'm.space.child' && stateKey === undefined) {
             return (opts.children ?? []).map((id) => ({
               getStateKey: () => id,
@@ -1066,7 +1072,7 @@ describe('RoomLibraryService', () => {
     );
   });
 
-  it('previews a message that arrived unencrypted in an encrypted room as the unencrypted placeholder', () => {
+  it('flags a message that arrived unencrypted in an encrypted room and still previews its text', () => {
     const svc = setup([
       fakeRoom({
         roomId: '!e:hs',
@@ -1082,10 +1088,10 @@ describe('RoomLibraryService', () => {
       }),
     ]);
     const byId = Object.fromEntries(
-      svc.rooms().map((r) => [r.id, r.lastMessage]),
+      svc.rooms().map((r) => [r.id, [r.lastMessage, r.lastMessageMark]]),
     );
-    expect(byId['!e:hs']).toBe(UNENCRYPTED_PREVIEW);
-    expect(byId['!s:hs']).toBe('see you');
+    expect(byId['!e:hs']).toEqual(['hello', 'unencrypted']);
+    expect(byId['!s:hs']).toEqual(['see you', null]);
   });
 
   it("previews what the sender wrote, not someone else's edit of it", async () => {
@@ -1101,6 +1107,20 @@ describe('RoomLibraryService', () => {
     await vi.waitFor(() =>
       expect(svc.rooms()[0].lastMessage).toBe('what I said'),
     );
+  });
+
+  it('marks a message from before the room turned encryption on with the quieter history mark', () => {
+    const svc = setup([
+      fakeRoom({
+        roomId: '!e:hs',
+        name: 'secret',
+        encrypted: true,
+        encryptedAt: 100,
+        events: [timelineEvent({ body: 'old news', ts: 50 })],
+      }),
+    ]);
+    expect(svc.rooms()[0].lastMessage).toBe('old news');
+    expect(svc.rooms()[0].lastMessageMark).toBe('unencrypted-history');
   });
 
   it("previews a room by the crypto store's answer once it has one", async () => {
@@ -1150,14 +1170,16 @@ describe('RoomLibraryService', () => {
 
     answer(true);
     await vi.waitFor(() => expect(room('!c:hs')?.encrypted).toBe(true));
-    expect(room('!c:hs')?.lastMessage).toBe(UNENCRYPTED_PREVIEW);
+    expect(room('!c:hs')?.lastMessage).toBe('hello');
+    expect(room('!c:hs')?.lastMessageMark).toBe('unencrypted');
+    expect(room('!p:hs')?.lastMessageMark).toBeNull();
     // A room whose state says it is encrypted needs no store read.
     expect(
       isEncryptionEnabledInRoom.mock.calls.map(([id]) => id).sort(),
     ).toEqual(['!c:hs', '!p:hs']);
   });
 
-  it('marks a message that arrived in clear as unencrypted when there is no crypto store', () => {
+  it('flags a message that arrived in clear as unencrypted when there is no crypto store', () => {
     const { svc } = provideRooms({
       baseUrl: 'https://hs.example',
       getRooms: () => [
@@ -1171,7 +1193,8 @@ describe('RoomLibraryService', () => {
     });
     svc.runProjection().subscribe();
 
-    expect(svc.rooms()[0]?.lastMessage).toBe(UNENCRYPTED_PREVIEW);
+    expect(svc.rooms()[0]?.lastMessage).toBe('hello');
+    expect(svc.rooms()[0]?.lastMessageMark).toBe('unencrypted');
     expect(svc.rooms()[0]?.encrypted).toBe(false);
   });
 

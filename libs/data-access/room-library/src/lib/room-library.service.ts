@@ -38,6 +38,7 @@ import {
   RoomEncryptionFlags,
   isValidUserId,
   roomEncryptionInitialState,
+  type UnencryptedMark,
 } from '@trinity/util/matrix';
 import {
   buildRoomSummary,
@@ -104,6 +105,8 @@ export interface RoomSummary {
   markedUnread: boolean;
   /** Single-line preview of the room's most recent message (`''` when none). */
   lastMessage: string;
+  /** The not-encrypted mark for {@link lastMessage}, or null when it needs none. */
+  lastMessageMark: UnencryptedMark | null;
   /** Last-activity timestamp (ms), used to order the list by recency. */
   activityTs: number;
   /** Whether the room carries the `m.favourite` tag — favourite to the top of the list. */

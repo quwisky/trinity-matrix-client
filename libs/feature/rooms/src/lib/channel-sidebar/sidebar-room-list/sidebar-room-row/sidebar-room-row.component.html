@@ -25,7 +25,12 @@
           notice
         }}</span>
       } @else if (r.lastMessage) {
-        <span class="channel__preview">{{ r.lastMessage }}</span>
+        <span class="channel__preview">
+          @if (previewShield(); as shield) {
+            <trn-unencrypted-mark [shield]="shield" />
+          }
+          {{ r.lastMessage }}
+        </span>
       }
       @if (r.highlightCount > 0) {
         <span class="sr-only">, {{ r.highlightCount }} mentions</span>

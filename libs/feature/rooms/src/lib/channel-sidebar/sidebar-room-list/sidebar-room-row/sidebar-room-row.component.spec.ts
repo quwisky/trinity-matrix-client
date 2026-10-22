@@ -126,6 +126,37 @@ describe('SidebarRoomRowComponent', () => {
     );
   });
 
+  it('marks a preview that arrived unencrypted with the shared not-encrypted mark', async () => {
+    const { container, fixture } = await renderRow({
+      room: room({ lastMessage: 'hello', lastMessageMark: 'unencrypted' }),
+    });
+    const preview = container.querySelector('.channel__preview')!;
+    expect(
+      preview.querySelector('[data-testid="unencrypted-mark-unencrypted"]'),
+    ).not.toBeNull();
+    expect(preview.textContent).toContain('hello');
+
+    fixture.componentRef.setInput(
+      'room',
+      room({ lastMessage: 'old news', lastMessageMark: 'unencrypted-history' }),
+    );
+    fixture.detectChanges();
+    expect(
+      preview.querySelector(
+        '[data-testid="unencrypted-mark-unencrypted-history"]',
+      ),
+    ).not.toBeNull();
+
+    fixture.componentRef.setInput(
+      'room',
+      room({ lastMessage: 'hello', lastMessageMark: null }),
+    );
+    fixture.detectChanges();
+    expect(
+      container.querySelector('.channel__preview trn-unencrypted-mark'),
+    ).toBeNull();
+  });
+
   it('shows the typing notice in place of the preview', async () => {
     const { container, fixture } = await renderRow({
       room: room({ lastMessage: 'hello' }),

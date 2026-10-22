@@ -1,14 +1,14 @@
-import { EventType, type MatrixEvent, type Room } from 'matrix-js-sdk';
+import { type MatrixEvent, type Room } from 'matrix-js-sdk';
 import {
   EventShieldColour,
   EventShieldReason,
   type EventEncryptionInfo,
 } from 'matrix-js-sdk/lib/crypto-api';
 import {
-  arrivedInClear,
   displayContent,
-  liveRoomState,
   shieldSubject,
+  unencryptedMarkFor,
+  type UnencryptedMark,
 } from '@trinity/util/matrix';
 import { type MessageShield } from './message-presentation';
 
@@ -167,44 +167,25 @@ export function shownShield(shown: MatrixEvent): MessageShield | null {
 }
 
 /**
- * A lookup that marks each message whose text arrived in the clear in an encrypted room,
- * and returns null for everything else (encrypted messages keep their crypto-derived
- * shield). Local echoes, state events and redactions are never marked. Needs no crypto
- * call, so it is synchronous; build it once per projection pass.
- *
- * Every such message is marked, whatever its date. The date only picks the tone: a message
- * dated at or after the room's current `m.room.encryption` event gets
- * {@link UNENCRYPTED_SHIELD}, an earlier one the quieter {@link UNENCRYPTED_HISTORY_SHIELD}.
- * A room with no such event (only the crypto store says it is encrypted) has nothing to
- * compare against, so every message gets the first.
- *
- * The lookup judges the text of the event's latest edit unless given the `subject` whose
- * text is shown, such as one version in an edit history.
+ * The shield for a not-encrypted mark: {@link UNENCRYPTED_SHIELD}, or the quieter
+ * {@link UNENCRYPTED_HISTORY_SHIELD} for a message dated before the room turned encryption on.
  */
+export function unencryptedShield(
+  mark: UnencryptedMark | null,
+): MessageShield | null {
+  if (mark === null) return null;
+  return mark === 'unencrypted-history'
+    ? UNENCRYPTED_HISTORY_SHIELD
+    : UNENCRYPTED_SHIELD;
+}
+
+/** {@link unencryptedMarkFor} as the timeline's shields; see {@link unencryptedShield}. */
 export function unencryptedShieldFor(
   room: Room,
   roomEncrypted: boolean,
 ): (event: MatrixEvent, subject?: MatrixEvent) => MessageShield | null {
-  if (!roomEncrypted) {
-    return () => null;
-  }
-  const encryptedAt =
-    liveRoomState(room)
-      ?.getStateEvents(EventType.RoomEncryption, '')
-      ?.getTs() ?? null;
-  return (event, subject = shieldSubject(event)) => {
-    if (!arrivedInClear(event, subject)) {
-      return null;
-    }
-    const ts = subject.getTs();
-    // Only a real, earlier date earns the quieter mark; a missing or zero date stays red.
-    return encryptedAt !== null &&
-      Number.isFinite(ts) &&
-      ts > 0 &&
-      ts < encryptedAt
-      ? UNENCRYPTED_HISTORY_SHIELD
-      : UNENCRYPTED_SHIELD;
-  };
+  const markFor = unencryptedMarkFor(room, roomEncrypted);
+  return (event, subject) => unencryptedShield(markFor(event, subject));
 }
 
 /** The slice of the crypto API the shield resolver needs. */
