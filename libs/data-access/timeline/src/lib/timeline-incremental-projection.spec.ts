@@ -810,6 +810,43 @@ describe('TimelineService incremental projection', () => {
       expect(row(id(6))?.shield?.level).toBe('unencrypted-history');
       expect(row(id(6))?.previewEncrypted).toBe(true);
     });
+
+    it('marks the quoted clear message of an encrypted reply once the crypto store reports the room encrypted', async () => {
+      let learn: (encrypted: boolean) => void = () => undefined;
+      const crypto: ShieldProbe = {
+        ...TRUSTING,
+        isEncryptionEnabledInRoom: () =>
+          new Promise<boolean>((resolve) => (learn = resolve)),
+      };
+      const { row, event } = await openConversation(
+        10,
+        10,
+        { 7: { ...ENCRYPTED, ...reply(7, 6) } },
+        { crypto },
+      );
+      await event(7).attemptDecryption(
+        decryptor(() =>
+          Promise.resolve({
+            clearEvent: {
+              type: 'm.room.message',
+              content: {
+                msgtype: 'm.text',
+                body: 'reply 7',
+                'm.relates_to': { 'm.in_reply_to': { event_id: id(6) } },
+              },
+            },
+          }),
+        ),
+      );
+      await settle();
+      expect(row(id(7))?.replyTo?.body).toBe('message 6');
+      expect(row(id(7))?.replyTo?.shield ?? null).toBeNull();
+
+      learn(true);
+      await settle();
+
+      expect(row(id(7))?.replyTo?.shield?.level).toBe('unencrypted');
+    });
   });
 
   describe('shields', () => {

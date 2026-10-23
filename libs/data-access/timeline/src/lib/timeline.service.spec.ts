@@ -292,6 +292,7 @@ describe('TimelineService', () => {
       senderInitial: 'A',
       senderAvatarMxc: null,
       body: 'original text',
+      shield: null,
     });
   });
 

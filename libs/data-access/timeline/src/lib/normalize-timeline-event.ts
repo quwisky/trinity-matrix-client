@@ -29,7 +29,12 @@ import type {
   ReplyPreview,
   UndecryptableReason,
 } from './message-presentation';
-import { shownContent, shownSubject, showsEdit } from './shields';
+import {
+  shownContent,
+  shownSubject,
+  showsEdit,
+  unencryptedShield,
+} from './shields';
 import { undecryptableReasonOf } from './undecryptable-reason';
 
 const SYSTEM_EVENT_TYPES = new Set<string>([
@@ -234,7 +239,9 @@ function normalizeReply(
       replyPreview(room, eventId, roomEncrypted, shownContent, shownSubject),
     null,
   );
-  return preview ? Object.freeze({ ...preview }) : null;
+  if (!preview) return null;
+  const { mark, ...quote } = preview;
+  return Object.freeze({ ...quote, shield: unencryptedShield(mark) });
 }
 
 /** How a row is projected: its shield, and whether its valid edit is shown yet. */

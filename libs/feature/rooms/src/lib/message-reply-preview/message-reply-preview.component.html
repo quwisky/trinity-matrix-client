@@ -2,7 +2,7 @@
 <button
   type="button"
   class="msg__reply msg__target"
-  [attr.aria-label]="'Replying to ' + r.senderName"
+  [attr.aria-label]="label()"
   (click)="jump.emit(r.id)"
 >
   <trn-avatar
@@ -13,5 +13,8 @@
     size="2xs"
   />
   <span class="msg__reply-author">{{ r.senderName }}</span>
+  @if (r.shield; as shield) {
+    <trn-unencrypted-mark [shield]="shield" />
+  }
   <span class="msg__reply-body">{{ r.body }}</span>
 </button>

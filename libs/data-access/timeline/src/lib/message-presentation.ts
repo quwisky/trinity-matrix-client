@@ -73,6 +73,8 @@ export interface ReplyPreview {
   readonly senderInitial: string;
   readonly senderAvatarMxc: string | null;
   readonly body: string;
+  /** Set when the quoted text arrived unencrypted in an encrypted room. */
+  readonly shield: MessageShield | null;
 }
 
 export interface ReceiptView {

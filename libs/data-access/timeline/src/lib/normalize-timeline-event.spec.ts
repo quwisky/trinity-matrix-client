@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixEvent, type MatrixClient, type Room } from 'matrix-js-sdk';
 import { DecryptionFailureCode } from 'matrix-js-sdk/lib/crypto-api';
-import { UNENCRYPTED_PREVIEW } from '@trinity/util/matrix';
 import { normalizeTimelineEvent } from './normalize-timeline-event';
 
 const client = {
@@ -20,6 +19,9 @@ const room = {
   getUsersReadUpTo: () => [],
   findEventById: (eventId: string) => (eventId === '$parent' ? event() : null),
   hasEncryptionStateEvent: () => true,
+  getLiveTimeline: () => ({
+    getState: () => ({ getStateEvents: () => null }),
+  }),
   getUnfilteredTimelineSet: () => ({ relations: undefined }),
 } as unknown as Room;
 
@@ -397,7 +399,7 @@ describe('normalizeTimelineEvent', () => {
     },
   );
 
-  it('quotes an unencrypted message in an encrypted room as the unencrypted placeholder', () => {
+  it('quotes an unencrypted message in an encrypted room with the not-encrypted shield', () => {
     const normalized = normalizeTimelineEvent(
       client,
       room,
@@ -408,11 +410,12 @@ describe('normalizeTimelineEvent', () => {
 
     expect(normalized?.replyTo).toMatchObject({
       id: '$parent',
-      body: UNENCRYPTED_PREVIEW,
+      body: 'hello',
+      shield: { level: 'unencrypted' },
     });
   });
 
-  it("quotes an unencrypted message as the unencrypted placeholder while its encrypted edit's shield is pending", () => {
+  it("quotes an unencrypted message with the not-encrypted shield while its encrypted edit's shield is pending", () => {
     const edit = event({
       getId: () => '$parent~edit',
       isEncrypted: () => true,
@@ -442,7 +445,8 @@ describe('normalizeTimelineEvent', () => {
 
     expect(normalized?.replyTo).toMatchObject({
       id: '$parent',
-      body: UNENCRYPTED_PREVIEW,
+      body: 'hello',
+      shield: { level: 'unencrypted' },
     });
   });
 

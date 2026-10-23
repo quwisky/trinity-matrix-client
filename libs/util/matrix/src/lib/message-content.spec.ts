@@ -13,7 +13,6 @@ import {
   type Mention,
 } from './message-content';
 import { renderMarkdown, type RenderedMarkdown } from './markdown-render';
-import { UNENCRYPTED_PREVIEW } from './room-encryption';
 
 describe('custom emoji in content builders', () => {
   it('an emoji-only message still sends formatted_body', () => {
@@ -483,7 +482,6 @@ function fakeEvent(o: {
   redacted?: boolean;
   decryptFail?: boolean;
   encrypted?: boolean;
-  status?: string | null;
   edit?: MatrixEvent;
 }): MatrixEvent {
   return {
@@ -493,43 +491,37 @@ function fakeEvent(o: {
     isEncrypted: () => o.encrypted ?? false,
     isState: () => false,
     replacingEvent: () => o.edit ?? null,
-    status: o.status ?? null,
+    status: null,
   } as unknown as MatrixEvent;
 }
 
 describe('messagePreview', () => {
   it('returns the body trimmed and with internal whitespace collapsed', () => {
-    expect(
-      messagePreview(fakeEvent({ body: '  hello   world  \n\n' }), false),
-    ).toBe('hello world');
+    expect(messagePreview(fakeEvent({ body: '  hello   world  \n\n' }))).toBe(
+      'hello world',
+    );
   });
 
   it('strips a reply fallback quote, keeping only the actual message', () => {
     const event = fakeEvent({
       body: '> <@user:hs> quoted\n\nactual',
     });
-    expect(messagePreview(event, false)).toBe('actual');
+    expect(messagePreview(event)).toBe('actual');
   });
 
   it("returns '(message deleted)' for a redacted event", () => {
     const event = fakeEvent({ body: 'gone now', redacted: true });
-    expect(messagePreview(event, false)).toBe('(message deleted)');
+    expect(messagePreview(event)).toBe('(message deleted)');
   });
 
   it("returns '⚠️ Unable to decrypt' for a decryption failure, before checking redaction", () => {
     const event = fakeEvent({ decryptFail: true, redacted: true });
-    expect(messagePreview(event, false)).toBe('⚠️ Unable to decrypt');
+    expect(messagePreview(event)).toBe('⚠️ Unable to decrypt');
   });
 
   it("returns '…' for an empty or whitespace-only body", () => {
-    expect(messagePreview(fakeEvent({ body: '' }), false)).toBe('…');
-    expect(messagePreview(fakeEvent({ body: '   \n  ' }), false)).toBe('…');
-  });
-
-  it('shows the unencrypted placeholder for text sent in the clear into an encrypted room', () => {
-    const event = fakeEvent({ body: 'sign in here' });
-    expect(messagePreview(event, true)).toBe(UNENCRYPTED_PREVIEW);
-    expect(messagePreview(event, false)).toBe('sign in here');
+    expect(messagePreview(fakeEvent({ body: '' }))).toBe('…');
+    expect(messagePreview(fakeEvent({ body: '   \n  ' }))).toBe('…');
   });
 
   it('previews an encrypted message as sent, not its edit that arrived in the clear', () => {
@@ -552,16 +544,7 @@ describe('messagePreview', () => {
         isRelation: () => false,
       },
     );
-    expect(messagePreview(event, true)).toBe('original');
-  });
-
-  it('previews encrypted text and the own message still being sent in an encrypted room', () => {
-    expect(
-      messagePreview(fakeEvent({ body: 'secret', encrypted: true }), true),
-    ).toBe('secret');
-    expect(
-      messagePreview(fakeEvent({ body: 'mine', status: 'sending' }), true),
-    ).toBe('mine');
+    expect(messagePreview(event)).toBe('original');
   });
 });
 

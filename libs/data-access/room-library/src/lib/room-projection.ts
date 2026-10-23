@@ -80,7 +80,7 @@ function lastMessageOf(
         return { text: '', mark: null };
       }
       return {
-        text: messagePreview(events[i], false),
+        text: messagePreview(events[i]),
         mark: unencryptedMarkFor(room, encrypted === true)(events[i]),
       };
     }

@@ -8,6 +8,7 @@ describe('MessageReplyPreviewComponent', () => {
     senderInitial: 'A',
     senderAvatarMxc: null,
     body: 'earlier message',
+    shield: null,
   };
 
   it('renders the referenced sender and body', async () => {
@@ -20,6 +21,37 @@ describe('MessageReplyPreviewComponent', () => {
     expect(container.querySelector('button')).toHaveAttribute(
       'aria-label',
       'Replying to Alice',
+    );
+  });
+
+  it('shows no mark, and names none, when the quote is not marked', async () => {
+    const { container } = await render(MessageReplyPreviewComponent, {
+      inputs: { reply },
+    });
+
+    expect(container.querySelector('trn-unencrypted-mark')).toBeNull();
+  });
+
+  it('shows the not-encrypted mark and names it when the quote is marked', async () => {
+    const { container } = await render(MessageReplyPreviewComponent, {
+      inputs: {
+        reply: {
+          ...reply,
+          shield: {
+            level: 'unencrypted',
+            reason: 'Not encrypted',
+            explanation: 'Sent without encryption.',
+          },
+        },
+      },
+    });
+
+    expect(
+      container.querySelector('[data-testid="unencrypted-mark-unencrypted"]'),
+    ).toBeInTheDocument();
+    expect(container.querySelector('button')).toHaveAttribute(
+      'aria-label',
+      'Replying to Alice, not encrypted message',
     );
   });
 

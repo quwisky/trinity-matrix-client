@@ -100,9 +100,6 @@ export class RoomEncryptionFlags {
   }
 }
 
-/** What a preview shows instead of text that arrived unencrypted in an encrypted room. */
-export const UNENCRYPTED_PREVIEW = '⚠️ Unencrypted message';
-
 /**
  * The event whose encryption vouches for the text `event` shows: its valid latest edit when
  * it has one, else itself. An edit supplies that text, and the SDK applies it without

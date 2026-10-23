@@ -368,6 +368,7 @@ describe('ThreadViewComponent', () => {
           senderInitial: 'B',
           senderAvatarMxc: null,
           body: 'the root',
+          shield: null,
         },
       },
     ]);

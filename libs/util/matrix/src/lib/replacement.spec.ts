@@ -202,7 +202,7 @@ describe('validReplacement and displayContent', () => {
 
       expect(validReplacement(event)).toBe(edit);
       expect(displayContent(event)['body']).toBe('v2');
-      expect(messagePreview(event, false)).toBe('v2');
+      expect(messagePreview(event)).toBe('v2');
     });
 
     it('keep the original when only the attached edit has new content', () => {
@@ -278,13 +278,13 @@ describe('previews of an edited message', () => {
   it('show a valid edit', () => {
     const event = editedWith(sdkEdit('$orig', 'v2'));
 
-    expect(messagePreview(event, false)).toBe('v2');
+    expect(messagePreview(event)).toBe('v2');
     expect(replyPreview(roomWith(event), '$orig', false)?.body).toBe('v2');
     expect(replyQuote(event)).toContain('> <@alice:hs> v2');
   });
 
   it('show the original over an edit from another sender in a room-list preview', () => {
-    expect(messagePreview(forged(), false)).toBe('v1');
+    expect(messagePreview(forged())).toBe('v1');
   });
 
   it('show the original over an edit from another sender in a reply preview', () => {
@@ -294,7 +294,7 @@ describe('previews of an edited message', () => {
   it('show and quote an encrypted message over its unencrypted edit', () => {
     const event = () => editedWith(sdkEdit('$orig', 'v2'), true);
 
-    expect(messagePreview(event(), false)).toBe('v1');
+    expect(messagePreview(event())).toBe('v1');
     expect(replyPreview(roomWith(event()), '$orig', false)?.body).toBe('v1');
     expect(replyQuote(event())).toContain('> <@alice:hs> v1');
   });

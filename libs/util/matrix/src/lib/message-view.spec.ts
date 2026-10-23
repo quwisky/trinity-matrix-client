@@ -10,7 +10,6 @@ import {
   readReceiptsFor,
   replyPreview,
 } from './message-view';
-import { UNENCRYPTED_PREVIEW } from './room-encryption';
 
 /** A reaction (`m.annotation`) event stub: only sender, redaction and timestamp are read. */
 function reaction(sender: string, redacted = false, ts = 0): MatrixEvent {
@@ -475,31 +474,77 @@ describe('isDisplayableMessage', () => {
 });
 
 describe('replyPreview', () => {
-  const roomWith = (encrypted: boolean) =>
+  const roomWith = (
+    over: {
+      encrypted?: boolean;
+      redacted?: boolean;
+      status?: string | null;
+      ts?: number;
+      encryptedAt?: number;
+    } = {},
+  ) =>
     ({
       findEventById: () =>
         ({
           getSender: () => '@a:hs',
           getOriginalContent: () => ({ body: 'sign in here' }),
-          isRedacted: () => false,
-          isEncrypted: () => encrypted,
+          getTs: () => over.ts ?? 200,
+          isRedacted: () => over.redacted ?? false,
+          isEncrypted: () => over.encrypted ?? false,
           isState: () => false,
           replacingEvent: () => null,
-          status: null,
+          status: over.status ?? null,
         }) as unknown as MatrixEvent,
       getMember: () => null,
+      getLiveTimeline: () => ({
+        getState: () => ({
+          getStateEvents: () =>
+            over.encryptedAt === undefined
+              ? null
+              : { getTs: () => over.encryptedAt },
+        }),
+      }),
     }) as unknown as Room;
 
-  it('quotes an unencrypted message in an encrypted room as the unencrypted placeholder', () => {
-    expect(replyPreview(roomWith(false), '$t', true)?.body).toBe(
-      UNENCRYPTED_PREVIEW,
-    );
+  it('quotes text that arrived unencrypted in an encrypted room, marked unencrypted', () => {
+    expect(replyPreview(roomWith(), '$t', true)).toMatchObject({
+      body: 'sign in here',
+      mark: 'unencrypted',
+    });
   });
 
-  it('quotes the text of an encrypted message, and of any message in a room that is not encrypted', () => {
-    expect(replyPreview(roomWith(true), '$t', true)?.body).toBe('sign in here');
-    expect(replyPreview(roomWith(false), '$t', false)?.body).toBe(
-      'sign in here',
-    );
+  it('marks it unencrypted-history when it predates the encryption event', () => {
+    expect(
+      replyPreview(roomWith({ ts: 100, encryptedAt: 150 }), '$t', true)?.mark,
+    ).toBe('unencrypted-history');
+  });
+
+  it('leaves encrypted text, an unencrypted room, a local echo and a redaction unmarked', () => {
+    expect(
+      replyPreview(roomWith({ encrypted: true }), '$t', true),
+    ).toMatchObject({ body: 'sign in here', mark: null });
+    expect(replyPreview(roomWith(), '$t', false)).toMatchObject({
+      body: 'sign in here',
+      mark: null,
+    });
+    expect(
+      replyPreview(roomWith({ status: 'sending' }), '$t', true)?.mark,
+    ).toBeNull();
+    expect(
+      replyPreview(roomWith({ redacted: true }), '$t', true),
+    ).toMatchObject({ body: '(message deleted)', mark: null });
+  });
+
+  it('judges the mark on the subject whose text is shown', () => {
+    const encryptedEdit = {
+      isEncrypted: () => true,
+      isState: () => false,
+      isRedacted: () => false,
+      status: null,
+    } as unknown as MatrixEvent;
+    expect(
+      replyPreview(roomWith(), '$t', true, undefined, () => encryptedEdit)
+        ?.mark,
+    ).toBeNull();
   });
 });

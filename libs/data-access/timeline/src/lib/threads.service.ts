@@ -892,7 +892,7 @@ export class ThreadsService {
     let rootShield: MessageShield | null = null;
     if (root) {
       // Each preview's shield marks unencrypted text, so the text itself stays readable.
-      rootPreview = messagePreview(root, false, shownContent(root));
+      rootPreview = messagePreview(root, shownContent(root));
       rootShield = unencryptedShield(root, shownSubject(root));
       const sender = root.getSender() ?? '';
       rootSenderName = room.getMember(sender)?.name ?? sender;
@@ -907,7 +907,7 @@ export class ThreadsService {
     // falls back to the root when every reply is redacted).
     if (latest && latest.getId() !== thread.id) {
       latestReplyTs = latest.getTs();
-      latestReplyPreview = messagePreview(latest, false, shownContent(latest));
+      latestReplyPreview = messagePreview(latest, shownContent(latest));
       latestReplyShield = unencryptedShield(latest, shownSubject(latest));
       const sender = latest.getSender() ?? '';
       latestReplySenderName = room.getMember(sender)?.name ?? sender;
