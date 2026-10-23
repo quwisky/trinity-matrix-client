@@ -255,6 +255,43 @@ describe('DraftStoreService', () => {
       expect(reloaded.get('conversation:a')).toBe('sent offline');
     });
 
+    it('does not add a text of several paragraphs that the draft already is', async () => {
+      const svc = service();
+      await svc.init();
+      svc.set('conversation:a', 'first part\n\nsecond part');
+      svc.holdWaiting('conversation:a', 'txn-1', 'first part\n\nsecond part');
+
+      const reloaded = await reload();
+
+      expect(reloaded.get('conversation:a')).toBe('first part\n\nsecond part');
+    });
+
+    it('keeps a recovered draft when the stored drafts are over the cap, trimming older ones', async () => {
+      const older = Object.fromEntries(
+        Array.from({ length: 200 }, (_, i) => [
+          `conversation:${i}`,
+          `draft ${i}`,
+        ]),
+      );
+      get.mockResolvedValue({
+        value: JSON.stringify({
+          'conversation:a': 'typed long ago',
+          ...older,
+          'waiting:conversation:a': JSON.stringify({ 'txn-1': 'sent offline' }),
+        }),
+      });
+      const svc = service();
+
+      await svc.init();
+
+      const written = JSON.parse(set.mock.lastCall?.[0].value) as Record<
+        string,
+        string
+      >;
+      expect(written['conversation:a']).toBe('typed long ago\n\nsent offline');
+      expect(written['conversation:0']).toBeUndefined();
+    });
+
     it('forgets a released text, so a reload brings nothing back', async () => {
       const svc = service();
       await svc.init();

@@ -71,6 +71,7 @@ describe('MatrixClientService session handover', () => {
       readonly type?: string;
       readonly threadRootId?: string;
       readonly edit?: boolean;
+      readonly txnId?: string;
     } = {},
   ) {
     const id = options.id ?? `~!room:hs:txn${++nextEcho}`;
@@ -82,6 +83,7 @@ describe('MatrixClientService session handover', () => {
       isRelation: (relType?: string) =>
         options.edit === true && relType === 'm.replace',
       threadRootId: options.threadRootId,
+      getTxnId: () => options.txnId,
     };
   }
 
@@ -215,6 +217,22 @@ describe('MatrixClientService session handover', () => {
         threadRootId: null,
         text: 'see you',
       },
+    ]);
+  });
+
+  it('names the transaction of an unsent text, so its waiting record can be released', async () => {
+    const svc = await liveService(
+      handoverClient([
+        echo(
+          EventStatus.NOT_SENT,
+          { msgtype: 'm.text', body: 'see you' },
+          { txnId: 'txn-7' },
+        ),
+      ]),
+    );
+
+    expect(svc.pendingTextMessages()).toEqual([
+      expect.objectContaining({ text: 'see you', txnId: 'txn-7' }),
     ]);
   });
 
@@ -488,6 +506,7 @@ describe('MatrixClientService session handover with a real MatrixClient', () => 
           roomId: ROOM_ID,
           threadRootId: ROOT_ID,
           text: 'in thread',
+          txnId: expect.any(String),
         },
       ]);
       // A failed send is no longer on its way; a hanging one is.

@@ -4,7 +4,7 @@ import {
   conversationDraftKey,
   threadDraftKey,
 } from '@trinity/data-access/timeline';
-import { DraftStoreService } from '@trinity/platform-native';
+import { DraftStoreService, holdsText } from '@trinity/platform-native';
 
 /**
  * The draft an unsent text goes back into. A thread reply goes into its thread's draft, under
@@ -39,6 +39,8 @@ export class UnsentDraftsWriter {
     if (!this.drafts.isInitialised()) return Promise.resolve();
     for (const message of messages) {
       const key = unsentDraftKey(message);
+      // This copy replaces the waiting record, which holds the typed text and could differ.
+      if (message.txnId) this.drafts.releaseWaiting(key, message.txnId);
       const existing = this.drafts.get(key).trimEnd();
       const text = message.text.trim();
       // A rejected send may already have put its text back (ConversationCompose.restore).
@@ -47,15 +49,4 @@ export class UnsentDraftsWriter {
     }
     return this.drafts.flush();
   }
-}
-
-/**
- * Whether `draft` already is `text`, or holds it as one of its blank-line-separated paragraphs.
- * Not a substring test: an unsent "ok" must still come back after a draft that says "looks ok".
- */
-function holdsText(draft: string, text: string): boolean {
-  return (
-    draft.trim() === text ||
-    draft.split(/\n\s*\n/).some((paragraph) => paragraph.trim() === text)
-  );
 }

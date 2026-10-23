@@ -33,6 +33,8 @@ export interface PendingTextMessage {
   readonly threadRootId: string | null;
   /** What to put back in the composer: the plain body, the composer's own markdown source. */
   readonly text: string;
+  /** Names the echo's waiting-to-send record in the draft store, which this text supersedes. */
+  readonly txnId?: string;
 }
 
 /** matrix-js-sdk keeps its sync loop on the protected `MatrixClient.syncApi`. */
@@ -101,6 +103,7 @@ export function clientPendingTexts(
         roomId: room.roomId,
         threadRootId: threadOf(event, id),
         text,
+        txnId: event.getTxnId(),
       });
     }
   }

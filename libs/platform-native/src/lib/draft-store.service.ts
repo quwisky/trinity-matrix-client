@@ -69,13 +69,15 @@ function parseDrafts(value: string | null): [string, string][] {
 }
 
 /**
- * Whether `draft` already is `text`, or holds it as one of its blank-line-separated
- * paragraphs, as a session handover may have put it there.
+ * Whether `draft` already is `text`, or holds it as one of its blank-line-separated paragraphs.
+ * Not a substring test: an unsent "ok" must still come back after a draft that says "looks ok".
  */
-function holdsText(draft: string, text: string): boolean {
-  return draft
-    .split(/\n\s*\n/)
-    .some((paragraph) => paragraph.trim() === text.trim());
+export function holdsText(draft: string, text: string): boolean {
+  const wanted = text.trim();
+  return (
+    draft.trim() === wanted ||
+    draft.split(/\n\s*\n/).some((paragraph) => paragraph.trim() === wanted)
+  );
 }
 
 /**
@@ -232,6 +234,8 @@ export class DraftStoreService implements OnDestroy {
           draft = draft ? `${draft}\n\n${body}` : body;
       }
       this.drafts.delete(recordKey);
+      // Newest last, so the cap in persist() trims older drafts before this one.
+      this.drafts.delete(key);
       if (draft) this.drafts.set(key, draft);
       recovered = true;
     }
