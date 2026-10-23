@@ -148,9 +148,10 @@ jobs:
             echo "$delimiter"
           } >> "$GITHUB_OUTPUT"
 
-  # Merges the release branch back into main so main gets the changelog, the stable
-  # version files and any fixes made on the branch. Independent of packaging: a failed
-  # installer build must not hold the back-merge.
+  # Opens one single-parent commit on main carrying only the release metadata (changelog,
+  # manifests, user guide); fixes stay out of main. Runs this release branch's copy of
+  # back-merge.mjs, so each line needs the script change backported. Independent of
+  # packaging: a failed installer build must not hold the back-merge.
   back-merge:
     name: Open the back-merge PR
     needs: release-please
