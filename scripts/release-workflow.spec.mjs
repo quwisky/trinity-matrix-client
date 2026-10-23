@@ -479,7 +479,7 @@ describe('release branches', () => {
       );
       const run = job().steps.find((s) => s.run?.includes('back-merge.mjs'));
       expect(run.run).toContain(
-        'node scripts/back-merge.mjs --tag "$TAG" --branch "$BRANCH"',
+        'node main-tools/scripts/back-merge.mjs --tag "$TAG" --branch "$BRANCH"',
       );
       expect(run.env.GH_TOKEN).toBe('\${{ steps.app-token.outputs.token }}');
     });
@@ -492,6 +492,28 @@ describe('release branches', () => {
       expect(runs).not.toMatch(/git (push|commit)/);
       const run = steps.find((s) => s.run?.includes('back-merge.mjs'));
       expect(run.run).toContain('trinity-release[bot]');
+    });
+
+    it("builds with main's back-merge.mjs, the copy the lander rebuilds with", () => {
+      const steps = job().steps;
+      const checkouts = steps.filter((s) =>
+        s.uses?.startsWith('actions/checkout@'),
+      );
+      const tools = steps.findIndex((s) => s.with?.path === 'main-tools');
+      const release = steps.findIndex((s) => s === checkouts[0]);
+      const run = steps.findIndex((s) => s.run?.includes('back-merge.mjs'));
+      expect(checkouts).toHaveLength(2);
+      expect(checkouts[0].with.ref).toBe('\${{ github.ref_name }}');
+      expect(steps[tools].with).toMatchObject({
+        ref: 'main',
+        path: 'main-tools',
+        'sparse-checkout': 'scripts/back-merge.mjs',
+        'sparse-checkout-cone-mode': false,
+        'persist-credentials': false,
+      });
+      expect(steps[tools].uses).toBe(checkouts[0].uses);
+      expect(release).toBeLessThan(tools);
+      expect(tools).toBeLessThan(run);
     });
 
     it('sets up Node before running the script', () => {

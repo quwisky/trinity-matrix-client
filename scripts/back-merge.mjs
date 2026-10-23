@@ -1,21 +1,21 @@
 /**
- * Opens the PR that merges a stable release branch back into main (see release.yml);
- * land-back-merge.mjs pushes its merge commit to main once CI is green.
- * Version files that both lines bump are resolved by rule; any other conflict stops the job
- * so a maintainer merges by hand.
+ * Opens the PR that brings a stable release's metadata back to main (see release.yml) as one
+ * commit whose only parent is main; land-back-merge.mjs pushes it to main once CI is green.
+ * No release-branch commit enters main's history, so backported fixes are never duplicated there.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 
+const CHANGELOG = 'CHANGELOG.md';
+const RELEASE_JSON = 'apps/docs-users/release.json';
 const RELEASE_SIDE = new Set([
-  'CHANGELOG.md',
+  CHANGELOG,
   '.release-please-manifest.json',
-  'apps/docs-users/release.json',
+  RELEASE_JSON,
 ]);
-const MAIN_SIDE = new Set(['package.json', 'electron/package.json']);
 const NEXT_MANIFEST = '.release-please-manifest.next.json';
 const USER_GUIDE_PAGE = /^apps\/docs-users\/src\/content\/docs\/.+\.mdx?$/;
 const VERSION =
@@ -24,7 +24,6 @@ const STABLE_TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 export function resolutionFor(path) {
   if (RELEASE_SIDE.has(path) || USER_GUIDE_PAGE.test(path)) return 'release';
-  if (MAIN_SIDE.has(path)) return 'main';
   if (path === NEXT_MANIFEST) return 'higher';
   return null;
 }
@@ -61,133 +60,180 @@ export function mergeNextManifest(mainText, releaseText) {
   return `${JSON.stringify({ '.': version }, null, 2)}\n`;
 }
 
-export function planBackMerge({ mainContainsTag, existingPr }) {
-  if (mainContainsTag) return 'skip';
+export function planBackMerge({ alreadyBackMerged, existingPr }) {
+  if (alreadyBackMerged) return 'skip';
   return existingPr === null ? 'create' : 'update';
 }
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
 const gh = (...args) => execFileSync('gh', args, { encoding: 'utf8' }).trim();
-const succeeds = (command, args) => {
-  try {
-    execFileSync(command, args, { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 /** Leases the bot's own back-merge branch on the sha ls-remote saw; empty when it doesn't exist yet. */
 export const leaseFor = (head, lsRemote) =>
   `--force-with-lease=${head}:${lsRemote.split('\t')[0].trim()}`;
 
-const VERSIONED = ['package.json', 'electron/package.json'];
+const STABLE_MANIFEST = '.release-please-manifest.json';
 
-/** Merges the tag into the checked-out branch without committing; returns the rule-resolved files. */
-export function mergeTag(tag, cwd = process.cwd()) {
-  const at = (...args) =>
-    execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
-  let resolved = [];
-  try {
-    at(
-      'merge',
-      '--no-ff',
-      '--no-commit',
-      '-m',
-      `chore: back-merge ${tag} into main`,
-      tag,
-    );
-  } catch (error) {
-    resolved = resolveConflicts(
-      tag,
+/** Paths the release line changed since `base` that still differ on `main` and carry a release or higher rule. */
+export function metadataPaths(base, main, tag, cwd = process.cwd()) {
+  const changed = (from, to) =>
+    execFileSync('git', ['diff', '--name-only', '--no-renames', from, to], {
       cwd,
-      `${error.stderr}${error.stdout}`.trim(),
-    );
-  }
-  // The release branch's version is never main's, conflicted or not.
-  for (const path of VERSIONED) {
-    const file = join(cwd, path);
-    let mainVersion;
-    try {
-      mainVersion = JSON.parse(at('show', `origin/main:${path}`)).version;
-    } catch {
-      continue;
-    }
-    const json = JSON.parse(readFileSync(file, 'utf8'));
-    if (json.version === mainVersion) continue;
-    json.version = mainVersion;
-    writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`);
-    at('add', '--', path);
-  }
-  return resolved;
+      encoding: 'utf8',
+      stdio: 'pipe',
+    })
+      .split('\n')
+      .filter(Boolean);
+  const differsOnMain = new Set(changed(main, tag));
+  return changed(base, tag).filter(
+    (path) =>
+      differsOnMain.has(path) &&
+      ['release', 'higher'].includes(resolutionFor(path)),
+  );
 }
 
-export function resolveConflicts(tag, cwd = process.cwd(), mergeOutput = '') {
-  const at = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8' });
-  const stage = (n, path) => {
+/** The release line's cut: the nearest prerelease tag behind `tag`, without the `v`. */
+export function cutPrerelease(tag, cwd = process.cwd()) {
+  let found;
+  try {
+    found = execFileSync(
+      'git',
+      ['describe', '--tags', '--abbrev=0', '--match', 'v*-next.*', tag],
+      { cwd, encoding: 'utf8', stdio: 'pipe' },
+    ).trim();
+  } catch (error) {
+    throw new Error(
+      `No v*-next.* tag is reachable from ${tag}, so its line's cut is unknown: ${`${error.stderr ?? ''}`.trim()}`,
+    );
+  }
+  const version = found.slice(1);
+  parse(version);
+  return version;
+}
+
+const sections = (text) =>
+  [...text.matchAll(/^## \[([^\]]+)\].*$/gm)].map((match) => ({
+    version: match[1],
+    index: match.index,
+  }));
+
+/** Adds the release changelog's `## [version]` section to main's, above its first lower version, once. */
+export function insertChangelogSection(mainText, releaseText, version) {
+  const ours = sections(mainText);
+  if (ours.some((section) => section.version === version)) return mainText;
+  const theirs = sections(releaseText);
+  const i = theirs.findIndex((section) => section.version === version);
+  if (i === -1) return mainText;
+  const section = `${releaseText.slice(theirs[i].index, theirs[i + 1]?.index).trimEnd()}\n`;
+  const below = ours.find(
+    (other) =>
+      VERSION.test(other.version) &&
+      compareVersions(other.version, version) < 0,
+  );
+  return below
+    ? `${mainText.slice(0, below.index)}${section}\n${mainText.slice(below.index)}`
+    : `${mainText.trimEnd()}\n\n${section}`;
+}
+
+export const isAlreadyBackMerged = ({ changed, mainChangelog, tag }) =>
+  !changed ||
+  sections(mainChangelog ?? '').some(
+    (section) => section.version === tag.slice(1),
+  );
+
+/** Writes and stages the release metadata on the checked-out main; commits nothing. */
+export function buildBackMerge(tag, cwd = process.cwd()) {
+  const at = (...args) =>
+    execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
+  const show = (rev, path) => {
     try {
-      return at('show', `:${n}:${path}`);
+      return at('show', `${rev}:${path}`);
     } catch {
       return null;
     }
   };
-  const conflicted = at('diff', '--name-only', '--diff-filter=U')
-    .split('\n')
-    .filter(Boolean);
-  if (conflicted.length === 0) {
-    throw new Error(`merge of ${tag} failed without conflicts: ${mergeOutput}`);
-  }
-  const unknown = conflicted.filter((path) => resolutionFor(path) === null);
-  if (unknown.length > 0) {
-    throw new Error(
-      `Back-merging ${tag} conflicts outside the version files:\n  ${unknown.join('\n  ')}\n` +
-        `Merge ${tag} into main locally, resolve these files, and open the PR by hand. Do not force-push.`,
-    );
-  }
-  const resolved = [];
-  for (const path of conflicted) {
-    const rule = resolutionFor(path);
-    const main = stage(2, path);
-    const release = stage(3, path);
-    const base = stage(1, path);
-    if (main === null || release === null) {
-      throw new Error(
-        `Back-merging ${tag}: ${path} was deleted on one line and changed on the other. Merge ${tag} into main by hand.`,
-      );
-    }
-    let text;
-    let wholeFile = false;
-    if (rule === 'higher') {
-      text = mergeNextManifest(main, release);
-    } else if (base === null) {
-      // Added on both lines: no common ancestor to merge hunks against.
-      text = rule === 'release' ? release : main;
-      wholeFile = true;
-    } else {
-      // Per hunk: only the conflicting hunks take the rule's side; other edits on either side stay.
-      const dir = mkdtempSync(join(tmpdir(), 'back-merge-'));
-      try {
-        const files = { main, base, release };
-        for (const [name, content] of Object.entries(files)) {
-          writeFileSync(join(dir, name), content);
-        }
-        text = at(
-          'merge-file',
-          '-p',
-          rule === 'release' ? '--theirs' : '--ours',
-          join(dir, 'main'),
-          join(dir, 'base'),
-          join(dir, 'release'),
-        );
-      } finally {
-        rmSync(dir, { recursive: true, force: true });
-      }
-    }
+  const write = (path, text) => {
+    mkdirSync(dirname(join(cwd, path)), { recursive: true });
     writeFileSync(join(cwd, path), text);
     at('add', '--', path);
-    resolved.push({ path, rule, wholeFile });
+  };
+  const cut = cutPrerelease(tag, cwd);
+  const base = at('merge-base', 'HEAD', tag).trim();
+  const version = tag.slice(1);
+  const recorded = [
+    ...sections(show('HEAD', CHANGELOG) ?? '').map(
+      (section) => section.version,
+    ),
+    JSON.parse(show('HEAD', RELEASE_JSON) ?? '{}').version,
+  ];
+  // An older line's patch (v0.5.4 after v0.6.0) adds only its changelog section.
+  const older = recorded.some(
+    (other) =>
+      STABLE_TAG.test(`v${other}`) && compareVersions(other, version) > 0,
+  );
+  const resolved = [];
+  for (const path of metadataPaths(base, 'HEAD', tag, cwd)) {
+    if (older && path !== CHANGELOG) {
+      console.log(
+        `Skipping ${path}: main records a release newer than ${tag}.`,
+      );
+      continue;
+    }
+    const main = show('HEAD', path);
+    const release = show(tag, path);
+    if (release === null || (main === null && !RELEASE_SIDE.has(path))) {
+      console.log(
+        `Skipping ${path}: ${release === null ? `deleted on ${tag}` : 'absent on main'}.`,
+      );
+      continue;
+    }
+    write(
+      path,
+      resolutionFor(path) === 'higher'
+        ? mergeNextManifest(main, release)
+        : path === CHANGELOG && main !== null
+          ? insertChangelogSection(main, release, version)
+          : mergeReleaseSide(main, show(base, path), release, at),
+    );
+    resolved.push(path);
   }
-  return resolved;
+  if (!older) {
+    const current = JSON.parse(show('HEAD', STABLE_MANIFEST) ?? '{}')['.'];
+    // An older line's patch must not move main's boundary back; a stable value predates cuts.
+    const next = current?.includes('-next.')
+      ? higherVersion(current, cut)
+      : cut;
+    write(STABLE_MANIFEST, `${JSON.stringify({ '.': next }, null, 2)}\n`);
+    if (!resolved.includes(STABLE_MANIFEST)) resolved.push(STABLE_MANIFEST);
+  }
+  let changed = false;
+  try {
+    at('diff', '--cached', '--quiet');
+  } catch {
+    changed = true;
+  }
+  return { resolved, changed };
+}
+
+/** A 3-way merge whose conflicting hunks take the release side; main's other edits stay. */
+function mergeReleaseSide(main, base, release, at) {
+  if (main === null || base === null) return release;
+  const dir = mkdtempSync(join(tmpdir(), 'back-merge-'));
+  try {
+    for (const [name, content] of Object.entries({ main, base, release })) {
+      writeFileSync(join(dir, name), content);
+    }
+    return at(
+      'merge-file',
+      '-p',
+      '--theirs',
+      join(dir, 'main'),
+      join(dir, 'base'),
+      join(dir, 'release'),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 function run({ tag, branch }) {
@@ -196,12 +242,13 @@ function run({ tag, branch }) {
   const head = `back-merge/${tag}`;
   git('fetch', '--no-tags', 'origin', 'main', branch);
   git('fetch', 'origin', `refs/tags/${tag}:refs/tags/${tag}`);
-  const mainContainsTag = succeeds('git', [
-    'merge-base',
-    '--is-ancestor',
+  git('switch', '-C', head, 'origin/main');
+  const { resolved, changed } = buildBackMerge(tag);
+  const alreadyBackMerged = isAlreadyBackMerged({
+    changed,
+    mainChangelog: git('show', `origin/main:${CHANGELOG}`),
     tag,
-    'origin/main',
-  ]);
+  });
   const existing = gh(
     'pr',
     'list',
@@ -217,16 +264,16 @@ function run({ tag, branch }) {
     '.[0].number',
   );
   const plan = planBackMerge({
-    mainContainsTag,
+    alreadyBackMerged,
     existingPr: existing ? Number(existing) : null,
   });
   if (plan === 'skip') {
-    console.log(`main already contains ${tag}; nothing to back-merge.`);
+    console.log(
+      `main already carries ${tag}'s release metadata; nothing to back-merge.`,
+    );
     return;
   }
-  git('switch', '-C', head, 'origin/main');
-  const resolved = mergeTag(tag);
-  git('commit', '--no-edit');
+  git('commit', '-m', `chore: back-merge ${tag} into main`);
   // Lease on what the remote has now: no local tracking ref for the branch is needed.
   const lease = leaseFor(
     head,
@@ -234,13 +281,11 @@ function run({ tag, branch }) {
   );
   git('push', lease, 'origin', `${head}:${head}`);
   const body = [
-    `Merges \`${branch}\` at \`${tag}\` back into \`main\`: its changelog, version files and any fixes made on the release branch.`,
+    `Brings the release metadata of \`${branch}\` at \`${tag}\` to \`main\` as one metadata-only commit whose only parent is \`main\`. No release-branch commit enters \`main\`'s history; a fix made only on the release branch needs its own PR to \`main\`.`,
     '',
-    resolved.length > 0
-      ? `Conflicting hunks resolved by rule (see \`scripts/back-merge.mjs\`):\n${resolved.map(({ path, rule, wholeFile }) => `- \`${path}\` → ${rule}${wholeFile ? ' (whole file: added on both lines, review it)' : ''}`).join('\n')}`
-      : 'Merged without conflicts.',
+    `Paths (rules in \`scripts/back-merge.mjs\`; \`CHANGELOG.md\` gains only \`${tag}\`'s section; \`${STABLE_MANIFEST}\` keeps the higher of main's \`-next\` value and the line's cut):\n${resolved.map((path) => `- \`${path}\``).join('\n')}`,
     '',
-    'Lands on `main` as this merge commit, by a direct push from `scripts/land-back-merge.mjs`, once CI is green on it. Do not merge it with the button.',
+    'Lands on `main` as this commit, by a direct push from `scripts/land-back-merge.mjs`, once CI is green on it. Do not merge it with the button.',
   ].join('\n');
   if (plan === 'update') {
     gh('pr', 'edit', existing, '--body', body);

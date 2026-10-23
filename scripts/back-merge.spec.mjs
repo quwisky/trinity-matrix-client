@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -15,8 +16,11 @@ import {
   mergeNextManifest,
   planBackMerge,
   resolutionFor,
-  mergeTag,
-  resolveConflicts,
+  metadataPaths,
+  cutPrerelease,
+  buildBackMerge,
+  insertChangelogSection,
+  isAlreadyBackMerged,
   leaseFor,
 } from './back-merge.mjs';
 
@@ -31,60 +35,94 @@ const pkg = (version, dep) =>
     .map((line, i) => `${line}${i}": 1,`)
     .join('\n')}\n  "dependencies": {\n    "a": "${dep}"\n  }\n}\n`;
 const manifest = (version) => `{\n  ".": "${version}"\n}\n`;
+const RELEASE_JSON = 'apps/docs-users/release.json';
+const releaseJson = (version) =>
+  `{\n  "status": "published",\n  "version": "${version}"\n}\n`;
 
-/** A real repository whose main and release lines both bump the version files. */
-function conflictedRepo({ extraConflict = false } = {}) {
+const CHANGELOG = (...versions) =>
+  `# Changelog\n\n${versions.map((v) => `## [${v}](https://example.test/v${v}) (2026-10-23)\n\n* a fix in ${v}\n`).join('\n')}`;
+const OLD_PAGE = 'apps/docs-users/src/content/docs/old.md';
+const HEAD = 'back-merge/v0.5.2';
+
+/** main, and release/0.5.x cut at v0.5.0-next.6 with a cherry-picked fix, tagged v0.5.2. */
+function releaseRepo({ cutTag = true } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'back-merge-'));
   const git = (...args) =>
-    execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: 'pipe' });
-  const write = (files) => {
+    execFileSync(
+      'git',
+      ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args],
+      {
+        cwd: dir,
+        encoding: 'utf8',
+        stdio: 'pipe',
+      },
+    ).trim();
+  const commit = (message, files, remove = []) => {
     for (const [path, text] of Object.entries(files)) {
       mkdirSync(dirname(join(dir, path)), { recursive: true });
       writeFileSync(join(dir, path), text);
     }
+    for (const path of remove) git('rm', '-q', path);
     git('add', '-A');
+    git('commit', '-qm', message);
+    return git('rev-parse', 'HEAD');
   };
-  const commit = (message) =>
-    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', message);
   git('init', '-q', '-b', 'main');
-  write({
-    [PAGE]: page('0.1.1', 'footer'),
-    'package.json': pkg('0.1.1', '1.0.0'),
-    '.release-please-manifest.next.json': manifest('0.1.1'),
-    'src/other.ts': 'export const a = 0;\n',
+  commit('base', {
+    'CHANGELOG.md': CHANGELOG('0.4.0'),
+    '.release-please-manifest.json': manifest('0.4.0'),
+    '.release-please-manifest.next.json': manifest('0.5.0-next.6'),
+    [RELEASE_JSON]: releaseJson('0.4.0'),
+    'package.json': pkg('0.5.0-next.6', '1.0.0'),
+    [PAGE]: page('0.5.0-next.6', 'footer'),
+    [OLD_PAGE]: page('0.5.0-next.6', 'old'),
+    'src/fix.ts': 'export const fixed = false;\n',
   });
-  commit('base');
-  git('switch', '-qc', 'release/0.1.x');
-  write({
-    [PAGE]: page('0.1.2', 'footer'),
-    'package.json': pkg('0.1.2', '1.0.1'),
-    '.release-please-manifest.next.json': manifest('0.1.2'),
-    ...(extraConflict ? { 'src/other.ts': 'export const a = 1;\n' } : {}),
-  });
-  commit('release');
+  if (cutTag) git('tag', 'v0.5.0-next.6');
+  git('switch', '-qc', 'release/0.5.x');
+  const releaseCommits = [
+    commit('fix: the bug (cherry picked)', {
+      'src/fix.ts': 'export const fixed = true;\n',
+    }),
+    commit('release: 0.5.2', {
+      'CHANGELOG.md': CHANGELOG('0.5.2', '0.5.1', '0.5.0', '0.4.0'),
+      '.release-please-manifest.json': manifest('0.5.2'),
+      '.release-please-manifest.next.json': manifest('0.5.2'),
+      [RELEASE_JSON]: releaseJson('0.5.2'),
+      'package.json': pkg('0.5.2', '1.0.0'),
+      [PAGE]: page('0.5.2', 'footer'),
+      [OLD_PAGE]: page('0.5.2', 'old'),
+    }),
+  ];
+  git('tag', 'v0.5.2');
   git('switch', '-q', 'main');
-  write({
-    [PAGE]: page('0.1.2-next.1', 'footer from main'),
-    'package.json': pkg('0.1.2-next.1', '1.0.0'),
-    '.release-please-manifest.next.json': manifest('0.1.2-next.1'),
-    ...(extraConflict ? { 'src/other.ts': 'export const a = 2;\n' } : {}),
-  });
-  commit('main');
-  try {
-    git(
-      '-c',
-      'user.name=t',
-      '-c',
-      'user.email=t@t',
-      'merge',
-      '--no-ff',
-      '--no-commit',
-      'release/0.1.x',
-    );
-  } catch {
-    // The version files conflict by design.
-  }
-  return { dir, read: (path) => readFileSync(join(dir, path), 'utf8') };
+  commit(
+    'fix: the bug',
+    {
+      'src/fix.ts': 'export const fixed = true; // and more\n',
+      'CHANGELOG.md': CHANGELOG('0.4.1', '0.4.0'),
+      '.release-please-manifest.next.json': manifest('0.6.0-next.0'),
+      'package.json': pkg('0.6.0-next.0', '1.0.0'),
+      [PAGE]: page('0.5.0-next.6', 'footer from main'),
+    },
+    [OLD_PAGE],
+  );
+  /** What run() does between fetching and pushing. */
+  const backMerge = () => {
+    git('switch', '-qC', HEAD, 'main');
+    const result = buildBackMerge('v0.5.2', dir);
+    if (result.changed)
+      git('commit', '-qm', 'chore: back-merge v0.5.2 into main');
+    return result;
+  };
+  return {
+    dir,
+    git,
+    commit,
+    backMerge,
+    releaseCommits,
+    read: (path) => readFileSync(join(dir, path), 'utf8'),
+  };
 }
 
 describe('back-merge', () => {
@@ -98,10 +136,10 @@ describe('back-merge', () => {
     expect(
       resolutionFor('apps/docs-users/src/content/docs/guide/setup.mdx'),
     ).toBe('release');
-    expect(resolutionFor('package.json')).toBe('main');
-    expect(resolutionFor('electron/package.json')).toBe('main');
     expect(resolutionFor('.release-please-manifest.next.json')).toBe('higher');
     for (const other of [
+      'package.json',
+      'electron/package.json',
       'src/main.ts',
       'apps/docs-users/astro.config.mjs',
       'libs/a/package.json',
@@ -142,156 +180,250 @@ describe('back-merge', () => {
   });
 
   it('plans an idempotent back-merge', () => {
-    expect(planBackMerge({ mainContainsTag: true, existingPr: null })).toBe(
+    expect(planBackMerge({ alreadyBackMerged: true, existingPr: null })).toBe(
       'skip',
     );
-    expect(planBackMerge({ mainContainsTag: true, existingPr: 12 })).toBe(
+    expect(planBackMerge({ alreadyBackMerged: true, existingPr: 12 })).toBe(
       'skip',
     );
-    expect(planBackMerge({ mainContainsTag: false, existingPr: 12 })).toBe(
+    expect(planBackMerge({ alreadyBackMerged: false, existingPr: 12 })).toBe(
       'update',
     );
-    expect(planBackMerge({ mainContainsTag: false, existingPr: null })).toBe(
+    expect(planBackMerge({ alreadyBackMerged: false, existingPr: null })).toBe(
       'create',
     );
   });
 
-  describe('resolving conflicts in a real merge', () => {
+  it('inserts the section in version order', () => {
+    const release = CHANGELOG('0.5.2', '0.5.1');
+    expect(
+      insertChangelogSection(CHANGELOG('0.6.0', '0.5.1'), release, '0.5.2'),
+    ).toBe(CHANGELOG('0.6.0', '0.5.2', '0.5.1'));
+    expect(insertChangelogSection(CHANGELOG('0.6.0'), release, '0.5.2')).toBe(
+      CHANGELOG('0.6.0', '0.5.2'),
+    );
+    expect(insertChangelogSection(CHANGELOG('0.5.1'), release, '0.5.2')).toBe(
+      CHANGELOG('0.5.2', '0.5.1'),
+    );
+    expect(
+      insertChangelogSection(CHANGELOG('0.5.2', '0.5.1'), release, '0.5.2'),
+    ).toBe(CHANGELOG('0.5.2', '0.5.1'));
+  });
+
+  it('skips when nothing changed or main already has the section', () => {
+    const main = CHANGELOG('0.5.2', '0.5.1');
+    expect(
+      isAlreadyBackMerged({
+        changed: false,
+        mainChangelog: main,
+        tag: 'v0.5.3',
+      }),
+    ).toBe(true);
+    expect(
+      isAlreadyBackMerged({
+        changed: true,
+        mainChangelog: main,
+        tag: 'v0.5.2',
+      }),
+    ).toBe(true);
+    expect(
+      isAlreadyBackMerged({
+        changed: true,
+        mainChangelog: main,
+        tag: 'v0.5.3',
+      }),
+    ).toBe(false);
+    expect(
+      isAlreadyBackMerged({
+        changed: true,
+        mainChangelog: null,
+        tag: 'v0.5.3',
+      }),
+    ).toBe(false);
+  });
+
+  describe('building the back-merge commit', () => {
     let repo;
     afterEach(() => rmSync(repo.dir, { recursive: true, force: true }));
 
-    it('resolves each conflicting hunk by rule and keeps the other side elsewhere', () => {
-      repo = conflictedRepo();
-      const resolved = resolveConflicts('v0.1.2', repo.dir);
-      expect(resolved).toEqual([
-        {
-          path: '.release-please-manifest.next.json',
-          rule: 'higher',
-          wholeFile: false,
-        },
-        { path: PAGE, rule: 'release', wholeFile: false },
-        { path: 'package.json', rule: 'main', wholeFile: false },
+    it('builds one commit whose only parent is main', () => {
+      repo = releaseRepo();
+      repo.backMerge();
+      expect(
+        repo.git('rev-list', '--parents', '-n1', 'HEAD').split(' '),
+      ).toEqual([repo.git('rev-parse', 'HEAD'), repo.git('rev-parse', 'main')]);
+    });
+
+    it('does not bring release-branch code commits into main', () => {
+      repo = releaseRepo();
+      repo.backMerge();
+      expect(repo.read('src/fix.ts')).toBe(
+        'export const fixed = true; // and more\n',
+      );
+      const log = repo.git('log', '--format=%H', 'HEAD').split('\n');
+      for (const sha of repo.releaseCommits) expect(log).not.toContain(sha);
+      expect(
+        repo.git('diff', '--name-only', 'main', 'HEAD').split('\n').sort(),
+      ).toEqual([
+        '.release-please-manifest.json',
+        'CHANGELOG.md',
+        RELEASE_JSON,
+        PAGE,
       ]);
-      expect(repo.read(PAGE)).toBe(page('0.1.2', 'footer from main'));
-      expect(repo.read('package.json')).toBe(pkg('0.1.2-next.1', '1.0.1'));
+    });
+
+    it("adds only the tag's changelog section to main's", () => {
+      repo = releaseRepo();
+      repo.backMerge();
+      expect(repo.read('CHANGELOG.md')).toBe(
+        CHANGELOG('0.5.2', '0.4.1', '0.4.0'),
+      );
+      expect(repo.read(RELEASE_JSON)).toBe(releaseJson('0.5.2'));
+      expect(repo.read(PAGE)).toBe(page('0.5.2', 'footer from main'));
+    });
+
+    it('keeps the higher next manifest', () => {
+      repo = releaseRepo();
+      const { resolved } = repo.backMerge();
+      expect(resolved).toContain('.release-please-manifest.next.json');
       expect(repo.read('.release-please-manifest.next.json')).toBe(
-        manifest('0.1.2'),
+        manifest('0.6.0-next.0'),
       );
-      const unmerged = execFileSync(
-        'git',
-        ['diff', '--name-only', '--diff-filter=U'],
-        {
-          cwd: repo.dir,
-          encoding: 'utf8',
-        },
-      );
-      expect(unmerged).toBe('');
+      expect(repo.read('package.json')).toBe(pkg('0.6.0-next.0', '1.0.0'));
     });
 
-    it('refuses conflicts outside the version files and lists them', () => {
-      repo = conflictedRepo({ extraConflict: true });
-      expect(() => resolveConflicts('v0.1.2', repo.dir)).toThrow(
-        /outside the version files:\n {2}src\/other\.ts\n/,
-      );
-    });
-  });
-
-  describe('merging a tag', () => {
-    let dir;
-    afterEach(() => rmSync(dir, { recursive: true, force: true }));
-    const sh = (...args) =>
-      execFileSync(
-        'git',
-        ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args],
-        {
-          cwd: dir,
-          encoding: 'utf8',
-          stdio: 'pipe',
-        },
-      );
-    const setup = (base, release, main) => {
-      dir = mkdtempSync(join(tmpdir(), 'back-merge-'));
-      sh('init', '-q', '-b', 'main');
-      sh('config', 'user.name', 't');
-      sh('config', 'user.email', 't@t');
-      const write = (files) => {
-        for (const [path, text] of Object.entries(files)) {
-          mkdirSync(dirname(join(dir, path)), { recursive: true });
-          writeFileSync(join(dir, path), text);
-        }
-        sh('add', '-A');
-      };
-      write(base);
-      sh('commit', '-qm', 'base');
-      sh('switch', '-qc', 'release/0.1.x');
-      write(release.files);
-      for (const path of release.remove ?? []) sh('rm', '-q', path);
-      sh('commit', '-qm', 'release');
-      sh('tag', 'v0.1.2');
-      sh('switch', '-q', 'main');
-      write(main.files);
-      for (const path of main.remove ?? []) sh('rm', '-q', path);
-      sh('commit', '-qm', 'main');
-      sh('update-ref', 'refs/remotes/origin/main', 'main');
-    };
-    const read = (path) => readFileSync(join(dir, path), 'utf8');
-
-    it("keeps main's version when the version files merge cleanly", () => {
-      setup(
-        {
-          'package.json': pkg('0.1.1', '1.0.0'),
-          'electron/package.json': pkg('0.1.1', '1.0.0'),
-        },
-        {
-          files: {
-            'package.json': pkg('0.1.2', '1.0.0'),
-            'electron/package.json': pkg('0.1.2', '1.0.0'),
-          },
-        },
-        {
-          files: {
-            'package.json': pkg('0.1.1', '1.0.0').replace(
-              '"a": "1.0.0"',
-              '"a": "1.0.9"',
-            ),
-            'electron/package.json': pkg('0.1.1', '1.0.0'),
-          },
-        },
-      );
-      expect(mergeTag('v0.1.2', dir)).toEqual([]);
-      expect(read('package.json')).toBe(pkg('0.1.1', '1.0.9'));
-      expect(read('electron/package.json')).toBe(pkg('0.1.1', '1.0.0'));
-    });
-
-    it("keeps main's version after a conflicted merge too", () => {
-      setup(
-        { 'package.json': pkg('0.1.1', '1.0.0') },
-        { files: { 'package.json': pkg('0.1.2', '1.0.1') } },
-        { files: { 'package.json': pkg('0.1.2-next.1', '1.0.0') } },
-      );
-      mergeTag('v0.1.2', dir);
-      expect(read('package.json')).toBe(pkg('0.1.2-next.1', '1.0.1'));
-    });
-
-    it('explains a delete/modify conflict', () => {
-      setup(
-        { 'CHANGELOG.md': '# a\n', 'x.txt': '1\n' },
-        { files: { 'CHANGELOG.md': '# b\n' } },
-        { files: { 'x.txt': '2\n' }, remove: ['CHANGELOG.md'] },
-      );
-      expect(() => mergeTag('v0.1.2', dir)).toThrow(
-        /CHANGELOG\.md.*[Mm]erge.*by hand/s,
+    it("sets the stable manifest to the line's cut prerelease", () => {
+      repo = releaseRepo();
+      expect(cutPrerelease('v0.5.2', repo.dir)).toBe('0.5.0-next.6');
+      repo.backMerge();
+      expect(repo.read('.release-please-manifest.json')).toBe(
+        manifest('0.5.0-next.6'),
       );
     });
 
-    it('explains a merge that fails without conflicts', () => {
-      setup(
-        { 'a.txt': '1\n' },
-        { files: { 'a.txt': '2\n' } },
-        { files: { 'b.txt': '1\n' } },
+    it('lists only the release and higher metadata paths', () => {
+      repo = releaseRepo();
+      const base = repo.git('merge-base', 'main', 'v0.5.2');
+      expect(metadataPaths(base, 'main', 'v0.5.2', repo.dir).sort()).toEqual([
+        '.release-please-manifest.json',
+        '.release-please-manifest.next.json',
+        'CHANGELOG.md',
+        RELEASE_JSON,
+        PAGE,
+        OLD_PAGE,
+      ]);
+    });
+
+    it("keeps main's newer cut when an older line back-merges", () => {
+      repo = releaseRepo();
+      repo.commit('chore: back-merge v0.6.0 into main', {
+        '.release-please-manifest.json': manifest('0.6.0-next.3'),
+      });
+      repo.backMerge();
+      expect(repo.read('.release-please-manifest.json')).toBe(
+        manifest('0.6.0-next.3'),
       );
-      expect(() => mergeTag('v0.1.9', dir)).toThrow(
-        /merge of v0\.1\.9 failed without conflicts: .*not something we can merge/s,
+    });
+
+    it('replaces a legacy stable value with the cut', () => {
+      repo = releaseRepo();
+      repo.commit('chore: back-merge v0.5.1 into main', {
+        '.release-please-manifest.json': manifest('0.5.1'),
+      });
+      repo.backMerge();
+      expect(repo.read('.release-please-manifest.json')).toBe(
+        manifest('0.5.0-next.6'),
+      );
+    });
+
+    /** main after v0.6.0's back-merge, before v0.5.2 ships. */
+    const newerLine = () =>
+      repo.commit('chore: back-merge v0.6.0 into main', {
+        'CHANGELOG.md': CHANGELOG('0.6.0', '0.4.1', '0.4.0'),
+        '.release-please-manifest.json': manifest('0.6.0-next.3'),
+        '.release-please-manifest.next.json': manifest('0.6.1-next.0'),
+        [RELEASE_JSON]: releaseJson('0.6.0'),
+        [PAGE]: page('0.6.0', 'footer from main'),
+      });
+
+    it("keeps a newer line's changelog section when an older line back-merges", () => {
+      repo = releaseRepo();
+      newerLine();
+      repo.backMerge();
+      expect(repo.read('CHANGELOG.md')).toBe(
+        CHANGELOG('0.6.0', '0.5.2', '0.4.1', '0.4.0'),
+      );
+    });
+
+    it('does not move release.json or user-guide pages back for an older line', () => {
+      repo = releaseRepo();
+      newerLine();
+      const { resolved } = repo.backMerge();
+      expect(resolved).toEqual(['CHANGELOG.md']);
+      expect(repo.git('diff', '--name-only', 'main', 'HEAD')).toBe(
+        'CHANGELOG.md',
+      );
+      expect(repo.read(RELEASE_JSON)).toBe(releaseJson('0.6.0'));
+      expect(repo.read(PAGE)).toBe(page('0.6.0', 'footer from main'));
+      expect(repo.read('.release-please-manifest.json')).toBe(
+        manifest('0.6.0-next.3'),
+      );
+    });
+
+    it('lists both sides of a renamed page', () => {
+      repo = releaseRepo();
+      const base = repo.git('merge-base', 'main', 'v0.5.2');
+      repo.git('switch', '-q', 'release/0.5.x');
+      const moved = 'apps/docs-users/src/content/docs/moved.md';
+      repo.git('mv', PAGE, moved);
+      repo.git('commit', '-qm', 'docs: move the page');
+      expect(metadataPaths(base, 'main', 'release/0.5.x', repo.dir)).toEqual(
+        expect.arrayContaining([PAGE, moved]),
+      );
+    });
+
+    it('skips a metadata path that main deleted', () => {
+      repo = releaseRepo();
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const { resolved } = repo.backMerge();
+      expect(log).toHaveBeenCalledWith(`Skipping ${OLD_PAGE}: absent on main.`);
+      log.mockRestore();
+      expect(resolved).not.toContain(OLD_PAGE);
+      expect(repo.git('ls-files', OLD_PAGE)).toBe('');
+      expect(existsSync(join(repo.dir, OLD_PAGE))).toBe(false);
+    });
+
+    it('fails when no cut prerelease precedes the tag', () => {
+      repo = releaseRepo({ cutTag: false });
+      expect(() => cutPrerelease('v0.5.2', repo.dir)).toThrow(
+        /No v\*-next\.\* tag is reachable from v0\.5\.2/,
+      );
+      expect(() => repo.backMerge()).toThrow(/v0\.5\.2/);
+    });
+
+    it('plans skip when main already carries the release', () => {
+      repo = releaseRepo();
+      repo.backMerge();
+      repo.git('switch', '-q', 'main');
+      repo.git('merge', '-q', '--ff-only', HEAD);
+      expect(repo.backMerge().changed).toBe(false);
+      expect(planBackMerge({ alreadyBackMerged: true, existingPr: 12 })).toBe(
+        'skip',
+      );
+    });
+
+    it('rebuilds on current main', () => {
+      repo = releaseRepo();
+      repo.backMerge();
+      const first = repo.git('rev-parse', 'HEAD');
+      repo.git('switch', '-q', 'main');
+      const moved = repo.commit('feat: more', { 'src/more.ts': '1;\n' });
+      repo.backMerge();
+      expect(
+        repo.git('rev-list', '--parents', '-n1', 'HEAD').split(' '),
+      ).toEqual([repo.git('rev-parse', 'HEAD'), moved]);
+      expect(repo.git('log', '--format=%H', 'HEAD').split('\n')).not.toContain(
+        first,
       );
     });
   });
