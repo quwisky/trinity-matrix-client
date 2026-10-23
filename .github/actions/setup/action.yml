@@ -20,7 +20,7 @@ runs:
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         # .nvmrc tracks the supported Node 24 line, while package.json's engines enforce
-        # the ^24.15.0 floor. Using the file keeps CI, nvm and fnm on the latest available
+        # the ^24.22.1 floor. Using the file keeps CI, nvm and fnm on the latest available
         # Node 24 maintenance release without duplicating the version declaration here.
         node-version-file: .nvmrc
         # The pnpm store is deliberately not cached. Measured on hosted runners, a full
