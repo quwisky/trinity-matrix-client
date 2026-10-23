@@ -1,6 +1,7 @@
 import {
   ConnectionError,
   EventStatus,
+  MatrixError,
   MatrixEvent,
   type MatrixClient,
 } from 'matrix-js-sdk';
@@ -17,9 +18,15 @@ function waiting(body: string): MatrixEvent {
   return event;
 }
 
-function room(roomId: string, events: MatrixEvent[]) {
+/** A room; `inFlight` stands in for the SDK's `txnToEvent`, the only list of a thread echo. */
+function room(
+  roomId: string,
+  events: MatrixEvent[],
+  inFlight: MatrixEvent[] = [],
+) {
   return {
     roomId,
+    txnToEvent: new Map(inFlight.map((event, i) => [`txn${i}`, event])),
     getLiveTimeline: () => ({ getEvents: () => events }),
     getThreads: () => [],
   };
@@ -35,8 +42,8 @@ function client(
   };
 }
 
-const run = (fake: ReturnType<typeof client>) =>
-  resendWaitingEchoes(fake as unknown as MatrixClient);
+const run = (fake: ReturnType<typeof client>, live = () => true) =>
+  resendWaitingEchoes(fake as unknown as MatrixClient, live);
 
 describe('resendWaitingEchoes', () => {
   it("resends a room's echoes in timeline order, one at a time", async () => {
@@ -79,19 +86,70 @@ describe('resendWaitingEchoes', () => {
   });
 
   it('an echo that fails again with ConnectionError stays waiting for the next reconnect', async () => {
+    const [first, second, third] = ['one', 'two', 'three'].map(waiting);
+    const other = waiting('elsewhere');
+    const fake = client(
+      [room('!r:hs', [first, second, third]), room('!o:hs', [other])],
+      async (event) => {
+        if (event === first) throw new ConnectionError('offline again');
+      },
+    );
+
+    await expect(run(fake)).resolves.toBeUndefined();
+
+    // The rest of the room waits behind it, so its order holds.
+    expect(fake.resendEvent.mock.calls.map(([event]) => event)).toEqual([
+      first,
+      other,
+    ]);
+    expect(first.status).toBe(EventStatus.NOT_SENT);
+  });
+
+  it('carries on past an echo the server refuses', async () => {
     const first = waiting('one');
     const second = waiting('two');
     const fake = client([room('!r:hs', [first, second])], async (event) => {
-      if (event === first) throw new ConnectionError('offline again');
+      if (event === first)
+        throw new MatrixError({ errcode: 'M_FORBIDDEN' }, 403);
     });
 
-    await expect(run(fake)).resolves.toBeUndefined();
+    await run(fake);
 
     expect(fake.resendEvent.mock.calls.map(([event]) => event)).toEqual([
       first,
       second,
     ]);
-    expect(first.status).toBe(EventStatus.NOT_SENT);
+  });
+
+  it('stops once the account is no longer live', async () => {
+    const first = waiting('one');
+    const second = waiting('two');
+    let live = true;
+    const fake = client([room('!r:hs', [first, second])], async () => {
+      live = false;
+    });
+
+    await run(fake, () => live);
+
+    expect(fake.resendEvent.mock.calls.map(([event]) => event)).toEqual([
+      first,
+    ]);
+  });
+
+  it('resends a thread echo that only the in-flight map lists, in send order', async () => {
+    const main = waiting('main');
+    const reply = waiting('in a thread');
+    const fake = client(
+      [room('!r:hs', [main], [main, reply])],
+      async () => undefined,
+    );
+
+    await run(fake);
+
+    expect(fake.resendEvent.mock.calls.map(([event]) => event)).toEqual([
+      main,
+      reply,
+    ]);
   });
 
   it('resends each room independently', async () => {

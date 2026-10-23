@@ -84,8 +84,8 @@ export const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
 /** Where matrix-js-sdk discovers an OAuth account's provider (`MatrixClient.getAuthMetadata`). */
 const AUTH_METADATA_PATH = '/_matrix/client/v1/auth_metadata';
 
-/** Sync states that a return to `Syncing` means the homeserver is reachable again after. */
-const RECONNECTED_FROM: ReadonlySet<SyncState> = new Set([
+/** Sync states that mean the homeserver could not be reached. */
+const DISCONNECTED: ReadonlySet<SyncState> = new Set([
   SyncState.Reconnecting,
   SyncState.Error,
   SyncState.Catchup,
@@ -833,6 +833,9 @@ export class MatrixClientService {
       let syncProjection: ProjectionLease | null = null;
       const syncState = signal<SyncState | null>(null);
       let latestSyncState: SyncState | null = null;
+      // Set when sync loses the homeserver; the next `Syncing` resends what failed meanwhile.
+      // Not the previous state alone: an app that starts offline comes back through `Prepared`.
+      let disconnected = false;
       // One resend run at a time, so a second reconnect mid-run cannot overtake a room's order.
       let resending = Promise.resolve();
       const serverSynced = signal(false);
@@ -929,18 +932,19 @@ export class MatrixClientService {
             attach: (invalidate) => {
               const onSync = (
                 state: SyncState,
-                previous: SyncState | null,
+                _previous: SyncState | null,
                 data?: SyncStateData,
               ): void => {
-                if (
-                  state === SyncState.Syncing &&
-                  previous !== null &&
-                  RECONNECTED_FROM.has(previous)
-                ) {
+                if (DISCONNECTED.has(state)) {
+                  disconnected = true;
+                } else if (state === SyncState.Syncing && disconnected) {
+                  disconnected = false;
+                  // Removal, stop() and a handover pause all end a run between two sends.
+                  const live = (): boolean =>
+                    !this.syncPaused &&
+                    this.clients.get(session.userId)?.client === client;
                   resending = resending
-                    .then(() =>
-                      this.syncPaused ? undefined : resendWaitingEchoes(client),
-                    )
+                    .then(() => resendWaitingEchoes(client, live))
                     .catch((error: unknown) => {
                       console.warn(
                         "Couldn't resend the messages that failed offline.",

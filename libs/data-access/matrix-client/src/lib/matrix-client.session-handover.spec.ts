@@ -153,6 +153,7 @@ describe('MatrixClientService session handover', () => {
     )![1] as (state: SyncState, previous: SyncState | null) => void;
 
     svc.pauseSync();
+    onSync(SyncState.Reconnecting, SyncState.Syncing);
     onSync(SyncState.Syncing, SyncState.Reconnecting);
     await new Promise((resolve) => setTimeout(resolve));
 

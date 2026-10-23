@@ -900,17 +900,22 @@ describe('MatrixClientService', () => {
   });
 
   describe('resending messages that failed offline', () => {
-    /** A live client whose one room holds a text that failed with a ConnectionError. */
-    async function offlineClient() {
+    function waiting(body: string): MatrixEvent {
       const echo = new MatrixEvent({
         type: 'm.room.message',
-        content: { msgtype: 'm.text', body: 'sent offline' },
+        content: { msgtype: 'm.text', body },
       });
       echo.status = EventStatus.NOT_SENT;
       echo.error = new ConnectionError('offline') as never;
+      return echo;
+    }
+
+    /** A live client whose one room holds `count` texts that failed with a ConnectionError. */
+    async function offlineClient(count = 1) {
+      const echoes = Array.from({ length: count }, (_, i) => waiting(`m${i}`));
       const room = {
         roomId: '!room:hs',
-        getLiveTimeline: () => ({ getEvents: () => [echo] }),
+        getLiveTimeline: () => ({ getEvents: () => echoes }),
         getThreads: () => [],
         // Joined and already encrypted, so the encryption repair a sync runs passes it over.
         getMyMembership: () => 'join',
@@ -926,58 +931,131 @@ describe('MatrixClientService', () => {
       const onSync = client.on.mock.calls.find(
         ([evt]) => evt === ClientEvent.Sync,
       )![1] as (state: SyncState, previous: SyncState | null) => void;
-      return { client, onSync };
+      let current: SyncState | null = null;
+      /** Report each state in turn, as the SDK does, with the one before it. */
+      const sync = (...states: SyncState[]): void => {
+        for (const state of states) {
+          onSync(state, current);
+          current = state;
+        }
+      };
+      return { svc, client, sync };
+    }
+
+    /** A `resendEvent` result the test settles itself. */
+    function pending() {
+      let release!: () => void;
+      const promise = new Promise<void>((resolve) => (release = resolve));
+      return { promise, release };
     }
 
     const flush = () => new Promise((resolve) => setTimeout(resolve));
 
     it.each([SyncState.Reconnecting, SyncState.Error, SyncState.Catchup])(
       'resends once when sync returns from %s',
-      async (previous) => {
-        const { client, onSync } = await offlineClient();
+      async (lost) => {
+        const { client, sync } = await offlineClient();
 
-        onSync(SyncState.Syncing, previous);
-
+        sync(SyncState.Prepared, SyncState.Syncing, lost, SyncState.Syncing);
         await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+        sync(SyncState.Syncing);
+        await flush();
+
         expect(client.resendEvent).toHaveBeenCalledOnce();
       },
     );
 
-    it('lets a second reconnect resend only after the first run ends', async () => {
-      const { client, onSync } = await offlineClient();
-      let release!: () => void;
-      client.resendEvent.mockReturnValueOnce(
-        new Promise<void>((resolve) => (release = resolve)),
-      );
+    it('resends once when the app started offline and its first sync arrives', async () => {
+      const { client, sync } = await offlineClient();
 
-      onSync(SyncState.Syncing, SyncState.Reconnecting);
-      onSync(SyncState.Syncing, SyncState.Error);
+      // The cached sync prepares; the first /sync that gets through prepares again.
+      sync(
+        SyncState.Prepared,
+        SyncState.Error,
+        SyncState.Prepared,
+        SyncState.Syncing,
+      );
+      await flush();
+
+      expect(client.resendEvent).toHaveBeenCalledOnce();
+    });
+
+    it('lets a second reconnect resend only after the first run ends', async () => {
+      const { client, sync } = await offlineClient();
+      const first = pending();
+      client.resendEvent.mockReturnValueOnce(first.promise);
+
+      sync(SyncState.Reconnecting, SyncState.Syncing);
+      sync(SyncState.Error, SyncState.Syncing);
       await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
       await flush();
       expect(client.resendEvent).toHaveBeenCalledOnce();
 
-      release();
+      first.release();
       await vi.waitFor(() =>
         expect(client.resendEvent).toHaveBeenCalledTimes(2),
       );
     });
 
     it('does not resend on the first sync', async () => {
-      const { client, onSync } = await offlineClient();
+      const { client, sync } = await offlineClient();
 
-      onSync(SyncState.Syncing, SyncState.Prepared);
+      sync(SyncState.Prepared, SyncState.Syncing);
       await flush();
 
       expect(client.resendEvent).not.toHaveBeenCalled();
     });
 
     it('does not resend on a sync that follows another', async () => {
-      const { client, onSync } = await offlineClient();
+      const { client, sync } = await offlineClient();
 
-      onSync(SyncState.Syncing, SyncState.Syncing);
+      sync(SyncState.Syncing, SyncState.Syncing);
       await flush();
 
       expect(client.resendEvent).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing more once the account is removed mid-run', async () => {
+      const { svc, client, sync } = await offlineClient(2);
+      const first = pending();
+      client.resendEvent.mockReturnValueOnce(first.promise);
+
+      sync(SyncState.Reconnecting, SyncState.Syncing);
+      await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+      await firstValueFrom(svc.remove('@me:hs'));
+      first.release();
+      await flush();
+
+      expect(client.resendEvent).toHaveBeenCalledOnce();
+    });
+
+    it('sends nothing more once sync is paused mid-run', async () => {
+      const { svc, client, sync } = await offlineClient(2);
+      const first = pending();
+      client.resendEvent.mockReturnValueOnce(first.promise);
+
+      sync(SyncState.Reconnecting, SyncState.Syncing);
+      await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+      svc.pauseSync();
+      first.release();
+      await flush();
+
+      expect(client.resendEvent).toHaveBeenCalledOnce();
+    });
+
+    it('never runs a queued resend after stop()', async () => {
+      const { svc, client, sync } = await offlineClient();
+      const first = pending();
+      client.resendEvent.mockReturnValueOnce(first.promise);
+
+      sync(SyncState.Reconnecting, SyncState.Syncing);
+      await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+      sync(SyncState.Reconnecting, SyncState.Syncing);
+      await firstValueFrom(svc.stop());
+      first.release();
+      await flush();
+
+      expect(client.resendEvent).toHaveBeenCalledOnce();
     });
   });
 

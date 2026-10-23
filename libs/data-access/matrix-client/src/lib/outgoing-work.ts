@@ -1,5 +1,6 @@
 import { isWaitingToSend, stripReplyFallbackText } from '@trinity/util/matrix';
 import {
+  ConnectionError,
   EventStatus,
   EventType,
   MsgType,
@@ -109,18 +110,24 @@ export function clientPendingTexts(
 /**
  * Send again every message of `client` that failed only because it was offline. Within a room
  * they go one at a time in send order; rooms run side by side. Each is checked again just
- * before its turn, so a manual Retry or Cancel that got there first is never doubled. A resend
- * that fails leaves its echo for the SDK to mark, and the next one is still tried.
+ * before its turn, so a manual Retry or Cancel that got there first is never doubled, and
+ * nothing more is sent once `live` turns false. Still offline, a room stops there and the rest
+ * wait for the next reconnect, keeping their order; an echo the server refuses becomes a manual
+ * failure and the next one goes.
  */
-export async function resendWaitingEchoes(client: MatrixClient): Promise<void> {
+export async function resendWaitingEchoes(
+  client: MatrixClient,
+  live: () => boolean,
+): Promise<void> {
   await Promise.all(
     client.getRooms().map(async (room) => {
       for (const event of localEchoes(room).filter(isWaitingToSend)) {
+        if (!live()) return;
         if (!isWaitingToSend(event)) continue;
         try {
           await client.resendEvent(event, room);
-        } catch {
-          // The SDK marks the echo failed again; a ConnectionError waits for the next reconnect.
+        } catch (error: unknown) {
+          if (error instanceof ConnectionError) return;
         }
       }
     }),
