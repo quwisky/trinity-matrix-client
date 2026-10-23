@@ -16,8 +16,8 @@
   "baseBranchPatterns": ["main"],
   "timezone": "Europe/Berlin",
   "semanticCommits": "enabled",
-  "semanticCommitType": "build",
-  "semanticCommitScope": "deps",
+  "semanticCommitType": "deps",
+  "semanticCommitScope": null,
   "automerge": false,
   "dependencyDashboardApproval": true,
   "prConcurrentLimit": 0,
@@ -43,10 +43,17 @@
       "Security updates keep a pull request, so the `security` label below is applied and the CVE detail Renovate writes into prBodyNotes is kept. They do not automerge: 'Protect main' requires an approval and Renovate is not one of its bypass actors, so Renovate cannot complete a merge; a maintainer reviews and merges every update."
     ],
     "labels": ["security"],
+    "semanticCommitType": "fix",
+    "semanticCommitScope": "deps",
     "minimumReleaseAge": "1 day",
     "dependencyDashboardApproval": false
   },
   "packageRules": [
+    {
+      "description": "Dependency updates are `deps` commits so release-please lists them under Dependencies. config:recommended sets chore, fix or build per dependency type, and its rules come before this config's, so only a rule matching every package, ahead of the rules below, beats them. Security updates are the exception: vulnerabilityAlerts makes them `fix(deps)`, which also cuts a release.",
+      "matchPackageNames": ["*"],
+      "semanticCommitType": "deps"
+    },
     {
       "description": [
         "Patch updates skip the dashboard gate and open a pull request straight away. They do not automerge: 'Protect main' requires an approval and Renovate is not one of its bypass actors, so Renovate cannot complete a merge; a maintainer reviews and merges every update. A patch is the update type least likely to change behaviour, and minimumReleaseAge already holds every release for three days, so a version yanked hours after publishing never reaches a branch in the first place. Everything else waits for a tick under the top-level dependencyDashboardApproval.",

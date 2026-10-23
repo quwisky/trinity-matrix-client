@@ -26,6 +26,10 @@
       "section": "Reverted"
     },
     {
+      "type": "deps",
+      "section": "Dependencies"
+    },
+    {
       "type": "docs",
       "section": "Documentation",
       "hidden": true

@@ -23,7 +23,7 @@ Use `type/short-kebab-description`, adding the issue number when one exists. Kee
 
 ## Commit one logical change {#commit-change}
 
-Use `type(scope): imperative subject`. The subject begins lowercase, has no trailing period, and stays within 72 characters. Common types include `feat`, `fix`, `docs`, `test`, `build`, `ci`, and `chore`. `release` is reserved for release-please's release pull requests, titled `release: cut the vX.Y.Z release`.
+Use `type(scope): imperative subject`. The subject begins lowercase, has no trailing period, and stays within 72 characters. Common types include `feat`, `fix`, `docs`, `test`, `build`, `ci`, and `chore`. Dependency updates use `deps`, as Renovate's do; a security update is `fix(deps)`. `release` is reserved for release-please's release pull requests, titled `release: cut the vX.Y.Z release`.
 
 Stage only task-owned files, inspect the staged diff, and commit after its relevant checks pass:
 
@@ -37,7 +37,7 @@ Use a body when the motivation or behavior change is not self-evident. Mark brea
 
 ## Release lines {#release-lines}
 
-`main` is the integration branch: pull requests target it and prereleases are cut from it. A stable line lives on a `release/X.Y.x` branch, cut by a maintainer from a tested prerelease. Release branches accept only fixes, through pull requests; open the same fix against `main` too, or let the automatic back-merge pull request carry it. release-please keeps a release pull request open on each branch: merging it on `main` cuts an `X.Y.Z-next.N` prerelease, and merging it on `release/X.Y.x` cuts a stable patch release and updates `CHANGELOG.md`. `feat`, `fix`, `perf` and `revert` subjects become the release notes, so write them for users.
+`main` is the integration branch: pull requests target it and prereleases are cut from it. A stable line lives on a `release/X.Y.x` branch, cut by a maintainer from a tested prerelease. Release branches accept only fixes, through pull requests; open the same fix against `main` too, or let the automatic back-merge pull request carry it. release-please keeps a release pull request open on each branch: merging it on `main` cuts an `X.Y.Z-next.N` prerelease, and merging it on `release/X.Y.x` cuts a stable patch release and updates `CHANGELOG.md`. `feat`, `fix`, `perf`, `revert` and `deps` subjects become the release notes, so write them for users.
 
 Never edit versions or `CHANGELOG.md` by hand, and do not add `Release-As` footers: every release line reads them. Maintainers cut release branches and merge release pull requests; publishing and the back-merge to `main` then happen automatically.
 
