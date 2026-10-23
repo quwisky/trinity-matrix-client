@@ -5,6 +5,7 @@ export type QrSignInFailure =
   | 'unsupported'
   | 'insecure'
   | 'already-signed-in'
+  | 'other-server'
   | 'network'
   | 'unknown';
 
@@ -17,6 +18,8 @@ export const QR_SIGN_IN_FAILURE_MESSAGES: Readonly<
   insecure: "The codes didn't match, so nothing was shared.",
   unsupported: "Your server doesn't support QR sign-in.",
   'already-signed-in': 'That device is already signed in.',
+  'other-server':
+    'That device is signed in on a different server, so nothing was shared.',
   network: 'Lost connection. Check your network and try again.',
   unknown: 'Something went wrong. Try again or sign in another way.',
 };
@@ -62,6 +65,13 @@ export class DeviceGrantRejectedError extends Error {
   }
 }
 
+/** The other device's account is not on the server this device signs in to. */
+export class OtherServerError extends Error {
+  constructor() {
+    super('The other device is signed in on a different server.');
+  }
+}
+
 /** The QR sign-in returned an account this device already stores; it stays as it was. */
 export class QrAccountAlreadyStoredError extends Error {
   constructor() {
@@ -73,6 +83,7 @@ export function qrSignInFailureOf(reason: unknown): QrSignInFailure {
   if (reason instanceof TypeError) return 'network';
   if (reason instanceof DeviceGrantRejectedError) return 'unsupported';
   if (reason instanceof QrAccountAlreadyStoredError) return 'already-signed-in';
+  if (reason instanceof OtherServerError) return 'other-server';
   return (
     (typeof reason === 'string' && FAILURE_BY_REASON.get(reason)) || 'unknown'
   );

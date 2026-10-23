@@ -19,6 +19,13 @@ export interface QrSignInCompletion {
     metadata: ValidatedAuthMetadata,
     homeserverUrl: string,
   ): Observable<string>;
+  /**
+   * The metadata to run the device grant on, with token and device endpoints the issuer
+   * confirms. Errors when they are not confirmed, before anything is sent to them.
+   */
+  deviceGrantMetadata(
+    metadata: ValidatedAuthMetadata,
+  ): Observable<ValidatedAuthMetadata>;
   /** Forgets that client ID, so the next {@link deviceGrantClientId} registers again. */
   forgetDeviceGrantClientId(
     metadata: ValidatedAuthMetadata,

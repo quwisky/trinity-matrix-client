@@ -31,6 +31,7 @@ import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 const FINAL_FAILURES: ReadonlySet<QrSignInFailure> = new Set([
   'unsupported',
   'already-signed-in',
+  'other-server',
 ]);
 
 /** The new device's side of a QR sign-in: shows the code, then follows the other device. */
@@ -54,6 +55,8 @@ export class QrSignInPanelComponent implements OnInit {
   private attempt = 0;
 
   readonly homeserverUrl = input.required<string>();
+  /** The server entered; the other device must be signed in on it. */
+  readonly serverName = input.required<string>();
   readonly signedIn = output<{ verified: boolean }>();
   readonly back = output<void>();
 
@@ -107,7 +110,7 @@ export class QrSignInPanelComponent implements OnInit {
     this.qrUrl.set(null);
     this.checkCode.set(null);
     this.flow = this.qrSignIn
-      .signInByShowingCode(this.homeserverUrl())
+      .signInByShowingCode(this.homeserverUrl(), this.serverName())
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (state) => this.apply(state),

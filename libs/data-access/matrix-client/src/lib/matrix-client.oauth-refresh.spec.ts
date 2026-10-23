@@ -408,43 +408,259 @@ describe('OAuth tokens through a real MatrixClient', () => {
       });
     });
 
-    it("pins nothing while the issuer's own document cannot be fetched, then pins once it can", async () => {
-      const net = fakeNetwork('rotate');
-      net.state.issuerDocument = 'down';
+    /** The binding the first refresh pinned, as the next launch reads it from storage. */
+    function storedBinding(storage: ReturnType<typeof setup>['storage']) {
+      return vi.mocked(storage.updateOidcBinding).mock.calls[0][2];
+    }
+
+    it.each([
+      ['publishes no document', null],
+      ['cannot be reached', 'down'],
+    ])(
+      'pins the endpoints first named with its issuer when the issuer %s',
+      async (_, issuerDocument) => {
+        const net = fakeNetwork('rotate');
+        net.state.issuerDocument = issuerDocument;
+        const { svc, storage, client } = await startReal({
+          ...OIDC_SESSION,
+          lineage: 'L1',
+        });
+
+        await expect(client.whoami()).resolves.toBeDefined();
+
+        expect(net.grants).toHaveLength(1);
+        expect(storage.updateOidcBinding).toHaveBeenCalledTimes(1);
+        expect(storage.updateOidcBinding).toHaveBeenCalledWith('@me:hs', 'L1', {
+          ...OIDC_SESSION.oidc,
+          tokenEndpoint: METADATA.token_endpoint,
+          revocationEndpoint: METADATA.revocation_endpoint,
+        });
+        expectStillSignedIn(svc, client);
+      },
+    );
+
+    it.each([
+      ['while the issuer still publishes no document', null],
+      [
+        "even when the issuer's own document later names it",
+        {
+          ...METADATA,
+          token_endpoint: 'https://hs.example/token',
+        },
+      ],
+    ])(
+      'refuses a token endpoint that moved after its first use %s',
+      async (_, laterDocument) => {
+        const net = fakeNetwork('rotate');
+        const session = { ...OIDC_SESSION, lineage: 'L1' };
+        const { svc, storage, client } = await startReal(session);
+        await expect(client.whoami()).resolves.toBeDefined();
+
+        net.state.discovery = {
+          status: 200,
+          body: { ...METADATA, token_endpoint: 'https://hs.example/token' },
+        };
+        net.state.issuerDocument = laterDocument;
+        net.expireAll();
+        const later = svc.detachedClient({
+          ...session,
+          oidc: storedBinding(storage),
+        });
+
+        await expect(later.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+        expect(net.grants).toHaveLength(1);
+        expect(net.calls).not.toContain('POST hs.example/token');
+        expect(storage.updateOidcBinding).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    describe("once the issuer's own document disagreed", () => {
+      const DISAGREEING = { ...METADATA, token_endpoint: `${OP}/real-token` };
       const session = { ...OIDC_SESSION, lineage: 'L1' };
-      const { svc, storage, client } = await startReal(session);
+      const confirmationRequired = {
+        ...OIDC_SESSION.oidc,
+        requiresIssuerConfirmation: true,
+      };
+
+      it('records that the issuer must confirm, and pins nothing while its document is unreachable', async () => {
+        const net = fakeNetwork('rotate');
+        net.state.issuerDocument = DISAGREEING;
+        const { svc, storage, client } = await startReal(session);
+        await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+        net.state.issuerDocument = 'down';
+        await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+        expect(net.grants).toHaveLength(0);
+        expect(vi.mocked(storage.updateOidcBinding).mock.calls).toEqual([
+          ['@me:hs', 'L1', confirmationRequired],
+        ]);
+        expectStillSignedIn(svc, client);
+      });
+
+      it.each([
+        ['publishes no document', null],
+        ['cannot be reached', 'down'],
+      ])(
+        'pins nothing after a restart while the issuer %s',
+        async (_, issuerDocument) => {
+          const net = fakeNetwork('rotate');
+          net.state.issuerDocument = issuerDocument;
+          const { svc, storage, client } = await startReal({
+            ...session,
+            oidc: confirmationRequired,
+          });
+
+          await expect(client.whoami()).rejects.toBeInstanceOf(
+            TokenRefreshError,
+          );
+
+          expect(net.grants).toHaveLength(0);
+          expect(storage.updateOidcBinding).not.toHaveBeenCalled();
+          expectStillSignedIn(svc, client);
+        },
+      );
+
+      it('pins the endpoints its document later confirms', async () => {
+        const net = fakeNetwork('rotate');
+        net.state.issuerDocument = METADATA;
+        const { storage, client } = await startReal({
+          ...session,
+          oidc: confirmationRequired,
+        });
+
+        await expect(client.whoami()).resolves.toBeDefined();
+
+        expect(net.grants).toHaveLength(1);
+        expect(storage.updateOidcBinding).toHaveBeenCalledWith('@me:hs', 'L1', {
+          ...confirmationRequired,
+          tokenEndpoint: METADATA.token_endpoint,
+          revocationEndpoint: METADATA.revocation_endpoint,
+        });
+      });
+    });
+
+    it('compares a concurrent first answer against the endpoints another one pinned', async () => {
+      const net = fakeNetwork('rotate');
+      const { storage } = await startReal({ ...OIDC_SESSION, lineage: 'L1' });
+      const { fetchFn } = vi
+        .mocked(createClient)
+        .mock.calls.map(([opts]) => opts)
+        .find((opts) => opts.fetchFn) as {
+        fetchFn: typeof globalThis.fetch;
+      };
+      const url = 'https://hs.example/_matrix/client/v1/auth_metadata';
+
+      const first = fetchFn(url);
+      net.state.discovery = {
+        status: 200,
+        body: { ...METADATA, token_endpoint: `${OP}/other-token` },
+      };
+      const second = fetchFn(url);
+
+      await expect(first).resolves.toBeDefined();
+      await expect(second).rejects.toThrow(TypeError);
+      expect(vi.mocked(storage.updateOidcBinding).mock.calls).toEqual([
+        [
+          '@me:hs',
+          'L1',
+          {
+            ...OIDC_SESSION.oidc,
+            tokenEndpoint: METADATA.token_endpoint,
+            revocationEndpoint: METADATA.revocation_endpoint,
+          },
+        ],
+      ]);
+    });
+
+    describe("a token endpoint on another origin than the issuer's, while the issuer publishes no document", () => {
+      const ELSEWHERE = {
+        ...METADATA,
+        token_endpoint: 'https://hs.example/token',
+      };
+      const pinned = (storage: ReturnType<typeof setup>['storage']) =>
+        vi
+          .mocked(storage.updateOidcBinding)
+          .mock.calls.filter(([, , binding]) => binding.tokenEndpoint);
+
+      it('is refused and not pinned for an account saved before pinning', async () => {
+        const net = fakeNetwork('rotate');
+        net.state.discovery = { status: 200, body: ELSEWHERE };
+        const { svc, storage, client } = await startReal({
+          ...OIDC_SESSION,
+          lineage: 'L1',
+        });
+
+        await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+        expect(net.calls).not.toContain('POST hs.example/token');
+        expect(pinned(storage)).toEqual([]);
+        expectStillSignedIn(svc, client);
+      });
+
+      it('is not pinned by a first answer still checking when another records that the issuer must confirm', async () => {
+        const net = fakeNetwork('rotate');
+        net.state.discovery = { status: 200, body: ELSEWHERE };
+        const { storage } = await startReal({ ...OIDC_SESSION, lineage: 'L1' });
+        const { fetchFn } = vi
+          .mocked(createClient)
+          .mock.calls.map(([opts]) => opts)
+          .find((opts) => opts.fetchFn) as {
+          fetchFn: typeof globalThis.fetch;
+        };
+        const network = vi.mocked(globalThis.fetch);
+        const answer = network.getMockImplementation() as typeof fetch;
+        const document = `${OP}/.well-known/oauth-authorization-server`;
+        // Hold the first answer's document request until the second answer has finished.
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => (release = resolve));
+        let holding = true;
+        network.mockImplementation(async (input, init) => {
+          if (holding && String(input) === document) {
+            holding = false;
+            await held;
+          }
+          return answer(input, init);
+        });
+        const url = 'https://hs.example/_matrix/client/v1/auth_metadata';
+
+        const first = fetchFn(url);
+        await vi.waitFor(() => expect(holding).toBe(false));
+        net.state.issuerDocument = {
+          ...METADATA,
+          token_endpoint: `${OP}/real-token`,
+        };
+        await expect(fetchFn(url)).rejects.toThrow(TypeError);
+        net.state.issuerDocument = null;
+        release();
+
+        await expect(first).rejects.toThrow(TypeError);
+        expect(net.calls).not.toContain('POST hs.example/token');
+        expect(pinned(storage)).toEqual([]);
+      });
+    });
+
+    it('warns when the pinned endpoints cannot be saved, and still refreshes', async () => {
+      const net = fakeNetwork('rotate');
+      const { storage, client } = await startReal({
+        ...OIDC_SESSION,
+        lineage: 'L1',
+      });
+      vi.mocked(storage.updateOidcBinding).mockReturnValue(
+        throwError(() => new Error('disk full')),
+      );
+      const warn = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
 
       await expect(client.whoami()).resolves.toBeDefined();
 
       expect(net.grants).toHaveLength(1);
-      expect(storage.updateOidcBinding).not.toHaveBeenCalled();
-
-      net.state.issuerDocument = METADATA;
-      net.expireAll();
-      const later = svc.detachedClient(session);
-      await expect(later.whoami()).resolves.toBeDefined();
-
-      expect(storage.updateOidcBinding).toHaveBeenCalledWith('@me:hs', 'L1', {
-        ...OIDC_SESSION.oidc,
-        tokenEndpoint: METADATA.token_endpoint,
-        revocationEndpoint: METADATA.revocation_endpoint,
-      });
-    });
-
-    it('never pins an account whose issuer publishes no document, and keeps refreshing', async () => {
-      const net = fakeNetwork('rotate');
-      const { svc, storage, client } = await startReal({
-        ...OIDC_SESSION,
-        lineage: 'L1',
-      });
-
-      await expect(client.whoami()).resolves.toBeDefined();
-      net.expireAll();
-      await expect(client.whoami()).resolves.toBeDefined();
-
-      expect(net.grants).toHaveLength(2);
-      expect(storage.updateOidcBinding).not.toHaveBeenCalled();
-      expectStillSignedIn(svc, client);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('sign-in provider'),
+        expect.any(Error),
+      );
+      warn.mockRestore();
     });
 
     it("does not pin or refresh an account saved before pinning when the issuer's own document disagrees", async () => {
@@ -461,7 +677,10 @@ describe('OAuth tokens through a real MatrixClient', () => {
       await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
 
       expect(net.grants).toHaveLength(0);
-      expect(storage.updateOidcBinding).not.toHaveBeenCalled();
+      expect(storage.updateOidcBinding).toHaveBeenCalledWith('@me:hs', 'L1', {
+        ...OIDC_SESSION.oidc,
+        requiresIssuerConfirmation: true,
+      });
       expectStillSignedIn(svc, client);
     });
 
@@ -485,7 +704,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
       });
     });
 
-    it('does not pin or refresh an account saved before pinning when the issuer changed', async () => {
+    it('does not pin or refresh an account saved before pinning whose first metadata names another issuer', async () => {
       const net = fakeNetwork('rotate');
       net.state.discovery = {
         status: 200,

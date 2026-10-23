@@ -249,6 +249,13 @@ export class AuthService implements QrSignInCompletion {
     return this.oidc.deviceGrantClientId(metadata, homeserverUrl);
   }
 
+  /** The metadata QR sign-in runs the device grant on, with its endpoints verified. */
+  deviceGrantMetadata(
+    metadata: ValidatedAuthMetadata,
+  ): Observable<ValidatedAuthMetadata> {
+    return this.oidc.deviceGrantMetadata(metadata);
+  }
+
   /** Forget the device-grant client id after the provider rejected it. */
   forgetDeviceGrantClientId(
     metadata: ValidatedAuthMetadata,

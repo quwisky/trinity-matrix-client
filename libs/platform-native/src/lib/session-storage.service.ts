@@ -272,7 +272,8 @@ export class SessionStorageService {
    * Record provider endpoints for a stored OAuth account whose binding has none yet.
    * A compare-and-swap on the sign-in like {@link updateTokens}, and on the binding: a
    * no-op once the account was signed out or signed in again, when its endpoints are
-   * already pinned, or when its issuer or client differs. Never changes the lineage.
+   * already pinned, when it would drop a recorded issuer confirmation requirement, or
+   * when its issuer or client differs. Never changes the lineage.
    */
   updateOidcBinding(
     userId: string,
@@ -289,6 +290,8 @@ export class SessionStorageService {
             (record.lineage !== undefined && record.lineage !== lineage) ||
             record.oidc.tokenEndpoint !== undefined ||
             record.oidc.revocationEndpoint !== undefined ||
+            (record.oidc.requiresIssuerConfirmation &&
+              !oidc.requiresIssuerConfirmation) ||
             record.oidc.issuer !== oidc.issuer ||
             record.oidc.clientId !== oidc.clientId
           ) {

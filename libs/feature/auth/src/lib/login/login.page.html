@@ -82,9 +82,10 @@
     >
       Continue
     </button>
-  } @else if (showingQr()) {
+  } @else if (showingQr(); as qr) {
     <trn-qr-sign-in-panel
-      [homeserverUrl]="baseUrl()!"
+      [homeserverUrl]="qr.homeserverUrl"
+      [serverName]="qr.serverName"
       (signedIn)="qrSignedIn()"
       (back)="closeQr()"
     />
@@ -243,14 +244,14 @@
       }
     }
 
-    @if (qrSignInSupported() && !otherSiteSignIn()) {
+    @if (qrSignInSupported() && oidcSupported() && !otherSiteSignIn()) {
       <button
         trnBtn
         presentation="outline"
         size="lg"
         class="login-card__sso w-full"
         [disabled]="busy()"
-        (click)="showingQr.set(true)"
+        (click)="startQr()"
         #qrSignInButton
         data-testid="qr-sign-in"
       >

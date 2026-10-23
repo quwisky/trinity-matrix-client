@@ -50,13 +50,13 @@ import {
   type ProjectionLease,
 } from '@trinity/runtime/projection';
 import {
-  checkIssuerDiscovery,
   MatrixSession,
   type OidcSessionBinding,
   preloadCryptoWasm,
   rustCryptoStoreDbNames,
   syncStoreDbName,
   syncStoreIndexedDbName,
+  verifiedEndpoints,
 } from '@trinity/util/matrix';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { roomEncryptionRepair } from './room-encryption-repair';
@@ -1194,9 +1194,10 @@ export class MatrixClientService {
    * the account signed in with, so the SDK never refreshes or revokes at a moved endpoint.
    * A refused answer fails as a network error would, and the SDK retries later.
    *
-   * A binding saved before endpoints were pinned accepts metadata naming its issuer that
-   * the issuer's own document does not contradict, and pins it only once that document
-   * was fetched and agreed.
+   * A binding saved before endpoints were pinned pins, on first use, the endpoints of
+   * metadata naming its issuer: the issuer's own where it serves a document that agrees,
+   * else the homeserver's, only on the issuer's own origin. A later document never
+   * replaces the pin.
    */
   private pinnedProviderFetch(
     session: MatrixSession,
@@ -1226,29 +1227,33 @@ export class MatrixClientService {
       }
       if (!binding.tokenEndpoint) {
         // Invalid metadata passes through: the SDK refuses it itself.
-        if (isValidAuthMetadata(body)) {
-          const verified = await checkIssuerDiscovery(body).catch(
-            () => undefined,
-          );
-          if (verified === undefined) {
-            throw new TypeError(
-              "The homeserver's sign-in provider does not match the issuer's own metadata.",
-            );
-          }
-          // Without the issuer's own document nothing confirms the endpoints: use them
-          // for this refresh only, and try pinning again on the next client.
-          if (verified) {
-            binding = { ...binding, ...verified };
-            await firstValueFrom(
-              this.storage.updateOidcBinding(
-                session.userId,
-                session.lineage,
-                binding,
-              ),
-            ).catch(() => undefined);
-          }
+        if (!isValidAuthMetadata(body)) {
+          return response;
         }
-        return response;
+        const verified = await verifiedEndpoints(
+          body,
+          binding.requiresIssuerConfirmation,
+        ).catch(() => undefined);
+        if (!verified) {
+          if (!binding.requiresIssuerConfirmation) {
+            binding = { ...binding, requiresIssuerConfirmation: true };
+            await this.saveOidcBinding(session, binding);
+          }
+          throw new TypeError(
+            "The homeserver's sign-in provider does not match the issuer's own metadata.",
+          );
+        }
+        // Another answer may have pinned while this one was checked; compare with that pin.
+        if (!binding.tokenEndpoint) {
+          const { tokenEndpoint, revocationEndpoint } = verified;
+          binding = {
+            ...binding,
+            tokenEndpoint,
+            ...(revocationEndpoint ? { revocationEndpoint } : {}),
+          };
+          await this.saveOidcBinding(session, binding);
+          return response;
+        }
       }
       if (
         !sameEndpoint(tokenEndpoint, binding.tokenEndpoint) ||
@@ -1260,6 +1265,21 @@ export class MatrixClientService {
       }
       return response;
     };
+  }
+
+  /**
+   * Persist a binding's pin or confirmation requirement. A failed write is not fatal: the
+   * client keeps it in memory, but the next launch decides again from scratch.
+   */
+  private async saveOidcBinding(
+    session: MatrixSession,
+    binding: OidcSessionBinding,
+  ): Promise<void> {
+    await firstValueFrom(
+      this.storage.updateOidcBinding(session.userId, session.lineage, binding),
+    ).catch((error: unknown) => {
+      console.warn("Couldn't save the account's sign-in provider.", error);
+    });
   }
 
   /** Drop an account's tracked OAuth pair if it still belongs to this client. */

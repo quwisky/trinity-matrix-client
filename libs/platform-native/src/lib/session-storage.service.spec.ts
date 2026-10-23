@@ -612,6 +612,26 @@ describe('SessionStorageService', () => {
       );
     });
 
+    it('updateOidcBinding keeps a recorded issuer confirmation requirement', async () => {
+      const { svc } = setup();
+      const required = { ...OIDC_BINDING, requiresIssuerConfirmation: true };
+      const { lineage } = await firstValueFrom(
+        svc.save({ ...CAROL, oidc: required }),
+      );
+
+      await firstValueFrom(
+        svc.updateOidcBinding('@carol:hs', lineage, {
+          ...OIDC_BINDING,
+          tokenEndpoint: 'https://hs.example/token',
+          revocationEndpoint: 'https://hs.example/revoke',
+        }),
+      );
+
+      expect((await firstValueFrom(svc.load('@carol:hs')))?.oidc).toEqual(
+        required,
+      );
+    });
+
     it('updateOidcBinding writes nothing for another provider or client', async () => {
       const { svc } = setup();
       const { lineage } = await firstValueFrom(svc.save(CAROL));

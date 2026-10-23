@@ -1616,13 +1616,14 @@ describe('LoginPage', () => {
   });
 
   describe('QR sign-in', () => {
-    const oidcServer = {
-      discoverHomeserver: vi.fn(() => of('https://hs.example')),
-      getSupportedFlows: vi.fn(() => of([])),
-      getDelegatedAuthConfig: vi.fn(() =>
-        of({ issuer: 'https://hs.example/' }),
-      ),
-    } as unknown as Partial<AuthService>;
+    /** The page enters matrix.org, which delegates to `issuer`. */
+    const serverWithProvider = (issuer: string) =>
+      ({
+        discoverHomeserver: vi.fn(() => of('https://matrix-client.matrix.org')),
+        getSupportedFlows: vi.fn(() => of([])),
+        getDelegatedAuthConfig: vi.fn(() => of({ issuer })),
+      }) as unknown as Partial<AuthService>;
+    const oidcServer = serverWithProvider('https://account.matrix.org/');
     const qrButton = (root: HTMLElement) =>
       root.querySelector<HTMLButtonElement>('[data-testid="qr-sign-in"]');
 
@@ -1673,6 +1674,61 @@ describe('LoginPage', () => {
       expect(
         root.querySelector('[data-testid="oidc-continue"]'),
       ).not.toBeNull();
+    });
+
+    it('shows the code at once for a provider on the server’s own site, bound to the server entered', async () => {
+      const { cmp, fixture } = await renderLogin(oidcServer, {
+        qrSupported: true,
+      });
+      const root = fixture.nativeElement as HTMLElement;
+      cmp.discover();
+      fixture.detectChanges();
+
+      fireEvent.click(qrButton(root)!);
+      fixture.detectChanges();
+
+      expect(root.querySelector('[data-testid="oidc-other-site"]')).toBeNull();
+      expect(root.querySelector('trn-qr-sign-in-panel')).not.toBeNull();
+      expect(
+        TestBed.inject(QrSignInService).signInByShowingCode,
+      ).toHaveBeenCalledWith('https://matrix-client.matrix.org', 'matrix.org');
+    });
+
+    it('asks before showing a code for a provider on another site', async () => {
+      const { cmp, fixture } = await renderLogin(
+        serverWithProvider('https://auth.provider.test/'),
+        { qrSupported: true },
+      );
+      const root = fixture.nativeElement as HTMLElement;
+      const qrSignIn = TestBed.inject(QrSignInService);
+      cmp.discover();
+      fixture.detectChanges();
+
+      fireEvent.click(qrButton(root)!);
+      fixture.detectChanges();
+
+      expect(
+        root
+          .querySelector('[data-testid="oidc-other-site"]')
+          ?.textContent?.replace(/\s+/g, ' ')
+          .trim(),
+      ).toBe(
+        'You’ll sign in with auth.provider.test, which isn’t part of matrix.org. ' +
+          'Continue only if you expect matrix.org to use this provider.',
+      );
+      expect(root.querySelector('trn-qr-sign-in-panel')).toBeNull();
+      expect(qrSignIn.signInByShowingCode).not.toHaveBeenCalled();
+
+      fireEvent.click(
+        root.querySelector('[data-testid="oidc-other-site-continue"]')!,
+      );
+      fixture.detectChanges();
+
+      expect(root.querySelector('trn-qr-sign-in-panel')).not.toBeNull();
+      expect(qrSignIn.signInByShowingCode).toHaveBeenCalledWith(
+        'https://matrix-client.matrix.org',
+        'matrix.org',
+      );
     });
 
     it('returns focus to "Sign in with QR code" when the panel is left', async () => {

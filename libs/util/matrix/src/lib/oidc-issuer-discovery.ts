@@ -6,10 +6,17 @@ export const OIDC_PROVIDER_MISMATCH =
 /** The issuer's own discovery is a side check; an unresponsive host must not hold the callback. */
 const DISCOVERY_TIMEOUT_MS = 8_000;
 
+/** The token endpoint, and the revocation and device endpoints when they are usable. */
+export interface VerifiedEndpoints {
+  tokenEndpoint: string;
+  revocationEndpoint?: string;
+  deviceAuthorizationEndpoint?: string;
+}
+
 /**
  * Check the homeserver's provider endpoints against the issuer's own discovery document,
- * and return the token and revocation endpoints it confirms: the issuer's own revocation
- * endpoint where it publishes one, else the homeserver's.
+ * and return the endpoints it confirms. A revocation or device endpoint it omits is the
+ * homeserver's when that is on the issuer's own origin, else none.
  *
  * Matrix makes the homeserver the metadata source and does not require the issuer to
  * publish a document of its own, so when none can be fetched (none published, or the
@@ -20,13 +27,15 @@ const DISCOVERY_TIMEOUT_MS = 8_000;
  */
 export async function checkIssuerDiscovery(
   metadata: ValidatedAuthMetadata,
-): Promise<{ tokenEndpoint: string; revocationEndpoint: string } | null> {
+): Promise<VerifiedEndpoints | null> {
   const own = await issuerDiscovery(metadata.issuer);
   if (!own) {
     return null;
   }
   const tokenEndpoint = own['token_endpoint'];
   const revocationEndpoint = own['revocation_endpoint'];
+  const deviceEndpoint = own['device_authorization_endpoint'];
+  const servedDeviceEndpoint = metadata.device_authorization_endpoint;
   if (
     !isSameUrl(
       own['authorization_endpoint'],
@@ -38,10 +47,109 @@ export async function checkIssuerDiscovery(
   ) {
     throw new Error(OIDC_PROVIDER_MISMATCH);
   }
+  let deviceAuthorizationEndpoint: string | undefined;
+  if (servedDeviceEndpoint !== undefined) {
+    if (deviceEndpoint === undefined) {
+      deviceAuthorizationEndpoint = onIssuerOrigin(
+        servedDeviceEndpoint,
+        metadata,
+      );
+    } else if (isSameUrl(deviceEndpoint, servedDeviceEndpoint)) {
+      deviceAuthorizationEndpoint = deviceEndpoint;
+    } else {
+      throw new Error(OIDC_PROVIDER_MISMATCH);
+    }
+  }
+  return endpoints({
+    tokenEndpoint,
+    revocationEndpoint:
+      revocationEndpoint ??
+      onIssuerOrigin(metadata.revocation_endpoint, metadata),
+    deviceAuthorizationEndpoint,
+  });
+}
+
+/**
+ * The endpoints the issuer's own document confirms when it serves one. Otherwise, unless
+ * `requireDocument`, the homeserver's, accepted only on the issuer's own origin: the token
+ * endpoint must be, and a revocation or device endpoint elsewhere is left out. Throws
+ * when the document disagrees, or when a required or unconfirmed token endpoint is missing.
+ */
+export async function verifiedEndpoints(
+  metadata: ValidatedAuthMetadata,
+  requireDocument = false,
+): Promise<VerifiedEndpoints> {
+  const confirmed = await checkIssuerDiscovery(metadata);
+  if (confirmed) {
+    return confirmed;
+  }
+  const tokenEndpoint = onIssuerOrigin(metadata.token_endpoint, metadata);
+  if (requireDocument || !tokenEndpoint) {
+    throw new Error(OIDC_PROVIDER_MISMATCH);
+  }
+  return endpoints({
+    tokenEndpoint,
+    revocationEndpoint: onIssuerOrigin(metadata.revocation_endpoint, metadata),
+    deviceAuthorizationEndpoint: onIssuerOrigin(
+      metadata.device_authorization_endpoint,
+      metadata,
+    ),
+  });
+}
+
+/**
+ * The homeserver's metadata with the token and device endpoints the device grant may use.
+ * Throws when either is not verified, so neither the device code request nor the token
+ * poll goes to an endpoint the issuer has not confirmed.
+ */
+export async function verifiedDeviceGrantMetadata(
+  metadata: ValidatedAuthMetadata,
+): Promise<ValidatedAuthMetadata> {
+  const { tokenEndpoint, deviceAuthorizationEndpoint } =
+    await verifiedEndpoints(metadata);
+  if (!deviceAuthorizationEndpoint) {
+    throw new Error(OIDC_PROVIDER_MISMATCH);
+  }
+  return {
+    ...metadata,
+    token_endpoint: tokenEndpoint,
+    device_authorization_endpoint: deviceAuthorizationEndpoint,
+  };
+}
+
+/** Leaves out the endpoints that are not usable. */
+function endpoints({
+  tokenEndpoint,
+  revocationEndpoint,
+  deviceAuthorizationEndpoint,
+}: {
+  tokenEndpoint: string;
+  revocationEndpoint: string | undefined;
+  deviceAuthorizationEndpoint: string | undefined;
+}): VerifiedEndpoints {
   return {
     tokenEndpoint,
-    revocationEndpoint: revocationEndpoint ?? metadata.revocation_endpoint,
+    ...(revocationEndpoint ? { revocationEndpoint } : {}),
+    ...(deviceAuthorizationEndpoint ? { deviceAuthorizationEndpoint } : {}),
   };
+}
+
+/** `url` when its scheme, host and port are the issuer's, else undefined. */
+function onIssuerOrigin(
+  url: string | undefined,
+  metadata: ValidatedAuthMetadata,
+): string | undefined {
+  try {
+    const origin = url === undefined ? undefined : new URL(url).origin;
+    // A URL without a host has the opaque origin "null", which equals every other.
+    return origin !== undefined &&
+      origin !== 'null' &&
+      origin === new URL(metadata.issuer).origin
+      ? url
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

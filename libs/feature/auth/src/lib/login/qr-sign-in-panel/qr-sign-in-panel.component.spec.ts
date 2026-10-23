@@ -35,7 +35,7 @@ async function renderPanel() {
   const signedIn = vi.fn();
   const back = vi.fn();
   const result = await render(QrSignInPanelComponent, {
-    inputs: { homeserverUrl: 'https://hs.example' },
+    inputs: { homeserverUrl: 'https://hs.example', serverName: 'example' },
     on: { signedIn, back },
     providers: [
       MockProvider(QrSignInService, fake.service),
@@ -53,12 +53,13 @@ async function renderPanel() {
 }
 
 describe('QrSignInPanelComponent', () => {
-  it('starts one sign-in for the chosen homeserver', async () => {
+  it('starts one sign-in for the chosen homeserver and server name', async () => {
     const { service } = await renderPanel();
 
     expect(service.signInByShowingCode).toHaveBeenCalledOnce();
     expect(service.signInByShowingCode).toHaveBeenCalledWith(
       'https://hs.example',
+      'example',
     );
   });
 
@@ -160,6 +161,11 @@ describe('QrSignInPanelComponent', () => {
     [
       'already-signed-in',
       'This account is already signed in on this device.',
+      false,
+    ],
+    [
+      'other-server',
+      'That device is signed in on a different server, so nothing was shared.',
       false,
     ],
     ['network', 'Lost connection. Check your network and try again.', true],

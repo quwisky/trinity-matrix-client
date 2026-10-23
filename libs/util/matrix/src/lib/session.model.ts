@@ -65,6 +65,12 @@ export interface OidcSessionBinding {
   /** The issuer's revocation endpoint as verified at sign-in; absent like {@link tokenEndpoint}. */
   revocationEndpoint?: string;
   /**
+   * Set once the issuer's own document disagreed with the homeserver's endpoints for a
+   * binding without them. From then on only endpoints that document confirms are pinned
+   * or used, since a failed fetch looks the same as an issuer that publishes none.
+   */
+  requiresIssuerConfirmation?: boolean;
+  /**
    * @deprecated Not written since matrix-js-sdk 42. That release dropped `oidc-client-ts`
    * and with it the id_token entirely, so there are no claims to capture and nothing reads
    * these any more. The field stays optional rather than deleted because sessions written

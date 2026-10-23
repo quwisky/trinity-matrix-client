@@ -18,9 +18,15 @@ export class QrSignInService {
   private readonly adapter = inject(QrSignInAdapter);
   private readonly matrix = inject(MatrixClientService);
 
-  /** Cold: each subscription shows a new code; unsubscribing cancels the sign-in. */
-  signInByShowingCode(homeserverUrl: string): Observable<NewDeviceState> {
-    return this.adapter.signInByShowingCode(homeserverUrl);
+  /**
+   * Cold: each subscription shows a new code; unsubscribing cancels the sign-in. The other
+   * device must be signed in on `serverName`, the server entered.
+   */
+  signInByShowingCode(
+    homeserverUrl: string,
+    serverName: string,
+  ): Observable<NewDeviceState> {
+    return this.adapter.signInByShowingCode(homeserverUrl, serverName);
   }
 
   /** Links the device whose code this device scanned; `state$` is cold. */

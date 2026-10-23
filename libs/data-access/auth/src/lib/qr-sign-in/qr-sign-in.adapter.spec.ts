@@ -6,6 +6,7 @@ import {
   OAuthGrantType,
   createClient,
 } from 'matrix-js-sdk';
+import { AUTHENTICATION_HOMESERVER_DISCOVERY } from '../homeserver-discovery.port';
 import { QrSignInAdapter } from './qr-sign-in.adapter';
 import {
   QR_LINK_IDENTITY_CHECK,
@@ -35,6 +36,7 @@ function adapter(): QrSignInAdapter {
     providers: [
       { provide: QR_SIGN_IN_COMPLETION, useValue: {} },
       { provide: QR_LINK_IDENTITY_CHECK, useValue: {} },
+      { provide: AUTHENTICATION_HOMESERVER_DISCOVERY, useValue: {} },
     ],
   });
   return TestBed.inject(QrSignInAdapter);

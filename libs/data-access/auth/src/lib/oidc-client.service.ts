@@ -21,8 +21,10 @@ import {
 import { DevicePreferenceStorageService } from '@trinity/platform-native';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import {
-  checkIssuerDiscovery,
   type OidcSessionBinding,
+  verifiedDeviceGrantMetadata,
+  verifiedEndpoints,
+  type VerifiedEndpoints,
 } from '@trinity/util/matrix';
 import { checkIssuer, checkSavedEndpoints } from './oidc-issuer-check';
 
@@ -206,14 +208,14 @@ export class OidcClientService {
           // against a host that black-holes the connection. Nothing consumes the result, so
           // the user gets the real failure now.
           catchError((err: unknown) => {
-            void this.revokeGranted(
-              {
-                ...metadata,
-                revocation_endpoint: endpoints.revocationEndpoint,
-              },
-              context,
-              token,
-            ).catch(() => undefined);
+            const { revocationEndpoint } = endpoints;
+            if (revocationEndpoint) {
+              void this.revokeGranted(
+                { ...metadata, revocation_endpoint: revocationEndpoint },
+                context,
+                token,
+              ).catch(() => undefined);
+            }
             return throwError(() => err);
           }),
         ),
@@ -227,9 +229,7 @@ export class OidcClientService {
   ): Promise<{
     token: BearerTokenResponse;
     metadata: ValidatedAuthMetadata;
-    endpoints: Required<
-      Pick<OidcSessionBinding, 'tokenEndpoint' | 'revocationEndpoint'>
-    >;
+    endpoints: VerifiedEndpoints;
     requestedAt: number;
   }> {
     const metadata = await createClient({
@@ -240,10 +240,14 @@ export class OidcClientService {
     checkIssuer(metadata, context);
     checkSavedEndpoints(metadata, context);
     const verified = await verifiedEndpoints(metadata);
-    const endpoints = {
+    const endpoints: VerifiedEndpoints = {
       tokenEndpoint: context.tokenEndpoint,
-      revocationEndpoint:
-        context.revocationEndpoint ?? verified.revocationEndpoint,
+      ...(verified.revocationEndpoint
+        ? {
+            revocationEndpoint:
+              context.revocationEndpoint ?? verified.revocationEndpoint,
+          }
+        : {}),
     };
     const auth = new OAuth2(
       { ...metadata, token_endpoint: endpoints.tokenEndpoint },
@@ -283,9 +287,9 @@ export class OidcClientService {
    * void. Complements the CSAPI logout the caller also performs.
    *
    * Revokes at the endpoint pinned at sign-in. A binding saved before endpoints were
-   * pinned falls back to the auth metadata of `homeserverUrl` (the account's own
-   * `baseUrl`), only while it still names the binding's issuer and agrees with the
-   * issuer's own document.
+   * pinned takes it from the auth metadata of `homeserverUrl` (the account's own
+   * `baseUrl`), only while that names the binding's issuer and agrees with the issuer's
+   * own document, which must confirm it once it has disagreed.
    */
   revokeTokens(
     homeserverUrl: string,
@@ -342,8 +346,23 @@ export class OidcClientService {
     clientId: string,
   ): Observable<OidcSessionBinding> {
     return defer(() => from(verifiedEndpoints(metadata))).pipe(
-      map((endpoints) => ({ issuer: metadata.issuer, clientId, ...endpoints })),
+      map(({ tokenEndpoint, revocationEndpoint }) => ({
+        issuer: metadata.issuer,
+        clientId,
+        tokenEndpoint,
+        ...(revocationEndpoint ? { revocationEndpoint } : {}),
+      })),
     );
+  }
+
+  /**
+   * The metadata the device grant runs on: its token and device endpoints are the ones the
+   * issuer's own document confirms, or on the issuer's own origin. Errors otherwise.
+   */
+  deviceGrantMetadata(
+    metadata: ValidatedAuthMetadata,
+  ): Observable<ValidatedAuthMetadata> {
+    return defer(() => from(verifiedDeviceGrantMetadata(metadata)));
   }
 
   private async resolveDeviceGrantClientId(
@@ -382,26 +401,29 @@ export class OidcClientService {
     binding: OidcSessionBinding,
     tokens: { accessToken?: string; refreshToken?: string },
   ): Promise<void> {
-    const metadata = binding.revocationEndpoint
-      ? // OAuth2.revokeToken reads only the revocation endpoint.
-        ({
-          issuer: binding.issuer,
-          revocation_endpoint: binding.revocationEndpoint,
-        } as ValidatedAuthMetadata)
-      : await this.unpinnedRevocationMetadata(homeserverUrl, binding);
+    const revocationEndpoint =
+      binding.revocationEndpoint ??
+      (await this.unpinnedRevocationEndpoint(homeserverUrl, binding));
+    if (!revocationEndpoint) return;
+    // OAuth2.revokeToken reads only the revocation endpoint.
+    const metadata = {
+      issuer: binding.issuer,
+      revocation_endpoint: revocationEndpoint,
+    } as ValidatedAuthMetadata;
     const auth = new OAuth2(metadata, { clientId: binding.clientId });
     await this.revokeBoth(auth, tokens);
   }
 
   /**
-   * The homeserver's metadata for a binding saved before endpoints were pinned, with the
-   * revocation endpoint checked against the issuer's own document. Throws when the
-   * homeserver names another issuer or the issuer's document disagrees.
+   * The revocation endpoint for a binding saved before endpoints were pinned, chosen as a
+   * refresh pins it: the issuer's own where its document agrees, else the homeserver's
+   * unless the issuer must confirm it. Throws when the homeserver names another issuer or
+   * the endpoint is not confirmed; undefined when no revocation endpoint is usable.
    */
-  private async unpinnedRevocationMetadata(
+  private async unpinnedRevocationEndpoint(
     homeserverUrl: string,
     binding: OidcSessionBinding,
-  ): Promise<ValidatedAuthMetadata> {
+  ): Promise<string | undefined> {
     const live = await createClient({
       baseUrl: homeserverUrl,
     }).getAuthMetadata();
@@ -411,10 +433,11 @@ export class OidcClientService {
       );
       throw new Error('The homeserver names another issuer.');
     }
-    const verified = await checkIssuerDiscovery(live);
-    return verified
-      ? { ...live, revocation_endpoint: verified.revocationEndpoint }
-      : live;
+    const { revocationEndpoint } = await verifiedEndpoints(
+      live,
+      binding.requiresIssuerConfirmation,
+    );
+    return revocationEndpoint;
   }
 
   /** POST a revocation for each token present. Concurrent: neither gates the other. */
@@ -518,21 +541,6 @@ export class OidcClientService {
       ? requestedAt + token.expires_in * 1000
       : undefined;
   }
-}
-
-/**
- * The token and revocation endpoints from the issuer's own document when it serves one,
- * otherwise from the homeserver's metadata. Throws when the two disagree.
- */
-async function verifiedEndpoints(
-  metadata: ValidatedAuthMetadata,
-): Promise<{ tokenEndpoint: string; revocationEndpoint: string }> {
-  return (
-    (await checkIssuerDiscovery(metadata)) ?? {
-      tokenEndpoint: metadata.token_endpoint,
-      revocationEndpoint: metadata.revocation_endpoint,
-    }
-  );
 }
 
 /**

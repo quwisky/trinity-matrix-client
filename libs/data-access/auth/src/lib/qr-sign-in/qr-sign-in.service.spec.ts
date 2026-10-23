@@ -1,14 +1,15 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import type { MatrixClient } from 'matrix-js-sdk';
+import type { MatrixClient, ValidatedAuthMetadata } from 'matrix-js-sdk';
+import { verifiedDeviceGrantMetadata } from '@trinity/util/matrix';
 import {
   ClientRendezvousFailureReason,
   MSC4108FailureReason,
   RendezvousError,
 } from 'matrix-js-sdk/lib/rendezvous';
-import { Observable, of, throwError, type Subscription } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { Observable, from, of, throwError, type Subscription } from 'rxjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   QrRendezvousFactory,
   type QrRendezvousFlow,
@@ -24,6 +25,10 @@ import {
   type NewDeviceState,
 } from './qr-sign-in.model';
 import { QrSignInService } from './qr-sign-in.service';
+import {
+  AUTHENTICATION_HOMESERVER_DISCOVERY,
+  type AuthenticationHomeserver,
+} from '../homeserver-discovery.port';
 
 type Step =
   | 'generateCode'
@@ -55,7 +60,9 @@ class FakeFlow {
   ) {}
 
   generateCode = vi.fn(() => this.step('generateCode', undefined));
-  negotiateProtocols = vi.fn(() => this.step('negotiateProtocols', {}));
+  negotiateProtocols = vi.fn(() =>
+    this.step('negotiateProtocols', { serverName: 'hs' }),
+  );
   deviceAuthorizationGrant = vi.fn(() =>
     this.step(
       'deviceAuthorizationGrant',
@@ -133,6 +140,9 @@ function setup(configure: (flow: FakeFlow) => void = () => undefined) {
   };
   const completion = {
     deviceGrantClientId: vi.fn(() => of('client-id')),
+    deviceGrantMetadata: vi.fn(
+      (m: ValidatedAuthMetadata): Observable<ValidatedAuthMetadata> => of(m),
+    ),
     forgetDeviceGrantClientId: vi.fn(() => of(undefined)),
     completeDeviceGrant: vi.fn(() => {
       order.push('completeDeviceGrant');
@@ -141,6 +151,11 @@ function setup(configure: (flow: FakeFlow) => void = () => undefined) {
     importLinkedSecrets: vi.fn(() => of(true)),
   };
   const identity = { holdsPublishedIdentity: vi.fn(() => of(true)) };
+  const discovery = {
+    lookUp: vi.fn((): Observable<AuthenticationHomeserver> =>
+      throwError(() => new Error('No homeserver found')),
+    ),
+  };
   const activeUserId = signal<string | null>('@me:hs');
   const clients = new Map<string, MatrixClient>([['@me:hs', existingClient]]);
   const matrix = {
@@ -153,6 +168,7 @@ function setup(configure: (flow: FakeFlow) => void = () => undefined) {
       { provide: QR_SIGN_IN_COMPLETION, useValue: completion },
       { provide: QR_LINK_IDENTITY_CHECK, useValue: identity },
       { provide: MatrixClientService, useValue: matrix },
+      { provide: AUTHENTICATION_HOMESERVER_DISCOVERY, useValue: discovery },
     ],
   });
   return {
@@ -161,6 +177,7 @@ function setup(configure: (flow: FakeFlow) => void = () => undefined) {
     factory,
     completion,
     identity,
+    discovery,
     activeUserId,
     clients,
     service: TestBed.inject(QrSignInService),
@@ -195,7 +212,7 @@ describe('QrSignInService.signInByShowingCode', () => {
   it('runs creating → showing-code → confirm-check-code → waiting-for-approval → signing-in → done', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_000);
     const { service, flows, completion, order } = setup();
-    const run = record(service.signInByShowingCode('https://hs'));
+    const run = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
 
     expect(run.states).toEqual<NewDeviceState[]>([
@@ -258,7 +275,7 @@ describe('QrSignInService.signInByShowingCode', () => {
       completion.deviceGrantClientId
         .mockReturnValueOnce(of('stale-id'))
         .mockReturnValueOnce(of('fresh-id'));
-      const run = record(service.signInByShowingCode('https://hs'));
+      const run = record(service.signInByShowingCode('https://hs', 'hs'));
       await settle();
 
       expect(run.states.at(-1)).toEqual({ kind: 'done', verified: true });
@@ -281,7 +298,7 @@ describe('QrSignInService.signInByShowingCode', () => {
       const { service, flows, completion } = setup((flow) =>
         flow.failures.set('deviceAuthorizationGrant', rejected()),
       );
-      const run = record(service.signInByShowingCode('https://hs'));
+      const run = record(service.signInByShowingCode('https://hs', 'hs'));
       await settle();
 
       expect(run.states.at(-1)).toEqual({
@@ -299,7 +316,7 @@ describe('QrSignInService.signInByShowingCode', () => {
           new Error('Channel closed'),
         ),
       );
-      const run = record(service.signInByShowingCode('https://hs'));
+      const run = record(service.signInByShowingCode('https://hs', 'hs'));
       await settle();
 
       expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
@@ -314,13 +331,245 @@ describe('QrSignInService.signInByShowingCode', () => {
           new TypeError('Failed to fetch'),
         ),
       );
-      const run = record(service.signInByShowingCode('https://hs'));
+      const run = record(service.signInByShowingCode('https://hs', 'hs'));
       await settle();
 
       expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'network' });
       expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalledTimes(1);
       expect(completion.forgetDeviceGrantClientId).not.toHaveBeenCalled();
       expect(completion.deviceGrantClientId).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('the device sign-in endpoints', () => {
+    const DEVICE_METADATA = {
+      issuer: 'https://op.example/',
+      authorization_endpoint: 'https://op.example/authorize',
+      token_endpoint: 'https://op.example/token',
+      revocation_endpoint: 'https://op.example/revoke',
+      device_authorization_endpoint: 'https://op.example/device',
+    };
+    const DOCUMENT =
+      'https://op.example/.well-known/oauth-authorization-server';
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    /** Sign in against `served` metadata, checked against the issuer's `document` (null: none). */
+    async function signInWith(
+      served: Record<string, unknown>,
+      document: Record<string, unknown> | null,
+    ) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) =>
+          url === DOCUMENT && document
+            ? new Response(JSON.stringify(document))
+            : new Response('{}', { status: 404 }),
+        ),
+      );
+      const ctx = setup();
+      const opened = ctx.factory.newDevice.getMockImplementation()!;
+      ctx.factory.newDevice.mockImplementation(async (url, onFailure) => ({
+        ...(await opened(url, onFailure)),
+        metadata: served as never,
+      }));
+      ctx.completion.deviceGrantMetadata.mockImplementation((m) =>
+        from(verifiedDeviceGrantMetadata(m)),
+      );
+      const run = record(ctx.service.signInByShowingCode('https://hs', 'hs'));
+      await vi.waitFor(() =>
+        expect(['done', 'failed']).toContain(run.states.at(-1)?.kind),
+      );
+      return { ...ctx, run };
+    }
+
+    it.each([
+      [
+        "a token endpoint on another origin than the issuer's, with no document",
+        { token_endpoint: 'https://hs.example/token' },
+        null,
+      ],
+      [
+        "a device endpoint on another origin than the issuer's, with no document",
+        { device_authorization_endpoint: 'https://hs.example/device' },
+        null,
+      ],
+      [
+        'a device endpoint the document names differently',
+        {},
+        {
+          ...DEVICE_METADATA,
+          device_authorization_endpoint: 'https://op.example/other-device',
+        },
+      ],
+    ])('starts no device sign-in for %s', async (_name, change, document) => {
+      const { run, flows, completion } = await signInWith(
+        { ...DEVICE_METADATA, ...change },
+        document,
+      );
+
+      expect(run.states.at(-1)?.kind).toBe('failed');
+      expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
+      expect(flows[0].completeLoginOnNewDevice).not.toHaveBeenCalled();
+      expect(completion.completeDeviceGrant).not.toHaveBeenCalled();
+    });
+
+    it('signs in at the endpoints the issuer confirms', async () => {
+      const elsewhere = {
+        ...DEVICE_METADATA,
+        token_endpoint: 'https://login.example/token',
+        device_authorization_endpoint: 'https://login.example/device',
+      };
+      const { run, flows, completion } = await signInWith(elsewhere, elsewhere);
+
+      expect(run.states.at(-1)).toEqual({ kind: 'done', verified: true });
+      expect(flows[0].deviceAuthorizationGrant).toHaveBeenCalledWith(
+        expect.objectContaining({ metadata: elsewhere }),
+      );
+      expect(completion.completeDeviceGrant).toHaveBeenCalledWith(
+        tokens,
+        'client-id',
+        elsewhere,
+        'https://hs',
+      );
+    });
+  });
+
+  describe('the server the other device reports', () => {
+    function reporting(serverName: string | undefined) {
+      return setup((flow) =>
+        flow.negotiateProtocols.mockResolvedValue({ serverName } as never),
+      );
+    }
+
+    it.each([
+      ['another server', 'other.example'],
+      ['no server', undefined],
+    ])(
+      'refuses %s before any grant or account sign-in',
+      async (_name, serverName) => {
+        const { service, flows, completion } = reporting(serverName);
+        const run = record(service.signInByShowingCode('https://hs', 'hs'));
+        await settle();
+
+        expect(run.states.at(-1)).toEqual({
+          kind: 'failed',
+          reason: 'other-server',
+        });
+        expect(run.kinds()).not.toContain('confirm-check-code');
+        expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
+        expect(flows[0].completeLoginOnNewDevice).not.toHaveBeenCalled();
+        expect(completion.completeDeviceGrant).not.toHaveBeenCalled();
+        expect(flows[0].calls.slice(-2)).toEqual([
+          'cancel:user_cancelled',
+          'close',
+        ]);
+      },
+    );
+
+    it.each(['HS', 'hs.', 'Hs.'])(
+      'accepts %s for the server name hs',
+      async (serverName) => {
+        const { service, discovery } = reporting(serverName);
+        const run = record(service.signInByShowingCode('https://hs', 'hs'));
+        await settle();
+
+        expect(run.states.at(-1)).toEqual({ kind: 'done', verified: true });
+        expect(discovery.lookUp).not.toHaveBeenCalled();
+      },
+    );
+
+    // The homeserver was entered by URL, which discovery reports as `//host`.
+    it.each([
+      ['an exact host', 'hs.example', 'https://hs.example'],
+      ['a host and the same port', 'localhost:8450', 'https://localhost:8450'],
+      ['a host without a port', 'localhost', 'https://localhost:8448'],
+      ['a host in another case', 'HS.Example.', 'https://hs.example'],
+      ['a host on another port', 'localhost:9999', 'https://localhost:8448'],
+      ['a parent domain', 'example.org', 'https://matrix.example.org'],
+    ])(
+      'accepts %s of the homeserver entered',
+      async (_name, serverName, homeserverUrl) => {
+        const { service, discovery } = reporting(serverName);
+        const entered = `//${new URL(homeserverUrl).host}`;
+        const run = record(service.signInByShowingCode(homeserverUrl, entered));
+        await settle();
+
+        expect(run.states.at(-1)).toEqual({ kind: 'done', verified: true });
+        expect(discovery.lookUp).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['another host', 'other.example', 'https://hs.example'],
+      ['a subdomain', 'other.hs.example', 'https://hs.example'],
+      ['an unrelated server', 'matrix.org', 'https://other.example'],
+    ])(
+      'refuses %s of the homeserver entered',
+      async (_name, serverName, homeserverUrl) => {
+        const { service, flows } = reporting(serverName);
+        const entered = `//${new URL(homeserverUrl).host}`;
+        const run = record(service.signInByShowingCode(homeserverUrl, entered));
+        await settle();
+
+        expect(run.states.at(-1)).toEqual({
+          kind: 'failed',
+          reason: 'other-server',
+        });
+        expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
+      },
+    );
+
+    it('accepts a server name whose subdomain is the homeserver name entered', async () => {
+      const { service, discovery } = reporting('example.org');
+      const run = record(
+        service.signInByShowingCode(
+          'https://matrix.example.org',
+          'matrix.example.org',
+        ),
+      );
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({ kind: 'done', verified: true });
+      expect(discovery.lookUp).not.toHaveBeenCalled();
+    });
+
+    it.each(['example.com', 'example.com:8448'])(
+      'accepts %s when its well-known names the homeserver entered',
+      async (serverName) => {
+        const { service, discovery } = reporting(serverName);
+        discovery.lookUp.mockReturnValue(
+          of({ domain: serverName, baseUrl: 'https://matrix.example.org' }),
+        );
+        const run = record(
+          service.signInByShowingCode(
+            'https://matrix.example.org',
+            '//matrix.example.org',
+          ),
+        );
+        await settle();
+
+        // The user ID form keeps a port, which a bare server name would lose.
+        expect(discovery.lookUp).toHaveBeenCalledWith(`@_:${serverName}`);
+        expect(run.states.at(-1)).toEqual({ kind: 'done', verified: true });
+      },
+    );
+
+    it('refuses a server whose well-known names another homeserver', async () => {
+      const { service, flows, discovery } = reporting('example.org');
+      discovery.lookUp.mockReturnValue(
+        of({ domain: 'example.org', baseUrl: 'https://matrix.example.org' }),
+      );
+      const run = record(service.signInByShowingCode('https://hs', '//hs'));
+      await settle();
+
+      expect(run.states.at(-1)).toEqual({
+        kind: 'failed',
+        reason: 'other-server',
+      });
+      expect(flows[0].deviceAuthorizationGrant).not.toHaveBeenCalled();
     });
   });
 
@@ -338,7 +587,7 @@ describe('QrSignInService.signInByShowingCode', () => {
       const call = pending();
       const { service, completion } = setup();
       completion.completeDeviceGrant.mockReturnValue(call.source as never);
-      const run = record(service.signInByShowingCode('https://hs'));
+      const run = record(service.signInByShowingCode('https://hs', 'hs'));
       await settle();
       expect(run.kinds().at(-1)).toBe('signing-in');
 
@@ -353,7 +602,7 @@ describe('QrSignInService.signInByShowingCode', () => {
       const call = pending();
       const { service, completion } = setup();
       completion.importLinkedSecrets.mockReturnValue(call.source as never);
-      const run = record(service.signInByShowingCode('https://hs'));
+      const run = record(service.signInByShowingCode('https://hs', 'hs'));
       await settle();
       expect(completion.importLinkedSecrets).toHaveBeenCalled();
 
@@ -376,7 +625,7 @@ describe('QrSignInService.signInByShowingCode', () => {
       ...(await created(url, onFailure)),
       expires: new Date(now + 10 * 60_000).toUTCString(),
     }));
-    const run = record(service.signInByShowingCode('https://hs'));
+    const run = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
 
     expect(run.states.at(-1)).toEqual(
@@ -398,7 +647,7 @@ describe('QrSignInService.signInByShowingCode', () => {
       ...(await created(url, onFailure)),
       expires: 'not a date',
     }));
-    const run = record(service.signInByShowingCode('https://hs'));
+    const run = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
 
     expect(run.states.at(-1)).toEqual(
@@ -415,7 +664,7 @@ describe('QrSignInService.signInByShowingCode', () => {
           new RendezvousError('failed', MSC4108FailureReason.UserCancelled),
         ),
       );
-      const run = record(service.signInByShowingCode('https://hs'));
+      const run = record(service.signInByShowingCode('https://hs', 'hs'));
       await settle();
 
       expect(run.states.at(-1)).toEqual({ kind: 'done', verified: false });
@@ -426,7 +675,7 @@ describe('QrSignInService.signInByShowingCode', () => {
 
     it('ends done but unverified when the other device cancels while secrets are shared', async () => {
       const { service, flows } = setup((flow) => flow.hang.add('shareSecrets'));
-      const run = record(service.signInByShowingCode('https://hs'));
+      const run = record(service.signInByShowingCode('https://hs', 'hs'));
       await settle();
 
       flows[0].failSession(MSC4108FailureReason.UserCancelled);
@@ -441,7 +690,7 @@ describe('QrSignInService.signInByShowingCode', () => {
       completion.importLinkedSecrets.mockReturnValue(
         throwError(() => new Error('import failed')),
       );
-      const run = record(service.signInByShowingCode('https://hs'));
+      const run = record(service.signInByShowingCode('https://hs', 'hs'));
       await settle();
 
       expect(run.states.at(-1)).toEqual({ kind: 'done', verified: false });
@@ -453,7 +702,7 @@ describe('QrSignInService.signInByShowingCode', () => {
       completion.completeDeviceGrant.mockReturnValue(
         throwError(() => new Error('store failed')),
       );
-      const run = record(service.signInByShowingCode('https://hs'));
+      const run = record(service.signInByShowingCode('https://hs', 'hs'));
       await settle();
 
       expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
@@ -464,7 +713,7 @@ describe('QrSignInService.signInByShowingCode', () => {
     const { service, completion } = setup((flow) =>
       flow.shareSecrets.mockResolvedValue({} as never),
     );
-    const run = record(service.signInByShowingCode('https://hs'));
+    const run = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
     expect(run.states.at(-1)).toEqual({ kind: 'done', verified: false });
     expect(completion.importLinkedSecrets).not.toHaveBeenCalled();
@@ -472,7 +721,7 @@ describe('QrSignInService.signInByShowingCode', () => {
 
   it('is cold', async () => {
     const { service, factory } = setup();
-    service.signInByShowingCode('https://hs');
+    service.signInByShowingCode('https://hs', 'hs');
     await settle();
     expect(factory.newDevice).not.toHaveBeenCalled();
   });
@@ -485,7 +734,7 @@ describe('QrSignInService.signInByShowingCode', () => {
     ['signing-in', 'shareSecrets'],
   ])('unsubscribing at %s cancels and closes', async (kind, hung) => {
     const { service, flows } = setup((flow) => flow.hang.add(hung));
-    const run = record(service.signInByShowingCode('https://hs'));
+    const run = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
     expect(run.states.at(-1)?.kind).toBe(kind);
 
@@ -505,7 +754,7 @@ describe('QrSignInService.signInByShowingCode', () => {
       await new Promise<void>((resolve) => (release = resolve));
       return created(url, onFailure);
     });
-    const run = record(service.signInByShowingCode('https://hs'));
+    const run = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
     run.subscription.unsubscribe();
     release();
@@ -520,7 +769,7 @@ describe('QrSignInService.signInByShowingCode', () => {
         new RendezvousError('failed', reason),
       ),
     );
-    const run = record(service.signInByShowingCode('https://hs'));
+    const run = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
     expect(run.states.at(-1)).toEqual({
       kind: 'failed',
@@ -533,7 +782,7 @@ describe('QrSignInService.signInByShowingCode', () => {
     const { service } = setup((flow) =>
       flow.failures.set('generateCode', new TypeError('Failed to fetch')),
     );
-    const run = record(service.signInByShowingCode('https://hs'));
+    const run = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
     expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'network' });
   });
@@ -542,7 +791,7 @@ describe('QrSignInService.signInByShowingCode', () => {
     const { service, flows, factory } = setup((flow) =>
       flow.hang.add('negotiateProtocols'),
     );
-    const first = record(service.signInByShowingCode('https://hs'));
+    const first = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
     expect(first.states.at(-1)?.kind).toBe('showing-code');
 
@@ -551,7 +800,7 @@ describe('QrSignInService.signInByShowingCode', () => {
     expect(first.states.at(-1)).toEqual({ kind: 'failed', reason: 'expired' });
     expect(first.completed()).toBe(true);
 
-    const second = record(service.signInByShowingCode('https://hs'));
+    const second = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
     expect(factory.newDevice).toHaveBeenCalledTimes(2);
     expect(flows[1].generateCode).toHaveBeenCalled();
@@ -566,7 +815,7 @@ describe('QrSignInService.signInByShowingCode', () => {
         new RendezvousError('Failed', MSC4108FailureReason.UserCancelled),
       ),
     );
-    const run = record(service.signInByShowingCode('https://hs'));
+    const run = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
     expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'declined' });
   });
@@ -574,7 +823,7 @@ describe('QrSignInService.signInByShowingCode', () => {
   it('reports a server without a rendezvous endpoint as unsupported', async () => {
     const { service, factory } = setup();
     factory.newDevice.mockRejectedValue(new Error('Invalid rendezvous URI'));
-    const run = record(service.signInByShowingCode('https://hs'));
+    const run = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
     expect(run.states.at(-1)).toEqual({
       kind: 'failed',
@@ -591,7 +840,7 @@ describe('QrSignInService.signInByShowingCode', () => {
       onFailure(ClientRendezvousFailureReason.Unknown);
       return result;
     });
-    const run = record(service.signInByShowingCode('https://hs'));
+    const run = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
     expect(run.kinds()).toEqual(['creating', 'failed']);
     expect(run.states.at(-1)).toEqual({ kind: 'failed', reason: 'unknown' });
@@ -602,7 +851,7 @@ describe('QrSignInService.signInByShowingCode', () => {
     const { service, flows } = setup((flow) =>
       flow.hang.add('negotiateProtocols'),
     );
-    const run = record(service.signInByShowingCode('https://hs'));
+    const run = record(service.signInByShowingCode('https://hs', 'hs'));
     await settle();
     flows[0].failSession(ClientRendezvousFailureReason.Expired);
     flows[0].failSession(ClientRendezvousFailureReason.Unknown);
@@ -680,8 +929,8 @@ describe('QrSignInService.linkByScanning', () => {
   });
 
   it.each([
-    ['another origin', 'https://evil.example/link?code=ABCD'],
-    ['a look-alike host', 'https://auth.evil.example/link'],
+    ['another origin', 'https://other.example/link?code=ABCD'],
+    ['a look-alike host', 'https://auth.other.example/link'],
     ['an unparseable link', 'not a url'],
   ])(
     'fails insecure and never shows an approval link on %s',

@@ -24,13 +24,16 @@ import {
   take,
   type Subscriber,
 } from 'rxjs';
+import { verifyAccountServer } from '../account-establishment';
 import { lacksAuthMetadata } from '../account-server-api';
+import { AUTHENTICATION_HOMESERVER_DISCOVERY } from '../homeserver-discovery.port';
 import {
   QR_LINK_IDENTITY_CHECK,
   QR_SIGN_IN_COMPLETION,
 } from './qr-sign-in-completion.port';
 import {
   DeviceGrantRejectedError,
+  OtherServerError,
   qrSignInFailureOf,
   type ExistingDeviceState,
   type NewDeviceState,
@@ -130,9 +133,16 @@ export class QrSignInAdapter {
   private readonly factory = inject(QrRendezvousFactory);
   private readonly completion = inject(QR_SIGN_IN_COMPLETION);
   private readonly identity = inject(QR_LINK_IDENTITY_CHECK);
+  private readonly discovery = inject(AUTHENTICATION_HOMESERVER_DISCOVERY);
 
-  /** Cold: each subscription shows a new code. */
-  signInByShowingCode(homeserverUrl: string): Observable<NewDeviceState> {
+  /**
+   * Cold: each subscription shows a new code. `serverName` is the server the person entered;
+   * the other device's account must be on it.
+   */
+  signInByShowingCode(
+    homeserverUrl: string,
+    serverName: string,
+  ): Observable<NewDeviceState> {
     return new Observable<NewDeviceState>((subscriber) => {
       const run = new FlowRun(subscriber);
       run.start(async () => {
@@ -142,6 +152,9 @@ export class QrSignInAdapter {
           run.onFailure,
         );
         run.attach(flow);
+        const grantMetadata = await run.read(
+          this.completion.deviceGrantMetadata(metadata),
+        );
         let clientId = await run.read(
           this.completion.deviceGrantClientId(metadata, homeserverUrl),
         );
@@ -151,7 +164,19 @@ export class QrSignInAdapter {
           qr: required(flow.code),
           expiresAt: codeExpiry(expires),
         });
-        await run.step(flow.negotiateProtocols());
+        const reported = await run.step(flow.negotiateProtocols());
+        // The other device's account must be on the server entered before any grant is asked for.
+        if (
+          !(await run.step(
+            this.isEnteredServer(
+              reported.serverName,
+              serverName,
+              homeserverUrl,
+            ),
+          ))
+        ) {
+          throw new OtherServerError();
+        }
         run.emit({
           kind: 'confirm-check-code',
           code: required(flow.checkCode),
@@ -159,7 +184,11 @@ export class QrSignInAdapter {
         const deviceId = newDeviceId();
         const grant = () =>
           run.step(
-            flow.deviceAuthorizationGrant({ metadata, clientId, deviceId }),
+            flow.deviceAuthorizationGrant({
+              metadata: grantMetadata,
+              clientId,
+              deviceId,
+            }),
           );
         // A cached client the provider no longer accepts fails before anything is sent to
         // the other device, so the grant can be retried once on the same flow.
@@ -191,7 +220,7 @@ export class QrSignInAdapter {
           this.completion.completeDeviceGrant(
             tokens,
             clientId,
-            metadata,
+            grantMetadata,
             homeserverUrl,
           ),
         );
@@ -288,6 +317,23 @@ export class QrSignInAdapter {
       state$,
       confirmCheckCode: (match) => current?.answer(match),
     };
+  }
+
+  /** Whether an account on `reported` is accepted as one on the homeserver entered. */
+  private async isEnteredServer(
+    reported: string | undefined,
+    entered: string,
+    homeserverUrl: string,
+  ): Promise<boolean> {
+    if (!reported) return false;
+    // A user ID's server name has no root dot.
+    const userId = `@_:${reported.replace(/\.$/, '')}`;
+    return firstValueFrom(
+      verifyAccountServer(homeserverUrl, userId, this.discovery, entered),
+    ).then(
+      () => true,
+      () => false,
+    );
   }
 
   /**

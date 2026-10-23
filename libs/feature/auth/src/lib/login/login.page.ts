@@ -299,14 +299,19 @@ export class LoginPage {
    */
   readonly otherSiteSignIn = signal<{
     readonly prompt?: string;
+    /** The held sign-in shows a QR code instead of redirecting. */
+    readonly qr?: true;
     readonly provider: string;
     readonly homeserver: string;
   } | null>(null);
 
   /** The server can take a QR sign-in; never offered in re-auth, which keeps its device. */
   readonly qrSignInSupported = signal(false);
-  /** The QR panel replaces the sign-in choices while it is open. */
-  readonly showingQr = signal(false);
+  /** The QR panel and the server it signs in to; it replaces the sign-in choices while open. */
+  readonly showingQr = signal<{
+    readonly homeserverUrl: string;
+    readonly serverName: string;
+  } | null>(null);
 
   readonly busy = signal(false);
   /** Page-level failures with no field to attach to (erase, re-auth loading). */
@@ -462,9 +467,27 @@ export class LoginPage {
     });
   }
 
+  /** Show a QR code, after the same provider check as {@link startOidc}. */
+  startQr(): void {
+    const baseUrl = this.baseUrl();
+    const metadata = this.oidcMetadata();
+    if (!baseUrl || !metadata?.issuer) return;
+    if (!this.holdForOtherSite(baseUrl, metadata, { qr: true })) {
+      this.openQr();
+    }
+  }
+
+  private openQr(): void {
+    const homeserverUrl = this.baseUrl();
+    const serverName = this.enteredServerName;
+    if (homeserverUrl && serverName) {
+      this.showingQr.set({ homeserverUrl, serverName });
+    }
+  }
+
   /** Leave the QR panel; focus returns to the button that opened it. */
   closeQr(): void {
-    this.showingQr.set(false);
+    this.showingQr.set(null);
     afterNextRender(() => this.qrSignInButton()?.nativeElement.focus(), {
       injector: this.injector,
     });
@@ -514,28 +537,41 @@ export class LoginPage {
       this.redirectToProvider(baseUrl, metadata, prompt);
       return;
     }
+    if (!this.holdForOtherSite(baseUrl, metadata, prompt ? { prompt } : {})) {
+      this.redirectToProvider(baseUrl, metadata, prompt);
+    }
+  }
+
+  /**
+   * Holds `held` for {@link confirmOtherSite} when a provider endpoint or the issuer is
+   * outside the server; true when it did.
+   */
+  private holdForOtherSite(
+    baseUrl: string,
+    metadata: AuthMetadata,
+    held: { readonly prompt?: string; readonly qr?: true },
+  ): boolean {
     // Re-auth has no server name entered, so the homeserver's own host stands in.
     const server = this.enteredServerName ?? new URL(baseUrl).host;
     const outside = [
       metadata.authorization_endpoint,
       metadata.token_endpoint,
       metadata.revocation_endpoint,
+      metadata.device_authorization_endpoint,
       metadata.issuer,
     ]
       .filter((url) => url !== undefined)
       .find((url) => !isPartOfServer(url, server));
-    if (outside !== undefined) {
-      this.otherSiteSignIn.set({
-        ...(prompt ? { prompt } : {}),
-        provider: hostOf(outside),
-        homeserver: hostOf(`https://${server.replace(/^\/+/, '')}`),
-      });
-      afterNextRender(() => this.otherSiteNotice()?.nativeElement.focus(), {
-        injector: this.injector,
-      });
-      return;
-    }
-    this.redirectToProvider(baseUrl, metadata, prompt);
+    if (outside === undefined) return false;
+    this.otherSiteSignIn.set({
+      ...held,
+      provider: hostOf(outside),
+      homeserver: hostOf(`https://${server.replace(/^\/+/, '')}`),
+    });
+    afterNextRender(() => this.otherSiteNotice()?.nativeElement.focus(), {
+      injector: this.injector,
+    });
+    return true;
   }
 
   /** Continue the held sign-in with the provider on another site. */
@@ -544,7 +580,9 @@ export class LoginPage {
     const baseUrl = this.baseUrl();
     const metadata = this.oidcMetadata();
     this.otherSiteSignIn.set(null);
-    if (held && baseUrl && metadata) {
+    if (held?.qr) {
+      this.openQr();
+    } else if (held && baseUrl && metadata) {
       this.redirectToProvider(baseUrl, metadata, held.prompt);
     }
   }

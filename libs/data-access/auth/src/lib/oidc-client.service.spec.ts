@@ -727,6 +727,53 @@ describe('OidcClientService', () => {
         expect(grant.oidc).toEqual(PINNED_BINDING);
       });
 
+      describe("on another origin than the issuer's, when the issuer publishes no document", () => {
+        it('refuses a token endpoint without sending the code', async () => {
+          const elsewhere = 'https://hs.example/token';
+          stubClient({
+            whoami: WHOAMI,
+            metadata: { ...AUTH_METADATA, token_endpoint: elsewhere },
+          });
+          const fetchMock = stubFetch(
+            {},
+            { [elsewhere]: () => jsonResponse(TOKEN) },
+          );
+
+          await expect(
+            firstValueFrom(
+              svc.completeGrant('CODE', {
+                ...CONTEXT,
+                tokenEndpoint: elsewhere,
+              }),
+            ),
+          ).rejects.toThrow(PROVIDER_ERROR);
+          expect(
+            fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST'),
+          ).toEqual([]);
+        });
+
+        it('pins no revocation endpoint', async () => {
+          const elsewhere = 'https://hs.example/revoke';
+          stubClient({
+            whoami: WHOAMI,
+            metadata: { ...AUTH_METADATA, revocation_endpoint: elsewhere },
+          });
+          stubFetch({ token: () => jsonResponse(TOKEN) });
+
+          const grant = await firstValueFrom(
+            svc.completeGrant('CODE', {
+              ...CONTEXT,
+              revocationEndpoint: elsewhere,
+            }),
+          );
+
+          expect(grant.oidc).toEqual({
+            ...BINDING,
+            tokenEndpoint: AUTH_METADATA.token_endpoint,
+          });
+        });
+      });
+
       it('redeems the code at the saved token endpoint and pins the saved endpoints', async () => {
         const saved = {
           ...CONTEXT,
@@ -912,6 +959,69 @@ describe('OidcClientService', () => {
 
         expect(tokenPosts(fetchMock)).toHaveLength(1);
         expect(grant.oidc).toEqual(PINNED_BINDING);
+      });
+
+      it("pins no revocation endpoint it omits that is on another origin than the issuer's", async () => {
+        const elsewhere = 'https://hs.example/revoke';
+        stubClient({
+          whoami: WHOAMI,
+          metadata: { ...AUTH_METADATA, revocation_endpoint: elsewhere },
+        });
+        const { revocation_endpoint: _omitted, ...withoutRevocation } =
+          AUTH_METADATA;
+        stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          { [RFC8414_DISCOVERY]: () => jsonResponse(withoutRevocation) },
+        );
+
+        const grant = await firstValueFrom(
+          svc.completeGrant('CODE', {
+            ...CONTEXT,
+            revocationEndpoint: elsewhere,
+          }),
+        );
+
+        expect(grant.oidc).toEqual({
+          ...BINDING,
+          tokenEndpoint: AUTH_METADATA.token_endpoint,
+        });
+      });
+
+      it("redeems at endpoints on another origin than the issuer's that it confirms", async () => {
+        const elsewhere = {
+          ...AUTH_METADATA,
+          authorization_endpoint: 'https://login.example/authorize',
+          token_endpoint: 'https://login.example/token',
+          revocation_endpoint: 'https://login.example/revoke',
+        };
+        stubClient({ whoami: WHOAMI, metadata: elsewhere });
+        const fetchMock = stubFetch(
+          {},
+          {
+            [RFC8414_DISCOVERY]: () => jsonResponse(elsewhere),
+            [elsewhere.token_endpoint]: () => jsonResponse(TOKEN),
+          },
+        );
+
+        const grant = await firstValueFrom(
+          svc.completeGrant('CODE', {
+            ...CONTEXT,
+            authorizationEndpoint: elsewhere.authorization_endpoint,
+            tokenEndpoint: elsewhere.token_endpoint,
+            revocationEndpoint: elsewhere.revocation_endpoint,
+          }),
+        );
+
+        expect(
+          fetchMock.mock.calls.filter(
+            ([url]) => url === elsewhere.token_endpoint,
+          ),
+        ).toHaveLength(1);
+        expect(grant.oidc).toEqual({
+          ...BINDING,
+          tokenEndpoint: elsewhere.token_endpoint,
+          revocationEndpoint: elsewhere.revocation_endpoint,
+        });
       });
 
       it('falls back to the OpenID Connect document when RFC 8414 has none', async () => {
@@ -1177,6 +1287,92 @@ describe('OidcClientService', () => {
       ).toEqual([]);
     });
 
+    describe("for an unpinned binding, a revocation endpoint on another origin than the issuer's", () => {
+      const elsewhere = 'https://hs.example/revoke';
+
+      it.each([
+        ['when the issuer publishes no document', () => jsonResponse({}, 404)],
+        [
+          'that the document omits',
+          () => {
+            const { revocation_endpoint: _omitted, ...withoutRevocation } =
+              AUTH_METADATA;
+            return jsonResponse(withoutRevocation);
+          },
+        ],
+      ])('is not posted to %s', async (_, document) => {
+        stubClient({
+          metadata: { ...AUTH_METADATA, revocation_endpoint: elsewhere },
+        });
+        const fetchMock = stubFetch(
+          {},
+          {
+            [RFC8414_DISCOVERY]: document,
+            [elsewhere]: () => jsonResponse({}),
+          },
+        );
+
+        await expect(
+          firstValueFrom(
+            svc.revokeTokens(HOMESERVER, BINDING, {
+              accessToken: 'a',
+              refreshToken: 'r',
+            }),
+          ),
+        ).resolves.toBeUndefined();
+        expect(fetchMock.mock.calls.map(([url]) => url)).not.toContain(
+          elsewhere,
+        );
+      });
+    });
+
+    describe("for a binding whose issuer's own document once disagreed", () => {
+      const CONFIRMATION_REQUIRED = {
+        ...BINDING,
+        requiresIssuerConfirmation: true,
+      };
+
+      it.each([
+        ['publishes no document', () => jsonResponse({}, 404)],
+        [
+          'cannot be reached',
+          () => {
+            throw new TypeError('Failed to fetch');
+          },
+        ],
+      ])('does not revoke while the issuer %s', async (_, document) => {
+        stubClient();
+        const fetchMock = stubFetch(
+          { revocation: () => jsonResponse({}) },
+          { [RFC8414_DISCOVERY]: document, [OIDC_DISCOVERY]: document },
+        );
+
+        await firstValueFrom(
+          svc.revokeTokens(HOMESERVER, CONFIRMATION_REQUIRED, {
+            refreshToken: 'r',
+          }),
+        );
+
+        expect(revocationPosts(fetchMock)).toEqual([]);
+      });
+
+      it('revokes at the endpoint its document confirms', async () => {
+        stubClient();
+        const fetchMock = stubFetch(
+          { revocation: () => jsonResponse({}) },
+          { [RFC8414_DISCOVERY]: () => jsonResponse(AUTH_METADATA) },
+        );
+
+        await firstValueFrom(
+          svc.revokeTokens(HOMESERVER, CONFIRMATION_REQUIRED, {
+            refreshToken: 'r',
+          }),
+        );
+
+        expect(revocationPosts(fetchMock)).toHaveLength(1);
+      });
+    });
+
     it('resolves void when discovery fails, without POSTing (never blocks logout)', async () => {
       stubClient({ metadata: new Error('metadata unavailable') });
       const fetchMock = stubFetch({});
@@ -1363,6 +1559,19 @@ describe('OidcClientService', () => {
         tokenEndpoint: AUTH_METADATA.token_endpoint,
         revocationEndpoint: AUTH_METADATA.revocation_endpoint,
       });
+    });
+
+    it("refuses a token endpoint on another origin than the issuer's when the issuer serves no document", async () => {
+      stubFetch({});
+
+      await expect(
+        firstValueFrom(
+          svc.deviceGrantBinding(
+            { ...AUTH_METADATA, token_endpoint: 'https://hs.example/token' },
+            'qr-client',
+          ),
+        ),
+      ).rejects.toThrow(/sign-in provider/i);
     });
 
     it("refuses endpoints the issuer's own document contradicts", async () => {
