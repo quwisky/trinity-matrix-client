@@ -198,16 +198,11 @@ export function projectSelectedRooms(
         continue;
       }
 
-      // The row opens as an Account that has the room as encrypted: another Account's client would send in the clear.
+      // The row opens as, and shows the encryption view of, the active Account, else the first source.
       const winner =
-        existing.encrypted !== summary.encrypted
-          ? existing.encrypted
-            ? existing
-            : summary
-          : accountId === activeAccountId &&
-              existing.accountId !== activeAccountId
-            ? summary
-            : existing;
+        accountId === activeAccountId && existing.accountId !== activeAccountId
+          ? summary
+          : existing;
       byRoomId.set(room.roomId, {
         ...winner,
         accountIds: [...existing.accountIds, accountId],
@@ -218,7 +213,6 @@ export function projectSelectedRooms(
         ),
         hasUnread: existing.hasUnread || summary.hasUnread,
         markedUnread: existing.markedUnread || summary.markedUnread,
-        encrypted: existing.encrypted || summary.encrypted,
         lowPriority: existing.lowPriority || summary.lowPriority,
       });
     }
