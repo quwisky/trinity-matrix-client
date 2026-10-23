@@ -4,8 +4,10 @@ import { MockProvider } from 'ng-mocks';
 import {
   ClientEvent,
   ConnectionError,
+  EventStatus,
   HttpApiEvent,
   MatrixError,
+  MatrixEvent,
   SyncState,
   createClient,
 } from 'matrix-js-sdk';
@@ -895,6 +897,88 @@ describe('MatrixClientService', () => {
     syncCall![1]('SYNCING');
     await Promise.resolve();
     expect(svc.syncState()).toBe('SYNCING');
+  });
+
+  describe('resending messages that failed offline', () => {
+    /** A live client whose one room holds a text that failed with a ConnectionError. */
+    async function offlineClient() {
+      const echo = new MatrixEvent({
+        type: 'm.room.message',
+        content: { msgtype: 'm.text', body: 'sent offline' },
+      });
+      echo.status = EventStatus.NOT_SENT;
+      echo.error = new ConnectionError('offline') as never;
+      const room = {
+        roomId: '!room:hs',
+        getLiveTimeline: () => ({ getEvents: () => [echo] }),
+        getThreads: () => [],
+        // Joined and already encrypted, so the encryption repair a sync runs passes it over.
+        getMyMembership: () => 'join',
+        hasEncryptionStateEvent: () => true,
+      };
+      const client = {
+        ...fakeClient(),
+        getRooms: vi.fn().mockReturnValue([room]),
+        resendEvent: vi.fn().mockResolvedValue(undefined),
+      };
+      const { svc } = setup(client);
+      await firstValueFrom(svc.init(SESSION));
+      const onSync = client.on.mock.calls.find(
+        ([evt]) => evt === ClientEvent.Sync,
+      )![1] as (state: SyncState, previous: SyncState | null) => void;
+      return { client, onSync };
+    }
+
+    const flush = () => new Promise((resolve) => setTimeout(resolve));
+
+    it.each([SyncState.Reconnecting, SyncState.Error, SyncState.Catchup])(
+      'resends once when sync returns from %s',
+      async (previous) => {
+        const { client, onSync } = await offlineClient();
+
+        onSync(SyncState.Syncing, previous);
+
+        await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+        expect(client.resendEvent).toHaveBeenCalledOnce();
+      },
+    );
+
+    it('lets a second reconnect resend only after the first run ends', async () => {
+      const { client, onSync } = await offlineClient();
+      let release!: () => void;
+      client.resendEvent.mockReturnValueOnce(
+        new Promise<void>((resolve) => (release = resolve)),
+      );
+
+      onSync(SyncState.Syncing, SyncState.Reconnecting);
+      onSync(SyncState.Syncing, SyncState.Error);
+      await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+      await flush();
+      expect(client.resendEvent).toHaveBeenCalledOnce();
+
+      release();
+      await vi.waitFor(() =>
+        expect(client.resendEvent).toHaveBeenCalledTimes(2),
+      );
+    });
+
+    it('does not resend on the first sync', async () => {
+      const { client, onSync } = await offlineClient();
+
+      onSync(SyncState.Syncing, SyncState.Prepared);
+      await flush();
+
+      expect(client.resendEvent).not.toHaveBeenCalled();
+    });
+
+    it('does not resend on a sync that follows another', async () => {
+      const { client, onSync } = await offlineClient();
+
+      onSync(SyncState.Syncing, SyncState.Syncing);
+      await flush();
+
+      expect(client.resendEvent).not.toHaveBeenCalled();
+    });
   });
 
   it('stop() tears down without clearing the stores', async () => {

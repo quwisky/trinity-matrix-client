@@ -22,6 +22,7 @@ export * from './lib/matrix-to';
 export * from './lib/trinity-link';
 export * from './lib/poll';
 export * from './lib/transient-errors';
+export * from './lib/waiting-to-send';
 export * from './lib/request-failure';
 export * from './lib/password-uia';
 export * from './lib/attachment-crypto';

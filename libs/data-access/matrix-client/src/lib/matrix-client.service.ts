@@ -60,6 +60,7 @@ import {
   clientHasOutgoingWork,
   clientPendingTexts,
   pauseClientSync,
+  resendWaitingEchoes,
   type PendingTextMessage,
 } from './outgoing-work';
 import {
@@ -82,6 +83,13 @@ export const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
 
 /** Where matrix-js-sdk discovers an OAuth account's provider (`MatrixClient.getAuthMetadata`). */
 const AUTH_METADATA_PATH = '/_matrix/client/v1/auth_metadata';
+
+/** Sync states that a return to `Syncing` means the homeserver is reachable again after. */
+const RECONNECTED_FROM: ReadonlySet<SyncState> = new Set([
+  SyncState.Reconnecting,
+  SyncState.Error,
+  SyncState.Catchup,
+]);
 
 /** Whether an endpoint names the same URL once parsed; anything unparseable does not. */
 function sameEndpoint(a: unknown, b: string): boolean {
@@ -207,6 +215,8 @@ export class MatrixClientService {
 
   private readonly clients = new Map<string, AccountClient>();
   private readonly logoutHolds = new Map<string, LogoutHoldState>();
+  /** Set by a session handover's {@link pauseSync}: a reconnect then resends nothing. */
+  private syncPaused = false;
 
   /**
    * Tell the Electron main process which origins we legitimately talk to, so its CORS
@@ -586,6 +596,7 @@ export class MatrixClientService {
    * {@link stop}.
    */
   pauseSync(): void {
+    this.syncPaused = true;
     for (const account of this.clients.values()) {
       pauseClientSync(account.client);
     }
@@ -822,6 +833,8 @@ export class MatrixClientService {
       let syncProjection: ProjectionLease | null = null;
       const syncState = signal<SyncState | null>(null);
       let latestSyncState: SyncState | null = null;
+      // One resend run at a time, so a second reconnect mid-run cannot overtake a room's order.
+      let resending = Promise.resolve();
       const serverSynced = signal(false);
       let latestServerSynced = false;
       const roomsPrepared = signal(false);
@@ -916,9 +929,25 @@ export class MatrixClientService {
             attach: (invalidate) => {
               const onSync = (
                 state: SyncState,
-                _previous: SyncState | null,
+                previous: SyncState | null,
                 data?: SyncStateData,
               ): void => {
+                if (
+                  state === SyncState.Syncing &&
+                  previous !== null &&
+                  RECONNECTED_FROM.has(previous)
+                ) {
+                  resending = resending
+                    .then(() =>
+                      this.syncPaused ? undefined : resendWaitingEchoes(client),
+                    )
+                    .catch((error: unknown) => {
+                      console.warn(
+                        "Couldn't resend the messages that failed offline.",
+                        error,
+                      );
+                    });
+                }
                 latestSyncState = state;
                 latestServerSynced ||= isServerSync(state, data);
                 latestRoomsPrepared ||=
@@ -1237,6 +1266,7 @@ export class MatrixClientService {
 
   /** Stop and drop every client (no store deletion), and forget the 4S keys. */
   private teardownAll(): void {
+    this.syncPaused = false;
     for (const account of this.clients.values()) {
       account.syncProjection.release();
       account.client.off(HttpApiEvent.SessionLoggedOut, account.onLoggedOut);

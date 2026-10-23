@@ -1,4 +1,11 @@
-import { EventStatus, MsgType, createClient } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  ConnectionError,
+  EventStatus,
+  MsgType,
+  SyncState,
+  createClient,
+} from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from './matrix-client.service';
@@ -94,6 +101,9 @@ describe('MatrixClientService session handover', () => {
       roomId: '!room:hs',
       getLiveTimeline: () => timeline(events),
       getThreads: () => [{ liveTimeline: timeline([]) }],
+      // Joined and already encrypted, so the encryption repair a sync runs passes it over.
+      getMyMembership: () => 'join',
+      hasEncryptionStateEvent: () => true,
       get txnToEvent() {
         return new Map(
           [...events, ...threadEvents]
@@ -126,6 +136,27 @@ describe('MatrixClientService session handover', () => {
     expect(client.syncApi.stop).toHaveBeenCalledOnce();
     expect(client.stopClient).not.toHaveBeenCalled();
     expect(svc.isInitialized).toBe(true);
+  });
+
+  it('does not resend a message that failed offline once sync is paused', async () => {
+    const offline = {
+      ...echo(EventStatus.NOT_SENT),
+      error: new ConnectionError('offline'),
+    };
+    const client = {
+      ...handoverClient([offline]),
+      resendEvent: vi.fn().mockResolvedValue(undefined),
+    };
+    const svc = await liveService(client);
+    const onSync = client.on.mock.calls.find(
+      ([evt]) => evt === ClientEvent.Sync,
+    )![1] as (state: SyncState, previous: SyncState | null) => void;
+
+    svc.pauseSync();
+    onSync(SyncState.Syncing, SyncState.Reconnecting);
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(client.resendEvent).not.toHaveBeenCalled();
   });
 
   it.each([EventStatus.QUEUED, EventStatus.ENCRYPTING, EventStatus.SENDING])(
