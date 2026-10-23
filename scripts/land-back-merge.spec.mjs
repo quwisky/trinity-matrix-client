@@ -1,5 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -9,6 +15,7 @@ import {
   pushArgs,
   tagFor,
 } from './land-back-merge.mjs';
+import { buildBackMerge } from './back-merge.mjs';
 
 const REQUIRED = ['Unit tests', 'Lint & format'];
 const SHA = 'a'.repeat(40);
@@ -59,17 +66,25 @@ function repo() {
     git('commit', '-qm', `${file}: ${text}`);
     return git('rev-parse', 'HEAD');
   };
-  commit('a.txt', 'base\n');
-  git('push', '-q', 'origin', 'main');
+  commit('CHANGELOG.md', 'base\n');
+  git('tag', 'v0.1.0-next.1');
+  git('push', '-q', 'origin', 'main', 'v0.1.0-next.1');
   git('switch', '-qc', 'release/0.1.x');
-  commit('b.txt', 'release\n');
+  commit('CHANGELOG.md', 'release notes\n');
   git('tag', 'v0.1.2');
   git('push', '-q', 'origin', 'release/0.1.x', 'v0.1.2');
   git('switch', '-q', 'main');
   commit('c.txt', 'main\n');
   git('push', '-q', 'origin', 'main');
-  git('switch', '-qc', 'back-merge/v0.1.2');
-  commit('CHANGELOG.md', 'release notes\n');
+  /** Branch back-merge/<tag> from main with what back-merge.mjs builds, committed but not pushed. */
+  const build = (tag = 'v0.1.2') => {
+    git('switch', '-q', '-C', `back-merge/${tag}`, 'origin/main');
+    buildBackMerge(tag, dir);
+    git('commit', '-qm', `chore: back-merge ${tag} into main`);
+    return git('rev-parse', 'HEAD');
+  };
+  git('fetch', '-q', 'origin');
+  build();
   git('push', '-q', 'origin', 'back-merge/v0.1.2');
   const head = git('rev-parse', 'HEAD');
   const remoteMain = () =>
@@ -77,7 +92,7 @@ function repo() {
       cwd: origin,
       encoding: 'utf8',
     }).trim();
-  return { root, dir, git, commit, head, remoteMain };
+  return { root, dir, git, commit, build, head, remoteMain };
 }
 
 describe('land-back-merge', () => {
@@ -278,6 +293,74 @@ describe('land-back-merge', () => {
       expect(r.remoteMain()).toBe(main);
     });
 
+    it('says how to fix a two-parent merge from an old release line', () => {
+      r = repo();
+      r.git('switch', '-q', '-C', 'back-merge/v0.1.2', r.remoteMain());
+      r.git('merge', '-q', '--no-ff', '--no-edit', 'v0.1.2');
+      r.git('push', '-q', '-f', 'origin', 'back-merge/v0.1.2');
+      expect(() => attempt()).toThrow(
+        /predates single-parent back-merges.*backport.*release\/0\.1\.x.*Open the back-merge PR/s,
+      );
+    });
+
+    it('lands the commit back-merge.mjs builds', () => {
+      r = repo();
+      r.git('switch', '-q', 'main');
+      r.commit('d.txt', 'later\n');
+      r.git('push', '-q', 'origin', 'main');
+      r.git('fetch', '-q', 'origin');
+      const sha = r.build();
+      r.git('push', '-q', '-f', 'origin', 'back-merge/v0.1.2');
+      attempt({ pulls: () => [pr(sha)] });
+      expect(r.remoteMain()).toBe(sha);
+    });
+
+    it("refuses a metadata change that is not the tag's content", () => {
+      r = repo();
+      const main = r.remoteMain();
+      r.git('switch', '-q', '-C', 'back-merge/v0.1.2', main);
+      r.commit('CHANGELOG.md', 'forged\n');
+      r.git('push', '-q', '-f', 'origin', 'back-merge/v0.1.2');
+      expect(() => attempt()).toThrow(/not the tag's metadata.*CHANGELOG\.md/s);
+      expect(r.remoteMain()).toBe(main);
+    });
+
+    it('refuses when the tag does not exist', () => {
+      r = repo();
+      const main = r.remoteMain();
+      r.git('switch', '-q', '-C', 'back-merge/v9.9.9', main);
+      r.commit('CHANGELOG.md', 'forged\n');
+      r.git('push', '-q', 'origin', 'back-merge/v9.9.9');
+      const sha = r.git('rev-parse', 'HEAD');
+      expect(() =>
+        attempt({ branch: 'back-merge/v9.9.9', pulls: () => [pr(sha)] }),
+      ).toThrow(/v9\.9\.9/);
+      expect(r.remoteMain()).toBe(main);
+    });
+
+    it('refuses a symlink at a metadata path', () => {
+      r = repo();
+      const main = r.remoteMain();
+      r.build();
+      unlinkSync(join(r.dir, 'CHANGELOG.md'));
+      symlinkSync('/etc/passwd', join(r.dir, 'CHANGELOG.md'));
+      r.git('add', '-A');
+      r.git('commit', '-q', '--amend', '--no-edit');
+      r.git('push', '-q', '-f', 'origin', 'back-merge/v0.1.2');
+      expect(() => attempt()).toThrow(/not the tag's metadata.*CHANGELOG\.md/s);
+      expect(r.remoteMain()).toBe(main);
+    });
+
+    it('refuses an empty commit', () => {
+      r = repo();
+      const main = r.remoteMain();
+      r.git('switch', '-q', '-C', 'back-merge/v0.1.2', main);
+      r.git('commit', '-q', '--allow-empty', '-m', 'empty');
+      r.git('push', '-q', '-f', 'origin', 'back-merge/v0.1.2');
+      expect(() => attempt()).toThrow(/nothing to back-merge/);
+      expect(r.remoteMain()).toBe(main);
+    });
+
     it('refuses a parent that is not current main', () => {
       r = repo();
       r.git('switch', '-q', 'main');
@@ -301,10 +384,7 @@ describe('land-back-merge', () => {
       r = repo();
       const main = r.remoteMain();
       r.git('switch', '-q', '-C', 'back-merge/v0.1.2', main);
-      r.commit('CHANGELOG.md', 'release notes\n');
-      writeFileSync(join(r.dir, 'package.json'), '{}\n');
-      r.git('add', '-A');
-      r.git('commit', '-q', '--amend', '--no-edit');
+      r.commit('package.json', '{}\n');
       r.git('push', '-q', '-f', 'origin', 'back-merge/v0.1.2');
       expect(() => attempt()).toThrow(
         /outside release metadata.*package\.json/s,

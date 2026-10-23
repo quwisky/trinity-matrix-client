@@ -7,8 +7,11 @@
  * so closing the PR, marking it draft or requesting changes stops a land.
  */
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { resolutionFor } from './back-merge.mjs';
+import { buildBackMerge, resolutionFor } from './back-merge.mjs';
 
 const STABLE_TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const METADATA = new Set(['release', 'higher']);
@@ -68,6 +71,38 @@ export function prProblems(prs, sha) {
   ];
 }
 
+/** Paths where sha's tree differs from the one main's back-merge.mjs builds for tag on main. */
+function treeDiff(git, tag, main, sha) {
+  const dir = mkdtempSync(join(tmpdir(), 'land-back-merge-'));
+  try {
+    git('worktree', 'add', '--detach', dir, main);
+    buildBackMerge(tag, dir);
+    const inDir = (...args) =>
+      execFileSync('git', args, {
+        cwd: dir,
+        encoding: 'utf8',
+        stdio: 'pipe',
+      }).trim();
+    const expected = inDir('write-tree');
+    return git(
+      'diff-tree',
+      '-r',
+      '--no-renames',
+      '--name-only',
+      expected,
+      `${sha}^{tree}`,
+    )
+      .split('\n')
+      .filter(Boolean);
+  } finally {
+    try {
+      git('worktree', 'remove', '--force', dir);
+    } catch {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+}
+
 /**
  * checks(sha) returns { required: string[], runs: { id, name, status, conclusion, head_sha, app }[] };
  * pulls(branch) returns the open PRs from branch into main. expectedSha is the commit CI ran on.
@@ -79,7 +114,7 @@ export function land({
   pulls,
   expectedSha,
 }) {
-  tagFor(branch);
+  const tag = tagFor(branch);
   const git = (...args) =>
     execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
   git(
@@ -88,6 +123,7 @@ export function land({
     'origin',
     '+refs/heads/main:refs/remotes/origin/main',
     `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+    `+refs/tags/${tag}:refs/tags/${tag}`,
   );
   const sha = git('rev-parse', `refs/remotes/origin/${branch}^{commit}`);
   if (expectedSha && sha !== expectedSha)
@@ -100,19 +136,32 @@ export function land({
     .slice(1);
   if (parents.length !== 1)
     throw new Error(
-      `${branch} at ${sha} is not a single-parent commit on main; refusing.`,
+      `${branch} at ${sha} is not a single-parent commit on main; refusing.` +
+        (parents.length === 2
+          ? ` A two-parent merge comes from a release line whose scripts/back-merge.mjs predates single-parent back-merges: backport that change to release/${tag.slice(1, tag.lastIndexOf('.'))}.x and re-run 'Open the back-merge PR'.`
+          : ''),
     );
   if (parents[0] !== main)
     throw new Error(
       `main has moved: ${branch} at ${sha} is built on ${parents[0]}, but main is at ${main}. ` +
         'Re-run the back-merge job (Open the back-merge PR in release.yml), which rebuilds the commit from current main.',
     );
-  const foreign = git('diff', '--name-only', '--no-renames', main, sha)
+  const changed = git('diff', '--name-only', '--no-renames', main, sha)
     .split('\n')
-    .filter((path) => path && !METADATA.has(resolutionFor(path)));
+    .filter(Boolean);
+  if (changed.length === 0)
+    throw new Error(
+      `${branch} at ${sha} changes nothing: nothing to back-merge.`,
+    );
+  const foreign = changed.filter((path) => !METADATA.has(resolutionFor(path)));
   if (foreign.length > 0)
     throw new Error(
       `${branch} at ${sha} changes paths outside release metadata; refusing:\n  ${foreign.join('\n  ')}`,
+    );
+  const wrong = treeDiff(git, tag, main, sha);
+  if (wrong.length > 0)
+    throw new Error(
+      `${branch} at ${sha} is not the tag's metadata on main; these paths differ from what scripts/back-merge.mjs builds for ${tag}:\n  ${wrong.join('\n  ')}`,
     );
   const { required, runs } = checks(sha);
   const problems = checkProblems(required, runs, sha);
