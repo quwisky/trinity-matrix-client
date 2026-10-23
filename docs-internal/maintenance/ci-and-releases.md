@@ -581,22 +581,30 @@ line whose `release.yml` predates the single-parent job still builds the old two
 which the lander refuses. Update that line's `release.yml` through a direct pull request into
 `release/X.Y.x` (never with `.release-please-manifest.json`) and re-run `Open the back-merge PR`.
 
-The commit carries only these paths. Each is a 3-way merge of the merge base, `main` and the
-tag in which a conflicting hunk takes the release side and every non-conflicting edit from
-either side is kept. `CHANGELOG.md` and `apps/docs-users/release.json` are written back from
-the release side even if `main` deleted them. Any other path, a user guide page or
-`.release-please-manifest.next.json`, that `main` deleted (or that the tag deleted) is skipped
-with a note. A path added on both lines takes the release side whole.
-`.release-please-manifest.json` is not merged: it gets the line's cut prerelease, or keeps
-`main`'s value when that is already a higher `-next` prerelease, so a patch on an older line
-never moves `main`'s boundary back. A stable value there predates single-parent back-merges and
-is replaced by the cut.
+The commit carries only these paths. `CHANGELOG.md` is not merged: the tag's `## [X.Y.Z]`
+section is inserted into `main`'s changelog above its first lower version, unless it is already
+there, and the rest of `main`'s changelog stays as it is (if `main` has no `CHANGELOG.md`, the
+tag's is written whole). `apps/docs-users/release.json` and user guide pages are a 3-way merge
+of the merge base, `main` and the tag in which a conflicting hunk takes the release side and
+every non-conflicting edit from either side is kept; `release.json` is written back even if
+`main` deleted it. Any other path, a user guide page or `.release-please-manifest.next.json`,
+that is absent on `main` (or that the tag deleted) is skipped with a note. A path added on both
+lines takes the release side whole. `.release-please-manifest.json` is not merged: it gets the
+line's cut prerelease, or keeps `main`'s value when that is already a higher `-next` prerelease,
+so a patch on an older line never moves `main`'s boundary back. A stable value there predates
+single-parent back-merges and is replaced by the cut.
 
-| Path                                                             | Resolution                                                                                                                                 |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `CHANGELOG.md`, `apps/docs-users/release.json`, user guide pages | The release branch's side                                                                                                                  |
-| `.release-please-manifest.json`                                  | The line's cut prerelease (`git describe --tags --abbrev=0 --match 'v*-next.*' vX.Y.Z`, without the `v`), or `main`'s higher `-next` value |
-| `.release-please-manifest.next.json`                             | The higher version by semver precedence (`0.1.1` beats `0.1.1-next.3`), so `main` continues at the next patch's prereleases                |
+When `main` already records a newer stable release than the tag (a higher `## [X.Y.Z]` in its
+`CHANGELOG.md` or a higher `version` in `apps/docs-users/release.json`), as when v0.5.4 ships
+after v0.6.0 was back-merged, the commit carries only the tag's changelog section.
+`release.json`, the user guide pages and both manifests stay as `main` has them.
+
+| Path                                             | Resolution                                                                                                                                 |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CHANGELOG.md`                                   | The tag's own section, inserted in version order                                                                                           |
+| `apps/docs-users/release.json`, user guide pages | The release branch's side; untouched for an older line                                                                                     |
+| `.release-please-manifest.json`                  | The line's cut prerelease (`git describe --tags --abbrev=0 --match 'v*-next.*' vX.Y.Z`, without the `v`), or `main`'s higher `-next` value |
+| `.release-please-manifest.next.json`             | The higher version by semver precedence (`0.1.1` beats `0.1.1-next.3`), so `main` continues at the next patch's prereleases                |
 
 `package.json`, `electron/package.json` and all other paths are never carried, so conflicts
 no longer arise. The job fails, with a clear error, only when no cut prerelease tag precedes

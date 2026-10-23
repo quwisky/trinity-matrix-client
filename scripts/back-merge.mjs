@@ -9,10 +9,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 
+const CHANGELOG = 'CHANGELOG.md';
+const RELEASE_JSON = 'apps/docs-users/release.json';
 const RELEASE_SIDE = new Set([
-  'CHANGELOG.md',
+  CHANGELOG,
   '.release-please-manifest.json',
-  'apps/docs-users/release.json',
+  RELEASE_JSON,
 ]);
 const NEXT_MANIFEST = '.release-please-manifest.next.json';
 const USER_GUIDE_PAGE = /^apps\/docs-users\/src\/content\/docs\/.+\.mdx?$/;
@@ -109,6 +111,30 @@ export function cutPrerelease(tag, cwd = process.cwd()) {
   return version;
 }
 
+const sections = (text) =>
+  [...text.matchAll(/^## \[([^\]]+)\].*$/gm)].map((match) => ({
+    version: match[1],
+    index: match.index,
+  }));
+
+/** Adds the release changelog's `## [version]` section to main's, above its first lower version, once. */
+export function insertChangelogSection(mainText, releaseText, version) {
+  const ours = sections(mainText);
+  if (ours.some((section) => section.version === version)) return mainText;
+  const theirs = sections(releaseText);
+  const i = theirs.findIndex((section) => section.version === version);
+  if (i === -1) return mainText;
+  const section = `${releaseText.slice(theirs[i].index, theirs[i + 1]?.index).trimEnd()}\n`;
+  const below = ours.find(
+    (other) =>
+      VERSION.test(other.version) &&
+      compareVersions(other.version, version) < 0,
+  );
+  return below
+    ? `${mainText.slice(0, below.index)}${section}\n${mainText.slice(below.index)}`
+    : `${mainText.trimEnd()}\n\n${section}`;
+}
+
 /** Writes and stages the release metadata on the checked-out main; commits nothing. */
 export function buildBackMerge(tag, cwd = process.cwd()) {
   const at = (...args) =>
@@ -127,8 +153,26 @@ export function buildBackMerge(tag, cwd = process.cwd()) {
   };
   const cut = cutPrerelease(tag, cwd);
   const base = at('merge-base', 'HEAD', tag).trim();
+  const version = tag.slice(1);
+  const recorded = [
+    ...sections(show('HEAD', CHANGELOG) ?? '').map(
+      (section) => section.version,
+    ),
+    JSON.parse(show('HEAD', RELEASE_JSON) ?? '{}').version,
+  ];
+  // An older line's patch (v0.5.4 after v0.6.0) adds only its changelog section.
+  const older = recorded.some(
+    (other) =>
+      STABLE_TAG.test(`v${other}`) && compareVersions(other, version) > 0,
+  );
   const resolved = [];
   for (const path of metadataPaths(base, 'HEAD', tag, cwd)) {
+    if (older && path !== CHANGELOG) {
+      console.log(
+        `Skipping ${path}: main records a release newer than ${tag}.`,
+      );
+      continue;
+    }
     const main = show('HEAD', path);
     const release = show(tag, path);
     if (release === null || (main === null && !RELEASE_SIDE.has(path))) {
@@ -141,15 +185,21 @@ export function buildBackMerge(tag, cwd = process.cwd()) {
       path,
       resolutionFor(path) === 'higher'
         ? mergeNextManifest(main, release)
-        : mergeReleaseSide(main, show(base, path), release, at),
+        : path === CHANGELOG && main !== null
+          ? insertChangelogSection(main, release, version)
+          : mergeReleaseSide(main, show(base, path), release, at),
     );
     resolved.push(path);
   }
-  const current = JSON.parse(show('HEAD', STABLE_MANIFEST) ?? '{}')['.'];
-  // An older line's patch must not move main's boundary back; a stable value predates cuts.
-  const next = current?.includes('-next.') ? higherVersion(current, cut) : cut;
-  write(STABLE_MANIFEST, `${JSON.stringify({ '.': next }, null, 2)}\n`);
-  if (!resolved.includes(STABLE_MANIFEST)) resolved.push(STABLE_MANIFEST);
+  if (!older) {
+    const current = JSON.parse(show('HEAD', STABLE_MANIFEST) ?? '{}')['.'];
+    // An older line's patch must not move main's boundary back; a stable value predates cuts.
+    const next = current?.includes('-next.')
+      ? higherVersion(current, cut)
+      : cut;
+    write(STABLE_MANIFEST, `${JSON.stringify({ '.': next }, null, 2)}\n`);
+    if (!resolved.includes(STABLE_MANIFEST)) resolved.push(STABLE_MANIFEST);
+  }
   let changed = false;
   try {
     at('diff', '--cached', '--quiet');
@@ -225,7 +275,7 @@ function run({ tag, branch }) {
   const body = [
     `Brings the release metadata of \`${branch}\` at \`${tag}\` to \`main\` as one metadata-only commit whose only parent is \`main\`. No release-branch commit enters \`main\`'s history; a fix made only on the release branch needs its own PR to \`main\`.`,
     '',
-    `Paths (rules in \`scripts/back-merge.mjs\`; \`${STABLE_MANIFEST}\` is set to the line's cut prerelease):\n${resolved.map((path) => `- \`${path}\``).join('\n')}`,
+    `Paths (rules in \`scripts/back-merge.mjs\`; \`CHANGELOG.md\` gains only \`${tag}\`'s section; \`${STABLE_MANIFEST}\` keeps the higher of main's \`-next\` value and the line's cut):\n${resolved.map((path) => `- \`${path}\``).join('\n')}`,
     '',
     'Lands on `main` as this commit, by a direct push from `scripts/land-back-merge.mjs`, once CI is green on it. Do not merge it with the button.',
   ].join('\n');

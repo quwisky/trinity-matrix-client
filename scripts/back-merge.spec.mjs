@@ -19,6 +19,7 @@ import {
   metadataPaths,
   cutPrerelease,
   buildBackMerge,
+  insertChangelogSection,
   leaseFor,
 } from './back-merge.mjs';
 
@@ -33,6 +34,9 @@ const pkg = (version, dep) =>
     .map((line, i) => `${line}${i}": 1,`)
     .join('\n')}\n  "dependencies": {\n    "a": "${dep}"\n  }\n}\n`;
 const manifest = (version) => `{\n  ".": "${version}"\n}\n`;
+const RELEASE_JSON = 'apps/docs-users/release.json';
+const releaseJson = (version) =>
+  `{\n  "status": "published",\n  "version": "${version}"\n}\n`;
 
 const CHANGELOG = (...versions) =>
   `# Changelog\n\n${versions.map((v) => `## [${v}](https://example.test/v${v}) (2026-10-23)\n\n* a fix in ${v}\n`).join('\n')}`;
@@ -67,6 +71,7 @@ function releaseRepo({ cutTag = true } = {}) {
     'CHANGELOG.md': CHANGELOG('0.4.0'),
     '.release-please-manifest.json': manifest('0.4.0'),
     '.release-please-manifest.next.json': manifest('0.5.0-next.6'),
+    [RELEASE_JSON]: releaseJson('0.4.0'),
     'package.json': pkg('0.5.0-next.6', '1.0.0'),
     [PAGE]: page('0.5.0-next.6', 'footer'),
     [OLD_PAGE]: page('0.5.0-next.6', 'old'),
@@ -82,6 +87,7 @@ function releaseRepo({ cutTag = true } = {}) {
       'CHANGELOG.md': CHANGELOG('0.5.2', '0.5.1', '0.5.0', '0.4.0'),
       '.release-please-manifest.json': manifest('0.5.2'),
       '.release-please-manifest.next.json': manifest('0.5.2'),
+      [RELEASE_JSON]: releaseJson('0.5.2'),
       'package.json': pkg('0.5.2', '1.0.0'),
       [PAGE]: page('0.5.2', 'footer'),
       [OLD_PAGE]: page('0.5.2', 'old'),
@@ -187,6 +193,22 @@ describe('back-merge', () => {
     );
   });
 
+  it('inserts the section in version order', () => {
+    const release = CHANGELOG('0.5.2', '0.5.1');
+    expect(
+      insertChangelogSection(CHANGELOG('0.6.0', '0.5.1'), release, '0.5.2'),
+    ).toBe(CHANGELOG('0.6.0', '0.5.2', '0.5.1'));
+    expect(insertChangelogSection(CHANGELOG('0.6.0'), release, '0.5.2')).toBe(
+      CHANGELOG('0.6.0', '0.5.2'),
+    );
+    expect(insertChangelogSection(CHANGELOG('0.5.1'), release, '0.5.2')).toBe(
+      CHANGELOG('0.5.2', '0.5.1'),
+    );
+    expect(
+      insertChangelogSection(CHANGELOG('0.5.2', '0.5.1'), release, '0.5.2'),
+    ).toBe(CHANGELOG('0.5.2', '0.5.1'));
+  });
+
   describe('building the back-merge commit', () => {
     let repo;
     afterEach(() => rmSync(repo.dir, { recursive: true, force: true }));
@@ -209,15 +231,21 @@ describe('back-merge', () => {
       for (const sha of repo.releaseCommits) expect(log).not.toContain(sha);
       expect(
         repo.git('diff', '--name-only', 'main', 'HEAD').split('\n').sort(),
-      ).toEqual(['.release-please-manifest.json', 'CHANGELOG.md', PAGE]);
+      ).toEqual([
+        '.release-please-manifest.json',
+        'CHANGELOG.md',
+        RELEASE_JSON,
+        PAGE,
+      ]);
     });
 
-    it("takes the release branch's CHANGELOG", () => {
+    it("adds only the tag's changelog section to main's", () => {
       repo = releaseRepo();
       repo.backMerge();
       expect(repo.read('CHANGELOG.md')).toBe(
-        CHANGELOG('0.5.2', '0.5.1', '0.5.0', '0.4.0'),
+        CHANGELOG('0.5.2', '0.4.1', '0.4.0'),
       );
+      expect(repo.read(RELEASE_JSON)).toBe(releaseJson('0.5.2'));
       expect(repo.read(PAGE)).toBe(page('0.5.2', 'footer from main'));
     });
 
@@ -247,6 +275,7 @@ describe('back-merge', () => {
         '.release-please-manifest.json',
         '.release-please-manifest.next.json',
         'CHANGELOG.md',
+        RELEASE_JSON,
         PAGE,
         OLD_PAGE,
       ]);
@@ -271,6 +300,40 @@ describe('back-merge', () => {
       repo.backMerge();
       expect(repo.read('.release-please-manifest.json')).toBe(
         manifest('0.5.0-next.6'),
+      );
+    });
+
+    /** main after v0.6.0's back-merge, before v0.5.2 ships. */
+    const newerLine = () =>
+      repo.commit('chore: back-merge v0.6.0 into main', {
+        'CHANGELOG.md': CHANGELOG('0.6.0', '0.4.1', '0.4.0'),
+        '.release-please-manifest.json': manifest('0.6.0-next.3'),
+        '.release-please-manifest.next.json': manifest('0.6.1-next.0'),
+        [RELEASE_JSON]: releaseJson('0.6.0'),
+        [PAGE]: page('0.6.0', 'footer from main'),
+      });
+
+    it("keeps a newer line's changelog section when an older line back-merges", () => {
+      repo = releaseRepo();
+      newerLine();
+      repo.backMerge();
+      expect(repo.read('CHANGELOG.md')).toBe(
+        CHANGELOG('0.6.0', '0.5.2', '0.4.1', '0.4.0'),
+      );
+    });
+
+    it('does not move release.json or user-guide pages back for an older line', () => {
+      repo = releaseRepo();
+      newerLine();
+      const { resolved } = repo.backMerge();
+      expect(resolved).toEqual(['CHANGELOG.md']);
+      expect(repo.git('diff', '--name-only', 'main', 'HEAD')).toBe(
+        'CHANGELOG.md',
+      );
+      expect(repo.read(RELEASE_JSON)).toBe(releaseJson('0.6.0'));
+      expect(repo.read(PAGE)).toBe(page('0.6.0', 'footer from main'));
+      expect(repo.read('.release-please-manifest.json')).toBe(
+        manifest('0.6.0-next.3'),
       );
     });
 
