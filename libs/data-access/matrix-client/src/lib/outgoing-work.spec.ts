@@ -46,6 +46,16 @@ const run = (fake: ReturnType<typeof client>, live = () => true) =>
   resendWaitingEchoes(fake as unknown as MatrixClient, live);
 
 describe('resendWaitingEchoes', () => {
+  it('cancelling a waiting row removes it and nothing resends', async () => {
+    const echo = waiting('gone');
+    const fake = client([room('!r:hs', [echo])], () => Promise.resolve());
+    echo.status = EventStatus.CANCELLED;
+
+    await run(fake);
+
+    expect(fake.resendEvent).not.toHaveBeenCalled();
+  });
+
   it("resends a room's echoes in timeline order, one at a time", async () => {
     const first = waiting('one');
     const second = waiting('two');

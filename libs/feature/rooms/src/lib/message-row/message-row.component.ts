@@ -116,6 +116,7 @@ export interface MessageLongPressContext {
 export type MessageRowAction =
   | MessageAction
   | { type: 'retry' }
+  | { type: 'cancel' }
   | { type: 'jump'; id: string }
   /** Show this message's earlier versions; raised by the "(edited)" marker, which is part of the row, not `MessageAction`. */
   | { type: 'edit-history' }

@@ -280,7 +280,7 @@ function normalizeCommon(
     ),
     reactions: normalizeReactions(client, room, event),
     replyTo: normalizeReply(room, event, roomEncrypted),
-    status: read(() => mapStatus(event.status), null),
+    status: read(() => mapStatus(event), null),
     readReceipts: normalizeReceipts(client, room, event),
     shield: shield ? Object.freeze({ ...shield }) : null,
   } as const;

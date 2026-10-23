@@ -380,6 +380,13 @@ export class MessageActionsService {
     );
   }
 
+  onCancel(messageId: string): void {
+    this.runMessageAction(
+      this.messageCommands.cancel(messageId),
+      'Could not cancel the message.',
+    );
+  }
+
   /** Run a fire-and-forget timeline action, surfacing a failure as a toast. */
   private runAction(action: Observable<void>, failureMessage: string): void {
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({

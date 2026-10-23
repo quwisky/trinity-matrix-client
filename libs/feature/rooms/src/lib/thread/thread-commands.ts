@@ -185,6 +185,10 @@ export class ThreadCommands {
     this.run((t) => t.retry(messageId), 'Could not retry the message.');
   }
 
+  cancel(messageId: string): void {
+    this.run((t) => t.cancel(messageId), 'Could not cancel the message.');
+  }
+
   delete(messageId: string): void {
     confirmMessageDeletion$(this.alert)
       .pipe(takeUntilDestroyed(this.destroyRef))

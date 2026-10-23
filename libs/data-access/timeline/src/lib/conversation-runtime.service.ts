@@ -153,6 +153,18 @@ export class ConversationRuntime {
   readonly media = this.focusedMedia();
   readonly threads = this.focusedThreads();
   readonly pins = this.focusedPins();
+  /** Own messages waiting to send in the focused room, across its live timeline and open thread. */
+  readonly waitingCount = computed(() => {
+    const handle = this.focusedHandle();
+    const entry = handle ? this.entry(handle.key) : undefined;
+    if (!entry) return 0;
+    const waiting = (rows: readonly { status: string | null }[]) =>
+      rows.filter((row) => row.status === 'waiting').length;
+    return (
+      waiting(entry.handle.timeline.messages()) +
+      waiting(entry.controller.threads.threadMessages())
+    );
+  });
   readonly diagnostics = computed<ConversationRuntimeDiagnostics>(() => {
     const entries = [...this.entries.values()].flatMap((account) => [
       ...account.values(),
@@ -393,6 +405,12 @@ export class ConversationRuntime {
           state() === 'focused'
             ? this.messageAdapter.retry({ key: immutableKey, messageId })
             : of(rejected('retry', 'conversation-unavailable')),
+        ),
+      cancel: (messageId: string) =>
+        defer(() =>
+          state() === 'focused'
+            ? this.messageAdapter.cancel({ key: immutableKey, messageId })
+            : of(rejected('cancel', 'conversation-unavailable')),
         ),
       acknowledge: (messageId: string) =>
         defer(() =>
@@ -692,6 +710,11 @@ export class ConversationRuntime {
         defer(
           () =>
             focused()?.messages.retry(messageId) ?? of(unavailable('retry')),
+        ),
+      cancel: (messageId) =>
+        defer(
+          () =>
+            focused()?.messages.cancel(messageId) ?? of(unavailable('cancel')),
         ),
       acknowledge: (messageId) =>
         defer(

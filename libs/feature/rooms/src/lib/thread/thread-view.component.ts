@@ -451,6 +451,9 @@ export class ThreadViewComponent implements OnDestroy {
       case 'retry':
         this.onRetry(row.id);
         break;
+      case 'cancel':
+        this.commands.cancel(row.id);
+        break;
       case 'jump':
         this.jumpToRequested(action.id);
         break;

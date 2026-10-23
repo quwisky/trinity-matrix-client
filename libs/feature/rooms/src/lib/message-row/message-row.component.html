@@ -46,6 +46,7 @@
     [class.msg--sticker]="r.kind === 'sticker'"
     [class.msg--sending]="r.status === 'sending'"
     [class.msg--sendfailed]="r.status === 'failed'"
+    [class.msg--waiting]="r.status === 'waiting'"
     [class.msg--revealed]="revealed()"
     [class.msg--menu-open]="menuOpen()"
     [class.msg--actions]="hasToolbar()"
@@ -264,6 +265,21 @@
         "
         (open)="action.emit({ type: 'thread' })"
       />
+    }
+
+    @if (!caps().readOnly && r.status === 'waiting') {
+      <div class="msg__waiting">
+        Waiting to send
+        <button
+          type="button"
+          class="msg__cancel msg__target"
+          data-testid="msg-cancel"
+          [attr.aria-label]="'Cancel sending, ' + rowLabel()"
+          (click)="action.emit({ type: 'cancel' })"
+        >
+          Cancel
+        </button>
+      </div>
     }
 
     @if (!caps().readOnly && r.status === 'failed') {

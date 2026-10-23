@@ -113,6 +113,7 @@ function setup(
     toggleReaction: vi.fn(() => applied('reaction')),
     redact: vi.fn(() => applied('redaction')),
     retry: vi.fn(() => applied('retry')),
+    cancel: vi.fn(() => applied('cancel')),
     acknowledge: vi.fn(() => applied('receipt')),
   };
   const factory: ConversationTimelineFactory = {

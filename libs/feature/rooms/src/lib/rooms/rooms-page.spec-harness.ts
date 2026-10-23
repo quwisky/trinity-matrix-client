@@ -271,6 +271,9 @@ export const SHARED_MOCKS: Provider[] = [
         retry: vi.fn(() =>
           of({ kind: 'applied' as const, operation: 'retry' as const }),
         ),
+        cancel: vi.fn(() =>
+          of({ kind: 'applied' as const, operation: 'cancel' as const }),
+        ),
         acknowledge: vi.fn(() =>
           of({ kind: 'applied' as const, operation: 'receipt' as const }),
         ),

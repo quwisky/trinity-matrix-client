@@ -5,6 +5,7 @@ import {
   inject,
 } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { BannerComponent } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
@@ -12,7 +13,8 @@ import { TrnIconComponent } from '@trinity/components/foundations';
  * Slim banner shown in the rooms shell when the sync connection is lost. The
  * timeline keeps rendering from the persistent IndexedDB sync store, so this
  * reassures the user that what they see is cached while the SDK reconnects.
- * Reads {@link MatrixClientService.connectivity}; renders nothing when online.
+ * Reads {@link MatrixClientService.connectivity} and the focused room's waiting count;
+ * renders nothing when online with nothing waiting.
  */
 @Component({
   selector: 'trn-connectivity-banner',
@@ -23,5 +25,13 @@ import { TrnIconComponent } from '@trinity/components/foundations';
 export class ConnectivityBannerComponent {
   private readonly matrix = inject(MatrixClientService);
 
+  private readonly runtime = inject(ConversationRuntime);
+
   readonly offline = computed(() => this.matrix.connectivity() === 'offline');
+
+  readonly waitingText = computed(() => {
+    const count = this.runtime.waitingCount();
+    if (count === 0) return '';
+    return `${count} ${count === 1 ? 'message' : 'messages'} waiting to send`;
+  });
 }

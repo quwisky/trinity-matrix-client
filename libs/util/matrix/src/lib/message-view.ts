@@ -23,6 +23,7 @@ import {
   sanitizeMatrixHtml,
 } from './message-html';
 import { displayContent } from './replacement';
+import { isWaitingToSend } from './waiting-to-send';
 
 /** An aggregated reaction (`m.annotation`) on a message. */
 export interface ReactionView {
@@ -365,13 +366,14 @@ export function reactionDetailsFor(
 }
 
 export function mapStatus(
-  status: EventStatus | null,
-): 'sending' | 'failed' | null {
+  event: MatrixEvent,
+): 'sending' | 'waiting' | 'failed' | null {
+  const { status } = event;
   if (status === EventStatus.SENDING || status === EventStatus.QUEUED) {
     return 'sending';
   }
   if (status === EventStatus.NOT_SENT) {
-    return 'failed';
+    return isWaitingToSend(event) ? 'waiting' : 'failed';
   }
   return null;
 }

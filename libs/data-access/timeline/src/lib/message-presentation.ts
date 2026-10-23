@@ -161,7 +161,7 @@ export interface MessageView {
   readonly edited: boolean;
   readonly reactions: readonly ReactionView[];
   readonly replyTo: ReplyPreview | null;
-  readonly status: 'sending' | 'failed' | null;
+  readonly status: 'sending' | 'waiting' | 'failed' | null;
   readonly kind: MessageKind;
   readonly media: PresentedMediaReference | null;
   readonly caption: string | null;
@@ -246,7 +246,7 @@ interface NormalizedCommon {
   readonly edited: boolean;
   readonly reactions: readonly ReactionView[];
   readonly replyTo: ReplyPreview | null;
-  readonly status: 'sending' | 'failed' | null;
+  readonly status: 'sending' | 'waiting' | 'failed' | null;
   readonly readReceipts: readonly ReceiptView[];
   readonly shield: MessageShield | null;
 }
