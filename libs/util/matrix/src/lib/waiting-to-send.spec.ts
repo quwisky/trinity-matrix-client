@@ -24,7 +24,60 @@ function echo({
   return event;
 }
 
+/** An echo as the SDK leaves it once encrypted: `m.room.encrypted` on the wire, cleartext kept. */
+function encrypted(content: Record<string, unknown>): MatrixEvent {
+  const event = echo({ content });
+  const relation = content['m.relates_to'];
+  event.makeEncrypted(
+    'm.room.encrypted',
+    {
+      algorithm: 'm.megolm.v1.aes-sha2',
+      ciphertext: 'opaque',
+      // Relations stay readable on the wire, outside the ciphertext.
+      ...(relation ? { 'm.relates_to': relation } : {}),
+    },
+    'curve-key',
+    'ed-key',
+  );
+  return event;
+}
+
 describe('isWaitingToSend', () => {
+  it('reads an encrypted echo by its cleartext type and msgtype', () => {
+    const text = encrypted({ msgtype: 'm.text', body: 'secret' });
+    expect(text.getWireType()).toBe('m.room.encrypted');
+
+    expect(isWaitingToSend(text)).toBe(true);
+    expect(isWaitingToSend(encrypted({ msgtype: 'm.image', body: 'x' }))).toBe(
+      false,
+    );
+  });
+
+  it('is false for an encrypted m.replace edit', () => {
+    expect(
+      isWaitingToSend(
+        encrypted({
+          msgtype: 'm.text',
+          body: '* fixed',
+          'm.new_content': { msgtype: 'm.text', body: 'fixed' },
+          'm.relates_to': { rel_type: 'm.replace', event_id: '$orig' },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it('is true for an encrypted thread reply', () => {
+    expect(
+      isWaitingToSend(
+        encrypted({
+          msgtype: 'm.text',
+          body: 'in a thread',
+          'm.relates_to': { rel_type: 'm.thread', event_id: '$root' },
+        }),
+      ),
+    ).toBe(true);
+  });
+
   it.each(['m.text', 'm.emote', 'm.notice'])(
     'is true for a %s echo that failed with a ConnectionError',
     (msgtype) => {
