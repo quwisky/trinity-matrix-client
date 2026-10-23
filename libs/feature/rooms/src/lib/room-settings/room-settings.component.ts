@@ -3,6 +3,7 @@ import {
   Component,
   OnInit,
   computed,
+  effect,
   inject,
   input,
   viewChild,
@@ -25,6 +26,7 @@ import { RoomSettingsAccessComponent } from './room-settings-access.component';
 import { RoomSettingsAdvancedComponent } from './room-settings-advanced.component';
 import { RoomSettingsDirectoryComponent } from './room-settings-directory/room-settings-directory.component';
 import { RoomSettingsDraftService } from './room-settings-draft.service';
+import { RoomSettingsEmojiComponent } from './room-settings-emoji/room-settings-emoji.component';
 import { RoomSettingsEncryptionComponent } from './room-settings-encryption/room-settings-encryption.component';
 import { RoomSettingsForYouComponent } from './room-settings-for-you/room-settings-for-you.component';
 import { RoomSettingsForYouDraftService } from './room-settings-for-you/room-settings-for-you-draft.service';
@@ -38,6 +40,7 @@ type RoomSettingsSection =
   | 'members'
   | 'addresses'
   | 'widgets'
+  | 'emoji'
   | 'advanced';
 
 const SECTIONS: readonly (SettingsHubSection & {
@@ -86,6 +89,13 @@ const SECTIONS: readonly (SettingsHubSection & {
     description: 'Connected room tools',
   },
   {
+    value: 'emoji',
+    icon: 'smile',
+    group: 'Manage',
+    label: 'Emoji',
+    description: 'Custom emoji and stickers',
+  },
+  {
     value: 'advanced',
     icon: 'braces',
     group: 'Developer',
@@ -106,6 +116,7 @@ const SECTIONS: readonly (SettingsHubSection & {
     RoomSettingsAccessComponent,
     RoomSettingsAdvancedComponent,
     RoomSettingsDirectoryComponent,
+    RoomSettingsEmojiComponent,
     RoomSettingsEncryptionComponent,
     RoomSettingsForYouComponent,
     RoomWidgetsComponent,
@@ -148,7 +159,12 @@ export class RoomSettingsComponent implements OnInit {
       this.widgetsSection()?.discardCreationDraft();
     },
   });
-  readonly sections = SECTIONS;
+  /** Emoji only for members who may change the room's pack. */
+  readonly sections = computed(() =>
+    this.draft.permissions().imagePack.available
+      ? SECTIONS
+      : SECTIONS.filter(({ value }) => value !== 'emoji'),
+  );
   readonly selectedSection = this.hub.selectedSection;
   readonly directoryVisible = this.hub.directoryVisible;
   readonly compactNavigation = this.hub.compactNavigation;
@@ -169,6 +185,17 @@ export class RoomSettingsComponent implements OnInit {
       SECTIONS.find(({ value }) => value === this.selectedSection())?.label ??
       'General',
   );
+  constructor() {
+    effect(() => {
+      if (
+        this.selectedSection() === 'emoji' &&
+        !this.draft.permissions().imagePack.available
+      ) {
+        this.selectedSection.set('general');
+      }
+    });
+  }
+
   ngOnInit(): void {
     this.draft.start(
       { accountId: this.accountId(), roomId: this.roomId() },

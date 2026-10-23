@@ -344,13 +344,14 @@ describe('RoomSettingsComponent', () => {
       container.querySelector('[data-testid="room-settings-encryption"]')
         ?.textContent,
     ).toContain('end-to-end encrypted');
-    expect(cmp.sections.map(({ value }) => value)).toEqual([
+    expect(cmp.sections().map(({ value }) => value)).toEqual([
       'general',
       'for-you',
       'access',
       'members',
       'addresses',
       'widgets',
+      'emoji',
       'advanced',
     ]);
   });
@@ -835,6 +836,43 @@ describe('RoomSettingsComponent', () => {
     expect(setJoinRule).toHaveBeenCalledTimes(1);
     expect(setHistoryVisibility).toHaveBeenCalledTimes(2);
     expect(cmp.draft.accessDirty()).toBe(false);
+  });
+
+  it("lists Emoji after Widgets for members who may change the room's emoji", async () => {
+    const { cmp, fixture, container } = await build();
+    const tabs = [
+      ...container.querySelectorAll('[data-testid^="room-settings-tab-"]'),
+    ].map((tab) => tab.getAttribute('data-testid'));
+    expect(tabs.indexOf('room-settings-tab-emoji')).toBe(
+      tabs.indexOf('room-settings-tab-widgets') + 1,
+    );
+
+    cmp.selectSection('emoji');
+    await fixture.whenStable();
+    expect(container.querySelector('h1')?.textContent?.trim()).toBe('Emoji');
+    expect(container.querySelector('trn-room-settings-emoji')).not.toBeNull();
+  });
+
+  it("hides Emoji from members who may not change the room's emoji", async () => {
+    const { container } = await build({
+      initial: roomSnapshot({ permissions: { imagePack: DENIED } }),
+    });
+    expect(
+      container.querySelector('[data-testid="room-settings-tab-emoji"]'),
+    ).toBeNull();
+  });
+
+  it('returns to General when the power to change emoji is lost', async () => {
+    const { cmp, fixture, container, emit } = await build();
+    cmp.selectSection('emoji');
+    await fixture.whenStable();
+
+    emit(roomSnapshot({ permissions: { imagePack: DENIED } }));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(container.querySelector('trn-room-settings-emoji')).toBeNull();
+    expect(container.querySelector('h1')?.textContent?.trim()).toBe('General');
   });
 
   it('keeps Room addresses reachable in their own section', async () => {
