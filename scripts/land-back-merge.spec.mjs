@@ -334,7 +334,7 @@ describe('land-back-merge', () => {
       const sha = r.git('rev-parse', 'HEAD');
       expect(() =>
         attempt({ branch: 'back-merge/v9.9.9', pulls: () => [pr(sha)] }),
-      ).toThrow(/v9\.9\.9/);
+      ).toThrow(/git fetch .*couldn't find remote ref refs\/tags\/v9\.9\.9/s);
       expect(r.remoteMain()).toBe(main);
     });
 
@@ -370,6 +370,19 @@ describe('land-back-merge', () => {
       symlinkSync('/etc/passwd', join(r.dir, 'CHANGELOG.md'));
       r.git('add', '-A');
       r.git('commit', '-q', '--amend', '--no-edit');
+      r.git('push', '-q', '-f', 'origin', 'back-merge/v0.1.2');
+      expect(() => attempt()).toThrow(/not the tag's metadata.*CHANGELOG\.md/s);
+      expect(r.remoteMain()).toBe(main);
+    });
+
+    it('refuses a symlink whose target is the expected content', () => {
+      r = repo();
+      const main = r.remoteMain();
+      r.build();
+      const blob = r.git('hash-object', '-w', 'CHANGELOG.md');
+      r.git('update-index', '--cacheinfo', `120000,${blob},CHANGELOG.md`);
+      r.git('commit', '-q', '--amend', '--no-edit');
+      expect(r.git('rev-parse', 'HEAD:CHANGELOG.md')).toBe(blob);
       r.git('push', '-q', '-f', 'origin', 'back-merge/v0.1.2');
       expect(() => attempt()).toThrow(/not the tag's metadata.*CHANGELOG\.md/s);
       expect(r.remoteMain()).toBe(main);

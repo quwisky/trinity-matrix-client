@@ -20,6 +20,7 @@ import {
   cutPrerelease,
   buildBackMerge,
   insertChangelogSection,
+  isAlreadyBackMerged,
   leaseFor,
 } from './back-merge.mjs';
 
@@ -209,6 +210,38 @@ describe('back-merge', () => {
     ).toBe(CHANGELOG('0.5.2', '0.5.1'));
   });
 
+  it('skips when nothing changed or main already has the section', () => {
+    const main = CHANGELOG('0.5.2', '0.5.1');
+    expect(
+      isAlreadyBackMerged({
+        changed: false,
+        mainChangelog: main,
+        tag: 'v0.5.3',
+      }),
+    ).toBe(true);
+    expect(
+      isAlreadyBackMerged({
+        changed: true,
+        mainChangelog: main,
+        tag: 'v0.5.2',
+      }),
+    ).toBe(true);
+    expect(
+      isAlreadyBackMerged({
+        changed: true,
+        mainChangelog: main,
+        tag: 'v0.5.3',
+      }),
+    ).toBe(false);
+    expect(
+      isAlreadyBackMerged({
+        changed: true,
+        mainChangelog: null,
+        tag: 'v0.5.3',
+      }),
+    ).toBe(false);
+  });
+
   describe('building the back-merge commit', () => {
     let repo;
     afterEach(() => rmSync(repo.dir, { recursive: true, force: true }));
@@ -337,9 +370,24 @@ describe('back-merge', () => {
       );
     });
 
+    it('lists both sides of a renamed page', () => {
+      repo = releaseRepo();
+      const base = repo.git('merge-base', 'main', 'v0.5.2');
+      repo.git('switch', '-q', 'release/0.5.x');
+      const moved = 'apps/docs-users/src/content/docs/moved.md';
+      repo.git('mv', PAGE, moved);
+      repo.git('commit', '-qm', 'docs: move the page');
+      expect(metadataPaths(base, 'main', 'release/0.5.x', repo.dir)).toEqual(
+        expect.arrayContaining([PAGE, moved]),
+      );
+    });
+
     it('skips a metadata path that main deleted', () => {
       repo = releaseRepo();
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
       const { resolved } = repo.backMerge();
+      expect(log).toHaveBeenCalledWith(`Skipping ${OLD_PAGE}: absent on main.`);
+      log.mockRestore();
       expect(resolved).not.toContain(OLD_PAGE);
       expect(repo.git('ls-files', OLD_PAGE)).toBe('');
       expect(existsSync(join(repo.dir, OLD_PAGE))).toBe(false);

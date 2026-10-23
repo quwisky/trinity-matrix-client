@@ -77,7 +77,7 @@ const STABLE_MANIFEST = '.release-please-manifest.json';
 /** Paths the release line changed since `base` that still differ on `main` and carry a release or higher rule. */
 export function metadataPaths(base, main, tag, cwd = process.cwd()) {
   const changed = (from, to) =>
-    execFileSync('git', ['diff', '--name-only', from, to], {
+    execFileSync('git', ['diff', '--name-only', '--no-renames', from, to], {
       cwd,
       encoding: 'utf8',
       stdio: 'pipe',
@@ -135,6 +135,12 @@ export function insertChangelogSection(mainText, releaseText, version) {
     : `${mainText.trimEnd()}\n\n${section}`;
 }
 
+export const isAlreadyBackMerged = ({ changed, mainChangelog, tag }) =>
+  !changed ||
+  sections(mainChangelog ?? '').some(
+    (section) => section.version === tag.slice(1),
+  );
+
 /** Writes and stages the release metadata on the checked-out main; commits nothing. */
 export function buildBackMerge(tag, cwd = process.cwd()) {
   const at = (...args) =>
@@ -177,7 +183,7 @@ export function buildBackMerge(tag, cwd = process.cwd()) {
     const release = show(tag, path);
     if (release === null || (main === null && !RELEASE_SIDE.has(path))) {
       console.log(
-        `Skipping ${path}: deleted on ${release === null ? tag : 'main'}.`,
+        `Skipping ${path}: ${release === null ? `deleted on ${tag}` : 'absent on main'}.`,
       );
       continue;
     }
@@ -238,9 +244,11 @@ function run({ tag, branch }) {
   git('fetch', 'origin', `refs/tags/${tag}:refs/tags/${tag}`);
   git('switch', '-C', head, 'origin/main');
   const { resolved, changed } = buildBackMerge(tag);
-  const alreadyBackMerged =
-    !changed ||
-    git('show', 'origin/main:CHANGELOG.md').includes(`## [${tag.slice(1)}]`);
+  const alreadyBackMerged = isAlreadyBackMerged({
+    changed,
+    mainChangelog: git('show', `origin/main:${CHANGELOG}`),
+    tag,
+  });
   const existing = gh(
     'pr',
     'list',

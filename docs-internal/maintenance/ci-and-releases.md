@@ -588,7 +588,8 @@ tag's is written whole). `apps/docs-users/release.json` and user guide pages are
 of the merge base, `main` and the tag in which a conflicting hunk takes the release side and
 every non-conflicting edit from either side is kept; `release.json` is written back even if
 `main` deleted it. Any other path, a user guide page or `.release-please-manifest.next.json`,
-that is absent on `main` (or that the tag deleted) is skipped with a note. A path added on both
+that is absent on `main` (or that the tag deleted) is skipped with a note. Renames are not followed: a
+moved page counts as deleted at its old path and new at its new one. A path added on both
 lines takes the release side whole. `.release-please-manifest.json` is not merged: it gets the
 line's cut prerelease, or keeps `main`'s value when that is already a higher `-next` prerelease,
 so a patch on an older line never moves `main`'s boundary back. A stable value there predates
