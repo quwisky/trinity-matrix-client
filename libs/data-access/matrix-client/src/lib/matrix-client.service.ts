@@ -856,8 +856,10 @@ export class MatrixClientService {
       // Set when sync loses the homeserver; the next `Syncing` resends what failed meanwhile.
       // Not the previous state alone: an app that starts offline comes back through `Prepared`.
       let disconnected = false;
-      // One resend run at a time, so a second reconnect mid-run cannot overtake a room's order.
+      // One resend run at a time, so a second reconnect mid-run cannot overtake a room's order,
+      // and at most one more queued behind it, however many syncs arrive meanwhile.
       let resending = Promise.resolve();
+      let resendQueued = false;
       const serverSynced = signal(false);
       let latestServerSynced = false;
       const roomsPrepared = signal(false);
@@ -974,14 +976,24 @@ export class MatrixClientService {
               ): void => {
                 if (DISCONNECTED.has(state)) {
                   disconnected = true;
-                } else if (state === SyncState.Syncing && disconnected) {
+                } else if (
+                  state === SyncState.Syncing &&
+                  // A sync that got through proves the homeserver is reachable, even when sync
+                  // never noticed the drop that failed a send.
+                  (disconnected || waitingCount() > 0) &&
+                  !resendQueued
+                ) {
                   disconnected = false;
+                  resendQueued = true;
                   // Removal, stop() and a handover pause all end a run between two sends.
                   const live = (): boolean =>
                     !this.syncPaused &&
                     this.clients.get(session.userId)?.client === client;
                   resending = resending
-                    .then(() => resendWaitingEchoes(client, live))
+                    .then(() => {
+                      resendQueued = false;
+                      return resendWaitingEchoes(client, live);
+                    })
                     .catch((error: unknown) => {
                       console.warn(
                         "Couldn't resend the messages that failed offline.",

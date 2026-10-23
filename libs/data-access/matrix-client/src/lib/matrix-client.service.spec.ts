@@ -1100,7 +1100,21 @@ describe('MatrixClientService', () => {
           current = state;
         }
       };
-      return { svc, client, sync };
+      const onEcho = client.on.mock.calls.find(
+        ([evt]) => evt === RoomEvent.LocalEchoUpdated,
+      )![1] as (
+        event: MatrixEvent,
+        room: unknown,
+        oldEventId: string | undefined,
+        oldStatus: EventStatus,
+      ) => void;
+      /** Report each echo's send failing, as the SDK does, so the account counts it waiting. */
+      const fail = (): void => {
+        for (const echo of echoes) {
+          onEcho(echo, room, undefined, EventStatus.SENDING);
+        }
+      };
+      return { svc, client, sync, fail };
     }
 
     /** A `resendEvent` result the test settles itself. */
@@ -1147,8 +1161,8 @@ describe('MatrixClientService', () => {
       client.resendEvent.mockReturnValueOnce(first.promise);
 
       sync(SyncState.Reconnecting, SyncState.Syncing);
-      sync(SyncState.Error, SyncState.Syncing);
       await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+      sync(SyncState.Error, SyncState.Syncing);
       await flush();
       expect(client.resendEvent).toHaveBeenCalledOnce();
 
@@ -1156,6 +1170,44 @@ describe('MatrixClientService', () => {
       await vi.waitFor(() =>
         expect(client.resendEvent).toHaveBeenCalledTimes(2),
       );
+    });
+
+    it('resends a message that failed while sync stayed up, on the next sync', async () => {
+      const { client, sync, fail } = await offlineClient();
+      sync(SyncState.Prepared, SyncState.Syncing);
+
+      fail();
+      sync(SyncState.Syncing);
+      await flush();
+
+      expect(client.resendEvent).toHaveBeenCalledOnce();
+    });
+
+    it('chains no resend on a sync while the account has nothing waiting', async () => {
+      // The room still lists an echo, but the account's count says none waits.
+      const { client, sync } = await offlineClient();
+
+      sync(SyncState.Prepared, SyncState.Syncing, SyncState.Syncing);
+      await flush();
+
+      expect(client.resendEvent).not.toHaveBeenCalled();
+    });
+
+    it('queues at most one more resend however many syncs arrive mid-run', async () => {
+      const { client, sync, fail } = await offlineClient();
+      const first = pending();
+      client.resendEvent.mockReturnValueOnce(first.promise);
+      sync(SyncState.Prepared, SyncState.Syncing);
+      fail();
+
+      sync(SyncState.Syncing);
+      await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+      sync(SyncState.Syncing, SyncState.Syncing, SyncState.Syncing);
+      first.release();
+      await flush();
+
+      // The run in flight, then the one queued behind it; the rest were not added.
+      expect(client.resendEvent).toHaveBeenCalledTimes(2);
     });
 
     it('does not resend on the first sync', async () => {
