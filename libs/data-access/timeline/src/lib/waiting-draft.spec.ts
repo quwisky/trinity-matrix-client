@@ -67,7 +67,7 @@ describe('keepWhileWaiting', () => {
     expect(store.releaseWaiting).toHaveBeenCalledWith('key', 'txn-1');
   });
 
-  it('keeps the text when the resend fails offline again, and releases it on a refusal', () => {
+  it('keeps the text when the resend fails offline again or is refused', () => {
     const store = drafts();
     const echo = offlineEcho();
     keepWhileWaiting(store, 'key', echo, 'hello');
@@ -75,11 +75,42 @@ describe('keepWhileWaiting', () => {
     echo.setStatus(EventStatus.SENDING);
     echo.error = new ConnectionError('offline again') as never;
     echo.setStatus(EventStatus.NOT_SENT);
-    expect(store.releaseWaiting).not.toHaveBeenCalled();
 
     echo.setStatus(EventStatus.SENDING);
     echo.error = new MatrixError({ errcode: 'M_TOO_LARGE' }, 413);
     echo.setStatus(EventStatus.NOT_SENT);
-    expect(store.releaseWaiting).toHaveBeenCalledWith('key', 'txn-1');
+
+    echo.setStatus(EventStatus.SENDING);
+    echo.error = new DOMException('timed out', 'AbortError') as never;
+    echo.setStatus(EventStatus.NOT_SENT);
+
+    expect(store.releaseWaiting).not.toHaveBeenCalled();
+  });
+
+  it("releases a refused echo's text once it is cancelled", () => {
+    const store = drafts();
+    const echo = offlineEcho();
+    keepWhileWaiting(store, 'key', echo, 'hello');
+    echo.error = new MatrixError({ errcode: 'M_FORBIDDEN' }, 403);
+    echo.setStatus(EventStatus.NOT_SENT);
+    expect(store.releaseWaiting).not.toHaveBeenCalled();
+
+    echo.setStatus(EventStatus.CANCELLED);
+
+    expect(store.releaseWaiting).toHaveBeenCalledOnce();
+  });
+
+  it("releases a refused echo's text once a manual retry sends it", () => {
+    const store = drafts();
+    const echo = offlineEcho();
+    keepWhileWaiting(store, 'key', echo, 'hello');
+    echo.error = new MatrixError({ errcode: 'M_FORBIDDEN' }, 403);
+    echo.setStatus(EventStatus.NOT_SENT);
+    expect(store.releaseWaiting).not.toHaveBeenCalled();
+
+    echo.setStatus(EventStatus.SENDING);
+    echo.setStatus(EventStatus.SENT);
+
+    expect(store.releaseWaiting).toHaveBeenCalledOnce();
   });
 });

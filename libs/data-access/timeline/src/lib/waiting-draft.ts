@@ -2,17 +2,18 @@ import { EventStatus, MatrixEventEvent, type MatrixEvent } from 'matrix-js-sdk';
 import { isWaitingToSend } from '@trinity/util/matrix';
 import type { DraftStoreService } from '@trinity/platform-native';
 
-/** A resend in progress: the echo may still fail offline and wait again. */
-const RESENDING: ReadonlySet<EventStatus | null> = new Set([
-  EventStatus.QUEUED,
-  EventStatus.ENCRYPTING,
-  EventStatus.SENDING,
+/** The echo is on the server (`null` once its remote echo arrived) or gone for good. */
+const SETTLED: ReadonlySet<EventStatus | null> = new Set([
+  EventStatus.SENT,
+  null,
+  EventStatus.CANCELLED,
 ]);
 
 /**
  * When `echo` failed only because it was offline, keep `body` in the saved drafts until the echo
- * is sent, cancelled or refused, and say so. A reload drops the echo, and the draft store then
- * gives the text back to the composer under `draftKey`.
+ * is sent or cancelled, and say so. A resend the server refuses keeps it too: the row is then a
+ * manual failure whose text the composer no longer holds. A reload drops the echo, and the draft
+ * store then gives the text back to the composer under `draftKey`.
  */
 export function keepWhileWaiting(
   drafts: Pick<DraftStoreService, 'holdWaiting' | 'releaseWaiting'>,
@@ -24,7 +25,7 @@ export function keepWhileWaiting(
   if (!echo || !txnId || !isWaitingToSend(echo)) return false;
   drafts.holdWaiting(draftKey, txnId, body);
   const onStatus = (): void => {
-    if (RESENDING.has(echo.status) || isWaitingToSend(echo)) return;
+    if (!SETTLED.has(echo.status)) return;
     echo.off(MatrixEventEvent.Status, onStatus);
     drafts.releaseWaiting(draftKey, txnId);
   };
