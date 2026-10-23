@@ -115,6 +115,27 @@ describe('resendWaitingEchoes', () => {
     expect(first.status).toBe(EventStatus.NOT_SENT);
   });
 
+  it("ends a room's pass at a rate limit, leaving other rooms going", async () => {
+    const [first, second] = ['one', 'two'].map(waiting);
+    const other = waiting('elsewhere');
+    const fake = client(
+      [room('!r:hs', [first, second]), room('!o:hs', [other])],
+      async (event) => {
+        if (event === first) {
+          throw new MatrixError({ errcode: 'M_LIMIT_EXCEEDED' }, 429);
+        }
+      },
+    );
+
+    await expect(run(fake)).resolves.toBeUndefined();
+
+    // The next sync tick picks the room up again, in order.
+    expect(fake.resendEvent.mock.calls.map(([event]) => event)).toEqual([
+      first,
+      other,
+    ]);
+  });
+
   it('carries on past an echo the server refuses', async () => {
     const first = waiting('one');
     const second = waiting('two');

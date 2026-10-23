@@ -34,6 +34,13 @@ describe('isWaitingToSend', () => {
     },
   );
 
+  it.each([
+    ['M_LIMIT_EXCEEDED', new MatrixError({ errcode: 'M_LIMIT_EXCEEDED' }, 429)],
+    ['a bare 429', new MatrixError({}, 429)],
+  ])('is true for an echo the server rate-limited (%s)', (_name, error) => {
+    expect(isWaitingToSend(echo({ error }))).toBe(true);
+  });
+
   it('is false for an echo that failed with an AbortError or a 4xx', () => {
     expect(
       isWaitingToSend(

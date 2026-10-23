@@ -1,6 +1,9 @@
-import { isWaitingToSend, stripReplyFallbackText } from '@trinity/util/matrix';
 import {
-  ConnectionError,
+  isTemporarySendError,
+  isWaitingToSend,
+  stripReplyFallbackText,
+} from '@trinity/util/matrix';
+import {
   EventStatus,
   EventType,
   MsgType,
@@ -125,8 +128,8 @@ export function waitingEchoCount(client: MatrixClient): number {
  * Send again every message of `client` that failed only because it was offline. Within a room
  * they go one at a time in send order; rooms run side by side. Each is checked again just
  * before its turn, so a manual Retry or Cancel that got there first is never doubled, and
- * nothing more is sent once `live` turns false. Still offline, a room stops there and the rest
- * wait for the next reconnect, keeping their order; an echo the server refuses becomes a manual
+ * nothing more is sent once `live` turns false. Still offline or rate-limited, a room stops there
+ * and the rest wait for the next pass, keeping their order; an echo the server refuses becomes a manual
  * failure and the next one goes.
  */
 export async function resendWaitingEchoes(
@@ -141,7 +144,7 @@ export async function resendWaitingEchoes(
         try {
           await client.resendEvent(event, room);
         } catch (error: unknown) {
-          if (error instanceof ConnectionError) return;
+          if (isTemporarySendError(error)) return;
         }
       }
     }),
