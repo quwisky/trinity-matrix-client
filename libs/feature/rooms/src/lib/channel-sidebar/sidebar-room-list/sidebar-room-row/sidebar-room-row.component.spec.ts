@@ -157,6 +157,21 @@ describe('SidebarRoomRowComponent', () => {
     ).toBeNull();
   });
 
+  it("names the row's button with the mark's label only when the preview is marked", async () => {
+    const { getByRole, fixture } = await renderRow({
+      room: room({ lastMessage: 'hello', lastMessageMark: 'unencrypted' }),
+    });
+    const select = () => getByRole('button', { name: /general.*hello/ });
+    expect(select()).toHaveAccessibleName(/Not encrypted.*hello/);
+
+    fixture.componentRef.setInput(
+      'room',
+      room({ lastMessage: 'hello', lastMessageMark: null }),
+    );
+    fixture.detectChanges();
+    expect(select()).not.toHaveAccessibleName(/Not encrypted/);
+  });
+
   it('shows the typing notice in place of the preview', async () => {
     const { container, fixture } = await renderRow({
       room: room({ lastMessage: 'hello' }),

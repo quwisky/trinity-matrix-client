@@ -26,15 +26,30 @@ function timelineEvent(over: {
   decryptionFailure?: boolean;
   encrypted?: boolean;
   ts?: number;
+  /** A local echo's send status. */
+  status?: string;
   /** An edit attached to the message by someone else: the text it would show. */
   editedByOther?: string;
+  /** The sender's own edit of the message. */
+  edit?: { body: string; encrypted?: boolean; ts?: number };
 }) {
   const own = { body: over.body ?? '' };
-  const edit = over.editedByOther !== undefined && {
-    getSender: () => '@m:hs',
+  const sender = over.edit ? '@a:hs' : '@m:hs';
+  const editContent = {
+    'm.new_content': { body: over.edit?.body ?? over.editedByOther },
+  };
+  const edit = (over.editedByOther !== undefined || over.edit) && {
+    getSender: () => sender,
     getType: () => 'm.room.message',
+    getTs: () => over.edit?.ts ?? 1,
     getRelation: () => ({ rel_type: 'm.replace', event_id: '$e' }),
-    getContent: () => ({ 'm.new_content': { body: over.editedByOther } }),
+    getContent: () => editContent,
+    getOriginalContent: () => editContent,
+    getClearContent: () => editContent,
+    isEncrypted: () => over.edit?.encrypted ?? false,
+    isRedacted: () => false,
+    isState: () => false,
+    status: null,
   };
   return {
     getId: () => '$e',
@@ -48,8 +63,9 @@ function timelineEvent(over: {
     isRedacted: () => over.redacted ?? false,
     isDecryptionFailure: () => over.decryptionFailure ?? false,
     isEncrypted: () => over.encrypted ?? false,
+    isRelation: () => false,
     isState: () => false,
-    status: null,
+    status: over.status ?? null,
   };
 }
 
@@ -1121,6 +1137,80 @@ describe('RoomLibraryService', () => {
     ]);
     expect(svc.rooms()[0].lastMessage).toBe('old news');
     expect(svc.rooms()[0].lastMessageMark).toBe('unencrypted-history');
+  });
+
+  describe('for an edited last message in an encrypted room', () => {
+    const preview = (event: ReturnType<typeof timelineEvent>) => {
+      const [row] = setup([
+        fakeRoom({
+          roomId: '!e:hs',
+          name: 'secret',
+          encrypted: true,
+          encryptedAt: 100,
+          events: [event],
+        }),
+      ]).rooms();
+      return [row.lastMessage, row.lastMessageMark];
+    };
+
+    it('previews and marks the clear edit, judged by its own date', () => {
+      expect(
+        preview(
+          timelineEvent({
+            body: 'draft',
+            ts: 50,
+            edit: { body: 'final', ts: 200 },
+          }),
+        ),
+      ).toEqual(['final', 'unencrypted']);
+    });
+
+    it('leaves the encrypted original, unmarked, over its ignored clear edit', () => {
+      expect(
+        preview(
+          timelineEvent({
+            body: 'sealed',
+            encrypted: true,
+            ts: 200,
+            edit: { body: 'forged', ts: 300 },
+          }),
+        ),
+      ).toEqual(['sealed', null]);
+    });
+
+    it('previews an encrypted edit of a clear original unmarked', () => {
+      expect(
+        preview(
+          timelineEvent({
+            body: 'draft',
+            ts: 200,
+            edit: { body: 'final', encrypted: true, ts: 300 },
+          }),
+        ),
+      ).toEqual(['final', null]);
+    });
+  });
+
+  it('leaves redactions and local echoes in an encrypted room unmarked', () => {
+    const svc = setup([
+      fakeRoom({
+        roomId: '!r:hs',
+        name: 'redacted',
+        encrypted: true,
+        events: [timelineEvent({ body: 'gone', redacted: true })],
+      }),
+      fakeRoom({
+        roomId: '!l:hs',
+        name: 'echo',
+        encrypted: true,
+        events: [timelineEvent({ body: 'sending', status: 'sending' })],
+      }),
+    ]);
+    const byId = Object.fromEntries(
+      svc.rooms().map((r) => [r.id, [r.lastMessage, r.lastMessageMark]]),
+    );
+    expect(byId['!r:hs']).toEqual(['(message deleted)', null]);
+    expect(byId['!l:hs']).toEqual(['sending', null]);
   });
 
   it("previews a room by the crypto store's answer once it has one", async () => {
