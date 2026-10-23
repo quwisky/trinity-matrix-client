@@ -6,9 +6,10 @@ import {
   pollSignature,
   reactionsFor,
   readReceiptsFor,
+  unencryptedMarkFor,
   validReplacement,
 } from '@trinity/util/matrix';
-import { shownContent, showsEdit } from './shields';
+import { shownContent, shownSubject, showsEdit } from './shields';
 
 /**
  * Each content object's JSON, kept while the object lives, so a row re-checked for another
@@ -85,7 +86,7 @@ export function revisionOf(
       event.decryptionFailureReason ?? '',
       applyEdit && validReplacement(event) ? 'e' : '',
       reactionSignature(client, room, event),
-      replyTargetSignature(room, event.replyEventId),
+      replyTargetSignature(room, event.replyEventId, roomEncrypted),
       mentionSignature(room, event),
       member?.name ?? senderId,
       member?.getMxcAvatarUrl() ?? '',
@@ -141,9 +142,13 @@ function receiptSignature(
  * Signature of a reply's quoted target for {@link eventRevision}: empty when the event
  * isn't a reply, `'n'` while the target isn't loaded, else its redaction, body and the
  * quoted sender's resolved name + avatar, so the preview re-projects when the quoted
- * member's profile arrives late (lazy loading).
+ * member's profile arrives late (lazy loading), and the not-encrypted mark its text carries.
  */
-function replyTargetSignature(room: Room, replyId: string | undefined): string {
+function replyTargetSignature(
+  room: Room,
+  replyId: string | undefined,
+  roomEncrypted: boolean,
+): string {
   if (!replyId) {
     return '';
   }
@@ -159,6 +164,9 @@ function replyTargetSignature(room: Room, replyId: string | undefined): string {
     String(shownContent(target)['body'] ?? ''),
     member?.name || sender,
     member?.getMxcAvatarUrl() ?? '',
+    (!target.isRedacted() &&
+      unencryptedMarkFor(room, roomEncrypted)(target, shownSubject(target))) ||
+      '',
   ].join('\x02');
 }
 

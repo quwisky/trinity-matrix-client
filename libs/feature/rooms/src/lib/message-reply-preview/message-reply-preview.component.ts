@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   input,
   output,
 } from '@angular/core';
@@ -18,4 +19,8 @@ import { UnencryptedMarkComponent } from '../shared/unencrypted-mark/unencrypted
 export class MessageReplyPreviewComponent {
   readonly reply = input.required<ReplyPreview>();
   readonly jump = output<string>();
+  readonly label = computed(() => {
+    const { senderName, shield } = this.reply();
+    return `Replying to ${senderName}${shield ? `, ${shield.reason.toLowerCase()} message` : ''}`;
+  });
 }

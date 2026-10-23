@@ -51,7 +51,7 @@ describe('MessageReplyPreviewComponent', () => {
     ).toBeInTheDocument();
     expect(container.querySelector('button')).toHaveAttribute(
       'aria-label',
-      'Replying to Alice (not encrypted)',
+      'Replying to Alice, not encrypted message',
     );
   });
 

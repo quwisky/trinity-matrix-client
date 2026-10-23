@@ -2,11 +2,7 @@
 <button
   type="button"
   class="msg__reply msg__target"
-  [attr.aria-label]="
-    'Replying to ' +
-    r.senderName +
-    (r.shield ? ' (' + r.shield.reason.toLowerCase() + ')' : '')
-  "
+  [attr.aria-label]="label()"
   (click)="jump.emit(r.id)"
 >
   <trn-avatar
