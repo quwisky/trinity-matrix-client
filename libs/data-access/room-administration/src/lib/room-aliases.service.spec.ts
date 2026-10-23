@@ -69,6 +69,7 @@ function setup(
       upgrade: permission,
       encryption: permission,
       directory: permission,
+      imagePack: permission,
     };
   });
   TestBed.configureTestingModule({

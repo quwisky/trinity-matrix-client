@@ -11,6 +11,7 @@ import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
+import { IMAGE_PACK_EVENT_TYPE } from '@trinity/data-access/media';
 import { liveRoomState } from '@trinity/util/matrix';
 import type { Observable } from 'rxjs';
 import { RoomAdministrationError } from './room-administration-error';
@@ -45,6 +46,8 @@ export interface RoomSettingsPermissions {
   readonly encryption: ActionAvailability;
   /** Listing the room in its homeserver's directory, which servers gate like the addresses. */
   readonly directory: ActionAvailability;
+  /** Editing the room's emoji, which sends `m.room.image_pack`. */
+  readonly imagePack: ActionAvailability;
 }
 
 export interface MemberActionPermissions {
@@ -152,6 +155,7 @@ export class RoomActionPermissionsService {
         upgrade: freshness,
         encryption: freshness,
         directory: freshness,
+        imagePack: freshness,
       };
     }
     return this.settingsPermissions(this.context(roomId));
@@ -180,11 +184,15 @@ export class RoomActionPermissionsService {
         upgrade: unavailable,
         encryption: unavailable,
         directory: unavailable,
+        imagePack: unavailable,
       };
     }
-    const may = (type: EventType): boolean =>
+    const may = (type: EventType | string): boolean =>
       !!liveRoomState(context.room)?.maySendStateEvent(type, context.userId);
-    const maySend = (type: EventType, label: string): ActionAvailability =>
+    const maySend = (
+      type: EventType | string,
+      label: string,
+    ): ActionAvailability =>
       may(type)
         ? ALLOWED
         : denied(`Your role cannot change this room's ${label}.`);
@@ -202,6 +210,7 @@ export class RoomActionPermissionsService {
             'Only people who can change room settings can turn on encryption.',
           ),
       directory: maySend(EventType.RoomCanonicalAlias, 'directory listing'),
+      imagePack: maySend(IMAGE_PACK_EVENT_TYPE, 'emoji'),
     };
   }
 

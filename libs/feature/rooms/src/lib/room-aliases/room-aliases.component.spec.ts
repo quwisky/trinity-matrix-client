@@ -65,6 +65,7 @@ async function build(
           upgrade: availability(),
           encryption: availability(),
           directory: availability(),
+          imagePack: availability(),
         }),
       }),
       MockProvider(TrnAlertService, { confirm$: alertConfirm }),
