@@ -252,6 +252,28 @@ describe('back-merge', () => {
       ]);
     });
 
+    it("keeps main's newer cut when an older line back-merges", () => {
+      repo = releaseRepo();
+      repo.commit('chore: back-merge v0.6.0 into main', {
+        '.release-please-manifest.json': manifest('0.6.0-next.3'),
+      });
+      repo.backMerge();
+      expect(repo.read('.release-please-manifest.json')).toBe(
+        manifest('0.6.0-next.3'),
+      );
+    });
+
+    it('replaces a legacy stable value with the cut', () => {
+      repo = releaseRepo();
+      repo.commit('chore: back-merge v0.5.1 into main', {
+        '.release-please-manifest.json': manifest('0.5.1'),
+      });
+      repo.backMerge();
+      expect(repo.read('.release-please-manifest.json')).toBe(
+        manifest('0.5.0-next.6'),
+      );
+    });
+
     it('skips a metadata path that main deleted', () => {
       repo = releaseRepo();
       const { resolved } = repo.backMerge();

@@ -115,6 +115,7 @@ export function land({
   expectedSha,
 }) {
   const tag = tagFor(branch);
+  const line = `release/${tag.slice(1, tag.lastIndexOf('.'))}.x`;
   const git = (...args) =>
     execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
   git(
@@ -124,7 +125,20 @@ export function land({
     '+refs/heads/main:refs/remotes/origin/main',
     `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
     `+refs/tags/${tag}:refs/tags/${tag}`,
+    `+refs/heads/${line}:refs/remotes/origin/${line}`,
   );
+  try {
+    git(
+      'merge-base',
+      '--is-ancestor',
+      `refs/tags/${tag}^{commit}`,
+      `refs/remotes/origin/${line}`,
+    );
+  } catch {
+    throw new Error(
+      `${tag} is not on ${line}; refusing a tag that did not go through its release branch.`,
+    );
+  }
   const sha = git('rev-parse', `refs/remotes/origin/${branch}^{commit}`);
   if (expectedSha && sha !== expectedSha)
     throw new Error(
@@ -138,7 +152,7 @@ export function land({
     throw new Error(
       `${branch} at ${sha} is not a single-parent commit on main; refusing.` +
         (parents.length === 2
-          ? ` A two-parent merge comes from a release line whose scripts/back-merge.mjs predates single-parent back-merges: backport that change to release/${tag.slice(1, tag.lastIndexOf('.'))}.x and re-run 'Open the back-merge PR'.`
+          ? ` A two-parent merge comes from a release line whose scripts/back-merge.mjs predates single-parent back-merges: backport that change to ${line} and re-run 'Open the back-merge PR'.`
           : ''),
     );
   if (parents[0] !== main)

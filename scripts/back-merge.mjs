@@ -145,7 +145,10 @@ export function buildBackMerge(tag, cwd = process.cwd()) {
     );
     resolved.push(path);
   }
-  write(STABLE_MANIFEST, `${JSON.stringify({ '.': cut }, null, 2)}\n`);
+  const current = JSON.parse(show('HEAD', STABLE_MANIFEST) ?? '{}')['.'];
+  // An older line's patch must not move main's boundary back; a stable value predates cuts.
+  const next = current?.includes('-next.') ? higherVersion(current, cut) : cut;
+  write(STABLE_MANIFEST, `${JSON.stringify({ '.': next }, null, 2)}\n`);
   if (!resolved.includes(STABLE_MANIFEST)) resolved.push(STABLE_MANIFEST);
   let changed = false;
   try {

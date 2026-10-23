@@ -338,6 +338,20 @@ describe('land-back-merge', () => {
       expect(r.remoteMain()).toBe(main);
     });
 
+    it('refuses a tag that is not on its release branch', () => {
+      r = repo();
+      const main = r.remoteMain();
+      r.git(
+        'push',
+        '-q',
+        '-f',
+        'origin',
+        'v0.1.0-next.1^{commit}:refs/heads/release/0.1.x',
+      );
+      expect(() => attempt()).toThrow(/v0\.1\.2 is not on release\/0\.1\.x/);
+      expect(r.remoteMain()).toBe(main);
+    });
+
     it('refuses a symlink at a metadata path', () => {
       r = repo();
       const main = r.remoteMain();

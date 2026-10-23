@@ -520,6 +520,12 @@ that line only; merging backports to every labelled line. [`scripts/backport.mjs
 The back-merge never carries code, so a backported fix exists once in `main`'s history (its
 original commit) and its cherry-pick stays on the release branch.
 
+Never backport a change to `.release-please-manifest.json`. A release branch's stable manifest
+is its own; `main`'s copy only marks the next line's boundary. A release line gets release
+tooling from a pull request that also changes that manifest (such as the single-parent
+back-merge) through a direct pull request into `release/X.Y.x` that carries the tooling
+without the manifest, not through a backport label.
+
 - A rebase-merged pull request is picked as its full commit range when its commits' full
   subjects appear in order at the merge point; a squash or merge commit is picked as one
   commit. A multi-commit pull request picked as one commit logs a `::notice::`, expected
@@ -569,22 +575,27 @@ for it. The job does not affect
 the release itself.
 
 `release.yml` runs the release branch's own copy of `back-merge.mjs`, so a line cut before
-this change keeps the old two-parent merge until the change is backported to it: label the
-change's pull request `backport release/X.Y.x` for every live line. The lander refuses a
-two-parent merge; backport the change to the line and re-run `Open the back-merge PR`.
+this change keeps the old two-parent merge until the change reaches it: open a direct pull
+request into `release/X.Y.x` for every live line with the scripts, workflow and docs, never
+`.release-please-manifest.json`. The lander refuses a two-parent merge; bring the change to the
+line that way and re-run `Open the back-merge PR`.
 
 The commit carries only these paths. Each is a 3-way merge of the merge base, `main` and the
 tag in which a conflicting hunk takes the release side and every non-conflicting edit from
-either side is kept. `CHANGELOG.md`, `.release-please-manifest.json` and `apps/docs-users/release.json` are written
-back from the release side even if `main` deleted them. Any other path, a user guide page, that
-`main` deleted (or that the tag deleted) is skipped with a note. A path added on both lines takes
-the release side whole.
+either side is kept. `CHANGELOG.md` and `apps/docs-users/release.json` are written back from
+the release side even if `main` deleted them. Any other path, a user guide page or
+`.release-please-manifest.next.json`, that `main` deleted (or that the tag deleted) is skipped
+with a note. A path added on both lines takes the release side whole.
+`.release-please-manifest.json` is not merged: it gets the line's cut prerelease, or keeps
+`main`'s value when that is already a higher `-next` prerelease, so a patch on an older line
+never moves `main`'s boundary back. A stable value there predates single-parent back-merges and
+is replaced by the cut.
 
-| Path                                                             | Resolution                                                                                                                  |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `CHANGELOG.md`, `apps/docs-users/release.json`, user guide pages | The release branch's side                                                                                                   |
-| `.release-please-manifest.json`                                  | Set to the line's cut prerelease (`git describe --tags --abbrev=0 --match 'v*-next.*' vX.Y.Z`, without the `v`)             |
-| `.release-please-manifest.next.json`                             | The higher version by semver precedence (`0.1.1` beats `0.1.1-next.3`), so `main` continues at the next patch's prereleases |
+| Path                                                             | Resolution                                                                                                                                 |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CHANGELOG.md`, `apps/docs-users/release.json`, user guide pages | The release branch's side                                                                                                                  |
+| `.release-please-manifest.json`                                  | The line's cut prerelease (`git describe --tags --abbrev=0 --match 'v*-next.*' vX.Y.Z`, without the `v`), or `main`'s higher `-next` value |
+| `.release-please-manifest.next.json`                             | The higher version by semver precedence (`0.1.1` beats `0.1.1-next.3`), so `main` continues at the next patch's prereleases                |
 
 `package.json`, `electron/package.json` and all other paths are never carried, so conflicts
 no longer arise. The job fails, with a clear error, only when no cut prerelease tag precedes
@@ -599,6 +610,7 @@ token, which pushes the branch's head to `main` as a fast-forward, never forced.
 marks the PR merged. The script refuses, and pushes nothing, unless:
 
 - the branch is still at the commit that CI run tested;
+- the `vX.Y.Z` tag is on `release/X.Y.x`, as `release.yml`'s verify job requires;
 - the head has exactly one parent, the current `main`, and the `vX.Y.Z` tag exists. A
   two-parent merge (from a line whose `back-merge.mjs` predates this design) is refused. If
   `main` has moved, re-run the `Open the back-merge PR` job; it rebuilds the commit on
