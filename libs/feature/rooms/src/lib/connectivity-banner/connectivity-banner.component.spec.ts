@@ -3,7 +3,6 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { ConnectivityBannerComponent } from './connectivity-banner.component';
 
 describe('ConnectivityBannerComponent', () => {
@@ -18,8 +17,7 @@ describe('ConnectivityBannerComponent', () => {
   const renderBanner = () =>
     render(ConnectivityBannerComponent, {
       providers: [
-        MockProvider(MatrixClientService, { connectivity }),
-        MockProvider(ConversationRuntime, { waitingCount }),
+        MockProvider(MatrixClientService, { connectivity, waitingCount }),
       ],
     });
 
@@ -77,5 +75,17 @@ describe('ConnectivityBannerComponent', () => {
     fixture.detectChanges();
 
     expect(banner(container)?.textContent).not.toContain('waiting');
+  });
+
+  it('shows the offline icon only while offline', async () => {
+    const { container, fixture } = await renderBanner();
+
+    waitingCount.set(1);
+    fixture.detectChanges();
+    expect(container.querySelector('trn-icon')).toBeNull();
+
+    connectivity.set('offline');
+    fixture.detectChanges();
+    expect(container.querySelector('trn-icon')).not.toBeNull();
   });
 });

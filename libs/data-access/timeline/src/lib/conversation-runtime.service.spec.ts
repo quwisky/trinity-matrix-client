@@ -1256,6 +1256,24 @@ describe('ConversationRuntime', () => {
     });
   });
 
+  it('routes a thread cancel to the adapter with the thread root', async () => {
+    const { runtime, messageAdapter } = setup();
+    const conversation = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+
+    await firstValueFrom(
+      conversation.threads.forRoot('$root')!.cancel('$reply'),
+    );
+
+    expect(messageAdapter.cancel).toHaveBeenCalledWith({
+      key: conversation.key,
+      threadRootId: '$root',
+      messageId: '$reply',
+    });
+  });
+
   it('permanently releases the previous root child when thread navigation changes', async () => {
     const { runtime, controller, messageAdapter } = setup();
     const conversation = runtime.focus({

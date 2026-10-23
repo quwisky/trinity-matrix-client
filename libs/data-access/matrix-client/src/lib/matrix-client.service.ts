@@ -13,6 +13,7 @@ import {
   isValidAuthMetadata,
   ClientEvent,
   HttpApiEvent,
+  RoomEvent,
   SyncState,
   type AccessTokens,
   type ICreateClientOpts,
@@ -61,6 +62,7 @@ import {
   clientPendingTexts,
   pauseClientSync,
   resendWaitingEchoes,
+  waitingEchoCount,
   type PendingTextMessage,
 } from './outgoing-work';
 import {
@@ -141,6 +143,10 @@ interface AccountClient {
   readonly syncStore: IndexedDBStore | null;
   /** This account's coarse sync state (null until its first sync transition). */
   readonly syncState: WritableSignal<SyncState | null>;
+  /** How many of its messages wait to be sent by themselves; see {@link waitingEchoCount}. */
+  readonly waitingCount: WritableSignal<number>;
+  /** Its `RoomEvent.LocalEchoUpdated` listener, which keeps {@link waitingCount} current. */
+  readonly onLocalEchoUpdated: () => void;
   /** Whether this client has completed a sync with its homeserver ({@link isServerSync}). */
   readonly serverSynced: WritableSignal<boolean>;
   /** Whether this client has prepared its rooms, from its sync cache or its homeserver. */
@@ -335,6 +341,12 @@ export class MatrixClientService {
     return state === SyncState.Error || state === SyncState.Reconnecting
       ? 'offline'
       : 'online';
+  });
+
+  /** How many messages of the ACTIVE account wait to go out once it reconnects. */
+  readonly waitingCount: Signal<number> = computed(() => {
+    this._accountIds();
+    return this.active()?.waitingCount() ?? 0;
   });
 
   get instance(): MatrixClient {
@@ -842,6 +854,9 @@ export class MatrixClientService {
       let latestServerSynced = false;
       const roomsPrepared = signal(false);
       let latestRoomsPrepared = false;
+      const waitingCount = signal(0);
+      const onLocalEchoUpdated = (): void =>
+        waitingCount.set(waitingEchoCount(created!));
       const onLoggedOut = (err: MatrixError): void =>
         this.handleServerLogout(session.userId, err);
       // Not detached on teardown: it only updates this start's own counter. Null until the
@@ -868,6 +883,7 @@ export class MatrixClientService {
         }
         syncProjection?.release();
         created?.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
+        created?.off(RoomEvent.LocalEchoUpdated, onLocalEchoUpdated);
         created?.stopClient();
         holder.clear();
         this.forgetOAuthTokens(session.userId, created);
@@ -986,6 +1002,7 @@ export class MatrixClientService {
             }),
           });
           created!.on(HttpApiEvent.SessionLoggedOut, onLoggedOut);
+          created!.on(RoomEvent.LocalEchoUpdated, onLocalEchoUpdated);
           created!.on(
             CryptoEvent.KeyBackupSessionsRemaining,
             onBackupKeysRemaining,
@@ -1022,6 +1039,8 @@ export class MatrixClientService {
             cryptoStoreEncrypted: session.cryptoStoreKeyed === true,
             syncStore: store,
             syncState,
+            waitingCount,
+            onLocalEchoUpdated,
             serverSynced,
             roomsPrepared,
             syncProjection,
@@ -1274,6 +1293,10 @@ export class MatrixClientService {
     for (const account of this.clients.values()) {
       account.syncProjection.release();
       account.client.off(HttpApiEvent.SessionLoggedOut, account.onLoggedOut);
+      account.client.off(
+        RoomEvent.LocalEchoUpdated,
+        account.onLocalEchoUpdated,
+      );
       account.client.stopClient();
       account.holder.clear();
       this.closeStore(account.syncStore);
@@ -1311,6 +1334,7 @@ export class MatrixClientService {
     }
     account.syncProjection.release();
     account.client.off(HttpApiEvent.SessionLoggedOut, account.onLoggedOut);
+    account.client.off(RoomEvent.LocalEchoUpdated, account.onLocalEchoUpdated);
     account.client.stopClient(); // clearStores must run with the client stopped
     account.holder.clear();
     this.clients.delete(userId);

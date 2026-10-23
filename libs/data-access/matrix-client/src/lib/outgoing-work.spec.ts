@@ -46,7 +46,7 @@ const run = (fake: ReturnType<typeof client>, live = () => true) =>
   resendWaitingEchoes(fake as unknown as MatrixClient, live);
 
 describe('resendWaitingEchoes', () => {
-  it('cancelling a waiting row removes it and nothing resends', async () => {
+  it('skips a cancelled echo', async () => {
     const echo = waiting('gone');
     const fake = client([room('!r:hs', [echo])], () => Promise.resolve());
     echo.status = EventStatus.CANCELLED;

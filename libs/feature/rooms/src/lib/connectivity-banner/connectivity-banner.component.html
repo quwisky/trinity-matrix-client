@@ -2,12 +2,12 @@
      its text appears (as the @if banner below is) is not reliably announced, so
      mirror the state here where the region already exists when the text changes. -->
 <span class="sr-only" role="status" aria-live="polite">
-  {{ offline() ? 'You’re offline. Reconnecting…' : '' }} {{ waitingText() }}
+  {{ liveText() }}
 </span>
 @if (offline() || waitingText()) {
   <trn-banner variant="neutral">
-    <trn-icon trnBannerIcon name="cloud-off" />
     @if (offline()) {
+      <trn-icon trnBannerIcon name="cloud-off" />
       You’re offline. Reconnecting…
     }
     {{ waitingText() }}

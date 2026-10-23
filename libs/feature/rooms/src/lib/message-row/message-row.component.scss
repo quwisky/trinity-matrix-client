@@ -390,38 +390,26 @@
     flex-wrap: wrap;
   }
 
-  .msg__waiting {
-    color: var(--trinity-text-muted);
-    font-size: var(--trinity-type-control-size);
-    line-height: var(--trinity-type-control-line-height);
-  }
-
-  .msg__cancel {
-    margin-left: var(--trinity-space-2);
-    padding: 0;
-    border: none;
-    background: none;
-    color: var(--trinity-danger);
-    min-height: var(--trinity-interaction-target-min-size);
-    font: inherit;
-    cursor: pointer;
-
-    &:hover {
-      text-decoration: underline;
-    }
-  }
-
   .msg__retry,
   .msg__waiting {
     flex-basis: 100%;
     margin-left: var(--message-body-indent);
   }
 
-  .msg__retry {
+  .msg__waiting {
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-space-2);
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-control-size);
+    line-height: var(--trinity-type-control-line-height);
+  }
+
+  .msg__retry,
+  .msg__cancel {
     padding: 0;
     border: none;
     background: none;
-    color: var(--trinity-danger);
     min-height: var(--trinity-interaction-target-min-size);
     border-radius: var(--trinity-shape-control-radius);
     font-size: var(--trinity-type-control-size);
@@ -432,6 +420,17 @@
     &:hover {
       text-decoration: underline;
     }
+  }
+
+  .msg__retry {
+    color: var(--trinity-danger);
+  }
+
+  // Cancelling is a choice, not an error, so it takes the link colour; the inline padding keeps a
+  // short word a thumb-sized target beside the status.
+  .msg__cancel {
+    padding-inline: var(--trinity-space-2);
+    color: var(--trinity-link);
   }
 
   .msg__target:focus-visible {

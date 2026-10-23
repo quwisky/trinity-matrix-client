@@ -8,6 +8,7 @@ import {
   HttpApiEvent,
   MatrixError,
   MatrixEvent,
+  RoomEvent,
   SyncState,
   createClient,
 } from 'matrix-js-sdk';
@@ -897,6 +898,108 @@ describe('MatrixClientService', () => {
     syncCall![1]('SYNCING');
     await Promise.resolve();
     expect(svc.syncState()).toBe('SYNCING');
+  });
+
+  describe('counting messages waiting to send', () => {
+    function waiting(body: string, offline = true): MatrixEvent {
+      const echo = new MatrixEvent({
+        type: 'm.room.message',
+        content: { msgtype: 'm.text', body },
+      });
+      echo.status = EventStatus.NOT_SENT;
+      echo.error = (
+        offline ? new ConnectionError('offline') : new Error('refused')
+      ) as never;
+      return echo;
+    }
+
+    const room = (
+      roomId: string,
+      events: MatrixEvent[],
+      inFlight: MatrixEvent[] = [],
+    ) => ({
+      roomId,
+      txnToEvent: new Map(inFlight.map((event, i) => [`t${i}`, event])),
+      getLiveTimeline: () => ({ getEvents: () => events }),
+      getThreads: () => [{ liveTimeline: { getEvents: () => inFlight } }],
+    });
+
+    function clientWith(...rooms: ReturnType<typeof room>[]) {
+      return { ...fakeClient(), getRooms: vi.fn().mockReturnValue(rooms) };
+    }
+
+    /** Report a local-echo change, as the SDK does through the client. */
+    const echoUpdated = (client: ReturnType<typeof fakeClient>): void =>
+      (
+        client.on.mock.calls.find(
+          ([evt]) => evt === RoomEvent.LocalEchoUpdated,
+        )![1] as () => void
+      )();
+
+    it('counts the waiting messages of every room', async () => {
+      const client = clientWith(
+        room('!a:hs', [waiting('one'), waiting('refused', false)]),
+        room('!b:hs', [waiting('two')]),
+      );
+      const { svc } = setup(client);
+      await firstValueFrom(svc.init(SESSION));
+
+      echoUpdated(client);
+
+      expect(svc.waitingCount()).toBe(2);
+    });
+
+    it('counts a thread echo once', async () => {
+      const reply = waiting('in a thread');
+      const client = clientWith(room('!a:hs', [], [reply]));
+      const { svc } = setup(client);
+      await firstValueFrom(svc.init(SESSION));
+
+      echoUpdated(client);
+
+      expect(svc.waitingCount()).toBe(1);
+    });
+
+    it('drops when a message is sent or cancelled', async () => {
+      const sent = waiting('sent');
+      const cancelled = waiting('cancelled');
+      const client = clientWith(room('!a:hs', [sent, cancelled]));
+      const { svc } = setup(client);
+      await firstValueFrom(svc.init(SESSION));
+      echoUpdated(client);
+      expect(svc.waitingCount()).toBe(2);
+
+      sent.status = EventStatus.SENT;
+      echoUpdated(client);
+      expect(svc.waitingCount()).toBe(1);
+
+      cancelled.status = EventStatus.CANCELLED;
+      echoUpdated(client);
+      expect(svc.waitingCount()).toBe(0);
+    });
+
+    it('follows the active account and stops listening when it is removed', async () => {
+      const mine = clientWith(room('!a:hs', [waiting('mine')]));
+      const yours = clientWith(
+        room('!b:hs', [waiting('y1'), waiting('y2'), waiting('y3')]),
+      );
+      const { svc } = setup(mine, yours);
+      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(svc.add(SESSION_B));
+      echoUpdated(mine);
+      echoUpdated(yours);
+
+      svc.setActive(SESSION.userId);
+      expect(svc.waitingCount()).toBe(1);
+      svc.setActive(SESSION_B.userId);
+      expect(svc.waitingCount()).toBe(3);
+
+      await firstValueFrom(svc.remove(SESSION_B.userId));
+      expect(yours.off).toHaveBeenCalledWith(
+        RoomEvent.LocalEchoUpdated,
+        expect.any(Function),
+      );
+    });
   });
 
   describe('resending messages that failed offline', () => {

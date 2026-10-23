@@ -110,6 +110,17 @@ export function clientPendingTexts(
   return messages;
 }
 
+/** How many of `client`'s messages wait to go out by themselves, an echo in two lists counted once. */
+export function waitingEchoCount(client: MatrixClient): number {
+  const seen = new Set<MatrixEvent>();
+  for (const room of client.getRooms()) {
+    for (const event of localEchoes(room)) {
+      if (isWaitingToSend(event)) seen.add(event);
+    }
+  }
+  return seen.size;
+}
+
 /**
  * Send again every message of `client` that failed only because it was offline. Within a room
  * they go one at a time in send order; rooms run side by side. Each is checked again just
