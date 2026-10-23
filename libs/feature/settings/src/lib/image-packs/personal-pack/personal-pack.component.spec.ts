@@ -224,6 +224,19 @@ describe('PersonalPackComponent', () => {
     expect(view.openAndWait$).toHaveBeenCalledOnce();
   });
 
+  it("keeps a room's queued files when the active account changes", async () => {
+    const view = await build([FOX], { ref: ROOM });
+    const input = view.byTestId('personal-pack-files') as HTMLInputElement;
+    const fox = new File(['x'], 'fox.png', { type: 'image/png' });
+
+    choose(input, [fox, fox]);
+    view.activeUserId.set('@b:hs');
+    view.dialogs[0].next(FOX);
+    view.dialogs[0].complete();
+
+    expect(view.openAndWait$).toHaveBeenCalledTimes(2);
+  });
+
   it('disables Add with the full-pack copy at 500', async () => {
     const full = Array.from({ length: 500 }, (_, i) => ({
       ...FOX,

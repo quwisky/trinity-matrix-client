@@ -150,6 +150,14 @@ describe('AddToPackDialogComponent', () => {
     expect(view.add).not.toHaveBeenCalled();
   });
 
+  it('stays open for a room on its own account when the active account changes', async () => {
+    const ref = { kind: 'room', accountId: '@me:hs', roomId: '!r:hs' };
+    const view = await build(() => of(ENTRY), FILE_INPUT, { ref });
+    view.activeUserId.set('@other:hs');
+    view.settle();
+    expect(view.close).not.toHaveBeenCalled();
+  });
+
   it('cannot be dismissed while an add runs', async () => {
     const result = new Subject<PackEntry>();
     const view = await build(() => result);

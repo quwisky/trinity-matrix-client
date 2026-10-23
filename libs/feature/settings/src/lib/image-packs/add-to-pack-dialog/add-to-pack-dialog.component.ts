@@ -136,10 +136,10 @@ export function addFailure(
 
 /**
  * "Add to your emoji": names an image and adds it to the personal pack, or to `ref`'s room
- * pack. Shared by Settings, room settings and,
- * through `ADD_TO_IMAGE_PACK_DIALOG`, the rooms feature. Closes with the added entry, or null;
- * an account switch closes it with null so nothing is written to the other account. An add
- * already started when the account switches still finishes on the original account.
+ * pack. Shared by Settings, room settings and, through `ADD_TO_IMAGE_PACK_DIALOG`, the rooms
+ * feature. Closes with the added entry, or null. For the personal pack, an account switch
+ * closes it with null so nothing is written to the other account; an add already started
+ * still finishes on the original account. A room ref pins its own account.
  */
 @Component({
   selector: 'trn-add-to-pack-dialog',
@@ -208,7 +208,13 @@ export class AddToPackDialogComponent {
 
   constructor() {
     effect(() => {
-      if (this.matrix.activeUserId() !== this.account) this.close(null);
+      // A room ref pins its own account, so only the personal pack follows the active one.
+      if (
+        this.ref().kind === 'personal' &&
+        this.matrix.activeUserId() !== this.account
+      ) {
+        this.close(null);
+      }
     });
     effect((onCleanup) => {
       const source = this.input();

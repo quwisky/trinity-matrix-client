@@ -205,8 +205,10 @@ export class PersonalPackComponent {
     const account = this.matrix.activeUserId();
     from(files)
       .pipe(
-        // An account switch drops the files still queued; the open dialog closes itself.
+        // For the personal pack, an account switch drops the files still queued; the open dialog
+        // closes itself. A room ref pins its account.
         concatMap((file) =>
+          this.ref().kind === 'personal' &&
           this.matrix.activeUserId() !== account
             ? EMPTY
             : this.surfaces.openAndWait$<PackEntry, AddToPackDialogComponent>(
