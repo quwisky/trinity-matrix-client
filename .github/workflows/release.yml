@@ -149,8 +149,9 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   # Merges the release branch back into main so main gets the changelog, the stable
-  # version files and any fixes made on the branch. Independent of packaging: a failed
-  # installer build must not hold the back-merge.
+  # version files and any fixes made on the branch. Runs main's copy of back-merge.mjs,
+  # the one land-back-merge.mjs rebuilds with, so a line never builds a commit main's
+  # lander refuses. Independent of packaging: a failed installer build must not hold it.
   back-merge:
     name: Open the back-merge PR
     needs: release-please
@@ -171,13 +172,22 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
-      # The release branch's own copy of the script. back-merge.mjs fetches main and
-      # branches from origin/main itself; it pushes only its back-merge/vX.Y.Z branch.
+      # The repository the script runs in. back-merge.mjs fetches main and branches from
+      # origin/main itself; it pushes only its back-merge/vX.Y.Z branch.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
+      # main's copy of the script (it imports only Node built-ins), checked out after the
+      # repository above, which would otherwise clean it away.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          path: main-tools
+          sparse-checkout: scripts/back-merge.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       # The script uses import.meta.main (Node 24+); the runner's default Node is older.
       # Node only: the script needs no workspace dependencies, so skip the full setup.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -191,7 +201,7 @@ jobs:
         run: |
           git config user.name 'trinity-release[bot]'
           git config user.email 'trinity-release[bot]@users.noreply.github.com'
-          node scripts/back-merge.mjs --tag "$TAG" --branch "$BRANCH"
+          node main-tools/scripts/back-merge.mjs --tag "$TAG" --branch "$BRANCH"
 
   # The whole gate for a release: the same checks ci.yml runs on a branch, plus the
   # tag/ancestry/version checks below. A dispatch can name any tag, so nothing here may
