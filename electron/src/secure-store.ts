@@ -16,7 +16,7 @@ import type { SafeStorage } from 'electron';
  * On Linux, when no OS password manager can be determined, Electron selects the
  * `basic_text` backend, which "encrypts" with a hardcoded key. That is obfuscation:
  * anything running as the user recovers the Matrix access token and the crypto-store key,
- * and with that key the store holding the cross-signing keys. `isEncryptionAvailable()`
+ * and with that key the store holding the cross-signing keys. `isAsyncEncryptionAvailable()`
  * does not distinguish it, so a token would be stored under a false promise while
  * `isSecure()` reported true.
  *
@@ -24,8 +24,14 @@ import type { SafeStorage } from 'electron';
  * person to accept before a sign-in stores anything and then warns about in Security
  * settings, rather than silently pretending the secret is protected.
  */
-export function secureStorageUsable(safeStorage: SafeStorage): boolean {
-  if (!safeStorage.isEncryptionAvailable()) {
+export async function secureStorageUsable(
+  safeStorage: SafeStorage,
+): Promise<boolean> {
+  try {
+    if (!(await safeStorage.isAsyncEncryptionAvailable())) {
+      return false;
+    }
+  } catch {
     return false;
   }
   if (process.platform !== 'linux') {
@@ -150,6 +156,48 @@ function writeSecureStore(
   io.writeFile(filePath, JSON.stringify(data));
 }
 
+/** Per store file: each operation reads, awaits the keyring, then writes, so they run one at a time. */
+const queues = new Map<string, Promise<unknown>>();
+
+function serial<T>(filePath: string, work: () => Promise<T>): Promise<T> {
+  const next = (queues.get(filePath) ?? Promise.resolve()).then(work, work);
+  queues.set(
+    filePath,
+    next.catch(() => undefined),
+  );
+  return next;
+}
+
+/**
+ * Decrypt `store[key]`; throws when it cannot. A value written under an older key (such
+ * as the sync API's) is re-encrypted in place, and a failure there keeps the old entry,
+ * which still decrypts.
+ */
+async function openEntry(
+  safeStorage: SafeStorage,
+  filePath: string,
+  store: Record<string, string>,
+  key: string,
+  io: SecureStoreIo,
+): Promise<string> {
+  const { result, shouldReEncrypt } = await safeStorage.decryptStringAsync(
+    Buffer.from(store[key], 'base64'),
+  );
+  if (shouldReEncrypt) {
+    try {
+      const cipher = await safeStorage.encryptStringAsync(result);
+      writeSecureStore(
+        filePath,
+        { ...store, [key]: cipher.toString('base64') },
+        io,
+      );
+    } catch {
+      console.warn('[secure-store] could not re-encrypt an entry; kept it');
+    }
+  }
+  return result;
+}
+
 /**
  * What reading one secret found. `unavailable` is not `absent`: the entry exists but OS
  * encryption cannot open it right now (a keyring not unlocked yet, a denied keychain).
@@ -170,26 +218,27 @@ export function secureStoreRead(
   filePath: string,
   key: string,
   io: SecureStoreIo = defaultIo,
-): SecureStoreRead {
-  const store = readSecureStoreStrict(filePath, io);
-  if (store === null) {
-    return { kind: 'unavailable' };
-  }
-  const entry = store[key];
-  if (!entry) {
-    return { kind: 'absent' };
-  }
-  if (!secureStorageUsable(safeStorage)) {
-    return { kind: 'unavailable' };
-  }
-  try {
-    return {
-      kind: 'present',
-      value: safeStorage.decryptString(Buffer.from(entry, 'base64')),
-    };
-  } catch {
-    return { kind: 'unavailable' };
-  }
+): Promise<SecureStoreRead> {
+  return serial(filePath, async () => {
+    const store = readSecureStoreStrict(filePath, io);
+    if (store === null) {
+      return { kind: 'unavailable' };
+    }
+    if (!store[key]) {
+      return { kind: 'absent' };
+    }
+    if (!(await secureStorageUsable(safeStorage))) {
+      return { kind: 'unavailable' };
+    }
+    try {
+      return {
+        kind: 'present',
+        value: await openEntry(safeStorage, filePath, store, key, io),
+      };
+    } catch {
+      return { kind: 'unavailable' };
+    }
+  });
 }
 
 /**
@@ -202,16 +251,18 @@ export function secureStoreGet(
   filePath: string,
   key: string,
   io: SecureStoreIo = defaultIo,
-): string | null {
-  const entry = readSecureStore(filePath, io)[key];
-  if (!entry || !secureStorageUsable(safeStorage)) {
-    return null;
-  }
-  try {
-    return safeStorage.decryptString(Buffer.from(entry, 'base64'));
-  } catch {
-    return null;
-  }
+): Promise<string | null> {
+  return serial(filePath, async () => {
+    const store = readSecureStore(filePath, io);
+    if (!store[key] || !(await secureStorageUsable(safeStorage))) {
+      return null;
+    }
+    try {
+      return await openEntry(safeStorage, filePath, store, key, io);
+    } catch {
+      return null;
+    }
+  });
 }
 
 /**
@@ -226,31 +277,40 @@ export function secureStoreSet(
   key: string,
   value: string,
   io: SecureStoreIo = defaultIo,
-): boolean {
-  if (!secureStorageUsable(safeStorage)) {
-    return false;
-  }
-  const file = readStoreFile(filePath, io);
-  if (file.kind === 'unreadable') {
-    return false;
-  }
-  let data: Record<string, string> = {};
-  if (file.kind === 'corrupt') {
-    // Nothing in it can be read, now or later, and refusing every write would block
-    // sign-in for good. Keep it for inspection and start again from an empty store.
-    const aside = `${filePath}.corrupt-${Date.now()}`;
-    try {
-      io.renameFile(filePath, aside);
-    } catch {
+): Promise<boolean> {
+  return serial(filePath, async () => {
+    if (!(await secureStorageUsable(safeStorage))) {
       return false;
     }
-    console.warn('[secure-store] moved an unparseable store file aside', aside);
-  } else {
-    data = { ...file.data };
-  }
-  data[key] = safeStorage.encryptString(value).toString('base64');
-  writeSecureStore(filePath, data, io);
-  return true;
+    const file = readStoreFile(filePath, io);
+    if (file.kind === 'unreadable') {
+      return false;
+    }
+    let data: Record<string, string> = {};
+    if (file.kind === 'corrupt') {
+      // Nothing in it can be read, now or later, and refusing every write would block
+      // sign-in for good. Keep it for inspection and start again from an empty store.
+      const aside = `${filePath}.corrupt-${Date.now()}`;
+      try {
+        io.renameFile(filePath, aside);
+      } catch {
+        return false;
+      }
+      console.warn(
+        '[secure-store] moved an unparseable store file aside',
+        aside,
+      );
+    } else {
+      data = { ...file.data };
+    }
+    const cipher = await safeStorage.encryptStringAsync(value);
+    writeSecureStore(
+      filePath,
+      { ...data, [key]: cipher.toString('base64') },
+      io,
+    );
+    return true;
+  });
 }
 
 /**
@@ -261,17 +321,19 @@ export function secureStoreDelete(
   filePath: string,
   key: string,
   io: SecureStoreIo = defaultIo,
-): boolean {
-  const data = readSecureStoreStrict(filePath, io);
-  if (data === null) {
-    console.warn(
-      '[secure-store] could not read the store file; nothing deleted',
-    );
-    return false;
-  }
-  if (key in data) {
-    delete data[key];
-    writeSecureStore(filePath, data, io);
-  }
-  return true;
+): Promise<boolean> {
+  return serial(filePath, async () => {
+    const data = readSecureStoreStrict(filePath, io);
+    if (data === null) {
+      console.warn(
+        '[secure-store] could not read the store file; nothing deleted',
+      );
+      return false;
+    }
+    if (key in data) {
+      delete data[key];
+      writeSecureStore(filePath, data, io);
+    }
+    return true;
+  });
 }

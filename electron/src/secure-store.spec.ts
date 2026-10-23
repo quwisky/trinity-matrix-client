@@ -15,29 +15,52 @@ import {
 
 const FILE = '/virtual/trinity-secure-store.json';
 
+/** What Electron's deprecated sync `encryptString` wrote: the format every existing store holds. */
+const LEGACY = 'enc:';
+/** What `encryptStringAsync` writes. */
+const CURRENT = 'enc2:';
+
+/** Let other queued work run, as a real keychain or keyring call does. */
+const yieldTurn = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 0));
+
 /**
- * A fake `safeStorage` whose encrypt/decrypt is a reversible round-trip:
- * `encryptString` prefixes the plaintext, `decryptString` strips it (and throws
- * on anything that wasn't produced by `encryptString`, mirroring a decrypt failure).
+ * A fake async `safeStorage` with a reversible round-trip. It decrypts both the current
+ * prefix and the legacy one, the way `decryptStringAsync` reads `encryptString` output,
+ * and asks for a legacy value to be re-encrypted. It throws on anything else, as a failed
+ * decrypt does. It has no sync methods, so a call to one fails the test.
  */
 function makeSafeStorage(
   available = true,
   backend = 'gnome_libsecret',
 ): SafeStorage {
-  const PREFIX = 'enc:';
   return {
-    isEncryptionAvailable: () => available,
+    isAsyncEncryptionAvailable: async () => {
+      await yieldTurn();
+      return available;
+    },
     getSelectedStorageBackend: () => backend,
-    encryptString: (plain: string) => Buffer.from(PREFIX + plain, 'utf8'),
-    decryptString: (buf: Buffer) => {
+    encryptStringAsync: async (plain: string) => {
+      await yieldTurn();
+      return Buffer.from(CURRENT + plain, 'utf8');
+    },
+    decryptStringAsync: async (buf: Buffer) => {
+      await yieldTurn();
       const text = buf.toString('utf8');
-      if (!text.startsWith(PREFIX)) {
-        throw new Error('decrypt failed');
+      if (text.startsWith(CURRENT)) {
+        return { result: text.slice(CURRENT.length), shouldReEncrypt: false };
       }
-      return text.slice(PREFIX.length);
+      if (text.startsWith(LEGACY)) {
+        return { result: text.slice(LEGACY.length), shouldReEncrypt: true };
+      }
+      throw new Error('decrypt failed');
     },
   } as unknown as SafeStorage;
 }
+
+/** A store entry as the sync API wrote it before Electron 45. */
+const legacyEntry = (plain: string): string =>
+  Buffer.from(LEGACY + plain, 'utf8').toString('base64');
 
 /** In-memory stand-in for the on-disk store file so tests never touch disk. */
 function makeIo(): { io: SecureStoreIo; files: Map<string, string> } {
@@ -63,45 +86,45 @@ function makeIo(): { io: SecureStoreIo; files: Map<string, string> } {
 }
 
 describe('secure store', () => {
-  it('round-trips a value through set -> get and stores ciphertext, not plaintext', () => {
+  it('round-trips a value through set -> get and stores ciphertext, not plaintext', async () => {
     const safeStorage = makeSafeStorage(true);
     const { io, files } = makeIo();
 
-    expect(secureStoreSet(safeStorage, FILE, 'token', 'sekret', io)).toBe(true);
-    expect(secureStoreGet(safeStorage, FILE, 'token', io)).toBe('sekret');
+    expect(await secureStoreSet(safeStorage, FILE, 'token', 'sekret', io)).toBe(
+      true,
+    );
+    expect(await secureStoreGet(safeStorage, FILE, 'token', io)).toBe('sekret');
     // The persisted file holds the encoded ciphertext, never the raw secret.
     expect(files.get(FILE)).not.toContain('sekret');
   });
 
-  it('when encryption is unavailable: set returns false, get returns null, nothing is written', () => {
+  it('when encryption is unavailable: set returns false, get returns null, nothing is written', async () => {
     const safeStorage = makeSafeStorage(false);
     const { io, files } = makeIo();
 
-    expect(secureStoreSet(safeStorage, FILE, 'token', 'sekret', io)).toBe(
+    expect(await secureStoreSet(safeStorage, FILE, 'token', 'sekret', io)).toBe(
       false,
     );
-    expect(secureStoreGet(safeStorage, FILE, 'token', io)).toBeNull();
+    expect(await secureStoreGet(safeStorage, FILE, 'token', io)).toBeNull();
     expect(files.has(FILE)).toBe(false);
   });
 
-  it('returns null (no throw) for a missing store file', () => {
+  it('returns null (no throw) for a missing store file', async () => {
     const safeStorage = makeSafeStorage(true);
     const { io } = makeIo();
 
-    expect(() => secureStoreGet(safeStorage, FILE, 'token', io)).not.toThrow();
-    expect(secureStoreGet(safeStorage, FILE, 'token', io)).toBeNull();
+    expect(await secureStoreGet(safeStorage, FILE, 'token', io)).toBeNull();
   });
 
-  it('returns null (no throw) for a corrupt, non-JSON store file', () => {
+  it('returns null (no throw) for a corrupt, non-JSON store file', async () => {
     const safeStorage = makeSafeStorage(true);
     const { io, files } = makeIo();
     files.set(FILE, 'this is not json {{{');
 
-    expect(() => secureStoreGet(safeStorage, FILE, 'token', io)).not.toThrow();
-    expect(secureStoreGet(safeStorage, FILE, 'token', io)).toBeNull();
+    expect(await secureStoreGet(safeStorage, FILE, 'token', io)).toBeNull();
   });
 
-  it('returns null when the stored entry cannot be decrypted', () => {
+  it('returns null when the stored entry cannot be decrypted', async () => {
     const safeStorage = makeSafeStorage(true);
     const { io } = makeIo();
     // A well-formed JSON map whose value is not valid ciphertext.
@@ -112,29 +135,29 @@ describe('secure store', () => {
       }),
     );
 
-    expect(secureStoreGet(safeStorage, FILE, 'token', io)).toBeNull();
+    expect(await secureStoreGet(safeStorage, FILE, 'token', io)).toBeNull();
   });
 
-  it('delete removes only the target key and persists the rest', () => {
+  it('delete removes only the target key and persists the rest', async () => {
     const safeStorage = makeSafeStorage(true);
     const { io } = makeIo();
 
-    secureStoreSet(safeStorage, FILE, 'a', 'AAA', io);
-    secureStoreSet(safeStorage, FILE, 'b', 'BBB', io);
+    await secureStoreSet(safeStorage, FILE, 'a', 'AAA', io);
+    await secureStoreSet(safeStorage, FILE, 'b', 'BBB', io);
 
-    secureStoreDelete(FILE, 'a', io);
+    await secureStoreDelete(FILE, 'a', io);
 
-    expect(secureStoreGet(safeStorage, FILE, 'a', io)).toBeNull();
-    expect(secureStoreGet(safeStorage, FILE, 'b', io)).toBe('BBB');
+    expect(await secureStoreGet(safeStorage, FILE, 'a', io)).toBeNull();
+    expect(await secureStoreGet(safeStorage, FILE, 'b', io)).toBe('BBB');
   });
 
-  it('delete is a no-op for an absent key', () => {
+  it('delete is a no-op for an absent key', async () => {
     const safeStorage = makeSafeStorage(true);
     const { io } = makeIo();
-    secureStoreSet(safeStorage, FILE, 'a', 'AAA', io);
+    await secureStoreSet(safeStorage, FILE, 'a', 'AAA', io);
 
-    expect(() => secureStoreDelete(FILE, 'missing', io)).not.toThrow();
-    expect(secureStoreGet(safeStorage, FILE, 'a', io)).toBe('AAA');
+    await expect(secureStoreDelete(FILE, 'missing', io)).resolves.toBe(true);
+    expect(await secureStoreGet(safeStorage, FILE, 'a', io)).toBe('AAA');
   });
 });
 
@@ -172,10 +195,10 @@ describe('secure store writes over an unreadable file', () => {
 
   it.each(['EBUSY', 'EPERM', 'EIO'])(
     'set refuses to write after a %s read and keeps every entry',
-    (code) => {
+    async (code) => {
       const safeStorage = makeSafeStorage(true);
       const store = failingReads(code);
-      secureStoreSet(
+      await secureStoreSet(
         safeStorage,
         FILE,
         'matrix.cryptoStoreKey:a',
@@ -186,7 +209,7 @@ describe('secure store writes over an unreadable file', () => {
       store.fail();
 
       expect(
-        secureStoreSet(
+        await secureStoreSet(
           safeStorage,
           FILE,
           'matrix.accessToken:@a:hs',
@@ -201,16 +224,18 @@ describe('secure store writes over an unreadable file', () => {
 
   it.each(['', '  \n'])(
     'reads an empty file (%j) as an empty store, and set works',
-    (text) => {
+    async (text) => {
       const safeStorage = makeSafeStorage(true);
       const { io, files } = makeIo();
       files.set(FILE, text);
 
-      expect(secureStoreRead(safeStorage, FILE, 'a', io)).toEqual({
+      expect(await secureStoreRead(safeStorage, FILE, 'a', io)).toEqual({
         kind: 'absent',
       });
-      expect(secureStoreSet(safeStorage, FILE, 'b', 'BBB', io)).toBe(true);
-      expect(secureStoreGet(safeStorage, FILE, 'b', io)).toBe('BBB');
+      expect(await secureStoreSet(safeStorage, FILE, 'b', 'BBB', io)).toBe(
+        true,
+      );
+      expect(await secureStoreGet(safeStorage, FILE, 'b', io)).toBe('BBB');
       expect([...files.keys()]).toEqual([FILE]);
     },
   );
@@ -219,28 +244,35 @@ describe('secure store writes over an unreadable file', () => {
     ['a truncated file', '{"matrix.cryptoStoreKey:a":"ZW5jOk'],
     ['garbage', 'this is not json {{{'],
     ['a JSON array', '["a"]'],
-  ])('set moves %s aside, then starts from an empty store', (_case, text) => {
-    const safeStorage = makeSafeStorage(true);
-    const { io, files } = makeIo();
-    files.set(FILE, text);
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  ])(
+    'set moves %s aside, then starts from an empty store',
+    async (_case, text) => {
+      const safeStorage = makeSafeStorage(true);
+      const { io, files } = makeIo();
+      files.set(FILE, text);
+      const warn = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
 
-    expect(secureStoreSet(safeStorage, FILE, 'b', 'BBB', io)).toBe(true);
+      expect(await secureStoreSet(safeStorage, FILE, 'b', 'BBB', io)).toBe(
+        true,
+      );
 
-    const aside = [...files.keys()].filter((name) => name !== FILE);
-    expect(aside).toHaveLength(1);
-    expect(aside[0]).toMatch(
-      /^\/virtual\/trinity-secure-store\.json\.corrupt-\d+$/,
-    );
-    expect(files.get(aside[0])).toBe(text);
-    expect(JSON.parse(files.get(FILE)!)).toEqual({
-      b: expect.any(String),
-    });
-    expect(warn).toHaveBeenCalledOnce();
-    warn.mockRestore();
-  });
+      const aside = [...files.keys()].filter((name) => name !== FILE);
+      expect(aside).toHaveLength(1);
+      expect(aside[0]).toMatch(
+        /^\/virtual\/trinity-secure-store\.json\.corrupt-\d+$/,
+      );
+      expect(files.get(aside[0])).toBe(text);
+      expect(JSON.parse(files.get(FILE)!)).toEqual({
+        b: expect.any(String),
+      });
+      expect(warn).toHaveBeenCalledOnce();
+      warn.mockRestore();
+    },
+  );
 
-  it('set refuses to write when an unparseable file cannot be moved aside', () => {
+  it('set refuses to write when an unparseable file cannot be moved aside', async () => {
     const safeStorage = makeSafeStorage(true);
     const { io, files } = makeIo();
     files.set(FILE, 'garbage');
@@ -252,45 +284,47 @@ describe('secure store writes over an unreadable file', () => {
       },
     };
 
-    expect(secureStoreSet(safeStorage, FILE, 'b', 'BBB', stuck)).toBe(false);
+    expect(await secureStoreSet(safeStorage, FILE, 'b', 'BBB', stuck)).toBe(
+      false,
+    );
     expect(files.get(FILE)).toBe('garbage');
     vi.mocked(console.warn).mockRestore();
   });
 
-  it('delete refuses to write after a failed read and keeps every entry', () => {
+  it('delete refuses to write after a failed read and keeps every entry', async () => {
     const safeStorage = makeSafeStorage(true);
     const store = failingReads('EBUSY');
-    secureStoreSet(safeStorage, FILE, 'a', 'AAA', store.io);
-    secureStoreSet(safeStorage, FILE, 'b', 'BBB', store.io);
+    await secureStoreSet(safeStorage, FILE, 'a', 'AAA', store.io);
+    await secureStoreSet(safeStorage, FILE, 'b', 'BBB', store.io);
     const before = store.files.get(FILE);
     store.fail();
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    expect(secureStoreDelete(FILE, 'a', store.io)).toBe(false);
+    expect(await secureStoreDelete(FILE, 'a', store.io)).toBe(false);
     expect(store.writes()).toBe(0);
     expect(store.files.get(FILE)).toBe(before);
     expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();
   });
 
-  it('delete leaves an unparseable file where it is', () => {
+  it('delete leaves an unparseable file where it is', async () => {
     const { io, files } = makeIo();
     files.set(FILE, 'garbage');
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    expect(secureStoreDelete(FILE, 'a', io)).toBe(false);
+    expect(await secureStoreDelete(FILE, 'a', io)).toBe(false);
     expect([...files.entries()]).toEqual([[FILE, 'garbage']]);
     vi.mocked(console.warn).mockRestore();
   });
 
-  it('delete reports a removed or absent key as done', () => {
+  it('delete reports a removed or absent key as done', async () => {
     const safeStorage = makeSafeStorage(true);
     const { io } = makeIo();
-    secureStoreSet(safeStorage, FILE, 'a', 'AAA', io);
+    await secureStoreSet(safeStorage, FILE, 'a', 'AAA', io);
 
-    expect(secureStoreDelete(FILE, 'a', io)).toBe(true);
-    expect(secureStoreDelete(FILE, 'missing', io)).toBe(true);
+    expect(await secureStoreDelete(FILE, 'a', io)).toBe(true);
+    expect(await secureStoreDelete(FILE, 'missing', io)).toBe(true);
   });
 });
 
@@ -345,33 +379,47 @@ describe('atomicWriteFile', () => {
  */
 describe('secureStoreRead', () => {
   /** A store holding one encrypted `token` entry. */
-  function storeWithToken(): SecureStoreIo {
+  async function storeWithToken(): Promise<SecureStoreIo> {
     const { io } = makeIo();
-    secureStoreSet(makeSafeStorage(true), FILE, 'token', 'sekret', io);
+    await secureStoreSet(makeSafeStorage(true), FILE, 'token', 'sekret', io);
     return io;
   }
 
-  it('reads a present entry', () => {
+  it('reads a present entry', async () => {
     expect(
-      secureStoreRead(makeSafeStorage(true), FILE, 'token', storeWithToken()),
+      await secureStoreRead(
+        makeSafeStorage(true),
+        FILE,
+        'token',
+        await storeWithToken(),
+      ),
     ).toEqual({ kind: 'present', value: 'sekret' });
   });
 
-  it('says absent only when there is no entry, keyring or not', () => {
+  it('says absent only when there is no entry, keyring or not', async () => {
     const { io } = makeIo();
 
-    expect(secureStoreRead(makeSafeStorage(true), FILE, 'token', io)).toEqual({
+    expect(
+      await secureStoreRead(makeSafeStorage(true), FILE, 'token', io),
+    ).toEqual({
       kind: 'absent',
     });
-    expect(secureStoreRead(makeSafeStorage(false), FILE, 'token', io)).toEqual({
+    expect(
+      await secureStoreRead(makeSafeStorage(false), FILE, 'token', io),
+    ).toEqual({
       kind: 'absent',
     });
   });
 
-  it('says unavailable, not absent, for an entry while OS encryption is unavailable', () => {
+  it('says unavailable, not absent, for an entry while OS encryption is unavailable', async () => {
     // A Linux keyring that is not unlocked yet: the entry is there and will read later.
     expect(
-      secureStoreRead(makeSafeStorage(false), FILE, 'token', storeWithToken()),
+      await secureStoreRead(
+        makeSafeStorage(false),
+        FILE,
+        'token',
+        await storeWithToken(),
+      ),
     ).toEqual({ kind: 'unavailable' });
   });
 
@@ -386,20 +434,20 @@ describe('secureStoreRead', () => {
     ['is JSON but not a map', (): string => '"text"'],
   ])(
     'says unavailable, not absent, when the store file %s',
-    (_case, readFile) => {
+    async (_case, readFile) => {
       const io: SecureStoreIo = {
         readFile,
         writeFile: () => undefined,
         renameFile: () => undefined,
       };
 
-      expect(secureStoreRead(makeSafeStorage(true), FILE, 'token', io)).toEqual(
-        { kind: 'unavailable' },
-      );
+      expect(
+        await secureStoreRead(makeSafeStorage(true), FILE, 'token', io),
+      ).toEqual({ kind: 'unavailable' });
     },
   );
 
-  it('says unavailable for an entry that cannot be decrypted right now', () => {
+  it('says unavailable for an entry that cannot be decrypted right now', async () => {
     const { io } = makeIo();
     io.writeFile(
       FILE,
@@ -408,7 +456,9 @@ describe('secureStoreRead', () => {
       }),
     );
 
-    expect(secureStoreRead(makeSafeStorage(true), FILE, 'token', io)).toEqual({
+    expect(
+      await secureStoreRead(makeSafeStorage(true), FILE, 'token', io),
+    ).toEqual({
       kind: 'unavailable',
     });
   });
@@ -424,32 +474,156 @@ describe('secureStorageUsable (Linux backend gate)', () => {
   };
   afterEach(() => setPlatform(realPlatform));
 
-  it('refuses the obfuscation-only basic_text backend on Linux', () => {
+  it('refuses the obfuscation-only basic_text backend on Linux', async () => {
     setPlatform('linux');
-    expect(secureStorageUsable(makeSafeStorage(true, 'basic_text'))).toBe(
+    expect(await secureStorageUsable(makeSafeStorage(true, 'basic_text'))).toBe(
       false,
     );
   });
 
-  it('refuses an unknown Linux backend', () => {
+  it('refuses an unknown Linux backend', async () => {
     setPlatform('linux');
-    expect(secureStorageUsable(makeSafeStorage(true, 'unknown'))).toBe(false);
+    expect(await secureStorageUsable(makeSafeStorage(true, 'unknown'))).toBe(
+      false,
+    );
   });
 
-  it('accepts a real Linux keyring', () => {
+  it('accepts a real Linux keyring', async () => {
     setPlatform('linux');
-    expect(secureStorageUsable(makeSafeStorage(true, 'gnome_libsecret'))).toBe(
+    expect(
+      await secureStorageUsable(makeSafeStorage(true, 'gnome_libsecret')),
+    ).toBe(true);
+  });
+
+  it('does not consult the backend off Linux, where the keychain is real', async () => {
+    setPlatform('darwin');
+    expect(await secureStorageUsable(makeSafeStorage(true, 'basic_text'))).toBe(
       true,
     );
   });
 
-  it('does not consult the backend off Linux, where the keychain is real', () => {
-    setPlatform('darwin');
-    expect(secureStorageUsable(makeSafeStorage(true, 'basic_text'))).toBe(true);
+  it('still refuses when encryption is unavailable at all', async () => {
+    setPlatform('linux');
+    expect(await secureStorageUsable(makeSafeStorage(false))).toBe(false);
+  });
+});
+
+describe('secure store on the async safeStorage api', () => {
+  it('reads a value the sync api wrote and re-encrypts it in place', async () => {
+    const safeStorage = makeSafeStorage(true);
+    const { io, files } = makeIo();
+    files.set(
+      FILE,
+      JSON.stringify({ token: legacyEntry('sekret'), other: legacyEntry('O') }),
+    );
+
+    expect(await secureStoreRead(safeStorage, FILE, 'token', io)).toEqual({
+      kind: 'present',
+      value: 'sekret',
+    });
+    const stored = JSON.parse(files.get(FILE)!) as Record<string, string>;
+    expect(Buffer.from(stored['token'], 'base64').toString()).toBe(
+      `${CURRENT}sekret`,
+    );
+    expect(stored['other']).toBe(legacyEntry('O'));
+    expect(await secureStoreGet(safeStorage, FILE, 'other', io)).toBe('O');
+    expect(
+      Buffer.from(
+        (JSON.parse(files.get(FILE)!) as Record<string, string>)['other'],
+        'base64',
+      ).toString(),
+    ).toBe(`${CURRENT}O`);
   });
 
-  it('still refuses when encryption is unavailable at all', () => {
-    setPlatform('linux');
-    expect(secureStorageUsable(makeSafeStorage(false))).toBe(false);
+  it('still answers a legacy value when re-encrypting it fails, and keeps it', async () => {
+    const safeStorage = {
+      ...makeSafeStorage(true),
+      encryptStringAsync: () => Promise.reject(new Error('keychain busy')),
+    } as unknown as SafeStorage;
+    const { io, files } = makeIo();
+    const before = JSON.stringify({ token: legacyEntry('sekret') });
+    files.set(FILE, before);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    expect(await secureStoreGet(safeStorage, FILE, 'token', io)).toBe('sekret');
+    expect(files.get(FILE)).toBe(before);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('sekret');
+    warn.mockRestore();
+  });
+
+  it('keeps both of two concurrent sets', async () => {
+    const safeStorage = makeSafeStorage(true);
+    const { io } = makeIo();
+
+    await Promise.all([
+      secureStoreSet(safeStorage, FILE, 'a', 'AAA', io),
+      secureStoreSet(safeStorage, FILE, 'b', 'BBB', io),
+    ]);
+
+    expect(await secureStoreGet(safeStorage, FILE, 'a', io)).toBe('AAA');
+    expect(await secureStoreGet(safeStorage, FILE, 'b', io)).toBe('BBB');
+  });
+
+  it('answers a read asked after a set with the value that set wrote', async () => {
+    const safeStorage = makeSafeStorage(true);
+    const { io } = makeIo();
+    await secureStoreSet(safeStorage, FILE, 'token', 'old', io);
+
+    const setting = secureStoreSet(safeStorage, FILE, 'token', 'new', io);
+    const reading = secureStoreRead(safeStorage, FILE, 'token', io);
+    const getting = secureStoreGet(safeStorage, FILE, 'token', io);
+
+    expect(await setting).toBe(true);
+    expect(await reading).toEqual({ kind: 'present', value: 'new' });
+    expect(await getting).toBe('new');
+  });
+
+  it('never brings back a key deleted while a set of another key was encrypting', async () => {
+    const safeStorage = makeSafeStorage(true);
+    const { io } = makeIo();
+    await secureStoreSet(safeStorage, FILE, 'gone', 'G', io);
+
+    const setting = secureStoreSet(safeStorage, FILE, 'kept', 'K', io);
+    const deleting = secureStoreDelete(FILE, 'gone', io);
+
+    expect(await setting).toBe(true);
+    expect(await deleting).toBe(true);
+    expect(await secureStoreRead(safeStorage, FILE, 'gone', io)).toEqual({
+      kind: 'absent',
+    });
+    expect(await secureStoreGet(safeStorage, FILE, 'kept', io)).toBe('K');
+  });
+
+  it('rejects a set whose encryption fails, writes nothing, and serves the next call', async () => {
+    const working = makeSafeStorage(true);
+    const failing = {
+      ...working,
+      encryptStringAsync: () => Promise.reject(new Error('keychain denied')),
+    } as unknown as SafeStorage;
+    const { io, files } = makeIo();
+    await secureStoreSet(working, FILE, 'a', 'AAA', io);
+    const before = files.get(FILE);
+
+    await expect(secureStoreSet(failing, FILE, 'b', 'BBB', io)).rejects.toThrow(
+      'keychain denied',
+    );
+    expect(files.get(FILE)).toBe(before);
+    expect(await secureStoreGet(working, FILE, 'a', io)).toBe('AAA');
+  });
+
+  it('reads an availability check that fails as unavailable', async () => {
+    const safeStorage = {
+      ...makeSafeStorage(true),
+      isAsyncEncryptionAvailable: () => Promise.reject(new Error('no ready')),
+    } as unknown as SafeStorage;
+    const { io, files } = makeIo();
+    files.set(FILE, JSON.stringify({ token: legacyEntry('sekret') }));
+
+    expect(await secureStorageUsable(safeStorage)).toBe(false);
+    expect(await secureStoreSet(safeStorage, FILE, 'b', 'B', io)).toBe(false);
+    expect(await secureStoreRead(safeStorage, FILE, 'token', io)).toEqual({
+      kind: 'unavailable',
+    });
+    expect(await secureStoreGet(safeStorage, FILE, 'token', io)).toBeNull();
   });
 });

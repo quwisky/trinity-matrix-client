@@ -132,12 +132,17 @@ export class PinVerifier {
     this.clock = deps.clock ?? systemClock;
   }
 
-  status(): PinStatus {
-    if (!this.usable()) return this.exists() === false ? NO_STORE : UNAVAILABLE;
-    const record = this.read();
-    if (record === 'unreadable') return UNAVAILABLE;
-    if (record === null)
+  async status(): Promise<PinStatus> {
+    const generation = this.generation;
+    if (!(await this.usable()))
+      return this.exists() === false ? NO_STORE : UNAVAILABLE;
+    const stored = await this.read();
+    // A reset landed while the keyring answered: report what it left.
+    if (generation !== this.generation) return this.status();
+    if (stored === 'unreadable') return UNAVAILABLE;
+    if (stored === null)
       return { kind: 'ready', set: false, nextAttemptAt: null };
+    const { record } = stored;
     try {
       return {
         kind: 'ready',
@@ -157,16 +162,16 @@ export class PinVerifier {
     const generation = this.generation;
     return this.serial(async () => {
       if (!isValidPin(pin)) return 'invalid';
-      if (!this.usable() || generation !== this.generation)
+      if (!(await this.usable()) || generation !== this.generation)
         return 'unavailable';
-      if (this.read() === 'unreadable') return 'unavailable';
+      if ((await this.read()) === 'unreadable') return 'unavailable';
       let record: PinRecord;
       try {
         record = await createPinRecord(pin, this.deps.params);
       } catch {
         return 'unavailable';
       }
-      return generation === this.generation && this.write(record)
+      return (await this.write(record, generation))
         ? 'completed'
         : 'unavailable';
     });
@@ -175,9 +180,11 @@ export class PinVerifier {
   verify(pin: unknown): Promise<PinCheck | { readonly kind: 'unavailable' }> {
     const generation = this.generation;
     return this.serial(async () => {
-      if (!this.usable() || generation !== this.generation) return UNAVAILABLE;
-      const record = this.read();
-      if (record === null || record === 'unreadable') return UNAVAILABLE;
+      if (!(await this.usable()) || generation !== this.generation)
+        return UNAVAILABLE;
+      const stored = await this.read();
+      if (stored === null || stored === 'unreadable') return UNAVAILABLE;
+      const { record, stale } = stored;
       let result: Awaited<ReturnType<typeof checkPin>>;
       try {
         result = await checkPin(record, pin, this.clock());
@@ -186,8 +193,11 @@ export class PinVerifier {
       }
       if (generation !== this.generation) return UNAVAILABLE;
       // An attempt the record cannot keep is not answered: a failure must be counted.
-      if (result.record !== record && !this.write(result.record)) {
-        return UNAVAILABLE;
+      if (result.record !== record) {
+        if (!(await this.write(result.record, generation))) return UNAVAILABLE;
+      } else if (stale) {
+        // The old ciphertext still opens, so a failed re-encryption changes nothing.
+        await this.write(record, generation);
       }
       return result.check;
     });
@@ -204,12 +214,8 @@ export class PinVerifier {
     }
   }
 
-  private usable(): boolean {
-    try {
-      return secureStorageUsable(this.deps.safeStorage);
-    } catch {
-      return false;
-    }
+  private usable(): Promise<boolean> {
+    return secureStorageUsable(this.deps.safeStorage).catch(() => false);
   }
 
   /** Whether a record file is on disk, without decrypting it; null when that is unknown. */
@@ -221,7 +227,12 @@ export class PinVerifier {
     }
   }
 
-  private read(): PinRecord | null | 'unreadable' {
+  /** `stale`: encrypted under a key safeStorage asks to replace, such as the sync API's. */
+  private async read(): Promise<
+    | { readonly record: PinRecord; readonly stale: boolean }
+    | null
+    | 'unreadable'
+  > {
     let stored: string | null;
     try {
       stored = this.io.read(this.deps.file);
@@ -230,20 +241,24 @@ export class PinVerifier {
     }
     if (stored === null) return null;
     try {
-      const plain = this.deps.safeStorage.decryptString(
-        Buffer.from(stored, 'base64'),
-      );
-      return decodePinRecord(plain) ?? 'unreadable';
+      const { result, shouldReEncrypt } =
+        await this.deps.safeStorage.decryptStringAsync(
+          Buffer.from(stored, 'base64'),
+        );
+      const record = decodePinRecord(result);
+      return record ? { record, stale: shouldReEncrypt } : 'unreadable';
     } catch {
       return 'unreadable';
     }
   }
 
-  private write(record: PinRecord): boolean {
+  /** Saves `record` unless a reset has run since `generation` was taken. */
+  private async write(record: PinRecord, generation: number): Promise<boolean> {
     try {
-      const cipher = this.deps.safeStorage.encryptString(
+      const cipher = await this.deps.safeStorage.encryptStringAsync(
         encodePinRecord(record),
       );
+      if (generation !== this.generation) return false;
       this.io.write(this.deps.file, cipher.toString('base64'));
       return true;
     } catch {

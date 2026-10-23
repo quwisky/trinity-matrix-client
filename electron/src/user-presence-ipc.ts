@@ -58,10 +58,10 @@ function pinOf(raw: unknown): unknown {
  * The PIN half of support. A record that cannot be read is reported, never "not set";
  * a host with no usable store and no record has no PIN store at all.
  */
-function pinSupport(pins: PinVerifier) {
+async function pinSupport(pins: PinVerifier) {
   let status: PinStatus;
   try {
-    status = pins.status();
+    status = await pins.status();
   } catch {
     return PIN_UNREADABLE;
   }
@@ -128,7 +128,7 @@ export function registerUserPresenceIpc(
       // A driver that cannot report reads as no system prompt; its text never crosses IPC.
       system = NOT_SUPPORTED;
     }
-    return { system, pin: pinSupport(pins) };
+    return { system, pin: await pinSupport(pins) };
   });
 
   ipcMain.handle(USER_PRESENCE_VERIFY_CHANNEL, async (event, raw: unknown) => {

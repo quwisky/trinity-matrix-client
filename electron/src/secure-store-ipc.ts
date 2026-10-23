@@ -68,15 +68,18 @@ export function registerSecureStoreIpc(): void {
     },
   );
 
-  ipcMain.handle('trinity:secure-store:delete', (event, rawKey: unknown) => {
-    const win = getMainWindow();
-    if (
-      !win ||
-      event.sender !== win.webContents ||
-      typeof rawKey !== 'string'
-    ) {
-      return;
-    }
-    secureStoreDelete(secureStoreFile(), rawKey);
-  });
+  ipcMain.handle(
+    'trinity:secure-store:delete',
+    async (event, rawKey: unknown) => {
+      const win = getMainWindow();
+      if (
+        !win ||
+        event.sender !== win.webContents ||
+        typeof rawKey !== 'string'
+      ) {
+        return;
+      }
+      await secureStoreDelete(secureStoreFile(), rawKey);
+    },
+  );
 }

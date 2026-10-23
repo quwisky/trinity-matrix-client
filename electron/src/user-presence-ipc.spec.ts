@@ -54,7 +54,7 @@ describe('user presence IPC', () => {
     verify: vi.fn(async () => ({ kind: 'verified' as const })),
   };
   const pins = {
-    status: vi.fn(() => ({
+    status: vi.fn(async () => ({
       kind: 'ready' as const,
       set: true,
       nextAttemptAt: null,
@@ -234,7 +234,7 @@ describe('user presence IPC', () => {
   });
 
   it('reports a PIN it cannot read as secure storage unavailable', async () => {
-    pins.status.mockReturnValueOnce({ kind: 'unavailable' } as never);
+    pins.status.mockResolvedValueOnce({ kind: 'unavailable' } as never);
     await expect(
       handlers.get(USER_PRESENCE_SUPPORT_CHANNEL)!({ sender: contents }),
     ).resolves.toEqual({
@@ -244,7 +244,7 @@ describe('user presence IPC', () => {
   });
 
   it('reports a host with no PIN store as not supported', async () => {
-    pins.status.mockReturnValueOnce({ kind: 'not-supported' } as never);
+    pins.status.mockResolvedValueOnce({ kind: 'not-supported' } as never);
     await expect(
       handlers.get(USER_PRESENCE_SUPPORT_CHANNEL)!({ sender: contents }),
     ).resolves.toEqual({
@@ -278,9 +278,7 @@ describe('user presence IPC', () => {
     pins.clear.mockImplementationOnce(() => {
       throw boom;
     });
-    pins.status.mockImplementationOnce(() => {
-      throw boom;
-    });
+    pins.status.mockRejectedValueOnce(boom);
     const answers = [
       await handlers.get(USER_PRESENCE_SET_PIN_CHANNEL)!(
         { sender: contents },
@@ -317,12 +315,14 @@ describe('user presence IPC with the real verifier', () => {
   };
   let encryption = true;
   const safeStorage = {
-    isEncryptionAvailable: () => encryption,
+    isAsyncEncryptionAvailable: async () => encryption,
     getSelectedStorageBackend: () => 'gnome_libsecret',
-    encryptString: (plain: string) =>
+    encryptStringAsync: async (plain: string) =>
       Buffer.from(`enc:${Buffer.from(plain).toString('base64')}`),
-    decryptString: (cipher: Buffer) =>
-      Buffer.from(cipher.toString().slice(4), 'base64').toString(),
+    decryptStringAsync: async (cipher: Buffer) => ({
+      result: Buffer.from(cipher.toString().slice(4), 'base64').toString(),
+      shouldReEncrypt: false,
+    }),
   };
 
   beforeEach(() => {
@@ -406,12 +406,14 @@ describe('user presence IPC with the real verifier', () => {
 describe('user presence IPC on Windows without a loadable Hello addon', () => {
   const files = new Map<string, string>();
   const safeStorage = {
-    isEncryptionAvailable: () => true,
+    isAsyncEncryptionAvailable: async () => true,
     getSelectedStorageBackend: () => 'dpapi',
-    encryptString: (plain: string) =>
+    encryptStringAsync: async (plain: string) =>
       Buffer.from(`enc:${Buffer.from(plain).toString('base64')}`),
-    decryptString: (cipher: Buffer) =>
-      Buffer.from(cipher.toString().slice(4), 'base64').toString(),
+    decryptStringAsync: async (cipher: Buffer) => ({
+      result: Buffer.from(cipher.toString().slice(4), 'base64').toString(),
+      shouldReEncrypt: false,
+    }),
   };
 
   beforeEach(() => {
