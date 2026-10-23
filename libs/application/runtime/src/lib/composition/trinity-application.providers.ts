@@ -29,7 +29,10 @@ import {
   provideMatrixSdkLogging,
   type MatrixSdkLogLevel,
 } from '@trinity/data-access/matrix-client';
-import { ADD_TO_IMAGE_PACK_DIALOG } from '@trinity/data-access/media';
+import {
+  ADD_TO_IMAGE_PACK_DIALOG,
+  IMAGE_PACK_EDITOR,
+} from '@trinity/data-access/media';
 import type { PushConfig } from '@trinity/data-access/notifications';
 import {
   WHATS_NEW_LAUNCHER,
@@ -82,6 +85,8 @@ export interface TrinityApplicationDialogLoaders {
   readonly whatsNew: ApplicationDialogLoader;
   /** "Add to your emoji", for features that cannot import Settings. */
   readonly addToImagePack: ApplicationDialogLoader;
+  /** The emoji pack grid, for room settings, which cannot import Settings. */
+  readonly imagePackEditor: ApplicationDialogLoader;
 }
 
 export interface TrinityApplicationProviderOptions {
@@ -187,6 +192,10 @@ export function provideTrinityApplication(
     {
       provide: ADD_TO_IMAGE_PACK_DIALOG,
       useValue: options.dialogLoaders.addToImagePack,
+    },
+    {
+      provide: IMAGE_PACK_EDITOR,
+      useValue: options.dialogLoaders.imagePackEditor,
     },
     {
       provide: WHATS_NEW_DIALOG_COMPONENT,

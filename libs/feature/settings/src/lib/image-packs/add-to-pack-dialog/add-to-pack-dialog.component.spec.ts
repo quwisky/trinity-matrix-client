@@ -29,12 +29,13 @@ const ENTRY: PackEntry = {
 async function build(
   add: (...args: unknown[]) => Observable<PackEntry>,
   input: AddInput = FILE_INPUT,
+  extra: Record<string, unknown> = {},
 ) {
   const addSpy = vi.fn(add);
   const close = vi.fn();
   const activeUserId = signal<string | null>('@me:hs');
   const rendered = await render(AddToPackDialogComponent, {
-    inputs: { input, suggestedName: 'My Fox.png' },
+    inputs: { input, suggestedName: 'My Fox.png', ...extra },
     providers: [
       MockProvider(ImagePackEditorService, { add: addSpy }),
       MockProvider(TrnDialogRef, { close }),
@@ -121,7 +122,9 @@ describe('AddToPackDialogComponent', () => {
     const view = await build(() => of(ENTRY));
     expect(screen.getByRole('radio', { name: 'Emoji' })).toBeChecked();
     view.submit();
-    expect(view.add).toHaveBeenCalledWith(FILE_INPUT, 'My_Fox', ['emoticon']);
+    expect(view.add).toHaveBeenCalledWith(FILE_INPUT, 'My_Fox', ['emoticon'], {
+      kind: 'personal',
+    });
     expect(view.close).toHaveBeenCalledWith(ENTRY);
   });
 
@@ -157,5 +160,31 @@ describe('AddToPackDialogComponent', () => {
     result.error(new Error('offline'));
     view.settle();
     expect(dialog.canDismiss()).toBe(true);
+  });
+
+  it("adds to a room's pack with the room's copy", async () => {
+    const ref = { kind: 'room', accountId: '@me:hs', roomId: '!r:hs' };
+    const view = await build(() => of(ENTRY), FILE_INPUT, { ref });
+    expect(screen.getByText('Add to room emoji')).toBeInTheDocument();
+    view.submit();
+    expect(view.add).toHaveBeenCalledWith(
+      FILE_INPUT,
+      'My_Fox',
+      ['emoticon'],
+      ref,
+    );
+  });
+
+  it('words a full room pack for the room', async () => {
+    const ref = { kind: 'room', accountId: '@me:hs', roomId: '!r:hs' };
+    const view = await build(
+      () => throwError(() => new ImagePackEditError('pack-full')),
+      FILE_INPUT,
+      { ref },
+    );
+    view.submit();
+    expect(
+      screen.getAllByText("This room's emoji pack is full.").length,
+    ).toBeGreaterThan(0);
   });
 });

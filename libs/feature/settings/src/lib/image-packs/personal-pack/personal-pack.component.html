@@ -1,9 +1,9 @@
 @if (entries(); as list) {
-  <trn-settings-group title="Your emoji">
+  <trn-settings-group [title]="copy().title">
     <div class="flex flex-wrap items-center justify-end gap-2">
       @if (full()) {
         <p id="personal-pack-full" class="text-sm text-muted-foreground">
-          Your emoji pack is full.
+          {{ copy().full }}
         </p>
       }
       <button
@@ -18,10 +18,17 @@
       </button>
     </div>
 
+    @if (encrypted() && ref().kind === 'room') {
+      <p class="text-sm text-muted-foreground">
+        Images added here are stored unencrypted on the server, like the room
+        photo.
+      </p>
+    }
+
     @if (list.length) {
       <ul
         class="mt-2 grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2"
-        aria-label="Your emoji"
+        [attr.aria-label]="copy().title"
       >
         @for (entry of list; track entry.shortcode) {
           <li class="rounded-lg bg-muted">
@@ -51,10 +58,7 @@
         }
       </ul>
     } @else {
-      <trn-empty-state
-        layout="line"
-        body="Add images to use your own emoji and stickers in every room."
-      />
+      <trn-empty-state layout="line" [body]="copy().empty" />
     }
 
     @if (renaming(); as from) {

@@ -56,6 +56,14 @@ export const ADD_TO_IMAGE_PACK_DIALOG = new InjectionToken<
   () => Observable<Type<unknown>>
 >('ADD_TO_IMAGE_PACK_DIALOG');
 
+/**
+ * Lazily loads the pack grid, which lives in feature-settings, for room settings. Its inputs are
+ * `ref: PackRef` and `encrypted: boolean`, whether a room ref's room is encrypted.
+ */
+export const IMAGE_PACK_EDITOR = new InjectionToken<
+  () => Observable<Type<unknown>>
+>('IMAGE_PACK_EDITOR');
+
 export type ImagePackEditErrorCode =
   | 'invalid-shortcode'
   | 'shortcode-taken'
