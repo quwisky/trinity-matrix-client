@@ -12,12 +12,15 @@ import {
   MatrixClient,
   isValidAuthMetadata,
   ClientEvent,
+  EventStatus,
   HttpApiEvent,
   RoomEvent,
   SyncState,
   type AccessTokens,
   type ICreateClientOpts,
   type MatrixError,
+  type MatrixEvent,
+  type Room,
   type SyncStateData,
 } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
@@ -146,7 +149,12 @@ interface AccountClient {
   /** How many of its messages wait to be sent by themselves; see {@link waitingEchoCount}. */
   readonly waitingCount: WritableSignal<number>;
   /** Its `RoomEvent.LocalEchoUpdated` listener, which keeps {@link waitingCount} current. */
-  readonly onLocalEchoUpdated: () => void;
+  readonly onLocalEchoUpdated: (
+    event: MatrixEvent,
+    room: Room,
+    oldEventId?: string,
+    oldStatus?: EventStatus | null,
+  ) => void;
   /** Whether this client has completed a sync with its homeserver ({@link isServerSync}). */
   readonly serverSynced: WritableSignal<boolean>;
   /** Whether this client has prepared its rooms, from its sync cache or its homeserver. */
@@ -855,8 +863,21 @@ export class MatrixClientService {
       const roomsPrepared = signal(false);
       let latestRoomsPrepared = false;
       const waitingCount = signal(0);
-      const onLocalEchoUpdated = (): void =>
-        waitingCount.set(waitingEchoCount(created!));
+      // Only an echo entering or leaving NOT_SENT changes the count; most updates are an ordinary
+      // send passing through other states, and the scan walks every room and thread.
+      const onLocalEchoUpdated = (
+        event: MatrixEvent,
+        _room: Room,
+        _oldEventId?: string,
+        oldStatus?: EventStatus | null,
+      ): void => {
+        if (
+          event.status === EventStatus.NOT_SENT ||
+          oldStatus === EventStatus.NOT_SENT
+        ) {
+          waitingCount.set(waitingEchoCount(created!));
+        }
+      };
       const onLoggedOut = (err: MatrixError): void =>
         this.handleServerLogout(session.userId, err);
       // Not detached on teardown: it only updates this start's own counter. Null until the

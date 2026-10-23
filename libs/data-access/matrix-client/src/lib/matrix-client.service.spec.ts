@@ -929,12 +929,21 @@ describe('MatrixClientService', () => {
     }
 
     /** Report a local-echo change, as the SDK does through the client. */
-    const echoUpdated = (client: ReturnType<typeof fakeClient>): void =>
+    const echoUpdated = (
+      client: ReturnType<typeof fakeClient>,
+      event: MatrixEvent,
+      oldStatus: EventStatus | null = null,
+    ): void =>
       (
         client.on.mock.calls.find(
           ([evt]) => evt === RoomEvent.LocalEchoUpdated,
-        )![1] as () => void
-      )();
+        )![1] as (
+          event: MatrixEvent,
+          room: unknown,
+          oldEventId?: string,
+          oldStatus?: EventStatus | null,
+        ) => void
+      )(event, {}, undefined, oldStatus);
 
     it('counts the waiting messages of every room', async () => {
       const client = clientWith(
@@ -944,7 +953,7 @@ describe('MatrixClientService', () => {
       const { svc } = setup(client);
       await firstValueFrom(svc.init(SESSION));
 
-      echoUpdated(client);
+      echoUpdated(client, waiting('one'));
 
       expect(svc.waitingCount()).toBe(2);
     });
@@ -955,7 +964,7 @@ describe('MatrixClientService', () => {
       const { svc } = setup(client);
       await firstValueFrom(svc.init(SESSION));
 
-      echoUpdated(client);
+      echoUpdated(client, reply);
 
       expect(svc.waitingCount()).toBe(1);
     });
@@ -966,15 +975,15 @@ describe('MatrixClientService', () => {
       const client = clientWith(room('!a:hs', [sent, cancelled]));
       const { svc } = setup(client);
       await firstValueFrom(svc.init(SESSION));
-      echoUpdated(client);
+      echoUpdated(client, sent);
       expect(svc.waitingCount()).toBe(2);
 
       sent.status = EventStatus.SENT;
-      echoUpdated(client);
+      echoUpdated(client, sent, EventStatus.NOT_SENT);
       expect(svc.waitingCount()).toBe(1);
 
       cancelled.status = EventStatus.CANCELLED;
-      echoUpdated(client);
+      echoUpdated(client, cancelled, EventStatus.NOT_SENT);
       expect(svc.waitingCount()).toBe(0);
     });
 
@@ -986,8 +995,8 @@ describe('MatrixClientService', () => {
       const { svc } = setup(mine, yours);
       await firstValueFrom(svc.init(SESSION));
       await firstValueFrom(svc.add(SESSION_B));
-      echoUpdated(mine);
-      echoUpdated(yours);
+      echoUpdated(mine, waiting('m'));
+      echoUpdated(yours, waiting('y'));
 
       svc.setActive(SESSION.userId);
       expect(svc.waitingCount()).toBe(1);
@@ -996,6 +1005,55 @@ describe('MatrixClientService', () => {
 
       await firstValueFrom(svc.remove(SESSION_B.userId));
       expect(yours.off).toHaveBeenCalledWith(
+        RoomEvent.LocalEchoUpdated,
+        expect.any(Function),
+      );
+    });
+
+    it('does not rescan the rooms while an ordinary send goes through', async () => {
+      const client = clientWith(room('!a:hs', []));
+      const { svc } = setup(client);
+      await firstValueFrom(svc.init(SESSION));
+      const send = new MatrixEvent({
+        type: 'm.room.message',
+        content: { msgtype: 'm.text', body: 'hi' },
+      });
+      client.getRooms.mockClear();
+
+      for (const [status, old] of [
+        [EventStatus.ENCRYPTING, null],
+        [EventStatus.SENDING, EventStatus.ENCRYPTING],
+        [EventStatus.SENT, EventStatus.SENDING],
+        [null, EventStatus.SENT],
+      ] as const) {
+        send.status = status;
+        echoUpdated(client, send, old);
+      }
+
+      expect(client.getRooms).not.toHaveBeenCalled();
+    });
+
+    it('stops listening when the client stops', async () => {
+      const client = clientWith();
+      const { svc } = setup(client);
+      await firstValueFrom(svc.init(SESSION));
+
+      await firstValueFrom(svc.stop());
+
+      expect(client.off).toHaveBeenCalledWith(
+        RoomEvent.LocalEchoUpdated,
+        expect.any(Function),
+      );
+    });
+
+    it('stops listening when the start fails', async () => {
+      const client = clientWith();
+      client.startClient.mockRejectedValue(new Error('no'));
+      const { svc } = setup(client);
+
+      await expect(firstValueFrom(svc.init(SESSION))).rejects.toThrow();
+
+      expect(client.off).toHaveBeenCalledWith(
         RoomEvent.LocalEchoUpdated,
         expect.any(Function),
       );
