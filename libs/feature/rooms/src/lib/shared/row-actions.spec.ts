@@ -354,6 +354,23 @@ describe('row caps', () => {
     ).toBe(true);
   });
 
+  it.each(['sending', 'failed', 'waiting'] as const)(
+    'offers no reply, quote or reaction on a %s message',
+    (status) => {
+      expect(buildRowCaps(text('~!r:hs:1', { status }), policy)).toMatchObject({
+        canRespond: false,
+        canQuote: false,
+      });
+    },
+  );
+
+  it('offers reply, quote and reactions on a sent message', () => {
+    expect(buildRowCaps(text('$a'), policy)).toMatchObject({
+      canRespond: true,
+      canQuote: true,
+    });
+  });
+
   it('offers Forward only for a message a forward can carry', () => {
     const forwardable = (over: Partial<MessageRow>) =>
       buildRowCaps(text('$a', over), policy).canForward;

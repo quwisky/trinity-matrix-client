@@ -25,6 +25,7 @@ import {
   type ConversationTimelineFactory,
 } from './conversation-timeline-factory';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
+import { conversationDraftKey } from './conversation-draft-key';
 import type {
   ConversationMessageAdapter,
   ConversationMessageOperation,
@@ -96,6 +97,7 @@ function setup(
   const sends = new Subject<
     | { readonly kind: 'accepted'; readonly eventId: string }
     | { readonly kind: 'rejected'; readonly retryable: boolean }
+    | { readonly kind: 'queued' }
   >();
   const sender: ConversationTextSender = senderOverride ?? {
     send: vi.fn(() => ({ outcome: sends, cancel: () => false })),
@@ -111,6 +113,7 @@ function setup(
     toggleReaction: vi.fn(() => applied('reaction')),
     redact: vi.fn(() => applied('redaction')),
     retry: vi.fn(() => applied('retry')),
+    cancel: vi.fn(() => applied('cancel')),
     acknowledge: vi.fn(() => applied('receipt')),
   };
   const factory: ConversationTimelineFactory = {
@@ -1097,6 +1100,32 @@ describe('ConversationRuntime', () => {
     expect(compose.intent()).toEqual({ kind: 'reply', eventId: '$target' });
   });
 
+  it('clears the composer for a send queued offline, without restoring it', async () => {
+    const { runtime, sends, drafts } = setup(2, undefined, [
+      message('$target'),
+    ]);
+    const handle = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const compose = handle.compose;
+    compose.setDraft('goes out later');
+    handle.messages.beginReply('$target');
+
+    const outcomePromise = firstValueFrom(compose.submit());
+    sends.next({ kind: 'queued' });
+    sends.complete();
+
+    await expect(outcomePromise).resolves.toEqual({ kind: 'queued' });
+    expect(compose.draft()).toBe('');
+    expect(compose.intent()).toEqual({ kind: 'message' });
+    expect(
+      drafts.get(
+        conversationDraftKey({ accountId: ALICE, roomId: '!room:example.org' }),
+      ),
+    ).toBe('');
+  });
+
   it('cancels the finite command without losing the draft or leaving send state behind', () => {
     const cancelled = vi.fn(() => true);
     const sender: ConversationTextSender = {
@@ -1224,6 +1253,24 @@ describe('ConversationRuntime', () => {
       threadRootId: '$root',
       messageId: '$reply',
       reaction: '👍',
+    });
+  });
+
+  it('routes a thread cancel to the adapter with the thread root', async () => {
+    const { runtime, messageAdapter } = setup();
+    const conversation = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+
+    await firstValueFrom(
+      conversation.threads.forRoot('$root')!.cancel('$reply'),
+    );
+
+    expect(messageAdapter.cancel).toHaveBeenCalledWith({
+      key: conversation.key,
+      threadRootId: '$root',
+      messageId: '$reply',
     });
   });
 

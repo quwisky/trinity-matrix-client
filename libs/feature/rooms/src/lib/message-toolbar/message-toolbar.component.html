@@ -31,30 +31,32 @@
 }
 
 <div class="toolbar" role="toolbar" aria-label="Message actions">
-  <button
-    type="button"
-    trnIconButton
-    class="toolbar__btn"
-    trnTooltip="Add reaction"
-    aria-label="Add reaction"
-    [attr.aria-expanded]="pickerOpen()"
-    [attr.aria-controls]="pickerOpen() ? pickerId : null"
-    (keydown.escape)="setPickerOpen(false)"
-    (click)="togglePicker()"
-  >
-    <trn-icon name="smile" motion="pop" />
-  </button>
+  @if (caps().canRespond) {
+    <button
+      type="button"
+      trnIconButton
+      class="toolbar__btn"
+      trnTooltip="Add reaction"
+      aria-label="Add reaction"
+      [attr.aria-expanded]="pickerOpen()"
+      [attr.aria-controls]="pickerOpen() ? pickerId : null"
+      (keydown.escape)="setPickerOpen(false)"
+      (click)="togglePicker()"
+    >
+      <trn-icon name="smile" motion="pop" />
+    </button>
 
-  <button
-    type="button"
-    trnIconButton
-    class="toolbar__btn"
-    trnTooltip="Reply"
-    aria-label="Reply"
-    (click)="action.emit({ type: 'reply' })"
-  >
-    <trn-icon name="reply" motion="nudge-left" />
-  </button>
+    <button
+      type="button"
+      trnIconButton
+      class="toolbar__btn"
+      trnTooltip="Reply"
+      aria-label="Reply"
+      (click)="action.emit({ type: 'reply' })"
+    >
+      <trn-icon name="reply" motion="nudge-left" />
+    </button>
+  }
 
   @if (caps().canThread) {
     <button

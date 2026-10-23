@@ -79,6 +79,9 @@ export class ConversationMessagesStub implements ConversationMessages {
   readonly retry: ConversationMessages['retry'] = vi.fn(() =>
     of({ kind: 'applied' as const, operation: 'retry' as const }),
   );
+  readonly cancel: ConversationMessages['cancel'] = vi.fn(() =>
+    of({ kind: 'applied' as const, operation: 'cancel' as const }),
+  );
   readonly acknowledge: ConversationMessages['acknowledge'] = vi.fn(() =>
     of({ kind: 'applied' as const, operation: 'receipt' as const }),
   );

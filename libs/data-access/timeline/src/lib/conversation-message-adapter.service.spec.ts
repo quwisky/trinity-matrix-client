@@ -66,6 +66,7 @@ function setup(
     sendEvent: vi.fn(action),
     redactEvent: vi.fn(action),
     resendEvent: vi.fn(action),
+    cancelPendingEvent: vi.fn(),
     sendReadReceipt: vi.fn(action),
     setRoomReadMarkers: vi.fn(action),
   };
@@ -231,6 +232,28 @@ describe('MatrixConversationMessageAdapter', () => {
       failure: 'event-not-retryable',
       retryable: false,
     });
+  });
+
+  it('cancels only a NOT_SENT echo', async () => {
+    const waiting = setup({ eventStatus: EventStatus.NOT_SENT });
+    await expect(
+      firstValueFrom(
+        waiting.adapter.cancel({ key: KEY, messageId: '$message' }),
+      ),
+    ).resolves.toMatchObject({ kind: 'applied', operation: 'cancel' });
+    expect(waiting.client.cancelPendingEvent).toHaveBeenCalledWith(
+      waiting.event,
+    );
+
+    TestBed.resetTestingModule();
+    const sent = setup({ eventStatus: EventStatus.SENT });
+    await expect(
+      firstValueFrom(sent.adapter.cancel({ key: KEY, messageId: '$message' })),
+    ).resolves.toMatchObject({
+      kind: 'rejected',
+      failure: 'event-not-retryable',
+    });
+    expect(sent.client.cancelPendingEvent).not.toHaveBeenCalled();
   });
 
   it('sends privacy-aware receipts and the persisted read marker together', async () => {

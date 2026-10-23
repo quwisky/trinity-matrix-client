@@ -49,7 +49,7 @@ class HostComponent {
 }
 
 describe('MessageActionsService', () => {
-  const applied = (operation: 'redaction' | 'reaction' | 'retry') =>
+  const applied = (operation: 'redaction' | 'reaction' | 'retry' | 'cancel') =>
     of({ kind: 'applied', operation } satisfies ConversationMessageOutcome);
   const redact = vi.fn<() => Observable<ConversationMessageOutcome>>(() =>
     applied('redaction'),
@@ -59,6 +59,9 @@ describe('MessageActionsService', () => {
   );
   const retry = vi.fn<() => Observable<ConversationMessageOutcome>>(() =>
     applied('retry'),
+  );
+  const cancel = vi.fn<() => Observable<ConversationMessageOutcome>>(() =>
+    applied('cancel'),
   );
   const isPinned = vi.fn(() => false);
   const pin = vi.fn(() =>
@@ -99,7 +102,7 @@ describe('MessageActionsService', () => {
         timeline: inject(ConversationTimelineStub),
         focused: () => conversation,
         compose: { setDraft, submit: submitText, setTyping },
-        messages: { redact, toggleReaction, retry },
+        messages: { redact, toggleReaction, retry, cancel },
         pins: { isPinned, pin, unpin },
       }),
     },
@@ -241,6 +244,12 @@ describe('MessageActionsService', () => {
         run: (a) => a.onRetry('$1'),
         stub: retry,
         message: 'Could not retry the message.',
+      },
+      {
+        name: 'cancel',
+        run: (a) => a.onCancel('$1'),
+        stub: cancel,
+        message: 'Could not cancel the message.',
       },
       {
         name: 'poll vote',

@@ -38,6 +38,7 @@ const caps = (over: Partial<MessageRowCaps> = {}): MessageRowCaps => ({
   pinned: false,
   canThread: true,
   canQuote: true,
+  canRespond: true,
   saveMedia: null,
   canForward: true,
   readOnly: false,
@@ -390,6 +391,14 @@ describe('MessageRowComponent — the sideways swipe', () => {
       // long press skips it via `toolbar()`, which this gesture deliberately does not use,
       // so the exemption is re-made rather than inherited.
       const { msg, swiped } = await renderRow('right', { readOnly: true });
+
+      drag(msg, 300, 300 + FAR);
+
+      expect(swiped.length).toBe(0);
+    });
+
+    it('does not swipe an unsent row, which cannot be replied to', async () => {
+      const { msg, swiped } = await renderRow('right', { canRespond: false });
 
       drag(msg, 300, 300 + FAR);
 

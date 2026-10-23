@@ -2,6 +2,7 @@ import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   displayContent,
   isPollStart,
+  isWaitingToSend,
   linkedUserIds,
   pollSignature,
   reactionsFor,
@@ -80,6 +81,8 @@ export function revisionOf(
     content: contentSignature(event, applyEdit),
     rest: [
       event.status ?? '',
+      // Waiting and failed share a status; only the error tells them apart.
+      isWaitingToSend(event) ? 'w' : '',
       event.isRedacted() ? 'r' : '',
       event.isDecryptionFailure() ? 'd' : '',
       // A new failure reason (after a reload or a key-backup change) changes the row's text.

@@ -4,8 +4,11 @@ import { MockProvider } from 'ng-mocks';
 import {
   ClientEvent,
   ConnectionError,
+  EventStatus,
   HttpApiEvent,
   MatrixError,
+  MatrixEvent,
+  RoomEvent,
   SyncState,
   createClient,
 } from 'matrix-js-sdk';
@@ -895,6 +898,378 @@ describe('MatrixClientService', () => {
     syncCall![1]('SYNCING');
     await Promise.resolve();
     expect(svc.syncState()).toBe('SYNCING');
+  });
+
+  describe('counting messages waiting to send', () => {
+    function waiting(body: string, offline = true): MatrixEvent {
+      const echo = new MatrixEvent({
+        type: 'm.room.message',
+        content: { msgtype: 'm.text', body },
+      });
+      echo.status = EventStatus.NOT_SENT;
+      echo.error = (
+        offline ? new ConnectionError('offline') : new Error('refused')
+      ) as never;
+      return echo;
+    }
+
+    const room = (
+      roomId: string,
+      events: MatrixEvent[],
+      inFlight: MatrixEvent[] = [],
+    ) => ({
+      roomId,
+      txnToEvent: new Map(inFlight.map((event, i) => [`t${i}`, event])),
+      getLiveTimeline: () => ({ getEvents: () => events }),
+      getThreads: () => [{ liveTimeline: { getEvents: () => inFlight } }],
+    });
+
+    function clientWith(...rooms: ReturnType<typeof room>[]) {
+      return { ...fakeClient(), getRooms: vi.fn().mockReturnValue(rooms) };
+    }
+
+    /** Report a local-echo change, as the SDK does through the client. */
+    const echoUpdated = (
+      client: ReturnType<typeof fakeClient>,
+      event: MatrixEvent,
+      oldStatus: EventStatus | null = null,
+    ): void =>
+      (
+        client.on.mock.calls.find(
+          ([evt]) => evt === RoomEvent.LocalEchoUpdated,
+        )![1] as (
+          event: MatrixEvent,
+          room: unknown,
+          oldEventId?: string,
+          oldStatus?: EventStatus | null,
+        ) => void
+      )(event, {}, undefined, oldStatus);
+
+    it('counts the waiting messages of every room', async () => {
+      const client = clientWith(
+        room('!a:hs', [waiting('one'), waiting('refused', false)]),
+        room('!b:hs', [waiting('two')]),
+      );
+      const { svc } = setup(client);
+      await firstValueFrom(svc.init(SESSION));
+
+      echoUpdated(client, waiting('one'));
+
+      expect(svc.waitingCount()).toBe(2);
+    });
+
+    it('counts a thread echo once', async () => {
+      const reply = waiting('in a thread');
+      const client = clientWith(room('!a:hs', [], [reply]));
+      const { svc } = setup(client);
+      await firstValueFrom(svc.init(SESSION));
+
+      echoUpdated(client, reply);
+
+      expect(svc.waitingCount()).toBe(1);
+    });
+
+    it('drops when a message is sent or cancelled', async () => {
+      const sent = waiting('sent');
+      const cancelled = waiting('cancelled');
+      const client = clientWith(room('!a:hs', [sent, cancelled]));
+      const { svc } = setup(client);
+      await firstValueFrom(svc.init(SESSION));
+      echoUpdated(client, sent);
+      expect(svc.waitingCount()).toBe(2);
+
+      sent.status = EventStatus.SENT;
+      echoUpdated(client, sent, EventStatus.NOT_SENT);
+      expect(svc.waitingCount()).toBe(1);
+
+      cancelled.status = EventStatus.CANCELLED;
+      echoUpdated(client, cancelled, EventStatus.NOT_SENT);
+      expect(svc.waitingCount()).toBe(0);
+    });
+
+    it('follows the active account and stops listening when it is removed', async () => {
+      const mine = clientWith(room('!a:hs', [waiting('mine')]));
+      const yours = clientWith(
+        room('!b:hs', [waiting('y1'), waiting('y2'), waiting('y3')]),
+      );
+      const { svc } = setup(mine, yours);
+      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(svc.add(SESSION_B));
+      echoUpdated(mine, waiting('m'));
+      echoUpdated(yours, waiting('y'));
+
+      svc.setActive(SESSION.userId);
+      expect(svc.waitingCount()).toBe(1);
+      svc.setActive(SESSION_B.userId);
+      expect(svc.waitingCount()).toBe(3);
+
+      await firstValueFrom(svc.remove(SESSION_B.userId));
+      expect(yours.off).toHaveBeenCalledWith(
+        RoomEvent.LocalEchoUpdated,
+        expect.any(Function),
+      );
+    });
+
+    it('does not rescan the rooms while an ordinary send goes through', async () => {
+      const client = clientWith(room('!a:hs', []));
+      const { svc } = setup(client);
+      await firstValueFrom(svc.init(SESSION));
+      const send = new MatrixEvent({
+        type: 'm.room.message',
+        content: { msgtype: 'm.text', body: 'hi' },
+      });
+      client.getRooms.mockClear();
+
+      for (const [status, old] of [
+        [EventStatus.ENCRYPTING, null],
+        [EventStatus.SENDING, EventStatus.ENCRYPTING],
+        [EventStatus.SENT, EventStatus.SENDING],
+        [null, EventStatus.SENT],
+      ] as const) {
+        send.status = status;
+        echoUpdated(client, send, old);
+      }
+
+      expect(client.getRooms).not.toHaveBeenCalled();
+    });
+
+    it('stops listening when the client stops', async () => {
+      const client = clientWith();
+      const { svc } = setup(client);
+      await firstValueFrom(svc.init(SESSION));
+
+      await firstValueFrom(svc.stop());
+
+      expect(client.off).toHaveBeenCalledWith(
+        RoomEvent.LocalEchoUpdated,
+        expect.any(Function),
+      );
+    });
+
+    it('stops listening when the start fails', async () => {
+      const client = clientWith();
+      client.startClient.mockRejectedValue(new Error('no'));
+      const { svc } = setup(client);
+
+      await expect(firstValueFrom(svc.init(SESSION))).rejects.toThrow();
+
+      expect(client.off).toHaveBeenCalledWith(
+        RoomEvent.LocalEchoUpdated,
+        expect.any(Function),
+      );
+    });
+  });
+
+  describe('resending messages that failed offline', () => {
+    function waiting(body: string): MatrixEvent {
+      const echo = new MatrixEvent({
+        type: 'm.room.message',
+        content: { msgtype: 'm.text', body },
+      });
+      echo.status = EventStatus.NOT_SENT;
+      echo.error = new ConnectionError('offline') as never;
+      return echo;
+    }
+
+    /** A live client whose one room holds `count` texts that failed with a ConnectionError. */
+    async function offlineClient(count = 1) {
+      const echoes = Array.from({ length: count }, (_, i) => waiting(`m${i}`));
+      const room = {
+        roomId: '!room:hs',
+        getLiveTimeline: () => ({ getEvents: () => echoes }),
+        getThreads: () => [],
+        // Joined and already encrypted, so the encryption repair a sync runs passes it over.
+        getMyMembership: () => 'join',
+        hasEncryptionStateEvent: () => true,
+      };
+      const client = {
+        ...fakeClient(),
+        getRooms: vi.fn().mockReturnValue([room]),
+        resendEvent: vi.fn().mockResolvedValue(undefined),
+      };
+      const { svc } = setup(client);
+      await firstValueFrom(svc.init(SESSION));
+      const onSync = client.on.mock.calls.find(
+        ([evt]) => evt === ClientEvent.Sync,
+      )![1] as (state: SyncState, previous: SyncState | null) => void;
+      let current: SyncState | null = null;
+      /** Report each state in turn, as the SDK does, with the one before it. */
+      const sync = (...states: SyncState[]): void => {
+        for (const state of states) {
+          onSync(state, current);
+          current = state;
+        }
+      };
+      const onEcho = client.on.mock.calls.find(
+        ([evt]) => evt === RoomEvent.LocalEchoUpdated,
+      )![1] as (
+        event: MatrixEvent,
+        room: unknown,
+        oldEventId: string | undefined,
+        oldStatus: EventStatus,
+      ) => void;
+      /** Report each echo's send failing, as the SDK does, so the account counts it waiting. */
+      const fail = (): void => {
+        for (const echo of echoes) {
+          onEcho(echo, room, undefined, EventStatus.SENDING);
+        }
+      };
+      return { svc, client, sync, fail };
+    }
+
+    /** A `resendEvent` result the test settles itself. */
+    function pending() {
+      let release!: () => void;
+      const promise = new Promise<void>((resolve) => (release = resolve));
+      return { promise, release };
+    }
+
+    const flush = () => new Promise((resolve) => setTimeout(resolve));
+
+    it.each([SyncState.Reconnecting, SyncState.Error, SyncState.Catchup])(
+      'resends once when sync returns from %s',
+      async (lost) => {
+        const { client, sync } = await offlineClient();
+
+        sync(SyncState.Prepared, SyncState.Syncing, lost, SyncState.Syncing);
+        await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+        sync(SyncState.Syncing);
+        await flush();
+
+        expect(client.resendEvent).toHaveBeenCalledOnce();
+      },
+    );
+
+    it('resends once when the app started offline and its first sync arrives', async () => {
+      const { client, sync } = await offlineClient();
+
+      // The cached sync prepares; the first /sync that gets through prepares again.
+      sync(
+        SyncState.Prepared,
+        SyncState.Error,
+        SyncState.Prepared,
+        SyncState.Syncing,
+      );
+      await flush();
+
+      expect(client.resendEvent).toHaveBeenCalledOnce();
+    });
+
+    it('lets a second reconnect resend only after the first run ends', async () => {
+      const { client, sync } = await offlineClient();
+      const first = pending();
+      client.resendEvent.mockReturnValueOnce(first.promise);
+
+      sync(SyncState.Reconnecting, SyncState.Syncing);
+      await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+      sync(SyncState.Error, SyncState.Syncing);
+      await flush();
+      expect(client.resendEvent).toHaveBeenCalledOnce();
+
+      first.release();
+      await vi.waitFor(() =>
+        expect(client.resendEvent).toHaveBeenCalledTimes(2),
+      );
+    });
+
+    it('resends a message that failed while sync stayed up, on the next sync', async () => {
+      const { client, sync, fail } = await offlineClient();
+      sync(SyncState.Prepared, SyncState.Syncing);
+
+      fail();
+      sync(SyncState.Syncing);
+      await flush();
+
+      expect(client.resendEvent).toHaveBeenCalledOnce();
+    });
+
+    it('chains no resend on a sync while the account has nothing waiting', async () => {
+      // The room still lists an echo, but the account's count says none waits.
+      const { client, sync } = await offlineClient();
+
+      sync(SyncState.Prepared, SyncState.Syncing, SyncState.Syncing);
+      await flush();
+
+      expect(client.resendEvent).not.toHaveBeenCalled();
+    });
+
+    it('queues at most one more resend however many syncs arrive mid-run', async () => {
+      const { client, sync, fail } = await offlineClient();
+      const first = pending();
+      client.resendEvent.mockReturnValueOnce(first.promise);
+      sync(SyncState.Prepared, SyncState.Syncing);
+      fail();
+
+      sync(SyncState.Syncing);
+      await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+      sync(SyncState.Syncing, SyncState.Syncing, SyncState.Syncing);
+      first.release();
+      await flush();
+
+      // The run in flight, then the one queued behind it; the rest were not added.
+      expect(client.resendEvent).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not resend on the first sync', async () => {
+      const { client, sync } = await offlineClient();
+
+      sync(SyncState.Prepared, SyncState.Syncing);
+      await flush();
+
+      expect(client.resendEvent).not.toHaveBeenCalled();
+    });
+
+    it('does not resend on a sync that follows another', async () => {
+      const { client, sync } = await offlineClient();
+
+      sync(SyncState.Syncing, SyncState.Syncing);
+      await flush();
+
+      expect(client.resendEvent).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing more once the account is removed mid-run', async () => {
+      const { svc, client, sync } = await offlineClient(2);
+      const first = pending();
+      client.resendEvent.mockReturnValueOnce(first.promise);
+
+      sync(SyncState.Reconnecting, SyncState.Syncing);
+      await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+      await firstValueFrom(svc.remove('@me:hs'));
+      first.release();
+      await flush();
+
+      expect(client.resendEvent).toHaveBeenCalledOnce();
+    });
+
+    it('sends nothing more once sync is paused mid-run', async () => {
+      const { svc, client, sync } = await offlineClient(2);
+      const first = pending();
+      client.resendEvent.mockReturnValueOnce(first.promise);
+
+      sync(SyncState.Reconnecting, SyncState.Syncing);
+      await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+      svc.pauseSync();
+      first.release();
+      await flush();
+
+      expect(client.resendEvent).toHaveBeenCalledOnce();
+    });
+
+    it('never runs a queued resend after stop()', async () => {
+      const { svc, client, sync } = await offlineClient();
+      const first = pending();
+      client.resendEvent.mockReturnValueOnce(first.promise);
+
+      sync(SyncState.Reconnecting, SyncState.Syncing);
+      await vi.waitFor(() => expect(client.resendEvent).toHaveBeenCalled());
+      sync(SyncState.Reconnecting, SyncState.Syncing);
+      await firstValueFrom(svc.stop());
+      first.release();
+      await flush();
+
+      expect(client.resendEvent).toHaveBeenCalledOnce();
+    });
   });
 
   it('stop() tears down without clearing the stores', async () => {

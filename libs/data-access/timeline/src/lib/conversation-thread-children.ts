@@ -217,6 +217,14 @@ export function createConversationThreadChildren(
               messageId,
             }),
           ),
+        cancel: (messageId: string) =>
+          messageAction('cancel', () =>
+            options.messages.cancel({
+              key: options.key,
+              threadRootId: rootEventId,
+              messageId,
+            }),
+          ),
         release: () => {
           if (active?.handle === handle) release();
         },

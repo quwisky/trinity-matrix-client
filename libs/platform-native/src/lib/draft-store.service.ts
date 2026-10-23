@@ -12,6 +12,8 @@ const DRAFTS_FILE = {
 const PERSIST_DEBOUNCE_MS = 400;
 /** Bound the stored set so stale drafts can't grow without limit. */
 const MAX_DRAFTS = 200;
+/** Prefixes the draft key of a conversation's record of texts waiting to send offline. */
+const WAITING = 'waiting:';
 
 /** Where the drafts map is persisted, as one JSON string. */
 interface DraftPersistence {
@@ -67,6 +69,18 @@ function parseDrafts(value: string | null): [string, string][] {
 }
 
 /**
+ * Whether `draft` already is `text`, or holds it as one of its blank-line-separated paragraphs.
+ * Not a substring test: an unsent "ok" must still come back after a draft that says "looks ok".
+ */
+export function holdsText(draft: string, text: string): boolean {
+  const wanted = text.trim();
+  return (
+    draft.trim() === wanted ||
+    draft.split(/\n\s*\n/).some((paragraph) => paragraph.trim() === wanted)
+  );
+}
+
+/**
  * Per-conversation composer drafts, persisted across launches under an opaque conversation
  * key (an Account-and-Room key for the main composer, the root event id for the legacy
  * thread composer). Like the theme and feature flags these are non-secret UI state, so
@@ -109,10 +123,9 @@ export class DraftStoreService implements OnDestroy {
         : await preferencesPersistence.read().catch(() => null);
     this.drafts = new Map([...parseDrafts(legacy), ...parseDrafts(stored)]);
     this.initialised = true;
-    if (legacy !== null) {
-      this.legacyCopy = true;
-      await this.persist();
-    }
+    const recovered = this.recoverWaiting();
+    if (legacy !== null) this.legacyCopy = true;
+    if (legacy !== null || recovered) await this.persist();
   }
 
   /** Whether {@link init} has loaded the stored drafts; before that the map is empty. */
@@ -140,6 +153,33 @@ export class DraftStoreService implements OnDestroy {
     if (this.drafts.delete(key)) {
       this.schedulePersist();
     }
+  }
+
+  /**
+   * Keep the text of a message waiting to send offline until {@link releaseWaiting}. The
+   * composer does not show it: the message is already in the timeline. Only after a reload,
+   * which drops the SDK's unsent echo, does {@link init} put it back into the draft.
+   */
+  holdWaiting(key: string, txnId: string, body: string): void {
+    const record = this.waitingRecord(key);
+    record.set(txnId, body);
+    this.drafts.set(WAITING + key, JSON.stringify(Object.fromEntries(record)));
+    this.schedulePersist();
+  }
+
+  /** The waiting message went out, was cancelled or was refused: forget its text. */
+  releaseWaiting(key: string, txnId: string): void {
+    const record = this.waitingRecord(key);
+    if (!record.delete(txnId)) return;
+    if (record.size) {
+      this.drafts.set(
+        WAITING + key,
+        JSON.stringify(Object.fromEntries(record)),
+      );
+    } else {
+      this.drafts.delete(WAITING + key);
+    }
+    this.schedulePersist();
   }
 
   /**
@@ -173,6 +213,33 @@ export class DraftStoreService implements OnDestroy {
     if (!this.initialised) return Promise.resolve();
     this.cancelPending();
     return this.persist().then(() => undefined);
+  }
+
+  private waitingRecord(key: string): Map<string, string> {
+    return new Map(parseDrafts(this.drafts.get(WAITING + key) ?? null));
+  }
+
+  /**
+   * At load nothing can be waiting yet, so every stored record was left by a page that has
+   * gone, and its echo with it. Append each text to its draft once, then drop the record.
+   */
+  private recoverWaiting(): boolean {
+    let recovered = false;
+    for (const [recordKey, value] of [...this.drafts]) {
+      if (!recordKey.startsWith(WAITING)) continue;
+      const key = recordKey.slice(WAITING.length);
+      let draft = this.get(key).trimEnd();
+      for (const [, body] of parseDrafts(value)) {
+        if (!holdsText(draft, body))
+          draft = draft ? `${draft}\n\n${body}` : body;
+      }
+      this.drafts.delete(recordKey);
+      // Newest last, so the cap in persist() trims older drafts before this one.
+      this.drafts.delete(key);
+      if (draft) this.drafts.set(key, draft);
+      recovered = true;
+    }
+    return recovered;
   }
 
   private schedulePersist(): void {

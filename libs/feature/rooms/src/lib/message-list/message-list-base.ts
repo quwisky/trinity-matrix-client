@@ -88,6 +88,7 @@ const DEFAULT_ROW_CAPS: MessageRowCaps = {
   pinned: false,
   canThread: true,
   canQuote: false,
+  canRespond: true,
   saveMedia: null,
   canForward: false,
   readOnly: false,
@@ -220,6 +221,7 @@ export abstract class MessageListBase {
     onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
   }>();
   readonly retry = output<string>();
+  readonly cancelSend = output<string>();
   readonly deleteMessage = output<string>();
   readonly react = output<{ id: string; key: string }>();
   /** A `matrix.to` permalink clicked in a message body, for the host to route in-app. */
@@ -731,6 +733,9 @@ export abstract class MessageListBase {
         break;
       case 'retry':
         this.retry.emit(row.id);
+        break;
+      case 'cancel':
+        this.cancelSend.emit(row.id);
         break;
       case 'jump':
         this.jumpToRequested(action.id);

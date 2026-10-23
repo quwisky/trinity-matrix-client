@@ -7,14 +7,18 @@ import { ConnectivityBannerComponent } from './connectivity-banner.component';
 
 describe('ConnectivityBannerComponent', () => {
   let connectivity: ReturnType<typeof signal<'online' | 'offline'>>;
+  let waitingCount: ReturnType<typeof signal<number>>;
 
   beforeEach(() => {
     connectivity = signal<'online' | 'offline'>('online');
+    waitingCount = signal(0);
   });
 
   const renderBanner = () =>
     render(ConnectivityBannerComponent, {
-      providers: [MockProvider(MatrixClientService, { connectivity })],
+      providers: [
+        MockProvider(MatrixClientService, { connectivity, waitingCount }),
+      ],
     });
 
   const banner = (el: HTMLElement) => el.querySelector('trn-banner');
@@ -50,5 +54,38 @@ describe('ConnectivityBannerComponent', () => {
     fixture.detectChanges();
 
     expect(liveRegion()?.textContent).toContain('offline');
+  });
+
+  it.each([
+    [2, '2 messages waiting to send'],
+    [1, '1 message waiting to send'],
+  ])('shows how many messages are waiting (%i)', async (count, text) => {
+    const { container, fixture } = await renderBanner();
+
+    waitingCount.set(count);
+    fixture.detectChanges();
+
+    expect(banner(container)?.textContent).toContain(text);
+  });
+
+  it('adds nothing at zero waiting', async () => {
+    const { container, fixture } = await renderBanner();
+
+    connectivity.set('offline');
+    fixture.detectChanges();
+
+    expect(banner(container)?.textContent).not.toContain('waiting');
+  });
+
+  it('shows the offline icon only while offline', async () => {
+    const { container, fixture } = await renderBanner();
+
+    waitingCount.set(1);
+    fixture.detectChanges();
+    expect(container.querySelector('trn-icon')).toBeNull();
+
+    connectivity.set('offline');
+    fixture.detectChanges();
+    expect(container.querySelector('trn-icon')).not.toBeNull();
   });
 });

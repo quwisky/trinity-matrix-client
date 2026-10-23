@@ -21,12 +21,15 @@ import {
 } from '@trinity/util/matrix';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackEditorService } from '@trinity/data-access/media';
+import { DraftStoreService } from '@trinity/platform-native';
 import {
   type ConversationTextSendOperation,
   type ConversationTextSendRequest,
   type ConversationTextSender,
 } from './conversation-compose';
 import { shownContent } from './shields';
+import { conversationDraftKey } from './conversation-draft-key';
+import { keepWhileWaiting } from './waiting-draft';
 
 class MissingLocalEchoError extends Error {
   constructor() {
@@ -39,6 +42,7 @@ class MatrixConversationTextSender implements ConversationTextSender {
   private readonly matrix = inject(MatrixClientService);
   // Its emoticons() map is filled only while the rooms page subscribes run(); else it is empty.
   private readonly packs = inject(ImagePackEditorService);
+  private readonly drafts = inject(DraftStoreService);
 
   send(request: ConversationTextSendRequest): ConversationTextSendOperation {
     const client = this.matrix.clientFor(request.key.accountId);
@@ -46,6 +50,7 @@ class MatrixConversationTextSender implements ConversationTextSender {
     if (!client || !room || client.getUserId() !== request.key.accountId) {
       return this.settled(of({ kind: 'rejected', retryable: false }));
     }
+    let txnId: string | null = null;
     let localEventId: string | null = null;
     let fetchingTarget = false;
     let settled = false;
@@ -54,7 +59,7 @@ class MatrixConversationTextSender implements ConversationTextSender {
     }).pipe(
       switchMap((target) => {
         const content = this.content(request, room, target);
-        const txnId = client.makeTxnId();
+        txnId = client.makeTxnId();
         localEventId = `~${room.roomId}:${txnId}`;
         return from(client.sendMessage(room.roomId, content as never, txnId));
       }),
@@ -64,11 +69,22 @@ class MatrixConversationTextSender implements ConversationTextSender {
         }
         return { kind: 'accepted' as const, eventId: event_id };
       }),
-      catchError((error: unknown) =>
-        error instanceof MissingLocalEchoError
-          ? throwError(() => error)
-          : of({ kind: 'rejected' as const, retryable: true }),
-      ),
+      catchError((error: unknown) => {
+        if (error instanceof MissingLocalEchoError) {
+          return throwError(() => error);
+        }
+        const waiting = keepWhileWaiting(
+          this.drafts,
+          conversationDraftKey(request.key),
+          txnId ? room.getEventForTxnId(txnId) : undefined,
+          request.body,
+        );
+        return of(
+          waiting
+            ? ({ kind: 'queued' } as const)
+            : ({ kind: 'rejected', retryable: true } as const),
+        );
+      }),
       tap({
         next: () => (settled = true),
         error: () => (settled = true),

@@ -17,6 +17,8 @@ export type ConversationTextSendFailure =
 
 export type ConversationTextSendOutcome =
   | { readonly kind: 'sent'; readonly eventId: string }
+  /** Failed offline: it waits in the timeline and goes out by itself on reconnect. */
+  | { readonly kind: 'queued' }
   | {
       readonly kind: 'rejected';
       readonly failure: ConversationTextSendFailure;
@@ -32,6 +34,7 @@ export interface ConversationTextSendRequest {
 
 export type ConversationTextDelivery =
   | { readonly kind: 'accepted'; readonly eventId: string }
+  | { readonly kind: 'queued' }
   | { readonly kind: 'rejected'; readonly retryable: boolean };
 
 export interface ConversationTextSendOperation {
@@ -213,12 +216,16 @@ export class ConversationComposeController {
           .subscribe({
             next: (outcome) => {
               settled = true;
-              if (outcome.kind === 'accepted') {
+              if (outcome.kind !== 'rejected') {
                 if (this.revision === revision) {
                   if (intent.kind !== 'edit') this.ports.persistDraft('');
                   this.finishIntent();
                 }
-                subscriber.next({ kind: 'sent', eventId: outcome.eventId });
+                subscriber.next(
+                  outcome.kind === 'queued'
+                    ? outcome
+                    : { kind: 'sent', eventId: outcome.eventId },
+                );
               } else {
                 this.restore(draft, intent, revision);
                 subscriber.next(

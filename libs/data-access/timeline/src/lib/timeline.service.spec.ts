@@ -1,6 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import {
+  ConnectionError,
+  MatrixError,
   ReceiptType,
   RoomEvent,
   RoomStateEvent,
@@ -406,6 +408,25 @@ describe('TimelineService', () => {
     memberHandler?.({}, {}, { roomId: '!r:hs', userId: '@a:hs' });
     await Promise.resolve();
     expect(pill()).toContain('>@Alicia</a>');
+  });
+
+  it('re-renders a row whose offline failure turns into a refusal', () => {
+    const echo = {
+      ...fakeEvent({ id: '$m', sender: '@me:hs', status: 'not_sent' }),
+      error: new ConnectionError('offline') as unknown,
+    };
+    const revision = () =>
+      eventRevision(
+        fakeClient(fakeRoom([echo]), []) as unknown as MatrixClient,
+        fakeRoom([echo]) as unknown as Room,
+        echo as unknown as MatrixEvent,
+        false,
+      );
+
+    const waiting = revision();
+    echo.error = new MatrixError({ errcode: 'M_FORBIDDEN' }, 403);
+
+    expect(revision()).not.toBe(waiting);
   });
 
   it('keys mention pills to the shown content, not an edit by someone else', () => {

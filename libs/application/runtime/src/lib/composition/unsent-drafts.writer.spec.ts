@@ -3,16 +3,34 @@ import type { PendingTextMessage } from '@trinity/data-access/matrix-client';
 import { threadDraftKey } from '@trinity/data-access/timeline';
 import { DraftStoreService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UnsentDraftsWriter, unsentDraftKey } from './unsent-drafts.writer';
 
 const ROOM_DRAFT = 'conversation:["@me:hs","!room:hs"]';
 
+/** Web storage as one page leaves it to the next. */
+const stored = vi.hoisted(() => new Map<string, string>());
+vi.mock('@capacitor/preferences', () => ({
+  Preferences: {
+    get: ({ key }: { key: string }) =>
+      Promise.resolve({ value: stored.get(key) ?? null }),
+    set: ({ key, value }: { key: string; value: string }) => {
+      stored.set(key, value);
+      return Promise.resolve();
+    },
+    remove: ({ key }: { key: string }) => {
+      stored.delete(key);
+      return Promise.resolve();
+    },
+  },
+}));
+
 function unsent(
   text: string,
   threadRootId: string | null = null,
+  txnId?: string,
 ): PendingTextMessage {
-  return { accountId: '@me:hs', roomId: '!room:hs', threadRootId, text };
+  return { accountId: '@me:hs', roomId: '!room:hs', threadRootId, text, txnId };
 }
 
 function setup(initial: Record<string, string> = {}, initialised = true) {
@@ -103,6 +121,49 @@ describe('UnsentDraftsWriter', () => {
 
     expect(drafts.get(ROOM_DRAFT)).toBe('looks ok to me\n\nsee you\n\nok');
   });
+
+  it('releases the waiting record of each text it writes back, even one the draft holds', async () => {
+    const { writer } = setup({ [ROOM_DRAFT]: 'see you' });
+    const store = TestBed.inject(DraftStoreService);
+    const release = vi.spyOn(store, 'releaseWaiting');
+
+    await writer.writeBack([
+      unsent('see you', null, 'txn-1'),
+      unsent('in the thread', '$root', 'txn-2'),
+    ]);
+
+    expect(release.mock.calls).toEqual([
+      [ROOM_DRAFT, 'txn-1'],
+      [threadDraftKey('$root'), 'txn-2'],
+    ]);
+  });
+
+  it.each([
+    ['/shrug hi', 'hi ¯\\_(ツ)_/¯'],
+    ['/plain **x**', '**x**'],
+  ])(
+    'puts a waiting %s into the composer once after a handover and a reload',
+    async (typed, unsentText) => {
+      stored.clear();
+      const page = new DraftStoreService();
+      await page.init();
+      page.holdWaiting(ROOM_DRAFT, 'txn-1', typed);
+      TestBed.configureTestingModule({
+        providers: [
+          UnsentDraftsWriter,
+          { provide: DraftStoreService, useValue: page },
+        ],
+      });
+
+      await TestBed.inject(UnsentDraftsWriter).writeBack([
+        unsent(unsentText, null, 'txn-1'),
+      ]);
+      const reloaded = new DraftStoreService();
+      await reloaded.init();
+
+      expect(reloaded.get(ROOM_DRAFT)).toBe(unsentText);
+    },
+  );
 
   it('still writes the drafts to storage when every message reached the server', async () => {
     // A draft typed in the last moments before a handover is still waiting for its debounce.

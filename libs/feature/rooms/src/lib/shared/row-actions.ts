@@ -73,7 +73,8 @@ export function buildRowCaps(
   // An unsent message is a local echo with the SDK's `~roomId:txnId` placeholder id, which the
   // homeserver has never seen. Threading off it would make the placeholder the thread root (replies
   // relate to an event the server can't resolve), and pinning it would write it into
-  // `m.room.pinned_events`. Both wait for the remote echo to swap in the real event id.
+  // `m.room.pinned_events`. Replies and reactions would point at it too. All wait for the remote
+  // echo to swap in the real event id.
   const unsent = !!message.status;
   return {
     editable: isEditableMessage(message),
@@ -82,7 +83,8 @@ export function buildRowCaps(
     canPin: policy.canPin && !unsent,
     pinned: policy.pinnedIds.includes(message.id),
     canThread: policy.canThread && !unsent,
-    canQuote: isQuotableMessage(message),
+    canQuote: !unsent && isQuotableMessage(message),
+    canRespond: !unsent,
     saveMedia: savableMediaKind(message),
     canForward: isForwardableMessage(message),
     addToEmoji: !unsent && policy.canAddToEmoji(message),
@@ -198,6 +200,7 @@ export function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
     a.pinned === b.pinned &&
     a.canThread === b.canThread &&
     a.canQuote === b.canQuote &&
+    a.canRespond === b.canRespond &&
     a.saveMedia === b.saveMedia &&
     a.canForward === b.canForward &&
     a.addToEmoji === b.addToEmoji &&

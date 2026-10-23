@@ -1,4 +1,11 @@
-import { EventStatus, MsgType, createClient } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  ConnectionError,
+  EventStatus,
+  MsgType,
+  SyncState,
+  createClient,
+} from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from './matrix-client.service';
@@ -64,6 +71,7 @@ describe('MatrixClientService session handover', () => {
       readonly type?: string;
       readonly threadRootId?: string;
       readonly edit?: boolean;
+      readonly txnId?: string;
     } = {},
   ) {
     const id = options.id ?? `~!room:hs:txn${++nextEcho}`;
@@ -75,6 +83,7 @@ describe('MatrixClientService session handover', () => {
       isRelation: (relType?: string) =>
         options.edit === true && relType === 'm.replace',
       threadRootId: options.threadRootId,
+      getTxnId: () => options.txnId,
     };
   }
 
@@ -94,6 +103,9 @@ describe('MatrixClientService session handover', () => {
       roomId: '!room:hs',
       getLiveTimeline: () => timeline(events),
       getThreads: () => [{ liveTimeline: timeline([]) }],
+      // Joined and already encrypted, so the encryption repair a sync runs passes it over.
+      getMyMembership: () => 'join',
+      hasEncryptionStateEvent: () => true,
       get txnToEvent() {
         return new Map(
           [...events, ...threadEvents]
@@ -126,6 +138,28 @@ describe('MatrixClientService session handover', () => {
     expect(client.syncApi.stop).toHaveBeenCalledOnce();
     expect(client.stopClient).not.toHaveBeenCalled();
     expect(svc.isInitialized).toBe(true);
+  });
+
+  it('does not resend a message that failed offline once sync is paused', async () => {
+    const offline = {
+      ...echo(EventStatus.NOT_SENT),
+      error: new ConnectionError('offline'),
+    };
+    const client = {
+      ...handoverClient([offline]),
+      resendEvent: vi.fn().mockResolvedValue(undefined),
+    };
+    const svc = await liveService(client);
+    const onSync = client.on.mock.calls.find(
+      ([evt]) => evt === ClientEvent.Sync,
+    )![1] as (state: SyncState, previous: SyncState | null) => void;
+
+    svc.pauseSync();
+    onSync(SyncState.Reconnecting, SyncState.Syncing);
+    onSync(SyncState.Syncing, SyncState.Reconnecting);
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(client.resendEvent).not.toHaveBeenCalled();
   });
 
   it.each([EventStatus.QUEUED, EventStatus.ENCRYPTING, EventStatus.SENDING])(
@@ -183,6 +217,22 @@ describe('MatrixClientService session handover', () => {
         threadRootId: null,
         text: 'see you',
       },
+    ]);
+  });
+
+  it('names the transaction of an unsent text, so its waiting record can be released', async () => {
+    const svc = await liveService(
+      handoverClient([
+        echo(
+          EventStatus.NOT_SENT,
+          { msgtype: 'm.text', body: 'see you' },
+          { txnId: 'txn-7' },
+        ),
+      ]),
+    );
+
+    expect(svc.pendingTextMessages()).toEqual([
+      expect.objectContaining({ text: 'see you', txnId: 'txn-7' }),
     ]);
   });
 
@@ -456,6 +506,7 @@ describe('MatrixClientService session handover with a real MatrixClient', () => 
           roomId: ROOM_ID,
           threadRootId: ROOT_ID,
           text: 'in thread',
+          txnId: expect.any(String),
         },
       ]);
       // A failed send is no longer on its way; a hanging one is.

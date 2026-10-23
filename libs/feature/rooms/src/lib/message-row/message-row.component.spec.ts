@@ -37,6 +37,7 @@ const caps = (over: Partial<MessageRowCaps> = {}): MessageRowCaps => ({
   pinned: false,
   canThread: true,
   canQuote: false,
+  canRespond: true,
   saveMedia: null,
   canForward: true,
   readOnly: false,
@@ -1203,6 +1204,37 @@ describe('MessageRowComponent', () => {
 
     expect(container.querySelector('trn-message-toolbar')).toBeNull();
     expect(container.querySelector('.msg__retry')).toBeNull();
+  });
+
+  it('shows Waiting to send with a named Cancel and no Retry while waiting', async () => {
+    const action = vi.fn();
+    const { container } = await renderRow(
+      { row: row({ status: 'waiting', body: 'see you soon' }) },
+      { action },
+    );
+
+    expect(container.querySelector('.msg__waiting')?.textContent).toContain(
+      'Waiting to send',
+    );
+    expect(container.querySelector('.msg__retry')).toBeNull();
+    const cancel = container.querySelector<HTMLButtonElement>(
+      '[data-testid="msg-cancel"]',
+    );
+    expect(cancel?.textContent?.trim()).toBe('Cancel');
+    expect(cancel?.getAttribute('aria-label')).toMatch(
+      /^Cancel sending, .*see you soon$/,
+    );
+    fireEvent.click(cancel as HTMLElement);
+    expect(action).toHaveBeenCalledWith({ type: 'cancel' });
+  });
+
+  it('hides the waiting state in read-only mode', async () => {
+    const { container } = await renderRow({
+      row: row({ status: 'waiting' }),
+      caps: caps({ readOnly: true }),
+    });
+
+    expect(container.querySelector('[data-testid="msg-cancel"]')).toBeNull();
   });
 
   const lockedHistory = (): MessageRow =>

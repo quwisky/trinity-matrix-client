@@ -37,7 +37,14 @@ export interface ConversationThreadKey extends ConversationKey {
 }
 
 export type ConversationThreadOperation =
-  'paginate' | 'send' | 'edit' | 'reply' | 'reaction' | 'redaction' | 'retry';
+  | 'paginate'
+  | 'send'
+  | 'edit'
+  | 'reply'
+  | 'reaction'
+  | 'redaction'
+  | 'retry'
+  | 'cancel';
 
 export type ConversationThreadOutcome =
   | {
@@ -94,6 +101,7 @@ export interface ConversationThread {
   ): Observable<ConversationThreadOutcome>;
   redact(messageId: string): Observable<ConversationThreadOutcome>;
   retry(messageId: string): Observable<ConversationThreadOutcome>;
+  cancel(messageId: string): Observable<ConversationThreadOutcome>;
   release(): void;
 }
 

@@ -394,6 +394,12 @@ export class ConversationRuntime {
             ? this.messageAdapter.retry({ key: immutableKey, messageId })
             : of(rejected('retry', 'conversation-unavailable')),
         ),
+      cancel: (messageId: string) =>
+        defer(() =>
+          state() === 'focused'
+            ? this.messageAdapter.cancel({ key: immutableKey, messageId })
+            : of(rejected('cancel', 'conversation-unavailable')),
+        ),
       acknowledge: (messageId: string) =>
         defer(() =>
           state() === 'focused'
@@ -692,6 +698,11 @@ export class ConversationRuntime {
         defer(
           () =>
             focused()?.messages.retry(messageId) ?? of(unavailable('retry')),
+        ),
+      cancel: (messageId) =>
+        defer(
+          () =>
+            focused()?.messages.cancel(messageId) ?? of(unavailable('cancel')),
         ),
       acknowledge: (messageId) =>
         defer(

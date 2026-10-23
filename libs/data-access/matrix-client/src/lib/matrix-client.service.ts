@@ -12,11 +12,15 @@ import {
   MatrixClient,
   isValidAuthMetadata,
   ClientEvent,
+  EventStatus,
   HttpApiEvent,
+  RoomEvent,
   SyncState,
   type AccessTokens,
   type ICreateClientOpts,
   type MatrixError,
+  type MatrixEvent,
+  type Room,
   type SyncStateData,
 } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
@@ -60,6 +64,8 @@ import {
   clientHasOutgoingWork,
   clientPendingTexts,
   pauseClientSync,
+  resendWaitingEchoes,
+  waitingEchoCount,
   type PendingTextMessage,
 } from './outgoing-work';
 import {
@@ -82,6 +88,13 @@ export const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
 
 /** Where matrix-js-sdk discovers an OAuth account's provider (`MatrixClient.getAuthMetadata`). */
 const AUTH_METADATA_PATH = '/_matrix/client/v1/auth_metadata';
+
+/** Sync states that mean the homeserver could not be reached. */
+const DISCONNECTED: ReadonlySet<SyncState> = new Set([
+  SyncState.Reconnecting,
+  SyncState.Error,
+  SyncState.Catchup,
+]);
 
 /** Whether an endpoint names the same URL once parsed; anything unparseable does not. */
 function sameEndpoint(a: unknown, b: string): boolean {
@@ -133,6 +146,15 @@ interface AccountClient {
   readonly syncStore: IndexedDBStore | null;
   /** This account's coarse sync state (null until its first sync transition). */
   readonly syncState: WritableSignal<SyncState | null>;
+  /** How many of its messages wait to be sent by themselves; see {@link waitingEchoCount}. */
+  readonly waitingCount: WritableSignal<number>;
+  /** Its `RoomEvent.LocalEchoUpdated` listener, which keeps {@link waitingCount} current. */
+  readonly onLocalEchoUpdated: (
+    event: MatrixEvent,
+    room: Room,
+    oldEventId?: string,
+    oldStatus?: EventStatus | null,
+  ) => void;
   /** Whether this client has completed a sync with its homeserver ({@link isServerSync}). */
   readonly serverSynced: WritableSignal<boolean>;
   /** Whether this client has prepared its rooms, from its sync cache or its homeserver. */
@@ -207,6 +229,8 @@ export class MatrixClientService {
 
   private readonly clients = new Map<string, AccountClient>();
   private readonly logoutHolds = new Map<string, LogoutHoldState>();
+  /** Set by a session handover's {@link pauseSync}: a reconnect then resends nothing. */
+  private syncPaused = false;
 
   /**
    * Tell the Electron main process which origins we legitimately talk to, so its CORS
@@ -325,6 +349,12 @@ export class MatrixClientService {
     return state === SyncState.Error || state === SyncState.Reconnecting
       ? 'offline'
       : 'online';
+  });
+
+  /** How many messages of the ACTIVE account wait to go out once it reconnects. */
+  readonly waitingCount: Signal<number> = computed(() => {
+    this._accountIds();
+    return this.active()?.waitingCount() ?? 0;
   });
 
   get instance(): MatrixClient {
@@ -586,6 +616,7 @@ export class MatrixClientService {
    * {@link stop}.
    */
   pauseSync(): void {
+    this.syncPaused = true;
     for (const account of this.clients.values()) {
       pauseClientSync(account.client);
     }
@@ -822,10 +853,33 @@ export class MatrixClientService {
       let syncProjection: ProjectionLease | null = null;
       const syncState = signal<SyncState | null>(null);
       let latestSyncState: SyncState | null = null;
+      // Set when sync loses the homeserver; the next `Syncing` resends what failed meanwhile.
+      // Not the previous state alone: an app that starts offline comes back through `Prepared`.
+      let disconnected = false;
+      // One resend run at a time, so a second reconnect mid-run cannot overtake a room's order,
+      // and at most one more queued behind it, however many syncs arrive meanwhile.
+      let resending = Promise.resolve();
+      let resendQueued = false;
       const serverSynced = signal(false);
       let latestServerSynced = false;
       const roomsPrepared = signal(false);
       let latestRoomsPrepared = false;
+      const waitingCount = signal(0);
+      // Only an echo entering or leaving NOT_SENT changes the count; most updates are an ordinary
+      // send passing through other states, and the scan walks every room and thread.
+      const onLocalEchoUpdated = (
+        event: MatrixEvent,
+        _room: Room,
+        _oldEventId?: string,
+        oldStatus?: EventStatus | null,
+      ): void => {
+        if (
+          event.status === EventStatus.NOT_SENT ||
+          oldStatus === EventStatus.NOT_SENT
+        ) {
+          waitingCount.set(waitingEchoCount(created!));
+        }
+      };
       const onLoggedOut = (err: MatrixError): void =>
         this.handleServerLogout(session.userId, err);
       // Not detached on teardown: it only updates this start's own counter. Null until the
@@ -852,6 +906,7 @@ export class MatrixClientService {
         }
         syncProjection?.release();
         created?.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
+        created?.off(RoomEvent.LocalEchoUpdated, onLocalEchoUpdated);
         created?.stopClient();
         holder.clear();
         this.forgetOAuthTokens(session.userId, created);
@@ -919,6 +974,33 @@ export class MatrixClientService {
                 _previous: SyncState | null,
                 data?: SyncStateData,
               ): void => {
+                if (DISCONNECTED.has(state)) {
+                  disconnected = true;
+                } else if (
+                  state === SyncState.Syncing &&
+                  // A sync that got through proves the homeserver is reachable, even when sync
+                  // never noticed the drop that failed a send.
+                  (disconnected || waitingCount() > 0) &&
+                  !resendQueued
+                ) {
+                  disconnected = false;
+                  resendQueued = true;
+                  // Removal, stop() and a handover pause all end a run between two sends.
+                  const live = (): boolean =>
+                    !this.syncPaused &&
+                    this.clients.get(session.userId)?.client === client;
+                  resending = resending
+                    .then(() => {
+                      resendQueued = false;
+                      return resendWaitingEchoes(client, live);
+                    })
+                    .catch((error: unknown) => {
+                      console.warn(
+                        "Couldn't resend the messages that failed offline.",
+                        error,
+                      );
+                    });
+                }
                 latestSyncState = state;
                 latestServerSynced ||= isServerSync(state, data);
                 latestRoomsPrepared ||=
@@ -953,6 +1035,7 @@ export class MatrixClientService {
             }),
           });
           created!.on(HttpApiEvent.SessionLoggedOut, onLoggedOut);
+          created!.on(RoomEvent.LocalEchoUpdated, onLocalEchoUpdated);
           created!.on(
             CryptoEvent.KeyBackupSessionsRemaining,
             onBackupKeysRemaining,
@@ -989,6 +1072,8 @@ export class MatrixClientService {
             cryptoStoreEncrypted: session.cryptoStoreKeyed === true,
             syncStore: store,
             syncState,
+            waitingCount,
+            onLocalEchoUpdated,
             serverSynced,
             roomsPrepared,
             syncProjection,
@@ -1237,9 +1322,14 @@ export class MatrixClientService {
 
   /** Stop and drop every client (no store deletion), and forget the 4S keys. */
   private teardownAll(): void {
+    this.syncPaused = false;
     for (const account of this.clients.values()) {
       account.syncProjection.release();
       account.client.off(HttpApiEvent.SessionLoggedOut, account.onLoggedOut);
+      account.client.off(
+        RoomEvent.LocalEchoUpdated,
+        account.onLocalEchoUpdated,
+      );
       account.client.stopClient();
       account.holder.clear();
       this.closeStore(account.syncStore);
@@ -1277,6 +1367,7 @@ export class MatrixClientService {
     }
     account.syncProjection.release();
     account.client.off(HttpApiEvent.SessionLoggedOut, account.onLoggedOut);
+    account.client.off(RoomEvent.LocalEchoUpdated, account.onLocalEchoUpdated);
     account.client.stopClient(); // clearStores must run with the client stopped
     account.holder.clear();
     this.clients.delete(userId);

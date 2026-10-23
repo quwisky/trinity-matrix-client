@@ -85,6 +85,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
   pinned: false,
   canThread: false,
   canQuote: false,
+  canRespond: true,
   saveMedia: null,
   canForward: false,
   readOnly: false,
@@ -450,6 +451,9 @@ export class ThreadViewComponent implements OnDestroy {
         break;
       case 'retry':
         this.onRetry(row.id);
+        break;
+      case 'cancel':
+        this.commands.cancel(row.id);
         break;
       case 'jump':
         this.jumpToRequested(action.id);

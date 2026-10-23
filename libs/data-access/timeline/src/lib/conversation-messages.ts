@@ -6,7 +6,7 @@ export interface ConversationKey {
 }
 
 export type ConversationMessageOperation =
-  'reply' | 'edit' | 'reaction' | 'redaction' | 'retry' | 'receipt';
+  'reply' | 'edit' | 'reaction' | 'redaction' | 'retry' | 'cancel' | 'receipt';
 
 export type ConversationMessageFailure =
   | 'conversation-unavailable'
@@ -37,6 +37,7 @@ export interface ConversationMessages {
   ): Observable<ConversationMessageOutcome>;
   redact(messageId: string): Observable<ConversationMessageOutcome>;
   retry(messageId: string): Observable<ConversationMessageOutcome>;
+  cancel(messageId: string): Observable<ConversationMessageOutcome>;
   acknowledge(messageId: string): Observable<ConversationMessageOutcome>;
 }
 
@@ -58,6 +59,9 @@ export interface ConversationMessageAdapter {
     request: ConversationMessageActionRequest,
   ): Observable<ConversationMessageOutcome>;
   retry(
+    request: ConversationMessageActionRequest,
+  ): Observable<ConversationMessageOutcome>;
+  cancel(
     request: ConversationMessageActionRequest,
   ): Observable<ConversationMessageOutcome>;
   acknowledge(

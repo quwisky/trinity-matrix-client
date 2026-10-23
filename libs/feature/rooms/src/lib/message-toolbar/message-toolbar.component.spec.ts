@@ -17,6 +17,7 @@ const caps = (over: Partial<MessageToolbarCaps> = {}): MessageToolbarCaps => ({
   pinned: false,
   canThread: true,
   canQuote: false,
+  canRespond: true,
   saveMedia: null,
   canForward: true,
   ...over,
@@ -50,6 +51,16 @@ describe('MessageToolbarComponent', () => {
     cmp.action.subscribe((a) => (action = a));
     container.querySelector<HTMLButtonElement>('[aria-label="Reply"]')!.click();
     expect(action).toEqual({ type: 'reply' });
+  });
+
+  it('offers no reaction or reply on an unsent message', async () => {
+    const { container } = await render(MessageToolbarComponent, {
+      inputs: { caps: caps({ canRespond: false }) },
+    });
+
+    expect(container.querySelector('[aria-label="Add reaction"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Reply"]')).toBeNull();
+    expect(container.querySelector('[data-testid="msg-more"]')).not.toBeNull();
   });
 
   it('offers Copy in the overflow menu by default and emits it', async () => {

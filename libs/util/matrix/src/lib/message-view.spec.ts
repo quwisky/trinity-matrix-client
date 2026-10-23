@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
+import {
+  ConnectionError,
+  EventStatus,
+  MatrixError,
+  MatrixEvent as SdkMatrixEvent,
+  type MatrixClient,
+  type MatrixEvent,
+  type Room,
+} from 'matrix-js-sdk';
 import {
   MAX_NAMED_REACTORS,
   collectMessageSenders,
   isDisplayableMessage,
+  mapStatus,
   normalizeMediaPayload,
   reactionDetailsFor,
   reactionsFor,
@@ -546,5 +555,25 @@ describe('replyPreview', () => {
       replyPreview(roomWith(), '$t', true, undefined, () => encryptedEdit)
         ?.mark,
     ).toBeNull();
+  });
+});
+
+describe('mapStatus', () => {
+  const notSent = (error: unknown): MatrixEvent => {
+    const event = new SdkMatrixEvent({
+      type: 'm.room.message',
+      content: { msgtype: 'm.text', body: 'hi' },
+    });
+    event.status = EventStatus.NOT_SENT;
+    event.error = error as MatrixError;
+    return event;
+  };
+
+  it('is waiting for a NOT_SENT echo that failed only because it was offline', () => {
+    expect(mapStatus(notSent(new ConnectionError('offline')))).toBe('waiting');
+  });
+
+  it('is failed for every other NOT_SENT echo', () => {
+    expect(mapStatus(notSent(new Error('refused')))).toBe('failed');
   });
 });

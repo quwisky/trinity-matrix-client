@@ -11,6 +11,7 @@ const ALL_ACTIONS: MessageToolbarCaps = {
   pinned: false,
   canThread: true,
   canQuote: true,
+  canRespond: true,
   canForward: true,
 };
 

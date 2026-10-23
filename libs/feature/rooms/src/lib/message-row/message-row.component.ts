@@ -94,6 +94,8 @@ export interface MessageRowCaps {
   canThread: boolean;
   /** Whether this message has text worth pulling into the composer as a quote. */
   canQuote: boolean;
+  /** Offer Reply and reactions; false for an unsent message, which the server cannot point at. */
+  canRespond: boolean;
   /** Which kind of media this message can be saved as; null when it has none. */
   saveMedia: 'image' | 'video' | null;
   /** Whether a forward can carry this message; see `isForwardableMessage`. */
@@ -116,6 +118,7 @@ export interface MessageLongPressContext {
 export type MessageRowAction =
   | MessageAction
   | { type: 'retry' }
+  | { type: 'cancel' }
   | { type: 'jump'; id: string }
   /** Show this message's earlier versions; raised by the "(edited)" marker, which is part of the row, not `MessageAction`. */
   | { type: 'edit-history' }
@@ -567,6 +570,7 @@ export class MessageRowComponent {
     pinned: false,
     canThread: true,
     canQuote: false,
+    canRespond: true,
     saveMedia: null,
     canForward: false,
     readOnly: false,
@@ -620,6 +624,11 @@ export class MessageRowComponent {
    * action must stay the one the reader saw on release.
    */
   readonly swipe = output<MessageSwipeAction>();
+
+  /** A read-only row has no composer to swipe into, and an unsent one nothing to reply to yet. */
+  readonly swipeable = computed(
+    () => !this.caps().readOnly && this.caps().canRespond,
+  );
 
   /**
    * What a committed swipe would do to this row: the affordance and the action in one value.
@@ -685,6 +694,7 @@ export class MessageRowComponent {
       pinned: c.pinned,
       canThread: c.canThread,
       canQuote: c.canQuote,
+      canRespond: c.canRespond,
       saveMedia: c.saveMedia,
       canForward: c.canForward,
       addToEmoji: c.addToEmoji,

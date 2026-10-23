@@ -147,6 +147,29 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
     });
   }
 
+  cancel(
+    request: ConversationMessageActionRequest,
+  ): Observable<ConversationMessageOutcome> {
+    return defer(() => {
+      const context = this.context(request);
+      if (!context) {
+        return of(this.rejected('cancel', 'conversation-unavailable'));
+      }
+      const event = this.event(
+        context.room,
+        request.messageId,
+        request.threadRootId,
+      );
+      if (!event) return of(this.rejected('cancel', 'message-unavailable'));
+      if (event.status !== EventStatus.NOT_SENT) {
+        return of(this.rejected('cancel', 'event-not-retryable'));
+      }
+      // CANCELLED is what releases the waiting draft record and stops the reconnect resend.
+      context.client.cancelPendingEvent(event);
+      return of(this.applied('cancel'));
+    });
+  }
+
   acknowledge(
     request: ConversationMessageActionRequest,
   ): Observable<ConversationMessageOutcome> {

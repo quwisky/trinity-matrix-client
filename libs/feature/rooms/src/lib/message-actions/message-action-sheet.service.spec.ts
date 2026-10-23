@@ -45,6 +45,44 @@ describe('MessageActionSheetService', () => {
     expect(testIds).toContain('sheet-add-to-emoji');
   });
 
+  it('offers no reply or reaction on an unsent message', () => {
+    let testIds: (string | undefined)[] = [];
+    let reactions: readonly ActionSheetReaction[] = [];
+    TestBed.configureTestingModule({
+      providers: [
+        MockProvider(RecentEmojiService, { record: vi.fn() }),
+        MockProvider(TrnSurfaceService, {
+          openActions: vi.fn(
+            (options: {
+              buttons: readonly { testId?: string }[];
+              reactions?: readonly ActionSheetReaction[];
+            }) => {
+              testIds = options.buttons.map((b) => b.testId);
+              reactions = options.reactions ?? [];
+              return {
+                presentation: 'menu',
+                closed: new Subject<void>(),
+                close: vi.fn(),
+              } as never;
+            },
+          ),
+        }),
+      ],
+    });
+    const sheet = TestBed.inject(MessageActionSheetService);
+
+    sheet.open({}, { canRespond: false } as SheetCaps, vi.fn());
+    expect(testIds).not.toContain('sheet-reply');
+    expect(testIds).not.toContain('sheet-react-more');
+    expect(reactions).toEqual([]);
+    expect(testIds).toContain('sheet-copy');
+
+    sheet.open({}, { canRespond: true } as SheetCaps, vi.fn());
+    expect(testIds).toContain('sheet-reply');
+    expect(testIds).toContain('sheet-react-more');
+    expect(reactions.length).toBeGreaterThan(0);
+  });
+
   it('records a reaction picked from the sheet as a recently used emoji', () => {
     const record = vi.fn();
     let reactions: readonly ActionSheetReaction[] = [];
@@ -66,7 +104,7 @@ describe('MessageActionSheetService', () => {
       ],
     });
     const dispatch = vi.fn();
-    const caps = {} as Parameters<MessageActionSheetService['open']>[1];
+    const caps = { canRespond: true } as SheetCaps;
 
     TestBed.inject(MessageActionSheetService).open({}, caps, dispatch);
     const reaction = reactions[0];

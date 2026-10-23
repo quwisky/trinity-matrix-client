@@ -1,4 +1,8 @@
-import { stripReplyFallbackText } from '@trinity/util/matrix';
+import {
+  isTemporarySendError,
+  isWaitingToSend,
+  stripReplyFallbackText,
+} from '@trinity/util/matrix';
 import {
   EventStatus,
   EventType,
@@ -32,6 +36,8 @@ export interface PendingTextMessage {
   readonly threadRootId: string | null;
   /** What to put back in the composer: the plain body, the composer's own markdown source. */
   readonly text: string;
+  /** Names the echo's waiting-to-send record in the draft store, which this text supersedes. */
+  readonly txnId?: string;
 }
 
 /** matrix-js-sdk keeps its sync loop on the protected `MatrixClient.syncApi`. */
@@ -100,10 +106,49 @@ export function clientPendingTexts(
         roomId: room.roomId,
         threadRootId: threadOf(event, id),
         text,
+        txnId: event.getTxnId(),
       });
     }
   }
   return messages;
+}
+
+/** How many of `client`'s messages wait to go out by themselves, an echo in two lists counted once. */
+export function waitingEchoCount(client: MatrixClient): number {
+  const seen = new Set<MatrixEvent>();
+  for (const room of client.getRooms()) {
+    for (const event of localEchoes(room)) {
+      if (isWaitingToSend(event)) seen.add(event);
+    }
+  }
+  return seen.size;
+}
+
+/**
+ * Send again every message of `client` that failed only because it was offline. Within a room
+ * they go one at a time in send order; rooms run side by side. Each is checked again just
+ * before its turn, so a manual Retry or Cancel that got there first is never doubled, and
+ * nothing more is sent once `live` turns false. Still offline or rate-limited, a room stops there
+ * and the rest wait for the next pass, keeping their order; an echo the server refuses becomes a manual
+ * failure and the next one goes.
+ */
+export async function resendWaitingEchoes(
+  client: MatrixClient,
+  live: () => boolean,
+): Promise<void> {
+  await Promise.all(
+    client.getRooms().map(async (room) => {
+      for (const event of localEchoes(room).filter(isWaitingToSend)) {
+        if (!live()) return;
+        if (!isWaitingToSend(event)) continue;
+        try {
+          await client.resendEvent(event, room);
+        } catch (error: unknown) {
+          if (isTemporarySendError(error)) return;
+        }
+      }
+    }),
+  );
 }
 
 /**

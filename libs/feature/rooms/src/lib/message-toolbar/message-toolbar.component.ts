@@ -30,6 +30,8 @@ export interface MessageToolbarCaps {
   canThread: boolean;
   /** Whether this message has text worth pulling into the composer as a quote. */
   canQuote: boolean;
+  /** Offer "Add reaction" and "Reply"; false for an unsent message. */
+  canRespond: boolean;
   /** Offer "Save image" / "Save video"; null for a message with no savable media. */
   saveMedia: 'image' | 'video' | null;
   /** Offer "Forward"; false for a message a forward cannot carry (a poll, say). */
@@ -107,6 +109,7 @@ export class MessageToolbarComponent {
     pinned: false,
     canThread: true,
     canQuote: false,
+    canRespond: true,
     saveMedia: null,
     canForward: true,
   });
