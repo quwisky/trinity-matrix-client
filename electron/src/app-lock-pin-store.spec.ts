@@ -39,14 +39,49 @@ const FAILURE_UPTIME = 5_000;
 // Fast parameters for tests only; production uses PRODUCTION_SCRYPT.
 const FAST = { N: 1024, r: 8, p: 1 } as const;
 
+/** Let other queued work run, as a real keychain or keyring call does. */
+const yieldTurn = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 0));
+
+/** Electron's deprecated sync `encryptString` wrote this prefix; `encryptStringAsync` the other. */
+const LEGACY = 'enc:';
+const CURRENT = 'enc2:';
+
+/** A file's content as the given format writes `plain`. */
+function sealed(plain: string, prefix = CURRENT): string {
+  return Buffer.from(
+    `${prefix}${Buffer.from(plain).toString('base64')}`,
+  ).toString('base64');
+}
+
+/** The plaintext of a fake ciphertext, in either format. */
+function unseal(cipher: Buffer): { result: string; shouldReEncrypt: boolean } {
+  const text = cipher.toString();
+  const legacy = text.startsWith(LEGACY);
+  if (!legacy && !text.startsWith(CURRENT)) throw new Error('decrypt failed');
+  const body = text.slice(legacy ? LEGACY.length : CURRENT.length);
+  return {
+    result: Buffer.from(body, 'base64').toString(),
+    shouldReEncrypt: legacy,
+  };
+}
+
+/** Async-only, so a call to a deprecated sync method fails the test. */
 function fakeSafeStorage(backend = 'gnome_libsecret') {
   return {
-    isEncryptionAvailable: () => true,
+    isAsyncEncryptionAvailable: async () => {
+      await yieldTurn();
+      return true;
+    },
     getSelectedStorageBackend: () => backend,
-    encryptString: (plain: string) =>
-      Buffer.from(`enc:${Buffer.from(plain).toString('base64')}`),
-    decryptString: (cipher: Buffer) =>
-      Buffer.from(cipher.toString().slice(4), 'base64').toString(),
+    encryptStringAsync: async (plain: string) => {
+      await yieldTurn();
+      return Buffer.from(`${CURRENT}${Buffer.from(plain).toString('base64')}`);
+    },
+    decryptStringAsync: async (cipher: Buffer) => {
+      await yieldTurn();
+      return unseal(cipher);
+    },
   };
 }
 
@@ -63,9 +98,7 @@ function memoryIo(): PinFileIo & { files: Map<string, string> } {
 /** The record a fake-encrypted file holds, read back the way the verifier would. */
 function storedRecord(stored: string | undefined): PinRecord | null {
   if (stored === undefined) return null;
-  return decodePinRecord(
-    fakeSafeStorage().decryptString(Buffer.from(stored, 'base64')),
-  );
+  return decodePinRecord(unseal(Buffer.from(stored, 'base64')).result);
 }
 
 describe('PinVerifier', () => {
@@ -100,7 +133,7 @@ describe('PinVerifier', () => {
   it('sets, verifies and clears a PIN without storing it in the clear', async () => {
     const io = memoryIo();
     const pins = verifier(io);
-    expect(pins.status()).toEqual({
+    expect(await pins.status()).toEqual({
       kind: 'ready',
       set: false,
       nextAttemptAt: null,
@@ -111,7 +144,7 @@ describe('PinVerifier', () => {
     expect(Buffer.from(stored, 'base64').toString().includes('482913')).toBe(
       false,
     );
-    expect(pins.status()).toEqual({
+    expect(await pins.status()).toEqual({
       kind: 'ready',
       set: true,
       nextAttemptAt: null,
@@ -128,7 +161,7 @@ describe('PinVerifier', () => {
       await verifier(io).verify('000000');
     }
     const restarted = verifier(io);
-    expect(restarted.status()).toEqual({
+    expect(await restarted.status()).toEqual({
       kind: 'ready',
       set: true,
       nextAttemptAt: FAILURE_AT + 30_000,
@@ -182,7 +215,7 @@ describe('PinVerifier', () => {
     setPlatform('linux');
     const io = memoryIo();
     const pins = verifier(io, fakeSafeStorage('basic_text'));
-    expect(pins.status()).toEqual({ kind: 'not-supported' });
+    expect(await pins.status()).toEqual({ kind: 'not-supported' });
     await expect(pins.set('482913')).resolves.toBe('unavailable');
     await expect(pins.verify('482913')).resolves.toEqual({
       kind: 'unavailable',
@@ -194,9 +227,9 @@ describe('PinVerifier', () => {
     const io = memoryIo();
     const pins = verifier(io, {
       ...fakeSafeStorage(),
-      isEncryptionAvailable: () => false,
+      isAsyncEncryptionAvailable: async () => false,
     });
-    expect(pins.status()).toEqual({ kind: 'not-supported' });
+    expect(await pins.status()).toEqual({ kind: 'not-supported' });
     await expect(pins.set('482913')).resolves.toBe('unavailable');
     expect(io.files.size).toBe(0);
   });
@@ -209,7 +242,7 @@ describe('PinVerifier', () => {
       ['Linux basic_text', fakeSafeStorage('basic_text')],
       [
         'no encryption at all',
-        { ...fakeSafeStorage(), isEncryptionAvailable: () => false },
+        { ...fakeSafeStorage(), isAsyncEncryptionAvailable: async () => false },
       ],
     ];
 
@@ -218,12 +251,12 @@ describe('PinVerifier', () => {
       async (_name, safeStorage) => {
         setPlatform('linux');
         const io = memoryIo();
-        const stored = fakeSafeStorage()
-          .encryptString(encodePinRecord(await createPinRecord('482913', FAST)))
-          .toString('base64');
+        const stored = sealed(
+          encodePinRecord(await createPinRecord('482913', FAST)),
+        );
         io.files.set(file, stored);
         const pins = verifier(io, safeStorage);
-        expect(pins.status()).toEqual({ kind: 'unavailable' });
+        expect(await pins.status()).toEqual({ kind: 'unavailable' });
         await expect(pins.set('135790')).resolves.toBe('unavailable');
         await expect(pins.verify('482913')).resolves.toEqual({
           kind: 'unavailable',
@@ -234,7 +267,7 @@ describe('PinVerifier', () => {
 
     it.each(unusable)(
       '%s with a file it cannot check is unavailable',
-      (_name, safeStorage) => {
+      async (_name, safeStorage) => {
         setPlatform('linux');
         const io: PinFileIo = {
           ...memoryIo(),
@@ -242,7 +275,7 @@ describe('PinVerifier', () => {
             throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
           },
         };
-        expect(verifier(io, safeStorage).status()).toEqual({
+        expect(await verifier(io, safeStorage).status()).toEqual({
           kind: 'unavailable',
         });
       },
@@ -259,7 +292,7 @@ describe('PinVerifier', () => {
     const io = memoryIo();
     io.files.set(file, 'not base64 ciphertext');
     const pins = verifier(io);
-    expect(pins.status()).toEqual({ kind: 'unavailable' });
+    expect(await pins.status()).toEqual({ kind: 'unavailable' });
     await expect(pins.verify('482913')).resolves.toEqual({
       kind: 'unavailable',
     });
@@ -276,9 +309,8 @@ describe('PinVerifier', () => {
         (io) => io,
         {
           ...fakeSafeStorage(),
-          decryptString: () => {
-            throw new Error('keychain says no');
-          },
+          decryptStringAsync: () =>
+            Promise.reject(new Error('keychain says no')),
         },
       ],
       ['the record does not decode', (io) => io, fakeSafeStorage()],
@@ -300,11 +332,11 @@ describe('PinVerifier', () => {
       // The undecodable case stores well-encrypted text that is not a record.
       const plain =
         _name === 'the record does not decode' ? '{"v":1}' : original;
-      const stored = fakeSafeStorage().encryptString(plain).toString('base64');
+      const stored = sealed(plain);
       io.files.set(file, stored);
       const pins = verifier(wrap(io), safeStorage);
 
-      expect(pins.status()).toEqual({ kind: 'unavailable' });
+      expect(await pins.status()).toEqual({ kind: 'unavailable' });
       await expect(pins.verify('482913')).resolves.toEqual({
         kind: 'unavailable',
       });
@@ -317,7 +349,7 @@ describe('PinVerifier', () => {
       io.files.set(file, 'not base64 ciphertext');
       const pins = verifier(io);
       expect(pins.clear()).toBe('completed');
-      expect(pins.status()).toEqual({
+      expect(await pins.status()).toEqual({
         kind: 'ready',
         set: false,
         nextAttemptAt: null,
@@ -487,12 +519,16 @@ describe('PinVerifier', () => {
     );
     const io = memoryIo();
     const pins = verifier(io);
-    const answers: unknown[] = [pins.status(), await pins.set('482913')];
+    const answers: unknown[] = [await pins.status(), await pins.set('482913')];
     const record = storedRecord(io.files.get(file));
     for (let attempt = 0; attempt < 5; attempt += 1) {
       answers.push(await pins.verify('271828'));
     }
-    answers.push(pins.status(), await pins.verify('482913'), pins.clear());
+    answers.push(
+      await pins.status(),
+      await pins.verify('482913'),
+      pins.clear(),
+    );
     const output = [
       JSON.stringify(answers),
       ...spies.flatMap((spy) => spy.mock.calls.flat()).map(String),
@@ -501,6 +537,103 @@ describe('PinVerifier', () => {
     for (const secret of ['482913', '271828', record?.salt, record?.hash]) {
       expect(output.includes(secret ?? '482913')).toBe(false);
     }
+  });
+
+  describe('on the async safeStorage api', () => {
+    it('reads a record the sync api wrote, and re-encrypts it on the next attempt', async () => {
+      const io = memoryIo();
+      const legacy = sealed(
+        encodePinRecord(await createPinRecord('482913', FAST)),
+        LEGACY,
+      );
+      io.files.set(file, legacy);
+      const pins = verifier(io);
+
+      expect(await pins.status()).toEqual({
+        kind: 'ready',
+        set: true,
+        nextAttemptAt: null,
+      });
+      expect(io.files.get(file)).toBe(legacy);
+      await expect(pins.verify('12')).resolves.toEqual({ kind: 'invalid' });
+      const stored = io.files.get(file) ?? '';
+      expect(Buffer.from(stored, 'base64').toString().startsWith(CURRENT)).toBe(
+        true,
+      );
+      expect(storedRecord(stored)?.failures).toBe(0);
+      await expect(pins.verify('482913')).resolves.toEqual({
+        kind: 'verified',
+      });
+    });
+
+    it('still answers an attempt on a legacy record whose re-encryption fails', async () => {
+      const io = memoryIo();
+      const legacy = sealed(
+        encodePinRecord(await createPinRecord('482913', FAST)),
+        LEGACY,
+      );
+      io.files.set(file, legacy);
+      const pins = verifier({
+        ...io,
+        write: () => {
+          throw new Error('ENOSPC');
+        },
+      });
+
+      await expect(pins.verify('12')).resolves.toEqual({ kind: 'invalid' });
+      expect(io.files.get(file)).toBe(legacy);
+    });
+
+    it('never stores a PIN cleared while its record was being encrypted', async () => {
+      const io = memoryIo();
+      const safeStorage = fakeSafeStorage();
+      const pins = verifier(io, {
+        ...safeStorage,
+        encryptStringAsync: async (plain: string) => {
+          pins.clear();
+          return safeStorage.encryptStringAsync(plain);
+        },
+      });
+
+      await expect(pins.set('482913')).resolves.toBe('unavailable');
+      expect(io.files.has(file)).toBe(false);
+    });
+
+    it('reports no PIN when a reset lands while the status is decrypting', async () => {
+      const io = memoryIo();
+      const safeStorage = fakeSafeStorage();
+      await verifier(io, safeStorage).set('482913');
+      let cleared = false;
+      const pins = verifier(io, {
+        ...safeStorage,
+        decryptStringAsync: async (cipher: Buffer) => {
+          if (!cleared) {
+            cleared = true;
+            pins.clear();
+          }
+          return safeStorage.decryptStringAsync(cipher);
+        },
+      });
+
+      expect(await pins.status()).toEqual({
+        kind: 'ready',
+        set: false,
+        nextAttemptAt: null,
+      });
+    });
+
+    it('reads an availability check that fails as no PIN store', async () => {
+      const io = memoryIo();
+      const pins = verifier(io, {
+        ...fakeSafeStorage(),
+        isAsyncEncryptionAvailable: () =>
+          Promise.reject(new Error('not ready')),
+      });
+
+      expect(await pins.status()).toEqual({ kind: 'not-supported' });
+      await expect(pins.set('482913')).resolves.toBe('unavailable');
+      expect(io.files.size).toBe(0);
+    });
   });
 
   describe('on disk', () => {
@@ -515,7 +648,7 @@ describe('PinVerifier', () => {
         file: join(dir, PIN_FILE_NAME),
         params: FAST,
       });
-      expect(pins.status()).toEqual({
+      expect(await pins.status()).toEqual({
         kind: 'ready',
         set: false,
         nextAttemptAt: null,
@@ -572,7 +705,7 @@ describe('PinVerifier', () => {
       expect(pins.clear()).toBe('completed');
     });
 
-    it('reads a file it cannot open as unreadable, not as no PIN', () => {
+    it('reads a file it cannot open as unreadable, not as no PIN', async () => {
       dir = mkdtempSync(join(tmpdir(), 'trinity-pin-'));
       // A directory where the file should be: readFileSync fails with EISDIR.
       mkdirSync(join(dir, PIN_FILE_NAME));
@@ -582,7 +715,7 @@ describe('PinVerifier', () => {
         file: join(dir, PIN_FILE_NAME),
         params: FAST,
       });
-      expect(pins.status()).toEqual({ kind: 'unavailable' });
+      expect(await pins.status()).toEqual({ kind: 'unavailable' });
     });
   });
 });
