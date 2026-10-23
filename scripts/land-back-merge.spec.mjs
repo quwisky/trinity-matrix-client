@@ -299,7 +299,7 @@ describe('land-back-merge', () => {
       r.git('merge', '-q', '--no-ff', '--no-edit', 'v0.1.2');
       r.git('push', '-q', '-f', 'origin', 'back-merge/v0.1.2');
       expect(() => attempt()).toThrow(
-        /predates single-parent back-merges.*backport.*release\/0\.1\.x.*Open the back-merge PR/s,
+        /predates single-parent back-merges.*update release\/0\.1\.x's release\.yml to the single-parent back-merge job \(a direct PR, never the manifest\).*re-run 'Open the back-merge PR'/s,
       );
     });
 
@@ -349,6 +349,16 @@ describe('land-back-merge', () => {
         'v0.1.0-next.1^{commit}:refs/heads/release/0.1.x',
       );
       expect(() => attempt()).toThrow(/v0\.1\.2 is not on release\/0\.1\.x/);
+      expect(r.remoteMain()).toBe(main);
+    });
+
+    it('refuses clearly when the release branch does not exist', () => {
+      r = repo();
+      const main = r.remoteMain();
+      r.git('push', '-q', 'origin', ':refs/heads/release/0.1.x');
+      expect(() => attempt()).toThrow(
+        /^origin has no release\/0\.1\.x branch for v0\.1\.2; refusing\.$/,
+      );
       expect(r.remoteMain()).toBe(main);
     });
 

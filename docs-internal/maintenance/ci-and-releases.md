@@ -574,11 +574,12 @@ guide page, `release.json`) never reaches `main` by a rerun; open a normal pull 
 for it. The job does not affect
 the release itself.
 
-`release.yml` runs the release branch's own copy of `back-merge.mjs`, so a line cut before
-this change keeps the old two-parent merge until the change reaches it: open a direct pull
-request into `release/X.Y.x` for every live line with the scripts, workflow and docs, never
-`.release-please-manifest.json`. The lander refuses a two-parent merge; bring the change to the
-line that way and re-run `Open the back-merge PR`.
+The job runs `main`'s copy of `back-merge.mjs` (a sparse checkout into `main-tools/`) against the
+release branch, so the commit is built by the same code the lander rebuilds it with, and a later
+change to the script needs nothing on the release lines. Only the job itself lives on the line: a
+line whose `release.yml` predates the single-parent job still builds the old two-parent merge,
+which the lander refuses. Update that line's `release.yml` through a direct pull request into
+`release/X.Y.x` (never with `.release-please-manifest.json`) and re-run `Open the back-merge PR`.
 
 The commit carries only these paths. Each is a 3-way merge of the merge base, `main` and the
 tag in which a conflicting hunk takes the release side and every non-conflicting edit from
@@ -610,9 +611,10 @@ token, which pushes the branch's head to `main` as a fast-forward, never forced.
 marks the PR merged. The script refuses, and pushes nothing, unless:
 
 - the branch is still at the commit that CI run tested;
-- the `vX.Y.Z` tag is on `release/X.Y.x`, as `release.yml`'s verify job requires;
+- `release/X.Y.x` exists on `origin` and the `vX.Y.Z` tag is on it, as `release.yml`'s verify
+  job requires;
 - the head has exactly one parent, the current `main`, and the `vX.Y.Z` tag exists. A
-  two-parent merge (from a line whose `back-merge.mjs` predates this design) is refused. If
+  two-parent merge (from a line whose `release.yml` predates this design) is refused. If
   `main` has moved, re-run the `Open the back-merge PR` job; it rebuilds the commit on
   current `main`, and the new CI run lands it;
 - every changed path is release metadata, and at least one changed;
@@ -631,19 +633,19 @@ script's PR check does. To stop a back-merge from landing, close its PR, mark it
 request changes on it.
 
 To build the commit by hand (the job failed, or `main` moved and you cannot re-run it), run
-the script from an up-to-date clone of the release branch with Node 24 or newer and
+`main`'s script from an up-to-date clone of `main` with Node 24 or newer and
 `gh auth` able to push to `back-merge/**` (the pusher must be a bypass actor of that ruleset)
 and a clean worktree, because it switches to `origin/main`. It does everything above and opens
 the PR ready for review, not as a draft:
 
 ```bash
 git fetch origin --tags
-git switch release/X.Y.x && git pull --ff-only
+git switch main && git pull --ff-only
 node scripts/back-merge.mjs --tag vX.Y.Z --branch release/X.Y.x
 ```
 
 Anything else you commit to the branch fails the lander's tree comparison, so fix
-`back-merge.mjs` on the release line instead of editing the commit.
+`back-merge.mjs` on `main` instead of editing the commit.
 
 The PR opens ready, so `land-back-merge.yml` lands it once CI completes. `land-back-merge.mjs`
 refuses a draft PR, so converting the PR to draft (`gh pr ready <number> --undo`) or closing it

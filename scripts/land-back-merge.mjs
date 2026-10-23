@@ -125,6 +125,13 @@ export function land({
     '+refs/heads/main:refs/remotes/origin/main',
     `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
     `+refs/tags/${tag}:refs/tags/${tag}`,
+  );
+  if (!git('ls-remote', '--heads', 'origin', `refs/heads/${line}`))
+    throw new Error(`origin has no ${line} branch for ${tag}; refusing.`);
+  git(
+    'fetch',
+    '--no-tags',
+    'origin',
     `+refs/heads/${line}:refs/remotes/origin/${line}`,
   );
   try {
@@ -152,7 +159,7 @@ export function land({
     throw new Error(
       `${branch} at ${sha} is not a single-parent commit on main; refusing.` +
         (parents.length === 2
-          ? ` A two-parent merge comes from a release line whose scripts/back-merge.mjs predates single-parent back-merges: backport that change to ${line} and re-run 'Open the back-merge PR'.`
+          ? ` A two-parent merge comes from a release line whose scripts/back-merge.mjs predates single-parent back-merges: update ${line}'s release.yml to the single-parent back-merge job (a direct PR, never the manifest) and re-run 'Open the back-merge PR'.`
           : ''),
     );
   if (parents[0] !== main)
