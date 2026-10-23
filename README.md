@@ -98,7 +98,7 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 | Multiple accounts                 | ✅                | ❌                  | ❌        | ✅         | ❌    |
 | OAuth 2.0 (next-gen auth)         | ✅                | ✅                  | ✅        | ✅         | ❌    |
 | Legacy SSO                        | ✅ (not Android)  | ✅                  | ❌        | ✅         | ✅    |
-| Emoji and image packs             | 🟡                | 🟡                  | ❌        | ✅         | ✅    |
+| Emoji and image packs             | ✅                | 🟡                  | ❌        | ✅         | ✅    |
 | Voice/video calls (1:1)           | ❌                | ✅                  | ❌        | ❌         | ❌    |
 | Voice/video calls (Jitsi)         | ❌                | ✅                  | ❌        | ❌         | ❌    |
 | Voice/video calls (MatrixRTC)     | ❌                | ✅                  | ✅        | ✅         | ✅    |
