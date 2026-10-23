@@ -38,7 +38,7 @@ const pr = (sha, more = {}) => ({
   ...more,
 });
 
-/** A bare origin and a clone with main, a tagged release line and a pushed back-merge branch. */
+/** A bare origin and a clone with main, and a pushed single-commit back-merge branch. */
 function repo() {
   const root = mkdtempSync(join(tmpdir(), 'land-back-merge-'));
   const origin = join(root, 'origin.git');
@@ -69,7 +69,7 @@ function repo() {
   commit('c.txt', 'main\n');
   git('push', '-q', 'origin', 'main');
   git('switch', '-qc', 'back-merge/v0.1.2');
-  git('merge', '-q', '--no-ff', '--no-edit', 'v0.1.2');
+  commit('CHANGELOG.md', 'release notes\n');
   git('push', '-q', 'origin', 'back-merge/v0.1.2');
   const head = git('rev-parse', 'HEAD');
   const remoteMain = () =>
@@ -262,34 +262,53 @@ describe('land-back-merge', () => {
       expect(r.remoteMain()).toBe(moved);
     });
 
-    it('refuses extra commits on top of the merge', () => {
+    it('lands a single-parent metadata commit on main', () => {
       r = repo();
-      r.commit('e.txt', 'on top\n');
-      r.git('push', '-q', 'origin', 'back-merge/v0.1.2');
-      expect(() => attempt()).toThrow(/not a two-parent merge/);
+      attempt();
+      expect(r.remoteMain()).toBe(r.head);
     });
 
-    it('refuses a merge of a commit other than the tag', () => {
+    it('refuses a two-parent merge', () => {
       r = repo();
       const main = r.remoteMain();
-      r.git('switch', '-qc', 'beyond', 'v0.1.2');
-      r.commit('f.txt', 'past the tag\n');
       r.git('switch', '-q', '-C', 'back-merge/v0.1.2', main);
-      r.git('merge', '-q', '--no-ff', '--no-edit', 'beyond');
+      r.git('merge', '-q', '--no-ff', '--no-edit', 'v0.1.2');
       r.git('push', '-q', '-f', 'origin', 'back-merge/v0.1.2');
-      expect(() => attempt()).toThrow(/does not merge v0\.1\.2/);
+      expect(() => attempt()).toThrow(/not a single-parent commit/);
       expect(r.remoteMain()).toBe(main);
     });
 
-    it('refuses an octopus merge', () => {
+    it('refuses a parent that is not current main', () => {
+      r = repo();
+      r.git('switch', '-q', 'main');
+      r.commit('d.txt', 'later\n');
+      r.git('push', '-q', 'origin', 'main');
+      const moved = r.remoteMain();
+      expect(() => attempt()).toThrow(/main has moved/);
+      expect(r.remoteMain()).toBe(moved);
+    });
+
+    it('refuses extra commits on top of the back-merge', () => {
       r = repo();
       const main = r.remoteMain();
-      r.git('switch', '-qc', 'side', main);
-      r.commit('g.txt', 'side\n');
+      r.commit('CHANGELOG.md', 'more\n');
+      r.git('push', '-q', 'origin', 'back-merge/v0.1.2');
+      expect(() => attempt()).toThrow(/main has moved/);
+      expect(r.remoteMain()).toBe(main);
+    });
+
+    it('refuses a commit that changes a non-metadata path', () => {
+      r = repo();
+      const main = r.remoteMain();
       r.git('switch', '-q', '-C', 'back-merge/v0.1.2', main);
-      r.git('merge', '-q', '--no-ff', '--no-edit', 'v0.1.2', 'side');
+      r.commit('CHANGELOG.md', 'release notes\n');
+      writeFileSync(join(r.dir, 'package.json'), '{}\n');
+      r.git('add', '-A');
+      r.git('commit', '-q', '--amend', '--no-edit');
       r.git('push', '-q', '-f', 'origin', 'back-merge/v0.1.2');
-      expect(() => attempt()).toThrow(/not a two-parent merge/);
+      expect(() => attempt()).toThrow(
+        /outside release metadata.*package\.json/s,
+      );
       expect(r.remoteMain()).toBe(main);
     });
 

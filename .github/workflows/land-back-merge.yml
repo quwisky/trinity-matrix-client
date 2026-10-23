@@ -1,9 +1,9 @@
 name: Land back-merge
 
-# main allows only squash merges, but a back-merge must land as its merge commit so release
-# tags stay reachable from main. When CI completes on a back-merge/vX.Y.Z PR, the release
+# main allows only squash merges, but a back-merge must land as its single metadata commit
+# without a squash. When CI completes on a back-merge/vX.Y.Z PR, the release
 # App (a bypass actor on main's ruleset) fast-forwards main to that exact commit.
-# scripts/land-back-merge.mjs re-checks the PR, the merge and main's required checks live,
+# scripts/land-back-merge.mjs re-checks the PR, the commit and main's required checks live,
 # and never forces the push.
 on:
   workflow_run:
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - name: Push the merge commit to main
+      - name: Push the back-merge commit to main
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

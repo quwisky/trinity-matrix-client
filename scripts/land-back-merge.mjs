@@ -1,15 +1,17 @@
 /**
- * Lands a back-merge PR's merge commit on main by a plain fast-forward push (see
- * land-back-merge.yml). main allows only squash merges, so the merge commit that keeps
- * release tags reachable from main cannot go through the merge button; the release App
- * pushes it as a ruleset bypass actor, but only through the open PR and once main's
- * required checks are green on exactly that commit. Bypassing skips the ruleset's PR rules,
+ * Lands a back-merge PR's single metadata commit on main by a plain fast-forward push
+ * (see land-back-merge.yml). main allows only squash merges, so the commit cannot go
+ * through the merge button; the release App pushes it as a ruleset bypass actor, but only
+ * through the open PR and once main's required checks are green on exactly that commit.
+ * Bypassing skips the ruleset's PR rules,
  * so closing the PR, marking it draft or requesting changes stops a land.
  */
 import { execFileSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
+import { resolutionFor } from './back-merge.mjs';
 
 const STABLE_TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const METADATA = new Set(['release', 'higher']);
 const PASSING = new Set(['success', 'skipped', 'neutral']);
 
 export function tagFor(branch) {
@@ -77,7 +79,7 @@ export function land({
   pulls,
   expectedSha,
 }) {
-  const tag = tagFor(branch);
+  tagFor(branch);
   const git = (...args) =>
     execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
   git(
@@ -86,7 +88,6 @@ export function land({
     'origin',
     '+refs/heads/main:refs/remotes/origin/main',
     `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
-    `+refs/tags/${tag}:refs/tags/${tag}`,
   );
   const sha = git('rev-parse', `refs/remotes/origin/${branch}^{commit}`);
   if (expectedSha && sha !== expectedSha)
@@ -94,23 +95,24 @@ export function land({
       `${branch} is at ${sha} but CI ran on ${expectedSha}; the run for ${sha} lands it.`,
     );
   const main = git('rev-parse', 'refs/remotes/origin/main^{commit}');
-  const tagged = git('rev-parse', `refs/tags/${tag}^{commit}`);
   const parents = git('rev-list', '--parents', '-n', '1', sha)
     .split(' ')
     .slice(1);
-  if (parents.length !== 2)
+  if (parents.length !== 1)
     throw new Error(
-      `${branch} at ${sha} is not a two-parent merge of main and ${tag}; refusing.`,
+      `${branch} at ${sha} is not a single-parent commit on main; refusing.`,
     );
   if (parents[0] !== main)
     throw new Error(
-      `main has moved: ${branch} at ${sha} merges onto ${parents[0]}, but main is at ${main}. ` +
-        'Re-run the back-merge job (Open the back-merge PR in release.yml), which rebuilds the merge from current main.',
+      `main has moved: ${branch} at ${sha} is built on ${parents[0]}, but main is at ${main}. ` +
+        'Re-run the back-merge job (Open the back-merge PR in release.yml), which rebuilds the commit from current main.',
     );
-  // Exactly the tag: commits stacked past it would land unreviewed.
-  if (parents[1] !== tagged)
+  const foreign = git('diff', '--name-only', '--no-renames', main, sha)
+    .split('\n')
+    .filter((path) => path && !METADATA.has(resolutionFor(path)));
+  if (foreign.length > 0)
     throw new Error(
-      `${branch} at ${sha} does not merge ${tag} (${tagged}) but ${parents[1]}; refusing.`,
+      `${branch} at ${sha} changes paths outside release metadata; refusing:\n  ${foreign.join('\n  ')}`,
     );
   const { required, runs } = checks(sha);
   const problems = checkProblems(required, runs, sha);
