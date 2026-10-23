@@ -11,8 +11,8 @@ import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
 import { displaySafeMime, mimeEssence } from './display-mime';
 import { isPollStart, pollEndSenders } from './poll';
 import {
-  UNENCRYPTED_PREVIEW,
-  arrivedInClear,
+  unencryptedMarkFor,
+  type UnencryptedMark,
   shieldSubject,
 } from './room-encryption';
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
@@ -66,6 +66,8 @@ export interface ReplyPreview {
   senderInitial: string;
   senderAvatarMxc: string | null;
   body: string;
+  /** How the quoted text is marked, when it arrived unencrypted in an encrypted room. */
+  mark: UnencryptedMark | null;
 }
 
 /** A member who has read up to a message, for the "seen by" receipt avatars. */
@@ -139,11 +141,12 @@ export function isDisplayableMessage(event: MatrixEvent): boolean {
 }
 
 /**
- * Build a short preview of a replied-to message, or null if it isn't loaded. In an encrypted
- * room, a quoted message whose text arrived unencrypted shows as {@link UNENCRYPTED_PREVIEW}:
- * the quote sits inside the replying message and would read as vouched for by its shield.
- * `contentOf` picks what of it to show and `subjectOf` the event that text came from, which
- * the warning judges; a timeline passes what the quoted message's own row shows.
+ * Build a short preview of a replied-to message, or null if it isn't loaded. Text that arrived
+ * unencrypted in an encrypted room is quoted too, with the `mark` the room list gives it (see
+ * {@link unencryptedMarkFor}): the quote sits inside the replying message, so the mark keeps its
+ * shield from vouching for it. `contentOf` picks what of it to show and `subjectOf` the event
+ * that text came from, which the mark judges; a timeline passes what the quoted message's own
+ * row shows.
  */
 export function replyPreview(
   room: Room,
@@ -160,17 +163,19 @@ export function replyPreview(
   const member = room.getMember(sender);
   // `||` (not `??`) so an empty display name still falls back to the mxid.
   const senderName = member?.name || sender;
-  const raw = target.isRedacted()
+  const redacted = target.isRedacted();
+  const raw = redacted
     ? '(message deleted)'
-    : roomEncrypted && arrivedInClear(target, subjectOf(target))
-      ? UNENCRYPTED_PREVIEW
-      : stripReplyFallbackText((contentOf(target)['body'] as string) ?? '');
+    : stripReplyFallbackText((contentOf(target)['body'] as string) ?? '');
   return {
     id: eventId,
     senderName,
     senderInitial: initialOf(senderName),
     senderAvatarMxc: member?.getMxcAvatarUrl() ?? null,
     body: raw.replace(/\s+/g, ' ').trim() || '…',
+    mark: redacted
+      ? null
+      : unencryptedMarkFor(room, roomEncrypted)(target, subjectOf(target)),
   };
 }
 
