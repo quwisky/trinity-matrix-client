@@ -6,7 +6,7 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import { login, homeserverSession } from '../../../support/app.mts';
-import { registerUser } from '../../../support/account.mts';
+import { apiLogin, registerUser } from '../../../support/account.mts';
 import {
   openNamedRoom,
   sendComposerLines,
@@ -22,21 +22,11 @@ async function seed(request: APIRequestContext, hs: string, runId: string) {
   const pass = `offline-${runId}-pass`;
   const roomName = `Offline ${runId}`;
   await registerUser(request, user, pass);
-  // The protocol helpers are untyped .mjs, which this project's typecheck cannot import.
-  const access_token = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json())
-    .then((j) => j.access_token as string);
+  const api = await apiLogin(request, hs, user, pass);
   const roomId = await createRoom(
     request,
     hs,
-    { accessToken: access_token },
+    { accessToken: api.accessToken },
     roomName,
   );
   return {
@@ -44,9 +34,9 @@ async function seed(request: APIRequestContext, hs: string, runId: string) {
     roomName,
     /** Bodies of the room's messages, oldest first, as the homeserver has them. */
     async bodies(): Promise<string[]> {
-      const res = await fetch(
+      const res = await request.get(
         `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages?dir=f&limit=50`,
-        { headers: { Authorization: `Bearer ${access_token}` } },
+        { headers: api.headers },
       );
       const { chunk } = (await res.json()) as {
         chunk: { type: string; content: { body?: string } }[];
@@ -100,7 +90,10 @@ test.describe('Offline resend', () => {
     await expect(page.locator('.msg', { hasText: first })).toHaveCount(1);
     await expect(page.locator('.msg', { hasText: second })).toHaveCount(1);
 
-    await expect.poll(room.bodies).toEqual([first, second]);
+    await expect
+      .poll(room.bodies, { timeout: 60_000 })
+      .toEqual([first, second]);
+    expect(await room.bodies()).toEqual([first, second]);
   });
 
   test('a cancelled offline message is never sent', async ({
@@ -109,22 +102,22 @@ test.describe('Offline resend', () => {
   }) => {
     const runId = `${testResourceId('run')}c`;
     const room = await seed(request, session.hs as string, runId);
-    const text = `cancelled ${runId}`;
-    const after = `after ${runId}`;
+    const cancelled = `cancelled ${runId}`;
+    const kept = `kept ${runId}`;
 
     await login(page, room.reader);
     await openNamedRoom(page, room.roomName);
 
-    await sendOffline(page, [text]);
+    await sendOffline(page, [cancelled, kept]);
     await page
-      .locator('.msg', { hasText: text })
+      .locator('.msg', { hasText: cancelled })
       .getByRole('button', { name: /^Cancel sending/ })
       .click();
-    await expect(page.locator('.msg', { hasText: text })).toHaveCount(0);
+    await expect(page.locator('.msg', { hasText: cancelled })).toHaveCount(0);
 
     await page.context().setOffline(false);
-    // A later message proves the reconnect resend pass ran without the cancelled one.
-    await sendComposerLines(page, [after]);
-    await expect.poll(room.bodies).toEqual([after]);
+    // Only the resend pass can deliver `kept`, and it would send `cancelled` first.
+    await expect.poll(room.bodies, { timeout: 60_000 }).toEqual([kept]);
+    expect(await room.bodies()).toEqual([kept]);
   });
 });
