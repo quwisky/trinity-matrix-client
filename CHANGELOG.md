@@ -4,6 +4,13 @@ All notable changes to this project are documented here. release-please writes e
 entry from Conventional Commit subjects when a stable release is cut, and this project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.2](https://github.com/quwisky/trinity-matrix-client/compare/v0.5.1...v0.5.2) (2026-10-23)
+
+
+### Fixed
+
+* **deps:** update electron to 44.9.3 and require node 24.22.1 ([#1687](https://github.com/quwisky/trinity-matrix-client/issues/1687)) ([#1690](https://github.com/quwisky/trinity-matrix-client/issues/1690)) ([6d845c6](https://github.com/quwisky/trinity-matrix-client/commit/6d845c6ef33479a97c64568fbbe39c6793cbbb97))
+
 ## [0.5.1](https://github.com/quwisky/trinity-matrix-client/compare/v0.5.0...v0.5.1) (2026-10-20)
 
 
