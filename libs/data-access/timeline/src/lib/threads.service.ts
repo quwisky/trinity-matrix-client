@@ -23,6 +23,7 @@ import {
 import {
   Observable,
   Subscription,
+  catchError,
   defer,
   finalize,
   from,
@@ -30,6 +31,7 @@ import {
   of,
   switchMap,
   tap,
+  throwError,
 } from 'rxjs';
 import {
   ImagePackEditorService,
@@ -59,6 +61,9 @@ import type { ConversationKey } from './conversation-messages';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
 import { CONVERSATION_ATTENTION } from './conversation-attention.port';
 import type { ThreadSummary } from './conversation-threads';
+import { DraftStoreService } from '@trinity/platform-native';
+import { threadDraftKey } from './conversation-draft-key';
+import { keepWhileWaiting } from './waiting-draft';
 import {
   participantsOf,
   threadSummaryRevision,
@@ -97,6 +102,7 @@ export class ThreadsService {
   private readonly mediaPipeline = inject(MediaPipeline);
   // Its emoticons() map is filled only while the rooms page subscribes run(); else it is empty.
   private readonly packs = inject(ImagePackEditorService);
+  private readonly drafts = inject(DraftStoreService);
   private readonly messageAdapter = inject(CONVERSATION_MESSAGE_ADAPTER);
   private readonly attention = inject(CONVERSATION_ATTENTION, {
     optional: true,
@@ -567,7 +573,7 @@ export class ThreadsService {
       if (!ctx || !text) {
         return of(void 0);
       }
-      const { client, room, roomId, threadId } = ctx;
+      const { client, room, threadId } = ctx;
       // A leading slash command (/me, /shrug, /plain, /spoiler) rewrites the content as in
       // the main composer; otherwise build normal text content so mentions carry
       // `m.mentions` + matrix.to pills.
@@ -579,9 +585,7 @@ export class ThreadsService {
       // Ensure a local Thread exists (fetching the root if needed) *before*
       // sending, so the threaded echo has a home; a fetch failure aborts the send.
       return this.ensureThread(room, threadId).pipe(
-        switchMap(() =>
-          from(client.sendMessage(roomId, threadId, content as never)),
-        ),
+        switchMap(() => this.sendText(client, room, threadId, content, text)),
       );
     }).pipe(map(() => void 0));
   }
@@ -625,7 +629,7 @@ export class ThreadsService {
       if (!ctx || !text) {
         return of(void 0);
       }
-      const { client, room, roomId, threadId } = ctx;
+      const { client, room, threadId } = ctx;
       const content = replyMessageContent(
         room,
         messageId,
@@ -635,8 +639,33 @@ export class ThreadsService {
         undefined,
         shownContent,
       );
-      return from(client.sendMessage(roomId, threadId, content as never));
+      return this.sendText(client, room, threadId, content, text);
     }).pipe(map(() => void 0));
+  }
+
+  /** A send that failed offline waits in the thread, its text kept aside for a reload. */
+  private sendText(
+    client: MatrixClient,
+    room: Room,
+    threadId: string,
+    content: object,
+    body: string,
+  ): Observable<unknown> {
+    const txnId = client.makeTxnId();
+    return from(
+      client.sendMessage(room.roomId, threadId, content as never, txnId),
+    ).pipe(
+      catchError((error: unknown) =>
+        keepWhileWaiting(
+          this.drafts,
+          threadDraftKey(threadId),
+          room.getEventForTxnId(txnId),
+          body,
+        )
+          ? of(undefined)
+          : throwError(() => error),
+      ),
+    );
   }
 
   /** The active opened-thread send context, or null when nothing is composable. */

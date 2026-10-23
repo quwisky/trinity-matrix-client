@@ -3,6 +3,10 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import {
+  ConnectionError,
+  EventStatus,
+  MatrixError,
+  MatrixEvent,
   MatrixEventEvent,
   RoomEvent,
   RoomStateEvent,
@@ -36,6 +40,8 @@ import { switchableMatrixProvider } from './timeline.spec-harness';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
 import type { ConversationMessageOutcome } from './conversation-messages';
 import { fakeEmitter } from '@trinity/testing';
+import { DraftStoreService } from '@trinity/platform-native';
+import { threadDraftKey } from './conversation-draft-key';
 
 const MEMBERS: Record<string, string> = {
   '@me:hs': 'Me',
@@ -212,6 +218,7 @@ function setup(
     getThreads: () => threads,
     getThread: (id: string) => threads.find((t) => t.id === id) ?? null,
     findEventById: (id: string) => all.find((e) => e.getId() === id),
+    getEventForTxnId: (_txnId: string): MatrixEvent | undefined => undefined,
     // Mirrors Room.createThread: registers a new Thread so a later getThread finds
     // it — matches openThread eagerly creating a thread for a brand-new reply.
     createThread: (
@@ -250,6 +257,7 @@ function setup(
   const client = {
     getRoom: () => room,
     getUserId: () => '@me:hs',
+    makeTxnId: () => 'txn-1',
     // Fetch a thread root that isn't in memory (raw IEvent, as the SDK returns).
     fetchRoomEvent: vi.fn((_rid: string, eventId: string) =>
       Promise.resolve({
@@ -274,7 +282,12 @@ function setup(
       sent.push(['html', threadId, body, html]);
       return Promise.resolve({});
     },
-    sendMessage: (_rid: string, threadId: string, content: unknown) => {
+    sendMessage: (
+      _rid: string,
+      threadId: string,
+      content: unknown,
+      _txnId?: string,
+    ): Promise<unknown> => {
       sent.push(['message', threadId, content]);
       return Promise.resolve({});
     },
@@ -312,9 +325,11 @@ function setup(
       operation: 'receipt',
     }),
   );
+  const drafts = { holdWaiting: vi.fn(), releaseWaiting: vi.fn() };
   TestBed.configureTestingModule({
     providers: [
       ThreadsService,
+      { provide: DraftStoreService, useValue: drafts },
       // `isInitialized` and `instance` are getters on the real service; MockProvider
       // overrides them so the service reads our SDK-shaped fakes.
       MockProvider(MatrixClientService, {
@@ -335,7 +350,7 @@ function setup(
     { accountId: '@me:hs', roomId: '!r:hs' },
     client as unknown as MatrixClient,
   );
-  return { svc, room, client, sent, acknowledge };
+  return { svc, room, client, sent, acknowledge, drafts };
 }
 
 describe('ThreadsService', () => {
@@ -1422,6 +1437,52 @@ describe('ThreadsService', () => {
         body: 'hello thread',
         'm.mentions': {},
       });
+    });
+
+    /** The SDK marks the reply's echo NOT_SENT with `error`, then rejects the send. */
+    function failingSend(out: ReturnType<typeof openedThread>, error: Error) {
+      const echo = new MatrixEvent({
+        type: 'm.room.message',
+        content: { msgtype: 'm.text', body: 'offline reply' },
+      });
+      echo.setTxnId('txn-1');
+      out.room.getEventForTxnId = (txnId) =>
+        txnId === 'txn-1' ? echo : undefined;
+      out.client.sendMessage = () => {
+        echo.error = error as never;
+        echo.setStatus(EventStatus.NOT_SENT);
+        return Promise.reject(error);
+      };
+    }
+
+    it('keeps a thread send that failed offline waiting, out of the composer', async () => {
+      const out = openedThread();
+      failingSend(out, new ConnectionError('offline'));
+
+      await expect(
+        firstValueFrom(out.svc.sendToThread('offline reply')),
+      ).resolves.toBeUndefined();
+      await expect(
+        firstValueFrom(out.svc.replyInThread('$r1', 'offline reply')),
+      ).resolves.toBeUndefined();
+
+      expect(out.drafts.holdWaiting).toHaveBeenCalledTimes(2);
+      expect(out.drafts.holdWaiting).toHaveBeenCalledWith(
+        threadDraftKey('$root'),
+        'txn-1',
+        'offline reply',
+      );
+    });
+
+    it('still fails a thread send the server refused', async () => {
+      const out = openedThread();
+      const refused = new MatrixError({ errcode: 'M_FORBIDDEN' }, 403);
+      failingSend(out, refused);
+
+      await expect(
+        firstValueFrom(out.svc.sendToThread('offline reply')),
+      ).rejects.toBe(refused);
+      expect(out.drafts.holdWaiting).not.toHaveBeenCalled();
     });
 
     it('sends markdown as formatted HTML into the thread', async () => {

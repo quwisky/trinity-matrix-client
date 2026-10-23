@@ -199,6 +199,75 @@ describe('DraftStoreService', () => {
     });
   });
 
+  describe('a text waiting to send offline', () => {
+    /** What this store wrote last, handed to a new store as a reloaded page reads it. */
+    async function reload(): Promise<DraftStoreService> {
+      await vi.advanceTimersByTimeAsync(400);
+      get.mockResolvedValue({ value: set.mock.lastCall?.[0].value ?? null });
+      const next = new DraftStoreService();
+      await next.init();
+      return next;
+    }
+
+    it('keeps the waiting text out of the draft while the page lives', async () => {
+      const svc = service();
+      await svc.init();
+
+      svc.holdWaiting('conversation:a', 'txn-1', 'sent offline');
+
+      expect(svc.get('conversation:a')).toBe('');
+    });
+
+    it('puts the text back in the draft once after a reload, and drops the record', async () => {
+      const svc = service();
+      await svc.init();
+      svc.holdWaiting('conversation:a', 'txn-1', 'sent offline');
+
+      const reloaded = await reload();
+      expect(reloaded.get('conversation:a')).toBe('sent offline');
+
+      const again = await reload();
+      expect(again.get('conversation:a')).toBe('sent offline');
+    });
+
+    it('appends the recovered text after a draft the composer already holds', async () => {
+      const svc = service();
+      await svc.init();
+      svc.set('$thread-root', 'typed since');
+      svc.holdWaiting('$thread-root', 'txn-1', 'first');
+      svc.holdWaiting('$thread-root', 'txn-2', 'second');
+
+      const reloaded = await reload();
+
+      expect(reloaded.get('$thread-root')).toBe(
+        'typed since\n\nfirst\n\nsecond',
+      );
+    });
+
+    it('does not add a text the draft already holds', async () => {
+      const svc = service();
+      await svc.init();
+      svc.set('conversation:a', 'sent offline');
+      svc.holdWaiting('conversation:a', 'txn-1', 'sent offline');
+
+      const reloaded = await reload();
+
+      expect(reloaded.get('conversation:a')).toBe('sent offline');
+    });
+
+    it('forgets a released text, so a reload brings nothing back', async () => {
+      const svc = service();
+      await svc.init();
+      svc.holdWaiting('conversation:a', 'txn-1', 'went out');
+      svc.holdWaiting('conversation:a', 'txn-2', 'still waiting');
+
+      svc.releaseWaiting('conversation:a', 'txn-1');
+      const reloaded = await reload();
+
+      expect(reloaded.get('conversation:a')).toBe('still waiting');
+    });
+  });
+
   it('loads persisted drafts on init', async () => {
     get.mockResolvedValue({
       value: JSON.stringify({ '!a:hs': 'saved draft', bad: 42 }),

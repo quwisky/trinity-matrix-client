@@ -3,9 +3,17 @@ import { TestBed } from '@angular/core/testing';
 import { ImagePackEditorService } from '@trinity/data-access/media';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MatrixEvent, type IEvent } from 'matrix-js-sdk';
+import {
+  ConnectionError,
+  EventStatus,
+  MatrixError,
+  MatrixEvent,
+  type IEvent,
+} from 'matrix-js-sdk';
+import { DraftStoreService } from '@trinity/platform-native';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
+import { conversationDraftKey } from './conversation-draft-key';
 import { resolvedShields } from './shields';
 import { fakeEdit, fakeEvent, fakeRoom } from './timeline.spec-harness';
 
@@ -17,6 +25,7 @@ const KEY = {
 function setup({
   localEcho = true,
   rejected = false,
+  failure,
   accountId = KEY.accountId,
   pending = false,
   cancelable = false,
@@ -25,6 +34,8 @@ function setup({
 }: {
   localEcho?: boolean;
   rejected?: boolean;
+  /** The SDK marks the echo NOT_SENT with this error before rejecting the send. */
+  failure?: Error;
   accountId?: string;
   pending?: boolean;
   cancelable?: boolean;
@@ -56,8 +67,16 @@ function setup({
     body: 'pending text',
   });
   const sourceRoom = fakeRoom([original, event]);
+  const failedEcho = new MatrixEvent({
+    type: 'm.room.message',
+    content: { msgtype: 'm.text', body: 'hello' },
+  });
+  failedEcho.setTxnId('txn-1');
   const room = {
     ...sourceRoom,
+    getEventForTxnId: vi.fn((txnId: string) =>
+      failure && txnId === 'txn-1' ? failedEcho : undefined,
+    ),
     findEventById: vi.fn((eventId: string) => {
       if (eventId === pendingEvent.getId()) return pendingEvent;
       return eventId === '$event' && !localEcho
@@ -89,13 +108,21 @@ function setup({
     sendMessage: vi.fn((_roomId: string, _content: unknown) =>
       pending
         ? new Promise<never>(() => undefined)
-        : rejected
-          ? Promise.reject(new Error('offline'))
-          : Promise.resolve({ event_id: '$event' }),
+        : failure
+          ? Promise.resolve().then(() => {
+              failedEcho.error = failure as never;
+              failedEcho.setStatus(EventStatus.NOT_SENT);
+              throw failure;
+            })
+          : rejected
+            ? Promise.reject(new Error('offline'))
+            : Promise.resolve({ event_id: '$event' }),
     ),
   };
+  const drafts = { holdWaiting: vi.fn(), releaseWaiting: vi.fn() };
   TestBed.configureTestingModule({
     providers: [
+      { provide: DraftStoreService, useValue: drafts },
       {
         provide: MatrixClientService,
         useValue: { clientFor: () => client },
@@ -113,6 +140,7 @@ function setup({
     client,
     room,
     original,
+    drafts,
   };
 }
 
@@ -149,6 +177,46 @@ describe('MatrixConversationTextSender', () => {
         }).outcome,
       ),
     ).resolves.toEqual({ kind: 'rejected', retryable: true });
+  });
+
+  it('queues a send that failed offline and keeps its text for after a reload', async () => {
+    const { sender, drafts } = setup({
+      failure: new ConnectionError('offline'),
+    });
+
+    await expect(
+      firstValueFrom(
+        sender.send({
+          key: KEY,
+          body: 'hello',
+          mentions: [],
+          intent: { kind: 'message' },
+        }).outcome,
+      ),
+    ).resolves.toEqual({ kind: 'queued' });
+    expect(drafts.holdWaiting).toHaveBeenCalledWith(
+      conversationDraftKey(KEY),
+      'txn-1',
+      'hello',
+    );
+  });
+
+  it('still rejects a send the server refused, keeping nothing aside', async () => {
+    const { sender, drafts } = setup({
+      failure: new MatrixError({ errcode: 'M_FORBIDDEN' }, 403),
+    });
+
+    await expect(
+      firstValueFrom(
+        sender.send({
+          key: KEY,
+          body: 'hello',
+          mentions: [],
+          intent: { kind: 'message' },
+        }).outcome,
+      ),
+    ).resolves.toEqual({ kind: 'rejected', retryable: true });
+    expect(drafts.holdWaiting).not.toHaveBeenCalled();
   });
 
   it('rejects an action context for a different Account even when the Room id matches', async () => {

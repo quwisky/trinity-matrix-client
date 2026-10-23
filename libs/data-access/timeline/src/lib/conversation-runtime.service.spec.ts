@@ -25,6 +25,7 @@ import {
   type ConversationTimelineFactory,
 } from './conversation-timeline-factory';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
+import { conversationDraftKey } from './conversation-draft-key';
 import type {
   ConversationMessageAdapter,
   ConversationMessageOperation,
@@ -96,6 +97,7 @@ function setup(
   const sends = new Subject<
     | { readonly kind: 'accepted'; readonly eventId: string }
     | { readonly kind: 'rejected'; readonly retryable: boolean }
+    | { readonly kind: 'queued' }
   >();
   const sender: ConversationTextSender = senderOverride ?? {
     send: vi.fn(() => ({ outcome: sends, cancel: () => false })),
@@ -1095,6 +1097,32 @@ describe('ConversationRuntime', () => {
     });
     expect(compose.draft()).toBe('try again');
     expect(compose.intent()).toEqual({ kind: 'reply', eventId: '$target' });
+  });
+
+  it('clears the composer for a send queued offline, without restoring it', async () => {
+    const { runtime, sends, drafts } = setup(2, undefined, [
+      message('$target'),
+    ]);
+    const handle = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const compose = handle.compose;
+    compose.setDraft('goes out later');
+    handle.messages.beginReply('$target');
+
+    const outcomePromise = firstValueFrom(compose.submit());
+    sends.next({ kind: 'queued' });
+    sends.complete();
+
+    await expect(outcomePromise).resolves.toEqual({ kind: 'queued' });
+    expect(compose.draft()).toBe('');
+    expect(compose.intent()).toEqual({ kind: 'message' });
+    expect(
+      drafts.get(
+        conversationDraftKey({ accountId: ALICE, roomId: '!room:example.org' }),
+      ),
+    ).toBe('');
   });
 
   it('cancels the finite command without losing the draft or leaving send state behind', () => {
