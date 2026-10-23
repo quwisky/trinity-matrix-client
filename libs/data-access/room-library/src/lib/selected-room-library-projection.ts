@@ -198,17 +198,13 @@ export function projectSelectedRooms(
         continue;
       }
 
+      // The row opens as, and shows the encryption view of, the active Account, else the first source.
       const winner =
         accountId === activeAccountId && existing.accountId !== activeAccountId
           ? summary
           : existing;
-      const loser = winner === summary ? existing : summary;
-      // The preview follows an Account that has the room as encrypted, so it agrees with the lock.
-      const preview = !winner.encrypted && loser.encrypted ? loser : winner;
       byRoomId.set(room.roomId, {
         ...winner,
-        lastMessage: preview.lastMessage,
-        lastMessageMark: preview.lastMessageMark,
         accountIds: [...existing.accountIds, accountId],
         unreadCount: Math.max(existing.unreadCount, summary.unreadCount),
         highlightCount: Math.max(
@@ -217,7 +213,6 @@ export function projectSelectedRooms(
         ),
         hasUnread: existing.hasUnread || summary.hasUnread,
         markedUnread: existing.markedUnread || summary.markedUnread,
-        encrypted: existing.encrypted || summary.encrypted,
         lowPriority: existing.lowPriority || summary.lowPriority,
       });
     }

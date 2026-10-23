@@ -422,67 +422,83 @@ describe('SelectedRoomLibraryService', () => {
     expect(room('!stored:hs')?.encrypted).toBe(true);
   });
 
-  it('marks a shared room shown as encrypted though the winning Account has it unencrypted', async () => {
-    const store = (encrypted: boolean) => ({
-      getCrypto: () => ({
-        isEncryptionEnabledInRoom: async () => encrypted,
-      }),
-    });
-    const a = Object.assign(
-      fakeClient('@a:hs', [fakeRoom('!shared:hs', { message: 'hello' })]),
-      store(false),
-    );
-    const b = Object.assign(
-      fakeClient('@b:hs', [fakeRoom('!shared:hs', { message: 'hello' })]),
-      store(true),
-    );
-    const harness = setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
-    });
-    const shared = () =>
-      harness.service.view().rooms.find((r) => r.id === '!shared:hs');
+  describe('a room several Accounts share', () => {
+    const copy = (id: string, encrypted: boolean) =>
+      Object.assign(
+        fakeClient(id, [fakeRoom('!shared:hs', { message: `from ${id}` })]),
+        {
+          getCrypto: () => ({
+            isEncryptionEnabledInRoom: async () => encrypted,
+          }),
+        },
+      );
 
-    await vi.waitFor(() => expect(shared()?.encrypted).toBe(true));
-    expect(shared()?.accountId).toBe('@a:hs');
-    expect(shared()?.lastMessage).toBe('hello');
-    expect(shared()?.lastMessageMark).toBe('unencrypted');
-  });
+    async function sharedRow(
+      active: string | null,
+      copies: readonly (readonly [string, boolean])[],
+    ) {
+      const ids = copies.map(([id]) => id);
+      const harness = setup({
+        selected: new Set(ids),
+        live: ids,
+        active,
+        clients: new Map(copies.map(([id, e]) => [id, copy(id, e)])),
+      });
+      // Let every Account's crypto-store answer land before reading the row.
+      await new Promise((resolve) => setTimeout(resolve));
+      await flushProjection();
+      return harness.service.view().rooms.find((r) => r.id === '!shared:hs');
+    }
 
-  it('marks a shared room from the encrypted copy when the active Account has it unencrypted', async () => {
-    const store = (encrypted: boolean) => ({
-      getCrypto: () => ({
-        isEncryptionEnabledInRoom: async () => encrypted,
-      }),
-    });
-    const a = Object.assign(
-      fakeClient('@a:hs', [fakeRoom('!shared:hs', { message: 'from a' })]),
-      store(true),
-    );
-    const b = Object.assign(
-      fakeClient('@b:hs', [fakeRoom('!shared:hs', { message: 'from b' })]),
-      store(false),
-    );
-    const harness = setup({
-      selected: new Set(['@a:hs', '@b:hs']),
-      live: ['@a:hs', '@b:hs'],
-      active: '@b:hs',
-      clients: new Map([
-        ['@a:hs', a],
-        ['@b:hs', b],
-      ]),
-    });
-    const shared = () =>
-      harness.service.view().rooms.find((r) => r.id === '!shared:hs');
+    it('shows the room unencrypted when the active Account sees it so', async () => {
+      const row = await sharedRow('@a:hs', [
+        ['@a:hs', false],
+        ['@b:hs', true],
+      ]);
 
-    await vi.waitFor(() => expect(shared()?.encrypted).toBe(true));
-    expect(shared()?.accountId).toBe('@b:hs');
-    expect(shared()?.lastMessage).toBe('from a');
-    expect(shared()?.lastMessageMark).toBe('unencrypted');
+      expect(row?.accountId).toBe('@a:hs');
+      expect(row?.encrypted).toBe(false);
+      expect(row?.lastMessage).toBe('from @a:hs');
+      expect(row?.lastMessageMark).toBeNull();
+    });
+
+    it('shows the room encrypted when the active Account sees it so', async () => {
+      const row = await sharedRow('@b:hs', [
+        ['@a:hs', false],
+        ['@b:hs', true],
+      ]);
+
+      expect(row?.accountId).toBe('@b:hs');
+      expect(row?.encrypted).toBe(true);
+      expect(row?.lastMessage).toBe('from @b:hs');
+      expect(row?.lastMessageMark).toBe('unencrypted');
+    });
+
+    it('follows the first source when none of the copies is active', async () => {
+      const row = await sharedRow('@none:hs', [
+        ['@a:hs', false],
+        ['@b:hs', true],
+      ]);
+
+      expect(row?.accountId).toBe('@a:hs');
+      expect(row?.encrypted).toBe(false);
+      expect(row?.lastMessageMark).toBeNull();
+    });
+
+    it.each(['@a:hs', '@b:hs', '@c:hs'])(
+      'follows the active Account among three copies (%s)',
+      async (active) => {
+        const row = await sharedRow(active, [
+          ['@a:hs', true],
+          ['@b:hs', false],
+          ['@c:hs', true],
+        ]);
+
+        expect(row?.accountId).toBe(active);
+        expect(row?.encrypted).toBe(active !== '@b:hs');
+        expect(row?.lastMessage).toBe(`from ${active}`);
+      },
+    );
   });
 
   it('takes favourite from the winning Account copy', () => {
