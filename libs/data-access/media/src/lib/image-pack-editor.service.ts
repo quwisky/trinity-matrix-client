@@ -8,17 +8,14 @@ import {
   signal,
 } from '@angular/core';
 import { defer, firstValueFrom, from, type Observable } from 'rxjs';
-import { MatrixError, Method, type MatrixClient } from 'matrix-js-sdk';
+import { type MatrixClient } from 'matrix-js-sdk';
 import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
 import { SHORTCODE_CHARACTERS } from '@trinity/util/matrix';
 import {
-  LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE,
   MAX_PERSONAL_IMAGES,
-  PERSONAL_IMAGE_PACK_EVENT_TYPE,
-  PERSONAL_IMAGE_PACK_NAME,
   isValidMxcUri,
   type ImagePackUsage,
 } from './image-pack.model';
@@ -26,7 +23,6 @@ import { ImagePackImageError, prepareImagePackImage } from './image-pack-image';
 import {
   AccountPackTarget,
   packEntries,
-  type PackContent,
   type PackEntry,
 } from './image-pack-target';
 import { MediaService } from './media.service';
@@ -288,49 +284,19 @@ export class ImagePackEditorService {
   ): Promise<void> {
     // Account data has no compare-and-set: a write from another device that lands between
     // this read and the write below is overwritten. Reading just before narrows the window.
-    const content = await serverContent(client);
+    const content = await this.target.readServer(client);
     const images = change(content.images);
     if (!images) return;
     const pack =
       typeof content.pack['display_name'] === 'string'
         ? content.pack
-        : { ...content.pack, display_name: PERSONAL_IMAGE_PACK_NAME };
+        : { ...content.pack, display_name: this.target.defaultName(client) };
     const next = { pack, images };
     await this.target.write(client, next);
     if (this.projection.client() === client) {
       this.personalState.set(packEntries(next));
     }
   }
-}
-
-/**
- * The server's pack, read past the SDK store, which a raw write does not update until sync
- * echoes it. The legacy type stands in while the stable one does not exist.
- */
-async function serverContent(client: MatrixClient): Promise<PackContent> {
-  const userId = client.getUserId();
-  if (!userId) throw new ImagePackEditError('not-signed-in');
-  for (const type of [
-    PERSONAL_IMAGE_PACK_EVENT_TYPE,
-    LEGACY_PERSONAL_IMAGE_PACK_EVENT_TYPE,
-  ]) {
-    try {
-      const content = await client.http.authedRequest<unknown>(
-        Method.Get,
-        `/user/${encodeURIComponent(userId)}/account_data/${encodeURIComponent(type)}`,
-      );
-      const record = isRecord(content) ? content : {};
-      return {
-        pack: isRecord(record['pack']) ? record['pack'] : {},
-        images: isRecord(record['images']) ? record['images'] : {},
-      };
-    } catch (error) {
-      if (!(error instanceof MatrixError && error.errcode === 'M_NOT_FOUND')) {
-        throw error;
-      }
-    }
-  }
-  return { pack: {}, images: {} };
 }
 
 function assertUsage(usage: readonly ImagePackUsage[]): void {
