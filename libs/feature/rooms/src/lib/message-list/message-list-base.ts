@@ -88,6 +88,7 @@ const DEFAULT_ROW_CAPS: MessageRowCaps = {
   pinned: false,
   canThread: true,
   canQuote: false,
+  canRespond: true,
   saveMedia: null,
   canForward: false,
   readOnly: false,

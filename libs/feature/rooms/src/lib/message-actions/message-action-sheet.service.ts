@@ -100,14 +100,15 @@ export class MessageActionSheetService {
     };
     const act = (type: PayloadFreeAction['type']) => () => run({ type });
 
-    const buttons: ActionSheetButton[] = [
-      {
+    const buttons: ActionSheetButton[] = [];
+    if (caps.canRespond) {
+      buttons.push({
         text: 'Reply',
         icon: 'reply',
         testId: 'sheet-reply',
         handler: act('reply'),
-      },
-    ];
+      });
+    }
     if (caps.canThread) {
       buttons.push({
         text: 'Reply in thread',
@@ -116,14 +117,16 @@ export class MessageActionSheetService {
         handler: act('thread'),
       });
     }
-    buttons.push({
-      // The escape hatch from the six-emoji strip: `react-more` is raised nowhere else, and
-      // the hover bar is never revealed on a mobile OS.
-      text: 'More reactions…',
-      icon: 'smile',
-      testId: 'sheet-react-more',
-      handler: act('react-more'),
-    });
+    if (caps.canRespond) {
+      buttons.push({
+        // The escape hatch from the six-emoji strip: `react-more` is raised nowhere else, and
+        // the hover bar is never revealed on a mobile OS.
+        text: 'More reactions…',
+        icon: 'smile',
+        testId: 'sheet-react-more',
+        handler: act('react-more'),
+      });
+    }
     if (caps.canQuote) {
       buttons.push({
         text: 'Quote',
@@ -221,13 +224,15 @@ export class MessageActionSheetService {
     const ref = this.surfaces.openActions(
       {
         buttons,
-        reactions: QUICK_SHEET_REACTIONS.map((key) => ({
-          key,
-          handler: () => {
-            this.recentEmoji.record(key);
-            run({ type: 'react', key });
-          },
-        })),
+        reactions: (caps.canRespond ? QUICK_SHEET_REACTIONS : []).map(
+          (key) => ({
+            key,
+            handler: () => {
+              this.recentEmoji.record(key);
+              run({ type: 'react', key });
+            },
+          }),
+        ),
       },
       { ariaLabel: 'Message actions', anchor: context?.anchor },
     );

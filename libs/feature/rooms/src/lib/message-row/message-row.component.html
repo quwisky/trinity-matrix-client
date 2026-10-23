@@ -52,7 +52,7 @@
     [class.msg--actions]="hasToolbar()"
     [attr.data-mid]="r.id"
     [trnMessageSwipe]="swipeDirection()"
-    [swipeEnabled]="!caps().readOnly"
+    [swipeEnabled]="swipeable()"
     (swipe)="swipe.emit(swipeAction())"
     [attr.tabindex]="hasToolbar() ? 0 : null"
     [attr.role]="hasToolbar() ? 'article' : null"
@@ -69,7 +69,7 @@
     (focusin)="onFocusIn($event)"
     (focusout)="onFocusOut($event)"
   >
-    @if (swipeDirection() !== 'off' && !caps().readOnly) {
+    @if (swipeDirection() !== 'off' && swipeable()) {
       <!-- The affordance: the reader must know WHICH of edit and reply they will get before they
            commit. Drawn from the same `swipeAction()` the row emits at release, so the two cannot
            disagree if the host's live caps change. Counter-translated so it stays put while the row
